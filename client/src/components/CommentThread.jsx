@@ -21,10 +21,21 @@ function CommentBubble({ comment, onUpdate, onDelete }) {
   };
 
   return (
-    <Paper withBorder radius="lg" p="sm" bg="gray.0">
+    <Paper
+      withBorder
+      p="sm"
+      bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))"
+      style={{ borderRadius: "var(--mantine-radius-default)" }}
+    >
       {editing ? (
         <Stack gap="xs">
-          <Textarea value={text} onChange={(e) => setText(e.currentTarget.value)} autosize minRows={2} autoFocus />
+          <Textarea
+            value={text}
+            onChange={(e) => setText(e.currentTarget.value)}
+            autosize
+            minRows={2}
+            autoFocus
+          />
           <Group justify="flex-end" gap="xs">
             <ActionIcon variant="subtle" color="gray" onClick={() => setEditing(false)} aria-label="Annuler">
               <IconX size={16} />
@@ -36,9 +47,6 @@ function CommentBubble({ comment, onUpdate, onDelete }) {
         </Stack>
       ) : (
         <Stack gap={4}>
-          <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
-            {comment.text}
-          </Text>
           <Group justify="space-between" align="center">
             <Text size="xs" c="dimmed">
               {formatTimestamp(comment.updated_at)}
@@ -59,6 +67,9 @@ function CommentBubble({ comment, onUpdate, onDelete }) {
               </ActionIcon>
             </Group>
           </Group>
+          <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
+            {comment.text}
+          </Text>
         </Stack>
       )}
     </Paper>
@@ -75,7 +86,7 @@ export default function CommentThread({ comments, onAdd, onUpdate, onDelete }) {
   };
 
   return (
-    <Stack gap="sm">
+    <Stack gap="sm" pt={20}>
       <Text fw={500} size="sm">
         Commentaires
       </Text>
@@ -107,7 +118,13 @@ export default function CommentThread({ comments, onAdd, onUpdate, onDelete }) {
             }
           }}
         />
-        <ActionIcon variant="filled" color="blue" size="lg" onClick={submit} aria-label="Envoyer le commentaire">
+        <ActionIcon
+          variant="filled"
+          color="blue"
+          size="lg"
+          onClick={submit}
+          aria-label="Envoyer le commentaire"
+        >
           <IconSend2 size={16} />
         </ActionIcon>
       </Group>

@@ -20,7 +20,7 @@ Suivi de projets : liste filtrable par catégorie et statut, fiche projet en vol
    npm run dev --prefix client
    ```
 
-5. Frontend disponible sur http://localhost:5173, API sur http://localhost:3001.
+5. Frontend disponible sur http://localhost:5273, API sur http://localhost:3001.
 
 ## Démarrer sans Dev Container
 

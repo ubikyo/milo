@@ -8,6 +8,8 @@ build/
 # SQLite database
 server/data.db
 server/*.db-journal
+server/*.db-shm
+server/*.db-wal
 
 # Env files
 .env

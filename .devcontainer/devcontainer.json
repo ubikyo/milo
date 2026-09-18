@@ -3,9 +3,9 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
-  "forwardPorts": [5173, 3001],
+  "forwardPorts": [5273, 3001],
   "portsAttributes": {
-    "5173": { "label": "Frontend (Vite)" },
+    "5273": { "label": "Frontend (Vite)" },
     "3001": { "label": "API (Express)" }
   },
   "postCreateCommand": "npm install --prefix server && npm install --prefix client",
