@@ -1,0 +1,22 @@
+{
+  "name": "Milo Dev Container",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "forwardPorts": [5173, 3001],
+  "portsAttributes": {
+    "5173": { "label": "Frontend (Vite)" },
+    "3001": { "label": "API (Express)" }
+  },
+  "postCreateCommand": "npm install --prefix server && npm install --prefix client",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "alexcvzz.vscode-sqlite"
+      ]
+    }
+  },
+  "remoteUser": "node"
+}
