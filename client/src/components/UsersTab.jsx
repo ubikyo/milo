@@ -1,10 +1,9 @@
 import {
   ActionIcon,
-  Alert,
   Button,
+  Fieldset,
   Group,
   Paper,
-  PasswordInput,
   ScrollArea,
   Stack,
   Text,
@@ -13,9 +12,14 @@ import {
 import { IconCheck, IconPencil, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
+import { RED } from "../colors";
+import ActorAvatars from "./ActorAvatars.jsx";
 import DeleteConfirmModal from "./DeleteConfirmModal.jsx";
+import ErrorAlert from "./ErrorAlert.jsx";
 
-const emptyDraft = { name: "", email: "", password: "" };
+// L'administrateur n'invite qu'une adresse : le profil est complété par la
+// personne lors de sa première connexion.
+const emptyDraft = { email: "" };
 
 export default function UsersTab({ currentUser }) {
   const [users, setUsers] = useState([]);
@@ -47,24 +51,21 @@ export default function UsersTab({ currentUser }) {
   };
 
   const create = async () => {
-    if (await run(() => api.createUser({ ...draft, name: draft.name.trim(), email: draft.email.trim() })))
-      setDraft(emptyDraft);
+    if (await run(() => api.createUser({ email: draft.email.trim() }))) setDraft(emptyDraft);
   };
 
   const saveEdit = async () => {
-    const payload = { name: editing.name.trim(), email: editing.email.trim() };
-    // Mot de passe laissé vide = inchangé.
-    if (editing.password) payload.password = editing.password;
+    const payload = {
+      first_name: editing.first_name.trim(),
+      last_name: editing.last_name.trim(),
+      email: editing.email.trim(),
+    };
     if (await run(() => api.updateUser(editing.id, payload))) setEditing(null);
   };
 
   return (
     <Stack gap="sm" style={{ flex: 1, minHeight: 0 }}>
-      {error && (
-        <Alert color="red" variant="light" withCloseButton onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
+      {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
 
       <ScrollArea style={{ flex: 1, minHeight: 0 }} type="auto" scrollbarSize={2} offsetScrollbars>
         <Stack gap="xs">
@@ -73,20 +74,28 @@ export default function UsersTab({ currentUser }) {
               {editing?.id === user.id ? (
                 <Stack gap="xs">
                   <TextInput
+                    label="Prénom"
+                    value={editing.first_name}
+                    onChange={(e) => {
+                      const { value } = e.currentTarget;
+                      setEditing((u) => ({ ...u, first_name: value }));
+                    }}
+                  />
+                  <TextInput
                     label="Nom"
-                    value={editing.name}
-                    onChange={(e) => setEditing((u) => ({ ...u, name: e.currentTarget.value }))}
+                    value={editing.last_name}
+                    onChange={(e) => {
+                      const { value } = e.currentTarget;
+                      setEditing((u) => ({ ...u, last_name: value }));
+                    }}
                   />
                   <TextInput
                     label="E-mail"
                     value={editing.email}
-                    onChange={(e) => setEditing((u) => ({ ...u, email: e.currentTarget.value }))}
-                  />
-                  <PasswordInput
-                    label="Nouveau mot de passe"
-                    placeholder="Laisser vide pour ne pas changer"
-                    value={editing.password}
-                    onChange={(e) => setEditing((u) => ({ ...u, password: e.currentTarget.value }))}
+                    onChange={(e) => {
+                      const { value } = e.currentTarget;
+                      setEditing((u) => ({ ...u, email: value }));
+                    }}
                   />
                   <Group justify="flex-end" gap="xs">
                     <ActionIcon
@@ -99,7 +108,7 @@ export default function UsersTab({ currentUser }) {
                     </ActionIcon>
                     <ActionIcon
                       variant="subtle"
-                      color="blue"
+                      color="teal"
                       onClick={saveEdit}
                       loading={busy}
                       aria-label="Valider"
@@ -110,39 +119,51 @@ export default function UsersTab({ currentUser }) {
                 </Stack>
               ) : (
                 <Group justify="space-between" wrap="nowrap">
-                  <div style={{ minWidth: 0 }}>
-                    <Text size="sm">
-                      {user.name}
-                      {user.id === currentUser?.id && (
-                        <Text span size="xs" c="dimmed">
-                          {" "}
-                          (vous)
-                        </Text>
-                      )}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      {user.email}
-                    </Text>
-                  </div>
-                  <Group gap={4} wrap="nowrap">
-                    <ActionIcon
-                      variant="subtle"
-                      color="gray"
-                      onClick={() => setEditing({ ...user, password: "" })}
-                      aria-label={`Modifier ${user.name}`}
-                    >
-                      <IconPencil size={16} />
-                    </ActionIcon>
-                    <ActionIcon
-                      variant="subtle"
-                      color="red"
-                      onClick={() => setPendingDelete(user)}
-                      disabled={user.id === currentUser?.id}
-                      aria-label={`Supprimer ${user.name}`}
-                    >
-                      <IconTrash size={16} />
-                    </ActionIcon>
+                  <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
+                    <ActorAvatars actors={[user]} max={1} />
+                    <div style={{ minWidth: 0 }}>
+                      <Text size="sm">
+                        {user.first_name || user.last_name ? user.name : "—"}
+                        {user.id === currentUser?.id && (
+                          <Text span size="xs" c="dimmed">
+                            {" "}
+                            (vous)
+                          </Text>
+                        )}
+                        {!user.activated && (
+                          <Text span size="xs" c="dimmed">
+                            {" "}
+                            (première connexion à faire)
+                          </Text>
+                        )}
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        {user.email}
+                      </Text>
+                    </div>
                   </Group>
+                  {/* Son propre compte se gère depuis les préférences : aucune
+                      action n'est proposée ici. */}
+                  {user.id !== currentUser?.id && (
+                    <Group gap={4} wrap="nowrap">
+                      <ActionIcon
+                        variant="subtle"
+                        color="gray"
+                        onClick={() => setEditing({ ...user })}
+                        aria-label={`Modifier ${user.name}`}
+                      >
+                        <IconPencil size={16} />
+                      </ActionIcon>
+                      <ActionIcon
+                        variant="subtle"
+                        color={RED}
+                        onClick={() => setPendingDelete(user)}
+                        aria-label={`Supprimer ${user.name}`}
+                      >
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Group>
+                  )}
                 </Group>
               )}
             </Paper>
@@ -150,42 +171,32 @@ export default function UsersTab({ currentUser }) {
         </Stack>
       </ScrollArea>
 
-      <Paper withBorder radius="md" p="xs">
-        <Stack gap="xs">
-          <Text size="xs" fw={500}>
-            Nouvel utilisateur
-          </Text>
-          <Group gap="xs" grow>
-            <TextInput
-              placeholder="Nom"
-              value={draft.name}
-              onChange={(e) => setDraft((d) => ({ ...d, name: e.currentTarget.value }))}
-            />
-            <TextInput
-              placeholder="E-mail"
-              value={draft.email}
-              onChange={(e) => setDraft((d) => ({ ...d, email: e.currentTarget.value }))}
-            />
-          </Group>
-          <Group gap="xs" wrap="nowrap">
-            <PasswordInput
-              placeholder="Mot de passe (8 caractères min.)"
-              value={draft.password}
-              onChange={(e) => setDraft((d) => ({ ...d, password: e.currentTarget.value }))}
-              style={{ flex: 1 }}
-            />
-            <Button
-              color="teal"
-              leftSection={<IconPlus size={16} />}
-              onClick={create}
-              loading={busy}
-              disabled={!draft.name.trim() || !draft.email.trim() || !draft.password}
-            >
-              Ajouter
-            </Button>
-          </Group>
-        </Stack>
-      </Paper>
+      <Fieldset legend="Nouvel utilisateur" p="xs" radius="md">
+        <Group gap="xs" wrap="nowrap">
+          <TextInput
+            placeholder="E-mail"
+            type="email"
+            value={draft.email}
+            onChange={(e) => {
+              const { value } = e.currentTarget;
+              setDraft((d) => ({ ...d, email: value }));
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") create();
+            }}
+            style={{ flex: 1 }}
+          />
+          <Button
+            color="teal"
+            leftSection={<IconPlus size={16} />}
+            onClick={create}
+            loading={busy}
+            disabled={!draft.email.trim()}
+          >
+            Ajouter
+          </Button>
+        </Group>
+      </Fieldset>
 
       <DeleteConfirmModal
         opened={pendingDelete !== null}

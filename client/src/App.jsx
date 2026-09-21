@@ -1,8 +1,9 @@
 import { Box, ScrollArea, Stack, Title } from "@mantine/core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, setUnauthorizedHandler } from "./api";
 import { getToken, setToken } from "./auth";
 import LoginPage from "./components/LoginPage.jsx";
+import PreferencesModal from "./components/PreferencesModal.jsx";
 import Header from "./components/Header.jsx";
 import ProjectDrawer from "./components/ProjectDrawer.jsx";
 import ProjectTable from "./components/ProjectTable.jsx";
@@ -16,6 +17,7 @@ export default function App() {
   const [categories, setCategories] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [buildings, setBuildings] = useState([]);
+  const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -25,6 +27,10 @@ export default function App() {
 
   const [drawerOpened, setDrawerOpened] = useState(false);
   const [settingsOpened, setSettingsOpened] = useState(false);
+  const [preferencesOpened, setPreferencesOpened] = useState(false);
+  // Dernière version de données connue, pour détecter les modifications
+  // faites par quelqu'un d'autre.
+  const knownVersion = useRef(null);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
 
   const loadProjects = useCallback(async () => {
@@ -36,6 +42,7 @@ export default function App() {
         status: statusFilter,
       });
       setProjects(data);
+      knownVersion.current = (await api.getVersion().catch(() => null))?.version ?? knownVersion.current;
     } finally {
       setLoaded(true);
     }
@@ -85,14 +92,16 @@ export default function App() {
   };
 
   const loadLookups = useCallback(async () => {
-    const [nextCategories, nextCompanies, nextBuildings] = await Promise.all([
+    const [nextCategories, nextCompanies, nextBuildings, nextUsers] = await Promise.all([
       api.getCategories(),
       api.getCompanies(),
       api.getBuildings(),
+      api.getUsers(),
     ]);
     setCategories(nextCategories);
     setCompanies(nextCompanies);
     setBuildings(nextBuildings);
+    setUsers(nextUsers);
   }, []);
 
   useEffect(() => {
@@ -133,6 +142,72 @@ export default function App() {
       setBuildingFilter("all");
     }
   }, [buildings, buildingFilter]);
+
+  // Flux d'événements : le serveur pousse la version dès qu'une écriture a
+  // lieu, le rechargement est donc immédiat. On consomme le flux avec `fetch`
+  // et non `EventSource`, qui n'accepte pas d'en-tête d'authentification.
+  useEffect(() => {
+    if (!user) return undefined;
+
+    let arrete = false;
+    let controleur;
+
+    const appliquer = async (version) => {
+      if (knownVersion.current === null) {
+        knownVersion.current = version;
+        return;
+      }
+      if (version !== knownVersion.current) {
+        knownVersion.current = version;
+        await Promise.all([loadLookups(), loadProjects()]);
+      }
+    };
+
+    const ecouter = async () => {
+      while (!arrete) {
+        try {
+          controleur = new AbortController();
+          const reponse = await fetch("/api/events", {
+            headers: { Authorization: `Bearer ${getToken()}` },
+            signal: controleur.signal,
+          });
+          if (!reponse.ok || !reponse.body) throw new Error("flux indisponible");
+
+          const lecteur = reponse.body.getReader();
+          const decodeur = new TextDecoder();
+          let tampon = "";
+
+          while (!arrete) {
+            const { done, value } = await lecteur.read();
+            if (done) break;
+            tampon += decodeur.decode(value, { stream: true });
+
+            // Les événements sont séparés par une ligne vide.
+            const morceaux = tampon.split("\n\n");
+            tampon = morceaux.pop() ?? "";
+            for (const morceau of morceaux) {
+              const ligne = morceau.split("\n").find((l) => l.startsWith("data:"));
+              if (!ligne) continue; // commentaire de maintien de connexion
+              try {
+                await appliquer(JSON.parse(ligne.slice(5)).version);
+              } catch {
+                /* message illisible : on ignore */
+              }
+            }
+          }
+        } catch {
+          /* connexion perdue : nouvelle tentative après une courte pause */
+        }
+        if (!arrete) await new Promise((resoudre) => setTimeout(resoudre, 2000));
+      }
+    };
+
+    ecouter();
+    return () => {
+      arrete = true;
+      controleur?.abort();
+    };
+  }, [user, loadLookups, loadProjects]);
 
   const handleOpenNewProject = useCallback(() => {
     setSelectedProjectId(null);
@@ -207,6 +282,7 @@ export default function App() {
         showFilters={showFilters}
         user={user}
         onLogout={handleLogout}
+        onOpenPreferences={() => setPreferencesOpened(true)}
       />
       <Box p={100} w="100%" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         {loaded && hasProjects && (
@@ -251,8 +327,22 @@ export default function App() {
         categories={categories}
         companies={companies}
         buildings={buildings}
+        users={users}
+        onCategoriesChanged={loadLookups}
         onSaved={handleSaved}
         onDeleted={handleSaved}
+      />
+
+      <PreferencesModal
+        opened={preferencesOpened}
+        onClose={() => setPreferencesOpened(false)}
+        user={user}
+        onUpdated={(updated) => {
+          setUser(updated);
+          // Le nom apparaît aussi dans les acteurs et la liste des utilisateurs.
+          loadLookups();
+          loadProjects();
+        }}
       />
 
       <SettingsModal

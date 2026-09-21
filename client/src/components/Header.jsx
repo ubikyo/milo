@@ -1,5 +1,6 @@
 import { ActionIcon, Avatar, Group, Menu, Select, Text, Tooltip } from "@mantine/core";
-import { IconLogout, IconPlus, IconSettings } from "@tabler/icons-react";
+import { IconLogout, IconPlus, IconSettings, IconUserCog } from "@tabler/icons-react";
+import { initialsOf } from "./ActorAvatars.jsx";
 import Logo from "./Logo.jsx";
 
 const STATUS_OPTIONS = [
@@ -25,6 +26,7 @@ export default function Header({
   showFilters = true,
   user,
   onLogout,
+  onOpenPreferences,
 }) {
   const companyOptions = [
     { value: "all", label: "Toutes les sociétés" },
@@ -111,8 +113,8 @@ export default function Header({
           <Menu.Target>
             <Tooltip label={user?.name}>
               <ActionIcon variant="subtle" size="lg" mt={showFilters ? 24 : 0} aria-label="Compte">
-                <Avatar size={28} radius="xl" color="teal">
-                  {(user?.name || "?").slice(0, 1).toUpperCase()}
+                <Avatar size={28} radius="xl" color="teal" variant="filled" src={user?.gravatar_url || null}>
+                  {initialsOf(user?.name)}
                 </Avatar>
               </ActionIcon>
             </Tooltip>
@@ -127,6 +129,9 @@ export default function Header({
               </Text>
             </Menu.Label>
             <Menu.Divider />
+            <Menu.Item leftSection={<IconUserCog size={16} />} onClick={onOpenPreferences}>
+              Préférences
+            </Menu.Item>
             <Menu.Item leftSection={<IconLogout size={16} />} onClick={onLogout}>
               Déconnexion
             </Menu.Item>

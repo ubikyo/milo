@@ -1,6 +1,7 @@
 import cors from "cors";
 import express from "express";
-import { createToken, hashPassword, verifyPassword } from "./auth.js";
+import { createHash } from "node:crypto";
+import { createToken, hashPassword, passwordIssues, verifyPassword } from "./auth.js";
 import db from "./db.js";
 
 const app = express();
@@ -12,8 +13,33 @@ const now = () => new Date().toISOString();
 // --- Authentification ------------------------------------------------------
 // Jeton opaque en base, envoyé par le client dans l'en-tête Authorization.
 
+// Gravatar : hachage SHA-256 de l'e-mail normalisé. `d=404` fait échouer la
+// requête quand la personne n'a pas d'image, ce qui laisse l'interface
+// retomber sur les initiales.
+const gravatarUrl = (email) =>
+  `https://www.gravatar.com/avatar/${createHash("sha256")
+    .update(String(email).trim().toLowerCase())
+    .digest("hex")}?d=404&s=128`;
+
+const fullName = (first, last) => [first, last].map((p) => String(p || "").trim()).filter(Boolean).join(" ");
+
 const publicUser = (user) =>
-  user && { id: user.id, name: user.name, email: user.email, created_at: user.created_at };
+  user && {
+    id: user.id,
+    first_name: user.first_name,
+    last_name: user.last_name,
+    // `name` reste exposé : il alimente les initiales et les listes d'acteurs.
+    name: fullName(user.first_name, user.last_name) || user.email,
+    email: user.email,
+    gravatar_url: gravatarUrl(user.email),
+    // Un mot de passe vide signifie « première connexion à faire ».
+    activated: Boolean(user.password_hash),
+    created_at: user.created_at,
+  };
+
+const saveIdentity = db.prepare(
+  "UPDATE users SET first_name = ?, last_name = ?, name = ?, email = ? WHERE id = ?"
+);
 
 const countUsers = () => db.prepare("SELECT COUNT(*) AS count FROM users").get().count;
 const userByEmail = db.prepare("SELECT * FROM users WHERE email = ? COLLATE NOCASE");
@@ -38,23 +64,63 @@ app.get("/api/auth/setup", (req, res) => {
 app.post("/api/auth/setup", (req, res) => {
   if (countUsers() > 0) return res.status(409).json({ error: "Un compte existe déjà" });
 
-  const name = (req.body.name || "").trim();
+  const firstName = (req.body.first_name || "").trim();
+  const lastName = (req.body.last_name || "").trim();
   const email = (req.body.email || "").trim();
   const { password } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: "Nom, e-mail et mot de passe sont requis" });
+  if (!firstName || !lastName || !email || !password) {
+    return res.status(400).json({ error: "Prénom, nom, e-mail et mot de passe sont requis" });
   }
-  if (password.length < 8) {
-    return res.status(400).json({ error: "Le mot de passe doit faire au moins 8 caractères" });
+  const issues = passwordIssues(password);
+  if (issues.length > 0) {
+    return res.status(400).json({ error: `Le mot de passe doit contenir : ${issues.join(", ")}` });
   }
 
   const { lastInsertRowid } = db
     .prepare(
-      "INSERT INTO users (name, email, password_hash, created_at) VALUES (?, ?, ?, ?)"
+      `INSERT INTO users (first_name, last_name, name, email, password_hash, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .run(name, email, hashPassword(password), now());
+    .run(firstName, lastName, fullName(firstName, lastName), email, hashPassword(password), now());
 
   res.status(201).json({ token: openSession(lastInsertRowid), user: publicUser(userById.get(lastInsertRowid)) });
+});
+
+// --- Première connexion ----------------------------------------------------
+// L'administrateur ne crée qu'une adresse ; la personne renseigne elle-même
+// son identité et son mot de passe. L'e-mail est indispensable pour savoir
+// quel compte activer.
+app.post("/api/auth/first-login", (req, res) => {
+  const email = (req.body.email || "").trim();
+  const firstName = (req.body.first_name || "").trim();
+  const lastName = (req.body.last_name || "").trim();
+  const { password, password_confirm: confirm } = req.body;
+
+  if (!email || !firstName || !lastName || !password) {
+    return res.status(400).json({ error: "Tous les champs sont requis" });
+  }
+  const issues = passwordIssues(password);
+  if (issues.length > 0) {
+    return res.status(400).json({ error: `Le mot de passe doit contenir : ${issues.join(", ")}` });
+  }
+  if (password !== confirm) {
+    return res.status(400).json({ error: "Les deux mots de passe ne correspondent pas" });
+  }
+
+  const user = userByEmail.get(email);
+  // Même réponse si l'adresse est inconnue ou déjà activée : on n'indique pas
+  // quelles adresses existent.
+  if (!user || user.password_hash) {
+    return res.status(409).json({
+      error: "Cette adresse est inconnue ou son mot de passe est déjà défini",
+    });
+  }
+
+  db.prepare(
+    "UPDATE users SET first_name = ?, last_name = ?, name = ?, password_hash = ? WHERE id = ?"
+  ).run(firstName, lastName, fullName(firstName, lastName), hashPassword(password), user.id);
+
+  res.json({ token: openSession(user.id), user: publicUser(userById.get(user.id)) });
 });
 
 app.post("/api/auth/login", (req, res) => {
@@ -63,7 +129,7 @@ app.post("/api/auth/login", (req, res) => {
   const user = email ? userByEmail.get(email) : null;
 
   // Même message dans les deux cas : on n'indique pas si l'e-mail existe.
-  if (!user || !password || !verifyPassword(password, user.password_hash)) {
+  if (!user || !user.password_hash || !password || !verifyPassword(password, user.password_hash)) {
     return res.status(401).json({ error: "E-mail ou mot de passe incorrect" });
   }
   res.json({ token: openSession(user.id), user: publicUser(user) });
@@ -84,7 +150,106 @@ const requireAuth = (req, res, next) => {
 // Tout ce qui suit exige une session valide.
 app.use("/api", requireAuth);
 
+// --- Suivi des modifications ----------------------------------------------
+// Compteur incrémenté à chaque écriture réussie. Les clients l'interrogent
+// pour savoir s'ils doivent recharger leurs données. En mémoire : un
+// redémarrage remet le compteur à 1, ce qui provoque au pire un rechargement
+// inutile chez les clients connectés.
+let dataVersion = 1;
+
+// Clients abonnés au flux d'événements.
+const streamClients = new Set();
+
+const broadcastVersion = () => {
+  const payload = `data: ${JSON.stringify({ version: dataVersion })}\n\n`;
+  for (const client of streamClients) {
+    try {
+      client.write(payload);
+    } catch {
+      streamClients.delete(client);
+    }
+  }
+};
+
+app.use("/api", (req, res, next) => {
+  if (req.method === "GET") return next();
+  res.on("finish", () => {
+    if (res.statusCode < 400) {
+      dataVersion += 1;
+      broadcastVersion();
+    }
+  });
+  next();
+});
+
+app.get("/api/version", (req, res) => res.json({ version: dataVersion }));
+
+// Flux d'événements (SSE) : la version est poussée dès qu'une écriture a lieu.
+app.get("/api/events", (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    // Demande à nginx de ne pas mettre la réponse en tampon.
+    "X-Accel-Buffering": "no",
+  });
+  res.write(`data: ${JSON.stringify({ version: dataVersion })}\n\n`);
+  streamClients.add(res);
+
+  // Commentaire périodique : maintient la connexion ouverte à travers les proxys.
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(": ping\n\n");
+    } catch {
+      /* la fermeture est gérée par l'événement close */
+    }
+  }, 25000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    streamClients.delete(res);
+  });
+});
+
 app.get("/api/auth/me", (req, res) => res.json(publicUser(req.user)));
+
+// Préférences : identité et, si demandé, mot de passe.
+app.put("/api/auth/me", (req, res) => {
+  const firstName = (req.body.first_name ?? req.user.first_name).trim();
+  const lastName = (req.body.last_name ?? req.user.last_name).trim();
+  const email = (req.body.email ?? req.user.email).trim();
+  const { password, password_confirm: confirm } = req.body;
+
+  if (!firstName || !lastName || !email) {
+    return res.status(400).json({ error: "Prénom, nom et e-mail sont requis" });
+  }
+  const duplicate = userByEmail.get(email);
+  if (duplicate && duplicate.id !== req.user.id) {
+    return res.status(409).json({ error: "Cet e-mail est déjà utilisé" });
+  }
+  if (password) {
+    const issues = passwordIssues(password);
+    if (issues.length > 0) {
+      return res.status(400).json({ error: `Le mot de passe doit contenir : ${issues.join(", ")}` });
+    }
+    if (password !== confirm) {
+      return res.status(400).json({ error: "Les deux mots de passe ne correspondent pas" });
+    }
+  }
+
+  saveIdentity.run(firstName, lastName, fullName(firstName, lastName), email, req.user.id);
+
+  if (password) {
+    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(
+      hashPassword(password),
+      req.user.id
+    );
+    // Les autres sessions de ce compte sont fermées.
+    db.prepare("DELETE FROM sessions WHERE user_id = ? AND token != ?").run(req.user.id, req.token);
+  }
+
+  res.json(publicUser(userById.get(req.user.id)));
+});
 
 app.post("/api/auth/logout", (req, res) => {
   db.prepare("DELETE FROM sessions WHERE token = ?").run(req.token);
@@ -97,51 +262,47 @@ app.get("/api/users", (req, res) => {
   res.json(db.prepare("SELECT * FROM users ORDER BY name").all().map(publicUser));
 });
 
+// L'administrateur n'invite qu'une adresse ; la personne complète son profil
+// lors de sa première connexion.
 app.post("/api/users", (req, res) => {
-  const name = (req.body.name || "").trim();
   const email = (req.body.email || "").trim();
-  const { password } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: "Nom, e-mail et mot de passe sont requis" });
-  }
-  if (password.length < 8) {
-    return res.status(400).json({ error: "Le mot de passe doit faire au moins 8 caractères" });
-  }
+  if (!email) return res.status(400).json({ error: "L'e-mail est requis" });
   if (userByEmail.get(email)) return res.status(409).json({ error: "Cet e-mail est déjà utilisé" });
 
+  // Les colonnes sont renseignées explicitement : sur une base créée avant
+  // l'ajout des valeurs par défaut, `name` et `password_hash` sont NOT NULL
+  // sans défaut, et `CREATE TABLE IF NOT EXISTS` ne les a pas modifiées.
   const { lastInsertRowid } = db
-    .prepare("INSERT INTO users (name, email, password_hash, created_at) VALUES (?, ?, ?, ?)")
-    .run(name, email, hashPassword(password), now());
+    .prepare(
+      `INSERT INTO users (name, first_name, last_name, email, password_hash, created_at)
+       VALUES ('', '', '', ?, '', ?)`
+    )
+    .run(email, now());
   res.status(201).json(publicUser(userById.get(lastInsertRowid)));
 });
 
 app.put("/api/users/:id", (req, res) => {
   const existing = userById.get(req.params.id);
   if (!existing) return res.status(404).json({ error: "Utilisateur introuvable" });
-
-  const name = (req.body.name ?? existing.name).trim();
-  const email = (req.body.email ?? existing.email).trim();
-  const { password } = req.body;
-  if (!name || !email) return res.status(400).json({ error: "Nom et e-mail sont requis" });
-  if (password !== undefined && password !== "" && password.length < 8) {
-    return res.status(400).json({ error: "Le mot de passe doit faire au moins 8 caractères" });
+  // Son propre compte se modifie depuis les préférences (PUT /api/auth/me),
+  // qui gère aussi le mot de passe.
+  if (existing.id === req.user.id) {
+    return res.status(409).json({
+      error: "Modifiez votre propre compte depuis vos préférences",
+    });
   }
+
+  const firstName = (req.body.first_name ?? existing.first_name).trim();
+  const lastName = (req.body.last_name ?? existing.last_name).trim();
+  const email = (req.body.email ?? existing.email).trim();
+  if (!email) return res.status(400).json({ error: "L'e-mail est requis" });
 
   const duplicate = userByEmail.get(email);
   if (duplicate && duplicate.id !== existing.id) {
     return res.status(409).json({ error: "Cet e-mail est déjà utilisé" });
   }
 
-  db.prepare("UPDATE users SET name = ?, email = ?, password_hash = ? WHERE id = ?").run(
-    name,
-    email,
-    password ? hashPassword(password) : existing.password_hash,
-    req.params.id
-  );
-  // Changer de mot de passe ferme les autres sessions de ce compte.
-  if (password) {
-    db.prepare("DELETE FROM sessions WHERE user_id = ? AND token != ?").run(req.params.id, req.token);
-  }
+  saveIdentity.run(firstName, lastName, fullName(firstName, lastName), email, req.params.id);
   res.json(publicUser(userById.get(req.params.id)));
 });
 
@@ -168,6 +329,50 @@ const PROJECT_SELECT = `
 `;
 
 const projectWithRelations = db.prepare(`${PROJECT_SELECT} WHERE projects.id = ?`);
+
+// --- Acteurs ---------------------------------------------------------------
+// Les acteurs sont renvoyés avec chaque projet ; une seule requête pour tout
+// le lot plutôt qu'une par projet.
+
+const withActors = (projects) => {
+  const list = Array.isArray(projects) ? projects : [projects];
+  if (list.length === 0) return projects;
+
+  const placeholders = list.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT project_actors.project_id, users.id, users.name, users.email
+       FROM project_actors
+       JOIN users ON users.id = project_actors.user_id
+       WHERE project_actors.project_id IN (${placeholders})
+       ORDER BY users.name`
+    )
+    .all(...list.map((p) => p.id));
+
+  const byProject = new Map();
+  for (const row of rows) {
+    if (!byProject.has(row.project_id)) byProject.set(row.project_id, []);
+    byProject.get(row.project_id).push({
+      id: row.id,
+      name: row.name || row.email,
+      email: row.email,
+      gravatar_url: gravatarUrl(row.email),
+    });
+  }
+
+  const decorated = list.map((p) => ({ ...p, actors: byProject.get(p.id) || [] }));
+  return Array.isArray(projects) ? decorated : decorated[0];
+};
+
+const replaceActors = db.transaction((projectId, actorIds) => {
+  db.prepare("DELETE FROM project_actors WHERE project_id = ?").run(projectId);
+  const insert = db.prepare(
+    "INSERT OR IGNORE INTO project_actors (project_id, user_id) VALUES (?, ?)"
+  );
+  for (const userId of actorIds) {
+    if (db.prepare("SELECT id FROM users WHERE id = ?").get(userId)) insert.run(projectId, userId);
+  }
+});
 
 // --- Tables de référence (catégories, sociétés) ----------------------------
 // Les deux ressources ont la même forme : un id et un nom.
@@ -353,7 +558,7 @@ app.get("/api/projects", (req, res) => {
   const rows = db
     .prepare(`${PROJECT_SELECT} ${where} ORDER BY projects.updated_at DESC`)
     .all(params);
-  res.json(rows);
+  res.json(withActors(rows));
 });
 
 app.get("/api/projects/:id", (req, res) => {
@@ -362,11 +567,19 @@ app.get("/api/projects/:id", (req, res) => {
   const comments = db
     .prepare("SELECT * FROM comments WHERE project_id = ? ORDER BY created_at ASC")
     .all(req.params.id);
-  res.json({ ...project, comments });
+  res.json({ ...withActors(project), comments });
 });
 
 app.post("/api/projects", (req, res) => {
-  const { name, description = "", category_id, company_id = null, building_id = null, status = 0 } = req.body;
+  const {
+    name,
+    description = "",
+    category_id,
+    company_id = null,
+    building_id = null,
+    status = 0,
+    actor_ids = [],
+  } = req.body;
   if (!name || !category_id) {
     return res.status(400).json({ error: "name et category_id sont requis" });
   }
@@ -386,7 +599,8 @@ app.post("/api/projects", (req, res) => {
       created_at: timestamp,
       updated_at: timestamp,
     });
-  res.status(201).json(projectWithRelations.get(lastInsertRowid));
+  replaceActors(lastInsertRowid, actor_ids);
+  res.status(201).json(withActors(projectWithRelations.get(lastInsertRowid)));
 });
 
 app.put("/api/projects/:id", (req, res) => {
@@ -400,6 +614,7 @@ app.put("/api/projects/:id", (req, res) => {
     company_id = existing.company_id,
     building_id = existing.building_id,
     status = existing.status,
+    actor_ids,
   } = req.body;
 
   db.prepare(
@@ -418,7 +633,8 @@ app.put("/api/projects/:id", (req, res) => {
     updated_at: now(),
   });
 
-  res.json(projectWithRelations.get(req.params.id));
+  if (Array.isArray(actor_ids)) replaceActors(req.params.id, actor_ids);
+  res.json(withActors(projectWithRelations.get(req.params.id)));
 });
 
 app.delete("/api/projects/:id", (req, res) => {

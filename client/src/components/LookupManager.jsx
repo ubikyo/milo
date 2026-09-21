@@ -1,7 +1,19 @@
-import { ActionIcon, Alert, Button, Group, Paper, ScrollArea, Stack, Text, TextInput } from "@mantine/core";
+import {
+  ActionIcon,
+  Button,
+  Fieldset,
+  Group,
+  Paper,
+  ScrollArea,
+  Stack,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { IconCheck, IconPencil, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
 import { useState } from "react";
 import DeleteConfirmModal from "./DeleteConfirmModal.jsx";
+import { RED } from "../colors";
+import ErrorAlert from "./ErrorAlert.jsx";
 
 /**
  * Liste éditable en ligne (ajout / modification / suppression) pour les
@@ -9,6 +21,7 @@ import DeleteConfirmModal from "./DeleteConfirmModal.jsx";
  */
 export default function LookupManager({
   items,
+  addTitle,
   onCreate,
   onUpdate,
   onDelete,
@@ -60,11 +73,7 @@ export default function LookupManager({
 
   return (
     <Stack gap="sm" style={{ flex: 1, minHeight: 0 }}>
-      {error && (
-        <Alert color="red" variant="light" withCloseButton onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
+      {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
 
       <ScrollArea
         style={{ flex: 1, minHeight: 0 }}
@@ -112,7 +121,7 @@ export default function LookupManager({
                   </ActionIcon>
                   <ActionIcon
                     variant="subtle"
-                    color="blue"
+                    color="teal"
                     onClick={saveEdit}
                     loading={busy}
                     disabled={!editingName.trim()}
@@ -137,7 +146,7 @@ export default function LookupManager({
                     </ActionIcon>
                     <ActionIcon
                       variant="subtle"
-                      color="red"
+                      color={RED}
                       onClick={() => setPendingDelete(item)}
                       aria-label={`Supprimer ${item.name}`}
                     >
@@ -151,26 +160,28 @@ export default function LookupManager({
         </Stack>
       </ScrollArea>
 
-      <Group gap="xs" wrap="nowrap">
-        <TextInput
-          placeholder={addPlaceholder}
-          value={newName}
-          onChange={(e) => setNewName(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") create();
-          }}
-          style={{ flex: 1 }}
-        />
-        <Button
-          color="teal"
-          leftSection={<IconPlus size={16} />}
-          onClick={create}
-          loading={busy}
-          disabled={!newName.trim()}
-        >
-          Ajouter
-        </Button>
-      </Group>
+      <Fieldset legend={addTitle} p="xs" radius="md">
+        <Group gap="xs" wrap="nowrap">
+          <TextInput
+            placeholder={addPlaceholder}
+            value={newName}
+            onChange={(e) => setNewName(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") create();
+            }}
+            style={{ flex: 1 }}
+          />
+          <Button
+            color="teal"
+            leftSection={<IconPlus size={16} />}
+            onClick={create}
+            loading={busy}
+            disabled={!newName.trim()}
+          >
+            Ajouter
+          </Button>
+        </Group>
+      </Fieldset>
 
       <DeleteConfirmModal
         opened={pendingDelete !== null}

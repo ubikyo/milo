@@ -13,6 +13,10 @@ import {
 import { IconChevronDown, IconChevronUp, IconFolderOpen, IconPlus, IconSelector } from "@tabler/icons-react";
 import { useMemo, useState } from "react";
 import dayjs from "dayjs";
+import ActorAvatars, { ACTOR_AVATAR_SIZE } from "./ActorAvatars.jsx";
+
+// Padding vertical des lignes ; la hauteur inclut le padding (box-sizing).
+const ROW_PADDING_Y = 5;
 
 const formatDate = (value) => dayjs(value).format("DD/MM/YYYY HH:mm");
 
@@ -65,6 +69,12 @@ const COLUMNS = [
   { key: "company_name", label: "Société", value: (p) => p.company_name },
   { key: "building_name", label: "Bâtiment", value: (p) => p.building_name },
   { key: "category_name", label: "Catégorie", value: (p) => p.category_name },
+  {
+    key: "actors",
+    label: "Acteurs",
+    // Tri sur les noms ; les projets sans acteur passent en bas.
+    value: (p) => (p.actors?.length ? p.actors.map((a) => a.name).join(", ") : null),
+  },
   { key: "created_at", label: "Date ajout", value: (p) => p.created_at },
   { key: "updated_at", label: "Date modification", value: (p) => p.updated_at },
   { key: "status", label: "Statut", value: (p) => p.status, width: 320 },
@@ -123,7 +133,22 @@ export default function ProjectTable({ projects, filtered, onRowClick, onAddProj
   }
 
   return (
-    <Table highlightOnHover verticalSpacing="sm">
+    <Table
+      highlightOnHover
+      verticalSpacing={0}
+      // Les lignes font exactement la hauteur d'une pastille d'acteur, qu'il y
+      // ait des acteurs ou non.
+      styles={{
+        td: {
+          // content-box : la hauteur décrit la zone de contenu, soit exactement
+          // une pastille, sans que le padding ni la bordure la rognent.
+          boxSizing: "content-box",
+          height: ACTOR_AVATAR_SIZE,
+          paddingTop: ROW_PADDING_Y,
+          paddingBottom: ROW_PADDING_Y,
+        },
+      }}
+    >
       <Table.Thead>
         <Table.Tr>
           {COLUMNS.map((column) => (
@@ -152,6 +177,9 @@ export default function ProjectTable({ projects, filtered, onRowClick, onAddProj
               )}
             </Table.Td>
             <Table.Td>{project.category_name}</Table.Td>
+            <Table.Td>
+              <ActorAvatars actors={project.actors} />
+            </Table.Td>
             <Table.Td>{formatDate(project.created_at)}</Table.Td>
             <Table.Td>{formatDate(project.updated_at)}</Table.Td>
             <Table.Td>

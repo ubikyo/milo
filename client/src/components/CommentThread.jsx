@@ -2,6 +2,7 @@ import { ActionIcon, Button, Group, Paper, Stack, Text, Textarea } from "@mantin
 import { IconCheck, IconPencil, IconSend2, IconTrash, IconX } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useState } from "react";
+import { RED } from "../colors";
 
 const formatTimestamp = (value) => dayjs(value).format("DD/MM/YYYY HH:mm");
 
@@ -40,7 +41,7 @@ function CommentBubble({ comment, onUpdate, onDelete }) {
             <ActionIcon variant="subtle" color="gray" onClick={() => setEditing(false)} aria-label="Annuler">
               <IconX size={16} />
             </ActionIcon>
-            <ActionIcon variant="subtle" color="blue" onClick={save} aria-label="Valider">
+            <ActionIcon variant="subtle" color="teal" onClick={save} aria-label="Valider">
               <IconCheck size={16} />
             </ActionIcon>
           </Group>
@@ -58,7 +59,7 @@ function CommentBubble({ comment, onUpdate, onDelete }) {
               </ActionIcon>
               <ActionIcon
                 variant="subtle"
-                color="red"
+                color={RED}
                 size="sm"
                 onClick={() => onDelete(comment.id)}
                 aria-label="Supprimer le commentaire"
@@ -120,7 +121,7 @@ export default function CommentThread({ comments, onAdd, onUpdate, onDelete }) {
         />
         <ActionIcon
           variant="filled"
-          color="blue"
+          color="teal"
           size="lg"
           onClick={submit}
           aria-label="Envoyer le commentaire"

@@ -37,8 +37,12 @@ export const api = {
   setup: (data) => request("/auth/setup", { method: "POST", body: JSON.stringify(data) }),
   login: (email, password) =>
     request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  firstLogin: (data) => request("/auth/first-login", { method: "POST", body: JSON.stringify(data) }),
   logout: () => request("/auth/logout", { method: "POST" }),
   me: () => request("/auth/me"),
+  updateMe: (data) => request("/auth/me", { method: "PUT", body: JSON.stringify(data) }),
+
+  getVersion: () => request("/version"),
 
   getUsers: () => request("/users"),
   createUser: (data) => request("/users", { method: "POST", body: JSON.stringify(data) }),

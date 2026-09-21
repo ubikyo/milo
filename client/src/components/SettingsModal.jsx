@@ -123,6 +123,7 @@ function BuildingsTab({ companies }) {
           await reload();
         }}
         addPlaceholder="Nom du bâtiment"
+        addTitle="Nouveau bâtiment"
         emptyText="Aucun bâtiment pour cette société."
         entityLabel="le bâtiment"
       />
@@ -174,7 +175,7 @@ export default function SettingsModal({
       withCloseButton={false}
       styles={{
         content: {
-          height: 700,
+          height: 725,
           maxHeight: "90vh",
           display: "flex",
           flexDirection: "column",
@@ -217,6 +218,7 @@ export default function SettingsModal({
             onUpdate={withRefresh(api.updateCompany)}
             onDelete={withRefresh(api.deleteCompany)}
             addPlaceholder="Nom de la société"
+            addTitle="Nouvelle société"
             emptyText="Aucune société pour le moment."
             entityLabel="la société"
           />,
@@ -232,6 +234,7 @@ export default function SettingsModal({
             onUpdate={withRefresh(api.updateCategory)}
             onDelete={withRefresh(api.deleteCategory)}
             addPlaceholder="Nom de la catégorie"
+            addTitle="Nouvelle catégorie"
             emptyText="Aucune catégorie pour le moment."
             entityLabel="la catégorie"
           />,

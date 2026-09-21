@@ -41,9 +41,12 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    first_name TEXT NOT NULL DEFAULT '',
+    last_name TEXT NOT NULL DEFAULT '',
     email TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
+    -- Vide tant que la première connexion n'a pas défini le mot de passe.
+    password_hash TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
   );
 
@@ -58,6 +61,13 @@ db.exec(`
     company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     UNIQUE (company_id, name)
+  );
+
+  -- Acteurs d'un projet : association vers les utilisateurs.
+  CREATE TABLE IF NOT EXISTS project_actors (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (project_id, user_id)
   );
 
   CREATE TABLE IF NOT EXISTS comments (
@@ -77,6 +87,23 @@ if (!projectColumns.some((c) => c.name === "company_id")) {
 }
 if (!projectColumns.some((c) => c.name === "building_id")) {
   db.exec("ALTER TABLE projects ADD COLUMN building_id INTEGER REFERENCES buildings(id)");
+}
+
+// Bases créées avant la séparation prénom / nom : on ajoute les colonnes et on
+// découpe le nom existant au premier espace.
+const userColumns = db.prepare("PRAGMA table_info(users)").all();
+if (userColumns.length > 0 && !userColumns.some((c) => c.name === "first_name")) {
+  db.exec("ALTER TABLE users ADD COLUMN first_name TEXT NOT NULL DEFAULT ''");
+  db.exec("ALTER TABLE users ADD COLUMN last_name TEXT NOT NULL DEFAULT ''");
+
+  const split = db.transaction(() => {
+    const update = db.prepare("UPDATE users SET first_name = ?, last_name = ? WHERE id = ?");
+    for (const user of db.prepare("SELECT id, name FROM users").all()) {
+      const parts = String(user.name || "").trim().split(/\s+/).filter(Boolean);
+      update.run(parts[0] || "", parts.slice(1).join(" "), user.id);
+    }
+  });
+  split();
 }
 
 const seedIfEmpty = () => {

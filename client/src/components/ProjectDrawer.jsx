@@ -1,8 +1,12 @@
 import {
+  ActionIcon,
+  Alert,
   Button,
   Drawer,
   Group,
   LoadingOverlay,
+  Modal,
+  MultiSelect,
   Notification,
   NumberInput,
   Select,
@@ -11,12 +15,24 @@ import {
   Text,
   TextInput,
   Textarea,
+  Tooltip,
 } from "@mantine/core";
-import { IconTrash } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { IconPlus, IconTrash } from "@tabler/icons-react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { RED } from "../colors";
 import CommentThread from "./CommentThread.jsx";
 import DeleteConfirmModal from "./DeleteConfirmModal.jsx";
+import ErrorAlert from "./ErrorAlert.jsx";
+
+// Jalons métier affichés sous le curseur de progression.
+const PROGRESS_MARKS = [
+  { value: 10, label: "Étude" },
+  { value: 20, label: "Devis" },
+  { value: 30, label: "Commande" },
+  { value: 50, label: "Déploiement" },
+  { value: 80, label: "Tests" },
+];
 
 const emptyForm = {
   name: "",
@@ -25,6 +41,7 @@ const emptyForm = {
   company_id: "",
   building_id: "",
   status: 0,
+  actor_ids: [],
 };
 
 export default function ProjectDrawer({
@@ -34,6 +51,8 @@ export default function ProjectDrawer({
   categories,
   companies,
   buildings,
+  users,
+  onCategoriesChanged,
   onSaved,
   onDeleted,
 }) {
@@ -42,17 +61,30 @@ export default function ProjectDrawer({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDeleteOpened, setConfirmDeleteOpened] = useState(false);
+  const [newCategoryOpened, setNewCategoryOpened] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryError, setNewCategoryError] = useState(null);
+  const [creatingCategory, setCreatingCategory] = useState(false);
 
   const isEditing = Boolean(projectId);
+
+  // Les listes servent seulement à calculer les valeurs par défaut : on les lit
+  // via une ref pour que leur rechargement (création d'une catégorie depuis ce
+  // tiroir, par exemple) ne réinitialise pas la saisie en cours.
+  const lookupsRef = useRef({ categories, companies });
+  useEffect(() => {
+    lookupsRef.current = { categories, companies };
+  }, [categories, companies]);
 
   useEffect(() => {
     if (!opened) return;
 
     if (!projectId) {
+      const { categories: cats, companies: comps } = lookupsRef.current;
       setForm({
         ...emptyForm,
-        category_id: categories[0] ? String(categories[0].id) : "",
-        company_id: companies[0] ? String(companies[0].id) : "",
+        category_id: cats[0] ? String(cats[0].id) : "",
+        company_id: comps[0] ? String(comps[0].id) : "",
       });
       setComments([]);
       return;
@@ -69,11 +101,12 @@ export default function ProjectDrawer({
           company_id: project.company_id ? String(project.company_id) : "",
           building_id: project.building_id ? String(project.building_id) : "",
           status: project.status,
+          actor_ids: (project.actors || []).map((a) => String(a.id)),
         });
         setComments(project.comments);
       })
       .finally(() => setLoading(false));
-  }, [opened, projectId, categories, companies]);
+  }, [opened, projectId]);
 
   const refreshComments = async () => {
     if (!projectId) return;
@@ -91,6 +124,7 @@ export default function ProjectDrawer({
         category_id: Number(form.category_id),
         company_id: form.company_id ? Number(form.company_id) : null,
         building_id: form.building_id ? Number(form.building_id) : null,
+        actor_ids: form.actor_ids.map(Number),
         status: Number(form.status),
       };
       if (isEditing) {
@@ -105,6 +139,31 @@ export default function ProjectDrawer({
     } finally {
       setSaving(false);
     }
+  };
+
+  // La nouvelle catégorie est sélectionnée aussitôt créée.
+  const createCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    setCreatingCategory(true);
+    setNewCategoryError(null);
+    try {
+      const created = await api.createCategory(name);
+      await onCategoriesChanged();
+      setForm((f) => ({ ...f, category_id: String(created.id) }));
+      setNewCategoryName("");
+      setNewCategoryOpened(false);
+    } catch (e) {
+      setNewCategoryError(e.message);
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
+
+  const closeNewCategory = () => {
+    setNewCategoryOpened(false);
+    setNewCategoryName("");
+    setNewCategoryError(null);
   };
 
   const handleDelete = async () => {
@@ -182,14 +241,20 @@ export default function ProjectDrawer({
             label="Nom du projet"
             placeholder="Nom du projet"
             value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.currentTarget.value }))}
+            onChange={(e) => {
+              const { value } = e.currentTarget;
+              setForm((f) => ({ ...f, name: value }));
+            }}
             required
           />
           <Textarea
             label="Description"
             placeholder="Description du projet"
             value={form.description}
-            onChange={(e) => setForm((f) => ({ ...f, description: e.currentTarget.value }))}
+            onChange={(e) => {
+              const { value } = e.currentTarget;
+              setForm((f) => ({ ...f, description: value }));
+            }}
             autosize
             minRows={3}
           />
@@ -197,7 +262,7 @@ export default function ProjectDrawer({
             label="Société"
             placeholder="Aucune société"
             data={companyOptions}
-            value={form.company_id}
+            value={form.company_id || null}
             onChange={(value) => setForm((f) => ({ ...f, company_id: value ?? "", building_id: "" }))}
             clearable
           />
@@ -211,18 +276,42 @@ export default function ProjectDrawer({
                 : "Choisissez d'abord une société"
             }
             data={buildingOptions}
-            value={form.building_id}
+            value={form.building_id || null}
             onChange={(value) => setForm((f) => ({ ...f, building_id: value ?? "" }))}
             disabled={!form.company_id || buildingOptions.length === 0}
             clearable
           />
-          <Select
-            label="Catégorie"
-            data={categoryOptions}
-            value={form.category_id}
-            onChange={(value) => setForm((f) => ({ ...f, category_id: value }))}
-            required
+          <Group gap="xs" align="flex-end" wrap="nowrap">
+            <Select
+              label="Catégorie"
+              data={categoryOptions}
+              value={form.category_id}
+              onChange={(value) => setForm((f) => ({ ...f, category_id: value }))}
+              required
+              style={{ flex: 1 }}
+            />
+            <Tooltip label="Nouvelle catégorie">
+              <ActionIcon
+                variant="filled"
+                color="teal"
+                size={36}
+                aria-label="Nouvelle catégorie"
+                onClick={() => setNewCategoryOpened(true)}
+              >
+                <IconPlus size={18} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+          <MultiSelect
+            label="Acteurs"
+            placeholder={form.actor_ids.length === 0 ? "Aucun acteur" : undefined}
+            data={users.map((u) => ({ value: String(u.id), label: u.name }))}
+            value={form.actor_ids}
+            onChange={(value) => setForm((f) => ({ ...f, actor_ids: value }))}
+            searchable
+            clearable
           />
+
           <div>
             <Group justify="space-between" mb={4} align="center">
               <Text size="sm" fw={500}>
@@ -258,11 +347,8 @@ export default function ProjectDrawer({
               min={0}
               max={100}
               step={1}
-              marks={[
-                { value: 0, label: "0%" },
-                { value: 50, label: "50%" },
-                { value: 100, label: "100%" },
-              ]}
+              marks={PROGRESS_MARKS}
+              styles={{ markLabel: { fontSize: 10 } }}
               color={form.status >= 100 ? "teal" : "blue"}
             />
           </div>
@@ -286,7 +372,7 @@ export default function ProjectDrawer({
           <Group justify="space-between" wrap="nowrap">
             {isEditing ? (
               <Button
-                color="red"
+                color={RED}
                 variant="subtle"
                 leftSection={<IconTrash size={16} />}
                 onClick={() => setConfirmDeleteOpened(true)}
@@ -300,13 +386,47 @@ export default function ProjectDrawer({
               <Button variant="default" onClick={onClose}>
                 Fermer
               </Button>
-              <Button onClick={handleSave} loading={saving} disabled={!form.name.trim() || !form.category_id}>
+              <Button
+                color="teal"
+                onClick={handleSave}
+                loading={saving}
+                disabled={!form.name.trim() || !form.category_id}
+              >
                 {isEditing ? "Enregistrer" : "Ajouter"}
               </Button>
             </Group>
           </Group>
         </Stack>
       </Drawer>
+
+      <Modal opened={newCategoryOpened} onClose={closeNewCategory} title="Nouvelle catégorie" centered>
+        <Stack gap="md">
+          {newCategoryError && <ErrorAlert>{newCategoryError}</ErrorAlert>}
+          <TextInput
+            label="Nom"
+            value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") createCategory();
+            }}
+            required
+            autoFocus
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeNewCategory}>
+              Annuler
+            </Button>
+            <Button
+              color="teal"
+              onClick={createCategory}
+              loading={creatingCategory}
+              disabled={!newCategoryName.trim()}
+            >
+              Ajouter
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       <DeleteConfirmModal
         opened={confirmDeleteOpened}
