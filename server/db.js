@@ -1,9 +1,17 @@
 import Database from "better-sqlite3";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const db = new Database(path.join(__dirname, "data.db"));
+
+// En production, la base doit vivre hors du dossier déployé : un déploiement
+// remplace le code, il ne doit pas emporter les données.
+// MILO_DB_PATH=/var/lib/milo/data.db par exemple.
+const dbPath = process.env.MILO_DB_PATH || path.join(__dirname, "data.db");
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+
+const db = new Database(dbPath);
 
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");

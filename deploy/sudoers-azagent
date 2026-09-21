@@ -1,0 +1,13 @@
+# /etc/sudoers.d/azagent  (installer avec : sudo visudo -f /etc/sudoers.d/azagent)
+# L'agent Azure DevOps n'obtient que les droits nécessaires au déploiement.
+# Remplacer « azagent » par l'utilisateur qui exécute l'agent.
+
+azagent ALL=(root) NOPASSWD: /usr/bin/rsync, \
+  /usr/bin/mkdir, \
+  /usr/bin/chown, \
+  /usr/bin/npm, \
+  /usr/bin/systemctl restart milo-api, \
+  /usr/bin/systemctl reload nginx, \
+  /usr/bin/systemctl is-active milo-api, \
+  /usr/sbin/nginx -t, \
+  /usr/bin/journalctl -u milo-api *

@@ -1,0 +1,27 @@
+# /etc/systemd/system/milo-api.service
+[Unit]
+Description=Milo API
+After=network.target
+
+[Service]
+Type=simple
+User=milo
+Group=milo
+WorkingDirectory=/opt/milo/server
+Environment=NODE_ENV=production
+Environment=PORT=3001
+# La base vit hors du dossier déployé : un déploiement ne l'écrase jamais.
+Environment=MILO_DB_PATH=/var/lib/milo/data.db
+ExecStart=/usr/bin/node index.js
+Restart=on-failure
+RestartSec=2
+
+# Durcissement
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/milo
+
+[Install]
+WantedBy=multi-user.target
