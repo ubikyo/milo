@@ -1,4 +1,4 @@
-import { getToken, setToken } from "../auth";
+import { getToken, setToken } from "../lib/auth";
 
 const BASE_URL = "/api";
 
@@ -49,8 +49,18 @@ export const api = {
   updateUser: (id, data) => request(`/users/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteUser: (id) => request(`/users/${id}`, { method: "DELETE" }),
 
-  getCategories: () => request("/categories"),
-  createCategory: (name) => request("/categories", { method: "POST", body: JSON.stringify({ name }) }),
+  getProjectBoards: () => request("/project-boards"),
+  createProjectBoard: (name) =>
+    request("/project-boards", { method: "POST", body: JSON.stringify({ name }) }),
+  updateProjectBoard: (id, name) =>
+    request(`/project-boards/${id}`, { method: "PUT", body: JSON.stringify({ name }) }),
+  deleteProjectBoard: (id) => request(`/project-boards/${id}`, { method: "DELETE" }),
+
+  // Les catégories appartiennent à un tableau de projets.
+  getCategories: (boardId) =>
+    request(`/categories${boardId && boardId !== "all" ? `?board=${boardId}` : ""}`),
+  createCategory: (board_id, name) =>
+    request("/categories", { method: "POST", body: JSON.stringify({ board_id, name }) }),
   updateCategory: (id, name) =>
     request(`/categories/${id}`, { method: "PUT", body: JSON.stringify({ name }) }),
   deleteCategory: (id) => request(`/categories/${id}`, { method: "DELETE" }),
@@ -60,6 +70,94 @@ export const api = {
   updateCompany: (id, name) => request(`/companies/${id}`, { method: "PUT", body: JSON.stringify({ name }) }),
   deleteCompany: (id) => request(`/companies/${id}`, { method: "DELETE" }),
 
+  getBoards: (companyId) => request(`/boards?company=${companyId}`),
+  createBoard: (company_id, name) =>
+    request("/boards", { method: "POST", body: JSON.stringify({ company_id, name }) }),
+  updateBoard: (id, data) =>
+    request(`/boards/${id}`, {
+      method: "PUT",
+      // Un simple nom suffit encore ; le tiroir, lui, envoie ses réglages.
+      body: JSON.stringify(typeof data === "string" ? { name: data } : data),
+    }),
+  deleteBoard: (id) => request(`/boards/${id}`, { method: "DELETE" }),
+
+  getTaskLists: (boardId) => request(`/task-lists?board=${boardId}`),
+  createTaskList: (board_id, name) =>
+    request("/task-lists", { method: "POST", body: JSON.stringify({ board_id, name }) }),
+  updateTaskList: (id, data) =>
+    request(`/task-lists/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteTaskList: (id) => request(`/task-lists/${id}`, { method: "DELETE" }),
+  reorderTaskLists: (board_id, ids) =>
+    request("/task-lists/reorder", { method: "PUT", body: JSON.stringify({ board_id, ids }) }),
+
+  // « kind » vaut « card » ou « separator » ; par défaut, une carte.
+  createTaskCard: (list_id, text, kind = "card") =>
+    request("/task-cards", { method: "POST", body: JSON.stringify({ list_id, text, kind }) }),
+  updateTaskCard: (id, text) =>
+    request(`/task-cards/${id}`, { method: "PUT", body: JSON.stringify({ text }) }),
+  reorderTaskCards: (list_id, ids) =>
+    request("/task-cards/reorder", { method: "PUT", body: JSON.stringify({ list_id, ids }) }),
+
+  // La fiche d'une carte : sa description, ses membres, ses étiquettes et son
+  // fil de commentaires.
+  getTaskCard: (id) => request(`/task-cards/${id}`),
+  updateTaskCardDetails: (id, data) =>
+    request(`/task-cards/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  addTaskCardComment: (id, text) =>
+    request(`/task-cards/${id}/comments`, { method: "POST", body: JSON.stringify({ text }) }),
+  updateTaskCardComment: (id, text) =>
+    request(`/card-comments/${id}`, { method: "PUT", body: JSON.stringify({ text }) }),
+  deleteTaskCardComment: (id) => request(`/card-comments/${id}`, { method: "DELETE" }),
+
+  // Checklists d'une carte : chacune porte son titre et ses éléments. Tout
+  // s'enregistre au fil des gestes, sans attendre « Enregistrer ».
+  createChecklist: (cardId, title) =>
+    request(`/task-cards/${cardId}/checklists`, {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    }),
+  updateChecklist: (id, data) =>
+    request(`/checklists/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteChecklist: (id) => request(`/checklists/${id}`, { method: "DELETE" }),
+  createChecklistItem: (checklistId, text = "") =>
+    request(`/checklists/${checklistId}/items`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+  updateChecklistItem: (id, data) =>
+    request(`/checklist-items/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteChecklistItem: (id) => request(`/checklist-items/${id}`, { method: "DELETE" }),
+  reorderChecklists: (cardId, ids) =>
+    request(`/task-cards/${cardId}/checklists/reorder`, {
+      method: "PUT",
+      body: JSON.stringify({ ids }),
+    }),
+  reorderChecklistItems: (checklistId, ids) =>
+    request(`/checklists/${checklistId}/items/reorder`, {
+      method: "PUT",
+      body: JSON.stringify({ ids }),
+    }),
+
+  // Étiquettes d'un tableau : un nom et une couleur, posés sur ses cartes.
+  getLabels: (boardId) => request(`/labels?board=${boardId}`),
+  createLabel: (board_id, name, color) =>
+    request("/labels", { method: "POST", body: JSON.stringify({ board_id, name, color }) }),
+  updateLabel: (id, data) =>
+    request(`/labels/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteLabel: (id) => request(`/labels/${id}`, { method: "DELETE" }),
+
+  // Étiquettes d'un tableau de projets : les jumelles de celles des cartes,
+  // posées sur les projets.
+  getProjectLabels: (boardId) => request(`/project-labels?board=${boardId}`),
+  createProjectLabel: (board_id, name, color) =>
+    request("/project-labels", {
+      method: "POST",
+      body: JSON.stringify({ board_id, name, color }),
+    }),
+  updateProjectLabel: (id, data) =>
+    request(`/project-labels/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteProjectLabel: (id) => request(`/project-labels/${id}`, { method: "DELETE" }),
+
   getBuildings: (companyId) =>
     request(`/buildings${companyId && companyId !== "all" ? `?company=${companyId}` : ""}`),
   createBuilding: (company_id, name) =>
@@ -68,12 +166,14 @@ export const api = {
     request(`/buildings/${id}`, { method: "PUT", body: JSON.stringify({ name }) }),
   deleteBuilding: (id) => request(`/buildings/${id}`, { method: "DELETE" }),
 
-  getProjects: ({ category, company, building, status } = {}) => {
+  getProjects: ({ board, category, company, building, status, actor } = {}) => {
     const params = new URLSearchParams();
+    if (board && board !== "all") params.set("board", board);
     if (category && category !== "all") params.set("category", category);
     if (company && company !== "all") params.set("company", company);
     if (building && building !== "all") params.set("building", building);
     if (status && status !== "all") params.set("status", status);
+    if (actor && actor !== "all") params.set("actor", actor);
     const qs = params.toString();
     return request(`/projects${qs ? `?${qs}` : ""}`);
   },

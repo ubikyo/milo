@@ -1,0 +1,46 @@
+/* La barre de défilement du panneau d'un onglet du tiroir. Mantine la pose au
+   bord droit de la zone qu'elle fait défiler ; ici elle la quitte pour venir
+   se coucher sur la bordure gauche du tiroir, où elle ne prend qu'un pixel.
+
+   Le contenu du panneau est en retrait du bord du tiroir de tout son padding :
+   la barre remonte donc d'autant vers la gauche. « --milo-drawer-padding » est
+   posée par le tiroir lui-même (components/board/CardDrawer.jsx), pour que les deux valeurs ne
+   se séparent jamais.
+
+   « position » est écrit en style inline par Mantine (Scrollbar.mjs) : seul un
+   « !important » peut l'emporter. */
+.scrollbar[data-orientation="vertical"] {
+  position: absolute !important;
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * var(--milo-drawer-padding, 40px));
+  right: auto;
+  width: 1px;
+  padding: 0;
+}
+
+/* Aucun fond, pas même au survol : seul le curseur se voit. */
+.scrollbar[data-orientation="vertical"],
+.scrollbar[data-orientation="vertical"]:hover,
+.scrollbar[data-orientation="vertical"]:active {
+  background-color: transparent;
+}
+
+/* Le curseur est blanc dans les deux thèmes, survol compris, et carré : sur un
+   pixel de large, un arrondi ne ferait que le ronger à ses deux bouts. */
+.scrollbar[data-orientation="vertical"] > .thumb,
+.scrollbar[data-orientation="vertical"]:hover > .thumb,
+.scrollbar[data-orientation="vertical"]:active > .thumb {
+  background-color: var(--mantine-color-white);
+  border-radius: 0;
+}
+
+/* Le fil des commentaires veut toute la hauteur du panneau : le vide y affiche
+   son invite au milieu. Mantine pose son contenu en « table » dans la zone de
+   défilement, ce qui ne se laisse pas étirer ; on lui rend une colonne
+   flexible, haute d'au moins toute la zone. */
+.viewport > div {
+  display: flex !important;
+  flex-direction: column;
+  min-height: 100%;
+}

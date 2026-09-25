@@ -1,0 +1,21 @@
+/* L'anneau de focus de l'application : gris, jamais bleu.
+
+   Mantine le dessine avec sa couleur primaire, sur deux classes qu'il pose
+   lui-même sur tout ce qui se focalise — boutons, onglets, cases, liens. On ne
+   reprend que la couleur du trait : l'épaisseur et le décalage restent les
+   siens. Ces deux classes font partie de son interface publique, elles ne
+   changent pas de nom d'une version à l'autre.
+
+   La bordure des champs au focus, elle, ne se règle pas ici : Mantine la lit
+   dans « --input-bd-focus », posé composant par composant, et le thème s'en
+   charge (main.jsx). */
+:root {
+  /* La même valeur que FOCUS_BORDER (themes/colors.js) : un gris foncé sur le thème
+     clair, un gris clair sur le sombre, où le foncé se perdrait. */
+  --milo-focus: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1));
+}
+
+.mantine-focus-auto:focus-visible,
+.mantine-focus-always:focus {
+  outline-color: var(--milo-focus);
+}

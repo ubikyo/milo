@@ -1,0 +1,41 @@
+/* La barre de défilement horizontale du tableau. Mantine la pose en absolu au
+   bas de la zone qu'elle fait défiler ; ici elle quitte cette zone pour se
+   coucher en travers de la fenêtre, exactement sur le trait d'un pixel qui
+   ferme l'entête. Elle en prend l'épaisseur : un pixel, ni plus.
+
+   « position » est écrit en style inline par Mantine (Scrollbar.mjs) : seul un
+   « !important » peut l'emporter. Les autres propriétés n'en ont pas besoin,
+   le sélecteur suffit à les couvrir.
+
+   « --milo-header-height » est publiée par l'entête lui-même (components/ui/Header.jsx), et
+   comprend son trait ; la valeur de repli couvre le premier rendu, avant qu'il
+   ait pu se mesurer. La barre verticale, elle, n'est pas touchée : elle reste
+   à droite de la zone, à son épaisseur habituelle. */
+.scrollbar[data-orientation="horizontal"] {
+  position: fixed !important;
+  top: calc(var(--milo-header-height, 72px) - 1px);
+  bottom: auto;
+  left: 0;
+  right: 0;
+  height: 1px;
+  padding: 0;
+  /* Sous les tiroirs et les modales de Mantine, qui montent à 200. */
+  z-index: 100;
+}
+
+/* Aucun fond, pas même au survol : seul le curseur se voit, à la place du
+   trait de l'entête. */
+.scrollbar[data-orientation="horizontal"],
+.scrollbar[data-orientation="horizontal"]:hover,
+.scrollbar[data-orientation="horizontal"]:active {
+  background-color: transparent;
+}
+
+/* Le curseur est blanc dans les deux thèmes, survol compris, et carré : sur un
+   pixel de haut, un arrondi ne ferait que le ronger à ses deux bouts. */
+.scrollbar[data-orientation="horizontal"] > .thumb,
+.scrollbar[data-orientation="horizontal"]:hover > .thumb,
+.scrollbar[data-orientation="horizontal"]:active > .thumb {
+  background-color: var(--mantine-color-white);
+  border-radius: 0;
+}

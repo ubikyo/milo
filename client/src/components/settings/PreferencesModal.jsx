@@ -1,9 +1,10 @@
-import { Alert, Button, Divider, Group, Modal, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
+import { Button, Group, Modal, PasswordInput, Stack, TextInput } from "@mantine/core";
 import { useEffect, useState } from "react";
-import { api } from "../api";
-import { passwordIsValid } from "../passwordRules";
-import ErrorAlert from "./ErrorAlert.jsx";
-import PasswordRules from "./PasswordRules.jsx";
+import { api } from "../../api";
+import { modalHeaderStyles } from "../../themes/modals";
+import { passwordIsValid } from "../../lib/passwordRules";
+import ErrorAlert from "../ui/ErrorAlert.jsx";
+import PasswordRules from "../ui/PasswordRules.jsx";
 
 export default function PreferencesModal({ opened, onClose, user, onUpdated }) {
   const [form, setForm] = useState({ first_name: "", last_name: "", email: "" });
@@ -56,7 +57,16 @@ export default function PreferencesModal({ opened, onClose, user, onUpdated }) {
     (Boolean(password) && (!passwordIsValid(password) || password !== confirmation));
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Préférences" size="md" padding={40} centered>
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Préférences"
+      size="md"
+      padding={40}
+      centered
+      withCloseButton={false}
+      styles={modalHeaderStyles(40)}
+    >
       <Stack gap="md">
         {error && <ErrorAlert>{error}</ErrorAlert>}
 
@@ -64,16 +74,6 @@ export default function PreferencesModal({ opened, onClose, user, onUpdated }) {
         <TextInput label="Nom" value={form.last_name} onChange={set("last_name")} required />
         <TextInput label="E-mail" type="email" value={form.email} onChange={set("email")} required />
 
-        <Divider />
-
-        <div>
-          <Text size="sm" fw={500}>
-            Mot de passe
-          </Text>
-          <Text size="xs" c="dimmed">
-            Laissez vide pour conserver le mot de passe actuel.
-          </Text>
-        </div>
         <PasswordInput
           label="Nouveau mot de passe"
           value={password}

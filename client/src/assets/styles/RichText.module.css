@@ -1,0 +1,24 @@
+/* La zone de saisie de texte enrichi — description d'une fiche, commentaire.
+   Elle part sur une seule ligne et grandit avec le texte — chaque Entrée en
+   ajoute une — jusqu'à cinq ; au-delà, elle défile.
+
+   La hauteur n'est pas un chiffre posé à la main : c'est cinq interlignes plus
+   le retrait que Mantine donne au contenu tiptap, dit en variables pour qu'un
+   changement de thème l'emporte avec lui. La classe porte sur l'enveloppe
+   typographique — c'est là que Mantine range « className » — et le retrait,
+   lui, vit sur le contenu qu'elle enferme : le total est donc bien celui-ci. */
+.content {
+  --milo-rich-line: calc(var(--mantine-font-size-md) * var(--mantine-line-height-md));
+  --milo-rich-padding: var(--mantine-spacing-md);
+
+  max-height: calc(5 * var(--milo-rich-line) + 2 * var(--milo-rich-padding));
+  overflow-y: auto;
+}
+
+/* Entrée ajoute une ligne, pas un paragraphe détaché : Mantine écarte les
+   paragraphes de 7px, ce qui ferait déborder la cinquième ligne du compte
+   ci-dessus. Le sélecteur passe par le contenu tiptap pour l'emporter sur le
+   sien, à égalité de rang dans la feuille. */
+.content :global(.ProseMirror) p {
+  margin-bottom: 0;
+}

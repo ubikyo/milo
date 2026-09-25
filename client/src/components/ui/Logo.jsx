@@ -1,8 +1,8 @@
 import { useComputedColorScheme } from "@mantine/core";
-import milo1 from "../assets/media/Milo-1.svg";
-import milo1Inv from "../assets/media/Milo-Inv-1.svg";
-import milo2 from "../assets/media/Milo-2.svg";
-import milo2Inv from "../assets/media/Milo-Inv-2.svg";
+import milo1 from "../../assets/media/Milo-1.svg";
+import milo1Inv from "../../assets/media/Milo-Inv-1.svg";
+import milo2 from "../../assets/media/Milo-2.svg";
+import milo2Inv from "../../assets/media/Milo-Inv-2.svg";
 
 // Variante 1 (435×490) pour l'écran de connexion, variante 2 (435×330) pour le
 // header ; la déclinaison « Inv » est destinée au thème sombre.

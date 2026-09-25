@@ -1,10 +1,10 @@
 import { Anchor, Button, Center, Paper, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
 import { useState } from "react";
 import { api } from "../api";
-import { passwordIsValid } from "../passwordRules";
-import ErrorAlert from "./ErrorAlert.jsx";
-import Logo from "./Logo.jsx";
-import PasswordRules from "./PasswordRules.jsx";
+import { passwordIsValid } from "../lib/passwordRules";
+import ErrorAlert from "../components/ui/ErrorAlert.jsx";
+import Logo from "../components/ui/Logo.jsx";
+import PasswordRules from "../components/ui/PasswordRules.jsx";
 
 const emptyForm = {
   email: "",

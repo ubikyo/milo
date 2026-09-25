@@ -1,0 +1,309 @@
+import { ActionIcon, Anchor, Group, TextInput } from "@mantine/core";
+import { IconPlus, IconTrash } from "@tabler/icons-react";
+import { useState } from "react";
+import { api } from "../../api";
+import { ADD_ACTION, RED } from "../../themes/colors";
+import { PLUS_GAP, PLUS_SIZE } from "../../themes/plus";
+import ChipPicker from "./ChipPicker.jsx";
+import DeleteConfirmModal from "./DeleteConfirmModal.jsx";
+import LabelChip, { DEFAULT_LABEL_COLOR } from "./LabelChip.jsx";
+import LabelColorPicker from "./LabelColorPicker.jsx";
+
+// Décalage de l'étiquette dans la liste : elle respire de deux pixels après sa
+// case à cocher.
+const LABEL_INDENT = 2;
+
+// Les étiquettes des cartes et celles des projets se choisissent, se
+// renomment, se recolorent et se suppriment de la même façon : seules les
+// routes changent. On les nomme ici plutôt que d'appeler « api » directement,
+// pour que le même composant serve aux deux modes.
+export const CARD_LABELS_API = {
+  create: api.createLabel,
+  update: api.updateLabel,
+  remove: api.deleteLabel,
+  // Ce que la suppression emporte, dit dans les mots du mode.
+  porteurs: "des cartes qui la portent",
+};
+
+export const PROJECT_LABELS_API = {
+  create: api.createProjectLabel,
+  update: api.updateProjectLabel,
+  remove: api.deleteProjectLabel,
+  porteurs: "des projets qui la portent",
+};
+
+/**
+ * Les étiquettes d'une carte : on les coche pour les poser, on clique l'une
+ * d'elles pour la renommer ou la recolorer, la corbeille au bout de la ligne
+ * la supprime, et le lien du bas en ajoute une sans quitter la liste. Renommer,
+ * recolorer ou supprimer touche l'étiquette du tableau, donc toutes les cartes
+ * qui la portent.
+ */
+export default function LabelPicker({
+  labels,
+  value,
+  onChange,
+  boardId,
+  onLabelsChanged,
+  chipHeight,
+  // Le mode auquel ces étiquettes appartiennent : les cartes par défaut.
+  labelsApi = CARD_LABELS_API,
+}) {
+  // Étiquette en cours de modification — son nom et sa couleur y vivent tant
+  // qu'on n'a pas validé — et celle qu'on est en train d'ajouter.
+  const [edite, setEdite] = useState(null);
+  const [ajout, setAjout] = useState(null);
+  // Étiquette survolée — sa corbeille seule se montre — et celle dont on
+  // attend la confirmation de suppression.
+  const [survole, setSurvole] = useState(null);
+  const [aSupprimer, setASupprimer] = useState(null);
+
+  const ouvrirEdition = (label) => {
+    setAjout(null);
+    setEdite({ id: label.id, name: label.name, color: label.color });
+  };
+
+  const fermerEdition = () => setEdite(null);
+
+  // Choisir une couleur est un geste qui se suffit : elle s'applique aussitôt,
+  // partout où l'étiquette se montre. Le nom, lui, attend d'être validé — on
+  // ne veut pas le voir changer à chaque lettre tapée.
+  const appliquerCouleur = async (label, color) => {
+    setEdite((e) => (e ? { ...e, color } : e));
+    if (color === label.color) return;
+    // La couleur se pose d'abord à l'écran, puis part au serveur : sans cela,
+    // les cartes attendraient l'aller-retour pour changer de teinte.
+    onLabelsChanged({ id: label.id, data: { color } });
+    await labelsApi.update(label.id, { color });
+    await onLabelsChanged();
+  };
+
+  // Le nom ne part au serveur qu'à la validation : ailleurs — la liste, les
+  // vignettes de la carte, les cartes du tableau — l'étiquette le garde tant
+  // qu'il n'a pas changé pour de bon.
+  const enregistrer = async (label) => {
+    const courant = edite;
+    fermerEdition();
+    if (!courant) return;
+    const nom = courant.name.trim();
+    if (!nom) return;
+    if (nom === label.name && courant.color === label.color) return;
+    await labelsApi.update(label.id, { name: nom, color: courant.color });
+    await onLabelsChanged();
+  };
+
+  const ouvrirAjout = () => {
+    fermerEdition();
+    setAjout({ name: "", color: DEFAULT_LABEL_COLOR });
+  };
+
+  // La liste se referme : ce qui était en cours de saisie se conclut, sans
+  // quoi le champ disparaîtrait avec elle et la couleur choisie serait perdue
+  // — le champ démonté n'a pas d'occasion de rendre la main.
+  const conclure = () => {
+    if (edite) {
+      const label = labels.find((l) => l.id === edite.id);
+      if (label) enregistrer(label);
+      return;
+    }
+    if (ajout) creer();
+  };
+
+  // L'étiquette créée se pose aussitôt sur la carte : on vient de la demander.
+  const creer = async () => {
+    const nouveau = (ajout?.name || "").trim();
+    if (!nouveau) return setAjout(null);
+    const creee = await labelsApi.create(Number(boardId), nouveau, ajout.color);
+    setAjout(null);
+    await onLabelsChanged();
+    onChange([...value, String(creee.id)]);
+  };
+
+  // Supprimer se demande avant de se faire : l'étiquette quitte le tableau, et
+  // donc tout ce qui la porte, pas seulement la fiche ouverte.
+  const demanderSuppression = (label) => {
+    fermerEdition();
+    setAjout(null);
+    setASupprimer(label);
+  };
+
+  const supprimer = async () => {
+    const label = aSupprimer;
+    setASupprimer(null);
+    if (!label) return;
+    await labelsApi.remove(label.id);
+    // La carte ouverte la perd aussitôt : sans cela, l'enregistrement la lui
+    // reposerait, alors que le serveur ne la connaît plus.
+    onChange(value.filter((v) => v !== String(label.id)));
+    await onLabelsChanged();
+  };
+
+  // Une ligne de saisie : la pastille de couleur, puis le nom. Sert à la
+  // modification comme à l'ajout.
+  const saisie = ({
+    color,
+    name,
+    onColor,
+    onName,
+    onSubmit,
+    onCancel,
+    aria,
+  }) => (
+    <Group
+      data-label-editor="true"
+      gap={6}
+      wrap="nowrap"
+      style={{ flex: 1, minWidth: 0 }}
+    >
+      <LabelColorPicker
+        color={color}
+        onChange={onColor}
+        label={name || "l'étiquette"}
+        withinPortal={false}
+      />
+      <TextInput
+        value={name}
+        onChange={(e) => onName(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSubmit();
+          if (e.key === "Escape") onCancel();
+        }}
+        // Le focus qui passe à la pastille ou à sa palette reste dans la
+        // saisie : sans cela, aller choisir une couleur la refermerait.
+        onBlur={(e) => {
+          if (e.relatedTarget?.closest?.("[data-label-editor]")) return;
+          onSubmit();
+        }}
+        variant="unstyled"
+        size="xs"
+        autoFocus
+        style={{ flex: 1, minWidth: 0 }}
+        aria-label={aria}
+      />
+    </Group>
+  );
+
+  return (
+    <>
+      <ChipPicker
+        chipHeight={chipHeight}
+        // Le « + » d'une étiquette est rectangulaire, comme elle : même rayon.
+        plusRadius={4}
+        onClose={conclure}
+        // La fenêtre de confirmation est un clic « au dehors » : la liste s'en
+        // irait, et l'on reviendrait à la carte sitôt la question répondue.
+        closeBlocked={aSupprimer !== null}
+        label="Étiquettes"
+        options={labels}
+        value={value}
+        onChange={onChange}
+        emptyText="Aucune étiquette sur ce tableau"
+        fullWidthOptions
+        // Une étiquette déjà ouverte reste en saisie : le clic dans son champ ne
+        // doit pas la rouvrir et effacer ce qu'on est en train d'écrire.
+        onOptionClick={(l) => edite?.id !== l.id && ouvrirEdition(l)}
+        // La vignette de la carte ne suit pas la modification : elle montre
+        // l'étiquette telle qu'elle est enregistrée, et ne changera qu'une fois
+        // la saisie validée. Seule la ligne de la liste passe en saisie.
+        renderChip={(l) => <LabelChip label={l} height={chipHeight} />}
+        render={(l) => (
+          // La ligne : l'étiquette — ou sa saisie — et, au bout, la corbeille.
+          <Group
+            gap={4}
+            wrap="nowrap"
+            style={{ flex: 1, minWidth: 0 }}
+            onMouseEnter={() => setSurvole(l.id)}
+            onMouseLeave={() => setSurvole((id) => (id === l.id ? null : id))}
+          >
+            {edite?.id === l.id ? (
+              // En modification seulement : la pastille de couleur rejoint le
+              // nom. Au repos, l'étiquette se suffit à elle-même.
+              saisie({
+                color: edite.color,
+                name: edite.name,
+                onColor: (color) => appliquerCouleur(l, color),
+                onName: (name) => setEdite((e) => ({ ...e, name })),
+                onSubmit: () => enregistrer(l),
+                onCancel: fermerEdition,
+                aria: `Renommer ${l.name}`,
+              })
+            ) : (
+              // L'étiquette tient toute la largeur de la liste, comme un bandeau.
+              <div style={{ flex: 1, minWidth: 0, paddingLeft: LABEL_INDENT }}>
+                <LabelChip label={l} height={chipHeight} fullWidth />
+              </div>
+            )}
+
+            {/* La corbeille ne paraît qu'au survol ou pendant la modification,
+                mais tient sa place en tout temps : la ligne ne bouge pas quand
+                la souris la traverse. */}
+            <ActionIcon
+              variant="subtle"
+              color={RED}
+              size="sm"
+              style={{
+                flexShrink: 0,
+                opacity: survole === l.id || edite?.id === l.id ? 1 : 0,
+              }}
+              // Le clic s'arrête ici : il ne doit pas ouvrir la modification de
+              // l'étiquette qu'on s'apprête à supprimer.
+              onClick={(e) => {
+                e.stopPropagation();
+                demanderSuppression(l);
+              }}
+              aria-label={`Supprimer ${l.name}`}
+            >
+              <IconTrash size={14} />
+            </ActionIcon>
+          </Group>
+        )}
+        footer={
+          <div style={{ paddingTop: 6 }}>
+            {ajout ? (
+              <div style={{ padding: 4 }}>
+                {saisie({
+                  color: ajout.color,
+                  name: ajout.name,
+                  onColor: (color) => setAjout((a) => ({ ...a, color })),
+                  onName: (name) => setAjout((a) => ({ ...a, name })),
+                  onSubmit: creer,
+                  onCancel: () => setAjout(null),
+                  aria: "Nom de la nouvelle étiquette",
+                })}
+              </div>
+            ) : (
+              <Anchor
+                component="button"
+                type="button"
+                size="sm"
+                c={ADD_ACTION.color}
+                onClick={ouvrirAjout}
+                px={4}
+              >
+                <Group gap={PLUS_GAP} wrap="nowrap">
+                  <IconPlus size={PLUS_SIZE} />
+                  <span>Ajouter une étiquette</span>
+                </Group>
+              </Anchor>
+            )}
+          </div>
+        }
+      />
+
+      {/* Posée hors de la liste, qui l'emporterait en se refermant : la
+          question survit ainsi, et la liste reste ouverte derrière elle. */}
+      <DeleteConfirmModal
+        opened={aSupprimer !== null}
+        onClose={() => setASupprimer(null)}
+        onConfirm={supprimer}
+        title="Supprimer l'étiquette"
+        message={
+          <>
+            Voulez-vous vraiment supprimer « {aSupprimer?.name} » ? Elle sera
+            retirée {labelsApi.porteurs}. Cette action est irréversible.
+          </>
+        }
+      />
+    </>
+  );
+}
