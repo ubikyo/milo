@@ -2,15 +2,30 @@ import { Button, Group, Modal, PasswordInput, Stack, TextInput } from "@mantine/
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
-import { passwordIsValid } from "../../lib/passwordRules";
-import ErrorAlert from "../ui/ErrorAlert.jsx";
-import PasswordRules from "../ui/PasswordRules.jsx";
+import { passwordIssues } from "@milo/shared";
+import ErrorAlert from "../ui/ErrorAlert";
+import PasswordRules from "../ui/PasswordRules";
+import { messageErreur } from "../../lib/errors";
+import type { PublicUser, UpdateMeInput } from "@milo/shared";
+import type { ChangeEvent } from "react";
 
-export default function PreferencesModal({ opened, onClose, user, onUpdated }) {
+interface PreferencesModalProps {
+  opened: boolean;
+  onClose: () => void;
+  user: PublicUser | null;
+  onUpdated: (user: PublicUser) => void;
+}
+
+export default function PreferencesModal({
+  opened,
+  onClose,
+  user,
+  onUpdated,
+}: PreferencesModalProps) {
   const [form, setForm] = useState({ first_name: "", last_name: "", email: "" });
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Les champs sont (re)chargés à chaque ouverture.
@@ -22,7 +37,8 @@ export default function PreferencesModal({ opened, onClose, user, onUpdated }) {
     setError(null);
   }, [opened, user]);
 
-  const set = (field) => (event) => {
+  const set =
+    (field: "first_name" | "last_name" | "email") => (event: ChangeEvent<HTMLInputElement>) => {
     const { value } = event.currentTarget;
     setForm((f) => ({ ...f, [field]: value }));
   };
@@ -31,7 +47,7 @@ export default function PreferencesModal({ opened, onClose, user, onUpdated }) {
     setError(null);
     setBusy(true);
     try {
-      const payload = {
+      const payload: UpdateMeInput = {
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
         email: form.email.trim(),
@@ -43,7 +59,7 @@ export default function PreferencesModal({ opened, onClose, user, onUpdated }) {
       onUpdated(await api.updateMe(payload));
       onClose();
     } catch (e) {
-      setError(e.message);
+      setError(messageErreur(e));
     } finally {
       setBusy(false);
     }
@@ -54,7 +70,7 @@ export default function PreferencesModal({ opened, onClose, user, onUpdated }) {
     !form.last_name.trim() ||
     !form.email.trim() ||
     // Si un mot de passe est saisi, il doit respecter les règles et être confirmé.
-    (Boolean(password) && (!passwordIsValid(password) || password !== confirmation));
+    (Boolean(password) && (passwordIssues(password).length > 0 || password !== confirmation));
 
   return (
     <Modal
@@ -85,7 +101,9 @@ export default function PreferencesModal({ opened, onClose, user, onUpdated }) {
           onChange={(e) => setConfirmation(e.currentTarget.value)}
           disabled={!password}
           error={
-            confirmation && password !== confirmation ? "Les deux mots de passe ne correspondent pas" : null
+            confirmation && password !== confirmation
+              ? "Les deux mots de passe ne correspondent pas"
+              : undefined
           }
         />
         {password && <PasswordRules password={password} />}

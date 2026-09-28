@@ -23,9 +23,61 @@ import { useMediaQuery } from "@mantine/hooks";
 import { useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { RED, statusColor } from "../../themes/colors";
-import ActorAvatars, { ACTOR_AVATAR_SIZE } from "../ui/ActorAvatars.jsx";
-import AddButton from "../ui/AddButton.jsx";
-import EmptyPanel from "../ui/EmptyPanel.jsx";
+import ActorAvatars, { ACTOR_AVATAR_SIZE } from "../ui/ActorAvatars";
+import AddButton from "../ui/AddButton";
+import EmptyPanel from "../ui/EmptyPanel";
+import LabelChip from "../ui/LabelChip";
+import type { ReactNode } from "react";
+import type { Category, Project, PublicUser } from "@milo/shared";
+
+/** Une option d'entonnoir : « all » vaut « pas de filtre ». */
+interface FilterOption {
+  value: string;
+  label: string;
+}
+
+/** Ce que le tableau demande pour ses entonnoirs de colonnes. */
+export interface ProjectFiltersProps {
+  categories: Category[];
+  categoryFilter: string;
+  onCategoryFilterChange: (value: string) => void;
+  statusFilter: string;
+  onStatusFilterChange: (value: string) => void;
+  users: PublicUser[];
+  actorFilter: string;
+  onActorFilterChange: (value: string) => void;
+}
+
+/** Les clés de colonne : ce sur quoi on trie et ce qui se masque. */
+type ColumnKey =
+  | "name"
+  | "company_name"
+  | "category_name"
+  | "actors"
+  | "created_at"
+  | "updated_at"
+  | "labels"
+  | "status";
+
+interface Column {
+  key: ColumnKey;
+  label: string;
+  /** La valeur sur laquelle la colonne se trie. */
+  value: (p: Project) => string | number | null;
+  width?: number;
+}
+
+interface Sort {
+  key: ColumnKey;
+  direction: "asc" | "desc";
+}
+
+/** Le projet visé par le clic droit, et le point où le menu doit s'ouvrir. */
+interface ContextTarget {
+  project: Project;
+  x: number;
+  y: number;
+}
 
 // Padding vertical des lignes ; la hauteur inclut le padding (box-sizing).
 const ROW_PADDING_Y = 5;
@@ -37,7 +89,7 @@ const PERCENT_WIDTH = 40;
 const STATUS_GAP = 10;
 const STATUS_WIDTH = PROGRESS_WIDTH + PERCENT_WIDTH + STATUS_GAP;
 
-const formatDate = (value) => dayjs(value).format("DD/MM/YYYY HH:mm");
+const formatDate = (value: string): string => dayjs(value).format("DD/MM/YYYY HH:mm");
 
 // Les dates s'effacent l'une après l'autre à mesure que la fenêtre se
 // resserre, la moins regardée d'abord : « Date modification » en dessous de
@@ -46,15 +98,52 @@ const formatDate = (value) => dayjs(value).format("DD/MM/YYYY HH:mm");
 const DATE_WINDOWS = {
   updated_at: "(min-width: 1355px)",
   created_at: "(min-width: 1200px)",
-};
+} as const;
 
-const STATUS_OPTIONS = [
+const STATUS_OPTIONS: FilterOption[] = [
   { value: "all", label: "Tous" },
   { value: "in_progress", label: "En cours" },
   { value: "done", label: "Terminé" },
 ];
 
-function StatusCell({ status }) {
+// Les étiquettes d'un projet, sur une seule ligne. Elles sont plus larges
+// que les pastilles d'acteurs : au-delà de deux, le compte des autres remplace
+// la liste, sans quoi la colonne prendrait la largeur du projet le plus
+// étiqueté.
+const LABELS_SHOWN = 2;
+const LABEL_HEIGHT = 20;
+
+function LabelsCell({ labels }: { labels: Project["labels"] }) {
+  if (!labels?.length) {
+    return (
+      <Text size="sm" c="dimmed">
+        —
+      </Text>
+    );
+  }
+
+  const montrees = labels.slice(0, LABELS_SHOWN);
+  const restantes = labels.length - montrees.length;
+
+  return (
+    // Même boîte de hauteur fixe que les acteurs : sans elle, la line-box
+    // ajoute un demi-pixel et la ligne devient plus haute que les autres.
+    <div style={{ height: ACTOR_AVATAR_SIZE, display: "flex", alignItems: "center", overflow: "hidden" }}>
+      <Group gap={4} wrap="nowrap">
+        {montrees.map((label) => (
+          <LabelChip key={label.id} label={label} size="xs" height={LABEL_HEIGHT} />
+        ))}
+        {restantes > 0 && (
+          <Text size="xs" c="dimmed">
+            +{restantes}
+          </Text>
+        )}
+      </Group>
+    </div>
+  );
+}
+
+function StatusCell({ status }: { status: number }) {
   return (
     <Group gap={STATUS_GAP} wrap="nowrap">
       <Progress
@@ -71,10 +160,9 @@ function StatusCell({ status }) {
   );
 }
 
-const COLUMNS = [
+const COLUMNS: Column[] = [
   { key: "name", label: "Projet", value: (p) => p.name },
   { key: "company_name", label: "Société", value: (p) => p.company_name },
-  { key: "building_name", label: "Bâtiment", value: (p) => p.building_name },
   { key: "category_name", label: "Catégorie", value: (p) => p.category_name },
   {
     key: "actors",
@@ -84,12 +172,25 @@ const COLUMNS = [
   },
   { key: "created_at", label: "Date ajout", value: (p) => p.created_at },
   { key: "updated_at", label: "Date modification", value: (p) => p.updated_at },
+  {
+    key: "labels",
+    // Tri sur les noms ; les projets sans étiquette passent en bas.
+    label: "Étiquettes",
+    value: (p) => (p.labels?.length ? p.labels.map((l) => l.name).join(", ") : null),
+  },
   { key: "status", label: "Progression", value: (p) => p.status, width: STATUS_WIDTH },
 ];
 
 // Filtre d'une colonne. L'entonnoir se colore tant qu'une valeur est retenue,
 // pour qu'un tableau filtré ne passe pas pour un tableau vide.
-function ColumnFilter({ label, options, value, onChange }) {
+interface ColumnFilterProps {
+  label: string;
+  options: FilterOption[];
+  value: string;
+  onChange: (value: string) => void;
+}
+
+function ColumnFilter({ label, options, value, onChange }: ColumnFilterProps) {
   const actif = value !== "all";
 
   return (
@@ -123,7 +224,14 @@ function ColumnFilter({ label, options, value, onChange }) {
 
 // Le tri et le filtre sont deux commandes distinctes : le bouton de tri ne
 // couvre que le libellé, sinon ouvrir le filtre trierait la colonne au passage.
-function SortableTh({ column, sort, onSort, filter }) {
+interface SortableThProps {
+  column: Column;
+  sort: Sort;
+  onSort: (key: ColumnKey) => void;
+  filter: ReactNode;
+}
+
+function SortableTh({ column, sort, onSort, filter }: SortableThProps) {
   const active = sort.key === column.key;
   const Icon = !active ? IconSelector : sort.direction === "asc" ? IconChevronUp : IconChevronDown;
 
@@ -148,7 +256,21 @@ function SortableTh({ column, sort, onSort, filter }) {
 
 // Menu d'un projet, ouvert au clic droit et posé sous la souris : son ancre
 // est un point invisible placé aux coordonnées du clic.
-function ProjectContextMenu({ target, onClose, onEdit, onMove, onDelete }) {
+interface ProjectContextMenuProps {
+  target: ContextTarget;
+  onClose: () => void;
+  onEdit: (project: Project) => void;
+  onMove: (project: Project) => void;
+  onDelete: (project: Project) => void;
+}
+
+function ProjectContextMenu({
+  target,
+  onClose,
+  onEdit,
+  onMove,
+  onDelete,
+}: ProjectContextMenuProps) {
   const { project, x, y } = target;
 
   return (
@@ -189,7 +311,21 @@ function ProjectContextMenu({ target, onClose, onEdit, onMove, onDelete }) {
 // survol, sinon le menu flotterait sans qu'on sache sur quel projet il porte
 // dès que la souris quitte la ligne. La variable reprise est celle que Mantine
 // pose pour son propre survol : même couleur, dans les deux thèmes.
-function ProjectRow({ project, active, masquees, onEdit, onContextMenu }) {
+interface ProjectRowProps {
+  project: Project;
+  active: boolean;
+  masquees: Set<ColumnKey>;
+  onEdit: (project: Project) => void;
+  onContextMenu: (project: Project, x: number, y: number) => void;
+}
+
+function ProjectRow({
+  project,
+  active,
+  masquees,
+  onEdit,
+  onContextMenu,
+}: ProjectRowProps) {
   return (
     <Table.Tr
       onClick={() => onEdit(project)}
@@ -212,13 +348,6 @@ function ProjectRow({ project, active, masquees, onEdit, onContextMenu }) {
           </Text>
         )}
       </Table.Td>
-      <Table.Td>
-        {project.building_name ?? (
-          <Text size="sm" c="dimmed">
-            —
-          </Text>
-        )}
-      </Table.Td>
       <Table.Td>{project.category_name}</Table.Td>
       <Table.Td>
         <ActorAvatars actors={project.actors} />
@@ -230,10 +359,22 @@ function ProjectRow({ project, active, masquees, onEdit, onContextMenu }) {
         <Table.Td>{formatDate(project.updated_at)}</Table.Td>
       )}
       <Table.Td>
+        <LabelsCell labels={project.labels} />
+      </Table.Td>
+      <Table.Td>
         <StatusCell status={project.status} />
       </Table.Td>
     </Table.Tr>
   );
+}
+
+interface ProjectTableProps extends ProjectFiltersProps {
+  projects: Project[];
+  loading: boolean;
+  onRowClick: (project: Project) => void;
+  onMoveProject: (project: Project) => void;
+  onDeleteProject: (project: Project) => void;
+  onAddProject: () => void;
 }
 
 export default function ProjectTable({
@@ -243,10 +384,6 @@ export default function ProjectTable({
   onMoveProject,
   onDeleteProject,
   onAddProject,
-  companyFilter,
-  buildings,
-  buildingFilter,
-  onBuildingFilterChange,
   categories,
   categoryFilter,
   onCategoryFilterChange,
@@ -255,9 +392,9 @@ export default function ProjectTable({
   users,
   actorFilter,
   onActorFilterChange,
-}) {
+}: ProjectTableProps) {
   // Par défaut : les projets les plus avancés en premier.
-  const [sort, setSort] = useState({ key: "status", direction: "desc" });
+  const [sort, setSort] = useState<Sort>({ key: "status", direction: "desc" });
   // La fenêtre laisse-t-elle la place à chacune des dates ? Sans
   // « getInitialValueInEffect: false », le premier rendu répondrait toujours
   // oui et les colonnes apparaîtraient le temps d'un souffle avant de s'en
@@ -265,49 +402,28 @@ export default function ProjectTable({
   const options = { getInitialValueInEffect: false };
   const placePourModification = useMediaQuery(DATE_WINDOWS.updated_at, undefined, options);
   const placePourAjout = useMediaQuery(DATE_WINDOWS.created_at, undefined, options);
-  const masquees = new Set(
-    [
-      !placePourModification && "updated_at",
-      !placePourAjout && "created_at",
-    ].filter(Boolean),
+  const masquees = new Set<ColumnKey>(
+    ([
+      placePourModification ? null : "updated_at",
+      placePourAjout ? null : "created_at",
+    ] as (ColumnKey | null)[]).filter((c): c is ColumnKey => c !== null),
   );
   const colonnes = COLUMNS.filter((c) => !masquees.has(c.key));
   // Projet visé par le clic droit, et le point où le menu doit s'ouvrir.
-  const [contextMenu, setContextMenu] = useState(null);
+  const [contextMenu, setContextMenu] = useState<ContextTarget | null>(null);
 
-  // Quand une société est choisie, on ne propose que ses bâtiments.
-  const buildingOptions = [
-    { value: "all", label: "Tous les bâtiments" },
-    ...buildings
-      .filter((b) => companyFilter === "all" || String(b.company_id) === companyFilter)
-      .map((b) => ({
-        value: String(b.id),
-        label: companyFilter === "all" ? `${b.name} — ${b.company_name}` : b.name,
-      })),
-  ];
-
-  const actorOptions = [
+  const actorOptions: FilterOption[] = [
     { value: "all", label: "Tous" },
     ...users.map((u) => ({ value: String(u.id), label: u.name })),
   ];
 
-  const categoryOptions = [
+  const categoryOptions: FilterOption[] = [
     { value: "all", label: "Toutes" },
     ...categories.map((c) => ({ value: String(c.id), label: c.name })),
   ];
 
   // Chaque colonne filtrable porte son entonnoir.
-  const filterFor = (key) => {
-    if (key === "building_name") {
-      return (
-        <ColumnFilter
-          label="bâtiment"
-          options={buildingOptions}
-          value={buildingFilter}
-          onChange={onBuildingFilterChange}
-        />
-      );
-    }
+  const filterFor = (key: ColumnKey): ReactNode => {
     if (key === "category_name") {
       return (
         <ColumnFilter
@@ -341,7 +457,7 @@ export default function ProjectTable({
     return null;
   };
 
-  const handleSort = (key) =>
+  const handleSort = (key: ColumnKey) =>
     setSort((current) =>
       current.key === key
         ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
@@ -356,7 +472,8 @@ export default function ProjectTable({
     return [...projects].sort((a, b) => {
       const left = column.value(a);
       const right = column.value(b);
-      // Valeurs absentes (pas de société, pas de bâtiment) toujours en bas.
+      // Valeurs absentes (pas de société, pas d'acteur, pas d'étiquette)
+      // toujours en bas.
       if (left == null && right == null) return 0;
       if (left == null) return 1;
       if (right == null) return -1;

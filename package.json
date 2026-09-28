@@ -1,0 +1,28 @@
+{
+  "name": "milo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "build": "npm run build -w @milo/shared && npm run build -w @milo/server && npm run build -w @milo/client",
+    "check": "npm run typecheck && npm run lint",
+    "dev": "npm run dev -w @milo/server & npm run dev -w @milo/client",
+    "lint": "eslint .",
+    "package-api": "node scripts/package-api.mjs",
+    "typecheck": "tsc -b --pretty"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "esbuild": "^0.24.0",
+    "eslint": "^9.13.0",
+    "eslint-plugin-react-hooks": "^6.0.0",
+    "globals": "^15.11.0",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.11.0"
+  }
+}

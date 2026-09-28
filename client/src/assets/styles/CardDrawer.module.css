@@ -44,3 +44,29 @@
   flex-direction: column;
   min-height: 100%;
 }
+
+/* L'invite de dépôt, posée sur la fiche pendant qu'un fichier la survole.
+
+   Elle s'arrête exactement là où s'arrête la zone qui recueille le dépôt, et
+   non au bord du tiroir : le cadre en pointillé promet ce qu'il tient. Le
+   retrait du tiroir reste en dehors — un fichier lâché là retombe sur le
+   comportement du navigateur, comme partout ailleurs dans l'application.
+
+   Elle ne prend pas le pointeur : ce sont les éléments en dessous qui
+   continuent de voir passer le glisser, et c'est leur parent commun qui
+   recueille le dépôt (components/board/CardDrawer.tsx). */
+.dropZone {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: var(--mantine-color-teal-6);
+  background-color: light-dark(rgba(255, 255, 255, 0.9), rgba(26, 27, 30, 0.9));
+  border: 2px dashed var(--mantine-color-teal-6);
+  border-radius: var(--mantine-radius-md);
+}

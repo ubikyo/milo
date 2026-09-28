@@ -8,7 +8,7 @@ export default function Favicon() {
 
   useEffect(() => {
     const href = scheme === "dark" ? "/Milo-Inv-2.svg" : "/Milo-2.svg";
-    let link = document.querySelector("link[rel='icon']");
+    let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
     if (!link) {
       link = document.createElement("link");
       link.rel = "icon";

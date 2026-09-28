@@ -1,0 +1,100 @@
+// L'assemblage : ce qui passe avant les routes, les routes, ce qui passe
+// après. Chaque ressource a son fichier dans `routes/` ; celui-ci dit
+// seulement où chacune est montée et ce qu'elle exige.
+
+import cors from "cors";
+import express from "express";
+import { env } from "./env.js";
+import { compterEcritures, flux, payload } from "./middleware/events.js";
+import { errorHandler, notFoundHandler } from "./middleware/errors.js";
+import { requireAuth } from "./middleware/require-auth.js";
+import { attachmentRoutes, cardMediaRoutes, mediaRoutes } from "./routes/attachments.js";
+import { authRoutes, publicAuthRoutes } from "./routes/auth.js";
+import { backupRoutes } from "./routes/backup.js";
+import { boardRoutes } from "./routes/boards.js";
+import { cardChecklistRoutes, checklistItemRoutes, checklistRoutes } from "./routes/checklists.js";
+import { commentRoutes, projectCommentRoutes } from "./routes/comments.js";
+import { companyRoutes } from "./routes/companies.js";
+import { followRoutes } from "./routes/follows.js";
+import { labelRoutes, projectLabelRoutes } from "./routes/labels.js";
+import { mailRoutes, publicMailRoutes } from "./routes/mail.js";
+import { categoryRoutes, projectBoardRoutes } from "./routes/project-boards.js";
+import { projectRoutes } from "./routes/projects.js";
+import { taskCardRoutes, cardCommentRoutes } from "./routes/task-cards.js";
+import { taskListRoutes } from "./routes/task-lists.js";
+import { userRoutes } from "./routes/users.js";
+
+export const createApp = (): express.Express => {
+  const app = express();
+
+  // L'API et le client sont servis par le même hôte en production : aucune
+  // origine tierce n'a de raison d'appeler l'API depuis un navigateur, et la
+  // liste reste vide. `cors()` sans argument, lui, répondait « oui » à
+  // n'importe laquelle.
+  if (env.corsOrigins.length > 0) {
+    app.use(cors({ origin: env.corsOrigins, credentials: true }));
+  }
+
+  // Une adresse IP juste est nécessaire à la limitation des tentatives :
+  // derrière nginx, c'est l'en-tête X-Forwarded-For qui la porte.
+  app.set("trust proxy", true);
+
+  // Un corps en JSON n'a aucune raison de dépasser cette taille : les
+  // descriptions sont du texte. Les fichiers, eux, ne passent pas par là :
+  // leurs routes prennent le corps brut, avec leur propre limite
+  // (routes/attachments.ts).
+  app.use(express.json({ limit: "1mb" }));
+
+  // Les compteurs de version montent après chaque écriture réussie, et le flux
+  // les pousse aux clients. Posé avant les routes : chacune déclare ce qu'elle
+  // touche, ce middleware en tire les conséquences une fois la réponse partie.
+  app.use("/api", compterEcritures);
+
+  // --- Sans authentification ------------------------------------------------
+  app.use("/api/auth", publicAuthRoutes);
+
+  // Les fichiers se lisent sans jeton : une balise « img » n'en porte pas. Le
+  // nom du fichier tient lieu de clé (routes/attachments.ts).
+  app.use("/api/medias", mediaRoutes);
+
+  // Le retour du consentement OAuth : le navigateur y arrive par une
+  // redirection de Microsoft, sans en-tête d'authentification. Seule cette
+  // route-là est ouverte ; le reste de « /api/mail » passe dessous.
+  app.use("/api/mail", publicMailRoutes);
+
+  // --- Tout le reste exige une session --------------------------------------
+  app.use("/api/auth", authRoutes);
+  app.use("/api", requireAuth);
+
+  app.get("/api/version", (_req, res) => res.json(payload()));
+  app.get("/api/events", flux);
+
+  app.use("/api/users", userRoutes);
+  app.use("/api/companies", companyRoutes);
+  app.use("/api/backup", backupRoutes);
+  app.use("/api/follows", followRoutes);
+  app.use("/api/mail", mailRoutes);
+
+  app.use("/api/project-boards", projectBoardRoutes);
+  app.use("/api/categories", categoryRoutes);
+  app.use("/api/project-labels", projectLabelRoutes);
+  app.use("/api/projects/:id/comments", projectCommentRoutes);
+  app.use("/api/projects", projectRoutes);
+  app.use("/api/comments", commentRoutes);
+
+  app.use("/api/boards", boardRoutes);
+  app.use("/api/task-lists", taskListRoutes);
+  app.use("/api/task-cards/:id/checklists", cardChecklistRoutes);
+  app.use("/api/task-cards/:id", cardMediaRoutes);
+  app.use("/api/attachments", attachmentRoutes);
+  app.use("/api/task-cards", taskCardRoutes);
+  app.use("/api/card-comments", cardCommentRoutes);
+  app.use("/api/checklists", checklistRoutes);
+  app.use("/api/checklist-items", checklistItemRoutes);
+  app.use("/api/labels", labelRoutes);
+
+  app.use("/api", notFoundHandler);
+  app.use(errorHandler);
+
+  return app;
+};

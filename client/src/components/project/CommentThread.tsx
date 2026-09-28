@@ -3,11 +3,27 @@ import { IconCheck, IconMessage, IconPencil, IconSend2, IconTrash, IconX } from 
 import dayjs from "dayjs";
 import { useState } from "react";
 import { RED } from "../../themes/colors";
-import { PersonAvatar } from "../ui/ActorAvatars.jsx";
-import DeleteConfirmModal from "../ui/DeleteConfirmModal.jsx";
-import EmptyPanel from "../ui/EmptyPanel.jsx";
+import { PersonAvatar } from "../ui/ActorAvatars";
+import DeleteConfirmModal from "../ui/DeleteConfirmModal";
+import EmptyPanel from "../ui/EmptyPanel";
+import type { Actor, SqliteBool } from "@milo/shared";
 
-const formatTimestamp = (value) => dayjs(value).format("DD/MM/YYYY HH:mm");
+/**
+ * Un commentaire tel que le fil l'affiche. Les deux fils du serveur — projets
+ * et cartes — s'y rangent, ainsi que les brouillons d'un projet pas encore
+ * créé, dont l'identifiant n'est pas encore un numéro de ligne.
+ */
+export interface FilItem {
+  id: number | string;
+  text: string;
+  /** Les mots que l'application écrit elle-même : ni retouchés, ni effacés. */
+  system?: SqliteBool;
+  created_at: string;
+  updated_at: string;
+  author: Actor | null;
+}
+
+const formatTimestamp = (value: string): string => dayjs(value).format("DD/MM/YYYY HH:mm");
 
 // Filet en pointillé entre l'entête du commentaire — auteur, date, actions —
 // et son texte.
@@ -17,7 +33,13 @@ const HEADER_LINE = "1px dotted var(--mantine-color-default-border)";
 // même : le texte ne bouge pas d'un pixel quand on passe de l'un à l'autre.
 const COMMENT_PADDING = 30;
 
-function CommentBubble({ comment, onUpdate, onDelete }) {
+interface CommentBubbleProps {
+  comment: FilItem;
+  onUpdate: (id: number | string, text: string) => void;
+  onDelete: (id: number | string) => void;
+}
+
+function CommentBubble({ comment, onUpdate, onDelete }: CommentBubbleProps) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(comment.text);
   const [confirmDeleteOpened, setConfirmDeleteOpened] = useState(false);
@@ -164,7 +186,19 @@ function CommentBubble({ comment, onUpdate, onDelete }) {
   );
 }
 
-export default function CommentThread({ comments, onAdd, onUpdate, onDelete }) {
+interface CommentThreadProps {
+  comments: FilItem[];
+  onAdd: (text: string) => void;
+  onUpdate: (id: number | string, text: string) => void;
+  onDelete: (id: number | string) => void;
+}
+
+export default function CommentThread({
+  comments,
+  onAdd,
+  onUpdate,
+  onDelete,
+}: CommentThreadProps) {
   const [draft, setDraft] = useState("");
 
   const submit = () => {

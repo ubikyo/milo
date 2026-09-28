@@ -4,10 +4,35 @@ import { useState } from "react";
 import { api } from "../../api";
 import { ADD_ACTION, RED } from "../../themes/colors";
 import { PLUS_GAP, PLUS_SIZE } from "../../themes/plus";
-import ChipPicker from "./ChipPicker.jsx";
-import DeleteConfirmModal from "./DeleteConfirmModal.jsx";
-import LabelChip, { DEFAULT_LABEL_COLOR } from "./LabelChip.jsx";
-import LabelColorPicker from "./LabelColorPicker.jsx";
+import ChipPicker from "./ChipPicker";
+import DeleteConfirmModal from "./DeleteConfirmModal";
+import LabelChip from "./LabelChip";
+import { DEFAULT_LABEL_COLOR } from "@milo/shared";
+import type { Label, ProjectLabel } from "@milo/shared";
+import type { ReactNode } from "react";
+
+/** Les étiquettes des deux modes ont la même forme ici. */
+type Etiquette = Label | ProjectLabel;
+
+/**
+ * Ce qu'il faut savoir faire pour gérer un jeu d'étiquettes. Les routes
+ * changent d'un mode à l'autre, les gestes non.
+ */
+export interface LabelsApi {
+  create: (boardId: number, name: string, color: string) => Promise<Etiquette>;
+  update: (id: number, data: { name?: string; color?: string }) => Promise<Etiquette>;
+  remove: (id: number) => Promise<unknown>;
+  /** Ce que la suppression emporte, dit dans les mots du mode. */
+  porteurs: string;
+}
+
+/** Une étiquette en cours de saisie : son nom et sa couleur, avant validation. */
+interface Brouillon {
+  id?: number;
+  name: string;
+  color: string;
+}
+import LabelColorPicker from "./LabelColorPicker";
 
 // Décalage de l'étiquette dans la liste : elle respire de deux pixels après sa
 // case à cocher.
@@ -17,7 +42,7 @@ const LABEL_INDENT = 2;
 // renomment, se recolorent et se suppriment de la même façon : seules les
 // routes changent. On les nomme ici plutôt que d'appeler « api » directement,
 // pour que le même composant serve aux deux modes.
-export const CARD_LABELS_API = {
+export const CARD_LABELS_API: LabelsApi = {
   create: api.createLabel,
   update: api.updateLabel,
   remove: api.deleteLabel,
@@ -25,7 +50,7 @@ export const CARD_LABELS_API = {
   porteurs: "des cartes qui la portent",
 };
 
-export const PROJECT_LABELS_API = {
+export const PROJECT_LABELS_API: LabelsApi = {
   create: api.createProjectLabel,
   update: api.updateProjectLabel,
   remove: api.deleteProjectLabel,
@@ -39,6 +64,19 @@ export const PROJECT_LABELS_API = {
  * recolorer ou supprimer touche l'étiquette du tableau, donc toutes les cartes
  * qui la portent.
  */
+interface LabelPickerProps {
+  labels: Etiquette[];
+  /** Les identifiants retenus, en chaînes. */
+  value: string[];
+  onChange: (value: string[]) => void;
+  boardId: string | number;
+  /** Sans argument : relire. Avec un correctif : l'appliquer sur place. */
+  onLabelsChanged: (patch?: { id: number; data: Partial<Etiquette> }) => void | Promise<void>;
+  chipHeight?: number;
+  /** Le mode auquel ces étiquettes appartiennent : les cartes par défaut. */
+  labelsApi?: LabelsApi;
+}
+
 export default function LabelPicker({
   labels,
   value,
@@ -48,17 +86,17 @@ export default function LabelPicker({
   chipHeight,
   // Le mode auquel ces étiquettes appartiennent : les cartes par défaut.
   labelsApi = CARD_LABELS_API,
-}) {
+}: LabelPickerProps) {
   // Étiquette en cours de modification — son nom et sa couleur y vivent tant
   // qu'on n'a pas validé — et celle qu'on est en train d'ajouter.
-  const [edite, setEdite] = useState(null);
-  const [ajout, setAjout] = useState(null);
+  const [edite, setEdite] = useState<Brouillon | null>(null);
+  const [ajout, setAjout] = useState<Brouillon | null>(null);
   // Étiquette survolée — sa corbeille seule se montre — et celle dont on
   // attend la confirmation de suppression.
-  const [survole, setSurvole] = useState(null);
-  const [aSupprimer, setASupprimer] = useState(null);
+  const [survole, setSurvole] = useState<number | null>(null);
+  const [aSupprimer, setASupprimer] = useState<Etiquette | null>(null);
 
-  const ouvrirEdition = (label) => {
+  const ouvrirEdition = (label: Etiquette) => {
     setAjout(null);
     setEdite({ id: label.id, name: label.name, color: label.color });
   };
@@ -68,7 +106,7 @@ export default function LabelPicker({
   // Choisir une couleur est un geste qui se suffit : elle s'applique aussitôt,
   // partout où l'étiquette se montre. Le nom, lui, attend d'être validé — on
   // ne veut pas le voir changer à chaque lettre tapée.
-  const appliquerCouleur = async (label, color) => {
+  const appliquerCouleur = async (label: Etiquette, color: string) => {
     setEdite((e) => (e ? { ...e, color } : e));
     if (color === label.color) return;
     // La couleur se pose d'abord à l'écran, puis part au serveur : sans cela,
@@ -81,7 +119,7 @@ export default function LabelPicker({
   // Le nom ne part au serveur qu'à la validation : ailleurs — la liste, les
   // vignettes de la carte, les cartes du tableau — l'étiquette le garde tant
   // qu'il n'a pas changé pour de bon.
-  const enregistrer = async (label) => {
+  const enregistrer = async (label: Etiquette) => {
     const courant = edite;
     fermerEdition();
     if (!courant) return;
@@ -111,8 +149,11 @@ export default function LabelPicker({
 
   // L'étiquette créée se pose aussitôt sur la carte : on vient de la demander.
   const creer = async () => {
-    const nouveau = (ajout?.name || "").trim();
-    if (!nouveau) return setAjout(null);
+    const nouveau = (ajout?.name ?? "").trim();
+    if (!nouveau || !ajout) {
+      setAjout(null);
+      return;
+    }
     const creee = await labelsApi.create(Number(boardId), nouveau, ajout.color);
     setAjout(null);
     await onLabelsChanged();
@@ -121,7 +162,7 @@ export default function LabelPicker({
 
   // Supprimer se demande avant de se faire : l'étiquette quitte le tableau, et
   // donc tout ce qui la porte, pas seulement la fiche ouverte.
-  const demanderSuppression = (label) => {
+  const demanderSuppression = (label: Etiquette) => {
     fermerEdition();
     setAjout(null);
     setASupprimer(label);
@@ -140,6 +181,16 @@ export default function LabelPicker({
 
   // Une ligne de saisie : la pastille de couleur, puis le nom. Sert à la
   // modification comme à l'ajout.
+  interface SaisieProps {
+    color: string;
+    name: string;
+    onColor: (color: string) => void;
+    onName: (name: string) => void;
+    onSubmit: () => void;
+    onCancel: () => void;
+    aria: string;
+  }
+
   const saisie = ({
     color,
     name,
@@ -148,7 +199,7 @@ export default function LabelPicker({
     onSubmit,
     onCancel,
     aria,
-  }) => (
+  }: SaisieProps): ReactNode => (
     <Group
       data-label-editor="true"
       gap={6}
@@ -171,7 +222,7 @@ export default function LabelPicker({
         // Le focus qui passe à la pastille ou à sa palette reste dans la
         // saisie : sans cela, aller choisir une couleur la refermerait.
         onBlur={(e) => {
-          if (e.relatedTarget?.closest?.("[data-label-editor]")) return;
+          if (e.relatedTarget?.closest("[data-label-editor]")) return;
           onSubmit();
         }}
         variant="unstyled"
@@ -222,7 +273,7 @@ export default function LabelPicker({
                 color: edite.color,
                 name: edite.name,
                 onColor: (color) => appliquerCouleur(l, color),
-                onName: (name) => setEdite((e) => ({ ...e, name })),
+                onName: (name) => setEdite((e) => (e ? { ...e, name } : e)),
                 onSubmit: () => enregistrer(l),
                 onCancel: fermerEdition,
                 aria: `Renommer ${l.name}`,
@@ -264,8 +315,8 @@ export default function LabelPicker({
                 {saisie({
                   color: ajout.color,
                   name: ajout.name,
-                  onColor: (color) => setAjout((a) => ({ ...a, color })),
-                  onName: (name) => setAjout((a) => ({ ...a, name })),
+                  onColor: (color) => setAjout((a) => (a ? { ...a, color } : a)),
+                  onName: (name) => setAjout((a) => (a ? { ...a, name } : a)),
                   onSubmit: creer,
                   onCancel: () => setAjout(null),
                   aria: "Nom de la nouvelle étiquette",

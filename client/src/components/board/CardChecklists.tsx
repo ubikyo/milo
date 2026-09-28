@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   Checkbox,
-  Collapse,
   Group,
   Input,
   Paper,
@@ -16,8 +15,6 @@ import {
 import { DatePicker } from "@mantine/dates";
 import {
   IconCalendar,
-  IconChevronDown,
-  IconChevronRight,
   IconGripVertical,
   IconPlus,
   IconTrash,
@@ -28,12 +25,46 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../../api";
 import { ADD_ACTION, RED } from "../../themes/colors";
 import { PLUS_GAP, PLUS_SIZE } from "../../themes/plus";
-import { ACTOR_GAP, PersonAvatar } from "../ui/ActorAvatars.jsx";
-import DeleteConfirmModal from "../ui/DeleteConfirmModal.jsx";
+import { ACTOR_GAP, PersonAvatar } from "../ui/ActorAvatars";
+import DeleteConfirmModal from "../ui/DeleteConfirmModal";
+import { messageErreur } from "../../lib/errors";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import type {
+  Checklist as ChecklistType,
+  ChecklistItemInput,
+  ChecklistItem as Element,
+  Id,
+  PublicUser,
+} from "@milo/shared";
+
+/** Le glisser en cours : ce qu'on déplace, et le rang où il se posera. */
+interface Glisser {
+  id: Id;
+  target: number;
+}
+
+/** Le même geste, suivi hors du rendu : il change à chaque mouvement. */
+interface GlisserEnCours extends Glisser {
+  index: number;
+  startY: number;
+  /** Faux tant que le pointeur n'a pas franchi le seuil de déclenchement. */
+  started: boolean;
+}
 
 // Diamètre des bulles posées sur un élément : plus petites que celles de la
 // carte, la ligne est déjà bien remplie.
 const ITEM_AVATAR_SIZE = 22;
+
+// La date porte une bulle verte à la hauteur des pastilles de personnes : les
+// deux se suivent sur la ligne, elles doivent s'aligner. Le vert est celui de
+// la progression d'une checklist et de la pastille d'une carte terminée.
+const DATE_BUBBLE = {
+  height: ITEM_AVATAR_SIZE,
+  borderRadius: ITEM_AVATAR_SIZE / 2,
+  padding: "0 8px",
+  backgroundColor: "var(--mantine-color-teal-filled)",
+  color: "var(--mantine-color-white)",
+};
 
 // Hauteur de la barre de progression, et largeur qu'on lui réserve dans
 // l'entête : elle ne doit pas repousser le titre d'une checklist à l'autre.
@@ -57,7 +88,7 @@ const INLINE_HEIGHT = 26;
 // Ces saisies ne portent aucun cadre, pas même le bleu que Mantine pose au
 // focus : on ne fait que continuer à lire la même ligne, elle ne doit pas
 // s'encadrer au clic. C'est le parti pris des cartes et des listes du tableau.
-const inlineInput = (extra) => ({
+const inlineInput = (extra?: CSSProperties) => ({
   input: {
     "--input-bd": "transparent",
     "--input-bd-focus": "transparent",
@@ -68,18 +99,25 @@ const inlineInput = (extra) => ({
 });
 
 // Une date se garde en « AAAA-MM-JJ » et se montre à la française.
-const afficheDate = (valeur) => (valeur ? dayjs(valeur).format("DD/MM/YYYY") : null);
+const afficheDate = (valeur: string | null | undefined): string | null =>
+  valeur ? dayjs(valeur).format("DD/MM/YYYY") : null;
 
 // Où en est une checklist, en pourcentage. Vide, elle est à zéro : aucune case
 // cochée n'est pas un travail achevé.
-const avancement = (items) => {
+const avancement = (items: Element[]): number => {
   if (!items || items.length === 0) return 0;
   return Math.round((items.filter((i) => i.done).length / items.length) * 100);
 };
 
-// La date d'échéance d'un élément : une pastille discrète qui ouvre un
-// calendrier. Sans date, il ne reste que l'icône ; avec, elle porte le jour.
-function ItemDate({ value, onChange }) {
+// La date d'échéance d'un élément : une pastille qui ouvre un calendrier.
+// Sans date, il ne reste que l'icône, discrète ; avec, le jour s'encadre d'une
+// bulle verte, qu'on repère sans lire.
+interface ItemDateProps {
+  value: string;
+  onChange: (value: string) => void;
+}
+
+function ItemDate({ value, onChange }: ItemDateProps) {
   const [opened, setOpened] = useState(false);
   const texte = afficheDate(value);
 
@@ -98,7 +136,13 @@ function ItemDate({ value, onChange }) {
         <UnstyledButton
           onClick={() => setOpened((o) => !o)}
           c={texte ? undefined : "dimmed"}
-          style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            flexShrink: 0,
+            ...(texte ? DATE_BUBBLE : null),
+          }}
           aria-label="Date de l'élément"
         >
           <IconCalendar size={16} />
@@ -137,12 +181,18 @@ function ItemDate({ value, onChange }) {
 // Les membres d'un élément : leurs bulles, et une liste qui s'ouvre au clic
 // pour en cocher d'autres. On ajoute et on retire au même endroit, comme pour
 // les membres d'une carte.
-function ItemMembers({ members, users, onChange }) {
+interface ItemMembersProps {
+  members: Element["members"];
+  users: PublicUser[];
+  onChange: (ids: number[]) => void;
+}
+
+function ItemMembers({ members, users, onChange }: ItemMembersProps) {
   const [opened, setOpened] = useState(false);
   const retenus = members || [];
   const choisis = retenus.map((m) => String(m.id));
 
-  const bascule = (id) => {
+  const bascule = (id: Id) => {
     const cle = String(id);
     onChange(
       choisis.includes(cle)
@@ -192,7 +242,17 @@ function ItemMembers({ members, users, onChange }) {
             Aucun compte à proposer
           </Text>
         ) : (
-          <ScrollArea.Autosize mah={240} type="auto">
+          <ScrollArea.Autosize
+            mah={240}
+            type="auto"
+            // Seule la verticale a un sens ici : sans cela, le conteneur
+            // interne du ScrollArea — « display: table », élargi au contenu —
+            // prend la largeur du nom le plus long et pose une barre
+            // horizontale sous la liste. Bridé, il rend la main au « truncate »
+            // des noms, qui s'abrègent en points de suspension.
+            scrollbars="y"
+            styles={{ content: { display: "block", minWidth: "100%" } }}
+          >
             <Stack gap={2}>
               {users.map((u) => (
                 <Checkbox
@@ -228,7 +288,7 @@ function ItemMembers({ members, users, onChange }) {
 // Le trait d'insertion pendant un glisser : posé entre deux voisins, il ne
 // prend aucune hauteur dans la pile — rien ne bouge, et les mesures prises au
 // départ restent justes.
-function InsertLine({ gap = ITEM_GAP }) {
+function InsertLine({ gap = ITEM_GAP }: { gap?: number }) {
   return (
     <div style={{ position: "relative", height: 0 }}>
       <div
@@ -253,35 +313,42 @@ function InsertLine({ gap = ITEM_GAP }) {
  * `selector` désigne, dans la zone, ce qui se glisse ; `onReorder` reçoit
  * l'ordre complet, une fois la main relâchée.
  */
-function usePileGlissante({ ids, selector, onReorder }) {
-  const [drag, setDrag] = useState(null);
-  const dragRef = useRef(null);
-  const zoneRef = useRef(null);
+interface PileGlissante {
+  ids: Id[];
+  /** Ce qui, dans la zone, se glisse. */
+  selector: string;
+  onReorder: (ordre: Id[]) => void | Promise<void>;
+}
+
+function usePileGlissante({ ids, selector, onReorder }: PileGlissante) {
+  const [drag, setDrag] = useState<Glisser | null>(null);
+  const dragRef = useRef<GlisserEnCours | null>(null);
+  const zoneRef = useRef<HTMLDivElement | null>(null);
   // Le geste se joue sur des écouteurs posés une fois pour toutes : ils
   // lisent l'état courant par une ref, plutôt que de se réabonner à chaque
   // rendu.
   const etat = useRef({ ids, onReorder });
   etat.current = { ids, onReorder };
 
-  const onPointerDown = (id, index) => (event) => {
+  const onPointerDown = (id: Id, index: number) => (event: ReactPointerEvent) => {
     if (event.button !== 0) return;
     event.preventDefault();
     dragRef.current = { id, index, startY: event.clientY, started: false, target: index };
   };
 
   useEffect(() => {
-    const rangVise = (clientY) => {
+    const rangVise = (clientY: number): number | null => {
       const zone = zoneRef.current;
       if (!zone) return null;
       const lignes = [...zone.querySelectorAll(selector)];
       for (let i = 0; i < lignes.length; i += 1) {
-        const rect = lignes[i].getBoundingClientRect();
+        const rect = (lignes[i] as HTMLElement).getBoundingClientRect();
         if (clientY < rect.top + rect.height / 2) return i;
       }
       return lignes.length;
     };
 
-    const onMove = (event) => {
+    const onMove = (event: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
       if (!d.started) {
@@ -322,7 +389,13 @@ function usePileGlissante({ ids, selector, onReorder }) {
 
 // La poignée par laquelle on glisse : seule elle déplace, tout le reste garde
 // ses propres clics.
-function DragHandle({ onPointerDown, visible = true, label }) {
+interface DragHandleProps {
+  onPointerDown: (event: ReactPointerEvent) => void;
+  visible?: boolean;
+  label: string;
+}
+
+function DragHandle({ onPointerDown, visible = true, label }: DragHandleProps) {
   return (
     <Text
       span
@@ -347,6 +420,24 @@ function DragHandle({ onPointerDown, visible = true, label }) {
 
 // Une ligne de checklist : la poignée pour la glisser, la case, le libellé qui
 // se modifie au clic, la date, les membres et la corbeille.
+interface ChecklistItemProps {
+  item: Element;
+  users: PublicUser[];
+  dragged: boolean;
+  /**
+   * Vrai pour l'élément qu'on vient d'ajouter : il s'ouvre en saisie, le
+   * curseur dedans.
+   */
+  autoEdit: boolean;
+  onEditDone?: () => void;
+  onPointerDown: (event: ReactPointerEvent) => void;
+  onToggle: (done: boolean) => void;
+  onRename: (text: string) => void;
+  onDate: (date: string) => void;
+  onMembers: (ids: number[]) => void;
+  onDelete: () => void;
+}
+
 function ChecklistItem({
   item,
   users,
@@ -362,8 +453,8 @@ function ChecklistItem({
   onDate,
   onMembers,
   onDelete,
-}) {
-  const [edite, setEdite] = useState(autoEdit ? item.text : null);
+}: ChecklistItemProps) {
+  const [edite, setEdite] = useState<string | null>(autoEdit ? item.text : null);
   const [survole, setSurvole] = useState(false);
 
   useEffect(() => {
@@ -438,15 +529,15 @@ function ChecklistItem({
         />
       )}
 
-      <ItemDate value={item.due_date} onChange={onDate} />
       <ItemMembers members={item.members} users={users} onChange={onMembers} />
+      <ItemDate value={item.due_date} onChange={onDate} />
 
       <ActionIcon
         variant="subtle"
         color={RED}
         size="sm"
         onClick={onDelete}
-        style={{ flexShrink: 0, opacity: survole ? 1 : 0.35 }}
+        style={{ flexShrink: 0 }}
         aria-label="Supprimer l'élément"
       >
         <IconTrash size={16} />
@@ -456,7 +547,16 @@ function ChecklistItem({
 }
 
 // Une checklist : son entête — titre modifiable, progression, corbeille —, ses
-// éléments et le lien qui en ajoute un. Le chevron replie l'ensemble.
+// éléments et le lien qui en ajoute un. Elle est toujours dépliée.
+interface ChecklistProps {
+  checklist: ChecklistType;
+  users: PublicUser[];
+  onChanged: () => void | Promise<void>;
+  onError?: (message: string) => void;
+  dragged: boolean;
+  onHandlePointerDown: (event: ReactPointerEvent) => void;
+}
+
 function Checklist({
   checklist,
   users,
@@ -464,25 +564,25 @@ function Checklist({
   onError,
   dragged,
   onHandlePointerDown,
-}) {
-  const [deplie, setDeplie] = useState(true);
-  const [titre, setTitre] = useState(null);
-  const [aSupprimer, setASupprimer] = useState(null);
-  const [itemASupprimer, setItemASupprimer] = useState(null);
+}: ChecklistProps) {
+  /** Le titre en cours de saisie ; « null » tant qu'on ne le modifie pas. */
+  const [titre, setTitre] = useState<string | null>(null);
+  const [aSupprimer, setASupprimer] = useState<ChecklistType | null>(null);
+  const [itemASupprimer, setItemASupprimer] = useState<Element | null>(null);
   const [survole, setSurvole] = useState(false);
   // L'élément qu'on vient d'ajouter : il s'ouvre en saisie.
-  const [nouvelItem, setNouvelItem] = useState(null);
+  const [nouvelItem, setNouvelItem] = useState<Id | null>(null);
 
   const items = checklist.items || [];
   const pourcentage = avancement(items);
 
   // Tout ce qui part au serveur passe par ici : une panne se dit à l'écran,
   // au lieu de laisser le geste sans effet apparent.
-  const agir = async (action) => {
+  const agir = async (action: () => Promise<unknown>) => {
     try {
       await action();
     } catch (e) {
-      onError?.(e.message);
+      onError?.(messageErreur(e));
     }
   };
 
@@ -512,12 +612,11 @@ function Checklist({
   const ajouterItem = () =>
     agir(async () => {
       const cree = await api.createChecklistItem(checklist.id);
-      setDeplie(true);
       await onChanged();
       setNouvelItem(cree.id);
     });
 
-  const modifierItem = (item, data) =>
+  const modifierItem = (item: Element, data: ChecklistItemInput) =>
     agir(async () => {
       await api.updateChecklistItem(item.id, data);
       await onChanged();
@@ -544,8 +643,7 @@ function Checklist({
       style={{ opacity: dragged ? 0.4 : 1 }}
     >
       <Stack gap="xs">
-        {/* Entête : la poignée, le chevron, le titre, la progression, la
-            corbeille. */}
+        {/* Entête : la poignée, le titre, la progression, la corbeille. */}
         <Group gap="xs" wrap="nowrap" align="center">
           {/* La poignée ouvre l'entête : c'est par elle qu'on range les
               checklists entre elles. */}
@@ -554,16 +652,6 @@ function Checklist({
             visible={survole}
             label="Glisser pour réordonner la checklist"
           />
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            size="sm"
-            onClick={() => setDeplie((d) => !d)}
-            aria-label={deplie ? "Replier la checklist" : "Déplier la checklist"}
-          >
-            {deplie ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
-          </ActionIcon>
-
           {titre === null ? (
             <Text
               fw={600}
@@ -601,7 +689,7 @@ function Checklist({
           )}
 
           {/* La progression précède la corbeille : elle se lit d'un coup
-              d'œil, même checklist repliée. */}
+              d'œil, sans parcourir les lignes. */}
           <Group gap={6} wrap="nowrap" style={{ flexShrink: 0 }}>
             <Progress
               value={pourcentage}
@@ -627,39 +715,35 @@ function Checklist({
           </ActionIcon>
         </Group>
 
-        {/* Mantine 9 dit « expanded » ; « in » y était ignoré, et la
-            checklist restait repliée pour toujours. */}
-        <Collapse expanded={deplie}>
-          <Stack gap={ITEM_GAP} ref={zoneRef}>
-            {items.map((item, index) => (
-              <div key={item.id}>
-                {drag?.target === index && <InsertLine />}
-                <ChecklistItem
-                  item={item}
-                  users={users}
-                  dragged={drag?.id === item.id}
-                  autoEdit={nouvelItem === item.id}
-                  onEditDone={() => setNouvelItem(null)}
-                  onPointerDown={onPointerDown(item.id, index)}
-                  onToggle={(done) => modifierItem(item, { done })}
-                  onRename={(text) => modifierItem(item, { text })}
-                  onDate={(due_date) => modifierItem(item, { due_date })}
-                  onMembers={(member_ids) => modifierItem(item, { member_ids })}
-                  onDelete={() => setItemASupprimer(item)}
-                />
-              </div>
-            ))}
-            {drag && drag.target >= items.length && <InsertLine />}
+        <Stack gap={ITEM_GAP} ref={zoneRef}>
+          {items.map((item, index) => (
+            <div key={item.id}>
+              {drag?.target === index && <InsertLine />}
+              <ChecklistItem
+                item={item}
+                users={users}
+                dragged={drag?.id === item.id}
+                autoEdit={nouvelItem === item.id}
+                onEditDone={() => setNouvelItem(null)}
+                onPointerDown={onPointerDown(item.id, index)}
+                onToggle={(done) => modifierItem(item, { done })}
+                onRename={(text) => modifierItem(item, { text })}
+                onDate={(due_date) => modifierItem(item, { due_date })}
+                onMembers={(member_ids) => modifierItem(item, { member_ids })}
+                onDelete={() => setItemASupprimer(item)}
+              />
+            </div>
+          ))}
+          {drag && drag.target >= items.length && <InsertLine />}
 
-            {/* Le vert des actions « ajouter », comme au bout d'une liste. */}
-            <UnstyledButton onClick={ajouterItem} mt={4}>
-              <Group gap={PLUS_GAP} wrap="nowrap" c={ADD_ACTION.color}>
-                <IconPlus size={PLUS_SIZE} />
-                <Text size="sm">Ajouter un élément</Text>
-              </Group>
-            </UnstyledButton>
-          </Stack>
-        </Collapse>
+          {/* Le vert des actions « ajouter », comme au bout d'une liste. */}
+          <UnstyledButton onClick={ajouterItem} mt={4}>
+            <Group gap={PLUS_GAP} wrap="nowrap" c={ADD_ACTION.color}>
+              <IconPlus size={PLUS_SIZE} />
+              <Text size="sm">Ajouter un élément</Text>
+            </Group>
+          </UnstyledButton>
+        </Stack>
       </Stack>
 
       <DeleteConfirmModal
@@ -710,13 +794,21 @@ function Checklist({
  * case cochée, un libellé validé ou une ligne déplacée partent aussitôt au
  * serveur, sans attendre « Enregistrer ».
  */
+interface CardChecklistsProps {
+  cardId: Id;
+  checklists: ChecklistType[];
+  users: PublicUser[];
+  onChanged: () => void | Promise<void>;
+  onError?: (message: string) => void;
+}
+
 export default function CardChecklists({
   cardId,
   checklists,
   users,
   onChanged,
   onError,
-}) {
+}: CardChecklistsProps) {
   const listes = checklists || [];
 
   // Les checklists se glissent entre elles, par la poignée de leur entête.
@@ -728,7 +820,7 @@ export default function CardChecklists({
         await api.reorderChecklists(cardId, ordre);
         await onChanged();
       } catch (e) {
-        onError?.(e.message);
+        onError?.(messageErreur(e));
       }
     },
   });

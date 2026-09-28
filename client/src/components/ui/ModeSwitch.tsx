@@ -1,13 +1,19 @@
 import { SegmentedControl } from "@mantine/core";
-import { MODES } from "../../lib/modes";
+import type { Mode } from "@milo/shared";
+import { MODES } from "@milo/shared";
 
 // Pendant du « ? » des raccourcis : même retrait, dans le coin opposé.
-export default function ModeSwitch({ mode, onModeChange }) {
+interface ModeSwitchProps {
+  mode: Mode;
+  onModeChange: (mode: Mode) => void;
+}
+
+export default function ModeSwitch({ mode, onModeChange }: ModeSwitchProps) {
   return (
     <SegmentedControl
       value={mode}
-      onChange={onModeChange}
-      data={MODES}
+      onChange={(value) => onModeChange(value as Mode)}
+      data={MODES.map((m) => ({ value: m.value, label: m.label }))}
       size="sm"
       // Sans traits de séparation entre les modes : seule la pastille du mode
       // courant se voit.

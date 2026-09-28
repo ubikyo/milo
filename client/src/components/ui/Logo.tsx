@@ -9,9 +9,14 @@ import milo2Inv from "../../assets/media/Milo-Inv-2.svg";
 const SOURCES = {
   1: { light: milo1, dark: milo1Inv },
   2: { light: milo2, dark: milo2Inv },
-};
+} as const;
 
-export default function Logo({ variant = 2, h = 40 }) {
+interface LogoProps {
+  variant?: 1 | 2;
+  h?: number;
+}
+
+export default function Logo({ variant = 2, h = 40 }: LogoProps) {
   // `colorScheme` peut valoir "auto" : on lit le thème réellement appliqué.
   // getInitialValueInEffect: false pour éviter d'afficher brièvement le
   // mauvais logo au premier rendu.

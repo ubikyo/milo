@@ -1,12 +1,36 @@
 import { Stack } from "@mantine/core";
 import { IconLayoutColumns } from "@tabler/icons-react";
-import TaskBoard from "../components/board/TaskBoard.jsx";
-import BoardTabs from "../components/ui/BoardTabs.jsx";
-import EmptyPanel from "../components/ui/EmptyPanel.jsx";
+import TaskBoard from "../components/board/TaskBoard";
+import BoardTabs from "../components/ui/BoardTabs";
+import EmptyPanel from "../components/ui/EmptyPanel";
+import type { Board, FollowKind, Follows, Id, Label, PublicUser, TaskList } from "@milo/shared";
 
 // Le mode Tâche : les tableaux de la société courante en onglets, et le
 // contenu du tableau ouvert. Les données et les tiroirs restent à l'application
 // (App.jsx), cette page ne fait que les mettre en scène.
+interface TasksPageProps {
+  /** « null » tant que les tableaux ne sont pas lus ; « [] » quand il n'y en a pas. */
+  boards: Board[] | null;
+  boardId: string | null;
+  onBoardChange: (id: string | null) => void;
+  onAddBoard: () => void;
+  onEditBoard: () => void;
+  onDeleteBoard: () => void | Promise<void>;
+  lists: TaskList[] | null;
+  onListsChanged: () => void | Promise<void>;
+  labels: Label[];
+  users: PublicUser[];
+  onLabelsChanged: (patch?: { id: number; data: Partial<Label> }) => void | Promise<void>;
+  loading: boolean;
+  /** Ce que la personne suit, et de quoi le changer depuis les menus. */
+  follows: Follows;
+  onToggleFollow: (kind: FollowKind, id: Id) => void | Promise<void>;
+  /** Carte à ouvrir, désignée par l'adresse ou par une notification. */
+  carteAOuvrir: Id | null;
+  /** La carte dont le tiroir est ouvert, ou « null » : l'adresse la suit. */
+  onCarteOuverte: (id: Id | null) => void;
+}
+
 export default function TasksPage({
   boards,
   boardId,
@@ -20,7 +44,11 @@ export default function TasksPage({
   users,
   onLabelsChanged,
   loading,
-}) {
+  follows,
+  onToggleFollow,
+  carteAOuvrir,
+  onCarteOuverte,
+}: TasksPageProps) {
   // Rien à montrer tant que les tableaux ne sont pas connus, ni pendant une
   // lecture : l'écran vide attend d'être une certitude.
   if (!boards) return null;
@@ -60,6 +88,10 @@ export default function TasksPage({
           labels={labels}
           users={users}
           onLabelsChanged={onLabelsChanged}
+          follows={follows}
+          onToggleFollow={onToggleFollow}
+          carteAOuvrir={carteAOuvrir}
+          onCarteOuverte={onCarteOuverte}
         />
       )}
     </Stack>

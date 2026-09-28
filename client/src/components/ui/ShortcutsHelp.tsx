@@ -1,15 +1,16 @@
 import { ActionIcon, Group, HoverCard, Kbd, Stack, Text } from "@mantine/core";
+import type { Mode } from "@milo/shared";
 
 // Action à gauche, raccourci à droite. « mode » limite un raccourci au mode
 // où il agit : pas de nouveau projet en mode Tâche.
-const SHORTCUTS = [
+const SHORTCUTS: { action: string; key: string; mode?: Mode }[] = [
   { action: "Nouveau projet", key: "N", mode: "projects" },
   { action: "Basculer Projet / Tâche", key: "Tab" },
   { action: "Tableau suivant", key: "⌥ Tab" },
   { action: "Société suivante", key: "S" },
 ];
 
-export default function ShortcutsHelp({ mode }) {
+export default function ShortcutsHelp({ mode }: { mode: Mode }) {
   return (
     <HoverCard position="top-end" withArrow shadow="md" openDelay={100}>
       <HoverCard.Target>

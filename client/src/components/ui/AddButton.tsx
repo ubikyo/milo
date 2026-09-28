@@ -1,4 +1,4 @@
-import { Button } from "@mantine/core";
+import { Button, type ButtonProps } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
 import { useState } from "react";
 import { ADD_ACTION } from "../../themes/colors";
@@ -7,7 +7,12 @@ import { PLUS_SIZE } from "../../themes/plus";
 // Action « ajouter » posée au bout d'une liste : un libellé vert sans fond, un
 // ton plus foncé au survol. Sert en bas du tableau de projets comme au bout de
 // la rangée de listes du mode Tâche.
-export default function AddButton({ label, onClick, ...props }) {
+interface AddButtonProps extends ButtonProps {
+  label: string;
+  onClick: () => void;
+}
+
+export default function AddButton({ label, onClick, ...props }: AddButtonProps) {
   const [hovered, setHovered] = useState(false);
 
   return (

@@ -5,11 +5,20 @@ export const RED = "#FF0000";
 // Couleur de la progression d'un projet : rouge en dessous de 30 %, orange
 // de 30 à 70 %, vert au-delà. Sert à la barre du tableau comme au curseur du
 // tiroir, pour qu'un même pourcentage se lise pareil partout.
-export const statusColor = (status) => {
+export const statusColor = (status: number): string => {
   if (status < 30) return RED;
   if (status <= 70) return "orange";
   return "teal";
 };
+
+// Vert des messages de réussite : le pendant du rouge ci-dessus, dans le même
+// rôle — un cadre qui rend compte de ce qui vient de se passer.
+//
+// Deux nuances, une par thème, là où le rouge n'en a qu'une : le vert de la
+// palette est clair, et le même ton serait illisible sur fond blanc. C'est le
+// teal des actions qui valident (ADD_ACTION ci-dessous), assombri d'autant
+// qu'il faut sur le thème clair.
+export const GREEN = "light-dark(var(--mantine-color-teal-8), var(--mantine-color-teal-4))";
 
 // Entête d'une confirmation que l'on ne veut pas dramatiser : gris foncé au
 // lieu du rouge, le texte restant blanc dans les deux thèmes.

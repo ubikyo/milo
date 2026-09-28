@@ -23,10 +23,14 @@ import {
   useMantineTheme,
 } from "@mantine/core";
 import {
+  IconCheck,
   IconCheckbox,
+  IconClock,
   IconCircleOff,
   IconColumns,
   IconDots,
+  IconCopy,
+  IconEye,
   IconFolderSymlink,
   IconAlignLeft,
   IconPlus,
@@ -38,16 +42,130 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api";
 import { RED } from "../../themes/colors";
 import { PLUS_GAP, PLUS_SIZE } from "../../themes/plus";
-import ActorAvatars from "../ui/ActorAvatars.jsx";
-import AddButton from "../ui/AddButton.jsx";
-import { CardLabel } from "../ui/LabelChip.jsx";
-import Confetti from "../ui/Confetti.jsx";
-import CardDrawer from "./CardDrawer.jsx";
-import MoveListModal from "./MoveListModal.jsx";
-import DeleteConfirmModal from "../ui/DeleteConfirmModal.jsx";
-import EmptyPanel from "../ui/EmptyPanel.jsx";
-import ErrorAlert from "../ui/ErrorAlert.jsx";
+import ActorAvatars from "../ui/ActorAvatars";
+import AddButton from "../ui/AddButton";
+import { CardLabel } from "../ui/LabelChip";
+import Confetti from "../ui/Confetti";
+import CardDrawer from "./CardDrawer";
+import MoveOrCopyListModal, { type ListAction } from "./MoveOrCopyListModal";
+import DeleteConfirmModal from "../ui/DeleteConfirmModal";
+import EmptyPanel from "../ui/EmptyPanel";
+import ErrorAlert from "../ui/ErrorAlert";
 import classes from "../../assets/styles/TaskBoard.module.css";
+import { messageErreur } from "../../lib/errors";
+import { MOT_ECHEANCE, dateCourte, etatEcheance } from "../../lib/echeance";
+import type { EtatEcheance } from "../../lib/echeance";
+import type {
+  CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+} from "react";
+import type {
+  Board,
+  FollowKind,
+  Follows,
+  Id,
+  Label,
+  ListColor,
+  PublicUser,
+  TaskCard,
+  TaskList,
+} from "@milo/shared";
+
+/** Les couleurs d'une liste, résolues pour le thème courant. */
+interface Palette {
+  fond: string;
+  texte: string;
+  survol: string;
+  texteSurvol: string;
+  bordureCarte: string;
+  fondSeparateur: string;
+  texteSeparateur: string;
+  traitInsertion: string;
+}
+
+/** Le glisser d'une liste, tel que le rendu le voit. */
+interface GlisserListe {
+  id: Id;
+  /** Son rang de départ. */
+  from: number;
+  /** Le rang où elle se posera. */
+  target: number;
+  /** Position du clone qui suit le pointeur. */
+  x: number;
+  y: number;
+}
+
+/**
+ * Le même geste, suivi hors du rendu par une référence : il change à chaque
+ * mouvement du pointeur, et n'a pas à provoquer de rendu tant que le seuil de
+ * déclenchement n'est pas franchi.
+ */
+interface GlisserListeEnCours {
+  id: Id;
+  index: number;
+  startX: number;
+  startY: number;
+  /** Décalage du pointeur dans la carte, pour que le clone suive sans saut. */
+  offsetX: number;
+  offsetY: number;
+  /** Faux tant que le pointeur n'a pas franchi le seuil de déclenchement. */
+  started: boolean;
+}
+
+/** La liste d'accueil d'une carte et le rang qu'elle y prendra. */
+interface CibleCarte {
+  listId: Id;
+  index: number;
+}
+
+/** Le glisser d'une carte, tel que le rendu le voit. */
+interface GlisserCarte {
+  id: Id;
+  /** Le clone et l'emplacement d'accueil reprennent la taille de la carte. */
+  width: number;
+  height: number;
+  target: CibleCarte | null;
+  x: number;
+  y: number;
+}
+
+interface GlisserCarteEnCours {
+  id: Id;
+  listId: Id;
+  startX: number;
+  startY: number;
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  height: number;
+  started: boolean;
+}
+
+/** Une carte qui vient d'être saisie, posée avant la réponse du serveur. */
+interface CarteProvisoire {
+  id: string;
+  list_id: Id;
+  text: string;
+  number: number;
+  kind: "card" | "separator";
+}
+
+/** La salve de confettis en cours, tirée au-dessus d'une liste. */
+interface Confettis {
+  cle: number;
+  x: number;
+  y: number;
+  width: number;
+}
+
+/** La saisie d'une nouvelle carte : où elle se posera, et de quel genre. */
+interface Composition {
+  listId: Id;
+  index: number;
+  kind: "card" | "separator";
+}
 
 // Largeur d'une liste et espace entre deux listes.
 const LIST_WIDTH = 270;
@@ -95,17 +213,18 @@ function useListColors() {
   const colorScheme = useComputedColorScheme("light");
 
   return useCallback(
-    (color) => {
+    (color: string | null | undefined): Palette => {
       const sombre = colorScheme === "dark";
       // Le blanc n'est pas une teinte de la palette : il s'inverse d'un thème
       // à l'autre, blanc sur le sombre et noir sur le clair.
-      let fond;
+      let fond: string;
+      const palette = color ? theme.colors[color] : undefined;
       if (color === "white") fond = sombre ? theme.white : theme.black;
-      else if (LIST_COLORS.some((c) => c.value === color))
-        fond = theme.colors[color][getPrimaryShade(theme, colorScheme)];
-      else fond = sombre ? theme.colors.dark[5] : theme.colors.gray[2];
+      else if (palette && LIST_COLORS.some((c) => c.value === color))
+        fond = palette[getPrimaryShade(theme, colorScheme)] ?? palette[6]!;
+      else fond = (sombre ? theme.colors["dark"]?.[5] : theme.colors["gray"]?.[2]) ?? theme.white;
 
-      const lisible = (dessous) =>
+      const lisible = (dessous: string): string =>
         getContrastColor({
           color: dessous,
           theme,
@@ -160,7 +279,13 @@ const INPUT_NO_BORDER = {
 // « Ajouter une carte » ne peint aucun fond, pas même au survol : c'est le
 // libellé qui s'éclaircit en devenant translucide. Le « + » est aligné sur le
 // bord gauche du contenu de la liste, sans marge intérieure.
-function AddCardButton({ label, onClick, color }) {
+interface AddCardButtonProps {
+  label: string;
+  onClick: () => void;
+  color: string;
+}
+
+function AddCardButton({ label, onClick, color }: AddCardButtonProps) {
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -185,13 +310,18 @@ function AddCardButton({ label, onClick, color }) {
 }
 
 // Le texte des cartes est saisi au kilomètre : les retours à la ligne comptent.
-const CARD_TEXT = { whiteSpace: "pre-wrap", wordBreak: "break-word" };
+const CARD_TEXT: CSSProperties = { whiteSpace: "pre-wrap", wordBreak: "break-word" };
 
 // Entrée valide la carte, Cmd (ou Ctrl) + Entrée va à la ligne. Le navigateur
 // n'insère rien de lui-même sur cette combinaison : on pose le retour à la
 // ligne à la position du curseur, qu'on replace juste après.
-const insererRetourLigne = (element, setValue) => {
-  const { selectionStart: debut, selectionEnd: fin, value } = element;
+const insererRetourLigne = (
+  element: HTMLTextAreaElement,
+  setValue: (value: string) => void,
+): void => {
+  const { value } = element;
+  const debut = element.selectionStart ?? value.length;
+  const fin = element.selectionEnd ?? debut;
   setValue(`${value.slice(0, debut)}\n${value.slice(fin)}`);
   requestAnimationFrame(() => {
     element.selectionStart = debut + 1;
@@ -201,7 +331,15 @@ const insererRetourLigne = (element, setValue) => {
 
 // Touches communes à la saisie d'une carte et à sa modification : Échap
 // annule, Entrée valide, Cmd/Ctrl + Entrée va à la ligne.
-const toucheCarte = ({ setValue, onCancel, onSubmit }) => (event) => {
+interface ToucheCarte {
+  setValue: (value: string) => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+}
+
+const toucheCarte =
+  ({ setValue, onCancel, onSubmit }: ToucheCarte) =>
+  (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
   if (event.key === "Escape") {
     onCancel();
     return;
@@ -210,7 +348,7 @@ const toucheCarte = ({ setValue, onCancel, onSubmit }) => (event) => {
   event.preventDefault();
   if (event.metaKey || event.ctrlKey) insererRetourLigne(event.currentTarget, setValue);
   else onSubmit();
-};
+  };
 
 // La bordure de survol est toujours là, transparente au repos : la carte ne
 // bouge pas quand le pointeur la touche.
@@ -220,6 +358,57 @@ const toucheCarte = ({ setValue, onCancel, onSubmit }) => (event) => {
 // reste celui des projets.
 const CARD_AVATAR_SIZE = 25;
 
+// La pastille d'échéance : une horloge et le jour, en abrégé. Dès qu'une carte
+// porte une date, elle se montre ; c'est sa couleur qui alerte, ou non. Rouge
+// passé le jour dit, orange dans les trois jours qui le précèdent, et sinon un
+// fond neutre — la date se lit, mais rien ne presse. Elle précède la pastille
+// des checklists, comme l'échéance précède le titre dans la fiche.
+const DUE_BG: Record<EtatEcheance, string> = {
+  retard: "var(--mantine-color-red-filled)",
+  bientot: "var(--mantine-color-orange-filled)",
+  // Le gris des fonds discrets : la bulle se détache de la carte sans crier.
+  aucun: "light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5))",
+};
+
+// Sur un fond plein, le blanc ; sur le fond neutre, la couleur du texte
+// ordinaire — du blanc y serait illisible en thème clair.
+const DUE_FG: Record<EtatEcheance, string> = {
+  retard: "var(--mantine-color-white)",
+  bientot: "var(--mantine-color-white)",
+  aucun: "light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-0))",
+};
+
+interface CardDueBadgeProps {
+  card: TaskCard;
+}
+
+function CardDueBadge({ card }: CardDueBadgeProps) {
+  const texte = dateCourte(card.due_date);
+  if (!texte) return null;
+
+  const etat = etatEcheance(card.due_date);
+  const mot = MOT_ECHEANCE[etat];
+
+  return (
+    <span
+      aria-label={mot ? `Échéance : ${texte} — ${mot}` : `Échéance : ${texte}`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "1px 6px",
+        borderRadius: 6,
+        backgroundColor: DUE_BG[etat],
+        color: DUE_FG[etat],
+        flexShrink: 0,
+      }}
+    >
+      <IconClock size={14} />
+      <Text size="xs">{texte}</Text>
+    </span>
+  );
+}
+
 // La pastille des checklists : un symbole de case à cocher et le rapport des
 // cases cochées au total, cumulé sur toutes les checklists de la carte. Elle
 // se clique pour déplier, sous la carte, ce qu'il reste à faire. Une fois tout
@@ -227,7 +416,21 @@ const CARD_AVATAR_SIZE = 25;
 // lire le compte.
 const CHECKLIST_DONE_BG = "var(--mantine-color-teal-filled)";
 
-function CardChecklistBadge({ card, open, onToggle }) {
+// Ce qu'il reste à cocher se détache du corps de la carte par un filet et un
+// peu d'air : déplié, on voit d'un coup où finit la carte et où commence sa
+// liste. Le même air sépare les lignes entre elles : deux cases à cocher
+// collées se lisent comme un bloc, alors qu'on les coche une par une.
+const CHECKLIST_PANEL_RULE = "1px solid var(--mantine-color-default-border)";
+const CHECKLIST_PANEL_MARGIN = 6;
+const CHECKLIST_PANEL_PAD = 10;
+const CHECKLIST_ITEM_GAP = 8;
+
+interface CardChecklistBadgeProps {
+  card: TaskCard;
+  onToggle: () => void;
+}
+
+function CardChecklistBadge({ card, onToggle }: CardChecklistBadgeProps) {
   const total = card.checklist_total || 0;
   if (total === 0) return null;
   const done = card.checklist_done || 0;
@@ -258,38 +461,46 @@ function CardChecklistBadge({ card, open, onToggle }) {
 
 // Ce qu'il reste à faire, déplié sous la carte : les éléments non cochés de
 // toutes ses checklists. Cocher ici retire la ligne et fait avancer la
-// pastille, sans ouvrir la fiche.
-function CardChecklistPanel({ card, onCheck }) {
+// pastille, sans ouvrir la fiche. Plus rien à cocher, plus de panneau : la
+// pastille verte le dit déjà, un « Tout est coché » sous la carte ne ferait
+// que l'allonger.
+interface CardChecklistPanelProps {
+  card: TaskCard;
+  onCheck: (itemId: Id) => void;
+}
+
+function CardChecklistPanel({ card, onCheck }: CardChecklistPanelProps) {
   const restants = card.checklist_open || [];
+  if (restants.length === 0) return null;
 
   return (
-    <Stack gap={2} data-no-card-drag="true" pt={2}>
-      {restants.length === 0 ? (
-        <Text size="xs" c="dimmed">
-          Tout est coché
-        </Text>
-      ) : (
-        restants.map((item) => (
-          <Checkbox
-            key={item.id}
-            checked={false}
-            onChange={() => onCheck(item.id)}
-            size="xs"
-            label={item.text || "Sans libellé"}
-            styles={{
-              body: { alignItems: "center" },
-              labelWrapper: { minWidth: 0 },
-              label: {
-                cursor: "pointer",
-                paddingLeft: 6,
-                fontSize: "var(--mantine-font-size-xs)",
-                wordBreak: "break-word",
-              },
-              input: { cursor: "pointer" },
-            }}
-          />
-        ))
-      )}
+    <Stack
+      gap={CHECKLIST_ITEM_GAP}
+      data-no-card-drag="true"
+      pt={CHECKLIST_PANEL_PAD}
+      mt={CHECKLIST_PANEL_MARGIN}
+      style={{ borderTop: CHECKLIST_PANEL_RULE }}
+    >
+      {restants.map((item) => (
+        <Checkbox
+          key={item.id}
+          checked={false}
+          onChange={() => onCheck(item.id)}
+          size="xs"
+          label={item.text || "Sans libellé"}
+          styles={{
+            body: { alignItems: "center" },
+            labelWrapper: { minWidth: 0 },
+            label: {
+              cursor: "pointer",
+              paddingLeft: 6,
+              fontSize: "var(--mantine-font-size-xs)",
+              wordBreak: "break-word",
+            },
+            input: { cursor: "pointer" },
+          }}
+        />
+      ))}
     </Stack>
   );
 }
@@ -300,7 +511,13 @@ function CardChecklistPanel({ card, onCheck }) {
 // taire (« Afficher le numéro des cartes », dans son tiroir). Les bulles se
 // recouvrent comme dans le tableau des projets ; sans membre, la ligne n'en
 // montre aucune.
-function CardNumber({ card, withNumber, checklistOpen, onChecklistToggle }) {
+interface CardNumberProps {
+  card: TaskCard;
+  withNumber: boolean;
+  onChecklistToggle: () => void;
+}
+
+function CardNumber({ card, withNumber, onChecklistToggle }: CardNumberProps) {
   const membres = card.members || [];
 
   return (
@@ -310,11 +527,13 @@ function CardNumber({ card, withNumber, checklistOpen, onChecklistToggle }) {
         {card.has_description && (
           <IconAlignLeft size={14} aria-label="Cette carte a une description" />
         )}
+        {/* L'échéance ouvre la ligne : une carte en retard doit se voir
+            avant qu'on lise ce qu'elle porte. */}
+        <CardDueBadge card={card} />
         {/* Les cases cochées passent avant le numéro : c'est l'avancement
             qu'on cherche du regard, pas le repère. */}
         <CardChecklistBadge
           card={card}
-          open={checklistOpen}
           onToggle={onChecklistToggle}
         />
         {withNumber && <Text size="xs">#{card.number}</Text>}
@@ -329,11 +548,11 @@ function CardNumber({ card, withNumber, checklistOpen, onChecklistToggle }) {
 // Un séparateur n'est pas une carte à suivre : il titre ce qui vient ensuite.
 // Il se saisit, se modifie et se glisse comme une carte, mais il ne porte ni
 // numéro ni fond de carte.
-const estSeparateur = (card) => card.kind === "separator";
+const estSeparateur = (card: TaskCard): boolean => card.kind === "separator";
 
 // Le fond d'un séparateur : celui de sa liste, assombri. Une carte ordinaire
 // garde le fond que Mantine donne au Paper.
-const styleSeparateur = (card, palette) =>
+const styleSeparateur = (card: TaskCard, palette: Palette): CSSProperties | null =>
   estSeparateur(card)
     ? {
         backgroundColor: palette.fondSeparateur,
@@ -343,6 +562,18 @@ const styleSeparateur = (card, palette) =>
 
 // Ce que montre une carte. Posé à part : la carte elle-même, la copie qui suit
 // le pointeur et les cartes de la liste qu'on déplace s'en servent toutes.
+interface CardContentProps {
+  card: TaskCard;
+  withNumber?: boolean;
+  labelsCompactes?: boolean;
+  onLabelClick?: () => void;
+  /** Les étiquettes du tableau : elles font foi sur celles que porte la carte. */
+  labels?: Label[];
+  checklistOpen?: boolean;
+  onChecklistToggle?: () => void;
+  onChecklistCheck?: (itemId: Id) => void;
+}
+
 function CardContent({
   card,
   withNumber = true,
@@ -352,7 +583,7 @@ function CardContent({
   checklistOpen = false,
   onChecklistToggle,
   onChecklistCheck,
-}) {
+}: CardContentProps) {
   if (estSeparateur(card))
     return (
       <Text size="sm" fw={700} style={CARD_TEXT}>
@@ -389,12 +620,11 @@ function CardContent({
       <CardNumber
         card={card}
         withNumber={withNumber}
-        checklistOpen={checklistOpen}
-        onChecklistToggle={onChecklistToggle}
+        onChecklistToggle={onChecklistToggle ?? (() => {})}
       />
       {/* Déplié par la pastille : ce qu'il reste à cocher, sous la carte. */}
       {checklistOpen && (
-        <CardChecklistPanel card={card} onCheck={onChecklistCheck} />
+        <CardChecklistPanel card={card} onCheck={onChecklistCheck ?? (() => {})} />
       )}
     </Stack>
   );
@@ -407,7 +637,7 @@ const INSERT_ZONE = 12;
 // Insertion entre deux cartes : un trait pointillé avec un « + » au milieu,
 // qui n'apparaît qu'au survol. La zone ne prend aucune hauteur dans la pile —
 // elle chevauche l'écart entre les deux cartes, qui garde ses 8px.
-function CardInsert({ couleur, onClick }) {
+function CardInsert({ couleur, onClick }: { couleur: string; onClick: () => void }) {
   const [survole, setSurvole] = useState(false);
 
   return (
@@ -445,7 +675,14 @@ function CardInsert({ couleur, onClick }) {
 
 // Carte figée : sans écoute du pointeur ni survol, pour les copies affichées
 // pendant un glisser.
-function CardStill({ card, palette, withNumber, labelsCompactes }) {
+interface CardStillProps {
+  card: TaskCard;
+  palette: Palette;
+  withNumber: boolean;
+  labelsCompactes: boolean;
+}
+
+function CardStill({ card, palette, withNumber, labelsCompactes }: CardStillProps) {
   return (
     <Paper
       radius={CARD_RADIUS}
@@ -458,7 +695,7 @@ function CardStill({ card, palette, withNumber, labelsCompactes }) {
 }
 
 // Insertion dans une copie : l'original n'est jamais touché.
-const insere = (liste, index, valeur) => {
+const insere = <T,>(liste: T[], index: number, valeur: T): T[] => {
   const copie = [...liste];
   copie.splice(index, 0, valeur);
   return copie;
@@ -466,7 +703,12 @@ const insere = (liste, index, valeur) => {
 
 // Déplacement d'une carte dans une copie des listes, pour l'afficher avant que
 // le serveur ait répondu.
-const withCardMoved = (lists, cardId, toListId, index) => {
+const withCardMoved = (
+  lists: TaskList[],
+  cardId: Id,
+  toListId: Id,
+  index: number,
+): TaskList[] => {
   const carte = lists
     .flatMap((l) => l.cards || [])
     .find((c) => c.id === cardId);
@@ -481,6 +723,31 @@ const withCardMoved = (lists, cardId, toListId, index) => {
 
 // --- Liste ----------------------------------------------------------------
 
+/** Le renommage en cours d'une liste. */
+interface EditionListe {
+  id: Id;
+  name: string;
+}
+
+interface ListCardProps {
+  list: TaskList;
+  editing: EditionListe | null;
+  onStartEdit: () => void;
+  onEditChange: (event: { currentTarget: { value: string } }) => void;
+  onEditKeyDown: (event: ReactKeyboardEvent<HTMLInputElement>) => void;
+  onEditBlur: () => void;
+  onPointerDown: (event: ReactPointerEvent) => void;
+  onDelete: () => void;
+  onMove: () => void;
+  onCopy: () => void;
+  onColor: (color: string) => void;
+  onSeparator: () => void;
+  /** Suivre cette liste, c'est être prévenu de ce qui arrive à ses cartes. */
+  suivie: boolean;
+  onToggleFollow: () => void;
+  children?: ReactNode;
+}
+
 function ListCard({
   list,
   editing,
@@ -491,10 +758,13 @@ function ListCard({
   onPointerDown,
   onDelete,
   onMove,
+  onCopy,
   onColor,
   onSeparator,
+  suivie,
+  onToggleFollow,
   children,
-}) {
+}: ListCardProps) {
   // Le menu se ferme de lui-même sur ses entrées, mais pas sur les pastilles
   // de couleur, qui n'en sont pas : on le pilote pour qu'un choix le referme.
   const [menuOpened, setMenuOpened] = useState(false);
@@ -549,7 +819,7 @@ function ListCard({
               fw={600}
               size="sm"
               c={sienne.texte}
-              onClick={() => onStartEdit(list)}
+              onClick={onStartEdit}
               style={{ cursor: "pointer", flex: 1, minWidth: 0 }}
             >
               {list.name}
@@ -594,6 +864,20 @@ function ListCard({
             <Menu.Dropdown>
               {/* Le séparateur se saisit comme une carte, à la fin de la
                   liste ; on le glisse ensuite là où il doit trancher. */}
+              {/* Cochée, la liste est suivie : toute modification de ses
+                  cartes vaut notification. La coche est à droite comme dans
+                  les menus du système, l'œil à gauche comme les autres icônes. */}
+              <Menu.Item
+                leftSection={<IconEye size={16} />}
+                rightSection={suivie ? <IconCheck size={14} /> : null}
+                onClick={onToggleFollow}
+                closeMenuOnClick={false}
+              >
+                Suivre
+              </Menu.Item>
+
+              <Menu.Divider />
+
               <Menu.Item
                 leftSection={<IconSeparatorHorizontal size={16} />}
                 onClick={onSeparator}
@@ -605,6 +889,14 @@ function ListCard({
                 onClick={onMove}
               >
                 Déplacer
+              </Menu.Item>
+              {/* Copier suit déplacer : même question — vers quel tableau ? —
+                  et la même boîte y répond, le tableau courant compris. */}
+              <Menu.Item
+                leftSection={<IconCopy size={16} />}
+                onClick={onCopy}
+              >
+                Copier
               </Menu.Item>
 
               <Menu.Divider />
@@ -654,6 +946,30 @@ function ListCard({
 
 // --- Carte ----------------------------------------------------------------
 
+/** La saisie en cours sur une carte : celle qu'on modifie, et son texte. */
+interface EditionCarte {
+  id: Id;
+  text: string;
+}
+
+interface CardViewProps {
+  card: TaskCard;
+  editing: EditionCarte | null;
+  onStartEdit: (card: TaskCard) => void;
+  onEditChange: (event: { currentTarget: { value: string } }) => void;
+  onEditKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
+  onEditBlur: () => void;
+  onPointerDown: (event: ReactPointerEvent) => void;
+  palette: Palette;
+  withNumber: boolean;
+  labelsCompactes: boolean;
+  onLabelClick: () => void;
+  labels: Label[];
+  checklistOpen: boolean;
+  onChecklistToggle: () => void;
+  onChecklistCheck: (itemId: Id) => void;
+}
+
 function CardView({
   card,
   editing,
@@ -670,7 +986,7 @@ function CardView({
   checklistOpen,
   onChecklistToggle,
   onChecklistCheck,
-}) {
+}: CardViewProps) {
   const [hovered, setHovered] = useState(false);
 
   // En édition, la carte garde son attribut : elle occupe toujours son
@@ -730,7 +1046,23 @@ function CardView({
 // Une liste figée : son fond, son titre, ses cartes et son « ajouter une
 // carte », sans aucune interaction. C'est ce que montrent la copie qui suit le
 // pointeur et la liste laissée en place pendant le glisser.
-function ListStill({ list, style, shadow, withNumber, labelsCompactes, ...props }) {
+interface ListStillProps {
+  list: TaskList;
+  style?: CSSProperties;
+  shadow?: string;
+  withNumber: boolean;
+  labelsCompactes: boolean;
+  [autre: string]: unknown;
+}
+
+function ListStill({
+  list,
+  style,
+  shadow,
+  withNumber,
+  labelsCompactes,
+  ...props
+}: ListStillProps) {
   const sienne = useListColors()(list?.color);
 
   return (
@@ -763,10 +1095,25 @@ function ListStill({ list, style, shadow, withNumber, labelsCompactes, ...props 
             />
           ))}
         </Stack>
-        <AddCardButton label="Ajouter une carte" color={sienne.texte} />
+        <AddCardButton label="Ajouter une carte" color={sienne.texte} onClick={() => {}} />
       </Stack>
     </Paper>
   );
+}
+
+interface TaskBoardProps {
+  boardId: string | null;
+  boards: Board[];
+  lists: TaskList[];
+  loading: boolean;
+  onListsChanged: () => void | Promise<void>;
+  labels: Label[];
+  users: PublicUser[];
+  onLabelsChanged: (patch?: { id: number; data: Partial<Label> }) => void | Promise<void>;
+  follows: Follows;
+  onToggleFollow: (kind: FollowKind, id: Id) => void | Promise<void>;
+  carteAOuvrir: Id | null;
+  onCarteOuverte: (id: Id | null) => void;
 }
 
 export default function TaskBoard({
@@ -778,39 +1125,66 @@ export default function TaskBoard({
   labels,
   users,
   onLabelsChanged,
-}) {
+  follows,
+  onToggleFollow,
+  carteAOuvrir,
+  onCarteOuverte,
+}: TaskBoardProps) {
   const [composing, setComposing] = useState(false);
   const [name, setName] = useState("");
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [editingId, setEditingId] = useState(null);
+  const [editingId, setEditingId] = useState<Id | null>(null);
   const [editingName, setEditingName] = useState("");
   // Échap doit annuler sans que la perte de focus n'enregistre au passage.
   const cancelled = useRef(false);
 
-  const [pendingDelete, setPendingDelete] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState<TaskList | null>(null);
   // Liste dont on choisit le tableau d'accueil.
-  const [movedList, setMovedList] = useState(null);
+  // La liste qu'on s'apprête à déplacer ou à copier, et lequel des deux.
+  const [listeVisee, setListeVisee] = useState<{ list: TaskList; mode: ListAction } | null>(
+    null,
+  );
   // Carte dont la fiche est ouverte.
-  const [cardOuverte, setCardOuverte] = useState(null);
+  const [cardOuverte, setCardOuverte] = useState<TaskCard | null>(null);
+
+  // Une carte désignée de l'extérieur — par l'adresse, ou par le lien d'une
+  // notification. L'application s'est déjà placée sur le bon tableau ; on
+  // attend simplement que ses listes soient lues pour y trouver la carte.
+  useEffect(() => {
+    if (carteAOuvrir === null) return;
+    for (const liste of lists) {
+      const carte = liste.cards.find((c) => c.id === carteAOuvrir);
+      if (carte) {
+        setCardOuverte(carte);
+        return;
+      }
+    }
+  }, [carteAOuvrir, lists]);
+
+  // L'adresse suit la carte ouverte : c'est l'application qui l'écrit, le
+  // tableau lui dit seulement ce qu'il montre.
+  useEffect(() => {
+    onCarteOuverte(cardOuverte?.id ?? null);
+  }, [cardOuverte, onCarteOuverte]);
   // Les étiquettes se replient en barres, ou se déploient avec leur nom : le
   // choix vaut pour tout le tableau, comme un réglage d'affichage.
   const [labelsCompactes, setLabelsCompactes] = useState(false);
   // Cartes dont le panneau « ce qu'il reste à faire » est déplié. Chaque carte
   // garde le sien : on peut en ouvrir plusieurs à la fois.
-  const [checklistsDepliees, setChecklistsDepliees] = useState(() => new Set());
+  const [checklistsDepliees, setChecklistsDepliees] = useState<Set<Id>>(() => new Set());
 
   // Saisie d'une nouvelle carte : la liste, le rang où elle prendra place et
   // son genre (« card » ou « separator »). Modification d'une carte existante
   // juste en dessous.
-  const [cardCompose, setCardCompose] = useState(null);
+  const [cardCompose, setCardCompose] = useState<Composition | null>(null);
   const [cardText, setCardText] = useState("");
   const composeCancelled = useRef(false);
-  const [editingCardId, setEditingCardId] = useState(null);
+  const [editingCardId, setEditingCardId] = useState<Id | null>(null);
   // Ouverture de la fiche différée, le temps qu'un second clic puisse la
   // devancer pour ouvrir la saisie du titre.
-  const ouvertureFiche = useRef(null);
+  const ouvertureFiche = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(ouvertureFiche.current), []);
   const [editingCardText, setEditingCardText] = useState("");
   const editCancelled = useRef(false);
@@ -819,7 +1193,7 @@ export default function TaskBoard({
   // relâche redessinerait à partir des props, encore porteuses de l'ancien
   // ordre : on verrait l'élément revenir à sa place le temps de l'aller-retour
   // serveur. Les props reprennent la main dès qu'elles arrivent.
-  const [ordreLocal, setOrdreLocal] = useState(null);
+  const [ordreLocal, setOrdreLocal] = useState<TaskList[] | null>(null);
   const colonnes = ordreLocal || lists;
   useEffect(() => setOrdreLocal(null), [lists]);
 
@@ -831,12 +1205,12 @@ export default function TaskBoard({
   const withNumber = tableau ? tableau.show_card_numbers !== 0 : true;
 
   // Salve de confettis en cours, tirée au-dessus d'une liste.
-  const [confettis, setConfettis] = useState(null);
+  const [confettis, setConfettis] = useState<Confettis | null>(null);
 
   // Une carte qui arrive dans une liste marquée ✨ se fête. La salve part du
   // haut de la liste, mesurée à l'écran : le tableau défile, sa position n'est
   // connue qu'à cet instant.
-  const feteArrivee = (list) => {
+  const feteArrivee = (list: TaskList) => {
     if (!list.name.includes(MARQUE_FETE)) return;
     const element = document.querySelector(`[data-list-id="${list.id}"]`);
     if (!element) return;
@@ -850,17 +1224,17 @@ export default function TaskBoard({
   };
 
   // État du glisser en cours : une liste, ou une carte.
-  const [drag, setDrag] = useState(null);
-  const dragRef = useRef(null);
-  const rowRef = useRef(null);
-  const [cardDrag, setCardDrag] = useState(null);
-  const cardDragRef = useRef(null);
-  const cardTargetRef = useRef(null);
+  const [drag, setDrag] = useState<GlisserListe | null>(null);
+  const dragRef = useRef<GlisserListeEnCours | null>(null);
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const [cardDrag, setCardDrag] = useState<GlisserCarte | null>(null);
+  const cardDragRef = useRef<GlisserCarteEnCours | null>(null);
+  const cardTargetRef = useRef<CibleCarte | null>(null);
   // Conteneur des cartes de chaque liste, par identifiant de liste.
-  const cardZones = useRef(new Map());
+  const cardZones = useRef(new Map<Id, HTMLElement>());
 
   // --- Renommage en ligne ------------------------------------------------
-  const startEdit = (list) => {
+  const startEdit = (list: TaskList) => {
     cancelled.current = false;
     setEditingId(list.id);
     setEditingName(list.name);
@@ -872,7 +1246,7 @@ export default function TaskBoard({
     setEditingName("");
   };
 
-  const saveEdit = async (list) => {
+  const saveEdit = async (list: TaskList) => {
     if (cancelled.current) return;
     const nom = editingName.trim();
     setEditingId(null);
@@ -881,12 +1255,12 @@ export default function TaskBoard({
       await api.updateTaskList(list.id, { name: nom });
       await onListsChanged();
     } catch (e) {
-      setError(e.message);
+      setError(messageErreur(e));
     }
   };
 
   // --- Couleur d'une liste ------------------------------------------------
-  const setListColor = async (list, color) => {
+  const setListColor = async (list: TaskList, color: string) => {
     if ((list.color || "") === color) return;
     // La liste prend sa couleur tout de suite : l'aller-retour serveur ne doit
     // pas laisser le menu se refermer sur l'ancien fond.
@@ -894,28 +1268,28 @@ export default function TaskBoard({
       colonnes.map((l) => (l.id === list.id ? { ...l, color } : l)),
     );
     try {
-      await api.updateTaskList(list.id, { color });
+      await api.updateTaskList(list.id, { color: color as ListColor });
       await onListsChanged();
     } catch (e) {
       setOrdreLocal(null);
-      setError(e.message);
+      setError(messageErreur(e));
     }
   };
 
   // --- Suppression d'une liste -------------------------------------------
-  const deleteList = async (list) => {
+  const deleteList = async (list: TaskList) => {
     setPendingDelete(null);
     try {
       await api.deleteTaskList(list.id);
       await onListsChanged();
     } catch (e) {
-      setError(e.message);
+      setError(messageErreur(e));
     }
   };
 
   // --- Cartes : saisie et modification -----------------------------------
   // Dans les deux cas, Échap annule et la perte de focus valide.
-  const startCompose = (list, index, kind = "card") => {
+  const startCompose = (list: TaskList, index: number, kind: "card" | "separator" = "card") => {
     composeCancelled.current = false;
     setCardCompose({ listId: list.id, index, kind });
     setCardText("");
@@ -930,7 +1304,11 @@ export default function TaskBoard({
   // Entrée et la perte de focus mènent tous deux ici : le drapeau ferme la
   // porte derrière le premier des deux, sans quoi la carte serait créée deux
   // fois. startCompose le rouvre.
-  const saveCompose = async (list, rang, kind = "card") => {
+  const saveCompose = async (
+    list: TaskList,
+    rang: number | null,
+    kind: "card" | "separator" = "card",
+  ) => {
     if (composeCancelled.current) return;
     composeCancelled.current = true;
     const texte = cardText.trim();
@@ -949,17 +1327,19 @@ export default function TaskBoard({
       colonnes
         .flatMap((l) => l.cards || [])
         .reduce((max, c) => Math.max(max, c.number || 0), 0) + 1;
-    const provisoire = {
+    const provisoire: CarteProvisoire = {
       id: `nouvelle-${numero}`,
       list_id: list.id,
       text: texte,
       number: kind === "separator" ? 0 : numero,
       kind,
     };
+    // La carte provisoire n'a pas encore d'identifiant de ligne : elle tient
+    // la place d'une vraie le temps de l'aller-retour.
     setOrdreLocal(
       colonnes.map((l) =>
         l.id === list.id
-          ? { ...l, cards: insere(cartes, index, provisoire) }
+          ? { ...l, cards: insere(cartes, index, provisoire as unknown as TaskCard) }
           : l,
       ),
     );
@@ -977,11 +1357,11 @@ export default function TaskBoard({
       await onListsChanged();
     } catch (e) {
       setOrdreLocal(null);
-      setError(e.message);
+      setError(messageErreur(e));
     }
   };
 
-  const startEditCard = (card) => {
+  const startEditCard = (card: TaskCard) => {
     // Le second clic arrive avant que la fiche ne s'ouvre : on retire
     // l'ouverture en attente, sans quoi le tiroir viendrait par-dessus la
     // saisie qu'on vient d'ouvrir.
@@ -997,7 +1377,7 @@ export default function TaskBoard({
     setEditingCardText("");
   };
 
-  const saveEditCard = async (card) => {
+  const saveEditCard = async (card: TaskCard) => {
     if (editCancelled.current) return;
     editCancelled.current = true;
     const texte = editingCardText.trim();
@@ -1007,7 +1387,7 @@ export default function TaskBoard({
       await api.updateTaskCard(card.id, texte);
       await onListsChanged();
     } catch (e) {
-      setError(e.message);
+      setError(messageErreur(e));
     }
   };
 
@@ -1016,7 +1396,7 @@ export default function TaskBoard({
   // Index visé d'après la position horizontale du pointeur : toutes les listes
   // ont la même largeur, un simple calcul suffit.
   const targetFromPointer = useCallback(
-    (clientX) => {
+    (clientX: number): number => {
       const row = rowRef.current;
       if (!row) return 0;
       const rect = row.getBoundingClientRect();
@@ -1027,12 +1407,13 @@ export default function TaskBoard({
     [colonnes.length],
   );
 
-  const onListPointerDown = (list, index) => (event) => {
+  const onListPointerDown =
+    (list: TaskList, index: number) => (event: ReactPointerEvent) => {
     // Bouton principal uniquement, et jamais pendant un renommage.
     if (event.button !== 0 || editingId === list.id) return;
     // Les cartes, le menu et les champs de saisie ont leur propre rôle : un
     // appui sur eux ne déplace pas la liste.
-    if (event.target.closest("[data-no-list-drag]")) return;
+    if ((event.target as HTMLElement).closest("[data-no-list-drag]")) return;
 
     const element = event.currentTarget.getBoundingClientRect();
     dragRef.current = {
@@ -1045,10 +1426,10 @@ export default function TaskBoard({
       offsetY: event.clientY - element.top,
       started: false,
     };
-  };
+    };
 
   useEffect(() => {
-    const onMove = (event) => {
+    const onMove = (event: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
 
@@ -1086,14 +1467,19 @@ export default function TaskBoard({
       // Nouvel ordre affiché aussitôt, puis enregistré.
       const ordre = colonnes.map((l) => l.id);
       const [deplacee] = ordre.splice(courant.from, 1);
+      if (deplacee === undefined) return;
       ordre.splice(courant.target, 0, deplacee);
-      setOrdreLocal(ordre.map((id) => colonnes.find((l) => l.id === id)));
+      setOrdreLocal(
+        ordre
+          .map((id) => colonnes.find((l) => l.id === id))
+          .filter((l): l is TaskList => Boolean(l)),
+      );
       try {
         await api.reorderTaskLists(Number(boardId), ordre);
         await onListsChanged();
       } catch (e) {
         setOrdreLocal(null);
-        setError(e.message);
+        setError(messageErreur(e));
       }
     };
 
@@ -1110,21 +1496,21 @@ export default function TaskBoard({
   // Liste et rang visés. Les cartes n'ont pas toutes la même hauteur : il faut
   // mesurer. « precedent » est l'emplacement d'accueil actuellement affiché.
   const cardTargetFromPointer = useCallback(
-    (clientX, clientY, precedent) => {
+    (clientX: number, clientY: number, precedent: CibleCarte | null): CibleCarte | null => {
       const liste = colonnes[targetFromPointer(clientX)];
       if (!liste) return null;
       const zone = cardZones.current.get(liste.id);
       if (!zone) return { listId: liste.id, index: 0 };
 
       // La carte déplacée ne s'affiche plus : ne restent que les autres.
-      const cartes = [...zone.querySelectorAll("[data-card-id]")];
+      const cartes = [...zone.querySelectorAll<HTMLElement>("[data-card-id]")];
 
       // L'emplacement d'accueil occupe de la place et pousse vers le bas les
       // cartes qui le suivent. On retire ce décalage : sinon le rang calculé
       // dépendrait de l'emplacement affiché et oscillerait entre deux valeurs.
       const accueil = zone.querySelector("[data-card-placeholder]");
       const decalage = accueil
-        ? accueil.getBoundingClientRect().height + CARD_GAP
+        ? (accueil as HTMLElement).getBoundingClientRect().height + CARD_GAP
         : 0;
       const rangAccueil =
         accueil && precedent && precedent.listId === liste.id
@@ -1133,7 +1519,7 @@ export default function TaskBoard({
 
       let index = cartes.length;
       for (let i = 0; i < cartes.length; i += 1) {
-        const rect = cartes[i].getBoundingClientRect();
+        const rect = (cartes[i] as HTMLElement).getBoundingClientRect();
         const haut = rect.top - (i >= rangAccueil ? decalage : 0);
         if (clientY < haut + rect.height / 2) {
           index = i;
@@ -1145,7 +1531,7 @@ export default function TaskBoard({
     [colonnes, targetFromPointer],
   );
 
-  const basculerChecklist = (cardId) =>
+  const basculerChecklist = (cardId: Id) =>
     setChecklistsDepliees((ouvertes) => {
       const suivant = new Set(ouvertes);
       if (suivant.has(cardId)) suivant.delete(cardId);
@@ -1155,20 +1541,21 @@ export default function TaskBoard({
 
   // Cocher depuis la carte : l'élément quitte le panneau et la pastille
   // avance. La fiche n'a pas besoin d'être ouverte pour cela.
-  const cocherChecklistItem = async (itemId) => {
+  const cocherChecklistItem = async (itemId: Id) => {
     try {
       await api.updateChecklistItem(itemId, { done: true });
       await onListsChanged();
     } catch (e) {
-      setError(e.message);
+      setError(messageErreur(e));
     }
   };
 
-  const onCardPointerDown = (card, list) => (event) => {
+  const onCardPointerDown =
+    (card: TaskCard, list: TaskList) => (event: ReactPointerEvent) => {
     if (event.button !== 0 || editingCardId === card.id) return;
     // Une étiquette répond elle-même au clic : elle ne déplace pas la carte et
     // n'ouvre pas sa fiche.
-    if (event.target.closest("[data-no-card-drag]")) return;
+    if ((event.target as HTMLElement).closest("[data-no-card-drag]")) return;
 
     const element = event.currentTarget.getBoundingClientRect();
     cardTargetRef.current = null;
@@ -1184,10 +1571,10 @@ export default function TaskBoard({
       height: element.height,
       started: false,
     };
-  };
+    };
 
   useEffect(() => {
-    const onMove = (event) => {
+    const onMove = (event: PointerEvent) => {
       const d = cardDragRef.current;
       if (!d) return;
 
@@ -1266,7 +1653,7 @@ export default function TaskBoard({
         await onListsChanged();
       } catch (e) {
         setOrdreLocal(null);
-        setError(e.message);
+        setError(messageErreur(e));
       }
     };
 
@@ -1295,7 +1682,7 @@ export default function TaskBoard({
       // On enchaîne : le champ reste ouvert et vide pour la liste suivante.
       setName("");
     } catch (e) {
-      setError(e.message);
+      setError(messageErreur(e));
     } finally {
       setBusy(false);
     }
@@ -1311,11 +1698,12 @@ export default function TaskBoard({
     : null;
   // La liste d'où part une carte : un séparateur glissé garde le fond de sa
   // liste d'origine jusqu'à ce qu'il se pose.
-  const listeDe = (card) => colonnes.find((l) => l.id === card.list_id);
+  const listeDe = (card: TaskCard): TaskList | undefined =>
+    colonnes.find((l) => l.id === card.list_id);
 
   // Cartes d'une liste, avec l'emplacement d'accueil quand le glisser la vise
   // et, entre deux cartes, le point d'insertion qui ouvre une saisie.
-  const renderCards = (list) => {
+  const renderCards = (list: TaskList) => {
     const cartes = list.cards || [];
     // Saisie en cours dans cette liste, et le champ qui la porte : il est
     // écrit une fois, puis posé au rang visé.
@@ -1388,7 +1776,7 @@ export default function TaskBoard({
       >
         {affichees.map((card, index) => (
           <Fragment key={card.id}>
-            {rang === index && <CardPlaceholder height={cardDrag.height} />}
+            {rang === index && cardDrag && <CardPlaceholder height={cardDrag.height} />}
 
             {/* Entre deux cartes : le trait pointillé qui ouvre une saisie à
                 ce rang. Ni pendant un glisser, ni au-dessus de la première
@@ -1409,7 +1797,7 @@ export default function TaskBoard({
             <CardView
               card={card}
               editing={
-                editingCardId === card.id ? { text: editingCardText } : null
+                editingCardId === card.id ? { id: card.id, text: editingCardText } : null
               }
               onStartEdit={startEditCard}
               onEditChange={(e) => {
@@ -1436,7 +1824,7 @@ export default function TaskBoard({
         ))}
 
         {/* Emplacement en fin de liste. */}
-        {rang !== null && rang >= affichees.length && (
+        {rang !== null && cardDrag && rang >= affichees.length && (
           <CardPlaceholder height={cardDrag.height} />
         )}
 
@@ -1445,6 +1833,9 @@ export default function TaskBoard({
       </Stack>
     );
   };
+
+  // Ce que la suppression de la liste visée emporterait.
+  const cartesSupprimees = pendingDelete?.cards?.length ?? 0;
 
   return (
     <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
@@ -1476,11 +1867,13 @@ export default function TaskBoard({
           <Group align="flex-start" gap={LIST_GAP} wrap="nowrap">
             {visibles.map((list, index) => (
               <Fragment key={list.id}>
-                {drag && drag.target === index && <Placeholder list={dragged} withNumber={withNumber} labelsCompactes={labelsCompactes} />}
+                {drag && drag.target === index && <Placeholder list={dragged ?? undefined} withNumber={withNumber} labelsCompactes={labelsCompactes} />}
                 <ListCard
+                  suivie={follows.list.includes(list.id)}
+                  onToggleFollow={() => onToggleFollow("list", list.id)}
                   list={list}
-                  editing={editingId === list.id ? { name: editingName } : null}
-                  onStartEdit={startEdit}
+                  editing={editingId === list.id ? { id: list.id, name: editingName } : null}
+                  onStartEdit={() => startEdit(list)}
                   onEditChange={(e) => {
                     const { value } = e.currentTarget;
                     setEditingName(value);
@@ -1492,7 +1885,8 @@ export default function TaskBoard({
                   onEditBlur={() => saveEdit(list)}
                   onPointerDown={onListPointerDown(list, colonnes.indexOf(list))}
                   onDelete={() => setPendingDelete(list)}
-                  onMove={() => setMovedList(list)}
+                  onMove={() => setListeVisee({ list, mode: "move" })}
+                  onCopy={() => setListeVisee({ list, mode: "copy" })}
                   onColor={(color) => setListColor(list, color)}
                   onSeparator={() =>
                     startCompose(list, (list.cards || []).length, "separator")
@@ -1513,7 +1907,7 @@ export default function TaskBoard({
 
             {/* Emplacement en fin de rangée. */}
             {drag && drag.target >= visibles.length && (
-              <Placeholder list={dragged} withNumber={withNumber} labelsCompactes={labelsCompactes} />
+              <Placeholder list={dragged ?? undefined} withNumber={withNumber} labelsCompactes={labelsCompactes} />
             )}
 
             {/* Toujours à droite des listes : le bouton cède la place à l'encart. */}
@@ -1582,7 +1976,7 @@ export default function TaskBoard({
       {/* Clone qui suit le curseur, légèrement incliné. */}
       {drag && dragged && (
         <ListStill
-          list={dragged}
+          list={dragged ?? undefined}
           shadow="xl"
           withNumber={withNumber}
           labelsCompactes={labelsCompactes}
@@ -1635,6 +2029,10 @@ export default function TaskBoard({
 
       <CardDrawer
         opened={cardOuverte !== null}
+        suivie={cardOuverte !== null && follows.card.includes(cardOuverte.id)}
+        onToggleFollow={() => {
+          if (cardOuverte) onToggleFollow("card", cardOuverte.id);
+        }}
         onClose={() => setCardOuverte(null)}
         card={cardOuverte}
         labels={labels ?? []}
@@ -1644,33 +2042,30 @@ export default function TaskBoard({
         onSaved={onListsChanged}
       />
 
-      <MoveListModal
-        opened={movedList !== null}
-        onClose={() => setMovedList(null)}
-        list={movedList}
-        boards={boards}
-        onMoved={onListsChanged}
+      <MoveOrCopyListModal
+        opened={listeVisee !== null}
+        onClose={() => setListeVisee(null)}
+        mode={listeVisee?.mode ?? "move"}
+        list={listeVisee?.list ?? null}
+        companyId={tableau?.company_id ?? null}
+        onDone={onListsChanged}
       />
 
       <DeleteConfirmModal
         opened={pendingDelete !== null}
         onClose={() => setPendingDelete(null)}
-        onConfirm={() => deleteList(pendingDelete)}
+        onConfirm={() => pendingDelete && deleteList(pendingDelete)}
         title="Supprimer la liste"
         message={
           <>
             Voulez-vous vraiment supprimer « {pendingDelete?.name} » ?
-            {pendingDelete?.cards?.length > 0 && (
+            {cartesSupprimees > 0 && (
               <>
                 {" "}
                 <strong>
-                  {pendingDelete.cards.length} carte
-                  {pendingDelete.cards.length > 1 ? "s" : ""}
+                  {cartesSupprimees} carte{cartesSupprimees > 1 ? "s" : ""}
                 </strong>{" "}
-                {pendingDelete.cards.length > 1
-                  ? "seront supprimées"
-                  : "sera supprimée"}
-                .
+                {cartesSupprimees > 1 ? "seront supprimées" : "sera supprimée"}.
               </>
             )}
           </>
@@ -1683,7 +2078,16 @@ export default function TaskBoard({
 // Emplacement d'accueil : la liste déplacée, rappelée en entier à 50 %
 // d'opacité. On la voit derrière la copie qui suit le pointeur, à l'endroit où
 // elle se posera.
-function Placeholder({ list, withNumber, labelsCompactes }) {
+interface PlaceholderProps {
+  list: TaskList | undefined;
+  withNumber: boolean;
+  labelsCompactes: boolean;
+}
+
+function Placeholder({ list, withNumber, labelsCompactes }: PlaceholderProps) {
+  // La liste glissée peut ne plus exister (relecture pendant le geste) :
+  // l'emplacement d'accueil n'a alors rien à montrer.
+  if (!list) return null;
   return (
     <ListStill
       list={list}
@@ -1697,7 +2101,7 @@ function Placeholder({ list, withNumber, labelsCompactes }) {
 
 // Emplacement d'accueil d'une carte : même hauteur que la carte déplacée, pour
 // que la liste ne change pas de taille pendant le glisser.
-function CardPlaceholder({ height }) {
+function CardPlaceholder({ height }: { height: number }) {
   return (
     <Paper
       h={height}

@@ -1,19 +1,23 @@
 {
-  "name": "milo-client",
+  "name": "@milo/client",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b"
   },
   "dependencies": {
     "@mantine/core": "^9.6.2",
     "@mantine/dates": "^9.6.2",
     "@mantine/hooks": "^9.6.2",
+    "@mantine/notifications": "^9.6.2",
     "@mantine/tiptap": "^9.6.2",
+    "@milo/shared": "*",
     "@tabler/icons-react": "^3.19.0",
+    "@tiptap/extension-image": "^3.31.3",
     "@tiptap/pm": "^3.31.3",
     "@tiptap/react": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
@@ -22,6 +26,8 @@
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.1",
     "vite": "^5.4.8"
   }

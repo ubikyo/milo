@@ -1,5 +1,5 @@
 import { IconLifebuoy } from "@tabler/icons-react";
-import EmptyPanel from "../components/ui/EmptyPanel.jsx";
+import EmptyPanel from "../components/ui/EmptyPanel";
 
 // Le mode Support : à écrire.
 export default function SupportPage() {

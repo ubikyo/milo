@@ -2,6 +2,7 @@ import {
   Button,
   Group,
   Modal,
+  ScrollArea,
   Select,
   Stack,
   Tabs,
@@ -12,22 +13,36 @@ import {
 import {
   IconAdjustments,
   IconBuilding,
-  IconBuildingWarehouse,
+  IconDatabaseExport,
   IconDeviceDesktop,
+  IconMail,
   IconMoon,
   IconSun,
   IconUsers,
 } from "@tabler/icons-react";
-import { useCallback, useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
-import { DEFAULT_MODE, MODES } from "../../lib/modes";
+import { DEFAULT_MODE, MODES } from "@milo/shared";
 import { tabStyle } from "../../themes/tabs";
-import ErrorAlert from "../ui/ErrorAlert.jsx";
-import LookupManager from "../ui/LookupManager.jsx";
-import UsersTab from "./UsersTab.jsx";
+import BackupTab from "./BackupTab";
+import ErrorAlert from "../ui/ErrorAlert";
+import LookupManager from "../ui/LookupManager";
+import MailTab from "./MailTab";
+import UsersTab from "./UsersTab";
+import { messageErreur } from "../../lib/errors";
+import type { Company, Mode, PublicUser } from "@milo/shared";
+import type { ComponentType, ReactNode } from "react";
 
-const SCHEME_OPTIONS = [
+type Scheme = "auto" | "light" | "dark";
+
+interface SchemeOption {
+  value: Scheme;
+  label: string;
+  icon: ComponentType<{ size?: number }>;
+}
+
+const SCHEME_OPTIONS: SchemeOption[] = [
   { value: "auto", label: "System", icon: IconDeviceDesktop },
   { value: "light", label: "Clair", icon: IconSun },
   { value: "dark", label: "Sombre", icon: IconMoon },
@@ -35,34 +50,47 @@ const SCHEME_OPTIONS = [
 
 // Les options d'un Select ne portent que du texte : l'icône est retrouvée par
 // la valeur, pour la liste déroulante comme pour le champ fermé.
-const schemeIcon = (value) => SCHEME_OPTIONS.find((o) => o.value === value)?.icon;
+/**
+ * L'icône d'un thème. Déclarée au niveau du module : affectée à une variable
+ * dans le corps d'un composant, React y verrait un nouveau type de composant à
+ * chaque rendu et remonterait son sous-arbre à chaque fois.
+ */
+function SchemeIcon({ value, size = 16 }: { value: string; size?: number }) {
+  const Icon = SCHEME_OPTIONS.find((o) => o.value === value)?.icon ?? IconDeviceDesktop;
+  return <Icon size={size} />;
+}
 
 // Largeur du libellé : les champs de l'onglet s'alignent sur la même colonne.
 const LABEL_WIDTH = 120;
 
 // Le libellé est posé à gauche du champ, et non au-dessus comme les libellés
 // de Mantine : les réglages de l'onglet partagent le même alignement.
-function GeneralTab({ user, onUserUpdated }) {
+interface GeneralTabProps {
+  user: PublicUser | null;
+  onUserUpdated?: (user: PublicUser) => void;
+}
+
+function GeneralTab({ user, onUserUpdated }: GeneralTabProps) {
   const { colorScheme, setColorScheme } = useMantineColorScheme();
-  const SchemeIcon = schemeIcon(colorScheme ?? "auto");
 
   // Le mode d'ouverture appartient au compte : il part au serveur dès le choix
   // fait. Le champ répond tout de suite et revient en arrière si le serveur
   // refuse.
-  const [mode, setMode] = useState(user?.default_mode || DEFAULT_MODE);
-  const [error, setError] = useState(null);
+  const [mode, setMode] = useState<Mode>(user?.default_mode ?? DEFAULT_MODE);
+  const [error, setError] = useState<string | null>(null);
 
-  const changeMode = async (value) => {
+  const changeMode = async (value: string | null) => {
     if (!value || value === mode) return;
     const precedent = mode;
-    setMode(value);
+    const suivant = value as Mode;
+    setMode(suivant);
     setError(null);
     try {
-      const enregistre = await api.updateMe({ default_mode: value });
+      const enregistre = await api.updateMe({ default_mode: suivant });
       onUserUpdated?.(enregistre);
     } catch (e) {
       setMode(precedent);
-      setError(e.message);
+      setError(messageErreur(e));
     }
   };
 
@@ -76,7 +104,7 @@ function GeneralTab({ user, onUserUpdated }) {
         </Text>
         <Select
           aria-label="Mode par défaut"
-          data={MODES}
+          data={MODES.map((m) => ({ value: m.value, label: m.label }))}
           value={mode}
           onChange={changeMode}
           allowDeselect={false}
@@ -91,20 +119,17 @@ function GeneralTab({ user, onUserUpdated }) {
         <Select
           aria-label="Thème"
           data={SCHEME_OPTIONS.map(({ value, label }) => ({ value, label }))}
-          leftSection={<SchemeIcon size={16} />}
-          renderOption={({ option }) => {
-            const Icon = schemeIcon(option.value);
-            return (
-              <Group gap={6} wrap="nowrap">
-                <Icon size={16} />
-                <span>{option.label}</span>
-              </Group>
-            );
-          }}
+          leftSection={<SchemeIcon value={colorScheme ?? "auto"} />}
+          renderOption={({ option }) => (
+            <Group gap={6} wrap="nowrap">
+              <SchemeIcon value={option.value} />
+              <span>{option.label}</span>
+            </Group>
+          )}
           // « System » suit le thème du système : c'est la valeur par défaut,
           // posée dans le thème (main.jsx) et mémorisée par Mantine ensuite.
           value={colorScheme ?? "auto"}
-          onChange={(value) => value && setColorScheme(value)}
+          onChange={(value) => value && setColorScheme(value as Scheme)}
           allowDeselect={false}
           w={200}
         />
@@ -113,74 +138,47 @@ function GeneralTab({ user, onUserUpdated }) {
   );
 }
 
-const TABS = [
+const TABS: { value: string; label: string; icon: ComponentType<{ size?: number }> }[] = [
   { value: "general", label: "Général", icon: IconAdjustments },
   { value: "companies", label: "Sociétés", icon: IconBuilding },
-  { value: "buildings", label: "Bâtiments", icon: IconBuildingWarehouse },
   { value: "users", label: "Utilisateurs", icon: IconUsers },
+  { value: "mail", label: "Messagerie", icon: IconMail },
+  { value: "backup", label: "Sauvegarde", icon: IconDatabaseExport },
 ];
 
 const MODAL_HEADER = modalHeaderStyles(40);
 
-function BuildingsTab({ companies }) {
-  const [companyId, setCompanyId] = useState(null);
-  const [buildings, setBuildings] = useState([]);
+/**
+ * La barre de défilement d'un panneau, déportée sur la bordure droite de la
+ * fenêtre et sur toute sa hauteur. Même principe que la liste des projets
+ * (ProjectsPage), à ceci près qu'elle se cale sur la fenêtre et non sur
+ * l'écran : c'est « content » qui porte le repère (position: relative).
+ *
+ * Laissée à sa place, elle serait à cheval sur le retrait de 40 px du panneau
+ * et sauterait d'un onglet à l'autre selon ce que chacun contient. Le panneau
+ * garde donc toute sa largeur — la barre est hors du flux — et le contenu ne
+ * se décale pas quand elle apparaît.
+ */
+const SCROLLBAR_STYLES = {
+  root: { position: "static" as const },
+  scrollbar: {
+    position: "absolute" as const,
+    top: 0,
+    bottom: 0,
+    right: 0,
+    left: "auto",
+    height: "auto",
+    width: "var(--scrollarea-scrollbar-size)",
+  },
+};
 
-  // La société sélectionnée peut disparaître (suppression depuis l'autre onglet).
-  const selected = companies.some((c) => String(c.id) === companyId)
-    ? companyId
-    : companies[0]
-      ? String(companies[0].id)
-      : null;
-
-  const reload = useCallback(async () => {
-    if (!selected) return setBuildings([]);
-    setBuildings(await api.getBuildings(selected));
-  }, [selected]);
-
-  useEffect(() => {
-    reload();
-  }, [reload]);
-
-  if (companies.length === 0) {
-    return (
-      <Text size="sm" c="dimmed">
-        Créez d'abord une société pour pouvoir y associer des bâtiments.
-      </Text>
-    );
-  }
-
-  return (
-    <>
-      <Select
-        label="Société"
-        data={companies.map((c) => ({ value: String(c.id), label: c.name }))}
-        value={selected}
-        onChange={(value) => setCompanyId(value)}
-        allowDeselect={false}
-      />
-      <LookupManager
-        items={buildings}
-        onCreate={async (name) => {
-          await api.createBuilding(Number(selected), name);
-          await reload();
-        }}
-        onUpdate={async (id, name) => {
-          await api.updateBuilding(id, name);
-          await reload();
-        }}
-        onDelete={async (id) => {
-          await api.deleteBuilding(id);
-          await reload();
-        }}
-        addTitle="Nouveau bâtiment"
-        maxRows={10}
-        emptyIcon={IconBuildingWarehouse}
-        emptyText="Aucun bâtiment pour cette société"
-        entityLabel="le bâtiment"
-      />
-    </>
-  );
+interface SettingsModalProps {
+  opened: boolean;
+  onClose: () => void;
+  companies: Company[];
+  currentUser: PublicUser | null;
+  onUserUpdated: (user: PublicUser) => void;
+  onDataChanged: () => void | Promise<void>;
 }
 
 export default function SettingsModal({
@@ -190,25 +188,52 @@ export default function SettingsModal({
   currentUser,
   onUserUpdated,
   onDataChanged,
-}) {
-  const [activeTab, setActiveTab] = useState("general");
+}: SettingsModalProps) {
+  const [activeTab, setActiveTab] = useState<string | null>("general");
 
+  /**
+   * L'onglet Messagerie n'a pas de bouton d'enregistrement : c'est « Fermer »
+   * qui enregistre. L'onglet dépose ici sa fonction, et elle rend faux si le
+   * serveur a refusé — la fenêtre reste alors ouverte, avec le message.
+   */
+  const enregistrerMessagerie = useRef<(() => Promise<boolean>) | null>(null);
+  const [fermeture, setFermeture] = useState(false);
+
+  const fermer = async () => {
+    setFermeture(true);
+    try {
+      if ((await enregistrerMessagerie.current?.()) === false) return;
+    } finally {
+      setFermeture(false);
+    }
+    onClose();
+  };
+
+  /** Un appel à l'API, suivi du rechargement de ce que l'application affiche. */
   const withRefresh =
-    (fn) =>
-    async (...args) => {
+    <Args extends unknown[]>(fn: (...args: Args) => Promise<unknown>) =>
+    async (...args: Args) => {
       await fn(...args);
       await onDataChanged();
     };
 
-  const panel = (value, children) => (
+  const panel = (value: string, children: ReactNode) => (
     <Tabs.Panel
       value={value}
       pl="xl"
       style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
     >
       <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
-        <Title order={4}>{TABS.find((t) => t.value === value).label}</Title>
-        {children}
+        <Title order={4}>{TABS.find((t) => t.value === value)?.label}</Title>
+        {/* « auto » : la barre ne paraît que si l'onglet déborde. */}
+        <ScrollArea
+          type="auto"
+          scrollbarSize={2}
+          styles={SCROLLBAR_STYLES}
+          style={{ flex: 1, minHeight: 0 }}
+        >
+          {children}
+        </ScrollArea>
       </Stack>
     </Tabs.Panel>
   );
@@ -216,9 +241,10 @@ export default function SettingsModal({
   return (
     <Modal
       opened={opened}
-      onClose={onClose}
+      // Échap et l'arrière-plan passent par là : ils enregistrent donc aussi.
+      onClose={fermer}
       title="Réglages"
-      size={700}
+      size={800}
       padding={40}
       withCloseButton={false}
       styles={{
@@ -280,13 +306,15 @@ export default function SettingsModal({
           />,
         )}
 
-        {panel("buildings", <BuildingsTab companies={companies} />)}
-
         {panel("users", <UsersTab currentUser={currentUser} />)}
+
+        {panel("mail", <MailTab saveRef={enregistrerMessagerie} />)}
+
+        {panel("backup", <BackupTab />)}
       </Tabs>
 
       <Group justify="flex-end" mt={40}>
-        <Button variant="default" onClick={onClose}>
+        <Button variant="default" onClick={fermer} loading={fermeture}>
           Fermer
         </Button>
       </Group>

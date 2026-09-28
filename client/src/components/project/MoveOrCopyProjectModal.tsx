@@ -1,27 +1,71 @@
-import { Button, Group, Modal, Select, Stack, Text } from "@mantine/core";
+import { Button, Group, Modal, Select, Stack, Text, TextInput } from "@mantine/core";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
-import ErrorAlert from "../ui/ErrorAlert.jsx";
+import ErrorAlert from "../ui/ErrorAlert";
+import type { Category, Project, ProjectBoard } from "@milo/shared";
+import { messageErreur } from "../../lib/errors";
 
-// Déplacement d'un projet vers un autre tableau. Les catégories étant propres
-// à chaque tableau, le projet en change aussi : on demande donc celle qui
-// l'accueille dans le tableau visé.
-export default function MoveProjectModal({ opened, onClose, project, boards, onMoved }) {
-  const [boardId, setBoardId] = useState(null);
+// Déplacer ou copier un projet vers un tableau. Les deux gestes posent la même
+// question — lequel ? — et la même boîte y répond, comme pour une liste
+// (MoveOrCopyListModal).
+//
+// Les catégories étant propres à chaque tableau, le projet en change aussi :
+// on demande donc celle qui l'accueille dans le tableau visé.
+//
+// Ce qui les sépare : déplacer emmène le projet ailleurs, son propre tableau
+// n'est donc pas une destination et son nom ne bouge pas. Copier le laisse où
+// il est : le tableau courant redevient une destination — c'est le cas le plus
+// courant, dupliquer un projet sur place — et la copie se nomme, deux projets
+// du même nom dans le même tableau ne se distinguant plus.
+export type ProjectAction = "move" | "copy";
+
+interface MoveOrCopyProjectModalProps {
+  opened: boolean;
+  onClose: () => void;
+  /** « move » par défaut : c'est le geste qu'offre le menu d'une ligne de la liste. */
+  mode?: ProjectAction;
+  /**
+   * Le projet visé. Son identifiant, son tableau, son nom et sa catégorie
+   * suffisent : le tableau de la liste en donne un entier, le tiroir seulement
+   * ceux-là.
+   */
+  project: Pick<Project, "id" | "board_id" | "name" | "category_id"> | null;
+  boards: ProjectBoard[];
+  onMoved: () => void | Promise<void>;
+}
+
+/** « Mon projet » -> « Mon projet (copie) ». */
+const nomDeCopie = (nom: string): string => `${nom} (copie)`;
+
+export default function MoveOrCopyProjectModal({
+  opened,
+  onClose,
+  mode = "move",
+  project,
+  boards,
+  onMoved,
+}: MoveOrCopyProjectModalProps) {
+  const [boardId, setBoardId] = useState<string | null>(null);
   // « null » tant que les catégories du tableau visé ne sont pas lues.
-  const [categories, setCategories] = useState(null);
-  const [categoryId, setCategoryId] = useState(null);
-  const [error, setError] = useState(null);
+  const [categories, setCategories] = useState<Category[] | null>(null);
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const copie = mode === "copy";
+
+  // À l'ouverture : pour une copie, le tableau du projet — dupliquer sur place
+  // est le cas courant — et un nom tout prêt.
   useEffect(() => {
     if (!opened) return;
-    setBoardId(null);
+    setBoardId(copie && project ? String(project.board_id) : null);
     setCategories(null);
     setCategoryId(null);
+    setName(project ? nomDeCopie(project.name) : "");
     setError(null);
-  }, [opened, project]);
+  }, [opened, project, copie]);
 
   // Les catégories du tableau visé, dès qu'il est choisi.
   useEffect(() => {
@@ -39,32 +83,46 @@ export default function MoveProjectModal({ opened, onClose, project, boards, onM
       .then((liste) => {
         if (abandonne) return;
         setCategories(liste);
-        setCategoryId(liste[0] ? String(liste[0].id) : null);
+        // Dans son propre tableau, le projet garde sa catégorie ; ailleurs, la
+        // première proposée, qu'on peut changer.
+        const sienne = liste.find((c) => c.id === project?.category_id);
+        const retenue = Number(boardId) === project?.board_id ? sienne : undefined;
+        setCategoryId(String((retenue ?? liste[0])?.id ?? "") || null);
       })
-      .catch((e) => !abandonne && setError(e.message));
+      .catch((e: unknown) => {
+        if (!abandonne) setError(messageErreur(e));
+      });
 
     return () => {
       abandonne = true;
     };
-  }, [boardId]);
+  }, [boardId, project]);
 
-  // Le tableau qui porte déjà le projet n'est pas une destination.
+  // Déplacer exclut le tableau qui porte déjà le projet ; copier l'accepte.
   const boardOptions = boards
-    .filter((board) => board.id !== project?.board_id)
+    .filter((board) => copie || board.id !== project?.board_id)
     .map((board) => ({ value: String(board.id), label: board.name }));
 
-  const move = async () => {
-    if (!boardId || !categoryId) return;
+  const valider = async () => {
+    if (!boardId || !categoryId || !project) return;
     setSaving(true);
     setError(null);
     try {
-      await api.updateProject(project.id, {
-        board_id: Number(boardId),
-        category_id: Number(categoryId),
-      });
+      if (copie) {
+        await api.copyProject(project.id, {
+          board_id: Number(boardId),
+          category_id: Number(categoryId),
+          name: name.trim(),
+        });
+      } else {
+        await api.updateProject(project.id, {
+          board_id: Number(boardId),
+          category_id: Number(categoryId),
+        });
+      }
       await onMoved();
     } catch (e) {
-      setError(e.message);
+      setError(messageErreur(e));
     } finally {
       setSaving(false);
     }
@@ -74,7 +132,7 @@ export default function MoveProjectModal({ opened, onClose, project, boards, onM
     <Modal
       opened={opened}
       onClose={onClose}
-      title="Déplacer le projet"
+      title={copie ? "Copier le projet" : "Déplacer le projet"}
       centered
       padding={32}
       withCloseButton={false}
@@ -118,6 +176,21 @@ export default function MoveProjectModal({ opened, onClose, project, boards, onM
               disabled={!boardId || categories === null}
               required
             />
+
+            {/* La copie se nomme : posée dans le tableau d'origine, elle
+                porterait sinon le nom du projet dont elle sort. */}
+            {copie && (
+              <TextInput
+                label="Nom de la copie"
+                placeholder="Nom de la copie"
+                value={name}
+                onChange={(e) => setName(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") valider();
+                }}
+                required
+              />
+            )}
           </>
         )}
       </Stack>
@@ -126,8 +199,13 @@ export default function MoveProjectModal({ opened, onClose, project, boards, onM
         <Button variant="default" onClick={onClose}>
           Fermer
         </Button>
-        <Button color="teal" onClick={move} loading={saving} disabled={!boardId || !categoryId}>
-          Déplacer
+        <Button
+          color="teal"
+          onClick={valider}
+          loading={saving}
+          disabled={!boardId || !categoryId || (copie && !name.trim())}
+        >
+          {copie ? "Copier" : "Déplacer"}
         </Button>
       </Group>
     </Modal>

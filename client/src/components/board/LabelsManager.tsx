@@ -2,9 +2,11 @@ import { ActionIcon, Group, Stack, TextInput, UnstyledButton } from "@mantine/co
 import { IconPencil, IconTags, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import { RED } from "../../themes/colors";
-import DeleteConfirmModal from "../ui/DeleteConfirmModal.jsx";
-import ErrorAlert from "../ui/ErrorAlert.jsx";
-import LabelChip, { DEFAULT_LABEL_COLOR, LABEL_HUES } from "../ui/LabelChip.jsx";
+import DeleteConfirmModal from "../ui/DeleteConfirmModal";
+import ErrorAlert from "../ui/ErrorAlert";
+import LabelChip from "../ui/LabelChip";
+import { DEFAULT_LABEL_COLOR, LABEL_HUES } from "@milo/shared";
+import type { Label, LabelHue, ProjectLabel } from "@milo/shared";
 
 // Hauteur d'une ligne d'étiquette : un peu plus haute que les autres listes,
 // l'étiquette y tenant un rectangle plein.
@@ -13,39 +15,55 @@ const LABEL_ROW_HEIGHT = 34;
 // Hauteur de l'étiquette et de son champ de saisie. La même pour les deux :
 // sans quoi passer en modification ferait sauter la ligne.
 const LABEL_FIELD_HEIGHT = 22;
-import LabelColorPicker from "../ui/LabelColorPicker.jsx";
-import ListItems from "../ui/ListItems.jsx";
+import LabelColorPicker from "../ui/LabelColorPicker";
+import ListItems from "../ui/ListItems";
+import { messageErreur } from "../../lib/errors";
 
 /**
  * Les étiquettes d'un tableau, gérées en ligne comme les sociétés ou les
  * catégories (LookupManager) : cliquer le nom l'édite sur place, la pastille
  * ouvre le choix des couleurs, la dernière ligne ajoute.
  */
-export default function LabelsManager({ labels, onCreate, onUpdate, onDelete }) {
-  const [editingId, setEditingId] = useState(null);
+/** Les étiquettes des deux modes se gèrent exactement pareil. */
+type Etiquette = Label | ProjectLabel;
+
+interface LabelsManagerProps {
+  labels: Etiquette[];
+  onCreate: (name: string, color: string) => Promise<unknown>;
+  onUpdate: (id: number, data: { name?: string; color?: string }) => Promise<unknown>;
+  onDelete: (id: number) => Promise<unknown>;
+}
+
+export default function LabelsManager({
+  labels,
+  onCreate,
+  onUpdate,
+  onDelete,
+}: LabelsManagerProps) {
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
   const [newName, setNewName] = useState("");
   // Couleur de l'étiquette en cours de saisie, choisie dans la ligne d'ajout.
   const [newColor, setNewColor] = useState(DEFAULT_LABEL_COLOR);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState<Etiquette | null>(null);
 
-  const run = async (action) => {
+  const run = async (action: () => Promise<unknown>): Promise<boolean> => {
     setError(null);
     setBusy(true);
     try {
       await action();
       return true;
     } catch (e) {
-      setError(e.message);
+      setError(messageErreur(e));
       return false;
     } finally {
       setBusy(false);
     }
   };
 
-  const startEdit = (label) => {
+  const startEdit = (label: Etiquette) => {
     setError(null);
     setEditingId(label.id);
     setEditingName(label.name);
@@ -59,7 +77,7 @@ export default function LabelsManager({ labels, onCreate, onUpdate, onDelete }) 
   const saveEdit = async () => {
     const nom = editingName.trim();
     const label = labels.find((l) => l.id === editingId);
-    if (!nom || nom === label?.name) return cancelEdit();
+    if (!nom || nom === label?.name || editingId === null) return cancelEdit();
     if (await run(() => onUpdate(editingId, { name: nom }))) cancelEdit();
   };
 
@@ -71,7 +89,8 @@ export default function LabelsManager({ labels, onCreate, onUpdate, onDelete }) 
     if (await run(() => onCreate(newName.trim(), newColor))) {
       setNewName("");
       const [teinte, nuance] = newColor.split(".");
-      const suivante = LABEL_HUES[(LABEL_HUES.indexOf(teinte) + 1) % LABEL_HUES.length];
+      const rang = LABEL_HUES.indexOf(teinte as LabelHue);
+      const suivante = LABEL_HUES[(rang + 1) % LABEL_HUES.length];
       setNewColor(`${suivante}.${nuance}`);
     }
   };
@@ -185,7 +204,7 @@ export default function LabelsManager({ labels, onCreate, onUpdate, onDelete }) 
         opened={pendingDelete !== null}
         onClose={() => setPendingDelete(null)}
         onConfirm={async () => {
-          await run(() => onDelete(pendingDelete.id));
+          if (pendingDelete) await run(() => onDelete(pendingDelete.id));
           setPendingDelete(null);
         }}
         title="Supprimer l'étiquette"

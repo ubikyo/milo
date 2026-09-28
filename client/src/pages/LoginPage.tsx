@@ -1,10 +1,21 @@
 import { Anchor, Button, Center, Paper, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
 import { useState } from "react";
 import { api } from "../api";
-import { passwordIsValid } from "../lib/passwordRules";
-import ErrorAlert from "../components/ui/ErrorAlert.jsx";
-import Logo from "../components/ui/Logo.jsx";
-import PasswordRules from "../components/ui/PasswordRules.jsx";
+import { passwordIssues } from "@milo/shared";
+import ErrorAlert from "../components/ui/ErrorAlert";
+import Logo from "../components/ui/Logo";
+import PasswordRules from "../components/ui/PasswordRules";
+import { messageErreur } from "../lib/errors";
+import type { AuthResult } from "@milo/shared";
+import type { ChangeEvent, FormEvent } from "react";
+
+/**
+ * « setup » : tout premier compte. « first-email » puis « first-identity » :
+ * activation en deux temps d'une adresse créée par un administrateur.
+ */
+type LoginMode = "login" | "setup" | "first-email" | "first-identity";
+
+type Champ = keyof typeof emptyForm;
 
 const emptyForm = {
   email: "",
@@ -16,20 +27,25 @@ const emptyForm = {
 
 // « setup » : tout premier compte. « first-email » puis « first-identity » :
 // activation en deux temps d'une adresse créée par un administrateur.
-const TITRES = {
+const TITRES: Record<LoginMode, string> = {
   login: "Se connecter",
   setup: "Créer le compte",
   "first-email": "Continuer",
   "first-identity": "Valider",
 };
 
-export default function LoginPage({ needsSetup, onAuthenticated }) {
-  const [mode, setMode] = useState(needsSetup ? "setup" : "login");
+interface LoginPageProps {
+  needsSetup: boolean;
+  onAuthenticated: (result: AuthResult) => void;
+}
+
+export default function LoginPage({ needsSetup, onAuthenticated }: LoginPageProps) {
+  const [mode, setMode] = useState<LoginMode>(needsSetup ? "setup" : "login");
   const [form, setForm] = useState(emptyForm);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const set = (field) => (event) => {
+  const set = (field: Champ) => (event: ChangeEvent<HTMLInputElement>) => {
     // La valeur est lue immédiatement : React vide `currentTarget` avant
     // d'exécuter l'updater ci-dessous.
     const { value } = event.currentTarget;
@@ -45,11 +61,11 @@ export default function LoginPage({ needsSetup, onAuthenticated }) {
         ? !emailLooksValid
         : !form.first_name.trim() ||
           !form.last_name.trim() ||
-          !passwordIsValid(form.password) ||
+          passwordIssues(form.password).length > 0 ||
           form.password !== form.password_confirm ||
           (mode === "setup" && !form.email.trim());
 
-  const submit = async (event) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
 
@@ -76,13 +92,13 @@ export default function LoginPage({ needsSetup, onAuthenticated }) {
             : await api.firstLogin(payload);
       onAuthenticated(result);
     } catch (e) {
-      setError(e.message);
+      setError(messageErreur(e));
     } finally {
       setBusy(false);
     }
   };
 
-  const switchTo = (next) => {
+  const switchTo = (next: LoginMode) => {
     setMode(next);
     setError(null);
     setForm((f) => ({ ...emptyForm, email: f.email }));
@@ -140,7 +156,7 @@ export default function LoginPage({ needsSetup, onAuthenticated }) {
                   error={
                     form.password_confirm && form.password !== form.password_confirm
                       ? "Les deux mots de passe ne correspondent pas"
-                      : null
+                      : undefined
                   }
                   required
                 />

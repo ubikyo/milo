@@ -5,6 +5,9 @@ node_modules/
 dist/
 build/
 
+# Fichiers déposés sur les cartes (développement)
+medias/
+
 # SQLite database
 server/data.db
 server/*.db-journal
@@ -23,3 +26,6 @@ npm-debug.log*
 .DS_Store
 .vscode/*
 !.vscode/extensions.json
+
+# TypeScript
+*.tsbuildinfo

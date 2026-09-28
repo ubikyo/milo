@@ -11,6 +11,13 @@ import {
 import { IconPlus } from "@tabler/icons-react";
 import { useState } from "react";
 import { PLUS_SIZE } from "../../themes/plus";
+import type { ReactNode } from "react";
+
+/** Le minimum qu'une option doit porter : de quoi l'identifier et la nommer. */
+export interface ChipOption {
+  id: number | string;
+  name: string;
+}
 
 // Au-delà de cette hauteur, la liste défile plutôt que de courir jusqu'en bas
 // de l'écran.
@@ -28,7 +35,26 @@ const LIST_MAX_HEIGHT = 260;
  * retenue, lorsqu'elle s'y montre autrement : un membre n'y garde que sa
  * bulle, quand la liste, elle, doit nommer les personnes.
  */
-export default function ChipPicker({
+interface ChipPickerProps<T extends ChipOption> {
+  label: string;
+  options: T[];
+  /** Les identifiants retenus, en chaînes. */
+  value: string[];
+  onChange: (value: string[]) => void;
+  render: (option: T) => ReactNode;
+  renderChip?: (option: T) => ReactNode;
+  emptyText?: string;
+  chipHeight?: number;
+  chipGap?: number;
+  footer?: ReactNode;
+  onOptionClick?: (option: T) => void;
+  fullWidthOptions?: boolean;
+  plusRadius?: string | number;
+  onClose?: () => void;
+  closeBlocked?: boolean;
+}
+
+export default function ChipPicker<T extends ChipOption>({
   label,
   options,
   value,
@@ -62,10 +88,10 @@ export default function ChipPicker({
   // liste s'en irait, et l'on reviendrait à la carte une fois la fenêtre
   // fermée.
   closeBlocked = false,
-}) {
+}: ChipPickerProps<T>) {
   const [opened, setOpened] = useState(false);
 
-  const ouvrirFermer = (ouvert) => {
+  const ouvrirFermer = (ouvert: boolean) => {
     if (!ouvert && closeBlocked) return;
     setOpened(ouvert);
     if (!ouvert) onClose?.();
@@ -73,9 +99,9 @@ export default function ChipPicker({
 
   const retenues = value
     .map((id) => options.find((o) => String(o.id) === String(id)))
-    .filter(Boolean);
+    .filter((o): o is T => Boolean(o));
 
-  const bascule = (id) => {
+  const bascule = (id: number | string) => {
     const cle = String(id);
     onChange(
       value.includes(cle) ? value.filter((v) => v !== cle) : [...value, cle],

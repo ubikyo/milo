@@ -1,13 +1,26 @@
 import { ColorSwatch, Popover, SimpleGrid } from "@mantine/core";
 import { useState } from "react";
-import { LABEL_COLORS, LABEL_HUES, useLabelColors } from "./LabelChip.jsx";
+import { LABEL_COLORS, LABEL_HUES } from "@milo/shared";
+import { useLabelColors } from "./LabelChip";
 
 // La pastille qui ouvre le choix des couleurs d'une étiquette. Les couleurs se
 // passent d'intitulé : une couleur se reconnaît.
 // « withinPortal » est à couper lorsque la pastille vit déjà dans un autre
 // panneau flottant : sorti en portail, son choix de couleurs compterait comme
 // un clic au dehors et refermerait le panneau qui la porte.
-export default function LabelColorPicker({ color, onChange, label, withinPortal = true }) {
+interface LabelColorPickerProps {
+  color: string;
+  onChange: (color: string) => void;
+  label: string;
+  withinPortal?: boolean;
+}
+
+export default function LabelColorPicker({
+  color,
+  onChange,
+  label,
+  withinPortal = true,
+}: LabelColorPickerProps) {
   const [opened, setOpened] = useState(false);
   const couleurs = useLabelColors();
 

@@ -3,17 +3,20 @@ import "@mantine/core/styles.css";
 import "@mantine/tiptap/styles.css";
 // Feuille des sélecteurs de date (échéance d'un élément de checklist).
 import "@mantine/dates/styles.css";
+// Feuille des notifications de suivi, en bas à droite.
+import "@mantine/notifications/styles.css";
 // Posée après celles de Mantine : elle en reprend l'anneau de focus.
 import "./assets/styles/focus.css";
 
 import { ColorSchemeScript, MantineProvider, createTheme } from "@mantine/core";
 import { DatesProvider } from "@mantine/dates";
+import { Notifications } from "@mantine/notifications";
 import "dayjs/locale/fr";
 import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "./App.jsx";
+import App from "./App";
 import { FOCUS_BORDER } from "./themes/colors";
-import Favicon from "./components/ui/Favicon.jsx";
+import Favicon from "./components/ui/Favicon";
 
 // Tous les champs de saisie de Mantine : chacun lit « --input-bd-focus » pour
 // la bordure qu'il prend au focus, et chacun la tire de la couleur primaire —
@@ -39,10 +42,20 @@ const CHAMPS = [
   "TimeInput",
 ];
 
+// Sauf pour une saisie sur place — renommer une catégorie, une étiquette, une
+// carte. Ces champs n'ont pas de cadre (« variant unstyled ») et Mantine met
+// leur « --input-bd-focus » à transparent : ils ne doivent pas s'encadrer au
+// clic, sans quoi la ligne changerait d'aspect à la moindre saisie. Notre gris
+// le rétablissait pour tout le monde.
 const champsSansBleu = Object.fromEntries(
   CHAMPS.map((nom) => [
     nom,
-    { styles: { input: { "--input-bd-focus": FOCUS_BORDER } } },
+    {
+      styles: (_theme: unknown, props: { variant?: string }) =>
+        props.variant === "unstyled"
+          ? {}
+          : { input: { "--input-bd-focus": FOCUS_BORDER } },
+    },
   ]),
 );
 
@@ -73,7 +86,11 @@ const theme = createTheme({
   },
 });
 
-ReactDOM.createRoot(document.getElementById("root")).render(
+// La racine est dans index.html : sans elle, rien à monter.
+const racine = document.getElementById("root");
+if (!racine) throw new Error("Élément #root introuvable");
+
+ReactDOM.createRoot(racine).render(
   <React.StrictMode>
     <ColorSchemeScript defaultColorScheme="auto" />
     {/* "auto" suit le thème du système ; le choix de l'utilisateur est mémorisé
@@ -82,6 +99,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       {/* Les calendriers parlent français et ouvrent la semaine le lundi. */}
       <DatesProvider settings={{ locale: "fr", firstDayOfWeek: 1 }}>
         <Favicon />
+        {/* Les notifications de suivi s'empilent en bas à droite, hors du
+            chemin de la barre de modes qui occupe le bas à gauche. */}
+        <Notifications position="bottom-right" limit={4} />
         <App />
       </DatesProvider>
     </MantineProvider>

@@ -1,34 +1,61 @@
 import {
+  Badge,
   Button,
   Drawer,
   Group,
   Input,
-  LoadingOverlay,
   Menu,
   ScrollArea,
   Stack,
   Tabs,
   Text,
   TextInput,
+  UnstyledButton,
 } from "@mantine/core";
+import { DateTimePicker } from "@mantine/dates";
 import {
+  IconCalendarEvent,
+  IconCheck,
   IconChecklist,
   IconChevronDown,
+  IconClock,
+  IconEye,
   IconMessage,
+  IconPaperclip,
+  IconPencil,
   IconSettings,
+  IconTrash,
+  IconUpload,
 } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../api";
-import { NEUTRAL_HOVER } from "../../themes/colors";
+import { NEUTRAL_HOVER, RED } from "../../themes/colors";
+import {
+  COULEUR_ECHEANCE,
+  MOT_ECHEANCE,
+  dateLongue,
+  etatEcheance,
+} from "../../lib/echeance";
 import { tabStyle } from "../../themes/tabs";
-import { ACTOR_GAP, PersonAvatar } from "../ui/ActorAvatars.jsx";
-import ChipPicker from "../ui/ChipPicker.jsx";
-import RichTextField, { useRichEditor } from "../ui/RichText.jsx";
-import CardChecklists from "./CardChecklists.jsx";
-import LabelPicker from "../ui/LabelPicker.jsx";
-import CommentThread from "../project/CommentThread.jsx";
-import ErrorAlert from "../ui/ErrorAlert.jsx";
+import { ACTOR_GAP, PersonAvatar } from "../ui/ActorAvatars";
+import ChipPicker from "../ui/ChipPicker";
+import RichTextField, { useRichEditor } from "../ui/RichText";
+import CardAttachments from "./CardAttachments";
+import CardChecklists from "./CardChecklists";
+import LabelPicker from "../ui/LabelPicker";
+import CommentThread from "../project/CommentThread";
+import ErrorAlert from "../ui/ErrorAlert";
 import classes from "../../assets/styles/CardDrawer.module.css";
+import { messageErreur } from "../../lib/errors";
+import type { CSSProperties, DragEvent as ReactDragEvent } from "react";
+import type {
+  Attachment,
+  CardComment,
+  Checklist,
+  Label,
+  PublicUser,
+  TaskCard,
+} from "@milo/shared";
 
 // Les deux volets du tiroir, comme pour un projet : la fiche de la carte, puis
 // ses échanges.
@@ -47,10 +74,81 @@ const DRAWER_PADDING = 40;
 const CHIP_HEIGHT = 30;
 
 /**
+ * L'échéance telle qu'elle se lit au-dessus du titre : la date en toutes
+ * lettres, et la bulle qui dit où on en est. Cliquer ouvre le choix — la
+ * modifier, ou la retirer —, comme une étiquette qu'on rouvre là où elle se
+ * montre.
+ */
+interface DueDateProps {
+  value: string;
+  onEdit: () => void;
+  onRemove: () => void;
+}
+
+function DueDate({ value, onEdit, onRemove }: DueDateProps) {
+  const etat = etatEcheance(value);
+
+  return (
+    <Input.Wrapper label="Échéance">
+      <Group gap="xs" wrap="nowrap" mt={4}>
+        <Menu position="bottom-start" withinPortal shadow="md">
+          <Menu.Target>
+            <UnstyledButton
+              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+              aria-label="Modifier ou retirer l'échéance"
+            >
+              <Text span c="dimmed" style={{ display: "inline-flex" }}>
+                <IconClock size={16} />
+              </Text>
+              <Text size="sm">{dateLongue(value)}</Text>
+            </UnstyledButton>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Item leftSection={<IconPencil size={16} />} onClick={onEdit}>
+              Modifier
+            </Menu.Item>
+            <Menu.Item
+              color={RED}
+              leftSection={<IconTrash size={16} />}
+              onClick={onRemove}
+            >
+              Supprimer
+            </Menu.Item>
+          </Menu.Dropdown>
+        </Menu>
+
+        {/* Rien à dire quand l'échéance est encore loin : la date seule
+            suffit, et une bulle neutre ne dirait rien de plus. */}
+        {etat !== "aucun" && (
+          <Badge color={COULEUR_ECHEANCE[etat]} variant="filled" radius="sm">
+            {MOT_ECHEANCE[etat]}
+          </Badge>
+        )}
+      </Group>
+    </Input.Wrapper>
+  );
+}
+
+/**
  * La fiche d'une carte. Elle s'ouvre au clic sur la carte et se referme en
  * enregistrant. Un séparateur n'en a pas : il n'a qu'un texte, qui se modifie
  * sur le tableau.
  */
+interface CardDrawerProps {
+  opened: boolean;
+  onClose: () => void;
+  /** La carte du tableau ; sa fiche complète est lue à l'ouverture. */
+  card: TaskCard | null;
+  labels: Label[];
+  users: PublicUser[];
+  boardId: string | null;
+  onLabelsChanged: (patch?: { id: number; data: Partial<Label> }) => void | Promise<void>;
+  onSaved: () => void | Promise<void>;
+  /** Suivie : on est prévenu de chaque modification de cette carte. */
+  suivie: boolean;
+  onToggleFollow: () => void;
+}
+
 export default function CardDrawer({
   opened,
   onClose,
@@ -60,21 +158,58 @@ export default function CardDrawer({
   boardId,
   onLabelsChanged,
   onSaved,
-}) {
+  suivie,
+  onToggleFollow,
+}: CardDrawerProps) {
   const [text, setText] = useState("");
-  const [memberIds, setMemberIds] = useState([]);
-  const [labelIds, setLabelIds] = useState([]);
-  const [comments, setComments] = useState([]);
-  const [checklists, setChecklists] = useState([]);
-  const [numero, setNumero] = useState(null);
+  const [memberIds, setMemberIds] = useState<string[]>([]);
+  const [labelIds, setLabelIds] = useState<string[]>([]);
+  const [comments, setComments] = useState<CardComment[]>([]);
+  const [checklists, setChecklists] = useState<Checklist[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  /** Vrai tant que des fichiers survolent le tiroir : l'invite de dépôt se montre. */
+  const [survolFichier, setSurvolFichier] = useState(false);
+  const [numero, setNumero] = useState<number | null>(null);
+  /** L'échéance de la carte, en ISO ; vide quand elle n'en a pas. */
+  const [echeance, setEcheance] = useState("");
+  /** Vrai quand le sélecteur est ouvert : par le menu, ou pour la modifier. */
+  const [choisitDate, setChoisitDate] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState("settings");
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string | null>("settings");
+
+  /** Le sélecteur de fichiers, ouvert par le menu « Actions » et par l'encart. */
+  const champFichier = useRef<HTMLInputElement>(null);
+  /**
+   * Combien d'éléments du tiroir le glisser a franchis. Un simple booléen
+   * clignoterait : passer d'un enfant à l'autre déclenche une sortie avant
+   * l'entrée suivante, et l'invite s'éteindrait entre les deux.
+   */
+  const profondeur = useRef(0);
+
+  /**
+   * Une image collée dans la description : elle part au serveur, et c'est son
+   * adresse qui entre dans le texte. Un refus se dit dans le bandeau d'erreur
+   * et ne laisse rien derrière lui.
+   */
+  const collerImage = async (fichier: File): Promise<string> => {
+    if (!card) return "";
+    setError(null);
+    try {
+      const { url } = await api.uploadCardImage(card.id, fichier);
+      return url;
+    } catch (e) {
+      setError(messageErreur(e));
+      return "";
+    }
+  };
 
   // L'éditeur de la description : il vit tant que le tiroir vit, son contenu
   // est remplacé à chaque carte ouverte.
-  const editor = useRichEditor({ placeholder: "Description de la carte" });
+  const editor = useRichEditor({
+    placeholder: "Description de la carte",
+    onPasteImage: collerImage,
+  });
 
   useEffect(() => {
     if (!opened || !card) return;
@@ -87,31 +222,104 @@ export default function CardDrawer({
       .then((fiche) => {
         setText(fiche.text);
         setNumero(fiche.number);
+        setEcheance(fiche.due_date || "");
+        setChoisitDate(false);
         setMemberIds((fiche.members || []).map((m) => String(m.id)));
         setLabelIds((fiche.labels || []).map((l) => String(l.id)));
         setComments(fiche.comments || []);
         setChecklists(fiche.checklists || []);
+        setAttachments(fiche.attachments || []);
         editor?.commands.setContent(fiche.description || "");
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(messageErreur(e)))
       .finally(() => setLoading(false));
   }, [opened, card, editor]);
 
   // Une checklist vient de changer : on relit la fiche pour ne montrer que ce
   // que le serveur a retenu. Le tableau, lui, se relira à la fermeture.
   const refreshChecklists = async () => {
+    if (!card) return;
     const fiche = await api.getTaskCard(card.id);
     setChecklists(fiche.checklists || []);
   };
 
   const ajouterChecklist = async () => {
+    if (!card) return;
     setError(null);
     try {
       await api.createChecklist(card.id, "Checklist");
       await refreshChecklists();
     } catch (e) {
-      setError(e.message);
+      setError(messageErreur(e));
     }
+  };
+
+  /**
+   * Les fichiers déposés — glissés sur le tiroir, ou choisis dans le
+   * sélecteur. Ils partent l'un après l'autre, et chacun paraît dans l'encart
+   * dès que le serveur l'a pris : c'est la pièce qu'il renvoie qu'on ajoute,
+   * sans relire la fiche. Un fichier refusé laisse les précédents en place.
+   *
+   * La plus récente se range en tête, comme le serveur les donne.
+   */
+  const deposerFichiers = async (fichiers: File[]) => {
+    if (!card || fichiers.length === 0) return;
+    setError(null);
+    for (const fichier of fichiers) {
+      try {
+        const piece = await api.uploadAttachment(card.id, fichier);
+        setAttachments((deja) => [piece, ...deja]);
+      } catch (e) {
+        setError(messageErreur(e));
+      }
+    }
+  };
+
+  const supprimerPiece = async (piece: Attachment) => {
+    setError(null);
+    try {
+      await api.deleteAttachment(piece.id);
+      setAttachments((deja) => deja.filter((p) => p.id !== piece.id));
+    } catch (e) {
+      setError(messageErreur(e));
+    }
+  };
+
+  // --- Glisser-déposer sur le tiroir ----------------------------------------
+  // Seuls les fichiers venus du dehors comptent : glisser une checklist ou du
+  // texte à l'intérieur du tiroir ne doit rien déclencher.
+  const desFichiers = (e: ReactDragEvent) => e.dataTransfer.types.includes("Files");
+
+  const finDuSurvol = () => {
+    profondeur.current = 0;
+    setSurvolFichier(false);
+  };
+
+  const survol = {
+    onDragEnter: (e: ReactDragEvent) => {
+      if (!desFichiers(e)) return;
+      profondeur.current += 1;
+      setSurvolFichier(true);
+    },
+    onDragLeave: (e: ReactDragEvent) => {
+      if (!desFichiers(e)) return;
+      profondeur.current -= 1;
+      if (profondeur.current <= 0) finDuSurvol();
+    },
+    onDragOver: (e: ReactDragEvent) => {
+      if (!desFichiers(e)) return;
+      // Sans cela, le navigateur ouvrirait le fichier à la place de la page.
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    },
+    onDrop: (e: ReactDragEvent) => {
+      if (!desFichiers(e)) return;
+      e.preventDefault();
+      finDuSurvol();
+      void deposerFichiers(Array.from(e.dataTransfer.files));
+    },
+    // Un glisser abandonné en chemin laisserait l'invite allumée.
+    onDragEnd: finDuSurvol,
   };
 
   // Le tiroir n'a ni « Fermer » ni « Enregistrer » : on le referme en cliquant
@@ -120,7 +328,6 @@ export default function CardDrawer({
   // réessayer, il ne faut pas que la saisie disparaisse avec lui.
   const fermer = async () => {
     if (!card || loading) return onClose();
-    setSaving(true);
     setError(null);
     try {
       await api.updateTaskCardDetails(card.id, {
@@ -130,32 +337,37 @@ export default function CardDrawer({
         description: editor?.getHTML() ?? "",
         member_ids: memberIds.map(Number),
         label_ids: labelIds.map(Number),
+        due_date: echeance,
       });
       await onSaved();
       onClose();
     } catch (e) {
-      setError(e.message);
-    } finally {
-      setSaving(false);
+      setError(messageErreur(e));
     }
   };
 
   const refreshComments = async () => {
+    if (!card) return;
     const fiche = await api.getTaskCard(card.id);
     setComments(fiche.comments || []);
   };
 
-  const addComment = async (texte) => {
+  const addComment = async (texte: string) => {
+    if (!card) return;
     await api.addTaskCardComment(card.id, texte);
     await refreshComments();
   };
 
-  const updateComment = async (id, texte) => {
+  // Le fil d'une carte n'a pas de brouillon : la carte existe déjà quand sa
+  // fiche s'ouvre, l'identifiant est toujours celui d'une ligne.
+  const updateComment = async (id: number | string, texte: string) => {
+    if (typeof id !== "number") return;
     await api.updateTaskCardComment(id, texte);
     await refreshComments();
   };
 
-  const deleteComment = async (id) => {
+  const deleteComment = async (id: number | string) => {
+    if (typeof id !== "number") return;
     await api.deleteTaskCardComment(id);
     await refreshComments();
   };
@@ -174,7 +386,7 @@ export default function CardDrawer({
           flexDirection: "column",
           // Lue par la barre de défilement des panneaux (assets/styles/CardDrawer.module.css).
           "--milo-drawer-padding": `${DRAWER_PADDING}px`,
-        },
+        } as CSSProperties,
         // Le corps ne défile plus : seul le panneau de l'onglet ouvert le
         // fait, par sa propre zone de défilement. Le titre, les onglets et les
         // actions du bas restent en place.
@@ -186,175 +398,281 @@ export default function CardDrawer({
         },
       }}
     >
-      <LoadingOverlay visible={loading || saving} />
-
-      <Tabs
-        value={activeTab}
-        onChange={setActiveTab}
-        style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
-        styles={{ panel: { paddingTop: 20 } }}
+      {/* Tout le tiroir est une zone de dépôt : un fichier lâché n'importe où
+          sur la fiche s'y attache. L'invite se pose par-dessus, sans prendre
+          le pointeur — ce sont les éléments en dessous qui continuent de voir
+          passer le glisser. */}
+      <div
+        {...survol}
+        style={{
+          position: "relative",
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
       >
-        <Tabs.List mb="md">
-          {TABS.map(({ value, label, icon: Icon }) => (
-            <Tabs.Tab
-              key={value}
-              value={value}
-              leftSection={<Icon size={16} />}
-              style={tabStyle(activeTab === value)}
+        {survolFichier && (
+          <div className={classes.dropZone}>
+            <Group gap="xs" wrap="nowrap">
+              <IconUpload size={22} />
+              <Text fw={600}>Glisser ici</Text>
+            </Group>
+          </div>
+        )}
+
+        <Tabs
+          value={activeTab}
+          onChange={setActiveTab}
+          style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+          styles={{ panel: { paddingTop: 20 } }}
+        >
+          <Tabs.List mb="md">
+            {TABS.map(({ value, label, icon: Icon }) => (
+              <Tabs.Tab
+                key={value}
+                value={value}
+                leftSection={<Icon size={16} />}
+                style={tabStyle(activeTab === value)}
+              >
+                {label}
+              </Tabs.Tab>
+            ))}
+
+            {/* Ce qui s'ajoute à la fiche se choisit ici, au bout de la rangée
+                d'onglets : ce ne sont pas des volets à ouvrir, mais des blocs à
+                poser sur la carte. Poussé à droite, le menu ne se confond pas
+                avec les onglets. */}
+            <Menu position="bottom-end" withinPortal>
+              <Menu.Target>
+                <Button
+                  variant="subtle"
+                  color="gray"
+                  rightSection={<IconChevronDown size={14} />}
+                  ml="auto"
+                  mb={4}
+                  // Le même gris neutre que le menu « Actions » des onglets de
+                  // tableaux : celui de Mantine tire sur le bleu au survol.
+                  style={{ alignSelf: "center", "--button-hover": NEUTRAL_HOVER }}
+                >
+                  Actions
+                </Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                {/* Suivre vient en tête : c'est ce qui porte sur la carte
+                    entière, là où le reste y ajoute un bloc. Le menu ne se
+                    referme pas, pour qu'on voie la coche changer. */}
+                <Menu.Item
+                  leftSection={<IconEye size={16} />}
+                  rightSection={suivie ? <IconCheck size={14} /> : null}
+                  onClick={() => onToggleFollow()}
+                  closeMenuOnClick={false}
+                >
+                  Suivre
+                </Menu.Item>
+
+                <Menu.Divider />
+
+                <Menu.Item
+                  leftSection={<IconChecklist size={16} />}
+                  onClick={ajouterChecklist}
+                >
+                  Checklist
+                </Menu.Item>
+                {/* L'échéance se pose comme une checklist : par le même menu,
+                    puisque c'est un bloc de plus sur la carte. Le sélecteur
+                    s'ouvre au-dessus du titre, là où la date se lira. */}
+                <Menu.Item
+                  leftSection={<IconCalendarEvent size={16} />}
+                  onClick={() => setChoisitDate(true)}
+                >
+                  Date
+                </Menu.Item>
+                {/* Les fichiers se glissent sur le tiroir ; ceci est l'autre
+                    chemin, pour qui préfère les choisir. */}
+                <Menu.Item
+                  leftSection={<IconPaperclip size={16} />}
+                  onClick={() => champFichier.current?.click()}
+                >
+                  Pièce jointe
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          </Tabs.List>
+
+          <Tabs.Panel
+            value="settings"
+            style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+          >
+            {/* La barre ne se montre que pendant le défilement, comme sur le
+                tableau ; le style la déporte sur la bordure gauche du tiroir. */}
+            <ScrollArea
+              type="scroll"
+              scrollbars="y"
+              classNames={{ scrollbar: classes.scrollbar, thumb: classes.thumb }}
+              style={{ flex: 1, minHeight: 0 }}
             >
-              {label}
-            </Tabs.Tab>
-          ))}
+              <Stack gap="xl">
+                {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
 
-          {/* Ce qui s'ajoute à la fiche se choisit ici, au bout de la rangée
-              d'onglets : ce ne sont pas des volets à ouvrir, mais des blocs à
-              poser sur la carte. Poussé à droite, le menu ne se confond pas
-              avec les onglets. */}
-          <Menu position="bottom-end" withinPortal>
-            <Menu.Target>
-              <Button
-                variant="subtle"
-                color="gray"
-                rightSection={<IconChevronDown size={14} />}
-                ml="auto"
-                mb={4}
-                // Le même gris neutre que le menu « Actions » des onglets de
-                // tableaux : celui de Mantine tire sur le bleu au survol.
-                style={{ alignSelf: "center", "--button-hover": NEUTRAL_HOVER }}
-              >
-                Actions
-              </Button>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Item
-                leftSection={<IconChecklist size={16} />}
-                onClick={ajouterChecklist}
-              >
-                Checklist
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
-        </Tabs.List>
+                {/* Ce qui range la carte vient avant ce qui la nomme : les deux
+                  colonnes s'ouvrent chacune sur leur propre liste. Les bulles
+                  des membres tiennent en peu de place, les étiquettes portent du
+                  texte : la largeur se partage en 30 / 70. Ce partage se dit en
+                  proportions et non en pourcentages : « 30% + 70% » aurait
+                  ignoré l'écart entre les deux colonnes, et la seconde aurait
+                  débordé d'autant. */}
+                <Group align="flex-start" gap="md" wrap="nowrap">
+                  <div style={{ flex: "3 1 0", minWidth: 0 }}>
+                    <ChipPicker
+                      chipHeight={CHIP_HEIGHT}
+                      // Les bulles se suivent avec le même filet d'air que sur une
+                      // carte du tableau ou dans celui des projets.
+                      chipGap={ACTOR_GAP}
+                      label="Membres"
+                      options={users}
+                      value={memberIds}
+                      onChange={setMemberIds}
+                      emptyText="Aucun compte à proposer"
+                      // Dans la liste, la bulle et le nom : il faut pouvoir choisir
+                      // quelqu'un. Une fois retenu, la bulle suffit.
+                      render={(u) => (
+                        <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
+                          <PersonAvatar person={u} size={CHIP_HEIGHT} />
+                          <Text size="xs" truncate>
+                            {u.name}
+                          </Text>
+                        </Group>
+                      )}
+                      renderChip={(u) => (
+                        <span style={{ display: "inline-flex" }} aria-label={u.name}>
+                          <PersonAvatar person={u} size={CHIP_HEIGHT} />
+                        </span>
+                      )}
+                    />
+                  </div>
+                  <div style={{ flex: "7 1 0", minWidth: 0 }}>
+                    <LabelPicker
+                      chipHeight={CHIP_HEIGHT}
+                      labels={labels}
+                      value={labelIds}
+                      onChange={setLabelIds}
+                      boardId={boardId ?? ""}
+                      onLabelsChanged={onLabelsChanged}
+                    />
+                  </div>
+                </Group>
 
-        <Tabs.Panel
-          value="settings"
-          style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
-        >
-          {/* La barre ne se montre que pendant le défilement, comme sur le
-              tableau ; le style la déporte sur la bordure gauche du tiroir. */}
-          <ScrollArea
-            type="scroll"
-            scrollbars="y"
-            classNames={{ scrollbar: classes.scrollbar, thumb: classes.thumb }}
-            style={{ flex: 1, minHeight: 0 }}
-          >
-            <Stack gap="xl">
-              {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
-
-              {/* Ce qui range la carte vient avant ce qui la nomme : les deux
-                colonnes s'ouvrent chacune sur leur propre liste. Les bulles
-                des membres tiennent en peu de place, les étiquettes portent du
-                texte : la largeur se partage en 30 / 70. Ce partage se dit en
-                proportions et non en pourcentages : « 30% + 70% » aurait
-                ignoré l'écart entre les deux colonnes, et la seconde aurait
-                débordé d'autant. */}
-              <Group align="flex-start" gap="md" wrap="nowrap">
-                <div style={{ flex: "3 1 0", minWidth: 0 }}>
-                  <ChipPicker
-                    chipHeight={CHIP_HEIGHT}
-                    // Les bulles se suivent avec le même filet d'air que sur une
-                    // carte du tableau ou dans celui des projets.
-                    chipGap={ACTOR_GAP}
-                    label="Membres"
-                    options={users}
-                    value={memberIds}
-                    onChange={setMemberIds}
-                    emptyText="Aucun compte à proposer"
-                    // Dans la liste, la bulle et le nom : il faut pouvoir choisir
-                    // quelqu'un. Une fois retenu, la bulle suffit.
-                    render={(u) => (
-                      <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
-                        <PersonAvatar person={u} size={CHIP_HEIGHT} />
-                        <Text size="xs" truncate>
-                          {u.name}
-                        </Text>
-                      </Group>
-                    )}
-                    renderChip={(u) => (
-                      <span style={{ display: "inline-flex" }} aria-label={u.name}>
-                        <PersonAvatar person={u} size={CHIP_HEIGHT} />
-                      </span>
-                    )}
+                {/* L'échéance coiffe le titre : c'est la première chose qu'on
+                    veut savoir en ouvrant une carte, avant même son intitulé.
+                    Tant qu'il n'y en a pas, rien ne s'affiche — la fiche ne
+                    porte pas un champ vide de plus. */}
+                {choisitDate ? (
+                  <DateTimePicker
+                    label="Échéance"
+                    placeholder="Choisir une date et une heure"
+                    value={echeance || null}
+                    // Choisir un jour ne suffit pas : il reste l'heure à régler.
+                    // Se refermer sur le premier clic laissait l'échéance à
+                    // minuit sans qu'on ait pu la corriger — c'est la fermeture
+                    // du calendrier, et elle seule, qui rend la main.
+                    onChange={(valeur) => {
+                      const date = valeur ? new Date(valeur) : null;
+                      setEcheance(date && !Number.isNaN(date.getTime()) ? date.toISOString() : "");
+                    }}
+                    onDropdownClose={() => setChoisitDate(false)}
+                    withSeconds={false}
+                    clearable
+                    autoFocus
+                    popoverProps={{ withinPortal: true }}
                   />
-                </div>
-                <div style={{ flex: "7 1 0", minWidth: 0 }}>
-                  <LabelPicker
-                    chipHeight={CHIP_HEIGHT}
-                    labels={labels}
-                    value={labelIds}
-                    onChange={setLabelIds}
-                    boardId={boardId}
-                    onLabelsChanged={onLabelsChanged}
-                  />
-                </div>
-              </Group>
+                ) : (
+                  echeance && <DueDate value={echeance} onEdit={() => setChoisitDate(true)} onRemove={() => setEcheance("")} />
+                )}
 
-              <TextInput
-                label="Titre"
-                placeholder="Titre de la carte"
-                value={text}
-                onChange={(e) => setText(e.currentTarget.value)}
-                required
-              />
+                <TextInput
+                  label="Titre"
+                  placeholder="Titre de la carte"
+                  value={text}
+                  onChange={(e) => setText(e.currentTarget.value)}
+                  required
+                />
 
-              <RichTextField editor={editor} label="Description" />
+                <RichTextField editor={editor} label="Description" />
 
-              {/* Le numéro ferme la fiche : il est attribué à la création et ne
-                bouge plus, il se montre sans se modifier. */}
-              <Input.Wrapper label="Numéro">
-                <Text size="sm" c="dimmed" pt={4}>
-                  #{numero ?? "—"}
-                </Text>
-              </Input.Wrapper>
+                {/* Le numéro ferme la fiche : il est attribué à la création et ne
+                  bouge plus, il se montre sans se modifier. */}
+                <Input.Wrapper label="Numéro">
+                  <Text size="sm" c="dimmed" pt={4}>
+                    #{numero ?? "—"}
+                  </Text>
+                </Input.Wrapper>
 
-              {/* Les checklists ferment la fiche : elles s'ajoutent par le menu
-                « Actions » et s'enregistrent d'elles-mêmes. */}
-              <CardChecklists
-                cardId={card?.id}
-                checklists={checklists}
-                users={users}
-                onChanged={refreshChecklists}
-                onError={setError}
-              />
-            </Stack>
-          </ScrollArea>
-        </Tabs.Panel>
+                {/* Les checklists ferment la fiche : elles s'ajoutent par le menu
+                  « Actions » et s'enregistrent d'elles-mêmes. */}
+                {card && (
+                <CardChecklists
+                  cardId={card.id}
+                  checklists={checklists}
+                  users={users}
+                  onChanged={refreshChecklists}
+                  onError={setError}
+                />
+                )}
 
-        <Tabs.Panel
-          value="comments"
-          style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
-        >
-          <ScrollArea
-            type="scroll"
-            scrollbars="y"
-            classNames={{
-              scrollbar: classes.scrollbar,
-              thumb: classes.thumb,
-              viewport: classes.viewport,
-            }}
-            style={{ flex: 1, minHeight: 0 }}
+                {/* Les pièces jointes ferment la fiche. Comme les checklists,
+                    l'encart ne paraît que lorsqu'il y a quelque chose dedans. */}
+                <CardAttachments
+                  attachments={attachments}
+                  onPick={() => champFichier.current?.click()}
+                  onDelete={supprimerPiece}
+                />
+              </Stack>
+            </ScrollArea>
+          </Tabs.Panel>
+
+          <Tabs.Panel
+            value="comments"
+            style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
           >
-            <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
-              <CommentThread
-                comments={comments}
-                onAdd={addComment}
-                onUpdate={updateComment}
-                onDelete={deleteComment}
-              />
-            </Stack>
-          </ScrollArea>
-        </Tabs.Panel>
-      </Tabs>
+            <ScrollArea
+              type="scroll"
+              scrollbars="y"
+              classNames={{
+                scrollbar: classes.scrollbar,
+                thumb: classes.thumb,
+                viewport: classes.viewport,
+              }}
+              style={{ flex: 1, minHeight: 0 }}
+            >
+              <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
+                <CommentThread
+                  comments={comments}
+                  onAdd={addComment}
+                  onUpdate={updateComment}
+                  onDelete={deleteComment}
+                />
+              </Stack>
+            </ScrollArea>
+          </Tabs.Panel>
+        </Tabs>
+      </div>
+
+      {/* Le sélecteur de fichiers, ouvert par le menu « Actions » comme par le
+          bouton de l'encart. Il est remis à zéro après coup : sans cela,
+          redéposer le même fichier ne déclencherait rien — le navigateur ne
+          signale que les changements. */}
+      <input
+        ref={champFichier}
+        type="file"
+        multiple
+        hidden
+        onChange={(e) => {
+          const fichiers = Array.from(e.currentTarget.files ?? []);
+          e.currentTarget.value = "";
+          void deposerFichiers(fichiers);
+        }}
+      />
     </Drawer>
   );
 }

@@ -6,6 +6,16 @@ import {
   useMantineTheme,
 } from "@mantine/core";
 import { useCallback } from "react";
+import type { Label, ProjectLabel } from "@milo/shared";
+
+/** Les étiquettes des deux modes se dessinent pareil : seul le nom et la couleur comptent ici. */
+type Etiquette = Pick<Label | ProjectLabel, "name" | "color">;
+
+/** Le fond d'une étiquette et la couleur du texte qui va dessus. */
+export interface CouleursEtiquette {
+  backgroundColor: string;
+  color: string;
+}
 
 // Couleurs proposées pour une étiquette : huit teintes rangées sur le cercle
 // chromatique, du neutre au pourpre, déclinées en huit nuances de la plus
@@ -42,14 +52,15 @@ export function useLabelColors() {
   const colorScheme = useComputedColorScheme("light");
 
   return useCallback(
-    (color) => {
+    (color: string | null | undefined): CouleursEtiquette => {
       // « teinte.nuance », ou la seule teinte pour les étiquettes d'avant la
       // matrice : elles prennent alors la nuance courante du thème.
       const [nom, nuance] = String(color || "").split(".");
-      const teinte = theme.colors[nom] ? nom : "blue";
+      const teinte = nom && theme.colors[nom] ? nom : "blue";
       const rang =
         nuance === undefined ? getPrimaryShade(theme, colorScheme) : Number(nuance);
-      const fond = theme.colors[teinte][rang] ?? theme.colors[teinte][6];
+      const palette = theme.colors[teinte] ?? theme.colors["blue"]!;
+      const fond = palette[rang] ?? palette[6]!;
       return {
         backgroundColor: fond,
         color: getContrastColor({ color: fond, theme, autoContrast: true, colorScheme }),
@@ -63,7 +74,19 @@ export function useLabelColors() {
 // où elle se montre — dans son choix, dans la fiche d'une carte, dans la liste
 // qui les gère. « height » lui impose une hauteur fixe, pour qu'elle s'aligne
 // sur les bulles des membres.
-export default function LabelChip({ label, size = "sm", height, fullWidth = false }) {
+interface LabelChipProps {
+  label: Etiquette;
+  size?: "xs" | "sm";
+  height?: number;
+  fullWidth?: boolean;
+}
+
+export default function LabelChip({
+  label,
+  size = "sm",
+  height,
+  fullWidth = false,
+}: LabelChipProps) {
   const couleurs = useLabelColors();
   const petite = size === "xs";
 
@@ -102,7 +125,13 @@ const CARD_LABEL_COMPACT_WIDTH = 40;
 const CARD_LABEL_COMPACT_HEIGHT = 8;
 const CARD_LABEL_TRANSITION = "160ms ease";
 
-export function CardLabel({ label, compact, onClick }) {
+interface CardLabelProps {
+  label: Etiquette;
+  compact?: boolean;
+  onClick?: () => void;
+}
+
+export function CardLabel({ label, compact, onClick }: CardLabelProps) {
   const couleurs = useLabelColors();
 
   return (

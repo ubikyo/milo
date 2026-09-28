@@ -1,33 +1,67 @@
-import { Box, Stack } from "@mantine/core";
+import { Anchor, Box, Stack, Text } from "@mantine/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, setUnauthorizedHandler } from "./api";
 import { getToken, setToken } from "./lib/auth";
-import LoginPage from "./pages/LoginPage.jsx";
-import AccessPage from "./pages/AccessPage.jsx";
-import ProjectsPage from "./pages/ProjectsPage.jsx";
-import SupportPage from "./pages/SupportPage.jsx";
-import TasksPage from "./pages/TasksPage.jsx";
-import { DEFAULT_MODE, MODES } from "./lib/modes";
-import PreferencesModal from "./components/settings/PreferencesModal.jsx";
-import BoardDrawer from "./components/board/BoardDrawer.jsx";
-import Header from "./components/ui/Header.jsx";
-import DeleteConfirmModal from "./components/ui/DeleteConfirmModal.jsx";
-import MoveProjectModal from "./components/project/MoveProjectModal.jsx";
-import ProjectBoardDrawer from "./components/project/ProjectBoardDrawer.jsx";
-import ProjectDrawer from "./components/project/ProjectDrawer.jsx";
-import ModeSwitch from "./components/ui/ModeSwitch.jsx";
-import ShortcutsHelp from "./components/ui/ShortcutsHelp.jsx";
-import SettingsModal from "./components/settings/SettingsModal.jsx";
+import LoginPage from "./pages/LoginPage";
+import AccessPage from "./pages/AccessPage";
+import ProjectsPage from "./pages/ProjectsPage";
+import SupportPage from "./pages/SupportPage";
+import TasksPage from "./pages/TasksPage";
+import { notifications } from "@mantine/notifications";
+import { IconEye } from "@tabler/icons-react";
+import { DEFAULT_MODE, MODES, RESOURCES, emptyFollows, estNotification } from "@milo/shared";
+import { cibleDeLAdresse, noterDansLAdresse } from "./lib/suivi";
+import type { Cible } from "./lib/suivi";
+import PreferencesModal from "./components/settings/PreferencesModal";
+import BoardDrawer from "./components/board/BoardDrawer";
+import Header from "./components/ui/Header";
+import DeleteConfirmModal from "./components/ui/DeleteConfirmModal";
+import MoveOrCopyProjectModal from "./components/project/MoveOrCopyProjectModal";
+import ProjectBoardDrawer from "./components/project/ProjectBoardDrawer";
+import ProjectDrawer from "./components/project/ProjectDrawer";
+import ModeSwitch from "./components/ui/ModeSwitch";
+import ShortcutsHelp from "./components/ui/ShortcutsHelp";
+import SettingsModal from "./components/settings/SettingsModal";
+import type {
+  AuthResult,
+  Board,
+  Category,
+  Company,
+  Label,
+  Mode,
+  Project,
+  ProjectBoard,
+  ProjectLabel,
+  PublicUser,
+  FollowKind,
+  Follows,
+  FluxMessage,
+  Notification as NotificationSuivi,
+  Resource,
+  ResourceVersions,
+  TaskList,
+} from "@milo/shared";
+
+/**
+ * Une liste lue, accompagnée de la sélection à laquelle elle répond : la
+ * société pour les tableaux, le tableau pour les listes et les projets. On
+ * sait donc dès le rendu si ce qu'on a en main concerne encore ce qui est
+ * affiché — une remise à zéro par effet arriverait trop tard.
+ */
+interface LuPour<T> {
+  /** La société ou le tableau qui a servi à la lire. */
+  cle: string;
+  items: T[];
+}
 
 export default function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<PublicUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
 
-  const [categories, setCategories] = useState([]);
-  const [companies, setCompanies] = useState([]);
-  const [buildings, setBuildings] = useState([]);
-  const [users, setUsers] = useState([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [users, setUsers] = useState<PublicUser[]>([]);
   // Chaque liste lue porte la sélection à laquelle elle répond : la société
   // pour les tableaux, le tableau pour les listes et les projets. On sait donc
   // dès le rendu si ce qu'on a en main concerne encore ce qui est affiché —
@@ -37,29 +71,28 @@ export default function App() {
   //
   // La liste dérivée vaut « null » tant qu'elle n'a pas été lue pour la
   // sélection courante, et « [] » quand elle est vide pour de bon.
-  const [boardsLus, setBoardsLus] = useState(null);
+  const [boardsLus, setBoardsLus] = useState<LuPour<Board> | null>(null);
   // Identifiant du tableau ouvert, en chaîne : c'est la valeur de l'onglet.
-  const [boardId, setBoardId] = useState(null);
+  const [boardId, setBoardId] = useState<string | null>(null);
   // Tableaux du mode Projet : ils ne dépendent d'aucune société.
-  const [projectBoards, setProjectBoards] = useState(null);
-  const [projectBoardId, setProjectBoardId] = useState(null);
-  const [taskListsLues, setTaskListsLues] = useState(null);
-  const [labelsLues, setLabelsLues] = useState(null);
+  const [projectBoards, setProjectBoards] = useState<ProjectBoard[] | null>(null);
+  const [projectBoardId, setProjectBoardId] = useState<string | null>(null);
+  const [taskListsLues, setTaskListsLues] = useState<LuPour<TaskList> | null>(null);
+  const [labelsLues, setLabelsLues] = useState<LuPour<Label> | null>(null);
   // Les étiquettes du mode Projet, lues de la même façon que celles des
   // cartes, mais rattachées au tableau de projets ouvert.
-  const [projectLabelsLues, setProjectLabelsLues] = useState(null);
+  const [projectLabelsLues, setProjectLabelsLues] = useState<LuPour<ProjectLabel> | null>(null);
   // « projects » ou « tasks ».
-  const [mode, setMode] = useState(DEFAULT_MODE);
+  const [mode, setMode] = useState<Mode>(DEFAULT_MODE);
   // Le mode d'ouverture est un réglage du compte : il s'applique une fois, à
   // l'ouverture de la session, et non aux changements de mode qui suivent.
-  const modeApplique = useRef(null);
-  const [projectsLus, setProjectsLus] = useState(null);
+  const modeApplique = useRef<number | null>(null);
+  const [projectsLus, setProjectsLus] = useState<LuPour<Project> | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("all");
   // « Toutes les sociétés » par défaut ; le mode Tâche impose ensuite une
   // société précise.
   const [companyFilter, setCompanyFilter] = useState("all");
-  const [buildingFilter, setBuildingFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [actorFilter, setActorFilter] = useState("all");
 
@@ -72,34 +105,40 @@ export default function App() {
   const chargementTaches = lecturesTaches > 0;
   const chargementProjets = lecturesProjets > 0;
 
-  const boards =
-    boardsLus?.companyId === companyFilter ? boardsLus.items : null;
-  const taskLists =
-    taskListsLues?.boardId === boardId ? taskListsLues.items : null;
+  const boards = boardsLus?.cle === companyFilter ? boardsLus.items : null;
+  const taskLists = taskListsLues?.cle === boardId ? taskListsLues.items : null;
   // Les étiquettes d'un autre tableau ne valent pas pour celui-ci : tant que
   // les siennes ne sont pas lues, il n'en a aucune.
-  const labels = labelsLues?.boardId === boardId ? labelsLues.items : [];
+  const labels = labelsLues?.cle === boardId ? labelsLues.items : [];
   const projectLabels =
-    projectLabelsLues?.boardId === projectBoardId ? projectLabelsLues.items : [];
-  const projects =
-    projectsLus?.boardId === projectBoardId ? projectsLus.items : null;
+    projectLabelsLues?.cle === projectBoardId ? projectLabelsLues.items : [];
+  const projects = projectsLus?.cle === projectBoardId ? projectsLus.items : null;
 
   const [drawerOpened, setDrawerOpened] = useState(false);
   // Tiroir des tableaux : « null » à la création, le tableau visé sinon.
   const [boardDrawerOpened, setBoardDrawerOpened] = useState(false);
-  const [editedBoard, setEditedBoard] = useState(null);
+  const [editedBoard, setEditedBoard] = useState<Board | null>(null);
   const [projectBoardDrawerOpened, setProjectBoardDrawerOpened] =
     useState(false);
-  const [editedProjectBoard, setEditedProjectBoard] = useState(null);
+  const [editedProjectBoard, setEditedProjectBoard] = useState<ProjectBoard | null>(null);
   const [settingsOpened, setSettingsOpened] = useState(false);
   const [preferencesOpened, setPreferencesOpened] = useState(false);
   // Dernière version de données connue, pour détecter les modifications
   // faites par quelqu'un d'autre.
-  const knownVersion = useRef(null);
-  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const versionsConnues = useRef<ResourceVersions | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  // Ce que la personne suit. Chaque écriture rend la liste entière : elle se
+  // lit une fois à l'ouverture de la session, puis suit les clics.
+  const [follows, setFollows] = useState<Follows>(emptyFollows());
+  // Carte désignée par l'adresse, en attente que son tableau soit lu : c'est
+  // le tableau qui l'ouvrira, lui seul la connaît (TaskBoard).
+  const [carteAOuvrir, setCarteAOuvrir] = useState<number | null>(null);
+  // Carte dont le tiroir est ouvert, telle que le tableau la rapporte : c'est
+  // elle que l'adresse porte.
+  const [carteAffichee, setCarteAffichee] = useState<number | null>(null);
   // Projet visé par le menu de sa ligne : déplacement, ou suppression.
-  const [movedProject, setMovedProject] = useState(null);
-  const [deletedProject, setDeletedProject] = useState(null);
+  const [movedProject, setMovedProject] = useState<Project | null>(null);
+  const [deletedProject, setDeletedProject] = useState<Project | null>(null);
 
   const loadProjects = useCallback(async () => {
     // Sans tableau ouvert, il n'y a rien à montrer : on ne demande pas au
@@ -116,14 +155,10 @@ export default function App() {
         board: projectBoardId,
         category: categoryFilter,
         company: companyFilter,
-        building: buildingFilter,
         status: statusFilter,
         actor: actorFilter,
       });
-      setProjectsLus({ boardId: projectBoardId, items: data });
-      knownVersion.current =
-        (await api.getVersion().catch(() => null))?.version ??
-        knownVersion.current;
+      setProjectsLus({ cle: projectBoardId, items: data });
     } finally {
       setLecturesProjets((n) => n - 1);
       setLoaded(true);
@@ -132,7 +167,6 @@ export default function App() {
     projectBoardId,
     categoryFilter,
     companyFilter,
-    buildingFilter,
     statusFilter,
     actorFilter,
   ]);
@@ -161,7 +195,7 @@ export default function App() {
     setUnauthorizedHandler(() => setUser(null));
   }, []);
 
-  const handleAuthenticated = ({ token, user: account }) => {
+  const handleAuthenticated = ({ token, user: account }: AuthResult) => {
     setToken(token);
     setUser(account);
     setNeedsSetup(false);
@@ -181,13 +215,8 @@ export default function App() {
   };
 
   const loadLookups = useCallback(async () => {
-    const [nextCompanies, nextBuildings, nextUsers] = await Promise.all([
-      api.getCompanies(),
-      api.getBuildings(),
-      api.getUsers(),
-    ]);
+    const [nextCompanies, nextUsers] = await Promise.all([api.getCompanies(), api.getUsers()]);
     setCompanies(nextCompanies);
-    setBuildings(nextBuildings);
     setUsers(nextUsers);
   }, []);
 
@@ -211,6 +240,13 @@ export default function App() {
   }, [user, loadLookups]);
 
   useEffect(() => {
+    if (!user) return;
+    // Un suivi qui ne se lit pas n'empêche rien de fonctionner : les menus
+    // montreront simplement la case décochée.
+    api.getFollows().then(setFollows).catch(() => setFollows(emptyFollows()));
+  }, [user]);
+
+  useEffect(() => {
     if (user) loadProjects();
   }, [user, loadProjects]);
 
@@ -222,9 +258,10 @@ export default function App() {
   // premier de la liste.
   useEffect(() => {
     if (!projectBoards) return;
-    if (!projectBoards.length) return setProjectBoardId(null);
+    const premier = projectBoards[0];
+    if (!premier) return setProjectBoardId(null);
     if (!projectBoards.some((b) => String(b.id) === projectBoardId)) {
-      setProjectBoardId(String(projectBoards[0].id));
+      setProjectBoardId(String(premier.id));
     }
   }, [projectBoards, projectBoardId]);
 
@@ -238,7 +275,7 @@ export default function App() {
     const connue = companies.some((c) => String(c.id) === companyFilter);
 
     // En mode Tâche, « toutes » n'a pas de sens : on retient la première société.
-    if (mode === "tasks" && !connue) {
+    if (mode === "tasks" && !connue && companies[0]) {
       setCompanyFilter(String(companies[0].id));
       return;
     }
@@ -255,10 +292,7 @@ export default function App() {
     if (!companyFilter || companyFilter === "all") return setBoardsLus(null);
     setLecturesTaches((n) => n + 1);
     try {
-      setBoardsLus({
-        companyId: companyFilter,
-        items: await api.getBoards(companyFilter),
-      });
+      setBoardsLus({ cle: companyFilter, items: await api.getBoards(companyFilter) });
     } finally {
       setLecturesTaches((n) => n - 1);
     }
@@ -272,9 +306,9 @@ export default function App() {
   // société, ou supprimer un tableau, ramène sur le premier de la liste.
   useEffect(() => {
     if (!boards) return;
-    if (!boards.length) return setBoardId(null);
-    if (!boards.some((b) => String(b.id) === boardId))
-      setBoardId(String(boards[0].id));
+    const premier = boards[0];
+    if (!premier) return setBoardId(null);
+    if (!boards.some((b) => String(b.id) === boardId)) setBoardId(String(premier.id));
   }, [boards, boardId]);
 
   // Les étiquettes appartiennent au tableau ouvert : elles se lisent avec ses
@@ -284,7 +318,7 @@ export default function App() {
   // serveur : une étiquette recolorée se voit aussitôt sur les cartes, et la
   // relecture qui suit ne fait que confirmer.
   const loadLabels = useCallback(
-    async (patch) => {
+    async (patch?: { id: number; data: Partial<Label> }) => {
       if (patch) {
         setLabelsLues((l) =>
           l
@@ -299,7 +333,7 @@ export default function App() {
         return;
       }
       if (!boardId) return setLabelsLues(null);
-      setLabelsLues({ boardId, items: await api.getLabels(boardId) });
+      setLabelsLues({ cle: boardId, items: await api.getLabels(boardId) });
     },
     [boardId],
   );
@@ -311,7 +345,7 @@ export default function App() {
   // Les étiquettes du mode Projet : mêmes règles que celles des cartes, sur le
   // tableau de projets ouvert.
   const loadProjectLabels = useCallback(
-    async (patch) => {
+    async (patch?: { id: number; data: Partial<ProjectLabel> }) => {
       if (patch) {
         setProjectLabelsLues((l) =>
           l
@@ -327,7 +361,7 @@ export default function App() {
       }
       if (!projectBoardId) return setProjectLabelsLues(null);
       setProjectLabelsLues({
-        boardId: projectBoardId,
+        cle: projectBoardId,
         items: await api.getProjectLabels(projectBoardId),
       });
     },
@@ -345,7 +379,7 @@ export default function App() {
     if (!boardId) return setTaskListsLues(null);
     setLecturesTaches((n) => n + 1);
     try {
-      setTaskListsLues({ boardId, items: await api.getTaskLists(boardId) });
+      setTaskListsLues({ cle: boardId, items: await api.getTaskLists(boardId) });
     } finally {
       setLecturesTaches((n) => n - 1);
     }
@@ -354,6 +388,83 @@ export default function App() {
   useEffect(() => {
     if (user) loadTaskLists();
   }, [user, loadTaskLists]);
+
+  /**
+   * Suivre ou cesser de suivre. Le serveur rend la liste entière, qui remplace
+   * la nôtre : pas de va-et-vient optimiste à défaire en cas de refus, le clic
+   * est trop rare pour que l'attente se voie.
+   */
+  const basculerSuivi = useCallback(
+    async (kind: FollowKind, id: number) => {
+      const suivi = follows[kind].includes(id);
+      try {
+        setFollows(suivi ? await api.unfollow(kind, id) : await api.follow(kind, id));
+      } catch {
+        /* le serveur a refusé : la case reste dans l'état qu'il connaît */
+      }
+    },
+    [follows],
+  );
+
+  /**
+   * Ouvre l'élément désigné, qu'il vienne de l'adresse ou d'une notification.
+   * Un projet s'ouvre sur place — son tiroir lit sa fiche lui-même. Une carte
+   * demande d'abord de savoir où elle vit : on se place sur sa société et son
+   * tableau, et c'est le tableau qui l'ouvrira une fois ses listes lues.
+   */
+  const ouvrirCible = useCallback(async (cible: Cible) => {
+    if (cible.kind === "project") {
+      setMode("projects");
+      setSelectedProjectId(cible.id);
+      setDrawerOpened(true);
+      return;
+    }
+
+    try {
+      const ou = await api.getCardLocation(cible.id);
+      setMode("tasks");
+      setCompanyFilter(String(ou.company_id));
+      setBoardId(String(ou.board_id));
+      setCarteAOuvrir(cible.id);
+    } catch {
+      /* carte supprimée, ou tableau devenu privé : il n'y a rien à ouvrir */
+    }
+  }, []);
+
+  /**
+   * Ce qu'on voit quand un élément suivi change. Le serveur n'envoie rien pour
+   * ses propres gestes : tout ce qui arrive ici vient de quelqu'un d'autre, et
+   * il n'y a donc rien à filtrer.
+   */
+  const montrerNotification = useCallback(
+    (avis: NotificationSuivi) => {
+      notifications.show({
+        id: avis.id,
+        title: avis.title,
+        icon: <IconEye size={18} />,
+        color: "teal",
+        autoClose: 10000,
+        message: (
+          <Stack gap={4}>
+            <Text size="sm">
+              {avis.author} {avis.message}
+            </Text>
+            <Anchor
+              size="sm"
+              onClick={() => {
+                notifications.hide(avis.id);
+                ouvrirCible({ kind: avis.kind, id: avis.target_id });
+              }}
+            >
+              Ouvrir
+            </Anchor>
+          </Stack>
+        ),
+      });
+    },
+    [ouvrirCible],
+  );
+
 
   useEffect(() => {
     if (
@@ -375,44 +486,50 @@ export default function App() {
     }
   }, [users, actorFilter]);
 
-  // Le bâtiment retenu doit exister et appartenir à la société sélectionnée :
-  // sinon on filtrerait sur un bâtiment absent de la liste déroulante.
-  useEffect(() => {
-    if (buildingFilter === "all" || !buildings.length) return;
-    const choisi = buildings.find((b) => String(b.id) === buildingFilter);
-    const coherent =
-      choisi &&
-      (companyFilter === "all" || String(choisi.company_id) === companyFilter);
-    if (!coherent) setBuildingFilter("all");
-  }, [buildings, buildingFilter, companyFilter]);
-
-  // Flux d'événements : le serveur pousse la version dès qu'une écriture a
+  // Flux d'événements : le serveur pousse ses compteurs dès qu'une écriture a
   // lieu, le rechargement est donc immédiat. On consomme le flux avec `fetch`
   // et non `EventSource`, qui n'accepte pas d'en-tête d'authentification.
+  //
+  // Chaque écriture nomme ce qu'elle a touché, et le client ne relit que les
+  // jeux de données concernés. Avant, le moindre changement, chez n'importe
+  // qui, relançait les huit lectures — renommer une étiquette rechargeait les
+  // projets, les sociétés et les comptes.
   useEffect(() => {
     if (!user) return undefined;
 
     let arrete = false;
-    let controleur;
+    let controleur: AbortController | undefined;
 
-    const appliquer = async (version) => {
-      if (knownVersion.current === null) {
-        knownVersion.current = version;
+    // Ce qu'il faut relire quand telle ressource bouge.
+    const lecteurs: Record<Resource, () => void | Promise<void>> = {
+      lookups: loadLookups,
+      "project-boards": loadProjectBoards,
+      categories: loadCategories,
+      projects: loadProjects,
+      boards: loadBoards,
+      "task-lists": loadTaskLists,
+      labels: () => loadLabels(),
+      "project-labels": () => loadProjectLabels(),
+    };
+
+    const appliquer = async (message: FluxMessage) => {
+      // Deux sortes de messages circulent : les compteurs de version, qui
+      // s'adressent à tout le monde, et les notifications de suivi, qui ne
+      // s'adressent qu'à nous.
+      if (estNotification(message)) {
+        montrerNotification(message.notification);
         return;
       }
-      if (version !== knownVersion.current) {
-        knownVersion.current = version;
-        await Promise.all([
-          loadLookups(),
-          loadProjectBoards(),
-          loadCategories(),
-          loadProjects(),
-          loadBoards(),
-          loadTaskLists(),
-          loadLabels(),
-          loadProjectLabels(),
-        ]);
-      }
+
+      const { versions } = message;
+      // Premier message : les compteurs servent de référence, sans rien
+      // relire — ce qui est affiché vient d'être lu.
+      const connues = versionsConnues.current;
+      versionsConnues.current = versions;
+      if (connues === null) return;
+
+      const bouges = RESOURCES.filter((r) => versions[r] !== connues[r]);
+      await Promise.all(bouges.map((r) => lecteurs[r]()));
     };
 
     const ecouter = async () => {
@@ -423,8 +540,7 @@ export default function App() {
             headers: { Authorization: `Bearer ${getToken()}` },
             signal: controleur.signal,
           });
-          if (!reponse.ok || !reponse.body)
-            throw new Error("flux indisponible");
+          if (!reponse.ok || !reponse.body) throw new Error("flux indisponible");
 
           const lecteur = reponse.body.getReader();
           const decodeur = new TextDecoder();
@@ -439,22 +555,30 @@ export default function App() {
             const morceaux = tampon.split("\n\n");
             tampon = morceaux.pop() ?? "";
             for (const morceau of morceaux) {
-              const ligne = morceau
-                .split("\n")
-                .find((l) => l.startsWith("data:"));
+              const ligne = morceau.split("\n").find((l) => l.startsWith("data:"));
               if (!ligne) continue; // commentaire de maintien de connexion
+
+              // Le « try » ne couvre que la lecture du message : un message
+              // illisible s'ignore. Ce qu'on en fait ensuite, non — une erreur
+              // de rendu ou de rechargement doit se voir dans la console
+              // plutôt que de disparaître avec le message qui l'a causée.
+              let message: FluxMessage;
               try {
-                await appliquer(JSON.parse(ligne.slice(5)).version);
+                message = JSON.parse(ligne.slice(5)) as FluxMessage;
               } catch {
-                /* message illisible : on ignore */
+                continue;
               }
+              await appliquer(message);
             }
           }
         } catch {
           /* connexion perdue : nouvelle tentative après une courte pause */
         }
-        if (!arrete)
-          await new Promise((resoudre) => setTimeout(resoudre, 2000));
+        // Ce qui a changé pendant la coupure est inconnu : les compteurs sont
+        // oubliés, et le premier message du flux repris servira de nouvelle
+        // référence.
+        versionsConnues.current = null;
+        if (!arrete) await new Promise((resoudre) => setTimeout(resoudre, 2000));
       }
     };
 
@@ -473,10 +597,11 @@ export default function App() {
     loadTaskLists,
     loadLabels,
     loadProjectLabels,
+    montrerNotification,
   ]);
 
   // Le retour en mode Projets repart de « Toutes les sociétés ».
-  const changeMode = useCallback((suivant) => {
+  const changeMode = useCallback((suivant: Mode) => {
     setMode(suivant);
     if (suivant === "projects") setCompanyFilter("all");
   }, []);
@@ -493,20 +618,20 @@ export default function App() {
   }, []);
 
   // Raccourcis clavier : Tab fait le tour des modes, Option/Alt + Tab fait
-  // défiler les tableaux du mode courant, N nouveau projet, S/B/C font défiler
-  // les filtres société / bâtiment / catégorie.
+  // défiler les tableaux du mode courant, N nouveau projet, S fait défiler le
+  // filtre société.
   useEffect(() => {
-    const onKeyDown = (event) => {
+    const onKeyDown = (event: KeyboardEvent) => {
       // Jamais pendant une saisie de texte : ni vol de frappe, ni navigation
       // clavier cassée dans les formulaires. En revanche les listes
       // déroulantes de Mantine sont des <input readonly> : elles ne reçoivent
       // aucune frappe, les raccourcis doivent continuer d'y fonctionner.
-      const el = document.activeElement;
+      const el = document.activeElement as HTMLElement | null;
       const saisieDeTexte =
         el &&
         (el.tagName === "TEXTAREA" ||
           el.isContentEditable ||
-          (el.tagName === "INPUT" && !el.readOnly));
+          (el.tagName === "INPUT" && !(el as HTMLInputElement).readOnly));
       if (saisieDeTexte) return;
       // Tab est traité avant le filtre des modificateurs : c'est le seul
       // raccourci qui en accepte un, Option/Alt, pour changer de tableau.
@@ -520,7 +645,8 @@ export default function App() {
 
         if (!event.altKey) {
           const i = MODES.findIndex((m) => m.value === mode);
-          changeMode(MODES[(i + 1) % MODES.length].value);
+          const suivant = MODES[(i + 1) % MODES.length];
+          if (suivant) changeMode(suivant.value);
           return;
         }
 
@@ -530,7 +656,9 @@ export default function App() {
         if (!tableaux?.length) return;
         const courant = mode === "projects" ? projectBoardId : boardId;
         const i = tableaux.findIndex((b) => String(b.id) === courant);
-        const cible = String(tableaux[(i + 1) % tableaux.length].id);
+        const suivant = tableaux[(i + 1) % tableaux.length];
+        if (!suivant) return;
+        const cible = String(suivant.id);
         if (mode === "projects") setProjectBoardId(cible);
         else setBoardId(cible);
         return;
@@ -548,10 +676,10 @@ export default function App() {
       }
 
       // Passage à la société suivante.
-      const suivante = (courante, valeurs) => {
+      const suivante = (courante: string, valeurs: string[]): string => {
         if (valeurs.length === 0) return courante;
         const i = valeurs.indexOf(courante);
-        return valeurs[(i + 1) % valeurs.length];
+        return valeurs[(i + 1) % valeurs.length] ?? courante;
       };
 
       if (event.code === "KeyS") {
@@ -577,7 +705,38 @@ export default function App() {
     projectBoardId,
   ]);
 
-  const handleOpenProject = (project) => {
+  /**
+   * Ce que l'adresse désignait à l'arrivée, ouvert une fois la session ouverte.
+   * Une seule fois : ensuite c'est l'application qui écrit l'adresse, et la
+   * relire ferait rouvrir ce qu'on vient de fermer.
+   */
+  const adresseLue = useRef(false);
+  useEffect(() => {
+    if (!user || adresseLue.current) return;
+    adresseLue.current = true;
+    const cible = cibleDeLAdresse();
+    if (cible) ouvrirCible(cible);
+  }, [user, ouvrirCible]);
+
+  // L'adresse suit ce qui est ouvert, pour qu'un rechargement le retrouve et
+  // qu'on puisse envoyer le lien à quelqu'un.
+  useEffect(() => {
+    if (drawerOpened && selectedProjectId) {
+      noterDansLAdresse({ kind: "project", id: selectedProjectId });
+    } else if (carteAffichee) {
+      noterDansLAdresse({ kind: "card", id: carteAffichee });
+    } else {
+      noterDansLAdresse(null);
+    }
+  }, [drawerOpened, selectedProjectId, carteAffichee]);
+
+  /** Le tableau rapporte la carte ouverte : l'adresse la suit, la demande est servie. */
+  const handleCarteOuverte = useCallback((id: number | null) => {
+    setCarteAffichee(id);
+    setCarteAOuvrir(null);
+  }, []);
+
+  const handleOpenProject = (project: Project) => {
     setSelectedProjectId(project.id);
     setDrawerOpened(true);
   };
@@ -602,6 +761,7 @@ export default function App() {
   const deleteProject = async () => {
     const projet = deletedProject;
     setDeletedProject(null);
+    if (!projet) return;
     try {
       await api.deleteProject(projet.id);
     } finally {
@@ -626,7 +786,7 @@ export default function App() {
     setProjectBoardDrawerOpened(true);
   };
 
-  const handleProjectBoardSaved = async (board) => {
+  const handleProjectBoardSaved = async (board: ProjectBoard) => {
     setProjectBoardDrawerOpened(false);
     await loadProjectBoards();
     setProjectBoardId(String(board.id));
@@ -642,14 +802,16 @@ export default function App() {
   // en cas de refus du serveur : les onglets montrent alors ce qui existe
   // encore, l'onglet visé compris.
   const deleteProjectBoard = async () => {
+    if (!projectBoardId) return;
     try {
-      await api.deleteProjectBoard(projectBoardId);
+      await api.deleteProjectBoard(Number(projectBoardId));
     } finally {
       await loadProjectBoards();
     }
   };
 
   const deleteBoard = async () => {
+    if (!boardId) return;
     try {
       await api.deleteBoard(boardId);
     } finally {
@@ -669,7 +831,7 @@ export default function App() {
 
   // Un tableau enregistré devient le tableau ouvert : on vient de le créer ou
   // de le renommer, c'est celui que l'on regarde.
-  const handleBoardSaved = async (board) => {
+  const handleBoardSaved = async (board: Board) => {
     setBoardDrawerOpened(false);
     await loadBoards();
     setBoardId(String(board.id));
@@ -732,6 +894,10 @@ export default function App() {
             users={users}
             onLabelsChanged={loadLabels}
             loading={chargementTaches}
+            follows={follows}
+            onToggleFollow={basculerSuivi}
+            carteAOuvrir={carteAOuvrir}
+            onCarteOuverte={handleCarteOuverte}
           />
         )}
 
@@ -745,10 +911,6 @@ export default function App() {
             onDeleteBoard={deleteProjectBoard}
             projects={projects}
             filters={{
-              companyFilter,
-              buildings,
-              buildingFilter,
-              onBuildingFilterChange: setBuildingFilter,
               categories,
               categoryFilter,
               onCategoryFilterChange: setCategoryFilter,
@@ -784,6 +946,8 @@ export default function App() {
         board={editedProjectBoard}
         categories={categories}
         onCategoriesChanged={loadCategories}
+        labels={projectLabels}
+        onLabelsChanged={loadProjectLabels}
         onSaved={handleProjectBoardSaved}
         onDeleted={handleProjectBoardDeleted}
       />
@@ -795,17 +959,21 @@ export default function App() {
         boardId={projectBoardId}
         categories={categories}
         companies={companies}
-        buildings={buildings}
         users={users}
         labels={projectLabels}
+        boards={projectBoards ?? []}
         currentUser={user}
         onCategoriesChanged={loadCategories}
         onLabelsChanged={loadProjectLabels}
         onSaved={handleSaved}
         onDeleted={handleSaved}
+        suivi={selectedProjectId !== null && follows.project.includes(selectedProjectId)}
+        onToggleFollow={() => {
+          if (selectedProjectId !== null) basculerSuivi("project", selectedProjectId);
+        }}
       />
 
-      <MoveProjectModal
+      <MoveOrCopyProjectModal
         opened={movedProject !== null}
         onClose={() => setMovedProject(null)}
         project={movedProject}

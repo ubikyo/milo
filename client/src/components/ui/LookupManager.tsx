@@ -2,19 +2,70 @@ import { ActionIcon, Group, Stack, Text, TextInput, UnstyledButton } from "@mant
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import { RED } from "../../themes/colors";
-import DeleteConfirmModal from "./DeleteConfirmModal.jsx";
-import ErrorAlert from "./ErrorAlert.jsx";
-import ListItems from "./ListItems.jsx";
+import DeleteConfirmModal from "./DeleteConfirmModal";
+import ErrorAlert from "./ErrorAlert";
+import ListItems from "./ListItems";
+import type { ComponentType, ReactNode } from "react";
 
 /**
- * Liste éditable pour les ressources qui n'ont qu'un nom : sociétés, bâtiments
- * et catégories. La présentation vient de ListItems ; ce composant n'apporte
+ * Ce qu'une ligne doit porter. Le nombre de projets rattachés ne vaut que pour
+ * les sociétés et les catégories : il dit ce que la suppression emporterait.
+ */
+export interface LookupItem {
+  id: number;
+  name: string;
+  project_count?: number;
+}
+import { messageErreur } from "../../lib/errors";
+
+/**
+ * Liste éditable pour les ressources qui n'ont qu'un nom : sociétés et
+ * catégories. La présentation vient de ListItems ; ce composant n'apporte
  * que l'édition d'un libellé.
  *
  * Tout se passe sur la ligne : cliquer le nom l'édite sur place (Entrée
  * enregistre, Échap annule, quitter le champ enregistre). La dernière ligne est
  * un champ d'ajout permanent qui garde le focus : on enchaîne les saisies.
  */
+interface LookupManagerProps {
+  items: LookupItem[];
+  addTitle: string;
+  onCreate: (name: string) => Promise<unknown>;
+  onUpdate: (id: number, name: string) => Promise<unknown>;
+  onDelete: (id: number) => Promise<unknown>;
+  emptyIcon: ComponentType<{ size?: number }>;
+  emptyText?: ReactNode;
+  entityLabel: string;
+  maxRows?: number;
+}
+
+/**
+ * Ce que la suppression va emporter. Sorti du corps de la liste : le pluriel
+ * et un compte facultatif à l'intérieur d'un attribut JSX se lisaient mal, et
+ * obligeaient à répéter la vérification du cas « rien à supprimer ».
+ */
+function SuppressionMessage({ item }: { item: LookupItem | null }) {
+  if (!item) return null;
+  const projets = item.project_count ?? 0;
+  const pluriel = (n: number) => (n > 1 ? "s" : "");
+
+  return (
+    <>
+      Voulez-vous vraiment supprimer « {item.name} » ?
+      {projets > 0 && (
+        <>
+          {" "}
+          <strong>
+            {projets} projet{pluriel(projets)}
+          </strong>{" "}
+          rattaché{pluriel(projets)} et leurs commentaires seront également supprimés.
+        </>
+      )}{" "}
+      Cette action est irréversible.
+    </>
+  );
+}
+
 export default function LookupManager({
   items,
   addTitle,
@@ -25,29 +76,29 @@ export default function LookupManager({
   emptyText,
   entityLabel,
   maxRows,
-}) {
-  const [editingId, setEditingId] = useState(null);
+}: LookupManagerProps) {
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
   const [newName, setNewName] = useState("");
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState<LookupItem | null>(null);
 
-  const run = async (action) => {
+  const run = async (action: () => Promise<unknown>): Promise<boolean> => {
     setError(null);
     setBusy(true);
     try {
       await action();
       return true;
     } catch (e) {
-      setError(e.message);
+      setError(messageErreur(e));
       return false;
     } finally {
       setBusy(false);
     }
   };
 
-  const startEdit = (item) => {
+  const startEdit = (item: LookupItem) => {
     setError(null);
     setEditingId(item.id);
     setEditingName(item.name);
@@ -62,7 +113,7 @@ export default function LookupManager({
     // Un nom vidé ou inchangé : on referme sans rien demander au serveur.
     const nom = editingName.trim();
     const item = items.find((i) => i.id === editingId);
-    if (!nom || nom === item?.name) return cancelEdit();
+    if (!nom || nom === item?.name || editingId === null) return cancelEdit();
     if (await run(() => onUpdate(editingId, nom))) cancelEdit();
   };
 
@@ -155,37 +206,11 @@ export default function LookupManager({
         opened={pendingDelete !== null}
         onClose={() => setPendingDelete(null)}
         onConfirm={async () => {
-          await run(() => onDelete(pendingDelete.id));
+          if (pendingDelete) await run(() => onDelete(pendingDelete.id));
           setPendingDelete(null);
         }}
         title={`Supprimer ${entityLabel}`}
-        message={
-          <>
-            Voulez-vous vraiment supprimer « {pendingDelete?.name} » ?
-            {pendingDelete?.building_count > 0 && (
-              <>
-                {" "}
-                <strong>
-                  {pendingDelete.building_count} bâtiment
-                  {pendingDelete.building_count > 1 ? "s" : ""}
-                </strong>{" "}
-                seront supprimés.
-              </>
-            )}
-            {pendingDelete?.project_count > 0 && (
-              <>
-                {" "}
-                <strong>
-                  {pendingDelete.project_count} projet
-                  {pendingDelete.project_count > 1 ? "s" : ""}
-                </strong>{" "}
-                rattaché{pendingDelete.project_count > 1 ? "s" : ""} et leurs commentaires seront également
-                supprimés.
-              </>
-            )}{" "}
-            Cette action est irréversible.
-          </>
-        }
+        message={<SuppressionMessage item={pendingDelete} />}
       />
     </Stack>
   );

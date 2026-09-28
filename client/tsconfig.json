@@ -1,0 +1,17 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "composite": true,
+    "tsBuildInfoFile": "node_modules/.tmp/.tsbuildinfo",
+    "resolveJsonModule": true
+  },
+  "include": ["src", "vite.config.ts"],
+  "references": [{ "path": "../shared" }]
+}

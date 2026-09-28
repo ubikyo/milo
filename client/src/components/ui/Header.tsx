@@ -1,8 +1,20 @@
 import { ActionIcon, Avatar, Group, Menu, Select } from "@mantine/core";
 import { IconLogout, IconSettings, IconUserCog } from "@tabler/icons-react";
 import { useEffect, useRef } from "react";
-import { initialsOf } from "./ActorAvatars.jsx";
-import Logo from "./Logo.jsx";
+import { initialsOf } from "./ActorAvatars";
+import Logo from "./Logo";
+import type { Company, Mode, PublicUser } from "@milo/shared";
+
+interface HeaderProps {
+  companies: Company[];
+  companyFilter: string;
+  onCompanyFilterChange: (value: string) => void;
+  onOpenSettings: () => void;
+  user: PublicUser;
+  onLogout: () => void;
+  onOpenPreferences: () => void;
+  mode: Mode;
+}
 
 export default function Header({
   companies,
@@ -13,12 +25,12 @@ export default function Header({
   onLogout,
   onOpenPreferences,
   mode,
-}) {
+}: HeaderProps) {
   // Le tableau pose sa barre de défilement le long du trait qui ferme
   // l'entête : il lui faut sa hauteur, que seul l'entête connaît. Elle est
   // publiée en variable CSS et suivie, car elle change avec la largeur de la
   // fenêtre comme avec la taille du texte.
-  const entete = useRef(null);
+  const entete = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const element = entete.current;
     if (!element) return;

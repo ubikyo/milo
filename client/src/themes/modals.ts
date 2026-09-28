@@ -10,18 +10,23 @@ import { DARK_HEADER } from "./colors";
 // sinon Mantine le calcule sur le retrait de la fenêtre et les deux côtés du
 // bandeau seraient inégaux.
 //
-// Le titre est en graisse normale, et fait deux hausses d'un cinquième par
-// rapport à la taille de Mantine (1,2 × 1,2 = 1,44). Même titre pour toutes
-// les fenêtres.
+// Le titre est dans la graisse la plus fine de la police, et fait une hausse
+// d'un cinquième par rapport à la taille de Mantine (16 × 1,2 ≈ 19 px). Même
+// titre pour toutes les fenêtres et tous les tiroirs.
+//
+// Toutes les polices n'ont pas de graisse 100 : le navigateur prend alors la
+// plus fine dont elle dispose, souvent la normale. Le titre ne repose donc
+// sur rien d'autre que sa taille et son bandeau pour se distinguer.
+
 // Retrait des petites fenêtres — confirmation, saisie rapide : le double du
 // « md » de Mantine.
 export const MODAL_PADDING = 32;
 
-export const modalHeaderStyles = (padding) => ({
+export const modalHeaderStyles = (padding: number) => ({
   title: {
-    fontWeight: 400,
+    fontWeight: 100,
     color: "#FFFFFF",
-    fontSize: "calc(var(--mantine-font-size-md) * 1.44)",
+    fontSize: "calc(var(--mantine-font-size-md) * 1.2)",
   },
   header: {
     backgroundColor: DARK_HEADER,

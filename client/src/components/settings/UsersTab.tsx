@@ -3,10 +3,16 @@ import { IconCheck, IconPencil, IconTrash, IconX } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../api";
 import { RED } from "../../themes/colors";
-import { PersonAvatar } from "../ui/ActorAvatars.jsx";
-import DeleteConfirmModal from "../ui/DeleteConfirmModal.jsx";
-import ErrorAlert from "../ui/ErrorAlert.jsx";
-import ListItems from "../ui/ListItems.jsx";
+import { PersonAvatar } from "../ui/ActorAvatars";
+import DeleteConfirmModal from "../ui/DeleteConfirmModal";
+import ErrorAlert from "../ui/ErrorAlert";
+import ListItems from "../ui/ListItems";
+import { messageErreur } from "../../lib/errors";
+import type { PublicUser } from "@milo/shared";
+import type { KeyboardEvent, ReactNode } from "react";
+
+/** Le compte en cours de modification : les trois champs, et l'identifiant visé. */
+type Edition = Pick<PublicUser, "id" | "first_name" | "last_name" | "email">;
 
 // L'administrateur n'invite qu'une adresse : le profil est complété par la
 // personne lors de sa première connexion.
@@ -16,18 +22,23 @@ const emptyDraft = { email: "" };
 // autres listes n'ont qu'un libellé : sa ligne est donc plus haute.
 const USER_ROW_HEIGHT = 60;
 
-// Même présentation que les sociétés, bâtiments et catégories (ListItems).
+// Deux ActionIcon « sm » (22 px chacune) et leur écart : la colonne d'actions
+// garde cette largeur même sur son propre compte, qui n'en propose aucune, sans
+// quoi la pastille d'état de cette ligne-là se décalerait vers la droite.
+const ACTIONS_WIDTH = 46;
+
+// Même présentation que les sociétés et les catégories (ListItems).
 //
 // Une personne a trois champs (prénom, nom, e-mail) : ils passent tous les
 // trois sur la ligne en édition. Contrairement aux listes à un seul nom,
 // l'enregistrement ne se fait pas en quittant le champ — on passerait de
 // « prénom » à « nom » en fermant l'édition. Entrée enregistre, Échap annule.
-export default function UsersTab({ currentUser }) {
-  const [users, setUsers] = useState([]);
+export default function UsersTab({ currentUser }: { currentUser: PublicUser | null }) {
+  const [users, setUsers] = useState<PublicUser[]>([]);
   const [draft, setDraft] = useState(emptyDraft);
-  const [editing, setEditing] = useState(null);
-  const [pendingDelete, setPendingDelete] = useState(null);
-  const [error, setError] = useState(null);
+  const [editing, setEditing] = useState<Edition | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PublicUser | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const reload = useCallback(async () => setUsers(await api.getUsers()), []);
@@ -36,7 +47,7 @@ export default function UsersTab({ currentUser }) {
     reload();
   }, [reload]);
 
-  const run = async (action) => {
+  const run = async (action: () => Promise<unknown>): Promise<boolean> => {
     setError(null);
     setBusy(true);
     try {
@@ -44,7 +55,7 @@ export default function UsersTab({ currentUser }) {
       await reload();
       return true;
     } catch (e) {
-      setError(e.message);
+      setError(messageErreur(e));
       return false;
     } finally {
       setBusy(false);
@@ -57,6 +68,7 @@ export default function UsersTab({ currentUser }) {
   };
 
   const saveEdit = async () => {
+    if (!editing) return;
     const payload = {
       first_name: editing.first_name.trim(),
       last_name: editing.last_name.trim(),
@@ -65,20 +77,24 @@ export default function UsersTab({ currentUser }) {
     if (await run(() => api.updateUser(editing.id, payload))) setEditing(null);
   };
 
-  const touchesEdition = (e) => {
+  const touchesEdition = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") saveEdit();
     if (e.key === "Escape") setEditing(null);
   };
 
   // Champ d'un des trois attributs, sans cadre : la ligne ne bouge pas quand
   // elle passe en édition.
-  const champ = (cle, placeholder, flex) => (
+  const champ = (
+    cle: "first_name" | "last_name" | "email",
+    placeholder: string,
+    flex: number,
+  ): ReactNode => (
     <TextInput
       placeholder={placeholder}
-      value={editing[cle]}
+      value={editing?.[cle] ?? ""}
       onChange={(e) => {
         const { value } = e.currentTarget;
-        setEditing((u) => ({ ...u, [cle]: value }));
+        setEditing((u) => (u ? { ...u, [cle]: value } : u));
       }}
       onKeyDown={touchesEdition}
       variant="unstyled"
@@ -154,48 +170,56 @@ export default function UsersTab({ currentUser }) {
                     </Text>
                   </div>
 
-                  {/* Tant que la première connexion n'a pas eu lieu, le
-                      compte est ouvert mais pas encore pris : l'état se lit à
-                      droite du nom, en orange, sans dépendre du survol. */}
-                  {!user.activated && (
-                    <Badge
-                      color="orange"
-                      variant="filled"
-                      size="sm"
-                      radius="sm"
-                      tt="none"
-                      fw={600}
-                      style={{ flexShrink: 0 }}
-                    >
-                      En attente
-                    </Badge>
-                  )}
+                  {/* L'état du compte se lit à droite du nom, sans dépendre
+                      du survol : orange tant que la première connexion n'a pas
+                      eu lieu — le compte est ouvert mais pas encore pris —,
+                      vert une fois la personne validée. */}
+                  <Badge
+                    color={user.activated ? "green" : "orange"}
+                    variant="filled"
+                    size="sm"
+                    radius="sm"
+                    tt="none"
+                    fw={600}
+                    style={{ flexShrink: 0 }}
+                  >
+                    {user.activated ? "Actif" : "En attente"}
+                  </Badge>
 
                   {/* Son propre compte se gère depuis les préférences : aucune
-                      action n'est proposée ici. Les icônes restent montées pour
-                      le clavier, visibles sur la ligne en cours. */}
-                  {user.id !== currentUser?.id && (
-                    <Group gap={2} wrap="nowrap" style={{ opacity: active ? 1 : 0, flexShrink: 0 }}>
-                      <ActionIcon
-                        variant="subtle"
-                        color="gray"
-                        size="sm"
-                        onClick={() => setEditing({ ...user })}
-                        aria-label={`Modifier ${user.name}`}
-                      >
-                        <IconPencil size={14} />
-                      </ActionIcon>
-                      <ActionIcon
-                        variant="subtle"
-                        color={RED}
-                        size="sm"
-                        onClick={() => setPendingDelete(user)}
-                        aria-label={`Supprimer ${user.name}`}
-                      >
-                        <IconTrash size={14} />
-                      </ActionIcon>
-                    </Group>
-                  )}
+                      action n'est proposée ici, mais la colonne garde sa
+                      largeur pour que les pastilles restent alignées d'une
+                      ligne à l'autre. Les icônes restent montées pour le
+                      clavier, visibles sur la ligne en cours. */}
+                  <Group
+                    gap={2}
+                    wrap="nowrap"
+                    justify="flex-end"
+                    style={{ width: ACTIONS_WIDTH, flexShrink: 0, opacity: active ? 1 : 0 }}
+                  >
+                    {user.id !== currentUser?.id && (
+                      <>
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          size="sm"
+                          onClick={() => setEditing({ ...user })}
+                          aria-label={`Modifier ${user.name}`}
+                        >
+                          <IconPencil size={14} />
+                        </ActionIcon>
+                        <ActionIcon
+                          variant="subtle"
+                          color={RED}
+                          size="sm"
+                          onClick={() => setPendingDelete(user)}
+                          aria-label={`Supprimer ${user.name}`}
+                        >
+                          <IconTrash size={14} />
+                        </ActionIcon>
+                      </>
+                    )}
+                  </Group>
                 </>
               )
             }
@@ -207,7 +231,7 @@ export default function UsersTab({ currentUser }) {
         opened={pendingDelete !== null}
         onClose={() => setPendingDelete(null)}
         onConfirm={async () => {
-          await run(() => api.deleteUser(pendingDelete.id));
+          if (pendingDelete) await run(() => api.deleteUser(pendingDelete.id));
           setPendingDelete(null);
         }}
         title="Supprimer l'utilisateur"

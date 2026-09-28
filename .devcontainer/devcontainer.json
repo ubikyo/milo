@@ -8,7 +8,7 @@
     "5273": { "label": "Frontend (Vite)" },
     "3001": { "label": "API (Express)" }
   },
-  "postCreateCommand": "npm install --prefix server && npm install --prefix client",
+  "postCreateCommand": "npm install",
   "customizations": {
     "vscode": {
       "extensions": [

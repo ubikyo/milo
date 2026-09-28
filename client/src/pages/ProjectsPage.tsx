@@ -1,8 +1,10 @@
 import { ScrollArea, Stack } from "@mantine/core";
 import { IconFolders } from "@tabler/icons-react";
-import ProjectTable from "../components/project/ProjectTable.jsx";
-import BoardTabs from "../components/ui/BoardTabs.jsx";
-import EmptyPanel from "../components/ui/EmptyPanel.jsx";
+import ProjectTable from "../components/project/ProjectTable";
+import BoardTabs from "../components/ui/BoardTabs";
+import EmptyPanel from "../components/ui/EmptyPanel";
+import type { Project, ProjectBoard } from "@milo/shared";
+import type { ProjectFiltersProps } from "../components/project/ProjectTable";
 
 // Le mode Projet : les tableaux de projets en onglets, et les projets du
 // tableau ouvert. Les données et les tiroirs restent à l'application
@@ -10,6 +12,23 @@ import EmptyPanel from "../components/ui/EmptyPanel.jsx";
 //
 // « filters » regroupe ce dont le tableau a besoin pour ses entonnoirs de
 // colonnes : la page n'y touche pas, elle le transmet.
+interface ProjectsPageProps {
+  boards: ProjectBoard[] | null;
+  boardId: string | null;
+  onBoardChange: (id: string | null) => void;
+  onAddBoard: () => void;
+  onEditBoard: () => void;
+  onDeleteBoard: () => void | Promise<void>;
+  projects: Project[] | null;
+  /** Ce dont le tableau a besoin pour ses entonnoirs : la page ne fait que le transmettre. */
+  filters: ProjectFiltersProps;
+  onRowClick: (project: Project) => void;
+  onMoveProject: (project: Project) => void;
+  onDeleteProject: (project: Project) => void;
+  onAddProject: () => void;
+  loading: boolean;
+}
+
 export default function ProjectsPage({
   boards,
   boardId,
@@ -24,7 +43,7 @@ export default function ProjectsPage({
   onDeleteProject,
   onAddProject,
   loading,
-}) {
+}: ProjectsPageProps) {
   if (!boards) return null;
   if (boards.length === 0) {
     return loading ? null : (

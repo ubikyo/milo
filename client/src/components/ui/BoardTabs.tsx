@@ -2,12 +2,30 @@ import { Button, Menu, Tabs } from "@mantine/core";
 import { IconChevronDown, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import { NEUTRAL_HOVER, RED } from "../../themes/colors";
-import DeleteConfirmModal from "./DeleteConfirmModal.jsx";
+import DeleteConfirmModal from "./DeleteConfirmModal";
 import { tabStyle } from "../../themes/tabs";
+import type { CSSProperties, ReactNode } from "react";
+
+/** Un onglet : les tableaux des deux modes n'ont en commun qu'un identifiant et un nom. */
+interface Onglet {
+  id: number;
+  name: string;
+}
 
 // Les tableaux d'un mode, en onglets, avec le menu qui les gère. Sert au mode
 // Tâche comme au mode Projet : seul « deleteWarning » change, il décrit ce que
 // la suppression en cascade emporte.
+interface BoardTabsProps {
+  boards: Onglet[];
+  value: string | null;
+  onChange: (value: string | null) => void;
+  onAdd: () => void;
+  onEdit: () => void;
+  onDelete: () => void | Promise<void>;
+  /** Ce que la suppression en cascade emporte, dit à l'utilisateur. */
+  deleteWarning?: ReactNode;
+}
+
 export default function BoardTabs({
   boards,
   value,
@@ -16,7 +34,7 @@ export default function BoardTabs({
   onEdit,
   onDelete,
   deleteWarning,
-}) {
+}: BoardTabsProps) {
   const [confirmOpened, setConfirmOpened] = useState(false);
   const courant = boards.find((board) => String(board.id) === value);
 
@@ -51,7 +69,9 @@ export default function BoardTabs({
                 mb={4}
                 // Le gris de Mantine tire sur le bleu au survol : on pose le
                 // nôtre, neutre, sur la variable que Button lit pour son fond.
-                style={{ alignSelf: "center", "--button-hover": NEUTRAL_HOVER }}
+                style={
+                  { alignSelf: "center", "--button-hover": NEUTRAL_HOVER } as CSSProperties
+                }
               >
                 Actions
               </Button>

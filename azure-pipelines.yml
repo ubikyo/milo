@@ -41,29 +41,33 @@ stages:
             inputs:
               versionSpec: $(nodeVersion)
 
-          # --- Client : build de production ---
+          # Un seul install : le dépôt est un espace de travail npm
+          # (shared + server + client).
           - script: npm ci
-            workingDirectory: client
-            displayName: client — install
-          - script: npm run build
-            workingDirectory: client
-            displayName: client — build
+            displayName: install
 
-          # --- Serveur : contrôle syntaxique + démarrage à blanc ---
-          # On n'empaquette pas node_modules : better-sqlite3 est un module
-          # natif, il sera compilé sur la VM (même OS/arch) au déploiement.
-          - script: npm ci
-            workingDirectory: server
-            displayName: serveur — install
+          # --- Contrôles ---
+          # Le typage est vérifié sur les trois paquets d'un coup ; une
+          # incohérence entre ce que le serveur renvoie et ce que le client
+          # attend est une erreur de compilation, plus une surprise à
+          # l'exécution.
+          - script: npm run typecheck
+            displayName: typage (tsc)
+          - script: npm run lint
+            displayName: lint (eslint)
+
+          # --- Build ---
+          - script: npm run build
+            displayName: build
+
+          # --- Serveur : démarrage à blanc sur le paquet déployé ---
+          - script: node scripts/package-api.mjs "$(Build.ArtifactStagingDirectory)/api"
+            displayName: empaquetage api
           - script: |
               set -e
-              for f in *.js; do node --check "$f"; done
-              echo "Syntaxe OK"
-            workingDirectory: server
-            displayName: serveur — contrôle syntaxique
-          - script: |
-              set -e
-              MILO_DB_PATH="/tmp/milo-smoke/smoke.db" PORT=3999 node index.js &
+              cd "$(Build.ArtifactStagingDirectory)/api"
+              npm install --omit=dev --no-audit --no-fund
+              MILO_DB_PATH="/tmp/milo-smoke/smoke.db" PORT=3999 node server.mjs &
               pid=$!
               code=""
               for i in {1..20}; do
@@ -72,21 +76,15 @@ stages:
                 [ "$code" = "200" ] && break
               done
               kill $pid
+              rm -rf node_modules package-lock.json
               [ "$code" = "200" ] || { echo "L'API ne répond pas (code=$code)"; exit 1; }
               echo "Démarrage à blanc OK"
-            workingDirectory: server
             displayName: serveur — démarrage à blanc
 
           # --- Artefacts ---
           - publish: client/dist
             artifact: web
             displayName: artefact web
-          - script: |
-              set -e
-              mkdir -p "$(Build.ArtifactStagingDirectory)/api"
-              cp server/*.js server/package.json server/package-lock.json \
-                 "$(Build.ArtifactStagingDirectory)/api/"
-            displayName: préparation artefact api
           - publish: $(Build.ArtifactStagingDirectory)/api
             artifact: api
             displayName: artefact api
@@ -130,8 +128,11 @@ stages:
                 - script: |
                     set -euo pipefail
                     # better-sqlite3 est compilé ici, sur la VM cible.
+                    # Le manifeste de l'artefact fige les versions exactes
+                    # résolues au build : « install » y est aussi reproductible
+                    # que « ci » l'était.
                     cd "$(apiDir)"
-                    sudo npm ci --omit=dev
+                    sudo npm install --omit=dev --no-audit --no-fund
                     sudo chown -R milo:milo "$(apiDir)" "$(dbDir)"
                   displayName: dépendances de production
 

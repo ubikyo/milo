@@ -2,7 +2,8 @@ import { Box, Group, Paper, ScrollArea, TextInput } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
 import { PLUS_GAP, PLUS_SIZE } from "../../themes/plus";
 import { useState } from "react";
-import EmptyPanel from "./EmptyPanel.jsx";
+import EmptyPanel from "./EmptyPanel";
+import type { ComponentType, ReactNode } from "react";
 
 // Hauteur d'une ligne : le libellé, son champ d'édition et les icônes s'y
 // logent sans cadre ni carte.
@@ -33,7 +34,13 @@ const SCROLLBAR_SIZE = 2;
  *
  * Le contenu est une fonction : `{(active) => …}`.
  */
-function Row({ height = ROW_HEIGHT, children }) {
+interface RowProps {
+  height?: number;
+  /** Soit un contenu, soit une fonction qui reçoit le survol de sa ligne. */
+  children: ReactNode | ((active: boolean) => ReactNode);
+}
+
+function Row({ height = ROW_HEIGHT, children }: RowProps) {
   const [active, setActive] = useState(false);
 
   return (
@@ -61,7 +68,7 @@ function Row({ height = ROW_HEIGHT, children }) {
  * ligne d'ajout séparée par un filet, hors de la zone de défilement pour
  * rester visible.
  *
- * Sert aux sociétés, bâtiments et catégories (LookupManager) comme aux
+ * Sert aux sociétés et aux catégories (LookupManager) comme aux
  * utilisateurs (UsersTab).
  *
  * `add` décrit la ligne d'ajout : { placeholder, value, onChange, onSubmit,
@@ -70,6 +77,31 @@ function Row({ height = ROW_HEIGHT, children }) {
  * « + » (withPlus: false) pour que leur pastille s'aligne sur celles des lignes
  * au-dessus.
  */
+/** La ligne d'ajout, en bas de la liste. */
+export interface AddRow {
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel?: () => void;
+  type?: string;
+  disabled?: boolean;
+  /** Se glisse avant le champ : les étiquettes y posent leur couleur. */
+  section?: ReactNode;
+  withPlus?: boolean;
+}
+
+interface ListItemsProps {
+  children?: ReactNode;
+  isEmpty?: boolean;
+  /** Sans elle, la liste n'a pas d'état vide : celle des comptes en a toujours un. */
+  emptyIcon?: ComponentType<{ size?: number }>;
+  emptyText?: ReactNode;
+  add?: AddRow;
+  maxRows?: number;
+  rowHeight?: number;
+}
+
 export default function ListItems({
   children,
   isEmpty,
@@ -80,7 +112,7 @@ export default function ListItems({
   // Les lignes d'une même liste ont toutes la même hauteur : celle des
   // utilisateurs est plus haute, son plafond suit.
   rowHeight = ROW_HEIGHT,
-}) {
+}: ListItemsProps) {
   return (
     <Paper
       withBorder
@@ -88,7 +120,7 @@ export default function ListItems({
       style={{ backgroundColor: FIELD_BG, overflow: "hidden", flexShrink: 0 }}
     >
       <ScrollArea mah={maxRows * rowHeight} type="always" scrollbarSize={SCROLLBAR_SIZE}>
-        {isEmpty ? (
+        {isEmpty && emptyIcon ? (
           // Liste vide : la même invite que les écrans vides de l'application,
           // sans action — l'ajout se fait dans la ligne juste en dessous.
           <Box py="md">

@@ -1,31 +1,24 @@
-import { Alert, alpha } from "@mantine/core";
+import { Alert, type AlertProps } from "@mantine/core";
 import { RED } from "../../themes/colors";
+import { alertStyles } from "../../themes/alerts";
 
-// Le rouge des erreurs, décliné en trois : le trait du cadre, le texte, et le
-// fond qui n'en garde qu'un dixième. Un aplat rouge plein criait plus fort que
-// ce qu'il annonçait ; un cadre fin sur un fond à peine teinté se remarque
-// sans occuper tout l'écran, et laisse le message lisible dans les deux
-// thèmes.
-const ERROR_BG = alpha(RED, 0.1);
+// Le rouge des erreurs, décliné en trois par le cadre commun (themes/alerts) :
+// le trait du cadre, le texte, et le fond qui n'en garde qu'un dixième. Son
+// pendant vert rend compte de ce qui a réussi (SuccessAlert).
+const STYLES = alertStyles(RED);
 
-export default function ErrorAlert({ children, onClose, ...props }) {
+interface ErrorAlertProps extends AlertProps {
+  onClose?: () => void;
+}
+
+export default function ErrorAlert({ children, onClose, ...props }: ErrorAlertProps) {
   return (
     <Alert
       variant="light"
       radius="md"
       withCloseButton={Boolean(onClose)}
       onClose={onClose}
-      styles={{
-        root: {
-          backgroundColor: ERROR_BG,
-          border: `1px solid ${RED}`,
-        },
-        message: { color: RED },
-        title: { color: RED },
-        label: { color: RED },
-        icon: { color: RED },
-        closeButton: { color: RED },
-      }}
+      styles={STYLES}
       {...props}
     >
       {children}

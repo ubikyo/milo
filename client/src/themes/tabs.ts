@@ -7,7 +7,7 @@ import { STRONG_TEXT } from "./colors";
 //
 // Aucun accent coloré : le filet gris du cadre situe déjà l'onglet ouvert, qui
 // se distingue seulement par un texte plus contrasté et plus gras.
-export const tabStyle = (isActive) => ({
+export const tabStyle = (isActive: boolean) => ({
   // Pas d'anneau de focus. Les tiroirs et les modales donnent le focus au
   // premier onglet dès leur ouverture, ce qui l'entourait de bleu sans que
   // personne n'ait navigué au clavier. Le cadre et le texte plus gras

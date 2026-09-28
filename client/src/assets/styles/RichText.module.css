@@ -22,3 +22,66 @@
 .content :global(.ProseMirror) p {
   margin-bottom: 0;
 }
+
+/* Une description qui porte des images a besoin de plus d'air que cinq
+   lignes : la zone monte alors à quinze, toujours en interlignes pour suivre
+   le thème. En deçà, rien ne change — une description de texte garde la
+   hauteur d'un champ. */
+.content:has(img) {
+  max-height: calc(15 * var(--milo-rich-line) + 2 * var(--milo-rich-padding));
+}
+
+/* Une image de la description, et le bouton qui la retire. L'enveloppe est
+   posée par le rendu du nœud (components/ui/RichText.tsx) : c'est elle qui
+   sert de repère au bouton, d'où « relative ». */
+.image {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--mantine-radius-sm);
+}
+
+/* Le bouton qui retire une image. Il est posé en DOM par la vue du nœud
+   (components/ui/RichText.tsx) et non par Mantine : sa mise en forme tient
+   donc ici, sauf le rouge, qui vient de themes/colors.ts.
+
+   Il ne se montre qu'au survol, et reste là tant qu'il a le focus : au
+   clavier, il ne doit pas disparaître au moment de l'atteindre. */
+.imageRemove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--mantine-color-white);
+  cursor: pointer;
+
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.image:hover .imageRemove,
+.imageRemove:focus-visible {
+  opacity: 1;
+}
+
+/* L'image retenue par la sélection de l'éditeur — l'éditeur pose la classe
+   sur l'enveloppe de la vue. Le même trait que partout ailleurs, pour qu'on
+   voie ce que la touche Retour arrière emporterait. */
+.image:global(.ProseMirror-selectednode) {
+  outline: 2px solid var(--mantine-color-teal-6);
+  outline-offset: 2px;
+}
