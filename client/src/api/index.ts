@@ -2,6 +2,12 @@
 // @milo/shared, les mêmes que ceux que le serveur respecte.
 
 import type {
+  AccessBlock,
+  AccessBlockInput,
+  AccessCategory,
+  AccessCategoryInput,
+  AccessSection,
+  AccessSectionInput,
   ApiError,
   Attachment,
   AuthResult,
@@ -38,6 +44,12 @@ import type {
   RestoreResult,
   SetupInput,
   SetupState,
+  SupportComment,
+  SupportLabel,
+  SupportLabelInput,
+  SupportRequest,
+  SupportRequestDetail,
+  SupportRequestInput,
   TaskCardDetail,
   TaskCardInput,
   TaskCardRow,
@@ -187,6 +199,39 @@ export const api = {
   unfollow: (kind: FollowKind, id: Id) =>
     request<Follows>(`/follows/${kind}/${id}`, { method: "DELETE" }),
 
+  // --- Mode Accès ----------------------------------------------------------
+  // Les catégories ne pendent à rien : elles se lisent toutes, moins celles
+  // que d'autres ont fermées.
+  getAccessCategories: () => get<AccessCategory[]>("/access-categories"),
+  createAccessCategory: (data: AccessCategoryInput) =>
+    post<AccessCategory>("/access-categories", data),
+  updateAccessCategory: (id: Id, data: AccessCategoryInput) =>
+    put<AccessCategory>(`/access-categories/${id}`, data),
+  deleteAccessCategory: (id: Id) =>
+    request<null>(`/access-categories/${id}`, { method: "DELETE" }),
+
+  // Les sections sont les colonnes d'une catégorie : elles ne se lisent que
+  // pour l'une d'elles.
+  getAccessSections: (categoryId: Id | string) =>
+    get<AccessSection[]>(`/access-sections${queryString({ category: categoryId })}`),
+  createAccessSection: (data: AccessSectionInput) =>
+    post<AccessSection>("/access-sections", data),
+  updateAccessSection: (id: Id, data: AccessSectionInput) =>
+    put<AccessSection>(`/access-sections/${id}`, data),
+  deleteAccessSection: (id: Id) =>
+    request<null>(`/access-sections/${id}`, { method: "DELETE" }),
+
+  // Ce que les sections portent. La page les lit par catégorie entière : une
+  // requête, et non une par colonne.
+  getAccessBlocks: (categoryId: Id | string) =>
+    get<AccessBlock[]>(`/access-blocks${queryString({ category: categoryId })}`),
+  createAccessBlock: (data: AccessBlockInput) => post<AccessBlock>("/access-blocks", data),
+  // Seule la configuration bouge : changer de type ferait un autre élément.
+  updateAccessBlock: (id: Id, data: AccessBlockInput) =>
+    put<AccessBlock>(`/access-blocks/${id}`, data),
+  deleteAccessBlock: (id: Id) =>
+    request<null>(`/access-blocks/${id}`, { method: "DELETE" }),
+
   // --- Mode Projet ---------------------------------------------------------
   getProjectBoards: () => get<ProjectBoard[]>("/project-boards"),
   createProjectBoard: (name: string) => post<ProjectBoard>("/project-boards", { name }),
@@ -308,6 +353,34 @@ export const api = {
   // de suite, et c'est son adresse que l'éditeur insère.
   uploadCardImage: (cardId: Id, file: File) =>
     upload<{ url: string }>(`/task-cards/${cardId}/images`, file),
+
+  // --- Mode Support --------------------------------------------------------
+  // Les demandes pendent à une société : elles se lisent toutes pour celle qui
+  // est choisie, et ce sont les onglets qui les rangent par statut.
+  getSupportRequests: (companyId: string | Id) =>
+    get<SupportRequest[]>(`/support-requests${queryString({ company: companyId })}`),
+  getSupportRequest: (id: Id) => get<SupportRequestDetail>(`/support-requests/${id}`),
+  createSupportRequest: (data: SupportRequestInput) =>
+    post<SupportRequestDetail>("/support-requests", data),
+  updateSupportRequest: (id: Id, data: SupportRequestInput) =>
+    put<SupportRequestDetail>(`/support-requests/${id}`, data),
+  deleteSupportRequest: (id: Id) => del(`/support-requests/${id}`),
+
+  addSupportComment: (id: Id, text: string) =>
+    post<SupportComment>(`/support-requests/${id}/comments`, { text }),
+  updateSupportComment: (id: Id, text: string) =>
+    put<SupportComment>(`/support-comments/${id}`, { text }),
+  deleteSupportComment: (id: Id) => del(`/support-comments/${id}`),
+
+  // Étiquettes du mode Support : elles appartiennent à la société, comme
+  // celles d'un tableau lui appartiennent.
+  getSupportLabels: (companyId: string | Id) =>
+    get<SupportLabel[]>(`/support-labels${queryString({ company: companyId })}`),
+  createSupportLabel: (company_id: Id | string, name: string, color: string) =>
+    post<SupportLabel>("/support-labels", { company_id, name, color }),
+  updateSupportLabel: (id: Id, data: SupportLabelInput) =>
+    put<SupportLabel>(`/support-labels/${id}`, data),
+  deleteSupportLabel: (id: Id) => del(`/support-labels/${id}`),
 
   // Étiquettes d'un tableau : un nom et une couleur, posés sur ses cartes.
   getLabels: (boardId: string | Id) => get<Label[]>(`/labels${queryString({ board: boardId })}`),

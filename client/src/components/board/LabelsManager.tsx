@@ -6,7 +6,7 @@ import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import ErrorAlert from "../ui/ErrorAlert";
 import LabelChip from "../ui/LabelChip";
 import { DEFAULT_LABEL_COLOR, LABEL_HUES } from "@milo/shared";
-import type { Label, LabelHue, ProjectLabel } from "@milo/shared";
+import type { Label, LabelHue, ProjectLabel, SupportLabel } from "@milo/shared";
 
 // Hauteur d'une ligne d'étiquette : un peu plus haute que les autres listes,
 // l'étiquette y tenant un rectangle plein.
@@ -24,14 +24,18 @@ import { messageErreur } from "../../lib/errors";
  * catégories (LookupManager) : cliquer le nom l'édite sur place, la pastille
  * ouvre le choix des couleurs, la dernière ligne ajoute.
  */
-/** Les étiquettes des deux modes se gèrent exactement pareil. */
-type Etiquette = Label | ProjectLabel;
+/** Les étiquettes des trois modes se gèrent exactement pareil. */
+type Etiquette = Label | ProjectLabel | SupportLabel;
 
 interface LabelsManagerProps {
   labels: Etiquette[];
   onCreate: (name: string, color: string) => Promise<unknown>;
   onUpdate: (id: number, data: { name?: string; color?: string }) => Promise<unknown>;
   onDelete: (id: number) => Promise<unknown>;
+  /** Ce que dit la liste quand elle est vide : tout n'est pas un tableau. */
+  emptyText?: string;
+  /** Ce que la suppression emporte, dit dans les mots du mode. */
+  porteurs?: string;
 }
 
 export default function LabelsManager({
@@ -39,6 +43,8 @@ export default function LabelsManager({
   onCreate,
   onUpdate,
   onDelete,
+  emptyText = "Aucune étiquette sur ce tableau",
+  porteurs = "des cartes qui la portent",
 }: LabelsManagerProps) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
@@ -104,7 +110,7 @@ export default function LabelsManager({
         rowHeight={LABEL_ROW_HEIGHT}
         isEmpty={labels.length === 0}
         emptyIcon={IconTags}
-        emptyText="Aucune étiquette sur ce tableau"
+        emptyText={emptyText}
         add={{
           placeholder: "Nouvelle étiquette",
           value: newName,
@@ -210,8 +216,8 @@ export default function LabelsManager({
         title="Supprimer l'étiquette"
         message={
           <>
-            Voulez-vous vraiment supprimer « {pendingDelete?.name} » ? Elle sera retirée des cartes
-            qui la portent. Cette action est irréversible.
+            Voulez-vous vraiment supprimer « {pendingDelete?.name} » ? Elle sera retirée{" "}
+            {porteurs}. Cette action est irréversible.
           </>
         }
       />

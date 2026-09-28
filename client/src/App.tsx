@@ -4,14 +4,21 @@ import { api, setUnauthorizedHandler } from "./api";
 import { getToken, setToken } from "./lib/auth";
 import LoginPage from "./pages/LoginPage";
 import AccessPage from "./pages/AccessPage";
+import AssetsPage from "./pages/AssetsPage";
 import ProjectsPage from "./pages/ProjectsPage";
-import SupportPage from "./pages/SupportPage";
+import SupportPage, { statutDeLOnglet } from "./pages/SupportPage";
 import TasksPage from "./pages/TasksPage";
 import { notifications } from "@mantine/notifications";
 import { IconEye } from "@tabler/icons-react";
 import { DEFAULT_MODE, MODES, RESOURCES, emptyFollows, estNotification } from "@milo/shared";
 import { cibleDeLAdresse, noterDansLAdresse } from "./lib/suivi";
+import type { AccessPlugin } from "./plugins";
 import type { Cible } from "./lib/suivi";
+import AccessCategoryDrawer from "./components/access/AccessCategoryDrawer";
+import SupportRequestDrawer from "./components/support/SupportRequestDrawer";
+import AccessBlockDrawer from "./components/access/AccessBlockDrawer";
+import AccessSectionDrawer from "./components/access/AccessSectionDrawer";
+import PluginPickerModal from "./components/access/PluginPickerModal";
 import PreferencesModal from "./components/settings/PreferencesModal";
 import BoardDrawer from "./components/board/BoardDrawer";
 import Header from "./components/ui/Header";
@@ -23,6 +30,9 @@ import ModeSwitch from "./components/ui/ModeSwitch";
 import ShortcutsHelp from "./components/ui/ShortcutsHelp";
 import SettingsModal from "./components/settings/SettingsModal";
 import type {
+  AccessBlock,
+  AccessCategory,
+  AccessSection,
   AuthResult,
   Board,
   Category,
@@ -39,6 +49,8 @@ import type {
   Notification as NotificationSuivi,
   Resource,
   ResourceVersions,
+  SupportLabel,
+  SupportRequest,
   TaskList,
 } from "@milo/shared";
 
@@ -60,6 +72,16 @@ export default function App() {
   const [needsSetup, setNeedsSetup] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
+  // Les catégories du mode Accès : elles ne dépendent ni d'une société ni d'un
+  // tableau, ce sont les onglets du mode.
+  const [accessCategories, setAccessCategories] = useState<AccessCategory[] | null>(null);
+  const [accessCategoryId, setAccessCategoryId] = useState<string | null>(null);
+  // Les sections — les colonnes — de la catégorie ouverte. Comme ailleurs,
+  // elles portent la catégorie qui a servi à les lire : celles d'une autre ne
+  // valent pas pour celle-ci.
+  const [accessSectionsLues, setAccessSectionsLues] = useState<LuPour<AccessSection> | null>(null);
+  // Ce que les colonnes portent, lu d'un coup pour la catégorie ouverte.
+  const [accessBlocsLus, setAccessBlocsLus] = useState<LuPour<AccessBlock> | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [users, setUsers] = useState<PublicUser[]>([]);
   // Chaque liste lue porte la sélection à laquelle elle répond : la société
@@ -82,6 +104,10 @@ export default function App() {
   // Les étiquettes du mode Projet, lues de la même façon que celles des
   // cartes, mais rattachées au tableau de projets ouvert.
   const [projectLabelsLues, setProjectLabelsLues] = useState<LuPour<ProjectLabel> | null>(null);
+  // Les demandes du mode Support et leurs étiquettes : les unes comme les
+  // autres pendent à la société choisie dans l'entête.
+  const [supportLues, setSupportLues] = useState<LuPour<SupportRequest> | null>(null);
+  const [supportLabelsLues, setSupportLabelsLues] = useState<LuPour<SupportLabel> | null>(null);
   // « projects » ou « tasks ».
   const [mode, setMode] = useState<Mode>(DEFAULT_MODE);
   // Le mode d'ouverture est un réglage du compte : il s'applique une fois, à
@@ -102,8 +128,12 @@ export default function App() {
   // puis leur contenu).
   const [lecturesTaches, setLecturesTaches] = useState(0);
   const [lecturesProjets, setLecturesProjets] = useState(0);
+  const [lecturesAcces, setLecturesAcces] = useState(0);
+  const [lecturesSupport, setLecturesSupport] = useState(0);
   const chargementTaches = lecturesTaches > 0;
   const chargementProjets = lecturesProjets > 0;
+  const chargementAcces = lecturesAcces > 0;
+  const chargementSupport = lecturesSupport > 0;
 
   const boards = boardsLus?.cle === companyFilter ? boardsLus.items : null;
   const taskLists = taskListsLues?.cle === boardId ? taskListsLues.items : null;
@@ -113,6 +143,13 @@ export default function App() {
   const projectLabels =
     projectLabelsLues?.cle === projectBoardId ? projectLabelsLues.items : [];
   const projects = projectsLus?.cle === projectBoardId ? projectsLus.items : null;
+  // Les demandes d'une autre société ne valent pas pour celle-ci : tant que les
+  // siennes ne sont pas lues, elles restent inconnues.
+  const supportRequests = supportLues?.cle === companyFilter ? supportLues.items : null;
+  const supportLabels = supportLabelsLues?.cle === companyFilter ? supportLabelsLues.items : [];
+  const accessSections =
+    accessSectionsLues?.cle === accessCategoryId ? accessSectionsLues.items : null;
+  const accessBlocks = accessBlocsLus?.cle === accessCategoryId ? accessBlocsLus.items : [];
 
   const [drawerOpened, setDrawerOpened] = useState(false);
   // Tiroir des tableaux : « null » à la création, le tableau visé sinon.
@@ -121,6 +158,22 @@ export default function App() {
   const [projectBoardDrawerOpened, setProjectBoardDrawerOpened] =
     useState(false);
   const [editedProjectBoard, setEditedProjectBoard] = useState<ProjectBoard | null>(null);
+  // Tiroir d'une demande de support : « null » à la création, la demande visée
+  // sinon. L'onglet ouvert dit le statut que prend une demande créée là.
+  const [supportDrawerOpened, setSupportDrawerOpened] = useState(false);
+  const [editedSupportRequest, setEditedSupportRequest] = useState<SupportRequest | null>(null);
+  const [supportStatusTab, setSupportStatusTab] = useState("all");
+  // Tiroir des catégories d'accès : « null » à la création, la catégorie visée sinon.
+  const [accessDrawerOpened, setAccessDrawerOpened] = useState(false);
+  const [editedAccessCategory, setEditedAccessCategory] = useState<AccessCategory | null>(null);
+  // Tiroir des sections : même règle, « null » à la création.
+  const [sectionDrawerOpened, setSectionDrawerOpened] = useState(false);
+  const [editedAccessSection, setEditedAccessSection] = useState<AccessSection | null>(null);
+  // La section dont la zone en pointillé vient d'être cliquée : c'est elle qui
+  // accueillera l'élément choisi dans la boîte.
+  const [sectionPourBloc, setSectionPourBloc] = useState<AccessSection | null>(null);
+  // Tiroir d'un élément : celui qu'on vient de créer, ou celui qu'on rouvre.
+  const [editedAccessBlock, setEditedAccessBlock] = useState<AccessBlock | null>(null);
   const [settingsOpened, setSettingsOpened] = useState(false);
   const [preferencesOpened, setPreferencesOpened] = useState(false);
   // Dernière version de données connue, pour détecter les modifications
@@ -220,6 +273,79 @@ export default function App() {
     setUsers(nextUsers);
   }, []);
 
+  const loadAccessCategories = useCallback(async () => {
+    setLecturesAcces((n) => n + 1);
+    try {
+      setAccessCategories(await api.getAccessCategories());
+    } finally {
+      setLecturesAcces((n) => n - 1);
+    }
+  }, []);
+
+  // Les sections appartiennent à la catégorie ouverte : sans elle, il n'y a
+  // rien à lire, et la liste reste inconnue plutôt que vide.
+  const loadAccessSections = useCallback(async () => {
+    if (!accessCategoryId) return setAccessSectionsLues(null);
+    setLecturesAcces((n) => n + 1);
+    try {
+      const items = await api.getAccessSections(accessCategoryId);
+      setAccessSectionsLues({ cle: accessCategoryId, items });
+    } finally {
+      setLecturesAcces((n) => n - 1);
+    }
+  }, [accessCategoryId]);
+
+  // Les demandes de la société choisie : toutes, quel que soit leur statut.
+  // Ce sont les onglets qui les rangent, et ils comptent ce que chacun montre.
+  const loadSupportRequests = useCallback(async () => {
+    // Sans société précise, il n'y a rien à lire : les demandes restent
+    // inconnues, et non « aucune ».
+    if (!companyFilter || companyFilter === "all") return setSupportLues(null);
+    setLecturesSupport((n) => n + 1);
+    try {
+      setSupportLues({ cle: companyFilter, items: await api.getSupportRequests(companyFilter) });
+    } finally {
+      setLecturesSupport((n) => n - 1);
+    }
+  }, [companyFilter]);
+
+  // Les étiquettes du support, lues comme celles des cartes : sans argument,
+  // elles se relisent ; avec un correctif, il s'applique sur place — une
+  // étiquette recolorée se voit aussitôt sur les demandes.
+  const loadSupportLabels = useCallback(
+    async (patch?: { id: number; data: Partial<SupportLabel> }) => {
+      if (patch) {
+        setSupportLabelsLues((l) =>
+          l
+            ? {
+                ...l,
+                items: l.items.map((e) => (e.id === patch.id ? { ...e, ...patch.data } : e)),
+              }
+            : l,
+        );
+        return;
+      }
+      if (!companyFilter || companyFilter === "all") return setSupportLabelsLues(null);
+      setSupportLabelsLues({
+        cle: companyFilter,
+        items: await api.getSupportLabels(companyFilter),
+      });
+    },
+    [companyFilter],
+  );
+
+  // Les éléments de toutes les colonnes de la catégorie ouverte, en une fois.
+  const loadAccessBlocks = useCallback(async () => {
+    if (!accessCategoryId) return setAccessBlocsLus(null);
+    setLecturesAcces((n) => n + 1);
+    try {
+      const items = await api.getAccessBlocks(accessCategoryId);
+      setAccessBlocsLus({ cle: accessCategoryId, items });
+    } finally {
+      setLecturesAcces((n) => n - 1);
+    }
+  }, [accessCategoryId]);
+
   const loadProjectBoards = useCallback(async () => {
     setLecturesProjets((n) => n + 1);
     try {
@@ -254,6 +380,37 @@ export default function App() {
     if (user) loadProjectBoards();
   }, [user, loadProjectBoards]);
 
+  useEffect(() => {
+    if (user) loadAccessCategories();
+  }, [user, loadAccessCategories]);
+
+  useEffect(() => {
+    if (user) loadSupportRequests();
+  }, [user, loadSupportRequests]);
+
+  useEffect(() => {
+    if (user) loadSupportLabels();
+  }, [user, loadSupportLabels]);
+
+  useEffect(() => {
+    if (user) loadAccessSections();
+  }, [user, loadAccessSections]);
+
+  useEffect(() => {
+    if (user) loadAccessBlocks();
+  }, [user, loadAccessBlocks]);
+
+  // La catégorie d'accès ouverte doit exister : en supprimer une ramène sur la
+  // première de la liste.
+  useEffect(() => {
+    if (!accessCategories) return;
+    const premiere = accessCategories[0];
+    if (!premiere) return setAccessCategoryId(null);
+    if (!accessCategories.some((c) => String(c.id) === accessCategoryId)) {
+      setAccessCategoryId(String(premiere.id));
+    }
+  }, [accessCategories, accessCategoryId]);
+
   // Le tableau de projets ouvert doit exister : en supprimer un ramène sur le
   // premier de la liste.
   useEffect(() => {
@@ -274,13 +431,16 @@ export default function App() {
     if (!companies.length) return;
     const connue = companies.some((c) => String(c.id) === companyFilter);
 
-    // En mode Tâche, « toutes » n'a pas de sens : on retient la première société.
-    if (mode === "tasks" && !connue && companies[0]) {
+    // En mode Tâche comme en mode Support, « toutes » n'a pas de sens : les
+    // listes comme les demandes appartiennent à une société précise. On retient
+    // la première.
+    if ((mode === "tasks" || mode === "support") && !connue && companies[0]) {
       setCompanyFilter(String(companies[0].id));
       return;
     }
-    // En mode Projet, une société supprimée renvoie sur « toutes ».
-    if (mode === "projects" && !connue && companyFilter !== "all") {
+    // En mode Projet comme en mode Assets, une société supprimée renvoie sur
+    // « toutes ».
+    if ((mode === "projects" || mode === "assets") && !connue && companyFilter !== "all") {
       setCompanyFilter("all");
     }
   }, [companies, companyFilter, mode]);
@@ -510,6 +670,11 @@ export default function App() {
       "task-lists": loadTaskLists,
       labels: () => loadLabels(),
       "project-labels": () => loadProjectLabels(),
+      "access-categories": loadAccessCategories,
+      "access-sections": loadAccessSections,
+      "access-blocks": loadAccessBlocks,
+      "support-requests": loadSupportRequests,
+      "support-labels": () => loadSupportLabels(),
     };
 
     const appliquer = async (message: FluxMessage) => {
@@ -597,6 +762,11 @@ export default function App() {
     loadTaskLists,
     loadLabels,
     loadProjectLabels,
+    loadAccessCategories,
+    loadAccessSections,
+    loadAccessBlocks,
+    loadSupportRequests,
+    loadSupportLabels,
     montrerNotification,
   ]);
 
@@ -686,7 +856,7 @@ export default function App() {
         event.preventDefault();
         setCompanyFilter((c) =>
           suivante(c, [
-            ...(mode === "projects" ? ["all"] : []),
+            ...(mode === "projects" || mode === "assets" ? ["all"] : []),
             ...companies.map((x) => String(x.id)),
           ]),
         );
@@ -772,6 +942,98 @@ export default function App() {
   const handleSettingsChanged = async () => {
     await loadLookups();
     await loadProjects();
+  };
+
+  const openNewAccessSection = () => {
+    setEditedAccessSection(null);
+    setSectionDrawerOpened(true);
+  };
+
+  // La zone en pointillé d'une colonne : elle ouvre la boîte de choix, et
+  // c'est le greffon choisi qui dit ce que l'élément sera.
+  const openPluginPicker = (section: AccessSection) => setSectionPourBloc(section);
+
+  /**
+   * Le greffon choisi : l'élément est créé aussitôt avec la configuration que
+   * le greffon donne par défaut, puis son tiroir s'ouvre pour la régler. Sans
+   * cela, il faudrait un tiroir qui crée et un autre qui modifie.
+   */
+  const handlePluginChoisi = async (plugin: AccessPlugin) => {
+    const section = sectionPourBloc;
+    setSectionPourBloc(null);
+    if (!section) return;
+    const bloc = await api.createAccessBlock({
+      section_id: section.id,
+      type: plugin.type,
+      config: plugin.defaultConfig,
+    });
+    await loadAccessBlocks();
+    setEditedAccessBlock(bloc);
+  };
+
+  const handleAccessBlockSaved = async () => {
+    setEditedAccessBlock(null);
+    await loadAccessBlocks();
+  };
+
+  const handleAccessSectionSaved = async () => {
+    setSectionDrawerOpened(false);
+    await loadAccessSections();
+  };
+
+  const openNewAccessCategory = () => {
+    setEditedAccessCategory(null);
+    setAccessDrawerOpened(true);
+  };
+
+  const openEditAccessCategory = () => {
+    setEditedAccessCategory(
+      accessCategories?.find((c) => String(c.id) === accessCategoryId) ?? null,
+    );
+    setAccessDrawerOpened(true);
+  };
+
+  // Une catégorie enregistrée devient la catégorie ouverte : on vient de la
+  // créer ou de la renommer, c'est celle que l'on regarde.
+  const handleAccessCategorySaved = async (categorie: AccessCategory) => {
+    setAccessDrawerOpened(false);
+    await loadAccessCategories();
+    setAccessCategoryId(String(categorie.id));
+  };
+
+  const handleAccessCategoryDeleted = async () => {
+    setAccessDrawerOpened(false);
+    await loadAccessCategories();
+  };
+
+  // Suppression demandée depuis le menu « Actions » des onglets : la
+  // confirmation a déjà été donnée dans la modale. Le rechargement a lieu même
+  // en cas de refus du serveur : les onglets montrent alors ce qui existe
+  // encore.
+  const deleteAccessCategory = async () => {
+    if (!accessCategoryId) return;
+    try {
+      await api.deleteAccessCategory(Number(accessCategoryId));
+    } finally {
+      await loadAccessCategories();
+    }
+  };
+
+  // Une demande créée depuis un onglet en prend le statut ; depuis « Tous »,
+  // elle s'ouvre « Non résolu ».
+  const openNewSupportRequest = () => {
+    setEditedSupportRequest(null);
+    setSupportDrawerOpened(true);
+  };
+
+  const openSupportRequest = (demande: SupportRequest) => {
+    setEditedSupportRequest(demande);
+    setSupportDrawerOpened(true);
+  };
+
+  const handleSupportRequestSaved = async () => {
+    setSupportDrawerOpened(false);
+    await loadSupportRequests();
   };
 
   const openNewProjectBoard = () => {
@@ -877,8 +1139,37 @@ export default function App() {
           flexDirection: "column",
         }}
       >
-        {mode === "access" && <AccessPage />}
-        {mode === "support" && <SupportPage />}
+        {mode === "access" && (
+          <AccessPage
+            categories={accessCategories}
+            categoryId={accessCategoryId}
+            onCategoryChange={setAccessCategoryId}
+            onAddCategory={openNewAccessCategory}
+            onEditCategory={openEditAccessCategory}
+            onDeleteCategory={deleteAccessCategory}
+            sections={accessSections}
+            onAddSection={openNewAccessSection}
+            blocks={accessBlocks}
+            onAddBlock={openPluginPicker}
+            onEditBlock={setEditedAccessBlock}
+            loading={chargementAcces}
+          />
+        )}
+        {mode === "support" && (
+          <SupportPage
+            requests={supportRequests}
+            statusTab={supportStatusTab}
+            onStatusTabChange={setSupportStatusTab}
+            onOpenRequest={openSupportRequest}
+            onAddRequest={openNewSupportRequest}
+            hasCompany={companyFilter !== "all" && companyFilter !== ""}
+            loading={chargementSupport}
+          />
+        )}
+
+        {/* Le mode Assets n'a encore que sa place : sa page dit simplement
+            qu'elle est vide. */}
+        {mode === "assets" && <AssetsPage />}
 
         {loaded && mode === "tasks" && (
           <TasksPage
@@ -938,6 +1229,50 @@ export default function App() {
         onLabelsChanged={loadLabels}
         onSaved={handleBoardSaved}
         onDeleted={handleBoardDeleted}
+      />
+
+      <AccessCategoryDrawer
+        opened={accessDrawerOpened}
+        onClose={() => setAccessDrawerOpened(false)}
+        category={editedAccessCategory}
+        onSaved={handleAccessCategorySaved}
+        onDeleted={handleAccessCategoryDeleted}
+      />
+
+      <PluginPickerModal
+        opened={sectionPourBloc !== null}
+        onClose={() => setSectionPourBloc(null)}
+        onChoose={handlePluginChoisi}
+      />
+
+      <AccessBlockDrawer
+        opened={editedAccessBlock !== null}
+        onClose={() => setEditedAccessBlock(null)}
+        block={editedAccessBlock}
+        onSaved={handleAccessBlockSaved}
+        onDeleted={handleAccessBlockSaved}
+      />
+
+      <AccessSectionDrawer
+        opened={sectionDrawerOpened}
+        section={editedAccessSection}
+        categoryId={accessCategoryId}
+        onSaved={handleAccessSectionSaved}
+        onDeleted={handleAccessSectionSaved}
+      />
+
+      <SupportRequestDrawer
+        opened={supportDrawerOpened}
+        onClose={() => setSupportDrawerOpened(false)}
+        request={editedSupportRequest}
+        companyId={companyFilter}
+        defaultStatus={statutDeLOnglet(supportStatusTab)}
+        users={users}
+        labels={supportLabels}
+        onLabelsChanged={loadSupportLabels}
+        currentUser={user}
+        onSaved={handleSupportRequestSaved}
+        onDeleted={handleSupportRequestSaved}
       />
 
       <ProjectBoardDrawer

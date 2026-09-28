@@ -16,3 +16,12 @@ export const tabStyle = (isActive: boolean) => ({
   outline: "none",
   ...(isActive ? { color: STRONG_TEXT, fontWeight: 600 } : {}),
 });
+
+/**
+ * Hauteur d'une rangée d'onglets. Ailleurs, c'est le bouton « Actions » posé au
+ * bout de la rangée qui la donne : 36 pixels de bouton et 4 de marge basse. Une
+ * rangée qui n'en porte pas — les statuts du mode Support — se réglerait sur
+ * ses seuls onglets, six pixels plus haut que les autres modes : elle reprend
+ * donc la mesure ici.
+ */
+export const TAB_ROW_HEIGHT = 40;

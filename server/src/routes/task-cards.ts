@@ -7,7 +7,7 @@ import type { Id } from "@milo/shared";
 import { badRequest, forbidden, orNotFound, requireText, toIds } from "../lib/http.js";
 import { descriptionPropre } from "../lib/html.js";
 import { notifier, racine } from "../lib/notify.js";
-import { horodatage, now } from "../lib/time.js";
+import { echeance, horodatage, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { boardOuvert, boards } from "../repositories/boards.js";
 import {
@@ -27,21 +27,6 @@ import {
 
 const CARTE_INTROUVABLE = "Carte introuvable";
 const COMMENTAIRE_INTROUVABLE = "Commentaire introuvable";
-
-/**
- * L'échéance reçue, ramenée à une forme unique. Le client envoie l'heure de
- * son fuseau ; la base garde de l'ISO 8601 en UTC, comme toutes les autres
- * dates. Une chaîne vide retire l'échéance ; une date incompréhensible est
- * refusée plutôt que rangée telle quelle.
- */
-const echeance = (valeur: unknown, actuelle: string): string => {
-  if (valeur === undefined) return actuelle;
-  const texte = String(valeur ?? "").trim();
-  if (!texte) return "";
-  const date = new Date(texte);
-  if (Number.isNaN(date.getTime())) badRequest("Date d'échéance invalide");
-  return date.toISOString();
-};
 
 export const taskCardRoutes = Router();
 

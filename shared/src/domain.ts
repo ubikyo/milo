@@ -304,3 +304,155 @@ export type ListColor = (typeof LIST_COLORS)[number];
 
 export const isListColor = (value: unknown): value is ListColor =>
   LIST_COLORS.includes(value as ListColor);
+
+// --- Mode Accès ------------------------------------------------------------
+
+/**
+ * Une catégorie du mode Accès. Elle ne dépend d'aucune société ni d'aucun
+ * tableau : c'est le premier niveau du mode, comme un tableau l'est ailleurs.
+ */
+export interface AccessCategory {
+  id: Id;
+  name: string;
+  position: number;
+  /** Privée : la catégorie ne se montre qu'à son auteur. */
+  is_private: SqliteBool;
+  /** Nul quand le compte de l'auteur a été supprimé : la catégorie s'ouvre alors à tous. */
+  owner_id: Id | null;
+  created_at: string;
+}
+
+/**
+ * Comment la largeur d'une section est dite. « auto » laisse la rangée la
+ * répartir ; les deux autres la fixent, en pour-cent de la largeur disponible
+ * ou en pixels.
+ */
+export const SECTION_WIDTH_UNITS = ["auto", "percent", "px"] as const;
+
+export type SectionWidthUnit = (typeof SECTION_WIDTH_UNITS)[number];
+
+export const isSectionWidthUnit = (value: unknown): value is SectionWidthUnit =>
+  SECTION_WIDTH_UNITS.includes(value as SectionWidthUnit);
+
+/**
+ * Une section d'une catégorie d'accès : une colonne. Elle ne porte pas de nom
+ * — sa largeur la définit entièrement, ce qu'elle contiendra la nommera.
+ */
+export interface AccessSection {
+  id: Id;
+  category_id: Id;
+  width_unit: SectionWidthUnit;
+  /** Nul quand la largeur est automatique ; le nombre qui va avec l'unité sinon. */
+  width_value: number | null;
+  position: number;
+  created_at: string;
+}
+
+// --- Mode Support ----------------------------------------------------------
+
+/**
+ * Où en est une demande de support. Ce sont les onglets du mode, dans leur
+ * ordre d'affichage — « Tous » n'en est pas un : il ne filtre rien.
+ */
+export const SUPPORT_STATUSES = [
+  { value: "unresolved", label: "Non résolu" },
+  { value: "pending", label: "En attente" },
+  { value: "resolved", label: "Résolu" },
+  { value: "closed", label: "Fermé" },
+] as const;
+
+export type SupportStatus = (typeof SUPPORT_STATUSES)[number]["value"];
+
+/** L'état d'une demande qu'on vient d'ouvrir : elle attend d'être traitée. */
+export const DEFAULT_SUPPORT_STATUS: SupportStatus = "unresolved";
+
+export const isSupportStatus = (value: unknown): value is SupportStatus =>
+  SUPPORT_STATUSES.some((s) => s.value === value);
+
+/** Ce que dit l'onglet, pour un statut donné. */
+export const supportStatusLabel = (status: SupportStatus): string =>
+  SUPPORT_STATUSES.find((s) => s.value === status)?.label ?? "";
+
+/**
+ * Une étiquette du mode Support. Jumelle de celles des cartes et des projets,
+ * mais rattachée à une société : c'est le niveau au-dessus d'une demande, comme
+ * le tableau l'est d'une carte.
+ */
+export interface SupportLabel {
+  id: Id;
+  company_id: Id;
+  name: string;
+  /** « teinte.nuance » de la palette Mantine, par exemple « red.6 ». */
+  color: string;
+  position: number;
+  created_at: string;
+}
+
+/**
+ * Une demande de support. Elle appartient à la société choisie dans la liste
+ * déroulante de l'entête, et porte ceux qui s'en occupent — autant qu'il faut,
+ * comme les membres d'une carte.
+ */
+export interface SupportRequest {
+  id: Id;
+  company_id: Id;
+  status: SupportStatus;
+  /** ISO 8601 avec l'heure, ou vide — comme l'échéance d'une carte. */
+  due_date: string;
+  created_at: string;
+  updated_at: string;
+  /** Vide tant que personne n'est désigné. */
+  actors: Actor[];
+  labels: SupportLabel[];
+  /** Les échanges tenus sur la demande, comptés pour la liste. */
+  comment_count: number;
+}
+
+export interface SupportComment {
+  id: Id;
+  request_id: Id;
+  user_id: Id | null;
+  text: string;
+  /** Les mots que l'application écrit elle-même : ni retouchés, ni effacés. */
+  system: SqliteBool;
+  created_at: string;
+  updated_at: string;
+  author: Actor | null;
+}
+
+/** La fiche d'une demande : tout ce que son tiroir affiche. */
+export interface SupportRequestDetail extends SupportRequest {
+  comments: SupportComment[];
+}
+
+/**
+ * Ce qu'une section peut porter. Chaque valeur désigne un greffon du client
+ * (client/src/plugins) : c'est lui qui sait l'afficher et le configurer. La
+ * chaîne est rangée telle quelle en base, elle ne change donc jamais.
+ */
+export const ACCESS_BLOCK_TYPES = [
+  "category",
+  "subcategory",
+  "link",
+  "number",
+  "clock",
+] as const;
+
+export type AccessBlockType = (typeof ACCESS_BLOCK_TYPES)[number];
+
+export const isAccessBlockType = (value: unknown): value is AccessBlockType =>
+  ACCESS_BLOCK_TYPES.includes(value as AccessBlockType);
+
+/**
+ * Un élément posé dans une section. Le serveur ne connaît pas sa
+ * configuration : il la range et la rend telle quelle, sa forme appartient au
+ * greffon qui la lit.
+ */
+export interface AccessBlock {
+  id: Id;
+  section_id: Id;
+  type: AccessBlockType;
+  config: Record<string, unknown>;
+  position: number;
+  created_at: string;
+}

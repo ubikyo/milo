@@ -16,6 +16,15 @@ export const RESOURCES = [
   "task-lists",
   "labels",
   "project-labels",
+  /** Les catégories du mode Accès : le premier niveau de ce mode. */
+  "access-categories",
+  /** Les sections d'une catégorie d'accès : ses colonnes. */
+  "access-sections",
+  /** Ce que les sections portent : les éléments des greffons. */
+  "access-blocks",
+  /** Les demandes du mode Support, et les étiquettes qu'elles portent. */
+  "support-requests",
+  "support-labels",
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];

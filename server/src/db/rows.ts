@@ -3,7 +3,14 @@
 // compte — une ligne « users » porte l'empreinte du mot de passe, un
 // `PublicUser` non.
 
-import type { CardKind, Id, SqliteBool } from "@milo/shared";
+import type {
+  AccessBlockType,
+  CardKind,
+  Id,
+  SectionWidthUnit,
+  SqliteBool,
+  SupportStatus,
+} from "@milo/shared";
 
 export interface UserRow {
   id: Id;
@@ -42,6 +49,39 @@ export interface CategoryRow {
   id: Id;
   board_id: Id;
   name: string;
+}
+
+/** Une catégorie du mode Accès : le premier niveau du mode, sans parent. */
+export interface AccessCategoryRow {
+  id: Id;
+  name: string;
+  position: number;
+  owner_id: Id | null;
+  is_private: SqliteBool;
+  created_at: string;
+}
+
+/** Une section d'une catégorie d'accès : une colonne, et la largeur qu'elle dit. */
+export interface AccessSectionRow {
+  id: Id;
+  category_id: Id;
+  width_unit: SectionWidthUnit;
+  width_value: number | null;
+  position: number;
+  created_at: string;
+}
+
+/**
+ * Un élément d'une section, tel que la base le range : sa configuration y est
+ * du texte JSON. L'API, elle, rend un objet (`AccessBlock`).
+ */
+export interface AccessBlockRow {
+  id: Id;
+  section_id: Id;
+  type: AccessBlockType;
+  config: string;
+  position: number;
+  created_at: string;
 }
 
 export interface ProjectRow {
@@ -160,6 +200,36 @@ export type WithAuthorColumns<T> = T & {
   author_name: string | null;
   author_email: string | null;
 };
+
+/** Une demande de support : elle pend à une société. */
+export interface SupportRequestRow {
+  id: Id;
+  company_id: Id;
+  status: SupportStatus;
+  due_date: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Une étiquette du mode Support : jumelle de « LabelRow », côté société. */
+export interface SupportLabelRow {
+  id: Id;
+  company_id: Id;
+  name: string;
+  color: string;
+  position: number;
+  created_at: string;
+}
+
+export interface SupportCommentRow {
+  id: Id;
+  request_id: Id;
+  user_id: Id | null;
+  text: string;
+  system: SqliteBool;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface CountRow {
   count: number;

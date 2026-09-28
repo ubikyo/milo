@@ -10,6 +10,7 @@ export const MODES = [
   { value: "projects", label: "Projets" },
   { value: "tasks", label: "Tâches" },
   { value: "support", label: "Support" },
+  { value: "assets", label: "Assets" },
 ] as const;
 
 export type Mode = (typeof MODES)[number]["value"];

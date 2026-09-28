@@ -45,10 +45,16 @@ export default function Header({
     return () => observateur.disconnect();
   }, []);
 
-  // « Toutes les sociétés » existe partout sauf en mode Tâches, où les listes
-  // appartiennent à une société précise.
+  // Le mode Accès ne connaît pas les sociétés : ses catégories ne pendent à
+  // rien. La liste n'y aurait aucun effet, elle ne s'y montre donc pas.
+  const avecSocietes = mode !== "access";
+
+  // « Toutes les sociétés » existe partout sauf en mode Tâches et en mode
+  // Support, où les listes comme les demandes appartiennent à une société
+  // précise.
+  const uneSeuleSociete = mode === "tasks" || mode === "support";
   const companyOptions = [
-    ...(mode === "tasks" ? [] : [{ value: "all", label: "Toutes les sociétés" }]),
+    ...(uneSeuleSociete ? [] : [{ value: "all", label: "Toutes les sociétés" }]),
     ...companies.map((c) => ({ value: String(c.id), label: c.name })),
   ];
 
@@ -64,15 +70,18 @@ export default function Header({
       <Logo variant={2} h={40} />
 
       <Group>
-        {/* Toujours visible : c'est elle qui détermine les listes de tâches. */}
-        <Select
-          aria-label="Société"
-          data={companyOptions}
-          value={companyFilter}
-          onChange={(value) => value && onCompanyFilterChange(value)}
-          allowDeselect={false}
-          w={200}
-        />
+        {/* C'est elle qui détermine les listes de tâches, les demandes de
+            support, et le filtre des projets. Le mode Accès, lui, l'ignore. */}
+        {avecSocietes && (
+          <Select
+            aria-label="Société"
+            data={companyOptions}
+            value={companyFilter}
+            onChange={(value) => value && onCompanyFilterChange(value)}
+            allowDeselect={false}
+            w={200}
+          />
+        )}
 
         <Menu position="bottom-end" withinPortal>
           <Menu.Target>

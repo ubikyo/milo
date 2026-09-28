@@ -267,6 +267,28 @@ export const migrate = (db: Database): void => {
     db.exec("ALTER TABLE task_cards ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
 
+  // Sections créées quand elles portaient encore un nom : la largeur seule les
+  // définit désormais, la colonne s'en va.
+  const accessSectionColumns = columns(db, "access_sections");
+  if (accessSectionColumns.includes("name")) {
+    db.exec("ALTER TABLE access_sections DROP COLUMN name");
+  }
+
+  // Demandes de support créées quand elles n'avaient qu'un acteur : il passe
+  // dans la table des acteurs, et la colonne s'en va. SQLite refuse de retirer
+  // une colonne indexée ou citée par une clé étrangère : l'index tombe
+  // d'abord, et les clés étrangères sont suspendues le temps du retrait.
+  if (columns(db, "support_requests").includes("actor_id")) {
+    db.exec(
+      `INSERT OR IGNORE INTO support_request_actors (request_id, user_id)
+       SELECT id, actor_id FROM support_requests WHERE actor_id IS NOT NULL`,
+    );
+    sansClesEtrangeres(db, () => {
+      db.exec("DROP INDEX IF EXISTS idx_support_requests_actor");
+      db.exec("ALTER TABLE support_requests DROP COLUMN actor_id");
+    });
+  }
+
   // La notion de bâtiment a été retirée : un projet n'en cite plus, et la
   // table s'en va avec la colonne. SQLite refuse de retirer une colonne
   // indexée ou citée par une clé étrangère : l'index tombe d'abord, et les

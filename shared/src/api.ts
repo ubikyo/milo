@@ -1,7 +1,15 @@
 // Ce que le client envoie au serveur. Les réponses, elles, sont décrites par
 // les types du domaine (domain.ts).
 
-import type { CardKind, Id, ListColor, PublicUser } from "./domain.js";
+import type {
+  AccessBlockType,
+  CardKind,
+  Id,
+  ListColor,
+  PublicUser,
+  SectionWidthUnit,
+  SupportStatus,
+} from "./domain.js";
 import type { Mode } from "./modes.js";
 
 /** Toute erreur de l'API a cette forme. */
@@ -54,6 +62,32 @@ export interface BoardInput {
 export interface ProjectBoardInput {
   name?: string;
   is_private?: boolean;
+}
+
+/** Le tiroir d'une catégorie d'accès : son nom, et « Privé ». */
+export interface AccessCategoryInput {
+  name?: string;
+  is_private?: boolean;
+}
+
+/**
+ * Le tiroir d'une section. « width_value » n'a de sens qu'avec une unité qui
+ * en demande une : il est ignoré pour une largeur automatique.
+ */
+export interface AccessSectionInput {
+  category_id?: Id;
+  width_unit?: SectionWidthUnit;
+  width_value?: number | null;
+}
+
+/**
+ * Le tiroir d'un élément de section. Sa configuration est celle du greffon :
+ * le serveur ne la relit pas, il la range.
+ */
+export interface AccessBlockInput {
+  section_id?: Id;
+  type?: AccessBlockType;
+  config?: Record<string, unknown>;
 }
 
 export interface TaskListInput {
@@ -147,4 +181,23 @@ export interface CopyToBoardInput {
 export interface CopyResult {
   copied: number;
   skipped: number;
+}
+
+/**
+ * Le tiroir d'une demande de support. La société est dite à la création et ne
+ * change plus : une demande suit la société sous laquelle elle a été ouverte.
+ */
+export interface SupportRequestInput {
+  company_id?: Id;
+  status?: SupportStatus;
+  actor_ids?: Id[];
+  /** ISO 8601 avec l'heure, ou vide pour retirer l'échéance. */
+  due_date?: string;
+  label_ids?: Id[];
+}
+
+export interface SupportLabelInput {
+  company_id?: Id;
+  name?: string;
+  color?: string;
 }

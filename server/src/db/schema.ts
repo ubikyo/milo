@@ -264,6 +264,108 @@ export const SCHEMA = `
     updated_at TEXT NOT NULL
   );
 
+  -- Les catégories du mode Accès. Elles ne pendent à rien : c'est le premier
+  -- niveau du mode, comme un tableau l'est ailleurs. Deux personnes peuvent
+  -- nommer une catégorie de la même façon — l'une d'elles peut l'avoir fermée,
+  -- et l'autre n'a pas à en deviner l'existence : le nom n'est donc pas unique.
+  CREATE TABLE IF NOT EXISTS access_categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    -- L'auteur de la catégorie : celui qui l'a créée. Le compte supprimé
+    -- laisse la catégorie sans auteur, et donc ouverte à tous.
+    owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    -- Privée : la catégorie ne se montre qu'à son auteur.
+    is_private INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  -- Les sections d'une catégorie d'accès : ses colonnes. Une section n'a pas
+  -- de nom — sa largeur la définit entièrement : « auto » la laisse à la
+  -- rangée, « percent » et « px » la fixent avec « width_value », qui reste
+  -- nul dans le premier cas.
+  CREATE TABLE IF NOT EXISTS access_sections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category_id INTEGER NOT NULL REFERENCES access_categories(id) ON DELETE CASCADE,
+    width_unit TEXT NOT NULL DEFAULT 'auto'
+      CHECK (width_unit IN ('auto', 'percent', 'px')),
+    width_value REAL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  -- Les demandes du mode Support. Chacune appartient à la société choisie dans
+  -- la liste déroulante de l'entête : c'est le premier niveau du mode, comme
+  -- un tableau l'est ailleurs, et les onglets y rangent les demandes par
+  -- statut.
+  CREATE TABLE IF NOT EXISTS support_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    -- Les quatre onglets du mode, moins « Tous » qui ne filtre rien
+    -- (shared/domain.ts).
+    status TEXT NOT NULL DEFAULT 'unresolved'
+      CHECK (status IN ('unresolved', 'pending', 'resolved', 'closed')),
+    -- Échéance, en ISO 8601 avec l'heure, comme celle d'une carte. Vide
+    -- plutôt que NULL : une échéance absente se lit de la même façon partout.
+    due_date TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  -- Acteurs d'une demande : ceux qui s'en occupent, comme les membres d'une
+  -- carte. Une demande en porte autant qu'il faut.
+  CREATE TABLE IF NOT EXISTS support_request_actors (
+    request_id INTEGER NOT NULL REFERENCES support_requests(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (request_id, user_id)
+  );
+
+  -- Étiquettes du mode Support : jumelles de celles des cartes, mais
+  -- rattachées à une société plutôt qu'à un tableau — c'est le niveau
+  -- au-dessus d'une demande.
+  CREATE TABLE IF NOT EXISTS support_labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    -- « teinte.nuance » de la palette Mantine, par exemple « red.6 ».
+    color TEXT NOT NULL DEFAULT 'blue.6',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS support_request_labels (
+    request_id INTEGER NOT NULL REFERENCES support_requests(id) ON DELETE CASCADE,
+    label_id INTEGER NOT NULL REFERENCES support_labels(id) ON DELETE CASCADE,
+    PRIMARY KEY (request_id, label_id)
+  );
+
+  -- Le fil d'une demande, table à part comme celui des cartes : les fils ne se
+  -- mélangent pas.
+  CREATE TABLE IF NOT EXISTS support_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id INTEGER NOT NULL REFERENCES support_requests(id) ON DELETE CASCADE,
+    -- Le commentaire perd son auteur, mais pas son texte, si le compte est
+    -- supprimé.
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    text TEXT NOT NULL,
+    -- Voir « comments.system ».
+    system INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  -- Ce qu'une section porte : les éléments posés par les greffons du client.
+  -- Le serveur ne connaît pas leur configuration — il range le JSON que le
+  -- greffon lui donne et le rend tel quel. « type » désigne le greffon.
+  CREATE TABLE IF NOT EXISTS access_blocks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL REFERENCES access_sections(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    config TEXT NOT NULL DEFAULT '{}',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
   -- « system » marque les mots que l'application écrit elle-même, comme celui
   -- qui note la création : ils content un fait, ils ne se modifient ni ne se
   -- suppriment.
@@ -290,6 +392,18 @@ export const SCHEMA = `
 export const INDEXES = `
   CREATE INDEX IF NOT EXISTS idx_categories_board ON categories(board_id);
 
+  -- Les catégories du mode Accès se lisent toutes, dans l'ordre des onglets.
+  CREATE INDEX IF NOT EXISTS idx_access_categories_position
+    ON access_categories(position, id);
+
+  -- Les sections se lisent par catégorie, dans l'ordre des colonnes.
+  CREATE INDEX IF NOT EXISTS idx_access_sections_category
+    ON access_sections(category_id, position, id);
+
+  -- Les éléments se lisent par section, dans l'ordre où ils y sont posés.
+  CREATE INDEX IF NOT EXISTS idx_access_blocks_section
+    ON access_blocks(section_id, position, id);
+
   -- Les projets se lisent filtrés, et toujours rangés du plus récent au plus
   -- ancien : l'index porte donc le tri avec le filtre.
   CREATE INDEX IF NOT EXISTS idx_projects_board_updated ON projects(board_id, updated_at DESC);
@@ -315,9 +429,23 @@ export const INDEXES = `
   CREATE INDEX IF NOT EXISTS idx_card_attachments_card ON card_attachments(card_id, id);
   CREATE INDEX IF NOT EXISTS idx_card_attachments_file ON card_attachments(file);
 
+  -- Les demandes se lisent par société, de la plus récente à la plus ancienne ;
+  -- les onglets filtrent ensuite sur le statut.
+  CREATE INDEX IF NOT EXISTS idx_support_requests_company
+    ON support_requests(company_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_support_request_actors_user
+    ON support_request_actors(user_id);
+
+  CREATE INDEX IF NOT EXISTS idx_support_labels_company
+    ON support_labels(company_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_support_request_labels_label
+    ON support_request_labels(label_id);
+
   -- Les fils se lisent du plus ancien au plus récent : l'index porte ce tri.
   CREATE INDEX IF NOT EXISTS idx_card_comments_card ON card_comments(card_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_comments_project ON comments(project_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_support_comments_request
+    ON support_comments(request_id, created_at);
 
   -- « token » est déjà la clé primaire ; c'est la fermeture des autres
   -- sessions d'un compte, et le ménage des sessions expirées, qui balayaient.

@@ -8,18 +8,21 @@ import ChipPicker from "./ChipPicker";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import LabelChip from "./LabelChip";
 import { DEFAULT_LABEL_COLOR } from "@milo/shared";
-import type { Label, ProjectLabel } from "@milo/shared";
+import type { Label, ProjectLabel, SupportLabel } from "@milo/shared";
 import type { ReactNode } from "react";
 
-/** Les étiquettes des deux modes ont la même forme ici. */
-type Etiquette = Label | ProjectLabel;
+/** Les étiquettes des trois modes ont la même forme ici. */
+type Etiquette = Label | ProjectLabel | SupportLabel;
 
 /**
  * Ce qu'il faut savoir faire pour gérer un jeu d'étiquettes. Les routes
  * changent d'un mode à l'autre, les gestes non.
+ *
+ * `parentId` est ce à quoi les étiquettes pendent : un tableau pour les cartes
+ * et les projets, une société pour les demandes de support.
  */
 export interface LabelsApi {
-  create: (boardId: number, name: string, color: string) => Promise<Etiquette>;
+  create: (parentId: number, name: string, color: string) => Promise<Etiquette>;
   update: (id: number, data: { name?: string; color?: string }) => Promise<Etiquette>;
   remove: (id: number) => Promise<unknown>;
   /** Ce que la suppression emporte, dit dans les mots du mode. */
@@ -57,6 +60,15 @@ export const PROJECT_LABELS_API: LabelsApi = {
   porteurs: "des projets qui la portent",
 };
 
+// Celles du support pendent à une société, et non à un tableau : c'est elle
+// que « boardId » porte ici.
+export const SUPPORT_LABELS_API: LabelsApi = {
+  create: api.createSupportLabel,
+  update: api.updateSupportLabel,
+  remove: api.deleteSupportLabel,
+  porteurs: "des demandes qui la portent",
+};
+
 /**
  * Les étiquettes d'une carte : on les coche pour les poser, on clique l'une
  * d'elles pour la renommer ou la recolorer, la corbeille au bout de la ligne
@@ -69,12 +81,15 @@ interface LabelPickerProps {
   /** Les identifiants retenus, en chaînes. */
   value: string[];
   onChange: (value: string[]) => void;
+  /** Ce à quoi ces étiquettes pendent : un tableau, ou une société en Support. */
   boardId: string | number;
   /** Sans argument : relire. Avec un correctif : l'appliquer sur place. */
   onLabelsChanged: (patch?: { id: number; data: Partial<Etiquette> }) => void | Promise<void>;
   chipHeight?: number;
   /** Le mode auquel ces étiquettes appartiennent : les cartes par défaut. */
   labelsApi?: LabelsApi;
+  /** Ce que dit la liste quand il n'y a encore aucune étiquette où choisir. */
+  emptyText?: string;
 }
 
 export default function LabelPicker({
@@ -86,6 +101,7 @@ export default function LabelPicker({
   chipHeight,
   // Le mode auquel ces étiquettes appartiennent : les cartes par défaut.
   labelsApi = CARD_LABELS_API,
+  emptyText = "Aucune étiquette sur ce tableau",
 }: LabelPickerProps) {
   // Étiquette en cours de modification — son nom et sa couleur y vivent tant
   // qu'on n'a pas validé — et celle qu'on est en train d'ajouter.
@@ -248,7 +264,7 @@ export default function LabelPicker({
         options={labels}
         value={value}
         onChange={onChange}
-        emptyText="Aucune étiquette sur ce tableau"
+        emptyText={emptyText}
         fullWidthOptions
         // Une étiquette déjà ouverte reste en saisie : le clic dans son champ ne
         // doit pas la rouvrir et effacer ce qu'on est en train d'écrire.

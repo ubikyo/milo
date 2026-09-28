@@ -8,6 +8,11 @@ import { env } from "./env.js";
 import { compterEcritures, flux, payload } from "./middleware/events.js";
 import { errorHandler, notFoundHandler } from "./middleware/errors.js";
 import { requireAuth } from "./middleware/require-auth.js";
+import {
+  accessBlockRoutes,
+  accessCategoryRoutes,
+  accessSectionRoutes,
+} from "./routes/access.js";
 import { attachmentRoutes, cardMediaRoutes, mediaRoutes } from "./routes/attachments.js";
 import { authRoutes, publicAuthRoutes } from "./routes/auth.js";
 import { backupRoutes } from "./routes/backup.js";
@@ -20,6 +25,11 @@ import { labelRoutes, projectLabelRoutes } from "./routes/labels.js";
 import { mailRoutes, publicMailRoutes } from "./routes/mail.js";
 import { categoryRoutes, projectBoardRoutes } from "./routes/project-boards.js";
 import { projectRoutes } from "./routes/projects.js";
+import {
+  supportCommentRoutes,
+  supportLabelRoutes,
+  supportRequestRoutes,
+} from "./routes/support.js";
 import { taskCardRoutes, cardCommentRoutes } from "./routes/task-cards.js";
 import { taskListRoutes } from "./routes/task-lists.js";
 import { userRoutes } from "./routes/users.js";
@@ -75,6 +85,10 @@ export const createApp = (): express.Express => {
   app.use("/api/follows", followRoutes);
   app.use("/api/mail", mailRoutes);
 
+  app.use("/api/access-categories", accessCategoryRoutes);
+  app.use("/api/access-sections", accessSectionRoutes);
+  app.use("/api/access-blocks", accessBlockRoutes);
+
   app.use("/api/project-boards", projectBoardRoutes);
   app.use("/api/categories", categoryRoutes);
   app.use("/api/project-labels", projectLabelRoutes);
@@ -92,6 +106,10 @@ export const createApp = (): express.Express => {
   app.use("/api/checklists", checklistRoutes);
   app.use("/api/checklist-items", checklistItemRoutes);
   app.use("/api/labels", labelRoutes);
+
+  app.use("/api/support-requests", supportRequestRoutes);
+  app.use("/api/support-comments", supportCommentRoutes);
+  app.use("/api/support-labels", supportLabelRoutes);
 
   app.use("/api", notFoundHandler);
   app.use(errorHandler);
