@@ -26,12 +26,12 @@
   background-color: transparent;
 }
 
-/* Le curseur est blanc dans les deux thèmes, survol compris, et carré : sur un
+/* Le curseur prend le gris de toutes les barres (scrollbars.css), survol compris, et carré : sur un
    pixel de large, un arrondi ne ferait que le ronger à ses deux bouts. */
 .scrollbar[data-orientation="vertical"] > .thumb,
 .scrollbar[data-orientation="vertical"]:hover > .thumb,
 .scrollbar[data-orientation="vertical"]:active > .thumb {
-  background-color: var(--mantine-color-white);
+  background-color: var(--milo-scrollbar);
   border-radius: 0;
 }
 
@@ -69,4 +69,30 @@
   background-color: light-dark(rgba(255, 255, 255, 0.9), rgba(26, 27, 30, 0.9));
   border: 2px dashed var(--mantine-color-teal-6);
   border-radius: var(--mantine-radius-md);
+}
+
+/* La même barre, couchée cette fois sur le bord droit du tiroir — celui qui
+   touche le bord de la fenêtre — et sur toute sa hauteur, onglets et boutons
+   du bas compris, bien que seul le contenu de l'onglet défile. S'ajoute à
+   « .scrollbar ».
+
+   Elle se place donc sur le tiroir lui-même et non sur la zone qui défile :
+   le tiroir est le seul à se poser en repère (« position: relative »), et
+   tout ce qui les sépare reste en « static » — la racine de la zone (voir
+   « .root »), le panneau de l'onglet et le corps du tiroir. Mantine mesure la
+   barre pour tailler son curseur : plus haute, elle le reste en proportion. */
+.scrollbarRight[data-orientation="vertical"] {
+  top: 0;
+  bottom: 0;
+  left: auto;
+  right: 0;
+}
+
+/* La racine de la zone de défilement : Mantine la pose en repère et lui fait
+   couper ce qui la dépasse. La barre ne pourrait ni en sortir ni s'y voir.
+   C'est la zone intérieure qui défile et qui rogne le contenu : la racine
+   n'a besoin ni de l'un ni de l'autre. */
+.root {
+  position: static;
+  overflow: visible;
 }

@@ -1,6 +1,8 @@
 export * from "./api.js";
 export * from "./backup.js";
+export * from "./developer.js";
 export * from "./domain.js";
+export * from "./entra.js";
 export * from "./events.js";
 export * from "./follow.js";
 export * from "./labels.js";
@@ -8,3 +10,7 @@ export * from "./mail.js";
 export * from "./modes.js";
 export * from "./notifications.js";
 export * from "./password-rules.js";
+export * from "./roles.js";
+export * from "./search.js";
+export * from "./support-settings.js";
+export * from "./tab-orders.js";

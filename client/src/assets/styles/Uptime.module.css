@@ -1,0 +1,5 @@
+/* Les cases de la matrice Uptime. La dernière rangée, incomplète, laisse des
+   cases sans machine : la matrice les dessine vides, on les efface. */
+.case[data-empty] {
+  fill: transparent;
+}

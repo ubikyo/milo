@@ -34,24 +34,31 @@ import {
   COULEUR_ECHEANCE,
   MOT_ECHEANCE,
   dateLongue,
+  formatChampEcheance,
   etatEcheance,
 } from "../../lib/echeance";
+import { DRAWER_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
 import { tabStyle } from "../../themes/tabs";
-import { ACTOR_GAP, PersonAvatar } from "../ui/ActorAvatars";
-import ChipPicker from "../ui/ChipPicker";
+import DrawerFooter from "../ui/DrawerFooter";
+import { ACTOR_GAP } from "../ui/ActorAvatars";
+import ActorPicker from "../ui/ActorPicker";
 import RichTextField, { useRichEditor } from "../ui/RichText";
 import CardAttachments from "./CardAttachments";
 import CardChecklists from "./CardChecklists";
+import TaskDestination, { descriptionDe } from "./TaskDestination";
+import type { Destination, TacheSource } from "./TaskDestination";
 import LabelPicker from "../ui/LabelPicker";
 import CommentThread from "../project/CommentThread";
 import ErrorAlert from "../ui/ErrorAlert";
 import classes from "../../assets/styles/CardDrawer.module.css";
 import { messageErreur } from "../../lib/errors";
 import type { CSSProperties, DragEvent as ReactDragEvent } from "react";
+import { reference } from "@milo/shared";
 import type {
   Attachment,
   CardComment,
   Checklist,
+  Id,
   Label,
   PublicUser,
   TaskCard,
@@ -90,7 +97,7 @@ function DueDate({ value, onEdit, onRemove }: DueDateProps) {
 
   return (
     <Input.Wrapper label="Échéance">
-      <Group gap="xs" wrap="nowrap" mt={4}>
+      <Group gap="xs" wrap="nowrap">
         <Menu position="bottom-start" withinPortal shadow="md">
           <Menu.Target>
             <UnstyledButton
@@ -133,6 +140,11 @@ function DueDate({ value, onEdit, onRemove }: DueDateProps) {
  * La fiche d'une carte. Elle s'ouvre au clic sur la carte et se referme en
  * enregistrant. Un séparateur n'en a pas : il n'a qu'un texte, qui se modifie
  * sur le tableau.
+ *
+ * Sans carte mais avec une « source », la fiche crée la tâche : « Créer une
+ * tâche » depuis un autre mode. La société, le tableau et la liste se
+ * choisissent alors au-dessus du titre ; ce qui demande une carte déjà écrite
+ * — commentaires, checklists, pièces jointes, suivi — attend qu'elle le soit.
  */
 interface CardDrawerProps {
   opened: boolean;
@@ -147,6 +159,12 @@ interface CardDrawerProps {
   /** Suivie : on est prévenu de chaque modification de cette carte. */
   suivie: boolean;
   onToggleFollow: () => void;
+  /** L'élément d'où la tâche est créée, quand la fiche la crée. */
+  source?: TacheSource | null;
+  /** La carte vient d'être créée. */
+  onCreated?: (cardId: Id) => void;
+  /** Qui crée la tâche : il en est membre d'office. */
+  currentUserId?: Id;
 }
 
 export default function CardDrawer({
@@ -160,7 +178,15 @@ export default function CardDrawer({
   onSaved,
   suivie,
   onToggleFollow,
+  source = null,
+  onCreated,
+  currentUserId,
 }: CardDrawerProps) {
+  const creation = !card && source !== null;
+  /** Où la tâche créée ira. */
+  const [destination, setDestination] = useState<Destination>({ boardId: null, listId: null });
+  /** Les étiquettes du tableau choisi : elles ne sont propres qu'à lui. */
+  const [labelsDestination, setLabelsDestination] = useState<Label[]>([]);
   const [text, setText] = useState("");
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [labelIds, setLabelIds] = useState<string[]>([]);
@@ -176,6 +202,7 @@ export default function CardDrawer({
   const [choisitDate, setChoisitDate] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<string | null>("settings");
 
   /** Le sélecteur de fichiers, ouvert par le menu « Actions » et par l'encart. */
@@ -234,6 +261,40 @@ export default function CardDrawer({
       .catch((e) => setError(messageErreur(e)))
       .finally(() => setLoading(false));
   }, [opened, card, editor]);
+
+  // Une fiche qui crée part de l'élément d'origine : son nom, et le lien qui y
+  // ramène.
+  useEffect(() => {
+    if (!opened || !source || card) return;
+    setActiveTab("settings");
+    setError(null);
+    setLoading(false);
+    setText(source.title);
+    setNumero(null);
+    setEcheance("");
+    setChoisitDate(false);
+    setMemberIds(currentUserId === undefined ? [] : [String(currentUserId)]);
+    setLabelIds([]);
+    setComments([]);
+    setChecklists([]);
+    setAttachments([]);
+    editor?.commands.setContent(descriptionDe(source));
+  }, [opened, source, card, editor, currentUserId]);
+
+  const lireLabelsDestination = async () => {
+    if (!destination.boardId) return setLabelsDestination([]);
+    setLabelsDestination(await api.getLabels(destination.boardId));
+  };
+
+  // Changer de tableau retire les étiquettes choisies : elles étaient celles
+  // de l'autre.
+  useEffect(() => {
+    if (!creation) return;
+    setLabelIds([]);
+    setLabelsDestination([]);
+    lireLabelsDestination().catch((e) => setError(messageErreur(e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [creation, destination.boardId]);
 
   // Une checklist vient de changer : on relit la fiche pour ne montrer que ce
   // que le serveur a retenu. Le tableau, lui, se relira à la fermeture.
@@ -322,13 +383,13 @@ export default function CardDrawer({
     onDragEnd: finDuSurvol,
   };
 
-  // Le tiroir n'a ni « Fermer » ni « Enregistrer » : on le referme en cliquant
-  // au dehors, et c'est à ce moment que la fiche part au serveur. Si le
-  // serveur refuse, le tiroir reste ouvert avec le message : sans bouton pour
-  // réessayer, il ne faut pas que la saisie disparaisse avec lui.
-  const fermer = async () => {
+  // « Sauvegarder » : le seul geste qui écrit. Si le serveur refuse, le
+  // tiroir reste ouvert avec le message : la saisie n'est jamais perdue.
+  const sauvegarder = async () => {
+    if (creation) return creer();
     if (!card || loading) return onClose();
     setError(null);
+    setSaving(true);
     try {
       await api.updateTaskCardDetails(card.id, {
         // Un titre vidé par mégarde ne s'enregistre pas : la carte garde le
@@ -343,6 +404,37 @@ export default function CardDrawer({
       onClose();
     } catch (e) {
       setError(messageErreur(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // La création écrit en deux temps : la carte, avec son titre et sa
+  // description, dans la liste choisie ; puis ce que la fiche y ajoute.
+  const creer = async () => {
+    const texte = text.trim();
+    if (!destination.listId) return setError("Choisir la liste où créer la tâche.");
+    if (!texte) return setError("La tâche doit avoir un titre.");
+    setError(null);
+    setSaving(true);
+    try {
+      const description = editor?.getHTML() ?? "";
+      const carte = await api.createTaskCard(Number(destination.listId), texte, "card", description);
+      if (memberIds.length || labelIds.length || echeance) {
+        await api.updateTaskCardDetails(carte.id, {
+          text: texte,
+          description,
+          member_ids: memberIds.map(Number),
+          label_ids: labelIds.map(Number),
+          due_date: echeance,
+        });
+      }
+      onClose();
+      onCreated?.(carte.id);
+    } catch (e) {
+      setError(messageErreur(e));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -375,9 +467,9 @@ export default function CardDrawer({
   return (
     <Drawer
       opened={opened}
-      onClose={fermer}
+      onClose={onClose}
       position="right"
-      size={560}
+      size={610}
       padding={DRAWER_PADDING}
       withCloseButton={false}
       styles={{
@@ -403,7 +495,7 @@ export default function CardDrawer({
           le pointeur — ce sont les éléments en dessous qui continuent de voir
           passer le glisser. */}
       <div
-        {...survol}
+        {...(creation ? {} : survol)}
         style={{
           position: "relative",
           flex: 1,
@@ -428,7 +520,8 @@ export default function CardDrawer({
           styles={{ panel: { paddingTop: 20 } }}
         >
           <Tabs.List mb="md">
-            {TABS.map(({ value, label, icon: Icon }) => (
+            {/* Une tâche encore à créer n'a pas de fil : il attendra qu'elle existe. */}
+            {TABS.filter(({ value }) => !creation || value === "settings").map(({ value, label, icon: Icon }) => (
               <Tabs.Tab
                 key={value}
                 value={value}
@@ -443,7 +536,12 @@ export default function CardDrawer({
                 d'onglets : ce ne sont pas des volets à ouvrir, mais des blocs à
                 poser sur la carte. Poussé à droite, le menu ne se confond pas
                 avec les onglets. */}
-            <Menu position="bottom-end" withinPortal>
+            <Menu
+              position="bottom-end"
+              withinPortal
+              offset={DRAWER_MENU_OFFSET}
+              styles={TAB_MENU_STYLES}
+            >
               <Menu.Target>
                 <Button
                   variant="subtle"
@@ -462,23 +560,27 @@ export default function CardDrawer({
                 {/* Suivre vient en tête : c'est ce qui porte sur la carte
                     entière, là où le reste y ajoute un bloc. Le menu ne se
                     referme pas, pour qu'on voie la coche changer. */}
-                <Menu.Item
-                  leftSection={<IconEye size={16} />}
-                  rightSection={suivie ? <IconCheck size={14} /> : null}
-                  onClick={() => onToggleFollow()}
-                  closeMenuOnClick={false}
-                >
-                  Suivre
-                </Menu.Item>
+                {!creation && (
+                  <>
+                    <Menu.Item
+                      leftSection={<IconEye size={16} />}
+                      rightSection={suivie ? <IconCheck size={14} /> : null}
+                      onClick={() => onToggleFollow()}
+                      closeMenuOnClick={false}
+                    >
+                      Suivre
+                    </Menu.Item>
 
-                <Menu.Divider />
+                    <Menu.Divider />
 
-                <Menu.Item
-                  leftSection={<IconChecklist size={16} />}
-                  onClick={ajouterChecklist}
-                >
-                  Checklist
-                </Menu.Item>
+                    <Menu.Item
+                      leftSection={<IconChecklist size={16} />}
+                      onClick={ajouterChecklist}
+                    >
+                      Checklist
+                    </Menu.Item>
+                  </>
+                )}
                 {/* L'échéance se pose comme une checklist : par le même menu,
                     puisque c'est un bloc de plus sur la carte. Le sélecteur
                     s'ouvre au-dessus du titre, là où la date se lira. */}
@@ -490,12 +592,14 @@ export default function CardDrawer({
                 </Menu.Item>
                 {/* Les fichiers se glissent sur le tiroir ; ceci est l'autre
                     chemin, pour qui préfère les choisir. */}
-                <Menu.Item
-                  leftSection={<IconPaperclip size={16} />}
-                  onClick={() => champFichier.current?.click()}
-                >
-                  Pièce jointe
-                </Menu.Item>
+                {!creation && (
+                  <Menu.Item
+                    leftSection={<IconPaperclip size={16} />}
+                    onClick={() => champFichier.current?.click()}
+                  >
+                    Pièce jointe
+                  </Menu.Item>
+                )}
               </Menu.Dropdown>
             </Menu>
           </Tabs.List>
@@ -524,43 +628,42 @@ export default function CardDrawer({
                   débordé d'autant. */}
                 <Group align="flex-start" gap="md" wrap="nowrap">
                   <div style={{ flex: "3 1 0", minWidth: 0 }}>
-                    <ChipPicker
+                    <ActorPicker
                       chipHeight={CHIP_HEIGHT}
                       // Les bulles se suivent avec le même filet d'air que sur une
                       // carte du tableau ou dans celui des projets.
                       chipGap={ACTOR_GAP}
                       label="Membres"
-                      options={users}
+                      users={users}
                       value={memberIds}
                       onChange={setMemberIds}
-                      emptyText="Aucun compte à proposer"
-                      // Dans la liste, la bulle et le nom : il faut pouvoir choisir
-                      // quelqu'un. Une fois retenu, la bulle suffit.
-                      render={(u) => (
-                        <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
-                          <PersonAvatar person={u} size={CHIP_HEIGHT} />
-                          <Text size="xs" truncate>
-                            {u.name}
-                          </Text>
-                        </Group>
-                      )}
-                      renderChip={(u) => (
-                        <span style={{ display: "inline-flex" }} aria-label={u.name}>
-                          <PersonAvatar person={u} size={CHIP_HEIGHT} />
-                        </span>
-                      )}
                     />
                   </div>
                   <div style={{ flex: "7 1 0", minWidth: 0 }}>
                     <LabelPicker
                       chipHeight={CHIP_HEIGHT}
-                      labels={labels}
+                      labels={creation ? labelsDestination : labels}
                       value={labelIds}
                       onChange={setLabelIds}
-                      boardId={boardId ?? ""}
-                      onLabelsChanged={onLabelsChanged}
+                      boardId={(creation ? destination.boardId : boardId) ?? ""}
+                      onLabelsChanged={
+                        creation
+                          ? () => lireLabelsDestination().catch((e) => setError(messageErreur(e)))
+                          : onLabelsChanged
+                      }
                     />
                   </div>
+                  {/* La référence suit les étiquettes, au bout de la ligne :
+                      elle est attribuée à la création et ne bouge plus, elle
+                      se montre sans se modifier. Elle prend la place de son
+                      texte, rien de plus. */}
+                  {!creation && (
+                    <Input.Wrapper label="Référence" style={{ flexShrink: 0 }}>
+                      <Text size="sm" c="dimmed">
+                        {numero ? reference(numero) : "—"}
+                      </Text>
+                    </Input.Wrapper>
+                  )}
                 </Group>
 
                 {/* L'échéance coiffe le titre : c'est la première chose qu'on
@@ -570,12 +673,18 @@ export default function CardDrawer({
                 {choisitDate ? (
                   <DateTimePicker
                     label="Échéance"
-                    placeholder="Choisir une date et une heure"
+                    placeholder="Choisir une date, et une heure si besoin"
                     value={echeance || null}
-                    // Choisir un jour ne suffit pas : il reste l'heure à régler.
-                    // Se refermer sur le premier clic laissait l'échéance à
-                    // minuit sans qu'on ait pu la corriger — c'est la fermeture
-                    // du calendrier, et elle seule, qui rend la main.
+                    // L'heure est facultative : laissée vide, l'échéance tient
+                    // à la date seule, et le champ comme la fiche n'en montrent
+                    // que la date (lib/echeance.ts). Le calendrier ne se referme
+                    // pas au premier clic, pour laisser le temps de régler
+                    // l'heure si on en veut une : c'est sa fermeture, et elle
+                    // seule, qui rend la main.
+                    valueFormat={formatChampEcheance}
+                    // L'heure se vide comme elle se règle : l'effacer ramène
+                    // l'échéance à la date seule.
+                    timePickerProps={{ clearable: true }}
                     onChange={(valeur) => {
                       const date = valeur ? new Date(valeur) : null;
                       setEcheance(date && !Number.isNaN(date.getTime()) ? date.toISOString() : "");
@@ -590,6 +699,17 @@ export default function CardDrawer({
                   echeance && <DueDate value={echeance} onEdit={() => setChoisitDate(true)} onRemove={() => setEcheance("")} />
                 )}
 
+                {/* Où la tâche ira, avant ce qui la nomme. Une carte ouverte
+                    depuis son tableau sait déjà où elle est. */}
+                {creation && source && (
+                  <TaskDestination
+                    key={`${source.kind}-${source.id}`}
+                    source={source}
+                    onChange={setDestination}
+                    onError={setError}
+                  />
+                )}
+
                 <TextInput
                   label="Titre"
                   placeholder="Titre de la carte"
@@ -599,14 +719,6 @@ export default function CardDrawer({
                 />
 
                 <RichTextField editor={editor} label="Description" />
-
-                {/* Le numéro ferme la fiche : il est attribué à la création et ne
-                  bouge plus, il se montre sans se modifier. */}
-                <Input.Wrapper label="Numéro">
-                  <Text size="sm" c="dimmed" pt={4}>
-                    #{numero ?? "—"}
-                  </Text>
-                </Input.Wrapper>
 
                 {/* Les checklists ferment la fiche : elles s'ajoutent par le menu
                   « Actions » et s'enregistrent d'elles-mêmes. */}
@@ -657,6 +769,10 @@ export default function CardDrawer({
           </Tabs.Panel>
         </Tabs>
       </div>
+
+      {/* La carte se supprime depuis son menu « Actions », pas d'ici : le pied
+          ne porte donc que les deux gestes communs à tous les tiroirs. */}
+      <DrawerFooter onSave={sauvegarder} onClose={onClose} saving={saving} />
 
       {/* Le sélecteur de fichiers, ouvert par le menu « Actions » comme par le
           bouton de l'encart. Il est remis à zéro après coup : sans cela,

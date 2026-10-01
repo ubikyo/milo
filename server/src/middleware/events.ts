@@ -100,6 +100,17 @@ export const compterEcritures = (req: Request, res: Response, next: NextFunction
 };
 
 /**
+ * Une écriture faite hors d'une requête — la relève des boîtes de support,
+ * par exemple : les compteurs montent et les clients relisent, comme après
+ * une route.
+ */
+export const signalerEcriture = (...resources: Resource[]): void => {
+  if (!resources.length) return;
+  for (const resource of resources) versions[resource] += 1;
+  diffuser();
+};
+
+/**
  * Le flux d'événements (SSE). Le client le consomme avec `fetch` et non
  * `EventSource`, qui n'accepte pas d'en-tête d'authentification.
  */

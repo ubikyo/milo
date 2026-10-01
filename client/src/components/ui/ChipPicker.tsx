@@ -2,6 +2,7 @@ import {
   ActionIcon,
   Checkbox,
   Group,
+  Input,
   Popover,
   ScrollArea,
   Stack,
@@ -11,6 +12,7 @@ import {
 import { IconPlus } from "@tabler/icons-react";
 import { useState } from "react";
 import { PLUS_SIZE } from "../../themes/plus";
+import type { FloatingPosition } from "@mantine/core";
 import type { ReactNode } from "react";
 
 /** Le minimum qu'une option doit porter : de quoi l'identifier et la nommer. */
@@ -52,6 +54,32 @@ interface ChipPickerProps<T extends ChipOption> {
   plusRadius?: string | number;
   onClose?: () => void;
   closeBlocked?: boolean;
+  /**
+   * Des vignettes posées devant les autres, qui ne se choisissent pas : un
+   * fait plutôt qu'un choix — l'expéditeur d'une demande reçue par e-mail.
+   */
+  leadingChips?: ReactNode;
+  /**
+   * Ce que la liste montre, quand ce n'est pas toutes les options : une liste
+   * filtrée par une recherche, ou réordonnée. Les vignettes, elles, se lisent
+   * toujours dans `options` — une option retenue ne disparaît pas parce que la
+   * recherche l'écarte.
+   */
+  listOptions?: T[];
+  /** Posé au-dessus de la liste, hors de son défilement : un champ de recherche. */
+  header?: ReactNode;
+  /** La largeur de la liste, en pixels. */
+  dropdownWidth?: number;
+  /** Un filet sous chaque option : des lignes sur deux niveaux s'y lisent mieux. */
+  separated?: boolean;
+  /**
+   * Remplace le titre, les vignettes et le « + » : un déclencheur compact, pour
+   * une ligne déjà remplie — les membres d'un élément de checklist. Le titre
+   * ne sert plus alors qu'à le nommer.
+   */
+  target?: ReactNode;
+  /** Où s'ouvre la liste ; sous le bord gauche du titre par défaut. */
+  position?: FloatingPosition;
 }
 
 export default function ChipPicker<T extends ChipOption>({
@@ -88,7 +116,21 @@ export default function ChipPicker<T extends ChipOption>({
   // liste s'en irait, et l'on reviendrait à la carte une fois la fenêtre
   // fermée.
   closeBlocked = false,
+  leadingChips,
+  listOptions = options,
+  header,
+  dropdownWidth = 260,
+  separated = false,
+  target,
+  position = "bottom-start",
 }: ChipPickerProps<T>) {
+  // Séparées, les options courent d'un bord à l'autre de la liste, et leur
+  // filet aussi ; la dernière n'en a pas — il n'y a rien à séparer dessous.
+  const filet = (rang: number) =>
+    separated && rang < listOptions.length - 1
+      ? { borderBottom: "1px solid var(--mantine-color-default-border)" }
+      : undefined;
+  const RETRAIT_SEPARE = 10;
   const [opened, setOpened] = useState(false);
 
   const ouvrirFermer = (ouvert: boolean) => {
@@ -112,7 +154,7 @@ export default function ChipPicker<T extends ChipOption>({
     <Popover
       opened={opened}
       onChange={ouvrirFermer}
-      position="bottom-start"
+      position={position}
       // Pas de portail : ce choix s'ouvre dans un tiroir, dont le piège à focus
       // ne laisse pas la main à ce qui est sorti hors de lui — un champ de
       // saisie posé dans la liste n'aurait jamais pu être rempli. Resté sur
@@ -122,56 +164,86 @@ export default function ChipPicker<T extends ChipOption>({
       floatingStrategy="fixed"
       shadow="md"
       // L'ancre est le bloc entier : la liste tombe donc sous le titre.
-      width={260}
+      width={dropdownWidth}
     >
       <Popover.Target>
-        {/* La colonne borne la largeur : les vignettes s'y rangent, et
-            reprennent à la ligne quand la place manque. */}
-        <div style={{ minWidth: 0 }}>
-          <Text size="sm" fw={500} mb={6}>
-            {label}
-          </Text>
-          <Group gap={chipGap} align="center" wrap="wrap">
-            {retenues.map((option) => (
-              // Cliquer une vignette rouvre la même liste : on ajoute et on
-              // retire au même endroit.
-              <UnstyledButton
-                key={option.id}
+        {target ? (
+          <UnstyledButton
+            onClick={() => ouvrirFermer(!opened)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              flexShrink: 0,
+            }}
+            aria-label={label}
+          >
+            {target}
+          </UnstyledButton>
+        ) : (
+          // La colonne borne la largeur : les vignettes s'y rangent, et
+          // reprennent à la ligne quand la place manque.
+          <div style={{ minWidth: 0 }}>
+            <Input.Label>{label}</Input.Label>
+            <Group gap={chipGap} align="center" wrap="wrap">
+              {leadingChips}
+              {retenues.map((option) => (
+                // Cliquer une vignette rouvre la même liste : on ajoute et on
+                // retire au même endroit.
+                <UnstyledButton
+                  key={option.id}
+                  onClick={() => ouvrirFermer(!opened)}
+                  // Jamais comprimée : trop à l'étroit, la vignette descend à la
+                  // ligne suivante plutôt que de s'écraser.
+                  style={{
+                    display: "inline-flex",
+                    maxWidth: "100%",
+                    flexShrink: 0,
+                  }}
+                >
+                  {renderChip(option)}
+                </UnstyledButton>
+              ))}
+              <ActionIcon
+                variant="default"
+                size={chipHeight}
+                radius={plusRadius}
+                style={{ flexShrink: 0 }}
                 onClick={() => ouvrirFermer(!opened)}
-                // Jamais comprimée : trop à l'étroit, la vignette descend à la
-                // ligne suivante plutôt que de s'écraser.
-                style={{
-                  display: "inline-flex",
-                  maxWidth: "100%",
-                  flexShrink: 0,
-                }}
+                aria-label={`Choisir : ${label}`}
               >
-                {renderChip(option)}
-              </UnstyledButton>
-            ))}
-            <ActionIcon
-              variant="default"
-              size={chipHeight}
-              radius={plusRadius}
-              style={{ flexShrink: 0 }}
-              onClick={() => ouvrirFermer(!opened)}
-              aria-label={`Choisir : ${label}`}
-            >
-              <IconPlus size={PLUS_SIZE} />
-            </ActionIcon>
-          </Group>
-        </div>
+                <IconPlus size={PLUS_SIZE} />
+              </ActionIcon>
+            </Group>
+          </div>
+        )}
       </Popover.Target>
 
-      <Popover.Dropdown p={6}>
-        {options.length === 0 ? (
-          <Text size="sm" c="dimmed" p="xs">
-            {emptyText}
-          </Text>
+      <Popover.Dropdown p={separated ? 0 : 6}>
+        {/* Séparées, les lignes le sont aussi de la recherche : un filet d'un
+            bord à l'autre sous l'en-tête. */}
+        {separated
+          ? header && (
+              <div
+                style={{
+                  padding: 6,
+                  borderBottom: "1px solid var(--mantine-color-default-border)",
+                }}
+              >
+                {header}
+              </div>
+            )
+          : header}
+        {listOptions.length === 0 ? (
+          // Un texte vide ne dit rien : la place reste à ce qui suit la liste.
+          emptyText && (
+            <Text size="sm" c="dimmed" p="xs">
+              {emptyText}
+            </Text>
+          )
         ) : (
           <ScrollArea.Autosize mah={LIST_MAX_HEIGHT} type="auto">
-            <Stack gap={2}>
-              {options.map((option) =>
+            <Stack gap={separated ? 0 : 2}>
+              {listOptions.map((option, rang) =>
                 // Deux mises en page. Sans rôle propre au clic, l'élément est
                 // le libellé de la case : cliquer l'un ou l'autre coche. Avec
                 // un rôle propre (les étiquettes se modifient), l'élément vit à
@@ -184,7 +256,9 @@ export default function ChipPicker<T extends ChipOption>({
                     gap={8}
                     wrap="nowrap"
                     align="center"
-                    p={4}
+                    px={separated ? RETRAIT_SEPARE : 4}
+                    py={separated ? 8 : 4}
+                    style={filet(rang)}
                   >
                     <Checkbox
                       checked={value.includes(String(option.id))}
@@ -211,12 +285,17 @@ export default function ChipPicker<T extends ChipOption>({
                     label={render(option)}
                     size="xs"
                     styles={{
-                      body: { alignItems: "center" },
-                      labelWrapper: { minWidth: 0 },
+                      body: { alignItems: "center", width: "100%" },
+                      labelWrapper: {
+                        minWidth: 0,
+                        flex: fullWidthOptions ? 1 : undefined,
+                      },
                       label: { cursor: "pointer", paddingLeft: 8, minWidth: 0 },
                       input: { cursor: "pointer" },
                     }}
-                    p={4}
+                    px={separated ? RETRAIT_SEPARE : 4}
+                    py={separated ? 8 : 4}
+                    style={filet(rang)}
                   />
                 ),
               )}

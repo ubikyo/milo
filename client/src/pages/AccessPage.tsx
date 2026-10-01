@@ -1,11 +1,20 @@
-import { Box, Group, Menu, Stack, UnstyledButton } from "@mantine/core";
-import { IconColumns, IconKey } from "@tabler/icons-react";
-import type { CSSProperties } from "react";
-import SectionDropZone from "../components/access/SectionDropZone";
+import { Stack } from "@mantine/core";
+import { IconKey } from "@tabler/icons-react";
+import { useState } from "react";
+import SectionBlocks from "../components/access/SectionBlocks";
 import BoardTabs from "../components/ui/BoardTabs";
+import DeleteConfirmModal from "../components/ui/DeleteConfirmModal";
 import EmptyPanel from "../components/ui/EmptyPanel";
-import { pluginDe } from "../plugins";
-import type { AccessBlock, AccessCategory, AccessSection } from "@milo/shared";
+import SectionsBoard from "../components/ui/SectionsBoard";
+import type { AccountSlot } from "../components/ui/AccountControls";
+import { ACCESS_GAP_DEFAUT } from "@milo/shared";
+import type {
+  AccessBlock,
+  AccessBlockType,
+  AccessCategory,
+  AccessSection,
+  Id,
+} from "@milo/shared";
 
 // Le mode Accès : ses catégories en onglets, comme les tableaux des modes
 // Projet et Tâche, et les sections de la catégorie ouverte en colonnes. Les
@@ -17,41 +26,50 @@ interface AccessPageProps {
   categoryId: string | null;
   onCategoryChange: (id: string | null) => void;
   onAddCategory: () => void;
-  onEditCategory: () => void;
-  onDeleteCategory: () => void | Promise<void>;
+  onEditCategory: (id: number) => void;
+  /** Renommer un onglet sur place, au double clic sur son nom. */
+  onRenameCategory: (id: number, name: string) => void | Promise<void>;
+  onDeleteCategory: (id: number) => void | Promise<void>;
+  /** Le nouvel ordre des onglets, glissés dans la rangée. */
+  onReorderCategories: (ids: number[]) => void | Promise<void>;
+  /** Verrouiller ou déverrouiller une catégorie depuis le menu de son onglet. */
+  onToggleCategoryLock: (id: number) => void | Promise<void>;
   /** « null » tant que les sections de la catégorie ouverte ne sont pas lues. */
   sections: AccessSection[] | null;
-  onAddSection: () => void;
+  /** Sans rang, la section va au bout ; le « + » entre deux colonnes en donne un. */
+  onAddSection: (index?: number) => void;
+  onEditSection: (section: AccessSection) => void;
+  /** La copie, avec ses éléments, se pose à droite de l'original. */
+  onDuplicateSection: (section: AccessSection) => void | Promise<void>;
+  /** Supprimée depuis le clic droit : la page a déjà posé la question. */
+  onDeleteSection: (section: AccessSection) => void | Promise<void>;
+  /** Le nouvel ordre des colonnes, posé par leur poignée. */
+  onReorderSections: (ids: Id[]) => void | Promise<void>;
   /** Ce que les sections portent, toutes colonnes confondues. */
   blocks: AccessBlock[];
   /** La zone en pointillé d'une colonne : elle ouvre la boîte de choix. */
   onAddBlock: (section: AccessSection) => void;
   onEditBlock: (block: AccessBlock) => void;
+  /** Un élément modifié depuis la colonne même, sans passer par son tiroir. */
+  onChangeBlockConfig: (
+    block: AccessBlock,
+    config: Record<string, unknown>,
+  ) => void | Promise<void>;
+  /** Ce que la colonne porte désormais, dans l'ordre : le rangement part au serveur. */
+  onReorderBlocks: (sectionId: Id, ids: Id[]) => void | Promise<void>;
+  /** La copie se pose sous l'original, et son tiroir s'ouvre. */
+  onDuplicateBlock: (block: AccessBlock) => void | Promise<void>;
+  onDeleteBlock: (block: AccessBlock) => void | Promise<void>;
+  /** « Créer une tâche », au clic droit sur un élément. */
+  onCreateTask: (block: AccessBlock) => void;
+  /** « Créer une demande de support », au clic droit sur un lien. */
+  onCreateSupportRequest: (block: AccessBlock) => void;
+  /** Une catégorie devient sous-catégorie, et l'inverse. */
+  onConvertBlock: (block: AccessBlock, type: AccessBlockType) => void | Promise<void>;
+  /** La société et le compte, posés au bout de la rangée d'onglets. */
+  account: AccountSlot;
   loading: boolean;
 }
-
-// Espace entre deux colonnes, et largeur en deçà de laquelle une colonne
-// automatique ne se resserre plus : la même respiration que la rangée de
-// listes du mode Tâche.
-const SECTION_GAP = 15;
-const SECTION_MIN_WIDTH = 200;
-
-// Espace entre deux éléments d'une même colonne, et entre le dernier et la
-// zone d'ajout.
-const BLOCK_GAP = 8;
-
-/**
- * La largeur que la section dit. « Automatique » laisse la rangée la répartir
- * à parts égales ; les deux autres la fixent, et la colonne ne se resserre ni
- * ne s'étire — celles qui ne tiennent plus passent à la ligne suivante.
- */
-const largeurDe = (section: AccessSection): CSSProperties => {
-  if (section.width_unit === "auto") {
-    return { flex: `1 1 ${SECTION_MIN_WIDTH}px`, minWidth: SECTION_MIN_WIDTH };
-  }
-  const unite = section.width_unit === "percent" ? "%" : "px";
-  return { flex: `0 0 ${section.width_value ?? 0}${unite}`, minWidth: 0 };
-};
 
 export default function AccessPage({
   categories,
@@ -59,106 +77,126 @@ export default function AccessPage({
   onCategoryChange,
   onAddCategory,
   onEditCategory,
+  onRenameCategory,
   onDeleteCategory,
+  onReorderCategories,
+  onToggleCategoryLock,
   sections,
   onAddSection,
+  onEditSection,
+  onDuplicateSection,
+  onDeleteSection,
+  onReorderSections,
   blocks,
   onAddBlock,
   onEditBlock,
+  onChangeBlockConfig,
+  onReorderBlocks,
+  onDuplicateBlock,
+  onDeleteBlock,
+  onCreateTask,
+  onCreateSupportRequest,
+  onConvertBlock,
+  account,
   loading,
 }: AccessPageProps) {
-  // Rien à montrer tant que les catégories ne sont pas connues, ni pendant une
-  // lecture : l'écran vide attend d'être une certitude.
-  if (!categories) return null;
-  if (categories.length === 0) {
-    return loading ? null : (
-      <EmptyPanel
-        icon={IconKey}
-        message="Aucune catégorie"
-        actionLabel="Nouvelle catégorie"
-        onAction={onAddCategory}
-      />
-    );
-  }
+  /** L'élément dont on vient de demander la suppression, ou « null ». */
+  const [blocASupprimer, setBlocASupprimer] = useState<AccessBlock | null>(null);
 
-  // Les colonnes de la catégorie ouverte. Tant qu'elles ne sont pas lues, on
-  // n'affiche rien : « aucune section » serait une conclusion prématurée.
-  const colonnes = !sections ? null : sections.length === 0 ? (
-    <EmptyPanel
-      icon={IconColumns}
-      message="Aucune section"
-      actionLabel="Ajouter une section"
-      onAction={onAddSection}
+  // Le verrou est celui de la catégorie ouverte : il vaut pour toutes ses
+  // colonnes et tout ce qu'elles portent.
+  const categorieOuverte = categories?.find((c) => String(c.id) === categoryId);
+  const verrouille = categorieOuverte?.is_locked === 1;
+  // L'écart entre deux colonnes ne se règle plus : le même pour toutes les
+  // catégories, y compris celles qui en avaient enregistré un autre.
+  const ecart = ACCESS_GAP_DEFAUT;
+
+  /** Ce qu'une colonne porte, dans l'ordre. */
+  const blocsDe = (section: AccessSection) =>
+    blocks.filter((bloc) => bloc.section_id === section.id);
+
+  // Les colonnes de la catégorie ouverte, et ce qu'elles portent.
+  const colonnes = (
+    <SectionsBoard
+      sections={sections}
+      locked={verrouille}
+      gap={ecart}
+      widgetIds={(section) => blocsDe(section).map((b) => b.id)}
+      renderWidgets={(section, drag) => (
+        <SectionBlocks
+          blocks={blocsDe(section)}
+          sectionId={section.id}
+          drag={drag}
+          onEditBlock={onEditBlock}
+          onConfigChange={onChangeBlockConfig}
+          onCreateTask={onCreateTask}
+          onCreateSupportRequest={onCreateSupportRequest}
+          onDuplicateBlock={onDuplicateBlock}
+          onDeleteBlock={setBlocASupprimer}
+          onConvertBlock={onConvertBlock}
+          locked={verrouille}
+        />
+      )}
+      onAddWidget={onAddBlock}
+      onReorderWidgets={onReorderBlocks}
+      onAddSection={onAddSection}
+      onEditSection={onEditSection}
+      onDuplicateSection={onDuplicateSection}
+      onDeleteSection={onDeleteSection}
+      onReorderSections={onReorderSections}
     />
-  ) : (
-    <Group
-      align="stretch"
-      gap={SECTION_GAP}
-      wrap="wrap"
-      // Les colonnes occupent la hauteur restante : c'est elle que la zone en
-      // pointillé remplit, sous ce que la section porte déjà.
-      style={{ flex: 1, minHeight: 0 }}
-    >
-      {sections.map((section) => (
-        // Une colonne n'est qu'une place : ni fond, ni cadre, ni retrait. Le
-        // seul écart est celui qui la sépare de la suivante, posé par la
-        // rangée.
-        <Box
-          key={section.id}
-          style={{
-            ...largeurDe(section),
-            display: "flex",
-            flexDirection: "column",
-            gap: BLOCK_GAP,
-          }}
-        >
-          {/* Ce que la colonne porte, dans l'ordre où on l'y a posé. Chaque
-              élément est rendu par son greffon ; un type que cette version ne
-              connaît pas est passé plutôt que de faire tomber la colonne. */}
-          {blocks
-            .filter((bloc) => bloc.section_id === section.id)
-            .map((bloc) => {
-              const plugin = pluginDe(bloc.type);
-              if (!plugin) return null;
-              return (
-                <UnstyledButton
-                  key={bloc.id}
-                  onClick={() => onEditBlock(bloc)}
-                  style={{ display: "block", width: "100%" }}
-                >
-                  <plugin.Display config={bloc.config} />
-                </UnstyledButton>
-              );
-            })}
-
-          <SectionDropZone onClick={() => onAddBlock(section)} />
-        </Box>
-      ))}
-    </Group>
   );
+
+  // Sans catégorie, l'invite prend la place du contenu — mais sous la rangée,
+  // qui reste : c'est elle qui porte le compte, et on doit pouvoir s'en servir
+  // même quand le mode est vide. Rien pendant une lecture : « aucune
+  // catégorie » serait une conclusion prématurée.
+  const contenu =
+    !categories || categories.length === 0 ? (
+      loading || !categories ? null : (
+        <EmptyPanel
+          icon={IconKey}
+          message="Aucune catégorie"
+          actionLabel="Nouvelle catégorie"
+          onAction={onAddCategory}
+        />
+      )
+    ) : (
+      colonnes
+    );
 
   return (
     <Stack gap={0} style={{ flex: 1, minHeight: 0 }}>
       <BoardTabs
-        boards={categories}
+        boards={categories ?? []}
         value={categoryId}
         onChange={onCategoryChange}
         onAdd={onAddCategory}
         onEdit={onEditCategory}
+        onRename={onRenameCategory}
         onDelete={onDeleteCategory}
+        onReorder={onReorderCategories}
+        onToggleLock={onToggleCategoryLock}
         deleteTitle="Supprimer la catégorie"
-        // Une catégorie ne porte encore rien : ses onglets se posent au milieu
-        // plutôt que de border un vide.
-        centered
-        // Ce qui garnit la catégorie ouverte, avant ce qui porte sur l'onglet.
-        extraActions={
-          <Menu.Item leftSection={<IconColumns size={16} />} onClick={onAddSection}>
-            Ajouter une section
-          </Menu.Item>
-        }
+        account={account}
       />
 
-      {colonnes}
+      {contenu}
+
+      {/* La suppression demandée au clic droit : elle se confirme, comme
+          partout ailleurs. */}
+      <DeleteConfirmModal
+        opened={blocASupprimer !== null}
+        onClose={() => setBlocASupprimer(null)}
+        onConfirm={async () => {
+          const bloc = blocASupprimer;
+          setBlocASupprimer(null);
+          if (bloc) await onDeleteBlock(bloc);
+        }}
+        title="Supprimer l'élément"
+        message={<>Voulez-vous vraiment supprimer cet élément ? Cette action est irréversible.</>}
+      />
+
     </Stack>
   );
 }

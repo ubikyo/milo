@@ -1,0 +1,272 @@
+import { ActionIcon, Button, Drawer, Group, Menu, Stack, Tabs, Text } from "@mantine/core";
+import {
+  IconBell,
+  IconChevronDown,
+  IconFolder,
+  IconHeadset,
+  IconHeartbeat,
+  IconLayoutKanban,
+  IconTrash,
+  IconX,
+} from "@tabler/icons-react";
+import { useEffect, useState } from "react";
+import type { ComponentType, CSSProperties } from "react";
+import type { Notification, NotificationKind } from "@milo/shared";
+import { api } from "../../api";
+import { messageErreur } from "../../lib/errors";
+import { NEUTRAL_HOVER, RED } from "../../themes/colors";
+import { DRAWER_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
+import { tabStyle } from "../../themes/tabs";
+import classes from "../../assets/styles/NotificationsDrawer.module.css";
+import DeleteConfirmModal from "../ui/DeleteConfirmModal";
+import DrawerScrollArea, {
+  DRAWER_PADDING,
+  DRAWER_PANEL_STYLE,
+  DRAWER_STYLES,
+  DRAWER_TABS_STYLES,
+} from "../ui/DrawerScroll";
+import EmptyPanel from "../ui/EmptyPanel";
+import ErrorAlert from "../ui/ErrorAlert";
+import BoutonFermer from "../ui/BoutonFermer";
+
+// Les dernières notifications reçues, ouvertes depuis le menu du compte. À
+// l'écran, une notification passe et s'efface ; ici, elle reste jusqu'à ce
+// qu'on la supprime — une à une, par sa croix, ou toutes par le menu
+// « Actions ». Un clic sur une ligne ouvre l'élément dont elle parle ; celle
+// qui annonce une suppression n'ouvre rien, et porte une corbeille.
+
+const ICONES: Record<NotificationKind, ComponentType<{ size?: number }>> = {
+  project: IconFolder,
+  card: IconLayoutKanban,
+  support: IconHeadset,
+  access: IconHeartbeat,
+};
+
+const HEURE = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
+const JOUR = new Intl.DateTimeFormat("fr-FR", {
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const JOUR_ANNEE = new Intl.DateTimeFormat("fr-FR", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** L'heure seule pour aujourd'hui, le jour en plus sinon, l'année si ce n'est pas la même. */
+const quand = (iso: string): string => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const maintenant = new Date();
+  if (date.toDateString() === maintenant.toDateString()) return HEURE.format(date);
+  if (date.getFullYear() === maintenant.getFullYear()) return JOUR.format(date);
+  return JOUR_ANNEE.format(date);
+};
+
+interface NotificationsDrawerProps {
+  opened: boolean;
+  onClose: () => void;
+  /** Ouvre l'élément dont parle la notification. */
+  onOpen: (notification: Notification) => void;
+  /**
+   * Change à chaque notification reçue : le tiroir ouvert se relit, et la
+   * nouvelle venue s'y ajoute sans qu'il faille le rouvrir.
+   */
+  revision: number;
+}
+
+export default function NotificationsDrawer({
+  opened,
+  onClose,
+  onOpen,
+  revision,
+}: NotificationsDrawerProps) {
+  const [liste, setListe] = useState<Notification[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmer, setConfirmer] = useState(false);
+
+  useEffect(() => {
+    if (!opened) return;
+    let actif = true;
+    api
+      .getNotifications()
+      .then((lues) => actif && setListe(lues))
+      .catch((e) => actif && setError(messageErreur(e)));
+    return () => {
+      actif = false;
+    };
+  }, [opened, revision]);
+
+  // Chaque suppression part aussitôt ; la ligne s'en va sans attendre la
+  // réponse, et revient si le serveur refuse.
+  const supprimer = async (notification: Notification) => {
+    const avant = liste;
+    setListe((l) => l?.filter((n) => n.id !== notification.id) ?? null);
+    try {
+      await api.deleteNotification(notification.id);
+    } catch (e) {
+      setListe(avant);
+      setError(messageErreur(e));
+    }
+  };
+
+  const toutSupprimer = async () => {
+    setConfirmer(false);
+    try {
+      await api.clearNotifications();
+      setListe([]);
+    } catch (e) {
+      setError(messageErreur(e));
+    }
+  };
+
+  return (
+    <>
+      <Drawer
+        opened={opened}
+        onClose={onClose}
+        position="right"
+        size={560}
+        padding={DRAWER_PADDING}
+        withCloseButton={false}
+        styles={DRAWER_STYLES}
+      >
+        {/* La même rangée d'onglets que les autres tiroirs : un seul volet,
+            et le menu « Actions » au bout, où on le cherche. */}
+        <Tabs
+          defaultValue="notifications"
+          style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+          styles={DRAWER_TABS_STYLES}
+        >
+          <Tabs.List mb="md">
+            <Tabs.Tab
+              value="notifications"
+              leftSection={<IconBell size={16} />}
+              style={tabStyle(true)}
+            >
+              Notifications
+            </Tabs.Tab>
+
+            <Menu
+              position="bottom-end"
+              withinPortal
+              shadow="md"
+              offset={DRAWER_MENU_OFFSET}
+              styles={TAB_MENU_STYLES}
+            >
+              <Menu.Target>
+                <Button
+                  variant="subtle"
+                  color="gray"
+                  rightSection={<IconChevronDown size={14} />}
+                  ml="auto"
+                  mb={4}
+                  style={{ alignSelf: "center", "--button-hover": NEUTRAL_HOVER } as CSSProperties}
+                >
+                  Actions
+                </Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  color={RED}
+                  leftSection={<IconTrash size={16} />}
+                  disabled={!liste || liste.length === 0}
+                  onClick={() => setConfirmer(true)}
+                >
+                  Supprimer les notifications
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          </Tabs.List>
+
+          <Tabs.Panel value="notifications" style={DRAWER_PANEL_STYLE}>
+            <DrawerScrollArea>
+              <Stack gap={2} style={{ flex: 1, minHeight: 0 }}>
+                {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
+
+                {liste && liste.length === 0 && (
+                  <EmptyPanel icon={IconBell} message="Aucune notification" />
+                )}
+
+                {liste?.map((notification) => {
+                  const Icone = notification.deleted
+                    ? IconTrash
+                    : (ICONES[notification.kind] ?? IconBell);
+                  const ouvrable = !notification.deleted;
+                  return (
+                    <Group
+                      key={notification.id}
+                      className={classes.ligne}
+                      data-ouvrable={ouvrable || undefined}
+                      gap="sm"
+                      wrap="nowrap"
+                      align="flex-start"
+                      role={ouvrable ? "button" : undefined}
+                      tabIndex={ouvrable ? 0 : undefined}
+                      onClick={ouvrable ? () => onOpen(notification) : undefined}
+                      onKeyDown={
+                        ouvrable
+                          ? (event) => {
+                              if (event.key === "Enter") onOpen(notification);
+                            }
+                          : undefined
+                      }
+                    >
+                      <div style={{ paddingTop: 2, display: "flex" }}>
+                        <Icone size={16} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Text size="sm" fw={600} truncate>
+                          {notification.title}
+                        </Text>
+                        <Text size="sm">
+                          {notification.author} {notification.message}
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          {quand(notification.created_at)}
+                        </Text>
+                      </div>
+                      <ActionIcon
+                        className={classes.supprimer}
+                        variant="subtle"
+                        color="gray"
+                        size="sm"
+                        aria-label="Supprimer la notification"
+                        style={{ "--ai-hover": NEUTRAL_HOVER } as CSSProperties}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void supprimer(notification);
+                        }}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
+                        <IconX size={14} />
+                      </ActionIcon>
+                    </Group>
+                  );
+                })}
+              </Stack>
+            </DrawerScrollArea>
+          </Tabs.Panel>
+        </Tabs>
+
+        <Group justify="flex-end" pt="md">
+          <BoutonFermer onClick={onClose} />
+        </Group>
+      </Drawer>
+
+      <DeleteConfirmModal
+        opened={confirmer}
+        onClose={() => setConfirmer(false)}
+        onConfirm={toutSupprimer}
+        title="Supprimer les notifications"
+        message={
+          <>Voulez-vous vraiment supprimer toutes les notifications ? Cette action est irréversible.</>
+        }
+      />
+    </>
+  );
+}

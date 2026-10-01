@@ -6,12 +6,19 @@
    le retrait que Mantine donne au contenu tiptap, dit en variables pour qu'un
    changement de thème l'emporte avec lui. La classe porte sur l'enveloppe
    typographique — c'est là que Mantine range « className » — et le retrait,
-   lui, vit sur le contenu qu'elle enferme : le total est donc bien celui-ci. */
+   lui, vit sur le contenu qu'elle enferme : le total est donc bien celui-ci.
+
+   Le texte prend la taille des autres champs de saisie (« sm », celle d'un
+   input Mantine par défaut) plutôt que celle du corps de page. */
 .content {
-  --milo-rich-line: calc(var(--mantine-font-size-md) * var(--mantine-line-height-md));
+  --milo-rich-line: calc(var(--mantine-font-size-sm) * var(--mantine-line-height-md));
   --milo-rich-padding: var(--mantine-spacing-md);
 
-  max-height: calc(5 * var(--milo-rich-line) + 2 * var(--milo-rich-padding));
+  font-size: var(--mantine-font-size-sm);
+
+  /* Cinq lignes par défaut ; un champ peut en demander plus
+     (« --milo-rich-lines », posé par RichTextField). */
+  max-height: calc(var(--milo-rich-lines, 5) * var(--milo-rich-line) + 2 * var(--milo-rich-padding));
   overflow-y: auto;
 }
 
@@ -84,4 +91,44 @@
 .image:global(.ProseMirror-selectednode) {
   outline: 2px solid var(--mantine-color-teal-6);
   outline-offset: 2px;
+}
+
+/* Les boutons de la barre d'outils, et les groupes qui les rangent : Mantine
+   les peint sur « --mantine-color-body » (dark-7 en sombre), un cran plus
+   sombre que la barre. Ils prennent le fond du champ (FIELD_BG, dans
+   components/ui/RichText.tsx). Le bouton actif garde sa teinte, et le survol
+   la sienne : la règle ne vise que le bouton au repos. */
+.controlsGroup {
+  background-color: transparent;
+}
+
+.control:not([data-active]) {
+  background-color: light-dark(var(--mantine-color-white), var(--mantine-color-dark-6));
+}
+
+@media (hover: hover) {
+  .control:not([data-active]):not([data-disabled]):hover {
+    background-color: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5));
+  }
+}
+
+/* Un pixel d'écart entre chaque icône de la barre, groupes compris : un
+   vide de la couleur du fond, pas un trait, pour que deux boutons actifs
+   côte à côte ne fondent pas leurs fonds l'un dans l'autre. Les coins sont
+   à peine arrondis. */
+.toolbar,
+.controlsGroup {
+  column-gap: 1px;
+}
+
+.control {
+  border-radius: 2px;
+}
+
+/* Le bouton actif (gras, liste…) : un fond gris sombre, l'icône en blanc,
+   dans les deux thèmes. Le survol le garde. */
+.control[data-active],
+.control[data-active]:hover {
+  background-color: light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-4));
+  color: var(--mantine-color-white);
 }

@@ -2,16 +2,27 @@
 // une catégorie n'existe que dans un tableau.
 
 import { Router } from "express";
-import type { CopyResult, Id } from "@milo/shared";
+import type { CopyResult, Id, Milestone } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { CategoryRow, CountRow } from "../db/rows.js";
-import { badRequest, conflict, forbidden, orNotFound, requireText } from "../lib/http.js";
+import {
+  badRequest,
+  conflict,
+  forbidden,
+  orNotFound,
+  refuserSiUtilise,
+  requireText,
+} from "../lib/http.js";
+import { concernes, notifierSuppression } from "../lib/notify.js";
 import { touch } from "../middleware/events.js";
 import {
+  categorieRendue,
   categories,
+  jalonsValides,
   projectBoardOuvert,
   projectBoards,
 } from "../repositories/project-boards.js";
+import { ordreRecu, rangerProjectBoards } from "../repositories/reorder.js";
 import { now } from "../lib/time.js";
 
 const CATEGORIE_INTROUVABLE = "Catégorie introuvable";
@@ -29,6 +40,9 @@ const compterProjetsDuTableau = scalar<CountRow>(
 const supprimerProjetsDuTableau = mutation("DELETE FROM projects WHERE board_id = ?");
 const supprimerCategoriesDuTableau = mutation("DELETE FROM categories WHERE board_id = ?");
 const supprimerTableau = mutation("DELETE FROM project_boards WHERE id = ?");
+const projetsDuTableau = selection<{ id: Id; name: string }>(
+  "SELECT id, name FROM projects WHERE board_id = ?",
+);
 
 /**
  * Suppression en cascade : les projets du tableau partent d'abord (leurs
@@ -67,6 +81,21 @@ projectBoardRoutes.post("/", (req, res) => {
   res.status(201).json(projectBoards.byId.get(lastInsertRowid));
 });
 
+// Ranger les onglets. Déclaré avant « /:id », sinon « reorder » serait pris
+// pour un identifiant. L'ordre est celui de tout le monde : un tableau privé
+// qu'on ne voit pas garde sa place (repositories/reorder.ts).
+projectBoardRoutes.put("/reorder", (req, res) => {
+  const visibles = projectBoards.visibleTo.all(req.user.id);
+  const ordre = ordreRecu(
+    req.body.ids,
+    visibles,
+    "La liste des identifiants ne correspond pas aux tableaux",
+  );
+
+  rangerProjectBoards(ordre);
+  res.json(projectBoards.visibleTo.all(req.user.id));
+});
+
 projectBoardRoutes.put("/:id", (req, res) => {
   const existing = projectBoardOuvert(req.params.id, req.user);
   const name = requireText(req.body.name ?? existing.name, "Le nom du tableau est requis");
@@ -88,7 +117,24 @@ projectBoardRoutes.put("/:id", (req, res) => {
 
 projectBoardRoutes.delete("/:id", (req, res) => {
   const existing = projectBoardOuvert(req.params.id, req.user);
-  res.json({ deleted_projects: supprimerTableauEnCascade(existing.id) });
+  // Chaque projet emporté est annoncé à ses acteurs et à ceux qui le suivent,
+  // lus avant qu'ils partent avec lui.
+  const emportes = projetsDuTableau
+    .all(existing.id)
+    .map((p) => ({ ...p, destinataires: concernes.projet(p.id) }));
+  const deleted_projects = supprimerTableauEnCascade(existing.id);
+  for (const projet of emportes) {
+    notifierSuppression({
+      kind: "project",
+      targetId: projet.id,
+      titre: projet.name,
+      message: `a supprimé le tableau « ${existing.name} » et ses projets`,
+      auteur: req.user,
+      destinataires: projet.destinataires,
+      disparu: true,
+    });
+  }
+  res.json({ deleted_projects });
 });
 
 // --- Catégories ------------------------------------------------------------
@@ -126,7 +172,7 @@ const copierCategories = transaction((source: Id, cible: Id): CopyResult => {
       skipped += 1;
       continue;
     }
-    categories.create.run(cible, categorie.name);
+    categories.create.run(cible, categorie.name, categorie.milestones);
     copied += 1;
   }
 
@@ -146,6 +192,21 @@ const supprimerCategorieEnCascade = transaction((id: number): number => {
   return count;
 });
 
+/** Les jalons du corps de la requête ; « undefined » quand ils n'y sont pas. */
+const lireJalons = (recu: unknown): Milestone[] | undefined => {
+  if (recu === undefined) return undefined;
+  return (
+    jalonsValides(recu) ?? badRequest("Chaque jalon demande une valeur de 0 à 100")
+  );
+};
+
+const majCategorie = transaction(
+  (id: Id, name: string | null, milestones: Milestone[] | undefined): void => {
+    if (name !== null) categories.rename.run(name, id);
+    if (milestones) categories.setMilestones.run(JSON.stringify(milestones), id);
+  },
+);
+
 export const categoryRoutes = Router();
 
 categoryRoutes.use(touch("categories", "projects"));
@@ -156,10 +217,10 @@ categoryRoutes.get("/", (req, res) => {
     // Le tableau visé doit être ouvert à cette personne : ses catégories ne
     // sortent pas d'un tableau privé.
     const visible = projectBoardOuvert(board, req.user);
-    return void res.json(categoriesDuTableau.all(visible.id));
+    return void res.json(categoriesDuTableau.all(visible.id).map(categorieRendue));
   }
   // Sans filtre, les catégories des tableaux fermés aux autres sont écartées.
-  res.json(categoriesAvecComptes.all({ me: req.user.id }));
+  res.json(categoriesAvecComptes.all({ me: req.user.id }).map(categorieRendue));
 });
 
 categoryRoutes.post("/copy", (req, res) => {
@@ -182,22 +243,32 @@ categoryRoutes.post("/", (req, res) => {
   projectBoardOuvert(boardId, req.user);
   if (categories.byName.get(boardId, name, 0)) conflict(CATEGORIE_EXISTANTE);
 
-  const { lastInsertRowid } = categories.create.run(boardId, name);
-  res.status(201).json(categories.byId.get(lastInsertRowid));
+  const milestones = lireJalons(req.body.milestones) ?? [];
+
+  const { lastInsertRowid } = categories.create.run(boardId, name, JSON.stringify(milestones));
+  res.status(201).json(categorieRendue(categories.byId.get(lastInsertRowid)!));
 });
 
 categoryRoutes.put("/:id", (req, res) => {
   const existing = orNotFound(categories.byId.get(req.params.id), CATEGORIE_INTROUVABLE);
   projectBoardOuvert(existing.board_id, req.user);
-  const name = requireText(req.body.name, "Le nom est requis");
-  if (categories.byName.get(existing.board_id, name, existing.id)) conflict(CATEGORIE_EXISTANTE);
 
-  categories.rename.run(name, existing.id);
-  res.json(categories.byId.get(existing.id));
+  // Le nom et les jalons se modifient chacun de leur côté : ce qui n'est pas
+  // envoyé ne change pas.
+  const milestones = lireJalons(req.body.milestones);
+  const name =
+    req.body.name === undefined ? null : requireText(req.body.name, "Le nom est requis");
+  if (name !== null && categories.byName.get(existing.board_id, name, existing.id)) {
+    conflict(CATEGORIE_EXISTANTE);
+  }
+
+  majCategorie(existing.id, name, milestones);
+  res.json(categorieRendue(categories.byId.get(existing.id)!));
 });
 
 categoryRoutes.delete("/:id", (req, res) => {
   const existing = orNotFound(categories.byId.get(req.params.id), CATEGORIE_INTROUVABLE);
   projectBoardOuvert(existing.board_id, req.user);
+  refuserSiUtilise(existing.name, compterProjetsDeLaCategorie(existing.id).count);
   res.json({ deleted_projects: supprimerCategorieEnCascade(existing.id) });
 });

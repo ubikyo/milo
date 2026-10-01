@@ -1,11 +1,25 @@
-import { ActionIcon, Box, Group, Input, Paper, Stack, Text, UnstyledButton } from "@mantine/core";
+import {
+  ActionIcon,
+  Box,
+  Group,
+  Input,
+  Menu,
+  Paper,
+  Stack,
+  Text,
+  UnstyledButton,
+} from "@mantine/core";
 import { IconExternalLink, IconPlus, IconTrash } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useState } from "react";
-import { ADD_ACTION, RED } from "../../themes/colors";
+import { ADD_ACTION, FIELD_ICON, RED } from "../../themes/colors";
 import { PLUS_GAP, PLUS_SIZE } from "../../themes/plus";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
+import PointMenu, {
+  positionDuMenu,
+  type PointMenuPosition,
+} from "../ui/PointMenu";
 import type { Attachment } from "@milo/shared";
 
 // « il y a 3 minutes » plutôt qu'une date : une pièce jointe vient d'être
@@ -19,7 +33,8 @@ dayjs.extend(relativeTime);
 const VIGNETTE_L = 64;
 const VIGNETTE_H = 48;
 
-const VIGNETTE_BG = "light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5))";
+const VIGNETTE_BG =
+  "light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5))";
 
 /** L'extension d'un nom de fichier, en capitales : « CER », « PDF », « ZIP ». */
 const extension = (nom: string): string => {
@@ -49,14 +64,21 @@ const taille = (octets: number): string => {
   return `${(octets / (1024 * 1024)).toFixed(1).replace(".", ",")} Mo`;
 };
 
+// « Supprimer » est dans le menu contextuel de la ligne, au clic droit, comme
+// pour les checklists et les cartes du tableau.
 interface LigneProps {
   piece: Attachment;
-  onDelete: () => void;
+  onContextMenu: (position: PointMenuPosition) => void;
 }
 
-function Ligne({ piece, onDelete }: LigneProps) {
+function Ligne({ piece, onContextMenu }: LigneProps) {
   return (
-    <Group gap="sm" wrap="nowrap" align="center">
+    <Group
+      gap="sm"
+      wrap="nowrap"
+      align="center"
+      onContextMenu={(e) => onContextMenu(positionDuMenu(e))}
+    >
       {/* L'encart : la photo si c'en est une, sinon son extension au centre. */}
       <Box
         w={VIGNETTE_L}
@@ -102,21 +124,10 @@ function Ligne({ piece, onDelete }: LigneProps) {
         variant="subtle"
         color="gray"
         size="sm"
-        style={{ flexShrink: 0 }}
+        style={{ flexShrink: 0, color: FIELD_ICON }}
         aria-label={`Ouvrir ${piece.name}`}
       >
         <IconExternalLink size={16} />
-      </ActionIcon>
-
-      <ActionIcon
-        variant="subtle"
-        color={RED}
-        size="sm"
-        onClick={onDelete}
-        style={{ flexShrink: 0 }}
-        aria-label={`Supprimer ${piece.name}`}
-      >
-        <IconTrash size={16} />
       </ActionIcon>
     </Group>
   );
@@ -138,8 +149,16 @@ interface CardAttachmentsProps {
   onDelete: (piece: Attachment) => void | Promise<void>;
 }
 
-export default function CardAttachments({ attachments, onPick, onDelete }: CardAttachmentsProps) {
+export default function CardAttachments({
+  attachments,
+  onPick,
+  onDelete,
+}: CardAttachmentsProps) {
   const [aSupprimer, setASupprimer] = useState<Attachment | null>(null);
+  const [menu, setMenu] = useState<{
+    piece: Attachment;
+    position: PointMenuPosition;
+  } | null>(null);
 
   const pieces = attachments || [];
   if (pieces.length === 0) return null;
@@ -149,10 +168,16 @@ export default function CardAttachments({ attachments, onPick, onDelete }: CardA
     // titre, la description, les checklists —, et disparaît avec eux quand la
     // carte n'a aucune pièce jointe.
     <Input.Wrapper label="Pièces jointes">
-      <Paper withBorder radius="md" p="sm" mt={4}>
+      {/* Le fond des champs de la fiche, sans leur bordure, comme les
+          checklists. */}
+      <Paper radius="md" p="sm" bg="var(--mantine-color-default)">
         <Stack gap="sm">
           {pieces.map((piece) => (
-            <Ligne key={piece.id} piece={piece} onDelete={() => setASupprimer(piece)} />
+            <Ligne
+              key={piece.id}
+              piece={piece}
+              onContextMenu={(position) => setMenu({ piece, position })}
+            />
           ))}
 
           {/* Le vert des actions « ajouter », comme au bout d'une checklist. */}
@@ -163,6 +188,18 @@ export default function CardAttachments({ attachments, onPick, onDelete }: CardA
             </Group>
           </UnstyledButton>
         </Stack>
+
+        {menu && (
+          <PointMenu position={menu.position} onClose={() => setMenu(null)}>
+            <Menu.Item
+              color={RED}
+              leftSection={<IconTrash size={16} />}
+              onClick={() => setASupprimer(menu.piece)}
+            >
+              Supprimer
+            </Menu.Item>
+          </PointMenu>
+        )}
 
         <DeleteConfirmModal
           opened={aSupprimer !== null}

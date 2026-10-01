@@ -30,17 +30,6 @@ export const taskCards = {
   nextPosition: scalar<NextRow>(
     "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM task_cards WHERE list_id = ?",
   ),
-  /**
-   * Le numéro affiché se compte par tableau : le suivant parmi les cartes de
-   * toutes ses listes. Il ne bouge plus ensuite, même si la carte change de
-   * liste. Un séparateur n'en porte pas et n'en consomme donc pas.
-   */
-  nextNumber: scalar<{ numero: number }>(
-    `SELECT COALESCE(MAX(task_cards.number), 0) + 1 AS numero
-     FROM task_cards
-     JOIN task_lists ON task_lists.id = task_cards.list_id
-     WHERE task_lists.board_id = ?`,
-  ),
   create: mutation(
     `INSERT INTO task_cards (list_id, text, position, number, kind, created_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
@@ -48,6 +37,11 @@ export const taskCards = {
   update: mutation(
     "UPDATE task_cards SET text = ?, description = ?, due_date = ? WHERE id = ?",
   ),
+  /** La description seule : celle qu'une carte reçoit dès sa création. */
+  describe: mutation("UPDATE task_cards SET description = ? WHERE id = ?"),
+  remove: mutation("DELETE FROM task_cards WHERE id = ?"),
+  /** Vider une liste de ses tâches : ses séparateurs restent en place. */
+  removeTasksOfList: mutation("DELETE FROM task_cards WHERE list_id = ? AND kind = 'card'"),
   /** Les cartes d'un tableau, en identifiants : une carte ne se déplace qu'à l'intérieur du sien. */
   idsOfBoard: selection<{ id: Id }>(
     `SELECT task_cards.id

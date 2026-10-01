@@ -1,152 +1,102 @@
 import {
+  Badge,
   Button,
   Group,
   Modal,
   ScrollArea,
-  Select,
   Stack,
   Tabs,
   Text,
   Title,
-  useMantineColorScheme,
 } from "@mantine/core";
 import {
-  IconAdjustments,
   IconBuilding,
+  IconCode,
   IconDatabaseExport,
-  IconDeviceDesktop,
-  IconMail,
-  IconMoon,
-  IconSun,
+  IconFlag,
+  IconBrandWindows,
+  IconHeadset,
+  IconShieldLock,
   IconUsers,
 } from "@tabler/icons-react";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { EntraSettings } from "@milo/shared";
 import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
-import { DEFAULT_MODE, MODES } from "@milo/shared";
 import { tabStyle } from "../../themes/tabs";
 import BackupTab from "./BackupTab";
-import ErrorAlert from "../ui/ErrorAlert";
 import LookupManager from "../ui/LookupManager";
-import MailTab from "./MailTab";
-import UsersTab from "./UsersTab";
-import { messageErreur } from "../../lib/errors";
-import type { Company, Mode, PublicUser } from "@milo/shared";
+import EntraTab from "./EntraTab";
+import MilestonesModal from "../project/MilestonesModal";
+import AccessTab from "./AccessTab";
+import RolesTab from "./RolesTab";
+import CompanySupportModal from "./CompanySupportModal";
+import DeveloperTab from "./DeveloperTab";
+import SupportTab from "./SupportTab";
+import type { Company, Milestone, MilestoneType } from "@milo/shared";
 import type { ComponentType, ReactNode } from "react";
+import BoutonFermer from "../ui/BoutonFermer";
 
-type Scheme = "auto" | "light" | "dark";
-
-interface SchemeOption {
-  value: Scheme;
+const TABS: {
+  value: string;
   label: string;
   icon: ComponentType<{ size?: number }>;
-}
-
-const SCHEME_OPTIONS: SchemeOption[] = [
-  { value: "auto", label: "System", icon: IconDeviceDesktop },
-  { value: "light", label: "Clair", icon: IconSun },
-  { value: "dark", label: "Sombre", icon: IconMoon },
-];
-
-// Les options d'un Select ne portent que du texte : l'icône est retrouvée par
-// la valeur, pour la liste déroulante comme pour le champ fermé.
-/**
- * L'icône d'un thème. Déclarée au niveau du module : affectée à une variable
- * dans le corps d'un composant, React y verrait un nouveau type de composant à
- * chaque rendu et remonterait son sous-arbre à chaque fois.
- */
-function SchemeIcon({ value, size = 16 }: { value: string; size?: number }) {
-  const Icon = SCHEME_OPTIONS.find((o) => o.value === value)?.icon ?? IconDeviceDesktop;
-  return <Icon size={size} />;
-}
-
-// Largeur du libellé : les champs de l'onglet s'alignent sur la même colonne.
-const LABEL_WIDTH = 120;
-
-// Le libellé est posé à gauche du champ, et non au-dessus comme les libellés
-// de Mantine : les réglages de l'onglet partagent le même alignement.
-interface GeneralTabProps {
-  user: PublicUser | null;
-  onUserUpdated?: (user: PublicUser) => void;
-}
-
-function GeneralTab({ user, onUserUpdated }: GeneralTabProps) {
-  const { colorScheme, setColorScheme } = useMantineColorScheme();
-
-  // Le mode d'ouverture appartient au compte : il part au serveur dès le choix
-  // fait. Le champ répond tout de suite et revient en arrière si le serveur
-  // refuse.
-  const [mode, setMode] = useState<Mode>(user?.default_mode ?? DEFAULT_MODE);
-  const [error, setError] = useState<string | null>(null);
-
-  const changeMode = async (value: string | null) => {
-    if (!value || value === mode) return;
-    const precedent = mode;
-    const suivant = value as Mode;
-    setMode(suivant);
-    setError(null);
-    try {
-      const enregistre = await api.updateMe({ default_mode: suivant });
-      onUserUpdated?.(enregistre);
-    } catch (e) {
-      setMode(precedent);
-      setError(messageErreur(e));
-    }
-  };
-
-  return (
-    <Stack gap="md">
-      {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
-
-      <Group gap="md" wrap="nowrap" align="center">
-        <Text size="sm" fw={500} w={LABEL_WIDTH}>
-          Mode par défaut
-        </Text>
-        <Select
-          aria-label="Mode par défaut"
-          data={MODES.map((m) => ({ value: m.value, label: m.label }))}
-          value={mode}
-          onChange={changeMode}
-          allowDeselect={false}
-          w={200}
-        />
-      </Group>
-
-      <Group gap="md" wrap="nowrap" align="center">
-        <Text size="sm" fw={500} w={LABEL_WIDTH}>
-          Thème
-        </Text>
-        <Select
-          aria-label="Thème"
-          data={SCHEME_OPTIONS.map(({ value, label }) => ({ value, label }))}
-          leftSection={<SchemeIcon value={colorScheme ?? "auto"} />}
-          renderOption={({ option }) => (
-            <Group gap={6} wrap="nowrap">
-              <SchemeIcon value={option.value} />
-              <span>{option.label}</span>
-            </Group>
-          )}
-          // « System » suit le thème du système : c'est la valeur par défaut,
-          // posée dans le thème (main.jsx) et mémorisée par Mantine ensuite.
-          value={colorScheme ?? "auto"}
-          onChange={(value) => value && setColorScheme(value as Scheme)}
-          allowDeselect={false}
-          w={200}
-        />
-      </Group>
-    </Stack>
-  );
-}
-
-const TABS: { value: string; label: string; icon: ComponentType<{ size?: number }> }[] = [
-  { value: "general", label: "Général", icon: IconAdjustments },
+}[] = [
   { value: "companies", label: "Sociétés", icon: IconBuilding },
-  { value: "users", label: "Utilisateurs", icon: IconUsers },
-  { value: "mail", label: "Messagerie", icon: IconMail },
+  { value: "access", label: "Accès", icon: IconUsers },
+  { value: "roles", label: "Rôles", icon: IconShieldLock },
+  { value: "entra", label: "Entra", icon: IconBrandWindows },
   { value: "backup", label: "Sauvegarde", icon: IconDatabaseExport },
+  { value: "developer", label: "Développeur", icon: IconCode },
+  // Les réglages propres à un mode, à la fin : les types de jalon des projets,
+  // puis le Support.
+  { value: "milestones", label: "Projets", icon: IconFlag },
+  { value: "support", label: "Support", icon: IconHeadset },
 ];
+
+/**
+ * Les onglets qui supposent Entra : les accès se donnent à des utilisateurs
+ * et des groupes de l'annuaire, et sociétés, types de jalons et rôles n'ont
+ * de sens qu'une fois quelqu'un d'autre que le compte « admin » connecté.
+ */
+const AVEC_ENTRA = new Set(["companies", "milestones", "access", "roles"]);
+
+/** Les onglets que le compte « admin » ne voit pas. */
+const SANS_ADMIN = new Set(["developer", "support", "milestones"]);
+
+/** Entra est configuré : l'application renseignée (identifiant, annuaire, secret). */
+const entraConfiguree = (r: EntraSettings) =>
+  Boolean(r.client_id && r.tenant && r.has_secret);
 
 const MODAL_HEADER = modalHeaderStyles(40);
+
+// Le gris d'une étiquette non renseignée : plus pâle que le « light » de
+// Mantine, qui se lisait presque comme une étiquette active. Le fond est
+// transparent : un gris plein se confondait avec la ligne survolée (gray-1)
+// ou avec le fond de la liste en thème sombre (dark-6).
+const TAG_GRISE = {
+  backgroundColor:
+    "light-dark(color-mix(in srgb, var(--mantine-color-gray-6), transparent 88%), color-mix(in srgb, var(--mantine-color-dark-2), transparent 85%))",
+  color: "light-dark(var(--mantine-color-gray-5), var(--mantine-color-dark-2))",
+};
+
+/**
+ * Une étiquette de la liste des sociétés : même allure que celles des boîtes
+ * (EntraTab). Grisée quand ce qu'elle nomme n'est pas renseigné.
+ */
+const tag = (libelle: string, couleur: "green" | "red" | null) => (
+  <Badge
+    color={couleur ?? "gray"}
+    variant={couleur ? "filled" : "light"}
+    size="sm"
+    radius="sm"
+    tt="none"
+    fw={600}
+    style={{ flexShrink: 0, ...(couleur ? {} : TAG_GRISE) }}
+  >
+    {libelle}
+  </Badge>
+);
 
 /**
  * La barre de défilement d'un panneau, déportée sur la bordure droite de la
@@ -176,37 +126,103 @@ interface SettingsModalProps {
   opened: boolean;
   onClose: () => void;
   companies: Company[];
-  currentUser: PublicUser | null;
-  onUserUpdated: (user: PublicUser) => void;
+  /**
+   * Le compte « admin » ne voit que le Paramétrage : la fenêtre ne se ferme
+   * pas, son bouton déconnecte, et l'enregistrement la laisse ouverte.
+   */
+  standalone?: boolean;
+  /**
+   * Le droit « Modifier » du Paramétrage. Sans lui, la fenêtre se consulte :
+   * pas d'enregistrement, pas de sauvegarde — l'archive porte toute la base.
+   */
+  canEdit: boolean;
   onDataChanged: () => void | Promise<void>;
+  /** Les types de jalons (Commande, Développement…) que les projets choisissent. */
+  milestoneTypes: MilestoneType[];
+  /** Debug (onglet Développeur) : la sélection et le menu du navigateur reviennent. */
+  debug: boolean;
+  onDebugChange: (debug: boolean) => void;
 }
 
 export default function SettingsModal({
   opened,
   onClose,
   companies,
-  currentUser,
-  onUserUpdated,
+  milestoneTypes,
+  standalone = false,
+  canEdit,
   onDataChanged,
+  debug,
+  onDebugChange,
 }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<string | null>("general");
+  const [activeTab, setActiveTab] = useState<string | null>("companies");
+  // Tant qu'Entra n'est pas configuré, seuls ses réglages et la sauvegarde
+  // se montrent. L'onglet Entra en informe la fenêtre à chaque lecture et à
+  // chaque enregistrement ; « null » tant qu'il n'a rien dit.
+  const [entraPret, setEntraPret] = useState<boolean | null>(null);
+  // Les types de jalons et le Support touchent au travail des modes, et
+  // l'onglet Développeur à celui des personnes : pas au paramétrage de
+  // l'application. Le compte « admin » ne les voit pas.
+  const visible = (onglet: string) =>
+    !(standalone && SANS_ADMIN.has(onglet)) &&
+    !(!canEdit && onglet === "backup") &&
+    (entraPret === true || !AVEC_ENTRA.has(onglet));
+
+  // Stable : l'onglet Entra s'en sert dans sa lecture des réglages.
+  const suivreEntra = useCallback((reglages: EntraSettings) => {
+    const pret = entraConfiguree(reglages);
+    setEntraPret(pret);
+    // L'onglet ouvert vient de disparaître : on passe sur Entra.
+    if (!pret) setActiveTab((t) => (t && AVEC_ENTRA.has(t) ? "entra" : t));
+  }, []);
+  // Le type dont la fenêtre des jalons est ouverte.
+  const [jalonsDe, setJalonsDe] = useState<number | null>(null);
+  // La société dont la fenêtre du support est ouverte.
+  const [supportDe, setSupportDe] = useState<number | null>(null);
 
   /**
-   * L'onglet Messagerie n'a pas de bouton d'enregistrement : c'est « Fermer »
-   * qui enregistre. L'onglet dépose ici sa fonction, et elle rend faux si le
-   * serveur a refusé — la fenêtre reste alors ouverte, avec le message.
+   * L'accès de Milo à la boîte de support de chaque société, par Entra :
+   * vrai si Microsoft laisse lire un message. Vérifié à l'ouverture et à
+   * chaque changement d'adresse ; « null » tant que la réponse n'est pas là.
    */
-  const enregistrerMessagerie = useRef<(() => Promise<boolean>) | null>(null);
-  const [fermeture, setFermeture] = useState(false);
+  const [boites, setBoites] = useState<Map<number, boolean> | null>(null);
+  const adresses = companies.map((c) => `${c.id}:${c.support_email}`).join();
+  useEffect(() => {
+    if (!opened || entraPret !== true) return undefined;
+    let annule = false;
+    api
+      .checkMailboxes()
+      .then((r) => {
+        if (!annule) setBoites(new Map(r.map((b) => [b.company_id, b.ok])));
+      })
+      // La vérification elle-même a échoué : aucune boîte n'est accessible.
+      .catch(() => !annule && setBoites(new Map()));
+    return () => {
+      annule = true;
+    };
+  }, [opened, entraPret, adresses]);
 
-  const fermer = async () => {
-    setFermeture(true);
+  /**
+   * Seul l'onglet Entra a des réglages en attente : les autres onglets
+   * enregistrent chaque geste. « Enregistrer » appelle la fonction que
+   * l'onglet dépose ici ; « Fermer » n'enregistre rien.
+   */
+  const enregistrerEntra = useRef<(() => Promise<boolean>) | null>(null);
+  const [enregistrement, setEnregistrement] = useState(false);
+
+  // Enregistre puis referme ; un refus du serveur garde la fenêtre ouverte,
+  // avec son message dans l'onglet concerné.
+  const enregistrer = async () => {
+    setEnregistrement(true);
     try {
-      if ((await enregistrerMessagerie.current?.()) === false) return;
+      if ((await enregistrerEntra.current?.()) === false) {
+        setActiveTab("entra");
+        return;
+      }
     } finally {
-      setFermeture(false);
+      setEnregistrement(false);
     }
-    onClose();
+    if (!standalone) onClose();
   };
 
   /** Un appel à l'API, suivi du rechargement de ce que l'application affiche. */
@@ -217,34 +233,65 @@ export default function SettingsModal({
       await onDataChanged();
     };
 
-  const panel = (value: string, children: ReactNode) => (
-    <Tabs.Panel
-      value={value}
-      pl="xl"
-      style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
-    >
-      <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
-        <Title order={4}>{TABS.find((t) => t.value === value)?.label}</Title>
-        {/* « auto » : la barre ne paraît que si l'onglet déborde. */}
-        <ScrollArea
-          type="auto"
-          scrollbarSize={2}
-          styles={SCROLLBAR_STYLES}
-          style={{ flex: 1, minHeight: 0 }}
-        >
-          {children}
-        </ScrollArea>
-      </Stack>
-    </Tabs.Panel>
-  );
+  // L'entête du panneau Entra porte son menu « Actions », à droite du
+  // titre : l'onglet l'y rend par un portail.
+  const [actionsEntra, setActionsEntra] = useState<HTMLDivElement | null>(null);
+
+  const panel = (
+    value: string,
+    children: ReactNode,
+    actionsRef?: (el: HTMLDivElement | null) => void,
+  ) =>
+    visible(value) && (
+      <Tabs.Panel
+        value={value}
+        pl="xl"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
+          <Group justify="space-between" align="center" wrap="nowrap">
+            <Title order={4}>
+              {TABS.find((t) => t.value === value)?.label}
+            </Title>
+            {/* Sans hauteur, le menu centré sur la ligne : plus haut que le
+              titre, il agrandirait l'entête et décalerait le panneau par
+              rapport aux autres onglets. */}
+            {actionsRef && (
+              <div
+                ref={actionsRef}
+                style={{ height: 0, display: "flex", alignItems: "center" }}
+              />
+            )}
+          </Group>
+          {/* « auto » : la barre ne paraît que si l'onglet déborde. */}
+          <ScrollArea
+            type="auto"
+            scrollbarSize={2}
+            styles={SCROLLBAR_STYLES}
+            style={{ flex: 1, minHeight: 0 }}
+          >
+            {children}
+          </ScrollArea>
+        </Stack>
+      </Tabs.Panel>
+    );
 
   return (
     <Modal
       opened={opened}
-      // Échap et l'arrière-plan passent par là : ils enregistrent donc aussi.
-      onClose={fermer}
-      title="Réglages"
-      size={800}
+      // Échap et l'arrière-plan passent par là : comme « Fermer », sans
+      // enregistrer. Pour le compte « admin », la fenêtre est tout l'écran :
+      // elle ne se ferme que par la déconnexion.
+      onClose={onClose}
+      closeOnEscape={!standalone}
+      closeOnClickOutside={!standalone}
+      title="Paramétrage"
+      size={900}
       padding={40}
       withCloseButton={false}
       styles={{
@@ -271,25 +318,26 @@ export default function SettingsModal({
         value={activeTab}
         onChange={setActiveTab}
         orientation="vertical"
+        // Les onglets masqués restent montés et actifs : en mode « activity »
+        // (celui par défaut), leurs effets s'arrêtent, et la messagerie ne
+        // pourrait plus déposer sa fonction d'enregistrement.
+        keepMountedMode="display-none"
         style={{ flex: 1, minHeight: 0 }}
       >
         <Tabs.List style={{ width: 170, flexShrink: 0 }}>
-          {TABS.map(({ value, label, icon: Icon }) => (
-            <Tabs.Tab
-              key={value}
-              value={value}
-              leftSection={<Icon size={16} />}
-              style={tabStyle(activeTab === value)}
-            >
-              {label}
-            </Tabs.Tab>
-          ))}
+          {TABS.filter((t) => visible(t.value)).map(
+            ({ value, label, icon: Icon }) => (
+              <Tabs.Tab
+                key={value}
+                value={value}
+                leftSection={<Icon size={16} />}
+                style={tabStyle(activeTab === value)}
+              >
+                {label}
+              </Tabs.Tab>
+            ),
+          )}
         </Tabs.List>
-
-        {panel(
-          "general",
-          <GeneralTab user={currentUser} onUserUpdated={onUserUpdated} />,
-        )}
 
         {panel(
           "companies",
@@ -299,25 +347,127 @@ export default function SettingsModal({
             onUpdate={withRefresh(api.updateCompany)}
             onDelete={withRefresh(api.deleteCompany)}
             addTitle="Nouvelle société"
-            maxRows={10}
+            maxRows={8}
+            minRows={8}
             emptyIcon={IconBuilding}
             emptyText="Aucune société pour le moment"
             entityLabel="la société"
+            renderTags={(item) => {
+              const societe = companies.find((c) => c.id === item.id);
+              if (!societe) return null;
+              return (
+                <Group gap={6} wrap="nowrap" style={{ flexShrink: 0 }}>
+                  {tag("Portail", societe.support_url ? "green" : null)}
+                  {/* Grisée aussi tant que la vérification n'a pas répondu. */}
+                  {tag(
+                    "Email",
+                    !societe.support_email || !boites
+                      ? null
+                      : boites.get(societe.id)
+                        ? "green"
+                        : "red",
+                  )}
+                </Group>
+              );
+            }}
+            renderActions={(item) => [
+              {
+                label: "Support",
+                icon: IconHeadset,
+                onClick: () => setSupportDe(item.id),
+              },
+            ]}
           />,
         )}
 
-        {panel("users", <UsersTab currentUser={currentUser} />)}
+        {/* Chaque type porte ses jalons, réglés dans la fenêtre qu'ouvre le
+            menu de sa ligne (« Jalons »). Le supprimer ne supprime aucun projet : ceux
+            qui le portaient gardent leur avancement, sans marques. */}
+        {panel(
+          "milestones",
+          <LookupManager
+            items={milestoneTypes}
+            onCreate={withRefresh(api.createMilestoneType)}
+            onUpdate={withRefresh((id: number, name: string) =>
+              api.updateMilestoneType(id, { name }),
+            )}
+            onDelete={withRefresh(api.deleteMilestoneType)}
+            addTitle="Nouveau type de jalons"
+            maxRows={8}
+            minRows={8}
+            emptyIcon={IconFlag}
+            emptyText="Aucun type de jalons pour le moment"
+            entityLabel="le type de jalons"
+            renderActions={(item) => [
+              {
+                label: "Jalons",
+                icon: IconFlag,
+                onClick: () => setJalonsDe(item.id),
+              },
+            ]}
+          />,
+        )}
 
-        {panel("mail", <MailTab saveRef={enregistrerMessagerie} />)}
+        {panel("access", <AccessTab companies={companies} />)}
+
+        {panel("roles", <RolesTab />)}
+
+        {panel("support", <SupportTab canEdit={canEdit} />)}
+
+        {panel(
+          "entra",
+          <EntraTab
+            saveRef={enregistrerEntra}
+            actionsTarget={actionsEntra}
+            onSettings={suivreEntra}
+            companies={companies}
+          />,
+          setActionsEntra,
+        )}
 
         {panel("backup", <BackupTab />)}
+
+        {panel(
+          "developer",
+          <DeveloperTab debug={debug} onDebugChange={onDebugChange} canEdit={canEdit} />,
+        )}
       </Tabs>
 
       <Group justify="flex-end" mt={40}>
-        <Button variant="default" onClick={fermer} loading={fermeture}>
-          Fermer
-        </Button>
+        {!canEdit && (
+          <Text size="sm" c="dimmed" mr="auto">
+            Consultation seule : votre rôle ne permet pas de modifier le
+            Paramétrage.
+          </Text>
+        )}
+        <BoutonFermer onClick={onClose}>
+          {standalone ? "Déconnexion" : "Fermer"}
+        </BoutonFermer>
+        {canEdit && (
+          <Button color="teal" onClick={enregistrer} loading={enregistrement}>
+            Enregistrer
+          </Button>
+        )}
       </Group>
+
+      <CompanySupportModal
+        company={companies.find((c) => c.id === supportDe) ?? null}
+        onClose={() => setSupportDe(null)}
+        onSave={withRefresh(
+          async (data: Pick<Company, "support_email" | "support_url">) => {
+            if (supportDe !== null) await api.updateCompany(supportDe, data);
+          },
+        )}
+      />
+
+      <MilestonesModal
+        type={milestoneTypes.find((t) => t.id === jalonsDe) ?? null}
+        onClose={() => setJalonsDe(null)}
+        onSave={withRefresh(async (milestones: Milestone[]) => {
+          if (jalonsDe !== null)
+            await api.updateMilestoneType(jalonsDe, { milestones });
+        })}
+      />
     </Modal>
   );
 }

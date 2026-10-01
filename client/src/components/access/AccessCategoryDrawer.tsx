@@ -1,17 +1,17 @@
-import { Button, Drawer, Group, Input, Stack, Switch, Tabs, TextInput } from "@mantine/core";
-import { IconSettings, IconTrash } from "@tabler/icons-react";
+import { Drawer, Input, Stack, Switch, Tabs, TextInput } from "@mantine/core";
+import { IconSettings } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
-import { RED } from "../../themes/colors";
 import { tabStyle } from "../../themes/tabs";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
+import DrawerFooter from "../ui/DrawerFooter";
 import ErrorAlert from "../ui/ErrorAlert";
 import { messageErreur } from "../../lib/errors";
 import type { AccessCategory } from "@milo/shared";
 
-// Une catégorie du mode Accès porte son nom et « Privé » : fermée, elle ne se
-// montre plus qu'à son auteur. Le tiroir reprend celui des tableaux, en plus
-// court — une catégorie ne porte encore rien d'autre.
+// Une catégorie du mode Accès porte son nom, « Privé » — fermée, elle ne se
+// montre plus qu'à son auteur — et l'air qu'elle laisse entre ses colonnes. Le
+// tiroir reprend celui des tableaux, en plus court.
 //
 // À la différence d'un tableau, « Privé » se règle dès la création : une
 // catégorie qu'on ouvre fermée ne passe jamais par un moment où tout le monde
@@ -34,32 +34,47 @@ export default function AccessCategoryDrawer({
 }: AccessCategoryDrawerProps) {
   const [name, setName] = useState("");
   const [prive, setPrive] = useState(false);
+  // Verrouillée, la catégorie se lit mais ce qu'elle porte ne bouge plus.
+  const [verrouille, setVerrouille] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDeleteOpened, setConfirmDeleteOpened] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!opened) return;
     setName(category ? category.name : "");
     setPrive(category ? category.is_private !== 0 : false);
+    setVerrouille(category ? category.is_locked !== 0 : false);
     setError(null);
+    setSaving(false);
   }, [opened, category]);
 
-  // Le tiroir n'a ni « Fermer » ni « Enregistrer » : on le referme en cliquant
-  // au dehors, et c'est à ce moment que la catégorie part au serveur. Une
-  // catégorie qu'on n'a pas nommée n'est pas créée : refermer sans rien saisir
-  // ne laisse rien derrière soi. Si le serveur refuse, le tiroir reste ouvert
-  // avec le message plutôt que d'emporter la saisie.
-  const fermer = async () => {
+  // « Sauvegarder » : le seul geste qui écrit. Une catégorie sans nom n'est
+  // pas enregistrée — le message le dit plutôt que de créer une ligne vide. Si
+  // le serveur refuse, le tiroir reste ouvert avec le message : la saisie
+  // n'est jamais perdue.
+  const sauvegarder = async () => {
     const nom = name.trim();
-    if (!nom) return onClose();
+    if (!nom) return setError("Le nom de la catégorie est requis");
     setError(null);
+    setSaving(true);
     try {
       const enregistree = category
-        ? await api.updateAccessCategory(category.id, { name: nom, is_private: prive })
-        : await api.createAccessCategory({ name: nom, is_private: prive });
+        ? await api.updateAccessCategory(category.id, {
+            name: nom,
+            is_private: prive,
+            is_locked: verrouille,
+          })
+        : await api.createAccessCategory({
+            name: nom,
+            is_private: prive,
+            is_locked: verrouille,
+          });
       await onSaved(enregistree);
     } catch (e) {
       setError(messageErreur(e));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -78,7 +93,7 @@ export default function AccessCategoryDrawer({
     <>
       <Drawer
         opened={opened}
-        onClose={fermer}
+        onClose={onClose}
         position="right"
         size={560}
         padding={40}
@@ -122,10 +137,6 @@ export default function AccessCategoryDrawer({
                   const { value } = e.currentTarget;
                   setName(value);
                 }}
-                onKeyDown={(e) => {
-                  // Entrée vaut « j'ai fini » : elle referme, donc elle enregistre.
-                  if (e.key === "Enter") fermer();
-                }}
                 required
                 autoFocus
               />
@@ -133,12 +144,19 @@ export default function AccessCategoryDrawer({
               {/* Privée : la catégorie sort de la vue des autres, avec ce
                   qu'elle contiendra. */}
               <Input.Wrapper label="Options">
-                <Stack gap="sm" mt={8}>
+                <Stack gap="sm">
                   <Switch
                     label="Privé"
-                    description="La catégorie n'est visible que par vous."
                     checked={prive}
                     onChange={(e) => setPrive(e.currentTarget.checked)}
+                    color="teal"
+                  />
+                  {/* Le verrou ne ferme pas la catégorie aux autres : il fige
+                      ce qu'elle porte. On la lit, on ne la remanie plus. */}
+                  <Switch
+                    label="Verrouiller"
+                    checked={verrouille}
+                    onChange={(e) => setVerrouille(e.currentTarget.checked)}
                     color="teal"
                   />
                 </Stack>
@@ -147,22 +165,12 @@ export default function AccessCategoryDrawer({
           </Tabs.Panel>
         </Tabs>
 
-        {/* Ne reste en bas que la suppression : le reste s'enregistre en
-            refermant. */}
-        {category && (
-          <Stack gap="sm" mt="auto" pt={40}>
-            <Group wrap="nowrap">
-              <Button
-                color={RED}
-                variant="subtle"
-                leftSection={<IconTrash size={16} />}
-                onClick={() => setConfirmDeleteOpened(true)}
-              >
-                Supprimer
-              </Button>
-            </Group>
-          </Stack>
-        )}
+        <DrawerFooter
+          onSave={sauvegarder}
+          onClose={onClose}
+          onDelete={category ? () => setConfirmDeleteOpened(true) : undefined}
+          saving={saving}
+        />
       </Drawer>
 
       <DeleteConfirmModal

@@ -23,18 +23,27 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { BackupInfo, RestoreResult } from "@milo/shared";
+import {
+  assurerAdministrateur,
+  numeroterReferences,
+  poserSectionsParDefaut,
+  rattacherIndicateurs,
+} from "../db/migrations.js";
 import { db, transaction } from "../db/query.js";
 import { env } from "../env.js";
 import { depaqueter, empaqueter } from "./archive.js";
 import type { Entree } from "./archive.js";
 import { badRequest } from "./http.js";
 import { cheminMedia } from "./medias.js";
+import { cheminTicket } from "./ticket-files.js";
 import { now } from "./time.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 
 /** Les deux noms que porte une archive de Milo. */
 const FICHIER_BASE = "milo.db";
 const DOSSIER_MEDIAS = "medias/";
+/** Les fichiers des e-mails du support, à part des médias (lib/ticket-files.ts). */
+const DOSSIER_TICKETS = "tickets/";
 
 const CLE_RESTAURATION = "last_restore";
 
@@ -95,6 +104,10 @@ export const construireSauvegarde = (): Buffer =>
         nom: `${DOSSIER_MEDIAS}${fichier}`,
         contenu: fs.readFileSync(cheminMedia(fichier)!),
       });
+    }
+    for (const fichier of fs.readdirSync(env.ticketsPath)) {
+      const chemin = cheminTicket(fichier);
+      if (chemin) entrees.push({ nom: `${DOSSIER_TICKETS}${fichier}`, contenu: fs.readFileSync(chemin) });
     }
     return empaqueter(entrees);
   });
@@ -208,6 +221,16 @@ const restaurerLesMedias = (fichiers: Map<string, Buffer>): number => {
   let restaures = 0;
 
   for (const [nom, contenu] of fichiers) {
+    // Les fichiers des tickets, sous la même garde : un nom des nôtres, dans
+    // leur seul dossier.
+    if (nom.startsWith(DOSSIER_TICKETS)) {
+      const cheminT = cheminTicket(nom.slice(DOSSIER_TICKETS.length));
+      if (cheminT) {
+        fs.writeFileSync(cheminT, contenu);
+        restaures += 1;
+      }
+      continue;
+    }
     if (!nom.startsWith(DOSSIER_MEDIAS)) continue;
     // Le nom est recontrôlé, pas seulement raccourci : une archive fabriquée
     // à la main ne doit pas pouvoir écrire ailleurs que dans le dossier des
@@ -238,6 +261,15 @@ export const restaurerSauvegarde = (archive: Buffer): RestoreResult => {
     verifierLaBase(chemin);
 
     const { tables, rows } = remplacerLesDonnees(chemin);
+    // Une sauvegarde d'avant les rôles n'a pas d'administrateur, celle
+    // d'avant les sections des statistiques laisse ses indicateurs sans
+    // section, celle d'avant les références communes numérote ses cartes par
+    // tableau, et celle d'avant les sections des projets et des tâches n'en a
+    // pas : on les repose.
+    assurerAdministrateur(db);
+    rattacherIndicateurs(db);
+    numeroterReferences(db);
+    poserSectionsParDefaut(db);
     const medias = restaurerLesMedias(fichiers);
 
     // Écrit après coup : la restauration vient de remplacer la table des

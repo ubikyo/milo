@@ -3,11 +3,15 @@
 
 import type {
   AccessBlockType,
+  AssetIndicatorType,
   CardKind,
+  ProjectIndicatorType,
+  TaskIndicatorType,
   Id,
   ListColor,
   PublicUser,
   SectionWidthUnit,
+  SupportIndicatorType,
   SupportStatus,
 } from "./domain.js";
 import type { Mode } from "./modes.js";
@@ -23,33 +27,29 @@ export interface AuthResult {
 }
 
 export interface SetupState {
+  /** Le compte « admin » n'existe pas encore : il faut le créer. */
   needs_setup: boolean;
+  /** L'application Entra est renseignée : la connexion par Microsoft est possible. */
+  entra: boolean;
 }
 
+/** Le mot de passe du compte « admin », posé à la toute première ouverture. */
 export interface SetupInput {
-  first_name: string;
-  last_name: string;
-  email: string;
   password: string;
 }
 
-export interface FirstLoginInput extends SetupInput {
-  password_confirm: string;
+/** La connexion du compte « admin », le seul qui ait un mot de passe. */
+export interface AdminLoginInput {
+  username: string;
+  password: string;
 }
 
+/**
+ * Ce qu'un compte règle lui-même. Son identité vient d'Entra et se relit à
+ * chaque connexion : elle ne se modifie pas ici.
+ */
 export interface UpdateMeInput {
-  first_name?: string;
-  last_name?: string;
-  email?: string;
   default_mode?: Mode;
-  password?: string;
-  password_confirm?: string;
-}
-
-export interface UserInput {
-  email: string;
-  first_name?: string;
-  last_name?: string;
 }
 
 export interface BoardInput {
@@ -57,6 +57,7 @@ export interface BoardInput {
   name?: string;
   show_card_numbers?: boolean;
   is_private?: boolean;
+  is_locked?: boolean;
 }
 
 export interface ProjectBoardInput {
@@ -64,10 +65,13 @@ export interface ProjectBoardInput {
   is_private?: boolean;
 }
 
-/** Le tiroir d'une catégorie d'accès : son nom, et « Privé ». */
+/** Le tiroir d'une catégorie d'accès : son nom, « Privé », et l'écart de ses colonnes. */
 export interface AccessCategoryInput {
   name?: string;
   is_private?: boolean;
+  is_locked?: boolean;
+  /** L'écart entre deux colonnes, en pixels. */
+  gap?: number;
 }
 
 /**
@@ -78,16 +82,28 @@ export interface AccessSectionInput {
   category_id?: Id;
   width_unit?: SectionWidthUnit;
   width_value?: number | null;
+  /** À la création : le rang où la section prend place. Sans lui, au bout. */
+  index?: number;
 }
 
 /**
- * Le tiroir d'un élément de section. Sa configuration est celle du greffon :
+ * Le tiroir d'un élément de section. Sa configuration est celle du widget :
  * le serveur ne la relit pas, il la range.
  */
 export interface AccessBlockInput {
   section_id?: Id;
   type?: AccessBlockType;
   config?: Record<string, unknown>;
+}
+
+/**
+ * Le rangement des éléments d'une section : la liste complète de ce qu'elle
+ * porte, dans le nouvel ordre. Un élément venu d'une autre section de la même
+ * catégorie y est admis — c'est ainsi qu'on le déplace.
+ */
+export interface AccessBlockReorderInput {
+  section_id: Id;
+  ids: Id[];
 }
 
 export interface TaskListInput {
@@ -136,6 +152,7 @@ export interface ProjectInput {
   board_id?: Id;
   category_id?: Id;
   company_id?: Id | null;
+  milestone_type_id?: Id | null;
   status?: number;
   actor_ids?: Id[];
   label_ids?: Id[];
@@ -189,6 +206,7 @@ export interface CopyResult {
  */
 export interface SupportRequestInput {
   company_id?: Id;
+  subject?: string;
   status?: SupportStatus;
   actor_ids?: Id[];
   /** ISO 8601 avec l'heure, ou vide pour retirer l'échéance. */
@@ -196,8 +214,54 @@ export interface SupportRequestInput {
   label_ids?: Id[];
 }
 
+/** Les demandes cochées dans la liste, et ce qu'on en fait. */
+export interface SupportBulkInput {
+  ids: Id[];
+}
+
+/** « Assigner à » : les comptes ajoutés aux acteurs des demandes cochées. */
+export interface SupportAssignInput extends SupportBulkInput {
+  actor_ids: Id[];
+}
+
+/** Le tiroir d'une section d'un panneau des statistiques. */
+export interface IndicatorSectionInput {
+  width_unit?: SectionWidthUnit;
+  width_value?: number | null;
+  /** À la création : le rang où la section prend place. Sans lui, au bout. */
+  index?: number;
+}
+
+export interface SupportIndicatorInput {
+  /** À la création : la section qui le reçoit. */
+  section_id?: Id;
+  type?: SupportIndicatorType;
+  config?: Record<string, unknown>;
+}
+
+export interface AssetIndicatorInput {
+  /** À la création : la section qui le reçoit. */
+  section_id?: Id;
+  type?: AssetIndicatorType;
+  config?: Record<string, unknown>;
+}
+
+export interface ProjectIndicatorInput {
+  /** À la création : la section qui le reçoit. */
+  section_id?: Id;
+  type?: ProjectIndicatorType;
+  config?: Record<string, unknown>;
+}
+
+export interface TaskIndicatorInput {
+  /** À la création : la section qui le reçoit. */
+  section_id?: Id;
+  type?: TaskIndicatorType;
+  config?: Record<string, unknown>;
+}
+
 export interface SupportLabelInput {
-  company_id?: Id;
   name?: string;
   color?: string;
+  weight?: number;
 }

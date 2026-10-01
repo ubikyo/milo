@@ -3,7 +3,7 @@
 
 import { Router } from "express";
 import { forbidden, orNotFound, requireText } from "../lib/http.js";
-import { notifier, racine } from "../lib/notify.js";
+import { concernes, notifier, notifierSuppression, racine } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { COMMENTAIRE_SYSTEME, withAuthor } from "../repositories/comments.js";
@@ -66,6 +66,14 @@ commentRoutes.put("/:id", (req, res) => {
   const timestamp = now();
   comments.update.run(text, timestamp, comment.id);
   projects.touch.run(timestamp, comment.project_id);
+  notifier({
+    kind: "project",
+    targetId: comment.project_id,
+    titre: projects.raw.get(comment.project_id)?.name ?? "Projet",
+    message: "a modifié un commentaire",
+    auteur: req.user,
+    base: racine(req),
+  });
   res.json(withAuthor(comments.byId.get(comment.id)!));
 });
 
@@ -75,5 +83,14 @@ commentRoutes.delete("/:id", (req, res) => {
 
   comments.remove.run(comment.id);
   projects.touch.run(now(), comment.project_id);
+  notifierSuppression({
+    kind: "project",
+    targetId: comment.project_id,
+    titre: projects.raw.get(comment.project_id)?.name ?? "Projet",
+    message: "a supprimé un commentaire",
+    auteur: req.user,
+    destinataires: concernes.projet(comment.project_id),
+    disparu: false,
+  });
   res.status(204).end();
 });

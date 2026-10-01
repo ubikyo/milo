@@ -23,7 +23,8 @@ export const boards = {
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ),
   update: mutation(
-    "UPDATE boards SET name = ?, show_card_numbers = ?, is_private = ?, owner_id = ? WHERE id = ?",
+    `UPDATE boards SET name = ?, show_card_numbers = ?, is_private = ?, is_locked = ?, owner_id = ?
+     WHERE id = ?`,
   ),
   remove: mutation("DELETE FROM boards WHERE id = ?"),
 };
@@ -44,5 +45,14 @@ export const boardLisible = (board: BoardRow | undefined, user: UserRow): boolea
 export const boardOuvert = (id: unknown, user: UserRow): BoardRow => {
   const board = boards.byId.get(id);
   if (!boardLisible(board, user) || !board) throw new HttpError(404, BOARD_INTROUVABLE);
+  return board;
+};
+
+/**
+ * Un tableau verrouillé garde ses listes telles qu'elles sont : on n'en
+ * ajoute, n'en déplace ni n'en supprime. Ses cartes, elles, restent libres.
+ */
+export const listesLibres = (board: BoardRow): BoardRow => {
+  if (board.is_locked) throw new HttpError(403, "Ce tableau est verrouillé : ses listes ne bougent pas");
   return board;
 };

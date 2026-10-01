@@ -6,6 +6,7 @@
 // C'est tout ce dont on a besoin — un dépôt, un fichier — et cela évite une
 // dépendance de plus pour analyser du multipart.
 
+import { cheminTicket, fichierCite } from "../lib/ticket-files.js";
 import express, { Router } from "express";
 import type { Request } from "express";
 import { HttpError, badRequest, orNotFound } from "../lib/http.js";
@@ -16,6 +17,7 @@ import {
   typeEnLigne,
   urlMedia,
 } from "../lib/medias.js";
+import { concernes, notifier, notifierSuppression, racine } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { attachmentOf, attachments, removeAttachment } from "../repositories/attachments.js";
 import { boardOuvert } from "../repositories/boards.js";
@@ -90,6 +92,14 @@ cardMediaRoutes.post("/attachments", corpsFichier, (req, res) => {
     now(),
   );
 
+  notifier({
+    kind: "card",
+    targetId: card.id,
+    titre: card.text,
+    message: `a joint « ${nom} »`,
+    auteur: req.user,
+    base: racine(req),
+  });
   res.status(201).json(attachmentOf(attachments.byId.get(lastInsertRowid)!));
 });
 
@@ -116,9 +126,18 @@ export const attachmentRoutes = Router();
 
 attachmentRoutes.delete("/:id", (req, res) => {
   const piece = orNotFound(attachments.byId.get(req.params.id), PIECE_INTROUVABLE);
-  carteOuverte(piece.card_id, req.user);
+  const carte = carteOuverte(piece.card_id, req.user);
 
   removeAttachment(piece);
+  notifierSuppression({
+    kind: "card",
+    targetId: carte.id,
+    titre: carte.text,
+    message: `a supprimé la pièce jointe « ${piece.name} »`,
+    auteur: req.user,
+    destinataires: concernes.carte(carte.id),
+    disparu: false,
+  });
   res.status(204).end();
 });
 
@@ -157,6 +176,32 @@ mediaRoutes.get("/:file", (req, res, next) => {
 
   // Le fichier a disparu du disque alors que sa ligne est restée : l'erreur
   // passe par « next », le rappel de sendFile étant hors de la pile d'Express.
+  res.sendFile(chemin, (erreur) => {
+    if (erreur && !res.headersSent) next(new HttpError(404, FICHIER_INTROUVABLE));
+  });
+});
+
+/**
+ * Monté sous `/api/ticket-files`, comme les médias avant l'exigence d'une
+ * session : les images d'un e-mail reçu s'affichent dans un cadre qui ne porte
+ * pas d'en-tête d'authentification. Même clé : un nom de seize octets tirés au
+ * sort (lib/ticket-files.ts).
+ */
+export const ticketFileRoutes = Router();
+
+ticketFileRoutes.get("/:file", (req, res, next) => {
+  const fichier = String(req.params["file"] ?? "");
+  const chemin = orNotFound(cheminTicket(fichier), FICHIER_INTROUVABLE);
+  const type = typeEnLigne(fichier);
+  const nom = fichierCite(fichier)?.name ?? fichier;
+
+  res.type(type ?? "application/octet-stream");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader(
+    "Content-Disposition",
+    `${type ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(nom)}`,
+  );
+  res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
   res.sendFile(chemin, (erreur) => {
     if (erreur && !res.headersSent) next(new HttpError(404, FICHIER_INTROUVABLE));
   });

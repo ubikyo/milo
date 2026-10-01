@@ -6,15 +6,22 @@
 // désigner un élément de l'extérieur, depuis un e-mail ou un message. Elle est
 // tenue à jour pour que la page rechargée retrouve ce qui était ouvert.
 
-import type { Id, NotificationKind } from "@milo/shared";
+import type { Id, LienKind } from "@milo/shared";
 import { lienElement } from "@milo/shared";
 
 export interface Cible {
-  kind: NotificationKind;
+  /** Pour « access », l'identifiant est celui de la catégorie. */
+  kind: LienKind;
   id: Id;
 }
 
-const NOMS: Record<string, NotificationKind> = { projet: "project", carte: "card" };
+const NOMS: Record<string, LienKind> = {
+  projet: "project",
+  carte: "card",
+  demande: "support",
+  poste: "asset",
+  acces: "access",
+};
 
 /** Ce que l'adresse courante désigne, s'il y a lieu. */
 export const cibleDeLAdresse = (): Cible | null => {

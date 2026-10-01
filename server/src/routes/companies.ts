@@ -1,5 +1,5 @@
-// Les sociétés. Une ressource qui n'a qu'un id et un nom, et dont la
-// suppression emporte les projets rattachés.
+// Les sociétés : un nom, et les coordonnées de leur support (e-mail et site).
+// Leur suppression emporte les projets rattachés.
 //
 // C'était une fabrique générique « registerLookupRoutes » paramétrée par des
 // noms de table interpolés dans le SQL. Elle n'a jamais servi qu'une fois : le
@@ -9,7 +9,7 @@
 import { Router } from "express";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { CompanyRow, CountRow } from "../db/rows.js";
-import { conflict, orNotFound, requireText } from "../lib/http.js";
+import { badRequest, conflict, orNotFound, refuserSiUtilise, requireText } from "../lib/http.js";
 import { touch, touchNow } from "../middleware/events.js";
 
 const SOCIETE_INTROUVABLE = "Société introuvable";
@@ -32,9 +32,51 @@ const parNom = selection<CompanyRow>(
 );
 const compterProjets = scalar<CountRow>("SELECT COUNT(*) AS count FROM projects WHERE company_id = ?");
 const creer = mutation("INSERT INTO companies (name) VALUES (?)");
-const renommer = mutation("UPDATE companies SET name = ? WHERE id = ?");
+const enregistrer = mutation(
+  "UPDATE companies SET name = ?, support_email = ?, support_url = ? WHERE id = ?",
+);
 const supprimerProjets = mutation("DELETE FROM projects WHERE company_id = ?");
 const supprimer = mutation("DELETE FROM companies WHERE id = ?");
+
+// Ce qui rattache une société à quelque chose : ses projets, les cartes de
+// ses tableaux, ses demandes de support, ses postes. Des tableaux vides, ses
+// étiquettes ou les rôles qu'on y a attribués ne comptent pas : ils ne
+// servent qu'à elle, et partent avec elle.
+const utilisations = scalar<CountRow>(
+  `SELECT
+     (SELECT COUNT(*) FROM projects WHERE company_id = :id)
+   + (SELECT COUNT(*) FROM task_cards t
+        JOIN task_lists l ON l.id = t.list_id
+        JOIN boards b ON b.id = l.board_id
+      WHERE b.company_id = :id)
+   + (SELECT COUNT(*) FROM support_requests WHERE company_id = :id)
+   + (SELECT COUNT(*) FROM assets WHERE company_id = :id) AS count`,
+);
+
+// Une adresse e-mail plausible : de quoi arrêter une faute de frappe, pas plus.
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** L'e-mail de support : vide, ou une adresse. */
+const emailSupport = (valeur: unknown): string => {
+  const email = String(valeur ?? "").trim();
+  if (email && !EMAIL.test(email)) badRequest("L'e-mail de support n'est pas valide");
+  return email;
+};
+
+/**
+ * L'adresse du site de support, toujours en https:// : le préfixe est
+ * imposé, qu'on l'ait tapé ou non. Un « http:// » collé est remplacé.
+ */
+const urlSupport = (valeur: unknown): string => {
+  const reste = String(valeur ?? "")
+    .trim()
+    .replace(/^https?:\/\//i, "");
+  if (!reste) return "";
+  if (/\s/.test(reste) || !/^[^/?#]+\.[^/?#]+/.test(reste)) {
+    badRequest("L'adresse du support n'est pas valide");
+  }
+  return `https://${reste}`;
+};
 
 /**
  * Suppression en cascade : les projets rattachés partent avec, et leurs
@@ -66,17 +108,26 @@ companyRoutes.post("/", (req, res) => {
   res.status(201).json(parId.get(lastInsertRowid));
 });
 
+// Ce qui n'est pas envoyé reste : la liste renomme sans toucher au support.
 companyRoutes.put("/:id", (req, res) => {
   const existing = orNotFound(parId.get(req.params.id), SOCIETE_INTROUVABLE);
-  const name = requireText(req.body.name, "Le nom est requis");
+  const { body } = req;
+  const name =
+    body.name === undefined ? existing.name : requireText(body.name, "Le nom est requis");
   if (parNom.get(name, existing.id)) conflict(SOCIETE_EXISTANTE);
 
-  renommer.run(name, existing.id);
+  enregistrer.run(
+    name,
+    body.support_email === undefined ? existing.support_email : emailSupport(body.support_email),
+    body.support_url === undefined ? existing.support_url : urlSupport(body.support_url),
+    existing.id,
+  );
   res.json(parId.get(existing.id));
 });
 
 companyRoutes.delete("/:id", (req, res) => {
   const existing = orNotFound(parId.get(req.params.id), SOCIETE_INTROUVABLE);
+  refuserSiUtilise(existing.name, utilisations({ id: existing.id }).count);
   // La suppression seule emporte les tableaux de tâches de la société et
   // leurs listes : une création ou un renommage n'y touche pas.
   touchNow(res, "boards", "task-lists");

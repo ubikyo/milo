@@ -15,6 +15,8 @@ Environment=MILO_DB_PATH=/var/lib/milo/data.db
 # Les fichiers déposés sur les cartes, pour la même raison : un déploiement
 # remplace le code, il ne doit pas emporter les pièces jointes.
 Environment=MILO_MEDIA_PATH=/var/lib/milo/medias
+# Les images et pièces jointes des e-mails reçus au support.
+Environment=MILO_TICKETS_PATH=/var/lib/milo/tickets
 # Durée au bout de laquelle une session inutilisée se ferme, en jours.
 Environment=MILO_SESSION_DAYS=30
 # Aucune origine tierce : le client est servi par le même hôte que l'API, les

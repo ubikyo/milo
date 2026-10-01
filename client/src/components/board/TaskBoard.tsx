@@ -28,21 +28,33 @@ import {
   IconClock,
   IconCircleOff,
   IconColumns,
-  IconDots,
   IconCopy,
+  IconCopyPlus,
   IconEye,
   IconFolderSymlink,
+  IconPencil,
   IconAlignLeft,
   IconPlus,
   IconSeparatorHorizontal,
   IconTrash,
+  IconTrashX,
   IconX,
 } from "@tabler/icons-react";
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  Fragment,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { api } from "../../api";
-import { RED } from "../../themes/colors";
+import { INSERT_LINE, RED } from "../../themes/colors";
 import { PLUS_GAP, PLUS_SIZE } from "../../themes/plus";
 import ActorAvatars from "../ui/ActorAvatars";
+import PointMenu, { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
+import ColumnInsert, { COLUMN_INSERT_ZONE } from "../ui/ColumnInsert";
 import AddButton from "../ui/AddButton";
 import { CardLabel } from "../ui/LabelChip";
 import Confetti from "../ui/Confetti";
@@ -54,13 +66,16 @@ import ErrorAlert from "../ui/ErrorAlert";
 import classes from "../../assets/styles/TaskBoard.module.css";
 import { messageErreur } from "../../lib/errors";
 import { MOT_ECHEANCE, dateCourte, etatEcheance } from "../../lib/echeance";
+import { BordureSelection } from "../ui/LabelColorPicker";
 import type { EtatEcheance } from "../../lib/echeance";
 import type {
   CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode,
 } from "react";
+import { reference } from "@milo/shared";
 import type {
   Board,
   FollowKind,
@@ -218,11 +233,15 @@ function useListColors() {
       // Le blanc n'est pas une teinte de la palette : il s'inverse d'un thème
       // à l'autre, blanc sur le sombre et noir sur le clair.
       let fond: string;
+      let neutre = false;
       const palette = color ? theme.colors[color] : undefined;
       if (color === "white") fond = sombre ? theme.white : theme.black;
       else if (palette && LIST_COLORS.some((c) => c.value === color))
         fond = palette[getPrimaryShade(theme, colorScheme)] ?? palette[6]!;
-      else fond = (sombre ? theme.colors["dark"]?.[5] : theme.colors["gray"]?.[2]) ?? theme.white;
+      else {
+        neutre = true;
+        fond = (sombre ? theme.colors["dark"]?.[5] : theme.colors["gray"]?.[2]) ?? theme.white;
+      }
 
       const lisible = (dessous: string): string =>
         getContrastColor({
@@ -235,8 +254,10 @@ function useListColors() {
       const creuse = darken(fond, 0.18);
       // Un séparateur se pose sur le fond de sa liste, assombri plus franchement
       // que le survol : il doit se lire comme un intertitre, pas comme un
-      // élément survolé.
-      const creuseSepare = darken(fond, 0.35);
+      // élément survolé. Sauf sur la liste neutre du thème sombre : les cartes y
+      // sont déjà plus sombres que la liste, et un séparateur assombri se
+      // confondrait avec elles — il s'éclaircit donc.
+      const creuseSepare = neutre && sombre ? lighten(fond, 0.15) : darken(fond, 0.35);
       return {
         fond,
         texte: lisible(fond),
@@ -249,9 +270,7 @@ function useListColors() {
         bordureCarte: lighten(fond, 0.45),
         fondSeparateur: creuseSepare,
         texteSeparateur: lisible(creuseSepare),
-        // Le trait d'insertion va jusqu'au blanc : sur l'écart entre deux
-        // cartes, il n'a qu'un pointillé d'un pixel pour se faire voir.
-        traitInsertion: "var(--mantine-color-white)",
+        traitInsertion: INSERT_LINE,
       };
     },
     [theme, colorScheme],
@@ -505,10 +524,10 @@ function CardChecklistPanel({ card, onCheck }: CardChecklistPanelProps) {
   );
 }
 
-// Bas de la carte : le signe d'une description et le numéro à gauche, les
-// membres à droite. Le numéro est un repère discret pour la désigner à l'oral,
-// compté par tableau et non sur l'identifiant en base ; un tableau peut le
-// taire (« Afficher le numéro des cartes », dans son tiroir). Les bulles se
+// Bas de la carte : le signe d'une description et la référence à gauche, les
+// membres à droite. La référence (« LMA-12 ») est un repère discret pour la
+// désigner, donné par le compteur commun aux modes ; un tableau peut la taire
+// (« Numéros des cartes », dans son tiroir). Les bulles se
 // recouvrent comme dans le tableau des projets ; sans membre, la ligne n'en
 // montre aucune.
 interface CardNumberProps {
@@ -536,7 +555,8 @@ function CardNumber({ card, withNumber, onChecklistToggle }: CardNumberProps) {
           card={card}
           onToggle={onChecklistToggle}
         />
-        {withNumber && <Text size="xs">#{card.number}</Text>}
+        {/* Une carte qui attend encore le serveur n'a pas de référence. */}
+        {withNumber && card.number > 0 && <Text size="xs">{reference(card.number)}</Text>}
       </Group>
       {membres.length > 0 && (
         <ActorAvatars actors={membres} size={CARD_AVATAR_SIZE} max={4} />
@@ -738,6 +758,7 @@ interface ListCardProps {
   onEditBlur: () => void;
   onPointerDown: (event: ReactPointerEvent) => void;
   onDelete: () => void;
+  onDeleteTasks: () => void;
   onMove: () => void;
   onCopy: () => void;
   onColor: (color: string) => void;
@@ -745,6 +766,8 @@ interface ListCardProps {
   /** Suivre cette liste, c'est être prévenu de ce qui arrive à ses cartes. */
   suivie: boolean;
   onToggleFollow: () => void;
+  /** Tableau verrouillé : la liste ne se déplace ni ne se supprime. */
+  verrouillee: boolean;
   children?: ReactNode;
 }
 
@@ -757,20 +780,29 @@ function ListCard({
   onEditBlur,
   onPointerDown,
   onDelete,
+  onDeleteTasks,
   onMove,
   onCopy,
   onColor,
   onSeparator,
   suivie,
   onToggleFollow,
+  verrouillee,
   children,
 }: ListCardProps) {
-  // Le menu se ferme de lui-même sur ses entrées, mais pas sur les pastilles
-  // de couleur, qui n'en sont pas : on le pilote pour qu'un choix le referme.
-  const [menuOpened, setMenuOpened] = useState(false);
-  const [pointsSurvoles, setPointsSurvoles] = useState(false);
+  // Le menu s'ouvre au clic droit, au point cliqué. Il se ferme de lui-même
+  // sur ses entrées, mais pas sur les pastilles de couleur, qui n'en sont
+  // pas : on le pilote pour qu'un choix le referme.
+  const [menu, setMenu] = useState<PointMenuPosition | null>(null);
   const couleurs = useListColors();
   const sienne = couleurs(list.color);
+  const taches = (list.cards || []).filter((c) => !estSeparateur(c)).length;
+
+  // Un champ de saisie garde le menu du navigateur : couper, coller.
+  const ouvrirMenu = (event: ReactMouseEvent<HTMLElement>) => {
+    if ((event.target as HTMLElement).closest("input, textarea")) return;
+    setMenu(positionDuMenu(event));
+  };
 
   return (
     <Paper
@@ -779,7 +811,11 @@ function ListCard({
       radius="md"
       p={LIST_PADDING}
       data-list-id={list.id}
+      // Une liste se glisse par son propre geste : elle n'emporte pas le
+      // widget qui porte le tableau (IndicatorsPanel).
+      data-no-widget-drag="true"
       onPointerDown={onPointerDown}
+      onContextMenu={ouvrirMenu}
       style={{
         touchAction: "none",
         cursor: "pointer",
@@ -826,120 +862,115 @@ function ListCard({
             </Text>
           )}
 
-          {/* Combien de cartes porte la liste, juste avant son menu. Les
+          {/* Combien de cartes porte la liste, au bout du titre. Les
               séparateurs ne comptent pas : ils rangent les cartes, ils n'en
               sont pas. */}
           <Text size="xs" c={sienne.texte} opacity={0.7} style={{ flexShrink: 0 }}>
-            {(list.cards || []).filter((c) => !estSeparateur(c)).length}
+            {taches}
           </Text>
-
-          {/* Menu de la liste, à droite du libellé. */}
-          {/* Aligné sur le bord gauche du « … », et non sur son bord droit. */}
-          {/* Mantine rend le focus au « … » un instant après la fermeture du
-              menu. « Séparateur » ouvre une saisie qui prend le focus dans le
-              même souffle : sans « returnFocus », elle le perdrait aussitôt et
-              se refermerait sur du vide. */}
-          <Menu
-            position="bottom-start"
-            withinPortal
-            returnFocus={false}
-            opened={menuOpened}
-            onChange={setMenuOpened}
-          >
-            <Menu.Target>
-              <ActionIcon
-                data-no-list-drag="true"
-                variant="transparent"
-                aria-label={`Menu de ${list.name}`}
-                onMouseEnter={() => setPointsSurvoles(true)}
-                onMouseLeave={() => setPointsSurvoles(false)}
-                style={{
-                  color: sienne.texte,
-                  backgroundColor: pointsSurvoles ? sienne.survol : sienne.fond,
-                }}
-              >
-                <IconDots size={16} />
-              </ActionIcon>
-            </Menu.Target>
-            <Menu.Dropdown>
-              {/* Le séparateur se saisit comme une carte, à la fin de la
-                  liste ; on le glisse ensuite là où il doit trancher. */}
-              {/* Cochée, la liste est suivie : toute modification de ses
-                  cartes vaut notification. La coche est à droite comme dans
-                  les menus du système, l'œil à gauche comme les autres icônes. */}
-              <Menu.Item
-                leftSection={<IconEye size={16} />}
-                rightSection={suivie ? <IconCheck size={14} /> : null}
-                onClick={onToggleFollow}
-                closeMenuOnClick={false}
-              >
-                Suivre
-              </Menu.Item>
-
-              <Menu.Divider />
-
-              <Menu.Item
-                leftSection={<IconSeparatorHorizontal size={16} />}
-                onClick={onSeparator}
-              >
-                Séparateur
-              </Menu.Item>
-              <Menu.Item
-                leftSection={<IconFolderSymlink size={16} />}
-                onClick={onMove}
-              >
-                Déplacer
-              </Menu.Item>
-              {/* Copier suit déplacer : même question — vers quel tableau ? —
-                  et la même boîte y répond, le tableau courant compris. */}
-              <Menu.Item
-                leftSection={<IconCopy size={16} />}
-                onClick={onCopy}
-              >
-                Copier
-              </Menu.Item>
-
-              <Menu.Divider />
-              {/* Les pastilles se passent d'intitulé : une couleur se
-                  reconnaît. */}
-              <SimpleGrid cols={3} spacing={8} p="xs">
-                {LIST_COLORS.map((couleur) => (
-                  <ColorSwatch
-                    key={couleur.value}
-                    component="button"
-                    type="button"
-                    color={couleurs(couleur.value).fond}
-                    size={22}
-                    onClick={() => {
-                      setMenuOpened(false);
-                      onColor(couleur.value);
-                    }}
-                    style={{ cursor: "pointer" }}
-                    aria-label={couleur.label}
-                  />
-                ))}
-              </SimpleGrid>
-              <Menu.Item
-                leftSection={<IconCircleOff size={16} />}
-                onClick={() => onColor("")}
-              >
-                Aucune
-              </Menu.Item>
-
-              <Menu.Divider />
-              <Menu.Item
-                color={RED}
-                leftSection={<IconTrash size={16} />}
-                onClick={onDelete}
-              >
-                Supprimer
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
         </Group>
 
         {children}
       </Stack>
+
+      {/* Mantine rend le focus à l'ancre un instant après la fermeture du
+          menu. « Séparateur » ouvre une saisie qui prend le focus dans le
+          même souffle : sans « returnFocus », elle le perdrait aussitôt et
+          se refermerait sur du vide. */}
+      {menu && (
+        <PointMenu position={menu} onClose={() => setMenu(null)} returnFocus={false}>
+          {/* Le séparateur se saisit comme une carte, à la fin de la
+              liste ; on le glisse ensuite là où il doit trancher. */}
+          {/* Cochée, la liste est suivie : toute modification de ses
+              cartes vaut notification. La coche est à droite comme dans
+              les menus du système, l'œil à gauche comme les autres icônes. */}
+          <Menu.Item
+            leftSection={<IconEye size={16} />}
+            rightSection={suivie ? <IconCheck size={14} /> : null}
+            onClick={onToggleFollow}
+            closeMenuOnClick={false}
+          >
+            Suivre
+          </Menu.Item>
+
+          <Menu.Divider />
+
+          <Menu.Item
+            leftSection={<IconSeparatorHorizontal size={16} />}
+            onClick={onSeparator}
+          >
+            Séparateur
+          </Menu.Item>
+          {/* Vers un autre tableau, la liste quitterait celui-ci : un
+              tableau verrouillé la garde. */}
+          {!verrouillee && (
+            <Menu.Item
+              leftSection={<IconFolderSymlink size={16} />}
+              onClick={onMove}
+            >
+              Déplacer
+            </Menu.Item>
+          )}
+          {/* Copier suit déplacer : même question — vers quel tableau ? —
+              et la même boîte y répond, le tableau courant compris. */}
+          <Menu.Item
+            leftSection={<IconCopy size={16} />}
+            onClick={onCopy}
+          >
+            Copier
+          </Menu.Item>
+
+          <Menu.Divider />
+          {/* Les pastilles se passent d'intitulé : une couleur se
+              reconnaît. */}
+          <SimpleGrid cols={3} spacing={8} p="xs">
+            {LIST_COLORS.map((couleur) => (
+              <ColorSwatch
+                key={couleur.value}
+                component="button"
+                type="button"
+                color={couleurs(couleur.value).fond}
+                size={22}
+                onClick={() => {
+                  setMenu(null);
+                  onColor(couleur.value);
+                }}
+                style={{ cursor: "pointer" }}
+                aria-label={couleur.label}
+                aria-pressed={couleur.value === list.color}
+              >
+                {couleur.value === list.color && <BordureSelection />}
+              </ColorSwatch>
+            ))}
+          </SimpleGrid>
+          <Menu.Item
+            leftSection={<IconCircleOff size={16} />}
+            onClick={() => onColor("")}
+          >
+            Aucune
+          </Menu.Item>
+
+          <Menu.Divider />
+          {/* Vider la liste sans la supprimer : ses séparateurs restent. */}
+          <Menu.Item
+            color={RED}
+            leftSection={<IconTrashX size={16} />}
+            onClick={onDeleteTasks}
+            disabled={taches === 0}
+          >
+            Supprimer tâches
+          </Menu.Item>
+          {!verrouillee && (
+            <Menu.Item
+              color={RED}
+              leftSection={<IconTrash size={16} />}
+              onClick={onDelete}
+            >
+              Supprimer
+            </Menu.Item>
+          )}
+        </PointMenu>
+      )}
     </Paper>
   );
 }
@@ -960,6 +991,9 @@ interface CardViewProps {
   onEditKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
   onEditBlur: () => void;
   onPointerDown: (event: ReactPointerEvent) => void;
+  onContextMenu: (card: TaskCard, position: PointMenuPosition) => void;
+  /** Son menu est ouvert : elle garde le cadre du survol. */
+  active: boolean;
   palette: Palette;
   withNumber: boolean;
   labelsCompactes: boolean;
@@ -978,6 +1012,8 @@ function CardView({
   onEditKeyDown,
   onEditBlur,
   onPointerDown,
+  onContextMenu,
+  active,
   palette,
   withNumber,
   labelsCompactes,
@@ -1020,12 +1056,13 @@ function CardView({
       // Une carte s'ouvre en fiche d'un simple clic ; seul le séparateur, qui
       // n'a pas de fiche, se modifie encore sur le tableau.
       onDoubleClick={() => onStartEdit(card)}
+      onContextMenu={(e) => onContextMenu(card, positionDuMenu(e))}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
         touchAction: "none",
         cursor: "pointer",
-        border: `2px solid ${hovered ? palette.bordureCarte : "transparent"}`,
+        border: `2px solid ${hovered || active ? palette.bordureCarte : "transparent"}`,
         ...styleSeparateur(card, palette),
       }}
     >
@@ -1116,6 +1153,23 @@ interface TaskBoardProps {
   onCarteOuverte: (id: Id | null) => void;
 }
 
+/**
+ * Le tableau ouvert, tel que la page le met en scène : le widget des listes
+ * (task-indicators/liste.tsx) le lit ici, où qu'il soit posé dans les
+ * sections.
+ */
+export const TableauDesTachesContext = createContext<TaskBoardProps | null>(null);
+
+/**
+ * Les listes du tableau en widget. Remonté à chaque tableau : une saisie ou
+ * un glisser en cours ne traverse pas le changement d'onglet.
+ */
+export function TableauDesTachesWidget() {
+  const tableau = useContext(TableauDesTachesContext);
+  if (!tableau) return null;
+  return <TaskBoard key={tableau.boardId} {...tableau} />;
+}
+
 export default function TaskBoard({
   boardId,
   boards,
@@ -1131,6 +1185,9 @@ export default function TaskBoard({
   onCarteOuverte,
 }: TaskBoardProps) {
   const [composing, setComposing] = useState(false);
+  // Le rang où la liste saisie prendra place : « null », au bout. Le « + »
+  // entre deux listes en donne un, et l'encart s'ouvre à cet endroit.
+  const [rangNouvelle, setRangNouvelle] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1141,6 +1198,8 @@ export default function TaskBoard({
   const cancelled = useRef(false);
 
   const [pendingDelete, setPendingDelete] = useState<TaskList | null>(null);
+  // La liste qu'on demande à vider de ses tâches.
+  const [listeAVider, setListeAVider] = useState<TaskList | null>(null);
   // Liste dont on choisit le tableau d'accueil.
   // La liste qu'on s'apprête à déplacer ou à copier, et lequel des deux.
   const [listeVisee, setListeVisee] = useState<{ list: TaskList; mode: ListAction } | null>(
@@ -1148,6 +1207,12 @@ export default function TaskBoard({
   );
   // Carte dont la fiche est ouverte.
   const [cardOuverte, setCardOuverte] = useState<TaskCard | null>(null);
+  // Le menu contextuel d'une carte, et la carte dont on demande la
+  // suppression.
+  const [menuCarte, setMenuCarte] = useState<
+    { card: TaskCard; position: PointMenuPosition } | null
+  >(null);
+  const [carteASupprimer, setCarteASupprimer] = useState<TaskCard | null>(null);
 
   // Une carte désignée de l'extérieur — par l'adresse, ou par le lien d'une
   // notification. L'application s'est déjà placée sur le bon tableau ; on
@@ -1162,6 +1227,18 @@ export default function TaskBoard({
       }
     }
   }, [carteAOuvrir, lists]);
+
+  // La copie qu'on vient de dupliquer : sa fiche s'ouvre dès que les listes
+  // relues la portent, pour qu'on la reprenne comme base d'une autre.
+  const [copieAOuvrir, setCopieAOuvrir] = useState<Id | null>(null);
+  useEffect(() => {
+    if (copieAOuvrir === null) return;
+    const copie = lists.flatMap((l) => l.cards).find((c) => c.id === copieAOuvrir);
+    if (copie) {
+      setCopieAOuvrir(null);
+      setCardOuverte(copie);
+    }
+  }, [copieAOuvrir, lists]);
 
   // L'adresse suit la carte ouverte : c'est l'application qui l'écrit, le
   // tableau lui dit seulement ce qu'il montre.
@@ -1203,6 +1280,9 @@ export default function TaskBoard({
   // encore lu le montre : c'est le réglage par défaut.
   const tableau = (boards || []).find((b) => String(b.id) === String(boardId));
   const withNumber = tableau ? tableau.show_card_numbers !== 0 : true;
+  // Verrouillé, le tableau garde ses listes : ni ajout, ni déplacement, ni
+  // suppression. Les cartes, elles, se glissent toujours.
+  const verrouille = tableau?.is_locked === 1;
 
   // Salve de confettis en cours, tirée au-dessus d'une liste.
   const [confettis, setConfettis] = useState<Confettis | null>(null);
@@ -1230,6 +1310,29 @@ export default function TaskBoard({
   const [cardDrag, setCardDrag] = useState<GlisserCarte | null>(null);
   const cardDragRef = useRef<GlisserCarteEnCours | null>(null);
   const cardTargetRef = useRef<CibleCarte | null>(null);
+
+  // La hauteur de chaque liste, suivie à l'écran : le « + » entre deux listes
+  // prend celle de la plus haute des deux, et non celle de toute la rangée.
+  const [hauteurs, setHauteurs] = useState<Map<string, number>>(() => new Map());
+  useEffect(() => {
+    const rangee = rowRef.current;
+    if (!rangee) return undefined;
+    const observateur = new ResizeObserver((entrees) => {
+      setHauteurs((avant) => {
+        let suivant: Map<string, number> | null = null;
+        for (const entree of entrees) {
+          const id = (entree.target as HTMLElement).dataset.listId;
+          const hauteur = (entree.target as HTMLElement).offsetHeight;
+          if (!id || avant.get(id) === hauteur) continue;
+          suivant ??= new Map(avant);
+          suivant.set(id, hauteur);
+        }
+        return suivant ?? avant;
+      });
+    });
+    rangee.querySelectorAll("[data-list-id]").forEach((liste) => observateur.observe(liste));
+    return () => observateur.disconnect();
+  }, [colonnes]);
   // Conteneur des cartes de chaque liste, par identifiant de liste.
   const cardZones = useRef(new Map<Id, HTMLElement>());
 
@@ -1287,6 +1390,31 @@ export default function TaskBoard({
     }
   };
 
+  const deleteTasks = async (list: TaskList) => {
+    setListeAVider(null);
+    // La fiche ouverte sur une tâche de cette liste n'aurait plus de carte.
+    if (cardOuverte && cardOuverte.list_id === list.id && !estSeparateur(cardOuverte)) {
+      setCardOuverte(null);
+    }
+    try {
+      await api.deleteTaskListCards(list.id);
+      await onListsChanged();
+    } catch (e) {
+      setError(messageErreur(e));
+    }
+  };
+
+  const deleteCard = async (card: TaskCard) => {
+    setCarteASupprimer(null);
+    if (cardOuverte?.id === card.id) setCardOuverte(null);
+    try {
+      await api.deleteTaskCard(card.id);
+      await onListsChanged();
+    } catch (e) {
+      setError(messageErreur(e));
+    }
+  };
+
   // --- Cartes : saisie et modification -----------------------------------
   // Dans les deux cas, Échap annule et la perte de focus valide.
   const startCompose = (list: TaskList, index: number, kind: "card" | "separator" = "card") => {
@@ -1321,17 +1449,13 @@ export default function TaskBoard({
 
     // La carte prend sa place tout de suite, au rang visé : sans cela le champ
     // s'effacerait sur du vide, et la carte n'apparaîtrait qu'au retour du
-    // serveur. Le numéro provisoire est celui que le serveur attribuera, le
-    // suivant parmi les cartes du tableau ; un séparateur n'en porte pas.
-    const numero =
-      colonnes
-        .flatMap((l) => l.cards || [])
-        .reduce((max, c) => Math.max(max, c.number || 0), 0) + 1;
+    // serveur. Sa référence, elle, attend le serveur : le compteur est commun
+    // à tous les modes, et rien ici ne dit la suivante.
     const provisoire: CarteProvisoire = {
-      id: `nouvelle-${numero}`,
+      id: `nouvelle-${Date.now()}`,
       list_id: list.id,
       text: texte,
-      number: kind === "separator" ? 0 : numero,
+      number: 0,
       kind,
     };
     // La carte provisoire n'a pas encore d'identifiant de ligne : elle tient
@@ -1369,6 +1493,25 @@ export default function TaskBoard({
     editCancelled.current = false;
     setEditingCardId(card.id);
     setEditingCardText(card.text);
+  };
+
+  // « Modifier » ouvre la fiche ; un séparateur, qui n'en a pas, se modifie
+  // sur le tableau.
+  const modifierCarte = (card: TaskCard) => {
+    if (estSeparateur(card)) startEditCard(card);
+    else setCardOuverte(card);
+  };
+
+  // Un séparateur dupliqué n'a pas de fiche : il se pose sous l'original,
+  // et l'on glisse ensuite celui des deux qui doit trancher ailleurs.
+  const dupliquerCarte = async (card: TaskCard) => {
+    try {
+      const copie = await api.duplicateTaskCard(card.id);
+      await onListsChanged();
+      if (!estSeparateur(card)) setCopieAOuvrir(copie.id);
+    } catch (e) {
+      setError(messageErreur(e));
+    }
   };
 
   const cancelEditCard = () => {
@@ -1409,8 +1552,9 @@ export default function TaskBoard({
 
   const onListPointerDown =
     (list: TaskList, index: number) => (event: ReactPointerEvent) => {
-    // Bouton principal uniquement, et jamais pendant un renommage.
-    if (event.button !== 0 || editingId === list.id) return;
+    // Bouton principal uniquement, jamais pendant un renommage ni sur un
+    // tableau verrouillé.
+    if (event.button !== 0 || editingId === list.id || verrouille) return;
     // Les cartes, le menu et les champs de saisie ont leur propre rôle : un
     // appui sur eux ne déplace pas la liste.
     if ((event.target as HTMLElement).closest("[data-no-list-drag]")) return;
@@ -1668,6 +1812,7 @@ export default function TaskBoard({
   // --- Création d'une liste ----------------------------------------------
   const cancel = () => {
     setComposing(false);
+    setRangNouvelle(null);
     setName("");
     setError(null);
   };
@@ -1677,10 +1822,12 @@ export default function TaskBoard({
     setBusy(true);
     setError(null);
     try {
-      await api.createTaskList(Number(boardId), name.trim());
+      await api.createTaskList(Number(boardId), name.trim(), rangNouvelle ?? undefined);
       await onListsChanged();
-      // On enchaîne : le champ reste ouvert et vide pour la liste suivante.
+      // On enchaîne : le champ reste ouvert et vide pour la liste suivante,
+      // qui se range juste après celle qu'on vient de créer.
       setName("");
+      setRangNouvelle((r) => (r === null ? null : r + 1));
     } catch (e) {
       setError(messageErreur(e));
     } finally {
@@ -1811,6 +1958,8 @@ export default function TaskBoard({
               })}
               onEditBlur={() => saveEditCard(card)}
               onPointerDown={onCardPointerDown(card, list)}
+              onContextMenu={(carte, position) => setMenuCarte({ card: carte, position })}
+              active={menuCarte?.card.id === card.id}
               palette={palette}
               withNumber={withNumber}
               labelsCompactes={labelsCompactes}
@@ -1834,8 +1983,63 @@ export default function TaskBoard({
     );
   };
 
+  // L'encart de saisie d'une nouvelle liste : au bout de la rangée, ou au
+  // rang qu'a donné le « + » entre deux listes.
+  const encartNouvelle = (
+    <Paper
+      w={LIST_WIDTH}
+      miw={LIST_WIDTH}
+      radius="md"
+      p={LIST_PADDING}
+      style={{ backgroundColor: LIST_BG }}
+    >
+      <Stack gap="sm">
+        <TextInput
+          placeholder="Nom"
+          styles={INPUT_NO_BORDER}
+          value={name}
+          onChange={(e) => {
+            const { value } = e.currentTarget;
+            setName(value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") create();
+            if (e.key === "Escape") cancel();
+          }}
+          autoFocus
+        />
+        <Group justify="space-between" wrap="nowrap">
+          <Anchor
+            component="button"
+            type="button"
+            size="sm"
+            onClick={create}
+            disabled={busy || !name.trim()}
+          >
+            {/* Le même « + » que les autres actions « ajouter », et le
+                même écart à son libellé. */}
+            <Group gap={PLUS_GAP} wrap="nowrap">
+              <IconPlus size={PLUS_SIZE} />
+              <span>Ajouter la liste</span>
+            </Group>
+          </Anchor>
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            onClick={cancel}
+            aria-label="Annuler"
+          >
+            <IconX size={16} />
+          </ActionIcon>
+        </Group>
+      </Stack>
+    </Paper>
+  );
+
   // Ce que la suppression de la liste visée emporterait.
   const cartesSupprimees = pendingDelete?.cards?.length ?? 0;
+  // Ce que vider la liste visée emporterait.
+  const tachesSupprimees = (listeAVider?.cards || []).filter((c) => !estSeparateur(c)).length;
 
   return (
     <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
@@ -1848,9 +2052,9 @@ export default function TaskBoard({
         loading ? null : (
           <EmptyPanel
             icon={IconColumns}
-            message="Aucune liste dans ce tableau"
-            actionLabel="Ajouter une liste"
-            onAction={() => setComposing(true)}
+            message="Aucune liste"
+            actionLabel={verrouille ? undefined : "Ajouter une liste"}
+            onAction={verrouille ? undefined : () => setComposing(true)}
           />
         )
       ) : (
@@ -1868,9 +2072,44 @@ export default function TaskBoard({
             {visibles.map((list, index) => (
               <Fragment key={list.id}>
                 {drag && drag.target === index && <Placeholder list={dragged ?? undefined} withNumber={withNumber} labelsCompactes={labelsCompactes} />}
+                {composing && rangNouvelle === index && encartNouvelle}
+                {/* Avant chaque liste : le trait qui en insère une à cet
+                    endroit. Il ne prend aucune largeur — la marge négative
+                    rend à la rangée l'écart que ce repère lui coûterait. */}
+                {!drag && !cardDrag && !composing && !verrouille && (
+                  <div
+                    style={{
+                      position: "relative",
+                      width: 0,
+                      height: Math.max(
+                        hauteurs.get(String(list.id)) ?? 0,
+                        index > 0 ? (hauteurs.get(String(visibles[index - 1]!.id)) ?? 0) : 0,
+                      ),
+                      marginRight: -LIST_GAP,
+                    }}
+                  >
+                    <ColumnInsert
+                      label="Insérer une liste ici"
+                      style={{
+                        // Avant la première, la zone de défilement rognerait
+                        // tout ce qui déborde à gauche : elle chevauche donc
+                        // à moitié le bord de la liste.
+                        left:
+                          index === 0
+                            ? -COLUMN_INSERT_ZONE / 2
+                            : -(LIST_GAP + COLUMN_INSERT_ZONE) / 2,
+                      }}
+                      onClick={() => {
+                        setRangNouvelle(index);
+                        setComposing(true);
+                      }}
+                    />
+                  </div>
+                )}
                 <ListCard
                   suivie={follows.list.includes(list.id)}
                   onToggleFollow={() => onToggleFollow("list", list.id)}
+                  verrouillee={verrouille}
                   list={list}
                   editing={editingId === list.id ? { id: list.id, name: editingName } : null}
                   onStartEdit={() => startEdit(list)}
@@ -1885,6 +2124,7 @@ export default function TaskBoard({
                   onEditBlur={() => saveEdit(list)}
                   onPointerDown={onListPointerDown(list, colonnes.indexOf(list))}
                   onDelete={() => setPendingDelete(list)}
+                  onDeleteTasks={() => setListeAVider(list)}
                   onMove={() => setListeVisee({ list, mode: "move" })}
                   onCopy={() => setListeVisee({ list, mode: "copy" })}
                   onColor={(color) => setListColor(list, color)}
@@ -1911,7 +2151,7 @@ export default function TaskBoard({
             )}
 
             {/* Toujours à droite des listes : le bouton cède la place à l'encart. */}
-            {!composing && !drag && (
+            {!composing && !drag && !verrouille && (
               <AddButton
                 label="Ajouter une liste"
                 onClick={() => setComposing(true)}
@@ -1919,56 +2159,7 @@ export default function TaskBoard({
               />
             )}
 
-            {composing && (
-              <Paper
-                w={LIST_WIDTH}
-                miw={LIST_WIDTH}
-                radius="md"
-                p={LIST_PADDING}
-                style={{ backgroundColor: LIST_BG }}
-              >
-                <Stack gap="sm">
-                  <TextInput
-                    placeholder="Nom"
-                    styles={INPUT_NO_BORDER}
-                    value={name}
-                    onChange={(e) => {
-                      const { value } = e.currentTarget;
-                      setName(value);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") create();
-                      if (e.key === "Escape") cancel();
-                    }}
-                    autoFocus
-                  />
-                  <Group justify="space-between" wrap="nowrap">
-                    <Anchor
-                      component="button"
-                      type="button"
-                      size="sm"
-                      onClick={create}
-                      disabled={busy || !name.trim()}
-                    >
-                      {/* Le même « + » que les autres actions « ajouter », et le
-                          même écart à son libellé. */}
-                      <Group gap={PLUS_GAP} wrap="nowrap">
-                        <IconPlus size={PLUS_SIZE} />
-                        <span>Ajouter la liste</span>
-                      </Group>
-                    </Anchor>
-                    <ActionIcon
-                      variant="subtle"
-                      color="gray"
-                      onClick={cancel}
-                      aria-label="Annuler"
-                    >
-                      <IconX size={16} />
-                    </ActionIcon>
-                  </Group>
-                </Stack>
-              </Paper>
-            )}
+            {composing && rangNouvelle === null && encartNouvelle}
           </Group>
         </ScrollArea>
       )}
@@ -2042,6 +2233,54 @@ export default function TaskBoard({
         onSaved={onListsChanged}
       />
 
+      {/* « Modifier » ouvre une saisie sur le séparateur : le focus ne doit
+          pas revenir à l'ancre, il la refermerait aussitôt. */}
+      {menuCarte && (
+        <PointMenu
+          position={menuCarte.position}
+          onClose={() => setMenuCarte(null)}
+          returnFocus={false}
+        >
+          {/* Suivre vient en tête, comme dans la fiche. Un séparateur n'a pas
+              de fiche : il n'y a rien à y suivre. */}
+          {!estSeparateur(menuCarte.card) && (
+            <>
+              <Menu.Item
+                leftSection={<IconEye size={16} />}
+                rightSection={
+                  follows.card.includes(menuCarte.card.id) ? <IconCheck size={14} /> : null
+                }
+                onClick={() => void onToggleFollow("card", menuCarte.card.id)}
+                closeMenuOnClick={false}
+              >
+                Suivre
+              </Menu.Item>
+              <Menu.Divider />
+            </>
+          )}
+          <Menu.Item
+            leftSection={<IconPencil size={16} />}
+            onClick={() => modifierCarte(menuCarte.card)}
+          >
+            Modifier
+          </Menu.Item>
+          <Menu.Item
+            leftSection={<IconCopyPlus size={16} />}
+            onClick={() => void dupliquerCarte(menuCarte.card)}
+          >
+            Dupliquer
+          </Menu.Item>
+          <Menu.Divider />
+          <Menu.Item
+            color={RED}
+            leftSection={<IconTrash size={16} />}
+            onClick={() => setCarteASupprimer(menuCarte.card)}
+          >
+            Supprimer
+          </Menu.Item>
+        </PointMenu>
+      )}
+
       <MoveOrCopyListModal
         opened={listeVisee !== null}
         onClose={() => setListeVisee(null)}
@@ -2070,6 +2309,37 @@ export default function TaskBoard({
             )}
           </>
         }
+      />
+
+      <DeleteConfirmModal
+        opened={listeAVider !== null}
+        onClose={() => setListeAVider(null)}
+        onConfirm={() => listeAVider && deleteTasks(listeAVider)}
+        title="Supprimer les tâches"
+        message={
+          <>
+            Voulez-vous vraiment supprimer{" "}
+            <strong>
+              {tachesSupprimees > 1
+                ? `les ${tachesSupprimees} tâches`
+                : "la tâche"}
+            </strong>{" "}
+            de « {listeAVider?.name} » ? La liste et ses séparateurs restent en
+            place.
+          </>
+        }
+      />
+
+      <DeleteConfirmModal
+        opened={carteASupprimer !== null}
+        onClose={() => setCarteASupprimer(null)}
+        onConfirm={() => carteASupprimer && deleteCard(carteASupprimer)}
+        title={
+          carteASupprimer && estSeparateur(carteASupprimer)
+            ? "Supprimer le séparateur"
+            : "Supprimer la carte"
+        }
+        message={<>Voulez-vous vraiment supprimer « {carteASupprimer?.text} » ?</>}
       />
     </Stack>
   );

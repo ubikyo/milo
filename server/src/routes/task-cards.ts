@@ -6,7 +6,7 @@ import { isCardKind } from "@milo/shared";
 import type { Id } from "@milo/shared";
 import { badRequest, forbidden, orNotFound, requireText, toIds } from "../lib/http.js";
 import { descriptionPropre } from "../lib/html.js";
-import { notifier, racine } from "../lib/notify.js";
+import { concernes, notifier, notifierSuppression, racine } from "../lib/notify.js";
 import { echeance, horodatage, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { boardOuvert, boards } from "../repositories/boards.js";
@@ -17,6 +17,8 @@ import {
   replaceCardMembers,
 } from "../repositories/cards.js";
 import { COMMENTAIRE_SYSTEME, withAuthor } from "../repositories/comments.js";
+import { duplicateTaskCard } from "../repositories/copy-list.js";
+import { prochaineReference } from "../repositories/references.js";
 import {
   boardOfCard,
   listsWithCards,
@@ -51,17 +53,23 @@ taskCardRoutes.post("/", (req, res) => {
 
   // Nouvelle carte ajoutée à la fin de sa liste.
   const { next } = taskCards.nextPosition(list.id);
-  const { numero } = taskCards.nextNumber(list.board_id);
 
   const timestamp = now();
   const { lastInsertRowid } = taskCards.create.run(
     list.id,
     text,
     next,
-    kind === "separator" ? 0 : numero,
+    // Un séparateur ne porte pas de référence, et n'en consomme donc pas.
+    kind === "separator" ? 0 : prochaineReference(),
     kind,
     timestamp,
   );
+
+  // Une carte créée depuis un autre mode (« Créer une tâche ») arrive avec sa
+  // description : le lien vers l'élément d'où elle vient. Un séparateur n'a
+  // pas de fiche, il n'en reçoit pas.
+  const description = kind === "separator" ? "" : descriptionPropre(req.body.description ?? "");
+  if (description) taskCards.describe.run(description, lastInsertRowid);
 
   // Le fil d'une carte s'ouvre sur sa création. Un séparateur n'a pas de
   // fiche, donc pas de fil.
@@ -91,6 +99,29 @@ taskCardRoutes.post("/", (req, res) => {
   }
 
   res.status(201).json(creee);
+});
+
+/**
+ * Dupliquer une carte : la copie, avec tout ce qu'elle porte, se pose juste
+ * sous l'original, dans la même liste (repositories/copy-list.ts). On la
+ * reprend ensuite comme base d'une autre.
+ */
+taskCardRoutes.post("/:id/duplicate", (req, res) => {
+  const source = carteOuverte(req.params.id, req.user);
+  const copie = taskCards.byId.get(duplicateTaskCard(source.id, req.user.id))!;
+
+  if (copie.kind !== "separator") {
+    notifier({
+      kind: "card",
+      targetId: copie.id,
+      titre: copie.text,
+      message: "a ajouté cette carte",
+      auteur: req.user,
+      base: racine(req),
+    });
+  }
+
+  res.status(201).json(copie);
 });
 
 // Déplacement dans la liste ou d'une liste vers une autre. Déclaré avant
@@ -198,6 +229,26 @@ taskCardRoutes.put("/:id", (req, res) => {
   res.json(cardDetail(suivante));
 });
 
+// Suppression d'une carte ou d'un séparateur : ses membres, étiquettes,
+// checklists, pièces jointes et commentaires partent avec elle.
+taskCardRoutes.delete("/:id", (req, res) => {
+  const existing = carteOuverte(req.params.id, req.user);
+  // Un séparateur n'est suivi par personne pour lui-même : il n'a pas de
+  // fiche. Sa disparition ne s'annonce pas.
+  const destinataires = existing.kind === "separator" ? [] : concernes.carte(existing.id);
+  taskCards.remove.run(existing.id);
+  notifierSuppression({
+    kind: "card",
+    targetId: existing.id,
+    titre: existing.text,
+    message: "a supprimé la carte",
+    auteur: req.user,
+    destinataires,
+    disparu: true,
+  });
+  res.status(204).end();
+});
+
 // --- Fil d'une carte -------------------------------------------------------
 
 taskCardRoutes.post("/:id/comments", (req, res) => {
@@ -243,14 +294,34 @@ cardCommentRoutes.put("/:id", (req, res) => {
   }
 
   cardComments.update.run(text, now(), comment.id);
+  const carte = taskCards.byId.get(comment.card_id);
+  if (carte) {
+    notifier({
+      kind: "card",
+      targetId: carte.id,
+      titre: carte.text,
+      message: "a modifié un commentaire",
+      auteur: req.user,
+      base: racine(req),
+    });
+  }
   res.json(withAuthor(cardComments.byId.get(comment.id)!));
 });
 
 cardCommentRoutes.delete("/:id", (req, res) => {
   const comment = orNotFound(cardComments.byId.get(req.params.id), COMMENTAIRE_INTROUVABLE);
   if (comment.system) forbidden(COMMENTAIRE_SYSTEME);
-  carteOuverte(comment.card_id, req.user);
+  const carte = carteOuverte(comment.card_id, req.user);
 
   cardComments.remove.run(comment.id);
+  notifierSuppression({
+    kind: "card",
+    targetId: carte.id,
+    titre: carte.text,
+    message: "a supprimé un commentaire",
+    auteur: req.user,
+    destinataires: concernes.carte(carte.id),
+    disparu: false,
+  });
   res.status(204).end();
 });

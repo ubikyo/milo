@@ -1,0 +1,21 @@
+/* Les lignes de la recherche. Survolée ou choisie au clavier, une ligne prend
+   un gris neutre et non la couleur primaire de Mantine : le texte garde sa
+   couleur. Sur le thème clair, le gris des survols (themes/colors.ts,
+   NEUTRAL_HOVER) ; sur le sombre, celui-ci est exactement le fond de la liste
+   (dark-6), il faut donc un cran plus clair. Des angles à peine arrondis. La classe est
+   doublée pour passer devant le survol de Mantine, quel que soit l'ordre des
+   feuilles. */
+.option {
+  border-radius: 2px;
+}
+
+.option.option:hover,
+.option.option[data-combobox-selected] {
+  background-color: light-dark(#ececec, var(--mantine-color-dark-4));
+  color: inherit;
+}
+
+/* Un séparateur invisible entre deux lignes : un peu d'air, sans trait. */
+.option + .option {
+  margin-top: 2px;
+}

@@ -25,8 +25,17 @@ export interface PublicUser {
   name: string;
   email: string;
   gravatar_url: string;
-  /** Un mot de passe vide signifie « première connexion à faire ». */
-  activated: boolean;
+  /**
+   * Ses droits sur le Paramétrage : le compte « admin » les a tous ; les
+   * autres, s'ils ont un rôle qui les accorde dans au moins une société.
+   * « view » ouvre le Paramétrage, « update » permet d'y enregistrer.
+   */
+  settings: { view: boolean; update: boolean };
+  /**
+   * Le compte « admin » local : il ne sert qu'au paramétrage, ne se montre
+   * dans aucune liste et n'est l'acteur de rien.
+   */
+  system: boolean;
   default_mode: Mode;
   created_at: string;
 }
@@ -48,6 +57,10 @@ export interface Actor {
 export interface Company {
   id: Id;
   name: string;
+  /** L'adresse à laquelle écrire au support de la société ; vide si aucune. */
+  support_email: string;
+  /** L'adresse du site de support, toujours en https:// ; vide si aucune. */
+  support_url: string;
   /** Ce que la suppression en cascade emporterait. */
   project_count: number;
 }
@@ -64,10 +77,42 @@ export interface ProjectBoard {
   created_at: string;
 }
 
+/**
+ * Un jalon du curseur d'avancement : un pourcentage, la couleur de la tranche
+ * qu'il ferme, et un libellé facultatif.
+ *
+ * Les jalons découpent la progression en tranches : de 0 au premier jalon,
+ * puis de jalon en jalon. Un projet prend la couleur de la tranche où tombe
+ * sa progression — à 15 %, entre un jalon à 10 % et un autre à 20 %, celle du
+ * jalon à 20 %.
+ */
+export interface Milestone {
+  /** De 0 à 100. */
+  value: number;
+  /** Vide : le jalon colore sa tranche, mais ne s'écrit pas sous le curseur. */
+  label: string;
+  /** Une couleur d'étiquette (« teinte.nuance ») ; absente sur les anciens jalons. */
+  color?: string;
+}
+
+/**
+ * Un type de jalons — Commande, Développement… —, réglé une fois pour toute
+ * l'application. Un projet en choisit un : ses jalons posent les marques et
+ * les couleurs du curseur d'avancement.
+ */
+export interface MilestoneType {
+  id: Id;
+  name: string;
+  /** Rangés par valeur ; vide tant qu'on ne les a pas réglés. */
+  milestones: Milestone[];
+}
+
 export interface Category {
   id: Id;
   board_id: Id;
   name: string;
+  /** Les jalons des projets de cette catégorie, rangés par valeur ; vide si aucun. */
+  milestones: Milestone[];
   /** Présent sur la liste. */
   project_count?: number;
 }
@@ -78,17 +123,23 @@ export interface ProjectLabel {
   name: string;
   /** « teinte.nuance » de la palette Mantine, par exemple « red.6 ». */
   color: string;
+  /** Le poids : les plus lourdes passent devant, dans les grilles. */
+  weight: number;
   position: number;
   created_at: string;
 }
 
 export interface Project {
   id: Id;
+  /** Sa référence (« LMA-12 »), donnée par le compteur commun aux modes. */
+  number: number;
   name: string;
   description: string;
   board_id: Id;
   category_id: Id;
   company_id: Id | null;
+  /** Le type de jalons de son curseur ; aucun, le curseur reste nu. */
+  milestone_type_id: Id | null;
   /** Avancement, de 0 à 100. */
   status: number;
   created_at: string;
@@ -125,6 +176,8 @@ export interface Board {
   position: number;
   show_card_numbers: SqliteBool;
   is_private: SqliteBool;
+  /** Verrouillé : ses listes ne s'ajoutent, ne se déplacent ni ne se suppriment. */
+  is_locked: SqliteBool;
   /** Nul pour un tableau d'avant l'option « Privé », ou dont l'auteur est parti. */
   owner_id: Id | null;
   created_at: string;
@@ -161,7 +214,10 @@ export interface TaskCard {
   list_id: Id;
   text: string;
   position: number;
-  /** Compté par tableau, attribué à la création. Zéro pour un séparateur. */
+  /**
+   * Sa référence (« LMA-12 »), donnée à la création par le compteur commun aux
+   * modes. Zéro pour un séparateur.
+   */
   number: number;
   kind: CardKind;
   /**
@@ -317,10 +373,24 @@ export interface AccessCategory {
   position: number;
   /** Privée : la catégorie ne se montre qu'à son auteur. */
   is_private: SqliteBool;
+  /** Verrouillée : ce qu'elle porte se lit, mais ne se déplace ni ne se modifie. */
+  is_locked: SqliteBool;
+  /** L'écart entre deux colonnes, en pixels. */
+  gap: number;
   /** Nul quand le compte de l'auteur a été supprimé : la catégorie s'ouvre alors à tous. */
   owner_id: Id | null;
   created_at: string;
 }
+
+/**
+ * L'écart entre deux colonnes d'une catégorie neuve, en pixels. Dit ici plutôt
+ * que dans la page : la base le range par défaut, le tiroir le propose, et les
+ * trois doivent s'accorder.
+ */
+export const ACCESS_GAP_DEFAUT = 20;
+
+/** L'écart le plus large qu'une catégorie puisse dire : au-delà, la rangée se disloque. */
+export const ACCESS_GAP_MAX = 100;
 
 /**
  * Comment la largeur d'une section est dite. « auto » laisse la rangée la
@@ -355,7 +425,8 @@ export interface AccessSection {
  * ordre d'affichage — « Tous » n'en est pas un : il ne filtre rien.
  */
 export const SUPPORT_STATUSES = [
-  { value: "unresolved", label: "Non résolu" },
+  { value: "new", label: "Nouveau" },
+  { value: "open", label: "Ouvert" },
   { value: "pending", label: "En attente" },
   { value: "resolved", label: "Résolu" },
   { value: "closed", label: "Fermé" },
@@ -363,11 +434,46 @@ export const SUPPORT_STATUSES = [
 
 export type SupportStatus = (typeof SUPPORT_STATUSES)[number]["value"];
 
-/** L'état d'une demande qu'on vient d'ouvrir : elle attend d'être traitée. */
-export const DEFAULT_SUPPORT_STATUS: SupportStatus = "unresolved";
+/**
+ * L'état d'une demande qu'on vient d'ouvrir, ou qui arrive dans la boîte de
+ * support de sa société : personne ne s'en est encore saisi.
+ */
+export const DEFAULT_SUPPORT_STATUS: SupportStatus = "new";
+
+/**
+ * L'état d'une demande close que l'expéditeur relance par e-mail : elle a déjà
+ * été prise en main, elle n'est pas « nouvelle » pour autant.
+ */
+export const REOPENED_SUPPORT_STATUS: SupportStatus = "open";
 
 export const isSupportStatus = (value: unknown): value is SupportStatus =>
   SUPPORT_STATUSES.some((s) => s.value === value);
+
+/**
+ * Les étiquettes d'urgence du support, posées une fois pour toutes. Ce
+ * sont des étiquettes comme les autres : elles se renomment, se recolorent, et
+ * ne se suppriment que lorsque plus aucune demande ne les porte.
+ */
+export const SUPPORT_URGENCY_LABELS = [
+  { name: "Sans urgence", color: "green.6", weight: 10 },
+  { name: "Dès que possible", color: "orange.6", weight: 20 },
+  { name: "Urgent", color: "red.6", weight: 30 },
+] as const;
+
+
+/**
+ * Le préfixe des références : « LMA-1 », « LMA-2 »… Un seul compteur les
+ * donne, aux demandes du support, aux projets et aux cartes : une référence
+ * désigne une seule chose, quel que soit le mode.
+ */
+export const REFERENCE_PREFIX = "LMA-";
+export const SUPPORT_TICKET_PREFIX = REFERENCE_PREFIX;
+
+/** Une référence telle qu'on la lit et qu'on la cite. */
+export const reference = (number: number): string => `${REFERENCE_PREFIX}${number}`;
+
+/** Le numéro de ticket d'une demande, tel qu'on le lit et qu'on le cite. */
+export const supportTicketRef = reference;
 
 /** Ce que dit l'onglet, pour un statut donné. */
 export const supportStatusLabel = (status: SupportStatus): string =>
@@ -375,15 +481,15 @@ export const supportStatusLabel = (status: SupportStatus): string =>
 
 /**
  * Une étiquette du mode Support. Jumelle de celles des cartes et des projets,
- * mais rattachée à une société : c'est le niveau au-dessus d'une demande, comme
- * le tableau l'est d'une carte.
+ * mais commune à tout le support : toutes les sociétés partagent les mêmes.
  */
 export interface SupportLabel {
   id: Id;
-  company_id: Id;
   name: string;
   /** « teinte.nuance » de la palette Mantine, par exemple « red.6 ». */
   color: string;
+  /** Le poids : les plus lourdes passent devant, dans les grilles. */
+  weight: number;
   position: number;
   created_at: string;
 }
@@ -395,7 +501,14 @@ export interface SupportLabel {
  */
 export interface SupportRequest {
   id: Id;
+  /**
+   * Le numéro de ticket, qui suit celui de la demande précédente — toutes
+   * sociétés confondues — et ne resert jamais, même après une suppression.
+   */
+  number: number;
   company_id: Id;
+  /** L'objet : celui de l'e-mail reçu, ou ce qu'on a saisi ; vide sinon. */
+  subject: string;
   status: SupportStatus;
   /** ISO 8601 avec l'heure, ou vide — comme l'échéance d'une carte. */
   due_date: string;
@@ -406,6 +519,13 @@ export interface SupportRequest {
   labels: SupportLabel[];
   /** Les échanges tenus sur la demande, comptés pour la liste. */
   comment_count: number;
+  /**
+   * Qui a écrit à la boîte de support, pour une demande reçue par e-mail ;
+   * vides pour une demande saisie. C'est l'acteur qu'on montre tant que
+   * personne d'autre n'est désigné.
+   */
+  sender_name: string;
+  sender_email: string;
 }
 
 export interface SupportComment {
@@ -415,10 +535,47 @@ export interface SupportComment {
   text: string;
   /** Les mots que l'application écrit elle-même : ni retouchés, ni effacés. */
   system: SqliteBool;
+  /**
+   * Ce qu'il est advenu du message côté e-mail, pour une réponse de l'équipe
+   * à une demande reçue par e-mail : vide s'il n'avait pas à partir.
+   */
+  mail_status: SupportMailStatus;
+  /** À qui il est parti — ou serait parti, en simulation. */
+  mail_to: string;
+  /** Qui était en copie, et en copie cachée : des adresses séparées par des virgules. */
+  mail_cc: string;
+  mail_bcc: string;
+  /**
+   * Un commentaire interne à l'équipe — l'onglet « Commentaires » — plutôt
+   * qu'un échange avec l'expéditeur : du texte simple, jamais envoyé.
+   */
+  internal: SqliteBool;
+  /** « email » : un e-mail reçu, à montrer tel quel. Vide : le HTML de l'éditeur. */
+  format: SupportCommentFormat;
+  /** Les pièces jointes de l'e-mail ; ses images intégrées n'y figurent pas. */
+  attachments: SupportAttachment[];
   created_at: string;
   updated_at: string;
   author: Actor | null;
 }
+
+export type SupportCommentFormat = "" | "email";
+
+/** Une pièce jointe d'un e-mail reçu. */
+export interface SupportAttachment {
+  name: string;
+  /** L'adresse du fichier, sous /api/ticket-files. */
+  url: string;
+  mime: string;
+  /** En octets. */
+  size: number;
+}
+
+/**
+ * « sent » : parti. « simulated » : préparé, mais les envois sont simulés
+ * (MILO_SUPPORT_REPLY). « failed » : Graph l'a refusé.
+ */
+export type SupportMailStatus = "" | "sent" | "simulated" | "failed";
 
 /** La fiche d'une demande : tout ce que son tiroir affiche. */
 export interface SupportRequestDetail extends SupportRequest {
@@ -426,8 +583,161 @@ export interface SupportRequestDetail extends SupportRequest {
 }
 
 /**
- * Ce qu'une section peut porter. Chaque valeur désigne un greffon du client
- * (client/src/plugins) : c'est lui qui sait l'afficher et le configurer. La
+ * Une section d'un panneau des statistiques — Support, Assets, Projet ou
+ * Tâche : une colonne, comme une section d'accès. Sa largeur se lit de la
+ * même façon.
+ */
+export interface IndicatorSection {
+  id: Id;
+  width_unit: SectionWidthUnit;
+  /** Nul quand la largeur est automatique ; le nombre qui va avec l'unité sinon. */
+  width_value: number | null;
+  position: number;
+  created_at: string;
+}
+
+/**
+ * Ce que le panneau des statistiques du mode Support peut montrer. Chaque
+ * valeur désigne un widget du client (client/src/indicators) : c'est lui qui
+ * sait calculer l'indicateur et le configurer. La chaîne est rangée telle
+ * quelle en base, elle ne change donc jamais.
+ */
+export const SUPPORT_INDICATOR_TYPES = [
+  "list",
+  "category",
+  "subcategory",
+  "tickets",
+  "status",
+  "actors",
+  "trend",
+  "age",
+  "due",
+  "labels",
+  "senders",
+] as const;
+
+export type SupportIndicatorType = (typeof SUPPORT_INDICATOR_TYPES)[number];
+
+export const isSupportIndicatorType = (value: unknown): value is SupportIndicatorType =>
+  SUPPORT_INDICATOR_TYPES.includes(value as SupportIndicatorType);
+
+/**
+ * Un indicateur du panneau des statistiques. Commun à toutes les sociétés,
+ * comme les étiquettes du support : il se calcule sur les demandes de celle
+ * qu'on regarde. Le serveur range sa configuration sans la relire.
+ */
+export interface SupportIndicator {
+  id: Id;
+  /** La section du panneau qui le porte. */
+  section_id: Id;
+  type: SupportIndicatorType;
+  config: Record<string, unknown>;
+  position: number;
+  created_at: string;
+}
+
+/**
+ * Ce que le panneau des statistiques du mode Assets peut montrer. Comme pour
+ * le Support, chaque valeur désigne un widget du client
+ * (client/src/asset-indicators), et la chaîne rangée en base ne change jamais.
+ */
+export const ASSET_INDICATOR_TYPES = [
+  "list",
+  "category",
+  "subcategory",
+  "assets", "compliance", "systems", "disks"] as const;
+
+export type AssetIndicatorType = (typeof ASSET_INDICATOR_TYPES)[number];
+
+export const isAssetIndicatorType = (value: unknown): value is AssetIndicatorType =>
+  ASSET_INDICATOR_TYPES.includes(value as AssetIndicatorType);
+
+/**
+ * Un indicateur du panneau des statistiques du mode Assets. Commun à toutes
+ * les sociétés : il se calcule sur les postes de celle qu'on regarde.
+ */
+export interface AssetIndicator {
+  id: Id;
+  /** La section du panneau qui le porte. */
+  section_id: Id;
+  type: AssetIndicatorType;
+  config: Record<string, unknown>;
+  position: number;
+  created_at: string;
+}
+
+/**
+ * Ce que les sections du mode Projet peuvent montrer. Comme pour le Support,
+ * chaque valeur désigne un widget du client (client/src/project-indicators),
+ * et la chaîne rangée en base ne change jamais.
+ */
+export const PROJECT_INDICATOR_TYPES = [
+  "list",
+  "category",
+  "subcategory",
+  "projects",
+  "progress",
+  "categories",
+  "actors",
+  "labels",
+] as const;
+
+export type ProjectIndicatorType = (typeof PROJECT_INDICATOR_TYPES)[number];
+
+export const isProjectIndicatorType = (value: unknown): value is ProjectIndicatorType =>
+  PROJECT_INDICATOR_TYPES.includes(value as ProjectIndicatorType);
+
+/**
+ * Un indicateur des sections du mode Projet. Commun à tous les tableaux : il
+ * se calcule sur les projets de celui qu'on regarde.
+ */
+export interface ProjectIndicator {
+  id: Id;
+  /** La section du panneau qui le porte. */
+  section_id: Id;
+  type: ProjectIndicatorType;
+  config: Record<string, unknown>;
+  position: number;
+  created_at: string;
+}
+
+/**
+ * Ce que les sections du mode Tâche peuvent montrer : le tableau de listes,
+ * et les indicateurs (client/src/task-indicators).
+ */
+export const TASK_INDICATOR_TYPES = [
+  "list",
+  "category",
+  "subcategory",
+  "cards",
+  "lists",
+  "due",
+  "members",
+  "labels",
+] as const;
+
+export type TaskIndicatorType = (typeof TASK_INDICATOR_TYPES)[number];
+
+export const isTaskIndicatorType = (value: unknown): value is TaskIndicatorType =>
+  TASK_INDICATOR_TYPES.includes(value as TaskIndicatorType);
+
+/**
+ * Un indicateur des sections du mode Tâche. Commun à tous les tableaux : il se
+ * calcule sur les cartes de celui qu'on regarde.
+ */
+export interface TaskIndicator {
+  id: Id;
+  /** La section du panneau qui le porte. */
+  section_id: Id;
+  type: TaskIndicatorType;
+  config: Record<string, unknown>;
+  position: number;
+  created_at: string;
+}
+
+/**
+ * Ce qu'une section peut porter. Chaque valeur désigne un widget du client
+ * (client/src/widgets) : c'est lui qui sait l'afficher et le configurer. La
  * chaîne est rangée telle quelle en base, elle ne change donc jamais.
  */
 export const ACCESS_BLOCK_TYPES = [
@@ -436,6 +746,8 @@ export const ACCESS_BLOCK_TYPES = [
   "link",
   "number",
   "clock",
+  "rss",
+  "uptime",
 ] as const;
 
 export type AccessBlockType = (typeof ACCESS_BLOCK_TYPES)[number];
@@ -444,9 +756,20 @@ export const isAccessBlockType = (value: unknown): value is AccessBlockType =>
   ACCESS_BLOCK_TYPES.includes(value as AccessBlockType);
 
 /**
+ * Les éléments qui se convertissent l'un en l'autre, et en quoi. La catégorie
+ * et la sous-catégorie sont le même titre à deux niveaux : même configuration,
+ * seul le type change. Les autres widgets n'ont rien en commun, et un lien
+ * ne devient pas une horloge.
+ */
+export const ACCESS_BLOCK_CONVERSIONS: Partial<Record<AccessBlockType, AccessBlockType>> = {
+  category: "subcategory",
+  subcategory: "category",
+};
+
+/**
  * Un élément posé dans une section. Le serveur ne connaît pas sa
  * configuration : il la range et la rend telle quelle, sa forme appartient au
- * greffon qui la lit.
+ * widget qui la lit.
  */
 export interface AccessBlock {
   id: Id;
@@ -455,4 +778,218 @@ export interface AccessBlock {
   config: Record<string, unknown>;
   position: number;
   created_at: string;
+}
+
+/** Un article d'un flux, tel que le serveur le tire de la source. */
+export interface AccessFeedArticle {
+  title: string;
+  /** Vide quand la source n'en donne aucune, ou une adresse qui n'est pas http(s). */
+  url: string;
+  /** ISO 8601, ou nulle quand la source n'en donne aucune de lisible. */
+  date: string | null;
+}
+
+/**
+ * Le flux d'un widget RSS, tel que la base le garde. Le serveur relève la
+ * source à son rythme — l'intervalle que chaque élément règle — et range ses
+ * derniers articles, déjà lus, qu'ils viennent de RSS, d'Atom ou de JSON : la
+ * page les lit en base plutôt que d'aller chercher la source à chaque visite.
+ */
+export interface AccessFeed {
+  articles: AccessFeedArticle[];
+  /** La dernière relève réussie, ISO 8601. */
+  fetched_at: string;
+}
+
+/** L'intervalle de relève d'un flux, en minutes : par défaut, et ses bornes. */
+export const ACCESS_FEED_INTERVAL_DEFAUT = 30;
+export const ACCESS_FEED_INTERVAL_MIN = 5;
+export const ACCESS_FEED_INTERVAL_MAX = 24 * 60;
+
+/** Les articles qu'un élément montre au plus, et donc que la base en garde. */
+export const ACCESS_FEED_QUANTITE_MAX = 50;
+
+/**
+ * Les vérifications d'un widget Uptime. « icmp » : un ping. « tcp » : une
+ * connexion au port. « snmp » : la lecture d'un OID en SNMP v2c. « zabbix » :
+ * la clé « agent.ping » demandée à l'agent Zabbix de la machine.
+ */
+export const UPTIME_CHECK_TYPES = ["icmp", "tcp", "snmp", "zabbix"] as const;
+
+export type UptimeCheckType = (typeof UPTIME_CHECK_TYPES)[number];
+
+export const isUptimeCheckType = (value: unknown): value is UptimeCheckType =>
+  UPTIME_CHECK_TYPES.includes(value as UptimeCheckType);
+
+/** Le port de chaque vérification quand l'élément n'en donne pas. */
+export const UPTIME_PORTS_DEFAUT: Record<UptimeCheckType, number | null> = {
+  icmp: null,
+  tcp: null,
+  snmp: 161,
+  zabbix: 10050,
+};
+
+/** « pending » : pas encore vérifiée depuis qu'elle a été ajoutée. */
+export type UptimeState = "up" | "down" | "pending";
+
+/** L'état d'une machine, tel que la dernière vérification du serveur l'a laissé. */
+export interface UptimeStatus {
+  /** L'identifiant de la machine dans la configuration de l'élément. */
+  machine: string;
+  state: UptimeState;
+  /** Depuis quand elle est dans cet état, ISO 8601. */
+  since: string | null;
+  /** La dernière vérification, ISO 8601. */
+  checked_at: string | null;
+  /** Ce que la vérification a vu : la valeur lue, ou la raison de l'échec. */
+  detail: string;
+}
+
+export interface AccessUptime {
+  statuses: UptimeStatus[];
+}
+
+/** L'intervalle de vérification, en secondes : par défaut, et ses bornes. */
+export const UPTIME_INTERVAL_DEFAUT = 60;
+export const UPTIME_INTERVAL_MIN = 10;
+export const UPTIME_INTERVAL_MAX = 24 * 60 * 60;
+
+// --- Mode Assets -----------------------------------------------------------
+// Les postes, tels qu'un agent d'inventaire (FusionInventory, GLPI Agent) les
+// décrit. Rien n'est trié pour l'instant : l'inventaire arrive entier, la
+// liste ne montre que le nom, et le tiroir déroule tout le reste — c'est en le
+// voyant qu'on décidera de ce qu'on garde.
+
+/** Une entrée d'une section : ses champs, dans l'ordre où l'agent les donne. */
+export type AssetEntry = Record<string, string>;
+
+/**
+ * Une section de l'inventaire — BIOS, CPUS, SOFTWARES… Les sections qui ne
+ * décrivent qu'une chose n'ont qu'une entrée ; les autres en ont autant que la
+ * machine porte de barrettes, de disques ou de logiciels.
+ */
+export interface AssetSection {
+  name: string;
+  entries: AssetEntry[];
+}
+
+/** Un poste dans la liste : son nom, qui s'en sert, son disque système. */
+export interface Asset {
+  id: Id;
+  /** Ce que la machine dit d'elle-même (HARDWARE/NAME). */
+  name: string;
+  /** Vide tant que le « tag » de l'agent ne désigne aucune société connue. */
+  company_id: Id | null;
+  /**
+   * La dernière personne connectée sur le poste, telle que l'agent l'a vue :
+   * la session ouverte au moment de l'inventaire, ou à défaut la dernière
+   * ouverture connue. Vide quand l'agent n'a rien su en dire.
+   */
+  user: string;
+  /**
+   * L'heure du dernier inventaire, en ISO 8601 : celle que l'agent y inscrit
+   * (ACCESSLOG/LOGDATE), à défaut celle de sa réception.
+   */
+  last_inventory: string;
+  /**
+   * Le volume système — « C: » sous Windows, « / » ailleurs —, en Mo, tel que
+   * l'agent l'a mesuré au dernier inventaire. Vide quand l'agent ne l'a pas
+   * déclaré, ou sans taille.
+   */
+  system_disk: { free: number; total: number } | null;
+  /** Le volume système est-il chiffré ? « null » quand l'agent ne le dit pas. */
+  system_disk_encrypted: boolean | null;
+  /**
+   * Le système : sa famille, pour le logo, son nom tel que l'agent le donne
+   * (« Windows 11 Professionnel », « macOS »), sa version (« 23H2 »,
+   * « 14.5 ») et celle de son noyau (« 10.0.22631 »). Vides quand l'agent ne
+   * les donne pas.
+   */
+  os: { family: AssetOsFamily; name: string; version: string; kernel: string } | null;
+  /** La protection du poste : antivirus, EPP ou EDR. */
+  protection: AssetProtection;
+}
+
+/** Les familles de systèmes que la liste sait représenter par un logo. */
+export type AssetOsFamily =
+  | "windows"
+  | "macos"
+  | "ubuntu"
+  | "debian"
+  | "redhat"
+  | "fedora"
+  | "linux"
+  | "other";
+
+/**
+ * La protection d'un poste, telle que Windows la déclare au centre de
+ * sécurité — la première active, à défaut la première connue.
+ *
+ * « unknown » : l'agent n'en dit rien, ce qui est la règle hors de Windows ;
+ * « none » : Windows n'en déclare aucune.
+ */
+export interface AssetProtection {
+  state: "active" | "inactive" | "none" | "unknown";
+  name: string;
+  company: string;
+}
+
+/** Un poste ouvert : tout ce que l'agent a remonté. */
+export interface AssetDetail extends Asset {
+  /** L'identifiant que l'agent se donne : « poste-2026-09-28-14-22-31 ». */
+  deviceid: string;
+  /** Le « tag » passé à l'agent, tel quel. */
+  tag: string;
+  created_at: string;
+  /**
+   * Les sections de l'inventaire, sauf celles qui ne servent qu'au serveur
+   * (ACCESSLOG, ACCOUNTINFO) ou qu'on ne montre pas (ENVS, LICENSEINFOS,
+   * VERSIONCLIENT, VERSIONPROVIDER).
+   * Certaines sont réduites à quelques champs, d'autres délestées de ceux qui
+   * n'apprennent rien, et quelques lignes sont écartées : le détail est dans
+   * repositories/assets.ts.
+   */
+  sections: AssetSection[];
+  /**
+   * L'identifiant TeamViewer du poste, tiré de REMOTE_MGMT. Vide quand
+   * TeamViewer n'est pas installé — ou quand l'agent n'a pas su le lire.
+   */
+  teamviewer_id: string;
+  /**
+   * L'adresse par laquelle joindre le poste : celle d'une carte réseau active,
+   * à défaut celle que la machine déclare. Vide quand aucune ne convient — le
+   * poste est alors injoignable depuis le serveur, et l'inventaire ne peut pas
+   * être redemandé.
+   */
+  address: string;
+  /** L'onglet « Résumé » de la fiche : l'essentiel, tiré de l'inventaire. */
+  summary: AssetSummary;
+}
+
+/** Une carte réseau physique, telle que le résumé la montre. */
+export interface AssetNetwork {
+  kind: "ethernet" | "wifi";
+  /** Le nom de la carte (« Intel(R) Wi-Fi 6 AX201 »). */
+  description: string;
+  /** Ses adresses IPv4, dans l'ordre de l'agent. */
+  ips: string[];
+}
+
+/** L'essentiel d'un poste. Chaque champ est vide quand l'agent ne le donne pas. */
+export interface AssetSummary {
+  networks: AssetNetwork[];
+  manufacturer: string;
+  model: string;
+  /** Le numéro de série du fabricant (BIOS/SSN). */
+  serial: string;
+  /** « Intel(R) Core(TM) i7-1165G7 @ 2.80GHz », et combien il y en a. */
+  cpu: { name: string; count: number; cores: number | null; threads: number | null } | null;
+  /** La mémoire vive, en Mo. */
+  memory: number | null;
+}
+
+/** Ce que rend une demande d'inventaire immédiat. */
+export interface AssetRefresh {
+  /** L'adresse effectivement appelée, pour la dire quand ça échoue. */
+  address: string;
 }

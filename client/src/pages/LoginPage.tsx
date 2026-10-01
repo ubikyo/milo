@@ -1,96 +1,73 @@
-import { Anchor, Button, Center, Paper, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
+import {
+  Anchor,
+  Button,
+  Center,
+  Paper,
+  PasswordInput,
+  Stack,
+  Text,
+  TextInput,
+} from "@mantine/core";
+import { IconBrandWindows } from "@tabler/icons-react";
 import { useState } from "react";
-import { api } from "../api";
+import { api, entraLoginUrl } from "../api";
 import { passwordIssues } from "@milo/shared";
 import ErrorAlert from "../components/ui/ErrorAlert";
 import Logo from "../components/ui/Logo";
 import PasswordRules from "../components/ui/PasswordRules";
 import { messageErreur } from "../lib/errors";
 import type { AuthResult } from "@milo/shared";
-import type { ChangeEvent, FormEvent } from "react";
+import type { FormEvent } from "react";
 
 /**
- * « setup » : tout premier compte. « first-email » puis « first-identity » :
- * activation en deux temps d'une adresse créée par un administrateur.
+ * « setup » : le mot de passe du compte « admin », à la toute première
+ * ouverture. « microsoft » : la connexion de tout le monde. « admin » : celle
+ * du compte « admin », qui ne sert qu'au paramétrage.
  */
-type LoginMode = "login" | "setup" | "first-email" | "first-identity";
+type LoginMode = "setup" | "microsoft" | "admin";
 
-type Champ = keyof typeof emptyForm;
-
-const emptyForm = {
-  email: "",
-  first_name: "",
-  last_name: "",
-  password: "",
-  password_confirm: "",
-};
-
-// « setup » : tout premier compte. « first-email » puis « first-identity » :
-// activation en deux temps d'une adresse créée par un administrateur.
-const TITRES: Record<LoginMode, string> = {
-  login: "Se connecter",
-  setup: "Créer le compte",
-  "first-email": "Continuer",
-  "first-identity": "Valider",
-};
+const ADMIN = "admin";
 
 interface LoginPageProps {
   needsSetup: boolean;
+  /** L'application Entra est renseignée : la connexion par Microsoft est possible. */
+  entra: boolean;
+  /** Ce que Microsoft ou le serveur a répondu au retour d'une connexion. */
+  initialError?: string | null;
   onAuthenticated: (result: AuthResult) => void;
 }
 
-export default function LoginPage({ needsSetup, onAuthenticated }: LoginPageProps) {
-  const [mode, setMode] = useState<LoginMode>(needsSetup ? "setup" : "login");
-  const [form, setForm] = useState(emptyForm);
-  const [error, setError] = useState<string | null>(null);
+export default function LoginPage({
+  needsSetup,
+  entra,
+  initialError,
+  onAuthenticated,
+}: LoginPageProps) {
+  const [mode, setMode] = useState<LoginMode>(
+    needsSetup ? "setup" : entra ? "microsoft" : "admin",
+  );
+  const [username, setUsername] = useState(ADMIN);
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [error, setError] = useState<string | null>(initialError ?? null);
   const [busy, setBusy] = useState(false);
 
-  const set = (field: Champ) => (event: ChangeEvent<HTMLInputElement>) => {
-    // La valeur est lue immédiatement : React vide `currentTarget` avant
-    // d'exécuter l'updater ci-dessous.
-    const { value } = event.currentTarget;
-    setForm((f) => ({ ...f, [field]: value }));
-  };
-
-  const emailLooksValid = /.+@.+\..+/.test(form.email.trim());
-
   const incomplete =
-    mode === "login"
-      ? !form.email.trim() || !form.password
-      : mode === "first-email"
-        ? !emailLooksValid
-        : !form.first_name.trim() ||
-          !form.last_name.trim() ||
-          passwordIssues(form.password).length > 0 ||
-          form.password !== form.password_confirm ||
-          (mode === "setup" && !form.email.trim());
+    mode === "setup"
+      ? passwordIssues(password).length > 0 || password !== confirmation
+      : !username.trim() || !password;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (mode === "microsoft") return;
     setError(null);
-
-    // Premier temps : on retient l'adresse, sans appel au serveur.
-    if (mode === "first-email") {
-      setMode("first-identity");
-      return;
-    }
-
     setBusy(true);
     try {
-      const payload = {
-        email: form.email.trim(),
-        first_name: form.first_name.trim(),
-        last_name: form.last_name.trim(),
-        password: form.password,
-        password_confirm: form.password_confirm,
-      };
-      const result =
-        mode === "login"
-          ? await api.login(payload.email, payload.password)
-          : mode === "setup"
-            ? await api.setup(payload)
-            : await api.firstLogin(payload);
-      onAuthenticated(result);
+      onAuthenticated(
+        mode === "setup"
+          ? await api.setup({ password })
+          : await api.login(username.trim(), password),
+      );
     } catch (e) {
       setError(messageErreur(e));
     } finally {
@@ -101,104 +78,121 @@ export default function LoginPage({ needsSetup, onAuthenticated }: LoginPageProp
   const switchTo = (next: LoginMode) => {
     setMode(next);
     setError(null);
-    setForm((f) => ({ ...emptyForm, email: f.email }));
+    setPassword("");
+    setConfirmation("");
   };
-
-  const identity = mode === "setup" || mode === "first-identity";
 
   return (
     <Center mih="100vh" p="md">
       <Paper withBorder radius="md" p={40} w="100%" maw={420}>
         <form onSubmit={submit}>
           <Stack gap="md">
-            <Stack align="center" gap="md" pt={35} pb={40}>
+            <Stack
+              align="center"
+              gap="md"
+              pt={35}
+              pb={mode === "setup" ? 20 : 40}
+            >
               <Logo variant={1} h={176} />
               {mode === "setup" && (
-                <Text size="sm" c="dimmed">
-                  Créez le premier compte pour commencer.
+                <Text size="sm" c="dimmed" ta="center" pt={30}>
+                  Mot de passe du compte admin pour le paramétrage de
+                  l'application
                 </Text>
               )}
-              {mode === "first-email" && (
+              {mode === "admin" && entra && (
                 <Text size="sm" c="dimmed" ta="center">
-                  Indiquez l'adresse e-mail de votre compte.
-                </Text>
-              )}
-              {mode === "first-identity" && (
-                <Text size="sm" c="dimmed" ta="center">
-                  {form.email}
+                  Compte d'administration, pour le paramétrage.
                 </Text>
               )}
             </Stack>
 
             {error && <ErrorAlert>{error}</ErrorAlert>}
 
-            {identity && (
-              <>
-                <TextInput label="Prénom" value={form.first_name} onChange={set("first_name")} required />
-                <TextInput label="Nom" value={form.last_name} onChange={set("last_name")} required />
-              </>
+            {mode === "microsoft" && (
+              // Un lien et non un appel : le navigateur quitte l'application
+              // pour la page de Microsoft, et revient avec sa session.
+              <Button
+                component="a"
+                href={entraLoginUrl}
+                color="teal"
+                leftSection={<IconBrandWindows size={18} />}
+                fullWidth
+              >
+                Se connecter avec Microsoft
+              </Button>
             )}
 
-            {mode !== "first-identity" && (
-              <TextInput label="E-mail" type="email" value={form.email} onChange={set("email")} required />
+            {mode === "admin" && (
+              <TextInput
+                label="Identifiant"
+                value={username}
+                onChange={(e) => setUsername(e.currentTarget.value)}
+                required
+              />
             )}
 
-            {mode !== "first-email" && (
-              <PasswordInput label="Mot de passe" value={form.password} onChange={set("password")} required />
+            {mode !== "microsoft" && (
+              <PasswordInput
+                label="Mot de passe"
+                value={password}
+                onChange={(e) => setPassword(e.currentTarget.value)}
+                required
+                data-autofocus
+              />
             )}
 
-            {identity && (
+            {mode === "setup" && (
               <>
                 <PasswordInput
                   label="Vérification du mot de passe"
-                  value={form.password_confirm}
-                  onChange={set("password_confirm")}
+                  value={confirmation}
+                  onChange={(e) => setConfirmation(e.currentTarget.value)}
                   error={
-                    form.password_confirm && form.password !== form.password_confirm
+                    confirmation && password !== confirmation
                       ? "Les deux mots de passe ne correspondent pas"
                       : undefined
                   }
                   required
                 />
-                <PasswordRules password={form.password} />
+                <PasswordRules password={password} />
               </>
             )}
 
-            <Button type="submit" color="teal" loading={busy} disabled={incomplete} fullWidth mt="md">
-              {TITRES[mode]}
-            </Button>
+            {mode !== "microsoft" && (
+              <Button
+                type="submit"
+                color="teal"
+                loading={busy}
+                disabled={incomplete}
+                fullWidth
+                mt="md"
+              >
+                {mode === "setup" ? "Créer le compte admin" : "Se connecter"}
+              </Button>
+            )}
 
-            {mode === "login" && (
+            {mode === "microsoft" && (
               <Anchor
                 component="button"
                 type="button"
                 size="sm"
                 ta="center"
-                onClick={() => switchTo("first-email")}
+                c="dimmed"
+                onClick={() => switchTo("admin")}
               >
-                Première connexion ?
+                Compte d'administration
               </Anchor>
             )}
-            {mode === "first-identity" && (
+            {mode === "admin" && entra && (
               <Anchor
                 component="button"
                 type="button"
                 size="sm"
                 ta="center"
-                onClick={() => setMode("first-email")}
+                onClick={() => switchTo("microsoft")}
               >
-                Modifier l'adresse e-mail
-              </Anchor>
-            )}
-            {mode === "first-email" && (
-              <Anchor
-                component="button"
-                type="button"
-                size="sm"
-                ta="center"
-                onClick={() => switchTo("login")}
-              >
-                Retour à la connexion
+                Retour à la connexion Microsoft
               </Anchor>
             )}
           </Stack>

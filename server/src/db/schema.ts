@@ -23,21 +23,67 @@ export const SCHEMA = `
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES project_boards(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
+    -- Ancien emplacement des jalons, avant les types de jalons
+    -- (milestone_types) : plus lu, gardé pour les bases qui le portent.
+    milestones TEXT NOT NULL DEFAULT '[]',
     UNIQUE (board_id, name)
   );
 
   CREATE TABLE IF NOT EXISTS companies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE
+    name TEXT NOT NULL UNIQUE,
+    -- Le support de la société : l'adresse à laquelle lui écrire, et celle de
+    -- son site, toujours en https://. Vides tant qu'on ne les a pas saisies.
+    support_email TEXT NOT NULL DEFAULT '',
+    support_url TEXT NOT NULL DEFAULT ''
+  );
+
+  -- Les rôles : les droits de chaque mode (Voir, Ajouter, Modifier,
+  -- Supprimer), en JSON — { "access": ["view", "create"], … }. Le rôle
+  -- Administrateur (is_admin) a tous les droits, quoi que dise sa colonne.
+  CREATE TABLE IF NOT EXISTS roles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    is_admin INTEGER NOT NULL DEFAULT 0,
+    permissions TEXT NOT NULL DEFAULT '{}'
+  );
+
+  -- Le rôle d'un utilisateur ou d'un groupe Entra, société par société : un
+  -- seul par société. Désignés par leur identifiant d'objet Entra, qui ne
+  -- change pas quand on les renomme ; le nom et l'adresse sont gardés pour
+  -- l'affichage, et rafraîchis à chaque enregistrement.
+  CREATE TABLE IF NOT EXISTS role_assignments (
+    principal_type TEXT NOT NULL CHECK (principal_type IN ('user', 'group')),
+    principal_id TEXT NOT NULL,
+    principal_name TEXT NOT NULL DEFAULT '',
+    principal_email TEXT NOT NULL DEFAULT '',
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    PRIMARY KEY (principal_type, principal_id, company_id)
+  );
+
+  -- Les types de jalons (Commande, Développement…), réglés une fois pour toute
+  -- l'application : un projet en choisit un, qui pose les marques et les
+  -- couleurs de son curseur d'avancement. Les jalons sont un tableau JSON de
+  -- { value, label, color }.
+  CREATE TABLE IF NOT EXISTS milestone_types (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    milestones TEXT NOT NULL DEFAULT '[]'
   );
 
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- La référence (« LMA-12 ») : le compteur des demandes du support la
+    -- donne aussi aux projets et aux cartes (repositories/references.ts).
+    number INTEGER NOT NULL DEFAULT 0,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     board_id INTEGER NOT NULL REFERENCES project_boards(id) ON DELETE CASCADE,
     category_id INTEGER NOT NULL REFERENCES categories(id),
     company_id INTEGER REFERENCES companies(id),
+    -- Facultatif : sans type de jalons, le curseur reste nu.
+    milestone_type_id INTEGER REFERENCES milestone_types(id) ON DELETE SET NULL,
     status INTEGER NOT NULL DEFAULT 0 CHECK (status >= 0 AND status <= 100),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -49,11 +95,29 @@ export const SCHEMA = `
     first_name TEXT NOT NULL DEFAULT '',
     last_name TEXT NOT NULL DEFAULT '',
     email TEXT NOT NULL UNIQUE,
-    -- Vide tant que la première connexion n'a pas défini le mot de passe.
+    -- Seul le compte « admin » (system) en a un : les autres se connectent
+    -- par Microsoft.
     password_hash TEXT NOT NULL DEFAULT '',
     -- Mode ouvert à la connexion : chacun choisit le sien.
     default_mode TEXT NOT NULL DEFAULT 'projects',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    -- L'identifiant d'objet Entra (oid), posé à la première connexion par
+    -- Microsoft. Vide pour le compte « admin » et pour les comptes d'avant
+    -- Entra, qui s'y rattachent par leur e-mail.
+    entra_id TEXT NOT NULL DEFAULT '',
+    -- Les groupes Entra du compte (identifiants, en JSON), relus à chaque
+    -- connexion : ses droits en dépendent.
+    entra_groups TEXT NOT NULL DEFAULT '[]',
+    -- Le compte « admin » local, qui ne sert qu'au paramétrage.
+    system INTEGER NOT NULL DEFAULT 0
+  );
+
+  -- Les acteurs favoris de chaque personne : ils passent en tête des listes
+  -- où l'on choisit des acteurs, partout dans l'application.
+  CREATE TABLE IF NOT EXISTS user_favorites (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    favorite_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (user_id, favorite_id)
   );
 
   -- Les réglages de l'application, par opposition à ceux d'un compte : la
@@ -66,9 +130,9 @@ export const SCHEMA = `
   );
 
   -- Ce que chacun suit : les éléments dont il veut être prévenu quand ils
-  -- changent. « kind » vaut « project », « card » ou « list ».
+  -- changent. « kind » vaut « project », « card », « list » ou « support ».
   --
-  -- « target_id » ne porte pas de clé étrangère : elle désigne trois tables
+  -- « target_id » ne porte pas de clé étrangère : elle désigne quatre tables
   -- différentes selon « kind ». Une ligne dont la cible a disparu ne gêne
   -- personne — la notification cherche l'élément, ne le trouve pas, et se
   -- tait ; et les identifiants ne se réemploient jamais (AUTOINCREMENT).
@@ -78,6 +142,25 @@ export const SCHEMA = `
     target_id INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     PRIMARY KEY (user_id, kind, target_id)
+  );
+
+  -- Les notifications reçues, gardées pour le tiroir « Notifications » : à
+  -- l'écran, elles passent et s'effacent ; ici, elles restent jusqu'à ce que
+  -- la personne les supprime. Seules les plus récentes sont gardées
+  -- (repositories/notifications.ts). « id » est celui que le serveur tire au
+  -- sort en l'émettant, le même que celui de la notification à l'écran.
+  CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    target_id INTEGER NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    message TEXT NOT NULL DEFAULT '',
+    author TEXT NOT NULL DEFAULT '',
+    -- 1 quand la notification annonce la suppression de l'élément : il n'y a
+    -- alors plus rien à ouvrir.
+    deleted INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
@@ -106,6 +189,8 @@ export const SCHEMA = `
     name TEXT NOT NULL,
     -- « teinte.nuance » de la palette Mantine, par exemple « red.6 ».
     color TEXT NOT NULL DEFAULT 'blue.6',
+    -- Le poids : les plus lourdes passent devant, dans les grilles.
+    weight INTEGER NOT NULL DEFAULT 0,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
@@ -130,6 +215,9 @@ export const SCHEMA = `
     owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     -- Privé : le tableau ne se montre qu'à son auteur.
     is_private INTEGER NOT NULL DEFAULT 0,
+    -- Verrouillé : ses listes ne s'ajoutent, ne se déplacent ni ne se
+    -- suppriment plus. Les cartes, elles, bougent toujours.
+    is_locked INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
 
@@ -277,6 +365,13 @@ export const SCHEMA = `
     owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     -- Privée : la catégorie ne se montre qu'à son auteur.
     is_private INTEGER NOT NULL DEFAULT 0,
+    -- Verrouillée : ses colonnes et ce qu'elles portent se lisent, mais rien
+    -- ne s'y déplace ni ne s'y modifie.
+    is_locked INTEGER NOT NULL DEFAULT 0,
+    -- L'écart entre deux colonnes, en pixels. Il appartient à la catégorie et
+    -- non à la page : deux catégories n'aèrent pas leurs colonnes pareil
+    -- (shared, ACCESS_GAP_DEFAUT).
+    gap INTEGER NOT NULL DEFAULT 20,
     created_at TEXT NOT NULL
   );
 
@@ -301,13 +396,29 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS support_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    -- Les quatre onglets du mode, moins « Tous » qui ne filtre rien
+    -- Le numéro de ticket (« LMA-12 ») : il suit celui de la demande
+    -- précédente, toutes sociétés confondues. Le dernier donné est gardé dans
+    -- les réglages, pour qu'un numéro ne resserve pas après une suppression.
+    number INTEGER NOT NULL DEFAULT 0,
+    -- L'objet de l'e-mail reçu, ou celui qu'on a saisi.
+    subject TEXT NOT NULL DEFAULT '',
+    -- Les onglets du mode, moins « Tous » qui ne filtre rien
     -- (shared/domain.ts).
-    status TEXT NOT NULL DEFAULT 'unresolved'
-      CHECK (status IN ('unresolved', 'pending', 'resolved', 'closed')),
+    status TEXT NOT NULL DEFAULT 'new'
+      CHECK (status IN ('new', 'open', 'pending', 'resolved', 'closed')),
     -- Échéance, en ISO 8601 avec l'heure, comme celle d'une carte. Vide
     -- plutôt que NULL : une échéance absente se lit de la même façon partout.
     due_date TEXT NOT NULL DEFAULT '',
+    -- Qui a écrit à la boîte de support ; vides pour une demande saisie.
+    sender_name TEXT NOT NULL DEFAULT '',
+    sender_email TEXT NOT NULL DEFAULT '',
+    -- L'identifiant Internet (Message-ID) de l'e-mail d'origine : c'est lui
+    -- qui empêche d'importer deux fois le même message. Vide pour une demande
+    -- saisie.
+    mail_id TEXT NOT NULL DEFAULT '',
+    -- La conversation de Graph où l'e-mail est arrivé : une réponse de
+    -- l'expéditeur y arrive aussi, et rejoint la demande.
+    conversation_id TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -320,15 +431,15 @@ export const SCHEMA = `
     PRIMARY KEY (request_id, user_id)
   );
 
-  -- Étiquettes du mode Support : jumelles de celles des cartes, mais
-  -- rattachées à une société plutôt qu'à un tableau — c'est le niveau
-  -- au-dessus d'une demande.
+  -- Étiquettes du mode Support : jumelles de celles des cartes, mais communes
+  -- à tout le support — toutes les sociétés partagent les mêmes.
   CREATE TABLE IF NOT EXISTS support_labels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     -- « teinte.nuance » de la palette Mantine, par exemple « red.6 ».
     color TEXT NOT NULL DEFAULT 'blue.6',
+    -- Le poids : les plus lourdes passent devant, dans les grilles.
+    weight INTEGER NOT NULL DEFAULT 0,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
@@ -350,13 +461,98 @@ export const SCHEMA = `
     text TEXT NOT NULL,
     -- Voir « comments.system ».
     system INTEGER NOT NULL DEFAULT 0,
+    -- L'expéditeur d'un e-mail reçu, quand aucun compte ne lui correspond :
+    -- le message garde ainsi son auteur.
+    sender_name TEXT NOT NULL DEFAULT '',
+    sender_email TEXT NOT NULL DEFAULT '',
+    -- Une réponse de l'équipe à un e-mail : partie (« sent »), simulée
+    -- (« simulated »), refusée (« failed »), ou vide si elle n'avait pas à
+    -- partir. « mail_to » dit à qui.
+    mail_status TEXT NOT NULL DEFAULT '',
+    mail_to TEXT NOT NULL DEFAULT '',
+    -- Les adresses en copie et en copie cachée d'une réponse, séparées par
+    -- des virgules.
+    mail_cc TEXT NOT NULL DEFAULT '',
+    mail_bcc TEXT NOT NULL DEFAULT '',
+    -- Un commentaire interne à l'équipe (onglet « Commentaires ») : du texte
+    -- simple, qui ne part jamais par e-mail. 0 : un échange avec l'expéditeur.
+    internal INTEGER NOT NULL DEFAULT 0,
+    -- L'identifiant Internet (Message-ID) de l'e-mail que porte le message :
+    -- reçu, ou parti de Milo. Une réponse qui le cite rejoint la demande.
+    mail_id TEXT NOT NULL DEFAULT '',
+    -- « email » : le HTML d'un e-mail reçu, montré tel quel dans un cadre
+    -- isolé. Vide : le HTML de l'éditeur.
+    format TEXT NOT NULL DEFAULT '',
+    -- Les fichiers de l'e-mail — images intégrées et pièces jointes —, en
+    -- JSON. Rangés dans le dossier des tickets (lib/ticket-files.ts).
+    attachments TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
 
-  -- Ce qu'une section porte : les éléments posés par les greffons du client.
+  -- Les sections des panneaux des statistiques — Support, Assets, Projet ou
+  -- Tâche : leurs colonnes, comme celles d'une catégorie d'accès. « panel »
+  -- dit à quel panneau la section appartient ; la largeur se lit comme celle
+  -- d'une section d'accès.
+  CREATE TABLE IF NOT EXISTS indicator_sections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    panel TEXT NOT NULL CHECK (panel IN ('support', 'assets', 'projects', 'tasks')),
+    width_unit TEXT NOT NULL DEFAULT 'auto'
+      CHECK (width_unit IN ('auto', 'percent', 'px')),
+    width_value REAL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  -- Les indicateurs du panneau des statistiques du mode Support, posés par
+  -- les widgets du client (client/src/indicators). Communs à toutes les
+  -- sociétés : ils se calculent sur les demandes de celle qu'on regarde. Le
+  -- serveur range le JSON du widget sans le relire.
+  CREATE TABLE IF NOT EXISTS support_indicators (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER REFERENCES indicator_sections(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    config TEXT NOT NULL DEFAULT '{}',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  -- Ceux du panneau des statistiques du mode Assets, posés par les widgets
+  -- de client/src/asset-indicators. Même forme que ceux du Support : ils se
+  -- calculent sur les postes de la société regardée.
+  CREATE TABLE IF NOT EXISTS asset_indicators (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER REFERENCES indicator_sections(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    config TEXT NOT NULL DEFAULT '{}',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  -- Ceux des sections des modes Projet et Tâche, posés par les widgets de
+  -- client/src/project-indicators et client/src/task-indicators. Communs à
+  -- tous les tableaux : ils se calculent sur celui qu'on regarde.
+  CREATE TABLE IF NOT EXISTS project_indicators (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER REFERENCES indicator_sections(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    config TEXT NOT NULL DEFAULT '{}',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS task_indicators (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER REFERENCES indicator_sections(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    config TEXT NOT NULL DEFAULT '{}',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  -- Ce qu'une section porte : les éléments posés par les widgets du client.
   -- Le serveur ne connaît pas leur configuration — il range le JSON que le
-  -- greffon lui donne et le rend tel quel. « type » désigne le greffon.
+  -- widget lui donne et le rend tel quel. « type » désigne le widget.
   CREATE TABLE IF NOT EXISTS access_blocks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     section_id INTEGER NOT NULL REFERENCES access_sections(id) ON DELETE CASCADE,
@@ -364,6 +560,36 @@ export const SCHEMA = `
     config TEXT NOT NULL DEFAULT '{}',
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
+  );
+
+  -- Les flux des widgets RSS, tels que la dernière relève les a laissés. Un
+  -- flux se range par son adresse, pas par élément : deux éléments qui suivent
+  -- la même source n'en font qu'une relève. « articles » est la liste déjà
+  -- lue, en JSON, à hauteur de la plus grande quantité demandée (« quantity »).
+  -- « fetched_at » est la dernière relève réussie ; « tried_at » la dernière
+  -- tentative, et « error » ce qui l'a fait échouer — les articles d'avant
+  -- restent servis en attendant.
+  CREATE TABLE IF NOT EXISTS access_feeds (
+    url TEXT PRIMARY KEY,
+    articles TEXT NOT NULL DEFAULT '[]',
+    quantity INTEGER NOT NULL DEFAULT 0,
+    fetched_at TEXT,
+    tried_at TEXT NOT NULL,
+    error TEXT NOT NULL DEFAULT ''
+  );
+
+  -- Les machines des widgets Uptime, telles que la dernière vérification les
+  -- a laissées. Une machine se range par ce qui la vérifie (lib/uptime.ts) —
+  -- le type, l'hôte, le port, l'OID — et non par élément : deux éléments qui
+  -- surveillent la même chose n'en font qu'une vérification. « since » est le
+  -- moment où l'état courant a commencé ; « detail » ce que la vérification
+  -- a vu, la valeur lue ou la raison de l'échec.
+  CREATE TABLE IF NOT EXISTS access_uptime (
+    key TEXT PRIMARY KEY,
+    state TEXT NOT NULL CHECK (state IN ('up', 'down')),
+    since TEXT NOT NULL,
+    checked_at TEXT NOT NULL,
+    detail TEXT NOT NULL DEFAULT ''
   );
 
   -- « system » marque les mots que l'application écrit elle-même, comme celui
@@ -404,11 +630,25 @@ export const INDEXES = `
   CREATE INDEX IF NOT EXISTS idx_access_blocks_section
     ON access_blocks(section_id, position, id);
 
+  -- Les sections d'un panneau des statistiques, dans l'ordre des colonnes, et
+  -- les indicateurs par section.
+  CREATE INDEX IF NOT EXISTS idx_indicator_sections_panel
+    ON indicator_sections(panel, position, id);
+  CREATE INDEX IF NOT EXISTS idx_support_indicators_section
+    ON support_indicators(section_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_asset_indicators_section
+    ON asset_indicators(section_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_project_indicators_section
+    ON project_indicators(section_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_task_indicators_section
+    ON task_indicators(section_id, position, id);
+
   -- Les projets se lisent filtrés, et toujours rangés du plus récent au plus
   -- ancien : l'index porte donc le tri avec le filtre.
   CREATE INDEX IF NOT EXISTS idx_projects_board_updated ON projects(board_id, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_projects_category ON projects(category_id);
   CREATE INDEX IF NOT EXISTS idx_projects_company ON projects(company_id);
+  CREATE INDEX IF NOT EXISTS idx_projects_milestone_type ON projects(milestone_type_id);
 
   CREATE INDEX IF NOT EXISTS idx_project_actors_user ON project_actors(user_id);
   CREATE INDEX IF NOT EXISTS idx_project_labels_board ON project_labels(board_id, position, id);
@@ -431,13 +671,53 @@ export const INDEXES = `
 
   -- Les demandes se lisent par société, de la plus récente à la plus ancienne ;
   -- les onglets filtrent ensuite sur le statut.
+  -- Les postes du mode Assets : ce qu'un agent d'inventaire (FusionInventory,
+  -- GLPI Agent) remonte d'une machine.
+  --
+  -- L'inventaire entier est gardé tel quel, en JSON, plutôt que découpé en
+  -- colonnes : on ne sait pas encore ce qu'on en garde, et une colonne par
+  -- champ ferait une quarantaine de tables pour une décision qui n'est pas
+  -- prise. Seul ce qui sert à ranger les postes en sort — le nom, la société,
+  -- la date.
+  CREATE TABLE IF NOT EXISTS assets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- L'identifiant que l'agent se donne et répète à chaque envoi : c'est lui
+    -- qui distingue un poste nouveau d'un poste déjà connu, et non le nom, qui
+    -- change quand on renomme la machine.
+    deviceid TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL DEFAULT '',
+    -- Le « tag » passé à l'agent (option « tag »). C'est par lui que le poste
+    -- se rattache à une société : l'agent ne connaît rien d'autre de Milo.
+    tag TEXT NOT NULL DEFAULT '',
+    -- Nulle tant que le tag ne désigne aucune société connue : le poste se
+    -- montre alors sous « Toutes les sociétés » seulement. Une société
+    -- supprimée laisse ses postes, elle ne les emporte pas.
+    company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
+    content TEXT NOT NULL DEFAULT '{}',
+    -- La dernière personne connectée, sortie de l'inventaire à sa réception :
+    -- la liste la montre, et relire le JSON de chaque poste pour l'afficher
+    -- coûterait cent fois plus cher que de la garder ici.
+    last_user TEXT NOT NULL DEFAULT '',
+    last_inventory TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_support_requests_company
     ON support_requests(company_id, created_at DESC);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_support_requests_number
+    ON support_requests(number) WHERE number > 0;
+  -- Un e-mail ne s'importe qu'une fois dans une société.
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_support_requests_mail
+    ON support_requests(company_id, mail_id) WHERE mail_id != '';
+
+  CREATE INDEX IF NOT EXISTS idx_assets_company ON assets(company_id, name);
+  CREATE INDEX IF NOT EXISTS idx_notifications_user
+    ON notifications(user_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_support_request_actors_user
     ON support_request_actors(user_id);
 
-  CREATE INDEX IF NOT EXISTS idx_support_labels_company
-    ON support_labels(company_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_support_labels_position
+    ON support_labels(position, id);
   CREATE INDEX IF NOT EXISTS idx_support_request_labels_label
     ON support_request_labels(label_id);
 
@@ -452,6 +732,10 @@ export const INDEXES = `
   -- Qui suit cet élément ? C'est la question posée après chaque écriture ;
   -- sans index, elle balaierait toute la table.
   CREATE INDEX IF NOT EXISTS idx_follows_cible ON follows(kind, target_id);
+
+  CREATE INDEX IF NOT EXISTS idx_role_assignments_company ON role_assignments(company_id);
+  CREATE INDEX IF NOT EXISTS idx_role_assignments_role ON role_assignments(role_id);
+  CREATE INDEX IF NOT EXISTS idx_users_entra ON users(entra_id);
 
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);

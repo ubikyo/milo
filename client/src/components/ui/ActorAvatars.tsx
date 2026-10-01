@@ -1,4 +1,5 @@
 import { Avatar, Group, Text } from "@mantine/core";
+import { IconAt } from "@tabler/icons-react";
 import type { Actor } from "@milo/shared";
 
 const PALETTE: string[] = [
@@ -129,5 +130,43 @@ export default function ActorAvatars({
         )}
       </Group>
     </div>
+  );
+}
+
+// La pastille de l'arobase posée sur celle de l'expéditeur : un tiers
+// de la bulle, au coin bas droit, cerclée du fond pour s'en détacher.
+const BADGE_RATIO = 0.5;
+
+/**
+ * La bulle de la personne qui a envoyé l'e-mail d'une demande, marquée d'une
+ * petite arobase, sur fond gris : on la reconnaît parmi les acteurs sans avoir à survoler.
+ */
+export function SenderAvatar({ person, size = ACTOR_AVATAR_SIZE }: { person: Actor; size?: number }) {
+  const badge = Math.max(12, Math.round(size * BADGE_RATIO));
+  return (
+    <span style={{ position: "relative", display: "inline-flex" }}>
+      <PersonAvatar person={person} size={size} />
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          right: -3,
+          bottom: -3,
+          width: badge,
+          height: badge,
+          borderRadius: "50%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "var(--mantine-color-gray-7)",
+          border: "1px solid var(--mantine-color-black)",
+          boxSizing: "border-box",
+          color: "var(--mantine-color-white)",
+          boxShadow: "0 0 0 2px var(--mantine-color-body)",
+        }}
+      >
+        <IconAt size={badge - 4} stroke={2.2} />
+      </span>
+    </span>
   );
 }

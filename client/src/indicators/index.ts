@@ -1,0 +1,43 @@
+// Le registre des widgets du panneau des statistiques du mode Support. Un
+// seul endroit les connaît : la boîte de choix, le panneau et le tiroir y
+// prennent ce qu'il leur faut.
+
+import { acteursIndicator } from "./acteurs";
+import { ancienneteIndicator } from "./anciennete";
+import { demandeursIndicator } from "./demandeurs";
+import { echeancesIndicator } from "./echeances";
+import { etiquettesIndicator } from "./etiquettes";
+import { evolutionIndicator } from "./evolution";
+import { listeIndicator } from "./liste";
+import { statutsIndicator } from "./statuts";
+import { ticketsIndicator } from "./tickets";
+import { titresDeSection } from "../widgets/titres-de-section";
+import type { IndicatorDisplayProps, SupportIndicatorWidget } from "./types";
+import type { SupportIndicatorType } from "@milo/shared";
+
+/** Dans l'ordre où la boîte de choix les présente. */
+export const INDICATORS: SupportIndicatorWidget[] = [
+  listeIndicator,
+  ...titresDeSection<SupportIndicatorType, IndicatorDisplayProps>(),
+  ticketsIndicator,
+  statutsIndicator,
+  acteursIndicator,
+  evolutionIndicator,
+  ancienneteIndicator,
+  echeancesIndicator,
+  etiquettesIndicator,
+  demandeursIndicator,
+];
+
+const PAR_TYPE = new Map<SupportIndicatorType, SupportIndicatorWidget>(
+  INDICATORS.map((p) => [p.type, p]),
+);
+
+/**
+ * Le widget qui sait lire cet indicateur, ou « undefined » : un type rangé
+ * par une version qui en connaissait un de plus n'a pas à faire tomber la page.
+ */
+export const indicateurDe = (type: SupportIndicatorType): SupportIndicatorWidget | undefined =>
+  PAR_TYPE.get(type);
+
+export type { SupportIndicatorWidget } from "./types";

@@ -32,6 +32,20 @@ export const conflict = (message: string): never => fail(409, message);
 export const forbidden = (message: string): never => fail(403, message);
 export const notFound = (message: string): never => fail(404, message);
 
+/**
+ * Un élément de référence — étiquette, catégorie, société, type de jalons,
+ * rôle — ne se supprime pas tant que quelque chose le porte : la suppression
+ * est refusée, et le message dit combien de ressources l'utilisent.
+ */
+export const refuserSiUtilise = (nom: string, utilisations: number): void => {
+  if (utilisations <= 0) return;
+  conflict(
+    `Impossible de supprimer « ${nom} » : cet élément est utilisé dans ${utilisations} ressource${
+      utilisations > 1 ? "s" : ""
+    }.`,
+  );
+};
+
 /** Un texte obligatoire, débarrassé de ses espaces. */
 export const requireText = (valeur: unknown, message: string): string => {
   const texte = String(valeur ?? "").trim();

@@ -3,7 +3,7 @@
 
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../env.js";
-import { sessions, users } from "../repositories/users.js";
+import { aAcces, droitsParametrage, sessions, users } from "../repositories/users.js";
 import type { UserRow } from "../db/rows.js";
 import { HttpError } from "../lib/http.js";
 
@@ -42,6 +42,12 @@ export const requireAuth = (req: Request, _res: Response, next: NextFunction): v
 
   const user = users.byId.get(session.user_id);
   if (!user) throw new HttpError(401, "Authentification requise");
+  // Un accès retiré depuis la connexion ferme la session à la requête
+  // suivante, sans attendre qu'elle expire.
+  if (!aAcces(user)) {
+    sessions.close.run(token);
+    throw new HttpError(401, "Votre accès à Milo a été retiré");
+  }
 
   // Fenêtre glissante : la session repart pour un tour à chaque usage. On ne
   // réécrit pas la ligne à chaque requête — une fois par heure suffit à tenir
@@ -57,5 +63,42 @@ export const requireAuth = (req: Request, _res: Response, next: NextFunction): v
 
   req.user = user;
   req.token = token;
+  next();
+};
+
+/**
+ * Le Paramétrage et ce qu'il règle — sociétés, types de jalons, rôles,
+ * accès, Entra, sauvegarde. Le lire demande le droit « Voir » du
+ * Paramétrage, y écrire le droit « Modifier ». Posé après `requireAuth`.
+ */
+export const requireSettings = (req: Request, _res: Response, next: NextFunction): void => {
+  const droits = droitsParametrage(req.user);
+  if (!droits.view) throw new HttpError(403, "Réservé à qui peut voir le Paramétrage");
+  if (req.method !== "GET" && !droits.update) {
+    throw new HttpError(403, "Réservé à qui peut modifier le Paramétrage");
+  }
+  next();
+};
+
+/**
+ * Les sociétés et les types de jalons se lisent partout dans l'application :
+ * seules leurs écritures demandent le droit « Modifier » du Paramétrage.
+ */
+export const requireSettingsToWrite = (req: Request, res: Response, next: NextFunction): void => {
+  if (req.method === "GET") {
+    next();
+    return;
+  }
+  requireSettings(req, res, next);
+};
+
+/**
+ * La sauvegarde, lecture comprise, demande le droit « Modifier » : l'archive
+ * porte toute la base, secret d'application compris.
+ */
+export const requireSettingsUpdate = (req: Request, _res: Response, next: NextFunction): void => {
+  if (!droitsParametrage(req.user).update) {
+    throw new HttpError(403, "Réservé à qui peut modifier le Paramétrage");
+  }
   next();
 };

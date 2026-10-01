@@ -146,7 +146,7 @@ const enHtml = (m: Message): string => {
 </html>`;
 };
 
-/** Une pièce jointe, dans la forme qu'attend nodemailer. */
+/** Une pièce jointe, jointe en ligne au message (Graph, « fileAttachment »). */
 export interface PieceJointe {
   filename: string;
   content: Buffer;

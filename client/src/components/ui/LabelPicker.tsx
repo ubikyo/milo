@@ -1,7 +1,9 @@
-import { ActionIcon, Anchor, Group, TextInput } from "@mantine/core";
+import { ActionIcon, Anchor, Group, NumberInput, TextInput } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import { api } from "../../api";
+import { messageErreur } from "../../lib/errors";
 import { ADD_ACTION, RED } from "../../themes/colors";
 import { PLUS_GAP, PLUS_SIZE } from "../../themes/plus";
 import ChipPicker from "./ChipPicker";
@@ -22,11 +24,16 @@ type Etiquette = Label | ProjectLabel | SupportLabel;
  * et les projets, une société pour les demandes de support.
  */
 export interface LabelsApi {
-  create: (parentId: number, name: string, color: string) => Promise<Etiquette>;
-  update: (id: number, data: { name?: string; color?: string }) => Promise<Etiquette>;
+  create: (parentId: number, name: string, color: string, weight: number) => Promise<Etiquette>;
+  update: (
+    id: number,
+    data: { name?: string; color?: string; weight?: number },
+  ) => Promise<Etiquette>;
   remove: (id: number) => Promise<unknown>;
   /** Ce que la suppression emporte, dit dans les mots du mode. */
   porteurs: string;
+  /** Vrai quand les étiquettes portent un poids : celles des projets et du support. */
+  avecPoids?: boolean;
 }
 
 /** Une étiquette en cours de saisie : son nom et sa couleur, avant validation. */
@@ -34,7 +41,14 @@ interface Brouillon {
   id?: number;
   name: string;
   color: string;
+  weight: number | "";
 }
+
+/** Le poids d'une étiquette ; celles qui n'en portent pas pèsent zéro. */
+const poidsDe = (label: Etiquette): number => ("weight" in label ? label.weight : 0);
+
+// Largeur du poids : de quoi écrire trois chiffres.
+const LARGEUR_POIDS = 40;
 import LabelColorPicker from "./LabelColorPicker";
 
 // Décalage de l'étiquette dans la liste : elle respire de deux pixels après sa
@@ -58,15 +72,17 @@ export const PROJECT_LABELS_API: LabelsApi = {
   update: api.updateProjectLabel,
   remove: api.deleteProjectLabel,
   porteurs: "des projets qui la portent",
+  avecPoids: true,
 };
 
-// Celles du support pendent à une société, et non à un tableau : c'est elle
-// que « boardId » porte ici.
+// Celles du support sont communes à toutes les sociétés : elles ne pendent à
+// rien, et « boardId » n'a pas cours ici.
 export const SUPPORT_LABELS_API: LabelsApi = {
-  create: api.createSupportLabel,
+  create: (_boardId, name, color, weight) => api.createSupportLabel(name, color, weight),
   update: api.updateSupportLabel,
   remove: api.deleteSupportLabel,
   porteurs: "des demandes qui la portent",
+  avecPoids: true,
 };
 
 /**
@@ -114,7 +130,7 @@ export default function LabelPicker({
 
   const ouvrirEdition = (label: Etiquette) => {
     setAjout(null);
-    setEdite({ id: label.id, name: label.name, color: label.color });
+    setEdite({ id: label.id, name: label.name, color: label.color, weight: poidsDe(label) });
   };
 
   const fermerEdition = () => setEdite(null);
@@ -141,14 +157,20 @@ export default function LabelPicker({
     if (!courant) return;
     const nom = courant.name.trim();
     if (!nom) return;
-    if (nom === label.name && courant.color === label.color) return;
-    await labelsApi.update(label.id, { name: nom, color: courant.color });
+    // Un poids vidé garde celui enregistré.
+    const weight = courant.weight === "" ? poidsDe(label) : courant.weight;
+    if (nom === label.name && courant.color === label.color && weight === poidsDe(label)) return;
+    await labelsApi.update(label.id, {
+      name: nom,
+      color: courant.color,
+      ...(labelsApi.avecPoids ? { weight } : {}),
+    });
     await onLabelsChanged();
   };
 
   const ouvrirAjout = () => {
     fermerEdition();
-    setAjout({ name: "", color: DEFAULT_LABEL_COLOR });
+    setAjout({ name: "", color: DEFAULT_LABEL_COLOR, weight: 0 });
   };
 
   // La liste se referme : ce qui était en cours de saisie se conclut, sans
@@ -170,7 +192,12 @@ export default function LabelPicker({
       setAjout(null);
       return;
     }
-    const creee = await labelsApi.create(Number(boardId), nouveau, ajout.color);
+    const creee = await labelsApi.create(
+      Number(boardId),
+      nouveau,
+      ajout.color,
+      Number(ajout.weight) || 0,
+    );
     setAjout(null);
     await onLabelsChanged();
     onChange([...value, String(creee.id)]);
@@ -188,20 +215,29 @@ export default function LabelPicker({
     const label = aSupprimer;
     setASupprimer(null);
     if (!label) return;
-    await labelsApi.remove(label.id);
+    try {
+      await labelsApi.remove(label.id);
+    } catch (e) {
+      // Une étiquette encore portée ne se supprime pas : le serveur dit par
+      // combien de ressources.
+      notifications.show({ color: RED, title: "Suppression impossible", message: messageErreur(e) });
+      return;
+    }
     // La carte ouverte la perd aussitôt : sans cela, l'enregistrement la lui
     // reposerait, alors que le serveur ne la connaît plus.
     onChange(value.filter((v) => v !== String(label.id)));
     await onLabelsChanged();
   };
 
-  // Une ligne de saisie : la pastille de couleur, puis le nom. Sert à la
-  // modification comme à l'ajout.
+  // Une ligne de saisie : la pastille de couleur, le nom, puis le poids quand
+  // le mode en porte un. Sert à la modification comme à l'ajout.
   interface SaisieProps {
     color: string;
     name: string;
+    weight: number | "";
     onColor: (color: string) => void;
     onName: (name: string) => void;
+    onWeight: (weight: number | "") => void;
     onSubmit: () => void;
     onCancel: () => void;
     aria: string;
@@ -210,8 +246,10 @@ export default function LabelPicker({
   const saisie = ({
     color,
     name,
+    weight,
     onColor,
     onName,
+    onWeight,
     onSubmit,
     onCancel,
     aria,
@@ -232,7 +270,11 @@ export default function LabelPicker({
         value={name}
         onChange={(e) => onName(e.currentTarget.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") onSubmit();
+          // Consommée : le tiroir qui porte ce champ n'enregistre pas en plus.
+          if (e.key === "Enter") {
+            e.preventDefault();
+            onSubmit();
+          }
           if (e.key === "Escape") onCancel();
         }}
         // Le focus qui passe à la pastille ou à sa palette reste dans la
@@ -247,6 +289,32 @@ export default function LabelPicker({
         style={{ flex: 1, minWidth: 0 }}
         aria-label={aria}
       />
+      {labelsApi.avecPoids && (
+        <NumberInput
+          value={weight}
+          onChange={(v) => onWeight(v === "" ? "" : Number(v))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onSubmit();
+            }
+            if (e.key === "Escape") onCancel();
+          }}
+          onBlur={(e) => {
+            if (e.relatedTarget?.closest("[data-label-editor]")) return;
+            onSubmit();
+          }}
+          allowDecimal={false}
+          hideControls
+          placeholder="Poids"
+          title="Poids : les plus lourdes passent devant dans les grilles"
+          variant="unstyled"
+          size="xs"
+          w={LARGEUR_POIDS}
+          style={{ flexShrink: 0 }}
+          aria-label={`Poids de ${name || "l'étiquette"}`}
+        />
+      )}
     </Group>
   );
 
@@ -288,8 +356,10 @@ export default function LabelPicker({
               saisie({
                 color: edite.color,
                 name: edite.name,
+                weight: edite.weight,
                 onColor: (color) => appliquerCouleur(l, color),
                 onName: (name) => setEdite((e) => (e ? { ...e, name } : e)),
+                onWeight: (weight) => setEdite((e) => (e ? { ...e, weight } : e)),
                 onSubmit: () => enregistrer(l),
                 onCancel: fermerEdition,
                 aria: `Renommer ${l.name}`,
@@ -331,8 +401,10 @@ export default function LabelPicker({
                 {saisie({
                   color: ajout.color,
                   name: ajout.name,
+                  weight: ajout.weight,
                   onColor: (color) => setAjout((a) => (a ? { ...a, color } : a)),
                   onName: (name) => setAjout((a) => (a ? { ...a, name } : a)),
+                  onWeight: (weight) => setAjout((a) => (a ? { ...a, weight } : a)),
                   onSubmit: creer,
                   onCancel: () => setAjout(null),
                   aria: "Nom de la nouvelle étiquette",

@@ -1,0 +1,24 @@
+/* L'encart des numéros du mode Accès : un fond un cran plus sombre que la
+   page, et un trait plus sombre encore pour le cerner. Sur le thème clair, la
+   page est blanche : les mêmes crans y descendent vers le gris. */
+.encart {
+  padding: 10px;
+  border-radius: 10px;
+  background-color: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8));
+  border: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-9));
+}
+
+/* Deux colonnes : le libellé prend ce qui reste, le numéro se cale à droite
+   sur sa propre largeur — les numéros de l'encart s'alignent entre eux. */
+.grille {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--mantine-spacing-md);
+  row-gap: 10px;
+  align-items: baseline;
+}
+
+.numero {
+  text-align: right;
+  white-space: nowrap;
+}

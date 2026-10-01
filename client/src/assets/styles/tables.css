@@ -1,0 +1,11 @@
+/* Le survol des lignes des grilles (Projets, Support, Assets), un cran plus
+   sombre que celui de Mantine dans les deux thèmes : gray-1 → gray-2 sur le
+   clair, dark-5 → dark-6 sur le sombre. La ligne dont le menu contextuel est
+   ouvert reprend la même variable, elle suit donc. */
+[data-mantine-color-scheme="light"] .mantine-Table-table {
+  --table-hover-color: var(--mantine-color-gray-2);
+}
+
+[data-mantine-color-scheme="dark"] .mantine-Table-table {
+  --table-hover-color: var(--mantine-color-dark-6);
+}

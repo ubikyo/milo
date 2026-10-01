@@ -8,6 +8,24 @@ import { useLabelColors } from "./LabelChip";
 // « withinPortal » est à couper lorsque la pastille vit déjà dans un autre
 // panneau flottant : sorti en portail, son choix de couleurs compterait comme
 // un clic au dehors et refermerait le panneau qui la porte.
+/**
+ * La couleur en place se reconnaît à sa bordure blanche. Elle se pose en
+ * enfant de la pastille : Mantine place les enfants au-dessus de ses calques
+ * de couleur, qui recouvriraient un contour posé sur la pastille elle-même.
+ */
+export function BordureSelection() {
+  return (
+    <span
+      style={{
+        position: "absolute",
+        inset: 0,
+        borderRadius: "var(--cs-radius)",
+        border: "2px solid #fff",
+      }}
+    />
+  );
+}
+
 interface LabelColorPickerProps {
   color: string;
   onChange: (color: string) => void;
@@ -68,7 +86,10 @@ export default function LabelColorPicker({
               }}
               style={{ cursor: "pointer" }}
               aria-label={c}
-            />
+              aria-pressed={c === color}
+            >
+              {c === color && <BordureSelection />}
+            </ColorSwatch>
           ))}
         </SimpleGrid>
       </Popover.Dropdown>

@@ -17,12 +17,15 @@ export const projects = {
   joined: selection<ProjectJoinedRow>(`${PROJECT_SELECT} WHERE projects.id = ?`),
   exists: selection<IdRow>("SELECT id FROM projects WHERE id = ?"),
   create: mutation(
-    `INSERT INTO projects (name, description, board_id, category_id, company_id, status, created_at, updated_at)
-     VALUES (@name, @description, @board_id, @category_id, @company_id, @status, @created_at, @updated_at)`,
+    `INSERT INTO projects (number, name, description, board_id, category_id, company_id,
+       milestone_type_id, status, created_at, updated_at)
+     VALUES (@number, @name, @description, @board_id, @category_id, @company_id,
+       @milestone_type_id, @status, @created_at, @updated_at)`,
   ),
   update: mutation(
     `UPDATE projects SET name = @name, description = @description, board_id = @board_id,
-       category_id = @category_id, company_id = @company_id, status = @status,
+       category_id = @category_id, company_id = @company_id,
+       milestone_type_id = @milestone_type_id, status = @status,
        updated_at = @updated_at
      WHERE id = @id`,
   ),
@@ -59,7 +62,7 @@ const labelsFor = selection<LabelLinkRow>(
    FROM project_label_links
    JOIN project_labels ON project_labels.id = project_label_links.label_id
    WHERE project_label_links.project_id IN (SELECT value FROM json_each(?))
-   ORDER BY project_labels.position, project_labels.id`,
+   ORDER BY project_labels.weight DESC, project_labels.position, project_labels.id`,
 );
 
 const groupBy = <Row, Value>(
@@ -156,14 +159,20 @@ const rangEtiquetteSuivant = scalar<NextRow>(
   "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM project_labels WHERE board_id = ?",
 );
 const creerEtiquette = mutation(
-  "INSERT INTO project_labels (board_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?)",
+  "INSERT INTO project_labels (board_id, name, color, weight, position, created_at) VALUES (?, ?, ?, ?, ?, ?)",
 );
-const etiquettesCompletes = selection<{ id: Id; board_id: Id; name: string; color: string }>(
+const etiquettesCompletes = selection<{
+  id: Id;
+  board_id: Id;
+  name: string;
+  color: string;
+  weight: number;
+}>(
   `SELECT project_labels.*
    FROM project_label_links
    JOIN project_labels ON project_labels.id = project_label_links.label_id
    WHERE project_label_links.project_id = ?
-   ORDER BY project_labels.position, project_labels.id`,
+   ORDER BY project_labels.weight DESC, project_labels.position, project_labels.id`,
 );
 
 /** Les étiquettes d'un projet, reportées sur sa copie. */
@@ -179,6 +188,7 @@ export const copyProjectLabels = transaction(
                 boardCible,
                 label.name,
                 label.color,
+                label.weight,
                 rangEtiquetteSuivant(boardCible).next,
                 timestamp,
               ).lastInsertRowid,

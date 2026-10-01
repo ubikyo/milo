@@ -2,6 +2,7 @@ import { Button, Group, Modal, Text } from "@mantine/core";
 import type { ReactNode } from "react";
 import { RED } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
+import BoutonFermer from "./BoutonFermer";
 
 interface DeleteConfirmModalProps {
   opened: boolean;
@@ -10,6 +11,9 @@ interface DeleteConfirmModalProps {
   title: ReactNode;
   message: ReactNode;
   confirmLabel?: string;
+  /** « Fermer » par défaut ; à changer quand l'action elle-même s'appelle ainsi. */
+  cancelLabel?: string;
+  confirmColor?: string;
 }
 
 export default function DeleteConfirmModal({
@@ -19,6 +23,8 @@ export default function DeleteConfirmModal({
   title,
   message,
   confirmLabel = "Supprimer",
+  cancelLabel = "Fermer",
+  confirmColor = RED,
 }: DeleteConfirmModalProps) {
   return (
     <Modal
@@ -35,10 +41,10 @@ export default function DeleteConfirmModal({
         {message}
       </Text>
       <Group justify="flex-end">
-        <Button variant="default" onClick={onClose}>
-          Fermer
-        </Button>
-        <Button color={RED} onClick={onConfirm}>
+        <BoutonFermer onClick={onClose}>
+          {cancelLabel}
+        </BoutonFermer>
+        <Button color={confirmColor} onClick={onConfirm}>
           {confirmLabel}
         </Button>
       </Group>

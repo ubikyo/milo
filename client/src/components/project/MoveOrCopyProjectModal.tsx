@@ -5,6 +5,7 @@ import { modalHeaderStyles } from "../../themes/modals";
 import ErrorAlert from "../ui/ErrorAlert";
 import type { Category, Project, ProjectBoard } from "@milo/shared";
 import { messageErreur } from "../../lib/errors";
+import BoutonFermer from "../ui/BoutonFermer";
 
 // Déplacer ou copier un projet vers un tableau. Les deux gestes posent la même
 // question — lequel ? — et la même boîte y répond, comme pour une liste
@@ -23,7 +24,7 @@ export type ProjectAction = "move" | "copy";
 interface MoveOrCopyProjectModalProps {
   opened: boolean;
   onClose: () => void;
-  /** « move » par défaut : c'est le geste qu'offre le menu d'une ligne de la liste. */
+  /** « move » par défaut. */
   mode?: ProjectAction;
   /**
    * Le projet visé. Son identifiant, son tableau, son nom et sa catégorie
@@ -196,9 +197,7 @@ export default function MoveOrCopyProjectModal({
       </Stack>
 
       <Group justify="flex-end" mt={32}>
-        <Button variant="default" onClick={onClose}>
-          Fermer
-        </Button>
+        <BoutonFermer onClick={onClose} />
         <Button
           color="teal"
           onClick={valider}

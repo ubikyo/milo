@@ -5,6 +5,7 @@ import { modalHeaderStyles } from "../../themes/modals";
 import ErrorAlert from "./ErrorAlert";
 import { messageErreur } from "../../lib/errors";
 import type { Company, CopyResult, Id } from "@milo/shared";
+import BoutonFermer from "./BoutonFermer";
 
 // Copier les étiquettes — ou les catégories — d'un tableau vers un autre.
 //
@@ -220,9 +221,7 @@ export default function CopyToBoardModal({
       </Stack>
 
       <Group justify="flex-end" mt={32}>
-        <Button variant="default" onClick={onClose}>
-          Fermer
-        </Button>
+        <BoutonFermer onClick={onClose} />
         {!fait && (
           <Button color="teal" onClick={valider} loading={saving} disabled={!boardId}>
             Copier

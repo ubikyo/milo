@@ -5,7 +5,7 @@
 import { Router } from "express";
 import type { Request } from "express";
 import { badRequest, orNotFound, requireText, toIds } from "../lib/http.js";
-import { notifier, racine } from "../lib/notify.js";
+import { concernes, notifier, notifierSuppression, racine } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { boardOuvert } from "../repositories/boards.js";
@@ -64,6 +64,21 @@ const carteModifiee = (cardId: unknown, req: Request): void => {
   });
 };
 
+/** Une checklist ou l'un de ses éléments supprimé : ceux qui suivent la carte le savent. */
+const suppressionSurLaCarte = (cardId: unknown, req: Request, message: string): void => {
+  const carte = taskCards.byId.get(cardId);
+  if (!carte) return;
+  notifierSuppression({
+    kind: "card",
+    targetId: carte.id,
+    titre: carte.text,
+    message,
+    auteur: req.user,
+    destinataires: concernes.carte(carte.id),
+    disparu: false,
+  });
+};
+
 /** Monté sous `/api/task-cards/:id/checklists`. */
 export const cardChecklistRoutes = Router({ mergeParams: true });
 
@@ -98,6 +113,7 @@ cardChecklistRoutes.put("/reorder", (req, res) => {
   }
 
   reorderChecklists(card.id, ordre);
+  carteModifiee(card.id, req);
   res.json(checklistsOfCard(card.id));
 });
 
@@ -123,7 +139,11 @@ checklistRoutes.delete("/:id", (req, res) => {
   const checklist = checklistOuverte(req.params.id, req.user);
   checklists.remove.run(checklist.id);
 
-  carteModifiee(checklist.card_id, req);
+  suppressionSurLaCarte(
+    checklist.card_id,
+    req,
+    `a supprimé la checklist « ${checklist.title} »`,
+  );
   res.status(204).end();
 });
 
@@ -156,6 +176,7 @@ checklistRoutes.put("/:id/items/reorder", (req, res) => {
   }
 
   reorderChecklistItems(checklist.id, ordre);
+  carteModifiee(checklist.card_id, req);
   res.json({ ...checklist, items: itemsOfChecklist(checklist.id) });
 });
 
@@ -195,6 +216,12 @@ checklistItemRoutes.delete("/:id", (req, res) => {
 
   checklistItems.remove.run(existing.id);
 
-  carteModifiee(checklistOfItem(existing).card_id, req);
+  suppressionSurLaCarte(
+    checklistOfItem(existing).card_id,
+    req,
+    existing.text
+      ? `a supprimé l'élément « ${existing.text} » d'une checklist`
+      : "a supprimé un élément d'une checklist",
+  );
   res.status(204).end();
 });

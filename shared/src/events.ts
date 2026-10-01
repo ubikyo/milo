@@ -20,11 +20,22 @@ export const RESOURCES = [
   "access-categories",
   /** Les sections d'une catégorie d'accès : ses colonnes. */
   "access-sections",
-  /** Ce que les sections portent : les éléments des greffons. */
+  /** Ce que les sections portent : les éléments des widgets. */
   "access-blocks",
   /** Les demandes du mode Support, et les étiquettes qu'elles portent. */
   "support-requests",
   "support-labels",
+  /** Les indicateurs du panneau des statistiques du mode Support. */
+  "support-indicators",
+  /** Les postes du mode Assets : ce que les agents d'inventaire remontent. */
+  "assets",
+  /** Les indicateurs du panneau des statistiques du mode Assets. */
+  "asset-indicators",
+  /** Les sections des modes Projet et Tâche, et ce qu'elles portent. */
+  "project-indicators",
+  "task-indicators",
+  /** L'ordre des onglets fixes des modes Support et Assets. */
+  "tab-orders",
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];

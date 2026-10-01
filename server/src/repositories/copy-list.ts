@@ -25,7 +25,8 @@ import type {
 } from "../db/rows.js";
 import { horodatage, now } from "../lib/time.js";
 import { cardComments } from "./cards.js";
-import { taskCards, taskLists } from "./tasks.js";
+import { prochaineReference } from "./references.js";
+import { reorderTaskCards, taskCards, taskLists } from "./tasks.js";
 
 // --- Lectures de la source -------------------------------------------------
 
@@ -136,6 +137,98 @@ const etiquetteCorrespondante = (
   return id;
 };
 
+// --- Une carte --------------------------------------------------------------
+
+/** Où va la copie d'une carte, et ce qui l'accompagne. */
+interface CopieDeCarte {
+  listeId: Id;
+  rang: number;
+  /** Le tableau de la liste d'accueil : il tient les étiquettes. */
+  boardId: Id;
+  text: string;
+  userId: Id;
+  timestamp: string;
+  /** Les étiquettes déjà appariées d'un tableau à l'autre. */
+  etiquettes: Map<Id, Id>;
+}
+
+/** Recopie une carte et tout ce qu'elle porte ; rend l'identifiant de la copie. */
+const copierCarte = (carte: TaskCardRow, copie: CopieDeCarte): Id => {
+  const { listeId, rang, boardId, text, userId, timestamp, etiquettes } = copie;
+  const separateur = carte.kind === "separator";
+
+  // La référence n'est pas celle de l'original : deux cartes ne peuvent pas
+  // porter le même repère. Un séparateur n'en a pas.
+  const numero = separateur ? 0 : prochaineReference();
+  const carteId = Number(
+    taskCards.create.run(listeId, text, rang, numero, carte.kind, timestamp).lastInsertRowid,
+  );
+
+  if (carte.description) poserDescription.run(carte.description, carteId);
+  // L'échéance suit la carte : une copie a la même date à tenir.
+  if (carte.due_date) poserEcheance.run(carte.due_date, carteId);
+
+  for (const { user_id } of membresDeLaCarte.all(carte.id)) {
+    lierMembre.run(carteId, user_id);
+  }
+
+  for (const label of etiquettesDeLaCarte.all(carte.id)) {
+    lierEtiquette.run(carteId, etiquetteCorrespondante(label, boardId, etiquettes, timestamp));
+  }
+
+  for (const piece of piecesDeLaCarte.all(carte.id)) {
+    reprendrePiece.run(
+      carteId,
+      piece.file,
+      piece.name,
+      piece.mime,
+      piece.size,
+      // La copie est déposée par celui qui copie, maintenant : c'est lui qui
+      // l'apporte dans cette liste-ci.
+      userId,
+      timestamp,
+    );
+  }
+
+  for (const checklist of checklistsDeLaCarte.all(carte.id)) {
+    const checklistId = Number(
+      creerChecklist.run(carteId, checklist.title, checklist.position, timestamp)
+        .lastInsertRowid,
+    );
+
+    for (const element of elementsDeLaChecklist.all(checklist.id)) {
+      const elementId = Number(
+        creerElement.run(
+          checklistId,
+          element.text,
+          element.done,
+          element.due_date,
+          element.position,
+          timestamp,
+        ).lastInsertRowid,
+      );
+      for (const { user_id } of membresDeLElement.all(element.id)) {
+        lierMembreElement.run(elementId, user_id);
+      }
+    }
+  }
+
+  // Le fil s'ouvre comme celui de n'importe quelle carte neuve : la copie a
+  // bien été créée maintenant. Un séparateur n'a pas de fiche, donc pas de
+  // fil.
+  if (!separateur) {
+    cardComments.createSystem.run(
+      carteId,
+      userId,
+      `Carte créée le ${horodatage(timestamp)}`,
+      timestamp,
+      timestamp,
+    );
+  }
+
+  return carteId;
+};
+
 // --- La copie ---------------------------------------------------------------
 
 export interface CopieDeListe {
@@ -169,78 +262,41 @@ export const copyTaskList = transaction((copie: CopieDeListe): Id => {
   const etiquettes = new Map<Id, Id>();
 
   for (const [rang, carte] of cartesDeLaListe.all(sourceId).entries()) {
-    const separateur = carte.kind === "separator";
-
-    // Le numéro se compte par tableau et n'est pas celui de l'original : deux
-    // cartes ne peuvent pas porter le même repère. Un séparateur n'en a pas.
-    const numero = separateur ? 0 : taskCards.nextNumber(boardId).numero;
-    const carteId = Number(
-      taskCards.create.run(listeId, carte.text, rang, numero, carte.kind, timestamp)
-        .lastInsertRowid,
-    );
-
-    if (carte.description) poserDescription.run(carte.description, carteId);
-    // L'échéance suit la carte : une copie a la même date à tenir.
-    if (carte.due_date) poserEcheance.run(carte.due_date, carteId);
-
-    for (const { user_id } of membresDeLaCarte.all(carte.id)) {
-      lierMembre.run(carteId, user_id);
-    }
-
-    for (const label of etiquettesDeLaCarte.all(carte.id)) {
-      lierEtiquette.run(carteId, etiquetteCorrespondante(label, boardId, etiquettes, timestamp));
-    }
-
-    for (const piece of piecesDeLaCarte.all(carte.id)) {
-      reprendrePiece.run(
-        carteId,
-        piece.file,
-        piece.name,
-        piece.mime,
-        piece.size,
-        // La copie est déposée par celui qui copie, maintenant : c'est lui qui
-        // l'apporte dans cette liste-ci.
-        userId,
-        timestamp,
-      );
-    }
-
-    for (const checklist of checklistsDeLaCarte.all(carte.id)) {
-      const checklistId = Number(
-        creerChecklist.run(carteId, checklist.title, checklist.position, timestamp)
-          .lastInsertRowid,
-      );
-
-      for (const element of elementsDeLaChecklist.all(checklist.id)) {
-        const elementId = Number(
-          creerElement.run(
-            checklistId,
-            element.text,
-            element.done,
-            element.due_date,
-            element.position,
-            timestamp,
-          ).lastInsertRowid,
-        );
-        for (const { user_id } of membresDeLElement.all(element.id)) {
-          lierMembreElement.run(elementId, user_id);
-        }
-      }
-    }
-
-    // Le fil s'ouvre comme celui de n'importe quelle carte neuve : la copie a
-    // bien été créée maintenant. Un séparateur n'a pas de fiche, donc pas de
-    // fil.
-    if (!separateur) {
-      cardComments.createSystem.run(
-        carteId,
-        userId,
-        `Carte créée le ${horodatage(timestamp)}`,
-        timestamp,
-        timestamp,
-      );
-    }
+    copierCarte(carte, { listeId, rang, boardId, text: carte.text, userId, timestamp, etiquettes });
   }
 
   return listeId;
+});
+
+/**
+ * Duplique une carte dans sa propre liste, juste après l'original, et rend
+ * l'identifiant de la copie : une base pour une carte voisine.
+ */
+export const duplicateTaskCard = transaction((cardId: Id, userId: Id): Id => {
+  const carte = taskCards.byId.get(cardId);
+  if (!carte) throw new Error(`Carte ${cardId} introuvable`);
+  const liste = taskLists.byId.get(carte.list_id);
+  if (!liste) throw new Error(`Carte ${cardId} sans liste`);
+
+  const separateur = carte.kind === "separator";
+  const copieId = copierCarte(carte, {
+    listeId: liste.id,
+    rang: taskCards.nextPosition(liste.id).next,
+    boardId: liste.board_id,
+    // Un séparateur tranche toujours au même endroit : son libellé reste.
+    text: separateur ? carte.text : `${carte.text} (copie)`,
+    userId,
+    timestamp: now(),
+    etiquettes: new Map(),
+  });
+
+  // La copie se range juste sous l'original, pas au bout de la liste.
+  const ordre = cartesDeLaListe
+    .all(liste.id)
+    .map((c) => c.id)
+    .filter((id) => id !== copieId);
+  ordre.splice(ordre.indexOf(carte.id) + 1, 0, copieId);
+  reorderTaskCards(liste.id, ordre);
+
+  return copieId;
 });

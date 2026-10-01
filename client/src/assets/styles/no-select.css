@@ -1,0 +1,17 @@
+/*
+ * Hors Debug (Paramétrage › Développeur), l'interface ne se sélectionne pas :
+ * elle se manipule comme une application, pas comme une page. Les champs de
+ * saisie et l'éditeur de texte gardent leur sélection, sans quoi on ne
+ * pourrait plus y reprendre ce qu'on a écrit. Le menu du navigateur au clic
+ * droit, lui, est retiré par App.tsx.
+ */
+html:not([data-milo-debug]) body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html:not([data-milo-debug])
+  :is(input, textarea, [contenteditable="true"], [contenteditable="true"] *) {
+  -webkit-user-select: text;
+  user-select: text;
+}

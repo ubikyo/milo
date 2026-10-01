@@ -15,29 +15,42 @@
 
 import crypto from "node:crypto";
 import type { FollowKind, Id, Notification, NotificationKind } from "@milo/shared";
-import { lienElement } from "@milo/shared";
+import { lienElement, supportTicketRef } from "@milo/shared";
 import type { UserRow } from "../db/rows.js";
+import { selection } from "../db/query.js";
 import { follows } from "../repositories/follows.js";
 import { taskCards } from "../repositories/tasks.js";
 import { env } from "../env.js";
 import { envoyerCourrier, messagerieConfiguree } from "./mail.js";
 import { gabarit } from "./mail-template.js";
 import type { Ligne } from "./mail-template.js";
-import { pousserNotification } from "../middleware/events.js";
+import { notifications } from "../repositories/notifications.js";
 import { now } from "./time.js";
 
 /** Le temps pendant lequel les faits s'accumulent avant de partir en un e-mail. */
 const FENETRE = env.notifyWindowMs;
 
+/**
+ * Qui a agi. Un compte le plus souvent ; l'expéditeur d'un e-mail reçu sur une
+ * demande de support n'en a pas toujours — son identifiant vaut alors 0, qui
+ * n'écarte personne.
+ */
+export type Auteur = Pick<UserRow, "id" | "name" | "email">;
+
 export interface Fait {
-  kind: NotificationKind;
+  /**
+   * L'élément suivi : un projet, une carte, une demande de support. Un
+   * élément du mode Accès ne se suit pas : ses notifications partent d'ailleurs
+   * (lib/uptime.ts).
+   */
+  kind: Exclude<NotificationKind, "access">;
   targetId: Id;
   /** Le nom de l'élément, tel qu'il s'affiche. */
   titre: string;
   /** Ce qui a changé, à la troisième personne : « a modifié la fiche ». */
   message: string;
   /** Qui a agi. C'est aussi la personne qu'on ne notifie pas. */
-  auteur: UserRow;
+  auteur: Auteur;
   /**
    * La liste d'où la carte vient, quand elle en change. Ceux qui suivaient
    * cette liste-là sont prévenus eux aussi : une carte qui s'en va est une
@@ -45,7 +58,11 @@ export interface Fait {
    * arrive.
    */
   listeOrigine?: Id;
-  /** La racine de l'application, telle qu'on l'a jointe : « https://milo.exemple.fr ». */
+  /**
+   * La racine de l'application, telle qu'on l'a jointe : « https://milo.exemple.fr ».
+   * Vide quand on ne la connaît pas — une relève de boîte n'a pas de requête :
+   * la notification reste alors à l'écran, sans e-mail au lien cassé.
+   */
   base: string;
 }
 
@@ -60,6 +77,8 @@ export interface Fait {
 type FaitEmpile = Ligne;
 
 interface EnAttente {
+  /** La boîte de support de la société de l'élément. */
+  expediteur: string;
   destinataire: string;
   titre: string;
   lien: string;
@@ -97,6 +116,7 @@ const partir = (cleEnvoi: string): void => {
   enAttente.delete(cleEnvoi);
 
   envoyerCourrier({
+    from: envoi.expediteur,
     to: envoi.destinataire,
     subject: `Milo — ${envoi.titre}`,
     ...corps(envoi),
@@ -109,7 +129,7 @@ const partir = (cleEnvoi: string): void => {
 };
 
 /** Ajoute un fait à l'envoi en cours pour cette personne et cet élément. */
-const empiler = (destinataire: UserRow, fait: Fait, lien: string): void => {
+const empiler = (destinataire: UserRow, fait: Fait, lien: string, expediteur: string): void => {
   if (!destinataire.email) return;
 
   const cleEnvoi = cle(destinataire.id, fait.kind, fait.targetId);
@@ -128,6 +148,7 @@ const empiler = (destinataire: UserRow, fait: Fait, lien: string): void => {
   }
 
   enAttente.set(cleEnvoi, {
+    expediteur,
     destinataire: destinataire.email,
     titre: fait.titre,
     lien,
@@ -136,6 +157,38 @@ const empiler = (destinataire: UserRow, fait: Fait, lien: string): void => {
     minuterie: setTimeout(() => partir(cleEnvoi), FENETRE).unref(),
   });
 };
+
+// --- D'où part l'e-mail ----------------------------------------------------
+
+/**
+ * La boîte de support de la société de l'élément : un projet a la sienne, une
+ * liste et une carte ont celle de leur tableau. Vide quand l'élément n'a pas
+ * de société ou que la société n'a pas d'e-mail de support — la notification
+ * reste alors à l'écran.
+ */
+const boites: Record<FollowKind, ReturnType<typeof selection<{ support_email: string }>>> = {
+  project: selection(
+    `SELECT c.support_email FROM projects p
+     JOIN companies c ON c.id = p.company_id WHERE p.id = ?`,
+  ),
+  list: selection(
+    `SELECT c.support_email FROM task_lists l
+     JOIN boards b ON b.id = l.board_id
+     JOIN companies c ON c.id = b.company_id WHERE l.id = ?`,
+  ),
+  card: selection(
+    `SELECT c.support_email FROM task_cards t
+     JOIN task_lists l ON l.id = t.list_id
+     JOIN boards b ON b.id = l.board_id
+     JOIN companies c ON c.id = b.company_id WHERE t.id = ?`,
+  ),
+  support: selection(
+    `SELECT c.support_email FROM support_requests r
+     JOIN companies c ON c.id = r.company_id WHERE r.id = ?`,
+  ),
+};
+
+const boiteDe = (kind: FollowKind, id: Id): string => boites[kind].get(id)?.support_email ?? "";
 
 // --- Qui est prévenu -------------------------------------------------------
 
@@ -175,19 +228,22 @@ export const notifier = (fait: Fait): void => {
 
     const lien = `${fait.base}/${lienElement(fait.kind, fait.targetId)}`;
     const quand = now();
+    const expediteur =
+      fait.base && messagerieConfiguree() ? boiteDe(fait.kind, fait.targetId) : "";
 
     for (const personne of destinataires) {
-      pousserNotification(personne.id, {
+      notifications.emettre(personne.id, {
         id: crypto.randomBytes(8).toString("hex"),
         kind: fait.kind,
         target_id: fait.targetId,
         title: fait.titre,
         message: fait.message,
         author: fait.auteur.name || fait.auteur.email,
+        deleted: false,
         created_at: quand,
       } satisfies Notification);
 
-      if (messagerieConfiguree()) empiler(personne, fait, lien);
+      if (expediteur) empiler(personne, fait, lien, expediteur);
     }
   } catch (erreur) {
     console.error("Notification de suivi abandonnée :", erreur);
@@ -201,3 +257,190 @@ export const notifier = (fait: Fait): void => {
  */
 export const racine = (req: { protocol: string; get(nom: string): string | undefined }): string =>
   `${req.protocol}://${req.get("host") ?? ""}`;
+
+// --- Assignation d'une demande de support ----------------------------------
+
+export interface Assignation {
+  /** La demande, son numéro de ticket et son objet, sa société. */
+  demande: { id: Id; number: number; subject: string; company_id: Id };
+  /** Les comptes qui viennent d'y être assignés. */
+  destinataires: UserRow[];
+  auteur: UserRow;
+  base: string;
+}
+
+const boiteDeSociete = selection<{ support_email: string }>(
+  "SELECT support_email FROM companies WHERE id = ?",
+);
+
+/**
+ * Une personne assignée à des demandes : une notification à l'écran par
+ * demande, tout de suite, et un seul e-mail par personne et par société qui
+ * les liste toutes — assigner dix tickets d'un coup n'envoie pas dix e-mails.
+ * On ne se prévient pas soi-même. Ne lève jamais : l'assignation est déjà
+ * enregistrée.
+ */
+export const notifierAssignations = (assignations: Assignation[]): void => {
+  try {
+    const quand = now();
+    const courriers = new Map<string, { personne: UserRow; boite: string; lignes: Ligne[]; lien: string; base: string; auteur: UserRow }>();
+
+    for (const { demande, destinataires, auteur, base } of assignations) {
+      const titre = titreDemande(demande);
+      const lien = `${base}/${lienElement("support", demande.id)}`;
+      const boite = messagerieConfiguree()
+        ? (boiteDeSociete.get(demande.company_id)?.support_email ?? "")
+        : "";
+
+      for (const personne of destinataires) {
+        if (personne.id === auteur.id) continue;
+        notifications.emettre(personne.id, {
+          id: crypto.randomBytes(8).toString("hex"),
+          kind: "support",
+          target_id: demande.id,
+          title: titre,
+          message: "vous a assigné cette demande",
+          author: auteur.name || auteur.email,
+          deleted: false,
+          created_at: quand,
+        } satisfies Notification);
+
+        if (!boite || !personne.email) continue;
+        const cleEnvoi = `${personne.id}:${demande.company_id}`;
+        const courant = courriers.get(cleEnvoi);
+        if (courant) courant.lignes.push({ texte: titre, repetitions: 1 });
+        else {
+          courriers.set(cleEnvoi, {
+            personne,
+            boite,
+            lignes: [{ texte: titre, repetitions: 1 }],
+            lien,
+            base,
+            auteur,
+          });
+        }
+      }
+    }
+
+    for (const { personne, boite, lignes, lien, base, auteur } of courriers.values()) {
+      const qui = auteur.name || auteur.email;
+      const une = lignes.length === 1;
+      envoyerCourrier({
+        from: boite,
+        to: personne.email,
+        subject: une ? `Milo — ${lignes[0]!.texte}` : `Milo — ${lignes.length} demandes vous sont assignées`,
+        ...gabarit({
+          titre: une ? "Demande assignée" : "Demandes assignées",
+          intro: une
+            ? `${qui} vous a assigné cette demande :`
+            : `${qui} vous a assigné ces ${lignes.length} demandes :`,
+          lignes,
+          // Une seule demande : le lien l'ouvre. Plusieurs : il ouvre Milo,
+          // où elles attendent dans le mode Support.
+          action: { url: une ? lien : base, libelle: "Ouvrir dans Milo" },
+          pied: "Vous recevez ce message parce qu'une demande de support vous a été assignée dans Milo.",
+        }),
+      }).catch((erreur: unknown) => {
+        console.error("Notification d'assignation non remise :", erreur);
+      });
+    }
+  } catch (erreur) {
+    console.error("Notification d'assignation abandonnée :", erreur);
+  }
+};
+
+// --- Suppressions ----------------------------------------------------------
+//
+// Supprimer un élément prévient ceux qui s'y trouvaient engagés : les autres
+// acteurs d'un projet ou d'une demande de support, et ceux qui les suivent ;
+// dans le mode Tâches, ceux qui suivent la carte, la liste ou le tableau. La
+// notification passe à l'écran et se range dans « Notifications », sans
+// e-mail : ce qu'elle annonce est fait, et un lien n'ouvrirait plus rien.
+//
+// Les destinataires se lisent AVANT la suppression : après, les acteurs et
+// les cartes sont partis avec l'élément.
+
+/** Une requête sur un seul élément, nommé « @id » autant de fois qu'il le faut. */
+const idsDe = (sql: string) => {
+  const requete = selection<{ user_id: Id }>(sql);
+  return (id: Id): Id[] => requete.all({ id }).map((l) => l.user_id);
+};
+
+/** Qui est concerné par un élément, pour lui annoncer sa suppression. */
+export const concernes = {
+  /** Les acteurs du projet et ceux qui le suivent. */
+  projet: idsDe(
+    `SELECT user_id FROM project_actors WHERE project_id = @id
+     UNION SELECT user_id FROM follows WHERE kind = 'project' AND target_id = @id`,
+  ),
+  /** Les acteurs de la demande et ceux qui la suivent. */
+  demande: idsDe(
+    `SELECT user_id FROM support_request_actors WHERE request_id = @id
+     UNION SELECT user_id FROM follows WHERE kind = 'support' AND target_id = @id`,
+  ),
+  /** Ceux qui suivent la carte, et ceux qui suivent sa liste. */
+  carte: idsDe(
+    `SELECT user_id FROM follows WHERE kind = 'card' AND target_id = @id
+     UNION SELECT user_id FROM follows
+      WHERE kind = 'list' AND target_id = (SELECT list_id FROM task_cards WHERE id = @id)`,
+  ),
+  /** Ceux qui suivent la liste, et ceux qui suivent l'une de ses cartes. */
+  liste: idsDe(
+    `SELECT user_id FROM follows WHERE kind = 'list' AND target_id = @id
+     UNION SELECT user_id FROM follows
+      WHERE kind = 'card' AND target_id IN (SELECT id FROM task_cards WHERE list_id = @id)`,
+  ),
+  /** Ceux qui suivent l'une des listes du tableau, ou l'une de ses cartes. */
+  tableau: idsDe(
+    `SELECT user_id FROM follows
+      WHERE kind = 'list' AND target_id IN (SELECT id FROM task_lists WHERE board_id = @id)
+     UNION SELECT user_id FROM follows
+      WHERE kind = 'card' AND target_id IN (
+        SELECT t.id FROM task_cards t JOIN task_lists l ON l.id = t.list_id WHERE l.board_id = @id
+      )`,
+  ),
+};
+
+export interface Suppression {
+  /** La famille de l'élément : « card » vaut pour tout le mode Tâches. */
+  kind: NotificationKind;
+  targetId: Id;
+  /** Le nom de l'élément touché. */
+  titre: string;
+  /** Ce qui a été supprimé, à la troisième personne : « a supprimé le projet ». */
+  message: string;
+  auteur: Auteur;
+  /** Les comptes à prévenir, lus avant la suppression (voir `concernes`). */
+  destinataires: Id[];
+  /**
+   * Vrai quand c'est l'élément lui-même qui disparaît. Faux quand c'est une
+   * partie de lui — un commentaire, une pièce jointe — : il s'ouvre toujours.
+   */
+  disparu: boolean;
+}
+
+/** Annonce une suppression. Ne lève jamais : la suppression est déjà faite. */
+export const notifierSuppression = (suppression: Suppression): void => {
+  try {
+    const quand = now();
+    for (const userId of new Set(suppression.destinataires)) {
+      if (userId === suppression.auteur.id) continue;
+      notifications.emettre(userId, {
+        id: crypto.randomBytes(8).toString("hex"),
+        kind: suppression.kind,
+        target_id: suppression.targetId,
+        title: suppression.titre,
+        message: suppression.message,
+        author: suppression.auteur.name || suppression.auteur.email,
+        deleted: suppression.disparu,
+        created_at: quand,
+      } satisfies Notification);
+    }
+  } catch (erreur) {
+    console.error("Notification de suppression abandonnée :", erreur);
+  }
+};
+
+/** Le nom d'une demande de support, tel que les notifications l'affichent. */
+export const titreDemande = (demande: { number: number; subject: string }): string =>
+  `${supportTicketRef(demande.number)}${demande.subject ? ` — ${demande.subject}` : ""}`;

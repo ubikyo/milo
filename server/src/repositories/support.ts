@@ -1,11 +1,13 @@
 // Les demandes du mode Support : leur société, leurs acteurs, leurs étiquettes
-// et leur fil.
+// et leur fil. Les étiquettes, elles, sont communes à toutes les sociétés.
 //
 // Une demande pend à une société, jamais à un tableau : c'est la société de la
 // liste déroulante de l'entête qui la porte. Ses acteurs et ses étiquettes se
 // posent comme les membres et les étiquettes d'une carte : autant qu'il faut,
 // par une table d'association.
 
+import { piecesJointes } from "../lib/ticket-files.js";
+import { SUPPORT_URGENCY_LABELS, supportTicketRef } from "@milo/shared";
 import type {
   Actor,
   Id,
@@ -23,6 +25,7 @@ import type {
   WithAuthorColumns,
 } from "../db/rows.js";
 import { withAuthor } from "./comments.js";
+import { prochaineReference } from "./references.js";
 import { actorOf } from "./users.js";
 
 export const DEMANDE_INTROUVABLE = "Demande introuvable";
@@ -36,30 +39,141 @@ export const supportRequests = {
   ofCompany: selection<SupportRequestRow>(
     "SELECT * FROM support_requests WHERE company_id = ? ORDER BY created_at DESC, id DESC",
   ),
-  create: mutation(
-    `INSERT INTO support_requests (company_id, status, due_date, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?)`,
+  // Toutes sociétés confondues : ce que montre le mode quand la liste
+  // déroulante ne filtre pas. Le même ordre, pour que passer de l'une à
+  // l'autre ne réarrange rien.
+  all: selection<SupportRequestRow>(
+    "SELECT * FROM support_requests ORDER BY created_at DESC, id DESC",
   ),
+  create: mutation(
+    `INSERT INTO support_requests (number, company_id, subject, status, due_date, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ),
+  // Une demande née d'un e-mail : elle en garde l'expéditeur et l'identifiant.
+  // « OR IGNORE » : un message déjà importé — deux relèves qui se croisent —
+  // ne fait pas une seconde demande.
+  createFromMail: mutation(
+    `INSERT OR IGNORE INTO support_requests
+       (number, company_id, subject, status, due_date, sender_name, sender_email, mail_id,
+        conversation_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ),
+  byMailId: selection<{ id: Id }>(
+    "SELECT id FROM support_requests WHERE company_id = ? AND mail_id = ?",
+  ),
+  /**
+   * La demande d'une société qu'un e-mail cite, par l'identifiant Internet
+   * de son e-mail d'origine ou de l'un de ses messages — reçu, ou parti de
+   * Milo. C'est ainsi qu'une réponse retrouve son ticket.
+   */
+  citeeParMail: selection<SupportRequestRow>(
+    `SELECT * FROM support_requests
+     WHERE company_id = ? AND (
+       mail_id = ? OR id IN (SELECT request_id FROM support_comments WHERE mail_id = ?)
+     )
+     ORDER BY id DESC LIMIT 1`,
+  ),
+  /** La demande d'une société née dans cette conversation de Graph. */
+  deLaConversation: selection<SupportRequestRow>(
+    `SELECT * FROM support_requests
+     WHERE company_id = ? AND conversation_id = ? AND conversation_id != ''
+     ORDER BY id DESC LIMIT 1`,
+  ),
+  /** La demande d'une société qui porte ce numéro de ticket. */
+  byNumber: selection<SupportRequestRow>(
+    "SELECT * FROM support_requests WHERE company_id = ? AND number = ?",
+  ),
+  /** Un e-mail déjà rangé dans un fil de la société : il ne s'importe pas deux fois. */
+  mailDejaRange: selection<{ id: Id }>(
+    `SELECT support_comments.id FROM support_comments
+     JOIN support_requests ON support_requests.id = support_comments.request_id
+     WHERE support_requests.company_id = ? AND support_comments.mail_id = ?`,
+  ),
+  /** Une réponse de l'expéditeur rouvre une demande qu'on croyait close. */
+  rouvrir: mutation(
+    `UPDATE support_requests SET status = ?, updated_at = ?
+     WHERE id = ? AND status IN ('resolved', 'closed')`,
+  ),
+  // Les identifiants des e-mails déjà importés dans une société.
+  mailIdsOfCompany: selection<{ mail_id: string }>(
+    "SELECT mail_id FROM support_requests WHERE company_id = ? AND mail_id != ''",
+  ),
+  // La société en fait partie : une demande ouverte sous « toutes » part chez
+  // la première de la liste, et se corrige ensuite depuis sa fiche.
   update: mutation(
-    "UPDATE support_requests SET status = ?, due_date = ?, updated_at = ? WHERE id = ?",
+    `UPDATE support_requests SET company_id = ?, subject = ?, status = ?, due_date = ?, updated_at = ?
+     WHERE id = ?`,
   ),
   remove: mutation("DELETE FROM support_requests WHERE id = ?"),
+  touch: mutation("UPDATE support_requests SET updated_at = ? WHERE id = ?"),
+  /** Le statut que choisit le bouton d'envoi d'une réponse. */
+  setStatus: mutation("UPDATE support_requests SET status = ?, updated_at = ? WHERE id = ?"),
 };
+
+// --- Numéros de ticket -----------------------------------------------------
+
+/**
+ * Le numéro du prochain ticket : la prochaine référence, commune aux demandes,
+ * aux projets et aux cartes (repositories/references.ts).
+ */
+export const prochainNumeroDeTicket = prochaineReference;
 
 export const supportLabels = {
   byId: selection<SupportLabelRow>("SELECT * FROM support_labels WHERE id = ?"),
-  ofCompany: selection<SupportLabelRow>(
-    "SELECT * FROM support_labels WHERE company_id = ? ORDER BY position, id",
-  ),
+  // Toutes : elles sont communes à tout le support.
+  all: selection<SupportLabelRow>("SELECT * FROM support_labels ORDER BY position, id"),
   nextPosition: scalar<NextRow>(
-    "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM support_labels WHERE company_id = ?",
+    "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM support_labels",
   ),
   create: mutation(
-    `INSERT INTO support_labels (company_id, name, color, position, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
+    "INSERT INTO support_labels (name, color, weight, position, created_at) VALUES (?, ?, ?, ?, ?)",
   ),
-  update: mutation("UPDATE support_labels SET name = ?, color = ? WHERE id = ?"),
+  update: mutation("UPDATE support_labels SET name = ?, color = ?, weight = ? WHERE id = ?"),
   remove: mutation("DELETE FROM support_labels WHERE id = ?"),
+  byName: selection<SupportLabelRow>(
+    "SELECT * FROM support_labels WHERE name = ? COLLATE NOCASE LIMIT 1",
+  ),
+  usage: scalar<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM support_request_labels WHERE label_id = ?",
+  ),
+};
+
+/**
+ * L'étiquette qui porte ce nom. Si elle a disparu — renommée, supprimée —,
+ * elle est recréée : une demande reçue par e-mail la porte toujours.
+ */
+export const etiquetteNommee = (name: string): SupportLabelRow => {
+  const deja = supportLabels.byName.get(name);
+  if (deja) return deja;
+  const modele = SUPPORT_URGENCY_LABELS.find((l) => l.name === name);
+  const { next } = supportLabels.nextPosition();
+  const { lastInsertRowid } = supportLabels.create.run(
+    name,
+    modele?.color ?? "red.6",
+    modele?.weight ?? 0,
+    next,
+    new Date().toISOString(),
+  );
+  return supportLabels.byId.get(lastInsertRowid)!;
+};
+
+const prioritesParPoids = selection<SupportLabelRow>(
+  `SELECT * FROM support_labels
+   WHERE name COLLATE NOCASE IN (SELECT value FROM json_each(?))
+   ORDER BY weight, position, id
+   LIMIT 1`,
+);
+
+/**
+ * Celle des étiquettes d'urgence qui pèse le moins, telle que les poids ont
+ * été réglés. S'il n'en reste aucune, la plus légère du modèle est recréée.
+ */
+export const prioriteLaPlusLegere = (): SupportLabelRow => {
+  const noms = SUPPORT_URGENCY_LABELS.map((l) => l.name);
+  const trouvee = prioritesParPoids.get(JSON.stringify(noms));
+  if (trouvee) return trouvee;
+  const modele = [...SUPPORT_URGENCY_LABELS].sort((a, b) => a.weight - b.weight)[0]!;
+  return etiquetteNommee(modele.name);
 };
 
 // --- Acteurs d'une demande -------------------------------------------------
@@ -80,24 +194,28 @@ export const replaceSupportActors = transaction((requestId: Id, userIds: Id[]) =
   for (const userId of userIds) ajouterActeur.run(requestId, userId);
 });
 
+/** Des acteurs ajoutés à une demande, sans retirer ceux qui y sont. */
+export const ajouterActeurs = transaction((requestId: Id, userIds: Id[]) => {
+  for (const userId of userIds) ajouterActeur.run(requestId, userId);
+});
+
 // --- Étiquettes posées sur une demande -------------------------------------
 
 const supprimerEtiquettes = mutation("DELETE FROM support_request_labels WHERE request_id = ?");
 const ajouterEtiquette = mutation(
   `INSERT OR IGNORE INTO support_request_labels (request_id, label_id)
-   SELECT ?, id FROM support_labels WHERE id = ? AND company_id = ?`,
+   SELECT ?, id FROM support_labels WHERE id = ?`,
 );
 
 /**
- * Une demande ne porte que les étiquettes de sa propre société : celles d'une
- * autre sont ignorées plutôt que refusées, comme les membres d'une carte.
+ * Les étiquettes d'une demande, remplacées en bloc. Un identifiant qui ne
+ * désigne aucune étiquette est ignoré plutôt que refusé, comme les membres
+ * d'une carte.
  */
-export const replaceSupportLabels = transaction(
-  (requestId: Id, labelIds: Id[], companyId: Id) => {
-    supprimerEtiquettes.run(requestId);
-    for (const labelId of labelIds) ajouterEtiquette.run(requestId, labelId, companyId);
-  },
-);
+export const replaceSupportLabels = transaction((requestId: Id, labelIds: Id[]) => {
+  supprimerEtiquettes.run(requestId);
+  for (const labelId of labelIds) ajouterEtiquette.run(requestId, labelId);
+});
 
 // --- Lecture d'un lot ------------------------------------------------------
 // Les acteurs, les étiquettes et le nombre d'échanges se lisent pour tout le
@@ -110,7 +228,7 @@ const etiquettesDesDemandes = selection<EtiquetteLieeRow>(
    FROM support_request_labels
    JOIN support_labels ON support_labels.id = support_request_labels.label_id
    WHERE support_request_labels.request_id IN (SELECT value FROM json_each(?))
-   ORDER BY support_labels.position, support_labels.id`,
+   ORDER BY support_labels.weight DESC, support_labels.position, support_labels.id`,
 );
 
 const acteursDesDemandes = selection<{ request_id: Id; id: Id; name: string; email: string }>(
@@ -150,7 +268,8 @@ export const withRelations = (rows: SupportRequestRow[]): SupportRequest[] => {
   const echanges = new Map<Id, number>();
   for (const row of echangesDesDemandes.all(ids)) echanges.set(row.request_id, row.count);
 
-  return rows.map((demande) => ({
+  // L'identifiant de l'e-mail ne sert qu'à l'import : il ne sort pas.
+  return rows.map(({ mail_id: _mailId, ...demande }) => ({
     ...demande,
     actors: acteurs.get(demande.id) ?? [],
     labels: etiquettes.get(demande.id) ?? [],
@@ -176,7 +295,7 @@ export const supportComments = {
   ),
   ofRequest: selection<WithAuthorColumns<SupportCommentRow>>(
     `${SUPPORT_COMMENT_SELECT} WHERE support_comments.request_id = ?
-     ORDER BY support_comments.created_at ASC`,
+     ORDER BY support_comments.created_at ASC, support_comments.id ASC`,
   ),
   create: mutation(
     `INSERT INTO support_comments (request_id, user_id, text, created_at, updated_at)
@@ -186,15 +305,158 @@ export const supportComments = {
     `INSERT INTO support_comments (request_id, user_id, text, system, created_at, updated_at)
      VALUES (?, ?, ?, 1, ?, ?)`,
   ),
+  // Le message d'un e-mail reçu : un fait, comme la création — il ne se
+  // retouche pas. Son auteur est le compte de l'expéditeur s'il en a un, son
+  // nom et son adresse sinon. Son corps est le HTML de l'e-mail, montré tel
+  // quel, et ses fichiers sont rangés avec lui.
+  createFromMail: mutation(
+    `INSERT INTO support_comments
+       (request_id, user_id, text, system, sender_name, sender_email, mail_id, format,
+        attachments, created_at, updated_at)
+     VALUES (?, ?, ?, 1, ?, ?, ?, 'email', ?, ?, ?)`,
+  ),
+  /** Les fichiers des messages d'une demande, avant de la supprimer. */
+  attachmentsOfRequest: selection<{ attachments: string }>(
+    "SELECT attachments FROM support_comments WHERE request_id = ? AND attachments != '[]'",
+  ),
   update: mutation("UPDATE support_comments SET text = ?, updated_at = ? WHERE id = ?"),
+  createInternal: mutation(
+    `INSERT INTO support_comments (request_id, user_id, text, internal, created_at, updated_at)
+     VALUES (?, ?, ?, 1, ?, ?)`,
+  ),
+  setMailStatus: mutation("UPDATE support_comments SET mail_status = ?, mail_to = ? WHERE id = ?"),
+  setMailCopies: mutation("UPDATE support_comments SET mail_cc = ?, mail_bcc = ? WHERE id = ?"),
+  /** Les pièces jointes d'une réponse, en JSON. */
+  setAttachments: mutation("UPDATE support_comments SET attachments = ? WHERE id = ?"),
   remove: mutation("DELETE FROM support_comments WHERE id = ?"),
 };
 
+/**
+ * Un commentaire et son auteur. Celui d'un e-mail reçu d'une personne sans
+ * compte n'a pas d'identifiant : il ne se choisit nulle part, il s'affiche.
+ */
+export const supportCommentOf = (
+  row: WithAuthorColumns<SupportCommentRow>,
+): SupportComment => {
+  const { sender_name, sender_email, mail_id: _mailId, attachments, ...reste } = row;
+  const comment = withAuthor({ ...reste, attachments: piecesJointes(attachments) });
+  if (comment.author || !sender_email) return comment;
+  return { ...comment, author: actorOf({ id: 0, name: sender_name, email: sender_email }) };
+};
+
 export const commentsOf = (requestId: Id): SupportComment[] =>
-  supportComments.ofRequest.all(requestId).map(withAuthor);
+  supportComments.ofRequest.all(requestId).map(supportCommentOf);
 
 /** La demande et tout ce qui l'accompagne, pour son tiroir. */
 export const supportRequestDetail = (row: SupportRequestRow): SupportRequestDetail => ({
   ...oneWithRelations(row),
   comments: commentsOf(row.id),
 });
+
+// --- Actions sur plusieurs demandes ----------------------------------------
+
+const fermer = mutation(
+  "UPDATE support_requests SET status = 'closed', updated_at = ? WHERE id = ?",
+);
+
+const recopierFil = mutation(
+  `INSERT INTO support_comments
+     (request_id, user_id, text, system, sender_name, sender_email, mail_status, mail_to,
+      mail_cc, mail_bcc, internal, mail_id, format, attachments, created_at, updated_at)
+   SELECT ?, user_id, text, system, sender_name, sender_email, mail_status, mail_to,
+          mail_cc, mail_bcc, internal, mail_id, format, attachments, created_at, updated_at
+   FROM support_comments WHERE request_id = ?`,
+);
+
+const reprendreActeurs = mutation(
+  `INSERT OR IGNORE INTO support_request_actors (request_id, user_id)
+   SELECT ?, user_id FROM support_request_actors WHERE request_id = ?`,
+);
+
+const reprendreEtiquettes = mutation(
+  `INSERT OR IGNORE INTO support_request_labels (request_id, label_id)
+   SELECT ?, label_id FROM support_request_labels WHERE request_id = ?`,
+);
+
+// Ce que la demande gardée n'a pas, elle le prend de celles qu'elle absorbe :
+// un objet, un expéditeur.
+const completer = mutation(
+  `UPDATE support_requests SET
+     subject = CASE WHEN subject = '' THEN :subject ELSE subject END,
+     sender_name = CASE WHEN sender_email = '' THEN :sender_name ELSE sender_name END,
+     sender_email = CASE WHEN sender_email = '' THEN :sender_email ELSE sender_email END
+   WHERE id = :id`,
+);
+
+const acteursDe = selection<{ user_id: Id }>(
+  "SELECT user_id FROM support_request_actors WHERE request_id = ?",
+);
+
+/**
+ * Ferme une demande, en le notant dans son fil. Une demande déjà fermée ne
+ * l'est pas une seconde fois.
+ */
+export const fermerDemande = (demande: SupportRequestRow, auteur: Id, note: string): void => {
+  if (demande.status === "closed") return;
+  const instant = new Date().toISOString();
+  fermer.run(instant, demande.id);
+  supportComments.createSystem.run(demande.id, auteur, note, instant, instant);
+};
+
+/**
+ * La fusion : la demande la plus récente reste, et reçoit les échanges, les
+ * acteurs et les étiquettes des autres. Celles-ci sont fermées, pas
+ * supprimées — leur fil reste lisible là où il était, et dit où il est parti.
+ */
+export const fusionnerDemandes = transaction(
+  (garde: SupportRequestRow, autres: SupportRequestRow[], auteur: Id, quand: string) => {
+    for (const autre of autres) {
+      completer.run({
+        id: garde.id,
+        subject: autre.subject,
+        sender_name: autre.sender_name,
+        sender_email: autre.sender_email,
+      });
+      recopierFil.run(garde.id, autre.id);
+      reprendreActeurs.run(garde.id, autre.id);
+      reprendreEtiquettes.run(garde.id, autre.id);
+      fermerDemande(autre, auteur, `Fusionnée dans ${supportTicketRef(garde.number)} le ${quand}`);
+    }
+    const instant = new Date().toISOString();
+    supportComments.createSystem.run(
+      garde.id,
+      auteur,
+      `${autres.map((a) => supportTicketRef(a.number)).join(", ")} ${
+        autres.length > 1 ? "fusionnées" : "fusionnée"
+      } ici le ${quand}`,
+      instant,
+      instant,
+    );
+    supportRequests.touch.run(instant, garde.id);
+  },
+);
+
+/**
+ * « Assigner à » : les comptes s'ajoutent aux acteurs de chaque demande, sans
+ * retirer ceux qui y sont déjà. Rend, pour chaque demande, les comptes qui
+ * viennent d'y arriver : ce sont eux qu'on prévient.
+ */
+export const assignerDemandes = transaction(
+  (demandes: SupportRequestRow[], userIds: Id[]): Map<Id, Id[]> => {
+    const arrivees = new Map<Id, Id[]>();
+    const instant = new Date().toISOString();
+    for (const demande of demandes) {
+      const deja = new Set(acteursDe.all(demande.id).map((r) => r.user_id));
+      const nouveaux: Id[] = [];
+      for (const userId of userIds) {
+        if (deja.has(userId)) continue;
+        if (ajouterActeur.run(demande.id, userId).changes) nouveaux.push(userId);
+      }
+      if (nouveaux.length) {
+        supportRequests.touch.run(instant, demande.id);
+        arrivees.set(demande.id, nouveaux);
+      }
+    }
+    return arrivees;
+  },
+);

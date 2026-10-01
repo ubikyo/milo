@@ -6,6 +6,17 @@
 // production peut avoir n'importe quel âge.
 
 import type { Database } from "better-sqlite3";
+import { SUPPORT_URGENCY_LABELS, allPermissions } from "@milo/shared";
+import { heureDeParis } from "../lib/time.js";
+
+/** Les jalons que tous les projets partageaient avant qu'ils suivent la catégorie. */
+const JALONS_HISTORIQUES = [
+  { value: 10, label: "Étude" },
+  { value: 20, label: "Devis" },
+  { value: 30, label: "Commande" },
+  { value: 50, label: "Déploiement" },
+  { value: 80, label: "Tests" },
+];
 
 interface ColumnInfo {
   name: string;
@@ -24,7 +35,179 @@ const sansClesEtrangeres = (db: Database, action: () => void): void => {
   }
 };
 
+/**
+ * Le rôle Administrateur existe toujours. Il est posé sur une base neuve comme
+ * sur une ancienne, et reposé après la restauration d'une sauvegarde qui n'en
+ * avait pas. Un rôle déjà nommé ainsi le devient plutôt que d'être doublé.
+ */
+export const assurerAdministrateur = (db: Database): void => {
+  if (db.prepare("SELECT 1 FROM roles WHERE is_admin = 1").get()) return;
+  const homonyme = db.prepare("SELECT id FROM roles WHERE name = ?").get("Administrateur") as
+    | { id: number }
+    | undefined;
+  if (homonyme) {
+    db.prepare("UPDATE roles SET is_admin = 1 WHERE id = ?").run(homonyme.id);
+  } else {
+    db.prepare("INSERT INTO roles (name, is_admin, permissions) VALUES (?, 1, ?)").run(
+      "Administrateur",
+      JSON.stringify(allPermissions()),
+    );
+  }
+};
+
+/**
+ * Les indicateurs sans section — rangés avant que les panneaux des
+ * statistiques en aient, ou revenus d'une sauvegarde de ce temps-là — passent
+ * ensemble dans une première section à largeur automatique, en gardant leur
+ * ordre : sans elle, le panneau ne les montrerait plus. Reposé après la
+ * restauration d'une sauvegarde, comme le rôle Administrateur.
+ */
+export const rattacherIndicateurs = (db: Database): void => {
+  for (const [table, panel] of [
+    ["support_indicators", "support"],
+    ["asset_indicators", "assets"],
+  ] as const) {
+    if (!db.prepare(`SELECT 1 FROM ${table} WHERE section_id IS NULL`).get()) continue;
+    db.transaction(() => {
+      const { lastInsertRowid } = db
+        .prepare(
+          `INSERT INTO indicator_sections (panel, position, created_at)
+           VALUES (?, (SELECT COALESCE(MIN(position), 0) - 1 FROM indicator_sections WHERE panel = ?), ?)`,
+        )
+        .run(panel, panel, new Date().toISOString());
+      db.prepare(`UPDATE ${table} SET section_id = ? WHERE section_id IS NULL`).run(lastInsertRowid);
+    })();
+  }
+};
+
+/** Posé une fois les références des projets et des cartes données par le compteur commun. */
+const REFERENCES_COMMUNES = "references_communes";
+/** Le compteur des références (repositories/references.ts). */
+const COMPTEUR_REFERENCES = "support_ticket_counter";
+
+const lireReglage = (db: Database, cle: string): unknown => {
+  const ligne = db.prepare("SELECT value FROM settings WHERE key = ?").get(cle) as
+    | { value: string }
+    | undefined;
+  try {
+    return ligne ? JSON.parse(ligne.value) : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const ecrireReglage = (db: Database, cle: string, valeur: unknown): void => {
+  db.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  ).run(cle, JSON.stringify(valeur));
+};
+
+/**
+ * Les projets et les cartes reçoivent leur référence « LMA- » du compteur des
+ * tickets. Ceux d'avant le compteur commun — les cartes se numérotaient alors
+ * par tableau, les projets pas du tout — sont renumérotés une fois, dans
+ * l'ordre de leur création, à la suite du dernier ticket. Ensuite, seul ce
+ * qui n'a pas de référence en reçoit une : un projet posé par la base de
+ * démonstration. Reposé après la restauration d'une sauvegarde, comme le rôle
+ * Administrateur : une sauvegarde d'avant le compteur commun se renumérote.
+ */
+export const numeroterReferences = (db: Database): void => {
+  const communes = lireReglage(db, REFERENCES_COMMUNES) === true;
+  const sansReference = communes ? "number = 0" : "1";
+  const elements = db
+    .prepare(
+      `SELECT 'project' AS sorte, id, created_at FROM projects WHERE ${sansReference}
+       UNION ALL
+       SELECT 'card' AS sorte, id, created_at FROM task_cards WHERE kind = 'card' AND ${sansReference}
+       ORDER BY created_at, id`,
+    )
+    .all() as { sorte: "project" | "card"; id: number }[];
+  if (communes && elements.length === 0) return;
+
+  db.transaction(() => {
+    const compteur = lireReglage(db, COMPTEUR_REFERENCES);
+    const { max } = db
+      .prepare(
+        communes
+          ? `SELECT MAX(
+               (SELECT COALESCE(MAX(number), 0) FROM support_requests),
+               (SELECT COALESCE(MAX(number), 0) FROM projects),
+               (SELECT COALESCE(MAX(number), 0) FROM task_cards)
+             ) AS max`
+          : "SELECT COALESCE(MAX(number), 0) AS max FROM support_requests",
+      )
+      .get() as { max: number };
+    let numero = Math.max(typeof compteur === "number" ? compteur : 0, max);
+    const projet = db.prepare("UPDATE projects SET number = ? WHERE id = ?");
+    const carte = db.prepare("UPDATE task_cards SET number = ? WHERE id = ?");
+    for (const { sorte, id } of elements) {
+      numero += 1;
+      (sorte === "project" ? projet : carte).run(numero, id);
+    }
+    // Un séparateur ne porte pas de référence.
+    if (!communes) db.exec("UPDATE task_cards SET number = 0 WHERE kind = 'separator'");
+    ecrireReglage(db, COMPTEUR_REFERENCES, numero);
+    ecrireReglage(db, REFERENCES_COMMUNES, true);
+  })();
+};
+
+/**
+ * Les modes Projet et Tâche montraient leur liste d'office : passés aux
+ * sections, ils en reçoivent une première, qui porte la liste, pour ne pas
+ * s'ouvrir vides. Posée une fois — le réglage s'en souvient : un panneau
+ * qu'on a vidé exprès le reste. Reposée après la restauration d'une
+ * sauvegarde d'avant les sections de ces modes.
+ */
+export const poserSectionsParDefaut = (db: Database): void => {
+  for (const [table, panel] of [
+    ["project_indicators", "projects"],
+    ["task_indicators", "tasks"],
+  ] as const) {
+    const cle = `${panel}_sections_posees`;
+    if (lireReglage(db, cle) === true) continue;
+    db.transaction(() => {
+      if (!db.prepare("SELECT 1 FROM indicator_sections WHERE panel = ?").get(panel)) {
+        const maintenant = new Date().toISOString();
+        const { lastInsertRowid } = db
+          .prepare(
+            "INSERT INTO indicator_sections (panel, position, created_at) VALUES (?, 0, ?)",
+          )
+          .run(panel, maintenant);
+        db.prepare(
+          `INSERT INTO ${table} (section_id, type, config, position, created_at)
+           VALUES (?, 'list', '{}', 0, ?)`,
+        ).run(lastInsertRowid, maintenant);
+      }
+      ecrireReglage(db, cle, true);
+    })();
+  }
+};
+
 export const migrate = (db: Database): void => {
+  // Bases d'avant Entra : les comptes gardent leur ligne — ils sont acteurs,
+  // auteurs, membres — et s'y rattachent par leur e-mail à leur première
+  // connexion par Microsoft. Leurs mots de passe ne servent plus.
+  const colonnesComptes = columns(db, "users");
+  if (colonnesComptes.length > 0 && !colonnesComptes.includes("entra_id")) {
+    db.exec("ALTER TABLE users ADD COLUMN entra_id TEXT NOT NULL DEFAULT ''");
+    db.exec("ALTER TABLE users ADD COLUMN entra_groups TEXT NOT NULL DEFAULT '[]'");
+    db.exec("ALTER TABLE users ADD COLUMN system INTEGER NOT NULL DEFAULT 0");
+    db.exec("UPDATE users SET password_hash = ''");
+    db.exec("DELETE FROM sessions");
+  }
+  // Les rôles par compte ont précédé ceux par utilisateur ou groupe Entra.
+  db.exec("DROP TABLE IF EXISTS user_company_roles");
+
+  // Bases d'avant le support des sociétés : son adresse e-mail et son site.
+  const companyColumns = columns(db, "companies");
+  if (!companyColumns.includes("support_email")) {
+    db.exec("ALTER TABLE companies ADD COLUMN support_email TEXT NOT NULL DEFAULT ''");
+  }
+  if (!companyColumns.includes("support_url")) {
+    db.exec("ALTER TABLE companies ADD COLUMN support_url TEXT NOT NULL DEFAULT ''");
+  }
+
   // Bases créées avant l'ajout des sociétés : on ajoute la colonne manquante.
   const projectColumns = columns(db, "projects");
   if (!projectColumns.includes("company_id")) {
@@ -52,6 +235,15 @@ export const migrate = (db: Database): void => {
   // projets, comme avant.
   if (userColumns.length > 0 && !userColumns.includes("default_mode")) {
     db.exec("ALTER TABLE users ADD COLUMN default_mode TEXT NOT NULL DEFAULT 'projects'");
+  }
+
+  // Comptes d'avant que la liste devienne un widget des sections : le
+  // panneau des statistiques ne se montrait ou ne se cachait que par eux. Il
+  // n'y a plus de panneau à part, le réglage s'en va.
+  for (const colonne of ["support_stats", "asset_stats"]) {
+    if (columns(db, "users").includes(colonne)) {
+      db.exec(`ALTER TABLE users DROP COLUMN ${colonne}`);
+    }
   }
 
   // Sessions ouvertes avant qu'elles expirent : elles ne valaient que par leur
@@ -245,6 +437,11 @@ export const migrate = (db: Database): void => {
     db.exec("ALTER TABLE boards ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0");
   }
 
+  // Tableaux créés avant l'option « Verrouillé » : leurs listes restent libres.
+  if (boardColumns.length > 0 && !boardColumns.includes("is_locked")) {
+    db.exec("ALTER TABLE boards ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0");
+  }
+
   // Tableaux de projets créés avant l'option « Privé » : même règle que pour
   // ceux des tâches — ouverts à tous, sans auteur connu.
   const projectBoardColumns = columns(db, "project_boards");
@@ -265,6 +462,18 @@ export const migrate = (db: Database): void => {
   // Cartes créées avant l'échéance : elles n'en portent pas.
   if (cardColumns.length > 0 && !cardColumns.includes("due_date")) {
     db.exec("ALTER TABLE task_cards ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+  }
+
+  // Catégories d'accès créées avant le verrou : elles restent ouvertes.
+  const accessCategoryColumns = columns(db, "access_categories");
+  if (accessCategoryColumns.length > 0 && !accessCategoryColumns.includes("is_locked")) {
+    db.exec("ALTER TABLE access_categories ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0");
+  }
+
+  // Catégories d'accès créées avant que l'écart de leurs colonnes se règle :
+  // elles prennent l'écart par défaut, et le tiroir permet de le revoir.
+  if (accessCategoryColumns.length > 0 && !accessCategoryColumns.includes("gap")) {
+    db.exec("ALTER TABLE access_categories ADD COLUMN gap INTEGER NOT NULL DEFAULT 20");
   }
 
   // Sections créées quand elles portaient encore un nom : la largeur seule les
@@ -289,6 +498,207 @@ export const migrate = (db: Database): void => {
     });
   }
 
+  // Demandes d'avant l'import des e-mails : ni objet, ni expéditeur, ni
+  // statut « Ouvert ». SQLite ne sait pas retoucher une contrainte CHECK : la
+  // table est reconstruite, en conservant les identifiants pour que les
+  // acteurs, les étiquettes et les fils restent accrochés à leur demande.
+  if (!columns(db, "support_requests").includes("mail_id")) {
+    sansClesEtrangeres(
+      db,
+      db.transaction(() => {
+        db.exec(`
+          CREATE TABLE support_requests_migration (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+            subject TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'open'
+              CHECK (status IN ('open', 'unresolved', 'pending', 'resolved', 'closed')),
+            due_date TEXT NOT NULL DEFAULT '',
+            sender_name TEXT NOT NULL DEFAULT '',
+            sender_email TEXT NOT NULL DEFAULT '',
+            mail_id TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+          INSERT INTO support_requests_migration (id, company_id, status, due_date, created_at, updated_at)
+            SELECT id, company_id, status, due_date, created_at, updated_at FROM support_requests;
+          DROP TABLE support_requests;
+          ALTER TABLE support_requests_migration RENAME TO support_requests;
+        `);
+      }),
+    );
+  }
+  // Demandes d'avant les numéros de ticket : elles sont numérotées dans
+  // l'ordre où elles sont arrivées, et le compteur repart du dernier.
+  if (!columns(db, "support_requests").includes("number")) {
+    db.transaction(() => {
+      db.exec("ALTER TABLE support_requests ADD COLUMN number INTEGER NOT NULL DEFAULT 0");
+      const demandes = db
+        .prepare("SELECT id FROM support_requests ORDER BY created_at, id")
+        .all() as { id: number }[];
+      const numeroter = db.prepare("UPDATE support_requests SET number = ? WHERE id = ?");
+      demandes.forEach(({ id }, i) => numeroter.run(i + 1, id));
+      db.prepare(
+        `INSERT INTO settings (key, value) VALUES ('support_ticket_counter', ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      ).run(String(demandes.length));
+    })();
+  }
+  // Étiquettes du support d'avant leur mise en commun : chaque société avait
+  // les siennes. Celles qui portent le même nom n'en font plus qu'une — la
+  // plus ancienne, qui reprend les demandes des autres —, et la table perd sa
+  // colonne de société. SQLite ne sait pas retirer une colonne citée par une
+  // clé étrangère : la table est reconstruite, identifiants conservés.
+  if (columns(db, "support_labels").includes("company_id")) {
+    sansClesEtrangeres(
+      db,
+      db.transaction(() => {
+        const etiquettes = db
+          .prepare("SELECT id, name FROM support_labels ORDER BY company_id, position, id")
+          .all() as { id: number; name: string }[];
+        const gardee = new Map<string, number>();
+        const reprendre = db.prepare(
+          `INSERT OR IGNORE INTO support_request_labels (request_id, label_id)
+           SELECT request_id, ? FROM support_request_labels WHERE label_id = ?`,
+        );
+        const oublier = db.prepare("DELETE FROM support_request_labels WHERE label_id = ?");
+        const retirer = db.prepare("DELETE FROM support_labels WHERE id = ?");
+        for (const { id, name } of etiquettes) {
+          const cle = name.trim().toLowerCase();
+          const deja = gardee.get(cle);
+          if (deja === undefined) {
+            gardee.set(cle, id);
+            continue;
+          }
+          reprendre.run(deja, id);
+          oublier.run(id);
+          retirer.run(id);
+        }
+        db.exec(`
+          DROP INDEX IF EXISTS idx_support_labels_company;
+          CREATE TABLE support_labels_migration (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            color TEXT NOT NULL DEFAULT 'blue.6',
+            position INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+          );
+          INSERT INTO support_labels_migration (id, name, color, position, created_at)
+            SELECT id, name, color, position, created_at FROM support_labels;
+          DROP TABLE support_labels;
+          ALTER TABLE support_labels_migration RENAME TO support_labels;
+        `);
+        // Une seule liste désormais : les rangs repartent de zéro, dans
+        // l'ordre où elles se suivaient.
+        const ranger = db.prepare("UPDATE support_labels SET position = ? WHERE id = ?");
+        (db.prepare("SELECT id FROM support_labels ORDER BY position, id").all() as { id: number }[])
+          .forEach(({ id }, rang) => ranger.run(rang, id));
+      }),
+    );
+  }
+
+  // Étiquettes d'avant le poids : toutes pèsent zéro, sauf celles d'urgence,
+  // qui reprennent le leur.
+  if (!columns(db, "support_labels").includes("weight")) {
+    db.transaction(() => {
+      db.exec("ALTER TABLE support_labels ADD COLUMN weight INTEGER NOT NULL DEFAULT 0");
+      const peser = db.prepare("UPDATE support_labels SET weight = ? WHERE name = ? COLLATE NOCASE");
+      for (const { name, weight } of SUPPORT_URGENCY_LABELS) peser.run(weight, name);
+    })();
+  }
+
+  // Étiquettes de projets d'avant le poids : toutes pèsent zéro.
+  if (!columns(db, "project_labels").includes("weight")) {
+    db.exec("ALTER TABLE project_labels ADD COLUMN weight INTEGER NOT NULL DEFAULT 0");
+  }
+
+  // Bases d'avant les étiquettes d'urgence : le support les reçoit une fois.
+  // Le réglage le note — une étiquette supprimée ensuite ne revient pas à
+  // chaque démarrage.
+  const URGENCES = "support_urgency_labels";
+  if (!db.prepare("SELECT 1 FROM settings WHERE key = ?").get(URGENCES)) {
+    db.transaction(() => {
+      const existe = db.prepare("SELECT 1 FROM support_labels WHERE name = ? COLLATE NOCASE");
+      const rang = db.prepare(
+        "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM support_labels",
+      );
+      const creer = db.prepare(
+        "INSERT INTO support_labels (name, color, weight, position, created_at) VALUES (?, ?, ?, ?, ?)",
+      );
+      const instant = new Date().toISOString();
+      for (const { name, color, weight } of SUPPORT_URGENCY_LABELS) {
+        if (existe.get(name)) continue;
+        creer.run(name, color, weight, (rang.get() as { next: number }).next, instant);
+      }
+      db.prepare("INSERT INTO settings (key, value) VALUES (?, 'true')").run(URGENCES);
+    })();
+  }
+
+  const supportCommentColumns = columns(db, "support_comments");
+  if (!supportCommentColumns.includes("sender_email")) {
+    db.exec("ALTER TABLE support_comments ADD COLUMN sender_name TEXT NOT NULL DEFAULT ''");
+    db.exec("ALTER TABLE support_comments ADD COLUMN sender_email TEXT NOT NULL DEFAULT ''");
+  }
+  // La note « Demande reçue par e-mail le … » ouvrait le fil des demandes
+  // importées : l'e-mail qui suit dit déjà tout, elle s'en va — copies des
+  // fusions comprises.
+  db.prepare(
+    `DELETE FROM support_comments
+     WHERE system = 1 AND user_id IS NULL AND text LIKE 'Demande reçue par e-mail le %'`,
+  ).run();
+
+  // Fils d'avant les commentaires internes : tout y était échange.
+  if (!columns(db, "support_comments").includes("internal")) {
+    db.exec("ALTER TABLE support_comments ADD COLUMN internal INTEGER NOT NULL DEFAULT 0");
+  }
+
+  // Messages d'avant les réponses par e-mail : aucun n'est parti.
+  if (!columns(db, "support_comments").includes("mail_status")) {
+    db.exec("ALTER TABLE support_comments ADD COLUMN mail_status TEXT NOT NULL DEFAULT ''");
+    db.exec("ALTER TABLE support_comments ADD COLUMN mail_to TEXT NOT NULL DEFAULT ''");
+  }
+
+  // Messages d'avant les e-mails montrés tels quels : du HTML de l'éditeur,
+  // sans fichier ni identifiant d'e-mail.
+  if (!columns(db, "support_comments").includes("format")) {
+    db.exec("ALTER TABLE support_comments ADD COLUMN mail_id TEXT NOT NULL DEFAULT ''");
+    db.exec("ALTER TABLE support_comments ADD COLUMN format TEXT NOT NULL DEFAULT ''");
+    db.exec("ALTER TABLE support_comments ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]'");
+  }
+  // Réponses d'avant la copie : personne n'y était en copie.
+  if (!columns(db, "support_comments").includes("mail_cc")) {
+    db.exec("ALTER TABLE support_comments ADD COLUMN mail_cc TEXT NOT NULL DEFAULT ''");
+    db.exec("ALTER TABLE support_comments ADD COLUMN mail_bcc TEXT NOT NULL DEFAULT ''");
+  }
+  if (!columns(db, "support_requests").includes("conversation_id")) {
+    db.exec("ALTER TABLE support_requests ADD COLUMN conversation_id TEXT NOT NULL DEFAULT ''");
+  }
+
+  // Postes inventoriés avant qu'on affiche qui s'y connecte : la colonne
+  // s'ajoute vide, et le prochain inventaire de chaque poste la remplit.
+  const assetColumns = columns(db, "assets");
+  if (assetColumns.length > 0 && !assetColumns.includes("last_user")) {
+    db.exec("ALTER TABLE assets ADD COLUMN last_user TEXT NOT NULL DEFAULT ''");
+  }
+
+  // Postes datés de la réception de leur inventaire, avant qu'on prenne
+  // l'heure que l'agent y inscrit (ACCESSLOG/LOGDATE). Seule cette valeur est
+  // extraite du JSON : relire les inventaires entiers à chaque démarrage
+  // coûterait pour rien. Un poste déjà à jour n'est pas réécrit.
+  if (assetColumns.length > 0) {
+    const datations = db
+      .prepare(
+        `SELECT id, last_inventory, json_extract(content, '$.ACCESSLOG.LOGDATE') AS logdate
+         FROM assets WHERE json_valid(content)`,
+      )
+      .all() as { id: number; last_inventory: string; logdate: unknown }[];
+    const dater = db.prepare("UPDATE assets SET last_inventory = ? WHERE id = ?");
+    for (const { id, last_inventory, logdate } of datations) {
+      const date = typeof logdate === "string" ? heureDeParis(logdate) : null;
+      if (date && date !== last_inventory) dater.run(date, id);
+    }
+  }
+
   // La notion de bâtiment a été retirée : un projet n'en cite plus, et la
   // table s'en va avec la colonne. SQLite refuse de retirer une colonne
   // indexée ou citée par une clé étrangère : l'index tombe d'abord, et les
@@ -301,4 +711,156 @@ export const migrate = (db: Database): void => {
   }
   db.exec("DROP INDEX IF EXISTS idx_buildings_company");
   db.exec("DROP TABLE IF EXISTS buildings");
+
+  // Catégories d'avant les jalons propres à chacune : elles reprennent ceux
+  // que le curseur d'avancement affichait jusque-là pour tous les projets.
+  const colonnesCategories = columns(db, "categories");
+  if (colonnesCategories.length > 0 && !colonnesCategories.includes("milestones")) {
+    db.exec("ALTER TABLE categories ADD COLUMN milestones TEXT NOT NULL DEFAULT '[]'");
+    db.prepare("UPDATE categories SET milestones = ?").run(JSON.stringify(JALONS_HISTORIQUES));
+  }
+
+  // Bases d'avant les types de jalons : les jalons vivaient sur la catégorie.
+  // Chaque liste de jalons distincte devient un type, et les projets reçoivent
+  // celui de leur catégorie : le curseur de chacun garde les marques qu'il
+  // montrait. Les catégories qui portent la même liste partagent le type —
+  // celles restées sur les jalons historiques, presque toutes, se retrouvent
+  // sous « Standard » ; une liste retouchée prend le nom de sa catégorie.
+  if (!columns(db, "projects").includes("milestone_type_id")) {
+    db.exec(
+      "ALTER TABLE projects ADD COLUMN milestone_type_id INTEGER REFERENCES milestone_types(id) ON DELETE SET NULL",
+    );
+    db.transaction(() => {
+      const anciennes = db
+        .prepare(
+          "SELECT id, name, milestones FROM categories WHERE milestones NOT IN ('', '[]') ORDER BY id",
+        )
+        .all() as { id: number; name: string; milestones: string }[];
+      const parNom = db.prepare("SELECT id FROM milestone_types WHERE name = ?");
+      const creer = db.prepare("INSERT INTO milestone_types (name, milestones) VALUES (?, ?)");
+      const rattacher = db.prepare("UPDATE projects SET milestone_type_id = ? WHERE category_id = ?");
+      const historiques = JSON.stringify(JALONS_HISTORIQUES);
+      const parListe = new Map<string, number>();
+
+      for (const categorie of anciennes) {
+        let liste: string;
+        try {
+          liste = JSON.stringify(JSON.parse(categorie.milestones));
+        } catch {
+          continue;
+        }
+        let typeId = parListe.get(liste);
+        if (typeId === undefined) {
+          const voulu = liste === historiques ? "Standard" : categorie.name;
+          // Un nom déjà pris par une autre liste reçoit un numéro.
+          let nom = voulu;
+          for (let n = 2; parNom.get(nom); n += 1) nom = `${voulu} ${n}`;
+          typeId = Number(creer.run(nom, liste).lastInsertRowid);
+          parListe.set(liste, typeId);
+        }
+        rattacher.run(typeId, categorie.id);
+      }
+    })();
+  }
+
+  // Bases d'avant les notifications de suppression.
+  if (!columns(db, "notifications").includes("deleted")) {
+    db.exec("ALTER TABLE notifications ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0");
+  }
+
+  // Statuts d'avant « Nouveau » : « Non résolu » disparaît. Ses demandes
+  // passent « Ouvert » — elles avaient été vues, elles ne sont pas nouvelles —
+  // et la contrainte CHECK est réécrite. SQLite ne sait pas la retoucher : la
+  // table est reconstruite depuis sa propre définition, identifiants
+  // conservés ; ses index sont reposés ensuite (db/index.ts, INDEXES).
+  const definition = (
+    db
+      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'support_requests'")
+      .get() as { sql: string } | undefined
+  )?.sql;
+  if (definition && !definition.includes("'new'")) {
+    sansClesEtrangeres(
+      db,
+      db.transaction(() => {
+        db.exec("UPDATE support_requests SET status = 'open' WHERE status = 'unresolved'");
+        const nouvelle = definition
+          .replace(/CREATE TABLE\s+"?support_requests"?/i, "CREATE TABLE support_requests_migration")
+          .replace(/CHECK\s*\(\s*status IN \([^)]*\)\s*\)/i, "CHECK (status IN ('new', 'open', 'pending', 'resolved', 'closed'))")
+          .replace(/status TEXT NOT NULL DEFAULT 'open'/i, "status TEXT NOT NULL DEFAULT 'new'");
+        const liste = columns(db, "support_requests").map((c) => `"${c}"`).join(", ");
+        db.exec(nouvelle);
+        db.exec(`INSERT INTO support_requests_migration (${liste}) SELECT ${liste} FROM support_requests`);
+        db.exec("DROP TABLE support_requests");
+        db.exec("ALTER TABLE support_requests_migration RENAME TO support_requests");
+
+        // Un ordre d'onglets rangé perd « Non résolu » et reçoit « Nouveau » en
+        // tête : c'est là qu'arrivent les demandes.
+        const rangee = db
+          .prepare("SELECT value FROM settings WHERE key = 'tab_order_support'")
+          .get() as { value: string } | undefined;
+        if (rangee) {
+          let ordre: unknown;
+          try {
+            ordre = JSON.parse(rangee.value);
+          } catch {
+            ordre = [];
+          }
+          const valeurs = Array.isArray(ordre) ? ordre.filter((v) => v !== "unresolved" && v !== "new") : [];
+          db.prepare("UPDATE settings SET value = ? WHERE key = 'tab_order_support'").run(
+            JSON.stringify(["new", ...valeurs]),
+          );
+        }
+      }),
+    );
+  }
+
+  // Indicateurs d'avant les sections des panneaux des statistiques : la
+  // colonne s'ajoute, puis ils rejoignent une première section.
+  for (const table of ["support_indicators", "asset_indicators"]) {
+    if (!columns(db, table).includes("section_id")) {
+      db.exec(
+        `ALTER TABLE ${table} ADD COLUMN section_id INTEGER REFERENCES indicator_sections(id) ON DELETE CASCADE`,
+      );
+    }
+  }
+  rattacherIndicateurs(db);
+
+  // Sections d'avant les modes Projet et Tâche : la contrainte CHECK de leur
+  // panneau ne connaît que le Support et les Assets. SQLite ne sait pas la
+  // retoucher : la table est reconstruite depuis sa propre définition,
+  // identifiants conservés ; ses index sont reposés ensuite (INDEXES).
+  const sections = (
+    db
+      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'indicator_sections'")
+      .get() as { sql: string } | undefined
+  )?.sql;
+  if (sections && !sections.includes("'projects'")) {
+    sansClesEtrangeres(
+      db,
+      db.transaction(() => {
+        const nouvelle = sections
+          .replace(/CREATE TABLE\s+"?indicator_sections"?/i, "CREATE TABLE indicator_sections_migration")
+          .replace(
+            /CHECK\s*\(\s*panel IN \([^)]*\)\s*\)/i,
+            "CHECK (panel IN ('support', 'assets', 'projects', 'tasks'))",
+          );
+        const liste = columns(db, "indicator_sections").map((c) => `"${c}"`).join(", ");
+        db.exec(nouvelle);
+        db.exec(
+          `INSERT INTO indicator_sections_migration (${liste}) SELECT ${liste} FROM indicator_sections`,
+        );
+        db.exec("DROP TABLE indicator_sections");
+        db.exec("ALTER TABLE indicator_sections_migration RENAME TO indicator_sections");
+      }),
+    );
+  }
+
+  // Bases d'avant les références des projets.
+  if (!columns(db, "projects").includes("number")) {
+    db.exec("ALTER TABLE projects ADD COLUMN number INTEGER NOT NULL DEFAULT 0");
+  }
+  numeroterReferences(db);
+  poserSectionsParDefaut(db);
+
+  assurerAdministrateur(db);
 };

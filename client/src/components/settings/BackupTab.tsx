@@ -1,4 +1,4 @@
-import { Button, FileButton, Group, Stack, Text } from "@mantine/core";
+import { Button, FileButton, Group, Stack, Text, Title } from "@mantine/core";
 import { IconDownload, IconUpload } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useCallback, useEffect, useState } from "react";
@@ -45,7 +45,9 @@ export default function BackupTab() {
   const [error, setError] = useState<string | null>(null);
   // Laquelle des deux opérations est en cours : chacune a son bouton, et
   // aucune des deux ne doit laisser croire que l'autre travaille.
-  const [enCours, setEnCours] = useState<"telechargement" | "restauration" | null>(null);
+  const [enCours, setEnCours] = useState<
+    "telechargement" | "restauration" | null
+  >(null);
 
   const reload = useCallback(async () => {
     try {
@@ -110,13 +112,16 @@ export default function BackupTab() {
             )}
             {ligne(
               "Dernière restauration",
-              info.last_restore ? dayjs(info.last_restore).format("DD/MM/YYYY HH:mm") : "Aucune",
+              info.last_restore
+                ? dayjs(info.last_restore).format("DD/MM/YYYY HH:mm")
+                : "Aucune",
             )}
           </>
         )}
 
         <Group mt="xs">
           <Button
+            color="teal"
             leftSection={<IconDownload size={16} />}
             onClick={telecharger}
             loading={enCours === "telechargement"}
@@ -128,9 +133,11 @@ export default function BackupTab() {
       </Stack>
 
       <Stack gap="xs">
-        <Text size="sm" fw={500}>
+        {/* Même titre que celui du panneau (« Sauvegarde », SettingsModal) :
+            la restauration est une section à part entière. */}
+        <Title order={4} pt={30}>
           Restaurer
-        </Text>
+        </Title>
 
         <Group mt="xs">
           <FileButton onChange={setARestaurer} accept=".gz,application/gzip">
@@ -142,7 +149,9 @@ export default function BackupTab() {
                 loading={enCours === "restauration"}
                 disabled={enCours === "telechargement"}
               >
-                {enCours === "restauration" ? "Restauration en cours…" : "Choisir une sauvegarde…"}
+                {enCours === "restauration"
+                  ? "Restauration en cours…"
+                  : "Choisir une sauvegarde…"}
               </Button>
             )}
           </FileButton>
@@ -151,8 +160,9 @@ export default function BackupTab() {
         {resultat && (
           <SuccessAlert mt="xs">
             <Text size="sm">
-              Restauration effectuée : {resultat.tables} tables, {resultat.rows} lignes et{" "}
-              {resultat.medias} fichier{resultat.medias > 1 ? "s" : ""} remis en place.
+              Restauration effectuée : {resultat.tables} tables, {resultat.rows}{" "}
+              lignes et {resultat.medias} fichier
+              {resultat.medias > 1 ? "s" : ""} remis en place.
             </Text>
             <Button size="xs" mt="sm" onClick={() => window.location.reload()}>
               Recharger Milo
@@ -168,9 +178,10 @@ export default function BackupTab() {
         title="Restaurer la sauvegarde"
         message={
           <>
-            « {aRestaurer?.name} » va remplacer l'intégralité du contenu de Milo. Tout ce qui a été
-            créé ou modifié depuis cette sauvegarde sera perdu, pour vous comme pour les autres
-            personnes connectées. Cette action est irréversible.
+            « {aRestaurer?.name} » va remplacer l'intégralité du contenu de
+            Milo. Tout ce qui a été créé ou modifié depuis cette sauvegarde sera
+            perdu, pour vous comme pour les autres personnes connectées. Cette
+            action est irréversible.
           </>
         }
         confirmLabel="Restaurer"

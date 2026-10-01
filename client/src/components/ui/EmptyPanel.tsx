@@ -37,8 +37,9 @@ export default function EmptyPanel({
       // reçue en propriété et jetée.
       title={message}
       // Le titre de Mantine est en demi-gras (600) : ici le message se lit
-      // comme une phrase, pas comme un titre.
-      styles={{ title: { fontWeight: 400 } }}
+      // comme une phrase, pas comme un titre. Sa taille ne suit pas « size »
+      // (Mantine va jusqu'au xl) : même corps de texte sur tous les écrans vides.
+      styles={{ title: { fontWeight: 400, fontSize: "var(--mantine-font-size-md)" } }}
       // Centrée verticalement dans la hauteur qu'elle occupe.
       style={fill ? { flex: 1, minHeight: 0, justifyContent: "center" } : undefined}
     >

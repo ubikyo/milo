@@ -11,7 +11,7 @@ import type { CopyResult, Id, Resource } from "@milo/shared";
 import { DEFAULT_LABEL_COLOR, isLabelColor } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { LabelRow, NextRow, UserRow } from "../db/rows.js";
-import { badRequest, orNotFound, requireText } from "../lib/http.js";
+import { badRequest, orNotFound, refuserSiUtilise, requireText } from "../lib/http.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { boardOuvert } from "../repositories/boards.js";
@@ -30,9 +30,23 @@ interface LabelTable {
    * côtés, et ne veut pas d'un identifiant reçu tel quel.
    */
   verifierTableau: (boardId: unknown, user: UserRow) => Id;
+  /** Vrai quand ces étiquettes portent un poids : celles des projets seules. */
+  avecPoids?: boolean;
 }
 
-const creerRoutes = ({ table, touched, verifierTableau }: LabelTable): Router => {
+/** Le poids reçu : un entier, positif ou non. */
+const poidsEtiquette = (valeur: unknown): number => {
+  const poids = Number(valeur);
+  if (!Number.isInteger(poids)) badRequest("Le poids doit être un nombre entier");
+  return poids;
+};
+
+const creerRoutes = ({
+  table,
+  touched,
+  verifierTableau,
+  avecPoids = false,
+}: LabelTable): Router => {
   const parId = selection<LabelRow>(`SELECT * FROM ${table} WHERE id = ?`);
   const duTableau = selection<LabelRow>(
     `SELECT * FROM ${table} WHERE board_id = ? ORDER BY position, id`,
@@ -40,14 +54,37 @@ const creerRoutes = ({ table, touched, verifierTableau }: LabelTable): Router =>
   const rangSuivant = scalar<NextRow>(
     `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM ${table} WHERE board_id = ?`,
   );
-  const creer = mutation(
-    `INSERT INTO ${table} (board_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?)`,
+  // Sans poids, la colonne n'existe pas : on n'écrit que ce que la table porte.
+  const insertion = mutation(
+    avecPoids
+      ? `INSERT INTO ${table} (board_id, name, color, position, created_at, weight) VALUES (?, ?, ?, ?, ?, ?)`
+      : `INSERT INTO ${table} (board_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?)`,
   );
-  const modifier = mutation(`UPDATE ${table} SET name = ?, color = ? WHERE id = ?`);
+  const creer = {
+    run: (boardId: unknown, name: string, color: string, rang: number, instant: string, poids = 0) =>
+      avecPoids
+        ? insertion.run(boardId, name, color, rang, instant, poids)
+        : insertion.run(boardId, name, color, rang, instant),
+  };
+  const miseAJour = mutation(
+    avecPoids
+      ? `UPDATE ${table} SET name = ?, color = ?, weight = ? WHERE id = ?`
+      : `UPDATE ${table} SET name = ?, color = ? WHERE id = ?`,
+  );
+  const modifier = {
+    run: (name: string, color: string, poids: number, id: Id) =>
+      avecPoids ? miseAJour.run(name, color, poids, id) : miseAJour.run(name, color, id),
+  };
   const deMemeNom = selection<LabelRow>(
     `SELECT * FROM ${table} WHERE board_id = ? AND name = ? COLLATE NOCASE LIMIT 1`,
   );
   const supprimer = mutation(`DELETE FROM ${table} WHERE id = ?`);
+  // Ce qui porte l'étiquette : des cartes, ou des projets.
+  const utilisations = scalar<{ count: number }>(
+    table === "labels"
+      ? "SELECT COUNT(*) AS count FROM card_labels WHERE label_id = ?"
+      : "SELECT COUNT(*) AS count FROM project_label_links WHERE label_id = ?",
+  );
 
   /**
    * Les étiquettes d'un tableau posées dans un autre. Celles qui y portent
@@ -66,7 +103,7 @@ const creerRoutes = ({ table, touched, verifierTableau }: LabelTable): Router =>
         skipped += 1;
         continue;
       }
-      creer.run(cible, label.name, label.color, rang, timestamp);
+      creer.run(cible, label.name, label.color, rang, timestamp, label.weight ?? 0);
       rang += 1;
       copied += 1;
     }
@@ -91,9 +128,10 @@ const creerRoutes = ({ table, touched, verifierTableau }: LabelTable): Router =>
     if (!boardId) badRequest("Le tableau est requis");
     if (!isLabelColor(color)) badRequest("Couleur inconnue");
     verifierTableau(boardId, req.user);
+    const poids = poidsEtiquette(req.body.weight ?? 0);
 
     const { next } = rangSuivant(boardId);
-    const { lastInsertRowid } = creer.run(boardId, name, color, next, now());
+    const { lastInsertRowid } = creer.run(boardId, name, color, next, now(), poids);
     res.status(201).json(parId.get(lastInsertRowid));
   });
 
@@ -119,14 +157,16 @@ const creerRoutes = ({ table, touched, verifierTableau }: LabelTable): Router =>
     const name = requireText(req.body.name ?? existing.name, "Le nom de l'étiquette est requis");
     const color = req.body.color ?? existing.color;
     if (!isLabelColor(color)) badRequest("Couleur inconnue");
+    const poids = poidsEtiquette(req.body.weight ?? existing.weight ?? 0);
 
-    modifier.run(name, color, existing.id);
+    modifier.run(name, color, poids, existing.id);
     res.json(parId.get(existing.id));
   });
 
   routes.delete("/:id", (req, res) => {
     const existing = orNotFound(parId.get(req.params.id), ETIQUETTE_INTROUVABLE);
     verifierTableau(existing.board_id, req.user);
+    refuserSiUtilise(existing.name, utilisations(existing.id).count);
 
     supprimer.run(existing.id);
     res.status(204).end();
@@ -148,4 +188,5 @@ export const projectLabelRoutes = creerRoutes({
   table: "project_labels",
   touched: ["project-labels", "projects"],
   verifierTableau: (boardId, user) => projectBoardOuvert(boardId, user).id,
+  avecPoids: true,
 });

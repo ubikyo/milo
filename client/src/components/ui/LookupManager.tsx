@@ -1,10 +1,10 @@
-import { ActionIcon, Group, Stack, Text, TextInput, UnstyledButton } from "@mantine/core";
+import { Stack, Text, TextInput, UnstyledButton } from "@mantine/core";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
-import { RED } from "../../themes/colors";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import ErrorAlert from "./ErrorAlert";
 import ListItems from "./ListItems";
+import type { RowAction } from "./ListItems";
 import type { ComponentType, ReactNode } from "react";
 
 /**
@@ -37,6 +37,20 @@ interface LookupManagerProps {
   emptyText?: ReactNode;
   entityLabel: string;
   maxRows?: number;
+  minRows?: number;
+  /**
+   * Des gestes propres à une ressource, en tête du menu de la ligne, avant
+   * « Modifier » et « Supprimer » — les jalons d'un type de jalons, par
+   * exemple.
+   */
+  renderActions?: (item: LookupItem) => RowAction[];
+  /**
+   * Des étiquettes toujours visibles, au bord droit de la ligne — ce qu'une
+   * société a de configuré, par exemple.
+   */
+  renderTags?: (item: LookupItem) => ReactNode;
+  /** Sans elle, tout se supprime ; le rôle administrateur, lui, reste. */
+  canDelete?: (item: LookupItem) => boolean;
 }
 
 /**
@@ -47,24 +61,30 @@ interface LookupManagerProps {
 function SuppressionMessage({ item }: { item: LookupItem | null }) {
   if (!item) return null;
   const projets = item.project_count ?? 0;
-  const pluriel = (n: number) => (n > 1 ? "s" : "");
 
-  return (
+  // Un élément encore utilisé ne se supprime pas : le serveur refuse, et dit
+  // par combien de ressources. On le dit dès ici quand on le sait déjà.
+  return projets > 0 ? (
     <>
-      Voulez-vous vraiment supprimer « {item.name} » ?
-      {projets > 0 && (
-        <>
-          {" "}
-          <strong>
-            {projets} projet{pluriel(projets)}
-          </strong>{" "}
-          rattaché{pluriel(projets)} et leurs commentaires seront également supprimés.
-        </>
-      )}{" "}
-      Cette action est irréversible.
+      « {item.name} » est utilisé dans{" "}
+      <strong>
+        {projets} projet{projets > 1 ? "s" : ""}
+      </strong>{" "}
+      : il ne pourra pas être supprimé tant qu'il leur est rattaché.
     </>
+  ) : (
+    <>Voulez-vous vraiment supprimer « {item.name} » ? Cette action est irréversible.</>
   );
 }
+
+// Hauteur du champ qui renomme une ligne : celle du texte qu'il remplace,
+// comme dans la liste des étiquettes (LabelsManager).
+const FIELD_HEIGHT = 22;
+
+// Le retrait droit d'une ligne qui porte des étiquettes : serré, pour que
+// l'écart au bord se lise comme celui du haut. Réglé à l'œil — le calcul
+// ((ligne - étiquette) / 2 = 8 px) paraissait encore trop large.
+const TAG_PADDING = 5;
 
 export default function LookupManager({
   items,
@@ -76,6 +96,10 @@ export default function LookupManager({
   emptyText,
   entityLabel,
   maxRows,
+  minRows,
+  renderActions,
+  renderTags,
+  canDelete,
 }: LookupManagerProps) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
@@ -129,6 +153,7 @@ export default function LookupManager({
 
       <ListItems
         maxRows={maxRows}
+        minRows={minRows}
         isEmpty={items.length === 0}
         emptyIcon={emptyIcon}
         emptyText={emptyText}
@@ -142,62 +167,76 @@ export default function LookupManager({
         }}
       >
         {items.map((item) => (
-          <ListItems.Row key={item.id}>
-            {(active) => (
-              <>
-                {editingId === item.id ? (
-                  <TextInput
-                    value={editingName}
-                    onChange={(e) => setEditingName(e.currentTarget.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") saveEdit();
-                      if (e.key === "Escape") cancelEdit();
-                    }}
-                    onBlur={saveEdit}
-                    // Sans cadre : la ligne ne bouge pas quand elle passe en
-                    // édition, seul le curseur signale la saisie.
-                    variant="unstyled"
-                    size="sm"
-                    style={{ flex: 1, minWidth: 0 }}
-                    disabled={busy}
-                    autoFocus
-                    aria-label={`Renommer ${item.name}`}
-                  />
-                ) : (
-                  <UnstyledButton
-                    onClick={() => startEdit(item)}
-                    style={{ flex: 1, minWidth: 0 }}
-                  >
-                    <Text size="sm" truncate>
-                      {item.name}
-                    </Text>
-                  </UnstyledButton>
-                )}
+          <ListItems.Row
+            key={item.id}
+            paddingRight={renderTags ? TAG_PADDING : undefined}
+            actions={[
+              ...(renderActions?.(item) ?? []),
+              {
+                label: "Modifier",
+                icon: IconPencil,
+                onClick: () => startEdit(item),
+              },
+              ...(canDelete && !canDelete(item)
+                ? []
+                : [
+                    {
+                      label: "Supprimer",
+                      icon: IconTrash,
+                      onClick: () => setPendingDelete(item),
+                      danger: true,
+                    },
+                  ]),
+            ]}
+          >
+            <>
+              {editingId === item.id ? (
+                <TextInput
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    // Consommée : le tiroir qui porte ce champ n'enregistre pas en plus.
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      saveEdit();
+                    }
+                    if (e.key === "Escape") cancelEdit();
+                  }}
+                  onBlur={saveEdit}
+                  // Sans cadre : la ligne ne bouge pas quand elle passe en
+                  // édition, seul le curseur signale la saisie.
+                  variant="unstyled"
+                  size="sm"
+                  style={{ flex: 1, minWidth: 0 }}
+                  // Un champ « sm » fait 36 px, plus que la ligne (34) : il
+                  // débordait sous la dernière, la liste s'allongeait, et le
+                  // focus la faisait défiler pour le montrer en entier — tout
+                  // montait d'un cran. Ramené à la hauteur du texte, il tient
+                  // dans sa ligne.
+                  styles={{
+                    input: {
+                      height: FIELD_HEIGHT,
+                      minHeight: FIELD_HEIGHT,
+                      lineHeight: `${FIELD_HEIGHT}px`,
+                    },
+                  }}
+                  disabled={busy}
+                  autoFocus
+                  aria-label={`Renommer ${item.name}`}
+                />
+              ) : (
+                <UnstyledButton
+                  onClick={() => startEdit(item)}
+                  style={{ flex: 1, minWidth: 0 }}
+                >
+                  <Text size="sm" truncate>
+                    {item.name}
+                  </Text>
+                </UnstyledButton>
+              )}
 
-                {/* Toujours présentes pour rester accessibles au clavier, mais
-                    visibles seulement sur la ligne en cours. */}
-                <Group gap={2} wrap="nowrap" style={{ opacity: active ? 1 : 0, flexShrink: 0 }}>
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    size="sm"
-                    onClick={() => startEdit(item)}
-                    aria-label={`Modifier ${item.name}`}
-                  >
-                    <IconPencil size={14} />
-                  </ActionIcon>
-                  <ActionIcon
-                    variant="subtle"
-                    color={RED}
-                    size="sm"
-                    onClick={() => setPendingDelete(item)}
-                    aria-label={`Supprimer ${item.name}`}
-                  >
-                    <IconTrash size={14} />
-                  </ActionIcon>
-                </Group>
-              </>
-            )}
+              {editingId !== item.id && renderTags?.(item)}
+            </>
           </ListItems.Row>
         ))}
       </ListItems>

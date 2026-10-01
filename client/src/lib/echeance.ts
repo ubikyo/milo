@@ -73,6 +73,28 @@ const formate = (due: string | null | undefined, motif: string): string => {
 /** Court, pour une carte du tableau : « 5 oct. ». */
 export const dateCourte = (due: string | null | undefined): string => formate(due, "D MMM");
 
-/** Entier, pour la fiche : « 5 octobre 2026 à 17:00 ». */
+/**
+ * Une échéance sans heure. L'heure est facultative : laissée vide, le
+ * calendrier pose la date à minuit, et c'est minuit — à l'heure locale — qui
+ * vaut « pas d'heure ». Une échéance réellement à minuit se lit donc comme la
+ * journée entière, ce qui revient au même : la règle des états compare les
+ * jours, pas les heures.
+ */
+export const sansHeure = (due: string | null | undefined): boolean => {
+  const date = dayjs(due ?? "");
+  return date.isValid() && date.hour() === 0 && date.minute() === 0 && date.second() === 0;
+};
+
+/**
+ * Entier, pour la fiche : « 5 octobre 2026 à 17:00 », ou « 5 octobre 2026 »
+ * seul quand l'échéance n'a pas d'heure.
+ */
 export const dateLongue = (due: string | null | undefined): string =>
-  formate(due, "D MMMM YYYY [à] HH:mm");
+  formate(due, sansHeure(due) ? "D MMMM YYYY" : "D MMMM YYYY [à] HH:mm");
+
+/**
+ * Ce que montre le champ du calendrier, qui reçoit « YYYY-MM-DD HH:mm:ss » :
+ * « 05/10/2026 17:00 », ou la date seule quand l'heure est restée vide.
+ */
+export const formatChampEcheance = (valeur: string): string =>
+  dayjs(valeur).format(sansHeure(valeur) ? "DD/MM/YYYY" : "DD/MM/YYYY HH:mm");

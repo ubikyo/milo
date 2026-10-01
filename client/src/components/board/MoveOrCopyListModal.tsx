@@ -5,6 +5,7 @@ import { modalHeaderStyles } from "../../themes/modals";
 import ErrorAlert from "../ui/ErrorAlert";
 import type { Board, Company, Id, TaskList } from "@milo/shared";
 import { messageErreur } from "../../lib/errors";
+import BoutonFermer from "../ui/BoutonFermer";
 
 // Déplacer ou copier une liste vers un tableau. Les deux gestes posent la même
 // question — lequel ? — et la même boîte y répond, l'intitulé près.
@@ -200,9 +201,7 @@ export default function MoveOrCopyListModal({
       </Stack>
 
       <Group justify="flex-end" mt={32}>
-        <Button variant="default" onClick={onClose}>
-          Fermer
-        </Button>
+        <BoutonFermer onClick={onClose} />
         <Button
           color="teal"
           onClick={valider}

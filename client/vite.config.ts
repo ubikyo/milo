@@ -1,8 +1,14 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { version } from "../package.json";
 
 export default defineConfig({
   plugins: [react()],
+  // Le numéro de version de Milo, celui du package.json racine, gravé dans le
+  // code au build : le logo de l'entête l'affiche au survol.
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+  },
   server: {
     host: true,
     port: 5273,

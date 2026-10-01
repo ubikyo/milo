@@ -1,0 +1,27 @@
+/* Toutes les barres de défilement de l'application ont un curseur gris,
+   survol compris : un gris moyen sur le thème clair, un gris clair sur le
+   sombre. La teinte vit dans « --milo-scrollbar », que reprennent aussi les
+   barres fines du tableau et des tiroirs (TaskBoard.module.css,
+   CardDrawer.module.css).
+
+   Deux familles à couvrir :
+   - les zones de Mantine (ScrollArea, et tout ce qui s'en sert : listes
+     déroulantes des Select, menus…). Leurs classes « mantine-ScrollArea-* »
+     font partie de son interface publique. Le sélecteur passe par la barre
+     et le survol pour l'emporter sur les siens, qui teintent le curseur de
+     gris et l'assombrissent au survol ;
+   - les barres natives du navigateur, là où un bloc défile par
+     « overflow: auto » (corps des tiroirs, zone de saisie enrichie…). */
+:root {
+  --milo-scrollbar: light-dark(var(--mantine-color-gray-5), var(--mantine-color-dark-2));
+}
+
+.mantine-ScrollArea-scrollbar > .mantine-ScrollArea-thumb,
+.mantine-ScrollArea-scrollbar:hover > .mantine-ScrollArea-thumb,
+.mantine-ScrollArea-scrollbar:active > .mantine-ScrollArea-thumb {
+  background-color: var(--milo-scrollbar);
+}
+
+* {
+  scrollbar-color: var(--milo-scrollbar) transparent;
+}

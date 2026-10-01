@@ -6,7 +6,7 @@ import { selection, transaction } from "../db/query.js";
 import type { ProjectJoinedRow, ProjectRow, UserRow } from "../db/rows.js";
 import { badRequest, orNotFound, requireText, toIds } from "../lib/http.js";
 import { descriptionPropre, memeDescription } from "../lib/html.js";
-import { notifier, racine } from "../lib/notify.js";
+import { concernes, notifier, notifierSuppression, racine } from "../lib/notify.js";
 import { horodatage, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import {
@@ -26,6 +26,8 @@ import {
   withRelations,
 } from "../repositories/projects.js";
 import { comments } from "../repositories/project-comments.js";
+import { prochaineReference } from "../repositories/references.js";
+import { milestoneTypes } from "./milestone-types.js";
 import { withAuthor } from "../repositories/comments.js";
 
 const PROJET_INTROUVABLE = "Projet introuvable";
@@ -92,6 +94,27 @@ projectRoutes.get("/", (req, res) => {
   res.json(withRelations(requetePour(clauses).all(params)));
 });
 
+// Les acteurs proposés par le filtre « Acteurs » : ceux qui le sont d'au moins
+// un projet du tableau — et de la société, quand elle est choisie. Les autres
+// filtres n'y comptent pas : filtrer par acteur ne doit pas faire disparaître
+// les autres acteurs de la liste.
+const acteursDesProjets = selection<{ user_id: Id }>(
+  `SELECT DISTINCT project_actors.user_id FROM project_actors
+     JOIN projects ON projects.id = project_actors.project_id
+    WHERE ${CLAUSE_TABLEAUX_VISIBLES}
+      AND (@board IS NULL OR projects.board_id = @board)
+      AND (@company IS NULL OR projects.company_id = @company)`,
+);
+
+projectRoutes.get("/actors", (req, res) => {
+  const filtre = (valeur: unknown) => (valeur && valeur !== "all" ? String(valeur) : null);
+  res.json(
+    acteursDesProjets
+      .all({ me: req.user.id, board: filtre(req.query["board"]), company: filtre(req.query["company"]) })
+      .map((l) => l.user_id),
+  );
+});
+
 projectRoutes.get("/:id", (req, res) => {
   const { id } = projetOuvert(req.params.id, req.user);
   const project = orNotFound(projects.joined.get(id), PROJET_INTROUVABLE);
@@ -112,6 +135,15 @@ const verifierCategorie = (categoryId: unknown, boardId: unknown): void => {
   }
 };
 
+/**
+ * Le type de jalons retenu : un identifiant qui existe, ou aucun. Un type
+ * inconnu est refusé plutôt que rangé tel quel.
+ */
+const typeDeJalons = (recu: unknown): number | null => {
+  if (recu === null || recu === undefined || recu === "") return null;
+  return orNotFound(milestoneTypes.byId.get(recu), "Type de jalons introuvable").id;
+};
+
 projectRoutes.post("/", (req, res) => {
   const {
     name,
@@ -119,6 +151,7 @@ projectRoutes.post("/", (req, res) => {
     board_id,
     category_id,
     company_id = null,
+    milestone_type_id = null,
     status = 0,
     actor_ids = [],
     label_ids = [],
@@ -129,6 +162,7 @@ projectRoutes.post("/", (req, res) => {
   }
   projectBoardOuvert(board_id, req.user);
   verifierCategorie(category_id, board_id);
+  const typeJalons = typeDeJalons(milestone_type_id);
 
   const timestamp = now();
 
@@ -137,11 +171,13 @@ projectRoutes.post("/", (req, res) => {
   // à moitié posé.
   const id = transaction((): Id => {
     const { lastInsertRowid } = projects.create.run({
+      number: prochaineReference(),
       name,
       description: descriptionPropre(description),
       board_id,
       category_id,
       company_id,
+      milestone_type_id: typeJalons,
       status,
       created_at: timestamp,
       updated_at: timestamp,
@@ -191,11 +227,13 @@ projectRoutes.post("/:id/copy", (req, res) => {
 
   const id = transaction((): Id => {
     const { lastInsertRowid } = projects.create.run({
+      number: prochaineReference(),
       name,
       description: source.description,
       board_id: board.id,
       category_id: Number(categoryId),
       company_id: source.company_id,
+      milestone_type_id: source.milestone_type_id,
       status: source.status,
       created_at: timestamp,
       updated_at: timestamp,
@@ -249,6 +287,7 @@ projectRoutes.put("/:id", (req, res) => {
     board_id = existing.board_id,
     category_id = existing.category_id,
     company_id = existing.company_id,
+    milestone_type_id = existing.milestone_type_id,
     status = existing.status,
     actor_ids,
     label_ids,
@@ -257,6 +296,7 @@ projectRoutes.put("/:id", (req, res) => {
   // Un projet ne sort pas d'un tableau privé et n'y entre pas.
   projectBoardOuvert(board_id, req.user);
   verifierCategorie(category_id, board_id);
+  const typeJalons = typeDeJalons(milestone_type_id);
 
   const propre = descriptionPropre(description);
 
@@ -270,6 +310,7 @@ projectRoutes.put("/:id", (req, res) => {
     memeValeur(board_id, existing.board_id) &&
     memeValeur(category_id, existing.category_id) &&
     memeValeur(company_id, existing.company_id) &&
+    memeValeur(typeJalons, existing.milestone_type_id) &&
     memeValeur(status, existing.status) &&
     memesIds(actor_ids, acteursDe(existing.id)) &&
     memesIds(label_ids, etiquettesDe(existing.id));
@@ -282,6 +323,7 @@ projectRoutes.put("/:id", (req, res) => {
       board_id,
       category_id,
       company_id,
+      milestone_type_id: typeJalons,
       status,
       updated_at: inchange ? existing.updated_at : now(),
     });
@@ -307,6 +349,16 @@ projectRoutes.put("/:id", (req, res) => {
 
 projectRoutes.delete("/:id", (req, res) => {
   const existing = projetOuvert(req.params.id, req.user);
+  const destinataires = concernes.projet(existing.id);
   projects.remove.run(existing.id);
+  notifierSuppression({
+    kind: "project",
+    targetId: existing.id,
+    titre: existing.name,
+    message: "a supprimé le projet",
+    auteur: req.user,
+    destinataires,
+    disparu: true,
+  });
   res.status(204).end();
 });

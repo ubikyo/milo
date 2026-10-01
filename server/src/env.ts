@@ -49,5 +49,25 @@ export const env = {
   /** Une session inutilisée pendant ce délai se ferme d'elle-même. */
   sessionMaxIdleMs: jours(entier(process.env["MILO_SESSION_DAYS"], 30)),
 
+  /**
+   * Les réponses du mode Support partent à l'expéditeur, en réponse à son
+   * e-mail. « simulate » les simule, pour la mise au point : le message est
+   * préparé et consigné, mais rien ne quitte Milo.
+   */
+  supportReplySend: process.env["MILO_SUPPORT_REPLY"] !== "simulate",
+
+  // Les images et les pièces jointes des e-mails reçus au support. Même règle
+  // que les médias : en production, hors du dossier déployé.
+  // MILO_TICKETS_PATH=/var/lib/milo/tickets par exemple.
+  ticketsPath:
+    process.env["MILO_TICKETS_PATH"] || path.join(here, "..", "..", "upload", "tickets"),
+
+  /**
+   * L'adresse publique de Milo, en https — « https://milo.exemple.fr ».
+   * Microsoft y prévient Milo de l'arrivée d'un e-mail (notifications de
+   * changement de Graph). Sans elle, seule la relève périodique a cours.
+   */
+  publicUrl: (process.env["MILO_PUBLIC_URL"] ?? "").replace(/\/+$/, ""),
+
   production: process.env["NODE_ENV"] === "production",
 } as const;

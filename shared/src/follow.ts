@@ -1,12 +1,13 @@
 // Le suivi : ce qu'une personne demande à être prévenue quand cela change.
 //
-// Trois sortes d'éléments se suivent. Un projet et une carte se suivent pour
-// eux-mêmes ; une liste se suit pour ses cartes — on ne modifie pas une liste,
-// on modifie ce qu'elle contient, et c'est de cela qu'on veut être prévenu.
+// Quatre sortes d'éléments se suivent. Un projet, une carte et une demande de
+// support se suivent pour eux-mêmes ; une liste se suit pour ses cartes — on
+// ne modifie pas une liste, on modifie ce qu'elle contient, et c'est de cela
+// qu'on veut être prévenu.
 
 import type { Id } from "./domain.js";
 
-export const FOLLOW_KINDS = ["project", "card", "list"] as const;
+export const FOLLOW_KINDS = ["project", "card", "list", "support"] as const;
 
 export type FollowKind = (typeof FOLLOW_KINDS)[number];
 
@@ -20,7 +21,7 @@ export const isFollowKind = (value: unknown): value is FollowKind =>
  */
 export type Follows = Record<FollowKind, Id[]>;
 
-export const emptyFollows = (): Follows => ({ project: [], card: [], list: [] });
+export const emptyFollows = (): Follows => ({ project: [], card: [], list: [], support: [] });
 
 /**
  * L'adresse qui ouvre un élément dans l'application. Une seule écriture, lue
@@ -30,5 +31,18 @@ export const emptyFollows = (): Follows => ({ project: [], card: [], list: [] })
  * Une liste n'en a pas : ce qu'on notifie pour une liste, c'est toujours l'une
  * de ses cartes, et c'est vers elle que le lien pointe.
  */
-export const lienElement = (kind: "project" | "card", id: Id): string =>
-  kind === "project" ? `?projet=${id}` : `?carte=${id}`;
+export type LienKind = "project" | "card" | "support" | "asset" | "access";
+
+/**
+ * Un poste s'ouvre par son identifiant ; un élément du mode Accès, par sa
+ * catégorie — c'est elle qui s'ouvre, l'élément n'a pas de fiche.
+ */
+const PARAMETRES: Record<LienKind, string> = {
+  project: "projet",
+  card: "carte",
+  support: "demande",
+  asset: "poste",
+  access: "acces",
+};
+
+export const lienElement = (kind: LienKind, id: Id): string => `?${PARAMETRES[kind]}=${id}`;

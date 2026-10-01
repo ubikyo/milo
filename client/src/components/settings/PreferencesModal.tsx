@@ -1,13 +1,69 @@
-import { Button, Group, Modal, PasswordInput, Stack, TextInput } from "@mantine/core";
+import {
+  Avatar,
+  Button,
+  Group,
+  Modal,
+  Select,
+  Stack,
+  Text,
+  useMantineColorScheme,
+} from "@mantine/core";
+import { IconDeviceDesktop, IconMoon, IconSun } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
-import { passwordIssues } from "@milo/shared";
+import { DEFAULT_MODE, MODES } from "@milo/shared";
 import ErrorAlert from "../ui/ErrorAlert";
-import PasswordRules from "../ui/PasswordRules";
+import { initialsOf } from "../ui/ActorAvatars";
 import { messageErreur } from "../../lib/errors";
-import type { PublicUser, UpdateMeInput } from "@milo/shared";
-import type { ChangeEvent } from "react";
+import type { Mode, PublicUser } from "@milo/shared";
+import type { ComponentType } from "react";
+import BoutonFermer from "../ui/BoutonFermer";
+
+type Scheme = "auto" | "light" | "dark";
+
+interface SchemeOption {
+  value: Scheme;
+  label: string;
+  icon: ComponentType<{ size?: number }>;
+}
+
+const SCHEME_OPTIONS: SchemeOption[] = [
+  { value: "auto", label: "System", icon: IconDeviceDesktop },
+  { value: "light", label: "Clair", icon: IconSun },
+  { value: "dark", label: "Sombre", icon: IconMoon },
+];
+
+// Les options d'un Select ne portent que du texte : l'icône est retrouvée par
+// la valeur, pour la liste déroulante comme pour le champ fermé.
+/**
+ * L'icône d'un thème. Déclarée au niveau du module : affectée à une variable
+ * dans le corps d'un composant, React y verrait un nouveau type de composant à
+ * chaque rendu et remonterait son sous-arbre à chaque fois.
+ */
+function SchemeIcon({ value, size = 16 }: { value: string; size?: number }) {
+  const Icon =
+    SCHEME_OPTIONS.find((o) => o.value === value)?.icon ?? IconDeviceDesktop;
+  return <Icon size={size} />;
+}
+
+// Largeur du libellé : les champs s'alignent sur la même colonne.
+const LABEL_WIDTH = 120;
+
+// Largeur des champs : celle d'un nom de mode ou de thème, et de son icône.
+const FIELD_WIDTH = 200;
+
+// Le retrait de la fenêtre, tout autour.
+const PADDING = 40;
+
+// L'écart entre un libellé et son champ : l'espacement « md » de Mantine.
+const GAP = 16;
+
+/**
+ * La fenêtre se règle sur ses champs : un libellé, l'écart, le champ, et ses
+ * retraits. Plus large, elle laisserait un vide à droite des champs.
+ */
+const MODAL_WIDTH = LABEL_WIDTH + GAP + FIELD_WIDTH + 2 * PADDING;
 
 interface PreferencesModalProps {
   opened: boolean;
@@ -16,47 +72,45 @@ interface PreferencesModalProps {
   onUpdated: (user: PublicUser) => void;
 }
 
+/**
+ * Le profil. L'identité vient d'Entra et s'y modifie : elle se lit ici, et se
+ * relit à chaque connexion. Le mot de passe est celui de Microsoft. Restent ce
+ * que chacun règle pour lui-même — le mode d'ouverture, le thème —, qui ne
+ * s'appliquent qu'à l'enregistrement : « Fermer » les laisse tels qu'ils
+ * étaient.
+ */
 export default function PreferencesModal({
   opened,
   onClose,
   user,
   onUpdated,
 }: PreferencesModalProps) {
-  const [form, setForm] = useState({ first_name: "", last_name: "", email: "" });
-  const [password, setPassword] = useState("");
-  const [confirmation, setConfirmation] = useState("");
+  const { colorScheme, setColorScheme } = useMantineColorScheme();
+  const [mode, setMode] = useState<Mode>(DEFAULT_MODE);
+  const [theme, setTheme] = useState<Scheme>("auto");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Les champs sont (re)chargés à chaque ouverture.
+  // Chaque ouverture repart de ce qui est en place.
   useEffect(() => {
-    if (!opened || !user) return;
-    setForm({ first_name: user.first_name || "", last_name: user.last_name || "", email: user.email || "" });
-    setPassword("");
-    setConfirmation("");
+    if (!opened) return;
+    setMode(user?.default_mode ?? DEFAULT_MODE);
+    setTheme((colorScheme ?? "auto") as Scheme);
     setError(null);
+    // Le thème n'est relu qu'à l'ouverture : le relire pendant qu'on choisit
+    // effacerait le choix en cours.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, user]);
 
-  const set =
-    (field: "first_name" | "last_name" | "email") => (event: ChangeEvent<HTMLInputElement>) => {
-    const { value } = event.currentTarget;
-    setForm((f) => ({ ...f, [field]: value }));
-  };
-
-  const save = async () => {
+  const enregistrer = async () => {
     setError(null);
     setBusy(true);
     try {
-      const payload: UpdateMeInput = {
-        first_name: form.first_name.trim(),
-        last_name: form.last_name.trim(),
-        email: form.email.trim(),
-      };
-      if (password) {
-        payload.password = password;
-        payload.password_confirm = confirmation;
-      }
-      onUpdated(await api.updateMe(payload));
+      // Le mode appartient au compte, et part au serveur ; le thème est celui
+      // du navigateur, que Mantine mémorise.
+      if (mode !== user?.default_mode)
+        onUpdated(await api.updateMe({ default_mode: mode }));
+      setColorScheme(theme);
       onClose();
     } catch (e) {
       setError(messageErreur(e));
@@ -65,54 +119,91 @@ export default function PreferencesModal({
     }
   };
 
-  const incomplete =
-    !form.first_name.trim() ||
-    !form.last_name.trim() ||
-    !form.email.trim() ||
-    // Si un mot de passe est saisi, il doit respecter les règles et être confirmé.
-    (Boolean(password) && (passwordIssues(password).length > 0 || password !== confirmation));
-
   return (
     <Modal
       opened={opened}
       onClose={onClose}
-      title="Préférences"
-      size="md"
-      padding={40}
+      title="Profil"
+      size={MODAL_WIDTH}
+      padding={PADDING}
       centered
       withCloseButton={false}
-      styles={modalHeaderStyles(40)}
+      styles={modalHeaderStyles(PADDING)}
     >
-      <Stack gap="md">
-        {error && <ErrorAlert>{error}</ErrorAlert>}
+      <Stack gap="lg">
+        <Group gap="md" wrap="nowrap" pb={30}>
+          <Avatar
+            size={48}
+            radius="sm"
+            color="teal"
+            variant="filled"
+            src={user?.gravatar_url || null}
+          >
+            {initialsOf(user?.name)}
+          </Avatar>
+          <div style={{ minWidth: 0 }}>
+            <Text fw={500} truncate>
+              {user?.name}
+            </Text>
+            <Text size="sm" c="dimmed" truncate>
+              {user?.email}
+            </Text>
+          </div>
+        </Group>
 
-        <TextInput label="Prénom" value={form.first_name} onChange={set("first_name")} required />
-        <TextInput label="Nom" value={form.last_name} onChange={set("last_name")} required />
-        <TextInput label="E-mail" type="email" value={form.email} onChange={set("email")} required />
+        {error && (
+          <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>
+        )}
 
-        <PasswordInput
-          label="Nouveau mot de passe"
-          value={password}
-          onChange={(e) => setPassword(e.currentTarget.value)}
-        />
-        <PasswordInput
-          label="Vérification du mot de passe"
-          value={confirmation}
-          onChange={(e) => setConfirmation(e.currentTarget.value)}
-          disabled={!password}
-          error={
-            confirmation && password !== confirmation
-              ? "Les deux mots de passe ne correspondent pas"
-              : undefined
-          }
-        />
-        {password && <PasswordRules password={password} />}
+        {/* Le libellé est posé à gauche du champ, et non au-dessus comme les
+            libellés de Mantine : les deux réglages s'alignent sur la même
+            colonne. */}
+        <Stack gap="md">
+          <Group gap={GAP} wrap="nowrap" align="center">
+            <Text size="sm" fw={500} w={LABEL_WIDTH}>
+              Mode par défaut
+            </Text>
+            <Select
+              aria-label="Mode par défaut"
+              data={MODES.map((m) => ({ value: m.value, label: m.label }))}
+              value={mode}
+              onChange={(value) => value && setMode(value as Mode)}
+              allowDeselect={false}
+              w={FIELD_WIDTH}
+            />
+          </Group>
+
+          <Group gap={GAP} wrap="nowrap" align="center">
+            <Text size="sm" fw={500} w={LABEL_WIDTH}>
+              Thème
+            </Text>
+            <Select
+              aria-label="Thème"
+              data={SCHEME_OPTIONS.map(({ value, label }) => ({
+                value,
+                label,
+              }))}
+              leftSection={<SchemeIcon value={theme} />}
+              renderOption={({ option }) => (
+                <Group gap={6} wrap="nowrap">
+                  <SchemeIcon value={option.value} />
+                  <span>{option.label}</span>
+                </Group>
+              )}
+              // « System » suit le thème du système : c'est la valeur par
+              // défaut, posée dans le thème (main.tsx) et mémorisée par
+              // Mantine ensuite.
+              value={theme}
+              onChange={(value) => value && setTheme(value as Scheme)}
+              allowDeselect={false}
+              w={FIELD_WIDTH}
+            />
+          </Group>
+        </Stack>
 
         <Group justify="flex-end" mt="md">
-          <Button variant="default" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button color="teal" onClick={save} loading={busy} disabled={incomplete}>
+          <BoutonFermer onClick={onClose} />
+          <Button color="teal" onClick={enregistrer} loading={busy}>
             Enregistrer
           </Button>
         </Group>

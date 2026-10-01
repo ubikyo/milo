@@ -77,9 +77,43 @@ client statique et l'API sur la VM.
 | `PORT` | `3001` | Port d'écoute |
 | `MILO_DB_PATH` | `server/data.db` | Emplacement de la base |
 | `MILO_MEDIA_PATH` | `medias/` (racine) | Dossier des fichiers déposés sur les cartes et des images collées dans une description |
+| `MILO_TICKETS_PATH` | `upload/tickets/` (racine) | Dossier des images et pièces jointes des e-mails reçus au support |
 | `MILO_SESSION_DAYS` | `30` | Fermeture d'une session inutilisée |
 | `MILO_NOTIFY_WINDOW_MINUTES` | `5` | Fenêtre de regroupement des e-mails de suivi. Les modifications d'un même élément dans ce délai tiennent en un seul message ; la notification à l'écran reste immédiate. |
 | `MILO_CORS_ORIGINS` | *(vide)* | Origines autorisées, séparées par des virgules. Vide = aucune, ce qui convient quand le client est servi par le même hôte. |
+| `MILO_SUPPORT_REPLY` | *(vide)* | Les réponses du mode Support partent par e-mail à l'expéditeur. `simulate` les **simule**, pour la mise au point : préparées et consignées dans le journal, rien ne quitte Milo. |
+| `MILO_PUBLIC_URL` | *(vide)* | Adresse publique de Milo, en https (`https://milo.exemple.fr`, sans `/` final). Active les notifications de changement de Graph : un e-mail reçu devient une demande en quelques secondes. Vide = seule la relève périodique (5 min). |
+
+### À vérifier au déploiement
+
+Le mode Support ne reçoit pas de notifications de Graph tant que
+`MILO_PUBLIC_URL` n'est pas posée. Au passage en production :
+
+1. **`MILO_PUBLIC_URL`** — la régler sur l'adresse publique en https. Milo
+   s'abonne alors aux boîtes de support au démarrage ; la route
+   `/api/support-mail/notifications` doit être joignable depuis Internet
+   (nginx ne doit ni la protéger par mot de passe ni la bloquer). Le journal
+   du serveur dit si les abonnements sont refusés.
+2. **Réponses** — elles partent par défaut. `MILO_SUPPORT_REPLY=simulate`
+   les retient, le temps d'une vérification : le journal montre alors
+   `[Simulation] Réponse de … à …`.
+3. **Permissions Entra** — `Mail.Read` (relève, delta, abonnements) et
+   `Mail.Send` (réponses) avec consentement d'administrateur ; voir
+   [Inscrire Milo dans Azure](#inscrire-milo-dans-azure).
+4. **Première relève** — sur une base neuve, chaque boîte n'importe que ses
+   15 derniers messages (`PREMIERE_RELEVE`, `server/src/lib/support-mail.ts`),
+   réglage de mise au point à revoir avant la mise en service.
+
+Le widget **Uptime** du mode Accès vérifie les machines depuis le serveur
+(`server/src/lib/uptime.ts`) :
+
+- **ICMP** passe par la commande `ping` du système (`iputils-ping`) : Node
+  n'ouvre pas de socket ICMP. L'unité systemd tourne avec
+  `NoNewPrivileges=true`, ce qui suppose que les pings non privilégiés soient
+  permis (`net.ipv4.ping_group_range`, ouvert par défaut avec systemd).
+- **SNMP** lit l'OID en v2c (port 161 par défaut) ; **Zabbix** demande
+  `agent.ping` à l'agent (port 10050 par défaut), qui doit nommer Milo dans
+  sa directive `Server=`.
 
 ## API
 
@@ -88,12 +122,14 @@ Toutes les routes sont sous `/api` et exigent un jeton
 
 | Ressource | Routes |
 | --- | --- |
-| Session | `GET/POST /auth/setup`, `POST /auth/login`, `POST /auth/first-login`, `GET/PUT /auth/me`, `POST /auth/logout` |
-| Comptes | `GET/POST /users`, `PUT/DELETE /users/:id` |
+| Session | `GET/POST /auth/setup`, `POST /auth/login` (compte admin), `GET /auth/entra/start`, `GET /auth/entra/callback`, `GET/PUT /auth/me`, `POST /auth/logout` |
+| Personnes | `GET /users` |
+| Accès | `GET /assignments`, `GET /assignments/search`, `PUT/DELETE /assignments/:type/:id` |
 | Sociétés | `GET/POST /companies`, `PUT/DELETE /companies/:id` |
+| Rôles | `GET/POST /roles`, `PUT/DELETE /roles/:id` |
 | Suivi | `GET /follows`, `PUT/DELETE /follows/:kind/:id` |
 | Sauvegarde | `GET /backup`, `GET /backup/archive`, `POST /backup/restore` |
-| Messagerie | `GET/PUT /mail`, `POST /mail/test`, `POST /mail/oauth/start`, `POST /mail/oauth/disconnect`, `GET /mail/oauth/callback` |
+| Entra | `GET/PUT /entra`, `POST /entra/test`, `GET /entra/mailboxes` |
 | Tableaux de projets | `GET/POST /project-boards`, `PUT/DELETE /project-boards/:id` |
 | Catégories | `GET/POST /categories`, `PUT/DELETE /categories/:id` |
 | Projets | `GET/POST /projects`, `GET/PUT/DELETE /projects/:id` |
@@ -103,6 +139,9 @@ Toutes les routes sont sous `/api` et exigent un jeton
 | Cartes | `POST /task-cards`, `PUT /task-cards/reorder`, `GET/PUT /task-cards/:id`, `GET /task-cards/:id/emplacement`, `POST /task-cards/:id/comments`, `PUT/DELETE /card-comments/:id` |
 | Checklists | `POST /task-cards/:id/checklists`, `PUT /task-cards/:id/checklists/reorder`, `PUT/DELETE /checklists/:id`, `POST /checklists/:id/items`, `PUT /checklists/:id/items/reorder`, `PUT/DELETE /checklist-items/:id` |
 | Étiquettes | `GET/POST /labels`, `PUT/DELETE /labels/:id`, et les mêmes sous `/project-labels` |
+| Support | `GET/POST /support-requests`, `GET/PUT/DELETE /support-requests/:id`, `POST /support-requests/:id/comments`, `PUT/DELETE /support-comments/:id`, `POST /support-requests/sync` (relève), `POST /support-requests/merge`, `/close`, `/delete`, `/assign` (demandes cochées) |
+| Étiquettes du support | `GET/POST /support-labels`, `PUT/DELETE /support-labels/:id` — communes à toutes les sociétés |
+| Notifications Graph | `POST /support-mail/notifications` — **sans jeton** : appelée par Microsoft, authentifiée par le secret de l'abonnement |
 | Temps réel | `GET /version`, `GET /events` (SSE) |
 
 ### Temps réel
@@ -172,70 +211,105 @@ table dans le schéma d'aujourd'hui. Une sauvegarde plus ancienne se restaure
 donc sans rien de particulier. Tout est remplacé, sessions comprises : les
 personnes connectées devront sans doute se reconnecter.
 
-### Messagerie
+### Comptes et Entra
 
-Les réglages du serveur SMTP vivent en base (table `settings`), et se règlent
-dans Paramétrage → Messagerie : authentification par nom d'utilisateur ou par
-OAuth Outlook, chiffrement de la connexion, serveur, port et nom d'utilisateur.
+Les comptes reposent sur Entra ID. Chacun se connecte par Microsoft ; son
+identité et ses groupes sont relus à chaque connexion. Un compte d'avant Entra
+se rattache à la personne par son e-mail, à sa première connexion, et garde
+son historique.
 
-Trois chiffrements, tous sur le port de soumission — la connexion s'ouvre en
-clair et monte en TLS par StartTLS :
+Un seul compte a un mot de passe : **`admin`**. Il est créé à la toute
+première ouverture, sert au paramétrage — d'abord à renseigner l'application
+Entra, sans laquelle personne d'autre ne peut se connecter — et ne voit que le
+Paramétrage. Il ne se montre dans aucune liste et n'est l'acteur de rien. Sur
+l'écran de connexion, il s'ouvre par le lien « Compte d'administration ».
 
-| Chiffrement | Ce qu'il fait |
-| --- | --- |
-| Aucun | Rien n'est chiffré. Le défaut, pour un relais interne. |
-| StartTLS, avec validation | TLS exigé, certificat du serveur vérifié. C'est le réglage normal dès qu'on sort du réseau local. |
-| StartTLS, sans validation | TLS exigé, certificat accepté tel quel. Protège de l'écoute, pas de l'usurpation : pour un relais interne à certificat maison, et rien d'autre. |
+Les droits passent tous par les **rôles**, attribués par société dans
+Paramétrage → Accès, à titre personnel ou par l'un des groupes Entra de la
+personne (appartenances indirectes comprises). Sans rôle nulle part, la
+connexion est refusée ; un accès retiré ferme la session à la requête
+suivante.
 
-Ces trois champs — chiffrement, serveur, port — ainsi que le nom d'utilisateur
-ne concernent que l'authentification par mot de passe. **En OAuth Outlook, ils
-disparaissent de l'onglet** : Office 365 les impose, et le serveur les applique
-lui-même.
+La grille d'un rôle porte, outre les modes, une ligne **Paramétrage** : « Voir »
+l'ouvre en consultation, « Modifier » permet d'y enregistrer — et de
+télécharger ou restaurer une sauvegarde, l'archive portant toute la base.
+Le Paramétrage étant commun à toutes les sociétés, ces droits valent dès qu'un
+rôle les accorde dans l'une d'elles. Le rôle **Administrateur** a tous les
+droits, Paramétrage compris.
 
-| Réglage | Valeur imposée par Microsoft |
-| --- | --- |
-| Serveur | `smtp.office365.com` — le nom documenté, jamais une adresse IP |
-| Port | 587 |
-| Chiffrement | StartTLS, avec validation (TLS 1.2 ou 1.3 exigé ; « Aucun » est refusé) |
-| Expéditeur | Le compte qui a donné son consentement |
+Les droits des modes sont enregistrés mais pas encore appliqués à leurs
+écrans et à leurs routes.
 
-Le port 465 (TLS implicite) n'est proposé nulle part, et ne l'est pas non plus
-par Microsoft, qui le documente comme le signe d'un client trop ancien.
+Les réglages vivent en base (table `settings`, clé `entra`). Le secret ne
+redescend jamais au client : l'interface n'en connaît que la présence, et un
+champ de secret auquel on ne touche pas ne l'efface pas.
 
-Les secrets — mot de passe SMTP, secret d'application, jeton de rafraîchissement
-— ne redescendent jamais au client : l'interface n'en connaît que la présence,
-et un champ de secret laissé vide ne les efface pas.
+#### Messagerie
+
+Le courrier passe par Microsoft Graph, au nom de l'application, et part
+toujours de la **boîte de support d'une société** (Paramétrage → Sociétés) :
+une notification de suivi part de celle de la société de l'élément — le
+projet, ou le tableau de la liste ou de la carte. Sans société ou sans e-mail
+de support, la notification reste à l'écran. Milo peut aussi lire ces boîtes. « Vérifier les boîtes de support » (menu Actions de l'onglet) dit,
+société par société, si l'accès est accordé.
+
+#### Support par e-mail
+
+Chaque e-mail reçu dans la boîte de support d'une société devient une demande
+du mode Support : numéro de ticket `LMA-n`, statut « Ouvert », étiquette
+« Urgent », l'expéditeur pour acteur et le message pour premier échange. Les
+boîtes ne sont jamais modifiées : rien n'y est supprimé, déplacé ni marqué
+comme lu.
+
+- **Relève** — par la *delta query* de Graph : chaque boîte garde le lien que
+  Graph lui a rendu (réglage `support_mail_delta`) et n'apprend que ce qui est
+  arrivé depuis. Elle a lieu au démarrage, toutes les 5 minutes, à l'ouverture
+  du mode Support, et à chaque notification de Graph.
+- **Notifications de changement** — avec `MILO_PUBLIC_URL`, Milo s'abonne à
+  la boîte de réception de chaque boîte de support. Un abonnement vit au plus
+  sept jours : ils sont vérifiés toutes les 6 heures, prolongés ou recréés.
+- **Réponses** — un message écrit dans le fil d'une demande reçue par e-mail
+  part à l'expéditeur, depuis la boîte de support, en réponse à son e-mail.
+  Elle porte le numéro du ticket dans son objet (`RE: [LMA-12] …`) et dans
+  l'en-tête `X-Milo-Ticket`. Simulée si `MILO_SUPPORT_REPLY` vaut
+  `simulate`.
+- **Fil** — un e-mail qui répond à une demande rejoint son fil au lieu
+  d'ouvrir un ticket : il cite l'un de ses messages dans `In-Reply-To` ou
+  `References`, porte son numéro dans l'objet, ou arrive dans sa conversation
+  Graph. Il rouvre la demande si elle était résolue ou fermée.
+- **E-mails tels quels** — le corps est gardé en HTML et montré dans un cadre
+  isolé ; ses images intégrées et ses pièces jointes sont rangées dans
+  `MILO_TICKETS_PATH`, et font partie de la sauvegarde.
 
 #### Inscrire Milo dans Azure
 
-L'authentification OAuth Outlook suppose une inscription d'application, à faire
-une fois dans le portail Azure (Microsoft Entra ID → Inscriptions
-d'applications → Nouvelle inscription) :
+Une seule inscription d'application sert à tout, à faire une fois dans le
+portail Azure (Microsoft Entra ID → Inscriptions d'applications → Nouvelle
+inscription, comptes de cet annuaire uniquement) :
 
 1. **Adresse de redirection** : de type « Web », et exactement
-   `https://<hôte>/api/mail/oauth/callback` — où `<hôte>` est celui par lequel
-   Milo est servi, le même que dans la barre d'adresse du navigateur.
-   Microsoft refuse la connexion si elle diffère d'un caractère. Le serveur la
-   construit de la même façon, depuis l'adresse par laquelle on l'appelle : il
-   n'y a rien à régler de ce côté.
-2. **Permission déléguée** `SMTP.Send` d'Office 365 Exchange Online, sous
-   « API autorisées ». `offline_access` et `openid` sont demandées au vol par
-   Milo : la première donne le jeton durable, sans lequel il faudrait redonner
-   son consentement à chaque envoi, la seconde sert à connaître l'adresse du
-   compte connecté.
+   `https://<hôte>/api/auth/entra/callback` — où `<hôte>` est celui par lequel
+   Milo est servi. L'onglet Entra la montre, prête à copier. Microsoft refuse
+   la connexion si elle diffère d'un caractère.
+2. **Permissions**, sous « API autorisées » → Microsoft Graph :
+   - déléguées : `openid`, `profile`, `email` (la connexion) ;
+   - d'application : `User.Read.All`, `Group.Read.All`,
+     `GroupMember.Read.All` (l'annuaire), `Mail.Read` et `Mail.Send` (les
+     boîtes de support et l'expédition).
+
+   Puis **« Accorder un consentement d'administrateur »** : les permissions
+   d'application ne valent qu'avec lui.
 3. **Secret client**, sous « Certificats et secrets ». Il a une date
-   d'expiration : passée celle-ci, l'envoi s'arrête jusqu'à ce qu'un nouveau
-   secret soit enregistré.
+   d'expiration : passée celle-ci, plus personne ne peut se connecter par
+   Microsoft ni recevoir de courrier jusqu'à ce qu'un nouveau secret soit
+   enregistré — le compte `admin` reste là pour le faire.
 
 Les trois valeurs à reporter dans l'onglet portent les noms du portail :
-l'**ID d'application (client)**, l'**ID de l'annuaire (locataire)** et le
-**secret**. L'ID de l'annuaire peut rester vide : Milo s'adresse alors à
-`common`, qui accepte tous les comptes Microsoft. Le renseigner — ou mettre
-`organizations` — restreint la connexion aux comptes de l'organisation.
-Changer l'identifiant ou le locataire annule le consentement obtenu avec le
-précédent : le jeton de rafraîchissement ne vaut que pour l'inscription qui l'a
-délivré.
+l'**ID d'application (client)**, l'**ID de l'annuaire (locataire)**, requis,
+et le **secret**.
 
-Côté Exchange Online, l'authentification SMTP (`SmtpClientAuthenticationDisabled`)
-doit être active sur la boîte utilisée : elle est coupée par défaut sur les
-locataires récents.
+`Mail.Read` et `Mail.Send` ouvrent par défaut toutes les boîtes du locataire.
+Pour les restreindre aux boîtes de support, une
+stratégie d'accès d'application Exchange Online (`New-ApplicationAccessPolicy`)
+limite l'application à un groupe de sécurité à extension messagerie qui les
+contient.

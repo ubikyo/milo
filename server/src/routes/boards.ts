@@ -5,9 +5,11 @@ import { Router } from "express";
 import { selection } from "../db/query.js";
 import type { IdRow } from "../db/rows.js";
 import { badRequest, forbidden, requireText } from "../lib/http.js";
+import { concernes, notifierSuppression } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { boardOuvert, boards } from "../repositories/boards.js";
+import { ordreRecu, rangerBoards } from "../repositories/reorder.js";
 
 const societeExiste = selection<IdRow>("SELECT id FROM companies WHERE id = ?");
 
@@ -47,11 +49,29 @@ boardRoutes.post("/", (req, res) => {
   res.status(201).json(boards.byId.get(lastInsertRowid));
 });
 
+// Ranger les onglets. Déclaré avant « /:id », sinon « reorder » serait pris
+// pour un identifiant. L'ordre est celui de tout le monde : un tableau privé
+// qu'on ne voit pas garde sa place (repositories/reorder.ts).
+boardRoutes.put("/reorder", (req, res) => {
+  const companyId = req.body.company_id;
+  if (!companyId) badRequest("La société est requise");
+  const visibles = boards.visibleTo.all(companyId, req.user.id);
+  const ordre = ordreRecu(
+    req.body.ids,
+    visibles,
+    "La liste des identifiants ne correspond pas aux tableaux de cette société",
+  );
+
+  rangerBoards(ordre, companyId);
+  res.json(boards.visibleTo.all(companyId, req.user.id));
+});
+
 boardRoutes.put("/:id", (req, res) => {
   const existing = boardOuvert(req.params.id, req.user);
   const name = requireText(req.body.name ?? existing.name, "Le nom du tableau est requis");
   const showNumbers = drapeau(req.body.show_card_numbers, existing.show_card_numbers);
   const isPrivate = drapeau(req.body.is_private, existing.is_private);
+  const isLocked = drapeau(req.body.is_locked, existing.is_locked);
 
   // Fermer un tableau, c'est se le réserver : son auteur seul en décide. Ceux
   // d'avant l'option n'en ont pas — le premier à les fermer les adopte.
@@ -63,13 +83,23 @@ boardRoutes.put("/:id", (req, res) => {
     }
   }
 
-  boards.update.run(name, showNumbers, isPrivate, owner, existing.id);
+  boards.update.run(name, showNumbers, isPrivate, isLocked, owner, existing.id);
   res.json(boards.byId.get(existing.id));
 });
 
 // Les listes du tableau, et leurs cartes, partent avec lui (ON DELETE CASCADE).
 boardRoutes.delete("/:id", (req, res) => {
   const existing = boardOuvert(req.params.id, req.user);
+  const destinataires = concernes.tableau(existing.id);
   boards.remove.run(existing.id);
+  notifierSuppression({
+    kind: "card",
+    targetId: existing.id,
+    titre: existing.name,
+    message: "a supprimé le tableau",
+    auteur: req.user,
+    destinataires,
+    disparu: true,
+  });
   res.status(204).end();
 });

@@ -7,13 +7,14 @@ import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef } from "react";
 import { RED } from "../../themes/colors";
 import type { Editor } from "@tiptap/react";
+import type { CSSProperties, ReactNode } from "react";
 import classes from "../../assets/styles/RichText.module.css";
 
 // La zone de saisie se peint sur « --mantine-color-body », un cran plus sombre
 // que les champs sur le thème sombre. On lui rend le fond des autres champs :
-// celui d'un « input » de variante « default ». La barre d'outils, elle, garde
-// le sien : ce ne sont pas des champs.
-const FIELD_BG = "light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))";
+// celui d'un « input » de variante « default ». La barre d'outils prend le
+// même, et un trait la sépare de la zone de saisie.
+export const FIELD_BG = "light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))";
 
 // La corbeille du bouton qui retire une image : l'icône de Tabler, recopiée
 // telle quelle. La vue ci-dessous est en DOM et non en React (voir pourquoi
@@ -171,18 +172,67 @@ export function useRichEditor({ placeholder = "", onPasteImage }: RichEditorOpti
 interface RichTextFieldProps {
   editor: Editor | null;
   label?: string;
+  /**
+   * Ce qui se pose sous la zone de saisie, sur toute la largeur, sans marge,
+   * collé aux bordures de l'éditeur : le bouton « Envoyer » d'une réponse.
+   */
+  bottomBar?: ReactNode;
+  /** Des commandes de plus, au bout de la barre d'outils — « CC » et « CCI » d'une réponse. */
+  toolbarControls?: ReactNode;
+  /** Ce qui se pose entre la barre d'outils et la zone de saisie : les lignes « CC » d'une réponse. */
+  topSection?: ReactNode;
+  /** Ce qui se pose sous la zone de saisie, avant « bottomBar » : les pièces jointes d'une réponse. */
+  contentEnd?: ReactNode;
+  /** Les lignes que la zone montre avant de défiler : cinq par défaut. */
+  maxLines?: number;
 }
 
-export default function RichTextField({ editor, label }: RichTextFieldProps) {
+export default function RichTextField({
+  editor,
+  label,
+  bottomBar,
+  toolbarControls,
+  topSection,
+  contentEnd,
+  maxLines,
+}: RichTextFieldProps) {
+  // Aucune infobulle : les boutons de la barre d'outils reçoivent de Mantine un
+  // « title » (leur libellé) qu'aucune propriété ne retire pour tous — celui du
+  // lien s'impose même par-dessus. On l'efface du DOM à chaque fois qu'il revient ;
+  // l'« aria-label » reste.
+  const racine = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const noeud = racine.current;
+    if (!noeud) return;
+    const effacer = () =>
+      noeud.querySelectorAll("[title]").forEach((el) => el.removeAttribute("title"));
+    effacer();
+    const observateur = new MutationObserver(effacer);
+    observateur.observe(noeud, { subtree: true, childList: true, attributeFilter: ["title"] });
+    return () => observateur.disconnect();
+  }, []);
+
   const champ = (
     <RichTextEditor
+      ref={racine}
       editor={editor}
-      mt={label ? 4 : 0}
       variant="subtle"
+      classNames={{
+        toolbar: classes.toolbar,
+        control: classes.control,
+        controlsGroup: classes.controlsGroup,
+      }}
       // La zone s'emboîte en deux : une enveloppe qui porte la hauteur, et le
       // contenu qui ne fait que celle du texte. Les deux prennent le fond,
       // sinon il s'arrêterait à la dernière ligne écrite.
-      styles={{ content: { backgroundColor: FIELD_BG } }}
+      styles={{
+        content: { backgroundColor: FIELD_BG },
+        toolbar: {
+          backgroundColor: FIELD_BG,
+          borderBottom:
+            "1px solid light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-4))",
+        },
+      }}
     >
       <RichTextEditor.Toolbar sticky stickyOffset={0}>
         <RichTextEditor.ControlsGroup>
@@ -206,11 +256,22 @@ export default function RichTextField({ editor, label }: RichTextFieldProps) {
           <RichTextEditor.Undo />
           <RichTextEditor.Redo />
         </RichTextEditor.ControlsGroup>
+        {toolbarControls && (
+          <RichTextEditor.ControlsGroup>{toolbarControls}</RichTextEditor.ControlsGroup>
+        )}
       </RichTextEditor.Toolbar>
+      {topSection}
       <RichTextEditor.Content
         className={classes.content}
-        style={{ backgroundColor: FIELD_BG }}
+        style={
+          {
+            backgroundColor: FIELD_BG,
+            ...(maxLines ? { "--milo-rich-lines": maxLines } : {}),
+          } as CSSProperties
+        }
       />
+      {contentEnd && <div style={{ backgroundColor: FIELD_BG }}>{contentEnd}</div>}
+      {bottomBar && <div style={{ display: "flex" }}>{bottomBar}</div>}
     </RichTextEditor>
   );
 

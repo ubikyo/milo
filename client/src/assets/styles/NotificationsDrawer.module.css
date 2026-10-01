@@ -1,0 +1,25 @@
+/* Une notification du tiroir : toute la ligne s'ouvre au clic, et prend au
+   survol le gris neutre des survols (themes/colors.ts, NEUTRAL_HOVER). La
+   croix qui la supprime ne se montre qu'au survol de la ligne. Celle d'un
+   élément supprimé n'ouvre rien : pas de main au survol. */
+.ligne {
+  border-radius: 2px;
+  padding: 8px 10px;
+}
+
+.ligne[data-ouvrable] {
+  cursor: pointer;
+}
+
+.ligne:hover {
+  background-color: light-dark(#ececec, #2e2e2e);
+}
+
+.supprimer {
+  opacity: 0;
+}
+
+.ligne:hover .supprimer,
+.supprimer:focus-visible {
+  opacity: 1;
+}

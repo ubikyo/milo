@@ -1,0 +1,67 @@
+/* La toile du drapeau flotte tant que la souris est sur le logo. Elle pivote
+   autour de son bord gauche, là où elle tient à la hampe, qui ne bouge pas.
+   Dans le header, le logo ne fait que 26 px de haut : la toile, sept ou huit.
+   Il faut des angles francs pour que le mouvement se voie à cette taille.
+   L'écran de connexion reprend le même mouvement. */
+.toile {
+  transform-box: fill-box;
+  transform-origin: left center;
+}
+
+.logo:hover .toile {
+  animation: flotter 0.9s ease-in-out infinite;
+}
+
+/* Sur l'écran de connexion, elle flotte sans attendre la souris. Qui a demandé
+   moins d'animations à son système la voit immobile. */
+.logoAnime .toile {
+  animation: flotter 3.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logoAnime .toile {
+    animation: none;
+  }
+}
+
+@keyframes flotter {
+  0%,
+  100% {
+    transform: none;
+  }
+  25% {
+    transform: skewY(-18deg) scaleX(0.7);
+  }
+  50% {
+    transform: skewY(8deg) scaleX(0.9);
+  }
+  75% {
+    transform: skewY(-12deg) scaleX(0.78);
+  }
+}
+
+/* Le numéro de version apparaît sous le logo quand la souris s'y attarde : le
+   délai écarte le simple passage. Il flotte par-dessus la page, sans rien
+   pousser, et ne capte pas la souris. */
+.enseigne {
+  position: relative;
+}
+
+.version {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding-top: 5px;
+  font-size: var(--mantine-font-size-xs);
+  color: var(--mantine-color-dimmed);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.enseigne:hover .version {
+  opacity: 1;
+  transition-delay: 600ms;
+}

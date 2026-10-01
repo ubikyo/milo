@@ -1,11 +1,13 @@
 import { ActionIcon, Group, HoverCard, Kbd, Stack, Text } from "@mantine/core";
+import { PAGE_GUTTER } from "../../themes/layout";
 import type { Mode } from "@milo/shared";
 
 // Action à gauche, raccourci à droite. « mode » limite un raccourci au mode
 // où il agit : pas de nouveau projet en mode Tâche.
 const SHORTCUTS: { action: string; key: string; mode?: Mode }[] = [
   { action: "Nouveau projet", key: "N", mode: "projects" },
-  { action: "Basculer Projet / Tâche", key: "Tab" },
+  { action: "Nouvelle demande", key: "N", mode: "support" },
+  { action: "Changer de mode", key: "Tab" },
   { action: "Tableau suivant", key: "⌥ Tab" },
   { action: "Société suivante", key: "S" },
 ];
@@ -19,7 +21,7 @@ export default function ShortcutsHelp({ mode }: { mode: Mode }) {
           radius="xl"
           size="lg"
           aria-label="Raccourcis clavier"
-          style={{ position: "fixed", right: 20, bottom: 20, zIndex: 200 }}
+          style={{ position: "fixed", right: PAGE_GUTTER, bottom: PAGE_GUTTER, zIndex: 200 }}
         >
           <Text fw={700}>?</Text>
         </ActionIcon>
@@ -31,7 +33,7 @@ export default function ShortcutsHelp({ mode }: { mode: Mode }) {
           </Text>
           {SHORTCUTS.filter((s) => !s.mode || s.mode === mode).map(
             ({ action, key }) => (
-              <Group key={key} justify="space-between" gap="xl" wrap="nowrap">
+              <Group key={action} justify="space-between" gap="xl" wrap="nowrap">
                 <Text size="sm">{action}</Text>
                 <Kbd>{key}</Kbd>
               </Group>
