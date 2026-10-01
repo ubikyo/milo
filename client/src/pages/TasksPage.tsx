@@ -28,7 +28,10 @@ interface TasksPageProps {
   boardId: string | null;
   onBoardChange: (id: string | null) => void;
   onAddBoard: () => void;
-  onEditBoard: (id: number) => void;
+  onTogglePrivateBoard: (id: number) => void | Promise<void>;
+  /** Ouvre la copie des étiquettes de l'onglet visé vers un autre tableau. */
+  onCopyLabels: (id: number) => void;
+  onToggleCardNumbers: (id: number) => void | Promise<void>;
   /** Renommer un onglet sur place, au double clic sur son nom. */
   onRenameBoard: (id: number, name: string) => void | Promise<void>;
   onDeleteBoard: (id: number) => void | Promise<void>;
@@ -68,7 +71,9 @@ export default function TasksPage({
   boardId,
   onBoardChange,
   onAddBoard,
-  onEditBoard,
+  onTogglePrivateBoard,
+  onCopyLabels,
+  onToggleCardNumbers,
   onRenameBoard,
   onDeleteBoard,
   onReorderBoards,
@@ -113,7 +118,9 @@ export default function TasksPage({
         value={boardId}
         onChange={onBoardChange}
         onAdd={onAddBoard}
-        onEdit={onEditBoard}
+        onTogglePrivate={onTogglePrivateBoard}
+        onToggleCardNumbers={onToggleCardNumbers}
+        onCopyLabels={onCopyLabels}
         onRename={onRenameBoard}
         onDelete={onDeleteBoard}
         onReorder={onReorderBoards}

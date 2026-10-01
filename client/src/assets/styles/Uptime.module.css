@@ -3,3 +3,43 @@
 .case[data-empty] {
   fill: transparent;
 }
+
+/* Une carte de machine, nom ou durée affichés : un fond plus clair que la
+   page, sans trait, une barre de la couleur de l'état à gauche, puis le nom
+   et la durée sur une seule ligne. */
+.carte {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 4px;
+  background-color: light-dark(var(--mantine-color-white), var(--mantine-color-dark-6));
+}
+
+/* Décollée du bord gauche et raccourcie en haut et en bas : la barre se pose
+   dans la carte plutôt que de la border. */
+.barre {
+  flex: 0 0 4px;
+  width: 4px;
+  margin: 2px 0 2px 5px;
+}
+
+.ligne {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--mantine-spacing-xs);
+  padding: 3px 8px;
+}
+
+.nom {
+  flex: 1;
+  min-width: 0;
+}
+
+.duree {
+  margin-left: auto;
+  white-space: nowrap;
+  opacity: 0.85;
+}

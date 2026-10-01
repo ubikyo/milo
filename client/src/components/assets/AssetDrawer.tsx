@@ -1,5 +1,7 @@
 import {
+  Accordion,
   Badge,
+  Box,
   Button,
   Drawer,
   Group,
@@ -17,7 +19,9 @@ import SuccessAlert from "../ui/SuccessAlert";
 import { messageErreur } from "../../lib/errors";
 import { tabStyle } from "../../themes/tabs";
 import { TABLEAUX, VIDE } from "./InventoryTables";
-import AssetSummaryPanel from "./AssetSummaryPanel";
+import AssetSummaryPanel, { FOND_CARTE } from "./AssetSummaryPanel";
+import TitreFiche, { ESPACE_SOUS_TITRE } from "./TitreFiche";
+import classes from "../../assets/styles/AssetDrawer.module.css";
 import type { CSSProperties } from "react";
 import type { Asset, AssetDetail, AssetEntry, AssetSection } from "@milo/shared";
 import BoutonFermer from "../ui/BoutonFermer";
@@ -28,17 +32,7 @@ const DRAWER_WIDTH = 1100;
 /** Largeur de la colonne d'onglets : « Utilisateurs et groupes » y tient. */
 const LARGEUR_ONGLETS = 210;
 
-/**
- * Le tag de l'asset, moitié plus grand que dans la liste (20 px de haut,
- * 11 px de texte, 10 px de marge) : c'est le titre de la fiche.
- */
-const TAG_TITRE = {
-  "--badge-height": "30px",
-  "--badge-fz": "16.5px",
-  "--badge-padding-x": "15px",
-} as CSSProperties;
-
-/** L'espace entre le tag de l'asset et le reste de la fiche. */
+/** L'espace entre les boutons de l'en-tête et le reste de la fiche. */
 const ESPACE_SOUS_ENTETE = 30;
 
 /**
@@ -77,20 +71,35 @@ interface AssetDrawerProps {
   asset: Asset | null;
 }
 
+/**
+ * Les champs qu'on sait nommer en français, par section. Les autres gardent
+ * le nom de l'agent.
+ */
+const LIBELLES_CHAMPS: Record<string, Record<string, string>> = {
+  BIOS: { SMANUFACTURER: "Fabricant", SMODEL: "Modèle", SSN: "Numéro de série" },
+};
+
 /** Les champs d'une entrée, en deux colonnes : le nom, la valeur. */
-function Entree({ entry }: { entry: AssetEntry }) {
+function Entree({ section, entry }: { section: string; entry: AssetEntry }) {
+  const libelles = LIBELLES_CHAMPS[section] ?? {};
   return (
     <Table withRowBorders={false} verticalSpacing={2} horizontalSpacing={0}>
       <Table.Tbody>
         {Object.entries(entry).map(([champ, valeur]) => (
           <Table.Tr key={champ}>
-            {/* Le nom des champs est celui de l'agent, en capitales : on le
-                garde tel quel, c'est lui qu'on retrouvera dans la doc et dans
-                le XML le jour où il faudra en discuter. */}
+            {/* Le nom des champs est celui de l'agent, en capitales, quand on
+                ne lui en connaît pas de meilleur : c'est lui qu'on retrouvera
+                dans la doc et dans le XML le jour où il faudra en discuter. */}
             <Table.Td style={{ width: "30%", verticalAlign: "top" }}>
-              <Text size="xs" c="dimmed" ff="monospace">
-                {champ}
-              </Text>
+              {libelles[champ] ? (
+                <Text size="sm" c="dimmed">
+                  {libelles[champ]}
+                </Text>
+              ) : (
+                <Text size="xs" c="dimmed" ff="monospace">
+                  {champ}
+                </Text>
+              )}
             </Table.Td>
             <Table.Td style={{ verticalAlign: "top" }}>
               <Text size="sm" style={{ wordBreak: "break-word" }}>
@@ -213,6 +222,66 @@ const ongletsDe = (sections: AssetSection[]) => {
   return onglets.filter((o) => o.groupes.length > 0);
 };
 
+/** L'air sous une section dépliée, avant l'en-tête de la suivante. */
+const ESPACE_SOUS_SECTION = 30;
+
+/**
+ * Les sections d'un onglet à la suite, chacune dans un accordéon, toutes
+ * repliées à l'ouverture : on déplie ce qu'on vient lire. Repliée, une section
+ * a son titre comme le reste du texte, en gris ; dépliée, celui d'une
+ * catégorie.
+ * Le compte dit si elle décrit une chose ou six cents. L'onglet n'est monté
+ * qu'ouvert : y revenir replie tout de nouveau.
+ */
+function SectionsOnglet({ groupes }: { groupes: GroupeAffiche[] }) {
+  const [ouvertes, setOuvertes] = useState<string[]>([]);
+  return (
+    <Accordion
+      multiple
+      value={ouvertes}
+      onChange={setOuvertes}
+      chevronPosition="right"
+      // Le titre de la première section tombe à la hauteur de « Résumé » :
+      // l'en-tête n'a pas de marge à lui, l'écart entre deux en-têtes vient
+      // de la feuille de style (AssetDrawer.module.css). Sous le titre, la
+      // grille s'écarte comme les cartes du Résumé.
+      classNames={{ item: classes.section, control: classes.controle }}
+      styles={{
+        item: { border: "none" },
+        control: { paddingInline: 0 },
+        label: { paddingBlock: 0 },
+        content: { paddingInline: 0, paddingTop: ESPACE_SOUS_TITRE, paddingBottom: 0 },
+      }}
+    >
+      {groupes.map(({ libelle, section }) => (
+        <Accordion.Item
+          key={section.name}
+          value={section.name}
+          // Dépliée, la section s'écarte de la suivante.
+          mb={ouvertes.includes(section.name) ? ESPACE_SOUS_SECTION : 0}
+        >
+          <Accordion.Control>
+            <Group gap="xs">
+              <TitreFiche replie={!ouvertes.includes(section.name)}>{libelle}</TitreFiche>
+              {section.entries.length > 1 && (
+                <Badge size="xs" variant="light" color="gray">
+                  {section.entries.length}
+                </Badge>
+              )}
+            </Group>
+          </Accordion.Control>
+          <Accordion.Panel>
+            {/* La grille sur le gris des cartes du Résumé, à leur arrondi. */}
+            <Box p="md" style={{ backgroundColor: FOND_CARTE, borderRadius: 10 }}>
+              <ContenuSection section={section} />
+            </Box>
+          </Accordion.Panel>
+        </Accordion.Item>
+      ))}
+    </Accordion>
+  );
+}
+
 /** Le contenu d'une section : son tableau quand elle en a un, ses fiches sinon. */
 function ContenuSection({ section }: { section: AssetSection }) {
   const Tableau = TABLEAUX[section.name];
@@ -220,7 +289,7 @@ function ContenuSection({ section }: { section: AssetSection }) {
   return (
     <Stack gap="md">
       {section.entries.map((entry, rang) => (
-        <Entree key={rang} entry={entry} />
+        <Entree key={rang} section={section.name} entry={entry} />
       ))}
     </Stack>
   );
@@ -327,10 +396,6 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
     }
   };
 
-  // Le nom vient de la liste : il s'affiche avant même que l'inventaire soit
-  // là, plutôt qu'un titre vide le temps de la lecture.
-  const titre = asset?.name ?? "";
-
   const onglets = useMemo(() => (detail ? ongletsDe(detail.sections) : []), [detail]);
 
   return (
@@ -351,12 +416,8 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
       }}
     >
       <Stack gap="xs" style={{ flex: 1, minHeight: 0 }}>
-        <Group justify="space-between" wrap="nowrap" align="center" pb={ESPACE_SOUS_ENTETE}>
-          {titre && (
-            <Badge color="green" variant="filled" radius="sm" tt="uppercase" style={TAG_TITRE}>
-              {titre}
-            </Badge>
-          )}
+        {/* Le tag de l'asset est dans la carte Identité du Résumé. */}
+        <Group justify="flex-end" wrap="nowrap" align="center" pb={ESPACE_SOUS_ENTETE}>
 
           <Group gap="sm" wrap="nowrap">
             {/* Prendre la main. Le bouton n'existe que si l'agent a trouvé un
@@ -451,24 +512,7 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
               </Tabs.Panel>
               {onglets.map((onglet) => (
                 <Tabs.Panel key={onglet.value} value={onglet.value} px={40}>
-                  {/* Les sections de l'onglet à la suite, chacune sous son
-                      libellé ; le compte dit si elle décrit une chose ou six
-                      cents. */}
-                  <Stack gap={30}>
-                    {onglet.groupes.map(({ libelle, section }) => (
-                      <Stack key={section.name} gap="xs">
-                        <Group gap="xs">
-                          <Text fw={600}>{libelle}</Text>
-                          {section.entries.length > 1 && (
-                            <Badge size="xs" variant="light" color="gray">
-                              {section.entries.length}
-                            </Badge>
-                          )}
-                        </Group>
-                        <ContenuSection section={section} />
-                      </Stack>
-                    ))}
-                  </Stack>
+                  <SectionsOnglet groupes={onglet.groupes} />
                 </Tabs.Panel>
               ))}
             </ScrollArea>

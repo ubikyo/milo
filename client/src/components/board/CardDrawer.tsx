@@ -50,10 +50,11 @@ import type { Destination, TacheSource } from "./TaskDestination";
 import LabelPicker from "../ui/LabelPicker";
 import CommentThread from "../project/CommentThread";
 import ErrorAlert from "../ui/ErrorAlert";
+import { ReferenceTag } from "../ui/ReferenceTag";
 import classes from "../../assets/styles/CardDrawer.module.css";
 import { messageErreur } from "../../lib/errors";
 import type { CSSProperties, DragEvent as ReactDragEvent } from "react";
-import { reference } from "@milo/shared";
+import { taskReference } from "@milo/shared";
 import type {
   Attachment,
   CardComment,
@@ -655,13 +656,30 @@ export default function CardDrawer({
                   </div>
                   {/* La référence suit les étiquettes, au bout de la ligne :
                       elle est attribuée à la création et ne bouge plus, elle
-                      se montre sans se modifier. Elle prend la place de son
-                      texte, rien de plus. */}
+                      se montre sans se modifier. Le tag se lit seul : son
+                      libellé est tu, mais garde sa place pour que le tag
+                      s'aligne sur le haut des étiquettes, sous leur libellé.
+                      Le même tag que dans la liste des projets. */}
                   {!creation && (
-                    <Input.Wrapper label="Référence" style={{ flexShrink: 0 }}>
-                      <Text size="sm" c="dimmed">
-                        {numero ? reference(numero) : "—"}
-                      </Text>
+                    <Input.Wrapper
+                      label="Référence"
+                      style={{ flexShrink: 0 }}
+                      styles={{ label: { visibility: "hidden" } }}
+                    >
+                      {/* Remonté de quatre pixels : sans quoi le tag tombe juste
+                          sous le haut des étiquettes. */}
+                      <div style={{ marginTop: -4 }}>
+                        {numero ? (
+                          <ReferenceTag
+                            reference={taskReference(numero)}
+                            gabarit={taskReference(9999)}
+                          />
+                        ) : (
+                          <Text size="sm" c="dimmed">
+                            —
+                          </Text>
+                        )}
+                      </div>
                     </Input.Wrapper>
                   )}
                 </Group>

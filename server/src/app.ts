@@ -39,6 +39,7 @@ import { assetIndicatorRoutes } from "./routes/asset-indicators.js";
 import { projectIndicatorRoutes } from "./routes/project-indicators.js";
 import { taskIndicatorRoutes } from "./routes/task-indicators.js";
 import { supportSettingsRoutes } from "./routes/support-settings.js";
+import { assetSettingsRoutes } from "./routes/asset-settings.js";
 import { milestoneTypeRoutes } from "./routes/milestone-types.js";
 import { followRoutes } from "./routes/follows.js";
 import { labelRoutes, projectLabelRoutes } from "./routes/labels.js";
@@ -148,6 +149,8 @@ export const createApp = (): express.Express => {
 
   app.use("/api/assets", assetRoutes);
   app.use("/api/asset-indicators", assetIndicatorRoutes);
+  // La table des modèles : lue partout, écrite depuis le Paramétrage.
+  app.use("/api/asset-settings", requireSettingsToWrite, assetSettingsRoutes);
 
   app.use("/api/support-requests", supportRequestRoutes);
   app.use("/api/support-comments", supportCommentRoutes);

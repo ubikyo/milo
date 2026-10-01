@@ -13,7 +13,7 @@ import {
   IconBuilding,
   IconCode,
   IconDatabaseExport,
-  IconFlag,
+  IconDeviceLaptop,
   IconBrandWindows,
   IconHeadset,
   IconShieldLock,
@@ -27,13 +27,13 @@ import { tabStyle } from "../../themes/tabs";
 import BackupTab from "./BackupTab";
 import LookupManager from "../ui/LookupManager";
 import EntraTab from "./EntraTab";
-import MilestonesModal from "../project/MilestonesModal";
 import AccessTab from "./AccessTab";
 import RolesTab from "./RolesTab";
 import CompanySupportModal from "./CompanySupportModal";
 import DeveloperTab from "./DeveloperTab";
 import SupportTab from "./SupportTab";
-import type { Company, Milestone, MilestoneType } from "@milo/shared";
+import AssetsTab from "./AssetsTab";
+import type { Company } from "@milo/shared";
 import type { ComponentType, ReactNode } from "react";
 import BoutonFermer from "../ui/BoutonFermer";
 
@@ -46,23 +46,23 @@ const TABS: {
   { value: "access", label: "Accès", icon: IconUsers },
   { value: "roles", label: "Rôles", icon: IconShieldLock },
   { value: "entra", label: "Entra", icon: IconBrandWindows },
-  { value: "backup", label: "Sauvegarde", icon: IconDatabaseExport },
   { value: "developer", label: "Développeur", icon: IconCode },
-  // Les réglages propres à un mode, à la fin : les types de jalon des projets,
-  // puis le Support.
-  { value: "milestones", label: "Projets", icon: IconFlag },
+  // Les réglages propres à un mode : le Support, les Assets.
   { value: "support", label: "Support", icon: IconHeadset },
+  { value: "assets", label: "Assets", icon: IconDeviceLaptop },
+  // La sauvegarde tout en bas : elle porte toute la base, pas un réglage.
+  { value: "backup", label: "Sauvegarde", icon: IconDatabaseExport },
 ];
 
 /**
  * Les onglets qui supposent Entra : les accès se donnent à des utilisateurs
- * et des groupes de l'annuaire, et sociétés, types de jalons et rôles n'ont
+ * et des groupes de l'annuaire, et sociétés et rôles n'ont
  * de sens qu'une fois quelqu'un d'autre que le compte « admin » connecté.
  */
-const AVEC_ENTRA = new Set(["companies", "milestones", "access", "roles"]);
+const AVEC_ENTRA = new Set(["companies", "access", "roles"]);
 
 /** Les onglets que le compte « admin » ne voit pas. */
-const SANS_ADMIN = new Set(["developer", "support", "milestones"]);
+const SANS_ADMIN = new Set(["developer", "support", "assets"]);
 
 /** Entra est configuré : l'application renseignée (identifiant, annuaire, secret). */
 const entraConfiguree = (r: EntraSettings) =>
@@ -137,8 +137,6 @@ interface SettingsModalProps {
    */
   canEdit: boolean;
   onDataChanged: () => void | Promise<void>;
-  /** Les types de jalons (Commande, Développement…) que les projets choisissent. */
-  milestoneTypes: MilestoneType[];
   /** Debug (onglet Développeur) : la sélection et le menu du navigateur reviennent. */
   debug: boolean;
   onDebugChange: (debug: boolean) => void;
@@ -148,7 +146,6 @@ export default function SettingsModal({
   opened,
   onClose,
   companies,
-  milestoneTypes,
   standalone = false,
   canEdit,
   onDataChanged,
@@ -160,9 +157,9 @@ export default function SettingsModal({
   // se montrent. L'onglet Entra en informe la fenêtre à chaque lecture et à
   // chaque enregistrement ; « null » tant qu'il n'a rien dit.
   const [entraPret, setEntraPret] = useState<boolean | null>(null);
-  // Les types de jalons et le Support touchent au travail des modes, et
-  // l'onglet Développeur à celui des personnes : pas au paramétrage de
-  // l'application. Le compte « admin » ne les voit pas.
+  // Le Support et les Assets touchent au travail des modes, et l'onglet
+  // Développeur à celui des personnes : pas au paramétrage de l'application.
+  // Le compte « admin » ne les voit pas (SANS_ADMIN).
   const visible = (onglet: string) =>
     !(standalone && SANS_ADMIN.has(onglet)) &&
     !(!canEdit && onglet === "backup") &&
@@ -175,8 +172,6 @@ export default function SettingsModal({
     // L'onglet ouvert vient de disparaître : on passe sur Entra.
     if (!pret) setActiveTab((t) => (t && AVEC_ENTRA.has(t) ? "entra" : t));
   }, []);
-  // Le type dont la fenêtre des jalons est ouverte.
-  const [jalonsDe, setJalonsDe] = useState<number | null>(null);
   // La société dont la fenêtre du support est ouverte.
   const [supportDe, setSupportDe] = useState<number | null>(null);
 
@@ -291,7 +286,7 @@ export default function SettingsModal({
       closeOnEscape={!standalone}
       closeOnClickOutside={!standalone}
       title="Paramétrage"
-      size={900}
+      size={950}
       padding={40}
       withCloseButton={false}
       styles={{
@@ -347,8 +342,7 @@ export default function SettingsModal({
             onUpdate={withRefresh(api.updateCompany)}
             onDelete={withRefresh(api.deleteCompany)}
             addTitle="Nouvelle société"
-            maxRows={8}
-            minRows={8}
+            maxRows={10}
             emptyIcon={IconBuilding}
             emptyText="Aucune société pour le moment"
             entityLabel="la société"
@@ -380,39 +374,13 @@ export default function SettingsModal({
           />,
         )}
 
-        {/* Chaque type porte ses jalons, réglés dans la fenêtre qu'ouvre le
-            menu de sa ligne (« Jalons »). Le supprimer ne supprime aucun projet : ceux
-            qui le portaient gardent leur avancement, sans marques. */}
-        {panel(
-          "milestones",
-          <LookupManager
-            items={milestoneTypes}
-            onCreate={withRefresh(api.createMilestoneType)}
-            onUpdate={withRefresh((id: number, name: string) =>
-              api.updateMilestoneType(id, { name }),
-            )}
-            onDelete={withRefresh(api.deleteMilestoneType)}
-            addTitle="Nouveau type de jalons"
-            maxRows={8}
-            minRows={8}
-            emptyIcon={IconFlag}
-            emptyText="Aucun type de jalons pour le moment"
-            entityLabel="le type de jalons"
-            renderActions={(item) => [
-              {
-                label: "Jalons",
-                icon: IconFlag,
-                onClick: () => setJalonsDe(item.id),
-              },
-            ]}
-          />,
-        )}
-
         {panel("access", <AccessTab companies={companies} />)}
 
         {panel("roles", <RolesTab />)}
 
         {panel("support", <SupportTab canEdit={canEdit} />)}
+
+        {panel("assets", <AssetsTab />)}
 
         {panel(
           "entra",
@@ -458,15 +426,6 @@ export default function SettingsModal({
             if (supportDe !== null) await api.updateCompany(supportDe, data);
           },
         )}
-      />
-
-      <MilestonesModal
-        type={milestoneTypes.find((t) => t.id === jalonsDe) ?? null}
-        onClose={() => setJalonsDe(null)}
-        onSave={withRefresh(async (milestones: Milestone[]) => {
-          if (jalonsDe !== null)
-            await api.updateMilestoneType(jalonsDe, { milestones });
-        })}
       />
     </Modal>
   );

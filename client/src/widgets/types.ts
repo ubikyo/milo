@@ -63,6 +63,11 @@ export interface AccessWidget {
   /** Les champs de son tiroir. Le tiroir lui-même est commun à tous. */
   Config: ComponentType<WidgetConfigProps>;
   /**
+   * Les champs qu'il pose tout en bas du tiroir, après les marges communes à
+   * tous — l'interrupteur d'un lien, qui se lit comme un dernier mot.
+   */
+  ConfigFin?: ComponentType<WidgetConfigProps>;
+  /**
    * La largeur de son tiroir, en pixels, quand ses champs ne tiennent pas
    * dans celle de tous (TIROIR_LARGEUR) — les machines d'Uptime, une par
    * ligne avec leur vérification.

@@ -1,11 +1,14 @@
-import { ActionIcon, Group, Paper, Stack, Text, Textarea } from "@mantine/core";
-import { IconCheck, IconMessage, IconPencil, IconSend2, IconTrash, IconX } from "@tabler/icons-react";
+import { ActionIcon, Group, Menu, Paper, Stack, Text, Textarea } from "@mantine/core";
+import { IconMessage, IconPencil, IconSend2, IconTrash } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { RED } from "../../themes/colors";
 import { PersonAvatar } from "../ui/ActorAvatars";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import EmptyPanel from "../ui/EmptyPanel";
+import PointMenu, { positionDuMenu } from "../ui/PointMenu";
+import type { PointMenuPosition } from "../ui/PointMenu";
+import { MILO_ACTOR_ID } from "@milo/shared";
 import type { Actor, SqliteBool } from "@milo/shared";
 
 /**
@@ -25,7 +28,7 @@ export interface FilItem {
 
 const formatTimestamp = (value: string): string => dayjs(value).format("DD/MM/YYYY HH:mm");
 
-// Filet en pointillé entre l'entête du commentaire — auteur, date, actions —
+// Filet en pointillé entre l'entête du commentaire — auteur et date —
 // et son texte.
 const HEADER_LINE = "1px dotted var(--mantine-color-default-border)";
 
@@ -43,6 +46,7 @@ function CommentBubble({ comment, onUpdate, onDelete }: CommentBubbleProps) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(comment.text);
   const [confirmDeleteOpened, setConfirmDeleteOpened] = useState(false);
+  const [menu, setMenu] = useState<PointMenuPosition | null>(null);
 
   const startEdit = () => {
     setText(comment.text);
@@ -55,6 +59,10 @@ function CommentBubble({ comment, onUpdate, onDelete }: CommentBubbleProps) {
     setEditing(false);
   };
 
+  // Un mot écrit par l'application — la création de la carte ou du projet,
+  // signée Milo — note un fait : il ne se retouche ni ne s'efface.
+  const fige = Boolean(comment.system) || comment.author?.id === MILO_ACTOR_ID;
+
   const remove = () => {
     setConfirmDeleteOpened(false);
     onDelete(comment.id);
@@ -66,18 +74,22 @@ function CommentBubble({ comment, onUpdate, onDelete }: CommentBubbleProps) {
         withBorder
         bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))"
         style={{ borderRadius: "var(--mantine-radius-default)" }}
+        // Les actions passent par le clic droit, et le double-clic modifie —
+        // qui que soit l'auteur. Un mot figé n'a ni menu ni double-clic.
+        onContextMenu={fige || editing ? undefined : (e) => setMenu(positionDuMenu(e))}
+        onDoubleClick={fige || editing ? undefined : startEdit}
       >
         {/* Modifier un commentaire ne le sort pas de sa bulle : l'entête reste
-            en place, seul le texte passe en saisie, et les deux actions de
-            l'entête deviennent « annuler » et « valider ». */}
+            en place, seul le texte passe en saisie. Entrée valide, Maj+Entrée
+            passe à la ligne, Échap annule. */}
         <Stack gap={0}>
           <Group
             justify="space-between"
             align="center"
             wrap="nowrap"
             px="sm"
-            // Autant d'air au-dessus qu'en dessous : sans quoi l'auteur, la
-            // date et les actions se posent trop haut dans leur bandeau.
+            // Autant d'air au-dessus qu'en dessous : sans quoi l'auteur
+            // et la date se posent trop haut dans leur bandeau.
             py={8}
             style={{ borderBottom: HEADER_LINE }}
           >
@@ -97,54 +109,6 @@ function CommentBubble({ comment, onUpdate, onDelete }: CommentBubbleProps) {
               </Text>
             </Group>
 
-            {/* Un mot écrit par l'application — la création de la carte ou du
-                projet — note un fait : il ne se retouche ni ne s'efface, et ne
-                porte donc aucune action. */}
-            {!comment.system &&
-              (editing ? (
-                <Group gap={4}>
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    size="sm"
-                    onClick={() => setEditing(false)}
-                    aria-label="Annuler"
-                  >
-                    <IconX size={14} />
-                  </ActionIcon>
-                  <ActionIcon
-                    variant="subtle"
-                    color="teal"
-                    size="sm"
-                    onClick={save}
-                    disabled={!text.trim()}
-                    aria-label="Valider"
-                  >
-                    <IconCheck size={14} />
-                  </ActionIcon>
-                </Group>
-              ) : (
-                <Group gap={4}>
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    size="sm"
-                    onClick={startEdit}
-                    aria-label="Modifier"
-                  >
-                    <IconPencil size={14} />
-                  </ActionIcon>
-                  <ActionIcon
-                    variant="subtle"
-                    color={RED}
-                    size="sm"
-                    onClick={() => setConfirmDeleteOpened(true)}
-                    aria-label="Supprimer le commentaire"
-                  >
-                    <IconTrash size={14} />
-                  </ActionIcon>
-                </Group>
-              ))}
           </Group>
 
           {/* Le commentaire est du texte simple : ses retours à la ligne
@@ -157,6 +121,10 @@ function CommentBubble({ comment, onUpdate, onDelete }: CommentBubbleProps) {
               onChange={(e) => setText(e.currentTarget.value)}
               onKeyDown={(e) => {
                 if (e.key === "Escape") setEditing(false);
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  save();
+                }
               }}
               autosize
               minRows={1}
@@ -175,8 +143,24 @@ function CommentBubble({ comment, onUpdate, onDelete }: CommentBubbleProps) {
         </Stack>
       </Paper>
 
+      {menu && !fige && (
+        <PointMenu position={menu} onClose={() => setMenu(null)}>
+          <Menu.Item leftSection={<IconPencil size={16} />} onClick={startEdit}>
+            Modifier
+          </Menu.Item>
+          <Menu.Divider />
+          <Menu.Item
+            color={RED}
+            leftSection={<IconTrash size={16} />}
+            onClick={() => setConfirmDeleteOpened(true)}
+          >
+            Supprimer
+          </Menu.Item>
+        </PointMenu>
+      )}
+
       <DeleteConfirmModal
-        opened={confirmDeleteOpened}
+        opened={confirmDeleteOpened && !fige}
         onClose={() => setConfirmDeleteOpened(false)}
         onConfirm={remove}
         title="Supprimer le commentaire"

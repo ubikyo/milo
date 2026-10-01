@@ -6,7 +6,6 @@ import { Router } from "express";
 import {
   ACCESS_BLOCK_CONVERSIONS,
   ACCESS_GAP_DEFAUT,
-  ACCESS_GAP_MAX,
   isAccessBlockType,
 } from "@milo/shared";
 import type { AccessBlockType, Id } from "@milo/shared";
@@ -15,7 +14,7 @@ import type { AccessBlockRow, AccessSectionRow } from "../db/rows.js";
 import { badRequest, forbidden, orNotFound, requireText, toIds } from "../lib/http.js";
 import { fluxDe, reglagesFlux } from "../lib/feed.js";
 import { etatsUptime, reglagesUptime } from "../lib/uptime.js";
-import { rangDemande, uniteLargeur, valeurLargeur } from "../lib/sections.js";
+import { ecartColonnes, rangDemande, uniteLargeur, valeurLargeur } from "../lib/sections.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import {
@@ -31,20 +30,6 @@ import { ordreRecu, rangerAccessCategories } from "../repositories/reorder.js";
 const drapeau = (valeur: unknown, defaut: 0 | 1): 0 | 1 =>
   valeur === undefined ? defaut : (Number(Boolean(valeur)) as 0 | 1);
 
-/**
- * L'écart entre deux colonnes, tel que le tiroir l'envoie. Absent, celui d'avant
- * reste. Un nombre hors des bornes est refusé plutôt que ramené en silence :
- * ramené, le tiroir afficherait autre chose que ce qui vient d'être saisi.
- */
-const ecartColonnes = (valeur: unknown, defaut: number): number => {
-  if (valeur === undefined || valeur === null || valeur === "") return defaut;
-  const nombre = Number(valeur);
-  if (!Number.isFinite(nombre) || nombre < 0 || nombre > ACCESS_GAP_MAX) {
-    badRequest(`L'écart des colonnes va de 0 à ${ACCESS_GAP_MAX} pixels`);
-  }
-  return Math.round(nombre);
-};
-
 const SECTION_INTROUVABLE = "Section introuvable";
 
 export const accessCategoryRoutes = Router();
@@ -57,17 +42,16 @@ accessCategoryRoutes.get("/", (req, res) => {
 
 accessCategoryRoutes.post("/", (req, res) => {
   const name = requireText(req.body.name, "Le nom de la catégorie est requis");
-  // À la différence d'un tableau, le tiroir propose « Privé » dès la création :
-  // une catégorie qu'on ouvre fermée ne passe jamais par un moment où tout le
-  // monde la voit. Son auteur est retenu dans les deux cas.
+  // « Privé » peut venir dès la création : une catégorie qu'on ouvre fermée ne
+  // passe jamais par un moment où tout le monde la voit.
   const { next } = accessCategories.nextPosition();
   const { lastInsertRowid } = accessCategories.create.run(
     name,
     next,
     drapeau(req.body.is_private, 0),
     drapeau(req.body.is_locked, 0),
-    ecartColonnes(req.body.gap, ACCESS_GAP_DEFAUT),
-    req.user.id,
+    // Le propriétaire n'existe que pour une catégorie privée.
+    drapeau(req.body.is_private, 0) ? req.user.id : null,
     now(),
   );
   res.status(201).json(accessCategories.byId.get(lastInsertRowid));
@@ -93,22 +77,15 @@ accessCategoryRoutes.put("/:id", (req, res) => {
   const name = requireText(req.body.name ?? existing.name, "Le nom de la catégorie est requis");
   const isPrivate = drapeau(req.body.is_private, existing.is_private);
 
-  // Fermer une catégorie, c'est se la réserver : son auteur seul en décide.
-  // Celle dont l'auteur est parti n'en a plus — la première personne à la
-  // fermer l'adopte.
-  let owner = existing.owner_id;
-  if (isPrivate !== existing.is_private) {
-    if (owner === null) owner = req.user.id;
-    else if (owner !== req.user.id) {
-      forbidden("Seul l'auteur de la catégorie peut la rendre privée");
-    }
-  }
+  // Une catégorie n'a de propriétaire que privée : la fermer, c'est se la
+  // réserver ; la rouvrir la rend à tous, sans propriétaire. Seul celui qui
+  // l'a fermée la voit encore, et peut donc la rouvrir.
+  const owner = isPrivate ? (existing.is_private ? existing.owner_id : req.user.id) : null;
 
   accessCategories.update.run(
     name,
     isPrivate,
     drapeau(req.body.is_locked, existing.is_locked),
-    ecartColonnes(req.body.gap, existing.gap),
     owner,
     existing.id,
   );
@@ -156,7 +133,14 @@ accessSectionRoutes.post("/", (req, res) => {
   // Ajoutée à la suite des colonnes déjà posées dans cette catégorie, ou au
   // rang demandé : le « + » entre deux colonnes l'y glisse.
   const { next } = accessSections.nextPosition(ouverte.id);
-  const { lastInsertRowid } = accessSections.create.run(ouverte.id, unite, valeur, next, now());
+  const { lastInsertRowid } = accessSections.create.run(
+    ouverte.id,
+    unite,
+    valeur,
+    ecartColonnes(req.body.gap, ACCESS_GAP_DEFAUT),
+    next,
+    now(),
+  );
   const id = Number(lastInsertRowid);
   const rang = rangDemande(req.body.index);
   if (rang !== null) {
@@ -202,7 +186,7 @@ accessSectionRoutes.put("/:id", (req, res) => {
     req.body.width_value ?? (unite === existing.width_unit ? existing.width_value : undefined),
   );
 
-  accessSections.update.run(unite, valeur, existing.id);
+  accessSections.update.run(unite, valeur, ecartColonnes(req.body.gap, existing.gap), existing.id);
   res.json(accessSections.byId.get(existing.id));
 });
 
@@ -219,6 +203,7 @@ const dupliquerSection = transaction((original: AccessSectionRow): Id => {
       original.category_id,
       original.width_unit,
       original.width_value,
+      original.gap,
       next,
       timestamp,
     ).lastInsertRowid,

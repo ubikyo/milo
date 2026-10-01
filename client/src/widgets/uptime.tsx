@@ -10,7 +10,7 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { MatrixChart } from "@mantine/charts";
+import { ChartTooltip, MatrixChart } from "@mantine/charts";
 import {
   IconArrowDown,
   IconArrowUp,
@@ -23,8 +23,12 @@ import type { KeyboardEvent, RefObject } from "react";
 import { api } from "../api";
 import classes from "../assets/styles/Uptime.module.css";
 import ActorPicker from "../components/ui/ActorPicker";
-import ListItems, { ROW_PADDING } from "../components/ui/ListItems";
-import { DragHandle, InsertLine, usePileGlissante } from "../components/ui/PileGlissante";
+import ListItems from "../components/ui/ListItems";
+import {
+  DragHandle,
+  InsertLine,
+  usePileGlissante,
+} from "../components/ui/PileGlissante";
 import { avec, nombre, texte } from "./types";
 import type { AccessWidget, WidgetConfigProps } from "./types";
 import {
@@ -55,7 +59,7 @@ import type {
 // acteurs de l'élément à chaque changement d'état.
 //
 // Le nom et la durée de l'état peuvent s'afficher : chaque machine devient
-// alors une carte, le nom en haut à gauche, la durée en bas à gauche.
+// alors une carte sur une ligne, le nom à gauche, la durée à droite.
 //
 // Les clés « machines », « intervalle », « acteurs » et « groupes » sont lues
 // aussi par le serveur (reglagesUptime) : elles ne changent pas.
@@ -79,8 +83,11 @@ const COLONNES_PAR_DEFAUT = 10;
 const COLONNES_MIN = 1;
 const COLONNES_MAX = 50;
 
+/** Les machines que la liste des réglages montre : au-delà, elle défile. */
+const MACHINES_VISIBLES = 10;
+
 /** L'écart entre deux cases, en pixels : un filet, qui ne se règle pas. */
-const ESPACEMENT = 1;
+const ESPACEMENT = 3;
 
 /**
  * La colonne relit l'état gardé par le serveur au rythme de ses
@@ -106,7 +113,7 @@ const VALEURS = { pending: 0, down: 1, up: 2 } as const;
 const DOMAINE: [number, number] = [0, 2];
 const COULEURS = ["var(--mantine-color-default-border)", "red.6", "green.6"];
 
-/** Les mêmes couleurs, pour le fond d'une carte (nom ou durée affichés). */
+/** Les mêmes couleurs, pour la barre d'une carte (nom ou durée affichés). */
 const FONDS_CARTE = {
   pending: "var(--mantine-color-default-border)",
   down: "var(--mantine-color-red-6)",
@@ -160,7 +167,9 @@ const machinesDe = (config: unknown): Machine[] => {
 /** Les personnes acteurs, en identifiants de compte — en chaînes, comme ActorPicker les veut. */
 const acteursDe = (config: unknown): string[] => {
   const brut = (config as Record<string, unknown> | null)?.[ACTEURS];
-  return Array.isArray(brut) ? brut.map(Number).filter(Number.isInteger).map(String) : [];
+  return Array.isArray(brut)
+    ? brut.map(Number).filter(Number.isInteger).map(String)
+    : [];
 };
 
 /** Les groupes Entra acteurs : leur identifiant d'objet, et de quoi les nommer. */
@@ -177,9 +186,14 @@ const groupesDe = (config: unknown): EntraPrincipal[] => {
     .filter((g) => g.id);
 };
 
-
 /** Un réglage numérique ramené dans ses bornes, quoi que la configuration porte. */
-const borne = (config: unknown, cle: string, defaut: number, min: number, max: number): number =>
+const borne = (
+  config: unknown,
+  cle: string,
+  defaut: number,
+  min: number,
+  max: number,
+): number =>
   Math.min(max, Math.max(min, Math.round(nombre(config, cle, defaut))));
 
 /** Le nom et la durée sont des options : une matrice neuve ne montre que ses cases. */
@@ -189,12 +203,16 @@ const option = (config: unknown, cle: string): boolean =>
 /** « 42 s », « 12 min », « 3 h 05 », « 2 j 4 h ». */
 const duree = (depuis: string | null, maintenant: number): string => {
   if (!depuis) return "";
-  const secondes = Math.max(0, Math.floor((maintenant - Date.parse(depuis)) / 1000));
+  const secondes = Math.max(
+    0,
+    Math.floor((maintenant - Date.parse(depuis)) / 1000),
+  );
   if (secondes < 60) return `${secondes} s`;
   const minutes = Math.floor(secondes / 60);
   if (minutes < 60) return `${minutes} min`;
   const heures = Math.floor(minutes / 60);
-  if (heures < 24) return `${heures} h ${String(minutes % 60).padStart(2, "0")}`;
+  if (heures < 24)
+    return `${heures} h ${String(minutes % 60).padStart(2, "0")}`;
   return `${Math.floor(heures / 24)} j ${heures % 24} h`;
 };
 
@@ -206,8 +224,20 @@ type Etat =
 function Matrice({ blockId, config }: { blockId: Id; config: unknown }) {
   const machines = machinesDe(config);
   const intervalle = nombre(config, INTERVALLE, UPTIME_INTERVAL_DEFAUT);
-  const taille = borne(config, TAILLE, TAILLE_PAR_DEFAUT, TAILLE_MIN, TAILLE_MAX);
-  const colonnes = borne(config, COLONNES, COLONNES_PAR_DEFAUT, COLONNES_MIN, COLONNES_MAX);
+  const taille = borne(
+    config,
+    TAILLE,
+    TAILLE_PAR_DEFAUT,
+    TAILLE_MIN,
+    TAILLE_MAX,
+  );
+  const colonnes = borne(
+    config,
+    COLONNES,
+    COLONNES_PAR_DEFAUT,
+    COLONNES_MIN,
+    COLONNES_MAX,
+  );
   const noms = option(config, NOMS);
   const durees = option(config, DUREES);
   const [etat, setEtat] = useState<Etat>({ phase: "attente" });
@@ -215,7 +245,9 @@ function Matrice({ blockId, config }: { blockId: Id; config: unknown }) {
 
   // La configuration enregistrée est celle que le serveur lit : quand elle
   // change, ce qu'il garde change aussi.
-  const signature = JSON.stringify((config as Record<string, unknown> | null)?.[MACHINES] ?? []);
+  const signature = JSON.stringify(
+    (config as Record<string, unknown> | null)?.[MACHINES] ?? [],
+  );
 
   useEffect(() => {
     if (!machines.length) return;
@@ -225,10 +257,16 @@ function Matrice({ blockId, config }: { blockId: Id; config: unknown }) {
         .getAccessUptime(blockId)
         .then((lu) => {
           if (!actif) return;
-          setEtat({ phase: "pret", statuts: new Map(lu.statuses.map((s) => [s.machine, s])) });
+          setEtat({
+            phase: "pret",
+            statuts: new Map(lu.statuses.map((s) => [s.machine, s])),
+          });
           setMaintenant(Date.now());
         })
-        .catch((e: Error) => actif && setEtat({ phase: "erreur", message: e.message }));
+        .catch(
+          (e: Error) =>
+            actif && setEtat({ phase: "erreur", message: e.message }),
+        );
     lire();
     const battement = setInterval(lire, relectureDe(intervalle));
     return () => {
@@ -261,8 +299,8 @@ function Matrice({ blockId, config }: { blockId: Id; config: unknown }) {
     return { machine: m, statut, etat: statut?.state ?? ("pending" as const) };
   });
 
-  // Avec le nom ou la durée, chaque machine devient une carte : le nom en
-  // haut à gauche, la durée de l'état en bas à gauche. Une carte prend la
+  // Avec le nom ou la durée, chaque machine devient une carte sur une ligne :
+  // une barre de la couleur de l'état, le nom à gauche, la durée à droite. Une carte prend la
   // largeur de sa colonne et la hauteur de ce qu'elle porte — la taille d'une
   // case n'a plus cours. Une case de la matrice, elle, est un rectangle SVG,
   // qui ne porte pas de texte.
@@ -276,31 +314,25 @@ function Matrice({ blockId, config }: { blockId: Id; config: unknown }) {
         }}
       >
         {cases.map(({ machine: m, statut, etat: e }) => (
-          <Box
-            key={m.id}
-            style={{
-              backgroundColor: FONDS_CARTE[e],
-              color: e === "pending" ? "var(--mantine-color-dimmed)" : "white",
-              borderRadius: "var(--mantine-radius-sm)",
-              padding: "6px 8px",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
-              gap: 4,
-              minWidth: 0,
-              minHeight: noms && durees ? 48 : undefined,
-            }}
-          >
-            {noms && (
-              <Text size="sm" fw={600} truncate>
-                {nomDe(m)}
-              </Text>
-            )}
-            {durees && (
-              <Text size="xs" truncate style={{ opacity: 0.85 }}>
-                {statut?.since ? duree(statut.since, maintenant) : LIBELLES[e]}
-              </Text>
-            )}
+          <Box key={m.id} className={classes.carte}>
+            <span
+              className={classes.barre}
+              style={{ backgroundColor: FONDS_CARTE[e] }}
+            />
+            <Box className={classes.ligne}>
+              {noms && (
+                <Text size="sm" fw={400} truncate className={classes.nom}>
+                  {nomDe(m)}
+                </Text>
+              )}
+              {durees && (
+                <Text size="xs" className={classes.duree}>
+                  {statut?.since
+                    ? duree(statut.since, maintenant)
+                    : LIBELLES[e]}
+                </Text>
+              )}
+            </Box>
           </Box>
         ))}
       </Box>
@@ -313,6 +345,27 @@ function Matrice({ blockId, config }: { blockId: Id; config: unknown }) {
   // efface.
   const largeur = Math.min(colonnes, machines.length);
   const rangees = Math.ceil(machines.length / largeur);
+
+  // Au survol, ce que les cartes affichent : le nom de la machine, son état et
+  // depuis quand il dure — dans l'infobulle des graphiques de Mantine
+  // (ChartTooltip), que la bulle de la matrice porte sans son propre habit.
+  const infobulle = ({ x, y }: { x: string; y: string }) => {
+    const c = cases[Number(y) * largeur + Number(x)];
+    if (!c) return null;
+    return (
+      <ChartTooltip
+        type="radial"
+        label={nomDe(c.machine)}
+        payload={[
+          {
+            name: LIBELLES[c.etat],
+            value: c.statut?.since ? duree(c.statut.since, maintenant) : "",
+            color: FONDS_CARTE[c.etat],
+          },
+        ]}
+      />
+    );
+  };
 
   return (
     <MatrixChart
@@ -329,6 +382,13 @@ function Matrice({ blockId, config }: { blockId: Id; config: unknown }) {
       gap={ESPACEMENT}
       cellRadius={Math.min(6, Math.round(taille / 6))}
       classNames={{ cell: classes.case }}
+      withTooltip
+      getTooltipLabel={infobulle}
+      tooltipProps={{
+        styles: {
+          tooltip: { padding: 0, background: "transparent", color: "inherit" },
+        },
+      }}
     />
   );
 }
@@ -347,7 +407,11 @@ const LARGEUR_POIGNEE = 16;
 // (numero.tsx). Un champ « sm » fait 36 px, plus que la ligne.
 const HAUTEUR_CHAMP = 22;
 const CHAMP_EN_LIGNE = {
-  input: { height: HAUTEUR_CHAMP, minHeight: HAUTEUR_CHAMP, lineHeight: `${HAUTEUR_CHAMP}px` },
+  input: {
+    height: HAUTEUR_CHAMP,
+    minHeight: HAUTEUR_CHAMP,
+    lineHeight: `${HAUTEUR_CHAMP}px`,
+  },
 };
 
 const colonne = (largeur: number) => ({ width: largeur, flexShrink: 0 });
@@ -370,7 +434,8 @@ function ChampsMachine({
   onEchap?: () => void;
   premierChamp?: RefObject<HTMLInputElement | null>;
 }) {
-  const changer = (champ: Partial<Machine>) => onChange({ ...machine, ...champ });
+  const changer = (champ: Partial<Machine>) =>
+    onChange({ ...machine, ...champ });
   const portParDefaut = UPTIME_PORTS_DEFAUT[machine.type];
   // Entrée est consommée : le tiroir n'enregistre pas en plus.
   const touche = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -413,7 +478,9 @@ function ChampsMachine({
         aria-label="Vérification"
         data={TYPES}
         value={machine.type}
-        onChange={(value) => isUptimeCheckType(value) && changer({ type: value })}
+        onChange={(value) =>
+          isUptimeCheckType(value) && changer({ type: value })
+        }
         allowDeselect={false}
         rightSectionWidth={20}
         style={colonne(LARGEUR_TYPE)}
@@ -427,13 +494,17 @@ function ChampsMachine({
           placeholder={portParDefaut ? String(portParDefaut) : "Port"}
           aria-label="Port"
           value={machine.port}
-          onChange={(valeur) => changer({ port: valeur === "" ? "" : Number(valeur) })}
+          onChange={(valeur) =>
+            changer({ port: valeur === "" ? "" : Number(valeur) })
+          }
           min={1}
           max={65535}
           allowNegative={false}
           allowDecimal={false}
           hideControls
-          error={machine.type === "tcp" && machine.port === "" && machine.hote !== ""}
+          error={
+            machine.type === "tcp" && machine.port === "" && machine.hote !== ""
+          }
           style={colonne(LARGEUR_PORT)}
         />
       )}
@@ -470,7 +541,8 @@ function ChampsMachine({
  * Les machines, dans la liste des catégories et des attributs (ListItems) :
  * chaque ligne se modifie sur place, se glisse par sa poignée ou se déplace
  * d'un cran par le clic droit, qui la supprime aussi ; la dernière en ajoute
- * une. Tout reste dans le brouillon du tiroir jusqu'à l'enregistrement.
+ * une. Au-delà de dix, la liste défile. Tout reste dans le brouillon du
+ * tiroir jusqu'à l'enregistrement.
  */
 function Machines({ config, onChange }: WidgetConfigProps) {
   const machines = machinesDe(config);
@@ -479,7 +551,8 @@ function Machines({ config, onChange }: WidgetConfigProps) {
 
   const ranger = (liste: Machine[]) => onChange(avec(config, MACHINES, liste));
 
-  const reordonner = (ordre: number[]) => ranger(ordre.flatMap((i) => machines[i] ?? []));
+  const reordonner = (ordre: number[]) =>
+    ranger(ordre.flatMap((i) => machines[i] ?? []));
   const { zoneRef, drag, onPointerDown } = usePileGlissante({
     ids: machines.map((_, i) => i),
     selector: "[data-ligne-machine]",
@@ -502,34 +575,12 @@ function Machines({ config, onChange }: WidgetConfigProps) {
   };
 
   return (
-    <Stack gap={4}>
-      <Group gap="xs" wrap="nowrap" px={ROW_PADDING}>
-        <Box style={colonne(LARGEUR_POIGNEE)} />
-        <Text size="xs" c="dimmed" style={{ flex: 1 }}>
-          Nom
-        </Text>
-        <Text size="xs" c="dimmed" style={{ flex: 1 }}>
-          IP ou FQDN
-        </Text>
-        <Text size="xs" c="dimmed" style={colonne(LARGEUR_TYPE)}>
-          Vérification
-        </Text>
-        <Text size="xs" c="dimmed" style={colonne(LARGEUR_PORT)}>
-          Port
-        </Text>
-        <Text size="xs" c="dimmed" style={colonne(LARGEUR_OID)}>
-          OID
-        </Text>
-        <Text size="xs" c="dimmed" style={colonne(LARGEUR_COMMUNAUTE)}>
-          Communauté
-        </Text>
-        {/* La place du symbole Entrée de la ligne d'ajout. */}
-        <Box style={colonne(22)} />
-      </Group>
+    <Input.Wrapper label="Périphériques">
       <ListItems
         isEmpty={machines.length === 0}
         emptyIcon={IconHeartbeat}
         emptyText="Aucune machine"
+        maxRows={MACHINES_VISIBLES}
         add={{
           input: (
             <>
@@ -566,10 +617,22 @@ function Machines({ config, onChange }: WidgetConfigProps) {
               <ListItems.Row
                 actions={[
                   ...(i > 0
-                    ? [{ label: "Monter", icon: IconArrowUp, onClick: () => deplacer(i, i - 1) }]
+                    ? [
+                        {
+                          label: "Monter",
+                          icon: IconArrowUp,
+                          onClick: () => deplacer(i, i - 1),
+                        },
+                      ]
                     : []),
                   ...(i < machines.length - 1
-                    ? [{ label: "Descendre", icon: IconArrowDown, onClick: () => deplacer(i, i + 1) }]
+                    ? [
+                        {
+                          label: "Descendre",
+                          icon: IconArrowDown,
+                          onClick: () => deplacer(i, i + 1),
+                        },
+                      ]
                     : []),
                   {
                     label: "Supprimer",
@@ -602,7 +665,7 @@ function Machines({ config, onChange }: WidgetConfigProps) {
           {drag && drag.target >= machines.length && <InsertLine />}
         </div>
       </ListItems>
-    </Stack>
+    </Input.Wrapper>
   );
 }
 
@@ -625,11 +688,12 @@ function Reglages({ config, onChange }: WidgetConfigProps) {
   const avecTexte = option(config, NOMS) || option(config, DUREES);
 
   /** Un champ vidé le temps d'une saisie range la valeur par défaut plutôt qu'un zéro. */
-  const champNombre = (cle: string, defaut: number) => (valeur: string | number) =>
-    onChange(avec(config, cle, valeur === "" ? defaut : Number(valeur)));
+  const champNombre =
+    (cle: string, defaut: number) => (valeur: string | number) =>
+      onChange(avec(config, cle, valeur === "" ? defaut : Number(valeur)));
 
   return (
-    <Stack gap="md">
+    <Stack gap="xl">
       {/* Les acteurs sont prévenus à chaque changement d'état : les personnes,
           et les membres des groupes. Une catégorie privée ne prévient que son
           auteur. */}
@@ -652,25 +716,9 @@ function Reglages({ config, onChange }: WidgetConfigProps) {
 
       <Machines config={config} onChange={onChange} />
 
-      {/* Le serveur vérifie chaque machine à ce rythme ; la colonne relit
-          ce qu'il garde. Seule la saisie est étroite : le libellé garde sa
-          ligne, et les flèches, faute de place, sont masquées. */}
-      <NumberInput
-        label="Intervalle d'actualisation"
-        placeholder={String(UPTIME_INTERVAL_DEFAUT)}
-        value={nombre(config, INTERVALLE, UPTIME_INTERVAL_DEFAUT)}
-        onChange={champNombre(INTERVALLE, UPTIME_INTERVAL_DEFAUT)}
-        min={UPTIME_INTERVAL_MIN}
-        max={UPTIME_INTERVAL_MAX}
-        suffix=" s"
-        allowNegative={false}
-        allowDecimal={false}
-        hideControls
-        styles={{ wrapper: { width: 80 } }}
-      />
-
-      {/* Des champs étroits, comme l'intervalle : un nombre de quelques
-          chiffres. Le libellé garde sa ligne, et les flèches sont masquées. */}
+      {/* Des champs étroits : un nombre de quelques chiffres, réglable aux
+          flèches. Le libellé garde sa ligne. L'intervalle vient après ce qui
+          règle la matrice. */}
       <Group gap="md" align="flex-start">
         {/* Avec le nom ou la durée, les cartes prennent la largeur de leur
             colonne : la taille d'une case n'a plus cours. */}
@@ -685,8 +733,7 @@ function Reglages({ config, onChange }: WidgetConfigProps) {
             suffix=" px"
             allowNegative={false}
             allowDecimal={false}
-            hideControls
-            styles={{ wrapper: { width: 80 } }}
+            styles={{ wrapper: { width: 120 } }}
           />
         )}
         <NumberInput
@@ -698,25 +745,41 @@ function Reglages({ config, onChange }: WidgetConfigProps) {
           max={COLONNES_MAX}
           allowNegative={false}
           allowDecimal={false}
-          hideControls
-          styles={{ wrapper: { width: 80 } }}
+          styles={{ wrapper: { width: 120 } }}
+        />
+        {/* Le serveur vérifie chaque machine à ce rythme ; la colonne relit
+            ce qu'il garde. */}
+        <NumberInput
+          label="Intervalle d'actualisation"
+          placeholder={String(UPTIME_INTERVAL_DEFAUT)}
+          value={nombre(config, INTERVALLE, UPTIME_INTERVAL_DEFAUT)}
+          onChange={champNombre(INTERVALLE, UPTIME_INTERVAL_DEFAUT)}
+          min={UPTIME_INTERVAL_MIN}
+          max={UPTIME_INTERVAL_MAX}
+          suffix=" s"
+          allowNegative={false}
+          allowDecimal={false}
+          styles={{ wrapper: { width: 120 } }}
         />
       </Group>
 
-      {/* Ce qui règle l'affichage de la matrice, comme les options d'un
-          tableau (BoardDrawer). */}
+      {/* Ce qui règle l'affichage de la matrice. */}
       <Input.Wrapper label="Options">
         <Stack gap="sm">
           <Switch
             label="Afficher le nom"
             checked={option(config, NOMS)}
-            onChange={(e) => onChange(avec(config, NOMS, e.currentTarget.checked))}
+            onChange={(e) =>
+              onChange(avec(config, NOMS, e.currentTarget.checked))
+            }
             color="teal"
           />
           <Switch
             label="Afficher la durée de l'état"
             checked={option(config, DUREES)}
-            onChange={(e) => onChange(avec(config, DUREES, e.currentTarget.checked))}
+            onChange={(e) =>
+              onChange(avec(config, DUREES, e.currentTarget.checked))
+            }
             color="teal"
           />
         </Stack>

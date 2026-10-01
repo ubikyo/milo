@@ -17,11 +17,19 @@ import type { Asset, AssetOsFamily, AssetProtection } from "@milo/shared";
 const TAILLE = 16;
 
 /** Un logo de marque (brandLogos.ts), à la taille des icônes Tabler. */
-function Marque({ logo, couleur }: { logo: BrandLogo; couleur?: string }) {
+function Marque({
+  logo,
+  couleur,
+  taille = TAILLE,
+}: {
+  logo: BrandLogo;
+  couleur?: string;
+  taille?: number;
+}) {
   return (
     <svg
-      width={TAILLE}
-      height={TAILLE}
+      width={taille}
+      height={taille}
       viewBox="0 0 24 24"
       fill={couleur ?? `#${logo.hex}`}
       role="img"
@@ -50,12 +58,15 @@ const LOGOS_OS: Record<AssetOsFamily, IconeTabler | BrandLogo> = {
 const estMarque = (logo: IconeTabler | BrandLogo): logo is BrandLogo =>
   typeof logo === "object" && "path" in logo;
 
-function IconeOs({ icone: Icone }: { icone: IconeTabler }) {
-  return <Icone size={TAILLE} />;
+function IconeOs({ icone: Icone, taille }: { icone: IconeTabler; taille: number }) {
+  return <Icone size={taille} />;
 }
 
-/** Le logo du système, gris comme le texte secondaire. */
-export function OsLogo({ os }: { os: Asset["os"] }) {
+/**
+ * Le logo du système, gris comme le texte secondaire. À la taille des icônes
+ * de la liste, sauf quand la fiche le veut plus grand.
+ */
+export function OsLogo({ os, taille = TAILLE }: { os: Asset["os"]; taille?: number }) {
   if (!os) return null;
   const logo = LOGOS_OS[os.family];
   return (
@@ -66,7 +77,11 @@ export function OsLogo({ os }: { os: Asset["os"] }) {
         flexShrink: 0,
       }}
     >
-      {estMarque(logo) ? <Marque logo={logo} couleur="currentColor" /> : <IconeOs icone={logo} />}
+      {estMarque(logo) ? (
+        <Marque logo={logo} couleur="currentColor" taille={taille} />
+      ) : (
+        <IconeOs icone={logo} taille={taille} />
+      )}
     </span>
   );
 }

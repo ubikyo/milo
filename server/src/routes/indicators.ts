@@ -4,9 +4,10 @@
 // sait ce qu'elle veut dire.
 
 import { Router } from "express";
+import { SECTIONS_GAP_DEFAUT } from "@milo/shared";
 import type { Resource } from "@milo/shared";
 import { badRequest, forbidden, orNotFound, toIds } from "../lib/http.js";
-import { rangDemande, uniteLargeur, valeurLargeur } from "../lib/sections.js";
+import { ecartColonnes, rangDemande, uniteLargeur, valeurLargeur } from "../lib/sections.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { indicateurRendu, type PanneauIndicateurs } from "../repositories/indicators.js";
@@ -78,7 +79,12 @@ export const indicatorRoutes = <Type extends string>(
     exigerDeverrouille();
     const unite = uniteLargeur(req.body.width_unit, "auto");
     const valeur = valeurLargeur(unite, req.body.width_value);
-    const id = panneau.sections.create(unite, valeur, rangDemande(req.body.index));
+    const id = panneau.sections.create(
+      unite,
+      valeur,
+      ecartColonnes(req.body.gap, SECTIONS_GAP_DEFAUT),
+      rangDemande(req.body.index),
+    );
     res.status(201).json(panneau.sections.byId(id));
   });
 
@@ -109,7 +115,12 @@ export const indicatorRoutes = <Type extends string>(
       unite,
       req.body.width_value ?? (unite === existing.width_unit ? existing.width_value : undefined),
     );
-    panneau.sections.update.run(unite, valeur, existing.id);
+    panneau.sections.update.run(
+      unite,
+      valeur,
+      ecartColonnes(req.body.gap, existing.gap),
+      existing.id,
+    );
     res.json(panneau.sections.byId(existing.id));
   });
 

@@ -1,4 +1,4 @@
-import { Text, TextInput } from "@mantine/core";
+import { Input, Text, TextInput } from "@mantine/core";
 import { IconArrowDown, IconArrowUp, IconHash, IconTrash } from "@tabler/icons-react";
 import { Fragment, useRef, useState } from "react";
 import classes from "../assets/styles/AccessNumero.module.css";
@@ -28,6 +28,9 @@ interface Ligne {
 }
 
 const LIGNE_VIDE: Ligne = { libelle: "", numero: "" };
+
+// Au-delà de dix lignes, la liste défile.
+const LIGNES_VISIBLES = 10;
 
 // Hauteur d'un champ dans sa ligne : celle du texte, comme le renommage d'une
 // catégorie (LookupManager). Un champ « sm » fait 36 px, plus que la ligne.
@@ -74,7 +77,8 @@ const margeBasse = (suivant: AccessBlockType | null): number =>
  * Les lignes, dans la liste des catégories et des étiquettes (ListItems) :
  * chaque ligne se modifie sur place, se glisse par sa poignée ou se déplace
  * d'un cran par le clic droit, qui la supprime aussi ; la dernière en ajoute
- * une. Tout reste dans le brouillon du tiroir jusqu'à l'enregistrement.
+ * une. Au-delà de dix, la liste défile. Tout reste dans le brouillon du
+ * tiroir jusqu'à l'enregistrement.
  */
 function Lignes({ config, onChange }: WidgetConfigProps) {
   const liste = lignes(config);
@@ -120,92 +124,95 @@ function Lignes({ config, onChange }: WidgetConfigProps) {
   };
 
   return (
-    <ListItems
-      isEmpty={liste.length === 0}
-      emptyIcon={IconHash}
-      emptyText="Aucun attribut"
-      add={{
-        // Le libellé se glisse avant le champ du numéro, qui porte au bout
-        // le symbole Entrée de la liste.
-        section: (
-          <TextInput
-            ref={premierChamp}
-            placeholder="Libellé"
-            aria-label="Libellé"
-            value={nouvelle.libelle}
-            onChange={(e) => setNouvelle({ ...nouvelle, libelle: e.currentTarget.value })}
-            onKeyDown={toucheAjout}
-            variant="unstyled"
-            size="sm"
-            style={{ flex: 1, minWidth: 0 }}
-            autoFocus
-          />
-        ),
-        // Du texte et non un nombre : un numéro se copie tel qu'il s'écrit,
-        // avec ses espaces, ses points et son éventuel indicatif.
-        placeholder: "Numéro",
-        value: nouvelle.numero,
-        onChange: (numero) => setNouvelle({ ...nouvelle, numero }),
-        onSubmit: ajouter,
-        onCancel: () => setNouvelle(LIGNE_VIDE),
-      }}
-    >
-      <div ref={zoneRef}>
-        {liste.map((l, i) => (
-          <div key={i} data-ligne-attribut style={{ opacity: drag?.id === i ? 0.4 : 1 }}>
-            {drag?.target === i && <InsertLine />}
-            <ListItems.Row
-              actions={[
-                ...(i > 0
-                  ? [{ label: "Monter", icon: IconArrowUp, onClick: () => deplacer(i, i - 1) }]
-                  : []),
-                ...(i < liste.length - 1
-                  ? [{ label: "Descendre", icon: IconArrowDown, onClick: () => deplacer(i, i + 1) }]
-                  : []),
-                {
-                  label: "Supprimer",
-                  icon: IconTrash,
-                  onClick: () => onChange(ranger(liste.filter((_, j) => j !== i))),
-                  danger: true,
-                },
-              ]}
-            >
-              {(active) => (
-                <>
-                  {/* Seule la poignée déplace la ligne : les champs gardent leurs clics. */}
-                  <DragHandle
-                    onPointerDown={onPointerDown(i, i)}
-                    visible={active}
-                    label="Glisser pour réordonner"
-                  />
-                  <TextInput
-                    placeholder="Libellé"
-                    aria-label="Libellé"
-                    value={l.libelle}
-                    onChange={(e) => changer(i, "libelle", e.currentTarget.value)}
-                    variant="unstyled"
-                    size="sm"
-                    style={{ flex: 1, minWidth: 0 }}
-                    styles={CHAMP_EN_LIGNE}
-                  />
-                  <TextInput
-                    placeholder="Numéro"
-                    aria-label="Numéro"
-                    value={l.numero}
-                    onChange={(e) => changer(i, "numero", e.currentTarget.value)}
-                    variant="unstyled"
-                    size="sm"
-                    style={{ flex: 1, minWidth: 0 }}
-                    styles={CHAMP_EN_LIGNE}
-                  />
-                </>
-              )}
-            </ListItems.Row>
-          </div>
-        ))}
-        {drag && drag.target >= liste.length && <InsertLine />}
-      </div>
-    </ListItems>
+    <Input.Wrapper label="Attributs">
+      <ListItems
+        isEmpty={liste.length === 0}
+        emptyIcon={IconHash}
+        emptyText="Aucun attribut"
+        maxRows={LIGNES_VISIBLES}
+        add={{
+          // Le libellé se glisse avant le champ du numéro, qui porte au bout
+          // le symbole Entrée de la liste.
+          section: (
+            <TextInput
+              ref={premierChamp}
+              placeholder="Libellé"
+              aria-label="Libellé"
+              value={nouvelle.libelle}
+              onChange={(e) => setNouvelle({ ...nouvelle, libelle: e.currentTarget.value })}
+              onKeyDown={toucheAjout}
+              variant="unstyled"
+              size="sm"
+              style={{ flex: 1, minWidth: 0 }}
+              autoFocus
+            />
+          ),
+          // Du texte et non un nombre : un numéro se copie tel qu'il s'écrit,
+          // avec ses espaces, ses points et son éventuel indicatif.
+          placeholder: "Numéro",
+          value: nouvelle.numero,
+          onChange: (numero) => setNouvelle({ ...nouvelle, numero }),
+          onSubmit: ajouter,
+          onCancel: () => setNouvelle(LIGNE_VIDE),
+        }}
+      >
+        <div ref={zoneRef}>
+          {liste.map((l, i) => (
+            <div key={i} data-ligne-attribut style={{ opacity: drag?.id === i ? 0.4 : 1 }}>
+              {drag?.target === i && <InsertLine />}
+              <ListItems.Row
+                actions={[
+                  ...(i > 0
+                    ? [{ label: "Monter", icon: IconArrowUp, onClick: () => deplacer(i, i - 1) }]
+                    : []),
+                  ...(i < liste.length - 1
+                    ? [{ label: "Descendre", icon: IconArrowDown, onClick: () => deplacer(i, i + 1) }]
+                    : []),
+                  {
+                    label: "Supprimer",
+                    icon: IconTrash,
+                    onClick: () => onChange(ranger(liste.filter((_, j) => j !== i))),
+                    danger: true,
+                  },
+                ]}
+              >
+                {(active) => (
+                  <>
+                    {/* Seule la poignée déplace la ligne : les champs gardent leurs clics. */}
+                    <DragHandle
+                      onPointerDown={onPointerDown(i, i)}
+                      visible={active}
+                      label="Glisser pour réordonner"
+                    />
+                    <TextInput
+                      placeholder="Libellé"
+                      aria-label="Libellé"
+                      value={l.libelle}
+                      onChange={(e) => changer(i, "libelle", e.currentTarget.value)}
+                      variant="unstyled"
+                      size="sm"
+                      style={{ flex: 1, minWidth: 0 }}
+                      styles={CHAMP_EN_LIGNE}
+                    />
+                    <TextInput
+                      placeholder="Numéro"
+                      aria-label="Numéro"
+                      value={l.numero}
+                      onChange={(e) => changer(i, "numero", e.currentTarget.value)}
+                      variant="unstyled"
+                      size="sm"
+                      style={{ flex: 1, minWidth: 0 }}
+                      styles={CHAMP_EN_LIGNE}
+                    />
+                  </>
+                )}
+              </ListItems.Row>
+            </div>
+          ))}
+          {drag && drag.target >= liste.length && <InsertLine />}
+        </div>
+      </ListItems>
+    </Input.Wrapper>
   );
 }
 
@@ -218,7 +225,7 @@ export const numeroWidget: AccessWidget = {
   Display: ({ config }) => {
     const liste = lignes(config);
     return (
-      <div className={classes.encart}>
+      <div className={classes.encart} style={{ border: "none" }}>
         {liste.length === 0 ? (
           <Text size="sm" c={COULEUR_SOUS_CATEGORIE}>
             Attributs

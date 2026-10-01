@@ -1,4 +1,5 @@
 export * from "./api.js";
+export * from "./asset-settings.js";
 export * from "./backup.js";
 export * from "./developer.js";
 export * from "./domain.js";

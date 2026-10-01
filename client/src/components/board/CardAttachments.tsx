@@ -1,5 +1,4 @@
 import {
-  ActionIcon,
   Box,
   Group,
   Input,
@@ -21,6 +20,7 @@ import PointMenu, {
   type PointMenuPosition,
 } from "../ui/PointMenu";
 import type { Attachment } from "@milo/shared";
+import classes from "../../assets/styles/CardAttachments.module.css";
 
 // « il y a 3 minutes » plutôt qu'une date : une pièce jointe vient d'être
 // déposée le plus souvent, et c'est cela qu'on veut lire. Le français vient de
@@ -32,9 +32,6 @@ dayjs.extend(relativeTime);
 // côté sans que la ligne ne s'étire.
 const VIGNETTE_L = 64;
 const VIGNETTE_H = 48;
-
-const VIGNETTE_BG =
-  "light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5))";
 
 /** L'extension d'un nom de fichier, en capitales : « CER », « PDF », « ZIP ». */
 const extension = (nom: string): string => {
@@ -64,8 +61,9 @@ const taille = (octets: number): string => {
   return `${(octets / (1024 * 1024)).toFixed(1).replace(".", ",")} Mo`;
 };
 
-// « Supprimer » est dans le menu contextuel de la ligne, au clic droit, comme
-// pour les checklists et les cartes du tableau.
+// Toute la ligne ouvre la pièce dans un nouvel onglet ; « Supprimer » est dans
+// son menu contextuel, au clic droit, comme pour les checklists et les cartes
+// du tableau.
 interface LigneProps {
   piece: Attachment;
   onContextMenu: (position: PointMenuPosition) => void;
@@ -73,63 +71,60 @@ interface LigneProps {
 
 function Ligne({ piece, onContextMenu }: LigneProps) {
   return (
-    <Group
-      gap="sm"
-      wrap="nowrap"
-      align="center"
+    <a
+      href={piece.url}
+      target="_blank"
+      rel="noreferrer"
+      className={classes.ligne}
+      aria-label={`Ouvrir ${piece.name}`}
       onContextMenu={(e) => onContextMenu(positionDuMenu(e))}
     >
-      {/* L'encart : la photo si c'en est une, sinon son extension au centre. */}
-      <Box
-        w={VIGNETTE_L}
-        h={VIGNETTE_H}
-        style={{
-          flexShrink: 0,
-          overflow: "hidden",
-          borderRadius: "var(--mantine-radius-sm)",
-          backgroundColor: VIGNETTE_BG,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        {piece.is_image ? (
-          <img
-            src={piece.url}
-            alt={piece.name}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          />
-        ) : (
-          <Text size="sm" fw={700} c="dimmed">
-            {extension(piece.name)}
+      <Group gap="sm" wrap="nowrap" align="center">
+        {/* L'encart : la photo si c'en est une, sinon son extension au centre. */}
+        <Box
+          w={VIGNETTE_L}
+          h={VIGNETTE_H}
+          className={classes.vignette}
+          style={{
+            flexShrink: 0,
+            overflow: "hidden",
+            borderRadius: "var(--mantine-radius-sm)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {piece.is_image ? (
+            <img
+              src={piece.url}
+              alt={piece.name}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            <Text size="sm" fw={700} c="dimmed">
+              {extension(piece.name)}
+            </Text>
+          )}
+        </Box>
+
+        {/* Le nom, et dessous le moment du dépôt. */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Text size="sm" fw={500} truncate>
+            {piece.name}
           </Text>
-        )}
-      </Box>
+          <Text size="xs" c="dimmed">
+            {depuis(piece.created_at)} · {taille(piece.size)}
+          </Text>
+        </div>
 
-      {/* Le nom, et dessous le moment du dépôt. */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <Text size="sm" fw={500} truncate>
-          {piece.name}
-        </Text>
-        <Text size="xs" c="dimmed">
-          {depuis(piece.created_at)} · {taille(piece.size)}
-        </Text>
-      </div>
-
-      <ActionIcon
-        component="a"
-        href={piece.url}
-        target="_blank"
-        rel="noreferrer"
-        variant="subtle"
-        color="gray"
-        size="sm"
-        style={{ flexShrink: 0, color: FIELD_ICON }}
-        aria-label={`Ouvrir ${piece.name}`}
-      >
-        <IconExternalLink size={16} />
-      </ActionIcon>
-    </Group>
+        {/* Au survol, le rappel que le clic ouvre un nouvel onglet. */}
+        <IconExternalLink
+          size={16}
+          className={classes.ouvrir}
+          style={{ flexShrink: 0, color: FIELD_ICON }}
+        />
+      </Group>
+    </a>
   );
 }
 

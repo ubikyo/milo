@@ -23,7 +23,7 @@ const poids = (octets: number): string => {
 
 const ligne = (libelle: string, valeur: string) => (
   <Group gap="md" wrap="nowrap" align="baseline">
-    <Text size="sm" fw={500} w={LABEL_WIDTH} style={{ flexShrink: 0 }}>
+    <Text size="sm" fw={500} c="dimmed" w={LABEL_WIDTH} style={{ flexShrink: 0 }}>
       {libelle}
     </Text>
     <Text size="sm">{valeur}</Text>

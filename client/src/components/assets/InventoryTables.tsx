@@ -1,17 +1,28 @@
 import {
+  Badge,
+  Box,
+  Button,
   Center,
   Checkbox,
+  CopyButton,
   Group,
   Progress,
-  SimpleGrid,
   Stack,
   Table,
   Text,
   UnstyledButton,
 } from "@mantine/core";
-import { IconChevronDown, IconChevronUp, IconSelector } from "@tabler/icons-react";
+import {
+  IconCheck,
+  IconChevronDown,
+  IconChevronUp,
+  IconCopy,
+  IconSelector,
+} from "@tabler/icons-react";
 import { useMemo, useState } from "react";
-import { STRONG_TEXT } from "../../themes/colors";
+import { NEUTRAL_HOVER, STRONG_TEXT } from "../../themes/colors";
+import { ReferenceTag } from "../ui/ReferenceTag";
+import { useColonnesRedimensionnables } from "../ui/useColonnesRedimensionnables";
 import type { ComponentType, CSSProperties, ReactNode } from "react";
 import type { AssetEntry, AssetSection } from "@milo/shared";
 
@@ -48,7 +59,17 @@ interface Tri {
 }
 
 /** L'en-tête d'une colonne : un clic trie, un second inverse. */
-function EnTete({ colonne, tri, onTri }: { colonne: Colonne; tri: Tri; onTri: () => void }) {
+function EnTete({
+  colonne,
+  tri,
+  onTri,
+  poignee,
+}: {
+  colonne: Colonne;
+  tri: Tri;
+  onTri: () => void;
+  poignee: ReactNode;
+}) {
   const actif = tri.cle === colonne.cle;
   const Icone = !actif ? IconSelector : tri.sens === "asc" ? IconChevronUp : IconChevronDown;
   return (
@@ -67,6 +88,7 @@ function EnTete({ colonne, tri, onTri }: { colonne: Colonne; tri: Tri; onTri: ()
           </Center>
         </Group>
       </UnstyledButton>
+      {poignee}
     </Table.Th>
   );
 }
@@ -83,6 +105,9 @@ function TableauTriable({
   espacement?: number;
 }) {
   const [tri, setTri] = useState<Tri>(triInitial);
+  // Chaque tableau de l'inventaire se reconnaît à ses colonnes.
+  const cles = colonnes.map((c) => c.cle);
+  const redim = useColonnesRedimensionnables(`inventaire.${cles.join("-")}`, cles);
 
   const trier = (colonne: Colonne) =>
     setTri((courant) =>
@@ -116,7 +141,8 @@ function TableauTriable({
   }, [colonnes, entrees, tri]);
 
   return (
-    <Table verticalSpacing={espacement} horizontalSpacing="xs">
+    <Table {...redim.tableProps} verticalSpacing={espacement} horizontalSpacing="xs">
+      {redim.colgroup}
       <Table.Thead>
         <Table.Tr>
           {colonnes.map((colonne) => (
@@ -125,6 +151,7 @@ function TableauTriable({
               colonne={colonne}
               tri={tri}
               onTri={() => trier(colonne)}
+              poignee={redim.poignee(colonne.cle)}
             />
           ))}
         </Table.Tr>
@@ -164,11 +191,19 @@ const champ = (cle: string, libelle: string): Colonne => ({
 
 // --- Volumes ----------------------------------------------------------------
 
-/** Une taille donnée en Mo par l'agent, lisible : « 476 Go », « 512 Mo ». */
-export const taille = (mo: number): string =>
-  mo >= 1024
-    ? `${(mo / 1024).toLocaleString("fr-FR", { maximumFractionDigits: mo >= 10 * 1024 ? 0 : 1 })} Go`
+/**
+ * Une taille donnée en Mo par l'agent, lisible : « 3,63 To », « 476 Go »,
+ * « 512 Mo ». Au-delà de 1 000 Go, elle passe en To.
+ */
+export const taille = (mo: number): string => {
+  const go = mo / 1024;
+  if (go > 1000) {
+    return `${(go / 1024).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} To`;
+  }
+  return mo >= 1024
+    ? `${go.toLocaleString("fr-FR", { maximumFractionDigits: mo >= 10 * 1024 ? 0 : 1 })} Go`
     : `${Math.round(mo).toLocaleString("fr-FR")} Mo`;
+};
 
 /** « Yes » et « No » de l'agent, en français ; le reste tel quel. */
 const ouiNon = (valeur: string | undefined): string => {
@@ -446,14 +481,30 @@ function Groupes({ section }: { section: AssetSection }) {
 }
 
 /**
- * Les comptes locaux du poste, par nom. Le dossier personnel ne vient que de
- * Linux et de macOS : la colonne n'existe que si l'agent en donne un.
+ * Les comptes locaux du poste, par nom, un tag vert après le nom des
+ * administrateurs (le serveur les marque d'« ADMIN »). Le dossier personnel ne
+ * vient que de Linux et de macOS : la colonne n'existe que si l'agent en
+ * donne un.
  */
 function Comptes({ section }: { section: AssetSection }) {
   const dossiers = section.entries.some((entree) => entree["HOME"]);
+  const nom: Colonne = {
+    ...champ("NAME", "Nom"),
+    rendu: (entree) =>
+      entree["ADMIN"] ? (
+        <Group gap={8} wrap="nowrap">
+          {texte(entree["NAME"])}
+          <Badge color="green" variant="filled" size="sm" radius="sm" style={{ flexShrink: 0 }}>
+            Admin
+          </Badge>
+        </Group>
+      ) : (
+        texte(entree["NAME"])
+      ),
+  };
   return (
     <TableauTriable
-      colonnes={[champ("NAME", "Nom"), ...(dossiers ? [champ("HOME", "Dossier")] : [])]}
+      colonnes={[nom, ...(dossiers ? [champ("HOME", "Dossier")] : [])]}
       entrees={section.entries}
       triInitial={{ cle: "NAME", sens: "asc" }}
     />
@@ -502,13 +553,23 @@ function MachinesVirtuelles({ section }: { section: AssetSection }) {
 // --- Batterie ---------------------------------------------------------------
 
 /** Un libellé discret, et la valeur en dessous. */
-function Valeur({ libelle, valeur }: { libelle: string; valeur?: string }) {
+function Valeur({
+  libelle,
+  valeur,
+  adroite,
+}: {
+  libelle: string;
+  valeur?: ReactNode;
+  /** Vrai pour un nombre, qu'on aligne à droite. */
+  adroite?: boolean;
+}) {
   return (
-    <Stack gap={2}>
+    <Stack gap={2} ta={adroite ? "right" : undefined}>
       <Text size="xs" c="dimmed">
         {libelle}
       </Text>
-      <Text size="sm" style={{ wordBreak: "break-word" }}>
+      {/* Un bloc et non un paragraphe : la valeur peut porter un badge. */}
+      <Text component="div" size="sm" style={{ wordBreak: "break-word" }}>
         {valeur || VIDE}
       </Text>
     </Stack>
@@ -516,18 +577,604 @@ function Valeur({ libelle, valeur }: { libelle: string; valeur?: string }) {
 }
 
 /**
- * La batterie du poste : son nom et son numéro de série, côte à côte. Le
+ * Les batteries du poste, numérotées : nom et numéro de série. Le
  * reste de ce que l'agent remonte (capacité, chimie, fabricant) n'est pas
  * montré.
  */
 function Batterie({ section }: { section: AssetSection }) {
   return (
-    <Stack gap="lg">
-      {section.entries.map((entree, rang) => (
-        <SimpleGrid key={rang} cols={2} spacing="lg">
+    <LignesNumerotees
+      entrees={section.entries}
+      textes={2}
+      nombres={0}
+      valeurs={(entree) => (
+        <>
           <Valeur libelle="Nom" valeur={entree["NAME"]} />
-          <Valeur libelle="Numéro de série" valeur={entree["SERIAL"]} />
-        </SimpleGrid>
+          <Valeur
+            libelle="Numéro de série"
+            valeur={<AvecCopie valeur={entree["SERIAL"]} />}
+          />
+        </>
+      )}
+    />
+  );
+}
+
+// --- Processeurs, mémoire, contrôleurs -------------------------------------
+
+/** Le fond du numéro de chaque ligne : un gris neutre, foncé. */
+const FOND_NUMERO = "#4a4a4a";
+
+/** La largeur minimale du rectangle du numéro. */
+const LARGEUR_NUMERO = 32;
+
+/** La largeur des colonnes de nombres, alignés à droite. */
+const LARGEUR_NOMBRE = 80;
+
+/** La largeur de la première colonne, un mot court : fabricant, type. */
+const LARGEUR_PREMIERE = 120;
+
+/**
+ * Les entrées d'une section, une par ligne : son numéro dans un rectangle
+ * foncé — son rang, ou ce que dit `numero` —, puis ses valeurs. La première
+ * colonne a sa largeur fixe, les autres colonnes de texte se partagent le
+ * reste, les nombres viennent à droite, dans une colonne étroite chacun.
+ * Plus de valeurs que de colonnes passent à la ligne.
+ */
+function LignesNumerotees({
+  entrees,
+  textes,
+  nombres,
+  valeurs,
+  numero,
+  premiere = LARGEUR_PREMIERE,
+  aCote,
+  colonnes: gabarit,
+  largeurNumero,
+}: {
+  entrees: AssetEntry[];
+  textes: number;
+  nombres: number;
+  valeurs: (entree: AssetEntry) => ReactNode;
+  numero?: (entree: AssetEntry) => string | undefined;
+  /** La largeur de la première colonne, en pixels. */
+  premiere?: number;
+  /** Ce qui vient à droite des valeurs, sur toute la hauteur de la ligne. */
+  aCote?: (entree: AssetEntry) => ReactNode;
+  /** Les colonnes de la grille, quand l'ordre par défaut ne convient pas. */
+  colonnes?: string;
+  /** Une largeur fixe pour le rectangle du numéro, au lieu de celle de son contenu. */
+  largeurNumero?: number;
+}) {
+  const colonnes = gabarit ?? [
+    `${premiere}px`,
+    ...Array<string>(textes - 1).fill("1fr"),
+    ...Array<string>(nombres).fill(`${LARGEUR_NOMBRE}px`),
+  ].join(" ");
+  return (
+    <Stack gap={20}>
+      {entrees.map((entree, rang) => (
+        <Group key={rang} gap="lg" align="stretch" wrap="nowrap">
+          <Center
+            miw={LARGEUR_NUMERO}
+            w={largeurNumero}
+            px="xs"
+            style={{ backgroundColor: FOND_NUMERO, borderRadius: 6 }}
+          >
+            <Text size="sm" fw={600} c="white" style={{ whiteSpace: "nowrap" }}>
+              {numero ? numero(entree) || VIDE : rang + 1}
+            </Text>
+          </Center>
+          <Box
+            style={{
+              flex: 1,
+              display: "grid",
+              gridTemplateColumns: colonnes,
+              columnGap: "var(--mantine-spacing-lg)",
+              rowGap: 4,
+              // Plus haut que le texte, ce qui est à côté n'étire pas ses lignes.
+              alignContent: "start",
+            }}
+          >
+            {valeurs(entree)}
+          </Box>
+          {aCote?.(entree)}
+        </Group>
+      ))}
+    </Stack>
+  );
+}
+
+/** Les processeurs du poste : fabricant, modèle, cœurs et threads. */
+function Processeurs({ section }: { section: AssetSection }) {
+  return (
+    <LignesNumerotees
+      entrees={section.entries}
+      textes={2}
+      nombres={2}
+      valeurs={(entree) => (
+        <>
+          <Valeur libelle="Fabricant" valeur={entree["MANUFACTURER"]} />
+          <Valeur libelle="Modèle" valeur={entree["NAME"]?.trim()} />
+          <Valeur libelle="Cœurs" valeur={entree["CORE"]} adroite />
+          <Valeur libelle="Threads" valeur={entree["THREAD"]} adroite />
+        </>
+      )}
+    />
+  );
+}
+
+/** Une capacité en Mo, comme l'agent la donne, dite en Go. */
+const enGo = (valeur: string | undefined): string => {
+  const mo = Number(valeur);
+  return valeur && !Number.isNaN(mo)
+    ? `${(mo / 1024).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Go`
+    : "";
+};
+
+/**
+ * Les barrettes du poste : capacité, type et description. Le numéro de slot
+ * de l'agent n'est pas montré : celui de la ligne en tient lieu.
+ */
+function Memoire({ section }: { section: AssetSection }) {
+  return (
+    <LignesNumerotees
+      entrees={section.entries}
+      textes={2}
+      nombres={1}
+      // La capacité d'abord, puis le type et la description.
+      colonnes={`${LARGEUR_PREMIERE}px ${LARGEUR_PREMIERE}px 1fr`}
+      valeurs={(entree) => (
+        <>
+          <Valeur libelle="Capacité" valeur={enGo(entree["CAPACITY"])} />
+          <Valeur libelle="Type" valeur={entree["TYPE"]} />
+          <Valeur libelle="Description" valeur={entree["DESCRIPTION"]} />
+        </>
+      )}
+    />
+  );
+}
+
+/**
+ * Le rectangle des contrôleurs porte leur emplacement PCI (« 00:1f.3 ») : il
+ * a sa largeur à lui, fixe, pour que tous s'alignent.
+ */
+const LARGEUR_SLOT = 80;
+
+/**
+ * La largeur des libellés des contrôleurs : ce qu'il faut pour que leurs
+ * valeurs commencent là où commence la seconde colonne des autres lignes
+ * numérotées — le numéro de série d'une batterie —, le rectangle étant plus
+ * large.
+ */
+const LARGEUR_LIBELLE = LARGEUR_NUMERO + LARGEUR_PREMIERE - LARGEUR_SLOT;
+
+/** Les champs qu'on copie d'un clic : les numéros de série. */
+const CHAMPS_COPIABLES = new Set(["SERIAL", "SERIALNUMBER", "ALTSERIAL", "SSN"]);
+
+/**
+ * Une valeur suivie d'un bouton qui la copie : un numéro de série se recopie
+ * dans un ticket, chez le fabricant, rarement à la main sans erreur. Sans
+ * valeur, rien à copier : ni bouton ni contenu, la ligne affiche son tiret.
+ */
+function AvecCopie({ valeur, children }: { valeur?: string; children?: ReactNode }) {
+  if (!valeur) return children ?? VIDE;
+  return (
+    <Group gap={4} wrap="nowrap">
+      {children ?? <span>{valeur}</span>}
+      <CopyButton value={valeur}>
+        {({ copied, copy }) => (
+          <Button
+            variant="subtle"
+            color="gray"
+            size="compact-xs"
+            onClick={copy}
+            aria-label="Copier le numéro de série"
+            style={{ "--button-hover": NEUTRAL_HOVER, flexShrink: 0 } as CSSProperties}
+          >
+            {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+          </Button>
+        )}
+      </CopyButton>
+    </Group>
+  );
+}
+
+/**
+ * Le gabarit des étiquettes d'identifiants — VENDORID, PRODUCTID : quatre
+ * chiffres hexadécimaux le plus souvent, davantage parfois. « D » est le plus
+ * large d'entre eux une fois en capitales : un gabarit qui n'en a que, aussi
+ * long que le plus long identifiant, donne la même largeur à toutes les
+ * étiquettes, quels que soient leurs chiffres.
+ */
+const gabaritIdentifiants = (identifiants: (string | undefined)[]): string =>
+  "D".repeat(Math.max(4, ...identifiants.map((id) => id?.length ?? 0)));
+
+/** Un libellé discret à gauche, la valeur à droite, sur une même ligne. */
+function Ligne({ libelle, valeur }: { libelle: string; valeur?: ReactNode }) {
+  return (
+    <>
+      <Text size="sm" c="dimmed">
+        {libelle}
+      </Text>
+      <Text component="div" size="sm" style={{ wordBreak: "break-word" }}>
+        {valeur || VIDE}
+      </Text>
+    </>
+  );
+}
+
+/**
+ * Les contrôleurs du poste, repérés par leur emplacement PCI : nom, fabricant
+ * — avec l'identifiant du fabricant au bord droit, dans l'étiquette verte
+ * des références — et type, l'un sous l'autre.
+ */
+function Controleurs({ section }: { section: AssetSection }) {
+  const gabarit = gabaritIdentifiants(section.entries.map((entree) => entree["VENDORID"]));
+  return (
+    <LignesNumerotees
+      entrees={section.entries}
+      textes={2}
+      nombres={0}
+      premiere={LARGEUR_LIBELLE}
+      largeurNumero={LARGEUR_SLOT}
+      numero={(entree) => entree["PCISLOT"]}
+      valeurs={(entree) => (
+        <>
+          <Ligne libelle="Nom" valeur={entree["NAME"]} />
+          <Ligne
+            libelle="Fabricant"
+            valeur={
+              (entree["VENDORID"] || entree["MANUFACTURER"]) && (
+                // L'étiquette au bord droit de la ligne : d'un contrôleur à
+                // l'autre, elles s'alignent en colonne.
+                <Group gap={8} wrap="nowrap" justify="space-between">
+                  <span>{entree["MANUFACTURER"] || VIDE}</span>
+                  {entree["VENDORID"] && (
+                    <ReferenceTag reference={entree["VENDORID"]} gabarit={gabarit} copiable />
+                  )}
+                </Group>
+              )
+            }
+          />
+          <Ligne libelle="Type" valeur={entree["TYPE"]} />
+        </>
+      )}
+    />
+  );
+}
+
+/** La couleur de l'écran dessiné : le gris foncé des numéros. */
+const BORD_ECRAN = FOND_NUMERO;
+
+/** « 1920x1080 », comme l'agent la donne, se lit « 1920 x 1080 ». */
+const espacerResolution = (resolution: string): string =>
+  resolution.replace(/\s*[x×]\s*/i, " x ");
+
+/**
+ * Un écran dessiné, la résolution au milieu de sa dalle. Pied compris, il
+ * tient dans la hauteur des trois lignes de texte d'une carte vidéo (moins de
+ * 72 px) : plus haut, il étirait la ligne et écartait le texte.
+ */
+function Ecran({ resolution }: { resolution?: string }) {
+  return (
+    <Stack gap={0} align="center" style={{ flexShrink: 0 }}>
+      <Center w={104} h={58} style={{ border: `3px solid ${BORD_ECRAN}`, borderRadius: 5 }}>
+        <Text size="xs" fw={600} style={{ whiteSpace: "nowrap" }}>
+          {resolution ? espacerResolution(resolution) : VIDE}
+        </Text>
+      </Center>
+      {/* Le pied : une tige, puis la base. */}
+      <Box w={8} h={6} style={{ backgroundColor: BORD_ECRAN }} />
+      <Box w={36} h={3} style={{ backgroundColor: BORD_ECRAN, borderRadius: 2 }} />
+    </Stack>
+  );
+}
+
+/**
+ * Les cartes vidéo du poste : puce, nom et emplacement PCI l'un sous l'autre,
+ * et à côté un écran qui porte la résolution.
+ */
+function Video({ section }: { section: AssetSection }) {
+  return (
+    <LignesNumerotees
+      entrees={section.entries}
+      textes={2}
+      nombres={0}
+      valeurs={(entree) => (
+        <>
+          <Ligne libelle="Puce" valeur={entree["CHIPSET"]} />
+          <Ligne libelle="Nom" valeur={entree["NAME"]} />
+          <Ligne libelle="Slot PCI" valeur={entree["PCISLOT"]} />
+        </>
+      )}
+      aCote={(entree) => <Ecran resolution={entree["RESOLUTION"]} />}
+    />
+  );
+}
+
+/**
+ * Les périphériques audio du poste : nom, fabricant et description l'un sous
+ * l'autre. La légende de l'agent (CAPTION) n'est pas montrée : elle répète
+ * le nom.
+ */
+function Audio({ section }: { section: AssetSection }) {
+  return (
+    <LignesNumerotees
+      entrees={section.entries}
+      textes={2}
+      nombres={0}
+      valeurs={(entree) => (
+        <>
+          <Ligne libelle="Nom" valeur={entree["NAME"]} />
+          <Ligne libelle="Fabricant" valeur={entree["MANUFACTURER"]} />
+          <Ligne libelle="Description" valeur={entree["DESCRIPTION"]} />
+        </>
+      )}
+    />
+  );
+}
+
+/** Les champs d'une section, dans l'ordre où ils s'affichent, sous leur nom français. */
+type Champs = [string, string][];
+
+/** Une capacité en Mo, comme l'agent la donne, dite en Go ou en To. */
+const enTaille = (brute: string): string => {
+  const mo = Number(brute);
+  return brute && !Number.isNaN(mo) ? taille(mo) : brute;
+};
+
+/**
+ * Les lignes d'une entrée : ses champs connus en français, puis ceux qu'on ne
+ * sait pas nommer, sous le nom de l'agent — sauf les écartés. Une valeur déjà
+ * dite plus haut ne se répète pas : l'agent donne souvent le même texte comme
+ * nom, légende et description, ou le numéro de série deux fois. Les nombres
+ * et les « Oui » / « Non » se répètent, eux : deux champs à 0 ou à « Oui » ne
+ * disent pas la même chose.
+ */
+const lignesDe = (
+  entree: AssetEntry,
+  champs: Champs,
+  { ecartes = [], formats = {}, etiquettes = {} }: {
+    ecartes?: string[];
+    formats?: Record<string, (brute: string) => string>;
+    etiquettes?: Record<string, string>;
+  } = {},
+): [string, string, string][] => {
+  const connus = new Set([
+    ...champs.map(([champ]) => champ),
+    ...ecartes,
+    ...Object.values(etiquettes),
+  ]);
+  const affiches: Champs = [
+    // Un champ qui porte une étiquette a sa ligne dès que l'étiquette a une
+    // valeur, même s'il n'en a pas lui-même.
+    ...champs.filter(([champ]) => champ in entree || (etiquettes[champ] && entree[etiquettes[champ]])),
+    ...Object.keys(entree)
+      .filter((champ) => !connus.has(champ))
+      .map((champ): [string, string] => [champ, champ]),
+  ];
+  const dites = new Set<string>();
+  return affiches.flatMap(([champ, libelle]): [string, string, string][] => {
+    const brute = entree[champ] ?? "";
+    const valeur = formats[champ]?.(brute) ?? brute;
+    const cle = valeur.trim().toLowerCase();
+    const texte = /\p{L}/u.test(cle) && cle !== "oui" && cle !== "non";
+    if (texte && dites.has(cle)) return [];
+    if (texte) dites.add(cle);
+    return [[champ, libelle, valeur]];
+  });
+};
+
+/**
+ * Une section en lignes numérotées : pour chaque entrée, ce que l'agent en
+ * dit, l'un sous l'autre, en français. `etiquettes` associe à un champ un
+ * autre champ — un identifiant —, montré dans l'étiquette verte des
+ * références au bord droit de la ligne plutôt que sur une ligne à lui.
+ */
+function FichesNumerotees({
+  section,
+  champs,
+  ecartes,
+  formats,
+  etiquettes = {},
+}: {
+  section: AssetSection;
+  champs: Champs;
+  ecartes?: string[];
+  formats?: Record<string, (brute: string) => string>;
+  etiquettes?: Record<string, string>;
+}) {
+  // Une seule largeur pour toutes les étiquettes de la section.
+  const gabarit = gabaritIdentifiants(
+    section.entries.flatMap((entree) => Object.values(etiquettes).map((e) => entree[e])),
+  );
+  return (
+    <LignesNumerotees
+      entrees={section.entries}
+      textes={2}
+      nombres={0}
+      valeurs={(entree) =>
+        lignesDe(entree, champs, { ecartes, formats, etiquettes }).map(
+          ([champ, libelle, valeur]) => {
+            const etiquette = etiquettes[champ];
+            const id = etiquette ? entree[etiquette] : undefined;
+            const contenu = id ? (
+              // L'étiquette au bord droit de la ligne : d'une entrée à
+              // l'autre, elles s'alignent en colonne.
+              <Group gap={8} wrap="nowrap" justify="space-between">
+                <span>{valeur || VIDE}</span>
+                <ReferenceTag reference={id} gabarit={gabarit} copiable />
+              </Group>
+            ) : (
+              valeur
+            );
+            return (
+              <Ligne
+                key={champ}
+                libelle={libelle}
+                valeur={
+                  CHAMPS_COPIABLES.has(champ) ? <AvecCopie valeur={valeur} /> : contenu
+                }
+              />
+            );
+          },
+        )
+      }
+    />
+  );
+}
+
+const CHAMPS_STOCKAGE: Champs = [
+  ["NAME", "Nom"],
+  ["TYPE", "Type"],
+  ["MANUFACTURER", "Fabricant"],
+  ["MODEL", "Modèle"],
+  ["DESCRIPTION", "Description"],
+  ["INTERFACE", "Interface"],
+  ["DISKSIZE", "Capacité"],
+  ["SERIAL", "Numéro de série"],
+  ["SERIALNUMBER", "Numéro de série"],
+  ["FIRMWARE", "Micrologiciel"],
+  ["SCSI_COID", "Contrôleur SCSI"],
+  ["SCSI_CHID", "Canal SCSI"],
+  ["SCSI_UNID", "Unité SCSI"],
+  ["SCSI_LUN", "LUN SCSI"],
+];
+
+/** Les supports de stockage du poste. */
+function Stockage({ section }: { section: AssetSection }) {
+  return (
+    <FichesNumerotees section={section} champs={CHAMPS_STOCKAGE} formats={{ DISKSIZE: enTaille }} />
+  );
+}
+
+const CHAMPS_ENTREES: Champs = [
+  ["NAME", "Nom"],
+  ["CAPTION", "Légende"],
+  ["TYPE", "Type"],
+  ["MANUFACTURER", "Fabricant"],
+  ["DESCRIPTION", "Description"],
+  ["INTERFACE", "Interface"],
+  ["POINTINGTYPE", "Pointage"],
+  ["LAYOUT", "Disposition"],
+];
+
+/** Les claviers, souris et autres périphériques d'entrée du poste. */
+function Entrees({ section }: { section: AssetSection }) {
+  return <FichesNumerotees section={section} champs={CHAMPS_ENTREES} />;
+}
+
+const CHAMPS_MONITEURS: Champs = [
+  ["NAME", "Nom"],
+  ["CAPTION", "Légende"],
+  ["MANUFACTURER", "Fabricant"],
+  ["DESCRIPTION", "Description"],
+  ["TYPE", "Type"],
+  ["PORT", "Port"],
+  ["SERIAL", "Numéro de série"],
+  ["ALTSERIAL", "Autre numéro de série"],
+];
+
+/**
+ * Les moniteurs du poste. BASE64 et UUENCODE portent l'EDID brut de l'écran :
+ * illisible, on ne le montre pas.
+ */
+function Moniteurs({ section }: { section: AssetSection }) {
+  return (
+    <FichesNumerotees section={section} champs={CHAMPS_MONITEURS} ecartes={["BASE64", "UUENCODE"]} />
+  );
+}
+
+const CHAMPS_IMPRIMANTES: Champs = [
+  ["NAME", "Nom"],
+  ["DRIVER", "Pilote"],
+  ["PORT", "Port"],
+  ["DESCRIPTION", "Description"],
+  ["COMMENT", "Commentaire"],
+  ["NETWORK", "Réseau"],
+  ["LOCAL", "Locale"],
+  ["SHARED", "Partagée"],
+  ["SHARENAME", "Nom de partage"],
+  ["SERVERNAME", "Serveur"],
+  ["SERIAL", "Numéro de série"],
+];
+
+/**
+ * Les imprimantes installées sur le poste. Le processeur d'impression, le
+ * statut et la résolution ne sont pas montrés.
+ */
+function Imprimantes({ section }: { section: AssetSection }) {
+  return (
+    <FichesNumerotees
+      section={section}
+      champs={CHAMPS_IMPRIMANTES}
+      ecartes={["PRINTPROCESSOR", "STATUS", "RESOLUTION"]}
+      formats={{ NETWORK: ouiNon, LOCAL: ouiNon, SHARED: ouiNon }}
+    />
+  );
+}
+
+const CHAMPS_USB: Champs = [
+  ["NAME", "Nom"],
+  ["CAPTION", "Légende"],
+  ["MANUFACTURER", "Fabricant"],
+  ["SERIAL", "Numéro de série"],
+  ["CLASS", "Classe"],
+  ["SUBCLASS", "Sous-classe"],
+];
+
+/**
+ * Les périphériques USB branchés au poste. L'identifiant du fabricant suit
+ * son nom, celui du produit le nom du périphérique, chacun en étiquette au
+ * bord droit.
+ */
+function Usb({ section }: { section: AssetSection }) {
+  return (
+    <FichesNumerotees
+      section={section}
+      champs={CHAMPS_USB}
+      etiquettes={{ NAME: "PRODUCTID", MANUFACTURER: "VENDORID" }}
+    />
+  );
+}
+
+/** Les champs du BIOS qu'on sait nommer ; les autres gardent le nom de l'agent. */
+const LIBELLES_BIOS: Record<string, string> = {
+  SMANUFACTURER: "Fabricant",
+  SMODEL: "Modèle",
+  SSN: "Numéro de série",
+};
+
+/**
+ * Le BIOS du poste, un champ par ligne. Il n'a pas de numéro, mais ses valeurs
+ * commencent là où commencent celles des lignes numérotées après la première
+ * colonne — le modèle d'un processeur, par exemple : le libellé occupe le
+ * rectangle, la première colonne et les deux écarts.
+ */
+function Bios({ section }: { section: AssetSection }) {
+  return (
+    <Stack gap={20}>
+      {section.entries.map((entree, rang) => (
+        <Box
+          key={rang}
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              `calc(${LARGEUR_NUMERO + LARGEUR_PREMIERE}px + 2 * var(--mantine-spacing-lg)) 1fr`,
+            rowGap: 4,
+          }}
+        >
+          {Object.keys(entree).map((champ) => (
+            <Ligne
+              key={champ}
+              libelle={LIBELLES_BIOS[champ] ?? champ}
+              valeur={
+                CHAMPS_COPIABLES.has(champ) ? <AvecCopie valeur={entree[champ]} /> : entree[champ]
+              }
+            />
+          ))}
+        </Box>
       ))}
     </Stack>
   );
@@ -537,10 +1184,21 @@ function Batterie({ section }: { section: AssetSection }) {
 export const TABLEAUX: Record<string, ComponentType<{ section: AssetSection }>> = {
   ANTIVIRUS: Protections,
   BATTERIES: Batterie,
+  BIOS: Bios,
+  CONTROLLERS: Controleurs,
+  CPUS: Processeurs,
   DRIVES: Volumes,
+  INPUTS: Entrees,
   LOCAL_GROUPS: Groupes,
   LOCAL_USERS: Comptes,
+  MEMORIES: Memoire,
+  MONITORS: Moniteurs,
+  PRINTERS: Imprimantes,
   PROCESSES: Processus,
   SOFTWARES: Logiciels,
+  SOUNDS: Audio,
+  STORAGES: Stockage,
+  USBDEVICES: Usb,
+  VIDEOS: Video,
   VIRTUALMACHINES: MachinesVirtuelles,
 };

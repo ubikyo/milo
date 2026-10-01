@@ -49,7 +49,7 @@ export const etiquettesProjetsIndicator: ProjectIndicatorWidget = {
   },
 
   Config: ({ config, onChange }) => (
-    <Stack gap="md">
+    <Stack gap="xl">
       <ChampNom config={config} onChange={onChange} defaut={LIBELLE} />
       <Checkbox
         label="Compter aussi les projets terminés"

@@ -9,7 +9,12 @@ import {
   TextInput,
   UnstyledButton,
 } from "@mantine/core";
-import { IconSearch, IconStar, IconStarFilled, IconUsersGroup } from "@tabler/icons-react";
+import {
+  IconSearch,
+  IconStar,
+  IconStarFilled,
+  IconUsersGroup,
+} from "@tabler/icons-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import { useFavoris } from "../../lib/favoris";
@@ -44,10 +49,7 @@ const LARGEUR_LISTE = 320;
 const FILET = "1px solid var(--mantine-color-default-border)";
 
 const normaliser = (texte: string): string =>
-  texte
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase();
+  texte.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 /** Une personne dans la liste : son nom en gras, son adresse dessous. */
 function NomEtAdresse({ nom, email }: { nom: string; email: string }) {
@@ -89,7 +91,13 @@ interface ActorPickerProps {
 /** La bulle d'un groupe : la même que celle d'une personne, un pictogramme à la place des initiales. */
 function GroupAvatar({ group, size }: { group: EntraPrincipal; size: number }) {
   return (
-    <Avatar size={size} radius="xl" variant="light" color="gray" title={group.name}>
+    <Avatar
+      size={size}
+      radius="xl"
+      variant="light"
+      color="gray"
+      title={group.name}
+    >
       <IconUsersGroup size={Math.round(size * 0.6)} />
     </Avatar>
   );
@@ -136,7 +144,9 @@ export default function ActorPicker({
     const terme = normaliser(recherche.trim());
     return options
       .filter((u) => favoris.includes(u.id) || value.includes(String(u.id)))
-      .filter((u) => !terme || normaliser(`${u.name} ${u.email}`).includes(terme))
+      .filter(
+        (u) => !terme || normaliser(`${u.name} ${u.email}`).includes(terme),
+      )
       .sort((a, b) => {
         const fa = favoris.includes(a.id) ? 0 : 1;
         const fb = favoris.includes(b.id) ? 0 : 1;
@@ -156,7 +166,9 @@ export default function ActorPicker({
       setChercheAnnuaire(true);
       Promise.all([
         api.searchDirectoryUsers(terme).catch(() => []),
-        avecGroupes ? api.searchDirectoryGroups(terme).catch(() => []) : Promise.resolve([]),
+        avecGroupes
+          ? api.searchDirectoryGroups(terme).catch(() => [])
+          : Promise.resolve([]),
       ])
         .then(([personnes, groupesLus]) => {
           if (annule) return;
@@ -175,7 +187,9 @@ export default function ActorPicker({
   // retirer ; ceux que la recherche trouve en plus se cochent pour s'ajouter.
   const termeGroupes = normaliser(recherche.trim());
   const groupesListes = [
-    ...groups.filter((g) => !termeGroupes || normaliser(g.name).includes(termeGroupes)),
+    ...groups.filter(
+      (g) => !termeGroupes || normaliser(g.name).includes(termeGroupes),
+    ),
     ...groupesTrouves.filter((g) => !groups.some((r) => r.id === g.id)),
   ];
   const basculerGroupe = (groupe: EntraPrincipal) =>
@@ -190,7 +204,8 @@ export default function ActorPicker({
   const nouveaux = annuaire.filter(
     (p) =>
       !liste.some(
-        (u) => u.id === p.user_id || u.email.toLowerCase() === p.email.toLowerCase(),
+        (u) =>
+          u.id === p.user_id || u.email.toLowerCase() === p.email.toLowerCase(),
       ),
   );
 
@@ -199,7 +214,8 @@ export default function ActorPicker({
     try {
       const compte = await api.addDirectoryUser(personne.oid);
       setCrees((deja) => [...deja, compte]);
-      if (!value.includes(String(compte.id))) onChange([...value, String(compte.id)]);
+      if (!value.includes(String(compte.id)))
+        onChange([...value, String(compte.id)]);
       setRecherche("");
     } finally {
       setAjout(null);
@@ -233,7 +249,11 @@ export default function ActorPicker({
         <>
           {leadingChips}
           {groups.map((g) => (
-            <span key={g.id} style={{ display: "inline-flex" }} aria-label={g.name}>
+            <span
+              key={g.id}
+              style={{ display: "inline-flex" }}
+              aria-label={g.name}
+            >
               <GroupAvatar group={g} size={chipHeight} />
             </span>
           ))}
@@ -256,7 +276,12 @@ export default function ActorPicker({
       render={(u) => {
         const favori = favoris.includes(u.id);
         return (
-          <Group gap={6} wrap="nowrap" justify="space-between" style={{ minWidth: 0 }}>
+          <Group
+            gap={6}
+            wrap="nowrap"
+            justify="space-between"
+            style={{ minWidth: 0 }}
+          >
             <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
               <PersonAvatar person={u} size={chipHeight} />
               <NomEtAdresse nom={u.name} email={u.email} />
@@ -270,7 +295,9 @@ export default function ActorPicker({
               variant="subtle"
               color="gray"
               size="sm"
-              aria-label={favori ? "Retirer des favoris" : "Ajouter aux favoris"}
+              aria-label={
+                favori ? "Retirer des favoris" : "Ajouter aux favoris"
+              }
               onClick={(e: React.MouseEvent) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -280,7 +307,10 @@ export default function ActorPicker({
               {/* Un favori, c'est une étoile pleine et jaune ; les autres
                   n'en montrent que le contour, discret. */}
               {favori ? (
-                <IconStarFilled size={14} color="var(--mantine-color-yellow-5)" />
+                <IconStarFilled
+                  size={14}
+                  color="var(--mantine-color-yellow-5)"
+                />
               ) : (
                 <IconStar size={14} />
               )}
@@ -296,13 +326,16 @@ export default function ActorPicker({
           </span>
         ))
       }
-      footer={
+      listFooter={
         <>
           {nouveaux.length > 0 && (
             // Séparés des favoris par un trait, quand il y en a au-dessus ; les
             // lignes et leurs filets courent d'un bord à l'autre, comme celles
             // des favoris. La dernière n'a pas de filet dessous.
-            <Stack gap={0} style={liste.length ? { borderTop: FILET } : undefined}>
+            <Stack
+              gap={0}
+              style={liste.length ? { borderTop: FILET } : undefined}
+            >
               {nouveaux.map((p, rang) => (
                 <UnstyledButton
                   key={p.oid}
@@ -310,17 +343,30 @@ export default function ActorPicker({
                   disabled={ajout !== null}
                   px={10}
                   py={8}
-                  style={rang < nouveaux.length - 1 ? { borderBottom: FILET } : undefined}
+                  style={
+                    rang < nouveaux.length - 1
+                      ? { borderBottom: FILET }
+                      : undefined
+                  }
+                  data-ligne
                 >
                   <Group gap={8} wrap="nowrap">
                     {/* La bulle de la personne, avec ses initiales, comme celle
                         des comptes au-dessus ; le temps de la création de son
                         compte, une roue à sa place. */}
                     {ajout === p.oid ? (
-                      <Loader size={chipHeight - 8} style={{ width: chipHeight, flexShrink: 0 }} />
+                      <Loader
+                        size={chipHeight - 8}
+                        style={{ width: chipHeight, flexShrink: 0 }}
+                      />
                     ) : (
                       <PersonAvatar
-                        person={{ id: 0, name: p.name, email: p.email, gravatar_url: "" }}
+                        person={{
+                          id: 0,
+                          name: p.name,
+                          email: p.email,
+                          gravatar_url: "",
+                        }}
                         size={chipHeight}
                       />
                     )}
@@ -335,7 +381,11 @@ export default function ActorPicker({
             // il y a quelque chose au-dessus.
             <Stack
               gap={0}
-              style={liste.length || nouveaux.length ? { borderTop: FILET } : undefined}
+              style={
+                liste.length || nouveaux.length
+                  ? { borderTop: FILET }
+                  : undefined
+              }
             >
               {groupesListes.map((g, rang) => {
                 const retenu = groups.some((r) => r.id === g.id);
@@ -345,7 +395,12 @@ export default function ActorPicker({
                     onClick={() => basculerGroupe(g)}
                     px={10}
                     py={8}
-                    style={rang < groupesListes.length - 1 ? { borderBottom: FILET } : undefined}
+                    style={
+                      rang < groupesListes.length - 1
+                        ? { borderBottom: FILET }
+                        : undefined
+                    }
+                    data-ligne
                   >
                     <Group gap={8} wrap="nowrap">
                       <Checkbox

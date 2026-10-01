@@ -44,7 +44,6 @@ export const progressionIndicator: ProjectIndicatorWidget = {
             data={data}
             size={150}
             thickness={22}
-            chartLabel={projects.length}
             withTooltip
             withLegend
             pieProps={{ isAnimationActive: false }}

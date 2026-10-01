@@ -79,18 +79,28 @@ export const useWidgetDrop = (sectionId: Id, drag: WidgetDrag, locked: boolean) 
 /**
  * Le trait d'insertion, posé par-dessus le widget visé : il ne prend aucune
  * place, donc rien ne bouge tant que rien n'est déposé. « ecart » : l'air
- * entre deux widgets, au milieu duquel le trait se pose.
+ * entre deux widgets, au milieu duquel le trait se pose. « debout » : le
+ * trait d'une colonne, à sa gauche ou à sa droite plutôt qu'au-dessus ou
+ * au-dessous.
  */
-export function TraitInsertion({ avant, ecart = 0 }: { avant: boolean; ecart?: number }) {
+export function TraitInsertion({
+  avant,
+  ecart = 0,
+  debout = false,
+}: {
+  avant: boolean;
+  ecart?: number;
+  debout?: boolean;
+}) {
+  const decalage = -(ecart + TRAIT) / 2 - (ecart ? 0 : TRAIT / 2);
   return (
     <Box
       aria-hidden
       style={{
         position: "absolute",
-        left: 0,
-        right: 0,
-        [avant ? "top" : "bottom"]: -(ecart + TRAIT) / 2 - (ecart ? 0 : TRAIT / 2),
-        height: TRAIT,
+        ...(debout
+          ? { top: 0, bottom: 0, [avant ? "left" : "right"]: decalage, width: TRAIT }
+          : { left: 0, right: 0, [avant ? "top" : "bottom"]: decalage, height: TRAIT }),
         borderRadius: TRAIT,
         backgroundColor: "var(--mantine-color-teal-filled)",
         pointerEvents: "none",

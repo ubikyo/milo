@@ -1,11 +1,10 @@
 import {
   ActionIcon,
-  Badge,
-  Box,
   Center,
   Group,
   Menu,
   Progress,
+  ScrollArea,
   Table,
   Text,
   UnstyledButton,
@@ -32,9 +31,12 @@ import ActorAvatars, { ACTOR_AVATAR_SIZE } from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
 import { colonnesGardees } from "../ui/ChampsColonnes";
 import EmptyPanel from "../ui/EmptyPanel";
+import GrilleScroll from "../ui/GrilleScroll";
 import LabelChip from "../ui/LabelChip";
 import { positionDuMenu } from "../ui/PointMenu";
-import { reference } from "@milo/shared";
+import { ReferenceTag } from "../ui/ReferenceTag";
+import { useColonnesRedimensionnables } from "../ui/useColonnesRedimensionnables";
+import { projectReference } from "@milo/shared";
 import type { ReactNode } from "react";
 import type { Category, Project, PublicUser } from "@milo/shared";
 import type { ProjectAction } from "./MoveOrCopyProjectModal";
@@ -99,8 +101,8 @@ const PERCENT_WIDTH = 40;
 const STATUS_GAP = 10;
 const STATUS_WIDTH = PROGRESS_WIDTH + PERCENT_WIDTH + STATUS_GAP;
 
-// Hauteur du tag de la référence, comme celui du numéro de ticket au support.
-const TAG_HEIGHT = 20;
+// La référence la plus longue qu'on attend : le tag en prend la largeur.
+const REFERENCE_GABARIT = projectReference(999);
 
 const formatDate = (value: string): string =>
   dayjs(value).format("DD/MM/YYYY HH:mm");
@@ -129,7 +131,9 @@ function LabelsCell({ labels }: { labels: Project["labels"] }) {
 
   // Les plus lourdes devant : le serveur les range ainsi, la saisie du tiroir
   // non.
-  const montrees = [...labels].sort((a, b) => b.weight - a.weight).slice(0, LABELS_SHOWN);
+  const montrees = [...labels]
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, LABELS_SHOWN);
   const restantes = labels.length - montrees.length;
 
   return (
@@ -182,7 +186,7 @@ function StatusCell({ status }: { status: number }) {
 }
 
 const COLUMNS: Column[] = [
-  { key: "number", label: "Réf.", value: (p) => p.number || null },
+  { key: "number", label: "Réf.", value: (p) => p.number || null, width: 65 },
   { key: "name", label: "Projet", value: (p) => p.name },
   { key: "company_name", label: "Société", value: (p) => p.company_name },
   { key: "category_name", label: "Catégorie", value: (p) => p.category_name },
@@ -216,12 +220,21 @@ const COLUMNS: Column[] = [
  * dans project-indicators/liste.tsx). La référence et le nom désignent le
  * projet : ils restent toujours là.
  */
-export const COLONNES_PROJETS: { key: ColumnKey; label: string; obligatoire?: boolean }[] =
-  COLUMNS.map(({ key, label }) => ({
-    key,
-    label: key === "number" ? "Référence" : label,
-    obligatoire: key === "number" || key === "name",
-  }));
+export const COLONNES_PROJETS: {
+  key: ColumnKey;
+  label: string;
+  obligatoire?: boolean;
+}[] = COLUMNS.map(({ key, label }) => ({
+  key,
+  label: key === "number" ? "Référence" : label,
+  obligatoire: key === "number" || key === "name",
+}));
+
+// Au-delà de dix options — les acteurs, vite nombreux —, la liste défile.
+// Une ligne de menu : sa ligne de texte, et son retrait dessus et dessous.
+const FILTRE_LIGNES_VISIBLES = 10;
+const FILTRE_HAUTEUR_LIGNE =
+  "(var(--mantine-font-size-sm) * var(--mantine-line-height) + var(--mantine-spacing-xs) / 1.5 * 2)";
 
 // Filtre d'une colonne. L'entonnoir se colore tant qu'une valeur est retenue,
 // pour qu'un tableau filtré ne passe pas pour un tableau vide.
@@ -248,21 +261,28 @@ function ColumnFilter({ label, options, value, onChange }: ColumnFilterProps) {
         </ActionIcon>
       </Menu.Target>
       <Menu.Dropdown>
-        {options.map((option) => (
-          <Menu.Item
-            key={option.value}
-            onClick={() => onChange(option.value)}
-            leftSection={
-              option.value === value ? (
-                <IconCheck size={14} />
-              ) : (
-                <span style={{ width: 14 }} />
-              )
-            }
-          >
-            {option.label}
-          </Menu.Item>
-        ))}
+        <ScrollArea.Autosize
+          mah={`calc(${FILTRE_LIGNES_VISIBLES} * ${FILTRE_HAUTEUR_LIGNE})`}
+          type="auto"
+          scrollbars="y"
+          scrollbarSize={2}
+        >
+          {options.map((option) => (
+            <Menu.Item
+              key={option.value}
+              onClick={() => onChange(option.value)}
+              leftSection={
+                option.value === value ? (
+                  <IconCheck size={14} />
+                ) : (
+                  <span style={{ width: 14 }} />
+                )
+              }
+            >
+              {option.label}
+            </Menu.Item>
+          ))}
+        </ScrollArea.Autosize>
       </Menu.Dropdown>
     </Menu>
   );
@@ -275,9 +295,19 @@ interface SortableThProps {
   sort: Sort;
   onSort: (key: ColumnKey) => void;
   filter: ReactNode;
+  poignee: ReactNode;
+  /** Les largeurs sont figées par un redimensionnement. */
+  fige: boolean;
 }
 
-function SortableTh({ column, sort, onSort, filter }: SortableThProps) {
+function SortableTh({
+  column,
+  sort,
+  onSort,
+  filter,
+  poignee,
+  fige,
+}: SortableThProps) {
   const active = sort.key === column.key;
   const Icon = !active
     ? IconSelector
@@ -287,7 +317,10 @@ function SortableTh({ column, sort, onSort, filter }: SortableThProps) {
 
   return (
     <Table.Th w={column.width}>
-      <Group gap={4} wrap="nowrap">
+      {/* En mise en page naturelle, la largeur d'une cellule n'est qu'un
+          souhait : une grille à l'étroit la ramène à celle de son contenu.
+          Le minimum posé sur le contenu la tient. */}
+      <Group gap={4} wrap="nowrap" miw={fige ? undefined : column.width}>
         <UnstyledButton
           onClick={() => onSort(column.key)}
           style={{ flex: 1, minWidth: 0 }}
@@ -303,6 +336,7 @@ function SortableTh({ column, sort, onSort, filter }: SortableThProps) {
         </UnstyledButton>
         {filter}
       </Group>
+      {poignee}
     </Table.Th>
   );
 }
@@ -387,6 +421,7 @@ function ProjectContextMenu({
         >
           Copier
         </Menu.Item>
+        <Menu.Divider />
         <Menu.Item
           leftSection={<IconSquarePlus size={16} />}
           onClick={() => onCreateTask(project)}
@@ -444,9 +479,10 @@ function ProjectRow({
     >
       <Table.Td style={{ whiteSpace: "nowrap" }}>
         {project.number > 0 && (
-          <Badge color="green" variant="filled" radius="sm" h={TAG_HEIGHT}>
-            {reference(project.number)}
-          </Badge>
+          <ReferenceTag
+            reference={projectReference(project.number)}
+            gabarit={REFERENCE_GABARIT}
+          />
         )}
       </Table.Td>
       <Table.Td>
@@ -469,8 +505,12 @@ function ProjectRow({
           <ActorAvatars actors={project.actors} />
         </Table.Td>
       )}
-      {montre("created_at") && <Table.Td>{formatDate(project.created_at)}</Table.Td>}
-      {montre("updated_at") && <Table.Td>{formatDate(project.updated_at)}</Table.Td>}
+      {montre("created_at") && (
+        <Table.Td>{formatDate(project.created_at)}</Table.Td>
+      )}
+      {montre("updated_at") && (
+        <Table.Td>{formatDate(project.updated_at)}</Table.Td>
+      )}
       {montre("labels") && (
         <Table.Td>
           <LabelsCell labels={project.labels} />
@@ -530,6 +570,10 @@ export default function ProjectTable({
     .map((c) => COLUMNS.find((col) => col.key === c.key))
     .filter((c): c is Column => c !== undefined);
   const montre = (key: ColumnKey) => colonnes.some((c) => c.key === key);
+  const redim = useColonnesRedimensionnables(
+    "projets",
+    colonnes.map((c) => c.key),
+  );
   // Projet visé par le clic droit, et le point où le menu doit s'ouvrir.
   const [contextMenu, setContextMenu] = useState<ContextTarget | null>(null);
 
@@ -626,8 +670,9 @@ export default function ProjectTable({
   return (
     <>
       {/* Une section plus étroite que la liste la fait défiler de côté. */}
-      <Box style={{ overflowX: "auto" }}>
+      <GrilleScroll>
         <Table
+          {...redim.tableProps}
           highlightOnHover
           verticalSpacing={0}
           // Les lignes font exactement la hauteur d'une pastille d'acteur, qu'il y
@@ -651,6 +696,7 @@ export default function ProjectTable({
             },
           }}
         >
+          {redim.colgroup}
           <Table.Thead>
             <Table.Tr>
               {colonnes.map((column) => (
@@ -660,6 +706,8 @@ export default function ProjectTable({
                   sort={sort}
                   onSort={handleSort}
                   filter={filterFor(column.key)}
+                  poignee={redim.poignee(column.key)}
+                  fige={redim.colgroup !== null}
                 />
               ))}
             </Table.Tr>
@@ -691,7 +739,7 @@ export default function ProjectTable({
             </Table.Tr>
           </Table.Tbody>
         </Table>
-      </Box>
+      </GrilleScroll>
 
       {contextMenu && (
         <ProjectContextMenu

@@ -28,13 +28,26 @@ const reglee = (config: unknown, cle: string): number | null => {
   return Number.isNaN(lu) ? null : lu;
 };
 
+/** Les éléments qui ouvrent un groupe : l'air qui les précède est le leur. */
+const TITRES: AccessBlockType[] = ["category", "subcategory"];
+
+/**
+ * L'ordinaire du widget, sauf devant une catégorie ou une sous-catégorie :
+ * l'élément n'y laisse rien sous lui, le titre posant seul l'écart qui
+ * l'en sépare.
+ */
+const ordinairesDe = (widget: AccessWidget, { previousType, nextType }: Voisins): Marges => {
+  const ordinaires = widget.marges(previousType, nextType);
+  return nextType !== null && TITRES.includes(nextType) ? { ...ordinaires, basse: 0 } : ordinaires;
+};
+
 /** L'air que l'élément laisse vraiment : le sien, ou celui de sa configuration. */
 export const margesDe = (
   widget: AccessWidget,
   config: unknown,
-  { previousType, nextType }: Voisins,
+  voisins: Voisins,
 ): Marges => {
-  const ordinaires = widget.marges(previousType, nextType);
+  const ordinaires = ordinairesDe(widget, voisins);
   return {
     haute: reglee(config, MARGE_HAUTE) ?? ordinaires.haute,
     basse: reglee(config, MARGE_BASSE) ?? ordinaires.basse,
@@ -66,6 +79,9 @@ export const voisinsDe = (
   };
 };
 
+/** Une marge tient en trois chiffres : le champ n'a pas à couvrir le tiroir. */
+const LARGEUR_CHAMP = 120;
+
 interface ChampsMargesProps {
   widget: AccessWidget;
   config: Record<string, unknown>;
@@ -79,7 +95,7 @@ interface ChampsMargesProps {
  * le vider, retire le réglage.
  */
 export function ChampsMarges({ widget, config, onChange, voisins }: ChampsMargesProps) {
-  const ordinaires = widget.marges(voisins.previousType, voisins.nextType);
+  const ordinaires = ordinairesDe(widget, voisins);
   const actuelles = margesDe(widget, config, voisins);
 
   const regler = (cle: string, ordinaire: number, valeur: string | number) => {
@@ -101,12 +117,12 @@ export function ChampsMarges({ widget, config, onChange, voisins }: ChampsMarges
       suffix=" px"
       allowNegative={false}
       allowDecimal={false}
-      style={{ flex: 1 }}
+      w={LARGEUR_CHAMP}
     />
   );
 
   return (
-    <Group grow align="flex-start">
+    <Group align="flex-start">
       {champ("Marge haute", MARGE_HAUTE, actuelles.haute, ordinaires.haute)}
       {champ("Marge basse", MARGE_BASSE, actuelles.basse, ordinaires.basse)}
     </Group>

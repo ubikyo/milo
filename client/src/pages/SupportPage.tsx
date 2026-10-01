@@ -1,5 +1,5 @@
 import { Menu, Stack, Tabs } from "@mantine/core";
-import { IconLifebuoy, IconLock, IconLockOpen } from "@tabler/icons-react";
+import { IconLifebuoy, IconCheck, IconLock } from "@tabler/icons-react";
 import { Fragment, useMemo, useState } from "react";
 import SupportActions from "../components/support/SupportActions";
 import SupportIndicatorsPanel from "../components/support/SupportIndicatorsPanel";
@@ -97,7 +97,7 @@ export default function SupportPage({
   indicatorsLocked,
   onToggleIndicatorsLock,
 }: SupportPageProps) {
-  // Le menu contextuel d'un onglet : il porte le verrou des sections.
+  // Le menu contextuel d'un onglet : il porte le verrou et l'écart des sections.
   const [menuOnglet, setMenuOnglet] = useState<PointMenuPosition | null>(null);
   // L'onglet ouvert vit dans l'application, comme le tableau ouvert des autres
   // modes : c'est lui qui dit le statut d'une demande créée ici.
@@ -180,11 +180,13 @@ export default function SupportPage({
           des sections, pour tous. */}
       {menuOnglet && (
         <PointMenu position={menuOnglet} onClose={() => setMenuOnglet(null)}>
+          <Menu.Label>Affichage</Menu.Label>
           <Menu.Item
-            leftSection={indicatorsLocked ? <IconLockOpen size={16} /> : <IconLock size={16} />}
+            leftSection={<IconLock size={16} />}
+            rightSection={indicatorsLocked ? <IconCheck size={14} /> : null}
             onClick={() => onToggleIndicatorsLock()}
           >
-            {indicatorsLocked ? "Déverrouiller" : "Verrouiller"}
+            Verrouillé
           </Menu.Item>
         </PointMenu>
       )}

@@ -59,7 +59,7 @@ export const demandeursIndicator: SupportIndicatorWidget = {
   },
 
   Config: ({ config, onChange }) => (
-    <Stack gap="md">
+    <Stack gap="xl">
       <ChampNom config={config} onChange={onChange} defaut={LIBELLE} />
       <Select
         label="Nombre de demandeurs"

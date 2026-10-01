@@ -102,7 +102,7 @@ function Horloge({ config }: { config: unknown }) {
   // trait de l'encart des attributs (widgets/numero), et l'air qu'il faut
   // autour pour que l'heure n'en touche pas les bords.
   return (
-    <Box className={classes.encart} style={{ padding: RETRAIT }}>
+    <Box className={classes.encart} style={{ padding: RETRAIT, border: "none" }}>
       {heure}
     </Box>
   );
@@ -123,7 +123,7 @@ export const horlogeWidget: AccessWidget = {
   marges: () => ({ haute: 0, basse: MARGE_BASSE }),
 
   Config: ({ config, onChange }) => (
-    <Stack gap="md">
+    <Stack gap="xl">
       <Select
         label="Fuseau horaire"
         data={FUSEAUX}
@@ -132,6 +132,7 @@ export const horlogeWidget: AccessWidget = {
         allowDeselect={false}
         searchable
         autoFocus
+        styles={{ wrapper: { width: 200 } }}
       />
       {/* La taille de l'heure. Un champ vidé le temps d'une saisie ne dit
           rien : on range alors la taille par défaut plutôt qu'un zéro, qui
@@ -148,14 +149,19 @@ export const horlogeWidget: AccessWidget = {
         suffix=" px"
         allowNegative={false}
         allowDecimal={false}
-      />
-      {/* Encadrée, l'horloge prend un fond et se détache de la colonne. */}
-      <Checkbox
-        label="Encadrer"
-        checked={estEncadre(config)}
-        onChange={(e) => onChange(avec(config, ENCADRE, e.currentTarget.checked))}
-        color="teal"
+        styles={{ wrapper: { width: 120 } }}
       />
     </Stack>
+  ),
+
+  // Encadrée, l'horloge prend un fond et se détache de la colonne. Posé
+  // après les marges, en dernier du tiroir.
+  ConfigFin: ({ config, onChange }) => (
+    <Checkbox
+      label="Encadrer"
+      checked={estEncadre(config)}
+      onChange={(e) => onChange(avec(config, ENCADRE, e.currentTarget.checked))}
+      color="teal"
+    />
   ),
 };

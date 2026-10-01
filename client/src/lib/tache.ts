@@ -2,7 +2,7 @@
 // (components/board/CardDrawer.tsx, components/board/TaskDestination.tsx) — le nom de l'élément, sa société, et
 // de quoi y revenir.
 
-import { reference, supportTicketRef } from "@milo/shared";
+import { projectReference, supportTicketRef } from "@milo/shared";
 import type { AccessBlock, Asset, Id, Project, SupportRequest } from "@milo/shared";
 import type { TacheSource } from "../components/board/TaskDestination";
 import { widgetDe } from "../widgets";
@@ -12,7 +12,7 @@ const texte = (valeur: unknown): string => (typeof valeur === "string" ? valeur.
 export const sourceProjet = (projet: Project, boardName?: string): TacheSource => ({
   kind: "project",
   id: projet.id,
-  title: [projet.number > 0 ? reference(projet.number) : "", projet.name]
+  title: [projet.number > 0 ? projectReference(projet.number) : "", projet.name]
     .filter(Boolean)
     .join(" — "),
   companyId: projet.company_id,

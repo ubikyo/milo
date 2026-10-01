@@ -14,7 +14,10 @@ export const tabStyle = (isActive: boolean) => ({
   // suffisent à situer l'onglet ouvert, y compris au clavier : les flèches
   // changent l'onglet actif, et donc son aspect.
   outline: "none",
-  ...(isActive ? { color: STRONG_TEXT, fontWeight: 600 } : {}),
+  // Le gras de l'onglet actif est dessiné par un contour du texte, pas par la
+  // graisse de la police : une vraie graisse élargit le libellé et décale
+  // tous les onglets suivants à chaque changement d'onglet.
+  ...(isActive ? { color: STRONG_TEXT, WebkitTextStroke: "0.04em currentColor" } : {}),
 });
 
 /**

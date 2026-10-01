@@ -52,6 +52,15 @@ export interface Actor {
   gravatar_url: string;
 }
 
+/**
+ * Milo lui-même, auteur des mots que l'application écrit sans personne
+ * derrière — l'ouverture d'un fil à la création d'un projet, d'une carte ou
+ * d'une demande. Aucun compte ne porte cet identifiant : la pastille le
+ * reconnaît pour montrer le logo plutôt que des initiales.
+ */
+export const MILO_ACTOR_ID = -1;
+export const MILO_ACTOR: Actor = { id: MILO_ACTOR_ID, name: "Milo", email: "", gravatar_url: "" };
+
 // --- Sociétés ---------------------------------------------------------------
 
 export interface Company {
@@ -131,7 +140,7 @@ export interface ProjectLabel {
 
 export interface Project {
   id: Id;
-  /** Sa référence (« LMA-12 »), donnée par le compteur commun aux modes. */
+  /** Sa référence (« HLP-12 »), donnée par le compteur commun aux modes. */
   number: number;
   name: string;
   description: string;
@@ -215,7 +224,7 @@ export interface TaskCard {
   text: string;
   position: number;
   /**
-   * Sa référence (« LMA-12 »), donnée à la création par le compteur commun aux
+   * Sa référence (« HLP-12 »), donnée à la création par le compteur commun aux
    * modes. Zéro pour un séparateur.
    */
   number: number;
@@ -375,22 +384,26 @@ export interface AccessCategory {
   is_private: SqliteBool;
   /** Verrouillée : ce qu'elle porte se lit, mais ne se déplace ni ne se modifie. */
   is_locked: SqliteBool;
-  /** L'écart entre deux colonnes, en pixels. */
-  gap: number;
   /** Nul quand le compte de l'auteur a été supprimé : la catégorie s'ouvre alors à tous. */
   owner_id: Id | null;
   created_at: string;
 }
 
 /**
- * L'écart entre deux colonnes d'une catégorie neuve, en pixels. Dit ici plutôt
- * que dans la page : la base le range par défaut, le tiroir le propose, et les
- * trois doivent s'accorder.
+ * L'écart qui suit une section neuve d'une catégorie d'accès, en pixels. Dit
+ * ici plutôt que dans la page : la base le range par défaut, le serveur le
+ * pose à la création, et les deux doivent s'accorder.
  */
 export const ACCESS_GAP_DEFAUT = 20;
 
-/** L'écart le plus large qu'une catégorie puisse dire : au-delà, la rangée se disloque. */
-export const ACCESS_GAP_MAX = 100;
+/**
+ * L'écart qui suit une section neuve des autres modes — Support, Assets,
+ * Projet et Tâche —, tant que son champ n'en a pas fixé un autre.
+ */
+export const SECTIONS_GAP_DEFAUT = 50;
+
+/** L'écart le plus large qu'une section puisse laisser : au-delà, la rangée se disloque. */
+export const SECTIONS_GAP_MAX = 100;
 
 /**
  * Comment la largeur d'une section est dite. « auto » laisse la rangée la
@@ -414,6 +427,8 @@ export interface AccessSection {
   width_unit: SectionWidthUnit;
   /** Nul quand la largeur est automatique ; le nombre qui va avec l'unité sinon. */
   width_value: number | null;
+  /** L'écart qui la sépare de la section suivante, en pixels. Celui de la dernière ne sert pas. */
+  gap: number;
   position: number;
   created_at: string;
 }
@@ -455,22 +470,57 @@ export const isSupportStatus = (value: unknown): value is SupportStatus =>
  * ne se suppriment que lorsque plus aucune demande ne les porte.
  */
 export const SUPPORT_URGENCY_LABELS = [
-  { name: "Sans urgence", color: "green.6", weight: 10 },
-  { name: "Dès que possible", color: "orange.6", weight: 20 },
-  { name: "Urgent", color: "red.6", weight: 30 },
+  { name: "Sans urgence", color: "green.8", weight: 10 },
+  { name: "Dès que possible", color: "orange.8", weight: 20 },
+  { name: "Urgent", color: "red.8", weight: 30 },
 ] as const;
+
+/**
+ * Le canal par lequel une demande est arrivée : posé avec les étiquettes
+ * d'urgence à l'installation, sans poids.
+ */
+export const SUPPORT_CHANNEL_LABELS = [
+  { name: "E-mail", color: "gray.7", weight: 0 },
+  { name: "Téléphone", color: "gray.7", weight: 0 },
+  { name: "Sur place", color: "gray.7", weight: 0 },
+] as const;
+
+/** Ce qu'une installation neuve pose d'office sur un e-mail entrant. */
+export const SUPPORT_NEW_MESSAGE_LABELS = ["Sans urgence", "E-mail"] as const;
+
+/** L'échéance d'un e-mail entrant sur une installation neuve, en jours ouvrés. */
+export const SUPPORT_NEW_MESSAGE_DUE_DAYS = 15;
 
 
 /**
- * Le préfixe des références : « LMA-1 », « LMA-2 »… Un seul compteur les
+ * Le préfixe des références : « HLP-1 », « HLP-2 »… Un seul compteur les
  * donne, aux demandes du support, aux projets et aux cartes : une référence
  * désigne une seule chose, quel que soit le mode.
  */
-export const REFERENCE_PREFIX = "LMA-";
+export const REFERENCE_PREFIX = "HLP-";
+
+/** L'ancien préfixe, que portent encore les fils d'e-mails ouverts avant. */
+export const LEGACY_REFERENCE_PREFIX = "LMA-";
 export const SUPPORT_TICKET_PREFIX = REFERENCE_PREFIX;
 
 /** Une référence telle qu'on la lit et qu'on la cite. */
 export const reference = (number: number): string => `${REFERENCE_PREFIX}${number}`;
+
+/**
+ * Les projets lisent le même compteur sous leur propre préfixe : « PRJ-12 »
+ * et « HLP-12 » ne peuvent pas désigner deux choses à la fois.
+ */
+export const PROJECT_REFERENCE_PREFIX = "PRJ-";
+
+/** La référence d'un projet, telle qu'on la lit et qu'on la cite. */
+export const projectReference = (number: number): string =>
+  `${PROJECT_REFERENCE_PREFIX}${number}`;
+
+/** De même pour les tâches : « TSK-12 ». */
+export const TASK_REFERENCE_PREFIX = "TSK-";
+
+/** La référence d'une tâche, telle qu'on la lit et qu'on la cite. */
+export const taskReference = (number: number): string => `${TASK_REFERENCE_PREFIX}${number}`;
 
 /** Le numéro de ticket d'une demande, tel qu'on le lit et qu'on le cite. */
 export const supportTicketRef = reference;
@@ -592,6 +642,8 @@ export interface IndicatorSection {
   width_unit: SectionWidthUnit;
   /** Nul quand la largeur est automatique ; le nombre qui va avec l'unité sinon. */
   width_value: number | null;
+  /** L'écart qui la sépare de la section suivante, en pixels. Celui de la dernière ne sert pas. */
+  gap: number;
   position: number;
   created_at: string;
 }
@@ -964,6 +1016,25 @@ export interface AssetDetail extends Asset {
   address: string;
   /** L'onglet « Résumé » de la fiche : l'essentiel, tiré de l'inventaire. */
   summary: AssetSummary;
+  /**
+   * La fin de support du système, d'après endoflife.date. « null » quand on
+   * ne sait pas : système non reconnu, version absente de leur liste, ou
+   * service injoignable.
+   */
+  support: AssetSupport | null;
+}
+
+/** La fin de support d'un système, telle qu'endoflife.date la publie. */
+export interface AssetSupport {
+  /** La version reconnue, sous le nom d'endoflife.date : « 11 25H2 (E) », « 27 ». */
+  cycle: string;
+  /**
+   * La date de fin des correctifs de sécurité (AAAA-MM-JJ). « null » quand
+   * l'éditeur n'en a pas encore annoncé.
+   */
+  eol: string | null;
+  /** Le support est-il terminé ? Vrai aussi quand la date n'est pas connue. */
+  ended: boolean;
 }
 
 /** Une carte réseau physique, telle que le résumé la montre. */
@@ -986,6 +1057,22 @@ export interface AssetSummary {
   cpu: { name: string; count: number; cores: number | null; threads: number | null } | null;
   /** La mémoire vive, en Mo. */
   memory: number | null;
+  /** L'architecture du système : « ARM », « x64 » ou « x86 » ; vide si l'agent ne la dit pas. */
+  arch: "ARM" | "x64" | "x86" | "";
+  /**
+   * Le chiffrement du volume système, tel que l'agent le nomme : « BitLocker »,
+   * « FileVault 2 », et son algorithme (« XTS_AES_128 »). Vides quand l'agent
+   * ne les donne pas ; l'algorithme l'est aussi quand le volume n'est pas
+   * chiffré (l'agent écrit alors « None »).
+   */
+  encryption: { name: string; algorithm: string };
+  /**
+   * Le pare-feu : actif partout (« on »), nulle part (« off »), sur une partie
+   * des profils de Windows seulement (« partial »), ou « unknown » quand
+   * l'agent n'en dit rien. « disabled » nomme les profils éteints : « Domaine »,
+   * « Privé », « Public ».
+   */
+  firewall: { state: "on" | "off" | "partial" | "unknown"; disabled: string[] };
 }
 
 /** Ce que rend une demande d'inventaire immédiat. */

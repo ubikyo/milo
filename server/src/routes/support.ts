@@ -46,7 +46,7 @@ import { releverLesBoites } from "../lib/support-mail.js";
 import { repondreParEmail } from "../lib/support-reply.js";
 import { echeance, horodatage, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
-import { COMMENTAIRE_SYSTEME } from "../repositories/comments.js";
+import { COMMENTAIRE_SYSTEME, motDeCreation } from "../repositories/comments.js";
 import { ordreRecu, rangerSupportLabels } from "../repositories/reorder.js";
 import {
   DEMANDE_INTROUVABLE,
@@ -270,8 +270,8 @@ supportRequestRoutes.post("/", (req, res) => {
   // Le fil d'une demande s'ouvre sur sa création, comme celui d'une carte.
   supportComments.createSystem.run(
     lastInsertRowid,
-    req.user.id,
-    `Demande créée le ${horodatage(timestamp)}`,
+    null,
+    motDeCreation("Demande créée", timestamp, req.user.id),
     timestamp,
     timestamp,
   );

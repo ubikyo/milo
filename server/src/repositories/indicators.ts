@@ -60,8 +60,8 @@ export const panneauIndicateurs = <Type extends string>(
     "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM indicator_sections WHERE panel = ?",
   );
   const creerSection = mutation(
-    `INSERT INTO indicator_sections (panel, width_unit, width_value, position, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO indicator_sections (panel, width_unit, width_value, gap, position, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   );
 
   const byId = selection<IndicatorRow<Type>>(`SELECT * FROM ${table} WHERE id = ?`);
@@ -105,9 +105,11 @@ export const panneauIndicateurs = <Type extends string>(
       byId: (id: unknown) => sectionParId.get(id, panel),
       /** Ajoutée au bout, ou au rang demandé. */
       create: transaction(
-        (unite: string, valeur: number | null, rang: number | null): Id => {
+        (unite: string, valeur: number | null, ecart: number, rang: number | null): Id => {
           const { next } = prochaineSection(panel);
-          const id = Number(creerSection.run(panel, unite, valeur, next, now()).lastInsertRowid);
+          const id = Number(
+            creerSection.run(panel, unite, valeur, ecart, next, now()).lastInsertRowid,
+          );
           if (rang !== null) {
             const autres = sectionsDuPanneau
               .all(panel)
@@ -118,15 +120,23 @@ export const panneauIndicateurs = <Type extends string>(
           return id;
         },
       ),
-      update: mutation("UPDATE indicator_sections SET width_unit = ?, width_value = ? WHERE id = ?"),
+      update: mutation(
+        "UPDATE indicator_sections SET width_unit = ?, width_value = ?, gap = ? WHERE id = ?",
+      ),
       ranger: rangerSections,
       /** La copie, avec ses indicateurs, se pose juste à droite de l'original. */
       duplicate: transaction((original: IndicatorSectionRow): Id => {
         const timestamp = now();
         const { next } = prochaineSection(panel);
         const id = Number(
-          creerSection.run(panel, original.width_unit, original.width_value, next, timestamp)
-            .lastInsertRowid,
+          creerSection.run(
+            panel,
+            original.width_unit,
+            original.width_value,
+            original.gap,
+            next,
+            timestamp,
+          ).lastInsertRowid,
         );
         bySection.all(original.id).forEach((indicateur, place) => {
           create.run(id, indicateur.type, indicateur.config, place, timestamp);

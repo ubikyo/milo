@@ -14,6 +14,7 @@
 import express, { Router } from "express";
 import type { Request } from "express";
 import { HttpError, badRequest, orNotFound } from "../lib/http.js";
+import { finDeSupport } from "../lib/endoflife.js";
 import { decompresser, lireXml, texteDe } from "../lib/inventory.js";
 import { heureDeParis, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
@@ -159,8 +160,17 @@ assetRoutes.get("/", (req, res) => {
   res.json(lignes.map((ligne) => assetOf(ligne)));
 });
 
-assetRoutes.get("/:id", (req, res) => {
-  res.json(assetDetail(orNotFound(assets.byId.get(req.params.id), POSTE_INTROUVABLE)));
+/**
+ * Un poste ouvert, avec la fin de support de son système. Elle vient
+ * d'endoflife.date, d'où l'attente — et « next », qu'Express 4 demande pour
+ * une fonction asynchrone. Elle ne fait jamais échouer la fiche : sans elle,
+ * le poste s'ouvre quand même.
+ */
+assetRoutes.get("/:id", (req, res, next) => {
+  const detail = assetDetail(orNotFound(assets.byId.get(req.params.id), POSTE_INTROUVABLE));
+  finDeSupport(detail.os)
+    .then((support) => res.json({ ...detail, support }))
+    .catch(next);
 });
 
 /**

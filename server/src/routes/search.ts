@@ -4,7 +4,16 @@
 // ou une catégorie privés restent fermés aux autres ici aussi.
 
 import { Router } from "express";
-import { REFERENCE_PREFIX, SEARCH_MIN_LENGTH, reference, supportStatusLabel } from "@milo/shared";
+import {
+  PROJECT_REFERENCE_PREFIX,
+  TASK_REFERENCE_PREFIX,
+  REFERENCE_PREFIX,
+  SEARCH_MIN_LENGTH,
+  projectReference,
+  taskReference,
+  reference,
+  supportStatusLabel,
+} from "@milo/shared";
 import type { Id, SearchResult, SupportStatus } from "@milo/shared";
 import db from "../db/index.js";
 import { selection } from "../db/query.js";
@@ -28,9 +37,9 @@ const plier = (valeur: unknown): string =>
 // préparation.
 db.function("milo_plier", { deterministic: true }, (valeur: unknown) => plier(valeur));
 
-/** La référence « LMA-12 » d'une ligne, quand elle en porte une. */
-const sesReference = (colonne: string) =>
-  `(${colonne} > 0 AND ${contient(`'${REFERENCE_PREFIX}' || ${colonne}`)})`;
+/** La référence « HLP-12 » (ou « PRJ-12 ») d'une ligne, quand elle en porte une. */
+const sesReference = (colonne: string, prefixe = REFERENCE_PREFIX) =>
+  `(${colonne} > 0 AND ${contient(`'${prefixe}' || ${colonne}`)})`;
 
 /** Le motif LIKE : les jokers tapés par la personne se cherchent tels quels. */
 const motif = (texte: string): string => `%${texte.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -51,7 +60,7 @@ const projetsTrouves = selection<ProjetTrouve>(
      JOIN project_boards pb ON pb.id = p.board_id
      LEFT JOIN companies c ON c.id = p.company_id
     WHERE (pb.is_private = 0 OR pb.owner_id = @me)
-      AND (${contient("p.name")} OR ${contient("p.description")} OR ${sesReference("p.number")})
+      AND (${contient("p.name")} OR ${contient("p.description")} OR ${sesReference("p.number", PROJECT_REFERENCE_PREFIX)})
     ORDER BY p.updated_at DESC
     LIMIT ${PAR_SORTE}`,
 );
@@ -73,7 +82,7 @@ const cartesTrouvees = selection<CarteTrouvee>(
      JOIN companies c ON c.id = b.company_id
     WHERE tc.kind = 'card'
       AND (b.is_private = 0 OR b.owner_id = @me)
-      AND (${contient("tc.text")} OR ${contient("tc.description")} OR ${sesReference("tc.number")})
+      AND (${contient("tc.text")} OR ${contient("tc.description")} OR ${sesReference("tc.number", TASK_REFERENCE_PREFIX)})
     ORDER BY tc.created_at DESC
     LIMIT ${PAR_SORTE}`,
 );
@@ -210,13 +219,13 @@ searchRoutes.get("/", (req, res) => {
       kind: "project" as const,
       id: p.id,
       title: p.name,
-      context: joindre(p.number > 0 ? reference(p.number) : null, p.company, p.board),
+      context: joindre(p.number > 0 ? projectReference(p.number) : null, p.company, p.board),
     })),
     ...cartesTrouvees.all(params).map((c) => ({
       kind: "card" as const,
       id: c.id,
       title: c.text,
-      context: joindre(c.number > 0 ? reference(c.number) : null, c.company, c.board, c.list),
+      context: joindre(c.number > 0 ? taskReference(c.number) : null, c.company, c.board, c.list),
     })),
     ...demandesTrouvees.all(sansMoi).map((d) => ({
       kind: "support" as const,

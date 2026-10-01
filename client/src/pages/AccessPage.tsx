@@ -7,7 +7,6 @@ import DeleteConfirmModal from "../components/ui/DeleteConfirmModal";
 import EmptyPanel from "../components/ui/EmptyPanel";
 import SectionsBoard from "../components/ui/SectionsBoard";
 import type { AccountSlot } from "../components/ui/AccountControls";
-import { ACCESS_GAP_DEFAUT } from "@milo/shared";
 import type {
   AccessBlock,
   AccessBlockType,
@@ -26,7 +25,8 @@ interface AccessPageProps {
   categoryId: string | null;
   onCategoryChange: (id: string | null) => void;
   onAddCategory: () => void;
-  onEditCategory: (id: number) => void;
+  /** Rendre une catégorie privée, ou de nouveau visible de tous, depuis le menu de son onglet. */
+  onTogglePrivateCategory: (id: number) => void | Promise<void>;
   /** Renommer un onglet sur place, au double clic sur son nom. */
   onRenameCategory: (id: number, name: string) => void | Promise<void>;
   onDeleteCategory: (id: number) => void | Promise<void>;
@@ -45,6 +45,8 @@ interface AccessPageProps {
   onDeleteSection: (section: AccessSection) => void | Promise<void>;
   /** Le nouvel ordre des colonnes, posé par leur poignée. */
   onReorderSections: (ids: Id[]) => void | Promise<void>;
+  /** L'écart qui suit une colonne, saisi au-dessus de lui. */
+  onChangeSectionGap: (section: AccessSection, gap: number) => void | Promise<void>;
   /** Ce que les sections portent, toutes colonnes confondues. */
   blocks: AccessBlock[];
   /** La zone en pointillé d'une colonne : elle ouvre la boîte de choix. */
@@ -76,7 +78,7 @@ export default function AccessPage({
   categoryId,
   onCategoryChange,
   onAddCategory,
-  onEditCategory,
+  onTogglePrivateCategory,
   onRenameCategory,
   onDeleteCategory,
   onReorderCategories,
@@ -87,6 +89,7 @@ export default function AccessPage({
   onDuplicateSection,
   onDeleteSection,
   onReorderSections,
+  onChangeSectionGap,
   blocks,
   onAddBlock,
   onEditBlock,
@@ -107,9 +110,6 @@ export default function AccessPage({
   // colonnes et tout ce qu'elles portent.
   const categorieOuverte = categories?.find((c) => String(c.id) === categoryId);
   const verrouille = categorieOuverte?.is_locked === 1;
-  // L'écart entre deux colonnes ne se règle plus : le même pour toutes les
-  // catégories, y compris celles qui en avaient enregistré un autre.
-  const ecart = ACCESS_GAP_DEFAUT;
 
   /** Ce qu'une colonne porte, dans l'ordre. */
   const blocsDe = (section: AccessSection) =>
@@ -120,7 +120,6 @@ export default function AccessPage({
     <SectionsBoard
       sections={sections}
       locked={verrouille}
-      gap={ecart}
       widgetIds={(section) => blocsDe(section).map((b) => b.id)}
       renderWidgets={(section, drag) => (
         <SectionBlocks
@@ -144,6 +143,7 @@ export default function AccessPage({
       onDuplicateSection={onDuplicateSection}
       onDeleteSection={onDeleteSection}
       onReorderSections={onReorderSections}
+      onChangeGap={onChangeSectionGap}
     />
   );
 
@@ -172,7 +172,7 @@ export default function AccessPage({
         value={categoryId}
         onChange={onCategoryChange}
         onAdd={onAddCategory}
-        onEdit={onEditCategory}
+        onTogglePrivate={onTogglePrivateCategory}
         onRename={onRenameCategory}
         onDelete={onDeleteCategory}
         onReorder={onReorderCategories}

@@ -31,12 +31,12 @@ export const accessCategories = {
   ),
   create: mutation(
     `INSERT INTO access_categories
-       (name, position, is_private, is_locked, gap, owner_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (name, position, is_private, is_locked, owner_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   ),
   update: mutation(
     `UPDATE access_categories
-     SET name = ?, is_private = ?, is_locked = ?, gap = ?, owner_id = ?
+     SET name = ?, is_private = ?, is_locked = ?, owner_id = ?
      WHERE id = ?`,
   ),
   remove: mutation("DELETE FROM access_categories WHERE id = ?"),
@@ -79,10 +79,12 @@ export const accessSections = {
   ),
   create: mutation(
     `INSERT INTO access_sections
-       (category_id, width_unit, width_value, position, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
+       (category_id, width_unit, width_value, gap, position, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   ),
-  update: mutation("UPDATE access_sections SET width_unit = ?, width_value = ? WHERE id = ?"),
+  update: mutation(
+    "UPDATE access_sections SET width_unit = ?, width_value = ?, gap = ? WHERE id = ?",
+  ),
   placer: mutation("UPDATE access_sections SET position = ? WHERE id = ?"),
   remove: mutation("DELETE FROM access_sections WHERE id = ?"),
 };

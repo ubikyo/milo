@@ -7,6 +7,12 @@ import { ChampsMarges, voisinsDe } from "../../widgets/marges";
 import { tabStyle } from "../../themes/tabs";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import DrawerFooter from "../ui/DrawerFooter";
+import DrawerScrollArea, {
+  DRAWER_PADDING,
+  DRAWER_PANEL_STYLE,
+  DRAWER_STYLES,
+  DRAWER_TABS_STYLES,
+} from "../ui/DrawerScroll";
 import ErrorAlert from "../ui/ErrorAlert";
 import { messageErreur } from "../../lib/errors";
 import type { AccessBlock } from "@milo/shared";
@@ -86,23 +92,13 @@ export default function AccessBlockDrawer({
         onClose={onClose}
         position="right"
         size={widget?.drawerSize ?? TIROIR_LARGEUR}
-        padding={40}
+        padding={DRAWER_PADDING}
         withCloseButton={false}
-        styles={{
-          content: { display: "flex", flexDirection: "column" },
-          body: {
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            overflowY: "auto",
-          },
-        }}
+        // Seul le panneau de l'onglet défile : les onglets et les boutons du
+        // bas restent en place (components/ui/DrawerScroll.tsx).
+        styles={DRAWER_STYLES}
       >
-        <Tabs
-          defaultValue="settings"
-          style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
-          styles={{ panel: { paddingTop: 20 } }}
-        >
+        <Tabs defaultValue="settings" style={DRAWER_PANEL_STYLE} styles={DRAWER_TABS_STYLES}>
           <Tabs.List mb="md">
             {/* L'onglet porte le nom du widget : c'est ce qu'on est en train
                 de régler, et le tiroir se présente comme les autres. */}
@@ -117,22 +113,25 @@ export default function AccessBlockDrawer({
 
           {/* Entrée enregistre depuis n'importe quel champ d'une ligne du
               widget : c'est le pied du tiroir qui l'écoute (DrawerFooter). */}
-          <Tabs.Panel value="settings">
-            <Stack gap="xl">
-              {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
-              {widget && <widget.Config config={config} onChange={setConfig} />}
-              {/* Communes à tous les widgets. Le tiroir ne s'ouvre que la
-                  catégorie déverrouillée : les voisins sont ceux qu'elle
-                  montre alors. */}
-              {widget && block && (
-                <ChampsMarges
-                  widget={widget}
-                  config={config}
-                  onChange={setConfig}
-                  voisins={voisinsDe(blocks, block, widgetDe, false)}
-                />
-              )}
-            </Stack>
+          <Tabs.Panel value="settings" style={DRAWER_PANEL_STYLE}>
+            <DrawerScrollArea>
+              <Stack gap="xl">
+                {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
+                {widget && <widget.Config config={config} onChange={setConfig} />}
+                {/* Communes à tous les widgets. Le tiroir ne s'ouvre que la
+                    catégorie déverrouillée : les voisins sont ceux qu'elle
+                    montre alors. */}
+                {widget && block && (
+                  <ChampsMarges
+                    widget={widget}
+                    config={config}
+                    onChange={setConfig}
+                    voisins={voisinsDe(blocks, block, widgetDe, false)}
+                  />
+                )}
+                {widget?.ConfigFin && <widget.ConfigFin config={config} onChange={setConfig} />}
+              </Stack>
+            </DrawerScrollArea>
           </Tabs.Panel>
         </Tabs>
 

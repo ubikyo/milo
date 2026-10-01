@@ -340,7 +340,9 @@ export const supportCommentOf = (
 ): SupportComment => {
   const { sender_name, sender_email, mail_id: _mailId, attachments, ...reste } = row;
   const comment = withAuthor({ ...reste, attachments: piecesJointes(attachments) });
-  if (comment.author || !sender_email) return comment;
+  // Un e-mail reçu est un mot « système » sans compte : c'est l'expéditeur
+  // qui le signe, pas Milo.
+  if (comment.user_id || !sender_email) return comment;
   return { ...comment, author: actorOf({ id: 0, name: sender_name, email: sender_email }) };
 };
 

@@ -1,4 +1,4 @@
-// Les références « LMA-12 ». Un seul compteur les donne aux demandes du
+// Les références « HLP-12 ». Un seul compteur les donne aux demandes du
 // support, aux projets et aux cartes : une référence désigne une seule chose,
 // quel que soit le mode, et se cite sans dire d'où elle vient.
 

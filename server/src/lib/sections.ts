@@ -2,7 +2,7 @@
 // panneau des statistiques. Elle se reçoit et se vérifie de la même façon
 // partout.
 
-import { isSectionWidthUnit } from "@milo/shared";
+import { SECTIONS_GAP_MAX, isSectionWidthUnit } from "@milo/shared";
 import type { SectionWidthUnit } from "@milo/shared";
 import { badRequest } from "./http.js";
 
@@ -34,4 +34,18 @@ export const valeurLargeur = (unite: SectionWidthUnit, valeur: unknown): number 
 export const rangDemande = (valeur: unknown): number | null => {
   const rang = Number(valeur);
   return valeur !== undefined && Number.isInteger(rang) && rang >= 0 ? rang : null;
+};
+
+/**
+ * L'écart qui suit une colonne, tel que son champ l'envoie. Absent, celui d'avant
+ * reste. Un nombre hors des bornes est refusé plutôt que ramené en silence :
+ * ramené, le champ afficherait autre chose que ce qui vient d'être saisi.
+ */
+export const ecartColonnes = (valeur: unknown, defaut: number): number => {
+  if (valeur === undefined || valeur === null || valeur === "") return defaut;
+  const nombre = Number(valeur);
+  if (!Number.isFinite(nombre) || nombre < 0 || nombre > SECTIONS_GAP_MAX) {
+    badRequest(`L'écart des colonnes va de 0 à ${SECTIONS_GAP_MAX} pixels`);
+  }
+  return Math.round(nombre);
 };

@@ -1,0 +1,23 @@
+/* Le champ de l'écart entre deux sections : à la hauteur de la bande des
+   poignées, sans cadre tant qu'on ne le survole pas, le chiffre en gris comme
+   les poignées. Le cadre et la couleur du texte reviennent au survol et à la
+   saisie. */
+.champ :global(.mantine-Input-input) {
+  height: 18px;
+  min-height: 18px;
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  color: var(--mantine-color-dimmed);
+  background-color: transparent;
+  border-color: transparent;
+  transition: border-color 120ms, color 120ms;
+}
+
+.champ:hover :global(.mantine-Input-input),
+.champ :global(.mantine-Input-input):focus {
+  color: var(--mantine-color-text);
+  background-color: var(--mantine-color-body);
+  border-color: var(--mantine-color-default-border);
+}

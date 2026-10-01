@@ -1,5 +1,5 @@
 import { Menu, Stack, Tabs } from "@mantine/core";
-import { IconLock, IconLockOpen } from "@tabler/icons-react";
+import { IconCheck, IconLock } from "@tabler/icons-react";
 import { Fragment, useMemo, useState } from "react";
 import AssetIndicatorsPanel from "../components/assets/AssetIndicatorsPanel";
 import { AssetsListeContext } from "../components/assets/AssetsList";
@@ -65,7 +65,7 @@ export default function AssetsPage({
   indicatorsLocked,
   onToggleIndicatorsLock,
 }: AssetsPageProps) {
-  // Le menu contextuel d'un onglet : il porte le verrou des sections.
+  // Le menu contextuel d'un onglet : il porte le verrou et l'écart des sections.
   const [menuOnglet, setMenuOnglet] = useState<PointMenuPosition | null>(null);
   // L'onglet ouvert reste ici, contrairement au mode Support : l'application
   // n'en fait encore rien — aucune lecture, aucun tiroir n'en dépend. Il
@@ -114,14 +114,16 @@ export default function AssetsPage({
         />
       </AssetsListeContext.Provider>
 
-      {/* Le menu d'un onglet ne porte que le verrou des sections, pour tous. */}
+      {/* Le menu d'un onglet ne porte que le verrou et l'écart des sections, pour tous. */}
       {menuOnglet && (
         <PointMenu position={menuOnglet} onClose={() => setMenuOnglet(null)}>
+          <Menu.Label>Affichage</Menu.Label>
           <Menu.Item
-            leftSection={indicatorsLocked ? <IconLockOpen size={16} /> : <IconLock size={16} />}
+            leftSection={<IconLock size={16} />}
+            rightSection={indicatorsLocked ? <IconCheck size={14} /> : null}
             onClick={() => onToggleIndicatorsLock()}
           >
-            {indicatorsLocked ? "Déverrouiller" : "Verrouiller"}
+            Verrouillé
           </Menu.Item>
         </PointMenu>
       )}

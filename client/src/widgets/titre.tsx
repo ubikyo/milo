@@ -29,9 +29,10 @@ interface TitreOptions {
   margeBasse: number;
   /**
    * L'air laissé au-dessus quand un élément le précède. En tête de colonne,
-   * le titre n'en prend pas : rien n'est à écarter.
+   * le titre n'en prend pas : rien n'est à écarter. Elle peut dépendre du
+   * type de cet élément.
    */
-  margeHaute?: number;
+  margeHaute?: number | ((previousType: AccessBlockType) => number);
 }
 
 const affichage = (options: TitreOptions): ComponentType<WidgetDisplayProps> =>
@@ -145,7 +146,12 @@ export const creerTitreWidget = (options: TitreOptions): AccessWidget => ({
   Display: affichage(options),
 
   marges: (previousType) => ({
-    haute: previousType === null ? 0 : (options.margeHaute ?? 0),
+    haute:
+      previousType === null
+        ? 0
+        : typeof options.margeHaute === "function"
+          ? options.margeHaute(previousType)
+          : (options.margeHaute ?? 0),
     basse: options.margeBasse,
   }),
 

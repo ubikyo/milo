@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   Badge,
-  Box,
   Center,
   Checkbox,
   Group,
@@ -26,8 +25,11 @@ import ActorAvatars, { ACTOR_AVATAR_SIZE, ACTOR_GAP, SenderAvatar } from "../ui/
 import AddButton from "../ui/AddButton";
 import { colonnesGardees } from "../ui/ChampsColonnes";
 import EmptyPanel from "../ui/EmptyPanel";
+import GrilleScroll from "../ui/GrilleScroll";
 import LabelChip from "../ui/LabelChip";
+import { ReferenceTag } from "../ui/ReferenceTag";
 import { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
+import { useColonnesRedimensionnables } from "../ui/useColonnesRedimensionnables";
 import { COULEUR_ECHEANCE, MOT_ECHEANCE, dateCourte, etatEcheance } from "../../lib/echeance";
 import { STRONG_TEXT } from "../../themes/colors";
 import { SUPPORT_STATUSES, supportStatusLabel, supportTicketRef } from "@milo/shared";
@@ -53,9 +55,8 @@ const ROW_PADDING_Y = 5;
 const LABELS_SHOWN = 2;
 const LABEL_HEIGHT = 20;
 
-// Hauteur des tags de la liste : numéro de ticket et statut, comme les
-// étiquettes.
-const TAG_HEIGHT = LABEL_HEIGHT;
+// Le numéro de ticket le plus long qu'on attend : le tag en prend la largeur.
+const REFERENCE_GABARIT = supportTicketRef(9999);
 
 /**
  * La couleur du tag de chaque statut, dessiné comme une étiquette : le
@@ -377,6 +378,7 @@ function SortableTh({
   onSort,
   filter,
   style,
+  poignee,
 }: {
   label: string;
   column: ColumnKey;
@@ -384,6 +386,7 @@ function SortableTh({
   onSort: (key: ColumnKey) => void;
   filter?: ReactNode;
   style?: CSSProperties;
+  poignee: ReactNode;
 }) {
   const active = sort.key === column;
   const Icon = !active ? IconSelector : sort.direction === "asc" ? IconChevronUp : IconChevronDown;
@@ -402,6 +405,7 @@ function SortableTh({
         </UnstyledButton>
         {filter}
       </Group>
+      {poignee}
     </Table.Th>
   );
 }
@@ -532,6 +536,7 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
   const montre = (cle: ColumnKey) => colonnes.includes(cle);
   // La case à cocher en tête de chaque ligne, puis les colonnes.
   const nombreDeColonnes = colonnes.length + 1;
+  const redim = useColonnesRedimensionnables("support", ["case", ...colonnes]);
 
   const filtre = Object.entries(filtres).some(
     ([cle, v]) => v !== SANS_FILTRE[cle as keyof Filtres],
@@ -566,6 +571,7 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
         onSort={trier}
         filter={filter}
         style={style}
+        poignee={redim.poignee(column)}
       />
     );
 
@@ -587,8 +593,9 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
   return (
     // Une section plus étroite que la liste la fait défiler de côté, plutôt
     // que d'écraser ses colonnes.
-    <Box style={{ overflowX: "auto" }}>
+    <GrilleScroll>
       <Table
+        {...redim.tableProps}
         highlightOnHover
         verticalSpacing={0}
         styles={{
@@ -609,6 +616,7 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
           },
         }}
       >
+        {redim.colgroup}
         <Table.Thead>
           <Table.Tr>
             {/* Pas de « tout cocher » : on choisit les demandes une à une. */}
@@ -708,9 +716,10 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
                 />
               </Table.Td>
               <Table.Td style={{ whiteSpace: "nowrap" }}>
-                <Badge color="green" variant="filled" radius="sm" h={TAG_HEIGHT}>
-                  {supportTicketRef(demande.number)}
-                </Badge>
+                <ReferenceTag
+                  reference={supportTicketRef(demande.number)}
+                  gabarit={REFERENCE_GABARIT}
+                />
               </Table.Td>
               {montre("subject") && (
                 <Table.Td style={{ maxWidth: SUBJECT_WIDTH, width: SUBJECT_WIDTH }}>
@@ -785,6 +794,6 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
           </Table.Tr>
         </Table.Tbody>
       </Table>
-    </Box>
+    </GrilleScroll>
   );
 }

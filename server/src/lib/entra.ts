@@ -15,7 +15,7 @@
 // par l'API. Ce n'est pas du chiffrement : qui peut lire la base peut le
 // lire. C'est la base qu'il faut protéger — elle porte déjà les sessions.
 
-import type { EntraPrincipal, EntraSettings, EntraSettingsInput } from "@milo/shared";
+import type { EntraPrincipal, EntraSettings, EntraSettingsInput, EntraStatus } from "@milo/shared";
 import { badRequest, fail } from "./http.js";
 import type { PieceJointe } from "./mail-template.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
@@ -27,9 +27,14 @@ interface Stockes {
   client_id: string;
   tenant: string;
   secret: string;
+  /**
+   * Milo a été déconnecté d'Entra depuis le Paramétrage : plus rien ne passe
+   * par Microsoft — connexions, annuaire, courrier — jusqu'à la reconnexion.
+   */
+  deconnecte: boolean;
 }
 
-const VIDES: Stockes = { client_id: "", tenant: "", secret: "" };
+const VIDES: Stockes = { client_id: "", tenant: "", secret: "", deconnecte: false };
 
 /** L'inscription que la messagerie OAuth rangeait, avant qu'Entra la reprenne. */
 interface AncienneMessagerie {
@@ -50,6 +55,7 @@ export const reglagesEntra = (): Stockes => {
       client_id: lus.client_id ?? "",
       tenant: lus.tenant ?? "",
       secret: lus.secret ?? "",
+      deconnecte: lus.deconnecte ?? false,
     };
   }
 
@@ -88,14 +94,20 @@ export const modifierEntra = (entree: EntraSettingsInput): void => {
   jetonEnCache = null;
 };
 
-/** L'inscription est-elle complète ? Sans elle, rien ne passe par Microsoft. */
+const inscriptionComplete = (r: Stockes): boolean => Boolean(r.client_id && r.tenant && r.secret);
+
+/**
+ * L'inscription est-elle complète, et Milo connecté ? Sans elles, rien ne
+ * passe par Microsoft.
+ */
 export const entraConfiguree = (): boolean => {
   const r = reglagesEntra();
-  return Boolean(r.client_id && r.tenant && r.secret);
+  return inscriptionComplete(r) && !r.deconnecte;
 };
 
 const exigerInscription = (): Stockes => {
   const r = reglagesEntra();
+  if (r.deconnecte) badRequest("Milo est déconnecté d'Entra : reconnectez-le dans Paramétrage → Entra");
   if (!r.client_id) badRequest("Renseignez l'ID d'application dans Paramétrage → Entra");
   if (!r.tenant) badRequest("Renseignez l'ID de l'annuaire dans Paramétrage → Entra");
   if (!r.secret) badRequest("Renseignez le secret d'application dans Paramétrage → Entra");
@@ -158,6 +170,34 @@ const jetonApplication = async (): Promise<string> => {
     expire: Date.now() + ((jeton.expires_in ?? 3600) - 60) * 1000,
   };
   return jetonEnCache.valeur;
+};
+
+/**
+ * L'état de la connexion de Milo à Entra : un jeton d'application obtenu
+ * suffit à le dire — l'identifiant, l'annuaire et le secret sont acceptés.
+ */
+export const etatEntra = async (): Promise<EntraStatus> => {
+  const r = reglagesEntra();
+  if (!inscriptionComplete(r)) return { state: "unconfigured", error: "" };
+  if (r.deconnecte) return { state: "disconnected", error: "" };
+  try {
+    await jetonApplication();
+    return { state: "connected", error: "" };
+  } catch (erreur) {
+    return {
+      state: "error",
+      error: erreur instanceof Error ? erreur.message : "Microsoft a refusé la demande",
+    };
+  }
+};
+
+/**
+ * Connecte ou déconnecte Milo. Dans les deux cas le jeton en cache tombe :
+ * la reconnexion en redemande un, et rend donc l'état réel.
+ */
+export const connecterEntra = (connecte: boolean): void => {
+  writeSetting(CLE, { ...reglagesEntra(), deconnecte: !connecte });
+  jetonEnCache = null;
 };
 
 interface ErreurGraph {
@@ -676,7 +716,7 @@ export const repondreParGraph = async (
   const message = trouve.value[0];
   if (!message) fail(400, "L'e-mail d'origine est introuvable dans la boîte de support");
 
-  // « Imprimante » devient « RE: [LMA-12] Imprimante » ; un objet qui porte
+  // « Imprimante » devient « RE: [HLP-12] Imprimante » ; un objet qui porte
   // déjà le numéro le garde tel quel.
   const origine = (message!.subject ?? "").replace(/^((?:re|tr|fw|fwd)\s*:\s*)+/i, "");
   const objet = origine.includes(`[${ticket}]`) ? `RE: ${origine}` : `RE: [${ticket}] ${origine}`;

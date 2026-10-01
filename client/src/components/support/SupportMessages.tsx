@@ -28,6 +28,7 @@ import { PersonAvatar, SenderAvatar } from "../ui/ActorAvatars";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import RichTextField, { useRichEditor } from "../ui/RichText";
 import type { FilItem } from "../project/CommentThread";
+import { MILO_ACTOR_ID } from "@milo/shared";
 import type {
   SqliteBool,
   SupportAttachment,
@@ -307,9 +308,16 @@ export default function SupportMessages({
   const fin = useRef<HTMLDivElement | null>(null);
 
   // Le dernier message en vue, comme dans une messagerie : à l'ouverture et à
-  // chaque message ajouté.
+  // chaque message ajouté. Seul le cadre du fil défile — « scrollIntoView »
+  // ferait aussi descendre le tiroir, qui doit s'ouvrir en haut du ticket.
   useEffect(() => {
-    fin.current?.scrollIntoView({ block: "end" });
+    let cadre = fin.current?.parentElement ?? null;
+    while (cadre) {
+      const { overflowY } = getComputedStyle(cadre);
+      if (overflowY === "auto" || overflowY === "scroll") break;
+      cadre = cadre.parentElement;
+    }
+    if (cadre) cadre.scrollTop = cadre.scrollHeight;
   }, [messages.length]);
 
   /**
@@ -337,6 +345,17 @@ export default function SupportMessages({
               <Text key={m.id} size="xs" c="dimmed" ta="center">
                 {m.text} · {formatDate(m.created_at)}
               </Text>
+            );
+          }
+          // L'ouverture du fil, signée Milo : un fait, avec son logo.
+          if (m.system && m.author?.id === MILO_ACTOR_ID) {
+            return (
+              <Group key={m.id} gap={6} justify="center" wrap="nowrap">
+                <PersonAvatar person={m.author} size={18} />
+                <Text size="xs" c="dimmed">
+                  {m.text} — {m.author.name}
+                </Text>
+              </Group>
             );
           }
           // Un mot de l'application signé d'un compte — « Fusionnée dans… »,

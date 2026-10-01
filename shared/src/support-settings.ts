@@ -1,18 +1,28 @@
 // Les réglages de la section « Support » du Paramétrage, et le calcul des
 // jours ouvrés qui s'en sert. Ils valent pour toute l'application.
 
+import type { Id } from "./domain.js";
+
 export interface SupportSettings {
   /**
    * L'échéance donnée d'office à une demande qui arrive par e-mail, en jours
    * ouvrés après sa réception. Zéro : pas d'échéance.
    */
   default_due_days: number;
+  /**
+   * Les étiquettes posées d'office sur une demande qui arrive par e-mail.
+   * Tant que le Paramétrage n'en a pas choisi, la priorité la plus légère.
+   */
+  default_label_ids: Id[];
 }
 
 /** Au-delà, une échéance « par défaut » n'en est plus une. */
 export const SUPPORT_DUE_DAYS_MAX = 60;
 
-export const emptySupportSettings = (): SupportSettings => ({ default_due_days: 0 });
+export const emptySupportSettings = (): SupportSettings => ({
+  default_due_days: 0,
+  default_label_ids: [],
+});
 
 /** Une date du calendrier, sans heure ni fuseau. */
 export interface JourCalendrier {

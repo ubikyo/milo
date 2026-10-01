@@ -85,7 +85,6 @@ export interface AccessCategoryRow {
   owner_id: Id | null;
   is_private: SqliteBool;
   is_locked: SqliteBool;
-  gap: number;
   created_at: string;
 }
 
@@ -95,6 +94,8 @@ export interface AccessSectionRow {
   category_id: Id;
   width_unit: SectionWidthUnit;
   width_value: number | null;
+  /** L'écart qui la sépare de la colonne suivante, en pixels. */
+  gap: number;
   position: number;
   created_at: string;
 }
@@ -289,6 +290,8 @@ export interface IndicatorSectionRow {
   panel: "support" | "assets" | "projects" | "tasks";
   width_unit: SectionWidthUnit;
   width_value: number | null;
+  /** L'écart qui la sépare de la colonne suivante, en pixels. */
+  gap: number;
   position: number;
   created_at: string;
 }

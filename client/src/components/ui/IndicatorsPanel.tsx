@@ -16,7 +16,7 @@ import type { SectionsDuPanneau } from "../../api";
 import type { IndicatorConfigProps } from "../../indicators/types";
 import type { Id, IndicatorSection } from "@milo/shared";
 
-/** L'écart entre deux indicateurs d'une section, et entre deux sections. */
+/** L'écart entre deux indicateurs d'une section. */
 const ECART = 20;
 
 /** La hauteur d'un indicateur : son nom en haut, la quantité en bas. */
@@ -42,7 +42,8 @@ export interface IndicatorWidgetBase<Type extends string> {
   /**
    * Les champs de son tiroir. Le tiroir lui-même est commun à tous. Sans
    * champs, le widget n'a que son nom à régler : choisi, il s'ajoute
-   * aussitôt, sous le nom de son type, et son tiroir ne porte que le nom.
+   * aussitôt, sous le nom de son type, et n'a pas de tiroir : son nom se
+   * change au double-clic sur son titre.
    */
   Config?: ComponentType<IndicatorConfigProps>;
   /**
@@ -163,7 +164,12 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
     setTiroirOuvert(true);
   };
 
+  // Un widget sans champs n'a que son nom, qui se change au double-clic sur
+  // son titre : il n'a pas de tiroir.
+  const aUnTiroir = (indicateur: Indicateur<Type>) => Boolean(widgetOf(indicateur.type)?.Config);
+
   const modifier = (indicateur: Indicateur<Type>) => {
+    if (!aUnTiroir(indicateur)) return;
     setCree(null);
     setModifie(indicateur);
     setTiroirOuvert(true);
@@ -174,7 +180,6 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
       <SectionsBoard
         sections={sections}
         locked={locked}
-        gap={ECART}
         widgetIds={(section) => indicateursDe(section).map((i) => i.id)}
         renderWidgets={(section, drag) => (
           <IndicateursDeSection
@@ -199,17 +204,22 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
         onDuplicateSection={(section) => ecrire(() => api.sections.duplicate(section.id))}
         onDeleteSection={(section) => ecrire(() => api.sections.remove(section.id))}
         onReorderSections={(ids) => ecrire(() => api.sections.reorder(ids))}
+        onChangeGap={(section, gap) => ecrire(() => api.sections.update(section.id, { gap }))}
       />
 
       {menu && (
         <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          <Menu.Item
-            leftSection={<IconPencil size={16} />}
-            onClick={() => modifier(menu.indicateur)}
-          >
-            Modifier
-          </Menu.Item>
-          <Menu.Divider />
+          {aUnTiroir(menu.indicateur) && (
+            <>
+              <Menu.Item
+                leftSection={<IconPencil size={16} />}
+                onClick={() => modifier(menu.indicateur)}
+              >
+                Modifier
+              </Menu.Item>
+              <Menu.Divider />
+            </>
+          )}
           <Menu.Item
             color={RED}
             leftSection={<IconTrash size={16} />}
@@ -377,6 +387,7 @@ function IndicateursDeSection<Type extends string, P extends IndicatorWidgetBase
                     flexDirection: "column",
                     minHeight: HAUTEUR,
                     padding: "var(--mantine-spacing-md)",
+                    border: "none",
                   }}
                 >
                   {render(widget, indicateur.config, rendu)}

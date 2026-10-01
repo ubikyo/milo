@@ -65,13 +65,11 @@ export interface ProjectBoardInput {
   is_private?: boolean;
 }
 
-/** Le tiroir d'une catégorie d'accès : son nom, « Privé », et l'écart de ses colonnes. */
+/** Le tiroir d'une catégorie d'accès : son nom et « Privé ». */
 export interface AccessCategoryInput {
   name?: string;
   is_private?: boolean;
   is_locked?: boolean;
-  /** L'écart entre deux colonnes, en pixels. */
-  gap?: number;
 }
 
 /**
@@ -82,6 +80,8 @@ export interface AccessSectionInput {
   category_id?: Id;
   width_unit?: SectionWidthUnit;
   width_value?: number | null;
+  /** L'écart qui la sépare de la section suivante, en pixels. */
+  gap?: number;
   /** À la création : le rang où la section prend place. Sans lui, au bout. */
   index?: number;
 }
@@ -228,6 +228,8 @@ export interface SupportAssignInput extends SupportBulkInput {
 export interface IndicatorSectionInput {
   width_unit?: SectionWidthUnit;
   width_value?: number | null;
+  /** L'écart qui la sépare de la section suivante, en pixels. */
+  gap?: number;
   /** À la création : le rang où la section prend place. Sans lui, au bout. */
   index?: number;
 }

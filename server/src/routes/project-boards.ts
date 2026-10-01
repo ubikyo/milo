@@ -8,7 +8,6 @@ import type { CategoryRow, CountRow } from "../db/rows.js";
 import {
   badRequest,
   conflict,
-  forbidden,
   orNotFound,
   refuserSiUtilise,
   requireText,
@@ -67,15 +66,15 @@ projectBoardRoutes.get("/", (req, res) => {
 
 projectBoardRoutes.post("/", (req, res) => {
   const name = requireText(req.body.name, "Le nom du tableau est requis");
-  // Nouveau tableau ajouté à la suite des autres. Le tiroir ne propose
-  // « Privé » qu'une fois le tableau créé : il naît donc ouvert à tous, mais
-  // son auteur est retenu dès maintenant.
+  // Nouveau tableau ajouté à la suite des autres, ouvert à tous : « Privé » se
+  // règle ensuite, depuis le menu de l'onglet.
   const { next } = projectBoards.nextPosition();
   const { lastInsertRowid } = projectBoards.create.run(
     name,
     next,
     drapeau(req.body.is_private, 0),
-    req.user.id,
+    // Le propriétaire n'existe que pour un tableau privé.
+    drapeau(req.body.is_private, 0) ? req.user.id : null,
     now(),
   );
   res.status(201).json(projectBoards.byId.get(lastInsertRowid));
@@ -101,15 +100,10 @@ projectBoardRoutes.put("/:id", (req, res) => {
   const name = requireText(req.body.name ?? existing.name, "Le nom du tableau est requis");
   const isPrivate = drapeau(req.body.is_private, existing.is_private);
 
-  // Fermer un tableau, c'est se le réserver : son auteur seul en décide. Ceux
-  // d'avant l'option n'en ont pas — le premier à les fermer les adopte.
-  let owner = existing.owner_id;
-  if (isPrivate !== existing.is_private) {
-    if (owner === null) owner = req.user.id;
-    else if (owner !== req.user.id) {
-      forbidden("Seul l'auteur du tableau peut le rendre privé");
-    }
-  }
+  // Un tableau n'a de propriétaire que privé : le fermer, c'est se le
+  // réserver ; le rouvrir le rend à tous, sans propriétaire. Seul celui qui
+  // l'a fermé le voit encore, et peut donc le rouvrir.
+  const owner = isPrivate ? (existing.is_private ? existing.owner_id : req.user.id) : null;
 
   projectBoards.update.run(name, isPrivate, owner, existing.id);
   res.json(projectBoards.byId.get(existing.id));

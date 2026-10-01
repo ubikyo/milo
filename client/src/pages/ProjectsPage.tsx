@@ -22,7 +22,15 @@ interface ProjectsPageProps {
   boardId: string | null;
   onBoardChange: (id: string | null) => void;
   onAddBoard: () => void;
-  onEditBoard: (id: number) => void;
+  onTogglePrivateBoard: (id: number) => void | Promise<void>;
+  /** Ouvre la copie des étiquettes de l'onglet visé vers un autre tableau. */
+  onCopyLabels: (id: number) => void;
+  /** Ouvre la copie des catégories de l'onglet visé vers un autre tableau. */
+  onCopyCategories: (id: number) => void;
+  /** Ouvre la gestion des catégories de l'onglet visé. */
+  onManageCategories: (id: number) => void;
+  /** Ouvre la gestion des types de jalons ; absent sans le droit de les modifier. */
+  onManageMilestones?: () => void;
   /** Renommer un onglet sur place, au double clic sur son nom. */
   onRenameBoard: (id: number, name: string) => void | Promise<void>;
   onDeleteBoard: (id: number) => void | Promise<void>;
@@ -60,7 +68,11 @@ export default function ProjectsPage({
   boardId,
   onBoardChange,
   onAddBoard,
-  onEditBoard,
+  onTogglePrivateBoard,
+  onCopyLabels,
+  onCopyCategories,
+  onManageCategories,
+  onManageMilestones,
   onRenameBoard,
   onDeleteBoard,
   onReorderBoards,
@@ -104,7 +116,11 @@ export default function ProjectsPage({
         value={boardId}
         onChange={onBoardChange}
         onAdd={onAddBoard}
-        onEdit={onEditBoard}
+        onTogglePrivate={onTogglePrivateBoard}
+        onCopyLabels={onCopyLabels}
+        onCopyCategories={onCopyCategories}
+        onManageCategories={onManageCategories}
+        onManageMilestones={onManageMilestones}
         onRename={onRenameBoard}
         onDelete={onDeleteBoard}
         onReorder={onReorderBoards}

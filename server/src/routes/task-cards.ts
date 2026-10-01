@@ -7,7 +7,7 @@ import type { Id } from "@milo/shared";
 import { badRequest, forbidden, orNotFound, requireText, toIds } from "../lib/http.js";
 import { descriptionPropre } from "../lib/html.js";
 import { concernes, notifier, notifierSuppression, racine } from "../lib/notify.js";
-import { echeance, horodatage, now } from "../lib/time.js";
+import { echeance, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { boardOuvert, boards } from "../repositories/boards.js";
 import {
@@ -16,7 +16,7 @@ import {
   replaceCardLabels,
   replaceCardMembers,
 } from "../repositories/cards.js";
-import { COMMENTAIRE_SYSTEME, withAuthor } from "../repositories/comments.js";
+import { COMMENTAIRE_SYSTEME, motDeCreation, withAuthor } from "../repositories/comments.js";
 import { duplicateTaskCard } from "../repositories/copy-list.js";
 import { prochaineReference } from "../repositories/references.js";
 import {
@@ -76,8 +76,8 @@ taskCardRoutes.post("/", (req, res) => {
   if (kind !== "separator") {
     cardComments.createSystem.run(
       lastInsertRowid,
-      req.user.id,
-      `Carte créée le ${horodatage(timestamp)}`,
+      null,
+      motDeCreation("Carte créée", timestamp, req.user.id),
       timestamp,
       timestamp,
     );

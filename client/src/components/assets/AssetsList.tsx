@@ -1,6 +1,5 @@
 import {
   Badge,
-  Box,
   Center,
   Group,
   Menu,
@@ -19,11 +18,20 @@ import {
   IconSquarePlus,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import { createContext, useContext, useMemo, useState, type CSSProperties } from "react";
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { OsLogo, ProtectionLogo } from "./AssetLogos";
 import { colonnesGardees } from "../ui/ChampsColonnes";
 import EmptyPanel from "../ui/EmptyPanel";
+import GrilleScroll from "../ui/GrilleScroll";
 import PointMenu, { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
+import { useColonnesRedimensionnables } from "../ui/useColonnesRedimensionnables";
 import { DISQUE_PLEIN, diskUsage, libelleOs } from "../../lib/poste";
 import { RED, STRONG_TEXT } from "../../themes/colors";
 import type { Asset } from "@milo/shared";
@@ -95,12 +103,14 @@ function SortableTh({
   sort,
   onSort,
   style,
+  poignee,
 }: {
   label: string;
   column: ColumnKey;
   sort: Sort;
   onSort: (key: ColumnKey) => void;
   style?: CSSProperties;
+  poignee: ReactNode;
 }) {
   const active = sort.key === column;
   const Icon = !active ? IconSelector : sort.direction === "asc" ? IconChevronUp : IconChevronDown;
@@ -116,6 +126,7 @@ function SortableTh({
           </Center>
         </Group>
       </UnstyledButton>
+      {poignee}
     </Table.Th>
   );
 }
@@ -197,7 +208,7 @@ function EncryptionCell({ encrypted }: { encrypted: boolean | null }) {
  * La couleur de l'occupation : vert tant qu'il reste de la place, orange de
  * 70 à 85 %, rouge au-delà.
  */
-const diskColor = (occupe: number): string => {
+export const diskColor = (occupe: number): string => {
   if (occupe > DISQUE_PLEIN) return RED;
   if (occupe >= 70) return "orange";
   return "teal";
@@ -293,14 +304,23 @@ export default function AssetsList({ config }: { config: unknown }) {
 
   const th = (label: string, column: ColumnKey, style?: CSSProperties) =>
     montre(column) && (
-      <SortableTh label={label} column={column} sort={sort} onSort={trier} style={style} />
+      <SortableTh
+        label={label}
+        column={column}
+        sort={sort}
+        onSort={trier}
+        style={style}
+        poignee={redim.poignee(column)}
+      />
     );
 
   const colonnes = colonnesGardees(COLONNES_ASSETS, config).map((c) => c.key);
   const montre = (cle: ColumnKey) => colonnes.includes(cle);
+  const redim = useColonnesRedimensionnables("assets", colonnes);
 
   const table = (
     <Table
+      {...redim.tableProps}
       highlightOnHover
       verticalSpacing={0}
       styles={{
@@ -319,6 +339,7 @@ export default function AssetsList({ config }: { config: unknown }) {
         },
       }}
     >
+      {redim.colgroup}
       <Table.Thead>
         <Table.Tr>
           {th("Asset", "name")}
@@ -400,7 +421,7 @@ export default function AssetsList({ config }: { config: unknown }) {
   return (
     <>
       {/* Une section plus étroite que la liste la fait défiler de côté. */}
-      <Box style={{ overflowX: "auto" }}>{table}</Box>
+      <GrilleScroll>{table}</GrilleScroll>
 
       {contexte && (
         <PointMenu position={contexte.position} onClose={() => setContexte(null)}>

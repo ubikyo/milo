@@ -7,9 +7,11 @@ import {
   Modal,
   PasswordInput,
   Select,
+  SimpleGrid,
   Stack,
   Text,
   TextInput,
+  Tooltip,
 } from "@mantine/core";
 import {
   IconCheck,
@@ -17,6 +19,8 @@ import {
   IconCopy,
   IconMailForward,
   IconMailSearch,
+  IconPlugConnected,
+  IconPlugConnectedX,
   IconSend,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
@@ -33,24 +37,19 @@ import type {
   EntraSettings,
   Company,
   EntraSettingsInput,
+  EntraStatus,
   MailboxCheck,
 } from "@milo/shared";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties } from "react";
 import BoutonFermer from "../ui/BoutonFermer";
 
-// Même colonne de libellés que les autres onglets des réglages.
-const LABEL_WIDTH = 130;
-
-/** Un libellé à gauche, son champ à droite : la mise en page des réglages. */
-const champ = (libelle: string, contenu: ReactNode, apres?: ReactNode) => (
-  <Group gap="md" wrap="nowrap" align="center">
-    <Text size="sm" fw={500} w={LABEL_WIDTH} style={{ flexShrink: 0 }}>
-      {libelle}
-    </Text>
-    {contenu}
-    {apres}
-  </Group>
-);
+/** Ce que montre l'état de la connexion, selon ce que le serveur en dit. */
+const ETATS: Record<EntraStatus["state"], { libelle: string; couleur: string }> = {
+  connected: { libelle: "Connecté", couleur: "green" },
+  error: { libelle: "Refusé", couleur: "red" },
+  disconnected: { libelle: "Déconnecté", couleur: "gray" },
+  unconfigured: { libelle: "Non configuré", couleur: "gray" },
+};
 
 /**
  * Ce que montre le champ d'un secret enregistré : le serveur ne le renvoie
@@ -136,7 +135,7 @@ function MailTestModal({
           }
           data={expeditrices.map((c) => ({
             value: String(c.id),
-            label: `${c.name} — ${c.support_email}`,
+            label: c.name,
           }))}
           value={societe}
           onChange={setSociete}
@@ -321,6 +320,20 @@ export default function EntraTab({
   const [busy, setBusy] = useState(false);
   const [testOuvert, setTestOuvert] = useState(false);
   const [boitesOuvert, setBoitesOuvert] = useState(false);
+  // L'état de la connexion de Milo à Entra : nul tant qu'il n'est pas connu.
+  const [etat, setEtat] = useState<EntraStatus | null>(null);
+
+  const lireEtat = useCallback(() => {
+    setEtat(null);
+    api
+      .getEntraStatus()
+      .then(setEtat)
+      .catch((e) => setError(messageErreur(e)));
+  }, []);
+
+  useEffect(() => {
+    lireEtat();
+  }, [lireEtat]);
 
   const reload = useCallback(async () => {
     try {
@@ -365,6 +378,8 @@ export default function EntraTab({
       setSecretTouche(false);
       setSecret("");
       setModifie(false);
+      // De nouveaux identifiants changent la réponse de Microsoft.
+      lireEtat();
       return true;
     } catch (e) {
       setError(messageErreur(e));
@@ -394,6 +409,25 @@ export default function EntraTab({
     if (await enregistrer()) setBoitesOuvert(true);
   };
 
+  /** Se reconnecter avec ce qui est saisi, ou se déconnecter. */
+  const changerConnexion = async (connecter: boolean) => {
+    if (connecter && !(await enregistrer())) return;
+    setError(null);
+    setBusy(true);
+    setEtat(null);
+    try {
+      setEtat(await (connecter ? api.connectEntra() : api.disconnectEntra()));
+    } catch (e) {
+      setError(messageErreur(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Déconnecté, Milo ne passe plus par Microsoft : les vérifications
+  // échoueraient d'office.
+  const deconnecte = etat?.state === "disconnected";
+
   /**
    * L'adresse de retour de la connexion, à inscrire dans Azure : celle par
    * laquelle on sert Milo, suivie du chemin que le serveur écoute.
@@ -422,17 +456,69 @@ export default function EntraTab({
       </Menu.Target>
 
       <Menu.Dropdown>
-        <Menu.Item leftSection={<IconMailForward size={16} />} onClick={tester}>
+        <Menu.Item
+          leftSection={<IconMailForward size={16} />}
+          onClick={tester}
+          disabled={deconnecte}
+        >
           Tester l'envoi
         </Menu.Item>
         <Menu.Item
           leftSection={<IconMailSearch size={16} />}
           onClick={verifierBoites}
+          disabled={deconnecte}
         >
           Vérifier les boîtes de support
         </Menu.Item>
+        <Menu.Divider />
+        <Menu.Item
+          leftSection={<IconPlugConnected size={16} />}
+          onClick={() => void changerConnexion(true)}
+        >
+          Se reconnecter
+        </Menu.Item>
+        <Menu.Item
+          leftSection={<IconPlugConnectedX size={16} />}
+          onClick={() => void changerConnexion(false)}
+          disabled={
+            !etat ||
+            etat.state === "disconnected" ||
+            etat.state === "unconfigured"
+          }
+        >
+          Déconnecter
+        </Menu.Item>
       </Menu.Dropdown>
     </Menu>
+  );
+
+  /**
+   * L'état de la connexion, à gauche du menu « Actions » : le refus de
+   * Microsoft se lit au survol.
+   */
+  const badgeEtat = etat ? (
+    <Tooltip
+      label={etat.error}
+      disabled={!etat.error}
+      multiline
+      maw={360}
+      withinPortal
+    >
+      <Badge
+        color={ETATS[etat.state].couleur}
+        variant="filled"
+        size="sm"
+        radius="sm"
+        tt="none"
+        fw={600}
+      >
+        {ETATS[etat.state].libelle}
+      </Badge>
+    </Tooltip>
+  ) : (
+    <Text size="sm" c="dimmed">
+      Vérification…
+    </Text>
   );
 
   /**
@@ -443,7 +529,7 @@ export default function EntraTab({
   const masque = reglages.has_secret && !secretTouche;
   const champSecret = (
     <PasswordInput
-      aria-label="Secret d'application"
+      label="Secret"
       value={masque ? MASQUE : secret}
       visibilityToggleButtonProps={
         masque ? { style: { display: "none" } } : undefined
@@ -457,7 +543,6 @@ export default function EntraTab({
         setSecretTouche(true);
         setModifie(true);
       }}
-      style={{ flex: 1 }}
     />
   );
 
@@ -472,43 +557,41 @@ export default function EntraTab({
 
         <Stack gap="sm">
           <Text size="sm" c="dimmed" pb={7}>
-            Paramètres application
+            Paramètres de connexion à Entra, veuillez lire l'aide relative à
+            l'installation de Milo pour déterminer les valeurs à préciser dans
+            les éléments ci-dessous.
           </Text>
 
           {/* Les deux libellés du portail Azure, mot pour mot : c'est là
               qu'on va chercher les valeurs, autant ne pas les renommer en
-              chemin. */}
-          {champ(
-            "ID d'application",
+              chemin. Les libellés au-dessus des champs, comme dans les
+              fiches, avec les mêmes écarts. */}
+          <SimpleGrid cols={2} spacing="md" verticalSpacing="xl">
             <TextInput
-              aria-label="ID d'application"
+              label="ID d'application"
               value={reglages.client_id}
               onChange={(e) => modifier({ client_id: e.currentTarget.value })}
-              style={{ flex: 1 }}
-            />,
-          )}
-
-          {champ(
-            "ID de l'annuaire",
+            />
             <TextInput
-              aria-label="ID de l'annuaire"
+              label="ID de l'annuaire"
               value={reglages.tenant}
               onChange={(e) => modifier({ tenant: e.currentTarget.value })}
-              style={{ flex: 1 }}
-            />,
-          )}
-
-          {champ("Secret", champSecret)}
-
-          {/* L'adresse à reporter dans Azure, telle quelle : elle se lit, et
-              se copie d'un clic. */}
-          {champ(
-            "Redirection",
+            />
+            {/* Le secret et la redirection dans la colonne de gauche, à la
+                largeur de l'ID d'application. */}
+            {champSecret}
+            <div />
+            {/* L'adresse à reporter dans Azure, telle quelle : elle se lit,
+                et se copie d'un clic. Plus longue que les ID, elle déborde
+                d'un quart sur la colonne de droite, vide à cette hauteur. */}
             <TextInput
-              aria-label="Adresse de redirection"
+              label="Redirection"
+              style={{
+                gridColumn: "1 / -1",
+                width: "calc((100% - var(--mantine-spacing-md)) / 2 * 1.25)",
+              }}
               value={redirection}
               readOnly
-              style={{ flex: 1 }}
               rightSection={
                 <CopyButton value={redirection}>
                   {({ copied, copy }) => (
@@ -531,12 +614,19 @@ export default function EntraTab({
                   )}
                 </CopyButton>
               }
-            />,
-          )}
+            />
+          </SimpleGrid>
         </Stack>
       </Stack>
 
-      {actionsTarget && createPortal(menuActions, actionsTarget)}
+      {actionsTarget &&
+        createPortal(
+          <Group gap="sm" wrap="nowrap">
+            {badgeEtat}
+            {menuActions}
+          </Group>,
+          actionsTarget,
+        )}
 
       <MailTestModal
         opened={testOuvert}

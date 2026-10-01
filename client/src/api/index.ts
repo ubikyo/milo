@@ -46,6 +46,7 @@ import type {
   EntraPrincipal,
   EntraSettings,
   EntraSettingsInput,
+  EntraStatus,
   MailboxCheck,
   PrincipalAssignments,
   FollowKind,
@@ -84,6 +85,7 @@ import type {
   TabOrders,
   DeveloperSettings,
   SupportSettings,
+  AssetSettings,
   UpdateMeInput,
   VersionPayload,
   SearchResult,
@@ -280,6 +282,9 @@ export const api = {
   testMail: (to: string, company_id: Id) =>
     post<MailTestResult>("/entra/test", { to, company_id }),
   checkMailboxes: () => get<MailboxCheck[]>("/entra/mailboxes"),
+  getEntraStatus: () => get<EntraStatus>("/entra/status"),
+  connectEntra: () => post<EntraStatus>("/entra/connect"),
+  disconnectEntra: () => post<EntraStatus>("/entra/disconnect"),
 
   // --- Suivi ---------------------------------------------------------------
   // Le client garde la liste de ce qu'il suit : chaque écriture la rend
@@ -576,8 +581,11 @@ export const api = {
   // La section « Développeur » du Paramétrage, commune à tous.
   // La section « Support » du Paramétrage : l'échéance par défaut.
   getSupportSettings: () => get<SupportSettings>("/support-settings"),
-  updateSupportSettings: (data: SupportSettings) =>
+  updateSupportSettings: (data: Partial<SupportSettings>) =>
     put<SupportSettings>("/support-settings", data),
+  // La section « Assets » du Paramétrage : la table des modèles.
+  getAssetSettings: () => get<AssetSettings>("/asset-settings"),
+  updateAssetSettings: (data: AssetSettings) => put<AssetSettings>("/asset-settings", data),
   getDeveloperSettings: () => get<DeveloperSettings>("/developer"),
   updateDeveloperSettings: (data: DeveloperSettings) =>
     put<DeveloperSettings>("/developer", data),

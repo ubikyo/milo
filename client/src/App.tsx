@@ -31,23 +31,25 @@ import {
   estNotification,
 } from "@milo/shared";
 import { societeDuNom } from "./lib/societe";
+import { messageErreur } from "./lib/errors";
 import { cibleDeLAdresse, noterDansLAdresse } from "./lib/suivi";
 import { widgetDe } from "./widgets";
 import type { AccessWidget } from "./widgets";
 import type { Cible } from "./lib/suivi";
-import AccessCategoryDrawer from "./components/access/AccessCategoryDrawer";
 import AssetDrawer from "./components/assets/AssetDrawer";
 import SupportRequestDrawer from "./components/support/SupportRequestDrawer";
 import AccessBlockDrawer from "./components/access/AccessBlockDrawer";
 import SectionDrawer from "./components/ui/SectionDrawer";
 import WidgetPickerModal from "./components/ui/WidgetPickerModal";
 import PreferencesModal from "./components/settings/PreferencesModal";
-import BoardDrawer from "./components/board/BoardDrawer";
+import CopyToBoardModal from "./components/ui/CopyToBoardModal";
+import MilestoneTypesModal from "./components/project/MilestoneTypesModal";
+import ProjectCategoriesModal from "./components/project/ProjectCategoriesModal";
+import type { ChoseACopier } from "./components/ui/CopyToBoardModal";
 import type { AccountSlot } from "./components/ui/AccountControls";
 import DeleteConfirmModal from "./components/ui/DeleteConfirmModal";
 import MoveOrCopyProjectModal from "./components/project/MoveOrCopyProjectModal";
 import type { ProjectAction } from "./components/project/MoveOrCopyProjectModal";
-import ProjectBoardDrawer from "./components/project/ProjectBoardDrawer";
 import ProjectDrawer from "./components/project/ProjectDrawer";
 import ModeSwitch from "./components/ui/ModeSwitch";
 import ShortcutsHelp from "./components/ui/ShortcutsHelp";
@@ -240,13 +242,16 @@ export default function App() {
     accessBlocsLus?.cle === accessCategoryId ? accessBlocsLus.items : [];
 
   const [drawerOpened, setDrawerOpened] = useState(false);
-  // Tiroir des tableaux : « null » à la création, le tableau visé sinon.
-  const [boardDrawerOpened, setBoardDrawerOpened] = useState(false);
-  const [editedBoard, setEditedBoard] = useState<Board | null>(null);
-  const [projectBoardDrawerOpened, setProjectBoardDrawerOpened] =
-    useState(false);
-  const [editedProjectBoard, setEditedProjectBoard] =
-    useState<ProjectBoard | null>(null);
+  // Le tableau de projets dont on gère les catégories, et la fenêtre des
+  // types de jalons, ouvertes depuis le menu d'un onglet.
+  const [categoriesDe, setCategoriesDe] = useState<Id | null>(null);
+  const [jalonsOuverts, setJalonsOuverts] = useState(false);
+  // Ce qu'on copie d'un tableau vers un autre, depuis le menu de son onglet.
+  const [copie, setCopie] = useState<{
+    univers: "tasks" | "projects";
+    chose: ChoseACopier;
+    id: Id;
+  } | null>(null);
   // Tiroir d'une demande de support : « null » à la création, la demande visée
   // sinon. L'onglet ouvert dit le statut que prend une demande créée là.
   // Le poste ouvert. Rien ne s'y modifie : le tiroir lit, et se referme.
@@ -262,11 +267,7 @@ export default function App() {
   // La société qu'on devine au nom de la catégorie d'accès ; « null » quand
   // rien ne s'impose, et la proposition habituelle reprend la main.
   const [societeDemandeAcces, setSocieteDemandeAcces] = useState<string | null>(null);
-  // Tiroir des catégories d'accès : « null » à la création, la catégorie visée sinon.
-  const [accessDrawerOpened, setAccessDrawerOpened] = useState(false);
-  const [editedAccessCategory, setEditedAccessCategory] =
-    useState<AccessCategory | null>(null);
-  // Tiroir des sections : même règle, « null » à la création.
+  // Tiroir des sections : « null » à la création, la section visée sinon.
   const [sectionDrawerOpened, setSectionDrawerOpened] = useState(false);
   const [editedAccessSection, setEditedAccessSection] =
     useState<AccessSection | null>(null);
@@ -1334,6 +1335,7 @@ export default function App() {
 
   const handleSettingsChanged = async () => {
     await loadLookups();
+    await loadCategories();
     await loadProjects();
   };
 
@@ -1382,6 +1384,15 @@ export default function App() {
       const items = await api.reorderAccessSections(Number(accessCategoryId), ids);
       setAccessSectionsLues({ cle: accessCategoryId, items });
     } catch {
+      await loadAccessSections();
+    }
+  };
+
+  /** L'écart qui suit une colonne, saisi au-dessus de lui. */
+  const changeAccessSectionGap = async (section: AccessSection, gap: number) => {
+    try {
+      await api.updateAccessSection(section.id, { gap });
+    } finally {
       await loadAccessSections();
     }
   };
@@ -1473,19 +1484,39 @@ export default function App() {
     await loadAccessSections();
   };
 
-  const openNewAccessCategory = () => {
-    setEditedAccessCategory(null);
-    setAccessDrawerOpened(true);
+  // Un réglage d'onglet refusé par le serveur — « Privé » n'appartient qu'à
+  // l'auteur : le menu s'est refermé, la raison se dit en notification.
+  const signalerRefus = (e: unknown) =>
+    notifications.show({ title: "Modification refusée", color: "red", message: messageErreur(e) });
+
+  // Le « + » crée aussitôt une catégorie « Nouveau » et l'ouvre : elle se
+  // renomme ensuite sur place, d'un double clic.
+  const addAccessCategory = async () => {
+    const creee = await api.createAccessCategory({ name: "Nouveau" });
+    await loadAccessCategories();
+    setAccessCategoryId(String(creee.id));
   };
 
   // L'onglet visé par le clic droit, pas forcément l'onglet ouvert.
-  // Verrouiller ou déverrouiller depuis le menu de l'onglet, sans ouvrir le
-  // tiroir. Relu même en cas de refus : l'onglet montre alors ce qui est.
+  // Verrouiller ou déverrouiller depuis le menu de l'onglet. Relu même en cas
+  // de refus : l'onglet montre alors ce qui est.
   const toggleAccessCategoryLock = async (id: Id) => {
     const categorie = accessCategories?.find((c) => c.id === id);
     if (!categorie) return;
     try {
       await api.updateAccessCategory(id, { is_locked: !categorie.is_locked });
+    } finally {
+      await loadAccessCategories();
+    }
+  };
+
+  const toggleAccessCategoryPrivate = async (id: Id) => {
+    const categorie = accessCategories?.find((c) => c.id === id);
+    if (!categorie) return;
+    try {
+      await api.updateAccessCategory(id, { is_private: !categorie.is_private });
+    } catch (e) {
+      signalerRefus(e);
     } finally {
       await loadAccessCategories();
     }
@@ -1525,24 +1556,6 @@ export default function App() {
     } finally {
       await loadProjectBoards();
     }
-  };
-
-  const openEditAccessCategory = (id: Id) => {
-    setEditedAccessCategory(accessCategories?.find((c) => c.id === id) ?? null);
-    setAccessDrawerOpened(true);
-  };
-
-  // Une catégorie enregistrée devient la catégorie ouverte : on vient de la
-  // créer ou de la renommer, c'est celle que l'on regarde.
-  const handleAccessCategorySaved = async (categorie: AccessCategory) => {
-    setAccessDrawerOpened(false);
-    await loadAccessCategories();
-    setAccessCategoryId(String(categorie.id));
-  };
-
-  const handleAccessCategoryDeleted = async () => {
-    setAccessDrawerOpened(false);
-    await loadAccessCategories();
   };
 
   // Suppression demandée depuis le menu contextuel des onglets : la
@@ -1596,25 +1609,24 @@ export default function App() {
     await loadSupportRequests();
   };
 
-  const openNewProjectBoard = () => {
-    setEditedProjectBoard(null);
-    setProjectBoardDrawerOpened(true);
-  };
-
-  const openEditProjectBoard = (id: Id) => {
-    setEditedProjectBoard(projectBoards?.find((b) => b.id === id) ?? null);
-    setProjectBoardDrawerOpened(true);
-  };
-
-  const handleProjectBoardSaved = async (board: ProjectBoard) => {
-    setProjectBoardDrawerOpened(false);
+  // Le « + » crée aussitôt un tableau « Nouveau » et l'ouvre : il se renomme
+  // ensuite sur place, d'un double clic.
+  const addProjectBoard = async () => {
+    const cree = await api.createProjectBoard("Nouveau");
     await loadProjectBoards();
-    setProjectBoardId(String(board.id));
+    setProjectBoardId(String(cree.id));
   };
 
-  const handleProjectBoardDeleted = async () => {
-    setProjectBoardDrawerOpened(false);
-    await loadProjectBoards();
+  const toggleProjectBoardPrivate = async (id: Id) => {
+    const tableau = projectBoards?.find((b) => b.id === id);
+    if (!tableau) return;
+    try {
+      await api.updateProjectBoard(id, { is_private: !tableau.is_private });
+    } catch (e) {
+      signalerRefus(e);
+    } finally {
+      await loadProjectBoards();
+    }
   };
 
   // Suppressions demandées depuis le menu contextuel des onglets : la
@@ -1656,27 +1668,33 @@ export default function App() {
     }
   };
 
-  const openNewBoard = () => {
-    setEditedBoard(null);
-    setBoardDrawerOpened(true);
-  };
-
-  const openEditBoard = (id: Id) => {
-    setEditedBoard(boards?.find((b) => b.id === id) ?? null);
-    setBoardDrawerOpened(true);
-  };
-
-  // Un tableau enregistré devient le tableau ouvert : on vient de le créer ou
-  // de le renommer, c'est celui que l'on regarde.
-  const handleBoardSaved = async (board: Board) => {
-    setBoardDrawerOpened(false);
+  // Le « + » crée aussitôt un tableau « Nouveau » dans la société courante et
+  // l'ouvre : il se renomme ensuite sur place, d'un double clic.
+  const addBoard = async () => {
+    if (!companyFilter || companyFilter === "all") return;
+    const cree = await api.createBoard(companyFilter, "Nouveau");
     await loadBoards();
-    setBoardId(String(board.id));
+    setBoardId(String(cree.id));
   };
 
-  const handleBoardDeleted = async () => {
-    setBoardDrawerOpened(false);
-    await loadBoards();
+  const toggleBoardPrivate = async (id: Id) => {
+    const tableau = boards?.find((b) => b.id === id);
+    if (!tableau) return;
+    try {
+      await api.updateBoard(id, { is_private: !tableau.is_private });
+    } finally {
+      await loadBoards();
+    }
+  };
+
+  const toggleBoardCardNumbers = async (id: Id) => {
+    const tableau = boards?.find((b) => b.id === id);
+    if (!tableau) return;
+    try {
+      await api.updateBoard(id, { show_card_numbers: !tableau.show_card_numbers });
+    } finally {
+      await loadBoards();
+    }
   };
 
   if (!authChecked) return null;
@@ -1699,7 +1717,6 @@ export default function App() {
         standalone
         canEdit
         companies={companies}
-        milestoneTypes={milestoneTypes}
         onDataChanged={handleSettingsChanged}
         debug={debug}
         onDebugChange={setDebug}
@@ -1748,8 +1765,8 @@ export default function App() {
             categories={accessCategories}
             categoryId={accessCategoryId}
             onCategoryChange={setAccessCategoryId}
-            onAddCategory={openNewAccessCategory}
-            onEditCategory={openEditAccessCategory}
+            onAddCategory={addAccessCategory}
+            onTogglePrivateCategory={toggleAccessCategoryPrivate}
             onRenameCategory={renameAccessCategory}
             onDeleteCategory={deleteAccessCategory}
             onReorderCategories={reorderAccessCategories}
@@ -1760,6 +1777,7 @@ export default function App() {
             onDuplicateSection={duplicateAccessSection}
             onDeleteSection={deleteAccessSection}
             onReorderSections={reorderAccessSections}
+            onChangeSectionGap={changeAccessSectionGap}
             blocks={accessBlocks}
             onAddBlock={openWidgetPicker}
             onEditBlock={setEditedAccessBlock}
@@ -1830,8 +1848,10 @@ export default function App() {
             boards={boards}
             boardId={boardId}
             onBoardChange={setBoardId}
-            onAddBoard={openNewBoard}
-            onEditBoard={openEditBoard}
+            onAddBoard={addBoard}
+            onTogglePrivateBoard={toggleBoardPrivate}
+            onToggleCardNumbers={toggleBoardCardNumbers}
+            onCopyLabels={(id) => setCopie({ univers: "tasks", chose: "labels", id })}
             onRenameBoard={renameBoard}
             onDeleteBoard={deleteBoard}
             onReorderBoards={reorderBoards}
@@ -1860,8 +1880,18 @@ export default function App() {
             boards={projectBoards}
             boardId={projectBoardId}
             onBoardChange={setProjectBoardId}
-            onAddBoard={openNewProjectBoard}
-            onEditBoard={openEditProjectBoard}
+            onAddBoard={addProjectBoard}
+            onTogglePrivateBoard={toggleProjectBoardPrivate}
+            onCopyLabels={(id) => setCopie({ univers: "projects", chose: "labels", id })}
+            onCopyCategories={(id) =>
+              setCopie({ univers: "projects", chose: "categories", id })
+            }
+            onManageCategories={setCategoriesDe}
+            // Les types de jalons relèvent du Paramétrage : sans le droit de le
+            // modifier, le menu ne les propose pas.
+            onManageMilestones={
+              user.settings.update ? () => setJalonsOuverts(true) : undefined
+            }
             onRenameBoard={renameProjectBoard}
             onDeleteBoard={deleteProjectBoard}
             onReorderBoards={reorderProjectBoards}
@@ -1905,22 +1935,36 @@ export default function App() {
         )}
       </Box>
 
-      <BoardDrawer
-        opened={boardDrawerOpened}
-        onClose={() => setBoardDrawerOpened(false)}
-        board={editedBoard}
-        companyId={companyFilter}
-        onSaved={handleBoardSaved}
-        onDeleted={handleBoardDeleted}
+      <ProjectCategoriesModal
+        board={projectBoards?.find((b) => b.id === categoriesDe) ?? null}
+        onClose={() => setCategoriesDe(null)}
+        onChanged={loadCategories}
       />
 
-      <AccessCategoryDrawer
-        opened={accessDrawerOpened}
-        onClose={() => setAccessDrawerOpened(false)}
-        category={editedAccessCategory}
-        onSaved={handleAccessCategorySaved}
-        onDeleted={handleAccessCategoryDeleted}
+      <MilestoneTypesModal
+        opened={jalonsOuverts}
+        onClose={() => setJalonsOuverts(false)}
+        milestoneTypes={milestoneTypes}
+        onChanged={handleSettingsChanged}
       />
+
+      {copie && (
+        <CopyToBoardModal
+          opened
+          onClose={() => setCopie(null)}
+          chose={copie.chose}
+          sourceId={copie.id}
+          univers={copie.univers}
+          companyId={copie.univers === "tasks" ? companyFilter : undefined}
+          onCopy={(cible) =>
+            copie.univers === "tasks"
+              ? api.copyLabels(copie.id, cible)
+              : copie.chose === "labels"
+                ? api.copyProjectLabels(copie.id, cible)
+                : api.copyCategories(copie.id, cible)
+          }
+        />
+      )}
 
       <WidgetPickerModal
         opened={sectionPourBloc !== null}
@@ -1992,16 +2036,6 @@ export default function App() {
         onToggleFollow={() => {
           if (editedSupportRequest) basculerSuivi("support", editedSupportRequest.id);
         }}
-      />
-
-      <ProjectBoardDrawer
-        opened={projectBoardDrawerOpened}
-        onClose={() => setProjectBoardDrawerOpened(false)}
-        board={editedProjectBoard}
-        categories={categories}
-        onCategoriesChanged={loadCategories}
-        onSaved={handleProjectBoardSaved}
-        onDeleted={handleProjectBoardDeleted}
       />
 
       <ProjectDrawer
@@ -2113,7 +2147,6 @@ export default function App() {
         opened={settingsOpened}
         onClose={() => setSettingsOpened(false)}
         companies={companies}
-        milestoneTypes={milestoneTypes}
         canEdit={user.settings.update}
         onDataChanged={handleSettingsChanged}
         debug={debug}

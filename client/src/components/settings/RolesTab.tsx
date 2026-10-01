@@ -39,8 +39,7 @@ export default function RolesTab() {
         onDelete={puisRelire(api.deleteRole)}
         canDelete={(item) => !roles.find((r) => r.id === item.id)?.is_admin}
         addTitle="Nouveau rôle"
-        maxRows={8}
-        minRows={8}
+        maxRows={10}
         emptyIcon={IconShieldLock}
         emptyText="Aucun rôle pour le moment"
         entityLabel="le rôle"

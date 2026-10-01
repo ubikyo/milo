@@ -9,8 +9,9 @@ export const ECART_SOUS_CATEGORIE = 15;
 
 // Une sous-catégorie : le même rôle qu'une catégorie, un cran plus bas. Elle
 // se lit donc plus petite et plus légère, et laisse un peu moins d'air sous
-// elle. Précédée d'un élément, quel qu'il soit, elle laisse plus d'air
-// au-dessus : elle ouvre un groupe, et s'écarte de celui d'avant.
+// elle. Sous sa catégorie, elle s'en écarte un peu ; précédée de tout autre
+// élément, elle laisse nettement plus d'air au-dessus : elle ouvre un groupe,
+// et s'écarte de celui d'avant.
 export const sousCategorieWidget = creerTitreWidget({
   type: "subcategory",
   label: "Sous-catégorie",
@@ -21,5 +22,5 @@ export const sousCategorieWidget = creerTitreWidget({
   graisse: 400,
   couleur: "var(--mantine-color-white)",
   margeBasse: ECART_SOUS_CATEGORIE,
-  margeHaute: 20,
+  margeHaute: (previousType) => (previousType === "category" ? 20 : 30),
 });

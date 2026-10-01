@@ -19,6 +19,7 @@ import type {
 } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import type { AssetRow, CompanyRow } from "../db/rows.js";
+import { nomDuModele } from "../lib/asset-models.js";
 import { sectionsDe, texteDe } from "../lib/inventory.js";
 import type { Arbre } from "../lib/inventory.js";
 
@@ -106,6 +107,64 @@ const ouiNon = (valeur: string | undefined): boolean | null => {
 /** Le volume système chiffré (BitLocker, FileVault, LUKS), si l'agent le dit. */
 const volumeChiffre = (contenu: Arbre): boolean | null =>
   ouiNon(volumeSysteme(contenu)?.["ENCRYPT_STATUS"]);
+
+/**
+ * L'architecture : celle que le système déclare (« arm64 », « x86_64 »,
+ * « 64-bit »…), à défaut celle que dit la description du processeur
+ * (« ARMv8 (64-bit) », « Intel64 Family 6 »).
+ */
+const architectureDe = (contenu: Arbre, cpu: AssetEntry | undefined): AssetSummary["arch"] => {
+  const indices = [
+    texteDe(contenu, "OPERATINGSYSTEM", "ARCH"),
+    cpu?.["DESCRIPTION"] ?? "",
+    cpu?.["NAME"] ?? "",
+  ];
+  for (const indice of indices.map((i) => i.trim().toLowerCase()).filter(Boolean)) {
+    if (/arm|aarch|apple/.test(indice)) return "ARM";
+    if (/x86_64|amd64|x64|intel64|64-bit|64 bits/.test(indice)) return "x64";
+    if (/i[3-6]86|x86|32-bit|32 bits/.test(indice)) return "x86";
+  }
+  return "";
+};
+
+/** Le nom du chiffrement du volume système et son algorithme ; « None » ne dit rien. */
+const chiffrementDe = (contenu: Arbre): AssetSummary["encryption"] => {
+  const volume = volumeSysteme(contenu);
+  const algorithme = (volume?.["ENCRYPT_ALGO"] ?? "").trim();
+  return {
+    name: (volume?.["ENCRYPT_NAME"] ?? "").trim(),
+    algorithm: algorithme.toLowerCase() === "none" ? "" : algorithme,
+  };
+};
+
+/** Les profils du pare-feu de Windows, sous leur nom français. */
+const PROFILS_PARE_FEU: Record<string, string> = {
+  DomainProfile: "Domaine",
+  StandardProfile: "Privé",
+  PublicProfile: "Public",
+};
+
+/**
+ * Le pare-feu, tel que l'agent le décrit : une entrée par profil sous Windows,
+ * une seule ailleurs (macOS). Les entrées sans état lisible ne comptent pas.
+ */
+const pareFeuDe = (sections: AssetSection[]): AssetSummary["firewall"] => {
+  const profils = entreesDe(sections, "FIREWALL")
+    .map((entree) => ({
+      nom: PROFILS_PARE_FEU[entree["PROFILE"] ?? ""] ?? entree["PROFILE"] ?? "",
+      actif: ouiNon(
+        { on: "yes", off: "no" }[(entree["STATUS"] ?? "").trim().toLowerCase()] ??
+          entree["STATUS"],
+      ),
+    }))
+    .filter((profil) => profil.actif !== null);
+  if (profils.length === 0) return { state: "unknown", disabled: [] };
+  const eteints = profils.filter((profil) => !profil.actif);
+  return {
+    state: eteints.length === 0 ? "on" : eteints.length === profils.length ? "off" : "partial",
+    disabled: eteints.map((profil) => profil.nom).filter(Boolean),
+  };
+};
 
 /** Le système du poste : son nom, et la famille qui choisit son logo. */
 const systemeDe = (contenu: Arbre): Asset["os"] => {
@@ -300,7 +359,8 @@ const CHAMPS_GARDES: Record<string, string[]> = {
   // Les comptes et les groupes du poste, en tableaux. HOME n'existe que sous
   // Linux et macOS : la colonne n'apparaît que là.
   LOCAL_GROUPS: ["NAME"],
-  LOCAL_USERS: ["NAME", "HOME"],
+  // ADMIN n'est pas de l'agent : la fiche le pose (administrateursDe).
+  LOCAL_USERS: ["NAME", "HOME", "ADMIN"],
   // Machines virtuelles et conteneurs : les colonnes du tableau de la fiche.
   VIRTUALMACHINES: ["NAME", "MEMORY", "STATUS", "VMTYPE"],
 };
@@ -313,10 +373,14 @@ const CHAMPS_RETIRES: Record<string, string[]> = {
 
 /** Une entrée telle que la fiche la montre, selon la règle de sa section. */
 const entreeAffichee = (section: string, brute: AssetEntry): AssetEntry => {
-  const entree =
+  let entree =
     SECTIONS_DE_PRODUITS.has(section) && typeof brute["NAME"] === "string"
       ? { ...brute, NAME: nomDeProduit(brute["NAME"]) }
       : brute;
+  // Le modèle sous son nom, l'identifiant à la suite : « MacBook Pro 16"
+  // (M2 Max, 2023) — Mac14,6 ».
+  const modele = section === "BIOS" ? nomDuModele(entree["SMODEL"] ?? "") : "";
+  if (modele) entree = { ...entree, SMODEL: `${modele} — ${entree["SMODEL"]}` };
   const gardes = CHAMPS_GARDES[section];
   if (gardes) {
     return Object.fromEntries(
@@ -353,17 +417,46 @@ const entreeEcartee = (section: string, entree: AssetEntry, windows: boolean): b
 };
 
 /** Les sections telles que la fiche les montre. */
-const sectionsAffichees = (sections: AssetSection[], windows: boolean): AssetSection[] =>
-  sections
+/**
+ * Les comptes locaux administrateurs, d'après ce que l'agent en dit : les
+ * membres du groupe des administrateurs — « Administrateurs » (S-1-5-32-544)
+ * sous Windows, « admin » sous macOS et Linux —, le compte Administrateur
+ * intégré de Windows (son SID finit par -500) et root (uid 0). L'agent ne
+ * donne pas toujours les membres : sous Windows, jamais ; sous macOS, ceux de
+ * /etc/group seulement. Un administrateur peut donc échapper à la marque.
+ */
+const administrateursDe = (sections: AssetSection[]): ((compte: AssetEntry) => boolean) => {
+  const membres = new Set(
+    entreesDe(sections, "LOCAL_GROUPS")
+      .filter((groupe) => groupe["ID"] === "S-1-5-32-544" || groupe["NAME"] === "admin")
+      .flatMap((groupe) => (groupe["MEMBER"] ?? "").split(","))
+      .map((membre) => membre.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  return (compte) =>
+    compte["ID"] === "0" ||
+    /^S-1-5-21-.*-500$/.test(compte["ID"] ?? "") ||
+    [compte["LOGIN"], compte["NAME"]].some((nom) => nom && membres.has(nom.toLowerCase()));
+};
+
+const sectionsAffichees = (sections: AssetSection[], windows: boolean): AssetSection[] => {
+  const administrateur = administrateursDe(sections);
+  return sections
     .filter((section) => !SECTIONS_MASQUEES.has(section.name))
     .map((section) => ({
       ...section,
       entries: section.entries
         .filter((entree) => !entreeEcartee(section.name, entree, windows))
+        .map((entree) =>
+          section.name === "LOCAL_USERS" && administrateur(entree)
+            ? { ...entree, ADMIN: "1" }
+            : entree,
+        )
         .map((entree) => entreeAffichee(section.name, entree))
         .filter((entree) => Object.keys(entree).length > 0),
     }))
     .filter((section) => section.entries.length > 0);
+};
 
 /**
  * Le poste ouvert : l'inventaire, section par section. Un contenu
@@ -384,7 +477,9 @@ export const assetDetail = (row: AssetRow): AssetDetail => {
     sections: sectionsAffichees(sections, sousWindows(contenu)),
     teamviewer_id: teamviewerDe(sections),
     address: adresseDe(sections),
-    summary: resumeDe(sections),
+    summary: resumeDe(sections, contenu),
+    // Elle se lit sur endoflife.date : la route la pose (lib/endoflife.ts).
+    support: null,
   };
 };
 
@@ -416,7 +511,7 @@ const cartesDe = (sections: AssetSection[]): AssetNetwork[] =>
   });
 
 /** L'onglet « Résumé » : ce qu'on cherche d'abord en ouvrant un poste. */
-const resumeDe = (sections: AssetSection[]): AssetSummary => {
+const resumeDe = (sections: AssetSection[], contenu: Arbre): AssetSummary => {
   const bios = entreesDe(sections, "BIOS")[0] ?? {};
   const cpus = entreesDe(sections, "CPUS");
   const premier = cpus[0];
@@ -429,7 +524,9 @@ const resumeDe = (sections: AssetSection[]): AssetSummary => {
   return {
     networks: cartesDe(sections),
     manufacturer: bios["SMANUFACTURER"] ?? bios["MMANUFACTURER"] ?? "",
-    model: bios["SMODEL"] ?? "",
+    // Le nom que le Paramétrage donne à l'identifiant (« Mac14,6 »), s'il
+    // en a un.
+    model: nomDuModele(bios["SMODEL"] ?? "") || (bios["SMODEL"] ?? ""),
     serial: bios["SSN"] ?? "",
     cpu: premier?.["NAME"]
       ? {
@@ -440,5 +537,8 @@ const resumeDe = (sections: AssetSection[]): AssetSummary => {
         }
       : null,
     memory: memoire,
+    arch: architectureDe(contenu, premier),
+    encryption: chiffrementDe(contenu),
+    firewall: pareFeuDe(sections),
   };
 };

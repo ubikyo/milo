@@ -19,8 +19,8 @@
   border-radius: var(--mantine-radius-sm);
 }
 
-/* Le gris neutre du survol, le même que celui des boutons gris
-   (themes/colors.ts, NEUTRAL_HOVER) : les gris de Mantine tirent sur le bleu. */
+/* Le survol des lignes des grilles (assets/styles/tables.css) : gray-2 sur
+   le clair, dark-6 sur le sombre. */
 .lien:hover {
-  background-color: light-dark(#ececec, #2e2e2e);
+  background-color: light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-6));
 }

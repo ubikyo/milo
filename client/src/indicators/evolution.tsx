@@ -49,8 +49,7 @@ export const evolutionIndicator: SupportIndicatorWidget = {
           data={data}
           dataKey="jour"
           series={[{ name: "tickets", label: "Tickets", color: "teal.6" }]}
-          gridAxis="y"
-          tickLine="none"
+          gridAxis="none"
           yAxisProps={{ allowDecimals: false, width: 24 }}
           withTooltip
         />
@@ -59,7 +58,7 @@ export const evolutionIndicator: SupportIndicatorWidget = {
   },
 
   Config: ({ config, onChange }) => (
-    <Stack gap="md">
+    <Stack gap="xl">
       <ChampNom config={config} onChange={onChange} defaut={LIBELLE} />
       <Select
         label="Période"

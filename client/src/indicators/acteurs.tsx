@@ -15,9 +15,11 @@ const LIBELLE = "Acteurs";
 /** Toutes les demandes : l'anneau qui donne l'échelle. */
 const TOTAL = "Total";
 
-/** Le vert, du plus sombre pour le total au plus clair pour le dernier acteur. */
-const NUANCES = [9, 8, 7, 6, 5, 4, 3];
-const vert = (rang: number) => `green.${NUANCES[Math.min(rang, NUANCES.length - 1)]}`;
+/** Le total en gris, puis une couleur par acteur ; la palette reboucle au-delà. */
+const COULEUR_TOTAL = "gray.6";
+const COULEURS = ["blue.6", "teal.6", "orange.6", "grape.6", "yellow.6", "red.6", "cyan.6", "pink.6", "lime.6", "indigo.6"];
+const couleur = (rang: number) =>
+  rang === 0 ? COULEUR_TOTAL : COULEURS[(rang - 1) % COULEURS.length];
 
 const HAUTEUR_GRAPHIQUE = 240;
 
@@ -48,7 +50,7 @@ export function AnneauxActeurs({ acteurs, unite }: { acteurs: Actor[][]; unite: 
   const data = [{ name: TOTAL, value: acteurs.length }, ...tries].map((ligne, rang) => ({
     name: ligne.name,
     [unite]: ligne.value,
-    color: vert(rang),
+    color: couleur(rang),
   }));
   return (
     <RadialBarChart

@@ -7,7 +7,7 @@ import type { ProjectJoinedRow, ProjectRow, UserRow } from "../db/rows.js";
 import { badRequest, orNotFound, requireText, toIds } from "../lib/http.js";
 import { descriptionPropre, memeDescription } from "../lib/html.js";
 import { concernes, notifier, notifierSuppression, racine } from "../lib/notify.js";
-import { horodatage, now } from "../lib/time.js";
+import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import {
   CLAUSE_TABLEAUX_VISIBLES,
@@ -28,7 +28,7 @@ import {
 import { comments } from "../repositories/project-comments.js";
 import { prochaineReference } from "../repositories/references.js";
 import { milestoneTypes } from "./milestone-types.js";
-import { withAuthor } from "../repositories/comments.js";
+import { motDeCreation, withAuthor } from "../repositories/comments.js";
 
 const PROJET_INTROUVABLE = "Projet introuvable";
 
@@ -187,12 +187,12 @@ projectRoutes.post("/", (req, res) => {
     replaceActors(projectId, toIds(actor_ids));
     replaceProjectLabels(projectId, toIds(label_ids), Number(board_id));
 
-    // Le fil s'ouvre sur la création : qui, et quand. Les commentaires écrits
-    // ensuite viennent à la suite.
+    // Le fil s'ouvre sur la création, datée et signée Milo. Les commentaires
+    // écrits ensuite viennent à la suite.
     comments.createSystem.run(
       projectId,
-      req.user.id,
-      `Projet créé le ${horodatage(timestamp)}`,
+      null,
+      motDeCreation("Projet créé", timestamp, req.user.id),
       timestamp,
       timestamp,
     );
@@ -245,8 +245,8 @@ projectRoutes.post("/:id/copy", (req, res) => {
 
     comments.createSystem.run(
       copieId,
-      req.user.id,
-      `Projet créé le ${horodatage(timestamp)}`,
+      null,
+      motDeCreation("Projet créé", timestamp, req.user.id),
       timestamp,
       timestamp,
     );

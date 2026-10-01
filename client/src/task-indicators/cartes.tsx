@@ -64,7 +64,7 @@ export const cartesIndicator: TaskIndicatorWidget = {
   },
 
   Config: ({ config, onChange }) => (
-    <Stack gap="md">
+    <Stack gap="xl">
       <ChampNom config={config} onChange={onChange} defaut={typeDe(config).label} />
       <Select
         label="Données"

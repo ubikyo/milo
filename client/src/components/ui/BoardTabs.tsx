@@ -1,5 +1,16 @@
 import { ActionIcon, Menu, Tabs } from "@mantine/core";
-import { IconLock, IconLockOpen, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
+import {
+  IconCheck,
+  IconEyeOff,
+  IconFlag,
+  IconHash,
+  IconLock,
+  IconPencil,
+  IconPlus,
+  IconTag,
+  IconTags,
+  IconTrash,
+} from "@tabler/icons-react";
 import { Fragment, useRef, useState } from "react";
 import { ADD_ACTION, RED } from "../../themes/colors";
 import DeleteConfirmModal from "./DeleteConfirmModal";
@@ -16,6 +27,10 @@ interface Onglet {
   name: string;
   /** Les modes dont les onglets se verrouillent : Accès et Tâche. */
   is_locked?: number;
+  /** Les modes dont les onglets se ferment aux autres : Accès, Projet et Tâche. */
+  is_private?: number;
+  /** Le mode Tâche, dont les cartes portent un numéro. */
+  show_card_numbers?: number;
 }
 
 // Les tableaux d'un mode, en onglets. Sert au mode Tâche, au mode Projet et au
@@ -34,8 +49,11 @@ interface BoardTabsProps {
   value: string | null;
   onChange: (value: string | null) => void;
   onAdd: () => void;
-  /** L'onglet visé par le clic droit, qui n'est pas forcément l'onglet ouvert. */
-  onEdit: (id: number) => void;
+  /**
+   * L'onglet visé par le clic droit, qui n'est pas forcément l'onglet ouvert.
+   * Sans lui, « Modifier » renomme l'onglet sur place.
+   */
+  onEdit?: (id: number) => void;
   /**
    * Renommer l'onglet sur place, au double clic. Sans lui, le double clic ne
    * fait rien de plus qu'un clic.
@@ -47,6 +65,21 @@ interface BoardTabsProps {
    * Sans lui, le menu n'en propose pas : tous les modes n'ont pas de verrou.
    */
   onToggleLock?: (id: number) => void | Promise<void>;
+  /**
+   * Rendre l'onglet visé privé ou de nouveau visible de tous. Sans lui, le
+   * menu n'en propose pas.
+   */
+  onTogglePrivate?: (id: number) => void | Promise<void>;
+  /** Montrer ou taire le numéro des cartes. Sans lui, le menu n'en propose pas. */
+  onToggleCardNumbers?: (id: number) => void | Promise<void>;
+  /** Copier les étiquettes de l'onglet vers un autre. Sans lui, le menu n'en propose pas. */
+  onCopyLabels?: (id: number) => void;
+  /** Gérer les catégories de l'onglet. Sans lui, le menu n'en propose pas. */
+  onManageCategories?: (id: number) => void;
+  /** Gérer les types de jalons. Sans lui, le menu n'en propose pas. */
+  onManageMilestones?: () => void;
+  /** Copier les catégories de l'onglet vers un autre. Sans lui, le menu n'en propose pas. */
+  onCopyCategories?: (id: number) => void;
   /**
    * L'ordre des onglets, une fois l'onglet déposé. Il vaut pour tout le monde
    * et non pour le seul navigateur qui l'a changé : c'est le mode qui est
@@ -75,6 +108,12 @@ export default function BoardTabs({
   onRename,
   onDelete,
   onToggleLock,
+  onTogglePrivate,
+  onToggleCardNumbers,
+  onCopyLabels,
+  onCopyCategories,
+  onManageCategories,
+  onManageMilestones,
   onReorder,
   deleteWarning,
   deleteTitle = "Supprimer le tableau",
@@ -219,31 +258,97 @@ export default function BoardTabs({
         <PointMenu position={menu.position} onClose={() => setMenu(null)}>
           <Menu.Item
             leftSection={<IconPencil size={16} />}
-            onClick={() => onEdit(menu.onglet.id)}
+            onClick={() =>
+              onEdit ? onEdit(menu.onglet.id) : ouvrirRenommage(menu.onglet)
+            }
           >
             Modifier
           </Menu.Item>
-          {onToggleLock && (
+          {onManageCategories && (
             <Menu.Item
-              leftSection={
-                menu.onglet.is_locked ? <IconLockOpen size={16} /> : <IconLock size={16} />
-              }
-              onClick={() => onToggleLock(menu.onglet.id)}
+              leftSection={<IconTag size={16} />}
+              onClick={() => onManageCategories(menu.onglet.id)}
             >
-              {menu.onglet.is_locked ? "Déverrouiller" : "Verrouiller"}
+              Catégories
             </Menu.Item>
           )}
-          {/* Les sections valent pour tous les onglets : leur verrou aussi. */}
-          {sectionsLock && (
-            <Menu.Item
-              leftSection={
-                sectionsLock.locked ? <IconLockOpen size={16} /> : <IconLock size={16} />
-              }
-              onClick={() => sectionsLock.onToggle()}
-            >
-              {sectionsLock.locked ? "Déverrouiller les sections" : "Verrouiller les sections"}
+          {onManageMilestones && (
+            <Menu.Item leftSection={<IconFlag size={16} />} onClick={() => onManageMilestones()}>
+              Jalons
             </Menu.Item>
           )}
+          {/* Ce que l'onglet porte, reporté sur un autre : à part du reste. */}
+          {(onCopyCategories || onCopyLabels) && <Menu.Divider />}
+          {onCopyCategories && (
+            <Menu.Item
+              leftSection={<IconTags size={16} />}
+              onClick={() => onCopyCategories(menu.onglet.id)}
+            >
+              Copier les catégories
+            </Menu.Item>
+          )}
+          {onCopyLabels && (
+            <Menu.Item
+              leftSection={<IconTags size={16} />}
+              onClick={() => onCopyLabels(menu.onglet.id)}
+            >
+              Copier les étiquettes
+            </Menu.Item>
+          )}
+
+          {/* Les réglages de l'onglet, chacun coché quand il est actif. */}
+          {(onToggleCardNumbers || onTogglePrivate || onToggleLock || sectionsLock) && (
+            <>
+              <Menu.Divider />
+              <Menu.Label>Affichage</Menu.Label>
+            </>
+          )}
+          {onToggleCardNumbers && (
+            <Menu.Item
+              leftSection={<IconHash size={16} />}
+              rightSection={menu.onglet.show_card_numbers ? <IconCheck size={14} /> : null}
+              onClick={() => onToggleCardNumbers(menu.onglet.id)}
+            >
+              Numéros des cartes
+            </Menu.Item>
+          )}
+          {onTogglePrivate && (
+            <Menu.Item
+              leftSection={<IconEyeOff size={16} />}
+              rightSection={menu.onglet.is_private ? <IconCheck size={14} /> : null}
+              onClick={() => onTogglePrivate(menu.onglet.id)}
+            >
+              Privé
+            </Menu.Item>
+          )}
+          {/* Un seul verrou pour l'onglet et les sections (qui valent pour
+              tous les onglets) : verrouillé si l'un l'est, et le geste met
+              les deux dans le même état. */}
+          {(onToggleLock || sectionsLock) &&
+            (() => {
+              // « is_locked » vaut 0 ou 1 : ramené à un booléen pour comparer.
+              const ongletVerrouille = Boolean(menu.onglet.is_locked);
+              const verrouille =
+                (onToggleLock !== undefined && ongletVerrouille) ||
+                (sectionsLock?.locked ?? false);
+              return (
+                <Menu.Item
+                  leftSection={<IconLock size={16} />}
+                  rightSection={verrouille ? <IconCheck size={14} /> : null}
+                  onClick={() => {
+                    if (onToggleLock && ongletVerrouille === verrouille) {
+                      onToggleLock(menu.onglet.id);
+                    }
+                    if (sectionsLock && Boolean(sectionsLock.locked) === verrouille) {
+                      sectionsLock.onToggle();
+                    }
+                  }}
+                >
+                  Verrouillé
+                </Menu.Item>
+              );
+            })()}
+
           <Menu.Divider />
           <Menu.Item
             color={RED}

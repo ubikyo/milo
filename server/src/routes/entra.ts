@@ -5,7 +5,13 @@
 import { Router } from "express";
 import type { MailboxCheck } from "@milo/shared";
 import { selection } from "../db/query.js";
-import { lireMessages, modifierEntra, reglagesEntraPublics } from "../lib/entra.js";
+import {
+  connecterEntra,
+  etatEntra,
+  lireMessages,
+  modifierEntra,
+  reglagesEntraPublics,
+} from "../lib/entra.js";
 import { badRequest, requireText } from "../lib/http.js";
 import { envoyerLeTest } from "../lib/mail.js";
 
@@ -22,6 +28,27 @@ entraRoutes.get("/", (_req, res) => {
 entraRoutes.put("/", (req, res) => {
   modifierEntra(req.body ?? {});
   res.json(reglagesEntraPublics());
+});
+
+// L'état de la connexion de Milo à Entra, et les deux actions qui le changent.
+entraRoutes.get("/status", (_req, res, next) => {
+  etatEntra()
+    .then((etat) => res.json(etat))
+    .catch(next);
+});
+
+entraRoutes.post("/connect", (_req, res, next) => {
+  connecterEntra(true);
+  etatEntra()
+    .then((etat) => res.json(etat))
+    .catch(next);
+});
+
+entraRoutes.post("/disconnect", (_req, res, next) => {
+  connecterEntra(false);
+  etatEntra()
+    .then((etat) => res.json(etat))
+    .catch(next);
 });
 
 entraRoutes.post("/test", (req, res, next) => {

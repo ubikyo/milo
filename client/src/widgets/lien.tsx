@@ -240,7 +240,7 @@ export const lienWidget: AccessWidget = {
   marges: () => ({ haute: 0, basse: 0 }),
 
   Config: ({ config, onChange }) => (
-    <Stack gap="md">
+    <Stack gap="xl">
       <TextInput
         label="Nom"
         placeholder="Nom du lien"
@@ -254,14 +254,18 @@ export const lienWidget: AccessWidget = {
         value={texte(config, URL)}
         onChange={(e) => onChange(avec(config, URL, e.currentTarget.value))}
       />
-      {/* Éteindre plutôt que supprimer : l'adresse est conservée, elle ne se
-          montre simplement plus une fois la catégorie verrouillée. */}
-      <Switch
-        label="Activé"
-        checked={estActif(config)}
-        onChange={(e) => onChange(avec(config, ACTIF, e.currentTarget.checked))}
-        color="teal"
-      />
     </Stack>
+  ),
+
+  // Éteindre plutôt que supprimer : l'adresse est conservée, elle ne se
+  // montre simplement plus une fois la catégorie verrouillée. Posé après les
+  // marges, en dernier du tiroir.
+  ConfigFin: ({ config, onChange }) => (
+    <Switch
+      label="Activé"
+      checked={estActif(config)}
+      onChange={(e) => onChange(avec(config, ACTIF, e.currentTarget.checked))}
+      color="teal"
+    />
   ),
 };

@@ -10,7 +10,7 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { PLUS_SIZE } from "../../themes/plus";
 import type { FloatingPosition } from "@mantine/core";
 import type { ReactNode } from "react";
@@ -21,9 +21,11 @@ export interface ChipOption {
   name: string;
 }
 
-// Au-delà de cette hauteur, la liste défile plutôt que de courir jusqu'en bas
-// de l'écran.
-const LIST_MAX_HEIGHT = 260;
+// Au-delà de ce nombre de lignes, la liste défile plutôt que de courir jusqu'en
+// bas de l'écran. Les lignes n'ont pas toutes la même hauteur — un nom seul, un
+// nom et son adresse : la hauteur se mesure sur la dixième, marquée comme les
+// autres de « data-ligne ».
+const LIGNES_VISIBLES = 10;
 
 /**
  * Choix multiple montré en vignettes : un titre, sous lui ce qui est retenu,
@@ -49,6 +51,11 @@ interface ChipPickerProps<T extends ChipOption> {
   chipHeight?: number;
   chipGap?: number;
   footer?: ReactNode;
+  /**
+   * Des lignes ajoutées sous les options, dans leur défilement : les personnes
+   * trouvées dans l'annuaire. Chacune porte « data-ligne » pour compter.
+   */
+  listFooter?: ReactNode;
   onOptionClick?: (option: T) => void;
   fullWidthOptions?: boolean;
   plusRadius?: string | number;
@@ -99,6 +106,7 @@ export default function ChipPicker<T extends ChipOption>({
   // Posé sous la liste, en dehors de son défilement : les étiquettes y mettent
   // de quoi en ajouter une.
   footer,
+  listFooter,
   // Si fourni, cliquer une option fait ceci au lieu de la cocher ; la case,
   // elle, continue de sélectionner. Les étiquettes s'y modifient.
   onOptionClick,
@@ -132,6 +140,28 @@ export default function ChipPicker<T extends ChipOption>({
       : undefined;
   const RETRAIT_SEPARE = 10;
   const [opened, setOpened] = useState(false);
+  const contenuRef = useRef<HTMLDivElement>(null);
+  const [hauteurMax, setHauteurMax] = useState<number | undefined>(undefined);
+
+  // Mesurée à chaque rendu, la liste ouverte : une recherche, une réponse de
+  // l'annuaire changent ses lignes. Avant d'être peinte, pour qu'elle ne
+  // paraisse jamais toute déroulée. Sans dépendances, à dessein : la mesure ne
+  // bouge pas avec la hauteur posée, la comparaison arrête donc la boucle au
+  // second passage.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const contenu = contenuRef.current;
+    if (!contenu) return;
+    const lignes = contenu.querySelectorAll("[data-ligne]");
+    const hauteur =
+      lignes.length > LIGNES_VISIBLES
+        ? Math.ceil(
+            lignes[LIGNES_VISIBLES - 1]!.getBoundingClientRect().bottom -
+              contenu.getBoundingClientRect().top,
+          )
+        : undefined;
+    if (hauteur !== hauteurMax) setHauteurMax(hauteur);
+  });
 
   const ouvrirFermer = (ouvert: boolean) => {
     if (!ouvert && closeBlocked) return;
@@ -181,8 +211,17 @@ export default function ChipPicker<T extends ChipOption>({
           </UnstyledButton>
         ) : (
           // La colonne borne la largeur : les vignettes s'y rangent, et
-          // reprennent à la ligne quand la place manque.
-          <div style={{ minWidth: 0 }}>
+          // reprennent à la ligne quand la place manque. Elle ne s'étend pas
+          // au-delà d'elles : un clic sur le vide à leur droite est un clic au
+          // dehors, qui referme la liste — l'ancre, elle, n'en est jamais un.
+          // Le titre et l'espace entre les vignettes la referment aussi.
+          <div
+            style={{ minWidth: 0, width: "fit-content", maxWidth: "100%" }}
+            onClick={(e) => {
+              if (opened && !(e.target as Element).closest("button"))
+                ouvrirFermer(false);
+            }}
+          >
             <Input.Label>{label}</Input.Label>
             <Group gap={chipGap} align="center" wrap="wrap">
               {leadingChips}
@@ -233,75 +272,91 @@ export default function ChipPicker<T extends ChipOption>({
               </div>
             )
           : header}
-        {listOptions.length === 0 ? (
-          // Un texte vide ne dit rien : la place reste à ce qui suit la liste.
-          emptyText && (
-            <Text size="sm" c="dimmed" p="xs">
-              {emptyText}
-            </Text>
-          )
-        ) : (
-          <ScrollArea.Autosize mah={LIST_MAX_HEIGHT} type="auto">
-            <Stack gap={separated ? 0 : 2}>
-              {listOptions.map((option, rang) =>
-                // Deux mises en page. Sans rôle propre au clic, l'élément est
-                // le libellé de la case : cliquer l'un ou l'autre coche. Avec
-                // un rôle propre (les étiquettes se modifient), l'élément vit à
-                // côté de la case et garde ses propres clics — un champ de
-                // saisie logé dans un libellé de case ne se laisserait ni
-                // remplir ni sélectionner.
-                onOptionClick ? (
-                  <Group
-                    key={option.id}
-                    gap={8}
-                    wrap="nowrap"
-                    align="center"
-                    px={separated ? RETRAIT_SEPARE : 4}
-                    py={separated ? 8 : 4}
-                    style={filet(rang)}
-                  >
+        {/* Un texte vide ne dit rien : la place reste à ce qui suit la liste. */}
+        {listOptions.length === 0 && emptyText && (
+          <Text size="sm" c="dimmed" p="xs">
+            {emptyText}
+          </Text>
+        )}
+        {/* La barre fine des autres listes de l'application (ListItems). */}
+        <ScrollArea.Autosize
+          mah={hauteurMax}
+          type="auto"
+          scrollbars="y"
+          scrollbarSize={2}
+        >
+          <div ref={contenuRef}>
+            {listOptions.length > 0 && (
+              <Stack gap={separated ? 0 : 2}>
+                {listOptions.map((option, rang) =>
+                  // Deux mises en page. Sans rôle propre au clic, l'élément est
+                  // le libellé de la case : cliquer l'un ou l'autre coche. Avec
+                  // un rôle propre (les étiquettes se modifient), l'élément vit à
+                  // côté de la case et garde ses propres clics — un champ de
+                  // saisie logé dans un libellé de case ne se laisserait ni
+                  // remplir ni sélectionner.
+                  onOptionClick ? (
+                    <Group
+                      key={option.id}
+                      gap={8}
+                      wrap="nowrap"
+                      align="center"
+                      px={separated ? RETRAIT_SEPARE : 4}
+                      py={separated ? 8 : 4}
+                      style={filet(rang)}
+                      data-ligne
+                    >
+                      <Checkbox
+                        checked={value.includes(String(option.id))}
+                        onChange={() => bascule(option.id)}
+                        size="xs"
+                        styles={{ input: { cursor: "pointer" } }}
+                        aria-label={option.name}
+                      />
+                      <div
+                        onClick={() => onOptionClick(option)}
+                        style={{
+                          flex: fullWidthOptions ? 1 : undefined,
+                          minWidth: 0,
+                        }}
+                      >
+                        {render(option)}
+                      </div>
+                    </Group>
+                  ) : (
                     <Checkbox
+                      key={option.id}
                       checked={value.includes(String(option.id))}
                       onChange={() => bascule(option.id)}
+                      label={render(option)}
                       size="xs"
-                      styles={{ input: { cursor: "pointer" } }}
-                      aria-label={option.name}
-                    />
-                    <div
-                      onClick={() => onOptionClick(option)}
-                      style={{
-                        flex: fullWidthOptions ? 1 : undefined,
-                        minWidth: 0,
+                      styles={{
+                        body: { alignItems: "center", width: "100%" },
+                        labelWrapper: {
+                          minWidth: 0,
+                          flex: fullWidthOptions ? 1 : undefined,
+                        },
+                        label: {
+                          cursor: "pointer",
+                          paddingLeft: 8,
+                          minWidth: 0,
+                        },
+                        input: { cursor: "pointer" },
                       }}
-                    >
-                      {render(option)}
-                    </div>
-                  </Group>
-                ) : (
-                  <Checkbox
-                    key={option.id}
-                    checked={value.includes(String(option.id))}
-                    onChange={() => bascule(option.id)}
-                    label={render(option)}
-                    size="xs"
-                    styles={{
-                      body: { alignItems: "center", width: "100%" },
-                      labelWrapper: {
-                        minWidth: 0,
-                        flex: fullWidthOptions ? 1 : undefined,
-                      },
-                      label: { cursor: "pointer", paddingLeft: 8, minWidth: 0 },
-                      input: { cursor: "pointer" },
-                    }}
-                    px={separated ? RETRAIT_SEPARE : 4}
-                    py={separated ? 8 : 4}
-                    style={filet(rang)}
-                  />
-                ),
-              )}
-            </Stack>
-          </ScrollArea.Autosize>
-        )}
+                      px={separated ? RETRAIT_SEPARE : 4}
+                      py={separated ? 8 : 4}
+                      style={filet(rang)}
+                      // Le reste des attributs va à la case elle-même : la
+                      // marque de ligne se pose sur son conteneur.
+                      wrapperProps={{ "data-ligne": true }}
+                    />
+                  ),
+                )}
+              </Stack>
+            )}
+            {listFooter}
+          </div>
+        </ScrollArea.Autosize>
 
         {footer}
       </Popover.Dropdown>

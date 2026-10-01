@@ -1,0 +1,28 @@
+/* La barre de défilement horizontale des grilles (components/ui/GrilleScroll).
+   Mantine la pose au bas de la zone ; ici elle remonte se coucher sur le
+   filet sous l'entête, dont elle prend l'épaisseur : son dernier pixel, à
+   « --grille-filet » du haut de la zone. Faute de mesure (pas d'entête), elle
+   reste en bas. */
+.scrollbar[data-orientation="horizontal"] {
+  top: calc(var(--grille-filet, 100%) - 1px);
+  bottom: auto;
+  height: 1px;
+  padding: 0;
+  z-index: 1;
+}
+
+/* Aucun fond, pas même au survol : seul le curseur se voit. */
+.scrollbar[data-orientation="horizontal"],
+.scrollbar[data-orientation="horizontal"]:hover,
+.scrollbar[data-orientation="horizontal"]:active {
+  background-color: transparent;
+}
+
+/* Le gris de toutes les barres (scrollbars.css), et carré : sur un pixel de
+   haut, un arrondi ne ferait que le ronger à ses deux bouts. */
+.scrollbar[data-orientation="horizontal"] > .thumb,
+.scrollbar[data-orientation="horizontal"]:hover > .thumb,
+.scrollbar[data-orientation="horizontal"]:active > .thumb {
+  background-color: var(--milo-scrollbar);
+  border-radius: 0;
+}

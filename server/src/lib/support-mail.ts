@@ -20,6 +20,7 @@
 import {
   DEFAULT_SUPPORT_STATUS,
   REOPENED_SUPPORT_STATUS,
+  LEGACY_REFERENCE_PREFIX,
   SUPPORT_TICKET_PREFIX,
   ajouterJoursOuvres,
 } from "@milo/shared";
@@ -28,7 +29,6 @@ import { selection, transaction } from "../db/query.js";
 import type { SupportRequestRow, TicketFileRow } from "../db/rows.js";
 import { signalerEcriture } from "../middleware/events.js";
 import {
-  prioriteLaPlusLegere,
   prochainNumeroDeTicket,
   replaceSupportActors,
   replaceSupportLabels,
@@ -168,9 +168,14 @@ const sansHistoriqueDe = (
   return emailPropre(sansHistorique(corps), "html", images);
 };
 
-/** « [LMA-12] » dans un objet : le numéro d'un ticket auquel on répond. */
+/**
+ * « [HLP-12] » dans un objet : le numéro d'un ticket auquel on répond. L'ancien
+ * préfixe (« [LMA-12] ») reste reconnu, pour les fils ouverts avant.
+ */
 const REFERENCE = new RegExp(
-  `\\[${SUPPORT_TICKET_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)\\]`,
+  `\\[(?:${[SUPPORT_TICKET_PREFIX, LEGACY_REFERENCE_PREFIX]
+    .map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|")})(\\d+)\\]`,
   "i",
 );
 
@@ -290,9 +295,9 @@ const importer = transaction(
     if (!changes) return false;
 
     if (compte) replaceSupportActors(lastInsertRowid as Id, [compte.id]);
-    // Tout e-mail arrive avec la priorité la plus légère : c'est à qui le lit
-    // d'en juger autrement.
-    replaceSupportLabels(lastInsertRowid as Id, [prioriteLaPlusLegere().id]);
+    // Tout e-mail arrive avec les étiquettes du Paramétrage (Support) : c'est
+    // à qui le lit d'en juger autrement.
+    replaceSupportLabels(lastInsertRowid as Id, reglagesSupport().default_label_ids);
     message(lastInsertRowid as Id, false);
     return true;
   },

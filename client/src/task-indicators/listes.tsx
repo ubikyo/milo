@@ -2,19 +2,14 @@ import { Stack } from "@mantine/core";
 import { IconColumns } from "@tabler/icons-react";
 import { BarresEtiquettes, NOM, Rien, TitreIndicateur } from "./commun";
 import type { TaskIndicatorWidget } from "./types";
-import type { TaskList } from "@milo/shared";
+import { useListColors } from "../components/board/TaskBoard";
 
 // Les listes du tableau ouvert, par nombre de cartes, dans l'ordre du tableau :
-// où les tâches s'accumulent. Chaque barre prend la couleur de sa liste.
+// où les tâches s'accumulent. Chaque barre prend le fond de sa liste sur le
+// tableau, résolu pour le thème courant, et couvre au moins son nom : une
+// liste vide se reconnaît encore à sa couleur.
 
 const LIBELLE = "Cartes par liste";
-
-/** La couleur d'une barre : celle de la liste, ou le vert de l'application. */
-const couleurDe = (liste: TaskList): string => {
-  if (!liste.color) return "teal.6";
-  if (liste.color === "white") return "gray.4";
-  return `${liste.color}.6`;
-};
 
 export const listesIndicator: TaskIndicatorWidget = {
   type: "lists",
@@ -23,15 +18,16 @@ export const listesIndicator: TaskIndicatorWidget = {
   defaultConfig: { [NOM]: "" },
 
   Display: ({ config, lists }) => {
+    const couleurs = useListColors();
     const data = lists.map((liste) => ({
       name: liste.name,
       value: liste.cards.filter((c) => c.kind === "card").length,
-      color: couleurDe(liste),
+      color: couleurs(liste.color).fond,
     }));
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
         <TitreIndicateur config={config} defaut={LIBELLE} />
-        {data.length === 0 ? <Rien>Aucune liste</Rien> : <BarresEtiquettes data={data} />}
+        {data.length === 0 ? <Rien>Aucune liste</Rien> : <BarresEtiquettes data={data} libelleDedans />}
       </Stack>
     );
   },

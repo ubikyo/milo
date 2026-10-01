@@ -74,7 +74,7 @@ export const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    -- La référence (« LMA-12 ») : le compteur des demandes du support la
+    -- La référence (« HLP-12 ») : le compteur des demandes du support la
     -- donne aussi aux projets et aux cartes (repositories/references.ts).
     number INTEGER NOT NULL DEFAULT 0,
     name TEXT NOT NULL,
@@ -368,10 +368,6 @@ export const SCHEMA = `
     -- Verrouillée : ses colonnes et ce qu'elles portent se lisent, mais rien
     -- ne s'y déplace ni ne s'y modifie.
     is_locked INTEGER NOT NULL DEFAULT 0,
-    -- L'écart entre deux colonnes, en pixels. Il appartient à la catégorie et
-    -- non à la page : deux catégories n'aèrent pas leurs colonnes pareil
-    -- (shared, ACCESS_GAP_DEFAUT).
-    gap INTEGER NOT NULL DEFAULT 20,
     created_at TEXT NOT NULL
   );
 
@@ -385,6 +381,10 @@ export const SCHEMA = `
     width_unit TEXT NOT NULL DEFAULT 'auto'
       CHECK (width_unit IN ('auto', 'percent', 'px')),
     width_value REAL,
+    -- L'écart qui sépare la colonne de la suivante, en pixels : chaque
+    -- section aère le sien (shared, ACCESS_GAP_DEFAUT). Celui de la dernière
+    -- ne sert pas.
+    gap INTEGER NOT NULL DEFAULT 20,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
@@ -396,7 +396,7 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS support_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    -- Le numéro de ticket (« LMA-12 ») : il suit celui de la demande
+    -- Le numéro de ticket (« HLP-12 ») : il suit celui de la demande
     -- précédente, toutes sociétés confondues. Le dernier donné est gardé dans
     -- les réglages, pour qu'un numéro ne resserve pas après une suppression.
     number INTEGER NOT NULL DEFAULT 0,
@@ -500,6 +500,9 @@ export const SCHEMA = `
     width_unit TEXT NOT NULL DEFAULT 'auto'
       CHECK (width_unit IN ('auto', 'percent', 'px')),
     width_value REAL,
+    -- L'écart qui la sépare de la suivante, comme une section d'accès
+    -- (shared, SECTIONS_GAP_DEFAUT).
+    gap INTEGER NOT NULL DEFAULT 50,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );

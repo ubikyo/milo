@@ -45,8 +45,7 @@ export const ancienneteIndicator: SupportIndicatorWidget = {
           series={[{ name: "tickets", label: "Tickets" }]}
           getBarColor={(_, serie) => serie.color ?? "teal.6"}
           barProps={{ isAnimationActive: false }}
-          gridAxis="y"
-          tickLine="none"
+          gridAxis="none"
           yAxisProps={{ allowDecimals: false, width: 24 }}
           withTooltip
         />

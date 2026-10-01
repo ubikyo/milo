@@ -106,6 +106,8 @@ interface LabelPickerProps {
   labelsApi?: LabelsApi;
   /** Ce que dit la liste quand il n'y a encore aucune étiquette où choisir. */
   emptyText?: string;
+  /** Le titre du champ : « Étiquettes » par défaut. */
+  label?: string;
 }
 
 export default function LabelPicker({
@@ -118,6 +120,7 @@ export default function LabelPicker({
   // Le mode auquel ces étiquettes appartiennent : les cartes par défaut.
   labelsApi = CARD_LABELS_API,
   emptyText = "Aucune étiquette sur ce tableau",
+  label = "Étiquettes",
 }: LabelPickerProps) {
   // Étiquette en cours de modification — son nom et sa couleur y vivent tant
   // qu'on n'a pas validé — et celle qu'on est en train d'ajouter.
@@ -328,7 +331,7 @@ export default function LabelPicker({
         // La fenêtre de confirmation est un clic « au dehors » : la liste s'en
         // irait, et l'on reviendrait à la carte sitôt la question répondue.
         closeBlocked={aSupprimer !== null}
-        label="Étiquettes"
+        label={label}
         options={labels}
         value={value}
         onChange={onChange}

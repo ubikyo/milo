@@ -49,8 +49,16 @@ function Libelle({ children, color }: { children: string; color: string }) {
 // qui est dedans sur la couleur de l'étiquette.
 //
 // Les modes Projet et Tâche s'en servent aussi, pour leurs étiquettes, leurs
-// catégories et leurs listes.
-export function BarresEtiquettes({ data }: { data: Barre[] }) {
+// catégories et leurs listes. Avec « libelleDedans », une barre est au moins
+// aussi large que son libellé : une liste vide garde ainsi sa couleur au lieu
+// de disparaître.
+export function BarresEtiquettes({
+  data,
+  libelleDedans = false,
+}: {
+  data: Barre[];
+  libelleDedans?: boolean;
+}) {
   const theme = useMantineTheme();
   const max = Math.max(...data.map((d) => d.value), 0);
   return (
@@ -65,6 +73,34 @@ export function BarresEtiquettes({ data }: { data: Barre[] }) {
           autoContrast: true,
         });
         const part = max > 0 ? (barre.value / max) * 100 : 0;
+        if (libelleDedans)
+          return (
+            <Group key={barre.name} gap="md" wrap="nowrap">
+              <Box style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  size="sm"
+                  fw={500}
+                  c={couleurs.color}
+                  px="sm"
+                  truncate
+                  style={{
+                    width: "fit-content",
+                    minWidth: `${part}%`,
+                    maxWidth: "100%",
+                    height: HAUTEUR_BARRE,
+                    lineHeight: `${HAUTEUR_BARRE}px`,
+                    borderRadius: "var(--mantine-radius-sm)",
+                    backgroundColor: couleurs.background,
+                  }}
+                >
+                  {barre.name}
+                </Text>
+              </Box>
+              <Text size="sm" fw={500} style={{ whiteSpace: "nowrap" }}>
+                {barre.value}
+              </Text>
+            </Group>
+          );
         return (
           <Group key={barre.name} gap="md" wrap="nowrap">
             <Box
@@ -149,7 +185,7 @@ export const etiquettesIndicator: SupportIndicatorWidget = {
   },
 
   Config: ({ config, onChange }) => (
-    <Stack gap="md">
+    <Stack gap="xl">
       <ChampNom config={config} onChange={onChange} defaut={LIBELLE} />
       <Checkbox
         label="Compter aussi les tickets résolus et fermés"

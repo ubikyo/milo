@@ -4,7 +4,7 @@
 import { Router } from "express";
 import { selection } from "../db/query.js";
 import type { IdRow } from "../db/rows.js";
-import { badRequest, forbidden, requireText } from "../lib/http.js";
+import { badRequest, requireText } from "../lib/http.js";
 import { concernes, notifierSuppression } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
@@ -43,7 +43,8 @@ boardRoutes.post("/", (req, res) => {
     next,
     drapeau(req.body.show_card_numbers, 1),
     drapeau(req.body.is_private, 0),
-    req.user.id,
+    // Le propriétaire n'existe que pour un tableau privé.
+    drapeau(req.body.is_private, 0) ? req.user.id : null,
     now(),
   );
   res.status(201).json(boards.byId.get(lastInsertRowid));
@@ -73,15 +74,10 @@ boardRoutes.put("/:id", (req, res) => {
   const isPrivate = drapeau(req.body.is_private, existing.is_private);
   const isLocked = drapeau(req.body.is_locked, existing.is_locked);
 
-  // Fermer un tableau, c'est se le réserver : son auteur seul en décide. Ceux
-  // d'avant l'option n'en ont pas — le premier à les fermer les adopte.
-  let owner = existing.owner_id;
-  if (isPrivate !== existing.is_private) {
-    if (owner === null) owner = req.user.id;
-    else if (owner !== req.user.id) {
-      forbidden("Seul l'auteur du tableau peut le rendre privé");
-    }
-  }
+  // Un tableau n'a de propriétaire que privé : le fermer, c'est se le
+  // réserver ; le rouvrir le rend à tous, sans propriétaire. Seul celui qui
+  // l'a fermé le voit encore, et peut donc le rouvrir.
+  const owner = isPrivate ? (existing.is_private ? existing.owner_id : req.user.id) : null;
 
   boards.update.run(name, showNumbers, isPrivate, isLocked, owner, existing.id);
   res.json(boards.byId.get(existing.id));

@@ -53,7 +53,7 @@ interface SupportActionsProps {
   onToggleFollow?: (request: SupportRequest) => void;
 }
 
-/** « LMA-3, LMA-5 et LMA-8 » : les tickets visés, tels qu'on les cite. */
+/** « HLP-3, HLP-5 et HLP-8 » : les tickets visés, tels qu'on les cite. */
 const citer = (demandes: SupportRequest[]): string => {
   const refs = demandes.map((d) => supportTicketRef(d.number));
   return refs.length < 2 ? (refs[0] ?? "") : `${refs.slice(0, -1).join(", ")} et ${refs.at(-1)}`;

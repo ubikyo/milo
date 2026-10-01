@@ -50,6 +50,13 @@ export const INTERVALLE_TOUR_UPTIME = 5_000;
 /** Les vérifications menées de front : assez pour un parc, pas de quoi saturer le réseau. */
 const DE_FRONT = 16;
 
+/**
+ * Les pings menés de front, sous les seize vérifications : chacun lance un
+ * processus « ping », bien plus lourd qu'une socket TCP ou UDP. Les autres
+ * attendent leur tour.
+ */
+const PINGS_DE_FRONT = 4;
+
 /** Ce qu'une réponse SNMP ou Zabbix pèse au plus : au-delà, ce n'en est pas une. */
 const REPONSE_MAX = 64 * 1024;
 
@@ -177,8 +184,31 @@ const motDe = (erreur: NodeJS.ErrnoException, port?: number | null): string => {
 const couper = (detail: string): string =>
   detail.length > DETAIL_MAX ? `${detail.slice(0, DETAIL_MAX - 1)}…` : detail;
 
-/** Un ping, par la commande du système. */
-const icmp = (hote: string): Promise<Resultat> =>
+/** Les pings en cours, et ceux qui attendent qu'une place se libère. */
+let pingsEnCours = 0;
+const pingsEnAttente: (() => void)[] = [];
+
+/** Mène la tâche dès qu'il y a moins de « PINGS_DE_FRONT » pings en cours. */
+const aSonTour = async <T>(tache: () => Promise<T>): Promise<T> => {
+  if (pingsEnCours >= PINGS_DE_FRONT) {
+    await new Promise<void>((place) => pingsEnAttente.push(place));
+  } else {
+    pingsEnCours++;
+  }
+  try {
+    return await tache();
+  } finally {
+    // La place passe directement à qui attend : le compte ne bouge pas.
+    const suivant = pingsEnAttente.shift();
+    if (suivant) suivant();
+    else pingsEnCours--;
+  }
+};
+
+/** Un ping, par la commande du système, au plus « PINGS_DE_FRONT » à la fois. */
+const icmp = (hote: string): Promise<Resultat> => aSonTour(() => pingUnique(hote));
+
+const pingUnique = (hote: string): Promise<Resultat> =>
   new Promise((resolve) => {
     execFile(
       "ping",

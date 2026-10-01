@@ -6,7 +6,13 @@
 // production peut avoir n'importe quel âge.
 
 import type { Database } from "better-sqlite3";
-import { SUPPORT_URGENCY_LABELS, allPermissions } from "@milo/shared";
+import {
+  SUPPORT_CHANNEL_LABELS,
+  SUPPORT_NEW_MESSAGE_DUE_DAYS,
+  SUPPORT_NEW_MESSAGE_LABELS,
+  SUPPORT_URGENCY_LABELS,
+  allPermissions,
+} from "@milo/shared";
 import { heureDeParis } from "../lib/time.js";
 
 /** Les jalons que tous les projets partageaient avant qu'ils suivent la catégorie. */
@@ -104,7 +110,7 @@ const ecrireReglage = (db: Database, cle: string, valeur: unknown): void => {
 };
 
 /**
- * Les projets et les cartes reçoivent leur référence « LMA- » du compteur des
+ * Les projets et les cartes reçoivent leur référence « HLP- » du compteur des
  * tickets. Ceux d'avant le compteur commun — les cartes se numérotaient alors
  * par tableau, les projets pas du tout — sont renumérotés une fois, dans
  * l'ordre de leur création, à la suite du dernier ticket. Ensuite, seul ce
@@ -470,17 +476,27 @@ export const migrate = (db: Database): void => {
     db.exec("ALTER TABLE access_categories ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0");
   }
 
-  // Catégories d'accès créées avant que l'écart de leurs colonnes se règle :
-  // elles prennent l'écart par défaut, et le tiroir permet de le revoir.
-  if (accessCategoryColumns.length > 0 && !accessCategoryColumns.includes("gap")) {
-    db.exec("ALTER TABLE access_categories ADD COLUMN gap INTEGER NOT NULL DEFAULT 20");
-  }
-
   // Sections créées quand elles portaient encore un nom : la largeur seule les
   // définit désormais, la colonne s'en va.
   const accessSectionColumns = columns(db, "access_sections");
   if (accessSectionColumns.includes("name")) {
     db.exec("ALTER TABLE access_sections DROP COLUMN name");
+  }
+
+  // Sections d'avant l'écart propre à chacune : elles reprennent celui que
+  // leur catégorie fixait pour toutes ses colonnes, s'il y en avait un, et la
+  // catégorie ne le porte plus.
+  if (accessSectionColumns.length > 0 && !accessSectionColumns.includes("gap")) {
+    db.exec("ALTER TABLE access_sections ADD COLUMN gap INTEGER NOT NULL DEFAULT 20");
+    if (accessCategoryColumns.includes("gap")) {
+      db.exec(
+        `UPDATE access_sections
+         SET gap = (SELECT gap FROM access_categories WHERE id = access_sections.category_id)`,
+      );
+    }
+  }
+  if (accessCategoryColumns.includes("gap")) {
+    db.exec("ALTER TABLE access_categories DROP COLUMN gap");
   }
 
   // Demandes de support créées quand elles n'avaient qu'un acteur : il passe
@@ -610,6 +626,35 @@ export const migrate = (db: Database): void => {
   // Étiquettes de projets d'avant le poids : toutes pèsent zéro.
   if (!columns(db, "project_labels").includes("weight")) {
     db.exec("ALTER TABLE project_labels ADD COLUMN weight INTEGER NOT NULL DEFAULT 0");
+  }
+
+  // Installation neuve : le support reçoit ses étiquettes — l'urgence, puis le
+  // canal —, et un e-mail entrant reçoit d'office « Sans urgence », « E-mail »
+  // et quinze jours ouvrés d'échéance. Le marqueur des étiquettes d'urgence,
+  // absent, dit que la base est neuve ; une base plus ancienne qui n'en a pas
+  // non plus a déjà des étiquettes, et passe à l'étape suivante.
+  const vides =
+    !db.prepare("SELECT 1 FROM settings WHERE key = 'support_urgency_labels'").get() &&
+    !db.prepare("SELECT 1 FROM support_labels LIMIT 1").get();
+  if (vides) {
+    db.transaction(() => {
+      const creer = db.prepare(
+        "INSERT INTO support_labels (name, color, weight, position, created_at) VALUES (?, ?, ?, ?, ?)",
+      );
+      const instant = new Date().toISOString();
+      const ids = new Map<string, number>();
+      [...SUPPORT_URGENCY_LABELS, ...SUPPORT_CHANNEL_LABELS].forEach(
+        ({ name, color, weight }, rang) => {
+          ids.set(name, Number(creer.run(name, color, weight, rang, instant).lastInsertRowid));
+        },
+      );
+      const reglage = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+      reglage.run(
+        "support_default_label_ids",
+        JSON.stringify(SUPPORT_NEW_MESSAGE_LABELS.map((name) => ids.get(name))),
+      );
+      reglage.run("support_default_due_days", JSON.stringify(SUPPORT_NEW_MESSAGE_DUE_DAYS));
+    })();
   }
 
   // Bases d'avant les étiquettes d'urgence : le support les reçoit une fois.
@@ -855,12 +900,62 @@ export const migrate = (db: Database): void => {
     );
   }
 
+  // Sections des panneaux d'avant l'écart propre à chacune : elles reprennent
+  // celui que leur panneau fixait dans ses réglages, qui s'en va.
+  if (!columns(db, "indicator_sections").includes("gap")) {
+    db.exec("ALTER TABLE indicator_sections ADD COLUMN gap INTEGER NOT NULL DEFAULT 50");
+    for (const panel of ["support", "assets", "projects", "tasks"]) {
+      const cle = `${panel}_sections_gap`;
+      const reglage = db.prepare("SELECT value FROM settings WHERE key = ?").get(cle) as
+        | { value: string }
+        | undefined;
+      let ecart: unknown;
+      try {
+        ecart = reglage ? JSON.parse(reglage.value) : undefined;
+      } catch {
+        ecart = undefined;
+      }
+      if (typeof ecart === "number" && Number.isFinite(ecart)) {
+        db.prepare("UPDATE indicator_sections SET gap = ? WHERE panel = ?").run(Math.round(ecart), panel);
+      }
+      db.prepare("DELETE FROM settings WHERE key = ?").run(cle);
+    }
+  }
+
   // Bases d'avant les références des projets.
   if (!columns(db, "projects").includes("number")) {
     db.exec("ALTER TABLE projects ADD COLUMN number INTEGER NOT NULL DEFAULT 0");
   }
   numeroterReferences(db);
   poserSectionsParDefaut(db);
+
+  // Un onglet n'a de propriétaire que privé : ceux d'avant cette règle
+  // retenaient leur auteur même ouverts à tous, et seul cet auteur pouvait
+  // alors les fermer. Ils n'en ont plus.
+  for (const table of ["boards", "project_boards", "access_categories"]) {
+    if (columns(db, table).includes("owner_id")) {
+      db.exec(`UPDATE ${table} SET owner_id = NULL WHERE is_private = 0`);
+    }
+  }
+
+  // Les mots d'ouverture d'un fil étaient signés de qui avait créé l'élément :
+  // ils le sont désormais de Milo, c'est-à-dire d'aucun compte, et le
+  // créateur passe dans le texte.
+  for (const [table, debut] of [
+    ["comments", "Projet créé le %"],
+    ["card_comments", "Carte créée le %"],
+    ["support_comments", "Demande créée le %"],
+  ] as const) {
+    db.prepare(
+      `UPDATE ${table}
+       SET text = text || COALESCE(
+             ' par ' || (SELECT NULLIF(COALESCE(NULLIF(u.name, ''), u.email), '')
+                         FROM users u WHERE u.id = ${table}.user_id),
+             ''),
+           user_id = NULL
+       WHERE system = 1 AND user_id IS NOT NULL AND text LIKE ?`,
+    ).run(debut);
+  }
 
   assurerAdministrateur(db);
 };

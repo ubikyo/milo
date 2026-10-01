@@ -1,5 +1,6 @@
-import { Avatar, Group, Text } from "@mantine/core";
+import { Avatar, Group, Text, useComputedColorScheme } from "@mantine/core";
 import { IconAt } from "@tabler/icons-react";
+import { MILO_ACTOR_ID } from "@milo/shared";
 import type { Actor } from "@milo/shared";
 
 const PALETTE: string[] = [
@@ -62,6 +63,7 @@ export function PersonAvatar({
   person: Actor | null | undefined;
   size?: number;
 }) {
+  if (person?.id === MILO_ACTOR_ID) return <MiloAvatar size={size} />;
   return (
     <Avatar
       size={size}
@@ -72,6 +74,23 @@ export function PersonAvatar({
     >
       {initialsOf(person?.name || person?.email)}
     </Avatar>
+  );
+}
+
+// Milo, quand il signe un mot de l'application : son logo seul, sans pastille,
+// à la manière de la favicon — la déclinaison inversée, claire, sur un thème
+// sombre. Il est plus large que haut : il tient entier dans la place d'une
+// pastille, sans être rogné.
+function MiloAvatar({ size }: { size: number }) {
+  const scheme = useComputedColorScheme("light", { getInitialValueInEffect: false });
+  return (
+    <Avatar
+      size={size}
+      radius={0}
+      src={scheme === "dark" ? "/Milo-Inv-2.svg" : "/Milo-2.svg"}
+      alt="Milo"
+      styles={{ image: { objectFit: "contain" } }}
+    />
   );
 }
 

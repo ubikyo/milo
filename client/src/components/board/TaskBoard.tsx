@@ -75,7 +75,7 @@ import type {
   PointerEvent as ReactPointerEvent,
   ReactNode,
 } from "react";
-import { reference } from "@milo/shared";
+import { taskReference } from "@milo/shared";
 import type {
   Board,
   FollowKind,
@@ -223,7 +223,7 @@ const LIST_COLORS = [
 // texte, lui, n'est jamais choisi à la main : « getContrastColor » de Mantine
 // tranche entre le noir et le blanc d'après la luminosité du fond qui le
 // porte, comme le fait « autoContrast » pour ses propres composants.
-function useListColors() {
+export function useListColors() {
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme("light");
 
@@ -525,7 +525,7 @@ function CardChecklistPanel({ card, onCheck }: CardChecklistPanelProps) {
 }
 
 // Bas de la carte : le signe d'une description et la référence à gauche, les
-// membres à droite. La référence (« LMA-12 ») est un repère discret pour la
+// membres à droite. La référence (« TSK-12 ») est un repère discret pour la
 // désigner, donné par le compteur commun aux modes ; un tableau peut la taire
 // (« Numéros des cartes », dans son tiroir). Les bulles se
 // recouvrent comme dans le tableau des projets ; sans membre, la ligne n'en
@@ -556,7 +556,7 @@ function CardNumber({ card, withNumber, onChecklistToggle }: CardNumberProps) {
           onToggle={onChecklistToggle}
         />
         {/* Une carte qui attend encore le serveur n'a pas de référence. */}
-        {withNumber && card.number > 0 && <Text size="xs">{reference(card.number)}</Text>}
+        {withNumber && card.number > 0 && <Text size="xs">{taskReference(card.number)}</Text>}
       </Group>
       {membres.length > 0 && (
         <ActorAvatars actors={membres} size={CARD_AVATAR_SIZE} max={4} />

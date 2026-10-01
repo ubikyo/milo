@@ -29,5 +29,8 @@ export const libelleOs = (os: NonNullable<Asset["os"]>): string => {
     os.family === "macos" ? texte.replace(/\s*\([^)]*\)/g, "").trim() : texte;
   const nom = propre(os.name);
   const version = propre(os.version);
-  return version && !nom.includes(version) ? `${nom} ${version}`.trim() : nom;
+  const libelle = version && !nom.includes(version) ? `${nom} ${version}`.trim() : nom;
+  // L'édition « Entreprise » (ou « Enterprise ») va de soi sur un parc
+  // d'entreprise : le nom tient mieux sans.
+  return libelle.replace(/\s*\b(Entreprise|Enterprise)\b/gi, "").trim();
 };

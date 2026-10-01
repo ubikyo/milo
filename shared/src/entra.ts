@@ -65,6 +65,15 @@ export interface MailboxCheck {
   error: string;
 }
 
+/**
+ * La connexion de Milo à Entra : l'inscription incomplète, déconnectée depuis
+ * le Paramétrage, refusée par Microsoft (le message dans `error`), ou établie.
+ */
+export interface EntraStatus {
+  state: "unconfigured" | "disconnected" | "error" | "connected";
+  error: string;
+}
+
 export const emptyEntraSettings = (): EntraSettings => ({
   client_id: "",
   tenant: "",

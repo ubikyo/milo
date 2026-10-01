@@ -217,7 +217,7 @@ export const rssWidget: AccessWidget = {
   marges: () => ({ haute: 0, basse: 0 }),
 
   Config: ({ config, onChange }) => (
-    <Stack gap="md">
+    <Stack gap="xl">
       <TextInput
         label="Adresse du flux"
         placeholder="https://"

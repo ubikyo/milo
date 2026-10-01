@@ -23,8 +23,9 @@ import type {
   LabelRow,
   TaskCardRow,
 } from "../db/rows.js";
-import { horodatage, now } from "../lib/time.js";
+import { now } from "../lib/time.js";
 import { cardComments } from "./cards.js";
+import { motDeCreation } from "./comments.js";
 import { prochaineReference } from "./references.js";
 import { reorderTaskCards, taskCards, taskLists } from "./tasks.js";
 
@@ -219,8 +220,8 @@ const copierCarte = (carte: TaskCardRow, copie: CopieDeCarte): Id => {
   if (!separateur) {
     cardComments.createSystem.run(
       carteId,
-      userId,
-      `Carte créée le ${horodatage(timestamp)}`,
+      null,
+      motDeCreation("Carte créée", timestamp, userId),
       timestamp,
       timestamp,
     );
