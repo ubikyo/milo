@@ -15,3 +15,4 @@ export * from "./roles.js";
 export * from "./search.js";
 export * from "./support-settings.js";
 export * from "./tab-orders.js";
+export * from "./widget-kinds.js";

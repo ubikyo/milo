@@ -11,7 +11,7 @@ export const categorieWidget = creerTitreWidget({
   order: 1,
   placeholder: "Sans titre",
   taille: 18,
-  couleur: "var(--mantine-color-white)",
+  couleur: "#ffffff",
   margeBasse: 10,
   margeHaute: 50,
 });

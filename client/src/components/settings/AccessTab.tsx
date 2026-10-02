@@ -14,9 +14,8 @@ import ListItems, { ADD_ROW_HEIGHT, ROW_PADDING } from "../ui/ListItems";
 import DirectoryPicker from "./DirectoryPicker";
 import PrincipalPermissionsModal from "./PrincipalPermissionsModal";
 import { messageErreur } from "../../lib/errors";
-import { defaultAppPermissions } from "@milo/shared";
+import { defaultAppPermissions, peutLire } from "@milo/shared";
 import type {
-  Company,
   EntraPrincipal,
   PrincipalAssignments,
 } from "@milo/shared";
@@ -36,18 +35,17 @@ const cle = (p: EntraPrincipal) => `${p.type}:${p.id}`;
 const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? "s" : ""}`;
 
 /**
- * Les accès à Milo : les utilisateurs et les groupes Entra qui ont un rôle
- * dans au moins une société. La même liste que les sociétés et les rôles
- * (ListItems) ; la ligne d'ajout cherche dans l'annuaire, et choisir ouvre
- * aussitôt la fenêtre des rôles. Les administrateurs, eux, se désignent par
- * leur groupe, dans l'onglet Entra.
+ * Les accès à Milo : les utilisateurs et les groupes Entra qui ont au moins
+ * une permission — le Paramétrage, ou un type de widget. La même liste que
+ * les sociétés (ListItems) ; la ligne d'ajout cherche dans l'annuaire, et
+ * choisir ouvre aussitôt la fenêtre des permissions.
  */
-export default function AccessTab({ companies }: { companies: Company[] }) {
+export default function AccessTab() {
   const [acces, setAcces] = useState<PrincipalAssignments[]>([]);
   const [error, setError] = useState<string | null>(null);
-  // Celui dont la fenêtre des rôles est ouverte : un principal de la liste, ou
-  // celui qu'on vient de choisir dans l'annuaire.
-  const [rolesDe, setRolesDe] = useState<EntraPrincipal | null>(null);
+  // Celui dont la fenêtre des permissions est ouverte : un principal de la
+  // liste, ou celui qu'on vient de choisir dans l'annuaire.
+  const [permissionsDe, setPermissionsDe] = useState<EntraPrincipal | null>(null);
   const [pendingDelete, setPendingDelete] = useState<EntraPrincipal | null>(
     null,
   );
@@ -68,9 +66,10 @@ export default function AccessTab({ companies }: { companies: Company[] }) {
     reload();
   }, [reload]);
 
-  const actuel = rolesDe ? acces.find((a) => cle(a.principal) === cle(rolesDe)) : undefined;
-  const rolesActuels = actuel?.roles ?? [];
-  // Qui arrive de l'annuaire n'en a pas encore : tous les modes, pas de Paramétrage.
+  const actuel = permissionsDe
+    ? acces.find((a) => cle(a.principal) === cle(permissionsDe))
+    : undefined;
+  // Qui arrive de l'annuaire n'en a pas encore : aucune.
   const appActuelle = actuel?.app ?? defaultAppPermissions();
 
   return (
@@ -88,11 +87,11 @@ export default function AccessTab({ companies }: { companies: Company[] }) {
             <DirectoryPicker
               aria-label="Ajouter un utilisateur ou un groupe"
               placeholder="Ajouter un utilisateur ou un groupe Entra"
-              // Toujours vide : choisir ouvre la fenêtre des rôles, et le
-              // champ est aussitôt prêt pour le suivant.
+              // Toujours vide : choisir ouvre la fenêtre des permissions, et
+              // le champ est aussitôt prêt pour le suivant.
               value={null}
               resetOnSelect
-              onChange={(principal) => principal && setRolesDe(principal)}
+              onChange={(principal) => principal && setPermissionsDe(principal)}
               variant="unstyled"
               size="sm"
               style={{ flex: 1, minWidth: 0 }}
@@ -118,7 +117,7 @@ export default function AccessTab({ companies }: { companies: Company[] }) {
           ),
         }}
       >
-        {acces.map(({ principal, roles }) => (
+        {acces.map(({ principal, app }) => (
           <ListItems.Row
             key={cle(principal)}
             height={ROW_HEIGHT}
@@ -126,7 +125,7 @@ export default function AccessTab({ companies }: { companies: Company[] }) {
               {
                 label: "Permissions",
                 icon: IconShieldLock,
-                onClick: () => setRolesDe(principal),
+                onClick: () => setPermissionsDe(principal),
               },
               {
                 label: "Retirer l'accès",
@@ -153,8 +152,9 @@ export default function AccessTab({ companies }: { companies: Company[] }) {
                 </Text>
               </div>
 
+              {/* Ce qu'il lit, d'un coup d'œil : ses types de widgets. */}
               <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
-                {pluriel(roles.length, "société")}
+                {pluriel(Object.values(app.widgets).filter(peutLire).length, "type")}
               </Text>
             </>
           </ListItems.Row>
@@ -162,11 +162,9 @@ export default function AccessTab({ companies }: { companies: Company[] }) {
       </ListItems>
 
       <PrincipalPermissionsModal
-        principal={rolesDe}
+        principal={permissionsDe}
         currentApp={appActuelle}
-        current={rolesActuels}
-        companies={companies}
-        onClose={() => setRolesDe(null)}
+        onClose={() => setPermissionsDe(null)}
         onSaved={setAcces}
       />
 
@@ -187,7 +185,7 @@ export default function AccessTab({ companies }: { companies: Company[] }) {
         message={
           <>
             Voulez-vous vraiment retirer à « {pendingDelete?.name} » son accès à
-            toutes les sociétés ?
+            Milo ?
           </>
         }
       />

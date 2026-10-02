@@ -9,7 +9,7 @@
 // présence (`has_secret`).
 
 import type { Id } from "./domain.js";
-import type { AppPermissions, UserCompanyRole } from "./roles.js";
+import type { AppPermissions } from "./roles.js";
 
 /** Un utilisateur ou un groupe de l'annuaire. */
 /** Une personne de l'annuaire, proposée comme acteur. */
@@ -56,14 +56,10 @@ export interface EntraSettingsInput {
   secret?: string;
 }
 
-/**
- * Les permissions d'un utilisateur ou d'un groupe : pour l'application, puis
- * son rôle société par société.
- */
+/** Les permissions d'un utilisateur ou d'un groupe : le Paramétrage et ses types de widgets. */
 export interface PrincipalAssignments {
   principal: EntraPrincipal;
   app: AppPermissions;
-  roles: UserCompanyRole[];
 }
 
 /** L'accès de Milo à la boîte de support d'une société. */

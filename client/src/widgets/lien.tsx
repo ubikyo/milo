@@ -2,6 +2,7 @@ import { Anchor, Stack, Switch, Text, TextInput } from "@mantine/core";
 import { IconLink } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import classes from "../assets/styles/AccessLink.module.css";
+import { ChampCouleur } from "./champs-style";
 import { avec, texte } from "./types";
 import type { AccessWidget, WidgetDisplayProps } from "./types";
 
@@ -21,6 +22,10 @@ import type { AccessWidget, WidgetDisplayProps } from "./types";
 const LIBELLE = "libelle";
 const URL = "url";
 const ACTIF = "actif";
+const COULEUR = "couleur";
+
+/** La couleur d'un lien qui n'en a pas reçu : celle du texte, selon le thème. */
+const COULEUR_PAR_DEFAUT = "var(--mantine-color-text)";
 
 /**
  * Délai laissé à un second clic avant que le premier n'ouvre l'adresse. Assez
@@ -94,6 +99,7 @@ function Lien({ config, onChange, locked }: WidgetDisplayProps) {
   const intitule = texte(config, LIBELLE);
   const libelle = intitule || url;
   const actif = estActif(config);
+  const couleur = texte(config, COULEUR) || COULEUR_PAR_DEFAUT;
 
   const clic = () => {
     // Le second clic d'un double-clic retombe ici : il ne relance rien, c'est
@@ -148,7 +154,7 @@ function Lien({ config, onChange, locked }: WidgetDisplayProps) {
           input: {
             ...INTERLIGNE,
             fontSize: "var(--mantine-font-size-sm)",
-            color: "var(--mantine-color-text)",
+            color: couleur,
             height: "auto",
             minHeight: 0,
             border: "none",
@@ -183,7 +189,7 @@ function Lien({ config, onChange, locked }: WidgetDisplayProps) {
       <Text
         size="sm"
         style={INTERLIGNE}
-        c="var(--mantine-color-text)"
+        c={couleur}
         onDoubleClick={doubleClic}
         lineClamp={1}
       >
@@ -208,7 +214,7 @@ function Lien({ config, onChange, locked }: WidgetDisplayProps) {
       // l'emporte alors à coup sûr sur celle de Mantine, quel que soit l'ordre
       // des feuilles. Le retrait et le fond au survol, eux, n'ont pas
       // d'équivalent en ligne (assets/styles/AccessLink.module.css).
-      c="var(--mantine-color-text)"
+      c={couleur}
       underline="never"
       className={classes.lien}
       onClick={(e) => {
@@ -254,6 +260,14 @@ export const lienWidget: AccessWidget = {
         placeholder="https://"
         value={texte(config, URL)}
         onChange={(e) => onChange(avec(config, URL, e.currentTarget.value))}
+      />
+      {/* Sans couleur choisie, le lien suit celle du texte : blanc sur le
+          thème sombre, noir sur le clair. */}
+      <ChampCouleur
+        config={config}
+        onChange={onChange}
+        cle={COULEUR}
+        libelleDefaut="couleur du texte"
       />
     </Stack>
   ),

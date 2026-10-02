@@ -31,7 +31,6 @@ import { boardRoutes } from "./routes/boards.js";
 import { cardChecklistRoutes, checklistItemRoutes, checklistRoutes } from "./routes/checklists.js";
 import { commentRoutes, projectCommentRoutes } from "./routes/comments.js";
 import { companyRoutes } from "./routes/companies.js";
-import { roleRoutes } from "./routes/roles.js";
 import { searchRoutes } from "./routes/search.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { supportIndicatorRoutes } from "./routes/support-indicators.js";
@@ -119,7 +118,6 @@ export const createApp = (): express.Express => {
   // seules leurs écritures les demandent.
   app.use("/api/companies", requireSettingsToWrite, companyRoutes);
   app.use("/api/milestone-types", requireSettingsToWrite, milestoneTypeRoutes);
-  app.use("/api/roles", requireSettings, roleRoutes);
   app.use("/api/assignments", requireSettings, assignmentRoutes);
   app.use("/api/entra", requireSettings, entraRoutes);
   app.use("/api/backup", requireSettingsUpdate, backupRoutes);

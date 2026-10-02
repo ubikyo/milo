@@ -7,7 +7,7 @@ import { Router } from "express";
 import type { Request } from "express";
 import { SECTIONS_GAP_DEFAUT } from "@milo/shared";
 import type { Area, Id, LayoutState, Resource, Right } from "@milo/shared";
-import { exiger } from "../lib/droits.js";
+import { accesAuWidget, exiger, exigerWidget } from "../lib/droits.js";
 import { badRequest, orNotFound, toIds } from "../lib/http.js";
 import { ecartColonnes, rangDemande, uniteLargeur, valeurLargeur } from "../lib/sections.js";
 import { now } from "../lib/time.js";
@@ -45,7 +45,12 @@ export const indicatorRoutes = <Type extends string>(
     return valeur as Type;
   };
 
-  const tous = (req: Request) => panneau.all(proprietaire(req)).map(indicateurRendu);
+  // Les widgets dont le compte ne lit pas le type ne lui sont pas rendus.
+  const tous = (req: Request) =>
+    panneau
+      .all(proprietaire(req))
+      .filter((i) => accesAuWidget(req, area, i.type) !== "")
+      .map(indicateurRendu);
 
   const routes = Router();
 
@@ -177,7 +182,13 @@ export const indicatorRoutes = <Type extends string>(
   routes.put("/reorder", (req, res) => {
     const section = sectionOuverte(req.body.section_id, req);
     const ids = toIds(req.body.ids);
-    const connus = new Set(panneau.all(section.owner_id).map((i) => i.id));
+    // Seuls se rangent les widgets que le compte voit.
+    const connus = new Set(
+      panneau
+        .all(section.owner_id)
+        .filter((i) => accesAuWidget(req, area, i.type) !== "")
+        .map((i) => i.id),
+    );
     if (ids.length !== new Set(ids).size || ids.some((id) => !connus.has(id))) {
       badRequest("La liste des identifiants ne correspond pas aux indicateurs");
     }
@@ -188,6 +199,7 @@ export const indicatorRoutes = <Type extends string>(
   routes.post("/", (req, res) => {
     const section = sectionOuverte(req.body.section_id, req);
     const type = typeDIndicateur(req.body.type);
+    exigerWidget(req, area, type, "update");
     const config = configuration(req.body.config, "{}");
     const { next } = panneau.nextPosition(section.id);
     const { lastInsertRowid } = panneau.create.run(section.id, type, config, next, now());
@@ -195,9 +207,11 @@ export const indicatorRoutes = <Type extends string>(
   });
 
   /** Un indicateur de la structure que ce compte voit : un autre est introuvable. */
+  /** Modifier ou supprimer un indicateur demande « Modifier » sur son type. */
   const indicateurOuvert = (id: unknown, req: Request) => {
     const existing = orNotFound(panneau.byId.get(id), INDICATEUR_INTROUVABLE);
     orNotFound(panneau.sections.byId(existing.section_id, proprietaire(req)), INDICATEUR_INTROUVABLE);
+    exigerWidget(req, area, existing.type, "update");
     return existing;
   };
 

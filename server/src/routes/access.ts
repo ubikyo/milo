@@ -12,7 +12,7 @@ import {
 import type { AccessBlockType, AccessCategory, Id, LayoutState } from "@milo/shared";
 import { transaction } from "../db/query.js";
 import type { AccessBlockRow, AccessCategoryRow, AccessSectionRow } from "../db/rows.js";
-import { droitDeLaMethode, exiger } from "../lib/droits.js";
+import { accesAuWidget, droitDeLaMethode, exiger, exigerWidget } from "../lib/droits.js";
 import { badRequest, notFound, orNotFound, requireText, toIds } from "../lib/http.js";
 import { fluxDe, reglagesFlux } from "../lib/feed.js";
 import { etatsUptime, reglagesUptime } from "../lib/uptime.js";
@@ -376,11 +376,19 @@ export const accessBlockRoutes = Router();
 
 accessBlockRoutes.use(touch("access-blocks"));
 
-/** L'élément demandé, et la section ouverte qui le porte. */
-const blocOuvert = (id: unknown, user: Compte) => {
+/**
+ * L'élément demandé, et la section ouverte qui le porte. Il faut lire son
+ * type de widget — « Modifier » pour une écriture.
+ */
+const blocOuvert = (id: unknown, req: Request) => {
   const bloc = orNotFound(accessBlocks.byId.get(id), BLOC_INTROUVABLE);
-  return { bloc, ...sectionOuverte(bloc.section_id, user) };
+  exigerWidget(req, "access", bloc.type, req.method === "GET" ? "view" : "update");
+  return { bloc, ...sectionOuverte(bloc.section_id, req.user) };
 };
+
+/** Les éléments dont le compte lit le type : les autres ne lui sont pas rendus. */
+const lisibles = (req: Request, blocs: AccessBlockRow[]): AccessBlockRow[] =>
+  blocs.filter((b) => accesAuWidget(req, "access", b.type) !== "");
 
 accessBlockRoutes.get("/", (req, res) => {
   const { section, category } = req.query;
@@ -389,11 +397,11 @@ accessBlockRoutes.get("/", (req, res) => {
   // ses colonnes portent, plutôt qu'une requête par colonne.
   if (section) {
     const ouverte = sectionOuverte(section, req.user).section;
-    return void res.json(accessBlocks.bySection.all(ouverte.id).map(blocRendu));
+    return void res.json(lisibles(req, accessBlocks.bySection.all(ouverte.id)).map(blocRendu));
   }
   if (!category) badRequest("La section ou la catégorie est requise");
   const { categorie, owner } = structureOuverte(category, req.user);
-  res.json(accessBlocks.byCategory.all(categorie.id, owner).map(blocRendu));
+  res.json(lisibles(req, accessBlocks.byCategory.all(categorie.id, owner)).map(blocRendu));
 });
 
 /**
@@ -420,14 +428,14 @@ accessBlockRoutes.put("/reorder", (req, res) => {
   // Un élément ne saute pas d'une structure à l'autre : les colonnes qu'on
   // voit sont celles de la structure ouverte, le rangement s'y borne.
   const deLaStructure = new Set(
-    accessBlocks.byCategory.all(categorie.id, owner).map((b) => b.id),
+    lisibles(req, accessBlocks.byCategory.all(categorie.id, owner)).map((b) => b.id),
   );
   if (ids.length !== new Set(ids).size || ids.some((id) => !deLaStructure.has(id))) {
     badRequest("La liste des identifiants ne correspond pas à cette catégorie");
   }
 
   rangerBlocs(section.id, ids);
-  res.json(accessBlocks.byCategory.all(categorie.id, owner).map(blocRendu));
+  res.json(lisibles(req, accessBlocks.byCategory.all(categorie.id, owner)).map(blocRendu));
 });
 
 accessBlockRoutes.post("/", (req, res) => {
@@ -437,6 +445,7 @@ accessBlockRoutes.post("/", (req, res) => {
   exigerEcriture(req, owner);
 
   const type = typeDeBloc(req.body.type);
+  exigerWidget(req, "access", type, "update");
   const config = configuration(req.body.config, "{}");
 
   const { next } = accessBlocks.nextPosition(section.id);
@@ -449,7 +458,7 @@ accessBlockRoutes.post("/", (req, res) => {
 // partagent la leur, la catégorie et la sous-catégorie
 // (ACCESS_BLOCK_CONVERSIONS).
 accessBlockRoutes.put("/:id", (req, res) => {
-  const { bloc, owner } = blocOuvert(req.params.id, req.user);
+  const { bloc, owner } = blocOuvert(req.params.id, req);
   exigerEcriture(req, owner);
   if (req.body.type !== undefined && req.body.type !== bloc.type) {
     if (ACCESS_BLOCK_CONVERSIONS[bloc.type] !== req.body.type) {
@@ -480,13 +489,13 @@ const dupliquerBloc = transaction((bloc: AccessBlockRow): Id => {
 });
 
 accessBlockRoutes.post("/:id/duplicate", (req, res) => {
-  const { bloc, owner } = blocOuvert(req.params.id, req.user);
+  const { bloc, owner } = blocOuvert(req.params.id, req);
   exigerEcriture(req, owner);
   res.status(201).json(blocRendu(accessBlocks.byId.get(dupliquerBloc(bloc))!));
 });
 
 accessBlockRoutes.delete("/:id", (req, res) => {
-  const { bloc, owner } = blocOuvert(req.params.id, req.user);
+  const { bloc, owner } = blocOuvert(req.params.id, req);
   exigerEcriture(req, owner);
   accessBlocks.remove.run(bloc.id);
   res.status(204).end();
@@ -501,7 +510,7 @@ accessBlockRoutes.delete("/:id", (req, res) => {
  * « next ».
  */
 accessBlockRoutes.get("/:id/feed", (req, res, next) => {
-  const { bloc } = blocOuvert(req.params.id, req.user);
+  const { bloc } = blocOuvert(req.params.id, req);
   if (bloc.type !== "rss") badRequest("Cet élément n'est pas un flux RSS");
   fluxDe(reglagesFlux(blocRendu(bloc).config))
     .then((flux) => res.json(flux))
@@ -514,7 +523,7 @@ accessBlockRoutes.get("/:id/feed", (req, res, next) => {
  * l'élément règle : la page ne fait que relire.
  */
 accessBlockRoutes.get("/:id/uptime", (req, res) => {
-  const { bloc } = blocOuvert(req.params.id, req.user);
+  const { bloc } = blocOuvert(req.params.id, req);
   if (bloc.type !== "uptime") badRequest("Cet élément n'est pas un élément Uptime");
   res.json(etatsUptime(reglagesUptime(blocRendu(bloc).config)));
 });

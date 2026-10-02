@@ -38,34 +38,13 @@ export const SCHEMA = `
     support_url TEXT NOT NULL DEFAULT ''
   );
 
-  -- Les rôles : les droits de chaque mode (Voir, Ajouter, Modifier,
-  -- Supprimer), en JSON — { "access": ["view", "create"], … }. Le rôle
-  -- Administrateur (is_admin) a tous les droits, quoi que dise sa colonne.
-  CREATE TABLE IF NOT EXISTS roles (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    is_admin INTEGER NOT NULL DEFAULT 0,
-    permissions TEXT NOT NULL DEFAULT '{}'
-  );
-
-  -- Le rôle d'un utilisateur ou d'un groupe Entra, société par société : un
-  -- seul par société. Désignés par leur identifiant d'objet Entra, qui ne
-  -- change pas quand on les renomme ; le nom et l'adresse sont gardés pour
-  -- l'affichage, et rafraîchis à chaque enregistrement.
-  CREATE TABLE IF NOT EXISTS role_assignments (
-    principal_type TEXT NOT NULL CHECK (principal_type IN ('user', 'group')),
-    principal_id TEXT NOT NULL,
-    principal_name TEXT NOT NULL DEFAULT '',
-    principal_email TEXT NOT NULL DEFAULT '',
-    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-    PRIMARY KEY (principal_type, principal_id, company_id)
-  );
-
-  -- Les permissions d'un utilisateur ou d'un groupe Entra pour l'application,
-  -- quelle que soit la société : le Paramétrage ('' : aucun, 'view', 'update')
-  -- et les modes qui lui sont ouverts, en JSON — ["projects", "tasks"]. Sans
-  -- ligne, tous les modes et pas de Paramétrage.
+  -- Les permissions d'un utilisateur ou d'un groupe Entra, pour toutes les
+  -- sociétés : le Paramétrage ('' : aucun, 'view', 'update') et une
+  -- permission par type de widget, en JSON — { "helpdesk": "update",
+  -- "asset": "view", … } (shared, widget-kinds.ts). Sans ligne, aucun accès.
+  -- Désignés par leur identifiant d'objet Entra, qui ne change pas quand on
+  -- les renomme ; le nom et l'adresse sont gardés pour l'affichage. « modes »
+  -- ne sert plus : les modes se déduisent des types.
   CREATE TABLE IF NOT EXISTS principal_permissions (
     principal_type TEXT NOT NULL CHECK (principal_type IN ('user', 'group')),
     principal_id TEXT NOT NULL,
@@ -73,6 +52,7 @@ export const SCHEMA = `
     principal_email TEXT NOT NULL DEFAULT '',
     settings TEXT NOT NULL DEFAULT '' CHECK (settings IN ('', 'view', 'update')),
     modes TEXT NOT NULL DEFAULT '[]',
+    widgets TEXT NOT NULL DEFAULT '{}',
     PRIMARY KEY (principal_type, principal_id)
   );
 
@@ -807,8 +787,6 @@ export const INDEXES = `
   -- sans index, elle balaierait toute la table.
   CREATE INDEX IF NOT EXISTS idx_follows_cible ON follows(kind, target_id);
 
-  CREATE INDEX IF NOT EXISTS idx_role_assignments_company ON role_assignments(company_id);
-  CREATE INDEX IF NOT EXISTS idx_role_assignments_role ON role_assignments(role_id);
   CREATE INDEX IF NOT EXISTS idx_users_entra ON users(entra_id);
 
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);

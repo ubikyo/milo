@@ -24,7 +24,7 @@ import os from "node:os";
 import path from "node:path";
 import type { BackupInfo, RestoreResult } from "@milo/shared";
 import {
-  assurerAdministrateur,
+  permissionsParTypeDeWidget,
   separerParametrage,
   numeroterReferences,
   poserSectionsParDefaut,
@@ -262,14 +262,14 @@ export const restaurerSauvegarde = (archive: Buffer): RestoreResult => {
     verifierLaBase(chemin);
 
     const { tables, rows } = remplacerLesDonnees(chemin);
-    // Une sauvegarde d'avant les rôles n'a pas d'administrateur, celle
-    // d'avant les sections des statistiques laisse ses indicateurs sans
-    // section, celle d'avant les références communes numérote ses cartes par
-    // tableau, et celle d'avant les sections des projets et des tâches n'en a
-    // pas : on les repose. Celle d'avant le Paramétrage par utilisateur ou
-    // groupe le portait dans ses rôles : on l'en sort.
-    assurerAdministrateur(db);
+    // Une sauvegarde d'avant les sections des statistiques laisse ses
+    // indicateurs sans section, celle d'avant les références communes
+    // numérote ses cartes par tableau, et celle d'avant les sections des
+    // projets et des tâches n'en a pas : on les repose. Celle d'avant les
+    // permissions par type de widget ne les a pas : ceux qui avaient un accès
+    // reçoivent « Modifier » partout.
     separerParametrage(db);
+    permissionsParTypeDeWidget(db);
     rattacherIndicateurs(db);
     numeroterReferences(db);
     poserSectionsParDefaut(db);

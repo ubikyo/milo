@@ -9,6 +9,7 @@ import {
 import { useState } from "react";
 import type { KeyboardEvent } from "react";
 import { widgetDe } from "../../widgets";
+import { useAccesWidget } from "../../lib/droits";
 import { margesDe } from "../../widgets/marges";
 import { ACCESS_BLOCK_CONVERSIONS } from "@milo/shared";
 import { RED } from "../../themes/colors";
@@ -68,6 +69,13 @@ export default function SectionBlocks({
   locked,
 }: SectionBlocksProps) {
   const { cible, propsDe } = useWidgetDrop(sectionId, drag, locked);
+  // Figé : la colonne verrouillée, ou un type de widget que le compte ne fait
+  // que lire — l'élément se lit, sans se glisser ni se modifier.
+  const acces = useAccesWidget();
+  const figeDe = (type: AccessBlock["type"]) => {
+    const widget = widgetDe(type);
+    return locked || !widget || acces(widget.kind) !== "update";
+  };
   /** L'élément dont le menu du clic droit est ouvert, et le point du clic. */
   const [menu, setMenu] = useState<{
     bloc: AccessBlock;
@@ -77,13 +85,17 @@ export default function SectionBlocks({
   // Les éléments montrés dans la colonne, avec leur place dans « blocks » —
   // celle que le dépôt attend. Un type que cette version ne connaît pas est
   // passé plutôt que de faire tomber la colonne ; un élément que son widget
-  // dit caché ne paraît pas non plus, n'occupe aucune place, et ne précède ni
-  // ne suit personne.
+  // dit caché, ou d'un type que le compte ne lit pas, ne paraît pas non plus,
+  // n'occupe aucune place, et ne précède ni ne suit personne.
   const visibles = blocks.flatMap((bloc, index) => {
     const widget = widgetDe(bloc.type);
-    if (!widget || widget.hidden?.(bloc.config, locked)) return [];
-    return [{ bloc, index, widget }];
+    if (!widget || acces(widget.kind) === "") return [];
+    const fige = figeDe(bloc.type);
+    if (widget.hidden?.(bloc.config, fige)) return [];
+    return [{ bloc, index, widget, fige }];
   });
+  // Le menu ouvert ne propose de remanier que ce que le compte peut modifier.
+  const menuFige = menu ? figeDe(menu.bloc.type) : true;
 
   // Ce que l'élément du menu peut devenir, s'il le peut.
   const typeConverti = menu
@@ -93,7 +105,7 @@ export default function SectionBlocks({
 
   return (
     <>
-      {visibles.map(({ bloc, index, widget }, rang) => {
+      {visibles.map(({ bloc, index, widget, fige }, rang) => {
         // L'air autour de l'élément se pose ici, sur ce qui l'enveloppe : le
         // trait d'insertion suit ainsi l'élément lui-même, pas sa marge.
         const marges = margesDe(widget, bloc.config, {
@@ -108,10 +120,10 @@ export default function SectionBlocks({
             blockId={bloc.id}
             config={bloc.config}
             onChange={
-              locked ? () => {} : (config) => onConfigChange(bloc, config)
+              fige ? () => {} : (config) => onConfigChange(bloc, config)
             }
             onEdit={() => onEditBlock(bloc)}
-            locked={locked}
+            locked={fige}
           />
         );
 
@@ -123,11 +135,12 @@ export default function SectionBlocks({
           <Box
             key={bloc.id}
             {...propsDe(bloc.id, index)}
+            {...(fige ? { draggable: false } : {})}
             // Verrouillé, le menu reste : il n'y offre plus que ce qui ne
             // remanie rien — et rien du tout hors d'un lien : on n'ouvre
             // pas un menu vide.
             onContextMenu={(e) => {
-              if (locked && bloc.type !== "link") {
+              if (fige && bloc.type !== "link") {
                 e.preventDefault();
                 return;
               }
@@ -137,7 +150,7 @@ export default function SectionBlocks({
               position: "relative",
               marginTop: marges.haute,
               marginBottom: marges.basse,
-              cursor: locked ? "default" : "grab",
+              cursor: fige ? "default" : "grab",
               // L'élément pris s'efface : on suit le trait, pas lui.
               opacity: drag.dragged === bloc.id ? 0.4 : 1,
             }}
@@ -151,7 +164,7 @@ export default function SectionBlocks({
                 le widget à chaque bascule du verrou, et ceux qui lisent le
                 serveur (Uptime) repartaient de zéro. Seul le geste change. */}
             <Box
-              {...(widget.ownClicks || locked
+              {...(widget.ownClicks || fige
                 ? {}
                 : {
                     role: "button",
@@ -172,7 +185,7 @@ export default function SectionBlocks({
 
       {menu && (
         <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          {!locked && (
+          {!menuFige && (
             <>
               {/* Le tiroir de l'élément. C'est le seul chemin qui y mène
                     pour un widget qui garde ses clics — le lien ouvre son
@@ -238,7 +251,7 @@ export default function SectionBlocks({
               )}
             </>
           )}
-          {!locked && (
+          {!menuFige && (
             <>
               <Menu.Divider />
               <Menu.Item

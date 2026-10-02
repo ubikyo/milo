@@ -10,9 +10,10 @@
 // (403).
 
 import type { NextFunction, Request, Response } from "express";
-import type { Area, CompanyRights, Id, Right } from "@milo/shared";
-import { can, companiesWith } from "@milo/shared";
-import { droitsSocietes } from "../repositories/users.js";
+import type { Area, CompanyRights, Id, Mode, Right, WidgetAccess } from "@milo/shared";
+import { TOUTES_SOCIETES, can, companiesWith, genreDuWidget } from "@milo/shared";
+import { selection } from "../db/query.js";
+import { droitsSocietes, droitsWidgets } from "../repositories/users.js";
 import { HttpError } from "./http.js";
 
 // Calculés une fois par requête : une route peut les consulter plusieurs fois.
@@ -61,10 +62,19 @@ export const filtreSocietes = (
   req: Request,
   area: Area,
   right: Right = "view",
-): { societes: string; sansSociete: 0 | 1 } => ({
-  societes: JSON.stringify(companiesWith(droitsDe(req), area, right)),
-  sansSociete: peut(req, area, right, null) ? 1 : 0,
-});
+): { societes: string; sansSociete: 0 | 1 } => {
+  const droits = droitsDe(req);
+  // Des droits pour toutes les sociétés (« * ») valent pour chacune d'elles.
+  const partout = droits[TOUTES_SOCIETES]?.[area]?.includes(right) ?? false;
+  return {
+    societes: JSON.stringify(
+      partout ? toutesLesSocietes.all().map((c) => c.id) : companiesWith(droits, area, right),
+    ),
+    sansSociete: peut(req, area, right, null) ? 1 : 0,
+  };
+};
+
+const toutesLesSocietes = selection<{ id: number }>("SELECT id FROM companies");
 
 /**
  * La clause SQL qui va avec : `colonne` est la colonne de la société.
@@ -105,3 +115,25 @@ export const exigerVoir =
     exiger(req, area, "view");
     next();
   };
+
+/** La permission du compte sur le type de ce widget, posé dans les sections de ce mode. */
+export const accesAuWidget = (req: Request, mode: Mode, type: string): WidgetAccess =>
+  droitsWidgets(req.user)[genreDuWidget(mode, type)];
+
+/**
+ * Lève si le compte n'a pas cette permission sur le type du widget : 404 quand
+ * il ne le lit même pas — ce qu'on ne voit pas est introuvable —, 403 quand
+ * il le lit sans pouvoir le modifier.
+ */
+export const exigerWidget = (
+  req: Request,
+  mode: Mode,
+  type: string,
+  voulu: "view" | "update",
+): void => {
+  const acces = accesAuWidget(req, mode, type);
+  if (acces === "") throw new HttpError(404, "Widget introuvable");
+  if (voulu === "update" && acces !== "update") {
+    throw new HttpError(403, "Vous n'avez pas le droit de modifier ce widget");
+  }
+};

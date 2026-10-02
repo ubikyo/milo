@@ -7,8 +7,18 @@
 
 import { createContext, useContext } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { MODES, can } from "@milo/shared";
-import type { Area, Company, CompanyRights, Id, Mode, Right } from "@milo/shared";
+import { MODES, can, widgetRightsPartout } from "@milo/shared";
+import type {
+  Area,
+  Company,
+  CompanyRights,
+  Id,
+  Mode,
+  Right,
+  WidgetAccess,
+  WidgetKind,
+  WidgetRights,
+} from "@milo/shared";
 
 export type Peut = (area: Area, right: Right, companyId?: Id | string | null) => boolean;
 
@@ -22,13 +32,37 @@ export const peutAvec =
     can(rights, area, right, companyId === "all" ? null : companyId);
 
 const DroitsContext = createContext<Peut>(() => false);
+const WidgetsContext = createContext<WidgetRights>(widgetRightsPartout(""));
 
-export function DroitsProvider({ rights, children }: { rights: CompanyRights; children: ReactNode }) {
-  return <DroitsContext.Provider value={peutAvec(rights)}>{children}</DroitsContext.Provider>;
+export function DroitsProvider({
+  rights,
+  widgets,
+  children,
+}: {
+  rights: CompanyRights;
+  /** Ses permissions par type de widget (shared, widget-kinds.ts). */
+  widgets: WidgetRights;
+  children: ReactNode;
+}) {
+  return (
+    <DroitsContext.Provider value={peutAvec(rights)}>
+      <WidgetsContext.Provider value={widgets}>{children}</WidgetsContext.Provider>
+    </DroitsContext.Provider>
+  );
 }
 
 /** `peut(area, right, companyId?)`, pour le compte connecté. */
 export const useDroits = (): Peut => useContext(DroitsContext);
+
+/**
+ * La permission du compte connecté sur un type de widget : « » (aucune), le
+ * widget ne paraît pas ; « view », il se lit sans se modifier ; « update »,
+ * il se pose, se range, se règle.
+ */
+export const useAccesWidget = (): ((kind: WidgetKind) => WidgetAccess) => {
+  const widgets = useContext(WidgetsContext);
+  return (kind) => widgets[kind];
+};
 
 /** Les modes que le compte voit, dans l'ordre du sélecteur. */
 export const modesVisibles = (peut: Peut): Mode[] =>

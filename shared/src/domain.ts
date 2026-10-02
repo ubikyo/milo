@@ -8,6 +8,7 @@
 // nécessaire pour les lire.
 
 import type { CompanyRights } from "./roles.js";
+import type { WidgetRights } from "./widget-kinds.js";
 import type { Mode } from "./modes.js";
 
 export type SqliteBool = 0 | 1;
@@ -33,11 +34,17 @@ export interface PublicUser {
    */
   settings: { view: boolean; update: boolean };
   /**
-   * Ses droits dans les modes, société par société (shared, roles.ts) : le
-   * client s'en sert pour taire ce que le compte ne voit pas et retirer ce
-   * qu'il ne peut pas faire. Le serveur les vérifie de son côté.
+   * Ses droits dans les modes (shared, roles.ts), déduits de ses permissions
+   * par type de widget et communs à toutes les sociétés : le client s'en sert
+   * pour taire ce que le compte ne voit pas et retirer ce qu'il ne peut pas
+   * faire. Le serveur les vérifie de son côté.
    */
   rights: CompanyRights;
+  /**
+   * Ses permissions par type de widget — les siennes et celles de ses
+   * groupes réunies : quels widgets il voit, lesquels il pose et modifie.
+   */
+  widgets: WidgetRights;
   /**
    * Le compte « admin » local : il ne sert qu'au paramétrage, ne se montre
    * dans aucune liste et n'est l'acteur de rien.

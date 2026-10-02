@@ -11,8 +11,7 @@ import {
   SUPPORT_NEW_MESSAGE_DUE_DAYS,
   SUPPORT_NEW_MESSAGE_LABELS,
   SUPPORT_URGENCY_LABELS,
-  allPermissions,
-  defaultAppPermissions,
+  widgetRightsPartout,
 } from "@milo/shared";
 import { heureDeParis } from "../lib/time.js";
 
@@ -39,26 +38,6 @@ const sansClesEtrangeres = (db: Database, action: () => void): void => {
     action();
   } finally {
     db.pragma("foreign_keys = ON");
-  }
-};
-
-/**
- * Le rôle Administrateur existe toujours. Il est posé sur une base neuve comme
- * sur une ancienne, et reposé après la restauration d'une sauvegarde qui n'en
- * avait pas. Un rôle déjà nommé ainsi le devient plutôt que d'être doublé.
- */
-export const assurerAdministrateur = (db: Database): void => {
-  if (db.prepare("SELECT 1 FROM roles WHERE is_admin = 1").get()) return;
-  const homonyme = db.prepare("SELECT id FROM roles WHERE name = ?").get("Administrateur") as
-    | { id: number }
-    | undefined;
-  if (homonyme) {
-    db.prepare("UPDATE roles SET is_admin = 1 WHERE id = ?").run(homonyme.id);
-  } else {
-    db.prepare("INSERT INTO roles (name, is_admin, permissions) VALUES (?, 1, ?)").run(
-      "Administrateur",
-      JSON.stringify(allPermissions()),
-    );
   }
 };
 
@@ -987,8 +966,8 @@ export const migrate = (db: Database): void => {
     ).run(debut);
   }
 
-  assurerAdministrateur(db);
   separerParametrage(db);
+  permissionsParTypeDeWidget(db);
 };
 
 
@@ -1004,6 +983,11 @@ const PARAMETRAGE_HORS_ROLES = "parametrage_hors_roles";
  */
 export const separerParametrage = (db: Database): void => {
   if (lireReglage(db, PARAMETRAGE_HORS_ROLES)) return;
+  // Une base neuve n'a jamais eu de rôles : il n'y a rien à en sortir.
+  if (columns(db, "role_assignments").length === 0) {
+    ecrireReglage(db, PARAMETRAGE_HORS_ROLES, true);
+    return;
+  }
   db.transaction(() => {
     const lignes = db
       .prepare(
@@ -1038,7 +1022,9 @@ export const separerParametrage = (db: Database): void => {
          (principal_type, principal_id, principal_name, principal_email, settings, modes)
        VALUES (?, ?, ?, ?, ?, ?)`,
     );
-    const modes = JSON.stringify(defaultAppPermissions().modes);
+    // Les modes ouverts ne servent plus : les types de widgets les remplacent
+    // (permissionsParTypeDeWidget).
+    const modes = "[]";
     for (const { ligne, acces } of parPrincipal.values()) {
       poser.run(
         ligne.principal_type,
@@ -1051,5 +1037,38 @@ export const separerParametrage = (db: Database): void => {
     }
     db.exec("UPDATE roles SET permissions = json_remove(permissions, '$.settings') WHERE json_valid(permissions)");
     ecrireReglage(db, PARAMETRAGE_HORS_ROLES, true);
+  })();
+};
+
+/** Posé une fois les permissions passées aux types de widgets. */
+const PERMISSIONS_PAR_TYPE = "permissions_par_type_de_widget";
+
+/**
+ * Les rôles, société par société, et les modes ouverts laissent la place à
+ * une permission par type de widget, commune à toutes les sociétés. Chacun de
+ * ceux qui avaient un accès — une permission réglée, ou un rôle quelque part —
+ * reçoit « Modifier » pour tous les types et garde son Paramétrage. Puis les
+ * rôles s'en vont.
+ */
+export const permissionsParTypeDeWidget = (db: Database): void => {
+  if (!columns(db, "principal_permissions").includes("widgets")) {
+    db.exec("ALTER TABLE principal_permissions ADD COLUMN widgets TEXT NOT NULL DEFAULT '{}'");
+  }
+  if (lireReglage(db, PERMISSIONS_PAR_TYPE)) return;
+  db.transaction(() => {
+    if (columns(db, "role_assignments").length > 0) {
+      db.exec(
+        `INSERT OR IGNORE INTO principal_permissions
+           (principal_type, principal_id, principal_name, principal_email)
+         SELECT principal_type, principal_id, MAX(principal_name), MAX(principal_email)
+         FROM role_assignments GROUP BY principal_type, principal_id`,
+      );
+    }
+    db.prepare("UPDATE principal_permissions SET widgets = ?").run(
+      JSON.stringify(widgetRightsPartout("update")),
+    );
+    db.exec("DROP TABLE IF EXISTS role_assignments");
+    db.exec("DROP TABLE IF EXISTS roles");
+    ecrireReglage(db, PERMISSIONS_PAR_TYPE, true);
   })();
 };

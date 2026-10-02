@@ -40,9 +40,6 @@ import type {
   Comment,
   Company,
   MilestoneType,
-  Permissions,
-  Role,
-  UserCompanyRole,
   AppPermissions,
   CopyResult,
   EntraPrincipal,
@@ -271,10 +268,10 @@ export const api = {
   // --- Accès (utilisateurs et groupes Entra) -------------------------------
   getAssignments: () => get<PrincipalAssignments[]>("/assignments"),
   // La liste des rôles envoyée remplace tout ; vide, elle retire l'accès.
-  setAssignments: (principal: EntraPrincipal, roles: UserCompanyRole[], app: AppPermissions) =>
+  setAssignments: (principal: EntraPrincipal, app: AppPermissions) =>
     put<PrincipalAssignments[]>(
       `/assignments/${principal.type}/${encodeURIComponent(principal.id)}`,
-      { name: principal.name, email: principal.email, roles, app },
+      { name: principal.name, email: principal.email, app },
     ),
   deleteAssignments: (principal: EntraPrincipal) =>
     request<PrincipalAssignments[]>(
@@ -468,13 +465,6 @@ export const api = {
   deleteCompany: (id: Id) =>
     request<CascadeResult>(`/companies/${id}`, { method: "DELETE" }),
 
-  // --- Rôles ---------------------------------------------------------------
-  // Le nom et les droits se modifient séparément.
-  getRoles: () => get<Role[]>("/roles"),
-  createRole: (name: string) => post<Role>("/roles", { name }),
-  updateRole: (id: Id, data: { name?: string; permissions?: Permissions }) =>
-    put<Role>(`/roles/${id}`, data),
-  deleteRole: (id: Id) => del(`/roles/${id}`),
 
   // Les types de jalons, réglés dans les réglages. Le nom et les jalons se
   // modifient séparément : ce qui n'est pas envoyé reste.

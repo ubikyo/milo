@@ -1,33 +1,17 @@
-// Les accès : les permissions d'un utilisateur ou d'un groupe Entra — pour
-// l'application (Paramétrage, modes), puis son rôle dans chaque société.
-// Réservé à qui peut modifier le Paramétrage.
+// Les accès : les permissions d'un utilisateur ou d'un groupe Entra — le
+// Paramétrage, et une permission par type de widget, communes à toutes les
+// sociétés. Réservé à qui peut modifier le Paramétrage.
 //
 // Un utilisateur ou un groupe n'existe ici que par ce qu'il a : il apparaît
-// avec son premier rôle ou son accès au Paramétrage, et disparaît quand il
-// n'a plus ni l'un ni l'autre.
+// avec sa première permission, et disparaît quand il n'en a plus aucune.
 
 import { Router } from "express";
 import { defaultAppPermissions, validAppPermissions } from "@milo/shared";
 import type { AppPermissions, EntraPrincipal, PrincipalAssignments } from "@milo/shared";
-import { mutation, selection, transaction } from "../db/query.js";
+import { mutation, selection } from "../db/query.js";
 import { badRequest, requireText } from "../lib/http.js";
 import { chercherDansLAnnuaire } from "../lib/entra.js";
 import { touch } from "../middleware/events.js";
-
-interface AttributionRow {
-  principal_type: "user" | "group";
-  principal_id: string;
-  principal_name: string;
-  principal_email: string;
-  company_id: number;
-  role_id: number;
-}
-
-const toutes = selection<AttributionRow>(
-  `SELECT * FROM role_assignments
-   ORDER BY principal_type DESC, principal_name COLLATE NOCASE, principal_id, company_id`,
-);
-const oublier = mutation("DELETE FROM role_assignments WHERE principal_type = ? AND principal_id = ?");
 
 interface PermissionsRow {
   principal_type: "user" | "group";
@@ -35,7 +19,7 @@ interface PermissionsRow {
   principal_name: string;
   principal_email: string;
   settings: string;
-  modes: string;
+  widgets: string;
 }
 
 const toutesLesPermissions = selection<PermissionsRow>(
@@ -47,96 +31,61 @@ const oublierPermissions = mutation(
 );
 const poserPermissions = mutation(
   `INSERT INTO principal_permissions
-     (principal_type, principal_id, principal_name, principal_email, settings, modes)
+     (principal_type, principal_id, principal_name, principal_email, settings, widgets)
    VALUES (?, ?, ?, ?, ?, ?)
    ON CONFLICT (principal_type, principal_id) DO UPDATE SET
      principal_name = excluded.principal_name, principal_email = excluded.principal_email,
-     settings = excluded.settings, modes = excluded.modes`,
+     settings = excluded.settings, widgets = excluded.widgets`,
 );
 
+/** Les permissions d'une ligne, relues : un JSON illisible n'accorde rien. */
 const permissionsDe = (row: PermissionsRow): AppPermissions => {
-  let modes: unknown = [];
+  let widgets: unknown = {};
   try {
-    modes = JSON.parse(row.modes);
+    widgets = JSON.parse(row.widgets);
   } catch {
-    // Un JSON illisible n'ouvre aucun mode.
+    // Rien à relire : aucun type n'est accordé.
   }
-  return validAppPermissions({ settings: row.settings, modes });
+  return validAppPermissions({ settings: row.settings, widgets });
 };
-const attribuer = mutation(
-  `INSERT INTO role_assignments
-     (principal_type, principal_id, principal_name, principal_email, company_id, role_id)
-   VALUES (?, ?, ?, ?, ?, ?)`,
-);
-const societeExiste = selection<{ id: number }>("SELECT id FROM companies WHERE id = ?");
-const roleExiste = selection<{ id: number }>("SELECT id FROM roles WHERE id = ?");
 
-/** Les permissions et les attributions, regroupées par utilisateur ou groupe. */
-const parPrincipal = (): PrincipalAssignments[] => {
-  const groupes = new Map<string, PrincipalAssignments>();
-  const entreeDe = (row: {
-    principal_type: "user" | "group";
-    principal_id: string;
-    principal_name: string;
-    principal_email: string;
-  }): PrincipalAssignments => {
-    const cle = `${row.principal_type}:${row.principal_id}`;
-    let entree = groupes.get(cle);
-    if (!entree) {
-      entree = {
-        principal: {
-          type: row.principal_type,
-          id: row.principal_id,
-          name: row.principal_name,
-          email: row.principal_email,
-        },
-        app: defaultAppPermissions(),
-        roles: [],
-      };
-      groupes.set(cle, entree);
-    }
-    return entree;
-  };
-  for (const row of toutesLesPermissions.all()) entreeDe(row).app = permissionsDe(row);
-  for (const row of toutes.all()) {
-    entreeDe(row).roles.push({ company_id: row.company_id, role_id: row.role_id });
-  }
-  return [...groupes.values()].sort(
-    (a, b) =>
-      (a.principal.type === b.principal.type ? 0 : a.principal.type === "user" ? -1 : 1) ||
-      a.principal.name.localeCompare(b.principal.name, "fr", { sensitivity: "base" }),
-  );
-};
+/** Les utilisateurs puis les groupes qui ont des permissions, chacun par nom. */
+const parPrincipal = (): PrincipalAssignments[] =>
+  toutesLesPermissions
+    .all()
+    .map((row) => ({
+      principal: {
+        type: row.principal_type,
+        id: row.principal_id,
+        name: row.principal_name,
+        email: row.principal_email,
+      },
+      app: permissionsDe(row),
+    }))
+    .sort(
+      (a, b) =>
+        (a.principal.type === b.principal.type ? 0 : a.principal.type === "user" ? -1 : 1) ||
+        a.principal.name.localeCompare(b.principal.name, "fr", { sensitivity: "base" }),
+    );
 
 /**
- * Les permissions d'un principal, remplacées d'un bloc : une société absente
- * n'a plus de rôle. Sans rôle ni Paramétrage, il n'a plus aucun accès : ses
- * permissions s'effacent avec lui.
+ * Les permissions d'un principal, remplacées d'un bloc. Sans Paramétrage ni
+ * aucun type lisible, il n'a plus aucun accès : sa ligne s'efface.
  */
-const remplacer = transaction(
-  (
-    principal: EntraPrincipal,
-    app: AppPermissions,
-    roles: { company_id: number; role_id: number }[],
-  ) => {
-    oublier.run(principal.type, principal.id);
-    for (const { company_id, role_id } of roles) {
-      attribuer.run(principal.type, principal.id, principal.name, principal.email, company_id, role_id);
-    }
-    if (roles.length === 0 && app.settings === "") {
-      oublierPermissions.run(principal.type, principal.id);
-    } else {
-      poserPermissions.run(
-        principal.type,
-        principal.id,
-        principal.name,
-        principal.email,
-        app.settings,
-        JSON.stringify(app.modes),
-      );
-    }
-  },
-);
+const remplacer = (principal: EntraPrincipal, app: AppPermissions): void => {
+  if (app.settings === "" && Object.values(app.widgets).every((acces) => acces === "")) {
+    oublierPermissions.run(principal.type, principal.id);
+    return;
+  }
+  poserPermissions.run(
+    principal.type,
+    principal.id,
+    principal.name,
+    principal.email,
+    app.settings,
+    JSON.stringify(app.widgets),
+  );
+};
 
 const typeDe = (valeur: unknown): "user" | "group" => {
   if (valeur !== "user" && valeur !== "group") badRequest("Type inconnu : utilisateur ou groupe");
@@ -158,9 +107,8 @@ assignmentRoutes.get("/search", (req, res, next) => {
     .catch(next);
 });
 
-// Les permissions pour l'application, et la liste complète des rôles du
-// principal, une entrée par société : elles remplacent les précédentes. Sans
-// rôle ni Paramétrage, il n'a plus aucun accès.
+// Les permissions du principal — le Paramétrage et chaque type de widget :
+// elles remplacent les précédentes.
 assignmentRoutes.put("/:type/:id", (req, res) => {
   const principal: EntraPrincipal = {
     type: typeDe(req.params.type),
@@ -168,31 +116,11 @@ assignmentRoutes.put("/:type/:id", (req, res) => {
     name: String(req.body.name ?? "").trim(),
     email: String(req.body.email ?? "").trim(),
   };
-  const demandes: unknown[] = Array.isArray(req.body.roles) ? req.body.roles : [];
-
-  const parSociete = new Map<number, number>();
-  for (const demande of demandes) {
-    const { company_id, role_id } = (demande ?? {}) as Record<string, unknown>;
-    const societe = Number(company_id);
-    const role = Number(role_id);
-    if (!societeExiste.get(societe)) badRequest("Société introuvable");
-    if (!roleExiste.get(role)) badRequest("Rôle introuvable");
-    parSociete.set(societe, role);
-  }
-
-  remplacer(
-    principal,
-    validAppPermissions(req.body.app ?? defaultAppPermissions()),
-    [...parSociete].map(([company_id, role_id]) => ({ company_id, role_id })),
-  );
+  remplacer(principal, validAppPermissions(req.body.app ?? defaultAppPermissions()));
   res.json(parPrincipal());
 });
 
 assignmentRoutes.delete("/:type/:id", (req, res) => {
-  const type = typeDe(req.params.type);
-  transaction(() => {
-    oublier.run(type, req.params.id);
-    oublierPermissions.run(type, req.params.id);
-  })();
+  oublierPermissions.run(typeDe(req.params.type), req.params.id);
   res.json(parPrincipal());
 });

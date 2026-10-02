@@ -1,9 +1,9 @@
 import { Box, Menu, Stack, UnstyledButton } from "@mantine/core";
-import type { WidgetKind } from "../../widgets/genres";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useRef, useState, type ComponentType, type ReactNode } from "react";
 import encart from "../../assets/styles/AccessNumero.module.css";
 import { avec } from "../../widgets/types";
+import { useAccesWidget } from "../../lib/droits";
 import { RED } from "../../themes/colors";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import IndicatorDrawer from "./IndicatorDrawer";
@@ -14,6 +14,7 @@ import { TraitInsertion, useWidgetDrop, type WidgetDrag } from "./WidgetDrop";
 import type { SectionsDuPanneau } from "../../api";
 import type { IndicatorConfigProps } from "../../indicators/types";
 import type { Id, IndicatorSection } from "@milo/shared";
+import type { WidgetKind } from "../../widgets/genres";
 
 /** L'écart entre deux indicateurs d'une section. */
 const ECART = 20;
@@ -321,16 +322,21 @@ function IndicateursDeSection<Type extends string, P extends IndicatorWidgetBase
   onContextMenu,
 }: IndicateursDeSectionProps<Type, P>) {
   const { cible, propsDe } = useWidgetDrop(section.id, drag, locked);
+  // La permission du compte sur le type de chaque widget.
+  const acces = useAccesWidget();
   // Là où le dernier appui a eu lieu. Un widget qui glisse lui-même ce qu'il
   // porte — les listes et les cartes du mode Tâche — le marque
   // « data-no-widget-drag » : le glisser natif du widget n'y part pas.
   const appui = useRef<Element | null>(null);
 
-  // Un widget caché ou d'un type inconnu — rangé par une version plus
-  // récente — ne paraît pas, et ne précède ni ne suit personne.
+  // Un widget caché, d'un type inconnu — rangé par une version plus
+  // récente — ou d'un type que le compte ne lit pas ne paraît pas, et ne
+  // précède ni ne suit personne.
   const visibles = indicateurs.flatMap((indicateur) => {
     const widget = widgetOf(indicateur.type);
-    return widget && !widget.hidden?.(indicateur.config, locked) ? [{ indicateur, widget }] : [];
+    return widget && acces(widget.kind) !== "" && !widget.hidden?.(indicateur.config, locked)
+      ? [{ indicateur, widget }]
+      : [];
   });
 
   /** L'écart entre deux widgets visibles qui se suivent. */
@@ -355,13 +361,21 @@ function IndicateursDeSection<Type extends string, P extends IndicatorWidgetBase
         // Le rang parmi tous : c'est lui que le dépôt range.
         const index = indicateurs.indexOf(indicateur);
         const ecartAvant = rang === 0 ? 0 : ecartEntre(rang);
-        // Verrouillé, un widget qui se modifie sur place ne reçoit rien à
-        // enregistrer : son double-clic n'a plus d'effet.
+        // Figé — l'écran verrouillé, ou un type que le compte ne fait que
+        // lire —, un widget ne se glisse, ne s'ouvre ni ne se modifie : un
+        // widget qui se modifie sur place ne reçoit rien à enregistrer.
+        const fige = locked || acces(widget.kind) !== "update";
         const rendu: RenduWidget = {
-          onChange: locked ? () => {} : (config) => onChange(indicateur, config),
-          locked,
+          onChange: fige ? () => {} : (config) => onChange(indicateur, config),
+          locked: fige,
         };
-        const glisser = propsDe(indicateur.id, index);
+        const glisser = { ...propsDe(indicateur.id, index), ...(fige ? { draggable: false } : {}) };
+        // Le menu du clic droit — modifier, supprimer — n'est qu'aux widgets
+        // qu'on peut modifier.
+        const menuDe = (e: React.MouseEvent<HTMLElement>) => {
+          if (fige) return;
+          onContextMenu(indicateur, positionDuMenu(e));
+        };
         return (
           <Box
             key={indicateur.id}
@@ -380,7 +394,7 @@ function IndicateursDeSection<Type extends string, P extends IndicatorWidgetBase
               position: "relative",
               marginTop: ecartAvant,
               opacity: drag.dragged === indicateur.id ? 0.4 : 1,
-              cursor: locked || widget.ownClicks ? "default" : "grab",
+              cursor: fige || widget.ownClicks ? "default" : "grab",
               ...(widget.fill
                 ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
                 : {}),
@@ -396,7 +410,7 @@ function IndicateursDeSection<Type extends string, P extends IndicatorWidgetBase
               // Un widget qui garde ses clics — une liste, un titre — se pose
               // tel quel, sans l'encart des indicateurs.
               <Box
-                onContextMenu={(e) => onContextMenu(indicateur, positionDuMenu(e))}
+                onContextMenu={menuDe}
                 style={
                   widget.fill
                     ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
@@ -408,8 +422,8 @@ function IndicateursDeSection<Type extends string, P extends IndicatorWidgetBase
             ) : (
               <CarteIndicateurContext.Provider
                 value={{
-                  ouvrir: () => onOpen(indicateur),
-                  renommer: (nom) => onRename(indicateur, nom),
+                  ouvrir: () => !fige && onOpen(indicateur),
+                  renommer: (nom) => (fige ? Promise.resolve() : onRename(indicateur, nom)),
                 }}
               >
                 {/* Une div et non un bouton : le titre s'y change sur place,
@@ -422,8 +436,8 @@ function IndicateursDeSection<Type extends string, P extends IndicatorWidgetBase
                   tabIndex={0}
                   w="100%"
                   className={encart.encart}
-                  onClick={() => onOpen(indicateur)}
-                  onContextMenu={(e) => onContextMenu(indicateur, positionDuMenu(e))}
+                  onClick={() => !fige && onOpen(indicateur)}
+                  onContextMenu={menuDe}
                   style={{
                     display: "flex",
                     flexDirection: "column",

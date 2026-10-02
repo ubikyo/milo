@@ -20,7 +20,7 @@ export const sousCategorieWidget = creerTitreWidget({
   placeholder: "Sans titre",
   taille: 16,
   graisse: 400,
-  couleur: "var(--mantine-color-white)",
+  couleur: "#ffffff",
   margeBasse: ECART_SOUS_CATEGORIE,
   margeHaute: (previousType) => (previousType === "category" ? 20 : 30),
 });

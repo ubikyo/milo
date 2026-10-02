@@ -4,6 +4,7 @@
 // ou une catégorie privés restent fermés aux autres ici aussi.
 
 import { Router } from "express";
+import type { Request } from "express";
 import {
   PROJECT_REFERENCE_PREFIX,
   TASK_REFERENCE_PREFIX,
@@ -17,7 +18,7 @@ import {
 import type { Area, Id, SearchResult, SupportStatus } from "@milo/shared";
 import db from "../db/index.js";
 import { selection } from "../db/query.js";
-import { clauseSocietes, filtreSocietes, peut } from "../lib/droits.js";
+import { accesAuWidget, clauseSocietes, filtreSocietes, peut } from "../lib/droits.js";
 
 /** Ce que chaque sorte rend au plus : la liste reste lisible d'un coup d'œil. */
 const PAR_SORTE = 6;
@@ -189,9 +190,12 @@ const lectureDuBloc = (
   }
 };
 
-const accesTrouves = (userId: Id, plie: string): SearchResult[] => {
+const accesTrouves = (req: Request, plie: string): SearchResult[] => {
+  const userId = req.user.id;
   const trouves: SearchResult[] = [];
   for (const bloc of blocsVisibles.all(userId, userId)) {
+    // Un élément dont le compte ne lit pas le type de widget ne se trouve pas.
+    if (accesAuWidget(req, "access", bloc.type) === "") continue;
     let config: Record<string, unknown>;
     try {
       config = JSON.parse(bloc.config) ?? {};
@@ -256,7 +260,7 @@ searchRoutes.get("/", (req, res) => {
       title: a.name,
       context: joindre(a.company, a.last_user),
     })),
-    ...(peut(req, "access", "view") ? accesTrouves(req.user.id, plie) : []),
+    ...(peut(req, "access", "view") ? accesTrouves(req, plie) : []),
   ];
 
   res.json(resultats);

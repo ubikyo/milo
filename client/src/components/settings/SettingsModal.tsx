@@ -16,7 +16,6 @@ import {
   IconDeviceLaptop,
   IconBrandWindows,
   IconHeadset,
-  IconShieldLock,
   IconUsers,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -28,7 +27,6 @@ import BackupTab from "./BackupTab";
 import LookupManager from "../ui/LookupManager";
 import EntraTab from "./EntraTab";
 import AccessTab from "./AccessTab";
-import RolesTab from "./RolesTab";
 import CompanySupportModal from "./CompanySupportModal";
 import DeveloperTab from "./DeveloperTab";
 import SupportTab from "./SupportTab";
@@ -44,7 +42,6 @@ const TABS: {
 }[] = [
   { value: "companies", label: "Sociétés", icon: IconBuilding },
   { value: "access", label: "Accès", icon: IconUsers },
-  { value: "roles", label: "Rôles", icon: IconShieldLock },
   { value: "entra", label: "Entra", icon: IconBrandWindows },
   { value: "developer", label: "Développeur", icon: IconCode },
   // Les réglages propres à un mode : le Support, les Assets.
@@ -59,7 +56,7 @@ const TABS: {
  * et des groupes de l'annuaire, et sociétés et rôles n'ont
  * de sens qu'une fois quelqu'un d'autre que le compte « admin » connecté.
  */
-const AVEC_ENTRA = new Set(["companies", "access", "roles"]);
+const AVEC_ENTRA = new Set(["companies", "access"]);
 
 /** Les onglets que le compte « admin » ne voit pas. */
 const SANS_ADMIN = new Set(["developer", "support", "assets"]);
@@ -374,9 +371,8 @@ export default function SettingsModal({
           />,
         )}
 
-        {panel("access", <AccessTab companies={companies} />)}
+        {panel("access", <AccessTab />)}
 
-        {panel("roles", <RolesTab />)}
 
         {panel("support", <SupportTab canEdit={canEdit} />)}
 

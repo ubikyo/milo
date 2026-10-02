@@ -1,4 +1,5 @@
 import { Group, NumberInput } from "@mantine/core";
+import { LARGEUR_CHAMP, avecReinitialiser } from "./champs-style";
 import { nombre } from "./types";
 import type { AccessWidget, Marges } from "./types";
 import type { AccessBlock, AccessBlockType } from "@milo/shared";
@@ -79,9 +80,6 @@ export const voisinsDe = (
   };
 };
 
-/** Une marge tient en trois chiffres : le champ n'a pas à couvrir le tiroir. */
-const LARGEUR_CHAMP = 120;
-
 interface ChampsMargesProps {
   widget: AccessWidget;
   config: Record<string, unknown>;
@@ -118,6 +116,7 @@ export function ChampsMarges({ widget, config, onChange, voisins }: ChampsMarges
       allowNegative={false}
       allowDecimal={false}
       w={LARGEUR_CHAMP}
+      {...avecReinitialiser(valeur !== ordinaire, () => regler(cle, ordinaire, ""))}
     />
   );
 

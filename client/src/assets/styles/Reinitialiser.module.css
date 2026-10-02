@@ -1,0 +1,35 @@
+/* Le bouton qui ramène un champ de réglage à sa valeur par défaut, posé à
+   gauche dans le champ (widgets/champs-style.tsx). Il se lit comme les flèches
+   d'un champ numérique, de l'autre côté : le fond du champ, un filet de la
+   couleur de sa bordure pour l'en séparer, et un fond au survol — le gris
+   neutre de l'application (themes/colors.ts, NEUTRAL_HOVER), pas celui de
+   Mantine, qui tire sur le bleu. */
+.bouton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-inline-end: 1px solid var(--input-bd);
+  /* Le coin gauche du champ : sans lui, le fond du survol déborderait de
+     l'arrondi. */
+  border-radius: var(--input-radius) 0 0 var(--input-radius);
+  background-color: transparent;
+  color: light-dark(#4d4d4d, #c4c4c4);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .bouton:hover {
+    background-color: light-dark(#ececec, #2e2e2e);
+  }
+}
+
+/* Déjà à la valeur par défaut : estompé, et rien ne réagit. */
+.bouton[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.35;
+  background-color: transparent;
+}

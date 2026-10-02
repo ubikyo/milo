@@ -1,4 +1,5 @@
 import { Box, Center, Group, Menu, ScrollArea } from "@mantine/core";
+import { useAccesWidget } from "../../lib/droits";
 import {
   IconColumns,
   IconCopyPlus,
@@ -272,6 +273,8 @@ export default function SectionsBoard<S extends BoardSection>({
   onReorderSections,
   onChangeSection,
 }: SectionsBoardProps<S>) {
+  // La permission du compte sur chaque type de widget : le tiroir s'y règle.
+  const acces = useAccesWidget();
 
   // Le widget que l'on tient, ou « null ». Il vit ici et non dans une
   // colonne : on le prend dans l'une et on le pose dans une autre.
@@ -902,7 +905,8 @@ export default function SectionsBoard<S extends BoardSection>({
       <WidgetDrawer
         opened={tiroirOuvert}
         onClose={() => setTiroirOuvert(false)}
-        widgets={widgets}
+        // Le tiroir ne propose que les types que le compte peut modifier.
+        widgets={widgets.filter((w) => acces(w.kind) === "update")}
         onDragStart={(widget) => {
           setTypeNouveau(widget.type);
           setWidgetGlisse(NOUVEAU);

@@ -1,6 +1,7 @@
-import { TextInput, Title } from "@mantine/core";
+import { Group, Stack, TextInput, Title } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
-import { avec, texte } from "./types";
+import { ChampCouleur, ChampTaille } from "./champs-style";
+import { avec, nombre, texte } from "./types";
 import type { AccessWidget, WidgetDisplayProps } from "./types";
 import type { ComponentType } from "react";
 import type { AccessBlockType } from "@milo/shared";
@@ -12,6 +13,15 @@ import type { AccessBlockType } from "@milo/shared";
 // chacun n'a plus qu'à dire ces trois-là.
 
 const TITRE = "titre";
+const COULEUR = "couleur";
+const TAILLE = "taille";
+
+/**
+ * Les bornes de la taille : en deçà le titre ne se lit plus, au-delà il
+ * déborde de la colonne.
+ */
+const TAILLE_MIN = 8;
+const TAILLE_MAX = 64;
 
 interface TitreOptions {
   type: AccessBlockType;
@@ -21,9 +31,11 @@ interface TitreOptions {
   order: 1 | 2;
   /** Ce qu'un titre encore vide laisse voir : la place qu'il tient, et rien de plus. */
   placeholder: string;
+  /** La taille par défaut, que la configuration peut remplacer. */
   taille: number;
   /** La graisse du titre ; à défaut, celle de son niveau. */
   graisse?: number;
+  /** La couleur par défaut, en hexadécimal : le sélecteur la montre telle quelle. */
   couleur: string;
   /** L'air laissé avant ce qui suit dans la colonne. */
   margeBasse: number;
@@ -45,6 +57,8 @@ const affichage = (options: TitreOptions): ComponentType<WidgetDisplayProps> =>
     const champ = useRef<HTMLInputElement | null>(null);
 
     const enregistre = texte(config, TITRE);
+    const taille = nombre(config, TAILLE, options.taille);
+    const couleur = texte(config, COULEUR, options.couleur) || options.couleur;
     const titre = enAttente ?? enregistre;
 
     // Le champ prend le focus dès qu'il paraît, et la saisie s'y trouve déjà
@@ -100,11 +114,11 @@ const affichage = (options: TitreOptions): ComponentType<WidgetDisplayProps> =>
           variant="unstyled"
           styles={{
             input: {
-              fontSize: options.taille,
+              fontSize: taille,
               fontWeight:
                 options.graisse ?? `var(--mantine-h${options.order}-font-weight)`,
               lineHeight: `var(--mantine-h${options.order}-line-height)`,
-              color: options.couleur,
+              color: couleur,
               height: "auto",
               minHeight: 0,
               border: "none",
@@ -117,10 +131,10 @@ const affichage = (options: TitreOptions): ComponentType<WidgetDisplayProps> =>
     return (
       <Title
         order={options.order}
-        size={options.taille}
+        size={taille}
         fw={options.graisse}
         onDoubleClick={ouvrir}
-        c={options.couleur}
+        c={couleur}
         // La main : le titre se double-clique, il ne se saisit pas là où il
         // est posé — le caret laisserait croire qu'on écrit déjà dedans.
         // Un titre encore vide garde sa couleur : c'est le même titre, il
@@ -158,12 +172,25 @@ export const creerTitreWidget = (options: TitreOptions): AccessWidget => ({
   }),
 
   Config: ({ config, onChange }) => (
-    <TextInput
-      label="Titre"
-      placeholder={options.placeholder}
-      value={texte(config, TITRE)}
-      onChange={(e) => onChange(avec(config, TITRE, e.currentTarget.value))}
-      autoFocus
-    />
+    <Stack gap="xl">
+      <TextInput
+        label="Titre"
+        placeholder={options.placeholder}
+        value={texte(config, TITRE)}
+        onChange={(e) => onChange(avec(config, TITRE, e.currentTarget.value))}
+        autoFocus
+      />
+      <Group align="flex-start">
+        <ChampCouleur config={config} onChange={onChange} cle={COULEUR} defaut={options.couleur} />
+        <ChampTaille
+          config={config}
+          onChange={onChange}
+          cle={TAILLE}
+          defaut={options.taille}
+          min={TAILLE_MIN}
+          max={TAILLE_MAX}
+        />
+      </Group>
+    </Stack>
   ),
 });

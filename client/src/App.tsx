@@ -1854,7 +1854,7 @@ export default function App() {
   });
 
   return (
-    <DroitsProvider rights={user.rights}>
+    <DroitsProvider rights={user.rights} widgets={user.widgets}>
       <Stack gap={0} h="100vh">
         {/* Contenu resserré : moitié moins d'espace que les 100px d'origine, et
             le même en haut que sur les côtés. La rangée d'onglets de chaque mode

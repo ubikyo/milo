@@ -1,15 +1,22 @@
-// Les permissions d'un utilisateur ou d'un groupe Entra, en deux étages :
+// Les permissions d'un utilisateur ou d'un groupe Entra : le Paramétrage
+// (Voir ou Modifier), et une permission par type de widget — Aucun, Lire,
+// Modifier (widget-kinds.ts). Elles valent pour toutes les sociétés.
 //
-// - pour l'application : le Paramétrage (Voir ou Modifier), commun à toutes
-//   les sociétés, et les modes qui lui sont ouverts ;
-// - par société : un rôle, qui porte ses droits mode par mode.
-//
-// Le client s'en sert pour dessiner la grille des droits, le serveur pour
-// valider ce qu'on lui envoie : la liste des droits vit donc ici.
+// Les droits de chaque mode — Voir, Ajouter, Modifier, Supprimer — que les
+// routes et l'interface vérifient s'en déduisent : un mode suit le type de
+// ses widgets. Le client s'en sert pour taire ce qui serait refusé, le
+// serveur pour refuser.
 
 import type { Id } from "./domain.js";
 import { MODES } from "./modes.js";
 import type { Mode } from "./modes.js";
+import {
+  GENRES_DU_MODE,
+  accesLePlusLarge,
+  validWidgetRights,
+  widgetRightsPartout,
+} from "./widget-kinds.js";
+import type { WidgetRights } from "./widget-kinds.js";
 
 export const RIGHTS = [
   { value: "view", label: "Voir" },
@@ -20,16 +27,12 @@ export const RIGHTS = [
 
 export type Right = (typeof RIGHTS)[number]["value"];
 
-/**
- * Ce sur quoi un rôle porte des droits : les modes, dans l'ordre de la grille
- * des permissions. Le Paramétrage n'en est pas : il ne dépend d'aucune
- * société, il se règle pour l'application (AppPermissions).
- */
+/** Ce sur quoi portent les droits : les modes. */
 export const AREAS = MODES;
 
 export type Area = Mode;
 
-/** Les droits d'un rôle, domaine par domaine. Un domaine absent n'accorde rien. */
+/** Des droits, domaine par domaine. Un domaine absent n'accorde rien. */
 export type Permissions = Partial<Record<Area, Right[]>>;
 
 /**
@@ -39,7 +42,7 @@ export type Permissions = Partial<Record<Area, Right[]>>;
 export const rightsFor = (area: Area): readonly Right[] =>
   area === "assets" ? ["view"] : RIGHTS.map((r) => r.value);
 
-/** Tous les droits de tous les domaines : ceux de l'administrateur. */
+/** Tous les droits de tous les domaines : ceux du compte « admin ». */
 export const allPermissions = (): Permissions =>
   Object.fromEntries(AREAS.map((a) => [a.value, [...rightsFor(a.value)]]));
 
@@ -69,60 +72,59 @@ export const SETTINGS_ACCESS = [
 export type SettingsAccess = (typeof SETTINGS_ACCESS)[number]["value"];
 
 /**
- * Les permissions d'un utilisateur ou d'un groupe pour l'application, quelle
- * que soit la société : le Paramétrage, et les modes qui lui sont ouverts. Un
- * mode fermé ici ne s'ouvre par aucun rôle ; un mode ouvert ne donne, lui,
- * que ce que les rôles accordent société par société.
+ * Les permissions d'un utilisateur ou d'un groupe pour l'application : le
+ * Paramétrage, et une permission par type de widget.
  */
 export interface AppPermissions {
   settings: SettingsAccess;
-  modes: Mode[];
+  widgets: WidgetRights;
 }
 
-/** Celles d'un utilisateur ou d'un groupe qui n'en a pas encore : tous les modes, pas de Paramétrage. */
+/** Celles d'un utilisateur ou d'un groupe qui n'en a pas encore : rien. */
 export const defaultAppPermissions = (): AppPermissions => ({
   settings: "",
-  modes: MODES.map((m) => m.value),
+  widgets: widgetRightsPartout(""),
 });
 
 /** Des permissions reçues de l'extérieur, ramenées à ce qui existe. */
 export const validAppPermissions = (value: unknown): AppPermissions => {
   const source = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
-  const modes = Array.isArray(source["modes"]) ? (source["modes"] as unknown[]) : [];
   return {
     settings: SETTINGS_ACCESS.some((a) => a.value === source["settings"])
       ? (source["settings"] as SettingsAccess)
       : "",
-    modes: MODES.map((m) => m.value).filter((m) => modes.includes(m)),
+    widgets: validWidgetRights(source["widgets"]),
   };
 };
 
-export interface Role {
-  id: Id;
-  name: string;
-  /**
-   * Le rôle Administrateur : tous les droits, toujours. Il existe toujours,
-   * ne se supprime pas, et ses droits ne se modifient pas.
-   */
-  is_admin: boolean;
-  permissions: Permissions;
-  /** Le nombre d'attributions : la suppression les emporte. */
-  assignment_count: number;
-}
-
-/** Le rôle d'un compte pour une société. */
-export interface UserCompanyRole {
-  company_id: Id;
-  role_id: Id;
-}
+/**
+ * Les droits de chaque mode, déduits des permissions par type : un mode suit
+ * le plus large des types de ses widgets. « Lire » ouvre le mode en lecture ;
+ * « Modifier » y donne tout ce que le domaine propose.
+ */
+export const permissionsDesWidgets = (widgets: WidgetRights): Permissions => {
+  const resultat: Permissions = {};
+  for (const { value: area } of AREAS) {
+    const acces = GENRES_DU_MODE[area].reduce(
+      (acc, kind) => accesLePlusLarge(acc, widgets[kind]),
+      "" as WidgetRights[keyof WidgetRights],
+    );
+    if (acces === "view") resultat[area] = ["view"];
+    if (acces === "update") resultat[area] = [...rightsFor(area)];
+  }
+  return resultat;
+};
 
 /**
  * Les droits d'un compte, société par société : la clé est l'identifiant de
- * la société. Une société absente n'accorde rien. Quand le compte tient
- * plusieurs rôles dans une même société — le sien et ceux de ses groupes —,
- * leurs droits s'additionnent.
+ * la société. Une société absente n'accorde rien. La clé « * » vaut pour
+ * toutes les sociétés, y compris celles créées depuis : c'est ainsi que les
+ * permissions par type de widget, communes à toutes, se lisent.
  */
 export type CompanyRights = Record<string, Permissions>;
+
+/** La clé des droits qui valent pour toutes les sociétés. */
+export const TOUTES_SOCIETES = "*";
 
 /**
  * Le compte a-t-il ce droit dans cette société ? Ce qui n'appartient à aucune
@@ -136,12 +138,13 @@ export const can = (
   right: Right,
   companyId?: Id | string | null,
 ): boolean =>
-  companyId === null || companyId === undefined || companyId === ""
+  (rights[TOUTES_SOCIETES]?.[area]?.includes(right) ?? false) ||
+  (companyId === null || companyId === undefined || companyId === ""
     ? Object.values(rights).some((p) => p[area]?.includes(right) ?? false)
-    : (rights[String(companyId)]?.[area]?.includes(right) ?? false);
+    : (rights[String(companyId)]?.[area]?.includes(right) ?? false));
 
 /** Les sociétés où le compte a ce droit. */
 export const companiesWith = (rights: CompanyRights, area: Area, right: Right = "view"): Id[] =>
   Object.entries(rights)
-    .filter(([, p]) => p[area]?.includes(right))
+    .filter(([id, p]) => id !== TOUTES_SOCIETES && p[area]?.includes(right))
     .map(([id]) => Number(id));

@@ -5,15 +5,16 @@
 // (system) est à part : il n'a qu'un mot de passe, ne sert qu'au paramétrage,
 // et ne se montre dans aucune liste.
 
-import type { AppPermissions, CompanyRights, Mode, Permissions, PublicUser } from "@milo/shared";
+import type { AppPermissions, CompanyRights, PublicUser, WidgetRights } from "@milo/shared";
 import {
-  AREAS,
   DEFAULT_MODE,
-  allPermissions,
-  defaultAppPermissions,
+  TOUTES_SOCIETES,
   isMode,
+  peutLire,
+  permissionsDesWidgets,
+  reunirWidgetRights,
   validAppPermissions,
-  validPermissions,
+  widgetRightsPartout,
 } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import type { SessionRow, UserRow } from "../db/rows.js";
@@ -62,107 +63,50 @@ export const sessions = {
   purgeExpired: mutation("DELETE FROM sessions WHERE expires_at != '' AND expires_at < ?"),
 };
 
-/** Un rôle du compte, dans n'importe quelle société : le sien ou celui d'un de ses groupes. */
-const unRoleDuCompte = selection<{ role_id: number }>(
-  `SELECT a.role_id
-   FROM role_assignments a
-   WHERE (a.principal_type = 'user' AND a.principal_id = ?)
-      OR (a.principal_type = 'group' AND a.principal_id IN (SELECT value FROM json_each(?)))
-   LIMIT 1`,
-);
-
 /** Ses permissions pour l'application : les siennes et celles de ses groupes. */
-const permissionsDuCompte = selection<{ settings: string; modes: string }>(
-  `SELECT settings, modes FROM principal_permissions
+const permissionsDuCompte = selection<{ settings: string; widgets: string }>(
+  `SELECT settings, widgets FROM principal_permissions
    WHERE (principal_type = 'user' AND principal_id = ?)
       OR (principal_type = 'group' AND principal_id IN (SELECT value FROM json_each(?)))`,
 );
 
-/** Les utilisateurs et groupes qui portent un rôle : ceux sans permissions en base ont celles par défaut. */
-const principauxDuCompte = selection<{ principal_type: string; principal_id: string }>(
-  `SELECT DISTINCT principal_type, principal_id FROM role_assignments
-   WHERE (principal_type = 'user' AND principal_id = ?)
-      OR (principal_type = 'group' AND principal_id IN (SELECT value FROM json_each(?)))
-   EXCEPT
-   SELECT principal_type, principal_id FROM principal_permissions`,
-);
-
 /**
- * Ses permissions pour l'application, réunies : le Paramétrage le plus large
- * de ceux qu'il tient, et tous les modes ouverts par l'un ou l'autre — lui ou
- * un de ses groupes. Qui porte un rôle sans permissions réglées a celles par
- * défaut : tous les modes, pas de Paramétrage.
+ * Ses permissions pour l'application, réunies — les siennes et celles de ses
+ * groupes : le Paramétrage le plus large, et pour chaque type de widget la
+ * permission la plus large. Le compte « admin » a tout.
  */
 const permissionsApplication = (user: UserRow): AppPermissions => {
-  const groupes = JSON.stringify(groupesDu(user));
-  const toutes = permissionsDuCompte.all(user.entra_id, groupes).map((l) => {
-    let modes: unknown = [];
-    try {
-      modes = JSON.parse(l.modes);
-    } catch {
-      // Un JSON illisible n'ouvre aucun mode.
-    }
-    return validAppPermissions({ settings: l.settings, modes });
-  });
-  if (principauxDuCompte.get(user.entra_id, groupes)) toutes.push(defaultAppPermissions());
-
-  const modes = new Set<Mode>(toutes.flatMap((p) => p.modes));
+  if (user.system) return { settings: "update", widgets: widgetRightsPartout("update") };
+  const toutes = permissionsDuCompte
+    .all(user.entra_id, JSON.stringify(groupesDu(user)))
+    .map((l) => {
+      let widgets: unknown = {};
+      try {
+        widgets = JSON.parse(l.widgets);
+      } catch {
+        // Un JSON illisible n'accorde rien.
+      }
+      return validAppPermissions({ settings: l.settings, widgets });
+    });
   const settings = toutes.some((p) => p.settings === "update")
     ? "update"
     : toutes.some((p) => p.settings === "view")
       ? "view"
       : "";
-  return { settings, modes: [...modes] };
+  return { settings, widgets: reunirWidgetRights(toutes.map((p) => p.widgets)) };
 };
 
-/** Les mêmes, société par société. */
-const rolesParSociete = selection<{ company_id: number; is_admin: number; permissions: string }>(
-  `SELECT a.company_id, r.is_admin, r.permissions
-   FROM role_assignments a JOIN roles r ON r.id = a.role_id
-   WHERE (a.principal_type = 'user' AND a.principal_id = ?)
-      OR (a.principal_type = 'group' AND a.principal_id IN (SELECT value FROM json_each(?)))`,
-);
-
-const toutesLesSocietes = selection<{ id: number }>("SELECT id FROM companies");
-
-/** Les droits d'un rôle tels qu'il les accorde : tous pour l'administrateur. */
-const droitsDuRole = (role: { is_admin: number; permissions: string }): Permissions => {
-  if (role.is_admin) return allPermissions();
-  try {
-    return validPermissions(JSON.parse(role.permissions));
-  } catch {
-    // Un JSON illisible n'accorde rien.
-    return {};
-  }
-};
+/** Ses permissions par type de widget. */
+export const droitsWidgets = (user: UserRow): WidgetRights => permissionsApplication(user).widgets;
 
 /**
- * Ses droits dans les modes, société par société. Le compte « admin » les a
- * tous, partout. Les autres les tiennent de leurs rôles — le leur et ceux de
- * leurs groupes, qui s'additionnent dans une même société. Une société où
- * le compte n'a aucun rôle n'apparaît pas : elle ne lui accorde rien.
+ * Ses droits dans les modes, déduits de ses permissions par type de widget
+ * (shared, permissionsDesWidgets). Ils valent pour toutes les sociétés : la
+ * clé « * » le dit.
  */
-export const droitsSocietes = (user: UserRow): CompanyRights => {
-  if (user.system) {
-    return Object.fromEntries(toutesLesSocietes.all().map((c) => [String(c.id), allPermissions()]));
-  }
-  // Un mode fermé pour l'application ne s'ouvre par aucun rôle.
-  const ouverts = new Set(permissionsApplication(user).modes);
-  const parSociete = new Map<string, Permissions>();
-  for (const role of rolesParSociete.all(user.entra_id, JSON.stringify(groupesDu(user)))) {
-    const cle = String(role.company_id);
-    const deja = parSociete.get(cle) ?? {};
-    const ajout = droitsDuRole(role);
-    const union: Permissions = {};
-    for (const { value: area } of AREAS) {
-      if (!ouverts.has(area)) continue;
-      const droits = new Set([...(deja[area] ?? []), ...(ajout[area] ?? [])]);
-      if (droits.size > 0) union[area] = validPermissions({ [area]: [...droits] })[area];
-    }
-    parSociete.set(cle, union);
-  }
-  return Object.fromEntries(parSociete);
-};
+export const droitsSocietes = (user: UserRow): CompanyRights => ({
+  [TOUTES_SOCIETES]: permissionsDesWidgets(droitsWidgets(user)),
+});
 
 /** Les groupes Entra du compte, tels que relus à sa dernière connexion. */
 export const groupesDu = (user: UserRow): string[] => {
@@ -180,26 +124,25 @@ export interface DroitsParametrage {
 }
 
 /**
- * Ses droits sur le Paramétrage. Le compte « admin » les a tous. Les autres
- * les tiennent de leurs permissions pour l'application — les leurs ou celles
- * d'un de leurs groupes : le Paramétrage est commun à toutes les sociétés,
- * aucun rôle ne l'accorde. « Modifier » comprend « Voir ».
+ * Ses droits sur le Paramétrage, tenus de ses permissions — les siennes ou
+ * celles d'un de ses groupes. Le compte « admin » les a tous. « Modifier »
+ * comprend « Voir ».
  */
 export const droitsParametrage = (user: UserRow): DroitsParametrage => {
-  if (user.system) return { view: true, update: true };
   const { settings } = permissionsApplication(user);
   return { view: settings !== "", update: settings === "update" };
 };
 
 /**
- * Le compte a-t-il accès à Milo ? Le compte « admin », quelqu'un qui a un
- * rôle dans au moins une société, ou qui voit le Paramétrage — directement,
- * ou par l'un de ses groupes.
+ * Le compte a-t-il accès à Milo ? Le compte « admin », ou quelqu'un qui lit
+ * au moins un type de widget ou voit le Paramétrage — directement, ou par
+ * l'un de ses groupes.
  */
-export const aAcces = (user: UserRow): boolean =>
-  Boolean(user.system) ||
-  unRoleDuCompte.get(user.entra_id, JSON.stringify(groupesDu(user))) !== undefined ||
-  droitsParametrage(user).view;
+export const aAcces = (user: UserRow): boolean => {
+  if (user.system) return true;
+  const { settings, widgets } = permissionsApplication(user);
+  return settings !== "" || Object.values(widgets).some(peutLire);
+};
 
 /** Un compte tel qu'il se montre : jamais son empreinte de mot de passe. */
 export const publicUser = (user: UserRow): PublicUser => ({
@@ -212,6 +155,7 @@ export const publicUser = (user: UserRow): PublicUser => ({
   gravatar_url: gravatarUrl(user.email),
   settings: droitsParametrage(user),
   rights: droitsSocietes(user),
+  widgets: droitsWidgets(user),
   system: Boolean(user.system),
   default_mode: isMode(user.default_mode) ? user.default_mode : DEFAULT_MODE,
   created_at: user.created_at,
