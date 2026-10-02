@@ -42,7 +42,6 @@ const ICONES: Record<NotificationKind, ComponentType<{ size?: number }>> = {
   access: IconHeartbeat,
 };
 
-const HEURE = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
 const JOUR = new Intl.DateTimeFormat("fr-FR", {
   day: "numeric",
   month: "short",
@@ -57,13 +56,11 @@ const JOUR_ANNEE = new Intl.DateTimeFormat("fr-FR", {
   minute: "2-digit",
 });
 
-/** L'heure seule pour aujourd'hui, le jour en plus sinon, l'année si ce n'est pas la même. */
+/** La date et l'heure, avec l'année si ce n'est pas la même. */
 const quand = (iso: string): string => {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  const maintenant = new Date();
-  if (date.toDateString() === maintenant.toDateString()) return HEURE.format(date);
-  if (date.getFullYear() === maintenant.getFullYear()) return JOUR.format(date);
+  if (date.getFullYear() === new Date().getFullYear()) return JOUR.format(date);
   return JOUR_ANNEE.format(date);
 };
 
@@ -184,8 +181,8 @@ export default function NotificationsDrawer({
           </Tabs.List>
 
           <Tabs.Panel value="notifications" style={DRAWER_PANEL_STYLE}>
-            <DrawerScrollArea>
-              <Stack gap={2} style={{ flex: 1, minHeight: 0 }}>
+            <DrawerScrollArea fill>
+              <Stack gap={30} style={{ flex: 1, minHeight: 0 }}>
                 {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
 
                 {liste && liste.length === 0 && (
@@ -198,13 +195,10 @@ export default function NotificationsDrawer({
                     : (ICONES[notification.kind] ?? IconBell);
                   const ouvrable = !notification.deleted;
                   return (
-                    <Group
+                    <div
                       key={notification.id}
                       className={classes.ligne}
                       data-ouvrable={ouvrable || undefined}
-                      gap="sm"
-                      wrap="nowrap"
-                      align="flex-start"
                       role={ouvrable ? "button" : undefined}
                       tabIndex={ouvrable ? 0 : undefined}
                       onClick={ouvrable ? () => onOpen(notification) : undefined}
@@ -216,36 +210,37 @@ export default function NotificationsDrawer({
                           : undefined
                       }
                     >
-                      <div style={{ paddingTop: 2, display: "flex" }}>
+                      <Group className={classes.entete} gap="sm" wrap="nowrap">
                         <Icone size={16} />
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <Text size="sm" fw={600} truncate>
+                        <Text size="sm" fw={600} truncate style={{ flex: 1, minWidth: 0 }}>
                           {notification.title}
                         </Text>
-                        <Text size="sm">
-                          {notification.author} {notification.message}
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          {quand(notification.created_at)}
-                        </Text>
-                      </div>
-                      <ActionIcon
-                        className={classes.supprimer}
-                        variant="subtle"
-                        color="gray"
-                        size="sm"
-                        aria-label="Supprimer la notification"
-                        style={{ "--ai-hover": NEUTRAL_HOVER } as CSSProperties}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void supprimer(notification);
-                        }}
-                        onKeyDown={(event) => event.stopPropagation()}
-                      >
-                        <IconX size={14} />
-                      </ActionIcon>
-                    </Group>
+                        <Group gap={0} wrap="nowrap">
+                          <Text size="xs" className={classes.date}>
+                            {quand(notification.created_at)}
+                          </Text>
+                          <div className={classes.croix}>
+                            <ActionIcon
+                              className={classes.supprimer}
+                              variant="transparent"
+                              size="sm"
+                              style={{ "--ai-color": "#fff" } as CSSProperties}
+                              aria-label="Supprimer la notification"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void supprimer(notification);
+                              }}
+                              onKeyDown={(event) => event.stopPropagation()}
+                            >
+                              <IconX size={14} />
+                            </ActionIcon>
+                          </div>
+                        </Group>
+                      </Group>
+                      <Text className={classes.corps} size="sm">
+                        {notification.author} {notification.message}
+                      </Text>
+                    </div>
                   );
                 })}
               </Stack>

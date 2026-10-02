@@ -12,8 +12,9 @@ import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import ErrorAlert from "../ui/ErrorAlert";
 import ListItems, { ADD_ROW_HEIGHT, ROW_PADDING } from "../ui/ListItems";
 import DirectoryPicker from "./DirectoryPicker";
-import PrincipalRolesModal from "./PrincipalRolesModal";
+import PrincipalPermissionsModal from "./PrincipalPermissionsModal";
 import { messageErreur } from "../../lib/errors";
+import { defaultAppPermissions } from "@milo/shared";
 import type {
   Company,
   EntraPrincipal,
@@ -67,9 +68,10 @@ export default function AccessTab({ companies }: { companies: Company[] }) {
     reload();
   }, [reload]);
 
-  const rolesActuels = rolesDe
-    ? (acces.find((a) => cle(a.principal) === cle(rolesDe))?.roles ?? [])
-    : [];
+  const actuel = rolesDe ? acces.find((a) => cle(a.principal) === cle(rolesDe)) : undefined;
+  const rolesActuels = actuel?.roles ?? [];
+  // Qui arrive de l'annuaire n'en a pas encore : tous les modes, pas de Paramétrage.
+  const appActuelle = actuel?.app ?? defaultAppPermissions();
 
   return (
     <Stack gap="sm" ref={cadre}>
@@ -122,7 +124,7 @@ export default function AccessTab({ companies }: { companies: Company[] }) {
             height={ROW_HEIGHT}
             actions={[
               {
-                label: "Rôles",
+                label: "Permissions",
                 icon: IconShieldLock,
                 onClick: () => setRolesDe(principal),
               },
@@ -159,8 +161,9 @@ export default function AccessTab({ companies }: { companies: Company[] }) {
         ))}
       </ListItems>
 
-      <PrincipalRolesModal
+      <PrincipalPermissionsModal
         principal={rolesDe}
+        currentApp={appActuelle}
         current={rolesActuels}
         companies={companies}
         onClose={() => setRolesDe(null)}

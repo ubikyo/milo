@@ -3,6 +3,7 @@ import { IconFolders } from "@tabler/icons-react";
 import ProjectIndicatorsPanel from "../components/project/ProjectIndicatorsPanel";
 import { ProjetsListeContext } from "../components/project/ProjectTable";
 import BoardTabs from "../components/ui/BoardTabs";
+import type { PanelInheritance } from "../components/ui/HeriteConfirmModal";
 import EmptyPanel from "../components/ui/EmptyPanel";
 import type { AccountSlot } from "../components/ui/AccountControls";
 import type { IndicatorSection, Project, ProjectBoard, ProjectIndicator } from "@milo/shared";
@@ -21,21 +22,21 @@ interface ProjectsPageProps {
   boards: ProjectBoard[] | null;
   boardId: string | null;
   onBoardChange: (id: string | null) => void;
-  onAddBoard: () => void;
-  onTogglePrivateBoard: (id: number) => void | Promise<void>;
+  onAddBoard?: () => void;
+  onTogglePrivateBoard?: (id: number) => void | Promise<void>;
   /** Ouvre la copie des étiquettes de l'onglet visé vers un autre tableau. */
-  onCopyLabels: (id: number) => void;
+  onCopyLabels?: (id: number) => void;
   /** Ouvre la copie des catégories de l'onglet visé vers un autre tableau. */
-  onCopyCategories: (id: number) => void;
+  onCopyCategories?: (id: number) => void;
   /** Ouvre la gestion des catégories de l'onglet visé. */
-  onManageCategories: (id: number) => void;
+  onManageCategories?: (id: number) => void;
   /** Ouvre la gestion des types de jalons ; absent sans le droit de les modifier. */
   onManageMilestones?: () => void;
   /** Renommer un onglet sur place, au double clic sur son nom. */
-  onRenameBoard: (id: number, name: string) => void | Promise<void>;
-  onDeleteBoard: (id: number) => void | Promise<void>;
+  onRenameBoard?: (id: number, name: string) => void | Promise<void>;
+  onDeleteBoard?: (id: number) => void | Promise<void>;
   /** Le nouvel ordre des onglets, glissés dans la rangée. */
-  onReorderBoards: (ids: number[]) => void | Promise<void>;
+  onReorderBoards?: (ids: number[]) => void | Promise<void>;
   projects: Project[] | null;
   /** Ce dont la liste a besoin pour ses entonnoirs : la page ne fait que le transmettre. */
   filters: ProjectFiltersProps;
@@ -44,7 +45,7 @@ interface ProjectsPageProps {
   onDuplicateProject: (project: Project) => void;
   onDeleteProject: (project: Project) => void;
   onCreateTask: (project: Project) => void;
-  onAddProject: () => void;
+  onAddProject?: () => void;
   /** Les projets suivis, et de quoi suivre ou cesser de suivre l'un d'eux. */
   followedIds: number[];
   onToggleFollow: (project: Project) => void;
@@ -60,7 +61,9 @@ interface ProjectsPageProps {
   onIndicatorsChanged: () => void | Promise<void>;
   /** Le verrou des sections : ni ajout ni déplacement. */
   indicatorsLocked: boolean;
-  onToggleIndicatorsLock: () => void | Promise<void>;
+  onToggleIndicatorsLock?: () => void | Promise<void>;
+  /** « Hérité » des sections, communes à tous les tableaux : la structure partagée, ou la sienne. */
+  indicatorsInheritance?: PanelInheritance;
 }
 
 export default function ProjectsPage({
@@ -93,6 +96,7 @@ export default function ProjectsPage({
   onIndicatorsChanged,
   indicatorsLocked,
   onToggleIndicatorsLock,
+  indicatorsInheritance,
 }: ProjectsPageProps) {
   // Sans tableau, l'invite prend la place des sections — mais sous la rangée,
   // qui reste : c'est elle qui porte la société et le compte, et on doit
@@ -125,7 +129,19 @@ export default function ProjectsPage({
         onDelete={onDeleteBoard}
         onReorder={onReorderBoards}
         deleteWarning="Ses catégories, ses projets et leurs commentaires seront supprimés."
-        sectionsLock={{ locked: indicatorsLocked, onToggle: onToggleIndicatorsLock }}
+        sectionsLock={
+          onToggleIndicatorsLock
+            ? { locked: indicatorsLocked, onToggle: onToggleIndicatorsLock }
+            : undefined
+        }
+        inheritance={
+          indicatorsInheritance
+            ? {
+                of: () => indicatorsInheritance.inherited,
+                onToggle: () => indicatorsInheritance.onToggle(),
+              }
+            : undefined
+        }
         account={account}
       />
       {sansTableau ?? (

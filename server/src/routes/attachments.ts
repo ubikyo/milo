@@ -30,9 +30,14 @@ const FICHIER_INTROUVABLE = "Fichier introuvable";
 /** Le corps est un fichier : on le prend tel quel, quel que soit son type annoncé. */
 const corpsFichier = express.raw({ type: () => true, limit: TAILLE_MAX });
 
-const carteOuverte = (id: unknown, user: Express.Request["user"]) => {
+/**
+ * La carte visée, si son tableau est ouvert à cette personne et qu'elle peut
+ * modifier les tâches de sa société : tout ce qui passe par ici écrit sur la
+ * carte.
+ */
+const carteOuverte = (id: unknown, req: Request) => {
   const card = orNotFound(taskCards.byId.get(id), CARTE_INTROUVABLE);
-  boardOuvert(boardOfCard(card), user);
+  boardOuvert(boardOfCard(card), req, "update");
   return card;
 };
 
@@ -78,7 +83,7 @@ export const cardMediaRoutes = Router({ mergeParams: true });
 
 cardMediaRoutes.post("/attachments", corpsFichier, (req, res) => {
   const { id } = req.params as { id?: string };
-  const card = carteOuverte(id, req.user);
+  const card = carteOuverte(id, req);
   const { contenu, nom, mime } = fichierRecu(req);
 
   const fichier = ecrireMedia(contenu, nom);
@@ -108,7 +113,7 @@ cardMediaRoutes.post("/attachments", corpsFichier, (req, res) => {
 // citation pour savoir que le fichier sert encore.
 cardMediaRoutes.post("/images", corpsFichier, (req, res) => {
   const { id } = req.params as { id?: string };
-  carteOuverte(id, req.user);
+  carteOuverte(id, req);
   const { contenu, nom } = fichierRecu(req);
 
   // Une image que le serveur ne rendrait pas telle quelle n'a rien à faire
@@ -126,7 +131,7 @@ export const attachmentRoutes = Router();
 
 attachmentRoutes.delete("/:id", (req, res) => {
   const piece = orNotFound(attachments.byId.get(req.params.id), PIECE_INTROUVABLE);
-  const carte = carteOuverte(piece.card_id, req.user);
+  const carte = carteOuverte(piece.card_id, req);
 
   removeAttachment(piece);
   notifierSuppression({

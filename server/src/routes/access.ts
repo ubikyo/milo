@@ -3,15 +3,17 @@
 // fermée : privée, elle ne se montre qu'à son auteur.
 
 import { Router } from "express";
+import type { Request } from "express";
 import {
   ACCESS_BLOCK_CONVERSIONS,
   ACCESS_GAP_DEFAUT,
   isAccessBlockType,
 } from "@milo/shared";
-import type { AccessBlockType, Id } from "@milo/shared";
+import type { AccessBlockType, AccessCategory, Id, LayoutState } from "@milo/shared";
 import { transaction } from "../db/query.js";
-import type { AccessBlockRow, AccessSectionRow } from "../db/rows.js";
-import { badRequest, forbidden, orNotFound, requireText, toIds } from "../lib/http.js";
+import type { AccessBlockRow, AccessCategoryRow, AccessSectionRow } from "../db/rows.js";
+import { droitDeLaMethode, exiger } from "../lib/droits.js";
+import { badRequest, notFound, orNotFound, requireText, toIds } from "../lib/http.js";
 import { fluxDe, reglagesFlux } from "../lib/feed.js";
 import { etatsUptime, reglagesUptime } from "../lib/uptime.js";
 import { ecartColonnes, rangDemande, uniteLargeur, valeurLargeur } from "../lib/sections.js";
@@ -24,7 +26,11 @@ import {
   accessSections,
   blocRendu,
 } from "../repositories/access.js";
-import { ordreRecu, rangerAccessCategories } from "../repositories/reorder.js";
+import { personalLayouts, scopeAcces } from "../repositories/layouts.js";
+import { ordreRecu } from "../repositories/reorder.js";
+import { dansLOrdreDe, userTabOrders } from "../repositories/tab-orders.js";
+
+const SCOPE_CATEGORIES = "access-categories";
 
 /** Un réglage arrive en booléen ; la base le range en 0 ou 1. */
 const drapeau = (valeur: unknown, defaut: 0 | 1): 0 | 1 =>
@@ -36,8 +42,26 @@ export const accessCategoryRoutes = Router();
 
 accessCategoryRoutes.use(touch("access-categories", "access-sections", "access-blocks"));
 
+/**
+ * Une catégorie telle que ce compte la voit : son « Hérité » est le sien
+ * (repositories/layouts.ts). Le menu de chaque onglet le montre, pas
+ * seulement celui de la catégorie ouverte.
+ */
+const pourCompte = (categorie: AccessCategoryRow, userId: Id): AccessCategory => ({
+  ...categorie,
+  // Privée, elle n'a que sa structure publique (voir « proprietaire »).
+  inherited:
+    Boolean(categorie.is_private) || !personalLayouts.personnel(userId, scopeAcces(categorie.id)),
+});
+
+/** Les catégories que ce compte voit, dans son ordre à lui (repositories/tab-orders.ts). */
+const categoriesVisibles = (userId: Id): AccessCategory[] =>
+  dansLOrdreDe(userId, SCOPE_CATEGORIES, accessCategories.visibleTo.all(userId)).map((categorie) =>
+    pourCompte(categorie, userId),
+  );
+
 accessCategoryRoutes.get("/", (req, res) => {
-  res.json(accessCategories.visibleTo.all(req.user.id));
+  res.json(categoriesVisibles(req.user.id));
 });
 
 accessCategoryRoutes.post("/", (req, res) => {
@@ -54,12 +78,12 @@ accessCategoryRoutes.post("/", (req, res) => {
     drapeau(req.body.is_private, 0) ? req.user.id : null,
     now(),
   );
-  res.status(201).json(accessCategories.byId.get(lastInsertRowid));
+  res.status(201).json(pourCompte(accessCategories.byId.get(lastInsertRowid)!, req.user.id));
 });
 
 // Ranger les onglets. Déclaré avant « /:id », sinon « reorder » serait pris
-// pour un identifiant. L'ordre est celui de tout le monde : une catégorie
-// privée qu'on ne voit pas garde sa place (repositories/reorder.ts).
+// pour un identifiant. L'ordre est celui de ce compte seulement : le voir
+// suffit pour le ranger (app.ts).
 accessCategoryRoutes.put("/reorder", (req, res) => {
   const visibles = accessCategories.visibleTo.all(req.user.id);
   const ordre = ordreRecu(
@@ -68,8 +92,8 @@ accessCategoryRoutes.put("/reorder", (req, res) => {
     "La liste des identifiants ne correspond pas aux catégories",
   );
 
-  rangerAccessCategories(ordre);
-  res.json(accessCategories.visibleTo.all(req.user.id));
+  userTabOrders.ranger(req.user.id, SCOPE_CATEGORIES, ordre);
+  res.json(categoriesVisibles(req.user.id));
 });
 
 accessCategoryRoutes.put("/:id", (req, res) => {
@@ -89,13 +113,15 @@ accessCategoryRoutes.put("/:id", (req, res) => {
     owner,
     existing.id,
   );
-  res.json(accessCategories.byId.get(existing.id));
+  res.json(pourCompte(accessCategories.byId.get(existing.id)!, req.user.id));
 });
 
 accessCategoryRoutes.delete("/:id", (req, res) => {
   const existing = accessCategorieOuverte(req.params.id, req.user);
-  // Ses sections partent avec elle, par clé étrangère.
+  // Ses sections partent avec elle, par clé étrangère ; les choix « Hérité »
+  // qui la nommaient n'ont plus d'objet.
   accessCategories.remove.run(existing.id);
+  personalLayouts.oublierScope.run(scopeAcces(existing.id));
   res.status(204).end();
 });
 
@@ -103,49 +129,123 @@ accessCategoryRoutes.delete("/:id", (req, res) => {
 // Une section est une colonne d'une catégorie. Elle n'a pas de visibilité
 // propre : elle suit celle de la catégorie qui la porte, et chaque route
 // commence donc par l'ouvrir.
+//
+// Une catégorie a sa structure publique, et celle de chaque compte qui ne
+// l'hérite plus (« Hérité » décoché, repositories/layouts.ts). Chacun ne voit
+// et ne touche que celle qu'il regarde : une section d'une autre structure est
+// introuvable.
 
 export const accessSectionRoutes = Router();
 
 accessSectionRoutes.use(touch("access-sections", "access-blocks"));
 
-/** La section demandée, et la catégorie ouverte qui la porte. */
-const sectionOuverte = (id: unknown, user: Parameters<typeof accessCategorieOuverte>[1]) => {
+type Compte = Request["user"];
+
+/**
+ * La structure que ce compte regarde dans cette catégorie : la publique (nul),
+ * ou la sienne. Une catégorie privée n'est qu'à son auteur : elle n'a que sa
+ * structure publique, et les copies d'avant sa fermeture dorment jusqu'à ce
+ * qu'elle se rouvre.
+ */
+const proprietaire = (categorie: AccessCategoryRow, user: Compte): Id | null =>
+  categorie.is_private ? null : personalLayouts.proprietaire(user.id, scopeAcces(categorie.id));
+
+/**
+ * Les routeurs des sections et des éléments n'exigent que de voir le mode
+ * (app.ts). Écrire dans la structure publique demande en plus le droit que
+ * dit la méthode ; sa propre structure n'appartient qu'à soi. « Verrouillé »
+ * ne vit que dans la fenêtre qui le pose (client) : le serveur l'ignore.
+ */
+const exigerEcriture = (req: Request, owner: Id | null): void => {
+  if (owner === null) exiger(req, "access", droitDeLaMethode(req));
+};
+
+/** La catégorie ouverte, et la structure que ce compte y regarde. */
+const structureOuverte = (categoryId: unknown, user: Compte) => {
+  const categorie = accessCategorieOuverte(categoryId, user);
+  return { categorie, owner: proprietaire(categorie, user) };
+};
+
+/** La section demandée, si elle est de la structure regardée ; et sa catégorie. */
+const sectionOuverte = (id: unknown, user: Compte) => {
   const section = orNotFound(accessSections.byId.get(id), SECTION_INTROUVABLE);
-  accessCategorieOuverte(section.category_id, user);
-  return section;
+  const { categorie, owner } = structureOuverte(section.category_id, user);
+  if (section.owner_id !== owner) notFound(SECTION_INTROUVABLE);
+  return { section, categorie, owner };
 };
 
 accessSectionRoutes.get("/", (req, res) => {
   const { category } = req.query;
   if (!category) badRequest("La catégorie est requise");
-  const ouverte = accessCategorieOuverte(category, req.user);
-  res.json(accessSections.byCategory.all(ouverte.id));
+  const { categorie, owner } = structureOuverte(category, req.user);
+  res.json(accessSections.byCategory.all(categorie.id, owner));
+});
+
+/**
+ * « Hérité » d'une catégorie : sa structure publique, ou sa propre copie. Le
+ * décocher part d'une copie de la publique — sections et éléments — ; le
+ * recocher efface la sienne. Le voir suffit : on ne règle que pour soi.
+ * Déclaré avant « /:id », sinon « layout » serait pris pour un identifiant.
+ */
+accessSectionRoutes.get("/layout", (req, res) => {
+  const { category } = req.query;
+  if (!category) badRequest("La catégorie est requise");
+  const { owner } = structureOuverte(category, req.user);
+  res.json({ inherited: owner === null } satisfies LayoutState);
+});
+
+const personnaliser = transaction((categorieId: Id, userId: Id): void => {
+  accessSections.removeOwned.run(categorieId, userId);
+  const timestamp = now();
+  accessSections.byCategory.all(categorieId, null).forEach((section, place) => {
+    copierSection(section, userId, place, timestamp);
+  });
+  personalLayouts.poser(userId, scopeAcces(categorieId));
+});
+
+const heriter = transaction((categorieId: Id, userId: Id): void => {
+  accessSections.removeOwned.run(categorieId, userId);
+  personalLayouts.retirer(userId, scopeAcces(categorieId));
+});
+
+accessSectionRoutes.put("/layout", (req, res) => {
+  const { categorie, owner } = structureOuverte(req.body.category_id, req.user);
+  if (categorie.is_private) badRequest("Une catégorie privée n'a pas de structure partagée");
+  if (req.body.inherited) heriter(categorie.id, req.user.id);
+  else if (owner === null) personnaliser(categorie.id, req.user.id);
+  res.json({
+    inherited: proprietaire(categorie, req.user) === null,
+  } satisfies LayoutState);
 });
 
 accessSectionRoutes.post("/", (req, res) => {
   const categoryId = req.body.category_id;
   if (!categoryId) badRequest("La catégorie est requise");
-  const ouverte = accessCategorieOuverte(categoryId, req.user);
+  const { categorie, owner } = structureOuverte(categoryId, req.user);
+  // Le verrou ne s'opposait pas à l'ajout d'une colonne : il ne s'y oppose
+  // toujours pas.
+  exigerEcriture(req, owner);
 
   const unite = uniteLargeur(req.body.width_unit, "auto");
   const valeur = valeurLargeur(unite, req.body.width_value);
 
-  // Ajoutée à la suite des colonnes déjà posées dans cette catégorie, ou au
+  // Ajoutée à la suite des colonnes déjà posées dans cette structure, ou au
   // rang demandé : le « + » entre deux colonnes l'y glisse.
-  const { next } = accessSections.nextPosition(ouverte.id);
+  const { next } = accessSections.nextPosition(categorie.id, owner);
   const { lastInsertRowid } = accessSections.create.run(
-    ouverte.id,
+    categorie.id,
     unite,
     valeur,
     ecartColonnes(req.body.gap, ACCESS_GAP_DEFAUT),
     next,
+    owner,
     now(),
   );
   const id = Number(lastInsertRowid);
   const rang = rangDemande(req.body.index);
   if (rang !== null) {
     const autres = accessSections.byCategory
-      .all(ouverte.id)
+      .all(categorie.id, owner)
       .map((s) => s.id)
       .filter((autre) => autre !== id);
     rangerSections([...autres.slice(0, rang), id, ...autres.slice(rang)]);
@@ -163,21 +263,22 @@ const rangerSections = transaction((ids: Id[]) => {
 accessSectionRoutes.put("/reorder", (req, res) => {
   const categoryId = req.body.category_id;
   if (!categoryId) badRequest("La catégorie est requise");
-  const ouverte = accessCategorieOuverte(categoryId, req.user);
-  exigerDeverrouillee(ouverte);
+  const { categorie, owner } = structureOuverte(categoryId, req.user);
+  exigerEcriture(req, owner);
 
   const ids = toIds(req.body.ids);
-  const connues = accessSections.byCategory.all(ouverte.id).map((s) => s.id);
+  const connues = accessSections.byCategory.all(categorie.id, owner).map((s) => s.id);
   if (ids.length !== connues.length || !connues.every((id) => ids.includes(id))) {
     badRequest("La liste des identifiants ne correspond pas à cette catégorie");
   }
 
   rangerSections(ids);
-  res.json(accessSections.byCategory.all(ouverte.id));
+  res.json(accessSections.byCategory.all(categorie.id, owner));
 });
 
 accessSectionRoutes.put("/:id", (req, res) => {
-  const existing = sectionOuverte(req.params.id, req.user);
+  const { section: existing, owner } = sectionOuverte(req.params.id, req.user);
+  exigerEcriture(req, owner);
   const unite = uniteLargeur(req.body.width_unit, existing.width_unit);
   // Changer d'unité sans redire la valeur garderait l'ancienne, qui ne veut
   // plus rien dire : « 30 % » ne devient pas « 30 px ».
@@ -190,30 +291,40 @@ accessSectionRoutes.put("/:id", (req, res) => {
   res.json(accessSections.byId.get(existing.id));
 });
 
-/**
- * Dupliquer une colonne : la copie, avec sa largeur et tout ce qu'elle porte,
- * se pose juste à sa droite. Ses éléments étant recopiés, la catégorie ne doit
- * pas être verrouillée.
- */
-const dupliquerSection = transaction((original: AccessSectionRow): Id => {
-  const timestamp = now();
-  const { next } = accessSections.nextPosition(original.category_id);
+/** Une colonne et ce qu'elle porte, recopiées dans la structure de « owner ». */
+const copierSection = (
+  original: AccessSectionRow,
+  owner: Id | null,
+  position: number,
+  timestamp: string,
+): Id => {
   const id = Number(
     accessSections.create.run(
       original.category_id,
       original.width_unit,
       original.width_value,
       original.gap,
-      next,
+      position,
+      owner,
       timestamp,
     ).lastInsertRowid,
   );
   accessBlocks.bySection.all(original.id).forEach((bloc, place) => {
     accessBlocks.create.run(id, bloc.type, bloc.config, place, timestamp);
   });
+  return id;
+};
+
+/**
+ * Dupliquer une colonne : la copie, avec sa largeur et tout ce qu'elle porte,
+ * se pose juste à sa droite, dans la même structure.
+ */
+const dupliquerSection = transaction((original: AccessSectionRow): Id => {
+  const { next } = accessSections.nextPosition(original.category_id, original.owner_id);
+  const id = copierSection(original, original.owner_id, next, now());
 
   const ordre = accessSections.byCategory
-    .all(original.category_id)
+    .all(original.category_id, original.owner_id)
     .map((s) => s.id)
     .filter((autre) => autre !== id);
   ordre.splice(ordre.indexOf(original.id) + 1, 0, id);
@@ -222,13 +333,14 @@ const dupliquerSection = transaction((original: AccessSectionRow): Id => {
 });
 
 accessSectionRoutes.post("/:id/duplicate", (req, res) => {
-  const existing = sectionOuverte(req.params.id, req.user);
-  exigerDeverrouillee(accessCategorieOuverte(existing.category_id, req.user));
+  const { section: existing, owner } = sectionOuverte(req.params.id, req.user);
+  exigerEcriture(req, owner);
   res.status(201).json(accessSections.byId.get(dupliquerSection(existing)));
 });
 
 accessSectionRoutes.delete("/:id", (req, res) => {
-  const existing = sectionOuverte(req.params.id, req.user);
+  const { section: existing, owner } = sectionOuverte(req.params.id, req.user);
+  exigerEcriture(req, owner);
   // Ce qu'elle portait part avec elle, par clé étrangère.
   accessSections.remove.run(existing.id);
   res.status(204).end();
@@ -238,21 +350,9 @@ accessSectionRoutes.delete("/:id", (req, res) => {
 // Ce qu'une section porte. Leur configuration appartient au widget du client
 // (client/src/widgets) : le serveur la range en JSON sans la relire, il ne
 // vérifie que le widget visé. Leur visibilité est celle de la catégorie, au
-// bout de la chaîne section → catégorie.
+// bout de la chaîne section → catégorie, et de la structure regardée.
 
 const BLOC_INTROUVABLE = "Élément introuvable";
-const CATEGORIE_VERROUILLEE = "Cette catégorie est verrouillée";
-
-/**
- * Une catégorie verrouillée se lit, mais ce qu'elle porte ne bouge plus. Le
- * verrou se pose et se retire depuis le tiroir de la catégorie : il ne
- * s'oppose donc pas à lui-même. Il est tenu ici et pas seulement à l'écran —
- * un client resté sur une version d'avant le verrou déplacerait sinon des
- * éléments qu'on venait de figer.
- */
-const exigerDeverrouillee = (categorie: { is_locked: number }): void => {
-  if (categorie.is_locked) forbidden(CATEGORIE_VERROUILLEE);
-};
 
 const typeDeBloc = (valeur: unknown): AccessBlockType => {
   if (!isAccessBlockType(valeur)) badRequest("Élément inconnu");
@@ -276,11 +376,10 @@ export const accessBlockRoutes = Router();
 
 accessBlockRoutes.use(touch("access-blocks"));
 
-/** L'élément demandé, et la catégorie ouverte au bout de sa chaîne. */
-const blocOuvert = (id: unknown, user: Parameters<typeof accessCategorieOuverte>[1]) => {
+/** L'élément demandé, et la section ouverte qui le porte. */
+const blocOuvert = (id: unknown, user: Compte) => {
   const bloc = orNotFound(accessBlocks.byId.get(id), BLOC_INTROUVABLE);
-  const section = orNotFound(accessSections.byId.get(bloc.section_id), SECTION_INTROUVABLE);
-  return { bloc, categorie: accessCategorieOuverte(section.category_id, user) };
+  return { bloc, ...sectionOuverte(bloc.section_id, user) };
 };
 
 accessBlockRoutes.get("/", (req, res) => {
@@ -289,13 +388,12 @@ accessBlockRoutes.get("/", (req, res) => {
   // Par section, ou par catégorie entière : la page lit d'un coup tout ce que
   // ses colonnes portent, plutôt qu'une requête par colonne.
   if (section) {
-    const ouverte = orNotFound(accessSections.byId.get(section), SECTION_INTROUVABLE);
-    accessCategorieOuverte(ouverte.category_id, req.user);
+    const ouverte = sectionOuverte(section, req.user).section;
     return void res.json(accessBlocks.bySection.all(ouverte.id).map(blocRendu));
   }
   if (!category) badRequest("La section ou la catégorie est requise");
-  const ouverte = accessCategorieOuverte(category, req.user);
-  res.json(accessBlocks.byCategory.all(ouverte.id).map(blocRendu));
+  const { categorie, owner } = structureOuverte(category, req.user);
+  res.json(accessBlocks.byCategory.all(categorie.id, owner).map(blocRendu));
 });
 
 /**
@@ -303,7 +401,7 @@ accessBlockRoutes.get("/", (req, res) => {
  * serait pris pour un identifiant.
  *
  * Le corps donne la section et, dans l'ordre, tout ce qu'elle porte désormais.
- * Un élément qui vient d'une autre colonne de la même catégorie y est admis :
+ * Un élément qui vient d'une autre colonne de la même structure y est admis :
  * c'est ainsi qu'on le déplace. Ce qui reste dans la colonne d'origine garde
  * ses places — elles peuvent devenir clairsemées, la lecture se fait sur
  * l'ordre, pas sur les valeurs.
@@ -315,27 +413,28 @@ const rangerBlocs = transaction((sectionId: Id, ids: Id[]) => {
 accessBlockRoutes.put("/reorder", (req, res) => {
   const sectionId = req.body.section_id;
   if (!sectionId) badRequest("La section est requise");
-  const section = orNotFound(accessSections.byId.get(sectionId), SECTION_INTROUVABLE);
-  const categorie = accessCategorieOuverte(section.category_id, req.user);
-  exigerDeverrouillee(categorie);
+  const { section, categorie, owner } = sectionOuverte(sectionId, req.user);
+  exigerEcriture(req, owner);
 
   const ids = toIds(req.body.ids);
-  // Un élément ne saute pas d'une catégorie à l'autre : les colonnes qu'on
-  // voit sont celles de la catégorie ouverte, le rangement s'y borne.
-  const deLaCategorie = new Set(accessBlocks.byCategory.all(categorie.id).map((b) => b.id));
-  if (ids.length !== new Set(ids).size || ids.some((id) => !deLaCategorie.has(id))) {
+  // Un élément ne saute pas d'une structure à l'autre : les colonnes qu'on
+  // voit sont celles de la structure ouverte, le rangement s'y borne.
+  const deLaStructure = new Set(
+    accessBlocks.byCategory.all(categorie.id, owner).map((b) => b.id),
+  );
+  if (ids.length !== new Set(ids).size || ids.some((id) => !deLaStructure.has(id))) {
     badRequest("La liste des identifiants ne correspond pas à cette catégorie");
   }
 
   rangerBlocs(section.id, ids);
-  res.json(accessBlocks.byCategory.all(categorie.id).map(blocRendu));
+  res.json(accessBlocks.byCategory.all(categorie.id, owner).map(blocRendu));
 });
 
 accessBlockRoutes.post("/", (req, res) => {
   const sectionId = req.body.section_id;
   if (!sectionId) badRequest("La section est requise");
-  const section = orNotFound(accessSections.byId.get(sectionId), SECTION_INTROUVABLE);
-  exigerDeverrouillee(accessCategorieOuverte(section.category_id, req.user));
+  const { section, owner } = sectionOuverte(sectionId, req.user);
+  exigerEcriture(req, owner);
 
   const type = typeDeBloc(req.body.type);
   const config = configuration(req.body.config, "{}");
@@ -350,8 +449,8 @@ accessBlockRoutes.post("/", (req, res) => {
 // partagent la leur, la catégorie et la sous-catégorie
 // (ACCESS_BLOCK_CONVERSIONS).
 accessBlockRoutes.put("/:id", (req, res) => {
-  const { bloc, categorie } = blocOuvert(req.params.id, req.user);
-  exigerDeverrouillee(categorie);
+  const { bloc, owner } = blocOuvert(req.params.id, req.user);
+  exigerEcriture(req, owner);
   if (req.body.type !== undefined && req.body.type !== bloc.type) {
     if (ACCESS_BLOCK_CONVERSIONS[bloc.type] !== req.body.type) {
       badRequest("Cet élément ne se convertit pas en ce type");
@@ -381,14 +480,14 @@ const dupliquerBloc = transaction((bloc: AccessBlockRow): Id => {
 });
 
 accessBlockRoutes.post("/:id/duplicate", (req, res) => {
-  const { bloc, categorie } = blocOuvert(req.params.id, req.user);
-  exigerDeverrouillee(categorie);
+  const { bloc, owner } = blocOuvert(req.params.id, req.user);
+  exigerEcriture(req, owner);
   res.status(201).json(blocRendu(accessBlocks.byId.get(dupliquerBloc(bloc))!));
 });
 
 accessBlockRoutes.delete("/:id", (req, res) => {
-  const { bloc, categorie } = blocOuvert(req.params.id, req.user);
-  exigerDeverrouillee(categorie);
+  const { bloc, owner } = blocOuvert(req.params.id, req.user);
+  exigerEcriture(req, owner);
   accessBlocks.remove.run(bloc.id);
   res.status(204).end();
 });

@@ -1,122 +1,192 @@
-import { ActionIcon, Stack, Text, TextInput, UnstyledButton } from "@mantine/core";
-import { IconCornerDownLeft, IconDeviceLaptop, IconPencil, IconTrash } from "@tabler/icons-react";
+import {
+  ActionIcon,
+  Stack,
+  Text,
+  TextInput,
+  UnstyledButton,
+} from "@mantine/core";
+import {
+  IconCornerDownLeft,
+  IconDeviceLaptop,
+  IconNetwork,
+  IconPencil,
+  IconTrash,
+} from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
-import { ASSET_MODEL_MAX } from "@milo/shared";
-import type { AssetModel } from "@milo/shared";
+import { ASSET_MODEL_MAX, VLAN_NAME_MAX } from "@milo/shared";
+import type { AssetSettings } from "@milo/shared";
 import { api } from "../../api";
 import { messageErreur } from "../../lib/errors";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import ErrorAlert from "../ui/ErrorAlert";
 import ListItems from "../ui/ListItems";
-import type { KeyboardEvent } from "react";
+import type { ClipboardEvent, ComponentType, KeyboardEvent } from "react";
 
-// La section « Assets » du Paramétrage, et sa liste « Modèles » : le nom
-// commercial de l'identifiant qu'un poste déclare — Apple ne remonte que
-// « Mac14,6 ». La liste est celle des sociétés (ListItems, comme
-// LookupManager), à deux champs par ligne : l'identifiant, puis le nom.
+// La section « Assets » du Paramétrage, et ses deux listes :
+// - « Modèles » : le nom commercial de l'identifiant qu'un poste déclare —
+//   Apple ne remonte que « Mac14,6 » ;
+// - « VLAN » : le VLAN qui porte chaque sous-réseau (« 10.1.106.0/24 » → 106).
+// Chacune est celle des sociétés (ListItems, comme LookupManager), à
+// plusieurs champs par ligne.
 //
-// Tout se passe sur la ligne : cliquer un modèle l'édite sur place (Entrée
+// Tout se passe sur la ligne : cliquer une ligne l'édite sur place (Entrée
 // enregistre, Échap annule), le clic droit ouvre « Modifier » et
 // « Supprimer ». La ligne d'ajout garde le focus : on enchaîne les saisies.
+// Les VLAN se collent aussi par lots : une ligne « sous-réseau VLAN nom »
+// chacun, le nom facultatif.
 
-/** La largeur de la colonne des identifiants. */
-const LARGEUR_IDENTIFIANT = 200;
+/** La largeur de la première colonne : identifiant ou sous-réseau. */
+const LARGEUR_PREMIERE = 200;
+
+/** Assez pour « 4094 ». */
+const VLAN_LONGUEUR = 4;
+
+/** La largeur de la colonne des numéros de VLAN. */
+const LARGEUR_VLAN = 60;
 
 /** Hauteur d'un champ d'édition : celle du texte qu'il remplace (LookupManager). */
 const FIELD_HEIGHT = 22;
 
 const STYLES_CHAMP = {
-  input: { height: FIELD_HEIGHT, minHeight: FIELD_HEIGHT, lineHeight: `${FIELD_HEIGHT}px` },
+  input: {
+    height: FIELD_HEIGHT,
+    minHeight: FIELD_HEIGHT,
+    lineHeight: `${FIELD_HEIGHT}px`,
+  },
 };
 
 /** Taille du symbole Entrée au bout de la ligne d'ajout (ListItems). */
 const ENTER_SIZE = 14;
 
-const VIDE: AssetModel = { identifier: "", name: "" };
+/** Une ligne d'une liste : ses champs, tels qu'on les saisit, dans l'ordre des colonnes. */
+type Ligne = string[];
 
-/** Les deux champs d'un modèle, côte à côte : à l'ajout comme à l'édition. */
-function ChampsModele({
+/**
+ * Une colonne : son libellé, sa longueur, et sa largeur — fixe, ou le reste
+ * de la ligne. Une colonne « facultative » peut rester vide.
+ */
+interface Colonne {
+  label: string;
+  maxLength: number;
+  largeur?: number;
+  numerique?: boolean;
+  facultative?: boolean;
+}
+
+const vide = (colonnes: Colonne[]): Ligne => colonnes.map(() => "");
+
+const styleColonne = (colonne: Colonne) =>
+  colonne.largeur
+    ? { width: colonne.largeur, flexShrink: 0 }
+    : { flex: 1, minWidth: 0 };
+
+/** Les champs d'une ligne, côte à côte : à l'ajout comme à l'édition. */
+function ChampsLigne({
+  colonnes,
   valeur,
   onChange,
   onKeyDown,
   onBlur,
+  onPaste,
   disabled,
   autoFocus,
 }: {
-  valeur: AssetModel;
-  onChange: (valeur: AssetModel) => void;
+  colonnes: Colonne[];
+  valeur: Ligne;
+  onChange: (valeur: Ligne) => void;
   onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
   onBlur?: () => void;
+  onPaste?: (e: ClipboardEvent<HTMLInputElement>) => void;
   disabled: boolean;
   autoFocus?: boolean;
 }) {
   return (
     <>
-      <TextInput
-        placeholder="Identifiant"
-        value={valeur.identifier}
-        onChange={(e) => onChange({ ...valeur, identifier: e.currentTarget.value })}
-        onKeyDown={onKeyDown}
-        onBlur={onBlur}
-        maxLength={ASSET_MODEL_MAX}
-        variant="unstyled"
-        size="sm"
-        styles={STYLES_CHAMP}
-        style={{ width: LARGEUR_IDENTIFIANT, flexShrink: 0 }}
-        disabled={disabled}
-        autoFocus={autoFocus}
-        aria-label="Identifiant"
-      />
-      <TextInput
-        placeholder="Nom commercial"
-        value={valeur.name}
-        onChange={(e) => onChange({ ...valeur, name: e.currentTarget.value })}
-        onKeyDown={onKeyDown}
-        onBlur={onBlur}
-        maxLength={ASSET_MODEL_MAX}
-        variant="unstyled"
-        size="sm"
-        styles={STYLES_CHAMP}
-        style={{ flex: 1, minWidth: 0 }}
-        disabled={disabled}
-        aria-label="Nom commercial"
-      />
+      {colonnes.map((colonne, i) => (
+        <TextInput
+          key={colonne.label}
+          placeholder={colonne.label}
+          value={valeur[i] ?? ""}
+          onChange={(e) => {
+            const texte = e.currentTarget.value;
+            onChange(
+              valeur.map((v, j) =>
+                j === i
+                  ? colonne.numerique
+                    ? texte.replace(/\D/g, "")
+                    : texte
+                  : v,
+              ),
+            );
+          }}
+          onKeyDown={onKeyDown}
+          onBlur={onBlur}
+          onPaste={onPaste}
+          maxLength={colonne.maxLength}
+          inputMode={colonne.numerique ? "numeric" : undefined}
+          variant="unstyled"
+          size="sm"
+          styles={STYLES_CHAMP}
+          style={styleColonne(colonne)}
+          disabled={disabled}
+          autoFocus={autoFocus && i === 0}
+          aria-label={colonne.label}
+        />
+      ))}
     </>
   );
 }
 
-const complet = (m: AssetModel) => Boolean(m.identifier.trim() && m.name.trim());
-const nettoye = (m: AssetModel): AssetModel => ({
-  identifier: m.identifier.trim(),
-  name: m.name.trim(),
-});
+const nettoye = (l: Ligne): Ligne => l.map((v) => v.trim());
 
-export default function AssetsTab() {
-  const [modeles, setModeles] = useState<AssetModel[]>([]);
-  const [error, setError] = useState<string | null>(null);
+/**
+ * Une liste à plusieurs champs par ligne. Elle part entière au serveur à chaque
+ * changement (`enregistrer`), qui la vérifie et la renvoie telle qu'il la
+ * garde.
+ *
+ * `decouper`, s'il est donné, permet de coller plusieurs lignes d'un coup dans
+ * la ligne d'ajout : chaque ligne du presse-papiers devient une ligne.
+ */
+function ListeLignes({
+  titre,
+  colonnes,
+  lignes,
+  enregistrer,
+  emptyIcon,
+  emptyText,
+  libelleAjout,
+  titreSuppression,
+  decouper,
+}: {
+  titre: string;
+  colonnes: Colonne[];
+  lignes: Ligne[];
+  enregistrer: (liste: Ligne[]) => Promise<boolean>;
+  emptyIcon: ComponentType<{ size?: number }>;
+  emptyText: string;
+  libelleAjout: string;
+  titreSuppression: string;
+  decouper?: (ligne: string) => Ligne | null;
+}) {
   const [busy, setBusy] = useState(false);
-  const [nouveau, setNouveau] = useState<AssetModel>(VIDE);
-  // Le rang du modèle en cours d'édition, et ses champs.
+  const [error, setError] = useState<string | null>(null);
+  const [nouveau, setNouveau] = useState<Ligne>(() => vide(colonnes));
+  // Le rang de la ligne en cours d'édition, et ses champs.
   const [enEdition, setEnEdition] = useState<number | null>(null);
-  const [brouillon, setBrouillon] = useState<AssetModel>(VIDE);
+  const [brouillon, setBrouillon] = useState<Ligne>(() => vide(colonnes));
   const [aSupprimer, setASupprimer] = useState<number | null>(null);
   // Quitter un champ pour l'autre de la même ligne n'enregistre pas.
   const ligneEditee = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    api
-      .getAssetSettings()
-      .then((r) => setModeles(r.models))
-      .catch((e) => setError(messageErreur(e)));
-  }, []);
+  // Les colonnes obligatoires remplies : la ligne peut partir.
+  const complet = (l: Ligne) =>
+    colonnes.every((c, i) => c.facultative || Boolean(l[i]?.trim()));
 
-  /** La table part entière : le serveur la remplace d'un coup. */
-  const enregistrer = async (liste: AssetModel[]): Promise<boolean> => {
+  const envoyer = async (liste: Ligne[]): Promise<boolean> => {
     setError(null);
     setBusy(true);
     try {
-      setModeles((await api.updateAssetSettings({ models: liste })).models);
-      return true;
+      return await enregistrer(liste);
     } catch (e) {
       setError(messageErreur(e));
       return false;
@@ -127,33 +197,65 @@ export default function AssetsTab() {
 
   const ajouter = async () => {
     if (!complet(nouveau)) return;
-    if (await enregistrer([...modeles, nettoye(nouveau)])) setNouveau(VIDE);
+    if (await envoyer([...lignes, nettoye(nouveau)]))
+      setNouveau(vide(colonnes));
+  };
+
+  /**
+   * Un collage de plusieurs lignes — ou d'une seule qui porte déjà ses
+   * champs — les ajoute toutes d'un coup. Une ligne illisible arrête tout :
+   * rien n'est ajouté, et on dit laquelle.
+   */
+  const coller = (e: ClipboardEvent<HTMLInputElement>) => {
+    if (!decouper) return;
+    const texte = e.clipboardData.getData("text");
+    const brutes = texte
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (brutes.length === 0) return;
+    if (brutes.length === 1 && !decouper(brutes[0] ?? "")) return; // un collage ordinaire
+    e.preventDefault();
+    const lues: Ligne[] = [];
+    for (const brute of brutes) {
+      const lue = decouper(brute);
+      if (!lue) {
+        setError(`Ligne illisible : « ${brute} »`);
+        return;
+      }
+      lues.push(lue);
+    }
+    void envoyer([...lignes, ...lues]).then(
+      (ok) => ok && setNouveau(vide(colonnes)),
+    );
   };
 
   const editer = (rang: number) => {
     setError(null);
     setEnEdition(rang);
-    setBrouillon(modeles[rang] ?? VIDE);
+    setBrouillon(lignes[rang] ?? vide(colonnes));
   };
 
   const annulerEdition = () => {
     setEnEdition(null);
-    setBrouillon(VIDE);
+    setBrouillon(vide(colonnes));
   };
 
-  // Un modèle vidé ou inchangé : on referme sans rien demander au serveur.
+  // Une ligne vidée ou inchangée : on referme sans rien demander au serveur.
   const enregistrerEdition = async () => {
     if (enEdition === null) return;
-    const avant = modeles[enEdition];
+    const avant = lignes[enEdition];
     const apres = nettoye(brouillon);
-    if (!complet(apres) || (apres.identifier === avant?.identifier && apres.name === avant?.name)) {
+    if (!complet(apres) || apres.every((v, i) => v === avant?.[i])) {
       return annulerEdition();
     }
-    if (await enregistrer(modeles.map((m, i) => (i === enEdition ? apres : m)))) annulerEdition();
+    if (await envoyer(lignes.map((l, i) => (i === enEdition ? apres : l))))
+      annulerEdition();
   };
 
   const touches =
-    (valider: () => void, annuler: () => void) => (e: KeyboardEvent<HTMLInputElement>) => {
+    (valider: () => void, annuler: () => void) =>
+    (e: KeyboardEvent<HTMLInputElement>) => {
       // Consommée : la fenêtre qui porte ce champ n'enregistre pas en plus.
       if (e.key === "Enter") {
         e.preventDefault();
@@ -167,23 +269,25 @@ export default function AssetsTab() {
       {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
       {/* Le libellé au-dessus de la liste, comme celui d'un champ. */}
       <Text size="sm" fw={500}>
-        Modèles
+        {titre}
       </Text>
       <ListItems
-        maxRows={10}
-        isEmpty={modeles.length === 0}
-        emptyIcon={IconDeviceLaptop}
-        emptyText="Aucun modèle pour le moment"
+        maxRows={5}
+        isEmpty={lignes.length === 0}
+        emptyIcon={emptyIcon}
+        emptyText={emptyText}
         add={{
           input: (
             <>
-              <ChampsModele
+              <ChampsLigne
+                colonnes={colonnes}
                 valeur={nouveau}
                 onChange={setNouveau}
                 onKeyDown={touches(
                   () => void ajouter(),
-                  () => setNouveau(VIDE),
+                  () => setNouveau(vide(colonnes)),
                 )}
+                onPaste={decouper ? coller : undefined}
                 disabled={busy}
               />
               {/* Au bout, la touche qui valide : Entrée ajoute. Elle se clique
@@ -195,7 +299,7 @@ export default function AssetsTab() {
                 onClick={() => void ajouter()}
                 disabled={busy}
                 style={{ flexShrink: 0, opacity: 0.5 }}
-                aria-label="Ajouter le modèle"
+                aria-label={libelleAjout}
               >
                 <IconCornerDownLeft size={ENTER_SIZE} />
               </ActionIcon>
@@ -203,11 +307,15 @@ export default function AssetsTab() {
           ),
         }}
       >
-        {modeles.map((modele, rang) => (
+        {lignes.map((ligne, rang) => (
           <ListItems.Row
-            key={`${modele.identifier}-${rang}`}
+            key={`${ligne[0]}-${rang}`}
             actions={[
-              { label: "Modifier", icon: IconPencil, onClick: () => editer(rang) },
+              {
+                label: "Modifier",
+                icon: IconPencil,
+                onClick: () => editer(rang),
+              },
               {
                 label: "Supprimer",
                 icon: IconTrash,
@@ -219,17 +327,30 @@ export default function AssetsTab() {
             {enEdition === rang ? (
               <div
                 ref={ligneEditee}
-                style={{ display: "flex", gap: "var(--mantine-spacing-xs)", flex: 1, minWidth: 0 }}
+                style={{
+                  display: "flex",
+                  gap: "var(--mantine-spacing-xs)",
+                  flex: 1,
+                  minWidth: 0,
+                }}
                 onBlur={(e) => {
-                  if (!ligneEditee.current?.contains(e.relatedTarget as Node | null)) {
+                  if (
+                    !ligneEditee.current?.contains(
+                      e.relatedTarget as Node | null,
+                    )
+                  ) {
                     void enregistrerEdition();
                   }
                 }}
               >
-                <ChampsModele
+                <ChampsLigne
+                  colonnes={colonnes}
                   valeur={brouillon}
                   onChange={setBrouillon}
-                  onKeyDown={touches(() => void enregistrerEdition(), annulerEdition)}
+                  onKeyDown={touches(
+                    () => void enregistrerEdition(),
+                    annulerEdition,
+                  )}
                   disabled={busy}
                   autoFocus
                 />
@@ -237,20 +358,24 @@ export default function AssetsTab() {
             ) : (
               <UnstyledButton
                 onClick={() => editer(rang)}
-                style={{ flex: 1, minWidth: 0, display: "flex", gap: "var(--mantine-spacing-xs)" }}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  display: "flex",
+                  gap: "var(--mantine-spacing-xs)",
+                }}
               >
-                <Text
-                  size="sm"
-                  c="dimmed"
-                  w={LARGEUR_IDENTIFIANT}
-                  truncate
-                  style={{ flexShrink: 0 }}
-                >
-                  {modele.identifier}
-                </Text>
-                <Text size="sm" truncate>
-                  {modele.name}
-                </Text>
+                {colonnes.map((colonne, i) => (
+                  <Text
+                    key={colonne.label}
+                    size="sm"
+                    c={i === 0 ? "dimmed" : undefined}
+                    truncate
+                    style={styleColonne(colonne)}
+                  >
+                    {ligne[i]}
+                  </Text>
+                ))}
               </UnstyledButton>
             )}
           </ListItems.Row>
@@ -261,16 +386,114 @@ export default function AssetsTab() {
         opened={aSupprimer !== null}
         onClose={() => setASupprimer(null)}
         onConfirm={async () => {
-          if (aSupprimer !== null) await enregistrer(modeles.filter((_, i) => i !== aSupprimer));
+          if (aSupprimer !== null)
+            await envoyer(lignes.filter((_, i) => i !== aSupprimer));
           setASupprimer(null);
         }}
-        title="Supprimer le modèle"
+        title={titreSuppression}
         message={
           <>
-            Voulez-vous vraiment supprimer « {modeles[aSupprimer ?? -1]?.identifier} » ? Cette
-            action est irréversible.
+            Voulez-vous vraiment supprimer « {lignes[aSupprimer ?? -1]?.[0]} » ?
+            Cette action est irréversible.
           </>
         }
+      />
+    </Stack>
+  );
+}
+
+const COLONNES_MODELES: Colonne[] = [
+  {
+    label: "Identifiant",
+    maxLength: ASSET_MODEL_MAX,
+    largeur: LARGEUR_PREMIERE,
+  },
+  { label: "Nom commercial", maxLength: ASSET_MODEL_MAX },
+];
+
+const COLONNES_VLAN: Colonne[] = [
+  { label: "Sous-réseau", maxLength: 18, largeur: LARGEUR_PREMIERE },
+  {
+    label: "VLAN",
+    maxLength: VLAN_LONGUEUR,
+    largeur: LARGEUR_VLAN,
+    numerique: true,
+  },
+  { label: "Nom", maxLength: VLAN_NAME_MAX, facultative: true },
+];
+
+/**
+ * « 10.1.106.0/24 106 Wi-Fi invités » : le sous-réseau, le VLAN, puis le nom
+ * facultatif — séparés d'espaces, d'une tabulation, d'un « ; » ou d'une « , ».
+ */
+const LIGNE_VLAN = /^(\S+\/\d+)[\s;,]+(\d+)(?:[\s;,]+(.*))?$/;
+
+const decouperVlan = (ligne: string): Ligne | null => {
+  const m = LIGNE_VLAN.exec(ligne);
+  if (!m) return null;
+  return [m[1] ?? "", m[2] ?? "", (m[3] ?? "").trim()];
+};
+
+export default function AssetsTab() {
+  const [reglages, setReglages] = useState<AssetSettings>({
+    models: [],
+    vlans: [],
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .getAssetSettings()
+      .then(setReglages)
+      .catch((e) => setError(messageErreur(e)));
+  }, []);
+
+  /** Une table part entière : le serveur la remplace d'un coup. */
+  const enregistrer = async (
+    data: Partial<AssetSettings>,
+  ): Promise<boolean> => {
+    setReglages(await api.updateAssetSettings(data));
+    return true;
+  };
+
+  return (
+    <Stack gap="xl">
+      {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
+      <ListeLignes
+        titre="Modèles"
+        colonnes={COLONNES_MODELES}
+        lignes={reglages.models.map((m) => [m.identifier, m.name])}
+        enregistrer={(liste) =>
+          enregistrer({
+            models: liste.map(([identifier = "", name = ""]) => ({
+              identifier,
+              name,
+            })),
+          })
+        }
+        emptyIcon={IconDeviceLaptop}
+        emptyText="Aucun modèle pour le moment"
+        libelleAjout="Ajouter le modèle"
+        titreSuppression="Supprimer le modèle"
+      />
+      <ListeLignes
+        titre="VLAN"
+        colonnes={COLONNES_VLAN}
+        lignes={reglages.vlans.map((v) => [v.subnet, String(v.vlan), v.name])}
+        enregistrer={(liste) =>
+          enregistrer({
+            vlans: liste.map(([subnet = "", vlan = "", name = ""]) => ({
+              subnet,
+              vlan: Number(vlan),
+              name,
+            })),
+          })
+        }
+        emptyIcon={IconNetwork}
+        emptyText="Aucun VLAN pour le moment"
+        libelleAjout="Ajouter le VLAN"
+        titreSuppression="Supprimer le VLAN"
+        decouper={decouperVlan}
       />
     </Stack>
   );

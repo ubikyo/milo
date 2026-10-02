@@ -23,6 +23,7 @@ import type {
   TaskIndicatorInput,
   IndicatorSection,
   IndicatorSectionInput,
+  LayoutState,
   AssetRefresh,
   Attachment,
   AuthResult,
@@ -42,6 +43,7 @@ import type {
   Permissions,
   Role,
   UserCompanyRole,
+  AppPermissions,
   CopyResult,
   EntraPrincipal,
   EntraSettings,
@@ -84,6 +86,11 @@ import type {
   TabOrderMode,
   TabOrders,
   DeveloperSettings,
+  SupportContent,
+  SupportContentEvent,
+  SupportPerson,
+  SupportReply,
+  SupportReplyEvent,
   SupportSettings,
   AssetSettings,
   UpdateMeInput,
@@ -127,10 +134,20 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as Partial<ApiError>;
-    throw new Error(body.error || `Erreur ${res.status}`);
+    throw new HttpError(res.status, body.error || `Erreur ${res.status}`);
   }
   if (res.status === 204) return null as T;
   return (await res.json()) as T;
+}
+
+/** Une réponse en erreur : son statut distingue un refus d'une panne. */
+export class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 
 /** Les verbes, pour que chaque appel tienne sur une ligne. */
@@ -212,6 +229,9 @@ const sectionsDuPanneau = (base: string) => ({
   duplicate: (id: Id) => post<IndicatorSection>(`${base}/sections/${id}/duplicate`, {}),
   remove: (id: Id) => del(`${base}/sections/${id}`),
   reorder: (ids: Id[]) => put<IndicatorSection[]>(`${base}/sections/reorder`, { ids }),
+  /** « Hérité » : la structure publique, ou sa propre copie (décoché). */
+  getLayout: () => get<LayoutState>(`${base}/layout`),
+  setLayout: (inherited: boolean) => put<LayoutState>(`${base}/layout`, { inherited }),
 });
 
 /** Les écritures et lectures des sections d'un panneau. */
@@ -251,10 +271,10 @@ export const api = {
   // --- Accès (utilisateurs et groupes Entra) -------------------------------
   getAssignments: () => get<PrincipalAssignments[]>("/assignments"),
   // La liste des rôles envoyée remplace tout ; vide, elle retire l'accès.
-  setAssignments: (principal: EntraPrincipal, roles: UserCompanyRole[]) =>
+  setAssignments: (principal: EntraPrincipal, roles: UserCompanyRole[], app: AppPermissions) =>
     put<PrincipalAssignments[]>(
       `/assignments/${principal.type}/${encodeURIComponent(principal.id)}`,
-      { name: principal.name, email: principal.email, roles },
+      { name: principal.name, email: principal.email, roles, app },
     ),
   deleteAssignments: (principal: EntraPrincipal) =>
     request<PrincipalAssignments[]>(
@@ -322,6 +342,11 @@ export const api = {
   /** La copie se pose juste à droite de l'original, avec ses éléments. */
   duplicateAccessSection: (id: Id) =>
     post<AccessSection>(`/access-sections/${id}/duplicate`),
+  /** « Hérité » d'une catégorie : sa structure publique, ou sa propre copie. */
+  getAccessLayout: (categoryId: Id | string) =>
+    get<LayoutState>(`/access-sections/layout${queryString({ category: categoryId })}`),
+  setAccessLayout: (category_id: Id, inherited: boolean) =>
+    put<LayoutState>("/access-sections/layout", { category_id, inherited }),
   reorderAccessSections: (category_id: Id, ids: Id[]) =>
     put<AccessSection[]>("/access-sections/reorder", { category_id, ids }),
   deleteAccessSection: (id: Id) =>
@@ -583,9 +608,34 @@ export const api = {
   getSupportSettings: () => get<SupportSettings>("/support-settings"),
   updateSupportSettings: (data: Partial<SupportSettings>) =>
     put<SupportSettings>("/support-settings", data),
-  // La section « Assets » du Paramétrage : la table des modèles.
+  // Les réponses par défaut : l'intitulé et le modèle se modifient séparément.
+  getSupportReplies: () => get<SupportReply[]>("/support-replies"),
+  createSupportReply: (name: string, event: SupportReplyEvent | null = null) =>
+    post<SupportReply>("/support-replies", { name, event }),
+  updateSupportReply: (
+    id: Id,
+    data: { name?: string; html?: string; event?: SupportReplyEvent | null },
+  ) => put<SupportReply>(`/support-replies/${id}`, data),
+  deleteSupportReply: (id: Id) => del(`/support-replies/${id}`),
+  // Les fiches Entra que citent les modèles : le compte connecté, et
+  // l'expéditeur de la demande quand on en donne une.
+  getSupportVariables: (requestId?: Id) =>
+    get<{ utilisateur: SupportPerson; expediteur: SupportPerson | null }>(
+      `/support-requests/variables${requestId ? `?request=${requestId}` : ""}`,
+    ),
+  // Ce qui se pose d'office dans l'éditeur d'une réponse : une signature…
+  getSupportContents: () => get<SupportContent[]>("/support-contents"),
+  createSupportContent: (name: string, event: SupportContentEvent | null = null) =>
+    post<SupportContent>("/support-contents", { name, event }),
+  updateSupportContent: (
+    id: Id,
+    data: { name?: string; html?: string; event?: SupportContentEvent | null },
+  ) => put<SupportContent>(`/support-contents/${id}`, data),
+  deleteSupportContent: (id: Id) => del(`/support-contents/${id}`),
+  // La section « Assets » du Paramétrage : la table des modèles, celle des VLAN.
   getAssetSettings: () => get<AssetSettings>("/asset-settings"),
-  updateAssetSettings: (data: AssetSettings) => put<AssetSettings>("/asset-settings", data),
+  updateAssetSettings: (data: Partial<AssetSettings>) =>
+    put<AssetSettings>("/asset-settings", data),
   getDeveloperSettings: () => get<DeveloperSettings>("/developer"),
   updateDeveloperSettings: (data: DeveloperSettings) =>
     put<DeveloperSettings>("/developer", data),
@@ -607,9 +657,6 @@ export const api = {
   reorderAssetIndicators: (sectionId: Id, ids: Id[]) =>
     put<AssetIndicator[]>("/asset-indicators/reorder", { section_id: sectionId, ids }),
   assetIndicatorSections: sectionsDuPanneau("/asset-indicators"),
-  getAssetIndicatorsLock: () => get<{ locked: boolean }>("/asset-indicators/lock"),
-  setAssetIndicatorsLock: (locked: boolean) =>
-    put<{ locked: boolean }>("/asset-indicators/lock", { locked }),
 
   // --- Sections des modes Projet et Tâche -----------------------------------
   // Communes à tous les tableaux : leurs widgets se calculent ici sur celui
@@ -623,9 +670,6 @@ export const api = {
   reorderProjectIndicators: (sectionId: Id, ids: Id[]) =>
     put<ProjectIndicator[]>("/project-indicators/reorder", { section_id: sectionId, ids }),
   projectIndicatorSections: sectionsDuPanneau("/project-indicators"),
-  getProjectIndicatorsLock: () => get<{ locked: boolean }>("/project-indicators/lock"),
-  setProjectIndicatorsLock: (locked: boolean) =>
-    put<{ locked: boolean }>("/project-indicators/lock", { locked }),
 
   getTaskIndicators: () => get<TaskIndicator[]>("/task-indicators"),
   createTaskIndicator: (data: TaskIndicatorInput) => post<TaskIndicator>("/task-indicators", data),
@@ -635,9 +679,6 @@ export const api = {
   reorderTaskIndicators: (sectionId: Id, ids: Id[]) =>
     put<TaskIndicator[]>("/task-indicators/reorder", { section_id: sectionId, ids }),
   taskIndicatorSections: sectionsDuPanneau("/task-indicators"),
-  getTaskIndicatorsLock: () => get<{ locked: boolean }>("/task-indicators/lock"),
-  setTaskIndicatorsLock: (locked: boolean) =>
-    put<{ locked: boolean }>("/task-indicators/lock", { locked }),
 
   // --- Mode Support --------------------------------------------------------
   // Les indicateurs du panneau des statistiques : communs à toutes les
@@ -655,9 +696,6 @@ export const api = {
   supportIndicatorSections: sectionsDuPanneau("/support-indicators"),
   // Le verrou du panneau, un seul pour tout le monde : verrouillé, on n'y
   // ajoute ni ne déplace plus d'indicateur.
-  getSupportIndicatorsLock: () => get<{ locked: boolean }>("/support-indicators/lock"),
-  setSupportIndicatorsLock: (locked: boolean) =>
-    put<{ locked: boolean }>("/support-indicators/lock", { locked }),
 
   // Les demandes pendent à une société : elles se lisent toutes pour celle qui
   // est choisie, et ce sont les onglets qui les rangent par statut.

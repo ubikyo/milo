@@ -1,5 +1,5 @@
-// Ce qui part quand un élément suivi change : une notification à l'écran, et
-// un e-mail.
+// Ce qui part quand un élément suivi change — ou un élément dont on est
+// acteur : une notification à l'écran, et un e-mail.
 //
 // Deux principes tiennent le fichier.
 //
@@ -15,7 +15,8 @@
 
 import crypto from "node:crypto";
 import type { FollowKind, Id, Notification, NotificationKind } from "@milo/shared";
-import { lienElement, supportTicketRef } from "@milo/shared";
+import { can, lienElement, supportTicketRef } from "@milo/shared";
+import type { Area } from "@milo/shared";
 import type { UserRow } from "../db/rows.js";
 import { selection } from "../db/query.js";
 import { follows } from "../repositories/follows.js";
@@ -25,6 +26,7 @@ import { envoyerCourrier, messagerieConfiguree } from "./mail.js";
 import { gabarit } from "./mail-template.js";
 import type { Ligne } from "./mail-template.js";
 import { notifications } from "../repositories/notifications.js";
+import { droitsSocietes } from "../repositories/users.js";
 import { now } from "./time.js";
 
 /** Le temps pendant lequel les faits s'accumulent avant de partir en un e-mail. */
@@ -58,6 +60,12 @@ export interface Fait {
    * arrive.
    */
   listeOrigine?: Id;
+  /**
+   * Des comptes à ne pas prévenir cette fois : ceux qu'une autre notification
+   * vient de prévenir du même geste — les acteurs qu'on vient d'assigner à une
+   * demande ont déjà la leur.
+   */
+  sauf?: Id[];
   /**
    * La racine de l'application, telle qu'on l'a jointe : « https://milo.exemple.fr ».
    * Vide quand on ne la connaît pas — une relève de boîte n'a pas de requête :
@@ -106,7 +114,7 @@ const corps = (envoi: EnAttente): { text: string; html: string } => {
     intro: total === 1 ? "Une modification :" : `${total} modifications :`,
     lignes: envoi.faits,
     action: { url: envoi.lien, libelle: "Ouvrir dans Milo" },
-    pied: "Vous recevez ce message parce que vous suivez cet élément dans Milo.",
+    pied: "Vous recevez ce message parce que vous suivez cet élément dans Milo, ou que vous en êtes acteur.",
   });
 };
 
@@ -192,11 +200,63 @@ const boiteDe = (kind: FollowKind, id: Id): string => boites[kind].get(id)?.supp
 
 // --- Qui est prévenu -------------------------------------------------------
 
+/** La société de l'élément suivi, et le mode dont il relève. */
+const societes: Record<Fait["kind"], { area: Area; get: (id: Id) => { company_id: Id | null } | undefined }> = {
+  project: {
+    area: "projects",
+    get: (id) => societeDuProjet.get(id),
+  },
+  card: {
+    area: "tasks",
+    get: (id) => societeDeLaCarte.get(id),
+  },
+  support: {
+    area: "support",
+    get: (id) => societeDeLaDemande.get(id),
+  },
+};
+const societeDuProjet = selection<{ company_id: Id | null }>(
+  "SELECT company_id FROM projects WHERE id = ?",
+);
+const societeDeLaCarte = selection<{ company_id: Id | null }>(
+  `SELECT b.company_id FROM task_cards t
+   JOIN task_lists l ON l.id = t.list_id
+   JOIN boards b ON b.id = l.board_id WHERE t.id = ?`,
+);
+const societeDeLaDemande = selection<{ company_id: Id | null }>(
+  "SELECT company_id FROM support_requests WHERE id = ?",
+);
+
 /**
- * Les comptes à prévenir. Une carte a deux sources de suiveurs : ceux qui
- * suivent la carte, et ceux qui suivent la liste où elle se trouve — suivre
- * une liste, c'est suivre ses cartes. Une même personne peut être dans les
- * deux : elle n'est prévenue qu'une fois.
+ * Les acteurs d'un élément, sauf celui qui vient d'agir : ceux d'un projet,
+ * les membres d'une carte, les acteurs d'une demande. L'auteur d'un ticket —
+ * l'expéditeur de l'e-mail, quand il a un compte, en devient acteur — n'est
+ * pas de l'équipe : il n'est pas prévenu des gestes de celle-ci.
+ */
+const acteurs: Record<Fait["kind"], ReturnType<typeof selection<UserRow>>> = {
+  project: selection(
+    `SELECT users.* FROM project_actors a JOIN users ON users.id = a.user_id
+     WHERE a.project_id = ? AND a.user_id != ?`,
+  ),
+  card: selection(
+    `SELECT users.* FROM card_members m JOIN users ON users.id = m.user_id
+     WHERE m.card_id = ? AND m.user_id != ?`,
+  ),
+  support: selection(
+    `SELECT users.* FROM support_request_actors a
+     JOIN users ON users.id = a.user_id
+     JOIN support_requests r ON r.id = a.request_id
+     WHERE a.request_id = ? AND a.user_id != ?
+       AND (r.sender_email = '' OR lower(users.email) != lower(r.sender_email))`,
+  ),
+};
+
+/**
+ * Les comptes à prévenir : ceux qui suivent l'élément, et ses acteurs. Une
+ * carte a deux sources de suiveurs : ceux qui suivent la carte, et ceux qui
+ * suivent la liste où elle se trouve — suivre une liste, c'est suivre ses
+ * cartes. Une même personne peut être à plusieurs titres : elle n'est
+ * prévenue qu'une fois.
  */
 const aPrevenir = (fait: Fait): UserRow[] => {
   const sortes: [FollowKind, Id][] = [[fait.kind, fait.targetId]];
@@ -213,7 +273,15 @@ const aPrevenir = (fait: Fait): UserRow[] => {
       parId.set(personne.id, personne);
     }
   }
-  return [...parId.values()];
+  for (const personne of acteurs[fait.kind].all(fait.targetId, fait.auteur.id)) {
+    parId.set(personne.id, personne);
+  }
+  for (const id of fait.sauf ?? []) parId.delete(id);
+  // Qui ne voit plus l'élément — son rôle dans la société a changé depuis
+  // qu'il le suit — n'en est plus prévenu.
+  const { area, get } = societes[fait.kind];
+  const societe = get(fait.targetId)?.company_id ?? null;
+  return [...parId.values()].filter((p) => can(droitsSocietes(p), area, "view", societe));
 };
 
 /**

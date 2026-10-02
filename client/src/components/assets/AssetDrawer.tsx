@@ -18,8 +18,9 @@ import ErrorAlert from "../ui/ErrorAlert";
 import SuccessAlert from "../ui/SuccessAlert";
 import { messageErreur } from "../../lib/errors";
 import { tabStyle } from "../../themes/tabs";
-import { TABLEAUX, VIDE } from "./InventoryTables";
+import { SANS_CADRE, TABLEAUX, VIDE } from "./InventoryTables";
 import AssetSummaryPanel, { FOND_CARTE } from "./AssetSummaryPanel";
+import SystemeExploitation from "./SystemeExploitation";
 import TitreFiche, { ESPACE_SOUS_TITRE } from "./TitreFiche";
 import classes from "../../assets/styles/AssetDrawer.module.css";
 import type { CSSProperties } from "react";
@@ -150,6 +151,7 @@ const ONGLETS: Onglet[] = [
       { section: "CPUS", libelle: "Processeurs" },
       { section: "MEMORIES", libelle: "Mémoire" },
       { section: "BATTERIES", libelle: "Batterie" },
+      { section: "POWERSUPPLIES", libelle: "Alimentation" },
       { section: "CONTROLLERS", libelle: "Contrôleurs" },
       { section: "VIDEOS", libelle: "Vidéo" },
       { section: "SOUNDS", libelle: "Audio" },
@@ -177,6 +179,7 @@ const ONGLETS: Onglet[] = [
       { section: "FIREWALL", libelle: "Pare-feu" },
       { section: "SOFTWARES", libelle: "Applications" },
       { section: "PROCESSES", libelle: "Process" },
+      { section: "VIRTUALMACHINES", libelle: "Machines virtuelles" },
     ],
   },
 ];
@@ -233,7 +236,14 @@ const ESPACE_SOUS_SECTION = 30;
  * Le compte dit si elle décrit une chose ou six cents. L'onglet n'est monté
  * qu'ouvert : y revenir replie tout de nouveau.
  */
-function SectionsOnglet({ groupes }: { groupes: GroupeAffiche[] }) {
+function SectionsOnglet({
+  groupes,
+  os,
+}: {
+  groupes: GroupeAffiche[];
+  /** Le système du poste, dont la Description prend le logo. */
+  os: AssetDetail["os"];
+}) {
   const [ouvertes, setOuvertes] = useState<string[]>([]);
   return (
     <Accordion
@@ -272,9 +282,13 @@ function SectionsOnglet({ groupes }: { groupes: GroupeAffiche[] }) {
           </Accordion.Control>
           <Accordion.Panel>
             {/* La grille sur le gris des cartes du Résumé, à leur arrondi. */}
-            <Box p="md" style={{ backgroundColor: FOND_CARTE, borderRadius: 10 }}>
-              <ContenuSection section={section} />
-            </Box>
+            {SANS_CADRE.has(section.name) ? (
+              <ContenuSection section={section} os={os} />
+            ) : (
+              <Box p="md" style={{ backgroundColor: FOND_CARTE, borderRadius: 10 }}>
+                <ContenuSection section={section} os={os} />
+              </Box>
+            )}
           </Accordion.Panel>
         </Accordion.Item>
       ))}
@@ -283,7 +297,9 @@ function SectionsOnglet({ groupes }: { groupes: GroupeAffiche[] }) {
 }
 
 /** Le contenu d'une section : son tableau quand elle en a un, ses fiches sinon. */
-function ContenuSection({ section }: { section: AssetSection }) {
+function ContenuSection({ section, os }: { section: AssetSection; os: AssetDetail["os"] }) {
+  // La description du système, en cartes comme le Résumé.
+  if (section.name === "OPERATINGSYSTEM") return <SystemeExploitation section={section} os={os} />;
   const Tableau = TABLEAUX[section.name];
   if (Tableau) return <Tableau section={section} />;
   return (
@@ -512,7 +528,7 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
               </Tabs.Panel>
               {onglets.map((onglet) => (
                 <Tabs.Panel key={onglet.value} value={onglet.value} px={40}>
-                  <SectionsOnglet groupes={onglet.groupes} />
+                  <SectionsOnglet groupes={onglet.groupes} os={detail.os} />
                 </Tabs.Panel>
               ))}
             </ScrollArea>

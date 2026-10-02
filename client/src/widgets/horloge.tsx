@@ -110,6 +110,7 @@ function Horloge({ config }: { config: unknown }) {
 
 export const horlogeWidget: AccessWidget = {
   type: "clock",
+  kind: "common",
   label: "Horloge",
   icon: IconClock,
   defaultConfig: {

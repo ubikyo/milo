@@ -257,12 +257,14 @@ interface UtilisateurGraph {
   surname?: string | null;
   mail?: string | null;
   userPrincipalName?: string;
+  onPremisesSyncEnabled?: boolean | null;
 }
 
 interface GroupeGraph {
   id: string;
   displayName?: string;
   mail?: string | null;
+  onPremisesSyncEnabled?: boolean | null;
 }
 
 const versUtilisateur = (u: UtilisateurGraph): EntraPrincipal => ({
@@ -270,6 +272,7 @@ const versUtilisateur = (u: UtilisateurGraph): EntraPrincipal => ({
   id: u.id,
   name: u.displayName ?? "",
   email: u.mail || u.userPrincipalName || "",
+  synced: u.onPremisesSyncEnabled === true,
 });
 
 const versGroupe = (g: GroupeGraph): EntraPrincipal => ({
@@ -277,6 +280,7 @@ const versGroupe = (g: GroupeGraph): EntraPrincipal => ({
   id: g.id,
   name: g.displayName ?? "",
   email: g.mail ?? "",
+  synced: g.onPremisesSyncEnabled === true,
 });
 
 /** Au plus, par recherche et par sorte : de quoi voir toute une famille de groupes. */
@@ -317,10 +321,10 @@ export const chercherDansLAnnuaire = async (
 
   const groupes = Promise.all([
     graph<Page<GroupeGraph>>(
-      `/groups?$filter=${encodeURIComponent(`startswith(displayName,'${odata}')`)}&$select=id,displayName,mail&$top=${RESULTATS}`,
+      `/groups?$filter=${encodeURIComponent(`startswith(displayName,'${odata}')`)}&$select=id,displayName,mail,onPremisesSyncEnabled&$top=${RESULTATS}`,
     ),
     graph<Page<GroupeGraph>>(
-      `/groups?$search=${encodeURIComponent(`"displayName:${terme}"`)}&$select=id,displayName,mail&$top=${RESULTATS}`,
+      `/groups?$search=${encodeURIComponent(`"displayName:${terme}"`)}&$select=id,displayName,mail,onPremisesSyncEnabled&$top=${RESULTATS}`,
       { entetes },
     ),
   ]);
@@ -330,10 +334,10 @@ export const chercherDansLAnnuaire = async (
       ? Promise.all([vide, vide] as [Promise<Page<UtilisateurGraph>>, Promise<Page<UtilisateurGraph>>])
       : Promise.all([
           graph<Page<UtilisateurGraph>>(
-            `/users?$filter=${encodeURIComponent(`startswith(displayName,'${odata}') or startswith(mail,'${odata}') or startswith(userPrincipalName,'${odata}')`)}&$select=id,displayName,mail,userPrincipalName&$top=${RESULTATS}`,
+            `/users?$filter=${encodeURIComponent(`startswith(displayName,'${odata}') or startswith(mail,'${odata}') or startswith(userPrincipalName,'${odata}')`)}&$select=id,displayName,mail,userPrincipalName,onPremisesSyncEnabled&$top=${RESULTATS}`,
           ),
           graph<Page<UtilisateurGraph>>(
-            `/users?$search=${encodeURIComponent(`"displayName:${terme}" OR "mail:${terme}"`)}&$select=id,displayName,mail,userPrincipalName&$top=${RESULTATS}`,
+            `/users?$search=${encodeURIComponent(`"displayName:${terme}" OR "mail:${terme}"`)}&$select=id,displayName,mail,userPrincipalName,onPremisesSyncEnabled&$top=${RESULTATS}`,
             { entetes },
           ),
         ]);
@@ -350,6 +354,47 @@ export const profilEntra = async (oid: string): Promise<UtilisateurGraph> =>
   graph<UtilisateurGraph>(
     `/users/${encodeURIComponent(oid)}?$select=id,displayName,givenName,surname,mail,userPrincipalName`,
   );
+
+/** La fiche d'un utilisateur telle qu'Entra la tient : ce que citent les modèles. */
+export interface FicheEntra {
+  givenName?: string | null;
+  surname?: string | null;
+  displayName?: string | null;
+  mail?: string | null;
+  userPrincipalName?: string | null;
+  businessPhones?: string[] | null;
+  mobilePhone?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
+  companyName?: string | null;
+  streetAddress?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+}
+
+const CHAMPS_FICHE =
+  "givenName,surname,displayName,mail,userPrincipalName,businessPhones,mobilePhone," +
+  "jobTitle,department,companyName,streetAddress,city,state,postalCode,country";
+
+/** La fiche d'un utilisateur, par son identifiant. */
+export const ficheEntra = (oid: string): Promise<FicheEntra> =>
+  graph<FicheEntra>(`/users/${encodeURIComponent(oid)}?$select=${CHAMPS_FICHE}`);
+
+/**
+ * La fiche de qui porte cette adresse dans l'annuaire — son adresse
+ * principale ou son identifiant de connexion ; « null » : personne.
+ */
+export const ficheEntraParAdresse = async (adresse: string): Promise<FicheEntra | null> => {
+  const valeur = adresse.trim().replace(/'/g, "''");
+  if (!valeur) return null;
+  const filtre = encodeURIComponent(`mail eq '${valeur}' or userPrincipalName eq '${valeur}'`);
+  const page = await graph<Page<FicheEntra>>(
+    `/users?$filter=${filtre}&$select=${CHAMPS_FICHE}&$top=1`,
+  );
+  return page.value[0] ?? null;
+};
 
 /**
  * Les groupes de l'utilisateur, y compris ceux dont il est membre par un autre

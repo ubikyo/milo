@@ -10,10 +10,14 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { PLUS_SIZE } from "../../themes/plus";
 import type { FloatingPosition } from "@mantine/core";
 import type { ReactNode } from "react";
+
+// Le temps laissé au second clic d'un double clic avant que le premier ne
+// coche l'option.
+const DELAI_DOUBLE_CLIC = 250;
 
 /** Le minimum qu'une option doit porter : de quoi l'identifier et la nommer. */
 export interface ChipOption {
@@ -173,6 +177,15 @@ export default function ChipPicker<T extends ChipOption>({
     .map((id) => options.find((o) => String(o.id) === String(id)))
     .filter((o): o is T => Boolean(o));
 
+  // Le clic sur une option à rôle propre attend de savoir s'il est le premier
+  // d'un double clic : sinon, ouvrir l'option la cocherait au passage.
+  const clicEnAttente = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const oublierClic = () => {
+    if (clicEnAttente.current) clearTimeout(clicEnAttente.current);
+    clicEnAttente.current = null;
+  };
+  useEffect(() => oublierClic, []);
+
   const bascule = (id: number | string) => {
     const cle = String(id);
     onChange(
@@ -284,6 +297,11 @@ export default function ChipPicker<T extends ChipOption>({
           type="auto"
           scrollbars="y"
           scrollbarSize={2}
+          // Le contenu d'une zone de défilement s'élargit d'ordinaire à son
+          // texte (« min-width: min-content ») : une adresse longue repoussait
+          // le bout de la ligne — l'origine de l'annuaire — hors de la liste.
+          // Tenu à sa largeur, il tronque.
+          styles={{ content: { display: "block", minWidth: 0 } }}
         >
           <div ref={contenuRef}>
             {listOptions.length > 0 && (
@@ -313,8 +331,21 @@ export default function ChipPicker<T extends ChipOption>({
                         styles={{ input: { cursor: "pointer" } }}
                         aria-label={option.name}
                       />
+                      {/* Un clic coche, comme sur la case ; un double clic
+                          ouvre le rôle propre sans rien cocher. */}
                       <div
-                        onClick={() => onOptionClick(option)}
+                        onClick={(e) => {
+                          oublierClic();
+                          if (e.detail > 1) return;
+                          clicEnAttente.current = setTimeout(() => {
+                            clicEnAttente.current = null;
+                            bascule(option.id);
+                          }, DELAI_DOUBLE_CLIC);
+                        }}
+                        onDoubleClick={() => {
+                          oublierClic();
+                          onOptionClick(option);
+                        }}
                         style={{
                           flex: fullWidthOptions ? 1 : undefined,
                           minWidth: 0,

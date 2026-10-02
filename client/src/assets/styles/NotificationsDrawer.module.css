@@ -1,25 +1,67 @@
-/* Une notification du tiroir : toute la ligne s'ouvre au clic, et prend au
-   survol le gris neutre des survols (themes/colors.ts, NEUTRAL_HOVER). La
-   croix qui la supprime ne se montre qu'au survol de la ligne. Celle d'un
-   élément supprimé n'ouvre rien : pas de main au survol. */
+/* Une notification du tiroir : un entête bleu, en texte blanc — icône,
+   objet, date — au-dessus du message, sur un gris neutre. Toute la carte
+   s'ouvre au clic, et fonce d'un cran au survol. La date se tient tout à
+   droite ; au survol, elle glisse vers la gauche pour faire place à la croix
+   qui supprime la notification. Celle d'un élément supprimé n'ouvre rien :
+   pas de main au survol. */
 .ligne {
-  border-radius: 2px;
-  padding: 8px 10px;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: light-dark(#ececec, #2e2e2e);
 }
 
 .ligne[data-ouvrable] {
   cursor: pointer;
 }
 
+.entete {
+  padding: 6px 10px;
+  color: #fff;
+  background-color: var(--mantine-color-blue-6);
+}
+
+.corps {
+  padding: 20px;
+}
+
 .ligne:hover {
-  background-color: light-dark(#ececec, #2e2e2e);
+  background-color: light-dark(#e2e2e2, #353535);
+}
+
+.ligne:hover .entete {
+  background-color: var(--mantine-color-blue-7);
+}
+
+.date {
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+/* La place de la croix : nulle au repos, elle s'ouvre au survol et pousse la
+   date vers la gauche. */
+.croix {
+  display: flex;
+  width: 0;
+  margin-left: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    width 150ms ease,
+    margin-left 150ms ease,
+    opacity 150ms ease;
+}
+
+.ligne:hover .croix,
+.croix:focus-within {
+  width: 22px;
+  margin-left: 8px;
+  opacity: 1;
 }
 
 .supprimer {
-  opacity: 0;
+  color: #fff;
 }
 
-.ligne:hover .supprimer,
-.supprimer:focus-visible {
-  opacity: 1;
+.supprimer:hover {
+  background-color: rgba(255, 255, 255, 0.2);
 }

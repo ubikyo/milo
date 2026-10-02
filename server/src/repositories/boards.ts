@@ -2,8 +2,11 @@
 // Elle est lue par tout ce qui pend à un tableau : ses listes, ses cartes,
 // ses étiquettes.
 
+import type { Request } from "express";
+import type { Right } from "@milo/shared";
 import { mutation, scalar, selection } from "../db/query.js";
 import type { BoardRow, NextRow, UserRow } from "../db/rows.js";
+import { exiger } from "../lib/droits.js";
 import { HttpError } from "../lib/http.js";
 
 export const BOARD_INTROUVABLE = "Tableau introuvable";
@@ -40,19 +43,14 @@ export const boardLisible = (board: BoardRow | undefined, user: UserRow): boolea
 /**
  * Le tableau demandé, s'il existe et que cette personne peut le voir. Sinon
  * « introuvable », car un tableau privé ne se laisse pas même deviner — dire
- * « interdit » reviendrait à confirmer qu'il existe.
+ * « interdit » reviendrait à confirmer qu'il existe. Il faut aussi le droit de
+ * voir les tâches de sa société, et `droit` en plus quand on y écrit : tout
+ * ce qui pend au tableau — listes, cartes, étiquettes — passe par ici.
  */
-export const boardOuvert = (id: unknown, user: UserRow): BoardRow => {
+export const boardOuvert = (id: unknown, req: Request, droit: Right = "view"): BoardRow => {
   const board = boards.byId.get(id);
-  if (!boardLisible(board, user) || !board) throw new HttpError(404, BOARD_INTROUVABLE);
-  return board;
-};
-
-/**
- * Un tableau verrouillé garde ses listes telles qu'elles sont : on n'en
- * ajoute, n'en déplace ni n'en supprime. Ses cartes, elles, restent libres.
- */
-export const listesLibres = (board: BoardRow): BoardRow => {
-  if (board.is_locked) throw new HttpError(403, "Ce tableau est verrouillé : ses listes ne bougent pas");
+  if (!boardLisible(board, req.user) || !board) throw new HttpError(404, BOARD_INTROUVABLE);
+  exiger(req, "tasks", "view", board.company_id, BOARD_INTROUVABLE);
+  if (droit !== "view") exiger(req, "tasks", droit, board.company_id);
   return board;
 };

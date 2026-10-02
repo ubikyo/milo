@@ -5,7 +5,7 @@ import { IconPlus } from "@tabler/icons-react";
 // statistiques (SectionsBoard) : un cadre en pointillé, sans fond, qui occupe
 // la hauteur restante, et le « + » au centre dans une pastille verte. Elle se
 // clique en entier — le bouton n'est qu'un repère visuel, pas une cible à
-// viser. Elle ouvre la boîte de choix des widgets.
+// viser. Elle ouvre le tiroir des widgets.
 //
 // Elle ne se montre pas toujours. Une colonne qui porte déjà quelque chose n'a
 // plus besoin d'invite : la zone s'efface, et ne revient que si la colonne se

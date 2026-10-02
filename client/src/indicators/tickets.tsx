@@ -55,7 +55,8 @@ const typeDe = (config: unknown) =>
 
 export const ticketsIndicator: SupportIndicatorWidget = {
   type: "tickets",
-  label: "Tickets",
+  kind: "helpdesk",
+  label: "Indicateur",
   icon: IconTicket,
   defaultConfig: { [NOM]: "", [TYPE]: TYPE_PAR_DEFAUT.value },
 

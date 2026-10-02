@@ -49,6 +49,7 @@ import TaskDestination, { descriptionDe } from "./TaskDestination";
 import type { Destination, TacheSource } from "./TaskDestination";
 import LabelPicker from "../ui/LabelPicker";
 import CommentThread from "../project/CommentThread";
+import { FIELDSET_NU } from "../../lib/droits";
 import ErrorAlert from "../ui/ErrorAlert";
 import { ReferenceTag } from "../ui/ReferenceTag";
 import classes from "../../assets/styles/CardDrawer.module.css";
@@ -166,6 +167,11 @@ interface CardDrawerProps {
   onCreated?: (cardId: Id) => void;
   /** Qui crée la tâche : il en est membre d'office. */
   currentUserId?: Id;
+  /**
+   * Sans le droit de modifier les tâches de la société, la fiche se lit
+   * seulement : ni saisie, ni ajout, ni enregistrement.
+   */
+  readOnly?: boolean;
 }
 
 export default function CardDrawer({
@@ -182,6 +188,7 @@ export default function CardDrawer({
   source = null,
   onCreated,
   currentUserId,
+  readOnly = false,
 }: CardDrawerProps) {
   const creation = !card && source !== null;
   /** Où la tâche créée ira. */
@@ -238,6 +245,9 @@ export default function CardDrawer({
     placeholder: "Description de la carte",
     onPasteImage: collerImage,
   });
+  useEffect(() => {
+    editor?.setEditable(!readOnly);
+  }, [editor, readOnly]);
 
   useEffect(() => {
     if (!opened || !card) return;
@@ -325,7 +335,7 @@ export default function CardDrawer({
    * La plus récente se range en tête, comme le serveur les donne.
    */
   const deposerFichiers = async (fichiers: File[]) => {
-    if (!card || fichiers.length === 0) return;
+    if (!card || readOnly || fichiers.length === 0) return;
     setError(null);
     for (const fichier of fichiers) {
       try {
@@ -572,28 +582,34 @@ export default function CardDrawer({
                       Suivre
                     </Menu.Item>
 
-                    <Menu.Divider />
+                    {!readOnly && (
+                      <>
+                        <Menu.Divider />
 
-                    <Menu.Item
-                      leftSection={<IconChecklist size={16} />}
-                      onClick={ajouterChecklist}
-                    >
-                      Checklist
-                    </Menu.Item>
+                        <Menu.Item
+                          leftSection={<IconChecklist size={16} />}
+                          onClick={ajouterChecklist}
+                        >
+                          Checklist
+                        </Menu.Item>
+                      </>
+                    )}
                   </>
                 )}
                 {/* L'échéance se pose comme une checklist : par le même menu,
                     puisque c'est un bloc de plus sur la carte. Le sélecteur
                     s'ouvre au-dessus du titre, là où la date se lira. */}
-                <Menu.Item
-                  leftSection={<IconCalendarEvent size={16} />}
-                  onClick={() => setChoisitDate(true)}
-                >
-                  Date
-                </Menu.Item>
+                {!readOnly && (
+                  <Menu.Item
+                    leftSection={<IconCalendarEvent size={16} />}
+                    onClick={() => setChoisitDate(true)}
+                  >
+                    Date
+                  </Menu.Item>
+                )}
                 {/* Les fichiers se glissent sur le tiroir ; ceci est l'autre
                     chemin, pour qui préfère les choisir. */}
-                {!creation && (
+                {!creation && !readOnly && (
                   <Menu.Item
                     leftSection={<IconPaperclip size={16} />}
                     onClick={() => champFichier.current?.click()}
@@ -617,147 +633,151 @@ export default function CardDrawer({
               classNames={{ scrollbar: classes.scrollbar, thumb: classes.thumb }}
               style={{ flex: 1, minHeight: 0 }}
             >
-              <Stack gap="xl">
-                {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
+              {/* En lecture seule, tous les champs de la fiche sont éteints
+                  d'un coup : c'est ce que fait un « fieldset » désactivé. */}
+              <fieldset disabled={readOnly} style={FIELDSET_NU}>
+                <Stack gap="xl">
+                  {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
 
-                {/* Ce qui range la carte vient avant ce qui la nomme : les deux
-                  colonnes s'ouvrent chacune sur leur propre liste. Les bulles
-                  des membres tiennent en peu de place, les étiquettes portent du
-                  texte : la largeur se partage en 30 / 70. Ce partage se dit en
-                  proportions et non en pourcentages : « 30% + 70% » aurait
-                  ignoré l'écart entre les deux colonnes, et la seconde aurait
-                  débordé d'autant. */}
-                <Group align="flex-start" gap="md" wrap="nowrap">
-                  <div style={{ flex: "3 1 0", minWidth: 0 }}>
-                    <ActorPicker
-                      chipHeight={CHIP_HEIGHT}
-                      // Les bulles se suivent avec le même filet d'air que sur une
-                      // carte du tableau ou dans celui des projets.
-                      chipGap={ACTOR_GAP}
-                      label="Membres"
-                      users={users}
-                      value={memberIds}
-                      onChange={setMemberIds}
+                  {/* Ce qui range la carte vient avant ce qui la nomme : les deux
+                    colonnes s'ouvrent chacune sur leur propre liste. Les bulles
+                    des membres tiennent en peu de place, les étiquettes portent du
+                    texte : la largeur se partage en 30 / 70. Ce partage se dit en
+                    proportions et non en pourcentages : « 30% + 70% » aurait
+                    ignoré l'écart entre les deux colonnes, et la seconde aurait
+                    débordé d'autant. */}
+                  <Group align="flex-start" gap="md" wrap="nowrap">
+                    <div style={{ flex: "3 1 0", minWidth: 0 }}>
+                      <ActorPicker
+                        chipHeight={CHIP_HEIGHT}
+                        // Les bulles se suivent avec le même filet d'air que sur une
+                        // carte du tableau ou dans celui des projets.
+                        chipGap={ACTOR_GAP}
+                        label="Acteurs"
+                        users={users}
+                        value={memberIds}
+                        onChange={setMemberIds}
+                      />
+                    </div>
+                    <div style={{ flex: "7 1 0", minWidth: 0 }}>
+                      <LabelPicker
+                        chipHeight={CHIP_HEIGHT}
+                        labels={creation ? labelsDestination : labels}
+                        value={labelIds}
+                        onChange={setLabelIds}
+                        boardId={(creation ? destination.boardId : boardId) ?? ""}
+                        onLabelsChanged={
+                          creation
+                            ? () => lireLabelsDestination().catch((e) => setError(messageErreur(e)))
+                            : onLabelsChanged
+                        }
+                      />
+                    </div>
+                    {/* La référence suit les étiquettes, au bout de la ligne :
+                        elle est attribuée à la création et ne bouge plus, elle
+                        se montre sans se modifier. Le tag se lit seul : son
+                        libellé est tu, mais garde sa place pour que le tag
+                        s'aligne sur le haut des étiquettes, sous leur libellé.
+                        Le même tag que dans la liste des projets. */}
+                    {!creation && (
+                      <Input.Wrapper
+                        label="Référence"
+                        style={{ flexShrink: 0 }}
+                        styles={{ label: { visibility: "hidden" } }}
+                      >
+                        {/* Remonté de quatre pixels : sans quoi le tag tombe juste
+                            sous le haut des étiquettes. */}
+                        <div style={{ marginTop: -4 }}>
+                          {numero ? (
+                            <ReferenceTag
+                              reference={taskReference(numero)}
+                              gabarit={taskReference(9999)}
+                            />
+                          ) : (
+                            <Text size="sm" c="dimmed">
+                              —
+                            </Text>
+                          )}
+                        </div>
+                      </Input.Wrapper>
+                    )}
+                  </Group>
+
+                  {/* L'échéance coiffe le titre : c'est la première chose qu'on
+                      veut savoir en ouvrant une carte, avant même son intitulé.
+                      Tant qu'il n'y en a pas, rien ne s'affiche — la fiche ne
+                      porte pas un champ vide de plus. */}
+                  {choisitDate ? (
+                    <DateTimePicker
+                      label="Échéance"
+                      placeholder="Choisir une date, et une heure si besoin"
+                      value={echeance || null}
+                      // L'heure est facultative : laissée vide, l'échéance tient
+                      // à la date seule, et le champ comme la fiche n'en montrent
+                      // que la date (lib/echeance.ts). Le calendrier ne se referme
+                      // pas au premier clic, pour laisser le temps de régler
+                      // l'heure si on en veut une : c'est sa fermeture, et elle
+                      // seule, qui rend la main.
+                      valueFormat={formatChampEcheance}
+                      // L'heure se vide comme elle se règle : l'effacer ramène
+                      // l'échéance à la date seule.
+                      timePickerProps={{ clearable: true }}
+                      onChange={(valeur) => {
+                        const date = valeur ? new Date(valeur) : null;
+                        setEcheance(date && !Number.isNaN(date.getTime()) ? date.toISOString() : "");
+                      }}
+                      onDropdownClose={() => setChoisitDate(false)}
+                      withSeconds={false}
+                      clearable
+                      autoFocus
+                      popoverProps={{ withinPortal: true }}
                     />
-                  </div>
-                  <div style={{ flex: "7 1 0", minWidth: 0 }}>
-                    <LabelPicker
-                      chipHeight={CHIP_HEIGHT}
-                      labels={creation ? labelsDestination : labels}
-                      value={labelIds}
-                      onChange={setLabelIds}
-                      boardId={(creation ? destination.boardId : boardId) ?? ""}
-                      onLabelsChanged={
-                        creation
-                          ? () => lireLabelsDestination().catch((e) => setError(messageErreur(e)))
-                          : onLabelsChanged
-                      }
-                    />
-                  </div>
-                  {/* La référence suit les étiquettes, au bout de la ligne :
-                      elle est attribuée à la création et ne bouge plus, elle
-                      se montre sans se modifier. Le tag se lit seul : son
-                      libellé est tu, mais garde sa place pour que le tag
-                      s'aligne sur le haut des étiquettes, sous leur libellé.
-                      Le même tag que dans la liste des projets. */}
-                  {!creation && (
-                    <Input.Wrapper
-                      label="Référence"
-                      style={{ flexShrink: 0 }}
-                      styles={{ label: { visibility: "hidden" } }}
-                    >
-                      {/* Remonté de quatre pixels : sans quoi le tag tombe juste
-                          sous le haut des étiquettes. */}
-                      <div style={{ marginTop: -4 }}>
-                        {numero ? (
-                          <ReferenceTag
-                            reference={taskReference(numero)}
-                            gabarit={taskReference(9999)}
-                          />
-                        ) : (
-                          <Text size="sm" c="dimmed">
-                            —
-                          </Text>
-                        )}
-                      </div>
-                    </Input.Wrapper>
+                  ) : (
+                    echeance && <DueDate value={echeance} onEdit={() => setChoisitDate(true)} onRemove={() => setEcheance("")} />
                   )}
-                </Group>
 
-                {/* L'échéance coiffe le titre : c'est la première chose qu'on
-                    veut savoir en ouvrant une carte, avant même son intitulé.
-                    Tant qu'il n'y en a pas, rien ne s'affiche — la fiche ne
-                    porte pas un champ vide de plus. */}
-                {choisitDate ? (
-                  <DateTimePicker
-                    label="Échéance"
-                    placeholder="Choisir une date, et une heure si besoin"
-                    value={echeance || null}
-                    // L'heure est facultative : laissée vide, l'échéance tient
-                    // à la date seule, et le champ comme la fiche n'en montrent
-                    // que la date (lib/echeance.ts). Le calendrier ne se referme
-                    // pas au premier clic, pour laisser le temps de régler
-                    // l'heure si on en veut une : c'est sa fermeture, et elle
-                    // seule, qui rend la main.
-                    valueFormat={formatChampEcheance}
-                    // L'heure se vide comme elle se règle : l'effacer ramène
-                    // l'échéance à la date seule.
-                    timePickerProps={{ clearable: true }}
-                    onChange={(valeur) => {
-                      const date = valeur ? new Date(valeur) : null;
-                      setEcheance(date && !Number.isNaN(date.getTime()) ? date.toISOString() : "");
-                    }}
-                    onDropdownClose={() => setChoisitDate(false)}
-                    withSeconds={false}
-                    clearable
-                    autoFocus
-                    popoverProps={{ withinPortal: true }}
+                  {/* Où la tâche ira, avant ce qui la nomme. Une carte ouverte
+                      depuis son tableau sait déjà où elle est. */}
+                  {creation && source && (
+                    <TaskDestination
+                      key={`${source.kind}-${source.id}`}
+                      source={source}
+                      onChange={setDestination}
+                      onError={setError}
+                    />
+                  )}
+
+                  <TextInput
+                    label="Titre"
+                    placeholder="Titre de la carte"
+                    value={text}
+                    onChange={(e) => setText(e.currentTarget.value)}
+                    required
                   />
-                ) : (
-                  echeance && <DueDate value={echeance} onEdit={() => setChoisitDate(true)} onRemove={() => setEcheance("")} />
-                )}
 
-                {/* Où la tâche ira, avant ce qui la nomme. Une carte ouverte
-                    depuis son tableau sait déjà où elle est. */}
-                {creation && source && (
-                  <TaskDestination
-                    key={`${source.kind}-${source.id}`}
-                    source={source}
-                    onChange={setDestination}
+                  <RichTextField editor={editor} label="Description" />
+
+                  {/* Les checklists ferment la fiche : elles s'ajoutent par le menu
+                    « Actions » et s'enregistrent d'elles-mêmes. */}
+                  {card && (
+                  <CardChecklists
+                    cardId={card.id}
+                    checklists={checklists}
+                    users={users}
+                    onChanged={refreshChecklists}
                     onError={setError}
                   />
-                )}
+                  )}
 
-                <TextInput
-                  label="Titre"
-                  placeholder="Titre de la carte"
-                  value={text}
-                  onChange={(e) => setText(e.currentTarget.value)}
-                  required
-                />
-
-                <RichTextField editor={editor} label="Description" />
-
-                {/* Les checklists ferment la fiche : elles s'ajoutent par le menu
-                  « Actions » et s'enregistrent d'elles-mêmes. */}
-                {card && (
-                <CardChecklists
-                  cardId={card.id}
-                  checklists={checklists}
-                  users={users}
-                  onChanged={refreshChecklists}
-                  onError={setError}
-                />
-                )}
-
-                {/* Les pièces jointes ferment la fiche. Comme les checklists,
-                    l'encart ne paraît que lorsqu'il y a quelque chose dedans. */}
-                <CardAttachments
-                  attachments={attachments}
-                  onPick={() => champFichier.current?.click()}
-                  onDelete={supprimerPiece}
-                />
-              </Stack>
+                  {/* Les pièces jointes ferment la fiche. Comme les checklists,
+                      l'encart ne paraît que lorsqu'il y a quelque chose dedans. */}
+                  <CardAttachments
+                    attachments={attachments}
+                    onPick={() => champFichier.current?.click()}
+                    onDelete={supprimerPiece}
+                  />
+                </Stack>
+              </fieldset>
             </ScrollArea>
           </Tabs.Panel>
 
@@ -781,6 +801,7 @@ export default function CardDrawer({
                   onAdd={addComment}
                   onUpdate={updateComment}
                   onDelete={deleteComment}
+                  readOnly={readOnly}
                 />
               </Stack>
             </ScrollArea>
@@ -790,7 +811,7 @@ export default function CardDrawer({
 
       {/* La carte se supprime depuis son menu « Actions », pas d'ici : le pied
           ne porte donc que les deux gestes communs à tous les tiroirs. */}
-      <DrawerFooter onSave={sauvegarder} onClose={onClose} saving={saving} />
+      <DrawerFooter onSave={readOnly ? undefined : sauvegarder} onClose={onClose} saving={saving} />
 
       {/* Le sélecteur de fichiers, ouvert par le menu « Actions » comme par le
           bouton de l'encart. Il est remis à zéro après coup : sans cela,

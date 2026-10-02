@@ -252,7 +252,7 @@ export interface AssetsListe {
   loading: boolean;
   onOpenAsset: (asset: Asset) => void;
   /** « Créer une tâche », au clic droit sur un poste. */
-  onCreateTask: (asset: Asset) => void;
+  onCreateTask?: (asset: Asset) => void;
 }
 
 export const AssetsListeContext = createContext<AssetsListe | null>(null);
@@ -414,7 +414,7 @@ export default function AssetsList({ config }: { config: unknown }) {
   // s'ajoute d'ici, tout vient des agents.
   if (assets.length === 0) {
     return liste.loading ? null : (
-      <EmptyPanel icon={IconDeviceDesktop} message="Aucun poste" size="md" fill={false} />
+      <EmptyPanel icon={IconDeviceDesktop} message="Aucun poste" size="md" />
     );
   }
 
@@ -423,11 +423,11 @@ export default function AssetsList({ config }: { config: unknown }) {
       {/* Une section plus étroite que la liste la fait défiler de côté. */}
       <GrilleScroll>{table}</GrilleScroll>
 
-      {contexte && (
+      {contexte && liste.onCreateTask && (
         <PointMenu position={contexte.position} onClose={() => setContexte(null)}>
           <Menu.Item
             leftSection={<IconSquarePlus size={16} />}
-            onClick={() => liste.onCreateTask(contexte.poste)}
+            onClick={() => liste.onCreateTask?.(contexte.poste)}
           >
             Créer une tâche
           </Menu.Item>

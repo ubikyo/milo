@@ -19,7 +19,8 @@ interface RoleRightsModalProps {
 }
 
 /**
- * Les droits d'un rôle : une ligne par mode, une colonne par droit. Un mode
+ * Les droits d'un rôle : une ligne par mode, une colonne par droit. Le
+ * Paramétrage n'y est pas : il ne dépend d'aucune société. Un mode
  * qui ne propose pas un droit laisse sa case vide (les assets ne se lisent
  * que). L'administrateur a tout, et sa grille ne se modifie pas.
  */
@@ -96,8 +97,9 @@ export default function RoleRightsModal({
 
         {figee && (
           <Text size="sm" c="dimmed">
-            L'administrateur a tous les droits, dans tous les modes et le
-            Paramétrage.
+            L'administrateur a tous les droits, dans tous les modes. Le
+            Paramétrage, lui, se règle par utilisateur ou groupe, dans
+            l'onglet Accès.
           </Text>
         )}
 

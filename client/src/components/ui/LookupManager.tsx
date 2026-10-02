@@ -51,6 +51,11 @@ interface LookupManagerProps {
   renderTags?: (item: LookupItem) => ReactNode;
   /** Sans elle, tout se supprime ; le rôle administrateur, lui, reste. */
   canDelete?: (item: LookupItem) => boolean;
+  /**
+   * Ce que la ligne d'ajout porte après le nom — l'évènement d'une réponse
+   * par défaut. C'est l'appelant qui en garde la valeur, et la lit à l'ajout.
+   */
+  addEnd?: ReactNode;
 }
 
 /**
@@ -100,6 +105,7 @@ export default function LookupManager({
   renderActions,
   renderTags,
   canDelete,
+  addEnd,
 }: LookupManagerProps) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
@@ -164,6 +170,7 @@ export default function LookupManager({
           onSubmit: create,
           onCancel: () => setNewName(""),
           disabled: busy,
+          end: addEnd,
         }}
       >
         {items.map((item) => (

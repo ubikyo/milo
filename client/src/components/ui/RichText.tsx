@@ -185,6 +185,8 @@ interface RichTextFieldProps {
   contentEnd?: ReactNode;
   /** Les lignes que la zone montre avant de défiler : cinq par défaut. */
   maxLines?: number;
+  /** Les lignes que la zone montre même vide : une seule par défaut. */
+  minLines?: number;
 }
 
 export default function RichTextField({
@@ -195,6 +197,7 @@ export default function RichTextField({
   topSection,
   contentEnd,
   maxLines,
+  minLines,
 }: RichTextFieldProps) {
   // Aucune infobulle : les boutons de la barre d'outils reçoivent de Mantine un
   // « title » (leur libellé) qu'aucune propriété ne retire pour tous — celui du
@@ -262,11 +265,12 @@ export default function RichTextField({
       </RichTextEditor.Toolbar>
       {topSection}
       <RichTextEditor.Content
-        className={classes.content}
+        className={minLines ? `${classes.content} ${classes.minLines}` : classes.content}
         style={
           {
             backgroundColor: FIELD_BG,
             ...(maxLines ? { "--milo-rich-lines": maxLines } : {}),
+            ...(minLines ? { "--milo-rich-min-lines": minLines } : {}),
           } as CSSProperties
         }
       />

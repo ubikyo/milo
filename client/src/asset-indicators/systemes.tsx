@@ -45,6 +45,7 @@ const versionDe = (os: Asset["os"]): string => {
 
 export const systemesIndicator: AssetIndicatorWidget = {
   type: "systems",
+  kind: "asset",
   label: LIBELLE,
   icon: IconBrandWindows,
   defaultConfig: { [NOM]: "" },

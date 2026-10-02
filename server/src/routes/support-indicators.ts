@@ -5,6 +5,7 @@ import { supportIndicators } from "../repositories/support-indicators.js";
 import { indicatorRoutes } from "./indicators.js";
 
 export const supportIndicatorRoutes = indicatorRoutes(
+  "support",
   "support-indicators",
   supportIndicators,
   isSupportIndicatorType,

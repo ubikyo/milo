@@ -12,6 +12,7 @@ import {
   SUPPORT_NEW_MESSAGE_LABELS,
   SUPPORT_URGENCY_LABELS,
   allPermissions,
+  defaultAppPermissions,
 } from "@milo/shared";
 import { heureDeParis } from "../lib/time.js";
 
@@ -715,6 +716,21 @@ export const migrate = (db: Database): void => {
     db.exec("ALTER TABLE support_comments ADD COLUMN mail_cc TEXT NOT NULL DEFAULT ''");
     db.exec("ALTER TABLE support_comments ADD COLUMN mail_bcc TEXT NOT NULL DEFAULT ''");
   }
+  // Messages d'avant les réponses par défaut : aucun n'est parti d'office.
+  if (!columns(db, "support_comments").includes("auto_event")) {
+    db.exec("ALTER TABLE support_comments ADD COLUMN auto_event TEXT NOT NULL DEFAULT ''");
+  }
+  // Réponses par défaut d'avant les évènements : aucune ne part d'office. Celles
+  // qui en portaient une liste gardent le premier.
+  if (!columns(db, "support_replies").includes("event")) {
+    db.exec("ALTER TABLE support_replies ADD COLUMN event TEXT NOT NULL DEFAULT ''");
+    if (columns(db, "support_replies").includes("events")) {
+      db.exec(
+        `UPDATE support_replies SET event = COALESCE(json_extract(events, '$[0]'), '')
+         WHERE json_valid(events)`,
+      );
+    }
+  }
   if (!columns(db, "support_requests").includes("conversation_id")) {
     db.exec("ALTER TABLE support_requests ADD COLUMN conversation_id TEXT NOT NULL DEFAULT ''");
   }
@@ -929,6 +945,20 @@ export const migrate = (db: Database): void => {
   numeroterReferences(db);
   poserSectionsParDefaut(db);
 
+  // Bases d'avant « Hérité » : toutes les sections étaient publiques. Les
+  // index d'avant ne couvraient pas le propriétaire : ils sont refaits.
+  for (const [table, index] of [
+    ["access_sections", "idx_access_sections_category"],
+    ["indicator_sections", "idx_indicator_sections_panel"],
+  ] as const) {
+    if (!columns(db, table).includes("owner_id")) {
+      db.exec(
+        `ALTER TABLE ${table} ADD COLUMN owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE`,
+      );
+      db.exec(`DROP INDEX IF EXISTS ${index}`);
+    }
+  }
+
   // Un onglet n'a de propriétaire que privé : ceux d'avant cette règle
   // retenaient leur auteur même ouverts à tous, et seul cet auteur pouvait
   // alors les fermer. Ils n'en ont plus.
@@ -958,4 +988,68 @@ export const migrate = (db: Database): void => {
   }
 
   assurerAdministrateur(db);
+  separerParametrage(db);
+};
+
+
+/** Posé une fois le Paramétrage sorti des rôles. */
+const PARAMETRAGE_HORS_ROLES = "parametrage_hors_roles";
+
+/**
+ * Le Paramétrage se réglait dans les rôles, société par société ; il se règle
+ * désormais pour l'application, par utilisateur ou groupe. Chacun garde ce
+ * qu'il avait : « Modifier » s'il était administrateur quelque part ou si l'un
+ * de ses rôles le cochait, sinon « Voir » si l'un le cochait. Tous les modes
+ * lui restent ouverts. Puis la case disparaît des rôles.
+ */
+export const separerParametrage = (db: Database): void => {
+  if (lireReglage(db, PARAMETRAGE_HORS_ROLES)) return;
+  db.transaction(() => {
+    const lignes = db
+      .prepare(
+        `SELECT a.principal_type, a.principal_id, a.principal_name, a.principal_email,
+                r.is_admin, r.permissions
+         FROM role_assignments a JOIN roles r ON r.id = a.role_id`,
+      )
+      .all() as {
+      principal_type: string;
+      principal_id: string;
+      principal_name: string;
+      principal_email: string;
+      is_admin: number;
+      permissions: string;
+    }[];
+    const parPrincipal = new Map<string, { ligne: (typeof lignes)[number]; acces: number }>();
+    for (const ligne of lignes) {
+      let coches: unknown = [];
+      try {
+        coches = (JSON.parse(ligne.permissions) as Record<string, unknown>)["settings"] ?? [];
+      } catch {
+        // Un JSON illisible n'accordait rien.
+      }
+      const liste = Array.isArray(coches) ? coches : [];
+      const acces = ligne.is_admin || liste.includes("update") ? 2 : liste.includes("view") ? 1 : 0;
+      const cle = `${ligne.principal_type}:${ligne.principal_id}`;
+      const deja = parPrincipal.get(cle);
+      if (!deja || acces > deja.acces) parPrincipal.set(cle, { ligne, acces });
+    }
+    const poser = db.prepare(
+      `INSERT OR IGNORE INTO principal_permissions
+         (principal_type, principal_id, principal_name, principal_email, settings, modes)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    );
+    const modes = JSON.stringify(defaultAppPermissions().modes);
+    for (const { ligne, acces } of parPrincipal.values()) {
+      poser.run(
+        ligne.principal_type,
+        ligne.principal_id,
+        ligne.principal_name,
+        ligne.principal_email,
+        ["", "view", "update"][acces],
+        modes,
+      );
+    }
+    db.exec("UPDATE roles SET permissions = json_remove(permissions, '$.settings') WHERE json_valid(permissions)");
+    ecrireReglage(db, PARAMETRAGE_HORS_ROLES, true);
+  })();
 };

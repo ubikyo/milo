@@ -13,6 +13,7 @@ const LIBELLE = "Cartes par liste";
 
 export const listesIndicator: TaskIndicatorWidget = {
   type: "lists",
+  kind: "task",
   label: LIBELLE,
   icon: IconColumns,
   defaultConfig: { [NOM]: "" },

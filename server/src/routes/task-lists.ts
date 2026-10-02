@@ -6,7 +6,7 @@ import { badRequest, orNotFound, requireText, toIds } from "../lib/http.js";
 import { concernes, notifierSuppression } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch, touchNow } from "../middleware/events.js";
-import { boardOuvert, listesLibres } from "../repositories/boards.js";
+import { boardOuvert } from "../repositories/boards.js";
 import { copyTaskList } from "../repositories/copy-list.js";
 import { listsWithCards, reorderTaskLists, taskCards, taskLists } from "../repositories/tasks.js";
 
@@ -20,7 +20,7 @@ taskListRoutes.use(touch("task-lists"));
 taskListRoutes.get("/", (req, res) => {
   const { board } = req.query;
   if (!board) badRequest("Le paramètre board est requis");
-  boardOuvert(board, req.user);
+  boardOuvert(board, req);
   res.json(listsWithCards(board));
 });
 
@@ -28,7 +28,7 @@ taskListRoutes.post("/", (req, res) => {
   const name = requireText(req.body.name, "Le nom de la liste est requis");
   const boardId = req.body.board_id;
   if (!boardId) badRequest("Le tableau est requis");
-  listesLibres(boardOuvert(boardId, req.user));
+  boardOuvert(boardId, req, "create");
 
   // Nouvelle liste ajoutée à la fin de celles de ce tableau, ou au rang
   // demandé : le « + » entre deux listes l'y glisse.
@@ -52,7 +52,7 @@ taskListRoutes.put("/reorder", (req, res) => {
   const { ids, board_id } = req.body;
   if (!Array.isArray(ids)) badRequest("ids doit être un tableau");
   if (!board_id) badRequest("Le tableau est requis");
-  const board = listesLibres(boardOuvert(board_id, req.user));
+  const board = boardOuvert(board_id, req, "update");
 
   // L'ordre envoyé doit couvrir exactement les listes de ce tableau.
   const connues = new Set(taskLists.idsOfBoard.all(board.id).map((l) => l.id));
@@ -78,10 +78,10 @@ taskListRoutes.post("/:id/copy", (req, res) => {
 
   // Le tableau de départ comme celui d'accueil doivent être ouverts à cette
   // personne : une liste ne sort pas d'un tableau privé, et n'y entre pas.
-  // Copier ajoute une liste au tableau d'accueil : il ne doit pas être
-  // verrouillé. Le tableau de départ, lui, n'en perd rien.
-  boardOuvert(existing.board_id, req.user);
-  const cible = listesLibres(boardOuvert(boardId, req.user));
+  // Copier ajoute une liste au tableau d'accueil ; le tableau de départ, lui,
+  // n'en perd rien.
+  boardOuvert(existing.board_id, req);
+  const cible = boardOuvert(boardId, req, "create");
 
   // Copier vers un autre tableau peut y créer les étiquettes qui manquaient :
   // le client doit les relire, sans quoi les cartes arriveraient avec des
@@ -110,16 +110,15 @@ taskListRoutes.put("/:id", (req, res) => {
   const boardId = req.body.board_id ?? existing.board_id;
   // Le tableau de départ comme celui d'accueil doivent être ouverts à cette
   // personne : une liste ne sort pas d'un tableau privé, et n'y entre pas.
-  const depart = boardOuvert(existing.board_id, req.user);
-  const accueil = boardOuvert(boardId, req.user);
+  // Changer de tableau, c'est ajouter la liste à celui d'accueil.
+  boardOuvert(existing.board_id, req, "update");
+  boardOuvert(
+    boardId,
+    req,
+    Number(boardId) !== existing.board_id ? "create" : "update",
+  );
 
-  // Changer de tableau retire une liste à l'un et l'ajoute à l'autre : ni
-  // l'un ni l'autre ne doit être verrouillé. Renommer ou colorer reste permis.
   const change = Number(boardId) !== existing.board_id;
-  if (change) {
-    listesLibres(depart);
-    listesLibres(accueil);
-  }
   const position = change
     ? taskLists.nextPosition(boardId).next
     : (req.body.position ?? existing.position);
@@ -131,7 +130,7 @@ taskListRoutes.put("/:id", (req, res) => {
 // Vider une liste de ses tâches, la liste et ses séparateurs restant en place.
 taskListRoutes.delete("/:id/cards", (req, res) => {
   const existing = orNotFound(taskLists.byId.get(req.params.id), LISTE_INTROUVABLE);
-  boardOuvert(existing.board_id, req.user);
+  boardOuvert(existing.board_id, req, "delete");
   const destinataires = concernes.liste(existing.id);
   taskCards.removeTasksOfList.run(existing.id);
   notifierSuppression({
@@ -148,7 +147,7 @@ taskListRoutes.delete("/:id/cards", (req, res) => {
 
 taskListRoutes.delete("/:id", (req, res) => {
   const existing = orNotFound(taskLists.byId.get(req.params.id), LISTE_INTROUVABLE);
-  listesLibres(boardOuvert(existing.board_id, req.user));
+  boardOuvert(existing.board_id, req, "delete");
   const destinataires = concernes.liste(existing.id);
   taskLists.remove.run(existing.id);
   notifierSuppression({

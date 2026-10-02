@@ -224,6 +224,7 @@ function Lien({ config, onChange, locked }: WidgetDisplayProps) {
 
 export const lienWidget: AccessWidget = {
   type: "link",
+  kind: "common",
   label: "Lien",
   icon: IconLink,
   defaultConfig: { [LIBELLE]: "", [URL]: "", [ACTIF]: true },

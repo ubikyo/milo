@@ -571,7 +571,13 @@ const machinesSuivies = (): Map<string, Suivie> => {
     if (!lu || typeof lu !== "object" || Array.isArray(lu)) continue;
     const { machines, intervalle, acteurs, groupes } = reglagesUptime(lu as Record<string, unknown>);
     const tous = [...new Set([...acteurs, ...groupes.flatMap(membresDe)])];
-    const destinataires = ligne.is_private ? tous.filter((id) => id === ligne.owner_id) : tous;
+    // Une catégorie privée, ou la structure personnelle d'un compte, ne
+    // prévient que lui : les acteurs qu'il a nommés n'en voient rien.
+    const seul = ligne.section_owner_id ?? (ligne.is_private ? ligne.owner_id : null);
+    const destinataires =
+      ligne.section_owner_id !== null || ligne.is_private
+        ? tous.filter((id) => id === seul)
+        : tous;
     for (const machine of machines) {
       if (!machine.hote) continue;
       const cle = cleDe(machine);

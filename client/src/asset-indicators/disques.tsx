@@ -28,6 +28,7 @@ const PADDING =
 
 export const disquesIndicator: AssetIndicatorWidget = {
   type: "disks",
+  kind: "asset",
   label: LIBELLE,
   icon: IconDatabase,
   defaultConfig: { [NOM]: "" },

@@ -5,8 +5,10 @@ import SectionBlocks from "../components/access/SectionBlocks";
 import BoardTabs from "../components/ui/BoardTabs";
 import DeleteConfirmModal from "../components/ui/DeleteConfirmModal";
 import EmptyPanel from "../components/ui/EmptyPanel";
-import SectionsBoard from "../components/ui/SectionsBoard";
+import SectionsBoard, { type ModifSection } from "../components/ui/SectionsBoard";
+import { WIDGETS } from "../widgets";
 import type { AccountSlot } from "../components/ui/AccountControls";
+import { useDroits } from "../lib/droits";
 import type {
   AccessBlock,
   AccessBlockType,
@@ -24,33 +26,34 @@ interface AccessPageProps {
   categories: AccessCategory[] | null;
   categoryId: string | null;
   onCategoryChange: (id: string | null) => void;
-  onAddCategory: () => void;
+  onAddCategory?: () => void;
   /** Rendre une catégorie privée, ou de nouveau visible de tous, depuis le menu de son onglet. */
-  onTogglePrivateCategory: (id: number) => void | Promise<void>;
+  onTogglePrivateCategory?: (id: number) => void | Promise<void>;
   /** Renommer un onglet sur place, au double clic sur son nom. */
-  onRenameCategory: (id: number, name: string) => void | Promise<void>;
-  onDeleteCategory: (id: number) => void | Promise<void>;
+  onRenameCategory?: (id: number, name: string) => void | Promise<void>;
+  onDeleteCategory?: (id: number) => void | Promise<void>;
   /** Le nouvel ordre des onglets, glissés dans la rangée. */
-  onReorderCategories: (ids: number[]) => void | Promise<void>;
+  onReorderCategories?: (ids: number[]) => void | Promise<void>;
   /** Verrouiller ou déverrouiller une catégorie depuis le menu de son onglet. */
-  onToggleCategoryLock: (id: number) => void | Promise<void>;
+  onToggleCategoryLock?: (id: number) => void | Promise<void>;
+  /** « Hérité » d'une catégorie, depuis le menu de son onglet : sa structure partagée, ou la sienne. */
+  onToggleCategoryInherited?: (id: number) => void | Promise<void>;
   /** « null » tant que les sections de la catégorie ouverte ne sont pas lues. */
   sections: AccessSection[] | null;
   /** Sans rang, la section va au bout ; le « + » entre deux colonnes en donne un. */
   onAddSection: (index?: number) => void;
-  onEditSection: (section: AccessSection) => void;
   /** La copie, avec ses éléments, se pose à droite de l'original. */
   onDuplicateSection: (section: AccessSection) => void | Promise<void>;
   /** Supprimée depuis le clic droit : la page a déjà posé la question. */
   onDeleteSection: (section: AccessSection) => void | Promise<void>;
   /** Le nouvel ordre des colonnes, posé par leur poignée. */
   onReorderSections: (ids: Id[]) => void | Promise<void>;
-  /** L'écart qui suit une colonne, saisi au-dessus de lui. */
-  onChangeSectionGap: (section: AccessSection, gap: number) => void | Promise<void>;
+  /** La largeur d'une colonne ou l'écart qui la suit, réglés à son pied. */
+  onChangeSection: (section: AccessSection, modif: ModifSection) => void | Promise<void>;
   /** Ce que les sections portent, toutes colonnes confondues. */
   blocks: AccessBlock[];
-  /** La zone en pointillé d'une colonne : elle ouvre la boîte de choix. */
-  onAddBlock: (section: AccessSection) => void;
+  /** Un widget du tiroir de gauche posé dans une colonne, à cette place. */
+  onCreateBlock: (section: AccessSection, type: string, index: number) => void | Promise<void>;
   onEditBlock: (block: AccessBlock) => void;
   /** Un élément modifié depuis la colonne même, sans passer par son tiroir. */
   onChangeBlockConfig: (
@@ -63,9 +66,9 @@ interface AccessPageProps {
   onDuplicateBlock: (block: AccessBlock) => void | Promise<void>;
   onDeleteBlock: (block: AccessBlock) => void | Promise<void>;
   /** « Créer une tâche », au clic droit sur un élément. */
-  onCreateTask: (block: AccessBlock) => void;
+  onCreateTask?: (block: AccessBlock) => void;
   /** « Créer une demande de support », au clic droit sur un lien. */
-  onCreateSupportRequest: (block: AccessBlock) => void;
+  onCreateSupportRequest?: (block: AccessBlock) => void;
   /** Une catégorie devient sous-catégorie, et l'inverse. */
   onConvertBlock: (block: AccessBlock, type: AccessBlockType) => void | Promise<void>;
   /** La société et le compte, posés au bout de la rangée d'onglets. */
@@ -83,15 +86,15 @@ export default function AccessPage({
   onDeleteCategory,
   onReorderCategories,
   onToggleCategoryLock,
+  onToggleCategoryInherited,
   sections,
   onAddSection,
-  onEditSection,
   onDuplicateSection,
   onDeleteSection,
   onReorderSections,
-  onChangeSectionGap,
+  onChangeSection,
   blocks,
-  onAddBlock,
+  onCreateBlock,
   onEditBlock,
   onChangeBlockConfig,
   onReorderBlocks,
@@ -106,10 +109,16 @@ export default function AccessPage({
   /** L'élément dont on vient de demander la suppression, ou « null ». */
   const [blocASupprimer, setBlocASupprimer] = useState<AccessBlock | null>(null);
 
-  // Le verrou est celui de la catégorie ouverte : il vaut pour toutes ses
-  // colonnes et tout ce qu'elles portent.
+  // Le verrou est celui de la catégorie ouverte, dans cette fenêtre : il vaut
+  // pour toutes ses colonnes et tout ce qu'elles portent. Qui n'a pas le droit
+  // de modifier le mode Accès voit la structure partagée toujours
+  // verrouillée : il lit, sans rien déplacer. Sa propre structure (« Hérité »
+  // décoché) n'est qu'à lui : seul son verrou la fige.
   const categorieOuverte = categories?.find((c) => String(c.id) === categoryId);
-  const verrouille = categorieOuverte?.is_locked === 1;
+  const peut = useDroits();
+  const herite = categorieOuverte?.inherited !== false;
+  const verrouille =
+    categorieOuverte?.is_locked === 1 || (herite && !peut("access", "update"));
 
   /** Ce qu'une colonne porte, dans l'ordre. */
   const blocsDe = (section: AccessSection) =>
@@ -136,14 +145,14 @@ export default function AccessPage({
           locked={verrouille}
         />
       )}
-      onAddWidget={onAddBlock}
+      widgets={WIDGETS}
+      onCreateWidget={onCreateBlock}
       onReorderWidgets={onReorderBlocks}
       onAddSection={onAddSection}
-      onEditSection={onEditSection}
       onDuplicateSection={onDuplicateSection}
       onDeleteSection={onDeleteSection}
       onReorderSections={onReorderSections}
-      onChangeGap={onChangeSectionGap}
+      onChangeSection={onChangeSection}
     />
   );
 
@@ -177,6 +186,11 @@ export default function AccessPage({
         onDelete={onDeleteCategory}
         onReorder={onReorderCategories}
         onToggleLock={onToggleCategoryLock}
+        inheritance={
+          onToggleCategoryInherited
+            ? { of: (onglet) => onglet.inherited !== false, onToggle: onToggleCategoryInherited }
+            : undefined
+        }
         deleteTitle="Supprimer la catégorie"
         account={account}
       />

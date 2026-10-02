@@ -21,6 +21,7 @@ const quantiteDe = (config: unknown) => {
 
 export const demandeursIndicator: SupportIndicatorWidget = {
   type: "senders",
+  kind: "helpdesk",
   label: LIBELLE,
   icon: IconMailForward,
   defaultConfig: { [NOM]: "", [QUANTITE]: QUANTITE_PAR_DEFAUT },

@@ -1,11 +1,15 @@
 // Les projets : la liste filtrée, la fiche, et les écritures.
 
 import { Router } from "express";
-import type { Id } from "@milo/shared";
+import type { Request } from "express";
+import type { Id, Project } from "@milo/shared";
 import { selection, transaction } from "../db/query.js";
-import type { ProjectJoinedRow, ProjectRow, UserRow } from "../db/rows.js";
+import type { ProjectJoinedRow, ProjectRow } from "../db/rows.js";
 import { badRequest, orNotFound, requireText, toIds } from "../lib/http.js";
+import { clauseSocietes, exiger, filtreSocietes } from "../lib/droits.js";
 import { descriptionPropre, memeDescription } from "../lib/html.js";
+import { cite, consigner, ecarts, liste, messageModification } from "../lib/historique.js";
+import type { Champ } from "../lib/historique.js";
 import { concernes, notifier, notifierSuppression, racine } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
@@ -13,6 +17,7 @@ import {
   CLAUSE_TABLEAUX_VISIBLES,
   categories,
   projectBoardOuvert,
+  projectBoards,
 } from "../repositories/project-boards.js";
 import {
   PROJECT_SELECT,
@@ -32,15 +37,57 @@ import { motDeCreation, withAuthor } from "../repositories/comments.js";
 
 const PROJET_INTROUVABLE = "Projet introuvable";
 
+/** Ce que le fil note d'un projet quand il change (lib/historique.ts). */
+const photo = (p: Project): Champ[] => [
+  { libelle: "Nom", valeur: cite(p.name) },
+  { libelle: "Description", valeur: p.description, opaque: true },
+  { libelle: "Tableau", valeur: cite(projectBoards.byId.get(p.board_id)?.name) },
+  { libelle: "Catégorie", valeur: cite(p.category_name) },
+  { libelle: "Société", valeur: cite(p.company_name) },
+  {
+    libelle: "Type de jalons",
+    valeur: cite(p.milestone_type_id ? milestoneTypes.byId.get(p.milestone_type_id)?.name : null),
+  },
+  { libelle: "Avancement", valeur: `${p.status} %` },
+  { libelle: "Acteurs", valeur: liste(p.actors.map((a) => a.name)) },
+  { libelle: "Étiquettes", valeur: liste(p.labels.map((l) => l.name)) },
+];
+
+/** Un projet vient d'être créé : ses acteurs en sont prévenus. */
+const projetCree = (req: Request, id: Id): void => {
+  const cree = projects.joined.get(id);
+  if (!cree) return;
+  notifier({
+    kind: "project",
+    targetId: cree.id,
+    titre: cree.name,
+    message: "a créé le projet",
+    auteur: req.user,
+    base: racine(req),
+  });
+};
+
 /**
  * Un projet d'un tableau fermé aux autres est, pour eux, introuvable : ni dans
- * la liste, ni par son identifiant, ni en écriture.
+ * la liste, ni par son identifiant, ni en écriture. De même pour celui d'une
+ * société où l'on n'a pas le droit de voir les projets.
  */
-const projetOuvert = (id: unknown, user: UserRow): ProjectRow => {
+const projetOuvert = (req: Request, id: unknown): ProjectRow => {
   const project = orNotFound(projects.raw.get(id), PROJET_INTROUVABLE);
-  projectBoardOuvert(project.board_id, user);
+  projectBoardOuvert(project.board_id, req.user);
+  exiger(req, "projects", "view", project.company_id, PROJET_INTROUVABLE);
   return project;
 };
+
+/** Le projet, si l'on a en plus ce droit dans sa société. */
+export const projetPour = (req: Request, id: unknown, droit: "update" | "delete"): ProjectRow => {
+  const project = projetOuvert(req, id);
+  exiger(req, "projects", droit, project.company_id);
+  return project;
+};
+
+/** La clause qui écarte les projets des sociétés qu'on ne voit pas. */
+const CLAUSE_SOCIETES_VISIBLES = clauseSocietes("projects.company_id");
 
 export const projectRoutes = Router();
 
@@ -74,8 +121,8 @@ const requetePour = (clauses: string[]) => {
 projectRoutes.get("/", (req, res) => {
   // Les tableaux fermés aux autres sont écartés d'office : la clause précède
   // les filtres du client et ne dépend pas d'eux.
-  const clauses: string[] = [CLAUSE_TABLEAUX_VISIBLES];
-  const params: Record<string, unknown> = { me: req.user.id };
+  const clauses: string[] = [CLAUSE_TABLEAUX_VISIBLES, CLAUSE_SOCIETES_VISIBLES];
+  const params: Record<string, unknown> = { me: req.user.id, ...filtreSocietes(req, "projects") };
 
   for (const [nom, clause] of Object.entries(CLAUSES)) {
     const valeur = req.query[nom];
@@ -102,6 +149,7 @@ const acteursDesProjets = selection<{ user_id: Id }>(
   `SELECT DISTINCT project_actors.user_id FROM project_actors
      JOIN projects ON projects.id = project_actors.project_id
     WHERE ${CLAUSE_TABLEAUX_VISIBLES}
+      AND ${CLAUSE_SOCIETES_VISIBLES}
       AND (@board IS NULL OR projects.board_id = @board)
       AND (@company IS NULL OR projects.company_id = @company)`,
 );
@@ -110,13 +158,18 @@ projectRoutes.get("/actors", (req, res) => {
   const filtre = (valeur: unknown) => (valeur && valeur !== "all" ? String(valeur) : null);
   res.json(
     acteursDesProjets
-      .all({ me: req.user.id, board: filtre(req.query["board"]), company: filtre(req.query["company"]) })
+      .all({
+        me: req.user.id,
+        ...filtreSocietes(req, "projects"),
+        board: filtre(req.query["board"]),
+        company: filtre(req.query["company"]),
+      })
       .map((l) => l.user_id),
   );
 });
 
 projectRoutes.get("/:id", (req, res) => {
-  const { id } = projetOuvert(req.params.id, req.user);
+  const { id } = projetOuvert(req, req.params.id);
   const project = orNotFound(projects.joined.get(id), PROJET_INTROUVABLE);
   res.json({
     ...oneWithRelations(project),
@@ -161,6 +214,7 @@ projectRoutes.post("/", (req, res) => {
     badRequest("name, board_id et category_id sont requis");
   }
   projectBoardOuvert(board_id, req.user);
+  exiger(req, "projects", "create", company_id);
   verifierCategorie(category_id, board_id);
   const typeJalons = typeDeJalons(milestone_type_id);
 
@@ -199,6 +253,7 @@ projectRoutes.post("/", (req, res) => {
     return projectId;
   })();
 
+  projetCree(req, id);
   res.status(201).json(oneWithRelations(projects.joined.get(id)!));
 });
 
@@ -212,7 +267,8 @@ projectRoutes.post("/", (req, res) => {
  * règle que pour la copie d'une liste.
  */
 projectRoutes.post("/:id/copy", (req, res) => {
-  const source = projetOuvert(req.params.id, req.user);
+  const source = projetOuvert(req, req.params.id);
+  exiger(req, "projects", "create", source.company_id);
   const board = projectBoardOuvert(req.body.board_id ?? source.board_id, req.user);
   const name = requireText(req.body.name ?? source.name, "Le nom de la copie est requis");
 
@@ -253,6 +309,7 @@ projectRoutes.post("/:id/copy", (req, res) => {
     return copieId;
   })();
 
+  projetCree(req, id);
   res.status(201).json(oneWithRelations(projects.joined.get(id)!));
 });
 
@@ -279,7 +336,7 @@ const memesIds = (recus: unknown, actuels: Id[]): boolean => {
 };
 
 projectRoutes.put("/:id", (req, res) => {
-  const existing = projetOuvert(req.params.id, req.user);
+  const existing = projetPour(req, req.params.id, "update");
 
   const {
     name = existing.name,
@@ -295,10 +352,15 @@ projectRoutes.put("/:id", (req, res) => {
 
   // Un projet ne sort pas d'un tableau privé et n'y entre pas.
   projectBoardOuvert(board_id, req.user);
+  // Passer un projet à une autre société, c'est l'y ajouter.
+  if (!memeValeur(company_id, existing.company_id)) {
+    exiger(req, "projects", "create", company_id);
+  }
   verifierCategorie(category_id, board_id);
   const typeJalons = typeDeJalons(milestone_type_id);
 
   const propre = descriptionPropre(description);
+  const avant = photo(oneWithRelations(projects.joined.get(existing.id)!));
 
   // La date de modification ne bouge que si quelque chose a bougé. Le tiroir
   // enregistre en se refermant : sans cette comparaison, ouvrir une fiche pour
@@ -334,21 +396,27 @@ projectRoutes.put("/:id", (req, res) => {
     }
   })();
 
-  const suivant = projects.joined.get(existing.id)!;
-  notifier({
-    kind: "project",
-    targetId: suivant.id,
-    titre: suivant.name,
-    message: "a modifié la fiche",
-    auteur: req.user,
-    base: racine(req),
-  });
+  const suivant = oneWithRelations(projects.joined.get(existing.id)!);
+  // Ce qui a bougé se note dans le fil, signé Milo, et prévient ceux qui
+  // suivent le projet ou en sont acteurs. Rien n'a bougé : rien ne part.
+  const lignes = inchange ? [] : ecarts(avant, photo(suivant));
+  if (lignes.length) {
+    consigner("project", suivant.id, req.user, lignes);
+    notifier({
+      kind: "project",
+      targetId: suivant.id,
+      titre: suivant.name,
+      message: messageModification(lignes),
+      auteur: req.user,
+      base: racine(req),
+    });
+  }
 
-  res.json(oneWithRelations(suivant));
+  res.json(suivant);
 });
 
 projectRoutes.delete("/:id", (req, res) => {
-  const existing = projetOuvert(req.params.id, req.user);
+  const existing = projetPour(req, req.params.id, "delete");
   const destinataires = concernes.projet(existing.id);
   projects.remove.run(existing.id);
   notifierSuppression({

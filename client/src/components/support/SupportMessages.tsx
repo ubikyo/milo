@@ -21,7 +21,7 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { RED } from "../../themes/colors";
 import { PersonAvatar, SenderAvatar } from "../ui/ActorAvatars";
@@ -247,7 +247,8 @@ interface SupportMessagesProps {
   messages: MessageSupport[];
   /** L'adresse de l'expéditeur de la demande : ses messages sont les reçus. */
   senderEmail: string;
-  onDelete: (id: number | string) => Promise<void>;
+  /** Sans lui — sans le droit de modifier la demande —, rien ne s'efface. */
+  onDelete?: (id: number | string) => Promise<void>;
 }
 
 /** Le pied d'une réponse : partie, simulée, ou refusée — et qui était en copie. */
@@ -422,7 +423,7 @@ export default function SupportMessages({
                   </Text>
                   {/* Un mot de l'application ne s'efface pas, ni une réponse :
                     elle est peut-être déjà partie chez l'expéditeur. */}
-                  {!m.system && gauche && (
+                  {!m.system && gauche && onDelete && (
                     <ActionIcon
                       variant="subtle"
                       color={RED}
@@ -479,7 +480,7 @@ export default function SupportMessages({
         onConfirm={() => {
           const m = aSupprimer;
           setASupprimer(null);
-          if (m) void onDelete(m.id);
+          if (m) void onDelete?.(m.id);
         }}
         title="Supprimer le message"
         message="Voulez-vous vraiment supprimer ce message ? Cette action est irréversible."
@@ -521,11 +522,17 @@ const ENVOIS: { status: SupportStatus; label: string }[] = [
  * part par e-mail.
  */
 export function SupportReply({
+  modele = "",
   onSend,
   parEmail = false,
   avecFichiers = false,
   bloque,
 }: {
+  /**
+   * Ce que l'éditeur porte d'office — les contenus par défaut du Paramétrage :
+   * posé à vide, et de nouveau une fois la réponse partie.
+   */
+  modele?: string;
   onSend: (html: string, envoi: EnvoiReponse) => Promise<void>;
   /** Vrai quand la réponse part par e-mail : la copie a alors un sens. */
   parEmail?: boolean;
@@ -540,6 +547,23 @@ export function SupportReply({
   const [bcc, setBcc] = useState<string[] | null>(null);
   const [fichiers, setFichiers] = useState<File[]>([]);
   const selecteur = useRef<HTMLInputElement | null>(null);
+  // Ce que l'éditeur a reçu du modèle, tel que l'éditeur le rend.
+  const pose = useRef("");
+
+  /** Pose le modèle, le curseur au début : on écrit avant la signature. */
+  const poserModele = useCallback(() => {
+    if (!editor) return;
+    editor.chain().setContent(modele).setTextSelection(1).run();
+    pose.current = editor.getHTML();
+  }, [editor, modele]);
+
+  // Un modèle qui change — le fil avance, une autre demande s'ouvre —
+  // remplace l'ancien tant qu'on n'y a pas touché ; jamais un texte écrit.
+  useEffect(() => {
+    if (!editor) return;
+    const actuel = editor.getHTML();
+    if (estVide(actuel) || actuel === pose.current) poserModele();
+  }, [editor, poserModele]);
 
   const total = fichiers.reduce((somme, f) => somme + f.size, 0);
   const tropLourd = parEmail && total > TAILLE_MAX_ENVOI;
@@ -556,7 +580,7 @@ export function SupportReply({
         bcc: bcc ?? [],
         files: fichiers,
       });
-      editor.commands.clearContent();
+      poserModele();
       setCc(null);
       setBcc(null);
       setFichiers([]);

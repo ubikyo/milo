@@ -14,9 +14,10 @@ import {
   reference,
   supportStatusLabel,
 } from "@milo/shared";
-import type { Id, SearchResult, SupportStatus } from "@milo/shared";
+import type { Area, Id, SearchResult, SupportStatus } from "@milo/shared";
 import db from "../db/index.js";
 import { selection } from "../db/query.js";
+import { clauseSocietes, filtreSocietes, peut } from "../lib/droits.js";
 
 /** Ce que chaque sorte rend au plus : la liste reste lisible d'un coup d'œil. */
 const PAR_SORTE = 6;
@@ -60,6 +61,7 @@ const projetsTrouves = selection<ProjetTrouve>(
      JOIN project_boards pb ON pb.id = p.board_id
      LEFT JOIN companies c ON c.id = p.company_id
     WHERE (pb.is_private = 0 OR pb.owner_id = @me)
+      AND ${clauseSocietes("p.company_id")}
       AND (${contient("p.name")} OR ${contient("p.description")} OR ${sesReference("p.number", PROJECT_REFERENCE_PREFIX)})
     ORDER BY p.updated_at DESC
     LIMIT ${PAR_SORTE}`,
@@ -82,6 +84,7 @@ const cartesTrouvees = selection<CarteTrouvee>(
      JOIN companies c ON c.id = b.company_id
     WHERE tc.kind = 'card'
       AND (b.is_private = 0 OR b.owner_id = @me)
+      AND ${clauseSocietes("b.company_id")}
       AND (${contient("tc.text")} OR ${contient("tc.description")} OR ${sesReference("tc.number", TASK_REFERENCE_PREFIX)})
     ORDER BY tc.created_at DESC
     LIMIT ${PAR_SORTE}`,
@@ -99,10 +102,11 @@ const demandesTrouvees = selection<DemandeTrouvee>(
   `SELECT sr.id, sr.number, sr.subject, sr.status, c.name AS company
      FROM support_requests sr
      JOIN companies c ON c.id = sr.company_id
-    WHERE ${contient("sr.subject")}
+    WHERE ${clauseSocietes("sr.company_id")}
+      AND (${contient("sr.subject")}
        OR ${contient("sr.sender_name")}
        OR ${contient("sr.sender_email")}
-       OR ${sesReference("sr.number")}
+       OR ${sesReference("sr.number")})
     ORDER BY sr.created_at DESC
     LIMIT ${PAR_SORTE}`,
 );
@@ -118,7 +122,8 @@ const postesTrouves = selection<PosteTrouve>(
   `SELECT a.id, a.name, a.last_user, c.name AS company
      FROM assets a
      LEFT JOIN companies c ON c.id = a.company_id
-    WHERE ${contient("a.name")} OR ${contient("a.last_user")} OR ${contient("a.tag")}
+    WHERE ${clauseSocietes("a.company_id")}
+      AND (${contient("a.name")} OR ${contient("a.last_user")} OR ${contient("a.tag")})
     ORDER BY a.name
     LIMIT ${PAR_SORTE}`,
 );
@@ -139,7 +144,13 @@ const blocsVisibles = selection<BlocVisible>(
      FROM access_blocks ab
      JOIN access_sections s ON s.id = ab.section_id
      JOIN access_categories cat ON cat.id = s.category_id
-    WHERE cat.is_private = 0 OR cat.owner_id = ?
+    WHERE (cat.is_private = 0 OR cat.owner_id = ?)
+      -- La structure que ce compte voit : la sienne s'il en a une, sinon la
+      -- publique. Une catégorie privée n'a que la publique.
+      AND s.owner_id IS (
+        SELECT pl.user_id FROM personal_layouts pl
+         WHERE pl.user_id = ? AND pl.scope = 'access:' || cat.id AND cat.is_private = 0
+      )
     ORDER BY cat.position, s.position, ab.position, ab.id`,
 );
 
@@ -180,7 +191,7 @@ const lectureDuBloc = (
 
 const accesTrouves = (userId: Id, plie: string): SearchResult[] => {
   const trouves: SearchResult[] = [];
-  for (const bloc of blocsVisibles.all(userId)) {
+  for (const bloc of blocsVisibles.all(userId, userId)) {
     let config: Record<string, unknown>;
     try {
       config = JSON.parse(bloc.config) ?? {};
@@ -211,23 +222,25 @@ searchRoutes.get("/", (req, res) => {
   const plie = plier(req.query.q).trim();
   if (plie.length < SEARCH_MIN_LENGTH) return void res.json([]);
 
+  // Chaque sorte ne cherche que dans les sociétés où l'on voit son mode.
   const sansMoi = { q: motif(plie) };
   const params = { ...sansMoi, me: req.user.id };
+  const dans = (area: Area) => filtreSocietes(req, area);
 
   const resultats: SearchResult[] = [
-    ...projetsTrouves.all(params).map((p) => ({
+    ...projetsTrouves.all({ ...params, ...dans("projects") }).map((p) => ({
       kind: "project" as const,
       id: p.id,
       title: p.name,
       context: joindre(p.number > 0 ? projectReference(p.number) : null, p.company, p.board),
     })),
-    ...cartesTrouvees.all(params).map((c) => ({
+    ...cartesTrouvees.all({ ...params, ...dans("tasks") }).map((c) => ({
       kind: "card" as const,
       id: c.id,
       title: c.text,
       context: joindre(c.number > 0 ? taskReference(c.number) : null, c.company, c.board, c.list),
     })),
-    ...demandesTrouvees.all(sansMoi).map((d) => ({
+    ...demandesTrouvees.all({ ...sansMoi, ...dans("support") }).map((d) => ({
       kind: "support" as const,
       id: d.id,
       title: d.subject || "(sans objet)",
@@ -237,13 +250,13 @@ searchRoutes.get("/", (req, res) => {
         supportStatusLabel(d.status),
       ),
     })),
-    ...postesTrouves.all(sansMoi).map((a) => ({
+    ...postesTrouves.all({ ...sansMoi, ...dans("assets") }).map((a) => ({
       kind: "asset" as const,
       id: a.id,
       title: a.name,
       context: joindre(a.company, a.last_user),
     })),
-    ...accesTrouves(req.user.id, plie),
+    ...(peut(req, "access", "view") ? accesTrouves(req.user.id, plie) : []),
   ];
 
   res.json(resultats);

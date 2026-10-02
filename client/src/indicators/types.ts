@@ -11,7 +11,9 @@
 // qui la relit avec les aides du mode Accès (texte, avec) — elles comblent ce
 // qui manque.
 
+import type { WidgetKind } from "../widgets/genres";
 import type { ComponentType } from "react";
+import type { IndicatorWidgetBase } from "../components/ui/IndicatorsPanel";
 import type { Id, SupportIndicatorType, SupportRequest } from "@milo/shared";
 
 /** Ce que le tiroir passe aux champs d'un widget. */
@@ -39,7 +41,9 @@ export interface IndicatorDisplayProps {
 export interface SupportIndicatorWidget {
   /** Ce que la base range : il ne change jamais. */
   type: SupportIndicatorType;
-  /** Son nom dans la boîte de choix, et en titre de son tiroir. */
+  /** Son type : le groupe où le tiroir des widgets le range (widgets/genres.ts). */
+  kind: WidgetKind;
+  /** Son nom dans le tiroir des widgets, et en titre de son tiroir. */
   label: string;
   icon: ComponentType<{ size?: number }>;
   /** La configuration d'un indicateur neuf. */
@@ -54,6 +58,12 @@ export interface SupportIndicatorWidget {
   Config?: ComponentType<IndicatorConfigProps>;
   /** Vrai quand le widget prend ses clics en charge : voir IndicatorWidgetBase. */
   ownClicks?: boolean;
+  /** Vrai quand il occupe toute la hauteur de sa section : voir IndicatorWidgetBase. */
+  fill?: boolean;
   /** Vrai quand il se nomme sur place : voir IndicatorWidgetBase. */
   inlineEdit?: boolean;
+  /** L'air qu'il laisse autour de lui : voir IndicatorWidgetBase. */
+  marges?: IndicatorWidgetBase<SupportIndicatorType>["marges"];
+  /** Vrai quand il ne doit pas paraître : voir IndicatorWidgetBase. */
+  hidden?: IndicatorWidgetBase<SupportIndicatorType>["hidden"];
 }

@@ -73,8 +73,9 @@ export interface AccessCategoryInput {
 }
 
 /**
- * Le tiroir d'une section. « width_value » n'a de sens qu'avec une unité qui
- * en demande une : il est ignoré pour une largeur automatique.
+ * Une section d'accès, telle que son pied la règle. « width_value » n'a de
+ * sens qu'avec une unité qui en demande une : il est ignoré pour une largeur
+ * automatique.
  */
 export interface AccessSectionInput {
   category_id?: Id;
@@ -224,7 +225,7 @@ export interface SupportAssignInput extends SupportBulkInput {
   actor_ids: Id[];
 }
 
-/** Le tiroir d'une section d'un panneau des statistiques. */
+/** Une section d'un panneau des statistiques, telle que son pied la règle. */
 export interface IndicatorSectionInput {
   width_unit?: SectionWidthUnit;
   width_value?: number | null;

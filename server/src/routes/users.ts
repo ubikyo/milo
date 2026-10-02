@@ -78,7 +78,13 @@ userRoutes.get("/directory", (req, res, next) => {
           .map((p): DirectoryUser => {
             const compte =
               users.byEntraId.get(p.id) ?? (p.email ? users.byEmail.get(p.email) : undefined);
-            return { oid: p.id, name: p.name, email: p.email, user_id: compte?.id ?? null };
+            return {
+              oid: p.id,
+              name: p.name,
+              email: p.email,
+              user_id: compte?.id ?? null,
+              synced: p.synced,
+            };
           }),
       ),
     )

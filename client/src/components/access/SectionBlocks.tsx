@@ -1,4 +1,4 @@
-import { Box, Menu, UnstyledButton } from "@mantine/core";
+import { Box, Menu } from "@mantine/core";
 import {
   IconCopyPlus,
   IconHeadset,
@@ -7,6 +7,7 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { useState } from "react";
+import type { KeyboardEvent } from "react";
 import { widgetDe } from "../../widgets";
 import { margesDe } from "../../widgets/marges";
 import { ACCESS_BLOCK_CONVERSIONS } from "@milo/shared";
@@ -46,9 +47,9 @@ interface SectionBlocksProps {
     type: AccessBlockType,
   ) => void | Promise<void>;
   /** « Créer une tâche », pour un lien seulement : offert même verrouillé, il ne touche pas à l'élément. */
-  onCreateTask: (block: AccessBlock) => void;
+  onCreateTask?: (block: AccessBlock) => void;
   /** « Créer une demande de support », pour un lien seulement, au même titre. */
-  onCreateSupportRequest: (block: AccessBlock) => void;
+  onCreateSupportRequest?: (block: AccessBlock) => void;
   /** Catégorie verrouillée : on lit, on ne remanie plus. */
   locked: boolean;
 }
@@ -144,17 +145,27 @@ export default function SectionBlocks({
             {vise && <TraitInsertion avant={cible.avant} />}
 
             {/* Un widget qui se modifie sur place n'ouvre pas de tiroir
-                au clic : il a son propre geste, le double-clic. */}
-            {widget.ownClicks || locked ? (
-              affichage
-            ) : (
-              <UnstyledButton
-                onClick={() => onEditBlock(bloc)}
-                style={{ display: "block", width: "100%" }}
-              >
-                {affichage}
-              </UnstyledButton>
-            )}
+                au clic : il a son propre geste, le double-clic.
+
+                La même enveloppe, verrouillé ou non : en changer démontait
+                le widget à chaque bascule du verrou, et ceux qui lisent le
+                serveur (Uptime) repartaient de zéro. Seul le geste change. */}
+            <Box
+              {...(widget.ownClicks || locked
+                ? {}
+                : {
+                    role: "button",
+                    tabIndex: 0,
+                    onClick: () => onEditBlock(bloc),
+                    onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
+                      if (e.key !== "Enter" && e.key !== " ") return;
+                      e.preventDefault();
+                      onEditBlock(bloc);
+                    },
+                  })}
+            >
+              {affichage}
+            </Box>
           </Box>
         );
       })}
@@ -203,24 +214,28 @@ export default function SectionBlocks({
                 demande de support. */}
           {menu.bloc.type === "link" && (
             <>
-              <Menu.Item
-                leftSection={<IconSquarePlus size={16} />}
-                onClick={() => {
-                  setMenu(null);
-                  onCreateTask(menu.bloc);
-                }}
-              >
-                Créer une tâche
-              </Menu.Item>
-              <Menu.Item
-                leftSection={<IconHeadset size={16} />}
-                onClick={() => {
-                  setMenu(null);
-                  onCreateSupportRequest(menu.bloc);
-                }}
-              >
-                Créer une demande de support
-              </Menu.Item>
+              {onCreateTask && (
+                <Menu.Item
+                  leftSection={<IconSquarePlus size={16} />}
+                  onClick={() => {
+                    setMenu(null);
+                    onCreateTask(menu.bloc);
+                  }}
+                >
+                  Créer une tâche
+                </Menu.Item>
+              )}
+              {onCreateSupportRequest && (
+                <Menu.Item
+                  leftSection={<IconHeadset size={16} />}
+                  onClick={() => {
+                    setMenu(null);
+                    onCreateSupportRequest(menu.bloc);
+                  }}
+                >
+                  Créer une demande de support
+                </Menu.Item>
+              )}
             </>
           )}
           {!locked && (

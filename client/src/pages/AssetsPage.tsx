@@ -1,10 +1,11 @@
-import { Menu, Stack, Tabs } from "@mantine/core";
-import { IconCheck, IconLock } from "@tabler/icons-react";
+import { Stack, Tabs } from "@mantine/core";
 import { Fragment, useMemo, useState } from "react";
 import AssetIndicatorsPanel from "../components/assets/AssetIndicatorsPanel";
 import { AssetsListeContext } from "../components/assets/AssetsList";
 import ModeBar from "../components/ui/ModeBar";
-import PointMenu, { positionDuMenu, type PointMenuPosition } from "../components/ui/PointMenu";
+import type { PanelInheritance } from "../components/ui/HeriteConfirmModal";
+import PanneauMenu from "../components/ui/PanneauMenu";
+import { positionDuMenu, type PointMenuPosition } from "../components/ui/PointMenu";
 import { InsertLine, useTabReorder } from "../components/ui/useTabReorder";
 import { tabStyle } from "../themes/tabs";
 import type { AccountSlot } from "../components/ui/AccountControls";
@@ -30,7 +31,7 @@ interface AssetsPageProps {
   assets: Asset[] | null;
   onOpenAsset: (asset: Asset) => void;
   /** « Créer une tâche », au clic droit sur un poste. */
-  onCreateTask: (asset: Asset) => void;
+  onCreateTask?: (asset: Asset) => void;
   loading: boolean;
   /** L'ordre rangé des onglets : leurs valeurs, commun à tous. */
   tabOrder: string[];
@@ -48,7 +49,9 @@ interface AssetsPageProps {
   onIndicatorsChanged: () => void | Promise<void>;
   /** Le verrou des sections : ni ajout ni déplacement. */
   indicatorsLocked: boolean;
-  onToggleIndicatorsLock: () => void | Promise<void>;
+  onToggleIndicatorsLock?: () => void | Promise<void>;
+  /** « Hérité » des sections : la structure partagée, ou la sienne. */
+  indicatorsInheritance?: PanelInheritance;
 }
 
 export default function AssetsPage({
@@ -64,6 +67,7 @@ export default function AssetsPage({
   onIndicatorsChanged,
   indicatorsLocked,
   onToggleIndicatorsLock,
+  indicatorsInheritance,
 }: AssetsPageProps) {
   // Le menu contextuel d'un onglet : il porte le verrou et l'écart des sections.
   const [menuOnglet, setMenuOnglet] = useState<PointMenuPosition | null>(null);
@@ -114,19 +118,15 @@ export default function AssetsPage({
         />
       </AssetsListeContext.Provider>
 
-      {/* Le menu d'un onglet ne porte que le verrou et l'écart des sections, pour tous. */}
-      {menuOnglet && (
-        <PointMenu position={menuOnglet} onClose={() => setMenuOnglet(null)}>
-          <Menu.Label>Affichage</Menu.Label>
-          <Menu.Item
-            leftSection={<IconLock size={16} />}
-            rightSection={indicatorsLocked ? <IconCheck size={14} /> : null}
-            onClick={() => onToggleIndicatorsLock()}
-          >
-            Verrouillé
-          </Menu.Item>
-        </PointMenu>
-      )}
+      {/* Des onglets fixes : leur menu ne porte que ce qui vaut pour les
+          sections de l'écran, le verrou et « Hérité ». */}
+      <PanneauMenu
+        position={menuOnglet}
+        onClose={() => setMenuOnglet(null)}
+        locked={indicatorsLocked}
+        onToggleLock={onToggleIndicatorsLock}
+        inheritance={indicatorsInheritance}
+      />
     </Stack>
   );
 }

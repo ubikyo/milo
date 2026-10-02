@@ -9,5 +9,4 @@ import { panneauIndicateurs } from "./indicators.js";
 export const supportIndicators = panneauIndicateurs<SupportIndicatorType>(
   "support_indicators",
   "support",
-  "support_indicators_locked",
 );

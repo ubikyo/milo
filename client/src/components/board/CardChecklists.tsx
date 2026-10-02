@@ -184,7 +184,7 @@ function ItemMembers({ members, users, onChange }: ItemMembersProps) {
 
   return (
     <ActorPicker
-      label="Membres de l'élément"
+      label="Acteurs de l'élément"
       users={users}
       value={retenus.map((m) => String(m.id))}
       onChange={(ids) => onChange(ids.map(Number))}

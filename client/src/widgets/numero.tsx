@@ -218,6 +218,7 @@ function Lignes({ config, onChange }: WidgetConfigProps) {
 
 export const numeroWidget: AccessWidget = {
   type: "number",
+  kind: "common",
   label: "Attributs",
   icon: IconHash,
   defaultConfig: { [LIGNES]: [] },

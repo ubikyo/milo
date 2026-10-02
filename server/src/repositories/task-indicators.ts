@@ -8,5 +8,4 @@ import { panneauIndicateurs } from "./indicators.js";
 export const taskIndicators = panneauIndicateurs<TaskIndicatorType>(
   "task_indicators",
   "tasks",
-  "task_indicators_locked",
 );

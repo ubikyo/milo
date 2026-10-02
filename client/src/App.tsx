@@ -1,6 +1,6 @@
 import { Anchor, Box, Stack, Text } from "@mantine/core";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { api, setUnauthorizedHandler } from "./api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api, HttpError, setUnauthorizedHandler } from "./api";
 import { getToken, setToken } from "./lib/auth";
 import {
   BOTTOM_CLEARANCE,
@@ -24,23 +24,22 @@ import { RED } from "./themes/colors";
 import {
   DEFAULT_MODE,
   DEFAULT_SUPPORT_STATUS,
-  MODES,
   RESOURCES,
   emptyFollows,
   emptyTabOrders,
   estNotification,
+  ordonnerOnglets,
 } from "@milo/shared";
 import { societeDuNom } from "./lib/societe";
+import { DroitsProvider, modesVisibles, peutAvec, societesVisibles } from "./lib/droits";
 import { messageErreur } from "./lib/errors";
 import { cibleDeLAdresse, noterDansLAdresse } from "./lib/suivi";
 import { widgetDe } from "./widgets";
-import type { AccessWidget } from "./widgets";
 import type { Cible } from "./lib/suivi";
 import AssetDrawer from "./components/assets/AssetDrawer";
 import SupportRequestDrawer from "./components/support/SupportRequestDrawer";
 import AccessBlockDrawer from "./components/access/AccessBlockDrawer";
-import SectionDrawer from "./components/ui/SectionDrawer";
-import WidgetPickerModal from "./components/ui/WidgetPickerModal";
+import type { ModifSection } from "./components/ui/SectionsBoard";
 import PreferencesModal from "./components/settings/PreferencesModal";
 import CopyToBoardModal from "./components/ui/CopyToBoardModal";
 import MilestoneTypesModal from "./components/project/MilestoneTypesModal";
@@ -53,10 +52,12 @@ import type { ProjectAction } from "./components/project/MoveOrCopyProjectModal"
 import ProjectDrawer from "./components/project/ProjectDrawer";
 import ModeSwitch from "./components/ui/ModeSwitch";
 import ShortcutsHelp from "./components/ui/ShortcutsHelp";
+import CodeKonami from "./components/ui/CodeKonami";
 import SettingsModal from "./components/settings/SettingsModal";
 import type {
   AccessBlock,
   AccessBlockType,
+  Right,
   AccessCategory,
   AccessSection,
   Asset,
@@ -101,6 +102,9 @@ interface LuPour<T> {
   cle: string;
   items: T[];
 }
+
+/** Les panneaux des statistiques, dont chacun a son « Hérité ». */
+type PanneauHerite = "support" | "assets" | "projects" | "tasks";
 
 export default function App() {
   const [user, setUser] = useState<PublicUser | null>(null);
@@ -170,23 +174,39 @@ export default function App() {
     IndicatorSection[] | null
   >(null);
   const [supportIndicators, setSupportIndicators] = useState<SupportIndicator[]>([]);
-  const [supportIndicatorsLocked, setSupportIndicatorsLocked] = useState(false);
   const [assetIndicatorSections, setAssetIndicatorSections] = useState<
     IndicatorSection[] | null
   >(null);
   const [assetIndicators, setAssetIndicators] = useState<AssetIndicator[]>([]);
-  const [assetIndicatorsLocked, setAssetIndicatorsLocked] = useState(false);
   // Les sections des modes Projet et Tâche, communes à tous les tableaux.
   const [projectIndicatorSections, setProjectIndicatorSections] = useState<
     IndicatorSection[] | null
   >(null);
   const [projectIndicators, setProjectIndicators] = useState<ProjectIndicator[]>([]);
-  const [projectIndicatorsLocked, setProjectIndicatorsLocked] = useState(false);
   const [taskIndicatorSections, setTaskIndicatorSections] = useState<IndicatorSection[] | null>(
     null,
   );
   const [taskIndicators, setTaskIndicators] = useState<TaskIndicator[]>([]);
-  const [taskIndicatorsLocked, setTaskIndicatorsLocked] = useState(false);
+  // « Verrouillé » ne vit que dans cette fenêtre : une autre, même ouverte
+  // sur le même compte, garde le sien. Chaque fenêtre s'ouvre verrouillée —
+  // panneaux et catégories d'accès —, sauf les tableaux de tâches, qui
+  // gardent leurs listes libres tant qu'on ne les fige pas. On ne retient ici
+  // que ce qu'un geste (V ou le menu de l'onglet) a changé.
+  const [verrous, setVerrous] = useState<Record<string, boolean>>({});
+  const estVerrouille = (scope: string) => verrous[scope] ?? !scope.startsWith("board:");
+  const basculerVerrou = async (scope: string) =>
+    setVerrous((avant) => ({
+      ...avant,
+      [scope]: !(avant[scope] ?? !scope.startsWith("board:")),
+    }));
+  // « Hérité » de chaque panneau, pour le compte connecté : la structure
+  // partagée, ou sa propre copie (repositories/layouts.ts côté serveur).
+  const [herites, setHerites] = useState<Record<PanneauHerite, boolean>>({
+    support: true,
+    assets: true,
+    projects: true,
+    tasks: true,
+  });
   // « projects » ou « tasks ».
   const [mode, setMode] = useState<Mode>(DEFAULT_MODE);
   // Le mode d'ouverture est un réglage du compte : il s'applique une fois, à
@@ -202,6 +222,25 @@ export default function App() {
   // « Toutes les sociétés » par défaut ; le mode Tâche impose ensuite une
   // société précise.
   const [companyFilter, setCompanyFilter] = useState("all");
+
+  // Les droits du compte, société par société. Le serveur les vérifie ; ici,
+  // ils taisent ce qu'on ne voit pas et retirent ce qu'on ne peut pas faire.
+  const peut = useMemo(() => peutAvec(user?.rights ?? {}), [user]);
+  // Les modes que le compte voit, dans l'ordre qu'il a rangé dans le
+  // sélecteur du bas : Tab les parcourt dans ce même ordre.
+  const modes = useMemo(
+    () =>
+      ordonnerOnglets(
+        modesVisibles(peut).map((value) => ({ value })),
+        tabOrders.modes,
+      ).map((m) => m.value),
+    [peut, tabOrders.modes],
+  );
+  // Les sociétés de la liste déroulante : celles dont on voit le mode ouvert.
+  const societesDuMode = useMemo(
+    () => societesVisibles(companies, peut, mode),
+    [companies, peut, mode],
+  );
   const [statusFilter, setStatusFilter] = useState("all");
   const [actorFilter, setActorFilter] = useState("all");
 
@@ -267,16 +306,6 @@ export default function App() {
   // La société qu'on devine au nom de la catégorie d'accès ; « null » quand
   // rien ne s'impose, et la proposition habituelle reprend la main.
   const [societeDemandeAcces, setSocieteDemandeAcces] = useState<string | null>(null);
-  // Tiroir des sections : « null » à la création, la section visée sinon.
-  const [sectionDrawerOpened, setSectionDrawerOpened] = useState(false);
-  const [editedAccessSection, setEditedAccessSection] =
-    useState<AccessSection | null>(null);
-  const [sectionInsertAt, setSectionInsertAt] = useState<number | null>(null);
-  // La section dont la zone en pointillé vient d'être cliquée : c'est elle qui
-  // accueillera l'élément choisi dans la boîte.
-  const [sectionPourBloc, setSectionPourBloc] = useState<AccessSection | null>(
-    null,
-  );
   // Tiroir d'un élément : celui qu'on vient de créer, ou celui qu'on rouvre.
   const [editedAccessBlock, setEditedAccessBlock] =
     useState<AccessBlock | null>(null);
@@ -364,19 +393,27 @@ export default function App() {
         );
       }
 
-      try {
-        const { needs_setup, entra } = await api.getSetupState();
-        setEntraPret(entra);
-        if (needs_setup) {
-          setNeedsSetup(true);
-        } else if (getToken()) {
-          setUser(await api.me());
+      // Seul un refus du serveur ferme la session. Un serveur qui redémarre
+      // ou un réseau coupé ne dit rien du jeton : on le garde et on réessaie.
+      for (;;) {
+        try {
+          const { needs_setup, entra } = await api.getSetupState();
+          setEntraPret(entra);
+          if (needs_setup) {
+            setNeedsSetup(true);
+          } else if (getToken()) {
+            setUser(await api.me());
+          }
+          break;
+        } catch (erreur) {
+          if (erreur instanceof HttpError && erreur.status === 401) {
+            setToken(null);
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 2000));
         }
-      } catch {
-        setToken(null);
-      } finally {
-        setAuthChecked(true);
       }
+      setAuthChecked(true);
     };
     check();
   }, []);
@@ -441,13 +478,15 @@ export default function App() {
   }, []);
 
   const loadAccessCategories = useCallback(async () => {
+    // Sans le droit de voir le mode Accès, il n'a rien à montrer.
+    if (!peut("access", "view")) return setAccessCategories([]);
     setLecturesAcces((n) => n + 1);
     try {
       setAccessCategories(await api.getAccessCategories());
     } finally {
       setLecturesAcces((n) => n - 1);
     }
-  }, []);
+  }, [peut]);
 
   // Les sections appartiennent à la catégorie ouverte : sans elle, il n'y a
   // rien à lire, et la liste reste inconnue plutôt que vide.
@@ -498,84 +537,77 @@ export default function App() {
   // Les indicateurs du panneau des statistiques du Support : communs à toutes
   // les sociétés, ils se lisent une fois et se calculent sur la société choisie.
   const loadSupportIndicators = useCallback(async () => {
-    const [sections, indicateurs, { locked }] = await Promise.all([
+    const [sections, indicateurs, { inherited }] = await Promise.all([
       api.supportIndicatorSections.all(),
       api.getSupportIndicators(),
-      api.getSupportIndicatorsLock(),
+      api.supportIndicatorSections.getLayout(),
     ]);
     setSupportIndicatorSections(sections);
     setSupportIndicators(indicateurs);
-    setSupportIndicatorsLocked(locked);
+    setHerites((avant) => ({ ...avant, support: inherited }));
   }, []);
 
-  // Relu même en cas de refus : le menu montre alors ce qui est.
-  const toggleSupportIndicatorsLock = async () => {
-    try {
-      await api.setSupportIndicatorsLock(!supportIndicatorsLocked);
-    } finally {
-      await loadSupportIndicators();
-    }
-  };
+  const toggleSupportIndicatorsLock = () => basculerVerrou("support");
 
   // Ceux du panneau des Assets, de même : lus une fois, calculés sur les
   // postes de la société choisie.
   const loadAssetIndicators = useCallback(async () => {
-    const [sections, indicateurs, { locked }] = await Promise.all([
+    const [sections, indicateurs, { inherited }] = await Promise.all([
       api.assetIndicatorSections.all(),
       api.getAssetIndicators(),
-      api.getAssetIndicatorsLock(),
+      api.assetIndicatorSections.getLayout(),
     ]);
     setAssetIndicatorSections(sections);
     setAssetIndicators(indicateurs);
-    setAssetIndicatorsLocked(locked);
+    setHerites((avant) => ({ ...avant, assets: inherited }));
   }, []);
 
-
-  const toggleAssetIndicatorsLock = async () => {
-    try {
-      await api.setAssetIndicatorsLock(!assetIndicatorsLocked);
-    } finally {
-      await loadAssetIndicators();
-    }
-  };
+  const toggleAssetIndicatorsLock = () => basculerVerrou("assets");
 
   // Les sections des modes Projet et Tâche, de même : lues une fois, leurs
   // widgets se calculent sur le tableau ouvert.
   const loadProjectIndicators = useCallback(async () => {
-    const [sections, indicateurs, { locked }] = await Promise.all([
+    const [sections, indicateurs, { inherited }] = await Promise.all([
       api.projectIndicatorSections.all(),
       api.getProjectIndicators(),
-      api.getProjectIndicatorsLock(),
+      api.projectIndicatorSections.getLayout(),
     ]);
     setProjectIndicatorSections(sections);
     setProjectIndicators(indicateurs);
-    setProjectIndicatorsLocked(locked);
+    setHerites((avant) => ({ ...avant, projects: inherited }));
   }, []);
 
-  const toggleProjectIndicatorsLock = async () => {
-    try {
-      await api.setProjectIndicatorsLock(!projectIndicatorsLocked);
-    } finally {
-      await loadProjectIndicators();
-    }
-  };
+  const toggleProjectIndicatorsLock = () => basculerVerrou("projects");
 
   const loadTaskIndicators = useCallback(async () => {
-    const [sections, indicateurs, { locked }] = await Promise.all([
+    const [sections, indicateurs, { inherited }] = await Promise.all([
       api.taskIndicatorSections.all(),
       api.getTaskIndicators(),
-      api.getTaskIndicatorsLock(),
+      api.taskIndicatorSections.getLayout(),
     ]);
     setTaskIndicatorSections(sections);
     setTaskIndicators(indicateurs);
-    setTaskIndicatorsLocked(locked);
+    setHerites((avant) => ({ ...avant, tasks: inherited }));
   }, []);
 
-  const toggleTaskIndicatorsLock = async () => {
+  const toggleTaskIndicatorsLock = () => basculerVerrou("tasks");
+
+  // « Hérité » d'un panneau : le décocher (confirmé par le menu) part d'une
+  // copie de la structure partagée, le recocher efface la sienne. Relu même en
+  // cas de refus : le menu montre alors ce qui est.
+  const basculerHerite = async (panneau: PanneauHerite) => {
+    const { sections, relire } = {
+      support: { sections: api.supportIndicatorSections, relire: loadSupportIndicators },
+      assets: { sections: api.assetIndicatorSections, relire: loadAssetIndicators },
+      projects: { sections: api.projectIndicatorSections, relire: loadProjectIndicators },
+      tasks: { sections: api.taskIndicatorSections, relire: loadTaskIndicators },
+    }[panneau];
     try {
-      await api.setTaskIndicatorsLock(!taskIndicatorsLocked);
+      await sections.setLayout(!herites[panneau]);
+    } catch (e) {
+      signalerRefus(e);
     } finally {
-      await loadTaskIndicators();
+      await relire();
     }
   };
 
@@ -661,21 +693,29 @@ export default function App() {
     if (user) loadTabOrders().catch(() => {});
   }, [user, loadTabOrders]);
 
+  // Les panneaux de tous les modes, lus une fois la session ouverte. Leur
+  // verrou ne passe plus par le serveur : chaque fenêtre s'ouvre verrouillée
+  // d'elle-même (« verrous »).
+  // Suivi sur le compte et non sur l'objet : un profil modifié en cours de
+  // session ne relit rien.
+  const sessionDe = user?.id ?? null;
   useEffect(() => {
-    if (user) loadSupportIndicators().catch(() => {});
-  }, [user, loadSupportIndicators]);
-
-  useEffect(() => {
-    if (user) loadAssetIndicators().catch(() => {});
-  }, [user, loadAssetIndicators]);
-
-  useEffect(() => {
-    if (user) loadProjectIndicators().catch(() => {});
-  }, [user, loadProjectIndicators]);
-
-  useEffect(() => {
-    if (user) loadTaskIndicators().catch(() => {});
-  }, [user, loadTaskIndicators]);
+    if (sessionDe === null) return;
+    for (const lire of [
+      loadSupportIndicators,
+      loadAssetIndicators,
+      loadProjectIndicators,
+      loadTaskIndicators,
+    ]) {
+      lire().catch(() => {});
+    }
+  }, [
+    sessionDe,
+    loadSupportIndicators,
+    loadAssetIndicators,
+    loadProjectIndicators,
+    loadTaskIndicators,
+  ]);
 
   useEffect(() => {
     if (user) loadAccessSections();
@@ -712,14 +752,15 @@ export default function App() {
   }, [user, loadCategories]);
 
   // Un filtre peut pointer vers une société/catégorie qui vient d'être supprimée.
+  // De même pour une société dont on ne voit pas le mode ouvert.
   useEffect(() => {
     if (!companies.length) return;
-    const connue = companies.some((c) => String(c.id) === companyFilter);
+    const connue = societesDuMode.some((c) => String(c.id) === companyFilter);
 
     // En mode Tâche, « toutes » n'a pas de sens : une liste appartient à un
     // tableau, qui appartient à une société. On retient la première.
-    if (mode === "tasks" && !connue && companies[0]) {
-      setCompanyFilter(String(companies[0].id));
+    if (mode === "tasks" && !connue && societesDuMode[0]) {
+      setCompanyFilter(String(societesDuMode[0].id));
       return;
     }
     // Partout ailleurs, une société supprimée renvoie sur « toutes » — la vue
@@ -727,13 +768,17 @@ export default function App() {
     if (mode !== "access" && !connue && companyFilter !== "all") {
       setCompanyFilter("all");
     }
-  }, [companies, companyFilter, mode]);
+  }, [companies, societesDuMode, companyFilter, mode]);
 
   const loadBoards = useCallback(async () => {
     // Sans société précise, il n'y a pas de tableaux à lire : ils restent
     // inconnus, et non « aucun ». Le mode Tâche choisit aussitôt une société,
     // le temps que « Aucun tableau » n'a pas à s'afficher.
     if (!companyFilter || companyFilter === "all") return setBoardsLus(null);
+    // Une société dont on ne voit pas les tâches n'a pas de tableaux pour nous.
+    if (!peut("tasks", "view", companyFilter)) {
+      return setBoardsLus({ cle: companyFilter, items: [] });
+    }
     setLecturesTaches((n) => n + 1);
     try {
       setBoardsLus({
@@ -743,7 +788,7 @@ export default function App() {
     } finally {
       setLecturesTaches((n) => n - 1);
     }
-  }, [companyFilter]);
+  }, [companyFilter, peut]);
 
   useEffect(() => {
     if (user) loadBoards();
@@ -1149,8 +1194,15 @@ export default function App() {
   useEffect(() => {
     if (!user || modeApplique.current === user.id) return;
     modeApplique.current = user.id;
-    changeMode(user.default_mode || DEFAULT_MODE);
-  }, [user, changeMode]);
+    const voulu = user.default_mode || DEFAULT_MODE;
+    changeMode(modes.includes(voulu) ? voulu : (modes[0] ?? voulu));
+  }, [user, changeMode, modes]);
+
+  // Un mode qu'on ne voit pas ne reste pas ouvert : on passe au premier
+  // qu'on voit.
+  useEffect(() => {
+    if (user && modes.length && !modes.includes(mode)) changeMode(modes[0]!);
+  }, [user, modes, mode, changeMode]);
 
   const handleOpenNewProject = useCallback(() => {
     setSelectedProjectId(null);
@@ -1166,7 +1218,8 @@ export default function App() {
 
   // Raccourcis clavier : Tab fait le tour des modes, Option/Alt + Tab fait
   // défiler les tableaux du mode courant, N nouveau projet ou nouvelle demande
-  // de support, S fait défiler le filtre société.
+  // de support, S fait défiler le filtre société, V verrouille ou déverrouille
+  // le panneau du mode courant.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       // Jamais pendant une saisie de texte : ni vol de frappe, ni navigation
@@ -1191,9 +1244,10 @@ export default function App() {
         event.preventDefault();
 
         if (!event.altKey) {
-          const i = MODES.findIndex((m) => m.value === mode);
-          const suivant = MODES[(i + 1) % MODES.length];
-          if (suivant) changeMode(suivant.value);
+          // Le tour ne passe que par les modes qu'on voit.
+          const i = modes.indexOf(mode);
+          const suivant = modes[(i + 1) % modes.length];
+          if (suivant) changeMode(suivant);
           return;
         }
 
@@ -1217,12 +1271,37 @@ export default function App() {
       // N crée selon le mode : un projet en mode Projet, une demande en mode
       // Support ; rien ailleurs.
       if (event.code === "KeyN") {
-        if (mode === "projects") {
+        if (mode === "projects" && peut("projects", "create")) {
           event.preventDefault();
           handleOpenNewProject();
-        } else if (mode === "support") {
+        } else if (mode === "support" && peut("support", "create")) {
           event.preventDefault();
           openNewSupportRequest();
+        }
+        return;
+      }
+
+      // V bascule le verrou du mode ouvert, dans cette fenêtre seulement :
+      // celui du panneau des indicateurs, ou en mode Accès celui de la
+      // catégorie ouverte.
+      if (event.code === "KeyV") {
+        const bascule =
+          mode === "access"
+            ? accessCategoryId
+              ? () => toggleAccessCategoryLock(Number(accessCategoryId))
+              : null
+            : mode === "support"
+              ? toggleSupportIndicatorsLock
+              : mode === "assets"
+                ? toggleAssetIndicatorsLock
+                : mode === "projects"
+                  ? toggleProjectIndicatorsLock
+                  : mode === "tasks"
+                    ? toggleTaskIndicatorsLock
+                    : null;
+        if (bascule) {
+          event.preventDefault();
+          bascule().catch(() => {});
         }
         return;
       }
@@ -1239,7 +1318,7 @@ export default function App() {
         setCompanyFilter((c) =>
           suivante(c, [
             ...(mode === "projects" || mode === "assets" ? ["all"] : []),
-            ...companies.map((x) => String(x.id)),
+            ...societesDuMode.map((x) => String(x.id)),
           ]),
         );
       }
@@ -1249,13 +1328,22 @@ export default function App() {
   }, [
     handleOpenNewProject,
     openNewSupportRequest,
-    companies,
+    societesDuMode,
+    peut,
+    modes,
     mode,
     changeMode,
     boards,
     boardId,
     projectBoards,
     projectBoardId,
+    toggleSupportIndicatorsLock,
+    toggleAssetIndicatorsLock,
+    toggleProjectIndicatorsLock,
+    toggleTaskIndicatorsLock,
+    // Déclarée plus bas : on suit ce qu'elle lit, les catégories.
+    accessCategories,
+    accessCategoryId,
   ]);
 
   /**
@@ -1340,17 +1428,16 @@ export default function App() {
   };
 
   // Sans rang, la section va au bout ; le « + » entre deux colonnes en
-  // donne un.
-  const openNewAccessSection = (index?: number) => {
-    setEditedAccessSection(null);
-    setSectionInsertAt(index ?? null);
-    setSectionDrawerOpened(true);
-  };
-
-  const openEditAccessSection = (section: AccessSection) => {
-    setEditedAccessSection(section);
-    setSectionInsertAt(null);
-    setSectionDrawerOpened(true);
+  // donne un. Elle naît automatique : sa largeur se règle ensuite à son pied.
+  const addAccessSection = async (index?: number) => {
+    try {
+      await api.createAccessSection({
+        category_id: Number(accessCategoryId),
+        ...(index !== undefined ? { index } : {}),
+      });
+    } finally {
+      await loadAccessSections();
+    }
   };
 
   /** Supprimée depuis le clic droit : la page a déjà posé la question. */
@@ -1388,34 +1475,37 @@ export default function App() {
     }
   };
 
-  /** L'écart qui suit une colonne, saisi au-dessus de lui. */
-  const changeAccessSectionGap = async (section: AccessSection, gap: number) => {
+  /** La largeur d'une colonne ou l'écart qui la suit, réglés à son pied. */
+  const changeAccessSection = async (section: AccessSection, modif: ModifSection) => {
     try {
-      await api.updateAccessSection(section.id, { gap });
+      await api.updateAccessSection(section.id, modif);
     } finally {
       await loadAccessSections();
     }
   };
 
-  // La zone en pointillé d'une colonne : elle ouvre la boîte de choix, et
-  // c'est le widget choisi qui dit ce que l'élément sera.
-  const openWidgetPicker = (section: AccessSection) =>
-    setSectionPourBloc(section);
-
   /**
-   * Le widget choisi : l'élément est créé aussitôt avec la configuration que
-   * le widget donne par défaut, puis son tiroir s'ouvre pour la régler. Sans
-   * cela, il faudrait un tiroir qui crée et un autre qui modifie.
+   * Un widget glissé depuis le tiroir de gauche : l'élément est créé aussitôt
+   * avec la configuration que le widget donne par défaut, rangé à la place où
+   * il a été posé — la création le met au bout de la colonne —, puis son
+   * tiroir s'ouvre pour le régler. Sans cela, il faudrait un tiroir qui crée
+   * et un autre qui modifie.
    */
-  const handleWidgetChoisi = async (widget: AccessWidget) => {
-    const section = sectionPourBloc;
-    setSectionPourBloc(null);
-    if (!section) return;
+  const poserWidgetAcces = async (section: AccessSection, type: string, index: number) => {
+    const widget = widgetDe(type as AccessBlockType);
+    if (!widget) return;
     const bloc = await api.createAccessBlock({
       section_id: section.id,
       type: widget.type,
       config: widget.defaultConfig,
     });
+    const ids = accessBlocks.filter((b) => b.section_id === section.id).map((b) => b.id);
+    if (index < ids.length) {
+      await api.reorderAccessBlocks({
+        section_id: section.id,
+        ids: [...ids.slice(0, index), bloc.id, ...ids.slice(index)],
+      });
+    }
     await loadAccessBlocks();
     // Un widget qui se modifie sur place — le titre d'une catégorie — n'ouvre
     // rien : il paraît dans la colonne, et un double-clic le nomme.
@@ -1479,11 +1569,6 @@ export default function App() {
     await loadAccessBlocks();
   };
 
-  const handleAccessSectionSaved = async () => {
-    setSectionDrawerOpened(false);
-    await loadAccessSections();
-  };
-
   // Un réglage d'onglet refusé par le serveur — « Privé » n'appartient qu'à
   // l'auteur : le menu s'est refermé, la raison se dit en notification.
   const signalerRefus = (e: unknown) =>
@@ -1497,16 +1582,25 @@ export default function App() {
     setAccessCategoryId(String(creee.id));
   };
 
-  // L'onglet visé par le clic droit, pas forcément l'onglet ouvert.
-  // Verrouiller ou déverrouiller depuis le menu de l'onglet. Relu même en cas
-  // de refus : l'onglet montre alors ce qui est.
-  const toggleAccessCategoryLock = async (id: Id) => {
+  // L'onglet visé par le clic droit, pas forcément l'onglet ouvert : son
+  // verrou, dans cette fenêtre seulement.
+  const toggleAccessCategoryLock = (id: Id) => basculerVerrou(`access:${id}`);
+
+  // « Hérité » d'une catégorie, depuis le menu de son onglet : le décocher
+  // (confirmé par le menu) part d'une copie de sa structure partagée, le
+  // recocher efface la sienne. La catégorie ouverte relit ses colonnes.
+  const toggleAccessCategoryInherited = async (id: Id) => {
     const categorie = accessCategories?.find((c) => c.id === id);
     if (!categorie) return;
     try {
-      await api.updateAccessCategory(id, { is_locked: !categorie.is_locked });
+      await api.setAccessLayout(id, categorie.inherited === false);
+    } catch (e) {
+      signalerRefus(e);
     } finally {
       await loadAccessCategories();
+      if (String(id) === accessCategoryId) {
+        await Promise.all([loadAccessSections(), loadAccessBlocks()]);
+      }
     }
   };
 
@@ -1522,15 +1616,7 @@ export default function App() {
     }
   };
 
-  const toggleBoardLock = async (id: Id) => {
-    const tableau = boards?.find((b) => b.id === id);
-    if (!tableau) return;
-    try {
-      await api.updateBoard(id, { is_locked: !tableau.is_locked });
-    } finally {
-      await loadBoards();
-    }
-  };
+  const toggleBoardLock = (id: Id) => basculerVerrou(`board:${id}`);
 
   // Renommer depuis l'onglet, au double clic, sans ouvrir le tiroir. Relu même
   // en cas de refus : l'onglet montre alors le nom qui est le sien.
@@ -1727,7 +1813,7 @@ export default function App() {
   // des éléments tout montés mais ce qu'il faut pour les monter — la rangée
   // (ModeBar) y glisse le menu « Actions » du mode, entre les deux.
   const account: AccountSlot = {
-    companies,
+    companies: societesDuMode,
     companyFilter,
     onCompanyFilterChange: setCompanyFilter,
     onOpenSettings: () => setSettingsOpened(true),
@@ -1739,419 +1825,454 @@ export default function App() {
     onSearchOpen: ouvrirRecherche,
   };
 
+  // Ce que le compte peut faire, mode par mode. Les tableaux de tâches
+  // appartiennent à la société choisie ; les tableaux de projets, les
+  // catégories d'accès et les panneaux d'indicateurs à aucune — il suffit
+  // qu'une société du compte accorde le droit.
+  const tachesIci = (droit: Right) => peut("tasks", droit, companyFilter);
+  const projetsPartout = (droit: Right) => peut("projects", droit);
+  const accesPartout = (droit: Right) => peut("access", droit);
+  const creerTache = peut("tasks", "create");
+  // Le droit de régler la structure partagée d'un panneau, et son verrou.
+  const reglePanneau = (area: PanneauHerite) => peut(area, area === "assets" ? "view" : "update");
+  // Figé faute de droit — sauf sur sa propre structure (« Hérité » décoché),
+  // qui n'est qu'à soi.
+  const panneauFige = (area: PanneauHerite) => herites[area] && !reglePanneau(area);
+  // Les catégories et les tableaux tels que cette fenêtre les montre : leur
+  // verrou est le sien, pas celui que la base garde encore.
+  const verrouDe = (scope: string) => (estVerrouille(scope) ? (1 as const) : (0 as const));
+  const categoriesAffichees =
+    accessCategories?.map((c) => ({ ...c, is_locked: verrouDe(`access:${c.id}`) })) ?? null;
+  const tableauxAffiches =
+    boards?.map((b) => ({ ...b, is_locked: verrouDe(`board:${b.id}`) })) ?? null;
+
+  // Le verrou de cette fenêtre, ou faute de droit sur la structure partagée.
+  const verrouPanneau = (area: PanneauHerite) => estVerrouille(area) || panneauFige(area);
+  const heritagePanneau = (area: PanneauHerite) => ({
+    inherited: herites[area],
+    onToggle: () => basculerHerite(area),
+  });
+
   return (
-    <Stack gap={0} h="100vh">
-      {/* Contenu resserré : moitié moins d'espace que les 100px d'origine, et
-          le même en haut que sur les côtés. La rangée d'onglets de chaque mode
-          est désormais la première ligne de l'écran, l'entête qui la
-          surmontait n'existe plus. */}
-      <Box
-        pt={PAGE_GUTTER}
-        px={PAGE_GUTTER}
-        w="100%"
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          // Le contenu s'arrête 20px au-dessus du sélecteur de mode, qui est
-          // posé en bas à gauche par-dessus la page. Sa hauteur n'est pas
-          // écrite ici : c'est lui qui la publie.
-          paddingBottom: `calc(var(${MODE_SWITCH_TOP}, ${MODE_SWITCH_TOP_FALLBACK}px) + ${BOTTOM_CLEARANCE}px)`,
-        }}
-      >
-        {mode === "access" && (
-          <AccessPage
-            categories={accessCategories}
-            categoryId={accessCategoryId}
-            onCategoryChange={setAccessCategoryId}
-            onAddCategory={addAccessCategory}
-            onTogglePrivateCategory={toggleAccessCategoryPrivate}
-            onRenameCategory={renameAccessCategory}
-            onDeleteCategory={deleteAccessCategory}
-            onReorderCategories={reorderAccessCategories}
-            onToggleCategoryLock={toggleAccessCategoryLock}
-            sections={accessSections}
-            onAddSection={openNewAccessSection}
-            onEditSection={openEditAccessSection}
-            onDuplicateSection={duplicateAccessSection}
-            onDeleteSection={deleteAccessSection}
-            onReorderSections={reorderAccessSections}
-            onChangeSectionGap={changeAccessSectionGap}
-            blocks={accessBlocks}
-            onAddBlock={openWidgetPicker}
-            onEditBlock={setEditedAccessBlock}
-            onChangeBlockConfig={changeAccessBlockConfig}
-            onReorderBlocks={reorderAccessBlocks}
-            onDuplicateBlock={duplicateAccessBlock}
-            onDeleteBlock={deleteAccessBlock}
-            onCreateTask={(bloc) =>
-              accessCategoryId &&
-              setTacheSource(
-                sourceAcces(
-                  bloc,
-                  Number(accessCategoryId),
-                  accessCategories?.find((c) => String(c.id) === accessCategoryId)?.name,
+    <DroitsProvider rights={user.rights}>
+      <Stack gap={0} h="100vh">
+        {/* Contenu resserré : moitié moins d'espace que les 100px d'origine, et
+            le même en haut que sur les côtés. La rangée d'onglets de chaque mode
+            est désormais la première ligne de l'écran, l'entête qui la
+            surmontait n'existe plus. */}
+        <Box
+          pt={PAGE_GUTTER}
+          px={PAGE_GUTTER}
+          w="100%"
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            // Le contenu s'arrête 20px au-dessus du sélecteur de mode, qui est
+            // posé en bas à gauche par-dessus la page. Sa hauteur n'est pas
+            // écrite ici : c'est lui qui la publie.
+            paddingBottom: `calc(var(${MODE_SWITCH_TOP}, ${MODE_SWITCH_TOP_FALLBACK}px) + ${BOTTOM_CLEARANCE}px)`,
+          }}
+        >
+          {mode === "access" && (
+            <AccessPage
+              categories={categoriesAffichees}
+              categoryId={accessCategoryId}
+              onCategoryChange={setAccessCategoryId}
+              onAddCategory={accesPartout("create") ? addAccessCategory : undefined}
+              onTogglePrivateCategory={
+                accesPartout("update") ? toggleAccessCategoryPrivate : undefined
+              }
+              onRenameCategory={accesPartout("update") ? renameAccessCategory : undefined}
+              onDeleteCategory={accesPartout("delete") ? deleteAccessCategory : undefined}
+              onReorderCategories={reorderAccessCategories}
+              onToggleCategoryLock={toggleAccessCategoryLock}
+              onToggleCategoryInherited={toggleAccessCategoryInherited}
+              sections={accessSections}
+              onAddSection={addAccessSection}
+              onDuplicateSection={duplicateAccessSection}
+              onDeleteSection={deleteAccessSection}
+              onReorderSections={reorderAccessSections}
+              onChangeSection={changeAccessSection}
+              blocks={accessBlocks}
+              onCreateBlock={poserWidgetAcces}
+              onEditBlock={setEditedAccessBlock}
+              onChangeBlockConfig={changeAccessBlockConfig}
+              onReorderBlocks={reorderAccessBlocks}
+              onDuplicateBlock={duplicateAccessBlock}
+              onDeleteBlock={deleteAccessBlock}
+              onCreateTask={
+                creerTache
+                  ? (bloc) =>
+                      accessCategoryId &&
+                      setTacheSource(
+                        sourceAcces(
+                          bloc,
+                          Number(accessCategoryId),
+                          accessCategories?.find((c) => String(c.id) === accessCategoryId)?.name,
+                        ),
+                      )
+                  : undefined
+              }
+              onCreateSupportRequest={
+                peut("support", "create") ? openSupportRequestFromAccess : undefined
+              }
+              onConvertBlock={convertAccessBlock}
+              loading={chargementAcces}
+              account={account}
+            />
+          )}
+          {mode === "support" && (
+            <SupportPage
+              requests={supportRequests}
+              statusTab={supportStatusTab}
+              onStatusTabChange={setSupportStatusTab}
+              onOpenRequest={openSupportRequest}
+              onCreateTask={
+                creerTache ? (demande) => setTacheSource(sourceDemande(demande)) : undefined
+              }
+              onAddRequest={
+                peut("support", "create", companyFilter) ? openNewSupportRequest : undefined
+              }
+              users={users}
+              onRequestsChanged={loadSupportRequests}
+              hasCompany={companyFilter !== ""}
+              loading={chargementSupport}
+              tabOrder={tabOrders.support}
+              onReorderTabs={(values) => reorderTabs("support", values)}
+              account={account}
+              followedIds={follows.support}
+              onToggleFollow={(demande) => basculerSuivi("support", demande.id)}
+              indicatorSections={supportIndicatorSections}
+              indicators={supportIndicators}
+              onIndicatorsChanged={loadSupportIndicators}
+              indicatorsLocked={verrouPanneau("support")}
+              onToggleIndicatorsLock={toggleSupportIndicatorsLock}
+              indicatorsInheritance={heritagePanneau("support")}
+            />
+          )}
+
+          {mode === "assets" && (
+            <AssetsPage
+              assets={assets}
+              onOpenAsset={openAsset}
+              onCreateTask={creerTache ? (poste) => setTacheSource(sourcePoste(poste)) : undefined}
+              loading={chargementAssets}
+              tabOrder={tabOrders.assets}
+              onReorderTabs={(values) => reorderTabs("assets", values)}
+              account={account}
+              indicatorSections={assetIndicatorSections}
+              indicators={assetIndicators}
+              onIndicatorsChanged={loadAssetIndicators}
+              indicatorsLocked={verrouPanneau("assets")}
+              onToggleIndicatorsLock={toggleAssetIndicatorsLock}
+              indicatorsInheritance={heritagePanneau("assets")}
+            />
+          )}
+
+          {loaded && mode === "tasks" && (
+            <TasksPage
+              boards={tableauxAffiches}
+              boardId={boardId}
+              onBoardChange={setBoardId}
+              onAddBoard={tachesIci("create") ? addBoard : undefined}
+              onTogglePrivateBoard={tachesIci("update") ? toggleBoardPrivate : undefined}
+              onToggleCardNumbers={tachesIci("update") ? toggleBoardCardNumbers : undefined}
+              onCopyLabels={
+                tachesIci("create")
+                  ? (id) => setCopie({ univers: "tasks", chose: "labels", id })
+                  : undefined
+              }
+              onRenameBoard={tachesIci("update") ? renameBoard : undefined}
+              onDeleteBoard={tachesIci("delete") ? deleteBoard : undefined}
+              onReorderBoards={reorderBoards}
+              onToggleBoardLock={toggleBoardLock}
+              lists={taskLists}
+              onListsChanged={loadTaskLists}
+              labels={labels}
+              users={users}
+              onLabelsChanged={loadLabels}
+              loading={chargementTaches}
+              follows={follows}
+              onToggleFollow={basculerSuivi}
+              carteAOuvrir={carteAOuvrir}
+              onCarteOuverte={handleCarteOuverte}
+              account={account}
+              indicatorSections={taskIndicatorSections}
+              indicators={taskIndicators}
+              onIndicatorsChanged={loadTaskIndicators}
+              indicatorsLocked={verrouPanneau("tasks")}
+              onToggleIndicatorsLock={toggleTaskIndicatorsLock}
+              indicatorsInheritance={heritagePanneau("tasks")}
+            />
+          )}
+
+          {loaded && mode === "projects" && (
+            <ProjectsPage
+              boards={projectBoards}
+              boardId={projectBoardId}
+              onBoardChange={setProjectBoardId}
+              onAddBoard={projetsPartout("create") ? addProjectBoard : undefined}
+              onTogglePrivateBoard={
+                projetsPartout("update") ? toggleProjectBoardPrivate : undefined
+              }
+              onCopyLabels={
+                projetsPartout("create")
+                  ? (id) => setCopie({ univers: "projects", chose: "labels", id })
+                  : undefined
+              }
+              onCopyCategories={
+                projetsPartout("create")
+                  ? (id) => setCopie({ univers: "projects", chose: "categories", id })
+                  : undefined
+              }
+              onManageCategories={projetsPartout("update") ? setCategoriesDe : undefined}
+              // Les types de jalons relèvent du Paramétrage : sans le droit de le
+              // modifier, le menu ne les propose pas.
+              onManageMilestones={
+                user.settings.update ? () => setJalonsOuverts(true) : undefined
+              }
+              onRenameBoard={projetsPartout("update") ? renameProjectBoard : undefined}
+              onDeleteBoard={projetsPartout("delete") ? deleteProjectBoard : undefined}
+              onReorderBoards={reorderProjectBoards}
+              projects={projects}
+              filters={{
+                categories,
+                categoryFilter,
+                onCategoryFilterChange: setCategoryFilter,
+                statusFilter,
+                onStatusFilterChange: setStatusFilter,
+                // L'acteur retenu reste proposé même s'il n'a plus de projet :
+                // sinon le filtre porterait un nom qu'on ne voit plus.
+                users: users.filter(
+                  (u) => projectActorIds.includes(u.id) || String(u.id) === actorFilter,
                 ),
-              )
+                actorFilter,
+                onActorFilterChange: setActorFilter,
+              }}
+              onRowClick={handleOpenProject}
+              onMoveProject={(project, mode) =>
+                setMovedProject({ project, mode })
+              }
+              onDuplicateProject={(project) => void duplicateProject(project)}
+              onDeleteProject={setDeletedProject}
+              onCreateTask={(projet) =>
+                setTacheSource(
+                  sourceProjet(projet, projectBoards?.find((b) => b.id === projet.board_id)?.name),
+                )
+              }
+              onAddProject={projetsPartout("create") ? handleOpenNewProject : undefined}
+              followedIds={follows.project}
+              onToggleFollow={(projet) => basculerSuivi("project", projet.id)}
+              loading={chargementProjets}
+              account={account}
+              indicatorSections={projectIndicatorSections}
+              indicators={projectIndicators}
+              onIndicatorsChanged={loadProjectIndicators}
+              indicatorsLocked={verrouPanneau("projects")}
+              onToggleIndicatorsLock={toggleProjectIndicatorsLock}
+              indicatorsInheritance={heritagePanneau("projects")}
+            />
+          )}
+        </Box>
+
+        <ProjectCategoriesModal
+          board={projectBoards?.find((b) => b.id === categoriesDe) ?? null}
+          onClose={() => setCategoriesDe(null)}
+          onChanged={loadCategories}
+        />
+
+        <MilestoneTypesModal
+          opened={jalonsOuverts}
+          onClose={() => setJalonsOuverts(false)}
+          milestoneTypes={milestoneTypes}
+          onChanged={handleSettingsChanged}
+        />
+
+        {copie && (
+          <CopyToBoardModal
+            opened
+            onClose={() => setCopie(null)}
+            chose={copie.chose}
+            sourceId={copie.id}
+            univers={copie.univers}
+            companyId={copie.univers === "tasks" ? companyFilter : undefined}
+            onCopy={(cible) =>
+              copie.univers === "tasks"
+                ? api.copyLabels(copie.id, cible)
+                : copie.chose === "labels"
+                  ? api.copyProjectLabels(copie.id, cible)
+                  : api.copyCategories(copie.id, cible)
             }
-            onCreateSupportRequest={openSupportRequestFromAccess}
-            onConvertBlock={convertAccessBlock}
-            loading={chargementAcces}
-            account={account}
-          />
-        )}
-        {mode === "support" && (
-          <SupportPage
-            requests={supportRequests}
-            statusTab={supportStatusTab}
-            onStatusTabChange={setSupportStatusTab}
-            onOpenRequest={openSupportRequest}
-            onCreateTask={(demande) => setTacheSource(sourceDemande(demande))}
-            onAddRequest={openNewSupportRequest}
-            users={users}
-            onRequestsChanged={loadSupportRequests}
-            hasCompany={companyFilter !== ""}
-            loading={chargementSupport}
-            tabOrder={tabOrders.support}
-            onReorderTabs={(values) => reorderTabs("support", values)}
-            account={account}
-            followedIds={follows.support}
-            onToggleFollow={(demande) => basculerSuivi("support", demande.id)}
-            indicatorSections={supportIndicatorSections}
-            indicators={supportIndicators}
-            onIndicatorsChanged={loadSupportIndicators}
-            indicatorsLocked={supportIndicatorsLocked}
-            onToggleIndicatorsLock={toggleSupportIndicatorsLock}
-          />
-        )}
-
-        {mode === "assets" && (
-          <AssetsPage
-            assets={assets}
-            onOpenAsset={openAsset}
-            onCreateTask={(poste) => setTacheSource(sourcePoste(poste))}
-            loading={chargementAssets}
-            tabOrder={tabOrders.assets}
-            onReorderTabs={(values) => reorderTabs("assets", values)}
-            account={account}
-            indicatorSections={assetIndicatorSections}
-            indicators={assetIndicators}
-            onIndicatorsChanged={loadAssetIndicators}
-            indicatorsLocked={assetIndicatorsLocked}
-            onToggleIndicatorsLock={toggleAssetIndicatorsLock}
-          />
-        )}
-
-        {loaded && mode === "tasks" && (
-          <TasksPage
-            boards={boards}
-            boardId={boardId}
-            onBoardChange={setBoardId}
-            onAddBoard={addBoard}
-            onTogglePrivateBoard={toggleBoardPrivate}
-            onToggleCardNumbers={toggleBoardCardNumbers}
-            onCopyLabels={(id) => setCopie({ univers: "tasks", chose: "labels", id })}
-            onRenameBoard={renameBoard}
-            onDeleteBoard={deleteBoard}
-            onReorderBoards={reorderBoards}
-            onToggleBoardLock={toggleBoardLock}
-            lists={taskLists}
-            onListsChanged={loadTaskLists}
-            labels={labels}
-            users={users}
-            onLabelsChanged={loadLabels}
-            loading={chargementTaches}
-            follows={follows}
-            onToggleFollow={basculerSuivi}
-            carteAOuvrir={carteAOuvrir}
-            onCarteOuverte={handleCarteOuverte}
-            account={account}
-            indicatorSections={taskIndicatorSections}
-            indicators={taskIndicators}
-            onIndicatorsChanged={loadTaskIndicators}
-            indicatorsLocked={taskIndicatorsLocked}
-            onToggleIndicatorsLock={toggleTaskIndicatorsLock}
           />
         )}
 
-        {loaded && mode === "projects" && (
-          <ProjectsPage
-            boards={projectBoards}
-            boardId={projectBoardId}
-            onBoardChange={setProjectBoardId}
-            onAddBoard={addProjectBoard}
-            onTogglePrivateBoard={toggleProjectBoardPrivate}
-            onCopyLabels={(id) => setCopie({ univers: "projects", chose: "labels", id })}
-            onCopyCategories={(id) =>
-              setCopie({ univers: "projects", chose: "categories", id })
-            }
-            onManageCategories={setCategoriesDe}
-            // Les types de jalons relèvent du Paramétrage : sans le droit de le
-            // modifier, le menu ne les propose pas.
-            onManageMilestones={
-              user.settings.update ? () => setJalonsOuverts(true) : undefined
-            }
-            onRenameBoard={renameProjectBoard}
-            onDeleteBoard={deleteProjectBoard}
-            onReorderBoards={reorderProjectBoards}
-            projects={projects}
-            filters={{
-              categories,
-              categoryFilter,
-              onCategoryFilterChange: setCategoryFilter,
-              statusFilter,
-              onStatusFilterChange: setStatusFilter,
-              // L'acteur retenu reste proposé même s'il n'a plus de projet :
-              // sinon le filtre porterait un nom qu'on ne voit plus.
-              users: users.filter(
-                (u) => projectActorIds.includes(u.id) || String(u.id) === actorFilter,
-              ),
-              actorFilter,
-              onActorFilterChange: setActorFilter,
-            }}
-            onRowClick={handleOpenProject}
-            onMoveProject={(project, mode) =>
-              setMovedProject({ project, mode })
-            }
-            onDuplicateProject={(project) => void duplicateProject(project)}
-            onDeleteProject={setDeletedProject}
-            onCreateTask={(projet) =>
-              setTacheSource(
-                sourceProjet(projet, projectBoards?.find((b) => b.id === projet.board_id)?.name),
-              )
-            }
-            onAddProject={handleOpenNewProject}
-            followedIds={follows.project}
-            onToggleFollow={(projet) => basculerSuivi("project", projet.id)}
-            loading={chargementProjets}
-            account={account}
-            indicatorSections={projectIndicatorSections}
-            indicators={projectIndicators}
-            onIndicatorsChanged={loadProjectIndicators}
-            indicatorsLocked={projectIndicatorsLocked}
-            onToggleIndicatorsLock={toggleProjectIndicatorsLock}
-          />
-        )}
-      </Box>
+        <AccessBlockDrawer
+          opened={editedAccessBlock !== null}
+          onClose={() => setEditedAccessBlock(null)}
+          block={editedAccessBlock}
+          blocks={accessBlocks}
+          onSaved={handleAccessBlockSaved}
+          onDeleted={handleAccessBlockSaved}
+        />
 
-      <ProjectCategoriesModal
-        board={projectBoards?.find((b) => b.id === categoriesDe) ?? null}
-        onClose={() => setCategoriesDe(null)}
-        onChanged={loadCategories}
-      />
+        <AssetDrawer
+          opened={assetDrawerOpened}
+          onClose={() => setAssetDrawerOpened(false)}
+          asset={openedAsset}
+        />
 
-      <MilestoneTypesModal
-        opened={jalonsOuverts}
-        onClose={() => setJalonsOuverts(false)}
-        milestoneTypes={milestoneTypes}
-        onChanged={handleSettingsChanged}
-      />
+        <SupportRequestDrawer
+          opened={supportDrawerOpened}
+          onClose={() => setSupportDrawerOpened(false)}
+          request={editedSupportRequest}
+          // La société proposée à la création : celle qui est choisie, ou la
+          // première de la liste quand elle est sur « toutes ».
+          companyId={
+            societeDemandeAcces ??
+            (companyFilter !== "all" ? companyFilter : String(companies[0]?.id ?? ""))
+          }
+          companies={companies}
+          defaultStatus={
+            objetDemandeAcces === null ? statutDeLOnglet(supportStatusTab) : DEFAULT_SUPPORT_STATUS
+          }
+          defaultSubject={objetDemandeAcces ?? ""}
+          assignCurrentUser={objetDemandeAcces === null}
+          users={users}
+          currentUser={user}
+          onSaved={handleSupportRequestSaved}
+          onDeleted={handleSupportRequestSaved}
+          suivi={
+            editedSupportRequest !== null &&
+            follows.support.includes(editedSupportRequest.id)
+          }
+          onToggleFollow={() => {
+            if (editedSupportRequest) basculerSuivi("support", editedSupportRequest.id);
+          }}
+        />
 
-      {copie && (
-        <CopyToBoardModal
-          opened
-          onClose={() => setCopie(null)}
-          chose={copie.chose}
-          sourceId={copie.id}
-          univers={copie.univers}
-          companyId={copie.univers === "tasks" ? companyFilter : undefined}
-          onCopy={(cible) =>
-            copie.univers === "tasks"
-              ? api.copyLabels(copie.id, cible)
-              : copie.chose === "labels"
-                ? api.copyProjectLabels(copie.id, cible)
-                : api.copyCategories(copie.id, cible)
+        <ProjectDrawer
+          opened={drawerOpened}
+          onClose={handleCloseDrawer}
+          projectId={selectedProjectId}
+          boardId={projectBoardId}
+          categories={categories}
+          companies={companies}
+          milestoneTypes={milestoneTypes}
+          users={users}
+          labels={projectLabels}
+          boards={projectBoards ?? []}
+          currentUser={user}
+          onCategoriesChanged={loadCategories}
+          onLabelsChanged={loadProjectLabels}
+          onSaved={handleSaved}
+          onDeleted={handleSaved}
+          suivi={
+            selectedProjectId !== null &&
+            follows.project.includes(selectedProjectId)
+          }
+          onToggleFollow={() => {
+            if (selectedProjectId !== null)
+              basculerSuivi("project", selectedProjectId);
+          }}
+        />
+
+        <MoveOrCopyProjectModal
+          opened={movedProject !== null}
+          onClose={() => setMovedProject(null)}
+          mode={movedProject?.mode}
+          project={movedProject?.project ?? null}
+          boards={projectBoards ?? []}
+          onMoved={handleProjectMoved}
+        />
+
+        <DeleteConfirmModal
+          opened={deletedProject !== null}
+          onClose={() => setDeletedProject(null)}
+          onConfirm={deleteProject}
+          title="Supprimer le projet"
+          message={
+            <>
+              Voulez-vous vraiment supprimer « {deletedProject?.name} » ? Ses
+              commentaires seront supprimés. Cette action est irréversible.
+            </>
           }
         />
-      )}
 
-      <WidgetPickerModal
-        opened={sectionPourBloc !== null}
-        onClose={() => setSectionPourBloc(null)}
-        onChoose={handleWidgetChoisi}
-      />
+        <ModeSwitch
+          mode={mode}
+          modes={modes}
+          onModeChange={changeMode}
+          onReorder={(ordre) => reorderTabs("modes", ordre)}
+        />
+        <ShortcutsHelp mode={mode} />
+        <CodeKonami />
 
-      <AccessBlockDrawer
-        opened={editedAccessBlock !== null}
-        onClose={() => setEditedAccessBlock(null)}
-        block={editedAccessBlock}
-        blocks={accessBlocks}
-        onSaved={handleAccessBlockSaved}
-        onDeleted={handleAccessBlockSaved}
-      />
-
-      <SectionDrawer
-        opened={sectionDrawerOpened}
-        onClose={() => setSectionDrawerOpened(false)}
-        section={editedAccessSection}
-        onSave={async (largeur) => {
-          if (editedAccessSection) {
-            await api.updateAccessSection(editedAccessSection.id, largeur);
-          } else {
-            await api.createAccessSection({
-              category_id: Number(accessCategoryId),
-              ...largeur,
-              ...(sectionInsertAt !== null ? { index: sectionInsertAt } : {}),
-            });
+        {/* « Créer une tâche » : la fiche d'une carte, vide, qui choisit où
+            elle va. On reste où l'on est ; la notification mène à la tâche. */}
+        <CardDrawer
+          opened={tacheSource !== null}
+          onClose={() => setTacheSource(null)}
+          card={null}
+          source={tacheSource}
+          // Depuis le mode Accès, la tâche naît sans membre : on la signale
+          // sans s'en charger.
+          currentUserId={tacheSource?.kind === "access" ? undefined : user?.id}
+          labels={[]}
+          users={users}
+          boardId={null}
+          onLabelsChanged={() => {}}
+          onSaved={() => {}}
+          suivie={false}
+          onToggleFollow={() => {}}
+          onCreated={(id) =>
+            notifications.show({
+              title: "Tâche créée",
+              color: "teal",
+              autoClose: 6000,
+              message: (
+                <Anchor size="sm" onClick={() => void ouvrirCible({ kind: "card", id })}>
+                  Ouvrir la tâche
+                </Anchor>
+              ),
+            })
           }
-          await handleAccessSectionSaved();
-        }}
-        onDelete={async () => {
-          if (editedAccessSection) await api.deleteAccessSection(editedAccessSection.id);
-          await handleAccessSectionSaved();
-        }}
-      />
+        />
 
-      <AssetDrawer
-        opened={assetDrawerOpened}
-        onClose={() => setAssetDrawerOpened(false)}
-        asset={openedAsset}
-      />
+        <NotificationsDrawer
+          opened={notificationsOpened}
+          onClose={() => setNotificationsOpened(false)}
+          revision={notificationsRevision}
+          onOpen={(notification) => {
+            if (notification.deleted) return;
+            setNotificationsOpened(false);
+            void ouvrirCible({ kind: notification.kind, id: notification.target_id });
+          }}
+        />
 
-      <SupportRequestDrawer
-        opened={supportDrawerOpened}
-        onClose={() => setSupportDrawerOpened(false)}
-        request={editedSupportRequest}
-        // La société proposée à la création : celle qui est choisie, ou la
-        // première de la liste quand elle est sur « toutes ».
-        companyId={
-          societeDemandeAcces ??
-          (companyFilter !== "all" ? companyFilter : String(companies[0]?.id ?? ""))
-        }
-        companies={companies}
-        defaultStatus={
-          objetDemandeAcces === null ? statutDeLOnglet(supportStatusTab) : DEFAULT_SUPPORT_STATUS
-        }
-        defaultSubject={objetDemandeAcces ?? ""}
-        assignCurrentUser={objetDemandeAcces === null}
-        users={users}
-        currentUser={user}
-        onSaved={handleSupportRequestSaved}
-        onDeleted={handleSupportRequestSaved}
-        suivi={
-          editedSupportRequest !== null &&
-          follows.support.includes(editedSupportRequest.id)
-        }
-        onToggleFollow={() => {
-          if (editedSupportRequest) basculerSuivi("support", editedSupportRequest.id);
-        }}
-      />
+        <PreferencesModal
+          opened={preferencesOpened}
+          onClose={() => setPreferencesOpened(false)}
+          user={user}
+          onUpdated={(updated) => {
+            setUser(updated);
+            // Le nom apparaît aussi dans les acteurs et la liste des utilisateurs.
+            loadLookups();
+            loadProjects();
+          }}
+        />
 
-      <ProjectDrawer
-        opened={drawerOpened}
-        onClose={handleCloseDrawer}
-        projectId={selectedProjectId}
-        boardId={projectBoardId}
-        categories={categories}
-        companies={companies}
-        milestoneTypes={milestoneTypes}
-        users={users}
-        labels={projectLabels}
-        boards={projectBoards ?? []}
-        currentUser={user}
-        onCategoriesChanged={loadCategories}
-        onLabelsChanged={loadProjectLabels}
-        onSaved={handleSaved}
-        onDeleted={handleSaved}
-        suivi={
-          selectedProjectId !== null &&
-          follows.project.includes(selectedProjectId)
-        }
-        onToggleFollow={() => {
-          if (selectedProjectId !== null)
-            basculerSuivi("project", selectedProjectId);
-        }}
-      />
-
-      <MoveOrCopyProjectModal
-        opened={movedProject !== null}
-        onClose={() => setMovedProject(null)}
-        mode={movedProject?.mode}
-        project={movedProject?.project ?? null}
-        boards={projectBoards ?? []}
-        onMoved={handleProjectMoved}
-      />
-
-      <DeleteConfirmModal
-        opened={deletedProject !== null}
-        onClose={() => setDeletedProject(null)}
-        onConfirm={deleteProject}
-        title="Supprimer le projet"
-        message={
-          <>
-            Voulez-vous vraiment supprimer « {deletedProject?.name} » ? Ses
-            commentaires seront supprimés. Cette action est irréversible.
-          </>
-        }
-      />
-
-      <ModeSwitch mode={mode} onModeChange={changeMode} />
-      <ShortcutsHelp mode={mode} />
-
-      {/* « Créer une tâche » : la fiche d'une carte, vide, qui choisit où
-          elle va. On reste où l'on est ; la notification mène à la tâche. */}
-      <CardDrawer
-        opened={tacheSource !== null}
-        onClose={() => setTacheSource(null)}
-        card={null}
-        source={tacheSource}
-        // Depuis le mode Accès, la tâche naît sans membre : on la signale
-        // sans s'en charger.
-        currentUserId={tacheSource?.kind === "access" ? undefined : user?.id}
-        labels={[]}
-        users={users}
-        boardId={null}
-        onLabelsChanged={() => {}}
-        onSaved={() => {}}
-        suivie={false}
-        onToggleFollow={() => {}}
-        onCreated={(id) =>
-          notifications.show({
-            title: "Tâche créée",
-            color: "teal",
-            autoClose: 6000,
-            message: (
-              <Anchor size="sm" onClick={() => void ouvrirCible({ kind: "card", id })}>
-                Ouvrir la tâche
-              </Anchor>
-            ),
-          })
-        }
-      />
-
-      <NotificationsDrawer
-        opened={notificationsOpened}
-        onClose={() => setNotificationsOpened(false)}
-        revision={notificationsRevision}
-        onOpen={(notification) => {
-          if (notification.deleted) return;
-          setNotificationsOpened(false);
-          void ouvrirCible({ kind: notification.kind, id: notification.target_id });
-        }}
-      />
-
-      <PreferencesModal
-        opened={preferencesOpened}
-        onClose={() => setPreferencesOpened(false)}
-        user={user}
-        onUpdated={(updated) => {
-          setUser(updated);
-          // Le nom apparaît aussi dans les acteurs et la liste des utilisateurs.
-          loadLookups();
-          loadProjects();
-        }}
-      />
-
-      <SettingsModal
-        opened={settingsOpened}
-        onClose={() => setSettingsOpened(false)}
-        companies={companies}
-        canEdit={user.settings.update}
-        onDataChanged={handleSettingsChanged}
-        debug={debug}
-        onDebugChange={setDebug}
-      />
-    </Stack>
+        <SettingsModal
+          opened={settingsOpened}
+          onClose={() => setSettingsOpened(false)}
+          companies={companies}
+          canEdit={user.settings.update}
+          onDataChanged={handleSettingsChanged}
+          debug={debug}
+          onDebugChange={setDebug}
+        />
+      </Stack>
+    </DroitsProvider>
   );
 }

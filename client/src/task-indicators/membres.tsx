@@ -7,10 +7,11 @@ import type { TaskIndicatorWidget } from "./types";
 // La part de chaque membre dans les cartes du tableau ouvert, en barres
 // radiales, comme les acteurs du Support.
 
-const LIBELLE = "Membres";
+const LIBELLE = "Acteurs";
 
 export const membresIndicator: TaskIndicatorWidget = {
   type: "members",
+  kind: "task",
   label: LIBELLE,
   icon: IconUsers,
   defaultConfig: { [NOM]: "" },

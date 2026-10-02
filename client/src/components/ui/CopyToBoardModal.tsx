@@ -1,6 +1,7 @@
 import { Button, Group, Modal, Select, Stack, Text } from "@mantine/core";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
+import { useDroits } from "../../lib/droits";
 import { modalHeaderStyles } from "../../themes/modals";
 import ErrorAlert from "./ErrorAlert";
 import { messageErreur } from "../../lib/errors";
@@ -73,6 +74,7 @@ export default function CopyToBoardModal({
   companyId,
   onCopy,
 }: CopyToBoardModalProps) {
+  const peut = useDroits();
   const [companies, setCompanies] = useState<Company[] | null>(null);
   const [societe, setSociete] = useState<string | null>(null);
   /** Les tableaux où l'on peut copier ; « null » tant qu'on les lit. */
@@ -144,7 +146,8 @@ export default function CopyToBoardModal({
     .filter((board) => board.id !== sourceId)
     .map((board) => ({ value: String(board.id), label: board.name }));
 
-  const companyOptions = (companies ?? []).map((c) => ({
+  // Seules les sociétés où l'on peut ajouter des tâches accueillent.
+  const companyOptions = (companies ?? []).filter((c) => peut("tasks", "create", c.id)).map((c) => ({
     value: String(c.id),
     label: c.name,
   }));

@@ -1,15 +1,15 @@
-// L'ordre des onglets fixes : les statuts du mode Support, les familles du
-// mode Assets. Ces onglets ne sont pas des tableaux qu'on ajoute — leur liste
-// est écrite dans le code —, mais leur ordre se range comme celui des
-// tableaux, par glisser-déposer, et vaut pour tout le monde.
+// L'ordre des rangées fixes : les statuts du mode Support, les familles du
+// mode Assets, et les modes eux-mêmes dans le sélecteur du bas (« modes »).
+// Leur liste est écrite dans le code, mais leur ordre se range comme celui
+// des tableaux, par glisser-déposer, et chaque compte range le sien.
 
-export const TAB_ORDER_MODES = ["support", "assets"] as const;
+export const TAB_ORDER_MODES = ["support", "assets", "modes"] as const;
 
 export type TabOrderMode = (typeof TAB_ORDER_MODES)[number];
 
 /**
- * L'ordre rangé de chaque mode : les valeurs des onglets, dans l'ordre voulu.
- * Vide tant que personne ne l'a changé.
+ * L'ordre rangé de chaque rangée : les valeurs des onglets, dans l'ordre
+ * voulu. Vide tant que le compte ne l'a pas changé.
  */
 export type TabOrders = Record<TabOrderMode, string[]>;
 

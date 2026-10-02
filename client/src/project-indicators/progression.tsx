@@ -19,6 +19,7 @@ const TRANCHES = [
 
 export const progressionIndicator: ProjectIndicatorWidget = {
   type: "progress",
+  kind: "project",
   label: LIBELLE,
   icon: IconProgress,
   defaultConfig: { [NOM]: "" },

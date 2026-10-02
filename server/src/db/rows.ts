@@ -69,6 +69,24 @@ export interface MilestoneTypeRow {
   milestones: string;
 }
 
+/** Une réponse par défaut du Support. */
+export interface SupportReplyRow {
+  id: Id;
+  name: string;
+  html: string;
+  /** Un SupportReplyEvent, ou vide. */
+  event: string;
+}
+
+/** Un contenu par défaut du Support. */
+export interface SupportContentRow {
+  id: Id;
+  name: string;
+  html: string;
+  /** Un SupportContentEvent, ou vide. */
+  event: string;
+}
+
 export interface CategoryRow {
   id: Id;
   board_id: Id;
@@ -97,6 +115,8 @@ export interface AccessSectionRow {
   /** L'écart qui la sépare de la colonne suivante, en pixels. */
   gap: number;
   position: number;
+  /** Nul : la structure publique ; sinon, celle de ce compte. */
+  owner_id: Id | null;
   created_at: string;
 }
 
@@ -293,6 +313,8 @@ export interface IndicatorSectionRow {
   /** L'écart qui la sépare de la colonne suivante, en pixels. */
   gap: number;
   position: number;
+  /** Nul : la structure publique ; sinon, celle de ce compte. */
+  owner_id: Id | null;
   created_at: string;
 }
 
@@ -323,6 +345,8 @@ export interface SupportCommentRow {
   format: SupportCommentFormat;
   /** Les fichiers de l'e-mail, en JSON : TicketFileRow[]. */
   attachments: string;
+  /** L'évènement d'une réponse par défaut partie d'office ; vide sinon. */
+  auto_event: string;
   created_at: string;
   updated_at: string;
 }

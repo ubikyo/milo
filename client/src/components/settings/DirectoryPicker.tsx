@@ -1,5 +1,6 @@
 import { Group, Select, Text } from "@mantine/core";
 import { IconUser, IconUsersGroup } from "@tabler/icons-react";
+import OrigineAnnuaire from "../ui/OrigineAnnuaire";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { messageErreur } from "../../lib/errors";
@@ -108,9 +109,9 @@ export default function DirectoryPicker({
         const p = parCle.get(option.value);
         const Icone = p?.type === "group" ? IconUsersGroup : IconUser;
         return (
-          <Group gap="xs" wrap="nowrap">
+          <Group gap="xs" wrap="nowrap" style={{ width: "100%" }}>
             <Icone size={16} style={{ flexShrink: 0 }} />
-            <div style={{ minWidth: 0 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <Text size="sm" truncate>
                 {option.label}
               </Text>
@@ -120,6 +121,9 @@ export default function DirectoryPicker({
                 </Text>
               )}
             </div>
+            {/* L'origine du compte, à droite : deux comptes de même nom et
+                de même adresse se distinguent ainsi. */}
+            {p && <OrigineAnnuaire synced={p.synced} />}
           </Group>
         );
       }}

@@ -135,6 +135,8 @@ const affichage = (options: TitreOptions): ComponentType<WidgetDisplayProps> =>
 /** Le widget d'un titre, à partir de ce qui le distingue de l'autre. */
 export const creerTitreWidget = (options: TitreOptions): AccessWidget => ({
   type: options.type,
+  // Les titres sont des widgets communs à tous les modes.
+  kind: "common",
   label: options.label,
   icon: options.icon,
   // Un titre neuf est vide : on le nomme en double-cliquant dessus, là où il

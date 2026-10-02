@@ -16,6 +16,7 @@ const tousLesProjets = (config: unknown) =>
 
 export const categoriesIndicator: ProjectIndicatorWidget = {
   type: "categories",
+  kind: "project",
   label: LIBELLE,
   icon: IconCategory,
   defaultConfig: { [NOM]: "", [TOUS]: false },

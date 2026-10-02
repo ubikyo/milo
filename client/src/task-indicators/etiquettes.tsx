@@ -12,6 +12,7 @@ const LIBELLE = "Étiquettes";
 
 export const etiquettesTachesIndicator: TaskIndicatorWidget = {
   type: "labels",
+  kind: "task",
   label: LIBELLE,
   icon: IconTags,
   defaultConfig: { [NOM]: "" },

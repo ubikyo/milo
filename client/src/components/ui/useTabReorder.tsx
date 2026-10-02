@@ -50,12 +50,15 @@ export function InsertLine() {
 /**
  * Les onglets dans l'ordre montré, et de quoi les glisser. « items » est
  * l'ordre qui fait foi ; « onReorder » reçoit le nouveau une fois l'onglet
- * déposé — sans lui, les onglets ne se glissent pas.
+ * déposé — sans lui, les onglets ne se glissent pas. « zoneDe » retrouve la
+ * rangée depuis l'élément touché, quand elle n'en est pas le parent direct
+ * (le sélecteur de modes, ModeSwitch).
  */
 export function useTabReorder<T, K extends string | number>(
   items: T[],
   keyOf: (item: T) => K,
   onReorder?: (keys: K[]) => void | Promise<void>,
+  zoneDe: (element: HTMLElement) => HTMLElement | null = (element) => element.parentElement,
 ) {
   const [drag, setDrag] = useState<Glisser<K> | null>(null);
   const dragRef = useRef<GlisserEnCours<K> | null>(null);
@@ -160,7 +163,7 @@ export function useTabReorder<T, K extends string | number>(
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
       vientDeGlisser.current = false;
       if (event.button !== 0 || !onReorder) return;
-      zoneRef.current = event.currentTarget.parentElement;
+      zoneRef.current = zoneDe(event.currentTarget);
       dragRef.current = { id: cle, index, startX: event.clientX, started: false, target: index };
     },
     style: {

@@ -5,8 +5,16 @@
 // (system) est à part : il n'a qu'un mot de passe, ne sert qu'au paramétrage,
 // et ne se montre dans aucune liste.
 
-import type { PublicUser } from "@milo/shared";
-import { DEFAULT_MODE, isMode, validPermissions } from "@milo/shared";
+import type { AppPermissions, CompanyRights, Mode, Permissions, PublicUser } from "@milo/shared";
+import {
+  AREAS,
+  DEFAULT_MODE,
+  allPermissions,
+  defaultAppPermissions,
+  isMode,
+  validAppPermissions,
+  validPermissions,
+} from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import type { SessionRow, UserRow } from "../db/rows.js";
 import { fullName, gravatarUrl } from "../lib/auth.js";
@@ -54,13 +62,107 @@ export const sessions = {
   purgeExpired: mutation("DELETE FROM sessions WHERE expires_at != '' AND expires_at < ?"),
 };
 
-/** Les rôles du compte, dans toutes ses sociétés : les siens et ceux de ses groupes. */
-const rolesDuCompte = selection<{ is_admin: number; permissions: string }>(
-  `SELECT r.is_admin, r.permissions
+/** Un rôle du compte, dans n'importe quelle société : le sien ou celui d'un de ses groupes. */
+const unRoleDuCompte = selection<{ role_id: number }>(
+  `SELECT a.role_id
+   FROM role_assignments a
+   WHERE (a.principal_type = 'user' AND a.principal_id = ?)
+      OR (a.principal_type = 'group' AND a.principal_id IN (SELECT value FROM json_each(?)))
+   LIMIT 1`,
+);
+
+/** Ses permissions pour l'application : les siennes et celles de ses groupes. */
+const permissionsDuCompte = selection<{ settings: string; modes: string }>(
+  `SELECT settings, modes FROM principal_permissions
+   WHERE (principal_type = 'user' AND principal_id = ?)
+      OR (principal_type = 'group' AND principal_id IN (SELECT value FROM json_each(?)))`,
+);
+
+/** Les utilisateurs et groupes qui portent un rôle : ceux sans permissions en base ont celles par défaut. */
+const principauxDuCompte = selection<{ principal_type: string; principal_id: string }>(
+  `SELECT DISTINCT principal_type, principal_id FROM role_assignments
+   WHERE (principal_type = 'user' AND principal_id = ?)
+      OR (principal_type = 'group' AND principal_id IN (SELECT value FROM json_each(?)))
+   EXCEPT
+   SELECT principal_type, principal_id FROM principal_permissions`,
+);
+
+/**
+ * Ses permissions pour l'application, réunies : le Paramétrage le plus large
+ * de ceux qu'il tient, et tous les modes ouverts par l'un ou l'autre — lui ou
+ * un de ses groupes. Qui porte un rôle sans permissions réglées a celles par
+ * défaut : tous les modes, pas de Paramétrage.
+ */
+const permissionsApplication = (user: UserRow): AppPermissions => {
+  const groupes = JSON.stringify(groupesDu(user));
+  const toutes = permissionsDuCompte.all(user.entra_id, groupes).map((l) => {
+    let modes: unknown = [];
+    try {
+      modes = JSON.parse(l.modes);
+    } catch {
+      // Un JSON illisible n'ouvre aucun mode.
+    }
+    return validAppPermissions({ settings: l.settings, modes });
+  });
+  if (principauxDuCompte.get(user.entra_id, groupes)) toutes.push(defaultAppPermissions());
+
+  const modes = new Set<Mode>(toutes.flatMap((p) => p.modes));
+  const settings = toutes.some((p) => p.settings === "update")
+    ? "update"
+    : toutes.some((p) => p.settings === "view")
+      ? "view"
+      : "";
+  return { settings, modes: [...modes] };
+};
+
+/** Les mêmes, société par société. */
+const rolesParSociete = selection<{ company_id: number; is_admin: number; permissions: string }>(
+  `SELECT a.company_id, r.is_admin, r.permissions
    FROM role_assignments a JOIN roles r ON r.id = a.role_id
    WHERE (a.principal_type = 'user' AND a.principal_id = ?)
       OR (a.principal_type = 'group' AND a.principal_id IN (SELECT value FROM json_each(?)))`,
 );
+
+const toutesLesSocietes = selection<{ id: number }>("SELECT id FROM companies");
+
+/** Les droits d'un rôle tels qu'il les accorde : tous pour l'administrateur. */
+const droitsDuRole = (role: { is_admin: number; permissions: string }): Permissions => {
+  if (role.is_admin) return allPermissions();
+  try {
+    return validPermissions(JSON.parse(role.permissions));
+  } catch {
+    // Un JSON illisible n'accorde rien.
+    return {};
+  }
+};
+
+/**
+ * Ses droits dans les modes, société par société. Le compte « admin » les a
+ * tous, partout. Les autres les tiennent de leurs rôles — le leur et ceux de
+ * leurs groupes, qui s'additionnent dans une même société. Une société où
+ * le compte n'a aucun rôle n'apparaît pas : elle ne lui accorde rien.
+ */
+export const droitsSocietes = (user: UserRow): CompanyRights => {
+  if (user.system) {
+    return Object.fromEntries(toutesLesSocietes.all().map((c) => [String(c.id), allPermissions()]));
+  }
+  // Un mode fermé pour l'application ne s'ouvre par aucun rôle.
+  const ouverts = new Set(permissionsApplication(user).modes);
+  const parSociete = new Map<string, Permissions>();
+  for (const role of rolesParSociete.all(user.entra_id, JSON.stringify(groupesDu(user)))) {
+    const cle = String(role.company_id);
+    const deja = parSociete.get(cle) ?? {};
+    const ajout = droitsDuRole(role);
+    const union: Permissions = {};
+    for (const { value: area } of AREAS) {
+      if (!ouverts.has(area)) continue;
+      const droits = new Set([...(deja[area] ?? []), ...(ajout[area] ?? [])]);
+      if (droits.size > 0) union[area] = validPermissions({ [area]: [...droits] })[area];
+    }
+    parSociete.set(cle, union);
+  }
+  return Object.fromEntries(parSociete);
+};
 
 /** Les groupes Entra du compte, tels que relus à sa dernière connexion. */
 export const groupesDu = (user: UserRow): string[] => {
@@ -79,35 +181,25 @@ export interface DroitsParametrage {
 
 /**
  * Ses droits sur le Paramétrage. Le compte « admin » les a tous. Les autres
- * les tiennent de leurs rôles, dans n'importe quelle société : le Paramétrage
- * est commun à toutes — le rôle Administrateur les accorde toujours, les
- * autres rôles selon leur grille.
+ * les tiennent de leurs permissions pour l'application — les leurs ou celles
+ * d'un de leurs groupes : le Paramétrage est commun à toutes les sociétés,
+ * aucun rôle ne l'accorde. « Modifier » comprend « Voir ».
  */
 export const droitsParametrage = (user: UserRow): DroitsParametrage => {
   if (user.system) return { view: true, update: true };
-
-  const droits = { view: false, update: false };
-  for (const role of rolesDuCompte.all(user.entra_id, JSON.stringify(groupesDu(user)))) {
-    if (role.is_admin) return { view: true, update: true };
-    let accordes: string[] = [];
-    try {
-      accordes = validPermissions(JSON.parse(role.permissions)).settings ?? [];
-    } catch {
-      // Un JSON illisible n'accorde rien.
-    }
-    if (accordes.includes("view")) droits.view = true;
-    if (accordes.includes("update")) droits.update = true;
-  }
-  return droits;
+  const { settings } = permissionsApplication(user);
+  return { view: settings !== "", update: settings === "update" };
 };
 
 /**
- * Le compte a-t-il accès à Milo ? Le compte « admin », ou quelqu'un qui a un
- * rôle dans au moins une société — directement, ou par l'un de ses groupes.
+ * Le compte a-t-il accès à Milo ? Le compte « admin », quelqu'un qui a un
+ * rôle dans au moins une société, ou qui voit le Paramétrage — directement,
+ * ou par l'un de ses groupes.
  */
 export const aAcces = (user: UserRow): boolean =>
   Boolean(user.system) ||
-  rolesDuCompte.get(user.entra_id, JSON.stringify(groupesDu(user))) !== undefined;
+  unRoleDuCompte.get(user.entra_id, JSON.stringify(groupesDu(user))) !== undefined ||
+  droitsParametrage(user).view;
 
 /** Un compte tel qu'il se montre : jamais son empreinte de mot de passe. */
 export const publicUser = (user: UserRow): PublicUser => ({
@@ -119,6 +211,7 @@ export const publicUser = (user: UserRow): PublicUser => ({
   email: user.email,
   gravatar_url: gravatarUrl(user.email),
   settings: droitsParametrage(user),
+  rights: droitsSocietes(user),
   system: Boolean(user.system),
   default_mode: isMode(user.default_mode) ? user.default_mode : DEFAULT_MODE,
   created_at: user.created_at,

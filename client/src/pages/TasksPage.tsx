@@ -3,6 +3,7 @@ import { IconLayoutColumns } from "@tabler/icons-react";
 import { TableauDesTachesContext } from "../components/board/TaskBoard";
 import TaskIndicatorsPanel from "../components/board/TaskIndicatorsPanel";
 import BoardTabs from "../components/ui/BoardTabs";
+import type { PanelInheritance } from "../components/ui/HeriteConfirmModal";
 import EmptyPanel from "../components/ui/EmptyPanel";
 import type { AccountSlot } from "../components/ui/AccountControls";
 import type {
@@ -27,18 +28,18 @@ interface TasksPageProps {
   boards: Board[] | null;
   boardId: string | null;
   onBoardChange: (id: string | null) => void;
-  onAddBoard: () => void;
-  onTogglePrivateBoard: (id: number) => void | Promise<void>;
+  onAddBoard?: () => void;
+  onTogglePrivateBoard?: (id: number) => void | Promise<void>;
   /** Ouvre la copie des étiquettes de l'onglet visé vers un autre tableau. */
-  onCopyLabels: (id: number) => void;
-  onToggleCardNumbers: (id: number) => void | Promise<void>;
+  onCopyLabels?: (id: number) => void;
+  onToggleCardNumbers?: (id: number) => void | Promise<void>;
   /** Renommer un onglet sur place, au double clic sur son nom. */
-  onRenameBoard: (id: number, name: string) => void | Promise<void>;
-  onDeleteBoard: (id: number) => void | Promise<void>;
+  onRenameBoard?: (id: number, name: string) => void | Promise<void>;
+  onDeleteBoard?: (id: number) => void | Promise<void>;
   /** Le nouvel ordre des onglets, glissés dans la rangée. */
-  onReorderBoards: (ids: number[]) => void | Promise<void>;
+  onReorderBoards?: (ids: number[]) => void | Promise<void>;
   /** Verrouiller ou déverrouiller un tableau depuis le menu de son onglet. */
-  onToggleBoardLock: (id: number) => void | Promise<void>;
+  onToggleBoardLock?: (id: number) => void | Promise<void>;
   lists: TaskList[] | null;
   onListsChanged: () => void | Promise<void>;
   labels: Label[];
@@ -63,7 +64,9 @@ interface TasksPageProps {
   onIndicatorsChanged: () => void | Promise<void>;
   /** Le verrou des sections : ni ajout ni déplacement. */
   indicatorsLocked: boolean;
-  onToggleIndicatorsLock: () => void | Promise<void>;
+  onToggleIndicatorsLock?: () => void | Promise<void>;
+  /** « Hérité » des sections, communes à tous les tableaux : la structure partagée, ou la sienne. */
+  indicatorsInheritance?: PanelInheritance;
 }
 
 export default function TasksPage({
@@ -94,6 +97,7 @@ export default function TasksPage({
   onIndicatorsChanged,
   indicatorsLocked,
   onToggleIndicatorsLock,
+  indicatorsInheritance,
 }: TasksPageProps) {
   // Sans tableau, l'invite prend la place du contenu — mais sous la rangée,
   // qui reste : c'est elle qui porte la société et le compte, et on doit
@@ -126,7 +130,19 @@ export default function TasksPage({
         onReorder={onReorderBoards}
         onToggleLock={onToggleBoardLock}
         deleteWarning="Ses listes et leurs cartes seront supprimées."
-        sectionsLock={{ locked: indicatorsLocked, onToggle: onToggleIndicatorsLock }}
+        sectionsLock={
+          onToggleIndicatorsLock
+            ? { locked: indicatorsLocked, onToggle: onToggleIndicatorsLock }
+            : undefined
+        }
+        inheritance={
+          indicatorsInheritance
+            ? {
+                of: () => indicatorsInheritance.inherited,
+                onToggle: () => indicatorsInheritance.onToggle(),
+              }
+            : undefined
+        }
         account={account}
       />
       {sansTableau}

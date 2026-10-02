@@ -5,6 +5,7 @@ import { assetIndicators } from "../repositories/asset-indicators.js";
 import { indicatorRoutes } from "./indicators.js";
 
 export const assetIndicatorRoutes = indicatorRoutes(
+  "assets",
   "asset-indicators",
   assetIndicators,
   isAssetIndicatorType,

@@ -21,3 +21,20 @@
   background-color: var(--mantine-color-body);
   border-color: var(--mantine-color-default-border);
 }
+
+/* L'unité de la largeur, au pied d'une section : le même champ, avec la place
+   de son chevron, gris comme le chiffre. */
+.unite :global(.mantine-Input-input) {
+  padding-right: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.unite :global(.mantine-Input-section) {
+  color: var(--mantine-color-dimmed);
+}
+
+/* Le nombre de la largeur, collé à son unité. */
+.nombre :global(.mantine-Input-input) {
+  text-align: right;
+}

@@ -10,10 +10,12 @@ import type { SupportIndicatorWidget } from "./types";
 
 export const listeIndicator: SupportIndicatorWidget = {
   type: "list",
+  kind: "helpdesk",
   label: "Liste des tickets",
   icon: IconList,
   defaultConfig: {},
   ownClicks: true,
+  fill: true,
   Display: ({ config }) => <SupportRequestsList config={config} />,
   Config: (props) => <ChampsColonnes colonnes={COLONNES_SUPPORT} {...props} />,
 };

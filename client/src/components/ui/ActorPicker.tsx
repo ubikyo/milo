@@ -23,6 +23,7 @@ import ChipPicker from "./ChipPicker";
 import type { FloatingPosition } from "@mantine/core";
 import type { ReactNode } from "react";
 import type { DirectoryUser, EntraPrincipal, PublicUser } from "@milo/shared";
+import OrigineAnnuaire from "./OrigineAnnuaire";
 
 // Le choix d'acteurs, le même partout — membres d'une carte, acteurs d'un
 // projet ou d'une demande, « Assigner à » :
@@ -52,9 +53,14 @@ const normaliser = (texte: string): string =>
   texte.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 /** Une personne dans la liste : son nom en gras, son adresse dessous. */
+// La largeur du bouton des favoris (ActionIcon « sm ») : l'origine d'une
+// personne de l'annuaire s'y centre, sous l'étoile des lignes du dessus.
+const LARGEUR_FAVORI = "var(--ai-size-sm, calc(1.375rem * var(--mantine-scale)))";
+
 function NomEtAdresse({ nom, email }: { nom: string; email: string }) {
+  // Il prend la place libre : ce qui le suit se range au bout de la ligne.
   return (
-    <div style={{ minWidth: 0 }}>
+    <div style={{ flex: 1, minWidth: 0 }}>
       <Text size="xs" fw={700} truncate>
         {nom}
       </Text>
@@ -371,6 +377,9 @@ export default function ActorPicker({
                       />
                     )}
                     <NomEtAdresse nom={p.name} email={p.email} />
+                    {/* L'origine, au bout de la ligne, comme dans la
+                        recherche des accès. */}
+                    <OrigineAnnuaire synced={p.synced} largeur={LARGEUR_FAVORI} />
                   </Group>
                 </UnstyledButton>
               ))}
@@ -413,6 +422,7 @@ export default function ActorPicker({
                       />
                       <GroupAvatar group={g} size={chipHeight} />
                       <NomEtAdresse nom={g.name} email={g.email} />
+                      <OrigineAnnuaire synced={g.synced} largeur={LARGEUR_FAVORI} />
                     </Group>
                   </UnstyledButton>
                 );

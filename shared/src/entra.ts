@@ -9,7 +9,7 @@
 // présence (`has_secret`).
 
 import type { Id } from "./domain.js";
-import type { UserCompanyRole } from "./roles.js";
+import type { AppPermissions, UserCompanyRole } from "./roles.js";
 
 /** Un utilisateur ou un groupe de l'annuaire. */
 /** Une personne de l'annuaire, proposée comme acteur. */
@@ -20,6 +20,8 @@ export interface DirectoryUser {
   email: string;
   /** Son compte dans Milo, si elle en a déjà un. */
   user_id: number | null;
+  /** Synchronisée depuis l'Active Directory local (AD DS), plutôt que créée dans le cloud. */
+  synced?: boolean;
 }
 
 export interface EntraPrincipal {
@@ -29,6 +31,11 @@ export interface EntraPrincipal {
   name: string;
   /** L'adresse de l'utilisateur, ou celle du groupe s'il en a une. */
   email: string;
+  /**
+   * Synchronisé depuis l'Active Directory local (AD DS), plutôt que créé dans
+   * le cloud. Seule la recherche dans l'annuaire le renseigne.
+   */
+  synced?: boolean;
 }
 
 export interface EntraSettings {
@@ -49,9 +56,13 @@ export interface EntraSettingsInput {
   secret?: string;
 }
 
-/** Les rôles d'un utilisateur ou d'un groupe, société par société. */
+/**
+ * Les permissions d'un utilisateur ou d'un groupe : pour l'application, puis
+ * son rôle société par société.
+ */
 export interface PrincipalAssignments {
   principal: EntraPrincipal;
+  app: AppPermissions;
   roles: UserCompanyRole[];
 }
 

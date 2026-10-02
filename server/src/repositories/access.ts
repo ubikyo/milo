@@ -66,22 +66,28 @@ export const accessCategorieOuverte = (id: unknown, user: UserRow): AccessCatego
 
 /**
  * Les sections d'une catégorie : ses colonnes. Elles suivent la visibilité de
- * la catégorie qui les porte — il n'y a donc rien à filtrer ici, les routes
- * passent d'abord par « accessCategorieOuverte ».
+ * la catégorie qui les porte — les routes passent d'abord par
+ * « accessCategorieOuverte ». Elles se lisent par structure : la publique
+ * (propriétaire nul) ou celle d'un compte (« Hérité » décoché) ; « IS » y
+ * fait valoir nul comme nul.
  */
 export const accessSections = {
   byId: selection<AccessSectionRow>("SELECT * FROM access_sections WHERE id = ?"),
+  /** Celles d'une structure : (catégorie, propriétaire). */
   byCategory: selection<AccessSectionRow>(
-    "SELECT * FROM access_sections WHERE category_id = ? ORDER BY position, id",
+    "SELECT * FROM access_sections WHERE category_id = ? AND owner_id IS ? ORDER BY position, id",
   ),
   nextPosition: scalar<NextRow>(
-    "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM access_sections WHERE category_id = ?",
+    `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM access_sections
+     WHERE category_id = ? AND owner_id IS ?`,
   ),
   create: mutation(
     `INSERT INTO access_sections
-       (category_id, width_unit, width_value, gap, position, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+       (category_id, width_unit, width_value, gap, position, owner_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ),
+  /** La structure d'un compte, retirée : (catégorie, propriétaire). */
+  removeOwned: mutation("DELETE FROM access_sections WHERE category_id = ? AND owner_id = ?"),
   update: mutation(
     "UPDATE access_sections SET width_unit = ?, width_value = ?, gap = ? WHERE id = ?",
   ),
@@ -99,11 +105,11 @@ export const accessBlocks = {
   bySection: selection<AccessBlockRow>(
     "SELECT * FROM access_blocks WHERE section_id = ? ORDER BY position, id",
   ),
-  /** Tous ceux d'une catégorie, d'un coup : la page les lit par colonne. */
+  /** Tous ceux d'une structure, d'un coup : la page les lit par colonne. */
   byCategory: selection<AccessBlockRow>(
     `SELECT access_blocks.* FROM access_blocks
      JOIN access_sections ON access_sections.id = access_blocks.section_id
-     WHERE access_sections.category_id = ?
+     WHERE access_sections.category_id = ? AND access_sections.owner_id IS ?
      ORDER BY access_sections.position, access_blocks.position, access_blocks.id`,
   ),
   nextPosition: scalar<NextRow>(
@@ -157,7 +163,8 @@ export const accessUptime = {
   all: selection<AccessUptimeRow>("SELECT * FROM access_uptime"),
   /**
    * Chaque élément Uptime, avec la catégorie qui le porte : c'est elle qui dit
-   * qui peut être prévenu d'un changement d'état.
+   * qui peut être prévenu d'un changement d'état. « section_owner_id » nomme
+   * le compte dont c'est la structure personnelle, s'il y a lieu.
    */
   configurations: selection<{
     config: string;
@@ -165,12 +172,17 @@ export const accessUptime = {
     category_name: string;
     is_private: number;
     owner_id: number | null;
+    section_owner_id: number | null;
   }>(
-    `SELECT b.config, c.id AS category_id, c.name AS category_name, c.is_private, c.owner_id
+    `SELECT b.config, c.id AS category_id, c.name AS category_name, c.is_private, c.owner_id,
+            s.owner_id AS section_owner_id
        FROM access_blocks b
        JOIN access_sections s ON s.id = b.section_id
        JOIN access_categories c ON c.id = s.category_id
-      WHERE b.type = 'uptime'`,
+      WHERE b.type = 'uptime'
+        -- Les copies d'une catégorie devenue privée dorment : elles ne
+        -- vérifient rien.
+        AND NOT (c.is_private = 1 AND s.owner_id IS NOT NULL)`,
   ),
   /** Une vérification : l'état, et depuis quand il dure. */
   ranger: mutation(

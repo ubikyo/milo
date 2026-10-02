@@ -7,6 +7,7 @@
 // type dit la vérité plutôt que de la maquiller, et `Boolean(x)` reste
 // nécessaire pour les lire.
 
+import type { CompanyRights } from "./roles.js";
 import type { Mode } from "./modes.js";
 
 export type SqliteBool = 0 | 1;
@@ -31,6 +32,12 @@ export interface PublicUser {
    * « view » ouvre le Paramétrage, « update » permet d'y enregistrer.
    */
   settings: { view: boolean; update: boolean };
+  /**
+   * Ses droits dans les modes, société par société (shared, roles.ts) : le
+   * client s'en sert pour taire ce que le compte ne voit pas et retirer ce
+   * qu'il ne peut pas faire. Le serveur les vérifie de son côté.
+   */
+  rights: CompanyRights;
   /**
    * Le compte « admin » local : il ne sert qu'au paramétrage, ne se montre
    * dans aucune liste et n'est l'acteur de rien.
@@ -386,6 +393,12 @@ export interface AccessCategory {
   is_locked: SqliteBool;
   /** Nul quand le compte de l'auteur a été supprimé : la catégorie s'ouvre alors à tous. */
   owner_id: Id | null;
+  /**
+   * « Hérité », pour le compte qui lit : vrai s'il voit la structure publique
+   * de la catégorie, faux s'il travaille sur sa propre copie. Absent des
+   * réponses qui ne rendent qu'une catégorie.
+   */
+  inherited?: boolean;
   created_at: string;
 }
 
@@ -430,6 +443,8 @@ export interface AccessSection {
   /** L'écart qui la sépare de la section suivante, en pixels. Celui de la dernière ne sert pas. */
   gap: number;
   position: number;
+  /** Nul : la structure publique ; sinon, celle de ce compte (« Hérité » décoché). */
+  owner_id: Id | null;
   created_at: string;
 }
 
@@ -604,6 +619,8 @@ export interface SupportComment {
   format: SupportCommentFormat;
   /** Les pièces jointes de l'e-mail ; ses images intégrées n'y figurent pas. */
   attachments: SupportAttachment[];
+  /** L'évènement d'une réponse par défaut partie d'office ; vide sinon. */
+  auto_event?: string;
   created_at: string;
   updated_at: string;
   author: Actor | null;
@@ -637,6 +654,15 @@ export interface SupportRequestDetail extends SupportRequest {
  * Tâche : une colonne, comme une section d'accès. Sa largeur se lit de la
  * même façon.
  */
+/**
+ * « Hérité » : coché, on voit la structure publique d'un panneau ou d'une
+ * catégorie d'accès — ses sections et ce qu'elles portent, partagées avec
+ * tous. Décoché, on travaille sur sa propre copie.
+ */
+export interface LayoutState {
+  inherited: boolean;
+}
+
 export interface IndicatorSection {
   id: Id;
   width_unit: SectionWidthUnit;
@@ -645,6 +671,8 @@ export interface IndicatorSection {
   /** L'écart qui la sépare de la section suivante, en pixels. Celui de la dernière ne sert pas. */
   gap: number;
   position: number;
+  /** Nul : la structure publique ; sinon, celle de ce compte (« Hérité » décoché). */
+  owner_id: Id | null;
   created_at: string;
 }
 
@@ -658,6 +686,9 @@ export const SUPPORT_INDICATOR_TYPES = [
   "list",
   "category",
   "subcategory",
+  "link",
+  "number",
+  "clock",
   "tickets",
   "status",
   "actors",
@@ -697,6 +728,9 @@ export const ASSET_INDICATOR_TYPES = [
   "list",
   "category",
   "subcategory",
+  "link",
+  "number",
+  "clock",
   "assets", "compliance", "systems", "disks"] as const;
 
 export type AssetIndicatorType = (typeof ASSET_INDICATOR_TYPES)[number];
@@ -727,6 +761,9 @@ export const PROJECT_INDICATOR_TYPES = [
   "list",
   "category",
   "subcategory",
+  "link",
+  "number",
+  "clock",
   "projects",
   "progress",
   "categories",
@@ -761,6 +798,9 @@ export const TASK_INDICATOR_TYPES = [
   "list",
   "category",
   "subcategory",
+  "link",
+  "number",
+  "clock",
   "cards",
   "lists",
   "due",
@@ -1044,10 +1084,16 @@ export interface AssetNetwork {
   description: string;
   /** Ses adresses IPv4, dans l'ordre de l'agent. */
   ips: string[];
+  /**
+   * Le VLAN du Paramétrage dont le sous-réseau contient l'une de ses
+   * adresses — la première qui en a un —, ou null.
+   */
+  vlan: { vlan: number; name: string } | null;
 }
 
 /** L'essentiel d'un poste. Chaque champ est vide quand l'agent ne le donne pas. */
 export interface AssetSummary {
+  /** La carte réseau qui sert — une au plus : connectée, le Wi-Fi d'abord. */
   networks: AssetNetwork[];
   manufacturer: string;
   model: string;

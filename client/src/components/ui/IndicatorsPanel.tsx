@@ -1,4 +1,5 @@
 import { Box, Menu, Stack, UnstyledButton } from "@mantine/core";
+import type { WidgetKind } from "../../widgets/genres";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useRef, useState, type ComponentType, type ReactNode } from "react";
 import encart from "../../assets/styles/AccessNumero.module.css";
@@ -7,10 +8,8 @@ import { RED } from "../../themes/colors";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import IndicatorDrawer from "./IndicatorDrawer";
 import PointMenu, { positionDuMenu, type PointMenuPosition } from "./PointMenu";
-import SectionDrawer from "./SectionDrawer";
 import SectionsBoard from "./SectionsBoard";
 import { CarteIndicateurContext, NOM } from "./TitreIndicateur";
-import WidgetPickerModal from "./WidgetPickerModal";
 import { TraitInsertion, useWidgetDrop, type WidgetDrag } from "./WidgetDrop";
 import type { SectionsDuPanneau } from "../../api";
 import type { IndicatorConfigProps } from "../../indicators/types";
@@ -34,7 +33,9 @@ export interface Indicateur<Type extends string> {
 export interface IndicatorWidgetBase<Type extends string> {
   /** Ce que la base range : il ne change jamais. */
   type: Type;
-  /** Son nom dans la boîte de choix, et en titre de son tiroir. */
+  /** Son type : le groupe où le tiroir des widgets le range (widgets/genres.ts). */
+  kind: WidgetKind;
+  /** Son nom dans le tiroir des widgets, et en titre de son tiroir. */
   label: string;
   icon: ComponentType<{ size?: number }>;
   /** La configuration d'un indicateur neuf. */
@@ -53,11 +54,30 @@ export interface IndicatorWidgetBase<Type extends string> {
    */
   ownClicks?: boolean;
   /**
+   * Vrai quand le widget occupe toute la hauteur que sa section lui laisse —
+   * les listes du mode Tâche, dont l'écran vide se centre alors dans la
+   * colonne au lieu de s'y tasser en haut.
+   */
+  fill?: boolean;
+  /**
    * Vrai quand le widget se nomme à même la section — une catégorie, une
    * sous-catégorie : choisi, il s'ajoute aussitôt, sans tiroir, et attend
    * qu'on le renseigne au double-clic.
    */
   inlineEdit?: boolean;
+  /**
+   * L'air qu'il laisse au-dessus et au-dessous de lui, selon le type de ses
+   * voisins — les widgets du mode Accès (widgets/en-section.tsx), serrés entre
+   * eux comme dans une colonne d'accès. Entre deux widgets qui le disent,
+   * c'est leur air qui les sépare ; sinon, l'écart des indicateurs.
+   */
+  marges?: (
+    config: unknown,
+    previousType: string | null,
+    nextType: string | null,
+  ) => { haute: number; basse: number };
+  /** Vrai quand il ne doit pas paraître — un lien éteint, une fois verrouillé. */
+  hidden?: (config: unknown, locked: boolean) => boolean;
 }
 
 /** Ce que le panneau passe au rendu d'un widget, en plus de sa configuration. */
@@ -69,11 +89,12 @@ export interface RenduWidget {
 
 /** Les écritures d'un panneau, vers ses routes. */
 export interface IndicatorsApi<Type extends string> {
+  /** Rend l'indicateur créé : il se pose au bout de sa section. */
   create: (data: {
     section_id: Id;
     type: Type;
     config: Record<string, unknown>;
-  }) => Promise<unknown>;
+  }) => Promise<{ id: Id }>;
   update: (id: Id, data: { config: Record<string, unknown> }) => Promise<unknown>;
   remove: (id: Id) => Promise<unknown>;
   /** Ce que la section porte désormais, dans l'ordre. */
@@ -93,7 +114,7 @@ interface IndicatorsPanelProps<Type extends string, P extends IndicatorWidgetBas
   /** « null » tant que les sections ne sont pas lues. */
   sections: IndicatorSection[] | null;
   indicators: Indicateur<Type>[];
-  /** Les widgets du panneau, dans l'ordre de la boîte de choix. */
+  /** Les widgets du panneau, dans l'ordre du tiroir des widgets. */
   widgets: P[];
   widgetOf: (type: Type) => P | undefined;
   /** Ce que le widget montre : c'est le panneau qui sait quoi lui passer. */
@@ -113,23 +134,16 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
   onChanged,
   locked,
 }: IndicatorsPanelProps<Type, P>) {
-  /** La section dont le « + » a ouvert la boîte de choix. */
-  const [sectionPourWidget, setSectionPourWidget] = useState<IndicatorSection | null>(null);
   const [tiroirOuvert, setTiroirOuvert] = useState(false);
   const [modifie, setModifie] = useState<Indicateur<Type> | null>(null);
-  const [cree, setCree] = useState<{ widget: P; sectionId: Id } | null>(null);
+  /** Le widget posé depuis le tiroir de gauche, en attente de ses réglages. */
+  const [cree, setCree] = useState<{ widget: P; sectionId: Id; index: number } | null>(null);
 
   const [menu, setMenu] = useState<{
     indicateur: Indicateur<Type>;
     position: PointMenuPosition;
   } | null>(null);
   const [aSupprimer, setASupprimer] = useState<Indicateur<Type> | null>(null);
-
-  /** Le tiroir de section : ouvert à la création (avec son rang) ou sur une section. */
-  const [tiroirSection, setTiroirSection] = useState<{
-    section: IndicatorSection | null;
-    rang: number | null;
-  } | null>(null);
 
   /** Écrire, puis relire quoi qu'il arrive : c'est la lecture qui fait foi. */
   const ecrire = async (ecriture: () => Promise<unknown>) => {
@@ -149,18 +163,38 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
     if (indicateur) await ecrire(() => api.remove(indicateur.id));
   };
 
-  const choisir = async (widget: P) => {
-    const section = sectionPourWidget;
-    setSectionPourWidget(null);
-    if (!section) return;
+  /**
+   * Créer, puis ranger à la place visée : la création pose au bout de la
+   * section.
+   */
+  const creerA = async (
+    data: { section_id: Id; type: Type; config: Record<string, unknown> },
+    index: number,
+  ) => {
+    const cree = await api.create(data);
+    const ids = indicators.filter((i) => i.section_id === data.section_id).map((i) => i.id);
+    if (index < ids.length) {
+      await api.reorder(data.section_id, [...ids.slice(0, index), cree.id, ...ids.slice(index)]);
+    }
+    return cree;
+  };
+
+  /**
+   * Un widget posé depuis le tiroir de gauche. Sans réglages, ou nommé sur
+   * place, il est créé aussitôt ; sinon son tiroir s'ouvre, et il ne naît
+   * qu'à l'enregistrement — à la place où il a été posé.
+   */
+  const poser = async (section: IndicatorSection, type: string, index: number) => {
+    const widget = widgets.find((w) => w.type === type);
+    if (!widget) return;
     if (!widget.Config || widget.inlineEdit) {
       await ecrire(() =>
-        api.create({ section_id: section.id, type: widget.type, config: widget.defaultConfig }),
+        creerA({ section_id: section.id, type: widget.type, config: widget.defaultConfig }, index),
       );
       return;
     }
     setModifie(null);
-    setCree({ widget, sectionId: section.id });
+    setCree({ widget, sectionId: section.id, index });
     setTiroirOuvert(true);
   };
 
@@ -197,14 +231,16 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
             onContextMenu={(indicateur, position) => setMenu({ indicateur, position })}
           />
         )}
-        onAddWidget={setSectionPourWidget}
+        widgets={widgets}
+        onCreateWidget={poser}
         onReorderWidgets={(sectionId, ids) => ecrire(() => api.reorder(sectionId, ids))}
-        onAddSection={(rang) => setTiroirSection({ section: null, rang: rang ?? null })}
-        onEditSection={(section) => setTiroirSection({ section, rang: null })}
+        onAddSection={(rang) =>
+          ecrire(() => api.sections.create(rang !== undefined ? { index: rang } : {}))
+        }
         onDuplicateSection={(section) => ecrire(() => api.sections.duplicate(section.id))}
         onDeleteSection={(section) => ecrire(() => api.sections.remove(section.id))}
         onReorderSections={(ids) => ecrire(() => api.sections.reorder(ids))}
-        onChangeGap={(section, gap) => ecrire(() => api.sections.update(section.id, { gap }))}
+        onChangeSection={(section, modif) => ecrire(() => api.sections.update(section.id, modif))}
       />
 
       {menu && (
@@ -240,13 +276,6 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
         }
       />
 
-      <WidgetPickerModal
-        opened={sectionPourWidget !== null}
-        onClose={() => setSectionPourWidget(null)}
-        onChoose={choisir}
-        widgets={widgets}
-      />
-
       <IndicatorDrawer
         opened={tiroirOuvert}
         onClose={() => setTiroirOuvert(false)}
@@ -254,34 +283,10 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
         creating={cree?.widget ?? null}
         sectionId={cree?.sectionId ?? null}
         widgetOf={widgetOf}
-        api={api}
+        // La création passe par la place visée.
+        api={{ ...api, create: (data) => creerA(data, cree?.index ?? Number.MAX_SAFE_INTEGER) }}
         onSaved={async () => {
           setTiroirOuvert(false);
-          await onChanged();
-        }}
-      />
-
-      <SectionDrawer
-        opened={tiroirSection !== null}
-        onClose={() => setTiroirSection(null)}
-        section={tiroirSection?.section ?? null}
-        onSave={async (largeur) => {
-          const visee = tiroirSection;
-          if (!visee) return;
-          if (visee.section) await api.sections.update(visee.section.id, largeur);
-          else {
-            await api.sections.create({
-              ...largeur,
-              ...(visee.rang !== null ? { index: visee.rang } : {}),
-            });
-          }
-          setTiroirSection(null);
-          await onChanged();
-        }}
-        onDelete={async () => {
-          const section = tiroirSection?.section;
-          if (section) await api.sections.remove(section.id);
-          setTiroirSection(null);
           await onChanged();
         }}
       />
@@ -321,14 +326,35 @@ function IndicateursDeSection<Type extends string, P extends IndicatorWidgetBase
   // « data-no-widget-drag » : le glisser natif du widget n'y part pas.
   const appui = useRef<Element | null>(null);
 
-  if (indicateurs.length === 0) return null;
+  // Un widget caché ou d'un type inconnu — rangé par une version plus
+  // récente — ne paraît pas, et ne précède ni ne suit personne.
+  const visibles = indicateurs.flatMap((indicateur) => {
+    const widget = widgetOf(indicateur.type);
+    return widget && !widget.hidden?.(indicateur.config, locked) ? [{ indicateur, widget }] : [];
+  });
+
+  /** L'écart entre deux widgets visibles qui se suivent. */
+  const ecartEntre = (rang: number): number => {
+    const avant = visibles[rang - 1];
+    const apres = visibles[rang];
+    if (!avant?.widget.marges || !apres?.widget.marges) return ECART;
+    const typeDe = (r: number) => visibles[r]?.indicateur.type ?? null;
+    return (
+      avant.widget.marges(avant.indicateur.config, typeDe(rang - 2), apres.indicateur.type).basse +
+      apres.widget.marges(apres.indicateur.config, avant.indicateur.type, typeDe(rang + 1)).haute
+    );
+  };
+
+  if (visibles.length === 0) return null;
+  // Un widget qui veut toute la hauteur l'obtient de proche en proche : la
+  // pile s'étire dans la colonne, et lui dans la pile.
+  const etire = visibles.some(({ widget }) => widget.fill);
   return (
-    <Stack gap={ECART}>
-      {indicateurs.map((indicateur, index) => {
-        const widget = widgetOf(indicateur.type);
-        // Un type inconnu — rangé par une version plus récente — ne se
-        // montre pas : il n'y a personne pour le calculer.
-        if (!widget) return null;
+    <Stack gap={0} style={etire ? { flex: 1, minHeight: 0 } : undefined}>
+      {visibles.map(({ indicateur, widget }, rang) => {
+        // Le rang parmi tous : c'est lui que le dépôt range.
+        const index = indicateurs.indexOf(indicateur);
+        const ecartAvant = rang === 0 ? 0 : ecartEntre(rang);
         // Verrouillé, un widget qui se modifie sur place ne reçoit rien à
         // enregistrer : son double-clic n'a plus d'effet.
         const rendu: RenduWidget = {
@@ -352,15 +378,31 @@ function IndicateursDeSection<Type extends string, P extends IndicatorWidgetBase
             }}
             style={{
               position: "relative",
+              marginTop: ecartAvant,
               opacity: drag.dragged === indicateur.id ? 0.4 : 1,
               cursor: locked || widget.ownClicks ? "default" : "grab",
+              ...(widget.fill
+                ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
+                : {}),
             }}
           >
-            {cible?.id === indicateur.id && <TraitInsertion avant={cible.avant} ecart={ECART} />}
+            {cible?.id === indicateur.id && (
+              <TraitInsertion
+                avant={cible.avant}
+                ecart={cible.avant ? ecartAvant : ecartEntre(rang + 1)}
+              />
+            )}
             {widget.ownClicks ? (
               // Un widget qui garde ses clics — une liste, un titre — se pose
               // tel quel, sans l'encart des indicateurs.
-              <Box onContextMenu={(e) => onContextMenu(indicateur, positionDuMenu(e))}>
+              <Box
+                onContextMenu={(e) => onContextMenu(indicateur, positionDuMenu(e))}
+                style={
+                  widget.fill
+                    ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
+                    : undefined
+                }
+              >
                 {render(widget, indicateur.config, rendu)}
               </Box>
             ) : (

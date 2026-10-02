@@ -25,6 +25,7 @@ import path from "node:path";
 import type { BackupInfo, RestoreResult } from "@milo/shared";
 import {
   assurerAdministrateur,
+  separerParametrage,
   numeroterReferences,
   poserSectionsParDefaut,
   rattacherIndicateurs,
@@ -265,8 +266,10 @@ export const restaurerSauvegarde = (archive: Buffer): RestoreResult => {
     // d'avant les sections des statistiques laisse ses indicateurs sans
     // section, celle d'avant les références communes numérote ses cartes par
     // tableau, et celle d'avant les sections des projets et des tâches n'en a
-    // pas : on les repose.
+    // pas : on les repose. Celle d'avant le Paramétrage par utilisateur ou
+    // groupe le portait dans ses rôles : on l'en sort.
     assurerAdministrateur(db);
+    separerParametrage(db);
     rattacherIndicateurs(db);
     numeroterReferences(db);
     poserSectionsParDefaut(db);

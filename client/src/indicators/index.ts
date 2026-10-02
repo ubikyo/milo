@@ -1,6 +1,6 @@
-// Le registre des widgets du panneau des statistiques du mode Support. Un
-// seul endroit les connaît : la boîte de choix, le panneau et le tiroir y
-// prennent ce qu'il leur faut.
+// Le registre des widgets du panneau des statistiques du mode Support. Un seul
+// endroit les connaît : le tiroir des widgets, le panneau et celui des réglages
+// y prennent ce qu'il leur faut.
 
 import { acteursIndicator } from "./acteurs";
 import { ancienneteIndicator } from "./anciennete";
@@ -11,14 +11,14 @@ import { evolutionIndicator } from "./evolution";
 import { listeIndicator } from "./liste";
 import { statutsIndicator } from "./statuts";
 import { ticketsIndicator } from "./tickets";
-import { titresDeSection } from "../widgets/titres-de-section";
+import { widgetsDAcces } from "../widgets/en-section";
 import type { IndicatorDisplayProps, SupportIndicatorWidget } from "./types";
 import type { SupportIndicatorType } from "@milo/shared";
 
-/** Dans l'ordre où la boîte de choix les présente. */
+/** Dans l'ordre où le tiroir des widgets les présente. */
 export const INDICATORS: SupportIndicatorWidget[] = [
   listeIndicator,
-  ...titresDeSection<SupportIndicatorType, IndicatorDisplayProps>(),
+  ...widgetsDAcces<SupportIndicatorType, IndicatorDisplayProps>(),
   ticketsIndicator,
   statutsIndicator,
   acteursIndicator,

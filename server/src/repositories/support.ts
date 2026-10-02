@@ -7,7 +7,7 @@
 // par une table d'association.
 
 import { piecesJointes } from "../lib/ticket-files.js";
-import { SUPPORT_URGENCY_LABELS, supportTicketRef } from "@milo/shared";
+import { MILO_ACTOR, SUPPORT_URGENCY_LABELS, supportTicketRef } from "@milo/shared";
 import type {
   Actor,
   Id,
@@ -320,6 +320,11 @@ export const supportComments = {
     "SELECT attachments FROM support_comments WHERE request_id = ? AND attachments != '[]'",
   ),
   update: mutation("UPDATE support_comments SET text = ?, updated_at = ? WHERE id = ?"),
+  // Une réponse par défaut partie d'office : sans compte, signée Milo.
+  createAuto: mutation(
+    `INSERT INTO support_comments (request_id, user_id, text, auto_event, created_at, updated_at)
+     VALUES (?, NULL, ?, ?, ?, ?)`,
+  ),
   createInternal: mutation(
     `INSERT INTO support_comments (request_id, user_id, text, internal, created_at, updated_at)
      VALUES (?, ?, ?, 1, ?, ?)`,
@@ -340,6 +345,8 @@ export const supportCommentOf = (
 ): SupportComment => {
   const { sender_name, sender_email, mail_id: _mailId, attachments, ...reste } = row;
   const comment = withAuthor({ ...reste, attachments: piecesJointes(attachments) });
+  // Une réponse par défaut partie d'office : c'est Milo qui l'a envoyée.
+  if (!comment.user_id && row.auto_event) return { ...comment, author: MILO_ACTOR };
   // Un e-mail reçu est un mot « système » sans compte : c'est l'expéditeur
   // qui le signe, pas Milo.
   if (comment.user_id || !sender_email) return comment;
@@ -367,7 +374,10 @@ const recopierFil = mutation(
       mail_cc, mail_bcc, internal, mail_id, format, attachments, created_at, updated_at)
    SELECT ?, user_id, text, system, sender_name, sender_email, mail_status, mail_to,
           mail_cc, mail_bcc, internal, mail_id, format, attachments, created_at, updated_at
-   FROM support_comments WHERE request_id = ?`,
+   FROM support_comments WHERE request_id = ?
+     -- Les mots de Milo — création, modifications — racontent la demande
+     -- absorbée, pas celle qui la reçoit : ils restent chez elle.
+     AND NOT (system = 1 AND user_id IS NULL AND sender_email = '' AND format = '')`,
 );
 
 const reprendreActeurs = mutation(

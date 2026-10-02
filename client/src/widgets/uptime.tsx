@@ -221,6 +221,13 @@ type Etat =
   | { phase: "pret"; statuts: Map<string, UptimeStatus> }
   | { phase: "erreur"; message: string };
 
+/**
+ * Les derniers états lus, par élément. Un widget remonté — on revient sur la
+ * catégorie, la page se recharge sans quitter l'application — repart de ce
+ * qu'il montrait au lieu de repasser par des cases grises le temps de relire.
+ */
+const derniersEtats = new Map<Id, Map<string, UptimeStatus>>();
+
 function Matrice({ blockId, config }: { blockId: Id; config: unknown }) {
   const machines = machinesDe(config);
   const intervalle = nombre(config, INTERVALLE, UPTIME_INTERVAL_DEFAUT);
@@ -240,7 +247,10 @@ function Matrice({ blockId, config }: { blockId: Id; config: unknown }) {
   );
   const noms = option(config, NOMS);
   const durees = option(config, DUREES);
-  const [etat, setEtat] = useState<Etat>({ phase: "attente" });
+  const [etat, setEtat] = useState<Etat>(() => {
+    const connus = derniersEtats.get(blockId);
+    return connus ? { phase: "pret", statuts: connus } : { phase: "attente" };
+  });
   const [maintenant, setMaintenant] = useState(() => Date.now());
 
   // La configuration enregistrée est celle que le serveur lit : quand elle
@@ -257,10 +267,9 @@ function Matrice({ blockId, config }: { blockId: Id; config: unknown }) {
         .getAccessUptime(blockId)
         .then((lu) => {
           if (!actif) return;
-          setEtat({
-            phase: "pret",
-            statuts: new Map(lu.statuses.map((s) => [s.machine, s])),
-          });
+          const statuts = new Map(lu.statuses.map((s) => [s.machine, s]));
+          derniersEtats.set(blockId, statuts);
+          setEtat({ phase: "pret", statuts });
           setMaintenant(Date.now());
         })
         .catch(
@@ -790,6 +799,7 @@ function Reglages({ config, onChange }: WidgetConfigProps) {
 
 export const uptimeWidget: AccessWidget = {
   type: "uptime",
+  kind: "telemetry",
   label: "Uptime",
   icon: IconHeartbeat,
   defaultConfig: {

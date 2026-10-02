@@ -10,6 +10,11 @@ const SHORTCUTS: { action: string; key: string; mode?: Mode }[] = [
   { action: "Changer de mode", key: "Tab" },
   { action: "Tableau suivant", key: "⌥ Tab" },
   { action: "Société suivante", key: "S" },
+  { action: "Verrouiller / déverrouiller", key: "V", mode: "access" },
+  { action: "Verrouiller / déverrouiller", key: "V", mode: "support" },
+  { action: "Verrouiller / déverrouiller", key: "V", mode: "assets" },
+  { action: "Verrouiller / déverrouiller", key: "V", mode: "projects" },
+  { action: "Verrouiller / déverrouiller", key: "V", mode: "tasks" },
 ];
 
 export default function ShortcutsHelp({ mode }: { mode: Mode }) {
@@ -21,7 +26,7 @@ export default function ShortcutsHelp({ mode }: { mode: Mode }) {
           radius="xl"
           size="lg"
           aria-label="Raccourcis clavier"
-          style={{ position: "fixed", right: PAGE_GUTTER, bottom: PAGE_GUTTER, zIndex: 200 }}
+          style={{ position: "fixed", right: PAGE_GUTTER, bottom: PAGE_GUTTER, zIndex: 200, border: "none" }}
         >
           <Text fw={700}>?</Text>
         </ActionIcon>

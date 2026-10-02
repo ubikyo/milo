@@ -3,13 +3,15 @@ import {
   Box,
   Button,
   Center,
-  Checkbox,
   CopyButton,
   Group,
   Progress,
+  RingProgress,
+  ScrollArea,
   Stack,
   Table,
   Text,
+  Title,
   UnstyledButton,
 } from "@mantine/core";
 import {
@@ -19,9 +21,11 @@ import {
   IconCopy,
   IconSelector,
 } from "@tabler/icons-react";
-import { useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { NEUTRAL_HOVER, STRONG_TEXT } from "../../themes/colors";
+import GrilleScroll from "../ui/GrilleScroll";
 import { ReferenceTag } from "../ui/ReferenceTag";
+import { FOND_CARTE } from "./fonds";
 import { useColonnesRedimensionnables } from "../ui/useColonnesRedimensionnables";
 import type { ComponentType, CSSProperties, ReactNode } from "react";
 import type { AssetEntry, AssetSection } from "@milo/shared";
@@ -98,23 +102,50 @@ function TableauTriable({
   entrees,
   triInitial,
   espacement = 4,
+  largeurs,
+  parPage,
 }: {
   colonnes: Colonne[];
   entrees: AssetEntry[];
   triInitial: Tri;
   espacement?: number;
+  /**
+   * Les largeurs de départ, en pixels, des colonnes qui en ont une ; les
+   * autres se partagent le reste. Sans elles, la mise en page naturelle.
+   */
+  largeurs?: Record<string, number>;
+  /**
+   * La hauteur de la grille, en lignes : au-delà, elle défile dans sa propre
+   * zone, l'entête restant en haut. C'est aussi le nombre de lignes montrées
+   * d'abord, et ajoutées chaque fois qu'on arrive au bas de la zone. Sans
+   * lui, toutes d'un coup, sur toute leur hauteur.
+   */
+  parPage?: number;
 }) {
   const [tri, setTri] = useState<Tri>(triInitial);
+  // Une tranche d'avance sur la hauteur de la zone : sans elle, la zone ne
+  // contiendrait que ce qu'elle montre, n'aurait rien à faire défiler, et la
+  // suite ne viendrait jamais.
+  const premieres = parPage ? 2 * parPage : Infinity;
+  const [montrees, setMontrees] = useState(premieres);
+  // Le repère sous la dernière ligne : quand il paraît, la suite vient.
+  const repere = useRef<HTMLDivElement>(null);
+  // La grille, pour mesurer la hauteur de ses « parPage » premières lignes.
+  const cadre = useRef<HTMLDivElement>(null);
+  const [hauteur, setHauteur] = useState<number | undefined>(undefined);
   // Chaque tableau de l'inventaire se reconnaît à ses colonnes.
   const cles = colonnes.map((c) => c.cle);
-  const redim = useColonnesRedimensionnables(`inventaire.${cles.join("-")}`, cles);
+  const redim = useColonnesRedimensionnables(`inventaire.${cles.join("-")}`, cles, largeurs);
 
-  const trier = (colonne: Colonne) =>
+  const trier = (colonne: Colonne) => {
+    // Un autre ordre repart du haut de la grille.
+    setMontrees(premieres);
     setTri((courant) =>
       courant.cle === colonne.cle
         ? { cle: colonne.cle, sens: courant.sens === "asc" ? "desc" : "asc" }
         : { cle: colonne.cle, sens: colonne.premierSens ?? "asc" },
     );
+  };
 
   const triees = useMemo(() => {
     const colonne = colonnes.find((c) => c.cle === tri.cle);
@@ -140,10 +171,46 @@ function TableauTriable({
     });
   }, [colonnes, entrees, tri]);
 
-  return (
+  const reste = triees.length > montrees;
+  useEffect(() => {
+    const cible = repere.current;
+    if (!cible || !reste || !parPage) return;
+    // Une part réellement visible du repère, et non « isIntersecting » : dans
+    // une section repliée, de hauteur nulle, le navigateur le dit visible par
+    // une intersection d'aire nulle, et tout se chargerait d'un coup.
+    const observateur = new IntersectionObserver((vus) => {
+      if (vus.some((v) => v.intersectionRatio > 0)) setMontrees((n) => n + parPage);
+    });
+    observateur.observe(cible);
+    return () => observateur.disconnect();
+  }, [reste, parPage, montrees]);
+
+  // La hauteur de la zone : l'entête et les « parPage » premières lignes. Elle
+  // se mesure de nouveau quand la grille change de taille — une section
+  // repliée n'en a pas, et se déplie plus tard.
+  useLayoutEffect(() => {
+    const grille = cadre.current;
+    if (!grille || !parPage) return;
+    const mesurer = () => {
+      const lignes = grille.querySelectorAll("tbody tr");
+      const derniere = lignes[parPage - 1];
+      if (lignes.length <= parPage || !derniere) return setHauteur(undefined);
+      // Du haut du cadre au bas de la dernière ligne, plus la marge du bas.
+      const marge = parseFloat(getComputedStyle(grille).paddingBottom) || 0;
+      const h =
+        derniere.getBoundingClientRect().bottom - grille.getBoundingClientRect().top + marge;
+      if (h > 0) setHauteur(Math.ceil(h));
+    };
+    mesurer();
+    const observateur = new ResizeObserver(mesurer);
+    observateur.observe(grille);
+    return () => observateur.disconnect();
+  }, [parPage, triees.length]);
+
+  const grille = (
     <Table {...redim.tableProps} verticalSpacing={espacement} horizontalSpacing="xs">
       {redim.colgroup}
-      <Table.Thead>
+      <Table.Thead style={parPage ? ENTETE_COLLEE : undefined}>
         <Table.Tr>
           {colonnes.map((colonne) => (
             <EnTete
@@ -157,7 +224,7 @@ function TableauTriable({
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
-        {triees.map((entree, rang) => (
+        {triees.slice(0, montrees).map((entree, rang) => (
           <Table.Tr key={rang}>
             {colonnes.map((colonne) => (
               <Table.Td
@@ -172,7 +239,46 @@ function TableauTriable({
       </Table.Tbody>
     </Table>
   );
+
+  // Limitée en hauteur, la grille défile dans les deux sens dans une même
+  // zone, où son entête reste collé en haut. La zone recouvre tout le cadre
+  // gris de la section (sa marge « md » reprise en négatif, puis rendue à
+  // l'intérieur) : la barre longe ainsi la section sur toute sa hauteur,
+  // comme celle du tiroir longe la fenêtre. Sinon, élargie à la main
+  // au-delà de la section, elle n'y défile que de côté.
+  if (parPage) {
+    return (
+      // La barre fine du tiroir de la fiche : 2 px, toujours visible.
+      <ScrollArea.Autosize
+        mah={hauteur}
+        type="always"
+        scrollbarSize={2}
+        m="calc(-1 * var(--mantine-spacing-md))"
+        style={{ borderRadius: 10 }}
+        styles={{ content: { display: "block" } }}
+      >
+        <Box ref={cadre} p="md">
+          {grille}
+          {reste && <div ref={repere} style={{ height: 1 }} />}
+        </Box>
+      </ScrollArea.Autosize>
+    );
+  }
+  return <GrilleScroll>{grille}</GrilleScroll>;
 }
+
+/**
+ * L'entête d'une grille limitée en hauteur : il reste en haut quand elle
+ * défile, à la marge du cadre, et l'ombre pleine au-dessus de lui cache les
+ * lignes qui passent dans cette marge.
+ */
+const ENTETE_COLLEE: CSSProperties = {
+  position: "sticky",
+  top: "var(--mantine-spacing-md)",
+  zIndex: 2,
+  backgroundColor: FOND_CARTE,
+  boxShadow: `0 calc(-1 * var(--mantine-spacing-md)) 0 ${FOND_CARTE}`,
+};
 
 /** Une cellule de texte ordinaire, ou le tiret quand elle est vide. */
 const texte = (valeur: string | undefined) => (
@@ -259,44 +365,53 @@ function Occupation({ entry }: { entry: AssetEntry }) {
   );
 }
 
+/** Le volume système : « C: » sous Windows, « / » ailleurs. */
+const systeme = (entree: AssetEntry): boolean =>
+  (entree["LETTER"] ?? "").toUpperCase() === "C:" || entree["TYPE"] === "/";
+
 /**
- * Les volumes du poste : il y en a souvent trois ou quatre, et leurs fiches à
- * la suite ne se comparaient pas. La lettre ne vient que de Windows ; la
- * colonne n'existe que si l'agent en donne une. L'espace se trie sur la part
- * occupée, le plus plein en tête au premier clic.
+ * Les volumes du poste, présentés comme les cartes réseau : une ligne
+ * numérotée chacun. Le volume système en tête, puis les plus pleins d'abord ;
+ * ceux sans taille à la fin. La lettre ne vient que de Windows ; elle n'est
+ * montrée que si l'agent en donne une.
  */
 function Volumes({ section }: { section: AssetSection }) {
   const lettres = section.entries.some((entree) => entree["LETTER"]);
-  const colonnes: Colonne[] = [
-    ...(lettres ? [champ("LETTER", "Lettre")] : []),
-    champ("TYPE", "Type"),
-    {
-      cle: "FILESYSTEM",
-      libelle: "Système de fichiers",
-      valeur: (entree) => systemeDeFichiers(entree["FILESYSTEM"]),
-      rendu: (entree) => texte(systemeDeFichiers(entree["FILESYSTEM"])),
-    },
-    {
-      cle: "ENCRYPT_STATUS",
-      libelle: "Chiffré",
-      valeur: (entree) => ouiNon(entree["ENCRYPT_STATUS"]),
-      rendu: (entree) => texte(ouiNon(entree["ENCRYPT_STATUS"])),
-    },
-    {
-      cle: "ESPACE",
-      libelle: "Espace",
-      valeur: occupation,
-      rendu: (entree) => <Occupation entry={entree} />,
-      premierSens: "desc",
-      largeur: "30%",
-    },
-  ];
+  const entrees = [...section.entries].sort(
+    (a, b) =>
+      Number(systeme(b)) - Number(systeme(a)) ||
+      (occupation(b) ?? -1) - (occupation(a) ?? -1),
+  );
+  // Le système de fichiers et le chiffrement à droite, à largeur fixe.
+  const colonnes = [
+    ...(lettres ? [`${LARGEUR_PREMIERE}px`] : []),
+    "1fr",
+    "200px",
+    `${LARGEUR_NOMBRE}px`,
+  ].join(" ");
   return (
-    <TableauTriable
+    <LignesNumerotees
+      entrees={entrees}
+      textes={0}
+      nombres={0}
       colonnes={colonnes}
-      entrees={section.entries}
-      triInitial={{ cle: lettres ? "LETTER" : "TYPE", sens: "asc" }}
-      espacement={6}
+      valeurs={(entree) => (
+        <>
+          {/* 1re ligne : ce qu'est le volume. */}
+          {lettres && <Valeur libelle="Lettre" valeur={entree["LETTER"]} />}
+          <Valeur libelle="Type" valeur={entree["TYPE"]} />
+          <Valeur
+            libelle="Système de fichiers"
+            valeur={systemeDeFichiers(entree["FILESYSTEM"])}
+            adroite
+          />
+          <Valeur libelle="Chiffré" valeur={ouiNon(entree["ENCRYPT_STATUS"])} adroite />
+          {/* 2e ligne : l'espace, sur toute la largeur. */}
+          <Box style={{ gridColumn: "1 / -1" }}>
+            <Valeur libelle="Espace" valeur={<Occupation entry={entree} />} />
+          </Box>
+        </>
+      )}
     />
   );
 }
@@ -304,40 +419,87 @@ function Volumes({ section }: { section: AssetSection }) {
 // --- EPP / EDR --------------------------------------------------------------
 
 /**
+ * Oui ou non, d'après ce que l'agent écrit — « yes », « 1 », « on »… —, ou
+ * rien quand il ne dit rien de lisible.
+ */
+const actif = (valeur: string | undefined): boolean | null => {
+  const v = (valeur ?? "").trim().toLowerCase();
+  if (["yes", "1", "true", "on", "enabled"].includes(v)) return true;
+  if (["no", "0", "false", "off", "disabled"].includes(v)) return false;
+  return null;
+};
+
+/** Le tag d'un état lisible, ou rien : la valeur garde alors son tiret. */
+const tagEtat = (valeur: string | undefined) => {
+  const etat = actif(valeur);
+  return etat === null ? valeur : <Etat actif={etat} />;
+};
+
+/** La largeur de la colonne d'un tag d'état, à droite. */
+const LARGEUR_ETAT = 100;
+
+/**
  * Les protections du poste — antivirus, EPP, EDR —, telles que Windows les
- * déclare au centre de sécurité. Il y en a souvent deux, Defender resté en
- * retrait à côté de celle qu'on a installée : les actives d'abord.
+ * déclare au centre de sécurité, présentées comme les volumes. Il y en a
+ * souvent deux, Defender resté en retrait à côté de celle qu'on a
+ * installée : les actives d'abord.
  */
 function Protections({ section }: { section: AssetSection }) {
-  const colonnes: Colonne[] = [
-    champ("NAME", "Nom"),
-    champ("COMPANY", "Éditeur"),
-    { ...champ("VERSION", "Version"), adroite: true },
-    {
-      cle: "ENABLED",
-      libelle: "Actif ?",
-      valeur: (entree) => ouiNon(entree["ENABLED"]),
-      // En lecture seule : c'est ce que l'agent a lu, pas un réglage. Une
-      // valeur que l'agent n'a pas donnée garde son tiret.
-      rendu: (entree) =>
-        ouiNon(entree["ENABLED"]) === "Oui" || ouiNon(entree["ENABLED"]) === "Non" ? (
-          <Checkbox
-            checked={ouiNon(entree["ENABLED"]) === "Oui"}
-            readOnly
-            size="xs"
-            aria-label="Actif"
-          />
-        ) : (
-          texte(entree["ENABLED"])
-        ),
-    },
-  ];
+  const entrees = [...section.entries].sort(
+    (a, b) => Number(actif(b["ENABLED"]) ?? -1) - Number(actif(a["ENABLED"]) ?? -1),
+  );
   return (
-    <TableauTriable
-      colonnes={colonnes}
-      entrees={section.entries}
-      triInitial={{ cle: "ENABLED", sens: "desc" }}
-      espacement={6}
+    <LignesNumerotees
+      entrees={entrees}
+      textes={0}
+      nombres={0}
+      // La version et l'état à droite, à largeur fixe.
+      colonnes={`1fr 1fr ${LARGEUR_NOMBRE}px ${LARGEUR_NOMBRE}px`}
+      valeurs={(entree) => (
+        <>
+          <Valeur libelle="Nom" valeur={entree["NAME"]} />
+          <Valeur libelle="Éditeur" valeur={entree["COMPANY"]} />
+          <Valeur libelle="Version" valeur={entree["VERSION"]} adroite />
+          <Valeur libelle="Statut" valeur={tagEtat(entree["ENABLED"])} adroite />
+        </>
+      )}
+    />
+  );
+}
+
+// --- Pare-feu ---------------------------------------------------------------
+
+/** Les profils du pare-feu de Windows, sous leur nom français. */
+const PROFILS_PARE_FEU: Record<string, string> = {
+  DomainProfile: "Domaine",
+  StandardProfile: "Privé",
+  PublicProfile: "Public",
+};
+
+/**
+ * Le pare-feu du poste, présenté comme les volumes : une entrée par profil
+ * sous Windows, une seule ailleurs. Les profils actifs d'abord.
+ */
+function PareFeu({ section }: { section: AssetSection }) {
+  const entrees = [...section.entries].sort(
+    (a, b) => Number(actif(b["STATUS"]) ?? -1) - Number(actif(a["STATUS"]) ?? -1),
+  );
+  return (
+    <LignesNumerotees
+      entrees={entrees}
+      textes={0}
+      nombres={0}
+      // L'état à droite, à largeur fixe.
+      colonnes={`1fr ${LARGEUR_ETAT}px`}
+      valeurs={(entree) => (
+        <>
+          <Valeur
+            libelle="Profil"
+            valeur={PROFILS_PARE_FEU[entree["PROFILE"] ?? ""] ?? entree["PROFILE"]}
+          />
+          <Valeur libelle="Statut" valeur={tagEtat(entree["STATUS"])} adroite />
+        </>
+      )}
     />
   );
 }
@@ -419,6 +581,8 @@ function Processus({ section }: { section: AssetSection }) {
       colonnes={colonnes}
       entrees={section.entries}
       triInitial={{ cle: "CPUUSAGE", sens: "desc" }}
+      largeurs={{ USER: 250, CPUUSAGE: 80 }}
+      parPage={15}
     />
   );
 }
@@ -463,19 +627,25 @@ function Logiciels({ section }: { section: AssetSection }) {
       colonnes={colonnes}
       entrees={section.entries}
       triInitial={{ cle: "NAME", sens: "asc" }}
+      largeurs={{ VERSION: 160, PUBLISHER: 180, INSTALLDATE: 110 }}
+      parPage={15}
     />
   );
 }
 
 // --- Comptes et groupes -----------------------------------------------------
 
-/** Les groupes locaux du poste, par nom. */
+/**
+ * Les groupes locaux du poste, par nom, présentés comme les processus : 15
+ * lignes de haut, la suite au fil du défilement.
+ */
 function Groupes({ section }: { section: AssetSection }) {
   return (
     <TableauTriable
       colonnes={[champ("NAME", "Nom")]}
       entrees={section.entries}
       triInitial={{ cle: "NAME", sens: "asc" }}
+      parPage={15}
     />
   );
 }
@@ -523,30 +693,98 @@ const memoire = (entree: AssetEntry): number | null => {
   return chiffres ? Number(chiffres[0].replace(",", ".")) : null;
 };
 
-/** Les machines virtuelles et les conteneurs du poste, par nom. */
+/**
+ * L'état d'une machine virtuelle : son rang (les démarrées d'abord), son
+ * libellé et la couleur de son tag. Ce que l'agent écrit d'autre reste tel
+ * quel, en dernier.
+ */
+const etatVm = (
+  statut: string | undefined,
+): { rang: number; libelle: string; couleur?: string } => {
+  const s = (statut ?? "").trim().toLowerCase();
+  if (["running", "started", "up"].includes(s)) {
+    return { rang: 0, libelle: "Démarrée", couleur: "green" };
+  }
+  if (["paused", "suspended", "saved"].includes(s)) {
+    return { rang: 1, libelle: "En pause", couleur: "orange" };
+  }
+  if (["off", "stopped", "exited", "shutdown", "poweroff", "powered off"].includes(s)) {
+    return { rang: 2, libelle: "Éteinte", couleur: "red" };
+  }
+  return { rang: 3, libelle: statut ?? "" };
+};
+
+/**
+ * Les machines virtuelles et les conteneurs du poste, un tableau par type
+ * (« Docker », « Parallels »…), les démarrées d'abord, présenté comme les
+ * processus : 15 lignes de haut, la suite au fil du défilement.
+ */
 function MachinesVirtuelles({ section }: { section: AssetSection }) {
-  const colonnes: Colonne[] = [
-    champ("NAME", "Nom"),
-    {
-      cle: "MEMORY",
-      libelle: "Mémoire",
-      valeur: memoire,
-      rendu: (entree) => {
-        const mo = memoire(entree);
-        return texte(mo === null ? "" : taille(mo));
-      },
-      premierSens: "desc",
-      adroite: true,
+  const colonneMemoire: Colonne = {
+    cle: "MEMORY",
+    libelle: "Mémoire",
+    valeur: memoire,
+    rendu: (entree) => {
+      const mo = memoire(entree);
+      return texte(mo === null ? "" : taille(mo));
     },
-    champ("STATUS", "Statut"),
-    champ("VMTYPE", "Type"),
+    premierSens: "desc",
+    adroite: true,
+  };
+  // La mémoire n'a sa colonne que si une machine du type en déclare une : les
+  // conteneurs Docker n'en disent rien.
+  const colonnesDe = (entrees: AssetEntry[]): Colonne[] => [
+    champ("NAME", "Nom"),
+    ...(entrees.some((entree) => memoire(entree) !== null) ? [colonneMemoire] : []),
+    {
+      cle: "STATUS",
+      libelle: "Statut",
+      valeur: (entree) => (entree["STATUS"] ? etatVm(entree["STATUS"]).rang : null),
+      rendu: (entree) => {
+        const etat = etatVm(entree["STATUS"]);
+        return etat.couleur ? (
+          <Badge color={etat.couleur} variant="filled" size="sm" radius="sm">
+            {etat.libelle}
+          </Badge>
+        ) : (
+          texte(etat.libelle)
+        );
+      },
+    },
   ];
+  const parType = new Map<string, AssetEntry[]>();
+  // Par nom d'abord : à état égal, le tri par statut les garde dans cet ordre.
+  const parNom = [...section.entries].sort((a, b) =>
+    (a["NAME"] ?? "").localeCompare(b["NAME"] ?? "", "fr", { numeric: true, sensitivity: "base" }),
+  );
+  for (const entree of parNom) {
+    const type = entree["VMTYPE"]?.trim() || "Autre";
+    parType.set(type, [...(parType.get(type) ?? []), entree]);
+  }
+  const types = [...parType.keys()].sort((a, b) =>
+    a.localeCompare(b, "fr", { sensitivity: "base" }),
+  );
+  // Chaque type sous son titre, au style des sous-catégories des widgets, et
+  // dans son propre cadre gris : la section n'en pose pas (SANS_CADRE).
   return (
-    <TableauTriable
-      colonnes={colonnes}
-      entrees={section.entries}
-      triInitial={{ cle: "NAME", sens: "asc" }}
-    />
+    <>
+      {types.map((type, rang) => (
+        <Box key={type} mt={rang === 0 ? 0 : 30}>
+          <Title order={2} size={16} fw={400} c="var(--mantine-color-white)" mb={15}>
+            {typeCarte(type)}
+          </Title>
+          <Box p="md" style={{ backgroundColor: FOND_CARTE, borderRadius: 10 }}>
+            <TableauTriable
+              colonnes={colonnesDe(parType.get(type)!)}
+              entrees={parType.get(type)!}
+              triInitial={{ cle: "STATUS", sens: "asc" }}
+              largeurs={{ MEMORY: 100, STATUS: 120 }}
+              parPage={15}
+            />
+          </Box>
+        </Box>
+      ))}
+    </>
   );
 }
 
@@ -596,6 +834,75 @@ function Batterie({ section }: { section: AssetSection }) {
           />
         </>
       )}
+    />
+  );
+}
+
+/** L'état de charge d'une alimentation, tel que l'agent le donne, en français. */
+const ETATS_ALIMENTATION: Record<string, string> = {
+  charging: "En charge",
+  charged: "Chargée",
+  "fully charged": "Chargée",
+  full: "Chargée",
+  "not charging": "Pas en charge",
+  discharging: "En décharge",
+  ok: "OK",
+};
+
+/** Les états qui disent qu'une alimentation ne fait pas son travail. */
+const ETATS_EN_DEFAUT = new Set(["not charging", "discharging", "error", "failed"]);
+
+/**
+ * Les alimentations du poste : nom, fabricant, puissance maximale et état,
+ * en tag ; puis le numéro de série et si elle est branchée.
+ */
+function Alimentation({ section }: { section: AssetSection }) {
+  return (
+    <LignesNumerotees
+      entrees={section.entries}
+      textes={0}
+      nombres={0}
+      // La puissance et l'état à droite, à largeur fixe.
+      colonnes={`1fr 1fr ${LARGEUR_NOMBRE + 20}px ${LARGEUR_ETAT}px`}
+      valeurs={(entree) => {
+        const statut = (entree["STATUS"] ?? "").trim();
+        const cle = statut.toLowerCase();
+        return (
+          <>
+            <Valeur libelle="Nom" valeur={entree["NAME"]} />
+            <Valeur libelle="Fabricant" valeur={entree["MANUFACTURER"]} />
+            <Valeur
+              libelle="Puissance max"
+              valeur={entree["POWER_MAX"] && `${entree["POWER_MAX"]} W`}
+              adroite
+            />
+            <Valeur
+              libelle="Statut"
+              valeur={
+                statut && (
+                  <Badge
+                    color={ETATS_EN_DEFAUT.has(cle) ? "red" : "green"}
+                    variant="filled"
+                    size="sm"
+                    radius="sm"
+                  >
+                    {ETATS_ALIMENTATION[cle] ?? statut}
+                  </Badge>
+                )
+              }
+              adroite
+            />
+            {/* Sur deux colonnes : le numéro et son bouton tiennent sur une ligne. */}
+            <Box style={{ gridColumn: "1 / 3" }}>
+              <Valeur
+                libelle="Numéro de série"
+                valeur={<AvecCopie valeur={entree["SERIALNUMBER"]} />}
+              />
+            </Box>
+            <Valeur libelle="Branchée" valeur={ouiNon(entree["PLUGGED"])} adroite />
+          </>
+        );
+      }}
     />
   );
 }
@@ -652,9 +959,28 @@ function LignesNumerotees({
     ...Array<string>(nombres).fill(`${LARGEUR_NOMBRE}px`),
   ].join(" ");
   return (
-    <Stack gap={20}>
+    // Chaque entrée sur son bloc gris, 20 px de marge intérieure, séparée de
+    // la suivante par 2 px du fond de l'interface. La pile recouvre le cadre
+    // gris de la section (sa marge « md » reprise en négatif) et en garde
+    // l'arrondi.
+    <Stack
+      gap={2}
+      m="calc(-1 * var(--mantine-spacing-md))"
+      style={{
+        backgroundColor: "var(--mantine-color-body)",
+        borderRadius: 10,
+        overflow: "hidden",
+      }}
+    >
       {entrees.map((entree, rang) => (
-        <Group key={rang} gap="lg" align="stretch" wrap="nowrap">
+        <Group
+          key={rang}
+          gap="lg"
+          align="stretch"
+          wrap="nowrap"
+          p={20}
+          style={{ backgroundColor: FOND_CARTE }}
+        >
           <Center
             miw={LARGEUR_NUMERO}
             w={largeurNumero}
@@ -698,6 +1024,106 @@ function Processeurs({ section }: { section: AssetSection }) {
           <Valeur libelle="Modèle" valeur={entree["NAME"]?.trim()} />
           <Valeur libelle="Cœurs" valeur={entree["CORE"]} adroite />
           <Valeur libelle="Threads" valeur={entree["THREAD"]} adroite />
+        </>
+      )}
+    />
+  );
+}
+
+/** Le rang d'une carte selon son type : le Wi-Fi d'abord, puis l'Ethernet. */
+const rangType = (type: string | undefined): number => {
+  const t = (type ?? "").toLowerCase();
+  return t === "wifi" ? 0 : t === "ethernet" ? 1 : 2;
+};
+
+/** Un type de carte, une majuscule en tête : « wifi » devient « Wifi ». */
+const typeCarte = (type: string | undefined): string =>
+  type ? type.charAt(0).toUpperCase() + type.slice(1) : "";
+
+/** Un débit en Mb/s, comme l'agent le donne, dit en Gb/s dès le gigabit. */
+const debit = (valeur: string | undefined): string => {
+  const mb = Number(valeur);
+  if (!valeur || Number.isNaN(mb) || mb <= 0) return valeur ?? "";
+  return mb >= 1000
+    ? `${(mb / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Gb/s`
+    : `${mb.toLocaleString("fr-FR")} Mb/s`;
+};
+
+/** Un état en tag : vert « Activé », rouge « Désactivé ». */
+function Etat({ actif }: { actif: boolean }) {
+  return (
+    <Badge color={actif ? "green" : "red"} variant="filled" size="sm" radius="sm">
+      {actif ? "Activé" : "Désactivé"}
+    </Badge>
+  );
+}
+
+/**
+ * Les cartes réseau du poste, les connectées en tête ; parmi elles comme
+ * parmi les autres, le Wi-Fi d'abord, puis l'Ethernet, puis le reste. VIRTUALDEV n'est pas montré.
+ */
+function Reseaux({ section }: { section: AssetSection }) {
+  // Les cartes connectées d'abord ; dans chaque groupe, le type départage.
+  const deconnectee = (entree: AssetEntry) =>
+    (entree["STATUS"] ?? "").toLowerCase() === "up" ? 0 : 1;
+  const entrees = [...section.entries].sort(
+    (a, b) => deconnectee(a) - deconnectee(b) || rangType(a["TYPE"]) - rangType(b["TYPE"]),
+  );
+  return (
+    <LignesNumerotees
+      entrees={entrees}
+      textes={4}
+      nombres={0}
+      valeurs={(entree) => (
+        <>
+          {/* 1re ligne : ce qu'est la carte et son état. */}
+          <Valeur libelle="Type" valeur={typeCarte(entree["TYPE"])} />
+          <Valeur libelle="Nom" valeur={entree["DESCRIPTION"]} />
+          <Valeur libelle="MAC" valeur={entree["MACADDR"]} />
+          <Valeur
+            libelle="Statut"
+            valeur={
+              entree["STATUS"] && <Etat actif={entree["STATUS"].toLowerCase() === "up"} />
+            }
+          />
+          {/* 2e ligne : l'adressage IPv4, la quatrième colonne laissée vide.
+              Sans adresse IPv4, la ligne n'est pas montrée. */}
+          {entree["IPADDRESS"] && (
+            <>
+              <Valeur libelle="IPv4" valeur={entree["IPADDRESS"]} />
+              <Valeur libelle="Masque" valeur={entree["IPMASK"]} />
+              <Valeur libelle="Passerelle" valeur={entree["IPGATEWAY"]} />
+              <Box />
+            </>
+          )}
+          {/* 3e ligne : l'IPv6, souvent longue, sur toute la largeur ; cachée
+              sans adresse IPv6. */}
+          {entree["IPADDRESS6"] && (
+            <Box style={{ gridColumn: "1 / -1" }}>
+              <Valeur libelle="IPv6" valeur={entree["IPADDRESS6"]} />
+            </Box>
+          )}
+          {/* 4e ligne : le VLAN du Paramétrage qui porte la carte, son nom
+              puis son numéro en tag vert, comme au Résumé ; cachée sans VLAN.
+              VLAN et VLAN_NAME viennent du serveur, pas de l'agent. */}
+          {entree["VLAN"] && (
+            <Box style={{ gridColumn: "1 / -1" }}>
+              <Valeur
+                libelle="VLAN"
+                valeur={
+                  <Group gap={6} wrap="nowrap">
+                    {entree["VLAN_NAME"] && <span>{entree["VLAN_NAME"]}</span>}
+                    <Badge color="green" variant="filled" size="sm" radius="sm">
+                      VLAN {entree["VLAN"]}
+                    </Badge>
+                  </Group>
+                }
+              />
+            </Box>
+          )}
+          {/* 5e ligne : MTU et vitesse. */}
+          <Valeur libelle="MTU" valeur={entree["MTU"]} />
+          <Valeur libelle="Vitesse" valeur={debit(entree["SPEED"])} />
         </>
       )}
     />
@@ -918,12 +1344,6 @@ function Audio({ section }: { section: AssetSection }) {
 /** Les champs d'une section, dans l'ordre où ils s'affichent, sous leur nom français. */
 type Champs = [string, string][];
 
-/** Une capacité en Mo, comme l'agent la donne, dite en Go ou en To. */
-const enTaille = (brute: string): string => {
-  const mo = Number(brute);
-  return brute && !Number.isNaN(mo) ? taille(mo) : brute;
-};
-
 /**
  * Les lignes d'une entrée : ses champs connus en français, puis ceux qu'on ne
  * sait pas nommer, sous le nom de l'agent — sauf les écartés. Une valeur déjà
@@ -978,12 +1398,14 @@ function FichesNumerotees({
   ecartes,
   formats,
   etiquettes = {},
+  aCote,
 }: {
   section: AssetSection;
   champs: Champs;
   ecartes?: string[];
   formats?: Record<string, (brute: string) => string>;
   etiquettes?: Record<string, string>;
+  aCote?: (entree: AssetEntry) => ReactNode;
 }) {
   // Une seule largeur pour toutes les étiquettes de la section.
   const gabarit = gabaritIdentifiants(
@@ -1021,6 +1443,7 @@ function FichesNumerotees({
           },
         )
       }
+      aCote={aCote}
     />
   );
 }
@@ -1032,7 +1455,6 @@ const CHAMPS_STOCKAGE: Champs = [
   ["MODEL", "Modèle"],
   ["DESCRIPTION", "Description"],
   ["INTERFACE", "Interface"],
-  ["DISKSIZE", "Capacité"],
   ["SERIAL", "Numéro de série"],
   ["SERIALNUMBER", "Numéro de série"],
   ["FIRMWARE", "Micrologiciel"],
@@ -1042,10 +1464,47 @@ const CHAMPS_STOCKAGE: Champs = [
   ["SCSI_LUN", "LUN SCSI"],
 ];
 
-/** Les supports de stockage du poste. */
-function Stockage({ section }: { section: AssetSection }) {
+/** La part libre de l'anneau : un gris neutre et clair, pas celui de Mantine qui tire sur le bleu. */
+const FOND_ANNEAU = "light-dark(#e0e0e0, var(--mantine-color-dark-4))";
+
+/**
+ * La capacité d'un disque dans un anneau : sa part de la capacité totale du
+ * poste, sa taille au milieu. Un disque dont l'agent ne donne pas la taille
+ * garde un anneau vide et le tiret.
+ */
+function PartDisque({ capacite, total }: { capacite: number; total: number }) {
+  const connue = capacite > 0;
   return (
-    <FichesNumerotees section={section} champs={CHAMPS_STOCKAGE} formats={{ DISKSIZE: enTaille }} />
+    <RingProgress
+      size={88}
+      thickness={9}
+      rootColor={FOND_ANNEAU}
+      roundCaps
+      style={{ flexShrink: 0, alignSelf: "flex-start" }}
+      sections={connue && total > 0 ? [{ value: (capacite / total) * 100, color: "blue" }] : []}
+      label={
+        <Text size="xs" fw={700} ta="center" style={{ whiteSpace: "nowrap" }}>
+          {connue ? taille(capacite) : VIDE}
+        </Text>
+      }
+    />
+  );
+}
+
+/**
+ * Les supports de stockage du poste. La capacité ne s'écrit pas en ligne :
+ * l'anneau à droite la porte, avec la part qu'elle fait du total du poste.
+ */
+function Stockage({ section }: { section: AssetSection }) {
+  const capacite = (entree: AssetEntry) => Number(entree["DISKSIZE"]) || 0;
+  const total = section.entries.reduce((somme, entree) => somme + capacite(entree), 0);
+  return (
+    <FichesNumerotees
+      section={section}
+      champs={CHAMPS_STOCKAGE}
+      ecartes={["DISKSIZE"]}
+      aCote={(entree) => <PartDisque capacite={capacite(entree)} total={total} />}
+    />
   );
 }
 
@@ -1180,6 +1639,12 @@ function Bios({ section }: { section: AssetSection }) {
   );
 }
 
+/**
+ * Les sections qui posent elles-mêmes leurs cadres gris, au lieu d'être
+ * rangées dans celui de la section : leurs titres viennent hors des cadres.
+ */
+export const SANS_CADRE = new Set(["OPERATINGSYSTEM", "VIRTUALMACHINES"]);
+
 /** Les sections qui ont leur tableau ; les autres restent en fiches. */
 export const TABLEAUX: Record<string, ComponentType<{ section: AssetSection }>> = {
   ANTIVIRUS: Protections,
@@ -1188,11 +1653,14 @@ export const TABLEAUX: Record<string, ComponentType<{ section: AssetSection }>> 
   CONTROLLERS: Controleurs,
   CPUS: Processeurs,
   DRIVES: Volumes,
+  FIREWALL: PareFeu,
   INPUTS: Entrees,
   LOCAL_GROUPS: Groupes,
   LOCAL_USERS: Comptes,
   MEMORIES: Memoire,
   MONITORS: Moniteurs,
+  NETWORKS: Reseaux,
+  POWERSUPPLIES: Alimentation,
   PRINTERS: Imprimantes,
   PROCESSES: Processus,
   SOFTWARES: Logiciels,

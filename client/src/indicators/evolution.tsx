@@ -22,6 +22,7 @@ const periodeDe = (config: unknown) => {
 
 export const evolutionIndicator: SupportIndicatorWidget = {
   type: "trend",
+  kind: "helpdesk",
   label: LIBELLE,
   icon: IconChartHistogram,
   defaultConfig: { [NOM]: "", [PERIODE]: PERIODE_PAR_DEFAUT },

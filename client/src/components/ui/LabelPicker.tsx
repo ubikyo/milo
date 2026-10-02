@@ -86,8 +86,8 @@ export const SUPPORT_LABELS_API: LabelsApi = {
 };
 
 /**
- * Les étiquettes d'une carte : on les coche pour les poser, on clique l'une
- * d'elles pour la renommer ou la recolorer, la corbeille au bout de la ligne
+ * Les étiquettes d'une carte : un clic les coche pour les poser, un double
+ * clic ouvre l'une d'elles pour la renommer ou la recolorer, la corbeille au bout de la ligne
  * la supprime, et le lien du bas en ajoute une sans quitter la liste. Renommer,
  * recolorer ou supprimer touche l'étiquette du tableau, donc toutes les cartes
  * qui la portent.
@@ -262,6 +262,10 @@ export default function LabelPicker({
       gap={6}
       wrap="nowrap"
       style={{ flex: 1, minWidth: 0 }}
+      // Les clics de la saisie restent à elle : placer le curseur ou choisir
+      // une couleur ne doit pas cocher ni décocher l'étiquette.
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
     >
       <LabelColorPicker
         color={color}
@@ -337,7 +341,7 @@ export default function LabelPicker({
         onChange={onChange}
         emptyText={emptyText}
         fullWidthOptions
-        // Une étiquette déjà ouverte reste en saisie : le clic dans son champ ne
+        // Une étiquette déjà ouverte reste en saisie : le double clic dans son champ ne
         // doit pas la rouvrir et effacer ce qu'on est en train d'écrire.
         onOptionClick={(l) => edite?.id !== l.id && ouvrirEdition(l)}
         // La vignette de la carte ne suit pas la modification : elle montre
@@ -385,12 +389,13 @@ export default function LabelPicker({
                 flexShrink: 0,
                 opacity: survole === l.id || edite?.id === l.id ? 1 : 0,
               }}
-              // Le clic s'arrête ici : il ne doit pas ouvrir la modification de
+              // Le clic s'arrête ici : il ne doit pas cocher ni ouvrir
               // l'étiquette qu'on s'apprête à supprimer.
               onClick={(e) => {
                 e.stopPropagation();
                 demanderSuppression(l);
               }}
+              onDoubleClick={(e) => e.stopPropagation()}
               aria-label={`Supprimer ${l.name}`}
             >
               <IconTrash size={14} />

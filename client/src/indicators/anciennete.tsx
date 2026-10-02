@@ -21,6 +21,7 @@ const TRANCHES = [
 
 export const ancienneteIndicator: SupportIndicatorWidget = {
   type: "age",
+  kind: "helpdesk",
   label: LIBELLE,
   icon: IconHourglass,
   defaultConfig: { [NOM]: "" },

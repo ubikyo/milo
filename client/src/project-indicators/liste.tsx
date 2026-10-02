@@ -10,10 +10,12 @@ import type { ProjectIndicatorWidget } from "./types";
 
 export const listeProjetsIndicator: ProjectIndicatorWidget = {
   type: "list",
+  kind: "project",
   label: "Liste des projets",
   icon: IconList,
   defaultConfig: {},
   ownClicks: true,
+  fill: true,
   Display: ({ config }) => <ProjetsListeWidget config={config} />,
   Config: (props) => <ChampsColonnes colonnes={COLONNES_PROJETS} {...props} />,
 };

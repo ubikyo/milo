@@ -2,10 +2,13 @@
 // avec ses membres, ses étiquettes et son fil.
 
 import { Router } from "express";
+import type { Request } from "express";
 import { isCardKind } from "@milo/shared";
-import type { Id } from "@milo/shared";
+import type { Id, Right } from "@milo/shared";
 import { badRequest, forbidden, orNotFound, requireText, toIds } from "../lib/http.js";
 import { descriptionPropre } from "../lib/html.js";
+import { cite, consigner, date, ecarts, liste, messageModification } from "../lib/historique.js";
+import type { Champ } from "../lib/historique.js";
 import { concernes, notifier, notifierSuppression, racine } from "../lib/notify.js";
 import { echeance, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
@@ -13,6 +16,8 @@ import { boardOuvert, boards } from "../repositories/boards.js";
 import {
   cardComments,
   cardDetail,
+  labelsOf,
+  membersOf,
   replaceCardLabels,
   replaceCardMembers,
 } from "../repositories/cards.js";
@@ -30,14 +35,30 @@ import {
 const CARTE_INTROUVABLE = "Carte introuvable";
 const COMMENTAIRE_INTROUVABLE = "Commentaire introuvable";
 
+/** Ce que le fil note d'une carte quand sa fiche change (lib/historique.ts). */
+const photo = (id: Id): Champ[] => {
+  const carte = taskCards.byId.get(id)!;
+  return [
+    { libelle: "Titre", valeur: cite(carte.text) },
+    { libelle: "Description", valeur: carte.description ?? "", opaque: true },
+    { libelle: "Échéance", valeur: date(carte.due_date) },
+    { libelle: "Membres", valeur: liste(membersOf(id).map((m) => m.name)) },
+    { libelle: "Étiquettes", valeur: liste(labelsOf(id).map((l) => l.name)) },
+  ];
+};
+
 export const taskCardRoutes = Router();
 
 taskCardRoutes.use(touch("task-lists"));
 
-/** La carte visée, si son tableau est ouvert à cette personne. */
-const carteOuverte = (id: unknown, user: Express.Request["user"]) => {
+/**
+ * La carte visée, si son tableau est ouvert à cette personne — avec `droit`
+ * en plus dans sa société quand on y écrit. Son fil se lit avec elle, et y
+ * écrire est la modifier.
+ */
+const carteOuverte = (id: unknown, req: Request, droit: Right = "view") => {
   const card = orNotFound(taskCards.byId.get(id), CARTE_INTROUVABLE);
-  boardOuvert(boardOfCard(card), user);
+  boardOuvert(boardOfCard(card), req, droit);
   return card;
 };
 
@@ -49,7 +70,7 @@ taskCardRoutes.post("/", (req, res) => {
   if (!isCardKind(kind)) badRequest("Genre de carte inconnu");
 
   const list = orNotFound(taskLists.byId.get(listId), "Liste introuvable");
-  boardOuvert(list.board_id, req.user);
+  boardOuvert(list.board_id, req, "create");
 
   // Nouvelle carte ajoutée à la fin de sa liste.
   const { next } = taskCards.nextPosition(list.id);
@@ -107,7 +128,7 @@ taskCardRoutes.post("/", (req, res) => {
  * reprend ensuite comme base d'une autre.
  */
 taskCardRoutes.post("/:id/duplicate", (req, res) => {
-  const source = carteOuverte(req.params.id, req.user);
+  const source = carteOuverte(req.params.id, req, "create");
   const copie = taskCards.byId.get(duplicateTaskCard(source.id, req.user.id))!;
 
   if (copie.kind !== "separator") {
@@ -132,7 +153,7 @@ taskCardRoutes.put("/reorder", (req, res) => {
   const { list_id, ids } = req.body;
   if (!Array.isArray(ids)) badRequest("ids doit être un tableau");
   const list = orNotFound(list_id ? taskLists.byId.get(list_id) : undefined, "Liste introuvable");
-  boardOuvert(list.board_id, req.user);
+  boardOuvert(list.board_id, req, "update");
 
   const ordre = toIds(ids);
 
@@ -164,6 +185,17 @@ taskCardRoutes.put("/reorder", (req, res) => {
     if (origine === list.id) continue;
     const carte = taskCards.byId.get(cardId);
     if (!carte) continue;
+    if (carte.kind !== "separator") {
+      consigner(
+        "card",
+        carte.id,
+        req.user,
+        ecarts(
+          [{ libelle: "Liste", valeur: cite(taskLists.byId.get(origine)?.name) }],
+          [{ libelle: "Liste", valeur: cite(list.name) }],
+        ),
+      );
+    }
     notifier({
       kind: "card",
       targetId: carte.id,
@@ -179,7 +211,7 @@ taskCardRoutes.put("/reorder", (req, res) => {
 });
 
 taskCardRoutes.get("/:id", (req, res) => {
-  res.json(cardDetail(carteOuverte(req.params.id, req.user)));
+  res.json(cardDetail(carteOuverte(req.params.id, req)));
 });
 
 /**
@@ -189,7 +221,7 @@ taskCardRoutes.get("/:id", (req, res) => {
  * qu'il n'affiche pas encore.
  */
 taskCardRoutes.get("/:id/emplacement", (req, res) => {
-  const card = carteOuverte(req.params.id, req.user);
+  const card = carteOuverte(req.params.id, req);
   const list = orNotFound(taskLists.byId.get(card.list_id), "Liste introuvable");
   const board = orNotFound(boards.byId.get(list.board_id), "Tableau introuvable");
 
@@ -199,10 +231,12 @@ taskCardRoutes.get("/:id/emplacement", (req, res) => {
 // Modification d'une carte : son texte seul depuis le tableau, sa fiche
 // entière depuis son tiroir. Chaque champ absent du corps reste tel quel.
 taskCardRoutes.put("/:id", (req, res) => {
-  const existing = carteOuverte(req.params.id, req.user);
+  const existing = carteOuverte(req.params.id, req, "update");
   const text = requireText(req.body.text ?? existing.text, "Le texte de la carte est requis");
   const description = descriptionPropre(req.body.description ?? existing.description ?? "");
   const dueDate = echeance(req.body.due_date, existing.due_date);
+  // Un séparateur n'a pas de fiche, donc pas de fil où noter ce qui change.
+  const avant = existing.kind === "separator" ? null : photo(existing.id);
 
   taskCards.update.run(text, description, dueDate, existing.id);
 
@@ -215,16 +249,21 @@ taskCardRoutes.put("/:id", (req, res) => {
 
   const suivante = taskCards.byId.get(existing.id)!;
   // Prévenir vient après l'écriture, jamais avant : on ne notifie que ce qui
-  // est enregistré. Les suiveurs de la liste sont prévenus au même titre que
-  // ceux de la carte (lib/notify.ts).
-  notifier({
-    kind: "card",
-    targetId: suivante.id,
-    titre: suivante.text,
-    message: "a modifié la fiche",
-    auteur: req.user,
-    base: racine(req),
-  });
+  // est enregistré. Les suiveurs de la liste et les membres de la carte sont
+  // prévenus au même titre que ceux qui la suivent (lib/notify.ts). Une fiche
+  // enregistrée sans changement ne note rien et ne prévient personne.
+  const lignes = avant ? ecarts(avant, photo(suivante.id)) : [];
+  if (lignes.length) {
+    consigner("card", suivante.id, req.user, lignes);
+    notifier({
+      kind: "card",
+      targetId: suivante.id,
+      titre: suivante.text,
+      message: messageModification(lignes),
+      auteur: req.user,
+      base: racine(req),
+    });
+  }
 
   res.json(cardDetail(suivante));
 });
@@ -232,7 +271,7 @@ taskCardRoutes.put("/:id", (req, res) => {
 // Suppression d'une carte ou d'un séparateur : ses membres, étiquettes,
 // checklists, pièces jointes et commentaires partent avec elle.
 taskCardRoutes.delete("/:id", (req, res) => {
-  const existing = carteOuverte(req.params.id, req.user);
+  const existing = carteOuverte(req.params.id, req, "delete");
   // Un séparateur n'est suivi par personne pour lui-même : il n'a pas de
   // fiche. Sa disparition ne s'annonce pas.
   const destinataires = existing.kind === "separator" ? [] : concernes.carte(existing.id);
@@ -252,7 +291,7 @@ taskCardRoutes.delete("/:id", (req, res) => {
 // --- Fil d'une carte -------------------------------------------------------
 
 taskCardRoutes.post("/:id/comments", (req, res) => {
-  const card = carteOuverte(req.params.id, req.user);
+  const card = carteOuverte(req.params.id, req, "update");
   const text = requireText(req.body.text, "text est requis");
 
   const timestamp = now();
@@ -283,7 +322,7 @@ cardCommentRoutes.use(touch("task-lists"));
 cardCommentRoutes.put("/:id", (req, res) => {
   const comment = orNotFound(cardComments.byId.get(req.params.id), COMMENTAIRE_INTROUVABLE);
   if (comment.system) forbidden(COMMENTAIRE_SYSTEME);
-  carteOuverte(comment.card_id, req.user);
+  carteOuverte(comment.card_id, req, "update");
   const text = requireText(req.body.text, "text est requis");
 
   // Un texte identique n'est pas une modification : la date ne bouge pas, et
@@ -311,7 +350,7 @@ cardCommentRoutes.put("/:id", (req, res) => {
 cardCommentRoutes.delete("/:id", (req, res) => {
   const comment = orNotFound(cardComments.byId.get(req.params.id), COMMENTAIRE_INTROUVABLE);
   if (comment.system) forbidden(COMMENTAIRE_SYSTEME);
-  const carte = carteOuverte(comment.card_id, req.user);
+  const carte = carteOuverte(comment.card_id, req, "update");
 
   cardComments.remove.run(comment.id);
   notifierSuppression({

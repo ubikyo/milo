@@ -47,6 +47,7 @@ import DrawerScrollArea, {
   DRAWER_TABS_STYLES,
 } from "../ui/DrawerScroll";
 import ErrorAlert from "../ui/ErrorAlert";
+import { FIELDSET_NU, useDroits } from "../../lib/droits";
 import LabelPicker, { PROJECT_LABELS_API } from "../ui/LabelPicker";
 import { messageErreur } from "../../lib/errors";
 import type {
@@ -158,6 +159,18 @@ export default function ProjectDrawer({
 
   const isEditing = Boolean(projectId);
 
+  // La société du projet tel qu'il a été lu : c'est elle qui dit ce que le
+  // compte peut en faire. Sans le droit de le modifier, la fiche se lit
+  // seulement.
+  const peut = useDroits();
+  const [societeLue, setSocieteLue] = useState<string>("");
+  const lectureSeule = isEditing && !peut("projects", "update", societeLue || null);
+  // Lu par l'ouverture du tiroir sans en dépendre, comme les listes.
+  const peutRef = useRef(peut);
+  useEffect(() => {
+    peutRef.current = peut;
+  }, [peut]);
+
   // Les jalons sous le curseur de progression sont ceux du type choisi : ils
   // changent avec lui, et manquent s'il n'y en a aucun.
   const jalons =
@@ -167,6 +180,9 @@ export default function ProjectDrawer({
   // L'éditeur de la description, comme dans la fiche d'une carte : il vit tant
   // que le tiroir vit, son contenu est remplacé à chaque projet ouvert.
   const editor = useRichEditor({ placeholder: "Description du projet" });
+  useEffect(() => {
+    editor?.setEditable(!lectureSeule);
+  }, [editor, lectureSeule]);
 
   // Les listes servent seulement à calculer les valeurs par défaut : on les lit
   // via une ref pour que leur rechargement (création d'une catégorie depuis ce
@@ -184,10 +200,13 @@ export default function ProjectDrawer({
 
     if (!projectId) {
       const { categories: cats, companies: comps } = lookupsRef.current;
+      // La société proposée : la première où l'on peut ajouter un projet.
+      const proposee = comps.find((c) => peutRef.current("projects", "create", c.id));
+      setSocieteLue("");
       setForm({
         ...emptyForm,
         category_id: cats[0] ? String(cats[0].id) : "",
-        company_id: comps[0] ? String(comps[0].id) : "",
+        company_id: proposee ? String(proposee.id) : "",
       });
       setComments([]);
       editor?.commands.setContent("");
@@ -195,6 +214,7 @@ export default function ProjectDrawer({
     }
 
     api.getProject(projectId).then((project) => {
+      setSocieteLue(project.company_id ? String(project.company_id) : "");
       setForm({
         name: project.name,
         category_id: String(project.category_id),
@@ -343,10 +363,14 @@ export default function ProjectDrawer({
     value: String(c.id),
     label: c.name,
   }));
-  const companyOptions = companies.map((c) => ({
-    value: String(c.id),
-    label: c.name,
-  }));
+  // Les sociétés où l'on peut ajouter un projet — y passer un projet, c'est
+  // l'y ajouter —, et celle qu'il porte déjà.
+  const companyOptions = companies
+    .filter((c) => peut("projects", "create", c.id) || String(c.id) === societeLue)
+    .map((c) => ({
+      value: String(c.id),
+      label: c.name,
+    }));
 
   return (
     <>
@@ -423,20 +447,26 @@ export default function ProjectDrawer({
                     Suivre
                   </Menu.Item>
 
-                  <Menu.Divider />
+                  {!lectureSeule && (
+                    <>
+                      <Menu.Divider />
 
-                  <Menu.Item
-                    leftSection={<IconFolderSymlink size={16} />}
-                    onClick={() => setDeplacement("move")}
-                  >
-                    Déplacer
-                  </Menu.Item>
-                  <Menu.Item
-                    leftSection={<IconCopy size={16} />}
-                    onClick={() => setDeplacement("copy")}
-                  >
-                    Copier
-                  </Menu.Item>
+                      <Menu.Item
+                        leftSection={<IconFolderSymlink size={16} />}
+                        onClick={() => setDeplacement("move")}
+                      >
+                        Déplacer
+                      </Menu.Item>
+                    </>
+                  )}
+                  {peut("projects", "create", societeLue || null) && (
+                    <Menu.Item
+                      leftSection={<IconCopy size={16} />}
+                      onClick={() => setDeplacement("copy")}
+                    >
+                      Copier
+                    </Menu.Item>
+                  )}
                 </Menu.Dropdown>
               </Menu>
             )}
@@ -444,150 +474,154 @@ export default function ProjectDrawer({
 
           <Tabs.Panel value="settings" style={DRAWER_PANEL_STYLE}>
             <DrawerScrollArea>
-              <Stack gap="xl">
-                {/* Comme sur une carte, ce qui range le projet vient avant ce
-                  qui le nomme : acteurs et étiquettes ouvrent la fiche, chaque
-                  colonne sur sa propre liste. Les bulles des acteurs tiennent
-                  en peu de place, les étiquettes portent du texte : la largeur
-                  se partage en 30 / 70. Ce partage se dit en proportions et non
-                  en pourcentages — « 30% + 70% » aurait ignoré l'écart entre
-                  les deux colonnes, et la seconde aurait débordé d'autant. */}
-                <Group align="flex-start" gap="md" wrap="nowrap">
-                  <div style={{ flex: "3 1 0", minWidth: 0 }}>
-                    <ActorPicker
-                      chipHeight={CHIP_HEIGHT}
-                      // Les bulles se suivent avec le même filet d'air que sur
-                      // une carte ou dans le tableau des projets.
-                      chipGap={ACTOR_GAP}
-                      label="Acteurs"
-                      users={users}
-                      value={form.actor_ids}
-                      onChange={(value) =>
-                        setForm((f) => ({ ...f, actor_ids: value }))
-                      }
-                    />
-                  </div>
-                  <div style={{ flex: "7 1 0", minWidth: 0 }}>
-                    <LabelPicker
-                      chipHeight={CHIP_HEIGHT}
-                      labels={labels ?? []}
-                      value={form.label_ids}
-                      onChange={(value) =>
-                        setForm((f) => ({ ...f, label_ids: value }))
-                      }
-                      boardId={boardId ?? ""}
-                      onLabelsChanged={onLabelsChanged}
-                      labelsApi={PROJECT_LABELS_API}
-                    />
-                  </div>
-                </Group>
-                <TextInput
-                  label="Nom du projet"
-                  placeholder="Nom du projet"
-                  value={form.name}
-                  onChange={(e) => {
-                    const { value } = e.currentTarget;
-                    setForm((f) => ({ ...f, name: value }));
-                  }}
-                  required
-                />
-                <RichTextField editor={editor} label="Description" />
-                <Select
-                  label="Société"
-                  placeholder="Aucune société"
-                  data={companyOptions}
-                  value={form.company_id || null}
-                  onChange={(value) =>
-                    setForm((f) => ({ ...f, company_id: value ?? "" }))
-                  }
-                  clearable
-                />
-                <Group gap="xs" align="flex-end" wrap="nowrap">
-                  <Select
-                    label="Catégorie"
-                    data={categoryOptions}
-                    value={form.category_id}
-                    onChange={(value) =>
-                      setForm((f) => ({ ...f, category_id: value ?? "" }))
-                    }
-                    required
-                    style={{ flex: 1 }}
-                  />
-                  <ActionIcon
-                    variant="filled"
-                    color="teal"
-                    size={36}
-                    aria-label="Nouvelle catégorie"
-                    onClick={() => setNewCategoryOpened(true)}
-                  >
-                    <IconPlus size={18} />
-                  </ActionIcon>
-                </Group>
-
-                {/* Les noms des jalons s'écrivent sous le slider, dans le
-                  flux (MilestoneLabels) : ils comptent dans ce qui défile. */}
-                <div>
-                  <Group justify="space-between" align="flex-end" wrap="nowrap">
-                    <Input.Label>Progression</Input.Label>
-                    <Group gap="xs" wrap="nowrap">
-                      {/* Le type de jalons pose les marques du curseur et les
-                        couleurs de ses tranches ; ils se règlent dans les
-                        réglages. */}
-                      <Select
-                        data={milestoneTypes.map((t) => ({
-                          value: String(t.id),
-                          label: t.name,
-                        }))}
-                        value={form.milestone_type_id || null}
+              {/* En lecture seule, tous les champs de la fiche sont éteints
+                  d'un coup : c'est ce que fait un « fieldset » désactivé. */}
+              <fieldset disabled={lectureSeule} style={FIELDSET_NU}>
+                <Stack gap="xl">
+                  {/* Comme sur une carte, ce qui range le projet vient avant ce
+                    qui le nomme : acteurs et étiquettes ouvrent la fiche, chaque
+                    colonne sur sa propre liste. Les bulles des acteurs tiennent
+                    en peu de place, les étiquettes portent du texte : la largeur
+                    se partage en 30 / 70. Ce partage se dit en proportions et non
+                    en pourcentages — « 30% + 70% » aurait ignoré l'écart entre
+                    les deux colonnes, et la seconde aurait débordé d'autant. */}
+                  <Group align="flex-start" gap="md" wrap="nowrap">
+                    <div style={{ flex: "3 1 0", minWidth: 0 }}>
+                      <ActorPicker
+                        chipHeight={CHIP_HEIGHT}
+                        // Les bulles se suivent avec le même filet d'air que sur
+                        // une carte ou dans le tableau des projets.
+                        chipGap={ACTOR_GAP}
+                        label="Acteurs"
+                        users={users}
+                        value={form.actor_ids}
                         onChange={(value) =>
-                          setForm((f) => ({
-                            ...f,
-                            milestone_type_id: value ?? "",
-                          }))
+                          setForm((f) => ({ ...f, actor_ids: value }))
                         }
-                        placeholder="Jalons"
-                        clearable
-                        size="xs"
-                        w={220}
-                        aria-label="Type de jalons"
                       />
-                      <NumberInput
-                        value={form.status}
-                        onChange={(value) => {
-                          // Le champ peut être vidé pendant la frappe.
-                          const n =
-                            typeof value === "number" ? value : Number(value);
-                          setForm((f) => ({
-                            ...f,
-                            status: Number.isFinite(n)
-                              ? Math.min(100, Math.max(0, n))
-                              : 0,
-                          }));
-                        }}
-                        min={0}
-                        max={100}
-                        clampBehavior="strict"
-                        suffix="%"
-                        w={90}
-                        size="xs"
-                        aria-label="Progression"
+                    </div>
+                    <div style={{ flex: "7 1 0", minWidth: 0 }}>
+                      <LabelPicker
+                        chipHeight={CHIP_HEIGHT}
+                        labels={labels ?? []}
+                        value={form.label_ids}
+                        onChange={(value) =>
+                          setForm((f) => ({ ...f, label_ids: value }))
+                        }
+                        boardId={boardId ?? ""}
+                        onLabelsChanged={onLabelsChanged}
+                        labelsApi={PROJECT_LABELS_API}
                       />
-                    </Group>
+                    </div>
                   </Group>
-                  <Slider
-                    value={form.status}
-                    onChange={(value) =>
-                      setForm((f) => ({ ...f, status: value }))
-                    }
-                    min={0}
-                    max={100}
-                    step={1}
-                    marks={marquesJalons(jalons)}
-                    color={progressColor(form.status, jalons)}
+                  <TextInput
+                    label="Nom du projet"
+                    placeholder="Nom du projet"
+                    value={form.name}
+                    onChange={(e) => {
+                      const { value } = e.currentTarget;
+                      setForm((f) => ({ ...f, name: value }));
+                    }}
+                    required
                   />
-                  <MilestoneLabels jalons={jalons} />
-                </div>
-              </Stack>
+                  <RichTextField editor={editor} label="Description" />
+                  <Select
+                    label="Société"
+                    placeholder="Aucune société"
+                    data={companyOptions}
+                    value={form.company_id || null}
+                    onChange={(value) =>
+                      setForm((f) => ({ ...f, company_id: value ?? "" }))
+                    }
+                    clearable
+                  />
+                  <Group gap="xs" align="flex-end" wrap="nowrap">
+                    <Select
+                      label="Catégorie"
+                      data={categoryOptions}
+                      value={form.category_id}
+                      onChange={(value) =>
+                        setForm((f) => ({ ...f, category_id: value ?? "" }))
+                      }
+                      required
+                      style={{ flex: 1 }}
+                    />
+                    <ActionIcon
+                      variant="filled"
+                      color="teal"
+                      size={36}
+                      aria-label="Nouvelle catégorie"
+                      onClick={() => setNewCategoryOpened(true)}
+                    >
+                      <IconPlus size={18} />
+                    </ActionIcon>
+                  </Group>
+
+                  {/* Les noms des jalons s'écrivent sous le slider, dans le
+                    flux (MilestoneLabels) : ils comptent dans ce qui défile. */}
+                  <div>
+                    <Group justify="space-between" align="flex-end" wrap="nowrap">
+                      <Input.Label>Progression</Input.Label>
+                      <Group gap="xs" wrap="nowrap">
+                        {/* Le type de jalons pose les marques du curseur et les
+                          couleurs de ses tranches ; ils se règlent dans les
+                          réglages. */}
+                        <Select
+                          data={milestoneTypes.map((t) => ({
+                            value: String(t.id),
+                            label: t.name,
+                          }))}
+                          value={form.milestone_type_id || null}
+                          onChange={(value) =>
+                            setForm((f) => ({
+                              ...f,
+                              milestone_type_id: value ?? "",
+                            }))
+                          }
+                          placeholder="Jalons"
+                          clearable
+                          size="xs"
+                          w={220}
+                          aria-label="Type de jalons"
+                        />
+                        <NumberInput
+                          value={form.status}
+                          onChange={(value) => {
+                            // Le champ peut être vidé pendant la frappe.
+                            const n =
+                              typeof value === "number" ? value : Number(value);
+                            setForm((f) => ({
+                              ...f,
+                              status: Number.isFinite(n)
+                                ? Math.min(100, Math.max(0, n))
+                                : 0,
+                            }));
+                          }}
+                          min={0}
+                          max={100}
+                          clampBehavior="strict"
+                          suffix="%"
+                          w={90}
+                          size="xs"
+                          aria-label="Progression"
+                        />
+                      </Group>
+                    </Group>
+                    <Slider
+                      value={form.status}
+                      onChange={(value) =>
+                        setForm((f) => ({ ...f, status: value }))
+                      }
+                      min={0}
+                      max={100}
+                      step={1}
+                      marks={marquesJalons(jalons)}
+                      color={progressColor(form.status, jalons)}
+                    />
+                    <MilestoneLabels jalons={jalons} />
+                  </div>
+                </Stack>
+              </fieldset>
             </DrawerScrollArea>
           </Tabs.Panel>
 
@@ -600,6 +634,7 @@ export default function ProjectDrawer({
                   onAdd={handleAddComment}
                   onUpdate={handleUpdateComment}
                   onDelete={handleDeleteComment}
+                  readOnly={lectureSeule}
                 />
 
                 {!isEditing && comments.length > 0 && (
@@ -621,9 +656,13 @@ export default function ProjectDrawer({
         </Tabs>
 
         <DrawerFooter
-          onSave={sauvegarder}
+          onSave={lectureSeule ? undefined : sauvegarder}
           onClose={onClose}
-          onDelete={isEditing ? () => setConfirmDeleteOpened(true) : undefined}
+          onDelete={
+            isEditing && peut("projects", "delete", societeLue || null)
+              ? () => setConfirmDeleteOpened(true)
+              : undefined
+          }
           saving={saving}
         />
       </Drawer>

@@ -4,6 +4,7 @@ import {
   IconEyeOff,
   IconFlag,
   IconHash,
+  IconHierarchy2,
   IconLock,
   IconPencil,
   IconPlus,
@@ -14,6 +15,7 @@ import {
 import { Fragment, useRef, useState } from "react";
 import { ADD_ACTION, RED } from "../../themes/colors";
 import DeleteConfirmModal from "./DeleteConfirmModal";
+import HeriteConfirmModal from "./HeriteConfirmModal";
 import ModeBar from "./ModeBar";
 import PointMenu, { positionDuMenu, type PointMenuPosition } from "./PointMenu";
 import { InsertLine, useTabReorder } from "./useTabReorder";
@@ -31,6 +33,8 @@ interface Onglet {
   is_private?: number;
   /** Le mode Tâche, dont les cartes portent un numéro. */
   show_card_numbers?: number;
+  /** Le mode Accès, dont chaque catégorie a sa structure : « Hérité » pour le compte. */
+  inherited?: boolean;
 }
 
 // Les tableaux d'un mode, en onglets. Sert au mode Tâche, au mode Projet et au
@@ -48,7 +52,8 @@ interface BoardTabsProps {
   boards: Onglet[];
   value: string | null;
   onChange: (value: string | null) => void;
-  onAdd: () => void;
+  /** Ajouter un onglet. Sans lui — sans le droit d'ajouter —, pas de « + ». */
+  onAdd?: () => void;
   /**
    * L'onglet visé par le clic droit, qui n'est pas forcément l'onglet ouvert.
    * Sans lui, « Modifier » renomme l'onglet sur place.
@@ -59,7 +64,8 @@ interface BoardTabsProps {
    * fait rien de plus qu'un clic.
    */
   onRename?: (id: number, name: string) => void | Promise<void>;
-  onDelete: (id: number) => void | Promise<void>;
+  /** Sans lui — sans le droit de supprimer —, le menu n'en propose pas. */
+  onDelete?: (id: number) => void | Promise<void>;
   /**
    * Verrouiller ou déverrouiller l'onglet visé, sans passer par son tiroir.
    * Sans lui, le menu n'en propose pas : tous les modes n'ont pas de verrou.
@@ -95,6 +101,16 @@ interface BoardTabsProps {
    * ni déplacement. Sans lui, le menu n'en propose pas.
    */
   sectionsLock?: { locked: boolean; onToggle: () => void | Promise<void> };
+  /**
+   * « Hérité » : l'onglet visé montre la structure partagée — sections et
+   * widgets —, ou la copie propre au compte. « of » le dit pour un onglet
+   * (en Projet et Tâche, le même pour tous : les sections y sont communes).
+   * Le décocher se confirme. Sans lui, le menu n'en propose pas.
+   */
+  inheritance?: {
+    of: (onglet: Onglet) => boolean;
+    onToggle: (id: number) => void | Promise<void>;
+  };
   /** La société et le compte, que ModeBar pose au bout de la rangée. */
   account: AccountSlot;
 }
@@ -118,12 +134,23 @@ export default function BoardTabs({
   deleteWarning,
   deleteTitle = "Supprimer le tableau",
   sectionsLock,
+  inheritance,
   account,
 }: BoardTabsProps) {
   // Le menu contextuel ouvert, et l'onglet qu'il vise.
   const [menu, setMenu] = useState<{ onglet: Onglet; position: PointMenuPosition } | null>(null);
   // L'onglet dont on confirme la suppression.
   const [aSupprimer, setASupprimer] = useState<Onglet | null>(null);
+  // L'onglet privé qu'on s'apprête à ouvrir à tous : ce geste se confirme.
+  const [aOuvrir, setAOuvrir] = useState<Onglet | null>(null);
+  // L'onglet dont on s'apprête à basculer « Hérité », et l'état qu'on quitte :
+  // ce geste se confirme dans les deux sens. L'état reste posé à la
+  // fermeture : le message ne change pas pendant que la fenêtre s'efface.
+  const [aBasculer, setABasculer] = useState<{
+    onglet: Onglet | null;
+    herite: boolean;
+  }>({ onglet: null, herite: true });
+  const fermerBascule = () => setABasculer((b) => ({ ...b, onglet: null }));
   const [plusSurvole, setPlusSurvole] = useState(false);
   // L'onglet en cours de renommage et le nom qu'on y tape.
   const [renomme, setRenomme] = useState<{ id: number; name: string } | null>(null);
@@ -168,8 +195,28 @@ export default function BoardTabs({
   const supprimer = async () => {
     const onglet = aSupprimer;
     setASupprimer(null);
-    if (onglet) await onDelete(onglet.id);
+    if (onglet && onDelete) await onDelete(onglet.id);
   };
+
+  // « Modifier » ne vaut que si l'on peut modifier l'onglet : sans tiroir ni
+  // renommage, il ne ferait rien.
+  const modifiable = Boolean(onEdit || onRename);
+  // Un menu sans rien dedans ne s'ouvre pas : c'est le cas de qui ne fait que
+  // lire.
+  const menuUtile =
+    modifiable ||
+    Boolean(
+      onDelete ||
+        onManageCategories ||
+        onManageMilestones ||
+        onCopyCategories ||
+        onCopyLabels ||
+        onToggleCardNumbers ||
+        onTogglePrivate ||
+        onToggleLock ||
+        sectionsLock ||
+        inheritance,
+    );
 
   return (
     <>
@@ -180,7 +227,9 @@ export default function BoardTabs({
             <Tabs.Tab
               value={String(board.id)}
               {...tabProps(board.id, index, tabStyle(value === String(board.id)))}
-              onContextMenu={(e) => setMenu({ onglet: board, position: positionDuMenu(e) })}
+              onContextMenu={(e) => {
+                if (menuUtile) setMenu({ onglet: board, position: positionDuMenu(e) });
+              }}
               onDoubleClick={() => ouvrirRenommage(board)}
             >
               {renomme?.id === board.id ? (
@@ -237,33 +286,37 @@ export default function BoardTabs({
 
         {/* Au bout du dernier onglet : en ajouter un. Le vert des autres
             gestes « ajouter », un ton plus foncé au survol (AddButton). */}
-        <ActionIcon
-          variant="transparent"
-          size="sm"
-          aria-label="Ajouter"
-          onClick={onAdd}
-          onMouseEnter={() => setPlusSurvole(true)}
-          onMouseLeave={() => setPlusSurvole(false)}
-          ml={4}
-          style={{
-            alignSelf: "center",
-            color: plusSurvole ? ADD_ACTION.hover : ADD_ACTION.color,
-          }}
-        >
-          <IconPlus size={16} />
-        </ActionIcon>
+        {onAdd && (
+          <ActionIcon
+            variant="transparent"
+            size="sm"
+            aria-label="Ajouter"
+            onClick={onAdd}
+            onMouseEnter={() => setPlusSurvole(true)}
+            onMouseLeave={() => setPlusSurvole(false)}
+            ml={4}
+            style={{
+              alignSelf: "center",
+              color: plusSurvole ? ADD_ACTION.hover : ADD_ACTION.color,
+            }}
+          >
+            <IconPlus size={16} />
+          </ActionIcon>
+        )}
       </ModeBar>
 
       {menu && (
         <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          <Menu.Item
-            leftSection={<IconPencil size={16} />}
-            onClick={() =>
-              onEdit ? onEdit(menu.onglet.id) : ouvrirRenommage(menu.onglet)
-            }
-          >
-            Modifier
-          </Menu.Item>
+          {modifiable && (
+            <Menu.Item
+              leftSection={<IconPencil size={16} />}
+              onClick={() =>
+                onEdit ? onEdit(menu.onglet.id) : ouvrirRenommage(menu.onglet)
+              }
+            >
+              Modifier
+            </Menu.Item>
+          )}
           {onManageCategories && (
             <Menu.Item
               leftSection={<IconTag size={16} />}
@@ -297,7 +350,11 @@ export default function BoardTabs({
           )}
 
           {/* Les réglages de l'onglet, chacun coché quand il est actif. */}
-          {(onToggleCardNumbers || onTogglePrivate || onToggleLock || sectionsLock) && (
+          {(onToggleCardNumbers ||
+            onTogglePrivate ||
+            onToggleLock ||
+            sectionsLock ||
+            inheritance) && (
             <>
               <Menu.Divider />
               <Menu.Label>Affichage</Menu.Label>
@@ -316,11 +373,33 @@ export default function BoardTabs({
             <Menu.Item
               leftSection={<IconEyeOff size={16} />}
               rightSection={menu.onglet.is_private ? <IconCheck size={14} /> : null}
-              onClick={() => onTogglePrivate(menu.onglet.id)}
+              // Le rendre privé se fait aussitôt ; l'ouvrir à tous se confirme.
+              onClick={() =>
+                menu.onglet.is_private
+                  ? setAOuvrir(menu.onglet)
+                  : onTogglePrivate(menu.onglet.id)
+              }
             >
               Privé
             </Menu.Item>
           )}
+          {inheritance &&
+            (() => {
+              // Un onglet privé n'est qu'à son auteur : il n'y a rien à
+              // partager, ni donc à hériter.
+              const prive = Boolean(menu.onglet.is_private);
+              const herite = !prive && inheritance.of(menu.onglet);
+              return (
+                <Menu.Item
+                  leftSection={<IconHierarchy2 size={16} />}
+                  rightSection={herite ? <IconCheck size={14} /> : null}
+                  disabled={prive}
+                  onClick={() => setABasculer({ onglet: menu.onglet, herite })}
+                >
+                  Hérité
+                </Menu.Item>
+              );
+            })()}
           {/* Un seul verrou pour l'onglet et les sections (qui valent pour
               tous les onglets) : verrouillé si l'un l'est, et le geste met
               les deux dans le même état. */}
@@ -349,16 +428,51 @@ export default function BoardTabs({
               );
             })()}
 
-          <Menu.Divider />
-          <Menu.Item
-            color={RED}
-            leftSection={<IconTrash size={16} />}
-            onClick={() => setASupprimer(menu.onglet)}
-          >
-            Supprimer
-          </Menu.Item>
+          {onDelete && (
+            <>
+              <Menu.Divider />
+              <Menu.Item
+                color={RED}
+                leftSection={<IconTrash size={16} />}
+                onClick={() => setASupprimer(menu.onglet)}
+              >
+                Supprimer
+              </Menu.Item>
+            </>
+          )}
         </PointMenu>
       )}
+
+      <HeriteConfirmModal
+        opened={aBasculer.onglet !== null}
+        inherited={aBasculer.herite}
+        onClose={fermerBascule}
+        onConfirm={() => {
+          const onglet = aBasculer.onglet;
+          fermerBascule();
+          if (onglet && inheritance) void inheritance.onToggle(onglet.id);
+        }}
+      />
+
+      <DeleteConfirmModal
+        opened={aOuvrir !== null}
+        onClose={() => setAOuvrir(null)}
+        onConfirm={() => {
+          const onglet = aOuvrir;
+          setAOuvrir(null);
+          if (onglet && onTogglePrivate) void onTogglePrivate(onglet.id);
+        }}
+        title="Retirer « Privé »"
+        message={
+          <>
+            « {aOuvrir?.name} » ne sera plus privé : tous ceux qui ont accès à ce mode
+            pourront le voir.
+          </>
+        }
+        confirmLabel="Valider"
+        cancelLabel="Annuler"
+        confirmColor="teal"
+      />
 
       <DeleteConfirmModal
         opened={aSupprimer !== null}

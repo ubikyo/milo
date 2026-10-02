@@ -22,6 +22,12 @@
   overflow-y: auto;
 }
 
+/* Un champ qui montre d'emblée plusieurs lignes, même vide : le modèle d'une
+   réponse par défaut (« --milo-rich-min-lines », posé par RichTextField). */
+.minLines {
+  min-height: calc(var(--milo-rich-min-lines) * var(--milo-rich-line) + 2 * var(--milo-rich-padding));
+}
+
 /* Entrée ajoute une ligne, pas un paragraphe détaché : Mantine écarte les
    paragraphes de 7px, ce qui ferait déborder la cinquième ligne du compte
    ci-dessus. Le sélecteur passe par le contenu tiptap pour l'emporter sur le
@@ -33,9 +39,9 @@
 /* Une description qui porte des images a besoin de plus d'air que cinq
    lignes : la zone monte alors à quinze, toujours en interlignes pour suivre
    le thème. En deçà, rien ne change — une description de texte garde la
-   hauteur d'un champ. */
+   hauteur d'un champ. Un champ qui en montre déjà plus les garde. */
 .content:has(img) {
-  max-height: calc(15 * var(--milo-rich-line) + 2 * var(--milo-rich-padding));
+  max-height: calc(max(15, var(--milo-rich-lines, 5)) * var(--milo-rich-line) + 2 * var(--milo-rich-padding));
 }
 
 /* Une image de la description, et le bouton qui la retire. L'enveloppe est

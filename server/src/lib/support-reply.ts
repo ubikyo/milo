@@ -21,6 +21,15 @@ const boiteDe = selection<{ support_email: string }>(
 );
 
 /**
+ * La boîte d'où répondre à une demande, ou rien : une demande saisie dans
+ * Milo n'a personne à qui répondre, et sans Entra rien ne part.
+ */
+export const boiteDeReponse = (demande: SupportRequestRow): string => {
+  if (!demande.sender_email || !demande.mail_id || !entraConfiguree()) return "";
+  return boiteDe.get(demande.company_id)?.support_email ?? "";
+};
+
+/**
  * Envoie — ou simule — la réponse, et note sur le message ce qu'il en est
  * advenu. Ne lève jamais : le message est enregistré quoi qu'il arrive, c'est
  * son état qui dit si l'e-mail est parti.
@@ -32,10 +41,8 @@ export const repondreParEmail = async (
   copies: { cc: string[]; bcc: string[] } = { cc: [], bcc: [] },
   fichiers: TicketFileRow[] = [],
 ): Promise<SupportMailStatus> => {
-  // Une demande saisie dans Milo n'a personne à qui répondre.
-  if (!demande.sender_email || !demande.mail_id) return "";
-  const boite = boiteDe.get(demande.company_id)?.support_email ?? "";
-  if (!boite || !entraConfiguree()) return "";
+  const boite = boiteDeReponse(demande);
+  if (!boite) return "";
 
   const noter = (statut: SupportMailStatus) => {
     supportComments.setMailStatus.run(statut, demande.sender_email, commentId);

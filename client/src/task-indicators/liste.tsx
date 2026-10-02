@@ -9,9 +9,11 @@ import type { TaskIndicatorWidget } from "./types";
 
 export const listeTachesIndicator: TaskIndicatorWidget = {
   type: "list",
+  kind: "task",
   label: "Listes des tâches",
   icon: IconLayoutKanban,
   defaultConfig: {},
   ownClicks: true,
+  fill: true,
   Display: () => <TableauDesTachesWidget />,
 };

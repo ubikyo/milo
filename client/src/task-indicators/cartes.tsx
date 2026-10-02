@@ -46,7 +46,8 @@ const typeDe = (config: unknown) =>
 
 export const cartesIndicator: TaskIndicatorWidget = {
   type: "cards",
-  label: "Cartes",
+  kind: "task",
+  label: "Indicateur",
   icon: IconCards,
   defaultConfig: { [NOM]: "", [TYPE]: TYPE_PAR_DEFAUT.value },
 

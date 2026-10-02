@@ -9,6 +9,7 @@ import { touch } from "../middleware/events.js";
 import { COMMENTAIRE_SYSTEME, withAuthor } from "../repositories/comments.js";
 import { comments } from "../repositories/project-comments.js";
 import { projects } from "../repositories/projects.js";
+import { projetPour } from "./projects.js";
 
 const COMMENTAIRE_INTROUVABLE = "Commentaire introuvable";
 
@@ -20,7 +21,8 @@ projectCommentRoutes.use(touch("projects"));
 projectCommentRoutes.post("/", (req, res) => {
   const text = requireText(req.body.text, "text est requis");
   const { id } = req.params as { id?: string };
-  const project = orNotFound(projects.exists.get(id), "Projet introuvable");
+  // Écrire dans le fil d'un projet, c'est le modifier.
+  const project = projetPour(req, id, "update");
 
   const timestamp = now();
   const { lastInsertRowid } = comments.create.run(
@@ -54,6 +56,7 @@ commentRoutes.use(touch("projects"));
 commentRoutes.put("/:id", (req, res) => {
   const comment = orNotFound(comments.raw.get(req.params.id), COMMENTAIRE_INTROUVABLE);
   if (comment.system) forbidden(COMMENTAIRE_SYSTEME);
+  projetPour(req, comment.project_id, "update");
   const text = requireText(req.body.text, "text est requis");
 
   // Un texte identique n'est pas une modification : ni la date du commentaire
@@ -80,6 +83,7 @@ commentRoutes.put("/:id", (req, res) => {
 commentRoutes.delete("/:id", (req, res) => {
   const comment = orNotFound(comments.raw.get(req.params.id), COMMENTAIRE_INTROUVABLE);
   if (comment.system) forbidden(COMMENTAIRE_SYSTEME);
+  projetPour(req, comment.project_id, "update");
 
   comments.remove.run(comment.id);
   projects.touch.run(now(), comment.project_id);

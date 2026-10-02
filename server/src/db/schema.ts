@@ -62,6 +62,20 @@ export const SCHEMA = `
     PRIMARY KEY (principal_type, principal_id, company_id)
   );
 
+  -- Les permissions d'un utilisateur ou d'un groupe Entra pour l'application,
+  -- quelle que soit la société : le Paramétrage ('' : aucun, 'view', 'update')
+  -- et les modes qui lui sont ouverts, en JSON — ["projects", "tasks"]. Sans
+  -- ligne, tous les modes et pas de Paramétrage.
+  CREATE TABLE IF NOT EXISTS principal_permissions (
+    principal_type TEXT NOT NULL CHECK (principal_type IN ('user', 'group')),
+    principal_id TEXT NOT NULL,
+    principal_name TEXT NOT NULL DEFAULT '',
+    principal_email TEXT NOT NULL DEFAULT '',
+    settings TEXT NOT NULL DEFAULT '' CHECK (settings IN ('', 'view', 'update')),
+    modes TEXT NOT NULL DEFAULT '[]',
+    PRIMARY KEY (principal_type, principal_id)
+  );
+
   -- Les types de jalons (Commande, Développement…), réglés une fois pour toute
   -- l'application : un projet en choisit un, qui pose les marques et les
   -- couleurs de son curseur d'avancement. Les jalons sont un tableau JSON de
@@ -386,6 +400,9 @@ export const SCHEMA = `
     -- ne sert pas.
     gap INTEGER NOT NULL DEFAULT 20,
     position INTEGER NOT NULL DEFAULT 0,
+    -- Nul : la structure publique de la catégorie, partagée par tous ceux qui
+    -- l'héritent. Sinon, la structure propre à ce compte (personal_layouts).
+    owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     created_at TEXT NOT NULL
   );
 
@@ -444,6 +461,30 @@ export const SCHEMA = `
     created_at TEXT NOT NULL
   );
 
+  -- Les réponses par défaut du Support, réglées au Paramétrage : un intitulé,
+  -- et son modèle HTML (l'éditeur). « text », la version texte d'autrefois,
+  -- ne sert plus.
+  CREATE TABLE IF NOT EXISTS support_replies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    html TEXT NOT NULL DEFAULT '',
+    text TEXT NOT NULL DEFAULT '',
+    -- L'évènement qui l'envoie d'office à l'expéditeur : « new », « closed »…
+    -- Vide : aucun. Un évènement n'appartient qu'à une réponse.
+    event TEXT NOT NULL DEFAULT ''
+  );
+
+  -- Les contenus par défaut du Support : ce qui se pose d'office dans
+  -- l'éditeur d'une réponse de l'équipe — une signature… L'évènement dit
+  -- quand (« all », « new »…) ; vide : jamais. Un évènement n'appartient
+  -- qu'à un contenu.
+  CREATE TABLE IF NOT EXISTS support_contents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    html TEXT NOT NULL DEFAULT '',
+    event TEXT NOT NULL DEFAULT ''
+  );
+
   CREATE TABLE IF NOT EXISTS support_request_labels (
     request_id INTEGER NOT NULL REFERENCES support_requests(id) ON DELETE CASCADE,
     label_id INTEGER NOT NULL REFERENCES support_labels(id) ON DELETE CASCADE,
@@ -486,6 +527,9 @@ export const SCHEMA = `
     -- Les fichiers de l'e-mail — images intégrées et pièces jointes —, en
     -- JSON. Rangés dans le dossier des tickets (lib/ticket-files.ts).
     attachments TEXT NOT NULL DEFAULT '[]',
+    -- Une réponse par défaut partie d'office, signée Milo : l'évènement qui
+    -- l'a envoyée (« new », « closed »…). Vide : un message écrit.
+    auto_event TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -504,7 +548,34 @@ export const SCHEMA = `
     -- (shared, SECTIONS_GAP_DEFAUT).
     gap INTEGER NOT NULL DEFAULT 50,
     position INTEGER NOT NULL DEFAULT 0,
+    -- Nul : la structure publique du panneau ; sinon celle de ce compte,
+    -- comme une section d'accès.
+    owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     created_at TEXT NOT NULL
+  );
+
+  -- Les structures qu'un compte n'hérite plus : « Hérité » décoché, il voit
+  -- et modifie ses propres sections et éléments (owner_id) au lieu des
+  -- publics. « scope » nomme le panneau — « support », « assets »,
+  -- « projects », « tasks » — ou la catégorie d'accès, « access:<id> ».
+  -- L'ordre des onglets, propre à chaque compte : chacun range les siens sans
+  -- toucher ceux des autres. « scope » nomme la rangée — « modes » (le
+  -- sélecteur du bas), « support », « assets », « project-boards »,
+  -- « access-categories », ou « boards:<société> » pour les tableaux de
+  -- tâches d'une société. « ids » est la liste rangée, en JSON (chaînes).
+  -- Sans ligne, la rangée garde son ordre commun.
+  CREATE TABLE IF NOT EXISTS user_tab_orders (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    scope TEXT NOT NULL,
+    ids TEXT NOT NULL DEFAULT '[]',
+    PRIMARY KEY (user_id, scope)
+  );
+
+  CREATE TABLE IF NOT EXISTS personal_layouts (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    scope TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, scope)
   );
 
   -- Les indicateurs du panneau des statistiques du mode Support, posés par
@@ -627,7 +698,7 @@ export const INDEXES = `
 
   -- Les sections se lisent par catégorie, dans l'ordre des colonnes.
   CREATE INDEX IF NOT EXISTS idx_access_sections_category
-    ON access_sections(category_id, position, id);
+    ON access_sections(category_id, owner_id, position, id);
 
   -- Les éléments se lisent par section, dans l'ordre où ils y sont posés.
   CREATE INDEX IF NOT EXISTS idx_access_blocks_section
@@ -636,7 +707,7 @@ export const INDEXES = `
   -- Les sections d'un panneau des statistiques, dans l'ordre des colonnes, et
   -- les indicateurs par section.
   CREATE INDEX IF NOT EXISTS idx_indicator_sections_panel
-    ON indicator_sections(panel, position, id);
+    ON indicator_sections(panel, owner_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_support_indicators_section
     ON support_indicators(section_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_asset_indicators_section

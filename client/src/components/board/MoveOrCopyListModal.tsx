@@ -1,6 +1,7 @@
 import { Button, Group, Modal, Select, Stack, Text, TextInput } from "@mantine/core";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
+import { useDroits } from "../../lib/droits";
 import { modalHeaderStyles } from "../../themes/modals";
 import ErrorAlert from "../ui/ErrorAlert";
 import type { Board, Company, Id, TaskList } from "@milo/shared";
@@ -43,6 +44,7 @@ export default function MoveOrCopyListModal({
   companyId,
   onDone,
 }: MoveOrCopyListModalProps) {
+  const peut = useDroits();
   const [companies, setCompanies] = useState<Company[] | null>(null);
   const [societe, setSociete] = useState<string | null>(null);
   /** Les tableaux de la société retenue ; « null » tant qu'on les lit. */
@@ -112,7 +114,8 @@ export default function MoveOrCopyListModal({
     .filter((board) => copie || board.id !== list?.board_id)
     .map((board) => ({ value: String(board.id), label: board.name }));
 
-  const companyOptions = (companies ?? []).map((c) => ({
+  // Seules les sociétés où l'on peut ajouter des tâches accueillent.
+  const companyOptions = (companies ?? []).filter((c) => peut("tasks", "create", c.id)).map((c) => ({
     value: String(c.id),
     label: c.name,
   }));

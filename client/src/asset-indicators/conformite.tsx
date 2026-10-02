@@ -59,6 +59,7 @@ const couleur = (part: number): string => (part >= 90 ? "teal" : part >= 70 ? "o
 
 export const conformiteIndicator: AssetIndicatorWidget = {
   type: "compliance",
+  kind: "asset",
   label: LIBELLE,
   icon: IconShieldCheck,
   defaultConfig: { [NOM]: "", ...Object.fromEntries(REGLES.map((r) => [r.cle, true])) },

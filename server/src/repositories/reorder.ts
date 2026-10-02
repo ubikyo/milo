@@ -1,15 +1,12 @@
-// Le rangement des onglets d'un mode : les tableaux du mode Tâche, ceux du
-// mode Projet, les catégories du mode Accès.
+// Le rangement commun d'une table : les étiquettes du support. Les onglets
+// — tableaux, catégories d'accès — se rangent, eux, compte par compte
+// (repositories/tab-orders.ts) ; « ordreRecu » leur sert encore à vérifier
+// l'ordre reçu.
 //
-// L'ordre est global — il vaut pour tout le monde, comme celui des listes d'un
-// tableau —, mais chacun ne voit pas la même chose : un tableau privé
-// n'apparaît qu'à son auteur. Celui qui range ne peut donc nommer que ce qu'il
-// voit, et le rangement ne doit pas pour autant déplacer le reste.
-//
-// D'où la règle : les onglets rangés reprennent, dans leur nouvel ordre, les
-// places qu'ils occupaient ensemble ; ceux que la personne ne voit pas gardent
-// la leur. Un tableau privé posé entre le deuxième et le troisième onglet y
-// reste, quoi que son auteur fasse des autres.
+// L'ordre commun vaut pour tout le monde, mais chacun ne voit pas forcément la
+// même chose. D'où la règle : les lignes rangées reprennent, dans leur nouvel
+// ordre, les places qu'elles occupaient ensemble ; celles que la personne ne
+// voit pas gardent la leur.
 
 import { mutation, selection, transaction } from "../db/query.js";
 import type { IdRow } from "../db/rows.js";
@@ -46,15 +43,6 @@ const rangement = (table: string, scope?: string) => {
     final.forEach((id, place) => poser.run(place, id));
   });
 };
-
-/** Les tableaux du mode Tâche se rangent société par société. */
-export const rangerBoards = rangement("boards", "company_id");
-
-/** Les tableaux du mode Projet ne dépendent d'aucune société : un seul ordre. */
-export const rangerProjectBoards = rangement("project_boards");
-
-/** Les catégories du mode Accès, de même : elles ne pendent à rien. */
-export const rangerAccessCategories = rangement("access_categories");
 
 /** Les étiquettes du support : communes à toutes les sociétés, un seul ordre. */
 export const rangerSupportLabels = rangement("support_labels");

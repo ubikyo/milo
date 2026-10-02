@@ -1,6 +1,6 @@
 // Le registre des widgets des sections du mode Projet. Un seul endroit les
-// connaît : la boîte de choix, le panneau et le tiroir y prennent ce qu'il
-// leur faut.
+// connaît : le tiroir des widgets, le panneau et celui des réglages y prennent
+// ce qu'il leur faut.
 
 import { acteursProjetsIndicator } from "./acteurs";
 import { categoriesIndicator } from "./categories";
@@ -8,14 +8,14 @@ import { etiquettesProjetsIndicator } from "./etiquettes";
 import { listeProjetsIndicator } from "./liste";
 import { progressionIndicator } from "./progression";
 import { projetsIndicator } from "./projets";
-import { titresDeSection } from "../widgets/titres-de-section";
+import { widgetsDAcces } from "../widgets/en-section";
 import type { ProjectIndicatorDisplayProps, ProjectIndicatorWidget } from "./types";
 import type { ProjectIndicatorType } from "@milo/shared";
 
-/** Dans l'ordre où la boîte de choix les présente. */
+/** Dans l'ordre où le tiroir des widgets les présente. */
 export const PROJECT_INDICATORS: ProjectIndicatorWidget[] = [
   listeProjetsIndicator,
-  ...titresDeSection<ProjectIndicatorType, ProjectIndicatorDisplayProps>(),
+  ...widgetsDAcces<ProjectIndicatorType, ProjectIndicatorDisplayProps>(),
   projetsIndicator,
   progressionIndicator,
   categoriesIndicator,

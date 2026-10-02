@@ -8,5 +8,4 @@ import { panneauIndicateurs } from "./indicators.js";
 export const projectIndicators = panneauIndicateurs<ProjectIndicatorType>(
   "project_indicators",
   "projects",
-  "project_indicators_locked",
 );

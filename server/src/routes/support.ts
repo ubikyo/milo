@@ -20,8 +20,15 @@ import {
 } from "../lib/ticket-files.js";
 import express, { Router } from "express";
 import type { Request } from "express";
-import { DEFAULT_SUPPORT_STATUS, isSupportStatus, isLabelColor, DEFAULT_LABEL_COLOR } from "@milo/shared";
-import type { Id, SupportStatus } from "@milo/shared";
+import {
+  DEFAULT_SUPPORT_STATUS,
+  SUPPORT_STATUSES,
+  isSupportStatus,
+  isLabelColor,
+  DEFAULT_LABEL_COLOR,
+  supportTicketRef,
+} from "@milo/shared";
+import type { Id, Right, SupportStatus } from "@milo/shared";
 import { selection, transaction } from "../db/query.js";
 import type { CompanyRow, SupportRequestRow, UserRow } from "../db/rows.js";
 import {
@@ -41,9 +48,22 @@ import {
   requireText,
   toIds,
 } from "../lib/http.js";
+import { exiger, peut } from "../lib/droits.js";
+import { personneDuCompte, personneExpediteur } from "../lib/support-variables.js";
 import { descriptionPropre } from "../lib/html.js";
+import {
+  cite,
+  consigner,
+  date,
+  ecarts,
+  fait,
+  liste,
+  messageModification,
+} from "../lib/historique.js";
+import type { Champ } from "../lib/historique.js";
 import { releverLesBoites } from "../lib/support-mail.js";
 import { repondreParEmail } from "../lib/support-reply.js";
+import { envoyerReponseAuto, evenementDuStatut } from "../lib/support-auto-reply.js";
 import { echeance, horodatage, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { COMMENTAIRE_SYSTEME, motDeCreation } from "../repositories/comments.js";
@@ -93,8 +113,23 @@ supportRequestRoutes.use(touch("support-requests"));
 /** La demande visée, si elle existe. */
 const demande = (id: unknown) => orNotFound(supportRequests.byId.get(id), DEMANDE_INTROUVABLE);
 
-/** Une demande a changé : ceux qui la suivent en sont prévenus. */
-const demandeModifiee = (req: Request, demandeId: Id, message: string): void => {
+/**
+ * La demande, si l'on voit le support de sa société — et qu'on y a `droit`
+ * quand on y écrit. Répondre, commenter, assigner, fermer : c'est la
+ * modifier.
+ */
+const demandePour = (req: Request, id: unknown, droit: Right = "view"): SupportRequestRow => {
+  const d = demande(id);
+  exiger(req, "support", "view", d.company_id, DEMANDE_INTROUVABLE);
+  if (droit !== "view") exiger(req, "support", droit, d.company_id);
+  return d;
+};
+
+/**
+ * Une demande a changé : ceux qui la suivent et ses acteurs en sont prévenus
+ * — sauf `sauf`, que l'assignation vient de prévenir.
+ */
+const demandeModifiee = (req: Request, demandeId: Id, message: string, sauf: Id[] = []): void => {
   const d = supportRequests.byId.get(demandeId);
   if (!d) return;
   notifier({
@@ -104,7 +139,24 @@ const demandeModifiee = (req: Request, demandeId: Id, message: string): void => 
     message,
     auteur: req.user,
     base: racine(req),
+    sauf,
   });
+};
+
+const libelleStatut = (valeur: string): string =>
+  SUPPORT_STATUSES.find((s) => s.value === valeur)?.label ?? valeur;
+
+/** Ce que le fil note d'une demande quand elle change (lib/historique.ts). */
+const photo = (demandeId: Id): Champ[] => {
+  const d = oneWithRelations(demande(demandeId));
+  return [
+    { libelle: "Société", valeur: cite(societes.get(d.company_id)?.name) },
+    { libelle: "Objet", valeur: cite(d.subject) },
+    { libelle: "Statut", valeur: libelleStatut(d.status) },
+    { libelle: "Échéance", valeur: date(d.due_date) },
+    { libelle: "Acteurs", valeur: liste(d.actors.map((a) => a.name)) },
+    { libelle: "Étiquettes", valeur: liste(d.labels.map((l) => l.name)) },
+  ];
 };
 
 /**
@@ -140,13 +192,15 @@ supportRequestRoutes.get("/", (req, res) => {
     !demande || demande === "all"
       ? supportRequests.all.all()
       : supportRequests.ofCompany.all(societe(demande).id);
-  res.json(withRelations(lignes));
+  // Les sociétés dont on ne voit pas le support sont écartées.
+  res.json(withRelations(lignes.filter((d) => peut(req, "support", "view", d.company_id))));
 });
 
 // La relève des boîtes de support, à la demande : le mode s'ouvre dessus, sans
 // attendre la prochaine relève périodique. Elle signale elle-même les demandes
 // créées ; une relève qui n'apporte rien ne fait rien relire aux clients.
-supportRequestRoutes.post("/sync", (_req, res, next) => {
+supportRequestRoutes.post("/sync", (req, res, next) => {
+  exiger(req, "support", "view");
   res.locals.touched?.clear();
   releverLesBoites()
     .then((created) => res.json({ created }))
@@ -158,18 +212,21 @@ supportRequestRoutes.post("/sync", (_req, res, next) => {
 // — supprimée par quelqu'un d'autre entre-temps — fait refuser le tout : on
 // n'agit pas sur une sélection qui n'est plus celle qu'on a vue.
 
-/** Les demandes cochées, toutes existantes, sans doublon. */
-const cochees = (valeur: unknown): SupportRequestRow[] => {
+/**
+ * Les demandes cochées, toutes existantes, sans doublon — et toutes dans une
+ * société où l'on a ce droit.
+ */
+const cochees = (req: Request, valeur: unknown, droit: Right): SupportRequestRow[] => {
   const ids = [...new Set(toIds(valeur))];
   if (ids.length === 0) badRequest("Aucune demande sélectionnée");
-  return ids.map((id) => demande(id));
+  return ids.map((id) => demandePour(req, id, droit));
 };
 
 // Fusionner : la plus récente reste et reçoit les échanges des autres, qui
 // sont fermées. Elles doivent appartenir à la même société — une demande ne
 // change pas de société en cachette.
 supportRequestRoutes.post("/merge", (req, res) => {
-  const demandes = cochees(req.body.ids);
+  const demandes = cochees(req, req.body.ids, "update");
   if (demandes.length < 2) badRequest("Sélectionnez au moins deux demandes à fusionner");
   if (new Set(demandes.map((d) => d.company_id)).size > 1) {
     badRequest("Seules des demandes d'une même société peuvent être fusionnées");
@@ -178,7 +235,23 @@ supportRequestRoutes.post("/merge", (req, res) => {
   const [garde, ...autres] = [...demandes].sort((a, b) =>
     a.created_at === b.created_at ? b.id - a.id : a.created_at < b.created_at ? 1 : -1,
   ) as [SupportRequestRow, ...SupportRequestRow[]];
+  const avant = new Map(demandes.map((d) => [d.id, photo(d.id)]));
   fusionnerDemandes(garde, autres, req.user.id, horodatage(now()));
+
+  // Chaque fil note la fusion, signé Milo : celle qui reste, ce qu'elle a
+  // reçu — les tickets absorbés, et l'objet, les acteurs, les étiquettes
+  // qu'ils lui apportent ; les autres, où elles sont parties.
+  const refs = autres.map((a) => supportTicketRef(a.number));
+  consigner("support", garde.id, req.user, [
+    fait("Fusion", `${refs.join(", ")} ${refs.length > 1 ? "fusionnées" : "fusionnée"} ici`),
+    ...ecarts(avant.get(garde.id)!, photo(garde.id)),
+  ]);
+  for (const autre of autres) {
+    consigner("support", autre.id, req.user, [
+      fait("Fusion", `fusionnée dans ${supportTicketRef(garde.number)}`),
+      ...ecarts(avant.get(autre.id)!, photo(autre.id)),
+    ]);
+  }
   demandeModifiee(
     req,
     garde.id,
@@ -194,12 +267,17 @@ supportRequestRoutes.post("/merge", (req, res) => {
 });
 
 supportRequestRoutes.post("/close", (req, res) => {
-  const demandes = cochees(req.body.ids);
+  const demandes = cochees(req, req.body.ids, "update");
   const note = `Fermée le ${horodatage(now())}`;
   transaction(() => {
     for (const d of demandes) fermerDemande(d, req.user.id, note);
   })();
   for (const d of demandes) demandeModifiee(req, d.id, "a fermé la demande");
+  // L'expéditeur de chaque demande qui vient d'être fermée en est prévenu,
+  // si le Paramétrage lui a donné une réponse (« Demande fermée »).
+  for (const d of demandes) {
+    if (d.status !== "closed") void envoyerReponseAuto(d.id, "closed");
+  }
   res.status(204).end();
 });
 
@@ -210,7 +288,7 @@ const fichiersDeLaDemande = (demandeId: Id): string[] =>
     .flatMap(({ attachments }) => fichiersDe(attachments).map((f) => f.file));
 
 supportRequestRoutes.post("/delete", (req, res) => {
-  const demandes = cochees(req.body.ids);
+  const demandes = cochees(req, req.body.ids, "delete");
   const fichiers = demandes.flatMap((d) => fichiersDeLaDemande(d.id));
   const annoncer = annoncerSuppressions(req, demandes);
   // Leurs étiquettes et leur fil partent avec elles, par clé étrangère.
@@ -225,12 +303,13 @@ supportRequestRoutes.post("/delete", (req, res) => {
 // Assigner : les comptes choisis s'ajoutent aux acteurs, et ceux qui arrivent
 // sur une demande en sont prévenus, à l'écran et par e-mail.
 supportRequestRoutes.post("/assign", (req, res) => {
-  const demandes = cochees(req.body.ids);
+  const demandes = cochees(req, req.body.ids, "update");
   const comptes = [...new Set(toIds(req.body.actor_ids))]
     .map((id) => users.byId.get(id))
     .filter((u): u is UserRow => Boolean(u && !u.system));
   if (comptes.length === 0) badRequest("Choisissez au moins un acteur");
 
+  const avant = new Map(demandes.map((d) => [d.id, photo(d.id)]));
   const arrivees = assignerDemandes(demandes, comptes.map((u) => u.id));
   const parId = new Map(comptes.map((u) => [u.id, u]));
   notifierAssignations(
@@ -244,13 +323,17 @@ supportRequestRoutes.post("/assign", (req, res) => {
       })),
   );
   for (const d of demandes) {
-    if (arrivees.has(d.id)) demandeModifiee(req, d.id, "a assigné la demande");
+    const nouveaux = arrivees.get(d.id);
+    if (!nouveaux) continue;
+    consigner("support", d.id, req.user, ecarts(avant.get(d.id)!, photo(d.id)));
+    demandeModifiee(req, d.id, "a assigné la demande", nouveaux);
   }
   res.status(204).end();
 });
 
 supportRequestRoutes.post("/", (req, res) => {
   const company = societe(req.body.company_id);
+  exiger(req, "support", "create", company.id);
 
   // Lus avant de prendre un numéro : une saisie refusée n'en consomme pas.
   const status = statut(req.body.status, DEFAULT_SUPPORT_STATUS);
@@ -288,20 +371,34 @@ supportRequestRoutes.post("/", (req, res) => {
   res.status(201).json(supportRequestDetail(creee));
 });
 
+// Les personnes que citent les modèles — le compte connecté, et l'expéditeur
+// de la demande s'il y en a une : leurs fiches Entra. La fiche d'une réponse
+// s'en sert pour poser ses contenus par défaut ; la demande, elle les connaît.
+supportRequestRoutes.get("/variables", (req, res, next) => {
+  const id = req.query["request"];
+  const existing = id ? demandePour(req, id) : null;
+  Promise.all([personneDuCompte(req.user), existing ? personneExpediteur(existing) : null])
+    .then(([utilisateur, expediteur]) => res.json({ utilisateur, expediteur }))
+    .catch(next);
+});
+
 supportRequestRoutes.get("/:id", (req, res) => {
-  res.json(supportRequestDetail(demande(req.params.id)));
+  res.json(supportRequestDetail(demandePour(req, req.params.id)));
 });
 
 // Chaque champ absent du corps reste tel quel. La société, elle, est
 // modifiable : une demande ouverte sous « toutes les sociétés » part chez la
 // première de la liste, et c'est ici qu'on la remet où il faut.
-supportRequestRoutes.put("/:id", (req, res) => {
-  const existing = demande(req.params.id);
+supportRequestRoutes.put("/:id", (req, res, next) => {
+  const existing = demandePour(req, req.params.id, "update");
   const avant = acteursActuels(existing.id);
+  const photoAvant = photo(existing.id);
   const companyId =
     req.body.company_id === undefined
       ? existing.company_id
       : societe(req.body.company_id).id;
+  // Passer une demande à une autre société, c'est l'y ajouter.
+  if (companyId !== existing.company_id) exiger(req, "support", "create", companyId);
 
   supportRequests.update.run(
     companyId,
@@ -312,9 +409,10 @@ supportRequestRoutes.put("/:id", (req, res) => {
     existing.id,
   );
 
+  let assignes: Id[] = [];
   if (Array.isArray(req.body.actor_ids)) {
     replaceSupportActors(existing.id, toIds(req.body.actor_ids));
-    prevenirNouveauxActeurs(req, existing.id, avant);
+    assignes = prevenirNouveauxActeurs(req, existing.id, avant);
   }
   // Les étiquettes sont communes : une demande qui change de société les
   // garde.
@@ -322,14 +420,31 @@ supportRequestRoutes.put("/:id", (req, res) => {
     replaceSupportLabels(existing.id, toIds(req.body.label_ids));
   }
 
-  demandeModifiee(req, existing.id, "a modifié la demande");
-  res.json(supportRequestDetail(demande(existing.id)));
+  // Ce qui a bougé se note dans les commentaires de l'équipe, signé Milo.
+  // Rien n'a bougé : rien ne part.
+  const lignes = ecarts(photoAvant, photo(existing.id));
+  if (lignes.length) {
+    consigner("support", existing.id, req.user, lignes);
+    demandeModifiee(req, existing.id, messageModification(lignes), assignes);
+  }
+
+  // Un nouveau statut envoie à l'expéditeur la réponse par défaut qui lui
+  // correspond, s'il y en a une : la fiche se relit une fois partie.
+  const apres = demande(existing.id);
+  const evenement = apres.status !== existing.status ? evenementDuStatut(apres.status) : null;
+  if (!evenement) {
+    res.json(supportRequestDetail(apres));
+    return;
+  }
+  envoyerReponseAuto(existing.id, evenement)
+    .then(() => res.json(supportRequestDetail(demande(existing.id))))
+    .catch(next);
 });
 
 supportRequestRoutes.delete("/:id", (req, res) => {
   // Ses étiquettes et son fil partent avec elle, par clé étrangère ; les
   // fichiers de ses e-mails, eux, sont effacés du disque.
-  const existante = demande(req.params.id);
+  const existante = demandePour(req, req.params.id, "delete");
   const fichiers = fichiersDeLaDemande(existante.id);
   const annoncer = annoncerSuppressions(req, [existante]);
   supportRequests.remove.run(existante.id);
@@ -365,22 +480,24 @@ const messageRecu = (valeur: unknown): string => {
 
 /**
  * Prévient ceux qui viennent d'arriver parmi les acteurs d'une demande, par le
- * geste de quelqu'un d'autre. S'ajouter soi-même ne prévient personne.
+ * geste de quelqu'un d'autre. S'ajouter soi-même ne prévient personne. Rend
+ * les comptes prévenus.
  */
 const prevenirNouveauxActeurs = (
   req: Request,
   demandeId: Id,
   avant: Set<Id>,
-): void => {
+): Id[] => {
   const apres = demande(demandeId);
   const nouveaux = oneWithRelations(apres)
     .actors.filter((a) => !avant.has(a.id) && a.id !== req.user.id)
     .map((a) => users.byId.get(a.id))
     .filter((u): u is UserRow => Boolean(u));
-  if (!nouveaux.length) return;
+  if (!nouveaux.length) return [];
   notifierAssignations([
     { demande: apres, destinataires: nouveaux, auteur: req.user, base: racine(req) },
   ]);
+  return nouveaux.map((u) => u.id);
 };
 
 const acteursActuels = (demandeId: Id): Set<Id> =>
@@ -394,7 +511,7 @@ const acteursActuels = (demandeId: Id): Set<Id> =>
 const corpsFichier = express.raw({ type: () => true, limit: TAILLE_MAX_TICKET });
 
 supportRequestRoutes.post("/:id/files", corpsFichier, (req, res) => {
-  demande(req.params.id);
+  demandePour(req, req.params.id, "update");
   const contenu = req.body as unknown;
   if (!Buffer.isBuffer(contenu) || contenu.length === 0) badRequest("Le fichier est vide");
   const name = String(req.query["name"] ?? "").trim() || "piece-jointe";
@@ -404,7 +521,7 @@ supportRequestRoutes.post("/:id/files", corpsFichier, (req, res) => {
 });
 
 supportRequestRoutes.post("/:id/comments", (req, res, next) => {
-  const existing = demande(req.params.id);
+  const existing = demandePour(req, req.params.id, "update");
 
   // Un commentaire interne : du texte simple, entre membres de l'équipe,
   // comme ceux des cartes et des projets. Il ne part pas par e-mail.
@@ -466,7 +583,11 @@ supportRequestRoutes.post("/:id/comments", (req, res, next) => {
     existing.sender_email ? "a répondu par e-mail" : "a ajouté un message",
   );
 
+  // La réponse de l'équipe d'abord, puis celle que le nouveau statut appelle :
+  // l'expéditeur les reçoit dans cet ordre.
+  const evenement = statut && statut !== existing.status ? evenementDuStatut(statut) : null;
   repondreParEmail(existing, lastInsertRowid as Id, text, copies, fichiers!)
+    .then(() => (evenement ? envoyerReponseAuto(existing.id, evenement) : undefined))
     .then(() =>
       res.status(201).json(supportCommentOf(supportComments.byId.get(lastInsertRowid)!)),
     )
@@ -481,6 +602,7 @@ supportCommentRoutes.use(touch("support-requests"));
 supportCommentRoutes.put("/:id", (req, res) => {
   const comment = orNotFound(supportComments.byId.get(req.params.id), COMMENTAIRE_INTROUVABLE);
   if (comment.system) forbidden(COMMENTAIRE_SYSTEME);
+  demandePour(req, comment.request_id, "update");
   // Chaque fil garde sa forme : texte simple pour un commentaire interne,
   // HTML nettoyé pour un échange.
   const text = comment.internal
@@ -506,6 +628,7 @@ supportCommentRoutes.put("/:id", (req, res) => {
 supportCommentRoutes.delete("/:id", (req, res) => {
   const comment = orNotFound(supportComments.byId.get(req.params.id), COMMENTAIRE_INTROUVABLE);
   if (comment.system) forbidden(COMMENTAIRE_SYSTEME);
+  demandePour(req, comment.request_id, "update");
 
   supportComments.remove.run(comment.id);
   const parent = supportRequests.byId.get(comment.request_id);
@@ -539,11 +662,16 @@ export const supportLabelRoutes = Router();
 
 supportLabelRoutes.use(touch("support-labels", "support-requests"));
 
-supportLabelRoutes.get("/", (_req, res) => {
+// Communes à toutes les sociétés, elles suivent les droits du support dans
+// n'importe laquelle.
+
+supportLabelRoutes.get("/", (req, res) => {
+  if (!peut(req, "support", "view")) return void res.json([]);
   res.json(supportLabels.all.all());
 });
 
 supportLabelRoutes.post("/", (req, res) => {
+  exiger(req, "support", "create");
   const name = requireText(req.body.name, "Le nom de l'étiquette est requis");
   // Communes à toutes les sociétés : deux du même nom ne se distingueraient
   // plus dans une liste.
@@ -561,6 +689,7 @@ supportLabelRoutes.post("/", (req, res) => {
 // « /:id », sinon « reorder » serait pris pour un identifiant. Toutes se
 // voient de tous : l'ordre reçu les nomme toutes, chacune une fois.
 supportLabelRoutes.put("/reorder", (req, res) => {
+  exiger(req, "support", "update");
   const ordre = ordreRecu(
     req.body.ids,
     supportLabels.all.all(),
@@ -571,6 +700,7 @@ supportLabelRoutes.put("/reorder", (req, res) => {
 });
 
 supportLabelRoutes.put("/:id", (req, res) => {
+  exiger(req, "support", "update");
   const existing = orNotFound(
     supportLabels.byId.get(req.params.id),
     ETIQUETTE_SUPPORT_INTROUVABLE,
@@ -587,6 +717,7 @@ supportLabelRoutes.put("/:id", (req, res) => {
 });
 
 supportLabelRoutes.delete("/:id", (req, res) => {
+  exiger(req, "support", "delete");
   const existing = orNotFound(
     supportLabels.byId.get(req.params.id),
     ETIQUETTE_SUPPORT_INTROUVABLE,

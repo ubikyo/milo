@@ -66,6 +66,7 @@ export function AnneauxActeurs({ acteurs, unite }: { acteurs: Actor[][]; unite: 
 
 export const acteursIndicator: SupportIndicatorWidget = {
   type: "actors",
+  kind: "helpdesk",
   label: LIBELLE,
   icon: IconUsers,
   defaultConfig: { [NOM]: "" },

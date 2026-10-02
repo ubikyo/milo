@@ -1,0 +1,38 @@
+/* Une variable du modèle : une pastille grise, qui se cliquera pour se poser
+   dans le message. Le survol l'assombrit d'un cran — un gris neutre, jamais
+   ceux de Mantine, qui tirent sur le bleu. Sans droit de modifier, elle ne
+   réagit pas. */
+.variable {
+  padding: 2px 6px;
+  border-radius: var(--mantine-radius-sm);
+  background-color: light-dark(#ececec, #2e2e2e);
+  /* En blanc sur le thème sombre ; noir sur le clair, où le blanc ne se
+     lirait pas sur le gris. */
+  color: light-dark(var(--mantine-color-black), var(--mantine-color-white));
+  font-family: var(--mantine-font-family-monospace);
+  font-size: var(--mantine-font-size-xs);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 80ms ease;
+}
+
+.variable:hover:not(:disabled) {
+  background-color: light-dark(#d9d9d9, #3d3d3d);
+}
+
+.variable:disabled {
+  cursor: default;
+}
+
+/* Les provenances des variables, comme les sections de la fiche d'un poste
+   (AssetDrawer.module.css) : l'en-tête reste sur le fond au survol — le gris
+   de Mantine tire sur le bleu ; la classe est doublée pour passer devant sa
+   règle —, et l'écart entre deux provenances se pose au-dessus de la
+   suivante. */
+.controle.controle:hover {
+  background-color: transparent;
+}
+
+.section + .section {
+  padding-top: 12px;
+}

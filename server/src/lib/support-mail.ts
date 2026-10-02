@@ -45,6 +45,7 @@ import { env } from "../env.js";
 import { notifier, titreDemande } from "./notify.js";
 import { heureDeParis, now } from "./time.js";
 import { reglagesSupport } from "../routes/support-settings.js";
+import { envoyerReponseAuto } from "./support-auto-reply.js";
 
 const JOUR_DE_PARIS = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Europe/Paris",
@@ -225,6 +226,13 @@ const demandeVisee = (
     : undefined;
 };
 
+/** Ce qu'une importation a fait, pour ce qui suit la transaction. */
+interface Suite {
+  repondue?: SupportRequestRow;
+  rouverte?: boolean;
+  creee?: Id;
+}
+
 /**
  * Un e-mail rejoint le fil de la demande à laquelle il répond, ou devient une
  * demande : son objet, son expéditeur pour acteur — le compte qui porte son
@@ -236,8 +244,11 @@ const importer = transaction(
     companyId: Id,
     courrier: CourrierRecu,
     prepare: Prepare,
-    /** Reçoit la demande à laquelle l'e-mail répond, quand il en rejoint une. */
-    suite: { repondue?: SupportRequestRow },
+    /**
+     * Reçoit la demande à laquelle l'e-mail répond, quand il en rejoint une —
+     * et si elle s'est rouverte —, ou celle qu'il a ouverte.
+     */
+    suite: Suite,
   ): boolean => {
     const recu = dateDe(courrier.received_at);
     const compte = courrier.from_email ? users.byEmail.get(courrier.from_email) : undefined;
@@ -273,9 +284,14 @@ const importer = transaction(
       message(visee.id, true);
       // L'expéditeur revient sur une demande qu'on croyait close : elle se
       // rouvre, sinon sa réponse passerait inaperçue.
-      supportRequests.rouvrir.run(REOPENED_SUPPORT_STATUS, recu, visee.id);
+      const { changes: rouverte } = supportRequests.rouvrir.run(
+        REOPENED_SUPPORT_STATUS,
+        recu,
+        visee.id,
+      );
       supportRequests.touch.run(recu, visee.id);
       suite.repondue = visee;
+      suite.rouverte = rouverte > 0;
       return true;
     }
 
@@ -299,6 +315,7 @@ const importer = transaction(
     // à qui le lit d'en juger autrement.
     replaceSupportLabels(lastInsertRowid as Id, reglagesSupport().default_label_ids);
     message(lastInsertRowid as Id, false);
+    suite.creee = lastInsertRowid as Id;
     return true;
   },
 );
@@ -371,7 +388,7 @@ const releve = async (): Promise<number> => {
         if (dejaImporte(societe.id, courrier.mail_id)) continue;
         const prepare = await preparer(societe.support_email, courrier);
         let importe = false;
-        const suite: { repondue?: SupportRequestRow } = {};
+        const suite: Suite = {};
         try {
           importe = importer(societe.id, courrier, prepare, suite);
         } finally {
@@ -380,6 +397,12 @@ const releve = async (): Promise<number> => {
         }
         if (importe) creees += 1;
         if (importe && suite.repondue) repondueParEmail(suite.repondue, courrier);
+        // Les réponses par défaut du Paramétrage : l'accusé de réception d'une
+        // nouvelle demande, ou le mot qui dit qu'une demande close est rouverte.
+        if (importe && suite.creee) await envoyerReponseAuto(suite.creee, "new");
+        if (importe && suite.repondue && suite.rouverte) {
+          await envoyerReponseAuto(suite.repondue.id, "reopened");
+        }
       }
       // Gardé une fois tout importé : une relève interrompue reprend là où
       // elle en était, pas après.

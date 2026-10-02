@@ -13,7 +13,11 @@ import BoutonFermer from "./BoutonFermer";
 // n'enregistre plus que sur « Sauvegarder » — ou sur Entrée dans un de ses
 // champs d'une ligne, qui revient au même.
 interface DrawerFooterProps {
-  onSave: () => void | Promise<void>;
+  /**
+   * Sans lui — sans le droit d'enregistrer —, le tiroir ne fait que montrer :
+   * seul « Fermer » reste, et Entrée n'enregistre rien.
+   */
+  onSave?: () => void | Promise<void>;
   onClose: () => void;
   /** La suppression : seulement quand l'objet existe déjà. */
   onDelete?: () => void;
@@ -63,7 +67,7 @@ export default function DrawerFooter({
       )
         return;
       event.preventDefault();
-      if (!etat.current.saving) void etat.current.onSave();
+      if (!etat.current.saving) void etat.current.onSave?.();
     };
     document.addEventListener("keydown", surTouche);
     return () => document.removeEventListener("keydown", surTouche);
@@ -90,9 +94,11 @@ export default function DrawerFooter({
 
       <Group gap="sm" wrap="nowrap">
         <BoutonFermer onClick={onClose} />
-        <Button color="teal" onClick={onSave} loading={saving}>
-          Sauvegarder
-        </Button>
+        {onSave && (
+          <Button color="teal" onClick={onSave} loading={saving}>
+            Sauvegarder
+          </Button>
+        )}
       </Group>
     </Group>
   );

@@ -7,10 +7,12 @@
 // seule la table qu'on interroge les distingue encore.
 
 import { Router } from "express";
-import type { CopyResult, Id, Resource } from "@milo/shared";
+import type { Request } from "express";
+import type { CopyResult, Id, Resource, Right } from "@milo/shared";
 import { DEFAULT_LABEL_COLOR, isLabelColor } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
-import type { LabelRow, NextRow, UserRow } from "../db/rows.js";
+import type { LabelRow, NextRow } from "../db/rows.js";
+import { exiger } from "../lib/droits.js";
 import { badRequest, orNotFound, refuserSiUtilise, requireText } from "../lib/http.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
@@ -29,7 +31,7 @@ interface LabelTable {
    * Lève sinon, et rend l'identifiant vérifié — la copie en a besoin des deux
    * côtés, et ne veut pas d'un identifiant reçu tel quel.
    */
-  verifierTableau: (boardId: unknown, user: UserRow) => Id;
+  verifierTableau: (boardId: unknown, req: Request, droit: Right) => Id;
   /** Vrai quand ces étiquettes portent un poids : celles des projets seules. */
   avecPoids?: boolean;
 }
@@ -117,7 +119,7 @@ const creerRoutes = ({
   routes.get("/", (req, res) => {
     const { board } = req.query;
     if (!board) badRequest("Le paramètre board est requis");
-    verifierTableau(board, req.user);
+    verifierTableau(board, req, "view");
     res.json(duTableau.all(board));
   });
 
@@ -127,7 +129,7 @@ const creerRoutes = ({
     const color = req.body.color || DEFAULT_LABEL_COLOR;
     if (!boardId) badRequest("Le tableau est requis");
     if (!isLabelColor(color)) badRequest("Couleur inconnue");
-    verifierTableau(boardId, req.user);
+    verifierTableau(boardId, req, "create");
     const poids = poidsEtiquette(req.body.weight ?? 0);
 
     const { next } = rangSuivant(boardId);
@@ -143,8 +145,8 @@ const creerRoutes = ({
       badRequest("Le tableau d'origine et celui de destination sont requis");
     }
 
-    const source = verifierTableau(from_board, req.user);
-    const cible = verifierTableau(to_board, req.user);
+    const source = verifierTableau(from_board, req, "view");
+    const cible = verifierTableau(to_board, req, "create");
     if (source === cible) badRequest("Choisissez un autre tableau que celui-ci");
 
     res.json(copier(source, cible));
@@ -152,7 +154,7 @@ const creerRoutes = ({
 
   routes.put("/:id", (req, res) => {
     const existing = orNotFound(parId.get(req.params.id), ETIQUETTE_INTROUVABLE);
-    verifierTableau(existing.board_id, req.user);
+    verifierTableau(existing.board_id, req, "update");
 
     const name = requireText(req.body.name ?? existing.name, "Le nom de l'étiquette est requis");
     const color = req.body.color ?? existing.color;
@@ -165,7 +167,7 @@ const creerRoutes = ({
 
   routes.delete("/:id", (req, res) => {
     const existing = orNotFound(parId.get(req.params.id), ETIQUETTE_INTROUVABLE);
-    verifierTableau(existing.board_id, req.user);
+    verifierTableau(existing.board_id, req, "delete");
     refuserSiUtilise(existing.name, utilisations(existing.id).count);
 
     supprimer.run(existing.id);
@@ -180,13 +182,18 @@ export const labelRoutes = creerRoutes({
   table: "labels",
   // Les cartes portent leurs étiquettes : le tableau se relit avec elles.
   touched: ["labels", "task-lists"],
-  verifierTableau: (boardId, user) => boardOuvert(boardId, user).id,
+  verifierTableau: (boardId, req, droit) => boardOuvert(boardId, req, droit).id,
 });
 
 /** Étiquettes d'un tableau de projets : il peut être privé, lui aussi. */
 export const projectLabelRoutes = creerRoutes({
   table: "project_labels",
   touched: ["project-labels", "projects"],
-  verifierTableau: (boardId, user) => projectBoardOuvert(boardId, user).id,
+  // Le tableau de projets n'appartient à aucune société : ses étiquettes
+  // suivent les droits du mode Projets dans n'importe laquelle.
+  verifierTableau: (boardId, req, droit) => {
+    exiger(req, "projects", droit);
+    return projectBoardOuvert(boardId, req.user).id;
+  },
   avecPoids: true,
 });

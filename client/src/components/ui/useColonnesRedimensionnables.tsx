@@ -9,7 +9,7 @@ import classes from "../../assets/styles/Grille.module.css";
 // chaque colonne prend la largeur de son contenu, sur toute la largeur de la
 // section. Au premier glissement, les largeurs affichées sont relevées et
 // figées (table-layout: fixed) : la colonne tirée suit la souris, les autres
-// ne bougent plus, et la dernière prend ce qui reste de la section. Un double-clic
+// ne bougent plus, et une seule prend ce qui reste de la section. Un double-clic
 // sur une poignée rend à la grille sa mise en page naturelle.
 //
 // Les largeurs restent dans le navigateur, par grille : c'est un confort de
@@ -51,8 +51,17 @@ const arreter = (e: MouseEvent) => e.stopPropagation();
  * « nom » distingue la grille dans le stockage ; « cles » liste ses colonnes
  * montrées, dans l'ordre de leurs en-têtes — y compris celles sans poignée,
  * comme la case à cocher du support.
+ *
+ * « initiales » donne à la grille, tant que personne n'y a touché, des
+ * largeurs de départ au lieu de sa mise en page naturelle : les colonnes
+ * qu'elle nomme les prennent, celles qu'elle tait se partagent le reste de la
+ * section. Le double-clic y ramène.
  */
-export function useColonnesRedimensionnables(nom: string, cles: string[]) {
+export function useColonnesRedimensionnables(
+  nom: string,
+  cles: string[],
+  initiales?: Largeurs,
+) {
   const tableRef = useRef<HTMLTableElement>(null);
   const [largeurs, setLargeurs] = useState<Largeurs | null>(() => lire(nom));
 
@@ -113,15 +122,23 @@ export function useColonnesRedimensionnables(nom: string, cles: string[]) {
 
   // La grille fait toute la largeur de sa section, et au moins la somme des
   // colonnes : au-delà, la section la fait défiler de côté. L'air qui reste
-  // va à la dernière colonne, seule à ne pas dire sa largeur : rétrécir une
-  // autre ne regonfle pas ses voisines.
+  // va à une seule colonne, seule à ne pas dire sa largeur : rétrécir une
+  // autre ne regonfle pas ses voisines. C'est la dernière, ou, quand la
+  // grille a des largeurs de départ, la première à ne pas en avoir.
+  const souple = cles.find((cle) => initiales && !initiales[cle]) ?? cles[cles.length - 1];
   const style: CSSProperties | undefined = largeurs
     ? {
         tableLayout: "fixed",
         width: "100%",
         minWidth: cles.reduce((somme, cle) => somme + largeurDe(cle), 0),
       }
-    : undefined;
+    : initiales
+      ? {
+          tableLayout: "fixed",
+          width: "100%",
+          minWidth: cles.reduce((somme, cle) => somme + (initiales[cle] ?? LARGEUR_MIN), 0),
+        }
+      : undefined;
 
   return {
     /** À étaler sur la « Table ». */
@@ -129,8 +146,14 @@ export function useColonnesRedimensionnables(nom: string, cles: string[]) {
     /** À poser en tête de la « Table », avant « Table.Thead ». */
     colgroup: largeurs ? (
       <colgroup>
-        {cles.map((cle, i) => (
-          <col key={cle} style={i < cles.length - 1 ? { width: largeurDe(cle) } : undefined} />
+        {cles.map((cle) => (
+          <col key={cle} style={cle !== souple ? { width: largeurDe(cle) } : undefined} />
+        ))}
+      </colgroup>
+    ) : initiales ? (
+      <colgroup>
+        {cles.map((cle) => (
+          <col key={cle} style={initiales[cle] ? { width: initiales[cle] } : undefined} />
         ))}
       </colgroup>
     ) : null,

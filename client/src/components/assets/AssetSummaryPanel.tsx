@@ -35,6 +35,7 @@ import relativeTime from "dayjs/plugin/relativeTime";
 import encart from "../../assets/styles/AccessNumero.module.css";
 import { OsLogo, ProtectionLogo } from "./AssetLogos";
 import TitreFiche, { ESPACE_SOUS_TITRE } from "./TitreFiche";
+import { FOND_CARTE } from "./fonds";
 import { diskColor } from "./AssetsList";
 import { VIDE, taille } from "./InventoryTables";
 import {
@@ -58,7 +59,7 @@ dayjs.extend(relativeTime);
  * garde la même largeur sur tous les écrans. Trois cartes par ligne dès que le
  * panneau a la largeur d'un tiroir ouvert en entier.
  */
-const POINTS_DE_RUPTURE = {
+export const POINTS_DE_RUPTURE = {
   xs: "360px",
   sm: "480px",
   md: "600px",
@@ -67,7 +68,7 @@ const POINTS_DE_RUPTURE = {
 };
 
 /** Une carte : son titre précédé d'une icône, puis son contenu. */
-function Carte({
+export function Carte({
   titre,
   icone,
   span,
@@ -114,7 +115,7 @@ function Carte({
 }
 
 /** Une ligne de carte : le libellé à gauche, la valeur à droite. */
-function Ligne({ libelle, children }: { libelle: string; children: ReactNode }) {
+export function Ligne({ libelle, children }: { libelle: string; children: ReactNode }) {
   return (
     <Group gap="sm" wrap="nowrap" align="flex-start">
       <Text size="sm" c="dimmed" w={110} style={{ flexShrink: 0 }}>
@@ -142,11 +143,7 @@ const TAG_ASSET = { ...TAG_TITRE, "--badge-height": "44px" } as CSSProperties;
 /** La part libre de l'anneau : un gris neutre et clair, pas celui de Mantine qui tire sur le bleu. */
 const FOND_ANNEAU = "light-dark(#e0e0e0, var(--mantine-color-dark-4))";
 
-/**
- * Le fond des cartes, et celui des grilles des autres onglets : un gris
- * neutre, sans la teinte bleue de celui de Mantine.
- */
-export const FOND_CARTE = "light-dark(#f0f0f0, var(--mantine-color-dark-6))";
+export { FOND_CARTE };
 
 /** Le diamètre du rond des jauges, et l'épaisseur de son anneau. */
 const ROND = 96;
@@ -162,7 +159,7 @@ const DIAMETRE_ANNEAU = ROND * 0.9 - ANNEAU;
 const PASTILLE = 30;
 
 /** L'icône posée dans le disque. */
-const ICONE_ROND = 32;
+export const ICONE_ROND = 32;
 
 /**
  * Le haut d'une carte de jauge : le rond à gauche, la valeur en gros et son
@@ -247,7 +244,7 @@ function FinSupport({ support }: { support: AssetDetail["support"] }) {
  * Le rond d'une jauge sans occupation connue : l'icône sur un disque du même
  * gris neutre que l'anneau du disque, pour que les trois jauges se répondent.
  */
-const RondIcone = ({ children, bulle }: { children: ReactNode; bulle?: string }) => (
+export const RondIcone = ({ children, bulle }: { children: ReactNode; bulle?: string }) => (
   // La boîte garde la place de l'anneau, pour que les valeurs s'alignent ;
   // le disque, lui, prend le diamètre que l'anneau dessine vraiment.
   <Box
@@ -524,7 +521,7 @@ const typeConnexion = (carte: AssetSummary["networks"][number]): string => {
 };
 
 /** Un texte, ou le tiret quand l'agent ne l'a pas donné. */
-const valeur = (texte: string | null | undefined) => (
+export const valeur = (texte: string | null | undefined) => (
   <Text size="sm" c={texte ? undefined : "dimmed"} style={{ wordBreak: "break-word" }}>
     {texte || VIDE}
   </Text>
@@ -547,7 +544,7 @@ function Copiable({ texte, libelle }: { texte: string; libelle: string }) {
  * Le bouton qui copie une valeur, et qui dit l'avoir fait : la coche
  * remplace l'icône, et une bulle le dit sauf quand on n'en veut pas.
  */
-function BoutonCopier({
+export function BoutonCopier({
   texte,
   libelle,
   sansBulle = false,
@@ -727,9 +724,8 @@ export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
           />
         </Carte>
 
-        {/* Une ligne par carte : un portable en a souvent deux, la filaire
-            et le Wi-Fi, et c'est l'adresse de celle qui sert qu'on cherche.
-            Le rond prend l'icône de la première. */}
+        {/* La carte qui sert : le serveur n'en garde qu'une, connectée, le
+            Wi-Fi d'abord (cartesDe). Le rond prend son icône. */}
         <Carte titre="Réseau" icone={<IconNetwork size={16} />} span="half">
           <Group gap="md" wrap="nowrap">
             <RondIcone>
@@ -756,8 +752,19 @@ export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
                           <BoutonCopier texte={ip} libelle={`Copier l'adresse ${ip}`} sansBulle />
                         </Group>
                       ))}
+                      {/* Le VLAN du Paramétrage qui porte la carte, quand
+                          son sous-réseau y est déclaré. */}
+                      {carte.vlan && (
+                        <Group gap={6} wrap="nowrap">
+                          {carte.vlan.name && <Text size="sm">{carte.vlan.name}</Text>}
+                          <Badge color="green" variant="filled" size="sm" radius="sm">
+                            VLAN {carte.vlan.vlan}
+                          </Badge>
+                        </Group>
+                      )}
                     </Group>
-                    <Text size="xs" c="dimmed" style={{ wordBreak: "break-word" }}>
+                    {/* Au style du nom du VLAN. */}
+                    <Text size="sm" style={{ wordBreak: "break-word" }}>
                       {typeConnexion(carte)}
                     </Text>
                   </Stack>

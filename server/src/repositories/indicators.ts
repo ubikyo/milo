@@ -7,7 +7,6 @@ import type { Id } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { IndicatorRow, IndicatorSectionRow, NextRow } from "../db/rows.js";
 import { now } from "../lib/time.js";
-import { readSetting, writeSetting } from "./settings.js";
 
 /** Un indicateur tel que l'API le rend : sa configuration relue en objet. */
 export interface IndicateurRendu<Type extends string> {
@@ -35,38 +34,52 @@ export const indicateurRendu = <Type extends string>(
 };
 
 /**
- * Les requêtes d'un panneau, sur sa table et ses sections. Le verrou est un
- * réglage : un seul par panneau, pour tout le monde. Verrouillé, le panneau
- * ne reçoit plus ni section ni indicateur, et ne se réordonne plus.
+ * Les requêtes d'un panneau, sur sa table et ses sections. « Verrouillé »
+ * n'est pas ici : il ne vit que dans la fenêtre qui le pose (client).
  *
  * Les sections sont les colonnes du panneau, comme celles d'une catégorie
  * d'accès : un indicateur appartient à l'une d'elles et passe de l'une à
  * l'autre en se rangeant.
+ *
+ * « owner » choisit la structure : nul, la publique, partagée par tous ceux
+ * qui l'héritent ; sinon celle de ce compte (repositories/layouts.ts).
  */
 export const panneauIndicateurs = <Type extends string>(
   table: "support_indicators" | "asset_indicators" | "project_indicators" | "task_indicators",
   panel: IndicatorSectionRow["panel"],
-  verrou: string,
 ) => {
+  type Owner = Id | null;
   const placer = mutation(`UPDATE ${table} SET section_id = ?, position = ? WHERE id = ?`);
   const placerSection = mutation("UPDATE indicator_sections SET position = ? WHERE id = ?");
+  // « IS » plutôt que « = » : nul y vaut nul, la structure publique se lit
+  // par la même requête que celle d'un compte.
   const sectionsDuPanneau = selection<IndicatorSectionRow>(
-    "SELECT * FROM indicator_sections WHERE panel = ? ORDER BY position, id",
+    "SELECT * FROM indicator_sections WHERE panel = ? AND owner_id IS ? ORDER BY position, id",
   );
   const sectionParId = selection<IndicatorSectionRow>(
-    "SELECT * FROM indicator_sections WHERE id = ? AND panel = ?",
+    "SELECT * FROM indicator_sections WHERE id = ? AND panel = ? AND owner_id IS ?",
   );
   const prochaineSection = scalar<NextRow>(
-    "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM indicator_sections WHERE panel = ?",
+    `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM indicator_sections
+     WHERE panel = ? AND owner_id IS ?`,
   );
   const creerSection = mutation(
-    `INSERT INTO indicator_sections (panel, width_unit, width_value, gap, position, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO indicator_sections (panel, width_unit, width_value, gap, position, owner_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const retirerSectionsDe = mutation(
+    "DELETE FROM indicator_sections WHERE panel = ? AND owner_id = ?",
   );
 
   const byId = selection<IndicatorRow<Type>>(`SELECT * FROM ${table} WHERE id = ?`);
   const bySection = selection<IndicatorRow<Type>>(
     `SELECT * FROM ${table} WHERE section_id = ? ORDER BY position, id`,
+  );
+  const tousDe = selection<IndicatorRow<Type>>(
+    `SELECT ${table}.* FROM ${table}
+     JOIN indicator_sections ON indicator_sections.id = ${table}.section_id
+     WHERE indicator_sections.panel = ? AND indicator_sections.owner_id IS ?
+     ORDER BY indicator_sections.position, indicator_sections.id, ${table}.position, ${table}.id`,
   );
   const nextPosition = scalar<NextRow>(
     `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM ${table} WHERE section_id = ?`,
@@ -80,14 +93,30 @@ export const panneauIndicateurs = <Type extends string>(
     ids.forEach((id, place) => placerSection.run(place, id));
   });
 
+  /** Une section et ce qu'elle porte, recopiées pour « owner ». */
+  const copier = (original: IndicatorSectionRow, owner: Owner, position: number): Id => {
+    const timestamp = now();
+    const id = Number(
+      creerSection.run(
+        panel,
+        original.width_unit,
+        original.width_value,
+        original.gap,
+        position,
+        owner,
+        timestamp,
+      ).lastInsertRowid,
+    );
+    bySection.all(original.id).forEach((indicateur, place) => {
+      create.run(id, indicateur.type, indicateur.config, place, timestamp);
+    });
+    return id;
+  };
+
   return {
     byId,
-    /** Ceux de toutes les sections, dans l'ordre des colonnes puis de chacune. */
-    all: selection<IndicatorRow<Type>>(
-      `SELECT ${table}.* FROM ${table}
-       JOIN indicator_sections ON indicator_sections.id = ${table}.section_id
-       ORDER BY indicator_sections.position, indicator_sections.id, ${table}.position, ${table}.id`,
-    ),
+    /** Ceux de toutes les sections de cette structure, dans l'ordre des colonnes puis de chacune. */
+    all: (owner: Owner) => tousDe.all(panel, owner),
     nextPosition,
     create,
     update: mutation(`UPDATE ${table} SET config = ? WHERE id = ?`),
@@ -101,18 +130,24 @@ export const panneauIndicateurs = <Type extends string>(
     }),
 
     sections: {
-      all: () => sectionsDuPanneau.all(panel),
-      byId: (id: unknown) => sectionParId.get(id, panel),
+      all: (owner: Owner) => sectionsDuPanneau.all(panel, owner),
+      byId: (id: unknown, owner: Owner) => sectionParId.get(id, panel, owner),
       /** Ajoutée au bout, ou au rang demandé. */
       create: transaction(
-        (unite: string, valeur: number | null, ecart: number, rang: number | null): Id => {
-          const { next } = prochaineSection(panel);
+        (
+          owner: Owner,
+          unite: string,
+          valeur: number | null,
+          ecart: number,
+          rang: number | null,
+        ): Id => {
+          const { next } = prochaineSection(panel, owner);
           const id = Number(
-            creerSection.run(panel, unite, valeur, ecart, next, now()).lastInsertRowid,
+            creerSection.run(panel, unite, valeur, ecart, next, owner, now()).lastInsertRowid,
           );
           if (rang !== null) {
             const autres = sectionsDuPanneau
-              .all(panel)
+              .all(panel, owner)
               .map((s) => s.id)
               .filter((autre) => autre !== id);
             rangerSections([...autres.slice(0, rang), id, ...autres.slice(rang)]);
@@ -126,23 +161,10 @@ export const panneauIndicateurs = <Type extends string>(
       ranger: rangerSections,
       /** La copie, avec ses indicateurs, se pose juste à droite de l'original. */
       duplicate: transaction((original: IndicatorSectionRow): Id => {
-        const timestamp = now();
-        const { next } = prochaineSection(panel);
-        const id = Number(
-          creerSection.run(
-            panel,
-            original.width_unit,
-            original.width_value,
-            original.gap,
-            next,
-            timestamp,
-          ).lastInsertRowid,
-        );
-        bySection.all(original.id).forEach((indicateur, place) => {
-          create.run(id, indicateur.type, indicateur.config, place, timestamp);
-        });
+        const { next } = prochaineSection(panel, original.owner_id);
+        const id = copier(original, original.owner_id, next);
         const ordre = sectionsDuPanneau
-          .all(panel)
+          .all(panel, original.owner_id)
           .map((s) => s.id)
           .filter((autre) => autre !== id);
         ordre.splice(ordre.indexOf(original.id) + 1, 0, id);
@@ -153,8 +175,22 @@ export const panneauIndicateurs = <Type extends string>(
       remove: mutation("DELETE FROM indicator_sections WHERE id = ?"),
     },
 
-    verrouille: (): boolean => readSetting<boolean>(verrou, false) === true,
-    verrouiller: (verrouille: boolean): void => writeSetting(verrou, verrouille),
+    /**
+     * « Hérité » décoché : ce compte part d'une copie de la structure
+     * publique — sections et indicateurs —, qu'il modifie sans toucher celle
+     * des autres. Une copie déjà là est d'abord retirée.
+     */
+    personnaliser: transaction((userId: Id): void => {
+      retirerSectionsDe.run(panel, userId);
+      sectionsDuPanneau.all(panel, null).forEach((section, place) => {
+        copier(section, userId, place);
+      });
+    }),
+    /** « Hérité » recoché : sa structure s'en va, il revient à la publique. */
+    heriter: (userId: Id): void => {
+      retirerSectionsDe.run(panel, userId);
+    },
+
   };
 };
 

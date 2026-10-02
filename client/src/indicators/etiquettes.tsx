@@ -153,6 +153,7 @@ const toutesLesDemandes = (config: unknown) =>
 
 export const etiquettesIndicator: SupportIndicatorWidget = {
   type: "labels",
+  kind: "helpdesk",
   label: LIBELLE,
   icon: IconTags,
   defaultConfig: { [NOM]: "", [TOUTES]: false },

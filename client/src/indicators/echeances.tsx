@@ -13,6 +13,7 @@ const LIBELLE = "Échéances";
 
 export const echeancesIndicator: SupportIndicatorWidget = {
   type: "due",
+  kind: "helpdesk",
   label: LIBELLE,
   icon: IconCalendarDue,
   defaultConfig: { [NOM]: "" },

@@ -13,6 +13,7 @@
 // version antérieure, ou une base retouchée à la main, ne doit pas casser
 // l'affichage.
 
+import type { WidgetKind } from "./genres";
 import type { ComponentType } from "react";
 import type { AccessBlockType, Id } from "@milo/shared";
 
@@ -53,7 +54,9 @@ export interface Marges {
 export interface AccessWidget {
   /** Ce que la base range : il ne change jamais. */
   type: AccessBlockType;
-  /** Son nom dans la boîte de choix, et en titre de son tiroir. */
+  /** Son type : le groupe où le tiroir des widgets le range (widgets/genres.ts). */
+  kind: WidgetKind;
+  /** Son nom dans le tiroir des widgets, et en titre de son tiroir. */
   label: string;
   icon: ComponentType<{ size?: number }>;
   /** La configuration d'un élément neuf. */

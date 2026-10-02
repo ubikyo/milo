@@ -34,15 +34,20 @@ const CARTE_INTROUVABLE = "Carte introuvable";
 const dateEcheance = (valeur: unknown): string =>
   /^\d{4}-\d{2}-\d{2}$/.test(String(valeur ?? "")) ? String(valeur) : "";
 
-const carteOuverte = (id: unknown, user: Express.Request["user"]) => {
+/**
+ * La carte visée, si son tableau est ouvert à cette personne et qu'elle peut
+ * modifier les tâches de sa société : tout ce qui passe par ici écrit sur la
+ * carte.
+ */
+const carteOuverte = (id: unknown, req: Request) => {
   const card = orNotFound(taskCards.byId.get(id), CARTE_INTROUVABLE);
-  boardOuvert(boardOfCard(card), user);
+  boardOuvert(boardOfCard(card), req, "update");
   return card;
 };
 
-const checklistOuverte = (id: unknown, user: Express.Request["user"]) => {
+const checklistOuverte = (id: unknown, req: Request) => {
   const checklist = orNotFound(checklists.byId.get(id), CHECKLIST_INTROUVABLE);
-  carteOuverte(checklist.card_id, user);
+  carteOuverte(checklist.card_id, req);
   return checklist;
 };
 
@@ -86,7 +91,7 @@ cardChecklistRoutes.use(touch("task-lists"));
 
 cardChecklistRoutes.post("/", (req, res) => {
   const { id } = req.params as { id?: string };
-  const card = carteOuverte(id, req.user);
+  const card = carteOuverte(id, req);
   const title = String(req.body.title ?? "Checklist").trim() || "Checklist";
 
   const { next } = checklists.nextPosition(card.id);
@@ -99,7 +104,7 @@ cardChecklistRoutes.post("/", (req, res) => {
 // L'ordre reçu est celui, complet, des checklists de la carte.
 cardChecklistRoutes.put("/reorder", (req, res) => {
   const { id } = req.params as { id?: string };
-  const card = carteOuverte(id, req.user);
+  const card = carteOuverte(id, req);
   const { ids } = req.body;
   if (!Array.isArray(ids)) badRequest("ids doit être un tableau");
 
@@ -123,7 +128,7 @@ export const checklistRoutes = Router();
 checklistRoutes.use(touch("task-lists"));
 
 checklistRoutes.put("/:id", (req, res) => {
-  const checklist = checklistOuverte(req.params.id, req.user);
+  const checklist = checklistOuverte(req.params.id, req);
   const title = requireText(
     req.body.title ?? checklist.title,
     "Le titre de la checklist est requis",
@@ -136,7 +141,7 @@ checklistRoutes.put("/:id", (req, res) => {
 });
 
 checklistRoutes.delete("/:id", (req, res) => {
-  const checklist = checklistOuverte(req.params.id, req.user);
+  const checklist = checklistOuverte(req.params.id, req);
   checklists.remove.run(checklist.id);
 
   suppressionSurLaCarte(
@@ -150,7 +155,7 @@ checklistRoutes.delete("/:id", (req, res) => {
 // Un élément naît en bas de sa checklist, sans libellé : on le saisit ensuite
 // sur place.
 checklistRoutes.post("/:id/items", (req, res) => {
-  const checklist = checklistOuverte(req.params.id, req.user);
+  const checklist = checklistOuverte(req.params.id, req);
   const text = String(req.body.text ?? "").trim();
 
   const { next } = checklistItems.nextPosition(checklist.id);
@@ -162,7 +167,7 @@ checklistRoutes.post("/:id/items", (req, res) => {
 
 // L'ordre reçu est celui, complet, des éléments de la checklist.
 checklistRoutes.put("/:id/items/reorder", (req, res) => {
-  const checklist = checklistOuverte(req.params.id, req.user);
+  const checklist = checklistOuverte(req.params.id, req);
   const { ids } = req.body;
   if (!Array.isArray(ids)) badRequest("ids doit être un tableau");
 
@@ -190,7 +195,7 @@ checklistItemRoutes.use(touch("task-lists"));
 checklistItemRoutes.put("/:id", (req, res) => {
   const existing = orNotFound(checklistItems.byId.get(req.params.id), ELEMENT_INTROUVABLE);
   const checklist = checklistOfItem(existing);
-  carteOuverte(checklist.card_id, req.user);
+  carteOuverte(checklist.card_id, req);
 
   const text = String(req.body.text ?? existing.text).trim();
   const done = req.body.done === undefined ? existing.done : (Number(Boolean(req.body.done)) as 0 | 1);
@@ -212,7 +217,7 @@ checklistItemRoutes.put("/:id", (req, res) => {
 
 checklistItemRoutes.delete("/:id", (req, res) => {
   const existing = orNotFound(checklistItems.byId.get(req.params.id), ELEMENT_INTROUVABLE);
-  carteOuverte(checklistOfItem(existing).card_id, req.user);
+  carteOuverte(checklistOfItem(existing).card_id, req);
 
   checklistItems.remove.run(existing.id);
 

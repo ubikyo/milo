@@ -1,5 +1,5 @@
-import { Menu, Stack, Tabs } from "@mantine/core";
-import { IconLifebuoy, IconCheck, IconLock } from "@tabler/icons-react";
+import { Stack, Tabs } from "@mantine/core";
+import { IconLifebuoy } from "@tabler/icons-react";
 import { Fragment, useMemo, useState } from "react";
 import SupportActions from "../components/support/SupportActions";
 import SupportIndicatorsPanel from "../components/support/SupportIndicatorsPanel";
@@ -10,7 +10,9 @@ import {
 } from "../components/support/SupportRequestsList";
 import EmptyPanel from "../components/ui/EmptyPanel";
 import ModeBar from "../components/ui/ModeBar";
-import PointMenu, { positionDuMenu, type PointMenuPosition } from "../components/ui/PointMenu";
+import type { PanelInheritance } from "../components/ui/HeriteConfirmModal";
+import PanneauMenu from "../components/ui/PanneauMenu";
+import { positionDuMenu, type PointMenuPosition } from "../components/ui/PointMenu";
 import { InsertLine, useTabReorder } from "../components/ui/useTabReorder";
 import { tabStyle } from "../themes/tabs";
 import { DEFAULT_SUPPORT_STATUS, SUPPORT_STATUSES, ordonnerOnglets } from "@milo/shared";
@@ -44,8 +46,8 @@ interface SupportPageProps {
   statusTab: string;
   onStatusTabChange: (value: string) => void;
   onOpenRequest: (request: SupportRequest) => void;
-  onCreateTask: (request: SupportRequest) => void;
-  onAddRequest: () => void;
+  onCreateTask?: (request: SupportRequest) => void;
+  onAddRequest?: () => void;
   /** Les comptes à qui assigner une demande. */
   users: PublicUser[];
   /** Après une action du menu : les demandes se relisent. */
@@ -72,7 +74,9 @@ interface SupportPageProps {
   onIndicatorsChanged: () => void | Promise<void>;
   /** Le verrou des sections : ni ajout ni déplacement. */
   indicatorsLocked: boolean;
-  onToggleIndicatorsLock: () => void | Promise<void>;
+  onToggleIndicatorsLock?: () => void | Promise<void>;
+  /** « Hérité » des sections : la structure partagée, ou la sienne. */
+  indicatorsInheritance?: PanelInheritance;
 }
 
 export default function SupportPage({
@@ -96,6 +100,7 @@ export default function SupportPage({
   onIndicatorsChanged,
   indicatorsLocked,
   onToggleIndicatorsLock,
+  indicatorsInheritance,
 }: SupportPageProps) {
   // Le menu contextuel d'un onglet : il porte le verrou et l'écart des sections.
   const [menuOnglet, setMenuOnglet] = useState<PointMenuPosition | null>(null);
@@ -176,20 +181,15 @@ export default function SupportPage({
         </SupportListeContext.Provider>
       )}
 
-      {/* Les statuts sont des onglets fixes : leur menu ne porte que le verrou
-          des sections, pour tous. */}
-      {menuOnglet && (
-        <PointMenu position={menuOnglet} onClose={() => setMenuOnglet(null)}>
-          <Menu.Label>Affichage</Menu.Label>
-          <Menu.Item
-            leftSection={<IconLock size={16} />}
-            rightSection={indicatorsLocked ? <IconCheck size={14} /> : null}
-            onClick={() => onToggleIndicatorsLock()}
-          >
-            Verrouillé
-          </Menu.Item>
-        </PointMenu>
-      )}
+      {/* Des onglets fixes : leur menu ne porte que ce qui vaut pour les
+          sections de l'écran, le verrou et « Hérité ». */}
+      <PanneauMenu
+        position={menuOnglet}
+        onClose={() => setMenuOnglet(null)}
+        locked={indicatorsLocked}
+        onToggleLock={onToggleIndicatorsLock}
+        inheritance={indicatorsInheritance}
+      />
     </Stack>
   );
 }

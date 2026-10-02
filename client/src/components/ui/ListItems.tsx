@@ -195,6 +195,11 @@ export interface AddRow {
   disabled?: boolean;
   /** Se glisse avant le champ : les étiquettes y posent leur couleur. */
   section?: ReactNode;
+  /**
+   * Se glisse après le champ, avant Entrée : l'évènement d'une réponse par
+   * défaut, à la place qu'occupe le sien sur les lignes.
+   */
+  end?: ReactNode;
 }
 
 interface ListItemsProps {
@@ -304,6 +309,7 @@ export default function ListItems({
                 disabled={add.disabled}
                 aria-label={add.placeholder}
               />
+              {add.end}
               {/* Au bout, la touche qui valide : Entrée ajoute. Elle se clique
               aussi, pour qui préfère la souris. */}
               <ActionIcon

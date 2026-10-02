@@ -47,7 +47,8 @@ const typeDe = (config: unknown) =>
 
 export const postesIndicator: AssetIndicatorWidget = {
   type: "assets",
-  label: "Postes",
+  kind: "asset",
+  label: "Indicateur",
   icon: IconDeviceDesktop,
   defaultConfig: { [NOM]: "", [TYPE]: TYPE_PAR_DEFAUT.value },
 

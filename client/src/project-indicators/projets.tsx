@@ -1,14 +1,21 @@
 import { Select, Stack, Text } from "@mantine/core";
 import { IconFolders } from "@tabler/icons-react";
+import dayjs from "dayjs";
 import { avec, texte } from "../widgets/types";
 import { ChampNom, NOM, TitreIndicateur, termine } from "./commun";
 import type { ProjectIndicatorWidget } from "./types";
 import type { Id, Project } from "@milo/shared";
 
 // Un nombre de projets : ceux du tableau ouvert qui répondent au type choisi
-// — tous, ceux en cours, ceux qui n'ont personne pour les porter.
+// — tous, ceux en cours, ceux qui n'ont personne pour les porter, ceux qu'on
+// ne touche plus.
 
 const TYPE = "type";
+
+/** Au-delà, un projet en cours qu'on ne modifie plus est à l'arrêt ; en deçà, un projet est récent. */
+const JOURS = 30;
+
+const depuis = (date: string): number => dayjs().diff(dayjs(date), "day", true);
 
 interface TypeDeProjets {
   value: string;
@@ -36,6 +43,16 @@ const TYPES: TypeDeProjets[] = [
     label: "Projets qui me sont attribués",
     compte: (p, moi) => !termine(p) && p.actors.some((a) => a.id === moi),
   },
+  {
+    value: "stale",
+    label: `Projets sans activité depuis ${JOURS} jours`,
+    compte: (p) => !termine(p) && depuis(p.updated_at) >= JOURS,
+  },
+  {
+    value: "recent",
+    label: `Projets créés ces ${JOURS} derniers jours`,
+    compte: (p) => depuis(p.created_at) < JOURS,
+  },
   { value: "total", label: "Projets au total", compte: () => true },
 ];
 
@@ -45,7 +62,8 @@ const typeDe = (config: unknown) =>
 
 export const projetsIndicator: ProjectIndicatorWidget = {
   type: "projects",
-  label: "Projets",
+  kind: "project",
+  label: "Indicateur",
   icon: IconFolders,
   defaultConfig: { [NOM]: "", [TYPE]: TYPE_PAR_DEFAUT.value },
 

@@ -1,27 +1,33 @@
-// L'ordre des onglets fixes des modes Support et Assets (voir
-// shared/tab-orders.ts). Il vaut pour tout le monde, comme celui des
-// tableaux : c'est le mode qui est rangé, pas la vue qu'on en a.
+// L'ordre des rangées fixes — les onglets des modes Support et Assets, les
+// modes du sélecteur (voir shared/tab-orders.ts). Chaque compte range le sien
+// (repositories/tab-orders.ts) ; sans ordre à lui, il voit l'ordre commun
+// d'avant, quand il y en a un.
 
 import { Router } from "express";
 import { TAB_ORDER_MODES, isTabOrderMode } from "@milo/shared";
-import type { TabOrders } from "@milo/shared";
+import type { Id, TabOrders } from "@milo/shared";
 import { badRequest } from "../lib/http.js";
 import { touch } from "../middleware/events.js";
-import { readSetting, writeSetting } from "../repositories/settings.js";
+import { readSetting } from "../repositories/settings.js";
+import { userTabOrders } from "../repositories/tab-orders.js";
 
 const cle = (mode: string) => `tab_order_${mode}`;
 
-const ordres = (): TabOrders =>
+/** L'ordre de chaque rangée, pour ce compte. */
+const ordres = (userId: Id): TabOrders =>
   Object.fromEntries(
-    TAB_ORDER_MODES.map((mode) => [mode, readSetting<string[]>(cle(mode), [])]),
+    TAB_ORDER_MODES.map((mode) => [
+      mode,
+      userTabOrders.lire(userId, mode) ?? readSetting<string[]>(cle(mode), []),
+    ]),
   ) as TabOrders;
 
 export const tabOrderRoutes = Router();
 
 tabOrderRoutes.use(touch("tab-orders"));
 
-tabOrderRoutes.get("/", (_req, res) => {
-  res.json(ordres());
+tabOrderRoutes.get("/", (req, res) => {
+  res.json(ordres(req.user.id));
 });
 
 /** Le nouvel ordre d'un mode : les valeurs de ses onglets, dans l'ordre. */
@@ -32,6 +38,6 @@ tabOrderRoutes.put("/:mode", (req, res) => {
   if (!Array.isArray(values) || !values.every((v) => typeof v === "string")) {
     badRequest("« values » doit être une liste de chaînes");
   }
-  writeSetting(cle(mode), [...new Set(values as string[])]);
-  res.json(ordres());
+  userTabOrders.ranger(req.user.id, mode, [...new Set(values as string[])]);
+  res.json(ordres(req.user.id));
 });

@@ -40,6 +40,7 @@ import { projectReference } from "@milo/shared";
 import type { ReactNode } from "react";
 import type { Category, Project, PublicUser } from "@milo/shared";
 import type { ProjectAction } from "./MoveOrCopyProjectModal";
+import { useDroits } from "../../lib/droits";
 
 /** Une option d'entonnoir : « all » vaut « pas de filtre ». */
 interface FilterOption {
@@ -368,6 +369,13 @@ function ProjectContextMenu({
   onToggleFollow,
 }: ProjectContextMenuProps) {
   const { project, x, y } = target;
+  // Ce que le menu propose suit les droits du compte dans la société du
+  // projet : qui ne fait que lire n'y trouve que « Suivre ».
+  const peut = useDroits();
+  const modifier = peut("projects", "update", project.company_id);
+  const ajouter = peut("projects", "create", project.company_id);
+  const supprimer = peut("projects", "delete", project.company_id);
+  const creerTache = peut("tasks", "create");
 
   return (
     <Menu
@@ -393,49 +401,65 @@ function ProjectContextMenu({
         >
           Suivre
         </Menu.Item>
-        <Menu.Divider />
-        <Menu.Item
-          leftSection={<IconPencil size={16} />}
-          onClick={() => onEdit(project)}
-        >
-          Modifier
-        </Menu.Item>
+        {(modifier || ajouter) && <Menu.Divider />}
+        {modifier && (
+          <Menu.Item
+            leftSection={<IconPencil size={16} />}
+            onClick={() => onEdit(project)}
+          >
+            Modifier
+          </Menu.Item>
+        )}
         {/* Sur place, sans question : la copie s'ouvre aussitôt dans le
             tiroir, pour servir de base à un autre projet. */}
-        <Menu.Item
-          leftSection={<IconCopyPlus size={16} />}
-          onClick={() => onDuplicate(project)}
-        >
-          Dupliquer
-        </Menu.Item>
-        <Menu.Item
-          leftSection={<IconFolderSymlink size={16} />}
-          onClick={() => onMove(project, "move")}
-        >
-          Déplacer
-        </Menu.Item>
+        {ajouter && (
+          <Menu.Item
+            leftSection={<IconCopyPlus size={16} />}
+            onClick={() => onDuplicate(project)}
+          >
+            Dupliquer
+          </Menu.Item>
+        )}
+        {modifier && (
+          <Menu.Item
+            leftSection={<IconFolderSymlink size={16} />}
+            onClick={() => onMove(project, "move")}
+          >
+            Déplacer
+          </Menu.Item>
+        )}
         {/* Vers le tableau courant — dupliquer sur place — ou un autre. */}
-        <Menu.Item
-          leftSection={<IconCopy size={16} />}
-          onClick={() => onMove(project, "copy")}
-        >
-          Copier
-        </Menu.Item>
-        <Menu.Divider />
-        <Menu.Item
-          leftSection={<IconSquarePlus size={16} />}
-          onClick={() => onCreateTask(project)}
-        >
-          Créer une tâche
-        </Menu.Item>
-        <Menu.Divider />
-        <Menu.Item
-          color={RED}
-          leftSection={<IconTrash size={16} />}
-          onClick={() => onDelete(project)}
-        >
-          Supprimer
-        </Menu.Item>
+        {ajouter && (
+          <Menu.Item
+            leftSection={<IconCopy size={16} />}
+            onClick={() => onMove(project, "copy")}
+          >
+            Copier
+          </Menu.Item>
+        )}
+        {creerTache && (
+          <>
+            <Menu.Divider />
+            <Menu.Item
+              leftSection={<IconSquarePlus size={16} />}
+              onClick={() => onCreateTask(project)}
+            >
+              Créer une tâche
+            </Menu.Item>
+          </>
+        )}
+        {supprimer && (
+          <>
+            <Menu.Divider />
+            <Menu.Item
+              color={RED}
+              leftSection={<IconTrash size={16} />}
+              onClick={() => onDelete(project)}
+            >
+              Supprimer
+            </Menu.Item>
+          </>
+        )}
       </Menu.Dropdown>
     </Menu>
   );
@@ -536,7 +560,8 @@ interface ProjectTableProps extends ProjectFiltersProps {
   onDeleteProject: (project: Project) => void;
   /** « Créer une tâche », au menu contextuel d'un projet. */
   onCreateTask: (project: Project) => void;
-  onAddProject: () => void;
+  /** Sans lui — sans le droit d'ajouter un projet —, pas de ligne d'ajout. */
+  onAddProject?: () => void;
   /** Les projets que la personne suit, pour la coche de « Suivre ». */
   followedIds: number[];
   onToggleFollow: (project: Project) => void;
@@ -662,7 +687,6 @@ export default function ProjectTable({
         actionLabel="Nouveau projet"
         onAction={onAddProject}
         size="md"
-        fill={false}
       />
     );
   }
@@ -732,11 +756,13 @@ export default function ProjectTable({
                 explicite neutralise le survol du tableau : cette ligne n'est pas
                 un projet, elle ne s'allume pas au passage de la souris, et la
                 variante « transparent » du bouton n'a pas de fond au survol. */}
-            <Table.Tr style={{ backgroundColor: "transparent" }}>
-              <Table.Td colSpan={colonnes.length}>
-                <AddButton label="Ajouter un projet" onClick={onAddProject} />
-              </Table.Td>
-            </Table.Tr>
+            {onAddProject && (
+              <Table.Tr style={{ backgroundColor: "transparent" }}>
+                <Table.Td colSpan={colonnes.length}>
+                  <AddButton label="Ajouter un projet" onClick={onAddProject} />
+                </Table.Td>
+              </Table.Tr>
+            )}
           </Table.Tbody>
         </Table>
       </GrilleScroll>

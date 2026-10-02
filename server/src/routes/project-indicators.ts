@@ -5,6 +5,7 @@ import { projectIndicators } from "../repositories/project-indicators.js";
 import { indicatorRoutes } from "./indicators.js";
 
 export const projectIndicatorRoutes = indicatorRoutes(
+  "projects",
   "project-indicators",
   projectIndicators,
   isProjectIndicatorType,

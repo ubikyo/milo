@@ -198,7 +198,13 @@ function EcheanceCell({ due }: { due: string }) {
 
 // La colonne « Objet » a une largeur fixe : un objet trop long se coupe
 // d'une ellipse plutôt que d'élargir la colonne.
-const SUBJECT_WIDTH = 475;
+const SUBJECT_WIDTH = 600;
+/**
+ * Le minimum de la colonne « Étiquettes », assez pour ses deux étiquettes et
+ * le compte des autres. Les acteurs, eux, s'en tiennent à leurs avatars :
+ * c'est aux étiquettes qu'ira l'air qui reste.
+ */
+const LABELS_MIN_WIDTH = 260;
 /** Largeur des colonnes de dates : « Reçu le » et « Échéance ». */
 const DATE_WIDTH = 130;
 export type ColumnKey = "ticket" | "subject" | "actors" | "labels" | "due" | "status" | "received";
@@ -503,7 +509,8 @@ export const useSupportListe = (requests: SupportRequest[] | null, onglet: strin
 export interface SupportListe extends ReturnType<typeof useSupportListe> {
   loading: boolean;
   onOpenRequest: (request: SupportRequest) => void;
-  onAddRequest: () => void;
+  /** Sans lui — sans le droit d'ajouter une demande —, pas de ligne d'ajout. */
+  onAddRequest?: () => void;
 }
 
 /** L'état de la liste, donné par la page au widget. Hors du mode Support, il n'y en a pas. */
@@ -585,7 +592,6 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
         actionLabel="Nouvelle demande de support"
         onAction={onAddRequest}
         size="md"
-        fill={false}
       />
     );
   }
@@ -642,6 +648,7 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
                 value={filtres.actor}
                 onChange={filtrer("actor")}
               />,
+              { width: 1, whiteSpace: "nowrap" },
             )}
             {/* Les étiquettes juste avant le statut : les deux se lisent ensemble. */}
             {th(
@@ -653,6 +660,7 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
                 value={filtres.label}
                 onChange={filtrer("label")}
               />,
+              { minWidth: LABELS_MIN_WIDTH },
             )}
             {th(
               "Statut",
@@ -787,11 +795,13 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
 
           {/* Dernière ligne : l'ajout se fait là où la liste se termine. Le fond
               explicite neutralise le survol — cette ligne n'est pas une demande. */}
-          <Table.Tr style={{ backgroundColor: "transparent" }}>
-            <Table.Td colSpan={nombreDeColonnes}>
-              <AddButton label="Nouvelle demande de support" onClick={onAddRequest} />
-            </Table.Td>
-          </Table.Tr>
+          {onAddRequest && (
+            <Table.Tr style={{ backgroundColor: "transparent" }}>
+              <Table.Td colSpan={nombreDeColonnes}>
+                <AddButton label="Nouvelle demande de support" onClick={onAddRequest} />
+              </Table.Td>
+            </Table.Tr>
+          )}
         </Table.Tbody>
       </Table>
     </GrilleScroll>

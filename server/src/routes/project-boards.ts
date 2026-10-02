@@ -12,6 +12,7 @@ import {
   refuserSiUtilise,
   requireText,
 } from "../lib/http.js";
+import { exiger, peut } from "../lib/droits.js";
 import { concernes, notifierSuppression } from "../lib/notify.js";
 import { touch } from "../middleware/events.js";
 import {
@@ -21,7 +22,8 @@ import {
   projectBoardOuvert,
   projectBoards,
 } from "../repositories/project-boards.js";
-import { ordreRecu, rangerProjectBoards } from "../repositories/reorder.js";
+import { ordreRecu } from "../repositories/reorder.js";
+import { dansLOrdreDe, userTabOrders } from "../repositories/tab-orders.js";
 import { now } from "../lib/time.js";
 
 const CATEGORIE_INTROUVABLE = "Catégorie introuvable";
@@ -33,6 +35,12 @@ const drapeau = (valeur: unknown, defaut: 0 | 1): 0 | 1 =>
 
 // --- Tableaux --------------------------------------------------------------
 
+const SCOPE_TABLEAUX = "project-boards";
+
+/** Les tableaux que ce compte voit, dans son ordre à lui. */
+const tableauxVus = (userId: Id) =>
+  dansLOrdreDe(userId, SCOPE_TABLEAUX, projectBoards.visibleTo.all(userId));
+
 const compterProjetsDuTableau = scalar<CountRow>(
   "SELECT COUNT(*) AS count FROM projects WHERE board_id = ?",
 );
@@ -41,6 +49,9 @@ const supprimerCategoriesDuTableau = mutation("DELETE FROM categories WHERE boar
 const supprimerTableau = mutation("DELETE FROM project_boards WHERE id = ?");
 const projetsDuTableau = selection<{ id: Id; name: string }>(
   "SELECT id, name FROM projects WHERE board_id = ?",
+);
+const societesDuTableau = selection<{ company_id: Id | null }>(
+  "SELECT DISTINCT company_id FROM projects WHERE board_id = ?",
 );
 
 /**
@@ -60,11 +71,17 @@ export const projectBoardRoutes = Router();
 
 projectBoardRoutes.use(touch("project-boards", "categories", "projects", "project-labels"));
 
+// Les tableaux, leurs catégories et leurs étiquettes n'appartiennent à aucune
+// société : ils suivent les droits du mode Projets dans n'importe laquelle.
+// Les projets, eux, suivent leur société (routes/projects.ts).
+
 projectBoardRoutes.get("/", (req, res) => {
-  res.json(projectBoards.visibleTo.all(req.user.id));
+  if (!peut(req, "projects", "view")) return void res.json([]);
+  res.json(tableauxVus(req.user.id));
 });
 
 projectBoardRoutes.post("/", (req, res) => {
+  exiger(req, "projects", "create");
   const name = requireText(req.body.name, "Le nom du tableau est requis");
   // Nouveau tableau ajouté à la suite des autres, ouvert à tous : « Privé » se
   // règle ensuite, depuis le menu de l'onglet.
@@ -81,9 +98,10 @@ projectBoardRoutes.post("/", (req, res) => {
 });
 
 // Ranger les onglets. Déclaré avant « /:id », sinon « reorder » serait pris
-// pour un identifiant. L'ordre est celui de tout le monde : un tableau privé
-// qu'on ne voit pas garde sa place (repositories/reorder.ts).
+// pour un identifiant. L'ordre est celui de ce compte seulement
+// (repositories/tab-orders.ts) : le voir suffit pour le ranger.
 projectBoardRoutes.put("/reorder", (req, res) => {
+  exiger(req, "projects", "view");
   const visibles = projectBoards.visibleTo.all(req.user.id);
   const ordre = ordreRecu(
     req.body.ids,
@@ -91,11 +109,12 @@ projectBoardRoutes.put("/reorder", (req, res) => {
     "La liste des identifiants ne correspond pas aux tableaux",
   );
 
-  rangerProjectBoards(ordre);
-  res.json(projectBoards.visibleTo.all(req.user.id));
+  userTabOrders.ranger(req.user.id, SCOPE_TABLEAUX, ordre);
+  res.json(tableauxVus(req.user.id));
 });
 
 projectBoardRoutes.put("/:id", (req, res) => {
+  exiger(req, "projects", "update");
   const existing = projectBoardOuvert(req.params.id, req.user);
   const name = requireText(req.body.name ?? existing.name, "Le nom du tableau est requis");
   const isPrivate = drapeau(req.body.is_private, existing.is_private);
@@ -110,7 +129,13 @@ projectBoardRoutes.put("/:id", (req, res) => {
 });
 
 projectBoardRoutes.delete("/:id", (req, res) => {
+  exiger(req, "projects", "delete");
   const existing = projectBoardOuvert(req.params.id, req.user);
+  // Le tableau emporte ses projets : il faut pouvoir les supprimer tous, dans
+  // chacune de leurs sociétés.
+  for (const { company_id } of societesDuTableau.all(existing.id)) {
+    exiger(req, "projects", "delete", company_id);
+  }
   // Chaque projet emporté est annoncé à ses acteurs et à ceux qui le suivent,
   // lus avant qu'ils partent avec lui.
   const emportes = projetsDuTableau
@@ -206,6 +231,7 @@ export const categoryRoutes = Router();
 categoryRoutes.use(touch("categories", "projects"));
 
 categoryRoutes.get("/", (req, res) => {
+  if (!peut(req, "projects", "view")) return void res.json([]);
   const { board } = req.query;
   if (board && board !== "all") {
     // Le tableau visé doit être ouvert à cette personne : ses catégories ne
@@ -218,6 +244,7 @@ categoryRoutes.get("/", (req, res) => {
 });
 
 categoryRoutes.post("/copy", (req, res) => {
+  exiger(req, "projects", "create");
   const { from_board, to_board } = req.body;
   if (!from_board || !to_board) {
     badRequest("Le tableau d'origine et celui de destination sont requis");
@@ -231,6 +258,7 @@ categoryRoutes.post("/copy", (req, res) => {
 });
 
 categoryRoutes.post("/", (req, res) => {
+  exiger(req, "projects", "create");
   const name = requireText(req.body.name, "Le nom est requis");
   const boardId = req.body.board_id;
   if (!boardId) badRequest("Le tableau est requis");
@@ -244,6 +272,7 @@ categoryRoutes.post("/", (req, res) => {
 });
 
 categoryRoutes.put("/:id", (req, res) => {
+  exiger(req, "projects", "update");
   const existing = orNotFound(categories.byId.get(req.params.id), CATEGORIE_INTROUVABLE);
   projectBoardOuvert(existing.board_id, req.user);
 
@@ -261,6 +290,7 @@ categoryRoutes.put("/:id", (req, res) => {
 });
 
 categoryRoutes.delete("/:id", (req, res) => {
+  exiger(req, "projects", "delete");
   const existing = orNotFound(categories.byId.get(req.params.id), CATEGORIE_INTROUVABLE);
   projectBoardOuvert(existing.board_id, req.user);
   refuserSiUtilise(existing.name, compterProjetsDeLaCategorie(existing.id).count);

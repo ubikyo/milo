@@ -15,6 +15,7 @@ const HAUTEUR_RADAR = 220;
 
 export const statutsIndicator: SupportIndicatorWidget = {
   type: "status",
+  kind: "helpdesk",
   label: LIBELLE,
   icon: IconChartRadar,
   defaultConfig: { [NOM]: "" },

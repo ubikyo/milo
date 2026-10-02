@@ -21,7 +21,7 @@ import {
   IconMessage,
   IconSettings,
 } from "@tabler/icons-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api";
 import { NEUTRAL_HOVER } from "../../themes/colors";
 import { DRAWER_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
@@ -39,18 +39,25 @@ import EmptyPanel from "../ui/EmptyPanel";
 import ErrorAlert from "../ui/ErrorAlert";
 import LabelPicker, { SUPPORT_LABELS_API } from "../ui/LabelPicker";
 import CommentThread from "../project/CommentThread";
+import { FIELDSET_NU, useDroits } from "../../lib/droits";
 import SupportMessages, { SupportReply } from "./SupportMessages";
 import type { EnvoiReponse, MessageSupport } from "./SupportMessages";
 import { messageErreur } from "../../lib/errors";
 import {
   DEFAULT_SUPPORT_STATUS,
+  MILO_ACTOR_ID,
   SUPPORT_STATUSES,
+  fillSupportTemplate,
+  supportReplyValues,
   supportTicketRef,
 } from "@milo/shared";
 import type { CSSProperties } from "react";
 import type {
   Company,
   PublicUser,
+  SupportContent,
+  SupportContentEvent,
+  SupportPerson,
   SupportLabel,
   SupportRequest,
   SupportRequestInput,
@@ -69,6 +76,21 @@ const TABS = [
 const MESSAGES_MIN_HEIGHT = 200;
 
 const DRAWER_PADDING = 40;
+
+/** Une réponse de l'équipe : ni un e-mail reçu, ni un mot de Milo. */
+const deLEquipe = (m: MessageSupport): boolean =>
+  m.format !== "email" && !m.system && m.author?.id !== MILO_ACTOR_ID;
+
+/**
+ * L'évènement que vit la prochaine réponse de l'équipe, d'après le fil : vide,
+ * l'expéditeur seul y a écrit, ou l'équipe a déjà répondu.
+ */
+const evenementDuFil = (echanges: MessageSupport[]): SupportContentEvent =>
+  echanges.some(deLEquipe)
+    ? "reply"
+    : echanges.some((m) => m.format === "email")
+      ? "first_reply"
+      : "new";
 
 // Bien plus large que les autres tiroirs (560) : une demande tient ses
 // acteurs, ses étiquettes et ses échanges côte à côte, et son fil se lit sans
@@ -161,10 +183,30 @@ export default function SupportRequestDrawer({
   /** L'échéance, en ISO ; vide quand la demande n'en a pas. */
   const [echeance, setEcheance] = useState("");
   const [comments, setComments] = useState<MessageSupport[]>([]);
+  /** Les contenus par défaut, que la réponse pose dans son éditeur. */
+  const [contenus, setContenus] = useState<SupportContent[]>([]);
+  /** Les fiches Entra que leurs variables citent : qui écrit, et l'expéditeur. */
+  const [personnes, setPersonnes] = useState<{
+    utilisateur: SupportPerson | null;
+    expediteur: SupportPerson | null;
+  }>({ utilisateur: null, expediteur: null });
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string | null>("settings");
   const [confirmDeleteOpened, setConfirmDeleteOpened] = useState(false);
   const [enregistrement, setEnregistrement] = useState(false);
+
+  // Ce que le compte peut faire de la demande dépend de sa société : sans le
+  // droit de la modifier, la fiche se lit seulement.
+  const peut = useDroits();
+  const lectureSeule = Boolean(request) && !peut("support", "update", request?.company_id);
+  const peutSupprimer = Boolean(request) && peut("support", "delete", request?.company_id);
+  // Lu par l'ouverture du tiroir sans en dépendre.
+  const peutRef = useRef(peut);
+  const companiesRef = useRef(companies);
+  useEffect(() => {
+    peutRef.current = peut;
+    companiesRef.current = companies;
+  }, [peut, companies]);
 
   useEffect(() => {
     if (!opened) return;
@@ -174,7 +216,14 @@ export default function SupportRequestDrawer({
 
     if (!request) {
       // Une demande ouverte depuis un onglet y reste : elle en prend le statut.
-      setSocieteId(companyId);
+      // La société proposée doit permettre d'ajouter une demande ; sinon, la
+      // première qui le permet.
+      const permise = peutRef.current("support", "create", companyId)
+        ? companyId
+        : String(
+            companiesRef.current.find((c) => peutRef.current("support", "create", c.id))?.id ?? "",
+          );
+      setSocieteId(permise);
       setSubject(defaultSubject);
       setStatus(defaultStatus);
       // Qui crée la demande s'en occupe, jusqu'à ce qu'on en décide autrement.
@@ -210,10 +259,48 @@ export default function SupportRequestDrawer({
     if (opened) void relireEtiquettes();
   }, [opened, relireEtiquettes]);
 
+  useEffect(() => {
+    if (!opened) return;
+    api
+      .getSupportContents()
+      .then(setContenus)
+      .catch((e) => setError(messageErreur(e)));
+  }, [opened]);
+
+  const demandeId = request?.id;
+  useEffect(() => {
+    if (!opened) return;
+    setPersonnes({ utilisateur: null, expediteur: null });
+    api
+      .getSupportVariables(demandeId)
+      .then(setPersonnes)
+      .catch((e) => setError(messageErreur(e)));
+  }, [opened, demandeId]);
+
   // Un seul fil côté serveur, deux côté fiche : les échanges avec
   // l'expéditeur, et les commentaires internes.
   const echanges = comments.filter((c) => !c.internal);
   const notes = comments.filter((c) => c.internal);
+
+  // Ce que la réponse porte d'office : le contenu du moment du fil, puis celui
+  // de tout message — une signature — après une ligne vide ; leurs variables
+  // remplies avec la fiche Entra de qui écrit, celle de l'expéditeur, et la
+  // demande. Avant création, elle n'a ni numéro ni expéditeur : ces
+  // variables restent vides. Le rendu attend les fiches, pour ne pas poser
+  // une signature sans téléphone qui se corrigerait sous les yeux.
+  const contenuPour = (evenement: SupportContentEvent) =>
+    contenus.find((c) => c.event === evenement)?.html ?? "";
+  const modeleReponse = (() => {
+    const html = [contenuPour(evenementDuFil(echanges)), contenuPour("all")]
+      .filter(Boolean)
+      .join("<p></p>");
+    if (!html || !personnes.utilisateur) return "";
+    const valeurs = supportReplyValues({
+      ...personnes,
+      demande: { number: request?.number ?? 0, subject, status },
+    });
+    return fillSupportTemplate(html, valeurs);
+  })();
 
   const refreshComments = async () => {
     if (!request) return;
@@ -470,141 +557,155 @@ export default function SupportRequestDrawer({
               <Stack gap="xl" style={{ flex: 1, minHeight: 0 }}>
                 {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
 
-                {/* Comme sur la fiche d'une carte : les deux colonnes s'ouvrent
-                  chacune sur leur propre liste à cocher. Les bulles des
-                  acteurs tiennent en peu de place : leur colonne a une
-                  largeur fixe, les étiquettes prennent le reste. */}
-                <Group align="flex-start" gap="md" wrap="nowrap">
-                  <div style={{ flex: `0 0 ${ACTEURS_WIDTH}px`, minWidth: 0 }}>
-                    <ActorPicker
-                      chipHeight={CHIP_HEIGHT}
-                      chipGap={ACTOR_GAP}
-                      label="Acteurs"
-                      users={users}
-                      value={actorIds}
-                      onChange={setActorIds}
-                      renderChip={(u) => (
-                        <span style={{ display: "inline-flex" }} aria-label={u.name}>
-                          {estExpediteur(u.email) ? (
-                            <SenderAvatar person={u} size={CHIP_HEIGHT} />
-                          ) : (
-                            <PersonAvatar person={u} size={CHIP_HEIGHT} />
+                {/* En lecture seule, les champs de la fiche sont éteints d'un
+                    coup : c'est ce que fait un « fieldset » désactivé. */}
+                <fieldset disabled={lectureSeule} style={FIELDSET_NU}>
+                  <Stack gap="xl">
+                    {/* Comme sur la fiche d'une carte : les deux colonnes s'ouvrent
+                      chacune sur leur propre liste à cocher. Les bulles des
+                      acteurs tiennent en peu de place : leur colonne a une
+                      largeur fixe, les étiquettes prennent le reste. */}
+                    <Group align="flex-start" gap="md" wrap="nowrap">
+                      <div style={{ flex: `0 0 ${ACTEURS_WIDTH}px`, minWidth: 0 }}>
+                        <ActorPicker
+                          chipHeight={CHIP_HEIGHT}
+                          chipGap={ACTOR_GAP}
+                          label="Acteurs"
+                          users={users}
+                          value={actorIds}
+                          onChange={setActorIds}
+                          renderChip={(u) => (
+                            <span style={{ display: "inline-flex" }} aria-label={u.name}>
+                              {estExpediteur(u.email) ? (
+                                <SenderAvatar person={u} size={CHIP_HEIGHT} />
+                              ) : (
+                                <PersonAvatar person={u} size={CHIP_HEIGHT} />
+                              )}
+                            </span>
                           )}
-                        </span>
+                          // L'expéditeur de l'e-mail est acteur d'office : il est
+                          // montré en tête, sans se retirer. Celui qui a un compte
+                          // est déjà parmi les acteurs, il n'est pas redoublé.
+                          leadingChips={
+                            expediteur && (
+                              <span style={{ display: "inline-flex" }}>
+                                <SenderAvatar
+                                  person={expediteur}
+                                  size={CHIP_HEIGHT}
+                                />
+                              </span>
+                            )
+                          }
+                        />
+                      </div>
+                      <div style={{ flex: "7 1 0", minWidth: 0 }}>
+                        {/* Les étiquettes sont communes à toutes les sociétés : les
+                          renommer ou les recolorer touche toutes les demandes. */}
+                        <LabelPicker
+                          chipHeight={CHIP_HEIGHT}
+                          labels={etiquettes}
+                          value={labelIds}
+                          onChange={setLabelIds}
+                          boardId={societeId}
+                          onLabelsChanged={relireEtiquettes}
+                          labelsApi={SUPPORT_LABELS_API}
+                          emptyText="Aucune étiquette"
+                        />
+                      </div>
+                      {/* Le numéro du ticket, au bout de la ligne, comme dans la
+                        liste : c'est lui qu'on cite à l'expéditeur. */}
+                      {request && (
+                        <Badge
+                          color="green"
+                          variant="filled"
+                          radius="sm"
+                          size="lg"
+                          style={{ flexShrink: 0, alignSelf: "center" }}
+                        >
+                          {supportTicketRef(request.number)}
+                        </Badge>
                       )}
-                      // L'expéditeur de l'e-mail est acteur d'office : il est
-                      // montré en tête, sans se retirer. Celui qui a un compte
-                      // est déjà parmi les acteurs, il n'est pas redoublé.
-                      leadingChips={
-                        expediteur && (
-                          <span style={{ display: "inline-flex" }}>
-                            <SenderAvatar
-                              person={expediteur}
-                              size={CHIP_HEIGHT}
-                            />
-                          </span>
-                        )
-                      }
-                    />
-                  </div>
-                  <div style={{ flex: "7 1 0", minWidth: 0 }}>
-                    {/* Les étiquettes sont communes à toutes les sociétés : les
-                      renommer ou les recolorer touche toutes les demandes. */}
-                    <LabelPicker
-                      chipHeight={CHIP_HEIGHT}
-                      labels={etiquettes}
-                      value={labelIds}
-                      onChange={setLabelIds}
-                      boardId={societeId}
-                      onLabelsChanged={relireEtiquettes}
-                      labelsApi={SUPPORT_LABELS_API}
-                      emptyText="Aucune étiquette"
-                    />
-                  </div>
-                  {/* Le numéro du ticket, au bout de la ligne, comme dans la
-                    liste : c'est lui qu'on cite à l'expéditeur. */}
-                  {request && (
-                    <Badge
-                      color="green"
-                      variant="filled"
-                      radius="sm"
-                      size="lg"
-                      style={{ flexShrink: 0, alignSelf: "center" }}
-                    >
-                      {supportTicketRef(request.number)}
-                    </Badge>
-                  )}
-                </Group>
+                    </Group>
 
-                {/* L'objet, la société, le statut et l'échéance, côte à côte.
-                  L'objet porte du texte : il prend deux parts de la largeur,
-                  les trois réglages courts une chacun. */}
-                <Group align="flex-start" gap="md" wrap="nowrap">
-                  <div style={{ flex: "2 1 0", minWidth: 0 }}>
-                    {/* Celui de l'e-mail pour une demande reçue, et qui reste
-                      retouchable. */}
-                    <TextInput
-                      label="Objet"
-                      value={subject}
-                      onChange={(e) => setSubject(e.currentTarget.value)}
-                    />
-                  </div>
-                  <div style={{ flex: "1 1 0", minWidth: 0 }}>
-                    {/* La société à qui appartient la demande. Sous « toutes les
-                      sociétés », une demande neuve part chez la première de la
-                      liste : c'est ici qu'on la remet où il faut. Ses étiquettes,
-                      communes à toutes les sociétés, la suivent. */}
-                    <Select
-                      label="Société"
-                      data={companies.map((c) => ({
-                        value: String(c.id),
-                        label: c.name,
-                      }))}
-                      value={societeId || null}
-                      onChange={(value) => {
-                        if (!value || value === societeId) return;
-                        setSocieteId(value);
-                      }}
-                      allowDeselect={false}
-                    />
-                  </div>
-                  <div style={{ flex: "1 1 0", minWidth: 0 }}>
-                    {/* Le statut est ce que disent les onglets : le changer ici
-                      fait passer la demande de l'un à l'autre. */}
-                    <Select
-                      label="Statut"
-                      data={SUPPORT_STATUSES.map((s) => ({
-                        value: s.value,
-                        label: s.label,
-                      }))}
-                      value={status}
-                      onChange={(value) =>
-                        value && setStatus(value as SupportStatus)
-                      }
-                      allowDeselect={false}
-                    />
-                  </div>
-                  <div style={{ flex: "1 1 0", minWidth: 0 }}>
-                    <DateTimePicker
-                      label="Échéance"
-                      placeholder="Aucune"
-                      value={echeance || null}
-                      // Choisir un jour ne suffit pas : il reste l'heure à régler.
-                      // C'est la fermeture du calendrier qui rend la main.
-                      onChange={(valeur) => {
-                        const date = valeur ? new Date(valeur) : null;
-                        setEcheance(
-                          date && !Number.isNaN(date.getTime())
-                            ? date.toISOString()
-                            : "",
-                        );
-                      }}
-                      withSeconds={false}
-                      clearable
-                      popoverProps={{ withinPortal: true }}
-                    />
-                  </div>
-                </Group>
+                    {/* L'objet, la société, le statut et l'échéance, côte à côte.
+                      L'objet porte du texte : il prend deux parts de la largeur,
+                      les trois réglages courts une chacun. */}
+                    <Group align="flex-start" gap="md" wrap="nowrap">
+                      <div style={{ flex: "2 1 0", minWidth: 0 }}>
+                        {/* Celui de l'e-mail pour une demande reçue, et qui reste
+                          retouchable. */}
+                        <TextInput
+                          label="Objet"
+                          value={subject}
+                          onChange={(e) => setSubject(e.currentTarget.value)}
+                        />
+                      </div>
+                      <div style={{ flex: "1 1 0", minWidth: 0 }}>
+                        {/* La société à qui appartient la demande. Sous « toutes les
+                          sociétés », une demande neuve part chez la première de la
+                          liste : c'est ici qu'on la remet où il faut. Ses étiquettes,
+                          communes à toutes les sociétés, la suivent. */}
+                        <Select
+                          label="Société"
+                          // Les sociétés où l'on peut ajouter une demande — l'y
+                          // passer, c'est l'y ajouter —, et la sienne.
+                          data={companies
+                            .filter(
+                              (c) =>
+                                peut("support", "create", c.id) ||
+                                c.id === request?.company_id,
+                            )
+                            .map((c) => ({
+                              value: String(c.id),
+                              label: c.name,
+                            }))}
+                          value={societeId || null}
+                          onChange={(value) => {
+                            if (!value || value === societeId) return;
+                            setSocieteId(value);
+                          }}
+                          allowDeselect={false}
+                        />
+                      </div>
+                      <div style={{ flex: "1 1 0", minWidth: 0 }}>
+                        {/* Le statut est ce que disent les onglets : le changer ici
+                          fait passer la demande de l'un à l'autre. */}
+                        <Select
+                          label="Statut"
+                          data={SUPPORT_STATUSES.map((s) => ({
+                            value: s.value,
+                            label: s.label,
+                          }))}
+                          value={status}
+                          onChange={(value) =>
+                            value && setStatus(value as SupportStatus)
+                          }
+                          allowDeselect={false}
+                        />
+                      </div>
+                      <div style={{ flex: "1 1 0", minWidth: 0 }}>
+                        <DateTimePicker
+                          label="Échéance"
+                          placeholder="Aucune"
+                          value={echeance || null}
+                          // Choisir un jour ne suffit pas : il reste l'heure à régler.
+                          // C'est la fermeture du calendrier qui rend la main.
+                          onChange={(valeur) => {
+                            const date = valeur ? new Date(valeur) : null;
+                            setEcheance(
+                              date && !Number.isNaN(date.getTime())
+                                ? date.toISOString()
+                                : "",
+                            );
+                          }}
+                          withSeconds={false}
+                          clearable
+                          popoverProps={{ withinPortal: true }}
+                        />
+                      </div>
+                    </Group>
+                  </Stack>
+                </fieldset>
 
                 {/* Le libellé « Échanges » au-dessus du panneau, comme celui
                   des autres champs de la fiche. */}
@@ -650,13 +751,17 @@ export default function SupportRequestDrawer({
                           <SupportMessages
                             messages={echanges}
                             senderEmail={request?.sender_email ?? ""}
-                            onDelete={async (id) => {
-                              try {
-                                await supprimerCommentaire(id);
-                              } catch (e) {
-                                setError(messageErreur(e));
-                              }
-                            }}
+                            onDelete={
+                              lectureSeule
+                                ? undefined
+                                : async (id) => {
+                                    try {
+                                      await supprimerCommentaire(id);
+                                    } catch (e) {
+                                      setError(messageErreur(e));
+                                    }
+                                  }
+                            }
                           />
                           {/* Avant création, le fil ne part au serveur qu'avec la
                           demande : on le dit plutôt que de le laisser croire
@@ -675,26 +780,29 @@ export default function SupportRequestDrawer({
                   </Paper>
                 </div>
 
-                <SupportReply
-                  parEmail={Boolean(request?.sender_email)}
-                  avecFichiers={Boolean(request)}
-                  // À la création, une réponse n'a de sens que si quelqu'un
-                  // s'occupe de la demande.
-                  bloque={
-                    !request && !actorIds.length
-                      ? "Choisir au moins un acteur avant d'envoyer"
-                      : undefined
-                  }
-                  onSend={async (html, envoi) => {
-                    try {
-                      await ajouterCommentaire(html, envoi);
-                    } catch (e) {
-                      setError(messageErreur(e));
-                      // Relancée : l'éditeur garde ainsi le texte refusé.
-                      throw e;
+                {!lectureSeule && (
+                  <SupportReply
+                    modele={modeleReponse}
+                    parEmail={Boolean(request?.sender_email)}
+                    avecFichiers={Boolean(request)}
+                    // À la création, une réponse n'a de sens que si quelqu'un
+                    // s'occupe de la demande.
+                    bloque={
+                      !request && !actorIds.length
+                        ? "Choisir au moins un acteur avant d'envoyer"
+                        : undefined
                     }
-                  }}
-                />
+                    onSend={async (html, envoi) => {
+                      try {
+                        await ajouterCommentaire(html, envoi);
+                      } catch (e) {
+                        setError(messageErreur(e));
+                        // Relancée : l'éditeur garde ainsi le texte refusé.
+                        throw e;
+                      }
+                    }}
+                  />
+                )}
               </Stack>
             </DrawerScrollArea>
           </Tabs.Panel>
@@ -721,6 +829,7 @@ export default function SupportRequestDrawer({
                       setError(messageErreur(e)),
                     )
                   }
+                  readOnly={lectureSeule}
                 />
                 {!request && notes.length > 0 && (
                   <Text size="xs" c="dimmed">
@@ -734,9 +843,9 @@ export default function SupportRequestDrawer({
         </Tabs>
 
         <DrawerFooter
-          onSave={sauvegarder}
+          onSave={lectureSeule ? undefined : sauvegarder}
           onClose={onClose}
-          onDelete={request ? () => setConfirmDeleteOpened(true) : undefined}
+          onDelete={peutSupprimer ? () => setConfirmDeleteOpened(true) : undefined}
           saving={enregistrement}
         />
       </Drawer>

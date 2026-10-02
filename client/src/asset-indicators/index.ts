@@ -1,20 +1,20 @@
-// Le registre des widgets du panneau des statistiques du mode Assets. Un
-// seul endroit les connaît : la boîte de choix, le panneau et le tiroir y
-// prennent ce qu'il leur faut.
+// Le registre des widgets du panneau des statistiques du mode Assets. Un seul
+// endroit les connaît : le tiroir des widgets, le panneau et celui des réglages
+// y prennent ce qu'il leur faut.
 
 import { conformiteIndicator } from "./conformite";
 import { disquesIndicator } from "./disques";
 import { listeAssetIndicator } from "./liste";
 import { postesIndicator } from "./postes";
 import { systemesIndicator } from "./systemes";
-import { titresDeSection } from "../widgets/titres-de-section";
+import { widgetsDAcces } from "../widgets/en-section";
 import type { AssetIndicatorDisplayProps, AssetIndicatorWidget } from "./types";
 import type { AssetIndicatorType } from "@milo/shared";
 
-/** Dans l'ordre où la boîte de choix les présente. */
+/** Dans l'ordre où le tiroir des widgets les présente. */
 export const ASSET_INDICATORS: AssetIndicatorWidget[] = [
   listeAssetIndicator,
-  ...titresDeSection<AssetIndicatorType, AssetIndicatorDisplayProps>(),
+  ...widgetsDAcces<AssetIndicatorType, AssetIndicatorDisplayProps>(),
   postesIndicator,
   conformiteIndicator,
   systemesIndicator,

@@ -8,5 +8,4 @@ import { panneauIndicateurs } from "./indicators.js";
 export const assetIndicators = panneauIndicateurs<AssetIndicatorType>(
   "asset_indicators",
   "assets",
-  "asset_indicators_locked",
 );

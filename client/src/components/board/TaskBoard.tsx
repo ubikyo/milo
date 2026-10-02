@@ -56,6 +56,7 @@ import ActorAvatars from "../ui/ActorAvatars";
 import PointMenu, { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
 import ColumnInsert, { COLUMN_INSERT_ZONE } from "../ui/ColumnInsert";
 import AddButton from "../ui/AddButton";
+import { useDroits } from "../../lib/droits";
 import { CardLabel } from "../ui/LabelChip";
 import Confetti from "../ui/Confetti";
 import CardDrawer from "./CardDrawer";
@@ -156,6 +157,8 @@ interface GlisserCarteEnCours {
   width: number;
   height: number;
   started: boolean;
+  /** Sans le droit de modifier, l'appui reste un clic : la carte ne glisse pas. */
+  figee: boolean;
 }
 
 /** Une carte qui vient d'être saisie, posée avant la réponse du serveur. */
@@ -768,7 +771,16 @@ interface ListCardProps {
   onToggleFollow: () => void;
   /** Tableau verrouillé : la liste ne se déplace ni ne se supprime. */
   verrouillee: boolean;
+  /** Les droits du compte dans la société du tableau. */
+  droits: DroitsTableau;
   children?: ReactNode;
+}
+
+/** Ce que le compte peut faire dans le tableau ouvert, selon sa société. */
+interface DroitsTableau {
+  ajouter: boolean;
+  modifier: boolean;
+  supprimer: boolean;
 }
 
 function ListCard({
@@ -788,6 +800,7 @@ function ListCard({
   suivie,
   onToggleFollow,
   verrouillee,
+  droits,
   children,
 }: ListCardProps) {
   // Le menu s'ouvre au clic droit, au point cliqué. Il se ferme de lui-même
@@ -855,7 +868,7 @@ function ListCard({
               fw={600}
               size="sm"
               c={sienne.texte}
-              onClick={onStartEdit}
+              onClick={droits.modifier ? onStartEdit : undefined}
               style={{ cursor: "pointer", flex: 1, minWidth: 0 }}
             >
               {list.name}
@@ -893,17 +906,19 @@ function ListCard({
             Suivre
           </Menu.Item>
 
-          <Menu.Divider />
+          {(droits.ajouter || droits.modifier) && <Menu.Divider />}
 
-          <Menu.Item
-            leftSection={<IconSeparatorHorizontal size={16} />}
-            onClick={onSeparator}
-          >
-            Séparateur
-          </Menu.Item>
+          {droits.ajouter && (
+            <Menu.Item
+              leftSection={<IconSeparatorHorizontal size={16} />}
+              onClick={onSeparator}
+            >
+              Séparateur
+            </Menu.Item>
+          )}
           {/* Vers un autre tableau, la liste quitterait celui-ci : un
               tableau verrouillé la garde. */}
-          {!verrouillee && (
+          {!verrouillee && droits.modifier && (
             <Menu.Item
               leftSection={<IconFolderSymlink size={16} />}
               onClick={onMove}
@@ -913,61 +928,71 @@ function ListCard({
           )}
           {/* Copier suit déplacer : même question — vers quel tableau ? —
               et la même boîte y répond, le tableau courant compris. */}
-          <Menu.Item
-            leftSection={<IconCopy size={16} />}
-            onClick={onCopy}
-          >
-            Copier
-          </Menu.Item>
-
-          <Menu.Divider />
-          {/* Les pastilles se passent d'intitulé : une couleur se
-              reconnaît. */}
-          <SimpleGrid cols={3} spacing={8} p="xs">
-            {LIST_COLORS.map((couleur) => (
-              <ColorSwatch
-                key={couleur.value}
-                component="button"
-                type="button"
-                color={couleurs(couleur.value).fond}
-                size={22}
-                onClick={() => {
-                  setMenu(null);
-                  onColor(couleur.value);
-                }}
-                style={{ cursor: "pointer" }}
-                aria-label={couleur.label}
-                aria-pressed={couleur.value === list.color}
-              >
-                {couleur.value === list.color && <BordureSelection />}
-              </ColorSwatch>
-            ))}
-          </SimpleGrid>
-          <Menu.Item
-            leftSection={<IconCircleOff size={16} />}
-            onClick={() => onColor("")}
-          >
-            Aucune
-          </Menu.Item>
-
-          <Menu.Divider />
-          {/* Vider la liste sans la supprimer : ses séparateurs restent. */}
-          <Menu.Item
-            color={RED}
-            leftSection={<IconTrashX size={16} />}
-            onClick={onDeleteTasks}
-            disabled={taches === 0}
-          >
-            Supprimer tâches
-          </Menu.Item>
-          {!verrouillee && (
+          {droits.ajouter && (
             <Menu.Item
-              color={RED}
-              leftSection={<IconTrash size={16} />}
-              onClick={onDelete}
+              leftSection={<IconCopy size={16} />}
+              onClick={onCopy}
             >
-              Supprimer
+              Copier
             </Menu.Item>
+          )}
+
+          {droits.modifier && (
+            <>
+              <Menu.Divider />
+              {/* Les pastilles se passent d'intitulé : une couleur se
+                  reconnaît. */}
+              <SimpleGrid cols={3} spacing={8} p="xs">
+                {LIST_COLORS.map((couleur) => (
+                  <ColorSwatch
+                    key={couleur.value}
+                    component="button"
+                    type="button"
+                    color={couleurs(couleur.value).fond}
+                    size={22}
+                    onClick={() => {
+                      setMenu(null);
+                      onColor(couleur.value);
+                    }}
+                    style={{ cursor: "pointer" }}
+                    aria-label={couleur.label}
+                    aria-pressed={couleur.value === list.color}
+                  >
+                    {couleur.value === list.color && <BordureSelection />}
+                  </ColorSwatch>
+                ))}
+              </SimpleGrid>
+              <Menu.Item
+                leftSection={<IconCircleOff size={16} />}
+                onClick={() => onColor("")}
+              >
+                Aucune
+              </Menu.Item>
+            </>
+          )}
+
+          {droits.supprimer && (
+            <>
+              <Menu.Divider />
+              {/* Vider la liste sans la supprimer : ses séparateurs restent. */}
+              <Menu.Item
+                color={RED}
+                leftSection={<IconTrashX size={16} />}
+                onClick={onDeleteTasks}
+                disabled={taches === 0}
+              >
+                Supprimer tâches
+              </Menu.Item>
+              {!verrouillee && (
+                <Menu.Item
+                  color={RED}
+                  leftSection={<IconTrash size={16} />}
+                  onClick={onDelete}
+                >
+                  Supprimer
+                </Menu.Item>
+              )}
+            </>
           )}
         </PointMenu>
       )}
@@ -1283,6 +1308,16 @@ export default function TaskBoard({
   // Verrouillé, le tableau garde ses listes : ni ajout, ni déplacement, ni
   // suppression. Les cartes, elles, se glissent toujours.
   const verrouille = tableau?.is_locked === 1;
+  // Ce que le compte peut faire ici dépend de la société du tableau : qui ne
+  // fait que lire ouvre les fiches, sans rien ajouter, glisser ni supprimer.
+  const peut = useDroits();
+  const droits: DroitsTableau = {
+    ajouter: peut("tasks", "create", tableau?.company_id),
+    modifier: peut("tasks", "update", tableau?.company_id),
+    supprimer: peut("tasks", "delete", tableau?.company_id),
+  };
+  // Pas de liste ajoutée : verrouillé, ou sans le droit.
+  const sansAjoutDeListe = verrouille || !droits.ajouter;
 
   // Salve de confettis en cours, tirée au-dessus d'une liste.
   const [confettis, setConfettis] = useState<Confettis | null>(null);
@@ -1338,6 +1373,7 @@ export default function TaskBoard({
 
   // --- Renommage en ligne ------------------------------------------------
   const startEdit = (list: TaskList) => {
+    if (!droits.modifier) return;
     cancelled.current = false;
     setEditingId(list.id);
     setEditingName(list.name);
@@ -1418,6 +1454,7 @@ export default function TaskBoard({
   // --- Cartes : saisie et modification -----------------------------------
   // Dans les deux cas, Échap annule et la perte de focus valide.
   const startCompose = (list: TaskList, index: number, kind: "card" | "separator" = "card") => {
+    if (!droits.ajouter) return;
     composeCancelled.current = false;
     setCardCompose({ listId: list.id, index, kind });
     setCardText("");
@@ -1489,6 +1526,7 @@ export default function TaskBoard({
     // Le second clic arrive avant que la fiche ne s'ouvre : on retire
     // l'ouverture en attente, sans quoi le tiroir viendrait par-dessus la
     // saisie qu'on vient d'ouvrir.
+    if (!droits.modifier) return;
     clearTimeout(ouvertureFiche.current);
     editCancelled.current = false;
     setEditingCardId(card.id);
@@ -1554,7 +1592,7 @@ export default function TaskBoard({
     (list: TaskList, index: number) => (event: ReactPointerEvent) => {
     // Bouton principal uniquement, jamais pendant un renommage ni sur un
     // tableau verrouillé.
-    if (event.button !== 0 || editingId === list.id || verrouille) return;
+    if (event.button !== 0 || editingId === list.id || verrouille || !droits.modifier) return;
     // Les cartes, le menu et les champs de saisie ont leur propre rôle : un
     // appui sur eux ne déplace pas la liste.
     if ((event.target as HTMLElement).closest("[data-no-list-drag]")) return;
@@ -1686,6 +1724,7 @@ export default function TaskBoard({
   // Cocher depuis la carte : l'élément quitte le panneau et la pastille
   // avance. La fiche n'a pas besoin d'être ouverte pour cela.
   const cocherChecklistItem = async (itemId: Id) => {
+    if (!droits.modifier) return;
     try {
       await api.updateChecklistItem(itemId, { done: true });
       await onListsChanged();
@@ -1714,6 +1753,7 @@ export default function TaskBoard({
       width: element.width,
       height: element.height,
       started: false,
+      figee: !droits.modifier,
     };
     };
 
@@ -1723,6 +1763,7 @@ export default function TaskBoard({
       if (!d) return;
 
       if (!d.started) {
+        if (d.figee) return;
         const distance = Math.hypot(
           event.clientX - d.startX,
           event.clientY - d.startY,
@@ -1929,6 +1970,7 @@ export default function TaskBoard({
                 ce rang. Ni pendant un glisser, ni au-dessus de la première
                 carte, ni là où la saisie est déjà ouverte. */}
             {index > 0 &&
+              droits.ajouter &&
               !cardDrag &&
               !drag &&
               saisie?.index !== index &&
@@ -2053,8 +2095,8 @@ export default function TaskBoard({
           <EmptyPanel
             icon={IconColumns}
             message="Aucune liste"
-            actionLabel={verrouille ? undefined : "Ajouter une liste"}
-            onAction={verrouille ? undefined : () => setComposing(true)}
+            actionLabel={sansAjoutDeListe ? undefined : "Ajouter une liste"}
+            onAction={sansAjoutDeListe ? undefined : () => setComposing(true)}
           />
         )
       ) : (
@@ -2076,7 +2118,7 @@ export default function TaskBoard({
                 {/* Avant chaque liste : le trait qui en insère une à cet
                     endroit. Il ne prend aucune largeur — la marge négative
                     rend à la rangée l'écart que ce repère lui coûterait. */}
-                {!drag && !cardDrag && !composing && !verrouille && (
+                {!drag && !cardDrag && !composing && !sansAjoutDeListe && (
                   <div
                     style={{
                       position: "relative",
@@ -2110,6 +2152,7 @@ export default function TaskBoard({
                   suivie={follows.list.includes(list.id)}
                   onToggleFollow={() => onToggleFollow("list", list.id)}
                   verrouillee={verrouille}
+                  droits={droits}
                   list={list}
                   editing={editingId === list.id ? { id: list.id, name: editingName } : null}
                   onStartEdit={() => startEdit(list)}
@@ -2134,7 +2177,7 @@ export default function TaskBoard({
                 >
                   {renderCards(list)}
 
-                  {cardCompose?.listId !== list.id && (
+                  {cardCompose?.listId !== list.id && droits.ajouter && (
                     <AddCardButton
                       label="Ajouter une carte"
                       color={couleurs(list.color).texte}
@@ -2151,7 +2194,7 @@ export default function TaskBoard({
             )}
 
             {/* Toujours à droite des listes : le bouton cède la place à l'encart. */}
-            {!composing && !drag && !verrouille && (
+            {!composing && !drag && !sansAjoutDeListe && (
               <AddButton
                 label="Ajouter une liste"
                 onClick={() => setComposing(true)}
@@ -2231,6 +2274,7 @@ export default function TaskBoard({
         boardId={boardId}
         onLabelsChanged={onLabelsChanged}
         onSaved={onListsChanged}
+        readOnly={!droits.modifier}
       />
 
       {/* « Modifier » ouvre une saisie sur le séparateur : le focus ne doit
@@ -2258,26 +2302,36 @@ export default function TaskBoard({
               <Menu.Divider />
             </>
           )}
-          <Menu.Item
-            leftSection={<IconPencil size={16} />}
-            onClick={() => modifierCarte(menuCarte.card)}
-          >
-            Modifier
-          </Menu.Item>
-          <Menu.Item
-            leftSection={<IconCopyPlus size={16} />}
-            onClick={() => void dupliquerCarte(menuCarte.card)}
-          >
-            Dupliquer
-          </Menu.Item>
-          <Menu.Divider />
-          <Menu.Item
-            color={RED}
-            leftSection={<IconTrash size={16} />}
-            onClick={() => setCarteASupprimer(menuCarte.card)}
-          >
-            Supprimer
-          </Menu.Item>
+          {/* Sans le droit de modifier, la fiche s'ouvre encore d'un clic sur
+              la carte, pour être lue. */}
+          {droits.modifier && (
+            <Menu.Item
+              leftSection={<IconPencil size={16} />}
+              onClick={() => modifierCarte(menuCarte.card)}
+            >
+              Modifier
+            </Menu.Item>
+          )}
+          {droits.ajouter && (
+            <Menu.Item
+              leftSection={<IconCopyPlus size={16} />}
+              onClick={() => void dupliquerCarte(menuCarte.card)}
+            >
+              Dupliquer
+            </Menu.Item>
+          )}
+          {droits.supprimer && (
+            <>
+              <Menu.Divider />
+              <Menu.Item
+                color={RED}
+                leftSection={<IconTrash size={16} />}
+                onClick={() => setCarteASupprimer(menuCarte.card)}
+              >
+                Supprimer
+              </Menu.Item>
+            </>
+          )}
         </PointMenu>
       )}
 

@@ -106,6 +106,16 @@ const quantiteDe = (config: unknown): number =>
     Math.max(QUANTITE_MIN, Math.round(nombre(config, QUANTITE, QUANTITE_PAR_DEFAUT))),
   );
 
+/**
+ * Les derniers articles montrés par chaque élément, pour la durée de la page.
+ * Revenu sur la catégorie, ou passé d'un mode à l'autre, l'élément se remonte :
+ * il reprend aussitôt ce qu'il montrait, et la relecture le met à jour sans
+ * rien faire sauter. La clé porte l'adresse : un flux changé ne montre pas les
+ * articles de l'ancien.
+ */
+const dejaLus = new Map<string, Article[]>();
+const cleDe = (blockId: Id, url: string) => `${blockId}|${url}`;
+
 type Etat =
   | { phase: "attente" }
   | { phase: "pret"; articles: Article[] }
@@ -115,7 +125,10 @@ function Flux({ blockId, config }: { blockId: Id; config: unknown }) {
   const url = texte(config, URL_FLUX).trim();
   const quantite = quantiteDe(config);
   const dates = avecDates(config);
-  const [etat, setEtat] = useState<Etat>({ phase: "attente" });
+  const [etat, setEtat] = useState<Etat>(() => {
+    const articles = dejaLus.get(cleDe(blockId, url));
+    return articles ? { phase: "pret", articles } : { phase: "attente" };
+  });
 
   // L'adresse et la quantité sont celles que le serveur lit dans l'élément
   // enregistré : quand elles changent, ce qu'il garde change aussi.
@@ -124,12 +137,19 @@ function Flux({ blockId, config }: { blockId: Id; config: unknown }) {
     // Une réponse arrivée après un changement d'adresse ne doit pas écraser
     // celle de la nouvelle.
     let actif = true;
+    const cle = cleDe(blockId, url);
     const lire = () =>
       api
         .getAccessFeed(blockId)
-        .then((flux) => actif && setEtat({ phase: "pret", articles: articlesDe(flux) }))
+        .then((flux) => {
+          const articles = articlesDe(flux);
+          dejaLus.set(cle, articles);
+          if (actif) setEtat({ phase: "pret", articles });
+        })
         .catch((e: Error) => actif && setEtat({ phase: "erreur", message: e.message }));
-    setEtat({ phase: "attente" });
+    // Déjà lus, les articles restent à l'écran le temps de la relecture.
+    const connus = dejaLus.get(cle);
+    setEtat(connus ? { phase: "pret", articles: connus } : { phase: "attente" });
     lire();
     const battement = setInterval(lire, RELECTURE);
     return () => {
@@ -145,11 +165,26 @@ function Flux({ blockId, config }: { blockId: Id; config: unknown }) {
       </Text>
     );
   }
+  // Le chargement tient déjà la hauteur des articles attendus, ligne pour
+  // ligne : sans cela, chaque flux grandirait d'un coup à son arrivée et
+  // repousserait ce qui le suit, l'un après l'autre.
   if (etat.phase === "attente") {
     return (
-      <Text size="sm" c="dimmed">
-        Chargement du flux…
-      </Text>
+      <Stack gap={0}>
+        {Array.from({ length: quantite }, (_, i) => (
+          <Text
+            key={i}
+            size="sm"
+            c="dimmed"
+            lineClamp={1}
+            // Le retrait d'un lien (AccessLink.module.css), sans son survol :
+            // il n'y a encore rien à ouvrir.
+            style={{ ...LIGNE_DE_LIEN, padding: 3, marginInline: -3 }}
+          >
+            {i === 0 ? "Chargement du flux…" : "\u00a0"}
+          </Text>
+        ))}
+      </Stack>
     );
   }
   if (etat.phase === "erreur") {
@@ -200,6 +235,7 @@ function Flux({ blockId, config }: { blockId: Id; config: unknown }) {
 
 export const rssWidget: AccessWidget = {
   type: "rss",
+  kind: "common",
   label: "Flux RSS",
   icon: IconRss,
   defaultConfig: {

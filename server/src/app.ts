@@ -39,6 +39,8 @@ import { assetIndicatorRoutes } from "./routes/asset-indicators.js";
 import { projectIndicatorRoutes } from "./routes/project-indicators.js";
 import { taskIndicatorRoutes } from "./routes/task-indicators.js";
 import { supportSettingsRoutes } from "./routes/support-settings.js";
+import { supportContentRoutes } from "./routes/support-contents.js";
+import { supportReplyRoutes } from "./routes/support-replies.js";
 import { assetSettingsRoutes } from "./routes/asset-settings.js";
 import { milestoneTypeRoutes } from "./routes/milestone-types.js";
 import { followRoutes } from "./routes/follows.js";
@@ -55,6 +57,7 @@ import {
 import { taskCardRoutes, cardCommentRoutes } from "./routes/task-cards.js";
 import { taskListRoutes } from "./routes/task-lists.js";
 import { userRoutes } from "./routes/users.js";
+import { exigerParMethode, exigerVoir } from "./lib/droits.js";
 import { tabOrderRoutes } from "./routes/tab-orders.js";
 import { developerRoutes } from "./routes/developer.js";
 import { supportMailRoutes } from "./routes/support-mail.js";
@@ -123,9 +126,20 @@ export const createApp = (): express.Express => {
   app.use("/api/follows", followRoutes);
   app.use("/api/notifications", notificationRoutes);
 
-  app.use("/api/access-categories", accessCategoryRoutes);
-  app.use("/api/access-sections", accessSectionRoutes);
-  app.use("/api/access-blocks", accessBlockRoutes);
+  // Le mode Accès n'appartient à aucune société : ses droits sont ceux de
+  // toutes les sociétés du compte réunies. Les autres modes vérifient les
+  // leurs route par route, société par société (lib/droits.ts).
+  // Ranger ses onglets ne touche que son ordre à soi : le voir suffit.
+  app.use(
+    "/api/access-categories",
+    exigerParMethode("access", (req) => req.method === "PUT" && req.path === "/reorder"),
+    accessCategoryRoutes,
+  );
+  // Les sections et les éléments ne demandent ici que de voir le mode : leurs
+  // écritures vérifient le droit route par route, une structure personnelle
+  // (« Hérité » décoché) n'étant qu'à son compte.
+  app.use("/api/access-sections", exigerVoir("access"), accessSectionRoutes);
+  app.use("/api/access-blocks", exigerVoir("access"), accessBlockRoutes);
 
   app.use("/api/project-boards", projectBoardRoutes);
   app.use("/api/categories", categoryRoutes);
@@ -158,6 +172,9 @@ export const createApp = (): express.Express => {
   app.use("/api/support-indicators", supportIndicatorRoutes);
   // L'échéance par défaut : lue partout, écrite depuis le Paramétrage.
   app.use("/api/support-settings", requireSettingsToWrite, supportSettingsRoutes);
+  app.use("/api/support-replies", requireSettingsToWrite, supportReplyRoutes);
+  // Lus par la fiche d'une demande, qui les pose dans sa réponse.
+  app.use("/api/support-contents", requireSettingsToWrite, supportContentRoutes);
 
   app.use("/api/search", searchRoutes);
   app.use("/api/tab-orders", tabOrderRoutes);

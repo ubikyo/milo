@@ -14,6 +14,7 @@
 import express, { Router } from "express";
 import type { Request } from "express";
 import { HttpError, badRequest, orNotFound } from "../lib/http.js";
+import { exiger, peut } from "../lib/droits.js";
 import { finDeSupport } from "../lib/endoflife.js";
 import { decompresser, lireXml, texteDe } from "../lib/inventory.js";
 import { heureDeParis, now } from "../lib/time.js";
@@ -149,6 +150,13 @@ export const assetRoutes = Router();
 
 assetRoutes.use(touch("assets"));
 
+/** Le poste, si l'on voit les assets de sa société. */
+const posteVisible = (req: Request, id: unknown) => {
+  const poste = orNotFound(assets.byId.get(id), POSTE_INTROUVABLE);
+  exiger(req, "assets", "view", poste.company_id, POSTE_INTROUVABLE);
+  return poste;
+};
+
 /**
  * Les postes de la société choisie. Sans société précise — « toutes » —, ils
  * sortent tous : c'est là que se voient ceux dont le tag ne désigne rien.
@@ -157,7 +165,11 @@ assetRoutes.get("/", (req, res) => {
   const company = req.query.company;
   const lignes =
     !company || company === "all" ? assets.all.all() : assets.ofCompany.all(company);
-  res.json(lignes.map((ligne) => assetOf(ligne)));
+  // Les sociétés dont on ne voit pas les assets sont écartées ; un poste sans
+  // société se voit de qui voit les assets d'au moins une.
+  res.json(
+    lignes.filter((l) => peut(req, "assets", "view", l.company_id)).map((ligne) => assetOf(ligne)),
+  );
 });
 
 /**
@@ -167,7 +179,7 @@ assetRoutes.get("/", (req, res) => {
  * le poste s'ouvre quand même.
  */
 assetRoutes.get("/:id", (req, res, next) => {
-  const detail = assetDetail(orNotFound(assets.byId.get(req.params.id), POSTE_INTROUVABLE));
+  const detail = assetDetail(posteVisible(req, req.params.id));
   finDeSupport(detail.os)
     .then((support) => res.json({ ...detail, support }))
     .catch(next);
@@ -224,7 +236,7 @@ const demanderInventaire = async (adresse: string): Promise<void> => {
  * asynchrone — le reste du serveur, lui, est synchrone et n'a pas ce souci.
  */
 assetRoutes.post("/:id/refresh", (req, res, next) => {
-  const poste = orNotFound(assets.byId.get(req.params.id), POSTE_INTROUVABLE);
+  const poste = posteVisible(req, req.params.id);
   const { address } = assetDetail(poste);
   if (!address) {
     badRequest("Aucune adresse connue pour ce poste : son inventaire n'en déclare aucune.");
@@ -237,6 +249,6 @@ assetRoutes.post("/:id/refresh", (req, res, next) => {
 
 /** Un poste qui n'existe plus : c'est le seul geste qu'on ait sur lui. */
 assetRoutes.delete("/:id", (req, res) => {
-  assets.remove.run(orNotFound(assets.byId.get(req.params.id), POSTE_INTROUVABLE).id);
+  assets.remove.run(posteVisible(req, req.params.id).id);
   res.status(204).end();
 });

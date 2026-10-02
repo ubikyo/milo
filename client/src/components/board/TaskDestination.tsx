@@ -4,6 +4,7 @@ import { lienElement } from "@milo/shared";
 import type { Board, Company, Id, LienKind, TaskList } from "@milo/shared";
 import { api } from "../../api";
 import { messageErreur } from "../../lib/errors";
+import { useDroits } from "../../lib/droits";
 
 // « Créer une tâche », depuis le menu contextuel d'un projet, d'une demande de
 // support, d'un poste ou d'un élément du mode Accès. La fiche de la carte
@@ -105,6 +106,8 @@ interface TaskDestinationProps {
  * retient d'office le premier de ce qu'il propose.
  */
 export default function TaskDestination({ source, onChange, onError }: TaskDestinationProps) {
+  // Seules les sociétés où l'on peut ajouter une tâche sont proposées.
+  const peut = useDroits();
   const [companies, setCompanies] = useState<Company[] | null>(null);
   const [societe, setSociete] = useState<string | null>(
     source.companyId === null ? null : String(source.companyId),
@@ -124,14 +127,17 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
     let annule = false;
     api
       .getCompanies()
-      .then((lues) => {
+      .then((toutes) => {
         if (annule) return;
+        const lues = toutes.filter((c) => peut("tasks", "create", c.id));
         setCompanies(lues);
         // Sans société propre — un élément du mode Accès, un poste non
-        // rattaché —, celle dont le nom rappelle le tableau d'origine, à
-        // défaut la première : il y a toujours un premier choix.
+        // rattaché —, ou dans une société où l'on ne peut pas ajouter de
+        // tâche, celle dont le nom rappelle le tableau d'origine, à défaut la
+        // première : il y a toujours un premier choix.
         const devinee = rapprocher(source.boardName, lues) ?? lues[0];
-        if (source.companyId === null && devinee) setSociete(String(devinee.id));
+        const permise = lues.some((c) => c.id === source.companyId);
+        if (!permise) setSociete(devinee ? String(devinee.id) : null);
       })
       .catch((e) => !annule && onError(messageErreur(e)));
     return () => {

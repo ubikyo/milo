@@ -9,10 +9,12 @@ import type { AssetIndicatorWidget } from "./types";
 
 export const listeAssetIndicator: AssetIndicatorWidget = {
   type: "list",
+  kind: "asset",
   label: "Liste des assets",
   icon: IconList,
   defaultConfig: {},
   ownClicks: true,
+  fill: true,
   Display: ({ config }) => <AssetsList config={config} />,
   Config: (props) => <ChampsColonnes colonnes={COLONNES_ASSETS} {...props} />,
 };

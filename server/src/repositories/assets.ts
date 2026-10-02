@@ -15,11 +15,13 @@ import type {
   AssetProtection,
   AssetSection,
   AssetSummary,
+  AssetVlan,
   Id,
 } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import type { AssetRow, CompanyRow } from "../db/rows.js";
 import { nomDuModele } from "../lib/asset-models.js";
+import { vlanDe, vlans } from "../lib/asset-vlans.js";
 import { sectionsDe, texteDe } from "../lib/inventory.js";
 import type { Arbre } from "../lib/inventory.js";
 
@@ -439,8 +441,21 @@ const administrateursDe = (sections: AssetSection[]): ((compte: AssetEntry) => b
     [compte["LOGIN"], compte["NAME"]].some((nom) => nom && membres.has(nom.toLowerCase()));
 };
 
+/**
+ * Le VLAN du Paramétrage qui porte une carte réseau : celui de la première de
+ * ses adresses IPv4 qui tombe dans un sous-réseau déclaré.
+ */
+const vlanDeCarte = (entree: AssetEntry, table: AssetVlan[]): AssetVlan | null =>
+  (entree["IPADDRESS"] ?? "")
+    .split(",")
+    .map((a) => a.trim())
+    .filter((a) => !inutilisable(a))
+    .map((ip) => vlanDe(ip, table))
+    .find(Boolean) ?? null;
+
 const sectionsAffichees = (sections: AssetSection[], windows: boolean): AssetSection[] => {
   const administrateur = administrateursDe(sections);
+  const table = vlans();
   return sections
     .filter((section) => !SECTIONS_MASQUEES.has(section.name))
     .map((section) => ({
@@ -452,6 +467,12 @@ const sectionsAffichees = (sections: AssetSection[], windows: boolean): AssetSec
             ? { ...entree, ADMIN: "1" }
             : entree,
         )
+        // VLAN et VLAN_NAME ne sont pas de l'agent non plus : le VLAN du
+        // Paramétrage qui porte la carte, quand il y en a un.
+        .map((entree) => {
+          const vlan = section.name === "NETWORKS" ? vlanDeCarte(entree, table) : null;
+          return vlan ? { ...entree, VLAN: String(vlan.vlan), VLAN_NAME: vlan.name } : entree;
+        })
         .map((entree) => entreeAffichee(section.name, entree))
         .filter((entree) => Object.keys(entree).length > 0),
     }))
@@ -490,12 +511,18 @@ const nombre = (valeur: string | undefined): number | null => {
 };
 
 /**
- * Les cartes réseau physiques qui ont une adresse : Ethernet et Wi-Fi. L'agent
- * donne le genre dans TYPE ; les plus anciens ne le donnent pas, et le nom de
- * la carte le dit alors.
+ * La carte réseau du résumé, parmi les physiques qui ont une adresse —
+ * Ethernet et Wi-Fi : une connectée, le Wi-Fi d'abord. L'agent donne le genre
+ * dans TYPE ; les plus anciens ne le donnent pas, et le nom de la carte le dit
+ * alors.
  */
-const cartesDe = (sections: AssetSection[]): AssetNetwork[] =>
-  entreesDe(sections, "NETWORKS").flatMap((entree): AssetNetwork[] => {
+/** Une carte telle que lue, et si elle est connectée : de quoi choisir. */
+type CarteLue = AssetNetwork & { connectee: boolean };
+
+const cartesDe = (sections: AssetSection[]): AssetNetwork[] => {
+  // La table des VLAN du Paramétrage, lue une fois pour toutes les cartes.
+  const table = vlans();
+  const cartes = entreesDe(sections, "NETWORKS").flatMap((entree): CarteLue[] => {
     if (entree["VIRTUALDEV"] === "1") return [];
     const description = entree["DESCRIPTION"] ?? "";
     const type = (entree["TYPE"] ?? "").toLowerCase();
@@ -507,8 +534,27 @@ const cartesDe = (sections: AssetSection[]): AssetNetwork[] =>
       .map((a) => a.trim())
       .filter((a) => !inutilisable(a));
     if (ips.length === 0) return [];
-    return [{ kind: wifi ? "wifi" : "ethernet", description, ips }];
+    const vlan = vlanDeCarte(entree, table);
+    return [
+      {
+        kind: wifi ? "wifi" : "ethernet",
+        description,
+        ips,
+        vlan: vlan && { vlan: vlan.vlan, name: vlan.name },
+        connectee: (entree["STATUS"] ?? "").toLowerCase() === "up",
+      },
+    ];
   });
+  // Une seule carte : une connectée, le Wi-Fi avant l'Ethernet ; à défaut de
+  // connectée, la première qui a une adresse.
+  const choisie =
+    cartes.find((c) => c.connectee && c.kind === "wifi") ??
+    cartes.find((c) => c.connectee) ??
+    cartes[0];
+  if (!choisie) return [];
+  const { connectee: _connectee, ...carte } = choisie;
+  return [carte];
+};
 
 /** L'onglet « Résumé » : ce qu'on cherche d'abord en ouvrant un poste. */
 const resumeDe = (sections: AssetSection[], contenu: Arbre): AssetSummary => {

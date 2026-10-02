@@ -12,6 +12,7 @@ import {
   IconTrash,
   IconUserPlus,
 } from "@tabler/icons-react";
+import { useDroits } from "../../lib/droits";
 import { useCallback, useEffect, useState } from "react";
 import LabelsManager from "../board/LabelsManager";
 import { api } from "../../api";
@@ -109,6 +110,16 @@ export default function SupportActions({
     a.created_at === b.created_at ? b.id - a.id : a.created_at < b.created_at ? 1 : -1,
   )[0];
   const autres = vises.filter((d) => d !== gardee);
+
+  // Les gestes suivent les droits du compte dans la société de chaque
+  // demande visée : il les faut tous, pour chacune.
+  const peut = useDroits();
+  const peutSur = (demandes: SupportRequest[], droit: "update" | "delete") =>
+    demandes.length > 0 && demandes.every((d) => peut("support", droit, d.company_id));
+  const modifierCochees = peutSur(selected, "update");
+  const supprimerCochees = peutSur(selected, "delete");
+  const modifierVisee = contexte ? peutSur([contexte.demande], "update") : false;
+  const supprimerVisee = contexte ? peutSur([contexte.demande], "delete") : false;
 
   const executer = async (action: () => Promise<unknown>, succes: string) => {
     setEnCours(true);
@@ -212,14 +223,14 @@ export default function SupportActions({
               qui s'ouvre. */}
             <Menu.Item
               leftSection={<IconPencil size={16} />}
-              disabled={n !== 1}
+              disabled={n !== 1 || !modifierCochees}
               onClick={() => selected[0] && onEdit(selected[0])}
             >
               Modifier
             </Menu.Item>
             <Menu.Item
               leftSection={<IconUserPlus size={16} />}
-              disabled={n === 0}
+              disabled={n === 0 || !modifierCochees}
               onClick={() => {
                 setActeurs([]);
                 setAssignation(true);
@@ -229,14 +240,14 @@ export default function SupportActions({
             </Menu.Item>
             <Menu.Item
               leftSection={<IconArrowMerge size={16} />}
-              disabled={n < 2}
+              disabled={n < 2 || !modifierCochees}
               onClick={() => setAConfirmer("merge")}
             >
               Fusionner
             </Menu.Item>
             <Menu.Item
               leftSection={<IconCircleX size={16} />}
-              disabled={n === 0}
+              disabled={n === 0 || !modifierCochees}
               onClick={() => setAConfirmer("close")}
             >
               Fermer
@@ -244,14 +255,18 @@ export default function SupportActions({
             <Menu.Divider />
             {/* Les étiquettes sont communes à tout le support, pas propres aux
               demandes cochées : ce geste n'en demande aucune. */}
-            <Menu.Item leftSection={<IconTags size={16} />} onClick={ouvrirEtiquettes}>
+            <Menu.Item
+              leftSection={<IconTags size={16} />}
+              disabled={!peut("support", "update")}
+              onClick={ouvrirEtiquettes}
+            >
               Étiquettes
             </Menu.Item>
             <Menu.Divider />
             <Menu.Item
               color={RED}
               leftSection={<IconTrash size={16} />}
-              disabled={n === 0}
+              disabled={n === 0 || !supprimerCochees}
               onClick={() => setAConfirmer("delete")}
             >
               Supprimer
@@ -280,22 +295,28 @@ export default function SupportActions({
               <Menu.Divider />
             </>
           )}
-          <Menu.Item
-            leftSection={<IconPencil size={16} />}
-            onClick={() => onEdit(contexte.demande)}
-          >
-            Modifier
-          </Menu.Item>
-          <Menu.Item
-            leftSection={<IconUserPlus size={16} />}
-            onClick={() => {
-              setCibles([contexte.demande]);
-              setActeurs([]);
-              setAssignation(true);
-            }}
-          >
-            Assigner à
-          </Menu.Item>
+          {/* Sans le droit de modifier, la demande s'ouvre encore d'un clic
+              sur sa ligne, pour être lue. */}
+          {modifierVisee && (
+            <>
+              <Menu.Item
+                leftSection={<IconPencil size={16} />}
+                onClick={() => onEdit(contexte.demande)}
+              >
+                Modifier
+              </Menu.Item>
+              <Menu.Item
+                leftSection={<IconUserPlus size={16} />}
+                onClick={() => {
+                  setCibles([contexte.demande]);
+                  setActeurs([]);
+                  setAssignation(true);
+                }}
+              >
+                Assigner à
+              </Menu.Item>
+            </>
+          )}
           {onCreateTask && (
             <Menu.Item
               leftSection={<IconSquarePlus size={16} />}
@@ -304,17 +325,21 @@ export default function SupportActions({
               Créer une tâche
             </Menu.Item>
           )}
-          <Menu.Divider />
-          <Menu.Item
-            color={RED}
-            leftSection={<IconTrash size={16} />}
-            onClick={() => {
-              setCibles([contexte.demande]);
-              setAConfirmer("delete");
-            }}
-          >
-            Supprimer
-          </Menu.Item>
+          {supprimerVisee && (
+            <>
+              <Menu.Divider />
+              <Menu.Item
+                color={RED}
+                leftSection={<IconTrash size={16} />}
+                onClick={() => {
+                  setCibles([contexte.demande]);
+                  setAConfirmer("delete");
+                }}
+              >
+                Supprimer
+              </Menu.Item>
+            </>
+          )}
         </PointMenu>
       )}
 
@@ -396,13 +421,26 @@ export default function SupportActions({
         centered
         padding={MODAL_PADDING}
         withCloseButton={false}
-        styles={modalHeaderStyles(MODAL_PADDING)}
+        // La liste des acteurs sort de la fenêtre, comme tout menu : le contenu
+        // ne la rogne pas. L'en-tête garde alors seul les coins arrondis.
+        styles={(() => {
+          const base = modalHeaderStyles(MODAL_PADDING);
+          return {
+            ...base,
+            content: { overflow: "visible" },
+            header: {
+              ...base.header,
+              borderTopLeftRadius: "inherit",
+              borderTopRightRadius: "inherit",
+            },
+          };
+        })()}
       >
         <Stack gap="md">
-          <ActorPicker label="Acteurs" users={users} value={acteurs} onChange={setActeurs} />
           <Text size="xs" c="dimmed">
-            Les acteurs s'ajoutent à ceux déjà désignés. Chacun est prévenu à l'écran et par e-mail.
+            Les acteurs sélectionnés ci-dessous seront ajoutés à la liste existante et informés aussitôt.
           </Text>
+          <ActorPicker label="Acteurs" users={users} value={acteurs} onChange={setActeurs} />
           <Group justify="flex-end" mt={MODAL_PADDING - 16}>
             <BoutonFermer
               onClick={() => {

@@ -13,6 +13,7 @@ const LIBELLE = "Échéances";
 
 export const echeancesTachesIndicator: TaskIndicatorWidget = {
   type: "due",
+  kind: "task",
   label: LIBELLE,
   icon: IconCalendarDue,
   defaultConfig: { [NOM]: "" },
