@@ -2,49 +2,53 @@
 // existante passe par les migrations (migrations.ts).
 
 export const SCHEMA = `
-  -- Tableaux du mode Projet. Ils ne dépendent d'aucune société : un tableau
-  -- rassemble des projets de plusieurs sociétés. Chacun porte ses catégories.
-  CREATE TABLE IF NOT EXISTS project_boards (
+  -- Les workspaces : une équipe chacun. Ses vues, et tout ce qu'elles
+  -- portent, ne se voient que depuis lui ; ses accès sont les siens
+  -- (principal_permissions). Il en existe toujours au moins un.
+  CREATE TABLE IF NOT EXISTS workspaces (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
-    -- L'auteur du tableau : celui qui l'a créé. Le compte supprimé laisse le
-    -- tableau sans auteur, et donc ouvert à tous.
+    created_at TEXT NOT NULL
+  );
+
+  -- Les vues : ce que le sélecteur du bas propose. Chacune porte ses
+  -- tableaux. Une vue privée ne se montre qu'à son auteur ; ouverte à tous,
+  -- elle n'a pas de propriétaire. Elle appartient à un workspace — nul le
+  -- temps que les rattrapages la lui donnent (migrations.ts, workspaces).
+  CREATE TABLE IF NOT EXISTS views (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
     owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    -- Privé : le tableau, ses catégories, ses étiquettes et ses projets ne se
-    -- montrent qu'à son auteur.
     is_private INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
+
 
   -- Les catégories sont propres à un tableau : deux tableaux peuvent nommer
   -- une catégorie de la même façon.
   CREATE TABLE IF NOT EXISTS categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    board_id INTEGER NOT NULL REFERENCES project_boards(id) ON DELETE CASCADE,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     -- Ancien emplacement des jalons, avant les types de jalons
     -- (milestone_types) : plus lu, gardé pour les bases qui le portent.
     milestones TEXT NOT NULL DEFAULT '[]',
+    -- Leur ordre dans le tableau, glissé dans le tiroir du widget « Projets ».
+    position INTEGER NOT NULL DEFAULT 0,
     UNIQUE (board_id, name)
   );
 
-  CREATE TABLE IF NOT EXISTS companies (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    -- Le support de la société : l'adresse à laquelle lui écrire, et celle de
-    -- son site, toujours en https://. Vides tant qu'on ne les a pas saisies.
-    support_email TEXT NOT NULL DEFAULT '',
-    support_url TEXT NOT NULL DEFAULT ''
-  );
-
-  -- Les permissions d'un utilisateur ou d'un groupe Entra, pour toutes les
-  -- sociétés : le Paramétrage ('' : aucun, 'view', 'update') et une
+  -- Les accès d'un utilisateur ou d'un groupe Entra à un workspace : une
   -- permission par type de widget, en JSON — { "helpdesk": "update",
-  -- "asset": "view", … } (shared, widget-kinds.ts). Sans ligne, aucun accès.
-  -- Désignés par leur identifiant d'objet Entra, qui ne change pas quand on
-  -- les renomme ; le nom et l'adresse sont gardés pour l'affichage. « modes »
-  -- ne sert plus : les modes se déduisent des types.
+  -- "asset": "view", … } (shared, widget-kinds.ts). Sans ligne, aucun accès
+  -- au workspace. Désignés par leur identifiant d'objet Entra, qui ne change
+  -- pas quand on les renomme ; le nom et l'adresse sont gardés pour
+  -- l'affichage. « modes » ne sert plus : les modes se déduisent des types ;
+  -- « settings » et « workspaces » non plus : l'administration vaut pour
+  -- toute l'application (principal_admin).
   CREATE TABLE IF NOT EXISTS principal_permissions (
     principal_type TEXT NOT NULL CHECK (principal_type IN ('user', 'group')),
     principal_id TEXT NOT NULL,
@@ -53,6 +57,21 @@ export const SCHEMA = `
     settings TEXT NOT NULL DEFAULT '' CHECK (settings IN ('', 'view', 'update')),
     modes TEXT NOT NULL DEFAULT '[]',
     widgets TEXT NOT NULL DEFAULT '{}',
+    workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    workspaces TEXT NOT NULL DEFAULT '' CHECK (workspaces IN ('', 'update')),
+    PRIMARY KEY (workspace_id, principal_type, principal_id)
+  );
+
+  -- L'administration d'un utilisateur ou d'un groupe Entra, pour toute
+  -- l'application : le Paramétrage ('' : aucun, 'view', 'update') et la
+  -- gestion des workspaces ('' ou 'update'). Sans ligne, ni l'un ni l'autre.
+  CREATE TABLE IF NOT EXISTS principal_admin (
+    principal_type TEXT NOT NULL CHECK (principal_type IN ('user', 'group')),
+    principal_id TEXT NOT NULL,
+    principal_name TEXT NOT NULL DEFAULT '',
+    principal_email TEXT NOT NULL DEFAULT '',
+    settings TEXT NOT NULL DEFAULT '' CHECK (settings IN ('', 'view', 'update')),
+    workspaces TEXT NOT NULL DEFAULT '' CHECK (workspaces IN ('', 'update')),
     PRIMARY KEY (principal_type, principal_id)
   );
 
@@ -73,9 +92,14 @@ export const SCHEMA = `
     number INTEGER NOT NULL DEFAULT 0,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
-    board_id INTEGER NOT NULL REFERENCES project_boards(id) ON DELETE CASCADE,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     category_id INTEGER NOT NULL REFERENCES categories(id),
-    company_id INTEGER REFERENCES companies(id),
+    -- Le contexte du tableau auquel il appartient : il part avec lui. Nul
+    -- quand le tableau n'en a pas.
+    context_id INTEGER REFERENCES contexts(id) ON DELETE CASCADE,
+    -- Le widget « Projets » qui le montre : la clé de liste de sa
+    -- configuration. Il part avec le dernier widget qui la tient.
+    list_key TEXT NOT NULL DEFAULT '',
     -- Facultatif : sans type de jalons, le curseur reste nu.
     milestone_type_id INTEGER REFERENCES milestone_types(id) ON DELETE SET NULL,
     status INTEGER NOT NULL DEFAULT 0 CHECK (status >= 0 AND status <= 100),
@@ -94,6 +118,9 @@ export const SCHEMA = `
     password_hash TEXT NOT NULL DEFAULT '',
     -- Mode ouvert à la connexion : chacun choisit le sien.
     default_mode TEXT NOT NULL DEFAULT 'projects',
+    -- La vue d'ouverture : son identifiant, ou vide pour la première. Le
+    -- mode d'avant les vues (« default_mode ») ne sert plus.
+    default_view TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     -- L'identifiant d'objet Entra (oid), posé à la première connexion par
     -- Microsoft. Vide pour le compte « admin » et pour les comptes d'avant
@@ -103,7 +130,10 @@ export const SCHEMA = `
     -- connexion : ses droits en dépendent.
     entra_groups TEXT NOT NULL DEFAULT '[]',
     -- Le compte « admin » local, qui ne sert qu'au paramétrage.
-    system INTEGER NOT NULL DEFAULT 0
+    system INTEGER NOT NULL DEFAULT 0,
+    -- Le workspace où il travaille, choisi dans le sélecteur. Nul, ou un
+    -- workspace qu'il n'a plus : le premier des siens.
+    workspace_id INTEGER REFERENCES workspaces(id) ON DELETE SET NULL
   );
 
   -- Les acteurs favoris de chaque personne : ils passent en tête des listes
@@ -179,7 +209,7 @@ export const SCHEMA = `
   -- tableau de projets : les deux modes ne partagent pas leurs étiquettes.
   CREATE TABLE IF NOT EXISTS project_labels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    board_id INTEGER NOT NULL REFERENCES project_boards(id) ON DELETE CASCADE,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     -- « teinte.nuance » de la palette Mantine, par exemple « red.6 ».
     color TEXT NOT NULL DEFAULT 'blue.6',
@@ -195,25 +225,70 @@ export const SCHEMA = `
     PRIMARY KEY (project_id, label_id)
   );
 
-  -- Tableaux du mode Tâche. Une société en compte autant qu'elle veut ;
-  -- chacun porte ses propres listes.
+  -- Les tableaux d'une vue : ses onglets. Un tableau contient ses projets et
+  -- ses listes de tâches, et ses sections de widgets. Un tableau privé ne se
+  -- montre qu'à son auteur. « all_contexts_label » : le libellé, renommable,
+  -- de l'entrée qui montre tous ses contextes.
   CREATE TABLE IF NOT EXISTS boards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    view_id INTEGER NOT NULL REFERENCES views(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
+    all_contexts_label TEXT NOT NULL DEFAULT 'Tous les contextes',
     position INTEGER NOT NULL DEFAULT 0,
-    -- Le numéro des cartes se montre par défaut ; chaque tableau peut le taire.
     show_card_numbers INTEGER NOT NULL DEFAULT 1,
-    -- L'auteur du tableau : celui qui l'a créé. Le compte supprimé laisse le
-    -- tableau sans auteur, et donc ouvert à tous.
     owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    -- Privé : le tableau ne se montre qu'à son auteur.
     is_private INTEGER NOT NULL DEFAULT 0,
-    -- Verrouillé : ses listes ne s'ajoutent, ne se déplacent ni ne se
-    -- suppriment plus. Les cartes, elles, bougent toujours.
     is_locked INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
+
+  -- Les contextes d'un tableau : la liste en haut à gauche. Ses projets, ses
+  -- cartes, les demandes et les postes que ses widgets reçoivent appartiennent
+  -- chacun à l'un d'eux, et partent avec lui.
+  CREATE TABLE IF NOT EXISTS contexts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  -- Le contexte que chacun a choisi dans un tableau. Sans ligne, ou nul :
+  -- tous les contextes.
+  CREATE TABLE IF NOT EXISTS user_board_contexts (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    context_id INTEGER REFERENCES contexts(id) ON DELETE SET NULL,
+    PRIMARY KEY (user_id, board_id)
+  );
+
+  -- Les sections d'un tableau : ses colonnes. « owner_id » nul : la
+  -- structure publique, partagée par tous ceux qui l'héritent ; sinon la
+  -- structure propre à ce compte (personal_layouts).
+  CREATE TABLE IF NOT EXISTS board_sections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    width_unit TEXT NOT NULL DEFAULT 'auto'
+      CHECK (width_unit IN ('auto', 'percent', 'px')),
+    width_value REAL,
+    gap INTEGER NOT NULL DEFAULT 50,
+    position INTEGER NOT NULL DEFAULT 0,
+    owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL
+  );
+
+  -- Ce qu'une section porte : les widgets du client. Le serveur ne connaît
+  -- pas leur configuration — il range le JSON que le widget lui donne et le
+  -- rend tel quel. « type » désigne le widget (shared, BOARD_WIDGET_TYPES).
+  CREATE TABLE IF NOT EXISTS board_widgets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL REFERENCES board_sections(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    config TEXT NOT NULL DEFAULT '{}',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
 
   -- Listes d'un tableau (ses colonnes).
   CREATE TABLE IF NOT EXISTS task_lists (
@@ -223,6 +298,8 @@ export const SCHEMA = `
     position INTEGER NOT NULL DEFAULT 0,
     -- Couleur d'arrière-plan choisie dans le menu de la liste ; vide = aucune.
     color TEXT NOT NULL DEFAULT '',
+    -- Le widget « Tâches » qui la montre, comme pour un projet.
+    list_key TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
   );
 
@@ -234,9 +311,11 @@ export const SCHEMA = `
     text TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
     -- Numéro affiché sur la carte. Attribué à la création et compté par
-    -- tableau (donc par société), pas sur l'identifiant global. Un séparateur
-    -- n'en porte pas : il reste à zéro.
+    -- tableau, pas sur l'identifiant global. Un séparateur n'en porte pas :
+    -- il reste à zéro.
     number INTEGER NOT NULL DEFAULT 0,
+    -- Le contexte du tableau auquel elle appartient : elle part avec lui.
+    context_id INTEGER REFERENCES contexts(id) ON DELETE CASCADE,
     -- « card » pour une carte, « separator » pour un séparateur : un simple
     -- intitulé posé entre deux cartes, qui se déplace comme elles.
     kind TEXT NOT NULL DEFAULT 'card',
@@ -346,55 +425,27 @@ export const SCHEMA = `
     updated_at TEXT NOT NULL
   );
 
-  -- Les catégories du mode Accès. Elles ne pendent à rien : c'est le premier
-  -- niveau du mode, comme un tableau l'est ailleurs. Deux personnes peuvent
-  -- nommer une catégorie de la même façon — l'une d'elles peut l'avoir fermée,
-  -- et l'autre n'a pas à en deviner l'existence : le nom n'est donc pas unique.
-  CREATE TABLE IF NOT EXISTS access_categories (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    position INTEGER NOT NULL DEFAULT 0,
-    -- L'auteur de la catégorie : celui qui l'a créée. Le compte supprimé
-    -- laisse la catégorie sans auteur, et donc ouverte à tous.
-    owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    -- Privée : la catégorie ne se montre qu'à son auteur.
-    is_private INTEGER NOT NULL DEFAULT 0,
-    -- Verrouillée : ses colonnes et ce qu'elles portent se lisent, mais rien
-    -- ne s'y déplace ni ne s'y modifie.
-    is_locked INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
-  );
 
-  -- Les sections d'une catégorie d'accès : ses colonnes. Une section n'a pas
-  -- de nom — sa largeur la définit entièrement : « auto » la laisse à la
-  -- rangée, « percent » et « px » la fixent avec « width_value », qui reste
-  -- nul dans le premier cas.
-  CREATE TABLE IF NOT EXISTS access_sections (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    category_id INTEGER NOT NULL REFERENCES access_categories(id) ON DELETE CASCADE,
-    width_unit TEXT NOT NULL DEFAULT 'auto'
-      CHECK (width_unit IN ('auto', 'percent', 'px')),
-    width_value REAL,
-    -- L'écart qui sépare la colonne de la suivante, en pixels : chaque
-    -- section aère le sien (shared, ACCESS_GAP_DEFAUT). Celui de la dernière
-    -- ne sert pas.
-    gap INTEGER NOT NULL DEFAULT 20,
-    position INTEGER NOT NULL DEFAULT 0,
-    -- Nul : la structure publique de la catégorie, partagée par tous ceux qui
-    -- l'héritent. Sinon, la structure propre à ce compte (personal_layouts).
-    owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    created_at TEXT NOT NULL
-  );
 
-  -- Les demandes du mode Support. Chacune appartient à la société choisie dans
-  -- la liste déroulante de l'entête : c'est le premier niveau du mode, comme
-  -- un tableau l'est ailleurs, et les onglets y rangent les demandes par
-  -- statut.
+
+
+  -- Les demandes de support. Chacune appartient à un contexte d'un tableau :
+  -- celui que la liste des demandes associe à la boîte où elle est arrivée,
+  -- ou celui qu'on a choisi en la saisissant.
   CREATE TABLE IF NOT EXISTS support_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    -- Le tableau qui la montre, et le contexte auquel elle appartient :
+    -- celui que le widget de la boîte associe à son adresse, ou celui qu'on a
+    -- choisi ; nul quand le tableau n'en a pas.
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    context_id INTEGER REFERENCES contexts(id) ON DELETE CASCADE,
+    -- La boîte où elle est arrivée, d'où partent les réponses ; vide pour une
+    -- demande saisie.
+    mailbox TEXT NOT NULL DEFAULT '',
+    -- Le widget « Demandes de support » qui la montre, comme pour un projet.
+    list_key TEXT NOT NULL DEFAULT '',
     -- Le numéro de ticket (« HLP-12 ») : il suit celui de la demande
-    -- précédente, toutes sociétés confondues. Le dernier donné est gardé dans
+    -- précédente, tous contextes confondus. Le dernier donné est gardé dans
     -- les réglages, pour qu'un numéro ne resserve pas après une suppression.
     number INTEGER NOT NULL DEFAULT 0,
     -- L'objet de l'e-mail reçu, ou celui qu'on a saisi.
@@ -429,7 +480,7 @@ export const SCHEMA = `
   );
 
   -- Étiquettes du mode Support : jumelles de celles des cartes, mais communes
-  -- à tout le support — toutes les sociétés partagent les mêmes.
+  -- à tout le support — tous les contextes partagent les mêmes.
   CREATE TABLE IF NOT EXISTS support_labels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -514,36 +565,11 @@ export const SCHEMA = `
     updated_at TEXT NOT NULL
   );
 
-  -- Les sections des panneaux des statistiques — Support, Assets, Projet ou
-  -- Tâche : leurs colonnes, comme celles d'une catégorie d'accès. « panel »
-  -- dit à quel panneau la section appartient ; la largeur se lit comme celle
-  -- d'une section d'accès.
-  CREATE TABLE IF NOT EXISTS indicator_sections (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    panel TEXT NOT NULL CHECK (panel IN ('support', 'assets', 'projects', 'tasks')),
-    width_unit TEXT NOT NULL DEFAULT 'auto'
-      CHECK (width_unit IN ('auto', 'percent', 'px')),
-    width_value REAL,
-    -- L'écart qui la sépare de la suivante, comme une section d'accès
-    -- (shared, SECTIONS_GAP_DEFAUT).
-    gap INTEGER NOT NULL DEFAULT 50,
-    position INTEGER NOT NULL DEFAULT 0,
-    -- Nul : la structure publique du panneau ; sinon celle de ce compte,
-    -- comme une section d'accès.
-    owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    created_at TEXT NOT NULL
-  );
-
-  -- Les structures qu'un compte n'hérite plus : « Hérité » décoché, il voit
-  -- et modifie ses propres sections et éléments (owner_id) au lieu des
-  -- publics. « scope » nomme le panneau — « support », « assets »,
-  -- « projects », « tasks » — ou la catégorie d'accès, « access:<id> ».
   -- L'ordre des onglets, propre à chaque compte : chacun range les siens sans
-  -- toucher ceux des autres. « scope » nomme la rangée — « modes » (le
-  -- sélecteur du bas), « support », « assets », « project-boards »,
-  -- « access-categories », ou « boards:<société> » pour les tableaux de
-  -- tâches d'une société. « ids » est la liste rangée, en JSON (chaînes).
-  -- Sans ligne, la rangée garde son ordre commun.
+  -- toucher ceux des autres. « scope » nomme la rangée — « views » (le
+  -- sélecteur du bas), ou « boards:<vue> » pour les tableaux d'une vue.
+  -- « ids » est la liste rangée, en JSON (chaînes). Sans ligne, la rangée
+  -- garde son ordre commun.
   CREATE TABLE IF NOT EXISTS user_tab_orders (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     scope TEXT NOT NULL,
@@ -551,6 +577,9 @@ export const SCHEMA = `
     PRIMARY KEY (user_id, scope)
   );
 
+  -- Les structures qu'un compte n'hérite plus : « Hérité » décoché, il voit
+  -- et modifie ses propres sections et widgets (owner_id) au lieu des
+  -- publics. « scope » nomme le tableau : « board:<id> ».
   CREATE TABLE IF NOT EXISTS personal_layouts (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     scope TEXT NOT NULL,
@@ -558,62 +587,24 @@ export const SCHEMA = `
     PRIMARY KEY (user_id, scope)
   );
 
-  -- Les indicateurs du panneau des statistiques du mode Support, posés par
-  -- les widgets du client (client/src/indicators). Communs à toutes les
-  -- sociétés : ils se calculent sur les demandes de celle qu'on regarde. Le
-  -- serveur range le JSON du widget sans le relire.
-  CREATE TABLE IF NOT EXISTS support_indicators (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    section_id INTEGER REFERENCES indicator_sections(id) ON DELETE CASCADE,
-    type TEXT NOT NULL,
-    config TEXT NOT NULL DEFAULT '{}',
-    position INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
-  );
-
-  -- Ceux du panneau des statistiques du mode Assets, posés par les widgets
-  -- de client/src/asset-indicators. Même forme que ceux du Support : ils se
-  -- calculent sur les postes de la société regardée.
-  CREATE TABLE IF NOT EXISTS asset_indicators (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    section_id INTEGER REFERENCES indicator_sections(id) ON DELETE CASCADE,
-    type TEXT NOT NULL,
-    config TEXT NOT NULL DEFAULT '{}',
-    position INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
-  );
-
-  -- Ceux des sections des modes Projet et Tâche, posés par les widgets de
-  -- client/src/project-indicators et client/src/task-indicators. Communs à
-  -- tous les tableaux : ils se calculent sur celui qu'on regarde.
-  CREATE TABLE IF NOT EXISTS project_indicators (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    section_id INTEGER REFERENCES indicator_sections(id) ON DELETE CASCADE,
-    type TEXT NOT NULL,
-    config TEXT NOT NULL DEFAULT '{}',
-    position INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS task_indicators (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    section_id INTEGER REFERENCES indicator_sections(id) ON DELETE CASCADE,
-    type TEXT NOT NULL,
-    config TEXT NOT NULL DEFAULT '{}',
-    position INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
-  );
-
-  -- Ce qu'une section porte : les éléments posés par les widgets du client.
-  -- Le serveur ne connaît pas leur configuration — il range le JSON que le
-  -- widget lui donne et le rend tel quel. « type » désigne le widget.
-  CREATE TABLE IF NOT EXISTS access_blocks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    section_id INTEGER NOT NULL REFERENCES access_sections(id) ON DELETE CASCADE,
-    type TEXT NOT NULL,
-    config TEXT NOT NULL DEFAULT '{}',
-    position INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+  -- La confirmation des boîtes de support : une adresse posée dans une liste
+  -- de demandes ne se relève qu'une fois confirmée par le code que sa boîte
+  -- a reçu (lib/optin.ts). Une ligne par liste et par adresse, en minuscules :
+  -- chaque liste demande la sienne, même pour une adresse qu'une autre a
+  -- déjà confirmée. « list_key » est la clé de liste du widget (CLE_DE_LISTE),
+  -- que sa copie personnelle garde. « code » est le code à quatre chiffres
+  -- du dernier e-mail envoyé, à saisir dans Milo ; « attempts » compte les
+  -- codes faux. « confirmed_at », vide tant qu'elle attend, borne aussi la
+  -- relève : rien de ce qui est arrivé avant n'est importé.
+  CREATE TABLE IF NOT EXISTS list_mailbox_optins (
+    list_key TEXT NOT NULL,
+    email TEXT NOT NULL,
+    code TEXT NOT NULL DEFAULT '',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    sent_at TEXT NOT NULL DEFAULT '',
+    confirmed_at TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (list_key, email)
   );
 
   -- Les flux des widgets RSS, tels que la dernière relève les a laissés. Un
@@ -630,20 +621,6 @@ export const SCHEMA = `
     fetched_at TEXT,
     tried_at TEXT NOT NULL,
     error TEXT NOT NULL DEFAULT ''
-  );
-
-  -- Les machines des widgets Uptime, telles que la dernière vérification les
-  -- a laissées. Une machine se range par ce qui la vérifie (lib/uptime.ts) —
-  -- le type, l'hôte, le port, l'OID — et non par élément : deux éléments qui
-  -- surveillent la même chose n'en font qu'une vérification. « since » est le
-  -- moment où l'état courant a commencé ; « detail » ce que la vérification
-  -- a vu, la valeur lue ou la raison de l'échec.
-  CREATE TABLE IF NOT EXISTS access_uptime (
-    key TEXT PRIMARY KEY,
-    state TEXT NOT NULL CHECK (state IN ('up', 'down')),
-    since TEXT NOT NULL,
-    checked_at TEXT NOT NULL,
-    detail TEXT NOT NULL DEFAULT ''
   );
 
   -- « system » marque les mots que l'application écrit elle-même, comme celui
@@ -670,47 +647,30 @@ export const SCHEMA = `
 // Ils se créent après les migrations : une table reconstruite emporterait les
 // siens.
 export const INDEXES = `
+  CREATE INDEX IF NOT EXISTS idx_views_workspace ON views(workspace_id);
   CREATE INDEX IF NOT EXISTS idx_categories_board ON categories(board_id);
 
-  -- Les catégories du mode Accès se lisent toutes, dans l'ordre des onglets.
-  CREATE INDEX IF NOT EXISTS idx_access_categories_position
-    ON access_categories(position, id);
-
-  -- Les sections se lisent par catégorie, dans l'ordre des colonnes.
-  CREATE INDEX IF NOT EXISTS idx_access_sections_category
-    ON access_sections(category_id, owner_id, position, id);
-
-  -- Les éléments se lisent par section, dans l'ordre où ils y sont posés.
-  CREATE INDEX IF NOT EXISTS idx_access_blocks_section
-    ON access_blocks(section_id, position, id);
-
-  -- Les sections d'un panneau des statistiques, dans l'ordre des colonnes, et
-  -- les indicateurs par section.
-  CREATE INDEX IF NOT EXISTS idx_indicator_sections_panel
-    ON indicator_sections(panel, owner_id, position, id);
-  CREATE INDEX IF NOT EXISTS idx_support_indicators_section
-    ON support_indicators(section_id, position, id);
-  CREATE INDEX IF NOT EXISTS idx_asset_indicators_section
-    ON asset_indicators(section_id, position, id);
-  CREATE INDEX IF NOT EXISTS idx_project_indicators_section
-    ON project_indicators(section_id, position, id);
-  CREATE INDEX IF NOT EXISTS idx_task_indicators_section
-    ON task_indicators(section_id, position, id);
 
   -- Les projets se lisent filtrés, et toujours rangés du plus récent au plus
   -- ancien : l'index porte donc le tri avec le filtre.
   CREATE INDEX IF NOT EXISTS idx_projects_board_updated ON projects(board_id, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_projects_category ON projects(category_id);
-  CREATE INDEX IF NOT EXISTS idx_projects_company ON projects(company_id);
+  CREATE INDEX IF NOT EXISTS idx_projects_context ON projects(context_id);
   CREATE INDEX IF NOT EXISTS idx_projects_milestone_type ON projects(milestone_type_id);
 
   CREATE INDEX IF NOT EXISTS idx_project_actors_user ON project_actors(user_id);
   CREATE INDEX IF NOT EXISTS idx_project_labels_board ON project_labels(board_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_project_label_links_label ON project_label_links(label_id);
 
-  CREATE INDEX IF NOT EXISTS idx_boards_company ON boards(company_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_boards_view ON boards(view_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_contexts_board ON contexts(board_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_board_sections_board
+    ON board_sections(board_id, owner_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_board_widgets_section
+    ON board_widgets(section_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_task_lists_board ON task_lists(board_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_task_cards_list ON task_cards(list_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_task_cards_context ON task_cards(context_id);
 
   CREATE INDEX IF NOT EXISTS idx_card_members_user ON card_members(user_id);
   CREATE INDEX IF NOT EXISTS idx_labels_board ON labels(board_id, position, id);
@@ -723,15 +683,14 @@ export const INDEXES = `
   CREATE INDEX IF NOT EXISTS idx_card_attachments_card ON card_attachments(card_id, id);
   CREATE INDEX IF NOT EXISTS idx_card_attachments_file ON card_attachments(file);
 
-  -- Les demandes se lisent par société, de la plus récente à la plus ancienne ;
-  -- les onglets filtrent ensuite sur le statut.
+  -- Les demandes se lisent par contexte, de la plus récente à la plus ancienne.
   -- Les postes du mode Assets : ce qu'un agent d'inventaire (FusionInventory,
   -- GLPI Agent) remonte d'une machine.
   --
   -- L'inventaire entier est gardé tel quel, en JSON, plutôt que découpé en
   -- colonnes : on ne sait pas encore ce qu'on en garde, et une colonne par
   -- champ ferait une quarantaine de tables pour une décision qui n'est pas
-  -- prise. Seul ce qui sert à ranger les postes en sort — le nom, la société,
+  -- prise. Seul ce qui sert à ranger les postes en sort — le nom, le contexte,
   -- la date.
   CREATE TABLE IF NOT EXISTS assets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -741,12 +700,16 @@ export const INDEXES = `
     deviceid TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL DEFAULT '',
     -- Le « tag » passé à l'agent (option « tag »). C'est par lui que le poste
-    -- se rattache à une société : l'agent ne connaît rien d'autre de Milo.
+    -- se rattache à un contexte : une liste de postes associe chaque tag
+    -- qu'elle reçoit à l'un des contextes de son tableau.
     tag TEXT NOT NULL DEFAULT '',
-    -- Nulle tant que le tag ne désigne aucune société connue : le poste se
-    -- montre alors sous « Toutes les sociétés » seulement. Une société
-    -- supprimée laisse ses postes, elle ne les emporte pas.
-    company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
+    -- Le tableau dont une liste de postes reçoit son tag, et le contexte
+    -- qu'elle lui donne. Nul tant qu'aucune liste ne reçoit son tag : il ne
+    -- se montre alors nulle part. Il part avec son contexte.
+    board_id INTEGER REFERENCES boards(id) ON DELETE CASCADE,
+    context_id INTEGER REFERENCES contexts(id) ON DELETE CASCADE,
+    -- Le widget « Assets » qui reçoit son tag ; vide s'il n'y en a aucun.
+    list_key TEXT NOT NULL DEFAULT '',
     content TEXT NOT NULL DEFAULT '{}',
     -- La dernière personne connectée, sortie de l'inventaire à sa réception :
     -- la liste la montre, et relire le JSON de chaque poste pour l'afficher
@@ -756,15 +719,19 @@ export const INDEXES = `
     created_at TEXT NOT NULL
   );
 
-  CREATE INDEX IF NOT EXISTS idx_support_requests_company
-    ON support_requests(company_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_support_requests_board
+    ON support_requests(board_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_support_requests_context
+    ON support_requests(context_id, created_at DESC);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_support_requests_number
     ON support_requests(number) WHERE number > 0;
-  -- Un e-mail ne s'importe qu'une fois dans une société.
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_support_requests_mail
-    ON support_requests(company_id, mail_id) WHERE mail_id != '';
+  -- Un e-mail ne s'importe qu'une fois d'une boîte dans une liste : une boîte
+  -- reçue par plusieurs listes y fait une demande par liste.
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_support_requests_mailbox_list
+    ON support_requests(mailbox, list_key, mail_id) WHERE mail_id != '';
 
-  CREATE INDEX IF NOT EXISTS idx_assets_company ON assets(company_id, name);
+  CREATE INDEX IF NOT EXISTS idx_assets_context ON assets(context_id, name);
+  CREATE INDEX IF NOT EXISTS idx_assets_board ON assets(board_id, name);
   CREATE INDEX IF NOT EXISTS idx_notifications_user
     ON notifications(user_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_support_request_actors_user

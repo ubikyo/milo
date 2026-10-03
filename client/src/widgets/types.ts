@@ -72,8 +72,7 @@ export interface AccessWidget {
   ConfigFin?: ComponentType<WidgetConfigProps>;
   /**
    * La largeur de son tiroir, en pixels, quand ses champs ne tiennent pas
-   * dans celle de tous (TIROIR_LARGEUR) — les machines d'Uptime, une par
-   * ligne avec leur vérification.
+   * dans celle de tous (TIROIR_LARGEUR).
    */
   drawerSize?: number;
   /**

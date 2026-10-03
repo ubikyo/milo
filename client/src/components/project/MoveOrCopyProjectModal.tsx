@@ -2,9 +2,8 @@ import { Button, Group, Modal, Select, Stack, Text, TextInput } from "@mantine/c
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
-import ErrorAlert from "../ui/ErrorAlert";
 import type { Category, Project, ProjectBoard } from "@milo/shared";
-import { messageErreur } from "../../lib/errors";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 import BoutonFermer from "../ui/BoutonFermer";
 
 // Déplacer ou copier un projet vers un tableau. Les deux gestes posent la même
@@ -52,7 +51,6 @@ export default function MoveOrCopyProjectModal({
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const copie = mode === "copy";
@@ -65,7 +63,6 @@ export default function MoveOrCopyProjectModal({
     setCategories(null);
     setCategoryId(null);
     setName(project ? nomDeCopie(project.name) : "");
-    setError(null);
   }, [opened, project, copie]);
 
   // Les catégories du tableau visé, dès qu'il est choisi.
@@ -91,7 +88,7 @@ export default function MoveOrCopyProjectModal({
         setCategoryId(String((retenue ?? liste[0])?.id ?? "") || null);
       })
       .catch((e: unknown) => {
-        if (!abandonne) setError(messageErreur(e));
+        if (!abandonne) notifierErreur(messageErreur(e));
       });
 
     return () => {
@@ -107,7 +104,6 @@ export default function MoveOrCopyProjectModal({
   const valider = async () => {
     if (!boardId || !categoryId || !project) return;
     setSaving(true);
-    setError(null);
     try {
       if (copie) {
         await api.copyProject(project.id, {
@@ -123,7 +119,7 @@ export default function MoveOrCopyProjectModal({
       }
       await onMoved();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setSaving(false);
     }
@@ -140,7 +136,6 @@ export default function MoveOrCopyProjectModal({
       styles={modalHeaderStyles(32)}
     >
       <Stack gap="md">
-        {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
 
         {boardOptions.length === 0 ? (
           <Text size="sm" c="dimmed">

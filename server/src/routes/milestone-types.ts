@@ -6,7 +6,8 @@
 // leur avancement, et leur curseur redevient nu (ON DELETE SET NULL).
 
 import { Router } from "express";
-import type { MilestoneType } from "@milo/shared";
+import { TYPE_JALONS_PAR_DEFAUT } from "@milo/shared";
+import type { Milestone, MilestoneType } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { MilestoneTypeRow } from "../db/rows.js";
 import { badRequest, conflict, orNotFound, refuserSiUtilise, requireText } from "../lib/http.js";
@@ -31,6 +32,24 @@ const utilisations = scalar<{ count: number }>(
 
 export const milestoneTypes = {
   byId: selection<MilestoneTypeRow>("SELECT * FROM milestone_types WHERE id = ?"),
+};
+
+/** Les jalons du type « Défaut » : les couleurs de la progression d'un projet. */
+const JALONS_PAR_DEFAUT: Milestone[] = [
+  { value: 33, label: "", color: "red.6" },
+  { value: 66, label: "", color: "orange.6" },
+  { value: 100, label: "", color: "teal.6" },
+];
+const creerAvecJalons = mutation("INSERT INTO milestone_types (name, milestones) VALUES (?, ?)");
+
+/**
+ * Pose le type « Défaut » s'il n'existe pas — à l'arrivée d'un widget de
+ * projets dans un tableau. Vrai s'il vient d'être créé.
+ */
+export const assurerTypeParDefaut = (): boolean => {
+  if (parNom.get(TYPE_JALONS_PAR_DEFAUT, 0)) return false;
+  creerAvecJalons.run(TYPE_JALONS_PAR_DEFAUT, JSON.stringify(JALONS_PAR_DEFAUT));
+  return true;
 };
 
 /** La ligne telle que l'API la rend : ses jalons redeviennent une liste. */

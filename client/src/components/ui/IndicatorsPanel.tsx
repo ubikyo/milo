@@ -1,11 +1,15 @@
 import { Box, Menu, Stack, UnstyledButton } from "@mantine/core";
-import { IconPencil, IconTrash } from "@tabler/icons-react";
+import { IconCopy, IconCopyPlus, IconPencil, IconTrash } from "@tabler/icons-react";
 import { useRef, useState, type ComponentType, type ReactNode } from "react";
 import encart from "../../assets/styles/AccessNumero.module.css";
 import { avec } from "../../widgets/types";
 import { useAccesWidget } from "../../lib/droits";
 import { RED } from "../../themes/colors";
+import { copierWidget, useWidgetCopie } from "../../lib/presse-papiers";
+import { messageErreur, notifierErreur } from "../../lib/errors";
+import { notifications } from "@mantine/notifications";
 import DeleteConfirmModal from "./DeleteConfirmModal";
+import { ELEMENTS_DE_LA_LISTE } from "../../lib/listes";
 import IndicatorDrawer from "./IndicatorDrawer";
 import PointMenu, { positionDuMenu, type PointMenuPosition } from "./PointMenu";
 import SectionsBoard from "./SectionsBoard";
@@ -13,6 +17,7 @@ import { CarteIndicateurContext, NOM } from "./TitreIndicateur";
 import { TraitInsertion, useWidgetDrop, type WidgetDrag } from "./WidgetDrop";
 import type { SectionsDuPanneau } from "../../api";
 import type { IndicatorConfigProps } from "../../indicators/types";
+import { isListWidgetType } from "@milo/shared";
 import type { Id, IndicatorSection } from "@milo/shared";
 import type { WidgetKind } from "../../widgets/genres";
 
@@ -29,6 +34,12 @@ export interface Indicateur<Type extends string> {
   type: Type;
   config: Record<string, unknown>;
 }
+
+/** Le nom d'un widget : celui qu'on lui a donné, sinon celui de son type. */
+const titreDe = (indicateur: { config: Record<string, unknown> }, defaut: string): string => {
+  const nom = indicateur.config[NOM];
+  return (typeof nom === "string" && nom.trim()) || defaut;
+};
 
 /** Ce que tout widget d'un panneau porte ; son affichage, lui, dépend du panneau. */
 export interface IndicatorWidgetBase<Type extends string> {
@@ -56,8 +67,8 @@ export interface IndicatorWidgetBase<Type extends string> {
   ownClicks?: boolean;
   /**
    * Vrai quand le widget occupe toute la hauteur que sa section lui laisse —
-   * les listes du mode Tâche, dont l'écran vide se centre alors dans la
-   * colonne au lieu de s'y tasser en haut.
+   * les listes de projets, de tâches, de demandes, de postes —, s'il est le
+   * dernier de sa section ; suivi d'un autre, il s'en tient à son contenu.
    */
   fill?: boolean;
   /**
@@ -79,10 +90,14 @@ export interface IndicatorWidgetBase<Type extends string> {
   ) => { haute: number; basse: number };
   /** Vrai quand il ne doit pas paraître — un lien éteint, une fois verrouillé. */
   hidden?: (config: unknown, locked: boolean) => boolean;
+  /** La largeur de son tiroir, quand ses champs ne tiennent pas dans celle de tous. */
+  drawerSize?: number;
 }
 
 /** Ce que le panneau passe au rendu d'un widget, en plus de sa configuration. */
 export interface RenduWidget {
+  /** L'identifiant du widget : ceux que le serveur relève (RSS) se lisent par lui. */
+  id: Id;
   /** Enregistre une configuration modifiée sur place ; sans effet verrouillé. */
   onChange: (config: Record<string, unknown>) => void | Promise<void>;
   locked: boolean;
@@ -123,6 +138,24 @@ interface IndicatorsPanelProps<Type extends string, P extends IndicatorWidgetBas
   api: IndicatorsApi<Type>;
   onChanged: () => void | Promise<void>;
   locked: boolean;
+  /** Déverrouiller l'écran : voir SectionsBoard. */
+  onUnlock?: () => void | Promise<void>;
+  /** Dupliquer un widget : la copie se pose sous l'original. Sans lui, le menu ne le propose pas. */
+  onDuplicate?: (indicateur: Indicateur<Type>) => Promise<unknown>;
+  /**
+   * Ce en quoi un type se convertit — la catégorie en sous-catégorie —, et
+   * de quoi le faire. Sans lui, le menu ne propose pas de conversion.
+   */
+  conversion?: {
+    vers: Partial<Record<string, Type>>;
+    convertir: (indicateur: Indicateur<Type>, type: Type) => Promise<unknown>;
+  };
+  /**
+   * Des gestes de plus au clic droit d'un widget, qui ne le remanient pas :
+   * créer une tâche depuis un lien. Ils restent proposés quand le widget est
+   * figé. Rien à proposer : « null ».
+   */
+  menuEnPlus?: (indicateur: Indicateur<Type>, fermer: () => void) => ReactNode;
 }
 
 export default function IndicatorsPanel<Type extends string, P extends IndicatorWidgetBase<Type>>({
@@ -134,7 +167,17 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
   api,
   onChanged,
   locked,
+  onUnlock,
+  onDuplicate,
+  conversion,
+  menuEnPlus,
 }: IndicatorsPanelProps<Type, P>) {
+  const acces = useAccesWidget();
+  // Le widget copié, qu'on colle au bout d'une section : seulement un type
+  // que ce panneau connaît et que le compte peut poser.
+  const copie = useWidgetCopie();
+  const aColler = copie ? widgetOf(copie.type as Type) : undefined;
+  const collable = copie && aColler && acces(aColler.kind) === "update" ? copie : null;
   const [tiroirOuvert, setTiroirOuvert] = useState(false);
   const [modifie, setModifie] = useState<Indicateur<Type> | null>(null);
   /** Le widget posé depuis le tiroir de gauche, en attente de ses réglages. */
@@ -215,6 +258,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
       <SectionsBoard
         sections={sections}
         locked={locked}
+        onUnlock={onUnlock}
         widgetIds={(section) => indicateursDe(section).map((i) => i.id)}
         renderWidgets={(section, drag) => (
           <IndicateursDeSection
@@ -230,6 +274,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
               ecrire(() => api.update(indicateur.id, { config: avec(indicateur.config, NOM, nom) }))
             }
             onContextMenu={(indicateur, position) => setMenu({ indicateur, position })}
+            avecMenuFige={(indicateur) => Boolean(menuEnPlus?.(indicateur, () => {}))}
           />
         )}
         widgets={widgets}
@@ -239,33 +284,115 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
           ecrire(() => api.sections.create(rang !== undefined ? { index: rang } : {}))
         }
         onDuplicateSection={(section) => ecrire(() => api.sections.duplicate(section.id))}
+        // Lâché sur la corbeille : la même question que « Supprimer », pour
+        // un widget que le compte peut modifier.
+        onDeleteWidget={(id) => {
+          const indicateur = indicators.find((i) => i.id === id);
+          const widget = indicateur ? widgetOf(indicateur.type) : undefined;
+          if (indicateur && widget && acces(widget.kind) === "update") setASupprimer(indicateur);
+        }}
+        coller={
+          collable
+            ? {
+                libelle: collable.label,
+                onColler: (section) =>
+                  ecrire(() =>
+                    api.create({
+                      section_id: section.id,
+                      type: collable.type as Type,
+                      config: collable.config,
+                    }),
+                  )
+                    .then(() => {
+                      notifications.show({
+                        color: "teal",
+                        message: `Widget « ${collable.label} » collé`,
+                      });
+                    })
+                    .catch((e: unknown) => notifierErreur(messageErreur(e))),
+              }
+            : undefined
+        }
         onDeleteSection={(section) => ecrire(() => api.sections.remove(section.id))}
         onReorderSections={(ids) => ecrire(() => api.sections.reorder(ids))}
         onChangeSection={(section, modif) => ecrire(() => api.sections.update(section.id, modif))}
       />
 
-      {menu && (
-        <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          {aUnTiroir(menu.indicateur) && (
-            <>
-              <Menu.Item
-                leftSection={<IconPencil size={16} />}
-                onClick={() => modifier(menu.indicateur)}
-              >
-                Modifier
-              </Menu.Item>
-              <Menu.Divider />
-            </>
-          )}
-          <Menu.Item
-            color={RED}
-            leftSection={<IconTrash size={16} />}
-            onClick={() => setASupprimer(menu.indicateur)}
-          >
-            Supprimer
-          </Menu.Item>
-        </PointMenu>
-      )}
+      {menu &&
+        (() => {
+          const { indicateur } = menu;
+          const widget = widgetOf(indicateur.type);
+          // Figé — l'écran verrouillé, ou un type que le compte ne fait que
+          // lire —, le widget ne propose que les gestes qui ne le remanient pas.
+          const fige = locked || !widget || acces(widget.kind) !== "update";
+          const fermer = () => setMenu(null);
+          const enPlus = menuEnPlus?.(indicateur, fermer) ?? null;
+          const versType = conversion?.vers[indicateur.type];
+          const converti = versType ? widgetOf(versType) : undefined;
+          return (
+            <PointMenu position={menu.position} onClose={fermer}>
+              {!fige && aUnTiroir(indicateur) && (
+                <Menu.Item leftSection={<IconPencil size={16} />} onClick={() => modifier(indicateur)}>
+                  Modifier
+                </Menu.Item>
+              )}
+              {/* Un widget de liste possède ses éléments : il ne se duplique pas. */}
+              {!fige && onDuplicate && !isListWidgetType(String(indicateur.type)) && (
+                <Menu.Item
+                  leftSection={<IconCopyPlus size={16} />}
+                  onClick={() => {
+                    fermer();
+                    void ecrire(() => onDuplicate(indicateur));
+                  }}
+                >
+                  Dupliquer
+                </Menu.Item>
+              )}
+              {/* Copier, en modification seulement. Un widget de liste
+                  possède ses éléments : il ne se copie pas plus qu'il ne se
+                  duplique. */}
+              {!locked && widget && !isListWidgetType(String(indicateur.type)) && (
+                <Menu.Item
+                  leftSection={<IconCopy size={16} />}
+                  onClick={() => {
+                    fermer();
+                    copierWidget({
+                      type: String(indicateur.type),
+                      config: indicateur.config,
+                      label: titreDe(indicateur, widget.label),
+                    });
+                  }}
+                >
+                  Copier
+                </Menu.Item>
+              )}
+              {!fige && conversion && versType && converti && (
+                <Menu.Item
+                  leftSection={<converti.icon size={16} />}
+                  onClick={() => {
+                    fermer();
+                    void ecrire(() => conversion.convertir(indicateur, versType));
+                  }}
+                >
+                  Convertir en {converti.label.toLowerCase()}
+                </Menu.Item>
+              )}
+              {enPlus}
+              {!fige && (
+                <>
+                  <Menu.Divider />
+                  <Menu.Item
+                    color={RED}
+                    leftSection={<IconTrash size={16} />}
+                    onClick={() => setASupprimer(indicateur)}
+                  >
+                    Supprimer
+                  </Menu.Item>
+                </>
+              )}
+            </PointMenu>
+          );
+        })()}
 
       <DeleteConfirmModal
         opened={aSupprimer !== null}
@@ -273,7 +400,13 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
         onConfirm={supprimer}
         title="Supprimer l'indicateur"
         message={
-          <>Voulez-vous vraiment supprimer cet indicateur ? Cette action est irréversible.</>
+          <>
+            Voulez-vous vraiment supprimer cet indicateur ?
+            {aSupprimer && ELEMENTS_DE_LA_LISTE[String(aSupprimer.type)] && (
+              <> {ELEMENTS_DE_LA_LISTE[String(aSupprimer.type)]} seront supprimés avec lui.</>
+            )}{" "}
+            Cette action est irréversible.
+          </>
         }
       />
 
@@ -306,6 +439,8 @@ interface IndicateursDeSectionProps<Type extends string, P extends IndicatorWidg
   onOpen: (indicateur: Indicateur<Type>) => void;
   onRename: (indicateur: Indicateur<Type>, nom: string) => Promise<void>;
   onContextMenu: (indicateur: Indicateur<Type>, position: PointMenuPosition) => void;
+  /** Vrai quand un widget figé a tout de même des gestes à proposer. */
+  avecMenuFige: (indicateur: Indicateur<Type>) => boolean;
 }
 
 /** Les indicateurs d'une section, en cartes, et le glisser qui les range. */
@@ -320,6 +455,7 @@ function IndicateursDeSection<Type extends string, P extends IndicatorWidgetBase
   onOpen,
   onRename,
   onContextMenu,
+  avecMenuFige,
 }: IndicateursDeSectionProps<Type, P>) {
   const { cible, propsDe } = useWidgetDrop(section.id, drag, locked);
   // La permission du compte sur le type de chaque widget.
@@ -353,8 +489,12 @@ function IndicateursDeSection<Type extends string, P extends IndicatorWidgetBase
 
   if (visibles.length === 0) return null;
   // Un widget qui veut toute la hauteur l'obtient de proche en proche : la
-  // pile s'étire dans la colonne, et lui dans la pile.
-  const etire = visibles.some(({ widget }) => widget.fill);
+  // pile s'étire dans la colonne, et lui dans la pile. Seulement en bas de sa
+  // section : suivi d'un autre widget, il s'en tient à son contenu, sans
+  // laisser de vide entre eux.
+  const remplit = (rang: number) =>
+    rang === visibles.length - 1 && Boolean(visibles[rang]?.widget.fill);
+  const etire = remplit(visibles.length - 1);
   return (
     <Stack gap={0} style={etire ? { flex: 1, minHeight: 0 } : undefined}>
       {visibles.map(({ indicateur, widget }, rang) => {
@@ -366,14 +506,15 @@ function IndicateursDeSection<Type extends string, P extends IndicatorWidgetBase
         // widget qui se modifie sur place ne reçoit rien à enregistrer.
         const fige = locked || acces(widget.kind) !== "update";
         const rendu: RenduWidget = {
+          id: indicateur.id,
           onChange: fige ? () => {} : (config) => onChange(indicateur, config),
           locked: fige,
         };
         const glisser = { ...propsDe(indicateur.id, index), ...(fige ? { draggable: false } : {}) };
         // Le menu du clic droit — modifier, supprimer — n'est qu'aux widgets
-        // qu'on peut modifier.
+        // qu'on peut modifier, ou qui ont d'autres gestes à proposer.
         const menuDe = (e: React.MouseEvent<HTMLElement>) => {
-          if (fige) return;
+          if (fige && !avecMenuFige(indicateur)) return;
           onContextMenu(indicateur, positionDuMenu(e));
         };
         return (
@@ -395,7 +536,7 @@ function IndicateursDeSection<Type extends string, P extends IndicatorWidgetBase
               marginTop: ecartAvant,
               opacity: drag.dragged === indicateur.id ? 0.4 : 1,
               cursor: fige || widget.ownClicks ? "default" : "grab",
-              ...(widget.fill
+              ...(remplit(rang)
                 ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
                 : {}),
             }}
@@ -412,7 +553,7 @@ function IndicateursDeSection<Type extends string, P extends IndicatorWidgetBase
               <Box
                 onContextMenu={menuDe}
                 style={
-                  widget.fill
+                  remplit(rang)
                     ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
                     : undefined
                 }

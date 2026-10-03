@@ -1,10 +1,10 @@
-// Les demandes du mode Support : leur société, leurs acteurs, leurs étiquettes
-// et leur fil. Les étiquettes, elles, sont communes à toutes les sociétés.
+// Les demandes de support : leur contexte, leurs acteurs, leurs étiquettes et
+// leur fil. Les étiquettes, elles, sont communes à tous les contextes.
 //
-// Une demande pend à une société, jamais à un tableau : c'est la société de la
-// liste déroulante de l'entête qui la porte. Ses acteurs et ses étiquettes se
-// posent comme les membres et les étiquettes d'une carte : autant qu'il faut,
-// par une table d'association.
+// Une demande pend à un contexte d'un tableau : celui que la liste des
+// demandes associe à la boîte où elle est arrivée, ou celui qu'on a choisi en
+// la saisissant. Ses acteurs et ses étiquettes se posent comme les membres et
+// les étiquettes d'une carte : autant qu'il faut, par une table d'association.
 
 import { piecesJointes } from "../lib/ticket-files.js";
 import { MILO_ACTOR, SUPPORT_URGENCY_LABELS, supportTicketRef } from "@milo/shared";
@@ -33,75 +33,90 @@ export const ETIQUETTE_SUPPORT_INTROUVABLE = "Étiquette introuvable";
 
 export const supportRequests = {
   byId: selection<SupportRequestRow>("SELECT * FROM support_requests WHERE id = ?"),
-  // Toutes les demandes d'une société, de la plus récente à la plus ancienne.
-  // Les onglets filtrent ensuite sur le statut : c'est le client qui les range,
-  // il les a déjà toutes en main pour compter ce que chaque onglet contient.
-  ofCompany: selection<SupportRequestRow>(
-    "SELECT * FROM support_requests WHERE company_id = ? ORDER BY created_at DESC, id DESC",
+  /**
+   * Les demandes d'un tableau — de l'un de ses contextes, ou de tous —, de la
+   * plus récente à la plus ancienne.
+   */
+  ofBoard: selection<SupportRequestRow>(
+    `SELECT * FROM support_requests
+     WHERE board_id = @board AND (@context IS NULL OR context_id = @context)
+     ORDER BY created_at DESC, id DESC`,
   ),
-  // Toutes sociétés confondues : ce que montre le mode quand la liste
-  // déroulante ne filtre pas. Le même ordre, pour que passer de l'une à
-  // l'autre ne réarrange rien.
   all: selection<SupportRequestRow>(
     "SELECT * FROM support_requests ORDER BY created_at DESC, id DESC",
   ),
   create: mutation(
-    `INSERT INTO support_requests (number, company_id, subject, status, due_date, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO support_requests
+       (number, board_id, context_id, list_key, subject, status, due_date, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ),
-  // Une demande née d'un e-mail : elle en garde l'expéditeur et l'identifiant.
-  // « OR IGNORE » : un message déjà importé — deux relèves qui se croisent —
-  // ne fait pas une seconde demande.
+  // Une demande née d'un e-mail : elle en garde la boîte, l'expéditeur et
+  // l'identifiant. « OR IGNORE » : un message déjà importé — deux relèves qui
+  // se croisent — ne fait pas une seconde demande.
   createFromMail: mutation(
     `INSERT OR IGNORE INTO support_requests
-       (number, company_id, subject, status, due_date, sender_name, sender_email, mail_id,
-        conversation_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (number, board_id, context_id, list_key, mailbox, subject, status, due_date,
+        sender_name, sender_email, mail_id, conversation_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ),
+  // Une boîte reçue par plusieurs listes y fait une demande par liste : ce
+  // qu'on cherche d'un e-mail se cherche dans sa boîte et dans sa liste.
   byMailId: selection<{ id: Id }>(
-    "SELECT id FROM support_requests WHERE company_id = ? AND mail_id = ?",
+    `SELECT id FROM support_requests
+     WHERE mailbox = ? COLLATE NOCASE AND list_key = ? AND mail_id = ?`,
   ),
   /**
-   * La demande d'une société qu'un e-mail cite, par l'identifiant Internet
-   * de son e-mail d'origine ou de l'un de ses messages — reçu, ou parti de
-   * Milo. C'est ainsi qu'une réponse retrouve son ticket.
+   * La demande d'une boîte qu'un e-mail cite, par l'identifiant Internet de
+   * son e-mail d'origine ou de l'un de ses messages — reçu, ou parti de Milo.
+   * C'est ainsi qu'une réponse retrouve son ticket.
    */
   citeeParMail: selection<SupportRequestRow>(
     `SELECT * FROM support_requests
-     WHERE company_id = ? AND (
+     WHERE mailbox = ? COLLATE NOCASE AND list_key = ? AND (
        mail_id = ? OR id IN (SELECT request_id FROM support_comments WHERE mail_id = ?)
      )
      ORDER BY id DESC LIMIT 1`,
   ),
-  /** La demande d'une société née dans cette conversation de Graph. */
+  /** La demande d'une boîte née dans cette conversation de Graph. */
   deLaConversation: selection<SupportRequestRow>(
     `SELECT * FROM support_requests
-     WHERE company_id = ? AND conversation_id = ? AND conversation_id != ''
+     WHERE mailbox = ? COLLATE NOCASE AND list_key = ?
+       AND conversation_id = ? AND conversation_id != ''
      ORDER BY id DESC LIMIT 1`,
   ),
-  /** La demande d'une société qui porte ce numéro de ticket. */
+  /**
+   * La demande qui porte ce numéro de ticket : arrivée dans cette boîte, ou
+   * saisie — ses réponses sont parties de l'adresse d'envoi.
+   */
   byNumber: selection<SupportRequestRow>(
-    "SELECT * FROM support_requests WHERE company_id = ? AND number = ?",
+    `SELECT * FROM support_requests
+     WHERE ((mailbox = ? COLLATE NOCASE AND list_key = ?) OR mailbox = '') AND number = ?`,
   ),
-  /** Un e-mail déjà rangé dans un fil de la société : il ne s'importe pas deux fois. */
+  /** Un e-mail déjà rangé dans un fil de la boîte : il ne s'importe pas deux fois. */
   mailDejaRange: selection<{ id: Id }>(
     `SELECT support_comments.id FROM support_comments
      JOIN support_requests ON support_requests.id = support_comments.request_id
-     WHERE support_requests.company_id = ? AND support_comments.mail_id = ?`,
+     WHERE support_requests.mailbox = ? COLLATE NOCASE AND support_requests.list_key = ?
+       AND support_comments.mail_id = ?`,
+  ),
+  /** Les demandes nées d'un e-mail de cet objet, parti de cette adresse. */
+  nesDUnEnvoi: selection<{ id: Id }>(
+    `SELECT id FROM support_requests
+     WHERE subject = ? AND sender_email = ? COLLATE NOCASE AND mail_id != ''`,
+  ),
+  /** Cet e-mail est-il déjà dans le fil de cette demande ? */
+  mailDansLeFil: selection<{ id: Id }>(
+    "SELECT id FROM support_comments WHERE request_id = ? AND mail_id = ?",
   ),
   /** Une réponse de l'expéditeur rouvre une demande qu'on croyait close. */
   rouvrir: mutation(
     `UPDATE support_requests SET status = ?, updated_at = ?
      WHERE id = ? AND status IN ('resolved', 'closed')`,
   ),
-  // Les identifiants des e-mails déjà importés dans une société.
-  mailIdsOfCompany: selection<{ mail_id: string }>(
-    "SELECT mail_id FROM support_requests WHERE company_id = ? AND mail_id != ''",
-  ),
-  // La société en fait partie : une demande ouverte sous « toutes » part chez
-  // la première de la liste, et se corrige ensuite depuis sa fiche.
+  // Le contexte en fait partie : il se change depuis la fiche, pour un autre
+  // du même tableau.
   update: mutation(
-    `UPDATE support_requests SET company_id = ?, subject = ?, status = ?, due_date = ?, updated_at = ?
+    `UPDATE support_requests SET context_id = ?, subject = ?, status = ?, due_date = ?, updated_at = ?
      WHERE id = ?`,
   ),
   remove: mutation("DELETE FROM support_requests WHERE id = ?"),

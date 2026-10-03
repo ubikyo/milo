@@ -1,9 +1,7 @@
-// L'ordre des rangées fixes : les statuts du mode Support, les familles du
-// mode Assets, et les modes eux-mêmes dans le sélecteur du bas (« modes »).
-// Leur liste est écrite dans le code, mais leur ordre se range comme celui
-// des tableaux, par glisser-déposer, et chaque compte range le sien.
+// L'ordre des vues dans le sélecteur du bas, propre à chaque compte. Celui
+// des tableaux d'une vue se range avec eux (routes/boards.ts).
 
-export const TAB_ORDER_MODES = ["support", "assets", "modes"] as const;
+export const TAB_ORDER_MODES = ["views"] as const;
 
 export type TabOrderMode = (typeof TAB_ORDER_MODES)[number];
 

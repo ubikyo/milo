@@ -10,7 +10,7 @@ import type { Id, LienKind } from "@milo/shared";
 import { lienElement } from "@milo/shared";
 
 export interface Cible {
-  /** Pour « access », l'identifiant est celui de la catégorie. */
+  /** Pour « access », l'identifiant est celui du tableau. */
   kind: LienKind;
   id: Id;
 }

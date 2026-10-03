@@ -9,8 +9,7 @@
 import { Router } from "express";
 import type { Request } from "express";
 import { randomBytes } from "node:crypto";
-import type { Mode } from "@milo/shared";
-import { DEFAULT_MODE, isMode, passwordIssues } from "@milo/shared";
+import { passwordIssues } from "@milo/shared";
 import { env } from "../env.js";
 import { createToken, fullName, hashPassword, verifyPassword } from "../lib/auth.js";
 import {
@@ -20,12 +19,21 @@ import {
   terminerLaConnexion,
   urlDeConnexion,
 } from "../lib/entra.js";
-import { badRequest, conflict } from "../lib/http.js";
+import { badRequest, conflict, requireText } from "../lib/http.js";
 import { touch } from "../middleware/events.js";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { requireAuth } from "../middleware/require-auth.js";
-import { ADMIN_USERNAME, aAcces, publicUser, sessions, users } from "../repositories/users.js";
+import {
+  ADMIN_USERNAME,
+  aAcces,
+  publicUser,
+  sessions,
+  users,
+  workspacesDu,
+} from "../repositories/users.js";
+import { workspaces } from "../repositories/workspaces.js";
 import { now } from "../lib/time.js";
+import { vueVisible } from "../repositories/views.js";
 
 /** Ouvre une session et rend son jeton. */
 const openSession = (userId: number | bigint): string => {
@@ -65,12 +73,19 @@ publicAuthRoutes.get("/setup", (_req, res) => {
   res.json({ needs_setup: !users.admin.get(), entra: entraConfiguree() });
 });
 
+// Le premier workspace existe déjà — la base en reçoit un (migrations.ts) :
+// il prend le nom choisi. Ses accès se règlent ensuite, une fois Entra
+// renseigné.
 publicAuthRoutes.post("/setup", limiteTentatives, (req, res) => {
   if (users.admin.get()) conflict("Le compte admin existe déjà");
 
   const password = String(req.body.password ?? "");
   verifierMotDePasse(password);
+  const workspace = requireText(req.body.workspace, "Le nom du workspace est requis");
 
+  const premier = workspaces.first.get();
+  if (premier) workspaces.rename.run(workspace, premier.id);
+  else workspaces.create.run(workspace, 0, now());
   const { lastInsertRowid } = users.createAdmin.run(ADMIN_USERNAME, hashPassword(password), now());
   res.status(201).json({
     token: openSession(lastInsertRowid),
@@ -188,7 +203,7 @@ publicAuthRoutes.get("/entra/callback", touch("lookups"), (req, res, next) => {
       if (!aAcces(user)) {
         res.redirect(
           retour({
-            auth_error: "Votre compte n'a accès à aucune société. Demandez un accès à un administrateur.",
+            auth_error: "Votre compte n'a accès à aucun workspace. Demandez un accès à un administrateur.",
           }),
         );
         return;
@@ -211,12 +226,21 @@ authRoutes.get("/me", (req, res) => {
   res.json(publicUser(req.user));
 });
 
-// Ce que la personne règle elle-même : son mode d'ouverture. Son identité
-// vient d'Entra.
+// Ce que la personne règle elle-même : sa vue d'ouverture — une vue qu'elle
+// voit, ou rien pour la première. Son identité vient d'Entra.
 authRoutes.put("/me", (req, res) => {
-  const recu = req.body.default_mode ?? req.user.default_mode ?? DEFAULT_MODE;
-  if (!isMode(recu)) badRequest("Mode inconnu");
-  users.setDefaultMode.run(recu as Mode, req.user.id);
+  const recu = String(req.body.default_view ?? req.user.default_view ?? "");
+  if (recu !== "" && !vueVisible(Number(recu), req.user)) badRequest("Vue introuvable");
+  users.setDefaultView.run(recu, req.user.id);
+  res.json(publicUser(users.byId.get(req.user.id)!));
+});
+
+// Passer dans un autre de ses workspaces : ses vues, ses tableaux et ses
+// droits deviennent ceux de celui-là.
+authRoutes.put("/me/workspace", touch("lookups"), (req, res) => {
+  const id = Number(req.body.workspace);
+  if (!workspacesDu(req.user).some((w) => w.id === id)) badRequest("Workspace introuvable");
+  users.setWorkspace.run(id, req.user.id);
   res.json(publicUser(users.byId.get(req.user.id)!));
 });
 

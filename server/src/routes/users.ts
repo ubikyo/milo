@@ -93,8 +93,8 @@ userRoutes.get("/directory", (req, res, next) => {
 
 /**
  * Les groupes de l'annuaire Entra dont le nom commence par ce qu'on tape. Un
- * groupe est un acteur là où l'on prévient sans assigner — les machines d'un
- * élément Uptime : ce sont ses membres qui reçoivent la notification.
+ * groupe est un acteur là où l'on prévient sans assigner : ce sont ses
+ * membres qui reçoivent la notification.
  */
 userRoutes.get("/directory/groups", (req, res, next) => {
   const q = String(req.query["q"] ?? "").trim();

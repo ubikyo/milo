@@ -1,9 +1,12 @@
-import { ThemeIcon, UnstyledButton } from "@mantine/core";
+import { Stack, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
+import { STRONG_TEXT } from "../../themes/colors";
 import { IconPlus } from "@tabler/icons-react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 // La zone d'ajout d'une section — du mode Accès ou d'un panneau des
 // statistiques (SectionsBoard) : un cadre en pointillé, sans fond, qui occupe
-// la hauteur restante, et le « + » au centre dans une pastille verte. Elle se
+// la hauteur restante, et le « + » au centre dans une pastille verte, avec
+// « Ajouter un widget » dessous pour dire ce qu'il fait. Elle se
 // clique en entier — le bouton n'est qu'un repère visuel, pas une cible à
 // viser. Elle ouvre le tiroir des widgets.
 //
@@ -35,6 +38,9 @@ export const POINTILLE =
 // Hauteur minimale : une colonne vide doit rester une zone, pas un trait.
 const MIN_HEIGHT = 120;
 
+// L'air que le libellé laisse de chaque côté avant de céder la place.
+const MARGE_LIBELLE = 8;
+
 export default function SectionDropZone({
   onClick,
   accueille = false,
@@ -44,8 +50,26 @@ export default function SectionDropZone({
   onDragLeave,
   onDrop,
 }: SectionDropZoneProps) {
+  // Le libellé tient sur une ligne, ou ne se montre pas : une colonne
+  // étroite ne garde que le « + ». Il reste posé, mais hors du flux, pour
+  // qu'on mesure toujours sa largeur.
+  const zone = useRef<HTMLButtonElement>(null);
+  const libelle = useRef<HTMLParagraphElement>(null);
+  const [tient, setTient] = useState(true);
+  useLayoutEffect(() => {
+    const element = zone.current;
+    if (!element) return;
+    const mesurer = () =>
+      setTient((libelle.current?.scrollWidth ?? 0) <= element.clientWidth - 2 * MARGE_LIBELLE);
+    mesurer();
+    const observateur = new ResizeObserver(mesurer);
+    observateur.observe(element);
+    return () => observateur.disconnect();
+  }, []);
+
   return (
     <UnstyledButton
+      ref={zone}
       onClick={onClick}
       aria-label="Ajouter un widget"
       disabled={invisible}
@@ -55,6 +79,9 @@ export default function SectionDropZone({
       style={{
         flex: 1,
         minHeight: MIN_HEIGHT,
+        // Le libellé mis de côté ne déborde pas de la zone.
+        position: "relative",
+        overflow: "hidden",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -72,9 +99,22 @@ export default function SectionDropZone({
         visibility: invisible ? "hidden" : "visible",
       }}
     >
-      <ThemeIcon radius="xl" size={44} color="teal">
-        <IconPlus size={24} />
-      </ThemeIcon>
+      <Stack gap="xs" align="center">
+        <ThemeIcon radius="xl" size={44} color="teal">
+          <IconPlus size={24} />
+        </ThemeIcon>
+        <Text
+          ref={libelle}
+          size="sm"
+          c={STRONG_TEXT}
+          style={{
+            whiteSpace: "nowrap",
+            ...(tient ? {} : { position: "absolute", left: 0, top: 0, visibility: "hidden" }),
+          }}
+        >
+          Ajouter un widget
+        </Text>
+      </Stack>
     </UnstyledButton>
   );
 }

@@ -20,10 +20,10 @@ import {
   IconSelector,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import { createContext, useContext, useMemo, useState } from "react";
+import { Fragment, createContext, useContext, useMemo, useState } from "react";
 import ActorAvatars, { ACTOR_AVATAR_SIZE, ACTOR_GAP, SenderAvatar } from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
-import { colonnesGardees } from "../ui/ChampsColonnes";
+import { colonnesGardees, largeursParDefaut } from "../ui/ChampsColonnes";
 import EmptyPanel from "../ui/EmptyPanel";
 import GrilleScroll from "../ui/GrilleScroll";
 import LabelChip from "../ui/LabelChip";
@@ -32,7 +32,9 @@ import { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
 import { useColonnesRedimensionnables } from "../ui/useColonnesRedimensionnables";
 import { COULEUR_ECHEANCE, MOT_ECHEANCE, dateCourte, etatEcheance } from "../../lib/echeance";
 import { STRONG_TEXT } from "../../themes/colors";
-import { SUPPORT_STATUSES, supportStatusLabel, supportTicketRef } from "@milo/shared";
+import { SUPPORT_STATUSES, cleDeListe, supportStatusLabel, supportTicketRef } from "@milo/shared";
+import { useEnModification } from "../../lib/edition";
+import { deLaListe } from "../../lib/listes";
 import type { CSSProperties, ReactNode } from "react";
 import type { Actor, SupportRequest, SupportStatus } from "@milo/shared";
 
@@ -416,9 +418,12 @@ function SortableTh({
   );
 }
 
-/** Les colonnes que la liste sait montrer, dans l'ordre. Le ticket est toujours là. */
-export const COLONNES_SUPPORT: { key: ColumnKey; label: string; obligatoire?: boolean }[] = [
-  { key: "ticket", label: "Ticket", obligatoire: true },
+/** La clé des boîtes reçues, dans la configuration de la liste : chacune vers un contexte. */
+export const BOITES = "boites";
+
+/** Les colonnes que la liste sait montrer, dans l'ordre. */
+export const COLONNES_SUPPORT: { key: ColumnKey; label: string }[] = [
+  { key: "ticket", label: "Ticket" },
   { key: "subject", label: "Objet" },
   { key: "actors", label: "Acteurs" },
   { key: "labels", label: "Étiquettes" },
@@ -509,8 +514,11 @@ export const useSupportListe = (requests: SupportRequest[] | null, onglet: strin
 export interface SupportListe extends ReturnType<typeof useSupportListe> {
   loading: boolean;
   onOpenRequest: (request: SupportRequest) => void;
-  /** Sans lui — sans le droit d'ajouter une demande —, pas de ligne d'ajout. */
-  onAddRequest?: () => void;
+  /**
+   * Sans lui — sans le droit d'ajouter une demande —, pas de ligne d'ajout.
+   * La clé de liste dit le widget d'où on l'ajoute.
+   */
+  onAddRequest?: (listKey: string) => void;
 }
 
 /** L'état de la liste, donné par la page au widget. Hors du mode Support, il n'y en a pas. */
@@ -518,8 +526,13 @@ export const SupportListeContext = createContext<SupportListe | null>(null);
 
 export default function SupportRequestsList({ config }: { config: unknown }) {
   const liste = useContext(SupportListeContext);
-
+  // Hors du mode Support, rien à lister. Le reste vit dans un composant à
+  // part : ses hooks s'appellent ainsi à chaque rendu, dans le même ordre.
   if (!liste) return null;
+  return <ListeDesDemandes config={config} liste={liste} />;
+}
+
+function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportListe }) {
   const {
     onglet,
     sort,
@@ -530,20 +543,34 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
     setCochees,
     contexte,
     setContexte,
-    montrees,
-    dansLOnglet,
+    montrees: toutesMontrees,
+    dansLOnglet: toutDansLOnglet,
     optionsActeurs,
     optionsEtiquettes,
     loading,
     onOpenRequest,
-    onAddRequest,
+    onAddRequest: ajouterDemande,
   } = liste;
 
-  const colonnes = colonnesGardees(COLONNES_SUPPORT, config).map((c) => c.key);
-  const montre = (cle: ColumnKey) => colonnes.includes(cle);
+  // Les demandes du tableau, du contexte choisi, que la page a lues — celles
+  // de ce widget seulement (lib/listes.ts). Une demande ajoutée ici est la
+  // sienne.
+  const deCeWidget = deLaListe(config);
+  const montrees = toutesMontrees.filter(deCeWidget);
+  const dansLOnglet = toutDansLOnglet.filter(deCeWidget);
+  const onAddRequest = ajouterDemande && (() => ajouterDemande(cleDeListe(config)));
+  const enModification = useEnModification();
+
+  // Les colonnes gardées, dans l'ordre choisi par la configuration.
+  // Une colonne peut revenir : « id » distingue chaque occurrence.
+  const colonnes = colonnesGardees(COLONNES_SUPPORT, config);
   // La case à cocher en tête de chaque ligne, puis les colonnes.
   const nombreDeColonnes = colonnes.length + 1;
-  const redim = useColonnesRedimensionnables("support", ["case", ...colonnes]);
+  const redim = useColonnesRedimensionnables(
+    "support",
+    ["case", ...colonnes.map((c) => c.id)],
+    largeursParDefaut(COLONNES_SUPPORT, config),
+  );
 
   const filtre = Object.entries(filtres).some(
     ([cle, v]) => v !== SANS_FILTRE[cle as keyof Filtres],
@@ -569,18 +596,167 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
           },
     );
 
-  const th = (label: string, column: ColumnKey, filter?: ReactNode, style?: CSSProperties) =>
-    montre(column) && (
-      <SortableTh
-        label={label}
-        column={column}
-        sort={sort}
-        onSort={trier}
-        filter={filter}
-        style={style}
-        poignee={redim.poignee(column)}
-      />
-    );
+  const th = (
+    id: string,
+    label: string,
+    column: ColumnKey,
+    filter?: ReactNode,
+    style?: CSSProperties,
+  ) => (
+    <SortableTh
+      key={id}
+      label={label}
+      column={column}
+      sort={sort}
+      onSort={trier}
+      filter={filter}
+      style={style}
+      poignee={redim.poignee(id)}
+    />
+  );
+
+  // L'entête de chaque colonne : les colonnes s'affichent dans l'ordre de la
+  // configuration, la case à cocher restant en tête.
+  const entetes: Record<ColumnKey, (id: string) => ReactNode> = {
+    ticket: (id) =>
+      th(
+        id,
+        "Ticket",
+        "ticket",
+        <TexteFilter label="ticket" value={filtres.ticket} onChange={filtrer("ticket")} />,
+        { width: 1, whiteSpace: "nowrap" },
+      ),
+    subject: (id) =>
+      th(
+        id,
+        "Objet",
+        "subject",
+        <TexteFilter label="objet" value={filtres.subject} onChange={filtrer("subject")} />,
+        { width: SUBJECT_WIDTH },
+      ),
+    actors: (id) =>
+      th(
+        id,
+        "Acteurs",
+        "actors",
+        <ChoixFilter
+          label="acteur"
+          options={optionsActeurs}
+          value={filtres.actor}
+          onChange={filtrer("actor")}
+        />,
+        { width: 1, whiteSpace: "nowrap" },
+      ),
+    labels: (id) =>
+      th(
+        id,
+        "Étiquettes",
+        "labels",
+        <ChoixFilter
+          label="étiquette"
+          options={optionsEtiquettes}
+          value={filtres.label}
+          onChange={filtrer("label")}
+        />,
+        { minWidth: LABELS_MIN_WIDTH },
+      ),
+    status: (id) =>
+      th(
+        id,
+        "Statut",
+        "status",
+        // Sous un onglet de statut, le filtre n'aurait rien à choisir.
+        onglet === TOUS ? (
+          <ChoixFilter
+            label="statut"
+            options={[{ value: TOUT, label: "Tous" }, ...SUPPORT_STATUSES]}
+            value={filtres.status}
+            onChange={filtrer("status")}
+          />
+        ) : undefined,
+      ),
+    received: (id) =>
+      th(
+        id,
+        "Reçu le",
+        "received",
+        <ChoixFilter
+          label="date de réception"
+          options={PERIODES}
+          value={filtres.received}
+          onChange={filtrer("received")}
+        />,
+        { width: DATE_WIDTH, maxWidth: DATE_WIDTH },
+      ),
+    due: (id) =>
+      th(
+        id,
+        "Échéance",
+        "due",
+        <ChoixFilter
+          label="échéance"
+          options={ECHEANCES}
+          value={filtres.due}
+          onChange={filtrer("due")}
+        />,
+        { width: DATE_WIDTH, maxWidth: DATE_WIDTH },
+      ),
+  };
+
+  // La cellule de chaque colonne, pour une demande.
+  const cellules: Record<ColumnKey, (demande: SupportRequest) => ReactNode> = {
+    ticket: (demande) => (
+      <Table.Td key="ticket" style={{ whiteSpace: "nowrap" }}>
+        <ReferenceTag reference={supportTicketRef(demande.number)} gabarit={REFERENCE_GABARIT} />
+      </Table.Td>
+    ),
+    subject: (demande) => (
+      <Table.Td key="subject" style={{ maxWidth: SUBJECT_WIDTH, width: SUBJECT_WIDTH }}>
+        {demande.subject ? (
+          <Text size="sm" truncate>
+            {demande.subject}
+          </Text>
+        ) : (
+          <Vide />
+        )}
+      </Table.Td>
+    ),
+    actors: (demande) => (
+      <Table.Td key="actors">
+        <ActeursCell demande={demande} />
+      </Table.Td>
+    ),
+    labels: (demande) => (
+      <Table.Td key="labels">
+        <LabelsCell labels={demande.labels} />
+      </Table.Td>
+    ),
+    status: (demande) => (
+      <Table.Td key="status">
+        <LabelChip
+          label={{
+            name: supportStatusLabel(demande.status),
+            color: COULEUR_STATUT[demande.status],
+          }}
+          size="xs"
+          height={LABEL_HEIGHT}
+        />
+      </Table.Td>
+    ),
+    received: (demande) => (
+      <Table.Td
+        key="received"
+        style={{ whiteSpace: "nowrap", width: DATE_WIDTH, maxWidth: DATE_WIDTH }}
+      >
+        <Text size="sm">{dayjs(demande.created_at).format("DD/MM/YYYY HH:mm")}</Text>
+      </Table.Td>
+    ),
+    due: (demande) => (
+      <Table.Td key="due" style={{ width: DATE_WIDTH, maxWidth: DATE_WIDTH }}>
+        <EcheanceCell due={demande.due_date} />
+      </Table.Td>
+    ),
+  };
 
   // Sans demande dans l'onglet, seul l'écran vide s'affiche. Une liste vidée
   // par les filtres, elle, garde ses entêtes : c'est là qu'on les retire.
@@ -627,76 +803,7 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
           <Table.Tr>
             {/* Pas de « tout cocher » : on choisit les demandes une à une. */}
             <Table.Th style={{ width: 1 }} />
-            {th(
-              "Ticket",
-              "ticket",
-              <TexteFilter label="ticket" value={filtres.ticket} onChange={filtrer("ticket")} />,
-              { width: 1, whiteSpace: "nowrap" },
-            )}
-            {th(
-              "Objet",
-              "subject",
-              <TexteFilter label="objet" value={filtres.subject} onChange={filtrer("subject")} />,
-              { width: SUBJECT_WIDTH },
-            )}
-            {th(
-              "Acteurs",
-              "actors",
-              <ChoixFilter
-                label="acteur"
-                options={optionsActeurs}
-                value={filtres.actor}
-                onChange={filtrer("actor")}
-              />,
-              { width: 1, whiteSpace: "nowrap" },
-            )}
-            {/* Les étiquettes juste avant le statut : les deux se lisent ensemble. */}
-            {th(
-              "Étiquettes",
-              "labels",
-              <ChoixFilter
-                label="étiquette"
-                options={optionsEtiquettes}
-                value={filtres.label}
-                onChange={filtrer("label")}
-              />,
-              { minWidth: LABELS_MIN_WIDTH },
-            )}
-            {th(
-              "Statut",
-              "status",
-              // Sous un onglet de statut, le filtre n'aurait rien à choisir.
-              onglet === TOUS ? (
-                <ChoixFilter
-                  label="statut"
-                  options={[{ value: TOUT, label: "Tous" }, ...SUPPORT_STATUSES]}
-                  value={filtres.status}
-                  onChange={filtrer("status")}
-                />
-              ) : undefined,
-            )}
-            {th(
-              "Reçu le",
-              "received",
-              <ChoixFilter
-                label="date de réception"
-                options={PERIODES}
-                value={filtres.received}
-                onChange={filtrer("received")}
-              />,
-              { width: DATE_WIDTH, maxWidth: DATE_WIDTH },
-            )}
-            {th(
-              "Échéance",
-              "due",
-              <ChoixFilter
-                label="échéance"
-                options={ECHEANCES}
-                value={filtres.due}
-                onChange={filtrer("due")}
-              />,
-              { width: DATE_WIDTH, maxWidth: DATE_WIDTH },
-            )}
+            {colonnes.map((c) => entetes[c.key](c.id))}
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -704,7 +811,11 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
             <Table.Tr
               key={demande.id}
               onClick={() => onOpenRequest(demande)}
-              onContextMenu={(e) => setContexte({ demande, position: positionDuMenu(e) })}
+              // En modification, le clic droit revient au menu du widget.
+              onContextMenu={(e) => {
+                if (enModification) return;
+                setContexte({ demande, position: positionDuMenu(e) });
+              }}
               // La ligne dont le menu est ouvert garde le fond du survol : on
               // voit sur quelle demande il porte.
               style={{
@@ -723,55 +834,9 @@ export default function SupportRequestsList({ config }: { config: unknown }) {
                   onChange={() => basculer(demande.id)}
                 />
               </Table.Td>
-              <Table.Td style={{ whiteSpace: "nowrap" }}>
-                <ReferenceTag
-                  reference={supportTicketRef(demande.number)}
-                  gabarit={REFERENCE_GABARIT}
-                />
-              </Table.Td>
-              {montre("subject") && (
-                <Table.Td style={{ maxWidth: SUBJECT_WIDTH, width: SUBJECT_WIDTH }}>
-                  {demande.subject ? (
-                    <Text size="sm" truncate>
-                      {demande.subject}
-                    </Text>
-                  ) : (
-                    <Vide />
-                  )}
-                </Table.Td>
-              )}
-              {montre("actors") && (
-                <Table.Td>
-                  <ActeursCell demande={demande} />
-                </Table.Td>
-              )}
-              {montre("labels") && (
-                <Table.Td>
-                  <LabelsCell labels={demande.labels} />
-                </Table.Td>
-              )}
-              {montre("status") && (
-                <Table.Td>
-                  <LabelChip
-                    label={{
-                      name: supportStatusLabel(demande.status),
-                      color: COULEUR_STATUT[demande.status],
-                    }}
-                    size="xs"
-                    height={LABEL_HEIGHT}
-                  />
-                </Table.Td>
-              )}
-              {montre("received") && (
-                <Table.Td style={{ whiteSpace: "nowrap", width: DATE_WIDTH, maxWidth: DATE_WIDTH }}>
-                  <Text size="sm">{dayjs(demande.created_at).format("DD/MM/YYYY HH:mm")}</Text>
-                </Table.Td>
-              )}
-              {montre("due") && (
-                <Table.Td style={{ width: DATE_WIDTH, maxWidth: DATE_WIDTH }}>
-                  <EcheanceCell due={demande.due_date} />
-                </Table.Td>
-              )}
+              {colonnes.map((c) => (
+                <Fragment key={c.id}>{cellules[c.key](demande)}</Fragment>
+              ))}
             </Table.Tr>
           ))}
 

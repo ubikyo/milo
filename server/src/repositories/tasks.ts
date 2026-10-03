@@ -16,26 +16,39 @@ export const taskLists = {
     "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM task_lists WHERE board_id = ?",
   ),
   create: mutation(
-    "INSERT INTO task_lists (board_id, name, position, created_at) VALUES (?, ?, ?, ?)",
+    `INSERT INTO task_lists (board_id, name, position, list_key, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
   ),
   update: mutation(
-    "UPDATE task_lists SET board_id = ?, name = ?, position = ?, color = ? WHERE id = ?",
+    `UPDATE task_lists SET board_id = ?, name = ?, position = ?, color = ?, list_key = ?
+     WHERE id = ?`,
   ),
   remove: mutation("DELETE FROM task_lists WHERE id = ?"),
 };
 
 export const taskCards = {
   byId: selection<TaskCardRow>("SELECT * FROM task_cards WHERE id = ?"),
-  idsOfList: selection<{ id: Id }>("SELECT id FROM task_cards WHERE list_id = ?"),
+  idsOfList: selection<{ id: Id }>(
+    "SELECT id FROM task_cards WHERE list_id = ? ORDER BY position, id",
+  ),
   nextPosition: scalar<NextRow>(
     "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM task_cards WHERE list_id = ?",
   ),
   create: mutation(
-    `INSERT INTO task_cards (list_id, text, position, number, kind, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO task_cards (list_id, text, position, number, kind, context_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ),
   update: mutation(
-    "UPDATE task_cards SET text = ?, description = ?, due_date = ? WHERE id = ?",
+    "UPDATE task_cards SET text = ?, description = ?, due_date = ?, context_id = ? WHERE id = ?",
+  ),
+  /**
+   * Les cartes d'une liste passée à un autre tableau prennent le premier de
+   * ses contextes : ceux de l'ancien n'y ont pas cours.
+   */
+  recontextualiser: mutation(
+    `UPDATE task_cards SET context_id =
+       (SELECT id FROM contexts WHERE board_id = ? ORDER BY position, id LIMIT 1)
+     WHERE list_id = ?`,
   ),
   /** La description seule : celle qu'une carte reçoit dès sa création. */
   describe: mutation("UPDATE task_cards SET description = ? WHERE id = ?"),

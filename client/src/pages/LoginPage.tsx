@@ -9,19 +9,18 @@ import {
   TextInput,
 } from "@mantine/core";
 import { IconBrandWindows } from "@tabler/icons-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, entraLoginUrl } from "../api";
 import { passwordIssues } from "@milo/shared";
-import ErrorAlert from "../components/ui/ErrorAlert";
 import Logo from "../components/ui/Logo";
 import PasswordRules from "../components/ui/PasswordRules";
-import { messageErreur } from "../lib/errors";
+import { messageErreur, notifierErreur } from "../lib/errors";
 import type { AuthResult } from "@milo/shared";
 import type { FormEvent } from "react";
 
 /**
- * « setup » : le mot de passe du compte « admin », à la toute première
- * ouverture. « microsoft » : la connexion de tout le monde. « admin » : celle
+ * « setup » : le mot de passe du compte « admin » et le nom du premier
+ * workspace, à la toute première ouverture. « microsoft » : la connexion de tout le monde. « admin » : celle
  * du compte « admin », qui ne sert qu'au paramétrage.
  */
 type LoginMode = "setup" | "microsoft" | "admin";
@@ -49,27 +48,31 @@ export default function LoginPage({
   const [username, setUsername] = useState(ADMIN);
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
-  const [error, setError] = useState<string | null>(initialError ?? null);
+  const [workspace, setWorkspace] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // Le refus rapporté par le retour de Microsoft, porté comme toute erreur.
+  useEffect(() => {
+    if (initialError) notifierErreur(initialError);
+  }, [initialError]);
 
   const incomplete =
     mode === "setup"
-      ? passwordIssues(password).length > 0 || password !== confirmation
+      ? !workspace.trim() || passwordIssues(password).length > 0 || password !== confirmation
       : !username.trim() || !password;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (mode === "microsoft") return;
-    setError(null);
     setBusy(true);
     try {
       onAuthenticated(
         mode === "setup"
-          ? await api.setup({ password })
+          ? await api.setup({ password, workspace: workspace.trim() })
           : await api.login(username.trim(), password),
       );
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setBusy(false);
     }
@@ -77,7 +80,6 @@ export default function LoginPage({
 
   const switchTo = (next: LoginMode) => {
     setMode(next);
-    setError(null);
     setPassword("");
     setConfirmation("");
   };
@@ -96,8 +98,8 @@ export default function LoginPage({
               <Logo variant={1} h={176} />
               {mode === "setup" && (
                 <Text size="sm" c="dimmed" ta="center" pt={30}>
-                  Mot de passe du compte admin pour le paramétrage de
-                  l'application
+                  Le premier workspace, et le mot de passe du compte admin
+                  pour le paramétrage de l'application
                 </Text>
               )}
               {mode === "admin" && entra && (
@@ -107,7 +109,6 @@ export default function LoginPage({
               )}
             </Stack>
 
-            {error && <ErrorAlert>{error}</ErrorAlert>}
 
             {mode === "microsoft" && (
               // Un lien et non un appel : le navigateur quitte l'application
@@ -132,13 +133,25 @@ export default function LoginPage({
               />
             )}
 
+            {/* Le workspace de la première équipe : ses accès se règlent
+                ensuite, dans le Paramétrage. */}
+            {mode === "setup" && (
+              <TextInput
+                label="Nom du workspace"
+                value={workspace}
+                onChange={(e) => setWorkspace(e.currentTarget.value)}
+                required
+                data-autofocus
+              />
+            )}
+
             {mode !== "microsoft" && (
               <PasswordInput
                 label="Mot de passe"
                 value={password}
                 onChange={(e) => setPassword(e.currentTarget.value)}
                 required
-                data-autofocus
+                data-autofocus={mode !== "setup"}
               />
             )}
 

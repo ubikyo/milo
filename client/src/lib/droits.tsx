@@ -7,52 +7,55 @@
 
 import { createContext, useContext } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { MODES, can, widgetRightsPartout } from "@milo/shared";
+import { can, widgetRightsPartout } from "@milo/shared";
 import type {
   Area,
-  Company,
   CompanyRights,
-  Id,
-  Mode,
   Right,
   WidgetAccess,
   WidgetKind,
   WidgetRights,
 } from "@milo/shared";
 
-export type Peut = (area: Area, right: Right, companyId?: Id | string | null) => boolean;
+export type Peut = (area: Area, right: Right) => boolean;
 
-/**
- * Le droit demandé, dans cette société. Sans société — « toutes », ou un
- * élément qui n'en a pas —, il suffit qu'une société du compte l'accorde.
- */
+/** Le droit demandé : il vaut partout. */
 export const peutAvec =
   (rights: CompanyRights): Peut =>
-  (area, right, companyId) =>
-    can(rights, area, right, companyId === "all" ? null : companyId);
+  (area, right) =>
+    can(rights, area, right);
 
 const DroitsContext = createContext<Peut>(() => false);
 const WidgetsContext = createContext<WidgetRights>(widgetRightsPartout(""));
+const ParametrageContext = createContext(false);
 
 export function DroitsProvider({
   rights,
   widgets,
+  parametrage,
   children,
 }: {
   rights: CompanyRights;
   /** Ses permissions par type de widget (shared, widget-kinds.ts). */
   widgets: WidgetRights;
+  /** Le droit de modifier le Paramétrage — les types de jalons, entre autres. */
+  parametrage: boolean;
   children: ReactNode;
 }) {
   return (
     <DroitsContext.Provider value={peutAvec(rights)}>
-      <WidgetsContext.Provider value={widgets}>{children}</WidgetsContext.Provider>
+      <WidgetsContext.Provider value={widgets}>
+        <ParametrageContext.Provider value={parametrage}>{children}</ParametrageContext.Provider>
+      </WidgetsContext.Provider>
     </DroitsContext.Provider>
   );
 }
 
-/** `peut(area, right, companyId?)`, pour le compte connecté. */
+/** `peut(area, right)`, pour le compte connecté. */
 export const useDroits = (): Peut => useContext(DroitsContext);
+
+/** Vrai quand le compte connecté peut modifier le Paramétrage. */
+export const useParametrage = (): boolean => useContext(ParametrageContext);
 
 /**
  * La permission du compte connecté sur un type de widget : « » (aucune), le
@@ -63,14 +66,6 @@ export const useAccesWidget = (): ((kind: WidgetKind) => WidgetAccess) => {
   const widgets = useContext(WidgetsContext);
   return (kind) => widgets[kind];
 };
-
-/** Les modes que le compte voit, dans l'ordre du sélecteur. */
-export const modesVisibles = (peut: Peut): Mode[] =>
-  MODES.map((m) => m.value).filter((m) => peut(m, "view"));
-
-/** Les sociétés dont le compte voit ce mode. */
-export const societesVisibles = (companies: Company[], peut: Peut, mode: Mode): Company[] =>
-  companies.filter((c) => peut(mode, "view", c.id));
 
 /**
  * Un « fieldset » sans bordure ni marge : désactivé, il éteint d'un coup tous

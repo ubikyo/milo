@@ -6,7 +6,6 @@ import {
   Menu,
   Modal,
   PasswordInput,
-  Select,
   SimpleGrid,
   Stack,
   Text,
@@ -18,7 +17,6 @@ import {
   IconChevronDown,
   IconCopy,
   IconMailForward,
-  IconMailSearch,
   IconPlugConnected,
   IconPlugConnectedX,
   IconSend,
@@ -29,22 +27,22 @@ import { emptyEntraSettings } from "@milo/shared";
 import { api } from "../../api";
 import { NEUTRAL_HOVER } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
-import ErrorAlert from "../ui/ErrorAlert";
-import ListItems from "../ui/ListItems";
+import { ACTIONS_BUTTON_STYLE } from "../../themes/menus";
 import SuccessAlert from "../ui/SuccessAlert";
-import { messageErreur } from "../../lib/errors";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 import type {
   EntraSettings,
-  Company,
   EntraSettingsInput,
   EntraStatus,
-  MailboxCheck,
 } from "@milo/shared";
 import type { CSSProperties } from "react";
 import BoutonFermer from "../ui/BoutonFermer";
 
 /** Ce que montre l'état de la connexion, selon ce que le serveur en dit. */
-const ETATS: Record<EntraStatus["state"], { libelle: string; couleur: string }> = {
+const ETATS: Record<
+  EntraStatus["state"],
+  { libelle: string; couleur: string }
+> = {
   connected: { libelle: "Connecté", couleur: "green" },
   error: { libelle: "Refusé", couleur: "red" },
   disconnected: { libelle: "Déconnecté", couleur: "gray" },
@@ -83,29 +81,25 @@ function sansMasque(valeur: string): string {
 function MailTestModal({
   opened,
   onClose,
-  companies,
+  expediteur,
 }: {
   opened: boolean;
   onClose: () => void;
-  companies: Company[];
+  /** L'adresse d'envoi enregistrée. */
+  expediteur: string;
 }) {
-  // Seules les sociétés qui ont une boîte de support peuvent expédier.
-  const expeditrices = companies.filter((c) => c.support_email);
-  const [societe, setSociete] = useState<string | null>(null);
   const [adresse, setAdresse] = useState("");
   const [envoye, setEnvoye] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const envoyer = async () => {
-    setError(null);
     setEnvoye(null);
     setBusy(true);
     try {
-      const { sent_to } = await api.testMail(adresse.trim(), Number(societe));
+      const { sent_to } = await api.testMail(adresse.trim());
       setEnvoye(sent_to);
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setBusy(false);
     }
@@ -123,25 +117,10 @@ function MailTestModal({
     >
       <Stack gap="md">
         <Text size="sm">
-          Le message part de la boîte de support de la société choisie.
+          {expediteur
+            ? `Le message part de l'adresse d'envoi, ${expediteur}.`
+            : "Renseignez d'abord l'adresse d'envoi."}
         </Text>
-
-        <Select
-          label="Société"
-          placeholder={
-            expeditrices.length
-              ? "Choisir"
-              : "Aucune société n'a d'e-mail de support"
-          }
-          data={expeditrices.map((c) => ({
-            value: String(c.id),
-            label: c.name,
-          }))}
-          value={societe}
-          onChange={setSociete}
-          allowDeselect={false}
-          disabled={!expeditrices.length}
-        />
 
         <TextInput
           label="Adresse de test"
@@ -149,13 +128,10 @@ function MailTestModal({
           value={adresse}
           onChange={(e) => setAdresse(e.currentTarget.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && adresse.trim() && societe) envoyer();
+            if (e.key === "Enter" && adresse.trim() && expediteur) envoyer();
           }}
         />
 
-        {error && (
-          <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>
-        )}
         {envoye && (
           <SuccessAlert>
             <Text size="sm">Message envoyé à {envoye}.</Text>
@@ -171,7 +147,7 @@ function MailTestModal({
             leftSection={<IconSend size={16} />}
             onClick={envoyer}
             loading={busy}
-            disabled={!adresse.trim() || !societe}
+            disabled={!adresse.trim() || !expediteur}
           >
             Envoyer
           </Button>
@@ -181,98 +157,7 @@ function MailTestModal({
   );
 }
 
-/**
- * L'accès de Milo aux boîtes de support des sociétés : une ligne par société
- * qui en a une, et ce que Microsoft a répondu à la lecture d'un message.
- */
-function MailboxesModal({
-  opened,
-  onClose,
-}: {
-  opened: boolean;
-  onClose: () => void;
-}) {
-  const [resultats, setResultats] = useState<MailboxCheck[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!opened) return;
-    setResultats(null);
-    setError(null);
-    api
-      .checkMailboxes()
-      .then(setResultats)
-      .catch((e) => setError(messageErreur(e)));
-  }, [opened]);
-
-  return (
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      title="Boîtes de support"
-      centered
-      size="lg"
-      padding={MODAL_PADDING}
-      withCloseButton={false}
-      styles={modalHeaderStyles(MODAL_PADDING)}
-    >
-      <Stack gap="md">
-        {error && <ErrorAlert>{error}</ErrorAlert>}
-        {!resultats && !error && (
-          <Text size="sm" c="dimmed">
-            Vérification en cours…
-          </Text>
-        )}
-        {resultats && resultats.length === 0 && (
-          <Text size="sm" c="dimmed">
-            Aucune société n'a d'e-mail de support.
-          </Text>
-        )}
-        {resultats && resultats.length > 0 && (
-          <ListItems maxRows={8} rowHeight={ROW_BOITE}>
-            {resultats.map((r) => (
-              <ListItems.Row key={r.company_id} height={ROW_BOITE}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <Text size="sm" truncate>
-                    {r.company_name}
-                  </Text>
-                  <Text
-                    size="xs"
-                    c="dimmed"
-                    truncate
-                  >
-                    {r.ok ? r.email : `${r.email} — ${r.error}`}
-                  </Text>
-                </div>
-                <Badge
-                  color={r.ok ? "green" : "red"}
-                  variant="filled"
-                  size="sm"
-                  radius="sm"
-                  tt="none"
-                  fw={600}
-                  style={{ flexShrink: 0 }}
-                >
-                  {r.ok ? "Accessible" : "Refusée"}
-                </Badge>
-              </ListItems.Row>
-            ))}
-          </ListItems>
-        )}
-        <Group justify="flex-end" mt="md">
-          <BoutonFermer onClick={onClose} />
-        </Group>
-      </Stack>
-    </Modal>
-  );
-}
-
-// Une boîte tient sur deux lignes : la société, puis l'adresse.
-const ROW_BOITE = 52;
-
 interface EntraTabProps {
-  /** Les sociétés : le message d'essai part de la boîte de support de l'une d'elles. */
-  companies: Company[];
   /**
    * Là où l'onglet dépose sa fonction d'enregistrement, appelée par le bouton
    * « Enregistrer » de la fenêtre (SettingsModal). Elle rend faux si le serveur
@@ -305,12 +190,10 @@ export default function EntraTab({
   saveRef,
   actionsTarget,
   onSettings,
-  companies,
 }: EntraTabProps) {
   const [reglages, setReglages] = useState<EntraSettings>(emptyEntraSettings());
   const [secret, setSecret] = useState("");
   const [secretTouche, setSecretTouche] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   // Rien n'a bougé : « Enregistrer » n'a alors rien à envoyer.
   const [modifie, setModifie] = useState(false);
   // Tant que le serveur n'a pas répondu, l'onglet ne montre rien : affiché
@@ -319,7 +202,6 @@ export default function EntraTab({
   const [charge, setCharge] = useState(false);
   const [busy, setBusy] = useState(false);
   const [testOuvert, setTestOuvert] = useState(false);
-  const [boitesOuvert, setBoitesOuvert] = useState(false);
   // L'état de la connexion de Milo à Entra : nul tant qu'il n'est pas connu.
   const [etat, setEtat] = useState<EntraStatus | null>(null);
 
@@ -328,7 +210,7 @@ export default function EntraTab({
     api
       .getEntraStatus()
       .then(setEtat)
-      .catch((e) => setError(messageErreur(e)));
+      .catch((e) => notifierErreur(messageErreur(e)));
   }, []);
 
   useEffect(() => {
@@ -342,7 +224,7 @@ export default function EntraTab({
       onSettings?.(lus);
       setModifie(false);
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       // Même si la lecture a échoué : le message vaut mieux qu'un onglet vide.
       setCharge(true);
@@ -362,6 +244,7 @@ export default function EntraTab({
   const aEnvoyer = (): EntraSettingsInput => ({
     client_id: reglages.client_id,
     tenant: reglages.tenant,
+    mail_sender: reglages.mail_sender,
     ...(secretTouche ? { secret } : {}),
   });
 
@@ -369,7 +252,6 @@ export default function EntraTab({
   const enregistrer = async (): Promise<boolean> => {
     if (!modifie) return true;
 
-    setError(null);
     setBusy(true);
     try {
       const enregistres = await api.updateEntraSettings(aEnvoyer());
@@ -382,7 +264,7 @@ export default function EntraTab({
       lireEtat();
       return true;
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
       return false;
     } finally {
       setBusy(false);
@@ -405,20 +287,16 @@ export default function EntraTab({
   const tester = async () => {
     if (await enregistrer()) setTestOuvert(true);
   };
-  const verifierBoites = async () => {
-    if (await enregistrer()) setBoitesOuvert(true);
-  };
 
   /** Se reconnecter avec ce qui est saisi, ou se déconnecter. */
   const changerConnexion = async (connecter: boolean) => {
     if (connecter && !(await enregistrer())) return;
-    setError(null);
     setBusy(true);
     setEtat(null);
     try {
       setEtat(await (connecter ? api.connectEntra() : api.disconnectEntra()));
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setBusy(false);
     }
@@ -447,9 +325,7 @@ export default function EntraTab({
           color="gray"
           rightSection={<IconChevronDown size={14} />}
           disabled={busy}
-          // Le gris de Mantine tire sur le bleu au survol : on pose le nôtre,
-          // neutre, sur la variable que Button lit pour son fond.
-          style={{ "--button-hover": NEUTRAL_HOVER } as CSSProperties}
+          style={ACTIONS_BUTTON_STYLE}
         >
           Actions
         </Button>
@@ -462,13 +338,6 @@ export default function EntraTab({
           disabled={deconnecte}
         >
           Tester l'envoi
-        </Menu.Item>
-        <Menu.Item
-          leftSection={<IconMailSearch size={16} />}
-          onClick={verifierBoites}
-          disabled={deconnecte}
-        >
-          Vérifier les boîtes de support
         </Menu.Item>
         <Menu.Divider />
         <Menu.Item
@@ -551,10 +420,6 @@ export default function EntraTab({
   return (
     <>
       <Stack gap="lg">
-        {error && (
-          <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>
-        )}
-
         <Stack gap="sm">
           <Text size="sm" c="dimmed" pb={7}>
             Paramètres de connexion à Entra, veuillez lire l'aide relative à
@@ -580,7 +445,16 @@ export default function EntraTab({
             {/* Le secret et la redirection dans la colonne de gauche, à la
                 largeur de l'ID d'application. */}
             {champSecret}
-            <div />
+            {/* D'où partent les e-mails de Milo : les avis, les assignations,
+                les réponses aux demandes saisies. Une demande reçue répond
+                de sa propre boîte. */}
+            <TextInput
+              label="Adresse d'envoi"
+              type="email"
+              placeholder="milo@…"
+              value={reglages.mail_sender}
+              onChange={(e) => modifier({ mail_sender: e.currentTarget.value })}
+            />
             {/* L'adresse à reporter dans Azure, telle quelle : elle se lit,
                 et se copie d'un clic. Plus longue que les ID, elle déborde
                 d'un quart sur la colonne de droite, vide à cette hauteur. */}
@@ -631,11 +505,7 @@ export default function EntraTab({
       <MailTestModal
         opened={testOuvert}
         onClose={() => setTestOuvert(false)}
-        companies={companies}
-      />
-      <MailboxesModal
-        opened={boitesOuvert}
-        onClose={() => setBoitesOuvert(false)}
+        expediteur={reglages.mail_sender}
       />
     </>
   );

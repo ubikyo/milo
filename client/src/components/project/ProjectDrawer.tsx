@@ -27,10 +27,16 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { api } from "../../api";
-import { NEUTRAL_HOVER, progressColor } from "../../themes/colors";
+import { progressColor } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
-import { DRAWER_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
+import {
+  ACTIONS_BUTTON_STYLE,
+  DRAWER_MENU_OFFSET,
+  TAB_MENU_STYLES,
+} from "../../themes/menus";
 import { tabStyle } from "../../themes/tabs";
+import champs from "../../assets/styles/EcartField.module.css";
+import { TYPE_JALONS_PAR_DEFAUT } from "@milo/shared";
 import CommentThread from "./CommentThread";
 import { MilestoneLabels, marquesJalons } from "./milestoneMarks";
 import MoveOrCopyProjectModal from "./MoveOrCopyProjectModal";
@@ -46,13 +52,12 @@ import DrawerScrollArea, {
   DRAWER_STYLES,
   DRAWER_TABS_STYLES,
 } from "../ui/DrawerScroll";
-import ErrorAlert from "../ui/ErrorAlert";
 import { FIELDSET_NU, useDroits } from "../../lib/droits";
 import LabelPicker, { PROJECT_LABELS_API } from "../ui/LabelPicker";
-import { messageErreur } from "../../lib/errors";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 import type {
   Category,
-  Company,
+  Context,
   MilestoneType,
   ProjectBoard,
   ProjectInput,
@@ -63,10 +68,22 @@ import type { FilItem } from "./CommentThread";
 import BoutonFermer from "../ui/BoutonFermer";
 
 /** La fiche en cours de saisie. Tout y est en chaînes : ce sont des champs. */
+
+let mesureur: CanvasRenderingContext2D | null = null;
+
+/** La largeur d'un petit champ discret qui montre ce texte : texte, air et bordure. */
+const largeurChamp = (texte: string): number => {
+  mesureur ??= document.createElement("canvas").getContext("2d");
+  if (!mesureur) return texte.length * 7 + 6;
+  // La taille des petits champs discrets (EcartField.module.css), la police de la page.
+  mesureur.font = `11px ${getComputedStyle(document.body).fontFamily}`;
+  return Math.ceil(mesureur.measureText(texte).width) + 6;
+};
+
 interface Formulaire {
   name: string;
   category_id: string;
-  company_id: string;
+  context_id: string;
   /** Le type de jalons du curseur ; vide, le curseur reste nu. */
   milestone_type_id: string;
   status: number;
@@ -88,7 +105,7 @@ const CHIP_HEIGHT = 30;
 const emptyForm: Formulaire = {
   name: "",
   category_id: "",
-  company_id: "",
+  context_id: "",
   milestone_type_id: "",
   status: 0,
   actor_ids: [],
@@ -102,7 +119,12 @@ interface ProjectDrawerProps {
   projectId: number | null;
   boardId: string | null;
   categories: Category[];
-  companies: Company[];
+  /** Les contextes du tableau : le projet appartient à l'un d'eux. */
+  contexts: Context[];
+  /** Le contexte proposé à la création : celui qu'on regarde, ou le premier. */
+  contextId: string;
+  /** À la création : le widget « Projets » d'où on l'ajoute. */
+  listKey?: string;
   /** Les types de jalons des réglages : le curseur en choisit un. */
   milestoneTypes: MilestoneType[];
   users: PublicUser[];
@@ -128,7 +150,9 @@ export default function ProjectDrawer({
   projectId,
   boardId,
   categories,
-  companies,
+  contexts,
+  contextId,
+  listKey,
   milestoneTypes,
   users,
   labels,
@@ -153,23 +177,14 @@ export default function ProjectDrawer({
   const [deplacement, setDeplacement] = useState<ProjectAction | null>(null);
   const [newCategoryOpened, setNewCategoryOpened] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryError, setNewCategoryError] = useState<string | null>(null);
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [activeTab, setActiveTab] = useState<string | null>("settings");
 
   const isEditing = Boolean(projectId);
 
-  // La société du projet tel qu'il a été lu : c'est elle qui dit ce que le
-  // compte peut en faire. Sans le droit de le modifier, la fiche se lit
-  // seulement.
+  // Sans le droit de modifier les projets, la fiche se lit seulement.
   const peut = useDroits();
-  const [societeLue, setSocieteLue] = useState<string>("");
-  const lectureSeule = isEditing && !peut("projects", "update", societeLue || null);
-  // Lu par l'ouverture du tiroir sans en dépendre, comme les listes.
-  const peutRef = useRef(peut);
-  useEffect(() => {
-    peutRef.current = peut;
-  }, [peut]);
+  const lectureSeule = isEditing && !peut("projects", "update");
 
   // Les jalons sous le curseur de progression sont ceux du type choisi : ils
   // changent avec lui, et manquent s'il n'y en a aucun.
@@ -187,10 +202,10 @@ export default function ProjectDrawer({
   // Les listes servent seulement à calculer les valeurs par défaut : on les lit
   // via une ref pour que leur rechargement (création d'une catégorie depuis ce
   // tiroir, par exemple) ne réinitialise pas la saisie en cours.
-  const lookupsRef = useRef({ categories, companies });
+  const lookupsRef = useRef({ categories, contextId, milestoneTypes });
   useEffect(() => {
-    lookupsRef.current = { categories, companies };
-  }, [categories, companies]);
+    lookupsRef.current = { categories, contextId, milestoneTypes };
+  }, [categories, contextId, milestoneTypes]);
 
   useEffect(() => {
     if (!opened) return;
@@ -199,14 +214,18 @@ export default function ProjectDrawer({
     setDeplacement(null);
 
     if (!projectId) {
-      const { categories: cats, companies: comps } = lookupsRef.current;
-      // La société proposée : la première où l'on peut ajouter un projet.
-      const proposee = comps.find((c) => peutRef.current("projects", "create", c.id));
-      setSocieteLue("");
+      const {
+        categories: cats,
+        contextId: propose,
+        milestoneTypes: types,
+      } = lookupsRef.current;
+      // Un nouveau projet prend le type « Défaut », posé avec le widget.
+      const defaut = types.find((t) => t.name === TYPE_JALONS_PAR_DEFAUT);
       setForm({
         ...emptyForm,
         category_id: cats[0] ? String(cats[0].id) : "",
-        company_id: proposee ? String(proposee.id) : "",
+        context_id: propose,
+        milestone_type_id: defaut ? String(defaut.id) : "",
       });
       setComments([]);
       editor?.commands.setContent("");
@@ -214,11 +233,10 @@ export default function ProjectDrawer({
     }
 
     api.getProject(projectId).then((project) => {
-      setSocieteLue(project.company_id ? String(project.company_id) : "");
       setForm({
         name: project.name,
         category_id: String(project.category_id),
-        company_id: project.company_id ? String(project.company_id) : "",
+        context_id: project.context_id ? String(project.context_id) : "",
         milestone_type_id: project.milestone_type_id
           ? String(project.milestone_type_id)
           : "",
@@ -247,7 +265,7 @@ export default function ProjectDrawer({
       description: editor?.getHTML() ?? "",
       board_id: Number(boardId),
       category_id: Number(form.category_id),
-      company_id: form.company_id ? Number(form.company_id) : null,
+      context_id: form.context_id ? Number(form.context_id) : undefined,
       milestone_type_id: form.milestone_type_id
         ? Number(form.milestone_type_id)
         : null,
@@ -258,7 +276,10 @@ export default function ProjectDrawer({
     if (projectId) {
       await api.updateProject(projectId, payload);
     } else {
-      const created = await api.createProject(payload);
+      const created = await api.createProject({
+        ...payload,
+        list_key: listKey || undefined,
+      });
       for (const comment of comments) {
         await api.addComment(created.id, comment.text);
       }
@@ -272,7 +293,6 @@ export default function ProjectDrawer({
     const name = newCategoryName.trim();
     if (!name) return;
     setCreatingCategory(true);
-    setNewCategoryError(null);
     try {
       const created = await api.createCategory(Number(boardId), name);
       await onCategoriesChanged();
@@ -280,7 +300,7 @@ export default function ProjectDrawer({
       setNewCategoryName("");
       setNewCategoryOpened(false);
     } catch (e) {
-      setNewCategoryError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setCreatingCategory(false);
     }
@@ -289,7 +309,6 @@ export default function ProjectDrawer({
   const closeNewCategory = () => {
     setNewCategoryOpened(false);
     setNewCategoryName("");
-    setNewCategoryError(null);
   };
 
   /**
@@ -363,14 +382,10 @@ export default function ProjectDrawer({
     value: String(c.id),
     label: c.name,
   }));
-  // Les sociétés où l'on peut ajouter un projet — y passer un projet, c'est
-  // l'y ajouter —, et celle qu'il porte déjà.
-  const companyOptions = companies
-    .filter((c) => peut("projects", "create", c.id) || String(c.id) === societeLue)
-    .map((c) => ({
-      value: String(c.id),
-      label: c.name,
-    }));
+  const contextOptions = contexts.map((c) => ({
+    value: String(c.id),
+    label: c.name,
+  }));
 
   return (
     <>
@@ -422,12 +437,10 @@ export default function ProjectDrawer({
                     rightSection={<IconChevronDown size={14} />}
                     ml="auto"
                     mb={4}
-                    // Le gris de Mantine tire sur le bleu au survol : on pose
-                    // le nôtre, neutre, comme partout ailleurs.
                     style={
                       {
                         alignSelf: "center",
-                        "--button-hover": NEUTRAL_HOVER,
+                        ...ACTIONS_BUTTON_STYLE,
                       } as CSSProperties
                     }
                   >
@@ -459,7 +472,7 @@ export default function ProjectDrawer({
                       </Menu.Item>
                     </>
                   )}
-                  {peut("projects", "create", societeLue || null) && (
+                  {peut("projects", "create") && (
                     <Menu.Item
                       leftSection={<IconCopy size={16} />}
                       onClick={() => setDeplacement("copy")}
@@ -525,16 +538,21 @@ export default function ProjectDrawer({
                     required
                   />
                   <RichTextField editor={editor} label="Description" />
-                  <Select
-                    label="Société"
-                    placeholder="Aucune société"
-                    data={companyOptions}
-                    value={form.company_id || null}
-                    onChange={(value) =>
-                      setForm((f) => ({ ...f, company_id: value ?? "" }))
-                    }
-                    clearable
-                  />
+                  {/* Un tableau sans contexte n'a rien à proposer. */}
+                  {contextOptions.length > 0 && (
+                    <Select
+                      label="Contexte"
+                      data={contextOptions}
+                      value={form.context_id || null}
+                      onChange={(value) =>
+                        setForm((f) => ({
+                          ...f,
+                          context_id: value ?? f.context_id,
+                        }))
+                      }
+                      allowDeselect={false}
+                    />
+                  )}
                   <Group gap="xs" align="flex-end" wrap="nowrap">
                     <Select
                       label="Catégorie"
@@ -560,9 +578,15 @@ export default function ProjectDrawer({
                   {/* Les noms des jalons s'écrivent sous le slider, dans le
                     flux (MilestoneLabels) : ils comptent dans ce qui défile. */}
                   <div>
-                    <Group justify="space-between" align="flex-end" wrap="nowrap">
+                    <Group
+                      justify="space-between"
+                      align="flex-end"
+                      wrap="nowrap"
+                    >
                       <Input.Label>Progression</Input.Label>
-                      <Group gap="xs" wrap="nowrap">
+                      {/* Discrets comme la largeur d'une section : sans cadre
+                        tant qu'on ne les survole pas, à sa hauteur. */}
+                      <Group gap={4} wrap="nowrap">
                         {/* Le type de jalons pose les marques du curseur et les
                           couleurs de ses tranches ; ils se règlent dans les
                           réglages. */}
@@ -579,10 +603,23 @@ export default function ProjectDrawer({
                             }))
                           }
                           placeholder="Jalons"
-                          clearable
+                          allowDeselect={false}
                           size="xs"
-                          w={220}
+                          // À la taille du nom choisi, chevron compris.
+                          w={
+                            largeurChamp(
+                              milestoneTypes.find(
+                                (t) => String(t.id) === form.milestone_type_id,
+                              )?.name ?? "Jalons",
+                            ) + 14
+                          }
+                          withCheckIcon={false}
+                          rightSection={<IconChevronDown size={10} />}
+                          rightSectionWidth={14}
+                          comboboxProps={{ width: 220, position: "bottom-end" }}
                           aria-label="Type de jalons"
+                          title="Type de jalons"
+                          className={`${champs.champ} ${champs.unite}`}
                         />
                         <NumberInput
                           value={form.status}
@@ -601,9 +638,13 @@ export default function ProjectDrawer({
                           max={100}
                           clampBehavior="strict"
                           suffix="%"
-                          w={90}
+                          hideControls
+                          // De quoi écrire le plus long : « 100% ».
+                          w={largeurChamp("100%")}
                           size="xs"
                           aria-label="Progression"
+                          title="Progression"
+                          className={`${champs.champ} ${champs.nombre}`}
                         />
                       </Group>
                     </Group>
@@ -659,7 +700,7 @@ export default function ProjectDrawer({
           onSave={lectureSeule ? undefined : sauvegarder}
           onClose={onClose}
           onDelete={
-            isEditing && peut("projects", "delete", societeLue || null)
+            isEditing && peut("projects", "delete")
               ? () => setConfirmDeleteOpened(true)
               : undefined
           }
@@ -699,13 +740,11 @@ export default function ProjectDrawer({
         styles={modalHeaderStyles(MODAL_PADDING)}
       >
         <Stack gap="md">
-          {newCategoryError && <ErrorAlert>{newCategoryError}</ErrorAlert>}
           <TextInput
             label="Nom"
             value={newCategoryName}
             onChange={(e) => setNewCategoryName(e.currentTarget.value)}
             onKeyDown={(e) => {
-              // Consommée : le tiroir qui porte ce champ n'enregistre pas en plus.
               if (e.key === "Enter") {
                 e.preventDefault();
                 createCategory();

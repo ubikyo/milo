@@ -12,6 +12,7 @@ import {
   IconChevronDown,
   IconChevronUp,
   IconDeviceDesktop,
+  IconHeadset,
   IconLock,
   IconLockOpen,
   IconSelector,
@@ -19,6 +20,7 @@ import {
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import {
+  Fragment,
   createContext,
   useContext,
   useMemo,
@@ -27,11 +29,13 @@ import {
   type ReactNode,
 } from "react";
 import { OsLogo, ProtectionLogo } from "./AssetLogos";
-import { colonnesGardees } from "../ui/ChampsColonnes";
+import { colonnesGardees, largeursParDefaut } from "../ui/ChampsColonnes";
 import EmptyPanel from "../ui/EmptyPanel";
 import GrilleScroll from "../ui/GrilleScroll";
 import PointMenu, { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
 import { useColonnesRedimensionnables } from "../ui/useColonnesRedimensionnables";
+import { useEnModification } from "../../lib/edition";
+import { deLaListe } from "../../lib/listes";
 import { DISQUE_PLEIN, diskUsage, libelleOs } from "../../lib/poste";
 import { RED, STRONG_TEXT } from "../../themes/colors";
 import type { Asset } from "@milo/shared";
@@ -40,7 +44,7 @@ import type { Asset } from "@milo/shared";
 // indicateurs (asset-indicators/liste.tsx). Elle tient son tri et le menu de
 // son clic droit ; les postes, et ce qu'on en ouvre, viennent de la page
 // (AssetsListeContext). Sa configuration ne dit que les colonnes qu'elle
-// montre — le nom de l'asset, lui, est toujours là.
+// montre.
 //
 // Il n'y a pas de ligne d'ajout : un poste n'est pas saisi, il se déclare —
 // c'est son agent qui l'inscrit.
@@ -234,9 +238,9 @@ function DiskCell({ disk }: { disk: Asset["system_disk"] }) {
   );
 }
 
-/** Les colonnes que la liste sait montrer, dans l'ordre. L'asset est toujours là. */
-export const COLONNES_ASSETS: { key: ColumnKey; label: string; obligatoire?: boolean }[] = [
-  { key: "name", label: "Asset", obligatoire: true },
+/** Les colonnes que la liste sait montrer, dans l'ordre. */
+export const COLONNES_ASSETS: { key: ColumnKey; label: string }[] = [
+  { key: "name", label: "Asset" },
   { key: "os", label: "Système" },
   { key: "user", label: "Dernier utilisateur connecté" },
   { key: "protection", label: "Antivirus" },
@@ -253,14 +257,24 @@ export interface AssetsListe {
   onOpenAsset: (asset: Asset) => void;
   /** « Créer une tâche », au clic droit sur un poste. */
   onCreateTask?: (asset: Asset) => void;
+  /** « Créer une demande de support », au clic droit sur un poste. */
+  onCreateSupportRequest?: (asset: Asset) => void;
 }
 
 export const AssetsListeContext = createContext<AssetsListe | null>(null);
 
+/** La clé des tags GLPI reçus, dans la configuration de la liste : chacun vers un contexte. */
+export const TAGS = "tags";
+
 export default function AssetsList({ config }: { config: unknown }) {
   const liste = useContext(AssetsListeContext);
-  const assets = liste?.assets ?? null;
+  // Les postes du tableau, du contexte choisi, que la page a lus — ceux de
+  // ce widget seulement : ceux dont il reçoit le tag (lib/listes.ts).
+  const tous = liste?.assets ?? null;
+  const assets = useMemo(() => tous?.filter(deLaListe(config)) ?? null, [tous, config]);
   const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
+  const enModification = useEnModification();
+  const avecMenu = Boolean(liste?.onCreateTask || liste?.onCreateSupportRequest);
   /** Le poste dont le menu du clic droit est ouvert, et où il s'ouvre. */
   const [contexte, setContexte] = useState<{ poste: Asset; position: PointMenuPosition } | null>(
     null,
@@ -302,21 +316,82 @@ export default function AssetsList({ config }: { config: unknown }) {
           },
     );
 
-  const th = (label: string, column: ColumnKey, style?: CSSProperties) =>
-    montre(column) && (
-      <SortableTh
-        label={label}
-        column={column}
-        sort={sort}
-        onSort={trier}
-        style={style}
-        poignee={redim.poignee(column)}
-      />
-    );
+  // Les colonnes montrées, dans l'ordre que la configuration règle.
+  // Une colonne peut revenir : « id » distingue chaque occurrence.
+  const colonnes = colonnesGardees(COLONNES_ASSETS, config);
+  const redim = useColonnesRedimensionnables(
+    "assets",
+    colonnes.map((c) => c.id),
+    largeursParDefaut(COLONNES_ASSETS, config),
+  );
 
-  const colonnes = colonnesGardees(COLONNES_ASSETS, config).map((c) => c.key);
-  const montre = (cle: ColumnKey) => colonnes.includes(cle);
-  const redim = useColonnesRedimensionnables("assets", colonnes);
+  const th = (id: string, label: string, column: ColumnKey, style?: CSSProperties) => (
+    <SortableTh
+      key={id}
+      label={label}
+      column={column}
+      sort={sort}
+      onSort={trier}
+      style={style}
+      poignee={redim.poignee(id)}
+    />
+  );
+
+  /** L'en-tête de chaque colonne. */
+  const entetes: Record<ColumnKey, (id: string) => ReactNode> = {
+    name: (id) => th(id, "Asset", "name"),
+    os: (id) => th(id, "Système", "os"),
+    user: (id) => th(id, "Dernier utilisateur connecté", "user"),
+    protection: (id) => th(id, "Antivirus", "protection"),
+    encrypted: (id) => th(id, "Chiffré", "encrypted"),
+    disk: (id) => th(id, "Disque", "disk", { width: DISK_BAR_WIDTH + DISK_PERCENT_WIDTH + DISK_GAP }),
+    // Ce qui date ce qu'on vient de lire : un poste éteint depuis trois
+    // semaines se repère là.
+    inventory: (id) => th(id, "Dernière actualisation", "inventory"),
+  };
+
+  /** La case de chaque colonne, pour un poste. */
+  const cases: Record<ColumnKey, (poste: Asset) => ReactNode> = {
+    name: (poste) => (
+      <Table.Td key="name" style={{ whiteSpace: "nowrap" }}>
+        <Badge color="green" variant="filled" radius="sm" h={TAG_HEIGHT} tt="uppercase">
+          {poste.name}
+        </Badge>
+      </Table.Td>
+    ),
+    os: (poste) => (
+      <Table.Td key="os">
+        <OsCell os={poste.os} />
+      </Table.Td>
+    ),
+    user: (poste) => (
+      <Table.Td key="user">
+        <Text size="sm" c={poste.user ? undefined : "dimmed"}>
+          {poste.user || VIDE}
+        </Text>
+      </Table.Td>
+    ),
+    protection: (poste) => (
+      <Table.Td key="protection">
+        <ProtectionCell protection={poste.protection} />
+      </Table.Td>
+    ),
+    encrypted: (poste) => (
+      <Table.Td key="encrypted">
+        <EncryptionCell encrypted={poste.system_disk_encrypted} />
+      </Table.Td>
+    ),
+    disk: (poste) => (
+      <Table.Td key="disk">
+        <DiskCell disk={poste.system_disk} />
+      </Table.Td>
+    ),
+    inventory: (poste) => (
+      <Table.Td key="inventory">
+        <Text size="sm">{dayjs(poste.last_inventory).format("DD/MM/YYYY HH:mm")}</Text>
+      </Table.Td>
+    ),
+  };
 
   const table = (
     <Table
@@ -341,24 +416,18 @@ export default function AssetsList({ config }: { config: unknown }) {
     >
       {redim.colgroup}
       <Table.Thead>
-        <Table.Tr>
-          {th("Asset", "name")}
-          {th("Système", "os")}
-          {th("Dernier utilisateur connecté", "user")}
-          {th("Antivirus", "protection")}
-          {th("Chiffré", "encrypted")}
-          {th("Disque", "disk", { width: DISK_BAR_WIDTH + DISK_PERCENT_WIDTH + DISK_GAP })}
-          {/* Au bout de la ligne : ce qui date ce qu'on vient de lire. Un
-              poste éteint depuis trois semaines se repère là. */}
-          {th("Dernière actualisation", "inventory")}
-        </Table.Tr>
+        <Table.Tr>{colonnes.map((c) => entetes[c.key](c.id))}</Table.Tr>
       </Table.Thead>
       <Table.Tbody>
         {montres.map((poste) => (
           <Table.Tr
             key={poste.id}
             onClick={() => liste?.onOpenAsset(poste)}
-            onContextMenu={(e) => setContexte({ poste, position: positionDuMenu(e) })}
+            // En modification, le clic droit revient au menu du widget.
+            onContextMenu={(e) => {
+              if (enModification || !avecMenu) return;
+              setContexte({ poste, position: positionDuMenu(e) });
+            }}
             style={{
               cursor: "pointer",
               // La ligne dont le menu est ouvert garde le fond du survol.
@@ -366,43 +435,9 @@ export default function AssetsList({ config }: { config: unknown }) {
                 contexte?.poste.id === poste.id ? "var(--table-hover-color)" : undefined,
             }}
           >
-            <Table.Td style={{ whiteSpace: "nowrap" }}>
-              <Badge color="green" variant="filled" radius="sm" h={TAG_HEIGHT} tt="uppercase">
-                {poste.name}
-              </Badge>
-            </Table.Td>
-            {montre("os") && (
-              <Table.Td>
-                <OsCell os={poste.os} />
-              </Table.Td>
-            )}
-            {montre("user") && (
-              <Table.Td>
-                <Text size="sm" c={poste.user ? undefined : "dimmed"}>
-                  {poste.user || VIDE}
-                </Text>
-              </Table.Td>
-            )}
-            {montre("protection") && (
-              <Table.Td>
-                <ProtectionCell protection={poste.protection} />
-              </Table.Td>
-            )}
-            {montre("encrypted") && (
-              <Table.Td>
-                <EncryptionCell encrypted={poste.system_disk_encrypted} />
-              </Table.Td>
-            )}
-            {montre("disk") && (
-              <Table.Td>
-                <DiskCell disk={poste.system_disk} />
-              </Table.Td>
-            )}
-            {montre("inventory") && (
-              <Table.Td>
-                <Text size="sm">{dayjs(poste.last_inventory).format("DD/MM/YYYY HH:mm")}</Text>
-              </Table.Td>
-            )}
+            {colonnes.map((c) => (
+              <Fragment key={c.id}>{cases[c.key](poste)}</Fragment>
+            ))}
           </Table.Tr>
         ))}
       </Table.Tbody>
@@ -423,14 +458,24 @@ export default function AssetsList({ config }: { config: unknown }) {
       {/* Une section plus étroite que la liste la fait défiler de côté. */}
       <GrilleScroll>{table}</GrilleScroll>
 
-      {contexte && liste.onCreateTask && (
+      {contexte && (
         <PointMenu position={contexte.position} onClose={() => setContexte(null)}>
-          <Menu.Item
-            leftSection={<IconSquarePlus size={16} />}
-            onClick={() => liste.onCreateTask?.(contexte.poste)}
-          >
-            Créer une tâche
-          </Menu.Item>
+          {liste.onCreateTask && (
+            <Menu.Item
+              leftSection={<IconSquarePlus size={16} />}
+              onClick={() => liste.onCreateTask?.(contexte.poste)}
+            >
+              Créer une tâche
+            </Menu.Item>
+          )}
+          {liste.onCreateSupportRequest && (
+            <Menu.Item
+              leftSection={<IconHeadset size={16} />}
+              onClick={() => liste.onCreateSupportRequest?.(contexte.poste)}
+            >
+              Créer une demande de support
+            </Menu.Item>
+          )}
         </PointMenu>
       )}
     </>

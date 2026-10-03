@@ -17,7 +17,8 @@ import { badRequest, orNotFound, refuserSiUtilise, requireText } from "../lib/ht
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { boardOuvert } from "../repositories/boards.js";
-import { projectBoardOuvert } from "../repositories/project-boards.js";
+import { tableauOuvert } from "../repositories/boards.js";
+import { ordreRecu, rangerEtiquettes, rangerEtiquettesDeProjets } from "../repositories/reorder.js";
 
 const ETIQUETTE_INTROUVABLE = "Étiquette introuvable";
 
@@ -34,6 +35,8 @@ interface LabelTable {
   verifierTableau: (boardId: unknown, req: Request, droit: Right) => Id;
   /** Vrai quand ces étiquettes portent un poids : celles des projets seules. */
   avecPoids?: boolean;
+  /** Le rangement de la table, tableau par tableau (repositories/reorder.ts). */
+  ranger: (ids: Id[], boardId: Id) => void;
 }
 
 /** Le poids reçu : un entier, positif ou non. */
@@ -48,6 +51,7 @@ const creerRoutes = ({
   touched,
   verifierTableau,
   avecPoids = false,
+  ranger,
 }: LabelTable): Router => {
   const parId = selection<LabelRow>(`SELECT * FROM ${table} WHERE id = ?`);
   const duTableau = selection<LabelRow>(
@@ -88,13 +92,17 @@ const creerRoutes = ({
       : "SELECT COUNT(*) AS count FROM project_label_links WHERE label_id = ?",
   );
 
+  const effacerDuTableau = mutation(`DELETE FROM ${table} WHERE board_id = ?`);
+
   /**
    * Les étiquettes d'un tableau posées dans un autre. Celles qui y portent
    * déjà le même nom ne sont pas redoublées, quelle que soit leur couleur :
    * deux étiquettes du même nom ne se distingueraient plus dans une liste.
-   * Les autres se rangent à la suite de celles de l'accueil.
+   * Les autres se rangent à la suite de celles de l'accueil. « remplacer » :
+   * celles de l'accueil s'en vont d'abord — et quittent ce qui les portait.
    */
-  const copier = transaction((source: Id, cible: Id): CopyResult => {
+  const copier = transaction((source: Id, cible: Id, remplacer: boolean): CopyResult => {
+    const removed = remplacer ? effacerDuTableau.run(cible).changes : 0;
     const timestamp = now();
     let rang = rangSuivant(cible).next;
     let copied = 0;
@@ -110,7 +118,7 @@ const creerRoutes = ({
       copied += 1;
     }
 
-    return { copied, skipped };
+    return { copied, skipped, removed };
   });
 
   const routes = Router();
@@ -145,11 +153,23 @@ const creerRoutes = ({
       badRequest("Le tableau d'origine et celui de destination sont requis");
     }
 
+    const remplacer = req.body.replace === true;
     const source = verifierTableau(from_board, req, "view");
     const cible = verifierTableau(to_board, req, "create");
+    // Effacer celles de l'accueil, c'est en supprimer.
+    if (remplacer) verifierTableau(to_board, req, "delete");
     if (source === cible) badRequest("Choisissez un autre tableau que celui-ci");
 
-    res.json(copier(source, cible));
+    res.json(copier(source, cible, remplacer));
+  });
+
+  // L'ordre des étiquettes d'un tableau, glissé dans le tiroir du widget : il
+  // nomme toutes celles du tableau, chacune une fois. Déclaré avant « /:id ».
+  routes.put("/reorder", (req, res) => {
+    const boardId = verifierTableau(req.body.board_id, req, "update");
+    const ids = ordreRecu(req.body.ids, duTableau.all(boardId), "L'ordre doit nommer toutes les étiquettes");
+    ranger(ids, boardId);
+    res.json(duTableau.all(boardId));
   });
 
   routes.put("/:id", (req, res) => {
@@ -183,6 +203,7 @@ export const labelRoutes = creerRoutes({
   // Les cartes portent leurs étiquettes : le tableau se relit avec elles.
   touched: ["labels", "task-lists"],
   verifierTableau: (boardId, req, droit) => boardOuvert(boardId, req, droit).id,
+  ranger: rangerEtiquettes,
 });
 
 /** Étiquettes d'un tableau de projets : il peut être privé, lui aussi. */
@@ -193,7 +214,8 @@ export const projectLabelRoutes = creerRoutes({
   // suivent les droits du mode Projets dans n'importe laquelle.
   verifierTableau: (boardId, req, droit) => {
     exiger(req, "projects", droit);
-    return projectBoardOuvert(boardId, req.user).id;
+    return tableauOuvert(boardId, req.user).id;
   },
   avecPoids: true,
+  ranger: rangerEtiquettesDeProjets,
 });

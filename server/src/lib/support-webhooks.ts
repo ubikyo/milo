@@ -10,9 +10,8 @@
 // renouvelés régulièrement, et recréés s'ils ont disparu.
 
 import crypto from "node:crypto";
-import type { Id } from "@milo/shared";
-import { selection } from "../db/query.js";
 import { env } from "../env.js";
+import { boitesRecues } from "../repositories/receptions.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 import {
   creerAbonnement,
@@ -39,9 +38,6 @@ const CLE_SECRET = "support_mail_webhook_secret";
 /** L'abonnement de chaque boîte, par adresse en minuscules. */
 type Abonnements = Record<string, { id: string; expire: string }>;
 
-const boitesDeSupport = selection<{ id: Id; support_email: string }>(
-  "SELECT id, support_email FROM companies WHERE support_email != ''",
-);
 
 /**
  * Le secret que Graph renvoie avec chaque notification (« clientState ») :
@@ -82,7 +78,7 @@ export const entretenirAbonnements = async (): Promise<void> => {
   const abonnements = readSetting<Abonnements>(CLE_ABONNEMENTS, {});
   const suivants: Abonnements = {};
   const expiration = () => new Date(Date.now() + DUREE_ABONNEMENT).toISOString();
-  const boites = new Set(boitesDeSupport.all().map((b) => b.support_email.toLowerCase()));
+  const boites = new Set(boitesRecues().map((b) => b.valeur.toLowerCase()));
 
   for (const boite of boites) {
     const actuel = abonnements[boite];

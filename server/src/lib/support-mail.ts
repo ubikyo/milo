@@ -1,5 +1,6 @@
-// La relève des boîtes de support : chaque e-mail reçu dans celle d'une
-// société devient une demande du mode Support, au statut « Ouvert ».
+// La relève des boîtes de support : chaque e-mail reçu dans une boîte qu'une
+// liste de demandes reçoit (repositories/receptions.ts) devient une demande du
+// contexte que la liste lui associe.
 //
 // Rien n'est retiré des boîtes : les messages y restent tels quels, ni
 // supprimés, ni déplacés, ni marqués comme lus. C'est l'identifiant Internet
@@ -25,7 +26,7 @@ import {
   ajouterJoursOuvres,
 } from "@milo/shared";
 import type { Id } from "@milo/shared";
-import { selection, transaction } from "../db/query.js";
+import { transaction } from "../db/query.js";
 import type { SupportRequestRow, TicketFileRow } from "../db/rows.js";
 import { signalerEcriture } from "../middleware/events.js";
 import {
@@ -35,12 +36,28 @@ import {
   supportComments,
   supportRequests,
 } from "../repositories/support.js";
+import { boitesRecues, type Reception } from "../repositories/receptions.js";
 import { users } from "../repositories/users.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
-import { deltaDeLaBoite, detailsDuCourrier, entraConfiguree, fichiersDuCourrier } from "./entra.js";
+import {
+  deltaDeLaBoite,
+  detailsDuCourrier,
+  entraConfiguree,
+  fichiersDuCourrier,
+  supprimerCourrier,
+  adresseDEnvoi,
+} from "./entra.js";
+import { SUJET_CONFIRMATION } from "./optin.js";
 import type { CourrierRecu, DetailsCourrier } from "./entra.js";
 import { emailPropre, porteDuContenu, sansHistorique } from "./html.js";
-import { TAILLE_MAX_TICKET, ecrireTicket, supprimerTicket, urlTicket } from "./ticket-files.js";
+import {
+  TAILLE_MAX_TICKET,
+  ecrireTicket,
+  fichiersDe,
+  oublierFichiers,
+  supprimerTicket,
+  urlTicket,
+} from "./ticket-files.js";
 import { env } from "../env.js";
 import { notifier, titreDemande } from "./notify.js";
 import { heureDeParis, now } from "./time.js";
@@ -83,9 +100,6 @@ type LiensDelta = Record<string, string>;
 /** Le temps entre deux relèves. */
 export const INTERVALLE_RELEVE = 5 * 60 * 1000;
 
-const boitesDeSupport = selection<{ id: Id; name: string; support_email: string }>(
-  "SELECT id, name, support_email FROM companies WHERE support_email != '' ORDER BY name",
-);
 
 /** La date de réception, ramenée à l'ISO de la base ; l'instant présent à défaut. */
 const dateDe = (iso: string): string => {
@@ -93,12 +107,20 @@ const dateDe = (iso: string): string => {
   return Number.isNaN(date.getTime()) ? now() : date.toISOString();
 };
 
-/** Un e-mail déjà là : l'origine d'une demande, ou un message d'un fil. */
-const dejaImporte = (companyId: Id, mailId: string): boolean =>
+/**
+ * Un e-mail déjà là dans cette liste : l'origine d'une demande, ou un message
+ * d'un fil. Une autre liste qui reçoit la même boîte a le sien.
+ */
+const dejaImporte = (reception: Reception, mailId: string): boolean =>
   Boolean(
-    supportRequests.byMailId.get(companyId, mailId) ??
-      supportRequests.mailDejaRange.get(companyId, mailId),
+    supportRequests.byMailId.get(reception.valeur, reception.liste, mailId) ??
+      supportRequests.mailDejaRange.get(reception.valeur, reception.liste, mailId),
   );
+
+/** L'e-mail du code de confirmation (lib/optin.ts) : Milo l'a envoyé, ce n'est pas une demande. */
+const estLaConfirmation = (courrier: CourrierRecu): boolean =>
+  courrier.subject.trim() === SUJET_CONFIRMATION &&
+  courrier.from_email.toLowerCase() === adresseDEnvoi().toLowerCase();
 
 /** Ce qu'un e-mail apporte, une fois ses fichiers rangés. */
 interface Prepare {
@@ -202,13 +224,14 @@ const sujet = (objet: string): string =>
  * en-têtes citent l'ancien, mais ce n'est plus la même demande.
  */
 const demandeVisee = (
-  companyId: Id,
+  reception: Reception,
   courrier: CourrierRecu,
   cites: string[],
 ): SupportRequestRow | undefined => {
+  const { valeur: boite, liste } = reception;
   const reference = REFERENCE.exec(courrier.subject);
   if (reference) {
-    const trouvee = supportRequests.byNumber.get(companyId, Number(reference[1]));
+    const trouvee = supportRequests.byNumber.get(boite, liste, Number(reference[1]));
     if (trouvee) return trouvee;
   }
 
@@ -218,11 +241,11 @@ const demandeVisee = (
   // Le plus récent d'abord : References les range du plus ancien au plus
   // récent, et In-Reply-To vient en premier.
   for (const id of [...cites].reverse()) {
-    const trouvee = memeSujet(supportRequests.citeeParMail.get(companyId, id, id));
+    const trouvee = memeSujet(supportRequests.citeeParMail.get(boite, liste, id, id));
     if (trouvee) return trouvee;
   }
   return courrier.conversation_id
-    ? memeSujet(supportRequests.deLaConversation.get(companyId, courrier.conversation_id))
+    ? memeSujet(supportRequests.deLaConversation.get(boite, liste, courrier.conversation_id))
     : undefined;
 };
 
@@ -235,13 +258,13 @@ interface Suite {
 
 /**
  * Un e-mail rejoint le fil de la demande à laquelle il répond, ou devient une
- * demande : son objet, son expéditeur pour acteur — le compte qui porte son
+ * demande du contexte qui reçoit la boîte : son objet, son expéditeur pour acteur — le compte qui porte son
  * adresse, s'il y en a un —, et son contenu pour premier message. Rien si le
  * message était déjà là.
  */
 const importer = transaction(
   (
-    companyId: Id,
+    reception: Reception,
     courrier: CourrierRecu,
     prepare: Prepare,
     /**
@@ -255,7 +278,7 @@ const importer = transaction(
 
     // Déjà importé — une autre relève l'a pris entre-temps : rien à faire, et
     // surtout pas de numéro consommé pour rien.
-    if (dejaImporte(companyId, courrier.mail_id)) return false;
+    if (dejaImporte(reception, courrier.mail_id)) return false;
 
     // Une réponse ne garde que ce qu'elle apporte : l'historique qu'elle
     // cite est déjà dans le fil. L'e-mail qui ouvre une demande, lui, se garde
@@ -279,7 +302,10 @@ const importer = transaction(
       );
     };
 
-    const visee = demandeVisee(companyId, courrier, prepare.cites);
+    const visee = demandeVisee(reception, courrier, prepare.cites);
+    // Une demande saisie à la main (sans boîte) se retrouve par son numéro
+    // depuis chaque liste : son fil ne prend l'e-mail qu'une fois.
+    if (visee && supportRequests.mailDansLeFil.get(visee.id, courrier.mail_id)) return false;
     if (visee) {
       message(visee.id, true);
       // L'expéditeur revient sur une demande qu'on croyait close : elle se
@@ -297,7 +323,10 @@ const importer = transaction(
 
     const { changes, lastInsertRowid } = supportRequests.createFromMail.run(
       prochainNumeroDeTicket(),
-      companyId,
+      reception.board_id,
+      reception.context_id,
+      reception.liste,
+      reception.valeur,
       courrier.subject.trim(),
       DEFAULT_SUPPORT_STATUS,
       echeanceParDefaut(recu),
@@ -374,44 +403,131 @@ const repondueParEmail = (demande: SupportRequestRow, courrier: CourrierRecu): v
   });
 };
 
+/**
+ * Retire un e-mail importé de sa boîte, quand la liste le demande. Un échec —
+ * la permission Mail.ReadWrite manque — n'arrête pas la relève : l'e-mail
+ * reste, et la demande est là.
+ */
+const retirer = async (boite: string, courrier: CourrierRecu): Promise<void> => {
+  try {
+    await supprimerCourrier(boite, courrier.graph_id);
+  } catch (erreur) {
+    console.error(`Suppression d'un e-mail de ${boite} :`, erreur);
+  }
+};
+
 let enCours: Promise<number> | null = null;
 let aRefaire = false;
 
+/**
+ * Ce que devient un e-mail d'une boîte dans une liste qui la reçoit. Rend ce
+ * qui s'est passé, pour la suite de la relève.
+ */
+const recevoir = async (
+  reception: Reception & { confirmee_le: string },
+  courrier: CourrierRecu,
+  /** Faux pour les listes qui suivent la première : le mot automatique ne part qu'une fois. */
+  repondre: boolean,
+): Promise<{ importe: boolean; dejaLa: boolean; repondu: boolean }> => {
+  // Ce qui est arrivé avant la confirmation de la liste (lib/optin.ts) ne
+  // s'y relève pas.
+  if (Date.parse(courrier.received_at) < Date.parse(reception.confirmee_le)) {
+    return { importe: false, dejaLa: false, repondu: false };
+  }
+  if (dejaImporte(reception, courrier.mail_id)) return { importe: false, dejaLa: true, repondu: false };
+  // Les fichiers se rangent pour chaque demande : chacune a les siens.
+  const prepare = await preparer(reception.valeur, courrier);
+  let importe = false;
+  const suite: Suite = {};
+  try {
+    importe = importer(reception, courrier, prepare, suite);
+  } finally {
+    // Rien n'a été écrit en base : ses fichiers ne servent à personne.
+    if (!importe) prepare.fichiers.forEach((f) => supprimerTicket(f.file));
+  }
+  if (!importe) return { importe, dejaLa: false, repondu: false };
+  if (suite.repondue) repondueParEmail(suite.repondue, courrier);
+  // Les réponses par défaut du Paramétrage : l'accusé de réception d'une
+  // nouvelle demande, ou le mot qui dit qu'une demande close est rouverte.
+  // L'expéditeur ne les reçoit qu'une fois, même si plusieurs listes ont la
+  // boîte.
+  let repondu = false;
+  if (repondre && suite.creee) {
+    await envoyerReponseAuto(suite.creee, "new");
+    repondu = true;
+  }
+  if (repondre && suite.repondue && suite.rouverte) {
+    await envoyerReponseAuto(suite.repondue.id, "reopened");
+    repondu = true;
+  }
+  return { importe, dejaLa: false, repondu };
+};
+
+/**
+ * Les demandes nées d'un e-mail de code (lib/optin.ts), importées avant que
+ * la relève ne le reconnaisse : elles s'en vont, avec leurs fichiers. Rend
+ * vrai quand il y en avait.
+ */
+const purgerLesConfirmations = (): boolean => {
+  const expediteur = adresseDEnvoi();
+  if (!expediteur) return false;
+  const demandes = supportRequests.nesDUnEnvoi.all(SUJET_CONFIRMATION, expediteur);
+  if (!demandes.length) return false;
+  const fichiers = demandes.flatMap((d) =>
+    supportComments.attachmentsOfRequest
+      .all(d.id)
+      .flatMap(({ attachments }) => fichiersDe(attachments).map((f) => f.file)),
+  );
+  // Leurs étiquettes et leur fil partent avec elles, par clé étrangère.
+  transaction(() => demandes.forEach((d) => supportRequests.remove.run(d.id)))();
+  oublierFichiers(fichiers);
+  return true;
+};
+
 const releve = async (): Promise<number> => {
   let creees = 0;
-  for (const societe of boitesDeSupport.all()) {
+  const purgees = purgerLesConfirmations();
+  // Une boîte se relève une fois, et chaque e-mail va dans chaque liste qui
+  // l'a confirmée.
+  const parBoite = new Map<string, (Reception & { confirmee_le: string })[]>();
+  for (const reception of boitesRecues()) {
+    const cle = reception.valeur.toLowerCase();
+    parBoite.set(cle, [...(parBoite.get(cle) ?? []), reception]);
+  }
+  for (const receptions of parBoite.values()) {
+    const boite = receptions[0]!.valeur;
+    const usage = receptions.map((r) => r.usage).join(", ");
     try {
-      const { courriers, lien } = await nouveautes(societe.support_email);
+      const { courriers, lien } = await nouveautes(boite);
       for (const courrier of courriers) {
         // Ce que la boîte s'envoie à elle-même n'est pas une demande.
-        if (courrier.from_email.toLowerCase() === societe.support_email.toLowerCase()) continue;
-        if (dejaImporte(societe.id, courrier.mail_id)) continue;
-        const prepare = await preparer(societe.support_email, courrier);
-        let importe = false;
-        const suite: Suite = {};
-        try {
-          importe = importer(societe.id, courrier, prepare, suite);
-        } finally {
-          // Rien n'a été écrit en base : ses fichiers ne servent à personne.
-          if (!importe) prepare.fichiers.forEach((f) => supprimerTicket(f.file));
+        if (courrier.from_email.toLowerCase() === boite.toLowerCase()) continue;
+        // L'e-mail du code de confirmation ne sert plus une fois lu : il
+        // quitte la boîte, sans devenir une demande.
+        if (estLaConfirmation(courrier)) {
+          await retirer(boite, courrier);
+          continue;
         }
-        if (importe) creees += 1;
-        if (importe && suite.repondue) repondueParEmail(suite.repondue, courrier);
-        // Les réponses par défaut du Paramétrage : l'accusé de réception d'une
-        // nouvelle demande, ou le mot qui dit qu'une demande close est rouverte.
-        if (importe && suite.creee) await envoyerReponseAuto(suite.creee, "new");
-        if (importe && suite.repondue && suite.rouverte) {
-          await envoyerReponseAuto(suite.repondue.id, "reopened");
+        let aRetirer = false;
+        let repondu = false;
+        for (const reception of receptions) {
+          const fait = await recevoir(reception, courrier, !repondu);
+          if (fait.importe) creees += 1;
+          repondu ||= fait.repondu;
+          // Une liste qui ne garde pas de copie : l'e-mail quitte la boîte,
+          // une fois que toutes l'ont reçu.
+          if ((fait.importe || fait.dejaLa) && reception.supprimer) aRetirer = true;
         }
+        if (aRetirer) await retirer(boite, courrier);
       }
       // Gardé une fois tout importé : une relève interrompue reprend là où
       // elle en était, pas après.
-      garderLien(societe.support_email, lien);
+      garderLien(boite, lien);
     } catch (erreur) {
-      console.error(`Relève de ${societe.support_email} (${societe.name}) :`, erreur);
+      console.error(`Relève de ${boite} (${usage}) :`, erreur);
     }
   }
-  if (creees) signalerEcriture("support-requests");
+  if (creees || purgees) signalerEcriture("support-requests");
   return creees;
 };
 

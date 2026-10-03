@@ -2,19 +2,13 @@
 // les types du domaine (domain.ts).
 
 import type {
-  AccessBlockType,
-  AssetIndicatorType,
   CardKind,
-  ProjectIndicatorType,
-  TaskIndicatorType,
   Id,
   ListColor,
   PublicUser,
   SectionWidthUnit,
-  SupportIndicatorType,
   SupportStatus,
 } from "./domain.js";
-import type { Mode } from "./modes.js";
 
 /** Toute erreur de l'API a cette forme. */
 export interface ApiError {
@@ -33,9 +27,14 @@ export interface SetupState {
   entra: boolean;
 }
 
-/** Le mot de passe du compte « admin », posé à la toute première ouverture. */
+/**
+ * La toute première ouverture : le mot de passe du compte « admin », et le
+ * nom du premier workspace.
+ */
 export interface SetupInput {
   password: string;
+  /** Le nom du premier workspace. */
+  workspace: string;
 }
 
 /** La connexion du compte « admin », le seul qui ait un mot de passe. */
@@ -49,36 +48,35 @@ export interface AdminLoginInput {
  * chaque connexion : elle ne se modifie pas ici.
  */
 export interface UpdateMeInput {
-  default_mode?: Mode;
+  /** La vue d'ouverture : son identifiant, en chaîne. */
+  default_view?: string;
 }
 
-export interface BoardInput {
-  company_id?: Id;
+export interface ViewInput {
   name?: string;
+  is_private?: boolean;
+}
+
+/** Un contexte : son nom. */
+export interface ContextInput {
+  name?: string;
+}
+
+/** Un tableau : son nom, ses réglages, le libellé de « Tous les contextes ». */
+export interface BoardInput {
+  view_id?: Id;
+  name?: string;
+  all_contexts_label?: string;
   show_card_numbers?: boolean;
   is_private?: boolean;
-  is_locked?: boolean;
-}
-
-export interface ProjectBoardInput {
-  name?: string;
-  is_private?: boolean;
-}
-
-/** Le tiroir d'une catégorie d'accès : son nom et « Privé ». */
-export interface AccessCategoryInput {
-  name?: string;
-  is_private?: boolean;
-  is_locked?: boolean;
 }
 
 /**
- * Une section d'accès, telle que son pied la règle. « width_value » n'a de
- * sens qu'avec une unité qui en demande une : il est ignoré pour une largeur
- * automatique.
+ * Une section d'un tableau, telle que son pied la règle. « width_value » n'a
+ * de sens qu'avec une unité qui en demande une : il est ignoré pour une
+ * largeur automatique.
  */
-export interface AccessSectionInput {
-  category_id?: Id;
+export interface BoardSectionInput {
   width_unit?: SectionWidthUnit;
   width_value?: number | null;
   /** L'écart qui la sépare de la section suivante, en pixels. */
@@ -88,27 +86,42 @@ export interface AccessSectionInput {
 }
 
 /**
- * Le tiroir d'un élément de section. Sa configuration est celle du widget :
- * le serveur ne la relit pas, il la range.
+ * La disposition d'un tableau, telle qu'elle s'exporte et s'importe : ses
+ * sections, dans l'ordre, et ce que chacune porte. Rien n'y désigne une ligne
+ * de la base — l'import pose des sections et des widgets neufs.
  */
-export interface AccessBlockInput {
-  section_id?: Id;
-  type?: AccessBlockType;
-  config?: Record<string, unknown>;
+export interface DispositionExportee {
+  /** La forme de l'export : un import refuse ce qu'il ne sait pas lire. */
+  version: 1;
+  sections: {
+    width_unit: SectionWidthUnit;
+    width_value: number | null;
+    gap: number;
+    widgets: { type: string; config: Record<string, unknown> }[];
+  }[];
 }
 
-/**
- * Le rangement des éléments d'une section : la liste complète de ce qu'elle
- * porte, dans le nouvel ordre. Un élément venu d'une autre section de la même
- * catégorie y est admis — c'est ainsi qu'on le déplace.
- */
-export interface AccessBlockReorderInput {
-  section_id: Id;
-  ids: Id[];
+/** Ce que l'import a fait de la disposition reçue. */
+export interface ResultatImport {
+  /** Les widgets posés. */
+  poses: number;
+  /** Ceux de l'export qui n'ont pas été posés : un type inconnu, ou que le compte ne modifie pas. */
+  ecartes: number;
+  /** Ceux qu'il fallait garder, faute de pouvoir les enlever : posés dans la première section. */
+  gardes: number;
+}
+
+/** Un widget : sa configuration est celle du widget, le serveur la range sans la relire. */
+export interface BoardWidgetInput {
+  section_id?: Id;
+  type?: string;
+  config?: Record<string, unknown>;
 }
 
 export interface TaskListInput {
   board_id?: Id;
+  /** À la création : le widget « Tâches » qui la montre. */
+  list_key?: string;
   name?: string;
   position?: number;
   color?: ListColor;
@@ -127,6 +140,7 @@ export interface TaskCardInput {
   list_id?: Id;
   text?: string;
   kind?: CardKind;
+  context_id?: Id;
   description?: string;
   /** ISO 8601 avec l'heure, ou vide pour retirer l'échéance. */
   due_date?: string;
@@ -152,7 +166,9 @@ export interface ProjectInput {
   description?: string;
   board_id?: Id;
   category_id?: Id;
-  company_id?: Id | null;
+  context_id?: Id;
+  /** À la création : le widget « Projets » qui le montre. */
+  list_key?: string;
   milestone_type_id?: Id | null;
   status?: number;
   actor_ids?: Id[];
@@ -176,7 +192,7 @@ export type FilterValue = string | "all" | null | undefined;
 export interface ProjectFilters {
   board?: FilterValue;
   category?: FilterValue;
-  company?: FilterValue;
+  context?: FilterValue;
   status?: FilterValue;
   actor?: FilterValue;
 }
@@ -199,14 +215,25 @@ export interface CopyToBoardInput {
 export interface CopyResult {
   copied: number;
   skipped: number;
+  /** Ce que la copie a d'abord effacé du tableau d'accueil, quand on l'a demandé. */
+  removed?: number;
+  /**
+   * Ce que le remplacement a dû garder : les catégories qui rangent encore
+   * des projets.
+   */
+  kept?: number;
 }
 
 /**
- * Le tiroir d'une demande de support. La société est dite à la création et ne
- * change plus : une demande suit la société sous laquelle elle a été ouverte.
+ * Le tiroir d'une demande de support : son contexte, qu'on peut changer pour
+ * un autre du même tableau.
  */
 export interface SupportRequestInput {
-  company_id?: Id;
+  context_id?: Id;
+  /** À la création sans contexte : le tableau, dont elle prend le premier. */
+  board_id?: Id;
+  /** À la création : le widget « Demandes de support » qui la montre. */
+  list_key?: string;
   subject?: string;
   status?: SupportStatus;
   actor_ids?: Id[];
@@ -225,46 +252,21 @@ export interface SupportAssignInput extends SupportBulkInput {
   actor_ids: Id[];
 }
 
-/** Une section d'un panneau des statistiques, telle que son pied la règle. */
-export interface IndicatorSectionInput {
-  width_unit?: SectionWidthUnit;
-  width_value?: number | null;
-  /** L'écart qui la sépare de la section suivante, en pixels. */
-  gap?: number;
-  /** À la création : le rang où la section prend place. Sans lui, au bout. */
-  index?: number;
-}
-
-export interface SupportIndicatorInput {
-  /** À la création : la section qui le reçoit. */
-  section_id?: Id;
-  type?: SupportIndicatorType;
-  config?: Record<string, unknown>;
-}
-
-export interface AssetIndicatorInput {
-  /** À la création : la section qui le reçoit. */
-  section_id?: Id;
-  type?: AssetIndicatorType;
-  config?: Record<string, unknown>;
-}
-
-export interface ProjectIndicatorInput {
-  /** À la création : la section qui le reçoit. */
-  section_id?: Id;
-  type?: ProjectIndicatorType;
-  config?: Record<string, unknown>;
-}
-
-export interface TaskIndicatorInput {
-  /** À la création : la section qui le reçoit. */
-  section_id?: Id;
-  type?: TaskIndicatorType;
-  config?: Record<string, unknown>;
-}
+/** Les sections des widgets : celles d'un tableau. */
+export type IndicatorSectionInput = BoardSectionInput;
 
 export interface SupportLabelInput {
   name?: string;
   color?: string;
   weight?: number;
+}
+
+/**
+ * La confirmation d'une boîte de support : tant qu'elle attend, rien n'en est
+ * relevé. « sent_at » est le dernier envoi du lien, vide s'il n'est pas parti.
+ */
+export interface MailboxOptinState {
+  email: string;
+  status: "pending" | "confirmed";
+  sent_at: string;
 }

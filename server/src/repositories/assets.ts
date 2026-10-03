@@ -16,10 +16,10 @@ import type {
   AssetSection,
   AssetSummary,
   AssetVlan,
-  Id,
 } from "@milo/shared";
-import { mutation, selection } from "../db/query.js";
-import type { AssetRow, CompanyRow } from "../db/rows.js";
+import { mutation, selection, transaction } from "../db/query.js";
+import type { AssetRow } from "../db/rows.js";
+import { tagsRecus } from "./receptions.js";
 import { nomDuModele } from "../lib/asset-models.js";
 import { vlanDe, vlans } from "../lib/asset-vlans.js";
 import { sectionsDe, texteDe } from "../lib/inventory.js";
@@ -34,39 +34,48 @@ export const assets = {
   // nom — un agent qui n'a pas su le dire — se rangent à la fin par leur
   // identifiant.
   all: selection<AssetRow>("SELECT * FROM assets ORDER BY name = '', name, deviceid"),
-  ofCompany: selection<AssetRow>(
-    "SELECT * FROM assets WHERE company_id = ? ORDER BY name = '', name, deviceid",
+  /** Ceux d'un tableau : de l'un de ses contextes, ou de tous. */
+  ofBoard: selection<AssetRow>(
+    `SELECT * FROM assets
+     WHERE board_id = @board AND (@context IS NULL OR context_id = @context)
+     ORDER BY name = '', name, deviceid`,
   ),
   create: mutation(
     `INSERT INTO assets
-       (deviceid, name, tag, company_id, content, last_user, last_inventory, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (deviceid, name, tag, board_id, context_id, list_key, content, last_user, last_inventory, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ),
   update: mutation(
     `UPDATE assets
-     SET name = ?, tag = ?, company_id = ?, content = ?, last_user = ?, last_inventory = ?
+     SET name = ?, tag = ?, board_id = ?, context_id = ?, list_key = ?, content = ?, last_user = ?, last_inventory = ?
      WHERE id = ?`,
   ),
   remove: mutation("DELETE FROM assets WHERE id = ?"),
 };
 
-const societes = selection<CompanyRow>("SELECT * FROM companies");
+const poserContexte = mutation(
+  "UPDATE assets SET board_id = ?, context_id = ?, list_key = ? WHERE lower(trim(tag)) = ?",
+);
+const sansReception = mutation(
+  "UPDATE assets SET board_id = NULL, context_id = NULL, list_key = ''",
+);
 
 /**
- * La société que désigne le tag de l'agent : son identifiant, ou son nom sans
- * égard à la casse ni aux espaces qui l'entourent. Un tag vide ou inconnu ne
- * rattache le poste à personne — il se montrera sous « Toutes les sociétés »,
- * ce qui est aussi la façon de voir qu'un agent est mal réglé.
+ * Les postes suivent les listes de postes : chacun va au contexte qui reçoit
+ * son tag, ou nulle part. Refait quand une liste de postes change ce qu'elle
+ * reçoit.
  */
-export const societeDuTag = (tag: string): Id | null => {
-  const cherche = tag.trim().toLowerCase();
-  if (!cherche) return null;
-  const toutes = societes.all();
-  const parNom = toutes.find((c) => c.name.trim().toLowerCase() === cherche);
-  if (parNom) return parNom.id;
-  const parId = toutes.find((c) => String(c.id) === cherche);
-  return parId ? parId.id : null;
-};
+export const recontextualiserLesPostes = transaction((): void => {
+  sansReception.run();
+  for (const reception of tagsRecus()) {
+    poserContexte.run(
+      reception.board_id,
+      reception.context_id,
+      reception.liste,
+      reception.valeur.trim().toLowerCase(),
+    );
+  }
+});
 
 /** Le contenu gardé en base, ou rien quand il est illisible. */
 const contenuDe = (row: AssetRow): Arbre => {
@@ -239,7 +248,10 @@ const protectionDe = (contenu: Arbre): AssetProtection => {
 export const assetOf = (row: AssetRow, contenu: Arbre = contenuDe(row)): Asset => ({
   id: row.id,
   name: row.name,
-  company_id: row.company_id,
+  board_id: row.board_id,
+  context_id: row.context_id,
+  list_key: row.list_key,
+  tag: row.tag,
   user: row.last_user,
   last_inventory: row.last_inventory,
   system_disk: disqueSysteme(contenu),

@@ -16,9 +16,8 @@ import { useEffect, useRef, useState } from "react";
 import { ASSET_MODEL_MAX, VLAN_NAME_MAX } from "@milo/shared";
 import type { AssetSettings } from "@milo/shared";
 import { api } from "../../api";
-import { messageErreur } from "../../lib/errors";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
-import ErrorAlert from "../ui/ErrorAlert";
 import ListItems from "../ui/ListItems";
 import type { ClipboardEvent, ComponentType, KeyboardEvent } from "react";
 
@@ -169,7 +168,6 @@ function ListeLignes({
   decouper?: (ligne: string) => Ligne | null;
 }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [nouveau, setNouveau] = useState<Ligne>(() => vide(colonnes));
   // Le rang de la ligne en cours d'édition, et ses champs.
   const [enEdition, setEnEdition] = useState<number | null>(null);
@@ -183,12 +181,11 @@ function ListeLignes({
     colonnes.every((c, i) => c.facultative || Boolean(l[i]?.trim()));
 
   const envoyer = async (liste: Ligne[]): Promise<boolean> => {
-    setError(null);
     setBusy(true);
     try {
       return await enregistrer(liste);
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
       return false;
     } finally {
       setBusy(false);
@@ -220,7 +217,7 @@ function ListeLignes({
     for (const brute of brutes) {
       const lue = decouper(brute);
       if (!lue) {
-        setError(`Ligne illisible : « ${brute} »`);
+        notifierErreur(`Ligne illisible : « ${brute} »`);
         return;
       }
       lues.push(lue);
@@ -231,7 +228,6 @@ function ListeLignes({
   };
 
   const editer = (rang: number) => {
-    setError(null);
     setEnEdition(rang);
     setBrouillon(lignes[rang] ?? vide(colonnes));
   };
@@ -266,7 +262,6 @@ function ListeLignes({
 
   return (
     <Stack gap={4}>
-      {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
       {/* Le libellé au-dessus de la liste, comme celui d'un champ. */}
       <Text size="sm" fw={500}>
         {titre}
@@ -439,13 +434,12 @@ export default function AssetsTab() {
     models: [],
     vlans: [],
   });
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api
       .getAssetSettings()
       .then(setReglages)
-      .catch((e) => setError(messageErreur(e)));
+      .catch((e) => notifierErreur(messageErreur(e)));
   }, []);
 
   /** Une table part entière : le serveur la remplace d'un coup. */
@@ -458,7 +452,6 @@ export default function AssetsTab() {
 
   return (
     <Stack gap="xl">
-      {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
       <ListeLignes
         titre="Modèles"
         colonnes={COLONNES_MODELES}

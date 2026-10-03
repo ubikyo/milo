@@ -14,6 +14,11 @@ interface DeleteConfirmModalProps {
   /** « Fermer » par défaut ; à changer quand l'action elle-même s'appelle ainsi. */
   cancelLabel?: string;
   confirmColor?: string;
+  /**
+   * Ouverte depuis une liste déroulante restée ouverte (un Popover, au-dessus
+   * des fenêtres par défaut) : il lui faut passer devant.
+   */
+  zIndex?: number;
 }
 
 export default function DeleteConfirmModal({
@@ -25,6 +30,7 @@ export default function DeleteConfirmModal({
   confirmLabel = "Supprimer",
   cancelLabel = "Fermer",
   confirmColor = RED,
+  zIndex,
 }: DeleteConfirmModalProps) {
   return (
     <Modal
@@ -32,6 +38,7 @@ export default function DeleteConfirmModal({
       onClose={onClose}
       title={title}
       centered
+      zIndex={zIndex}
       padding={MODAL_PADDING}
       withCloseButton={false}
       styles={modalHeaderStyles(MODAL_PADDING)}

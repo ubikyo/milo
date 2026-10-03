@@ -1,49 +1,44 @@
-import { ActionIcon, Avatar, Button, Group, Menu } from "@mantine/core";
+import { ActionIcon, Avatar, Group, Menu } from "@mantine/core";
 import {
   IconBell,
-  IconChevronDown,
   IconLogout,
   IconSettings,
   IconUserCog,
 } from "@tabler/icons-react";
 import { initialsOf } from "./ActorAvatars";
-import { NEUTRAL_HOVER } from "../../themes/colors";
-import {
-  ROW_CONTROL_HEIGHT,
-  ROW_MENU_OFFSET,
-  TAB_MENU_STYLES,
-} from "../../themes/menus";
-import type { CSSProperties, ReactNode } from "react";
-import type { Company, Mode, PublicUser, SearchResult } from "@milo/shared";
+import { ROW_CONTROL_HEIGHT, ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
+import type { ReactNode } from "react";
+import type { PublicUser, SearchResult } from "@milo/shared";
+import type { ContextesMenuProps } from "./ContextesMenu";
+import WorkspaceMenu from "./WorkspaceMenu";
 
-// La société et le compte, au bout de la rangée d'onglets de chaque mode.
-// C'était le contenu de l'entête, qui n'existe plus : la rangée d'onglets est
-// désormais la première ligne de l'écran, et porte ce qui s'y trouvait.
+// Les contextes du tableau ouvert et le compte, au bout de la rangée d'onglets
+// de chaque vue. C'était le contenu de l'entête, qui n'existe plus : la
+// rangée d'onglets est désormais la première ligne de l'écran, et porte ce qui
+// s'y trouvait.
 export interface AccountControlsProps {
-  companies: Company[];
-  companyFilter: string;
-  onCompanyFilterChange: (value: string) => void;
+  /**
+   * Les contextes du tableau ouvert ; absents sans tableau. Ils ne se posent
+   * plus ici mais dans l'onglet actif (BoardTabs), à l'essai.
+   */
+  contextes?: Omit<ContextesMenuProps, "visibleFrom">;
   user: PublicUser;
   onLogout: () => void;
   onOpenSettings: () => void;
   onOpenPreferences: () => void;
   /** Le tiroir des dernières notifications reçues. */
   onOpenNotifications: () => void;
-  mode: Mode;
   /**
-   * Le menu « Actions » du mode, à gauche de la société : le compte reste
+   * Le menu « Actions » du mode, à gauche des contextes : le compte reste
    * au bout, toujours au même endroit.
    */
   actions?: ReactNode;
 }
 
-// RESPONSIVE — la société est ce qui tient le plus de place ici. En dessous
-// de ce point d'arrêt, elle a vocation à disparaître de la rangée pour
-// rejoindre le menu du compte, qui lui reste toujours visible.
-export const COMPANY_SELECT_VISIBLE_FROM = "sm";
-
-/** « Toutes les sociétés » : la valeur que prend le filtre quand il ne filtre pas. */
-const TOUTES = "all";
+// RESPONSIVE — les contextes sont ce qui tient le plus de place ici. En
+// dessous de ce point d'arrêt, ils ont vocation à disparaître de la rangée
+// pour rejoindre le menu du compte, qui lui reste toujours visible.
+export const CONTEXT_SELECT_VISIBLE_FROM = "sm";
 
 /**
  * Ce qu'une page transporte sans y toucher, de l'application jusqu'à la
@@ -58,79 +53,22 @@ export type AccountSlot = Omit<AccountControlsProps, "actions"> & {
 };
 
 export default function AccountControls({
-  companies,
-  companyFilter,
-  onCompanyFilterChange,
   user,
   onLogout,
   onOpenSettings,
   onOpenPreferences,
   onOpenNotifications,
-  mode,
   actions,
 }: AccountControlsProps) {
-  // Le mode Accès ne connaît pas les sociétés : ses catégories ne pendent à
-  // rien. La liste n'y aurait aucun effet, elle ne s'y montre donc pas.
-  const avecSocietes = mode !== "access";
-
-  // « Toutes les sociétés » existe partout sauf en mode Tâche : une liste
-  // appartient à un tableau, qui appartient à une société, et « toutes » n'y
-  // désignerait rien. Ailleurs — projets, demandes de support, postes —, c'est
-  // au contraire la vue par laquelle le mode s'ouvre.
-  const uneSeuleSociete = mode === "tasks";
-  const companyOptions = [
-    ...(uneSeuleSociete
-      ? []
-      : [{ value: TOUTES, label: "Toutes les sociétés" }]),
-    ...companies.map((c) => ({ value: String(c.id), label: c.name })),
-  ];
-
-  // Ce que le bouton affiche : la société choisie, ou le premier mot du menu
-  // quand le filtre ne filtre pas.
-  const societeCourante =
-    companyOptions.find((o) => o.value === companyFilter)?.label ?? "Société";
-
   return (
     <Group gap="xs" wrap="nowrap">
       {actions}
 
-      {avecSocietes && (
-        // Le même bouton que le menu « Actions » de la rangée : c'est un menu,
-        // il se présente comme les autres plutôt qu'en champ de formulaire.
-        <Menu
-          position="bottom-end"
-          withinPortal
-          shadow="md"
-          offset={ROW_MENU_OFFSET}
-          styles={TAB_MENU_STYLES}
-        >
-          <Menu.Target>
-            <Button
-              variant="subtle"
-              color="gray"
-              size="xs"
-              rightSection={<IconChevronDown size={14} />}
-              aria-label="Société"
-              visibleFrom={COMPANY_SELECT_VISIBLE_FROM}
-              style={{ "--button-hover": NEUTRAL_HOVER } as CSSProperties}
-            >
-              {societeCourante}
-            </Button>
-          </Menu.Target>
-          <Menu.Dropdown>
-            {companyOptions.map((option) => (
-              <Menu.Item
-                key={option.value}
-                onClick={() => onCompanyFilterChange(option.value)}
-                // La société ouverte se lit d'un coup d'œil dans la liste.
-                fw={option.value === companyFilter ? 600 : undefined}
-              >
-                {option.label}
-              </Menu.Item>
-            ))}
-          </Menu.Dropdown>
-        </Menu>
-      )}
+      {/* Les contextes sont posés dans l'onglet actif, à droite de son nom
+          (BoardTabs) : à l'essai. */}
+
+      {/* Le workspace, contre le compte : seulement s'il y en a plusieurs. */}
+      <WorkspaceMenu user={user} />
 
       <Menu
         position="bottom-end"
@@ -175,8 +113,9 @@ export default function AccountControls({
           >
             Notifications
           </Menu.Item>
-          {/* Le Paramétrage s'ouvre avec le droit « Voir » d'un rôle. */}
-          {user.settings.view && (
+          {/* Le Paramétrage s'ouvre avec le droit « Voir », ou pour gérer
+              les workspaces. */}
+          {(user.settings.view || user.manage_workspaces) && (
             <Menu.Item
               leftSection={<IconSettings size={16} />}
               onClick={onOpenSettings}

@@ -1,5 +1,5 @@
-// Les tableaux du mode Projet, et leurs catégories. Les deux vont ensemble :
-// une catégorie n'existe que dans un tableau.
+// Les catégories des projets. Une catégorie appartient à un tableau : deux
+// tableaux peuvent nommer une catégorie de la même façon.
 
 import { Router } from "express";
 import type { CopyResult, Id, Milestone } from "@milo/shared";
@@ -13,148 +13,13 @@ import {
   requireText,
 } from "../lib/http.js";
 import { exiger, peut } from "../lib/droits.js";
-import { concernes, notifierSuppression } from "../lib/notify.js";
 import { touch } from "../middleware/events.js";
-import {
-  categorieRendue,
-  categories,
-  jalonsValides,
-  projectBoardOuvert,
-  projectBoards,
-} from "../repositories/project-boards.js";
-import { ordreRecu } from "../repositories/reorder.js";
-import { dansLOrdreDe, userTabOrders } from "../repositories/tab-orders.js";
-import { now } from "../lib/time.js";
+import { CLAUSE_TABLEAUX_VISIBLES, tableauOuvert } from "../repositories/boards.js";
+import { categorieRendue, categories, jalonsValides } from "../repositories/project-boards.js";
+import { ordreRecu, rangerCategories } from "../repositories/reorder.js";
 
 const CATEGORIE_INTROUVABLE = "Catégorie introuvable";
 const CATEGORIE_EXISTANTE = "Cette catégorie existe déjà";
-
-/** Un réglage arrive en booléen ; la base le range en 0 ou 1. */
-const drapeau = (valeur: unknown, defaut: 0 | 1): 0 | 1 =>
-  valeur === undefined ? defaut : (Number(Boolean(valeur)) as 0 | 1);
-
-// --- Tableaux --------------------------------------------------------------
-
-const SCOPE_TABLEAUX = "project-boards";
-
-/** Les tableaux que ce compte voit, dans son ordre à lui. */
-const tableauxVus = (userId: Id) =>
-  dansLOrdreDe(userId, SCOPE_TABLEAUX, projectBoards.visibleTo.all(userId));
-
-const compterProjetsDuTableau = scalar<CountRow>(
-  "SELECT COUNT(*) AS count FROM projects WHERE board_id = ?",
-);
-const supprimerProjetsDuTableau = mutation("DELETE FROM projects WHERE board_id = ?");
-const supprimerCategoriesDuTableau = mutation("DELETE FROM categories WHERE board_id = ?");
-const supprimerTableau = mutation("DELETE FROM project_boards WHERE id = ?");
-const projetsDuTableau = selection<{ id: Id; name: string }>(
-  "SELECT id, name FROM projects WHERE board_id = ?",
-);
-const societesDuTableau = selection<{ company_id: Id | null }>(
-  "SELECT DISTINCT company_id FROM projects WHERE board_id = ?",
-);
-
-/**
- * Suppression en cascade : les projets du tableau partent d'abord (leurs
- * commentaires et leurs acteurs suivent par clé étrangère), puis ses
- * catégories. L'ordre compte : un projet référence sa catégorie.
- */
-const supprimerTableauEnCascade = transaction((id: number): number => {
-  const { count } = compterProjetsDuTableau(id);
-  supprimerProjetsDuTableau.run(id);
-  supprimerCategoriesDuTableau.run(id);
-  supprimerTableau.run(id);
-  return count;
-});
-
-export const projectBoardRoutes = Router();
-
-projectBoardRoutes.use(touch("project-boards", "categories", "projects", "project-labels"));
-
-// Les tableaux, leurs catégories et leurs étiquettes n'appartiennent à aucune
-// société : ils suivent les droits du mode Projets dans n'importe laquelle.
-// Les projets, eux, suivent leur société (routes/projects.ts).
-
-projectBoardRoutes.get("/", (req, res) => {
-  if (!peut(req, "projects", "view")) return void res.json([]);
-  res.json(tableauxVus(req.user.id));
-});
-
-projectBoardRoutes.post("/", (req, res) => {
-  exiger(req, "projects", "create");
-  const name = requireText(req.body.name, "Le nom du tableau est requis");
-  // Nouveau tableau ajouté à la suite des autres, ouvert à tous : « Privé » se
-  // règle ensuite, depuis le menu de l'onglet.
-  const { next } = projectBoards.nextPosition();
-  const { lastInsertRowid } = projectBoards.create.run(
-    name,
-    next,
-    drapeau(req.body.is_private, 0),
-    // Le propriétaire n'existe que pour un tableau privé.
-    drapeau(req.body.is_private, 0) ? req.user.id : null,
-    now(),
-  );
-  res.status(201).json(projectBoards.byId.get(lastInsertRowid));
-});
-
-// Ranger les onglets. Déclaré avant « /:id », sinon « reorder » serait pris
-// pour un identifiant. L'ordre est celui de ce compte seulement
-// (repositories/tab-orders.ts) : le voir suffit pour le ranger.
-projectBoardRoutes.put("/reorder", (req, res) => {
-  exiger(req, "projects", "view");
-  const visibles = projectBoards.visibleTo.all(req.user.id);
-  const ordre = ordreRecu(
-    req.body.ids,
-    visibles,
-    "La liste des identifiants ne correspond pas aux tableaux",
-  );
-
-  userTabOrders.ranger(req.user.id, SCOPE_TABLEAUX, ordre);
-  res.json(tableauxVus(req.user.id));
-});
-
-projectBoardRoutes.put("/:id", (req, res) => {
-  exiger(req, "projects", "update");
-  const existing = projectBoardOuvert(req.params.id, req.user);
-  const name = requireText(req.body.name ?? existing.name, "Le nom du tableau est requis");
-  const isPrivate = drapeau(req.body.is_private, existing.is_private);
-
-  // Un tableau n'a de propriétaire que privé : le fermer, c'est se le
-  // réserver ; le rouvrir le rend à tous, sans propriétaire. Seul celui qui
-  // l'a fermé le voit encore, et peut donc le rouvrir.
-  const owner = isPrivate ? (existing.is_private ? existing.owner_id : req.user.id) : null;
-
-  projectBoards.update.run(name, isPrivate, owner, existing.id);
-  res.json(projectBoards.byId.get(existing.id));
-});
-
-projectBoardRoutes.delete("/:id", (req, res) => {
-  exiger(req, "projects", "delete");
-  const existing = projectBoardOuvert(req.params.id, req.user);
-  // Le tableau emporte ses projets : il faut pouvoir les supprimer tous, dans
-  // chacune de leurs sociétés.
-  for (const { company_id } of societesDuTableau.all(existing.id)) {
-    exiger(req, "projects", "delete", company_id);
-  }
-  // Chaque projet emporté est annoncé à ses acteurs et à ceux qui le suivent,
-  // lus avant qu'ils partent avec lui.
-  const emportes = projetsDuTableau
-    .all(existing.id)
-    .map((p) => ({ ...p, destinataires: concernes.projet(p.id) }));
-  const deleted_projects = supprimerTableauEnCascade(existing.id);
-  for (const projet of emportes) {
-    notifierSuppression({
-      kind: "project",
-      targetId: projet.id,
-      titre: projet.name,
-      message: `a supprimé le tableau « ${existing.name} » et ses projets`,
-      auteur: req.user,
-      destinataires: projet.destinataires,
-      disparu: true,
-    });
-  }
-  res.json({ deleted_projects });
-});
 
 // --- Catégories ------------------------------------------------------------
 // Une catégorie appartient à un tableau de projets : deux tableaux peuvent
@@ -164,9 +29,7 @@ const categoriesAvecComptes = selection<CategoryRow & { project_count: number }>
   `SELECT categories.*,
           (SELECT COUNT(*) FROM projects WHERE projects.category_id = categories.id) AS project_count
    FROM categories
-   WHERE categories.board_id IN (
-     SELECT id FROM project_boards WHERE is_private = 0 OR owner_id = @me
-   )
+   WHERE ${CLAUSE_TABLEAUX_VISIBLES("categories.board_id")}
    ORDER BY name`,
 );
 const categoriesDuTableau = selection<CategoryRow & { project_count: number }>(
@@ -174,17 +37,34 @@ const categoriesDuTableau = selection<CategoryRow & { project_count: number }>(
           (SELECT COUNT(*) FROM projects WHERE projects.category_id = categories.id) AS project_count
    FROM categories
    WHERE categories.board_id = ?
-   ORDER BY name`,
+   ORDER BY position, name`,
 );
+
+const supprimerCategorie = mutation("DELETE FROM categories WHERE id = ?");
 
 /**
  * Les catégories d'un tableau posées dans un autre. Celles qui y portent déjà
  * le même nom ne sont pas redoublées — la base le refuserait de toute façon,
- * le nom étant unique par tableau.
+ * le nom étant unique par tableau. « remplacer » : celles de l'accueil s'en
+ * vont d'abord, sauf celles qui rangent encore des projets — les effacer
+ * emporterait ces projets. Le compte rendu les dit gardées.
  */
-const copierCategories = transaction((source: Id, cible: Id): CopyResult => {
+const copierCategories = transaction((source: Id, cible: Id, remplacer: boolean): CopyResult => {
   let copied = 0;
   let skipped = 0;
+  let removed = 0;
+  let kept = 0;
+
+  if (remplacer) {
+    for (const categorie of categoriesDuTableau.all(cible)) {
+      if (categorie.project_count > 0) {
+        kept += 1;
+        continue;
+      }
+      supprimerCategorie.run(categorie.id);
+      removed += 1;
+    }
+  }
 
   for (const categorie of categoriesDuTableau.all(source)) {
     if (categories.byName.get(cible, categorie.name, 0)) {
@@ -195,14 +75,13 @@ const copierCategories = transaction((source: Id, cible: Id): CopyResult => {
     copied += 1;
   }
 
-  return { copied, skipped };
+  return { copied, skipped, removed, kept };
 });
 
 const compterProjetsDeLaCategorie = scalar<CountRow>(
   "SELECT COUNT(*) AS count FROM projects WHERE category_id = ?",
 );
 const supprimerProjetsDeLaCategorie = mutation("DELETE FROM projects WHERE category_id = ?");
-const supprimerCategorie = mutation("DELETE FROM categories WHERE id = ?");
 
 const supprimerCategorieEnCascade = transaction((id: number): number => {
   const { count } = compterProjetsDeLaCategorie(id);
@@ -236,7 +115,7 @@ categoryRoutes.get("/", (req, res) => {
   if (board && board !== "all") {
     // Le tableau visé doit être ouvert à cette personne : ses catégories ne
     // sortent pas d'un tableau privé.
-    const visible = projectBoardOuvert(board, req.user);
+    const visible = tableauOuvert(board, req.user);
     return void res.json(categoriesDuTableau.all(visible.id).map(categorieRendue));
   }
   // Sans filtre, les catégories des tableaux fermés aux autres sont écartées.
@@ -249,12 +128,27 @@ categoryRoutes.post("/copy", (req, res) => {
   if (!from_board || !to_board) {
     badRequest("Le tableau d'origine et celui de destination sont requis");
   }
+  const remplacer = req.body.replace === true;
+  // Effacer celles de l'accueil, c'est en supprimer.
+  if (remplacer) exiger(req, "projects", "delete");
 
-  const source = projectBoardOuvert(from_board, req.user);
-  const cible = projectBoardOuvert(to_board, req.user);
+  const source = tableauOuvert(from_board, req.user);
+  const cible = tableauOuvert(to_board, req.user);
   if (source.id === cible.id) badRequest("Choisissez un autre tableau que celui-ci");
 
-  res.json(copierCategories(source.id, cible.id));
+  res.json(copierCategories(source.id, cible.id, remplacer));
+});
+
+// L'ordre des catégories d'un tableau, glissé dans le tiroir du widget : il
+// nomme toutes celles du tableau, chacune une fois.
+categoryRoutes.put("/reorder", (req, res) => {
+  exiger(req, "projects", "update");
+  const { board_id, ids } = req.body;
+  if (!board_id) badRequest("Le tableau est requis");
+  const tableau = tableauOuvert(board_id, req.user);
+  const toutes = categoriesDuTableau.all(tableau.id);
+  rangerCategories(ordreRecu(ids, toutes, "L'ordre doit nommer toutes les catégories"), tableau.id);
+  res.json(categoriesDuTableau.all(tableau.id).map(categorieRendue));
 });
 
 categoryRoutes.post("/", (req, res) => {
@@ -262,7 +156,7 @@ categoryRoutes.post("/", (req, res) => {
   const name = requireText(req.body.name, "Le nom est requis");
   const boardId = req.body.board_id;
   if (!boardId) badRequest("Le tableau est requis");
-  projectBoardOuvert(boardId, req.user);
+  tableauOuvert(boardId, req.user);
   if (categories.byName.get(boardId, name, 0)) conflict(CATEGORIE_EXISTANTE);
 
   const milestones = lireJalons(req.body.milestones) ?? [];
@@ -274,7 +168,7 @@ categoryRoutes.post("/", (req, res) => {
 categoryRoutes.put("/:id", (req, res) => {
   exiger(req, "projects", "update");
   const existing = orNotFound(categories.byId.get(req.params.id), CATEGORIE_INTROUVABLE);
-  projectBoardOuvert(existing.board_id, req.user);
+  tableauOuvert(existing.board_id, req.user);
 
   // Le nom et les jalons se modifient chacun de leur côté : ce qui n'est pas
   // envoyé ne change pas.
@@ -292,7 +186,7 @@ categoryRoutes.put("/:id", (req, res) => {
 categoryRoutes.delete("/:id", (req, res) => {
   exiger(req, "projects", "delete");
   const existing = orNotFound(categories.byId.get(req.params.id), CATEGORIE_INTROUVABLE);
-  projectBoardOuvert(existing.board_id, req.user);
+  tableauOuvert(existing.board_id, req.user);
   refuserSiUtilise(existing.name, compterProjetsDeLaCategorie(existing.id).count);
   res.json({ deleted_projects: supprimerCategorieEnCascade(existing.id) });
 });

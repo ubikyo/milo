@@ -9,33 +9,22 @@
 export const RESOURCES = [
   /** Sociétés et comptes : les listes de référence. */
   "lookups",
-  "project-boards",
+  /** Les vues du sélecteur du bas. */
+  "views",
+  /** Les tableaux des vues : leurs onglets. */
+  "boards",
+  /** Les sections des tableaux, et les widgets qu'elles portent. */
+  "board-widgets",
   "categories",
   "projects",
-  "boards",
   "task-lists",
   "labels",
   "project-labels",
-  /** Les catégories du mode Accès : le premier niveau de ce mode. */
-  "access-categories",
-  /** Les sections d'une catégorie d'accès : ses colonnes. */
-  "access-sections",
-  /** Ce que les sections portent : les éléments des widgets. */
-  "access-blocks",
-  /** Les demandes du mode Support, et les étiquettes qu'elles portent. */
+  /** Les demandes de support, et les étiquettes qu'elles portent. */
   "support-requests",
   "support-labels",
-  /** Les indicateurs du panneau des statistiques du mode Support. */
-  "support-indicators",
-  /** Les postes du mode Assets : ce que les agents d'inventaire remontent. */
+  /** Les postes : ce que les agents d'inventaire remontent. */
   "assets",
-  /** Les indicateurs du panneau des statistiques du mode Assets. */
-  "asset-indicators",
-  /** Les sections des modes Projet et Tâche, et ce qu'elles portent. */
-  "project-indicators",
-  "task-indicators",
-  /** L'ordre des onglets fixes des modes Support et Assets. */
-  "tab-orders",
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];

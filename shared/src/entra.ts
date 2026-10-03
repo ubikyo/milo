@@ -2,14 +2,15 @@
 //
 // Une seule inscription d'application sert à tout : la connexion des
 // utilisateurs (OpenID Connect), la lecture des utilisateurs et des groupes,
-// la lecture des boîtes de support des sociétés et l'envoi en leur nom
+// la lecture des boîtes de support que les widgets reçoivent et l'envoi en
+// leur nom
 // (Microsoft Graph, avec les permissions de l'application).
 //
 // Le secret ne redescend jamais au client : l'interface n'en connaît que la
 // présence (`has_secret`).
 
-import type { Id } from "./domain.js";
-import type { AppPermissions } from "./roles.js";
+import type { AdminPermissions } from "./roles.js";
+import type { WidgetRights } from "./widget-kinds.js";
 
 /** Un utilisateur ou un groupe de l'annuaire. */
 /** Une personne de l'annuaire, proposée comme acteur. */
@@ -44,6 +45,11 @@ export interface EntraSettings {
   /** L'ID de l'annuaire (locataire). */
   tenant: string;
   has_secret: boolean;
+  /**
+   * L'adresse d'où partent les e-mails de Milo — avis, assignations, demandes
+   * saisies. Les réponses à une demande reçue partent de sa boîte.
+   */
+  mail_sender: string;
 }
 
 /**
@@ -54,19 +60,26 @@ export interface EntraSettingsInput {
   client_id?: string;
   tenant?: string;
   secret?: string;
+  mail_sender?: string;
 }
 
-/** Les permissions d'un utilisateur ou d'un groupe : le Paramétrage et ses types de widgets. */
-export interface PrincipalAssignments {
+/** Des permissions d'un utilisateur ou d'un groupe, avec qui elles concernent. */
+export interface PrincipalPermissions<T> {
   principal: EntraPrincipal;
-  app: AppPermissions;
+  permissions: T;
 }
 
-/** L'accès de Milo à la boîte de support d'une société. */
+/** Ses accès à un workspace : une permission par type de widget. */
+export type PrincipalAssignments = PrincipalPermissions<WidgetRights>;
+
+/** Son administration de l'application : le Paramétrage et les workspaces. */
+export type PrincipalAdministration = PrincipalPermissions<AdminPermissions>;
+
+/** L'accès de Milo à une boîte : celle d'envoi, ou une que reçoit un widget. */
 export interface MailboxCheck {
-  company_id: Id;
-  company_name: string;
   email: string;
+  /** Où elle sert : « Adresse d'envoi », ou les contextes qui la reçoivent. */
+  usage: string;
   ok: boolean;
   /** Ce que Microsoft a répondu quand l'accès est refusé. */
   error: string;
@@ -85,4 +98,5 @@ export const emptyEntraSettings = (): EntraSettings => ({
   client_id: "",
   tenant: "",
   has_secret: false,
+  mail_sender: "",
 });

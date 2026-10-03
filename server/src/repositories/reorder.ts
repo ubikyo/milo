@@ -15,7 +15,7 @@ import type { Id } from "@milo/shared";
 
 /**
  * Fabrique le rangement d'une table. « scope » nomme la colonne qui borne
- * l'ensemble — « company_id » pour les tableaux du mode Tâche — ou reste vide
+ * l'ensemble — « board_id » pour les contextes d'un tableau — ou reste vide
  * quand la table entière ne fait qu'un seul ensemble.
  *
  * Les requêtes sont préparées ici, au chargement du module : le nom de la
@@ -44,8 +44,18 @@ const rangement = (table: string, scope?: string) => {
   });
 };
 
-/** Les étiquettes du support : communes à toutes les sociétés, un seul ordre. */
+/** Les étiquettes du support : communes à tous les contextes, un seul ordre. */
 export const rangerSupportLabels = rangement("support_labels");
+
+/** Les contextes d'un tableau : un ordre commun, tableau par tableau. */
+export const rangerContextes = rangement("contexts", "board_id");
+
+/** Les catégories d'un tableau de projets. */
+export const rangerCategories = rangement("categories", "board_id");
+
+/** Les étiquettes d'un tableau : celles des cartes, celles des projets. */
+export const rangerEtiquettes = rangement("labels", "board_id");
+export const rangerEtiquettesDeProjets = rangement("project_labels", "board_id");
 
 /**
  * L'ordre reçu, vérifié : il doit nommer exactement les onglets que cette

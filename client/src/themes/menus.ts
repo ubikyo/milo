@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+import { NEUTRAL_TEXT, STRONG_TEXT } from "./colors";
 import { TAB_ROW_HEIGHT } from "./tabs";
 
 // Les menus qui pendent d'une rangée d'onglets — « Actions », la société, le
@@ -36,3 +38,16 @@ export const TAB_MENU_STYLES = {
     borderTopRightRadius: 0,
   },
 } as const;
+
+/**
+ * Le bouton « Actions » : du texte nu, sans fond ni marge intérieure, même au
+ * survol ou désactivé. Seul le texte réagit au survol, en passant du gris
+ * neutre au contraste maximum. Le bouton garde sa hauteur : c'est sur elle que
+ * les écarts ci-dessus sont calculés pour que le menu s'ouvre sous le filet.
+ */
+export const ACTIONS_BUTTON_STYLE = {
+  background: "transparent",
+  padding: 0,
+  "--button-color": NEUTRAL_TEXT,
+  "--button-hover-color": STRONG_TEXT,
+} as CSSProperties;

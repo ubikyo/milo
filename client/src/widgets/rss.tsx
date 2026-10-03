@@ -1,17 +1,20 @@
-import { Anchor, Checkbox, NumberInput, Stack, Text, TextInput } from "@mantine/core";
+import { Anchor, Badge, Box, Group, Input, NumberInput, Stack, Switch, Text, TextInput } from "@mantine/core";
 import { IconRss } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import classes from "../assets/styles/AccessLink.module.css";
+import encart from "../assets/styles/AccessNumero.module.css";
+import ProblemeDeConfiguration from "../components/ui/ProblemeDeConfiguration";
+import { RED } from "../themes/colors";
 import { avec, nombre, texte } from "./types";
-import type { AccessWidget } from "./types";
+import type { AccessWidget, WidgetConfigProps } from "./types";
 import {
   ACCESS_FEED_INTERVAL_DEFAUT,
   ACCESS_FEED_INTERVAL_MAX,
   ACCESS_FEED_INTERVAL_MIN,
   ACCESS_FEED_QUANTITE_MAX,
 } from "@milo/shared";
-import type { AccessFeed, Id } from "@milo/shared";
+import type { AccessFeed, AccessFeedProbe, Id } from "@milo/shared";
 
 // Un flux RSS : les derniers articles d'une source, chacun en lien vers sa
 // page. On y suit une actualité — un éditeur, un fournisseur, un service —
@@ -33,6 +36,7 @@ const URL_FLUX = "url";
 const QUANTITE = "quantite";
 const DATES = "dates";
 const INTERVALLE = "intervalle";
+const ENCADRE = "encadre";
 
 /** Assez pour suivre une source, assez peu pour ne pas envahir la colonne. */
 const QUANTITE_PAR_DEFAUT = 5;
@@ -99,6 +103,10 @@ const avecDates = (config: unknown): boolean => {
   return valeur === undefined ? true : Boolean(valeur);
 };
 
+/** Un flux est nu par défaut : c'est l'encadré qu'on demande, pas l'inverse. */
+const estEncadre = (config: unknown): boolean =>
+  Boolean((config as Record<string, unknown> | null)?.[ENCADRE]);
+
 /** La quantité, ramenée dans ses bornes quoi que la configuration porte. */
 const quantiteDe = (config: unknown): number =>
   Math.min(
@@ -116,12 +124,31 @@ const quantiteDe = (config: unknown): number =>
 const dejaLus = new Map<string, Article[]>();
 const cleDe = (blockId: Id, url: string) => `${blockId}|${url}`;
 
+/** Une adresse de flux que le serveur peut relever : en http ou en https. */
+const adresseLisible = (url: string): boolean => {
+  try {
+    return ["http:", "https:"].includes(new URL(url).protocol);
+  } catch {
+    return false;
+  }
+};
+
 type Etat =
   | { phase: "attente" }
   | { phase: "pret"; articles: Article[] }
   | { phase: "erreur"; message: string };
 
 function Flux({ blockId, config }: { blockId: Id; config: unknown }) {
+  const contenu = <Articles blockId={blockId} config={config} />;
+  if (!estEncadre(config)) return contenu;
+  return (
+    <Box className={encart.encart} style={{ border: "none" }}>
+      {contenu}
+    </Box>
+  );
+}
+
+function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
   const url = texte(config, URL_FLUX).trim();
   const quantite = quantiteDe(config);
   const dates = avecDates(config);
@@ -133,7 +160,7 @@ function Flux({ blockId, config }: { blockId: Id; config: unknown }) {
   // L'adresse et la quantité sont celles que le serveur lit dans l'élément
   // enregistré : quand elles changent, ce qu'il garde change aussi.
   useEffect(() => {
-    if (!url) return;
+    if (!adresseLisible(url)) return;
     // Une réponse arrivée après un changement d'adresse ne doit pas écraser
     // celle de la nouvelle.
     let actif = true;
@@ -158,13 +185,10 @@ function Flux({ blockId, config }: { blockId: Id; config: unknown }) {
     };
   }, [blockId, url, quantite]);
 
-  if (!url) {
-    return (
-      <Text size="sm" c="dimmed">
-        Flux RSS
-      </Text>
-    );
-  }
+  // Sans adresse de flux lisible — vide, ou qui n'est pas en http(s) —, le
+  // widget est à revoir : le triangle jaune, comme une liste de demandes mal
+  // réglée.
+  if (!adresseLisible(url)) return <ProblemeDeConfiguration widget={rssWidget.label} />;
   // Le chargement tient déjà la hauteur des articles attendus, ligne pour
   // ligne : sans cela, chaque flux grandirait d'un coup à son arrivée et
   // repousserait ce qui le suit, l'un après l'autre.
@@ -187,11 +211,13 @@ function Flux({ blockId, config }: { blockId: Id; config: unknown }) {
       </Stack>
     );
   }
+  // La source ne répond pas, ou ce qu'elle rend n'est pas un flux : l'adresse
+  // est à revoir aussi. Ce que le serveur a vu se lit au survol.
   if (etat.phase === "erreur") {
     return (
-      <Text size="sm" c="red" lineClamp={2} title={url}>
-        {etat.message}
-      </Text>
+      <div title={etat.message}>
+        <ProblemeDeConfiguration widget={rssWidget.label} />
+      </div>
     );
   }
   if (!etat.articles.length) {
@@ -233,6 +259,138 @@ function Flux({ blockId, config }: { blockId: Id; config: unknown }) {
   );
 }
 
+/** Le temps de finir de taper l'adresse avant de la sonder. */
+const ATTENTE_SONDE = 600;
+
+/** La place de l'étiquette dans le champ : celle de la plus longue, « Format invalide ». */
+const LARGEUR_ETIQUETTE = 120;
+
+/** Les adresses déjà sondées, pour la durée de la page. */
+const sondees = new Map<string, AccessFeedProbe>();
+
+/**
+ * Ce que donne l'adresse saisie, sondée par le serveur : injoignable, pas un
+ * flux, ou le format du flux. Rien tant que l'adresse n'est pas lisible.
+ */
+function useSonde(url: string): AccessFeedProbe | null {
+  const [sonde, setSonde] = useState<AccessFeedProbe | null>(() => sondees.get(url) ?? null);
+  useEffect(() => {
+    if (!adresseLisible(url)) {
+      setSonde(null);
+      return;
+    }
+    const connue = sondees.get(url);
+    setSonde(connue ?? null);
+    if (connue) return;
+    let actif = true;
+    const minuterie = setTimeout(() => {
+      api
+        .probeAccessFeed(url)
+        .then((s) => {
+          sondees.set(url, s);
+          if (actif) setSonde(s);
+        })
+        .catch((e: Error) => actif && setSonde({ state: "injoignable", message: e.message }));
+    }, ATTENTE_SONDE);
+    return () => {
+      actif = false;
+      clearTimeout(minuterie);
+    };
+  }, [url]);
+  return sonde;
+}
+
+function Etiquette({ sonde }: { sonde: AccessFeedProbe }) {
+  const ok = sonde.state === "ok";
+  // L'étiquette des états de l'application (EntraTab) : pleine, verte ou rouge.
+  return (
+    <Badge
+      color={ok ? "green" : RED}
+      variant="filled"
+      size="sm"
+      radius="sm"
+      tt="none"
+      fw={600}
+      title={ok ? undefined : sonde.message}
+      style={{ flexShrink: 0 }}
+    >
+      {ok ? sonde.format : sonde.state === "injoignable" ? "Injoignable" : "Format invalide"}
+    </Badge>
+  );
+}
+
+function Reglages({ config, onChange }: WidgetConfigProps) {
+  const url = texte(config, URL_FLUX);
+  const sonde = useSonde(url.trim());
+  return (
+    <Stack gap="xl">
+      {/* L'étiquette se tient dans le champ, à droite : on lit le verdict sur
+          l'adresse même. */}
+      <TextInput
+        label="Adresse du flux"
+        placeholder="https://"
+        value={url}
+        onChange={(e) => onChange(avec(config, URL_FLUX, e.currentTarget.value))}
+        rightSection={sonde && <Etiquette sonde={sonde} />}
+        rightSectionWidth={sonde ? LARGEUR_ETIQUETTE : undefined}
+        rightSectionPointerEvents={sonde?.state === "ok" ? "none" : "all"}
+        rightSectionProps={{ style: { justifyContent: "flex-end", paddingRight: 8 } }}
+        autoFocus
+      />
+      {/* Un champ vidé le temps d'une saisie range la valeur par défaut
+          plutôt qu'un zéro, qui viderait l'élément. Le serveur relève la
+          source au rythme de l'actualisation et garde ses articles : la page
+          lit ce qu'il garde. */}
+      <Group align="flex-start">
+        <NumberInput
+          label="Articles affichés"
+          placeholder={String(QUANTITE_PAR_DEFAUT)}
+          value={nombre(config, QUANTITE, QUANTITE_PAR_DEFAUT)}
+          onChange={(valeur) =>
+            onChange(avec(config, QUANTITE, valeur === "" ? QUANTITE_PAR_DEFAUT : Number(valeur)))
+          }
+          min={QUANTITE_MIN}
+          max={QUANTITE_MAX}
+          allowNegative={false}
+          allowDecimal={false}
+          w={120}
+        />
+        <NumberInput
+          label="Actualisation"
+          placeholder={String(ACCESS_FEED_INTERVAL_DEFAUT)}
+          value={nombre(config, INTERVALLE, ACCESS_FEED_INTERVAL_DEFAUT)}
+          onChange={(valeur) =>
+            onChange(
+              avec(config, INTERVALLE, valeur === "" ? ACCESS_FEED_INTERVAL_DEFAUT : Number(valeur)),
+            )
+          }
+          min={ACCESS_FEED_INTERVAL_MIN}
+          max={ACCESS_FEED_INTERVAL_MAX}
+          suffix=" min"
+          allowNegative={false}
+          allowDecimal={false}
+          w={120}
+        />
+      </Group>
+      <Input.Wrapper label="Options">
+        <Stack gap="xs" mt={6}>
+          <Switch
+            label="Afficher la date"
+            checked={avecDates(config)}
+            onChange={(e) => onChange(avec(config, DATES, e.currentTarget.checked))}
+            color="teal"
+          />
+          <Switch
+            label="Encadrer"
+            checked={estEncadre(config)}
+            onChange={(e) => onChange(avec(config, ENCADRE, e.currentTarget.checked))}
+            color="teal"
+          />
+        </Stack>
+      </Input.Wrapper>
+    </Stack>
+  );
+}
 export const rssWidget: AccessWidget = {
   type: "rss",
   kind: "common",
@@ -243,6 +401,7 @@ export const rssWidget: AccessWidget = {
     [QUANTITE]: QUANTITE_PAR_DEFAUT,
     [INTERVALLE]: ACCESS_FEED_INTERVAL_DEFAUT,
     [DATES]: true,
+    [ENCADRE]: false,
   },
   // Le clic appartient aux articles : chacun ouvre sa page.
   ownClicks: true,
@@ -252,52 +411,5 @@ export const rssWidget: AccessWidget = {
   // Une liste de liens : rien de plus que les liens eux-mêmes.
   marges: () => ({ haute: 0, basse: 0 }),
 
-  Config: ({ config, onChange }) => (
-    <Stack gap="xl">
-      <TextInput
-        label="Adresse du flux"
-        placeholder="https://"
-        value={texte(config, URL_FLUX)}
-        onChange={(e) => onChange(avec(config, URL_FLUX, e.currentTarget.value))}
-        autoFocus
-      />
-      {/* Un champ vidé le temps d'une saisie range la quantité par défaut
-          plutôt qu'un zéro, qui viderait l'élément. */}
-      <NumberInput
-        label="Nombre d'articles affichés"
-        placeholder={String(QUANTITE_PAR_DEFAUT)}
-        value={nombre(config, QUANTITE, QUANTITE_PAR_DEFAUT)}
-        onChange={(valeur) =>
-          onChange(avec(config, QUANTITE, valeur === "" ? QUANTITE_PAR_DEFAUT : Number(valeur)))
-        }
-        min={QUANTITE_MIN}
-        max={QUANTITE_MAX}
-        allowNegative={false}
-        allowDecimal={false}
-      />
-      {/* Le serveur relève la source à ce rythme et garde ses articles : la
-          page lit ce qu'il garde. Même règle que la quantité pour un champ
-          vidé. */}
-      <NumberInput
-        label="Actualisation (minutes)"
-        placeholder={String(ACCESS_FEED_INTERVAL_DEFAUT)}
-        value={nombre(config, INTERVALLE, ACCESS_FEED_INTERVAL_DEFAUT)}
-        onChange={(valeur) =>
-          onChange(
-            avec(config, INTERVALLE, valeur === "" ? ACCESS_FEED_INTERVAL_DEFAUT : Number(valeur)),
-          )
-        }
-        min={ACCESS_FEED_INTERVAL_MIN}
-        max={ACCESS_FEED_INTERVAL_MAX}
-        allowNegative={false}
-        allowDecimal={false}
-      />
-      <Checkbox
-        label="Afficher la date"
-        checked={avecDates(config)}
-        onChange={(e) => onChange(avec(config, DATES, e.currentTarget.checked))}
-        color="teal"
-      />
-    </Stack>
-  ),
+  Config: Reglages,
 };

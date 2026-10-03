@@ -13,12 +13,11 @@ import { IconFlag, IconPencil, IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { RED, couleurJalonParDefaut } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
-import ErrorAlert from "../ui/ErrorAlert";
 import LabelColorPicker from "../ui/LabelColorPicker";
 import { useLabelColors } from "../ui/LabelChip";
 import ListItems from "../ui/ListItems";
 import { MilestoneLabels, marquesJalons } from "./milestoneMarks";
-import { messageErreur } from "../../lib/errors";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 import { DEFAULT_LABEL_COLOR } from "@milo/shared";
 import type { Milestone, MilestoneType } from "@milo/shared";
 import BoutonFermer from "../ui/BoutonFermer";
@@ -97,9 +96,9 @@ function ChampPourcentage({
   );
 }
 
-// La ligne d'ajout porte un pourcentage et un libellé, comme une étiquette
-// porte une couleur et un nom. Le pourcentage proposé est à mi-chemin entre
-// le dernier jalon et la fin.
+// La ligne d'ajout porte une couleur et un nom, sans pourcentage : le jalon
+// se pose à mi-chemin entre le dernier jalon et la fin, et son pourcentage se
+// règle ensuite sur sa ligne.
 const aMiChemin = (liste: Saisie[]) => {
   const dernier = liste
     .filter((s) => !s.fixe)
@@ -153,12 +152,10 @@ export default function MilestonesModal({
   onSave,
 }: MilestonesModalProps) {
   const [saisies, setSaisies] = useState<Saisie[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // La ligne dont le libellé est en cours de modification.
   const [enEdition, setEnEdition] = useState<number | null>(null);
   const [nouveauLibelle, setNouveauLibelle] = useState("");
-  const [nouvelleValeur, setNouvelleValeur] = useState<number | "">(50);
   const [nouvelleCouleur, setNouvelleCouleur] = useState(DEFAULT_LABEL_COLOR);
   const couleurs = useLabelColors();
 
@@ -168,9 +165,7 @@ export default function MilestonesModal({
     setSaisies(liste);
     setEnEdition(null);
     setNouveauLibelle("");
-    setNouvelleValeur(aMiChemin(liste));
     setNouvelleCouleur(DEFAULT_LABEL_COLOR);
-    setError(null);
   }, [type]);
 
   const modifier = (cle: number, patch: Partial<Saisie>) =>
@@ -189,19 +184,17 @@ export default function MilestonesModal({
     );
 
   const ajouter = () => {
-    // Le libellé est facultatif : la valeur et la couleur suffisent.
-    if (nouvelleValeur === "") return;
+    // Le libellé est facultatif : la couleur suffit.
     const liste = [
       ...saisies,
       versSaisie({
-        value: nouvelleValeur,
+        value: aMiChemin(saisies),
         label: nouveauLibelle.trim(),
         color: nouvelleCouleur,
       }),
     ].sort((a, b) => (Number(a.value) || 0) - (Number(b.value) || 0));
     setSaisies(liste);
     setNouveauLibelle("");
-    setNouvelleValeur(aMiChemin(liste));
   };
 
   // Le libellé est facultatif : un jalon sans libellé colore sa tranche mais
@@ -224,13 +217,12 @@ export default function MilestonesModal({
   }));
 
   const enregistrer = async () => {
-    setError(null);
     setSaving(true);
     try {
       await onSave(valides);
       onClose();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setSaving(false);
     }
@@ -248,9 +240,6 @@ export default function MilestonesModal({
       styles={modalHeaderStyles(MODAL_PADDING)}
     >
       <Stack gap="md">
-        {error && (
-          <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>
-        )}
 
         {/* La même liste que les étiquettes d'un tableau (LabelsManager) :
             le pourcentage tient la place de la couleur, le libellé se
@@ -263,26 +252,18 @@ export default function MilestonesModal({
           emptyIcon={IconFlag}
           emptyText="Aucun jalon : le curseur des projets de cette catégorie restera nu"
           add={{
-            placeholder: "Nouveau jalon (libellé facultatif)",
+            placeholder: "Nom jalon (facultatif)",
             value: nouveauLibelle,
             onChange: setNouveauLibelle,
             onSubmit: ajouter,
             onCancel: () => setNouveauLibelle(""),
-            // La couleur puis le pourcentage, dans les colonnes des lignes
-            // au-dessus.
+            // La couleur, dans la colonne des lignes au-dessus.
             section: (
-              <>
-                <LabelColorPicker
-                  color={nouvelleCouleur}
-                  onChange={setNouvelleCouleur}
-                  label="le nouveau jalon"
-                />
-                <ChampPourcentage
-                  value={nouvelleValeur}
-                  onChange={setNouvelleValeur}
-                  label="Pourcentage du nouveau jalon"
-                />
-              </>
+              <LabelColorPicker
+                color={nouvelleCouleur}
+                onChange={setNouvelleCouleur}
+                label="le nouveau jalon"
+              />
             ),
           }}
         >

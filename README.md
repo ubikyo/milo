@@ -295,7 +295,8 @@ inscription, comptes de cet annuaire uniquement) :
    - déléguées : `openid`, `profile`, `email` (la connexion) ;
    - d'application : `User.Read.All`, `Group.Read.All`,
      `GroupMember.Read.All` (l'annuaire), `Mail.Read` et `Mail.Send` (les
-     boîtes de support et l'expédition).
+     boîtes de support et l'expédition), et, en option, `Calendars.Read`
+     (les rendez-vous que le widget Calendrier marque pour chacun).
 
    Puis **« Accorder un consentement d'administrateur »** : les permissions
    d'application ne valent qu'avec lui.
@@ -313,3 +314,5 @@ Pour les restreindre aux boîtes de support, une
 stratégie d'accès d'application Exchange Online (`New-ApplicationAccessPolicy`)
 limite l'application à un groupe de sécurité à extension messagerie qui les
 contient.
+Le widget Mail lit la boîte de réception de chacun avec cette même
+permission : une telle stratégie le restreint aux boîtes du groupe.

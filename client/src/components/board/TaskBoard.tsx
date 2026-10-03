@@ -13,7 +13,6 @@ import {
   Menu,
   Paper,
   ScrollArea,
-  SimpleGrid,
   Stack,
   Text,
   Textarea,
@@ -46,6 +45,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -63,9 +63,9 @@ import CardDrawer from "./CardDrawer";
 import MoveOrCopyListModal, { type ListAction } from "./MoveOrCopyListModal";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import EmptyPanel from "../ui/EmptyPanel";
-import ErrorAlert from "../ui/ErrorAlert";
+import pastilles from "../../assets/styles/ListColors.module.css";
 import classes from "../../assets/styles/TaskBoard.module.css";
-import { messageErreur } from "../../lib/errors";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 import { MOT_ECHEANCE, dateCourte, etatEcheance } from "../../lib/echeance";
 import { BordureSelection } from "../ui/LabelColorPicker";
 import type { EtatEcheance } from "../../lib/echeance";
@@ -76,7 +76,8 @@ import type {
   PointerEvent as ReactPointerEvent,
   ReactNode,
 } from "react";
-import { taskReference } from "@milo/shared";
+import { cleDeListe, isListColor, taskReference } from "@milo/shared";
+import { deLaListe } from "../../lib/listes";
 import type {
   Board,
   FollowKind,
@@ -206,20 +207,27 @@ const DOUBLE_CLICK_DELAY = 250;
 const LIST_BG =
   "light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5))";
 
-// Couleurs proposées dans le menu d'une liste, rangées en trois lignes de
-// trois. La chaîne vide vaut « aucune » : la liste reprend alors le fond
-// neutre du tableau. Le libellé ne s'affiche pas, il nomme la pastille.
-const LIST_COLORS = [
-  { value: "green", label: "Vert" },
-  { value: "blue", label: "Bleu" },
-  { value: "violet", label: "Violet" },
-  { value: "pink", label: "Rose" },
-  { value: "red", label: "Rouge" },
-  { value: "orange", label: "Orange" },
-  { value: "yellow", label: "Jaune" },
-  { value: "gray", label: "Gris" },
-  { value: "white", label: "Blanc" },
+// Couleurs proposées dans le menu d'une liste : le rouge, l'orange, le vert
+// et le bleu des projets, le jaune et le violet (nuance 8), puis deux
+// nuances plus claires de chacun (6 et 4, éclaircies dans useListColors), en
+// trois lignes de six. « Aucune », à part, rend à la liste le
+// fond neutre du tableau. Le libellé ne s'affiche pas, il nomme la pastille.
+const TEINTES = [
+  { nom: "red", label: "Rouge" },
+  { nom: "orange", label: "Orange" },
+  { nom: "yellow", label: "Jaune" },
+  { nom: "green", label: "Vert" },
+  { nom: "blue", label: "Bleu" },
+  { nom: "violet", label: "Violet" },
 ];
+const NUANCES = [
+  { nuance: 8, label: "" },
+  { nuance: 6, label: " moyen" },
+  { nuance: 4, label: " clair" },
+];
+const LIST_COLORS = NUANCES.flatMap(({ nuance, label }) =>
+  TEINTES.map((t) => ({ value: `${t.nom}.${nuance}`, label: `${t.label}${label}` })),
+);
 
 // Les couleurs d'une liste, résolues pour le thème courant. Tout part de son
 // fond : la bordure d'une carte l'éclaircit au survol, le « … » l'assombrit. Le
@@ -237,10 +245,16 @@ export function useListColors() {
       // à l'autre, blanc sur le sombre et noir sur le clair.
       let fond: string;
       let neutre = false;
-      const palette = color ? theme.colors[color] : undefined;
+      // « red.8 » : la couleur des projets, éclaircie d'un quart par cran
+      // sous 8 — le thème n'en a qu'une nuance (main.tsx). « red » — une
+      // couleur d'avant — prend la nuance principale du thème.
+      const [nom, nuance] = (color ?? "").split(".");
+      const palette = nom ? theme.colors[nom] : undefined;
       if (color === "white") fond = sombre ? theme.white : theme.black;
-      else if (palette && LIST_COLORS.some((c) => c.value === color))
-        fond = palette[getPrimaryShade(theme, colorScheme)] ?? palette[6]!;
+      else if (palette && isListColor(color)) {
+        const base = palette[getPrimaryShade(theme, colorScheme)] ?? palette[6]!;
+        fond = nuance ? lighten(base, (8 - Number(nuance)) * 0.125) : base;
+      }
       else {
         neutre = true;
         fond = (sombre ? theme.colors["dark"]?.[5] : theme.colors["gray"]?.[2]) ?? theme.white;
@@ -814,6 +828,8 @@ function ListCard({
   // Un champ de saisie garde le menu du navigateur : couper, coller.
   const ouvrirMenu = (event: ReactMouseEvent<HTMLElement>) => {
     if ((event.target as HTMLElement).closest("input, textarea")) return;
+    // En modification, sans rien à proposer : le menu du widget.
+    if (!verrouillee && !droits.ajouter && !droits.modifier && !droits.supprimer) return;
     setMenu(positionDuMenu(event));
   };
 
@@ -897,18 +913,23 @@ function ListCard({
           {/* Cochée, la liste est suivie : toute modification de ses
               cartes vaut notification. La coche est à droite comme dans
               les menus du système, l'œil à gauche comme les autres icônes. */}
-          <Menu.Item
-            leftSection={<IconEye size={16} />}
-            rightSection={suivie ? <IconCheck size={14} /> : null}
-            onClick={onToggleFollow}
-            closeMenuOnClick={false}
-          >
-            Suivre
-          </Menu.Item>
+          {/* En modification, la liste ne propose que ce qui touche au
+              tableau : la déplacer, la copier, la supprimer. Hors
+              modification, ce qui touche à son contenu. */}
+          {verrouillee && (
+            <Menu.Item
+              leftSection={<IconEye size={16} />}
+              rightSection={suivie ? <IconCheck size={14} /> : null}
+              onClick={onToggleFollow}
+              closeMenuOnClick={false}
+            >
+              Suivre
+            </Menu.Item>
+          )}
 
-          {(droits.ajouter || droits.modifier) && <Menu.Divider />}
+          {verrouillee && (droits.ajouter || droits.modifier) && <Menu.Divider />}
 
-          {droits.ajouter && (
+          {verrouillee && droits.ajouter && (
             <Menu.Item
               leftSection={<IconSeparatorHorizontal size={16} />}
               onClick={onSeparator}
@@ -928,7 +949,7 @@ function ListCard({
           )}
           {/* Copier suit déplacer : même question — vers quel tableau ? —
               et la même boîte y répond, le tableau courant compris. */}
-          {droits.ajouter && (
+          {!verrouillee && droits.ajouter && (
             <Menu.Item
               leftSection={<IconCopy size={16} />}
               onClick={onCopy}
@@ -937,12 +958,12 @@ function ListCard({
             </Menu.Item>
           )}
 
-          {droits.modifier && (
+          {verrouillee && droits.modifier && (
             <>
               <Menu.Divider />
               {/* Les pastilles se passent d'intitulé : une couleur se
                   reconnaît. */}
-              <SimpleGrid cols={3} spacing={8} p="xs">
+              <div className={pastilles.grille}>
                 {LIST_COLORS.map((couleur) => (
                   <ColorSwatch
                     key={couleur.value}
@@ -954,14 +975,14 @@ function ListCard({
                       setMenu(null);
                       onColor(couleur.value);
                     }}
-                    style={{ cursor: "pointer" }}
+                    className={pastilles.pastille}
                     aria-label={couleur.label}
                     aria-pressed={couleur.value === list.color}
                   >
                     {couleur.value === list.color && <BordureSelection />}
                   </ColorSwatch>
                 ))}
-              </SimpleGrid>
+              </div>
               <Menu.Item
                 leftSection={<IconCircleOff size={16} />}
                 onClick={() => onColor("")}
@@ -975,15 +996,16 @@ function ListCard({
             <>
               <Menu.Divider />
               {/* Vider la liste sans la supprimer : ses séparateurs restent. */}
-              <Menu.Item
-                color={RED}
-                leftSection={<IconTrashX size={16} />}
-                onClick={onDeleteTasks}
-                disabled={taches === 0}
-              >
-                Supprimer tâches
-              </Menu.Item>
-              {!verrouillee && (
+              {verrouillee ? (
+                <Menu.Item
+                  color={RED}
+                  leftSection={<IconTrashX size={16} />}
+                  onClick={onDeleteTasks}
+                  disabled={taches === 0}
+                >
+                  Supprimer tâches
+                </Menu.Item>
+              ) : (
                 <Menu.Item
                   color={RED}
                   leftSection={<IconTrash size={16} />}
@@ -1016,7 +1038,8 @@ interface CardViewProps {
   onEditKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
   onEditBlur: () => void;
   onPointerDown: (event: ReactPointerEvent) => void;
-  onContextMenu: (card: TaskCard, position: PointMenuPosition) => void;
+  /** Sans lui — en modification —, le clic droit revient au menu du widget. */
+  onContextMenu?: (card: TaskCard, position: PointMenuPosition) => void;
   /** Son menu est ouvert : elle garde le cadre du survol. */
   active: boolean;
   palette: Palette;
@@ -1081,7 +1104,7 @@ function CardView({
       // Une carte s'ouvre en fiche d'un simple clic ; seul le séparateur, qui
       // n'a pas de fiche, se modifie encore sur le tableau.
       onDoubleClick={() => onStartEdit(card)}
-      onContextMenu={(e) => onContextMenu(card, positionDuMenu(e))}
+      onContextMenu={(e) => onContextMenu?.(card, positionDuMenu(e))}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -1163,7 +1186,7 @@ function ListStill({
   );
 }
 
-interface TaskBoardProps {
+export interface TaskBoardProps {
   boardId: string | null;
   boards: Board[];
   lists: TaskList[];
@@ -1176,7 +1199,18 @@ interface TaskBoardProps {
   onToggleFollow: (kind: FollowKind, id: Id) => void | Promise<void>;
   carteAOuvrir: Id | null;
   onCarteOuverte: (id: Id | null) => void;
+  /** Le widget « Tâches » qui la montre : ses listes, et celles qu'on y crée. */
+  listKey?: string;
+  /** Montrer le numéro des cartes : une option du widget (task-indicators/liste.tsx). */
+  withNumber?: boolean;
 }
+
+/** La clé de l'option du widget « Tâches » qui montre le numéro des cartes. */
+export const NUMEROS = "numeros";
+
+/** Le widget montre-t-il le numéro des cartes ? Sans réglage, non. */
+export const avecNumeros = (config: unknown): boolean =>
+  (config as Record<string, unknown> | null)?.[NUMEROS] === true;
 
 /**
  * Le tableau ouvert, tel que la page le met en scène : le widget des listes
@@ -1186,13 +1220,24 @@ interface TaskBoardProps {
 export const TableauDesTachesContext = createContext<TaskBoardProps | null>(null);
 
 /**
- * Les listes du tableau en widget. Remonté à chaque tableau : une saisie ou
- * un glisser en cours ne traverse pas le changement d'onglet.
+ * Les listes du tableau en widget — celles de ce widget seulement
+ * (lib/listes.ts). Remonté à chaque tableau : une saisie ou un glisser en
+ * cours ne traverse pas le changement d'onglet.
  */
-export function TableauDesTachesWidget() {
+export function TableauDesTachesWidget({ config }: { config: unknown }) {
   const tableau = useContext(TableauDesTachesContext);
+  const toutes = tableau?.lists;
+  const listes = useMemo(() => toutes?.filter(deLaListe(config)) ?? [], [toutes, config]);
   if (!tableau) return null;
-  return <TaskBoard key={tableau.boardId} {...tableau} />;
+  return (
+    <TaskBoard
+      key={tableau.boardId}
+      {...tableau}
+      lists={listes}
+      listKey={cleDeListe(config)}
+      withNumber={avecNumeros(config)}
+    />
+  );
 }
 
 export default function TaskBoard({
@@ -1208,13 +1253,14 @@ export default function TaskBoard({
   onToggleFollow,
   carteAOuvrir,
   onCarteOuverte,
+  listKey,
+  withNumber = false,
 }: TaskBoardProps) {
   const [composing, setComposing] = useState(false);
   // Le rang où la liste saisie prendra place : « null », au bout. Le « + »
   // entre deux listes en donne un, et l'encart s'ouvre à cet endroit.
   const [rangNouvelle, setRangNouvelle] = useState<number | null>(null);
   const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [editingId, setEditingId] = useState<Id | null>(null);
@@ -1301,20 +1347,17 @@ export default function TaskBoard({
 
   const couleurs = useListColors();
 
-  // Le tableau ouvert dit s'il montre le numéro de ses cartes. Un tableau pas
-  // encore lu le montre : c'est le réglage par défaut.
   const tableau = (boards || []).find((b) => String(b.id) === String(boardId));
-  const withNumber = tableau ? tableau.show_card_numbers !== 0 : true;
   // Verrouillé, le tableau garde ses listes : ni ajout, ni déplacement, ni
   // suppression. Les cartes, elles, se glissent toujours.
   const verrouille = tableau?.is_locked === 1;
-  // Ce que le compte peut faire ici dépend de la société du tableau : qui ne
-  // fait que lire ouvre les fiches, sans rien ajouter, glisser ni supprimer.
+  // Qui ne fait que lire ouvre les fiches, sans rien ajouter, glisser ni
+  // supprimer.
   const peut = useDroits();
   const droits: DroitsTableau = {
-    ajouter: peut("tasks", "create", tableau?.company_id),
-    modifier: peut("tasks", "update", tableau?.company_id),
-    supprimer: peut("tasks", "delete", tableau?.company_id),
+    ajouter: peut("tasks", "create"),
+    modifier: peut("tasks", "update"),
+    supprimer: peut("tasks", "delete"),
   };
   // Pas de liste ajoutée : verrouillé, ou sans le droit.
   const sansAjoutDeListe = verrouille || !droits.ajouter;
@@ -1394,7 +1437,7 @@ export default function TaskBoard({
       await api.updateTaskList(list.id, { name: nom });
       await onListsChanged();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   };
 
@@ -1411,7 +1454,7 @@ export default function TaskBoard({
       await onListsChanged();
     } catch (e) {
       setOrdreLocal(null);
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   };
 
@@ -1422,7 +1465,7 @@ export default function TaskBoard({
       await api.deleteTaskList(list.id);
       await onListsChanged();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   };
 
@@ -1436,7 +1479,7 @@ export default function TaskBoard({
       await api.deleteTaskListCards(list.id);
       await onListsChanged();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   };
 
@@ -1447,7 +1490,7 @@ export default function TaskBoard({
       await api.deleteTaskCard(card.id);
       await onListsChanged();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   };
 
@@ -1508,7 +1551,15 @@ export default function TaskBoard({
     try {
       // Le serveur ajoute toujours la carte à la fin : si elle s'insère plus
       // haut, l'ordre de la liste suit dans la foulée.
-      const creee = await api.createTaskCard(list.id, texte, kind);
+      // Elle naît dans le contexte qu'on regarde ; sous « Tous », dans le
+      // premier du tableau.
+      const creee = await api.createTaskCard(
+        list.id,
+        texte,
+        kind,
+        undefined,
+        tableau?.context_id ?? null,
+      );
       if (index < cartes.length) {
         await api.reorderTaskCards(
           list.id,
@@ -1518,7 +1569,7 @@ export default function TaskBoard({
       await onListsChanged();
     } catch (e) {
       setOrdreLocal(null);
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   };
 
@@ -1548,7 +1599,7 @@ export default function TaskBoard({
       await onListsChanged();
       if (!estSeparateur(card)) setCopieAOuvrir(copie.id);
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   };
 
@@ -1568,7 +1619,7 @@ export default function TaskBoard({
       await api.updateTaskCard(card.id, texte);
       await onListsChanged();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   };
 
@@ -1661,7 +1712,7 @@ export default function TaskBoard({
         await onListsChanged();
       } catch (e) {
         setOrdreLocal(null);
-        setError(messageErreur(e));
+        notifierErreur(messageErreur(e));
       }
     };
 
@@ -1729,7 +1780,7 @@ export default function TaskBoard({
       await api.updateChecklistItem(itemId, { done: true });
       await onListsChanged();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   };
 
@@ -1838,7 +1889,7 @@ export default function TaskBoard({
         await onListsChanged();
       } catch (e) {
         setOrdreLocal(null);
-        setError(messageErreur(e));
+        notifierErreur(messageErreur(e));
       }
     };
 
@@ -1855,22 +1906,25 @@ export default function TaskBoard({
     setComposing(false);
     setRangNouvelle(null);
     setName("");
-    setError(null);
   };
 
   const create = async () => {
     if (!name.trim()) return;
     setBusy(true);
-    setError(null);
     try {
-      await api.createTaskList(Number(boardId), name.trim(), rangNouvelle ?? undefined);
+      await api.createTaskList(
+        Number(boardId),
+        name.trim(),
+        rangNouvelle ?? undefined,
+        listKey || undefined,
+      );
       await onListsChanged();
       // On enchaîne : le champ reste ouvert et vide pour la liste suivante,
       // qui se range juste après celle qu'on vient de créer.
       setName("");
       setRangNouvelle((r) => (r === null ? null : r + 1));
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setBusy(false);
     }
@@ -2000,7 +2054,9 @@ export default function TaskBoard({
               })}
               onEditBlur={() => saveEditCard(card)}
               onPointerDown={onCardPointerDown(card, list)}
-              onContextMenu={(carte, position) => setMenuCarte({ card: carte, position })}
+              onContextMenu={
+                verrouille ? (carte, position) => setMenuCarte({ card: carte, position }) : undefined
+              }
               active={menuCarte?.card.id === card.id}
               palette={palette}
               withNumber={withNumber}
@@ -2085,7 +2141,6 @@ export default function TaskBoard({
 
   return (
     <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
-      {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
 
       {/* Un tableau sans liste : l'invite occupe toute la hauteur du
           panneau, comme les autres écrans vides. Pendant une lecture, on
@@ -2097,6 +2152,8 @@ export default function TaskBoard({
             message="Aucune liste"
             actionLabel={sansAjoutDeListe ? undefined : "Ajouter une liste"}
             onAction={sansAjoutDeListe ? undefined : () => setComposing(true)}
+            // La taille des autres listes vides — projets, demandes.
+            size="md"
           />
         )
       ) : (
@@ -2272,6 +2329,7 @@ export default function TaskBoard({
         labels={labels ?? []}
         users={users ?? []}
         boardId={boardId}
+        contexts={tableau?.contexts}
         onLabelsChanged={onLabelsChanged}
         onSaved={onListsChanged}
         readOnly={!droits.modifier}
@@ -2340,7 +2398,7 @@ export default function TaskBoard({
         onClose={() => setListeVisee(null)}
         mode={listeVisee?.mode ?? "move"}
         list={listeVisee?.list ?? null}
-        companyId={tableau?.company_id ?? null}
+        viewId={tableau?.view_id ?? null}
         onDone={onListsChanged}
       />
 

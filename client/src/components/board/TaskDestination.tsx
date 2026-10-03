@@ -1,10 +1,9 @@
 import { Group, Select, Text } from "@mantine/core";
 import { useEffect, useState } from "react";
 import { lienElement } from "@milo/shared";
-import type { Board, Company, Id, LienKind, TaskList } from "@milo/shared";
+import type { Board, Id, LienKind, TaskList, View } from "@milo/shared";
 import { api } from "../../api";
 import { messageErreur } from "../../lib/errors";
-import { useDroits } from "../../lib/droits";
 
 // « Créer une tâche », depuis le menu contextuel d'un projet, d'une demande de
 // support, d'un poste ou d'un élément du mode Accès. La fiche de la carte
@@ -19,8 +18,6 @@ export interface TacheSource {
   /** Pour « access », la catégorie : c'est elle que le lien ouvre. */
   id: Id;
   title: string;
-  /** La société de l'élément, où la destination se pose par défaut. */
-  companyId: Id | null;
   /** Un lien du mode Accès : son adresse suit dans la description. */
   url?: string;
   /**
@@ -102,16 +99,12 @@ interface TaskDestinationProps {
 }
 
 /**
- * Société, tableau, liste : trois choix en cascade, sur une même ligne. Chacun
+ * Vue, tableau, liste : trois choix en cascade, sur une même ligne. Chacun
  * retient d'office le premier de ce qu'il propose.
  */
 export default function TaskDestination({ source, onChange, onError }: TaskDestinationProps) {
-  // Seules les sociétés où l'on peut ajouter une tâche sont proposées.
-  const peut = useDroits();
-  const [companies, setCompanies] = useState<Company[] | null>(null);
-  const [societe, setSociete] = useState<string | null>(
-    source.companyId === null ? null : String(source.companyId),
-  );
+  const [vues, setVues] = useState<View[] | null>(null);
+  const [vue, setVue] = useState<string | null>(null);
   const [boards, setBoards] = useState<Board[] | null>(null);
   const [boardId, setBoardId] = useState<string | null>(null);
   const [lists, setLists] = useState<TaskList[] | null>(null);
@@ -119,25 +112,19 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
 
   useEffect(() => {
     onChange({ boardId, listId });
-    // « onChange » change à chaque rendu du tiroir : seul le choix compte.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId, listId]);
 
+  // Les vues : celle des tâches est retenue d'office — celle dont le nom le
+  // dit —, à défaut la première : il y a toujours un premier choix.
   useEffect(() => {
     let annule = false;
     api
-      .getCompanies()
-      .then((toutes) => {
+      .getViews()
+      .then((lues) => {
         if (annule) return;
-        const lues = toutes.filter((c) => peut("tasks", "create", c.id));
-        setCompanies(lues);
-        // Sans société propre — un élément du mode Accès, un poste non
-        // rattaché —, ou dans une société où l'on ne peut pas ajouter de
-        // tâche, celle dont le nom rappelle le tableau d'origine, à défaut la
-        // première : il y a toujours un premier choix.
-        const devinee = rapprocher(source.boardName, lues) ?? lues[0];
-        const permise = lues.some((c) => c.id === source.companyId);
-        if (!permise) setSociete(devinee ? String(devinee.id) : null);
+        setVues(lues);
+        const devinee = rapprocher("Tâches", lues) ?? lues[0];
+        setVue(devinee ? String(devinee.id) : null);
       })
       .catch((e) => !annule && onError(messageErreur(e)));
     return () => {
@@ -146,15 +133,15 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
 
-  // Les tableaux suivent la société : celui qui porte le nom du tableau
+  // Les tableaux suivent la vue : celui qui porte le nom du tableau
   // d'origine est retenu d'office, à défaut le premier.
   useEffect(() => {
     setBoards(null);
     setBoardId(null);
-    if (!societe) return;
+    if (!vue) return;
     let annule = false;
     api
-      .getBoards(societe)
+      .getBoards(vue)
       .then((lus) => {
         if (annule) return;
         setBoards(lus);
@@ -166,7 +153,7 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
       annule = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [societe]);
+  }, [vue]);
 
   // Les listes suivent le tableau ; la première est retenue d'office.
   useEffect(() => {
@@ -188,11 +175,11 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId]);
 
-  const companyOptions = (companies ?? []).map((c) => ({ value: String(c.id), label: c.name }));
+  const vueOptions = (vues ?? []).map((v) => ({ value: String(v.id), label: v.name }));
   const boardOptions = (boards ?? []).map((b) => ({ value: String(b.id), label: b.name }));
   const listOptions = (lists ?? []).map((l) => ({ value: String(l.id), label: l.name }));
 
-  // Une société sans tableau, un tableau sans liste : on le dit plutôt que de
+  // Une vue sans tableau, un tableau sans liste : on le dit plutôt que de
   // laisser une liste déroulante vide.
   const sansTableau = boards !== null && boards.length === 0;
   const sansListe = lists !== null && lists.length === 0;
@@ -201,23 +188,23 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
     <div>
       <Group gap="md" wrap="nowrap" grow align="flex-start">
         <Select
-          label="Société"
+          label="Vue"
           placeholder="Choisir"
-          data={companyOptions}
-          value={societe}
-          onChange={setSociete}
+          data={vueOptions}
+          value={vue}
+          onChange={setVue}
           allowDeselect={false}
-          searchable={companyOptions.length > 8}
+          searchable={vueOptions.length > 8}
           comboboxProps={{ withinPortal: true }}
         />
         <Select
           label="Tableau"
-          placeholder={societe && boards === null ? "Lecture…" : "Choisir"}
+          placeholder={vue && boards === null ? "Lecture…" : "Choisir"}
           data={boardOptions}
           value={boardId}
           onChange={setBoardId}
           allowDeselect={false}
-          disabled={!societe || boards === null || sansTableau}
+          disabled={!vue || boards === null || sansTableau}
           searchable={boardOptions.length > 8}
           comboboxProps={{ withinPortal: true }}
         />
@@ -237,7 +224,7 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
       {(sansTableau || sansListe) && (
         <Text size="sm" c="dimmed" mt="xs">
           {sansTableau
-            ? "Cette société n'a aucun tableau où créer la tâche."
+            ? "Cette vue n'a aucun tableau où créer la tâche."
             : "Ce tableau n'a aucune liste où créer la tâche."}
         </Text>
       )}

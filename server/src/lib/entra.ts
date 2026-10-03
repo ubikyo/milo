@@ -6,6 +6,8 @@
 //     GroupMember.Read.All.
 //   - Le courrier des boîtes de support et des notifications, par Graph
 //     encore : Mail.Read pour lire, Mail.Send pour envoyer en leur nom.
+//   - L'agenda de chacun, pour le widget Calendrier : Calendars.Read ; sa
+//     boîte de réception, pour le widget Mail : Mail.Read encore.
 //
 // Les permissions de l'application demandent le consentement d'un
 // administrateur du locataire, donné une fois dans le portail Azure. Voir la
@@ -15,7 +17,17 @@
 // par l'API. Ce n'est pas du chiffrement : qui peut lire la base peut le
 // lire. C'est la base qu'il faut protéger — elle porte déjà les sessions.
 
-import type { EntraPrincipal, EntraSettings, EntraSettingsInput, EntraStatus } from "@milo/shared";
+import type {
+  AccessCalendarEvent,
+  AccessMail,
+  AccessMailAttachment,
+  AccessMailPage,
+  MailAddress,
+  EntraPrincipal,
+  EntraSettings,
+  EntraSettingsInput,
+  EntraStatus,
+} from "@milo/shared";
 import { badRequest, fail } from "./http.js";
 import type { PieceJointe } from "./mail-template.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
@@ -32,9 +44,20 @@ interface Stockes {
    * par Microsoft — connexions, annuaire, courrier — jusqu'à la reconnexion.
    */
   deconnecte: boolean;
+  /**
+   * L'adresse d'où partent les e-mails de Milo — avis, assignations, réponses
+   * aux demandes saisies. Une demande reçue répond de sa propre boîte.
+   */
+  mail_sender: string;
 }
 
-const VIDES: Stockes = { client_id: "", tenant: "", secret: "", deconnecte: false };
+const VIDES: Stockes = {
+  client_id: "",
+  tenant: "",
+  secret: "",
+  deconnecte: false,
+  mail_sender: "",
+};
 
 /** L'inscription que la messagerie OAuth rangeait, avant qu'Entra la reprenne. */
 interface AncienneMessagerie {
@@ -47,15 +70,13 @@ interface AncienneMessagerie {
  */
 export const reglagesEntra = (): Stockes => {
   const lus = readSetting<Partial<Stockes> | null>(CLE, null);
-  // Une adresse d'expédition et un groupe d'administrateurs ont été rangés
-  // un temps ici : ils ne servent plus — chaque société expédie de sa boîte
-  // de support, et le Paramétrage est un droit des rôles.
   if (lus) {
     return {
       client_id: lus.client_id ?? "",
       tenant: lus.tenant ?? "",
       secret: lus.secret ?? "",
       deconnecte: lus.deconnecte ?? false,
+      mail_sender: lus.mail_sender ?? "",
     };
   }
 
@@ -74,6 +95,7 @@ export const reglagesEntraPublics = (): EntraSettings => {
     client_id: r.client_id,
     tenant: r.tenant,
     has_secret: r.secret !== "",
+    mail_sender: r.mail_sender,
   };
 };
 
@@ -89,10 +111,18 @@ export const modifierEntra = (entree: EntraSettingsInput): void => {
   if (entree.client_id !== undefined) suivants.client_id = texte(entree.client_id);
   if (entree.tenant !== undefined) suivants.tenant = texte(entree.tenant);
   if (entree.secret !== undefined) suivants.secret = String(entree.secret);
+  if (entree.mail_sender !== undefined) {
+    const adresse = texte(entree.mail_sender);
+    if (adresse && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adresse)) badRequest("Adresse d'envoi invalide");
+    suivants.mail_sender = adresse;
+  }
 
   writeSetting(CLE, suivants);
   jetonEnCache = null;
 };
+
+/** L'adresse d'envoi commune ; vide tant qu'on ne l'a pas réglée. */
+export const adresseDEnvoi = (): string => reglagesEntra().mail_sender;
 
 const inscriptionComplete = (r: Stockes): boolean => Boolean(r.client_id && r.tenant && r.secret);
 
@@ -407,6 +437,227 @@ export const groupesEntra = async (oid: string): Promise<string[]> => {
   return groupes.map((g) => g.id);
 };
 
+// --- Agenda ----------------------------------------------------------------
+
+interface RendezVousGraph {
+  id: string;
+  subject?: string | null;
+  start?: { dateTime?: string };
+  end?: { dateTime?: string };
+  isAllDay?: boolean;
+  isCancelled?: boolean;
+  location?: { displayName?: string | null } | null;
+  showAs?: string | null;
+  webLink?: string | null;
+}
+
+/** Une date que Graph rend en UTC sans le dire : on la lui fait dire. */
+const enUtc = (valeur: string | undefined): string => {
+  if (!valeur) return "";
+  return /(Z|[+-]\d{2}:\d{2})$/.test(valeur) ? valeur : `${valeur.replace(/\.\d+$/, "")}Z`;
+};
+
+/** Au plus, sur une période : de quoi couvrir un mois chargé. */
+const RENDEZ_VOUS_MAX = 500;
+
+/**
+ * Les rendez-vous de l'agenda principal de l'utilisateur entre deux instants,
+ * occurrences des séries comprises (calendarView). Demande la permission
+ * d'application Calendars.Read ; les rendez-vous annulés n'y sont pas.
+ */
+export const agendaEntra = async (
+  oid: string,
+  debut: Date,
+  fin: Date,
+): Promise<AccessCalendarEvent[]> => {
+  const parametres = new URLSearchParams({
+    startDateTime: debut.toISOString(),
+    endDateTime: fin.toISOString(),
+    $select: "id,subject,start,end,isAllDay,isCancelled,location,showAs,webLink",
+    $orderby: "start/dateTime",
+    $top: "100",
+  });
+  const rendezVous: RendezVousGraph[] = [];
+  let suivante: string | undefined =
+    `/users/${encodeURIComponent(oid)}/calendarView?${parametres.toString()}`;
+  while (suivante && rendezVous.length < RENDEZ_VOUS_MAX) {
+    const page: Page<RendezVousGraph> = await graph<Page<RendezVousGraph>>(suivante, {
+      entetes: { Prefer: 'outlook.timezone="UTC"' },
+    });
+    rendezVous.push(...page.value);
+    suivante = page["@odata.nextLink"];
+  }
+  return rendezVous
+    .filter((r) => !r.isCancelled)
+    .map((r) => ({
+      id: r.id,
+      subject: r.subject ?? "",
+      start: enUtc(r.start?.dateTime),
+      end: enUtc(r.end?.dateTime),
+      all_day: r.isAllDay === true,
+      location: r.location?.displayName ?? "",
+      show_as: r.showAs ?? "",
+      url: r.webLink ?? "",
+    }));
+};
+
+// --- Boîte personnelle -----------------------------------------------------
+//
+// Ce que le widget Mail montre : la boîte de réception de qui regarde, lue
+// par l'application (Mail.Read). Rien n'y est modifié — un e-mail ouvert dans
+// Milo n'est pas marqué lu : cela demanderait Mail.ReadWrite sur toutes les
+// boîtes.
+
+interface AdresseGraph {
+  emailAddress?: { name?: string; address?: string };
+}
+
+interface EnteteGraph {
+  id: string;
+  subject?: string | null;
+  from?: AdresseGraph | null;
+  receivedDateTime?: string;
+  bodyPreview?: string;
+  isRead?: boolean;
+  hasAttachments?: boolean;
+  importance?: string;
+}
+
+const CHAMPS_ENTETE = "id,subject,from,receivedDateTime,bodyPreview,isRead,hasAttachments,importance";
+
+const versAdresse = (a: AdresseGraph | null | undefined): MailAddress => ({
+  name: a?.emailAddress?.name ?? "",
+  email: a?.emailAddress?.address ?? "",
+});
+
+const versEntete = (m: EnteteGraph): AccessMail => ({
+  id: m.id,
+  subject: m.subject ?? "",
+  from: versAdresse(m.from),
+  received_at: m.receivedDateTime ?? "",
+  preview: m.bodyPreview ?? "",
+  is_read: m.isRead !== false,
+  has_attachments: Boolean(m.hasAttachments),
+  importance: m.importance ?? "normal",
+});
+
+/**
+ * Une page de la boîte de réception, des plus récents aux plus anciens.
+ * « nonLus » ne garde que les non lus : Graph veut alors que le tri porte
+ * aussi sur le filtre, et dans le même ordre — d'où la date en tête du filtre.
+ */
+export const pageDeLaBoite = async (
+  oid: string,
+  decalage: number,
+  combien: number,
+  nonLus: boolean,
+): Promise<AccessMailPage> => {
+  const parametres = new URLSearchParams({
+    $top: String(combien),
+    $skip: String(decalage),
+    $select: CHAMPS_ENTETE,
+    $orderby: "receivedDateTime desc",
+  });
+  if (nonLus) parametres.set("$filter", "receivedDateTime ge 1900-01-01T00:00:00Z and isRead eq false");
+  const boite = `/users/${encodeURIComponent(oid)}/mailFolders/inbox`;
+  const [page, dossier] = await Promise.all([
+    graph<Page<EnteteGraph>>(`${boite}/messages?${parametres.toString()}`),
+    decalage === 0
+      ? graph<{ unreadItemCount?: number }>(`${boite}?$select=unreadItemCount`)
+      : Promise.resolve(null),
+  ]);
+  return {
+    messages: page.value.map(versEntete),
+    more: Boolean(page["@odata.nextLink"]),
+    ...(dossier ? { unread: dossier.unreadItemCount ?? 0 } : {}),
+  };
+};
+
+/** Au-delà, une image intégrée n'est pas rapatriée : elle ferait un corps trop lourd. */
+const IMAGE_INTEGREE_MAX = 2 * 1024 * 1024;
+
+/**
+ * Un e-mail de la boîte, corps compris tel que l'expéditeur l'a écrit, et ses
+ * pièces jointes. Les images intégrées (« cid: ») reviennent en adresses
+ * « data: », prêtes à remplacer leur citation.
+ */
+export const courrierDeLaBoite = async (
+  oid: string,
+  id: string,
+): Promise<{
+  entete: AccessMail;
+  to: MailAddress[];
+  cc: MailAddress[];
+  body: string;
+  body_type: "html" | "text";
+  url: string;
+  images: Map<string, string>;
+  attachments: AccessMailAttachment[];
+}> => {
+  const base = `/users/${encodeURIComponent(oid)}/messages/${encodeURIComponent(id)}`;
+  const message = await graph<
+    EnteteGraph & {
+      toRecipients?: AdresseGraph[];
+      ccRecipients?: AdresseGraph[];
+      body?: { content?: string; contentType?: string };
+      webLink?: string;
+    }
+  >(`${base}?$select=${CHAMPS_ENTETE},toRecipients,ccRecipients,body,webLink`);
+
+  const images = new Map<string, string>();
+  const attachments: AccessMailAttachment[] = [];
+  if (message.hasAttachments || /cid:/i.test(message.body?.content ?? "")) {
+    const pieces = await toutesLesPages<PieceGraph>(
+      `${base}/attachments?$select=id,name,contentType,size,isInline`,
+    );
+    for (const piece of pieces) {
+      if (piece["@odata.type"] !== "#microsoft.graph.fileAttachment") continue;
+      if (!piece.isInline) {
+        attachments.push({ id: piece.id, name: piece.name ?? "piece-jointe", size: piece.size ?? 0 });
+        continue;
+      }
+      if ((piece.size ?? 0) > IMAGE_INTEGREE_MAX) continue;
+      const detail = await graph<PieceGraph & { contentBytes?: string }>(
+        `${base}/attachments/${encodeURIComponent(piece.id)}`,
+      );
+      const cid = (detail.contentId ?? "").replace(/^<|>$/g, "");
+      if (cid && detail.contentBytes && /^image\//.test(detail.contentType ?? "")) {
+        images.set(cid, `data:${detail.contentType};base64,${detail.contentBytes}`);
+      }
+    }
+  }
+
+  return {
+    entete: versEntete(message),
+    to: (message.toRecipients ?? []).map(versAdresse),
+    cc: (message.ccRecipients ?? []).map(versAdresse),
+    body: message.body?.content ?? "",
+    body_type: (message.body?.contentType ?? "").toLowerCase() === "text" ? "text" : "html",
+    url: message.webLink ?? "",
+    images,
+    attachments,
+  };
+};
+
+/** Une pièce jointe d'un e-mail de la boîte, contenu compris. */
+export const pieceDeLaBoite = async (
+  oid: string,
+  id: string,
+  pieceId: string,
+): Promise<{ name: string; mime: string; contenu: Buffer }> => {
+  const piece = await graph<PieceGraph & { contentBytes?: string }>(
+    `/users/${encodeURIComponent(oid)}/messages/${encodeURIComponent(id)}/attachments/${encodeURIComponent(pieceId)}`,
+  );
+  if (piece["@odata.type"] !== "#microsoft.graph.fileAttachment" || !piece.contentBytes) {
+    fail(404, "Pièce jointe introuvable");
+  }
+  return {
+    name: piece.name ?? "piece-jointe",
+    mime: piece.contentType ?? "application/octet-stream",
+    contenu: Buffer.from(piece.contentBytes!, "base64"),
+  };
+};
+
 // --- Connexion des utilisateurs --------------------------------------------
 
 /** Ce que la connexion demande : qui est la personne, rien de plus. */
@@ -629,6 +880,17 @@ export const deltaDeLaBoite = async (
     prochain = page["@odata.deltaLink"] ?? prochain;
   }
   return { courriers, lien: prochain };
+};
+
+/**
+ * Retire un e-mail relevé de la boîte (Mail.ReadWrite). Graph le range dans
+ * les éléments supprimés plutôt que de l'effacer : il y reste retrouvable,
+ * et la réponse à sa demande (repondreParGraph) le cite toujours.
+ */
+export const supprimerCourrier = async (boite: string, graphId: string): Promise<void> => {
+  await graph(`/users/${encodeURIComponent(boite)}/messages/${encodeURIComponent(graphId)}`, {
+    method: "DELETE",
+  });
 };
 
 /** Ce que la delta query ne dit pas — ou plus — d'un e-mail. */

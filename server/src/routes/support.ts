@@ -29,8 +29,11 @@ import {
   supportTicketRef,
 } from "@milo/shared";
 import type { Id, Right, SupportStatus } from "@milo/shared";
-import { selection, transaction } from "../db/query.js";
-import type { CompanyRow, SupportRequestRow, UserRow } from "../db/rows.js";
+import { transaction } from "../db/query.js";
+import type { SupportRequestRow, UserRow } from "../db/rows.js";
+import { boardLisible, boards, tableauOuvert } from "../repositories/boards.js";
+import { contexteDuTableau, contexts } from "../repositories/contexts.js";
+import { cleDansLeTableau } from "../repositories/listes.js";
 import {
   concernes,
   notifier,
@@ -43,6 +46,7 @@ import {
   badRequest,
   conflict,
   forbidden,
+  notFound,
   orNotFound,
   refuserSiUtilise,
   requireText,
@@ -88,16 +92,8 @@ import {
 } from "../repositories/support.js";
 import { users } from "../repositories/users.js";
 
-const SOCIETE_INTROUVABLE = "Société introuvable";
 const COMMENTAIRE_INTROUVABLE = "Commentaire introuvable";
 
-const societes = selection<CompanyRow>("SELECT * FROM companies WHERE id = ?");
-
-/** La société visée, si elle existe : tout ce qui suit lui appartient. */
-const societe = (id: unknown): CompanyRow => {
-  if (!id) badRequest("La société est requise");
-  return orNotFound(societes.get(id), SOCIETE_INTROUVABLE);
-};
 
 /** Le statut reçu. Une valeur inconnue est refusée plutôt que corrigée. */
 const statut = (valeur: unknown, defaut: SupportStatus): SupportStatus => {
@@ -114,14 +110,17 @@ supportRequestRoutes.use(touch("support-requests"));
 const demande = (id: unknown) => orNotFound(supportRequests.byId.get(id), DEMANDE_INTROUVABLE);
 
 /**
- * La demande, si l'on voit le support de sa société — et qu'on y a `droit`
- * quand on y écrit. Répondre, commenter, assigner, fermer : c'est la
+ * La demande, si l'on voit le support et le tableau de son contexte — et
+ * qu'on y a `droit` quand on y écrit. Répondre, commenter, assigner, fermer : c'est la
  * modifier.
  */
 const demandePour = (req: Request, id: unknown, droit: Right = "view"): SupportRequestRow => {
   const d = demande(id);
-  exiger(req, "support", "view", d.company_id, DEMANDE_INTROUVABLE);
-  if (droit !== "view") exiger(req, "support", droit, d.company_id);
+  exiger(req, "support", "view", DEMANDE_INTROUVABLE);
+  if (!boardLisible(boards.byId.get(d.board_id), req.user)) {
+    notFound(DEMANDE_INTROUVABLE);
+  }
+  if (droit !== "view") exiger(req, "support", droit);
   return d;
 };
 
@@ -150,7 +149,10 @@ const libelleStatut = (valeur: string): string =>
 const photo = (demandeId: Id): Champ[] => {
   const d = oneWithRelations(demande(demandeId));
   return [
-    { libelle: "Société", valeur: cite(societes.get(d.company_id)?.name) },
+    {
+      libelle: "Contexte",
+      valeur: cite(d.context_id ? contexts.byId.get(d.context_id)?.name : null),
+    },
     { libelle: "Objet", valeur: cite(d.subject) },
     { libelle: "Statut", valeur: libelleStatut(d.status) },
     { libelle: "Échéance", valeur: date(d.due_date) },
@@ -180,20 +182,20 @@ const annoncerSuppressions = (req: Request, demandes: SupportRequestRow[]): (() 
   };
 };
 
-// Toutes les demandes d'une société, quel que soit leur statut : ce sont les
-// onglets qui les rangent, et ils comptent ce que chacun contient.
-//
-// Sans société précise — la liste déroulante sur « toutes » —, elles sortent
-// toutes : le mode s'ouvre là-dessus, et c'est la vue d'ensemble de ce qui est
-// en cours chez tout le monde.
+// Les demandes d'un tableau — de l'un de ses contextes, ou de tous —, quel que
+// soit leur statut.
 supportRequestRoutes.get("/", (req, res) => {
-  const demande = req.query.company;
-  const lignes =
-    !demande || demande === "all"
-      ? supportRequests.all.all()
-      : supportRequests.ofCompany.all(societe(demande).id);
-  // Les sociétés dont on ne voit pas le support sont écartées.
-  res.json(withRelations(lignes.filter((d) => peut(req, "support", "view", d.company_id))));
+  if (!peut(req, "support", "view")) return void res.json([]);
+  const board = tableauOuvert(req.query.board, req.user);
+  const contexte = req.query.context;
+  res.json(
+    withRelations(
+      supportRequests.ofBoard.all({
+        board: board.id,
+        context: contexte && contexte !== "all" ? contexteDuTableau(board.id, contexte) : null,
+      }),
+    ),
+  );
 });
 
 // La relève des boîtes de support, à la demande : le mode s'ouvre dessus, sans
@@ -213,8 +215,8 @@ supportRequestRoutes.post("/sync", (req, res, next) => {
 // n'agit pas sur une sélection qui n'est plus celle qu'on a vue.
 
 /**
- * Les demandes cochées, toutes existantes, sans doublon — et toutes dans une
- * société où l'on a ce droit.
+ * Les demandes cochées, toutes existantes, sans doublon — et toutes où l'on
+ * a ce droit.
  */
 const cochees = (req: Request, valeur: unknown, droit: Right): SupportRequestRow[] => {
   const ids = [...new Set(toIds(valeur))];
@@ -223,13 +225,13 @@ const cochees = (req: Request, valeur: unknown, droit: Right): SupportRequestRow
 };
 
 // Fusionner : la plus récente reste et reçoit les échanges des autres, qui
-// sont fermées. Elles doivent appartenir à la même société — une demande ne
-// change pas de société en cachette.
+// sont fermées. Elles doivent appartenir au même contexte — une demande ne
+// change pas de contexte en cachette.
 supportRequestRoutes.post("/merge", (req, res) => {
   const demandes = cochees(req, req.body.ids, "update");
   if (demandes.length < 2) badRequest("Sélectionnez au moins deux demandes à fusionner");
-  if (new Set(demandes.map((d) => d.company_id)).size > 1) {
-    badRequest("Seules des demandes d'une même société peuvent être fusionnées");
+  if (new Set(demandes.map((d) => d.context_id)).size > 1) {
+    badRequest("Seules des demandes d'un même contexte peuvent être fusionnées");
   }
 
   const [garde, ...autres] = [...demandes].sort((a, b) =>
@@ -332,8 +334,11 @@ supportRequestRoutes.post("/assign", (req, res) => {
 });
 
 supportRequestRoutes.post("/", (req, res) => {
-  const company = societe(req.body.company_id);
-  exiger(req, "support", "create", company.id);
+  exiger(req, "support", "create");
+  // Le contexte dit, ou le premier du tableau dit.
+  const recu = req.body.context_id ? contexts.byId.get(req.body.context_id) : undefined;
+  const board = tableauOuvert(recu?.board_id ?? req.body.board_id, req.user);
+  const contexte = contexteDuTableau(board.id, recu?.id);
 
   // Lus avant de prendre un numéro : une saisie refusée n'en consomme pas.
   const status = statut(req.body.status, DEFAULT_SUPPORT_STATUS);
@@ -342,7 +347,11 @@ supportRequestRoutes.post("/", (req, res) => {
   const timestamp = now();
   const { lastInsertRowid } = supportRequests.create.run(
     prochainNumeroDeTicket(),
-    company.id,
+    board.id,
+    contexte,
+    // Le widget « Demandes de support » d'où elle est saisie, à défaut le
+    // premier du tableau.
+    cleDansLeTableau(board.id, "support.list", req.body.list_key),
     String(req.body.subject ?? "").trim(),
     status,
     dueDate,
@@ -386,22 +395,19 @@ supportRequestRoutes.get("/:id", (req, res) => {
   res.json(supportRequestDetail(demandePour(req, req.params.id)));
 });
 
-// Chaque champ absent du corps reste tel quel. La société, elle, est
-// modifiable : une demande ouverte sous « toutes les sociétés » part chez la
-// première de la liste, et c'est ici qu'on la remet où il faut.
+// Chaque champ absent du corps reste tel quel. Le contexte est modifiable,
+// pour un autre du même tableau.
 supportRequestRoutes.put("/:id", (req, res, next) => {
   const existing = demandePour(req, req.params.id, "update");
   const avant = acteursActuels(existing.id);
   const photoAvant = photo(existing.id);
-  const companyId =
-    req.body.company_id === undefined
-      ? existing.company_id
-      : societe(req.body.company_id).id;
-  // Passer une demande à une autre société, c'est l'y ajouter.
-  if (companyId !== existing.company_id) exiger(req, "support", "create", companyId);
+  const contexte =
+    req.body.context_id === undefined
+      ? existing.context_id
+      : contexteDuTableau(existing.board_id, req.body.context_id);
 
   supportRequests.update.run(
-    companyId,
+    contexte,
     req.body.subject === undefined ? existing.subject : String(req.body.subject ?? "").trim(),
     statut(req.body.status, existing.status),
     echeance(req.body.due_date, existing.due_date),
@@ -414,7 +420,7 @@ supportRequestRoutes.put("/:id", (req, res, next) => {
     replaceSupportActors(existing.id, toIds(req.body.actor_ids));
     assignes = prevenirNouveauxActeurs(req, existing.id, avant);
   }
-  // Les étiquettes sont communes : une demande qui change de société les
+  // Les étiquettes sont communes : une demande qui change de contexte les
   // garde.
   if (Array.isArray(req.body.label_ids)) {
     replaceSupportLabels(existing.id, toIds(req.body.label_ids));

@@ -9,7 +9,6 @@
 
 import type { CompanyRights } from "./roles.js";
 import type { WidgetRights } from "./widget-kinds.js";
-import type { Mode } from "./modes.js";
 
 export type SqliteBool = 0 | 1;
 
@@ -50,9 +49,33 @@ export interface PublicUser {
    * dans aucune liste et n'est l'acteur de rien.
    */
   system: boolean;
-  default_mode: Mode;
+  /** La vue d'ouverture : son identifiant en chaîne, vide pour la première. */
+  default_view: string;
+  /**
+   * Le workspace où il travaille : ses vues, ses tableaux et ses droits sont
+   * ceux de ce workspace. « null » s'il n'en a aucun.
+   */
+  workspace: Id | null;
+  /** Les workspaces auxquels il a accès : le sélecteur en propose plus d'un. */
+  workspaces: WorkspaceRef[];
+  /** Il peut gérer les workspaces : les créer, les renommer, régler leurs accès. */
+  manage_workspaces: boolean;
   created_at: string;
 }
+
+/**
+ * Un workspace : une équipe, avec ses vues, ses tableaux et ses contextes,
+ * isolés de ceux des autres, et ses propres accès.
+ */
+export interface Workspace {
+  id: Id;
+  name: string;
+  position: number;
+  created_at: string;
+}
+
+/** Un workspace tel que le sélecteur le propose. */
+export type WorkspaceRef = Pick<Workspace, "id" | "name">;
 
 /**
  * Une personne telle qu'elle accompagne autre chose : acteur d'un projet,
@@ -75,30 +98,109 @@ export interface Actor {
 export const MILO_ACTOR_ID = -1;
 export const MILO_ACTOR: Actor = { id: MILO_ACTOR_ID, name: "Milo", email: "", gravatar_url: "" };
 
-// --- Sociétés ---------------------------------------------------------------
+// --- Contextes -------------------------------------------------------------
 
-export interface Company {
+/**
+ * Un contexte d'un tableau : ce que la liste en haut à gauche propose. Les
+ * projets, les cartes, les demandes et les postes du tableau appartiennent
+ * chacun à l'un de ses contextes, et partent avec lui. Un tableau peut n'en
+ * avoir aucun : ses éléments n'en ont pas non plus.
+ */
+export interface Context {
   id: Id;
+  board_id: Id;
   name: string;
-  /** L'adresse à laquelle écrire au support de la société ; vide si aucune. */
-  support_email: string;
-  /** L'adresse du site de support, toujours en https:// ; vide si aucune. */
-  support_url: string;
-  /** Ce que la suppression en cascade emporterait. */
-  project_count: number;
+  position: number;
+  created_at: string;
 }
 
-// --- Mode Projet -----------------------------------------------------------
+/** Ce que montre la liste des contextes d'un tableau qui n'en a pas. */
+export const AUCUN_CONTEXTE = "Aucun contexte";
 
-export interface ProjectBoard {
+/** Le libellé, renommable, de l'entrée qui montre tous les contextes. */
+export const TOUS_LES_CONTEXTES = "Tous les contextes";
+
+// --- Vues et tableaux -------------------------------------------------------
+
+/**
+ * Une vue : ce que le sélecteur du bas propose. Elle porte des tableaux, qui
+ * portent les widgets. Partagée avec tous, sauf privée : elle ne se montre
+ * alors qu'à son auteur.
+ */
+export interface View {
   id: Id;
   name: string;
   position: number;
   is_private: SqliteBool;
-  /** Nul pour un tableau d'avant l'option « Privé », ou dont l'auteur est parti. */
+  /** Nul pour une vue ouverte à tous. */
   owner_id: Id | null;
   created_at: string;
 }
+
+/**
+ * Un tableau d'une vue : un onglet. Il contient ses projets et ses listes de
+ * tâches, et ses widgets ; ce qui arrive d'ailleurs — les demandes reçues par
+ * e-mail, les postes des agents — s'y montre par ses widgets. Tout ce qu'il
+ * porte appartient à l'un de ses contextes ; on les montre tous, ou un seul.
+ */
+export interface Board {
+  id: Id;
+  view_id: Id;
+  name: string;
+  /** Ses contextes, dans l'ordre. */
+  contexts: Context[];
+  /** Le libellé de l'entrée « Tous les contextes », qu'on peut renommer. */
+  all_contexts_label: string;
+  /** Le contexte que ce compte a choisi dans ce tableau ; nul pour tous. */
+  context_id: Id | null;
+  position: number;
+  show_card_numbers: SqliteBool;
+  is_private: SqliteBool;
+  /** Verrouillé dans cette fenêtre : le client le pose, le serveur ne le garde pas. */
+  is_locked: SqliteBool;
+  /** Nul pour un tableau ouvert à tous. */
+  owner_id: Id | null;
+  /**
+   * « Hérité », pour le compte qui lit : vrai s'il voit la structure publique
+   * du tableau, faux s'il travaille sur sa propre copie.
+   */
+  inherited?: boolean;
+  created_at: string;
+}
+
+/** Les tableaux de projets sont des tableaux comme les autres. */
+export type ProjectBoard = Board;
+
+/** Une section d'un tableau : une colonne, qui porte des widgets. */
+export interface BoardSection {
+  id: Id;
+  board_id: Id;
+  width_unit: SectionWidthUnit;
+  /** Nul quand la largeur est automatique ; le nombre qui va avec l'unité sinon. */
+  width_value: number | null;
+  /** L'écart qui la sépare de la section suivante, en pixels. Celui de la dernière ne sert pas. */
+  gap: number;
+  position: number;
+  /** Nul : la structure publique ; sinon, celle de ce compte (« Hérité » décoché). */
+  owner_id: Id | null;
+  created_at: string;
+}
+
+/**
+ * Un widget posé dans une section. Le serveur ne connaît pas sa
+ * configuration : il la range et la rend telle quelle, sa forme appartient au
+ * widget qui la lit. « type » est l'un de BOARD_WIDGET_TYPES.
+ */
+export interface BoardWidget {
+  id: Id;
+  section_id: Id;
+  type: string;
+  config: Record<string, unknown>;
+  position: number;
+  created_at: string;
+}
+
+// --- Mode Projet -----------------------------------------------------------
 
 /**
  * Un jalon du curseur d'avancement : un pourcentage, la couleur de la tranche
@@ -123,6 +225,9 @@ export interface Milestone {
  * l'application. Un projet en choisit un : ses jalons posent les marques et
  * les couleurs du curseur d'avancement.
  */
+/** Le type de jalons posé avec le premier widget de projets, que reçoit un nouveau projet. */
+export const TYPE_JALONS_PAR_DEFAUT = "Défaut";
+
 export interface MilestoneType {
   id: Id;
   name: string;
@@ -160,7 +265,10 @@ export interface Project {
   description: string;
   board_id: Id;
   category_id: Id;
-  company_id: Id | null;
+  /** Le contexte du tableau auquel il appartient ; nul si le tableau n'en a pas. */
+  context_id: Id | null;
+  /** La liste — le widget « Projets » — qui le montre (shared, CLE_DE_LISTE). */
+  list_key: string;
   /** Le type de jalons de son curseur ; aucun, le curseur reste nu. */
   milestone_type_id: Id | null;
   /** Avancement, de 0 à 100. */
@@ -168,7 +276,7 @@ export interface Project {
   created_at: string;
   updated_at: string;
   category_name: string;
-  company_name: string | null;
+  context_name: string | null;
   actors: Actor[];
   labels: ProjectLabel[];
 }
@@ -191,20 +299,6 @@ export interface ProjectDetail extends Project {
 }
 
 // --- Mode Tâche ------------------------------------------------------------
-
-export interface Board {
-  id: Id;
-  company_id: Id;
-  name: string;
-  position: number;
-  show_card_numbers: SqliteBool;
-  is_private: SqliteBool;
-  /** Verrouillé : ses listes ne s'ajoutent, ne se déplacent ni ne se suppriment. */
-  is_locked: SqliteBool;
-  /** Nul pour un tableau d'avant l'option « Privé », ou dont l'auteur est parti. */
-  owner_id: Id | null;
-  created_at: string;
-}
 
 export interface Label {
   id: Id;
@@ -243,6 +337,8 @@ export interface TaskCard {
    */
   number: number;
   kind: CardKind;
+  /** Le contexte du tableau auquel elle appartient. */
+  context_id: Id | null;
   /**
    * Échéance, en ISO 8601 avec l'heure, ou vide. À la différence de celle d'un
    * élément de checklist, elle porte une heure : une carte se rend pour une
@@ -321,6 +417,7 @@ export interface TaskCardDetail {
   position: number;
   number: number;
   kind: CardKind;
+  context_id: Id | null;
   /** ISO 8601 avec l'heure, ou vide. Voir `TaskCard.due_date`. */
   due_date: string;
   created_at: string;
@@ -333,11 +430,11 @@ export interface TaskCardDetail {
 
 /**
  * Où se trouve une carte. Sert au lien qui l'ouvre : l'application doit se
- * placer sur la bonne société et le bon tableau avant de pouvoir montrer une
+ * placer sur la bonne vue et le bon tableau avant de pouvoir montrer une
  * fiche, et elle ne peut pas le deviner d'une carte qu'elle n'affiche pas.
  */
 export interface CardLocation {
-  company_id: Id;
+  view_id: Id;
   board_id: Id;
   list_id: Id;
 }
@@ -361,6 +458,8 @@ export interface TaskList {
   position: number;
   /** Couleur de fond choisie dans le menu de la liste ; vide = aucune. */
   color: string;
+  /** Le widget « Tâches » qui la montre (shared, CLE_DE_LISTE). */
+  list_key: string;
   created_at: string;
   cards: TaskCard[];
 }
@@ -368,6 +467,14 @@ export interface TaskList {
 /** Couleurs proposées dans le menu d'une liste ; la chaîne vide vaut « aucune ». */
 export const LIST_COLORS = [
   "",
+  // Les pastilles du menu : le rouge, l'orange, le vert et le bleu des
+  // projets, le jaune et le violet (nuance 8), et deux nuances plus claires
+  // de chacun.
+  ...(["8", "6", "4"] as const).flatMap(
+    (n) =>
+      [`red.${n}`, `orange.${n}`, `yellow.${n}`, `green.${n}`, `blue.${n}`, `violet.${n}`] as const,
+  ),
+  // Les couleurs d'avant, que des listes portent encore.
   "green",
   "blue",
   "violet",
@@ -384,42 +491,9 @@ export type ListColor = (typeof LIST_COLORS)[number];
 export const isListColor = (value: unknown): value is ListColor =>
   LIST_COLORS.includes(value as ListColor);
 
-// --- Mode Accès ------------------------------------------------------------
+// --- Sections ----------------------------------------------------------------
 
-/**
- * Une catégorie du mode Accès. Elle ne dépend d'aucune société ni d'aucun
- * tableau : c'est le premier niveau du mode, comme un tableau l'est ailleurs.
- */
-export interface AccessCategory {
-  id: Id;
-  name: string;
-  position: number;
-  /** Privée : la catégorie ne se montre qu'à son auteur. */
-  is_private: SqliteBool;
-  /** Verrouillée : ce qu'elle porte se lit, mais ne se déplace ni ne se modifie. */
-  is_locked: SqliteBool;
-  /** Nul quand le compte de l'auteur a été supprimé : la catégorie s'ouvre alors à tous. */
-  owner_id: Id | null;
-  /**
-   * « Hérité », pour le compte qui lit : vrai s'il voit la structure publique
-   * de la catégorie, faux s'il travaille sur sa propre copie. Absent des
-   * réponses qui ne rendent qu'une catégorie.
-   */
-  inherited?: boolean;
-  created_at: string;
-}
-
-/**
- * L'écart qui suit une section neuve d'une catégorie d'accès, en pixels. Dit
- * ici plutôt que dans la page : la base le range par défaut, le serveur le
- * pose à la création, et les deux doivent s'accorder.
- */
-export const ACCESS_GAP_DEFAUT = 20;
-
-/**
- * L'écart qui suit une section neuve des autres modes — Support, Assets,
- * Projet et Tâche —, tant que son champ n'en a pas fixé un autre.
- */
+/** L'écart qui suit une section neuve, tant que son champ n'en a pas fixé un autre. */
 export const SECTIONS_GAP_DEFAUT = 50;
 
 /** L'écart le plus large qu'une section puisse laisser : au-delà, la rangée se disloque. */
@@ -437,23 +511,6 @@ export type SectionWidthUnit = (typeof SECTION_WIDTH_UNITS)[number];
 export const isSectionWidthUnit = (value: unknown): value is SectionWidthUnit =>
   SECTION_WIDTH_UNITS.includes(value as SectionWidthUnit);
 
-/**
- * Une section d'une catégorie d'accès : une colonne. Elle ne porte pas de nom
- * — sa largeur la définit entièrement, ce qu'elle contiendra la nommera.
- */
-export interface AccessSection {
-  id: Id;
-  category_id: Id;
-  width_unit: SectionWidthUnit;
-  /** Nul quand la largeur est automatique ; le nombre qui va avec l'unité sinon. */
-  width_value: number | null;
-  /** L'écart qui la sépare de la section suivante, en pixels. Celui de la dernière ne sert pas. */
-  gap: number;
-  position: number;
-  /** Nul : la structure publique ; sinon, celle de ce compte (« Hérité » décoché). */
-  owner_id: Id | null;
-  created_at: string;
-}
 
 // --- Mode Support ----------------------------------------------------------
 
@@ -578,7 +635,18 @@ export interface SupportRequest {
    * sociétés confondues — et ne resert jamais, même après une suppression.
    */
   number: number;
-  company_id: Id;
+  /** Le tableau qui la montre. */
+  board_id: Id;
+  /** Le contexte du tableau auquel elle appartient ; nul si le tableau n'en a pas. */
+  context_id: Id | null;
+  /** Le widget « Demandes de support » qui la montre (shared, CLE_DE_LISTE). */
+  list_key: string;
+  /**
+   * La boîte de support où elle est arrivée, et d'où partent les réponses ;
+   * vide pour une demande saisie, dont les réponses partent de l'adresse
+   * d'envoi commune.
+   */
+  mailbox: string;
   /** L'objet : celui de l'e-mail reçu, ou ce qu'on a saisi ; vide sinon. */
   subject: string;
   status: SupportStatus;
@@ -662,26 +730,16 @@ export interface SupportRequestDetail extends SupportRequest {
  * même façon.
  */
 /**
- * « Hérité » : coché, on voit la structure publique d'un panneau ou d'une
- * catégorie d'accès — ses sections et ce qu'elles portent, partagées avec
- * tous. Décoché, on travaille sur sa propre copie.
+ * « Hérité » : coché, on voit la structure publique d'un tableau — ses
+ * sections et ce qu'elles portent, partagées avec tous. Décoché, on travaille
+ * sur sa propre copie.
  */
 export interface LayoutState {
   inherited: boolean;
 }
 
-export interface IndicatorSection {
-  id: Id;
-  width_unit: SectionWidthUnit;
-  /** Nul quand la largeur est automatique ; le nombre qui va avec l'unité sinon. */
-  width_value: number | null;
-  /** L'écart qui la sépare de la section suivante, en pixels. Celui de la dernière ne sert pas. */
-  gap: number;
-  position: number;
-  /** Nul : la structure publique ; sinon, celle de ce compte (« Hérité » décoché). */
-  owner_id: Id | null;
-  created_at: string;
-}
+/** Les sections des widgets : celles d'un tableau. */
+export type IndicatorSection = BoardSection;
 
 /**
  * Ce que le panneau des statistiques du mode Support peut montrer. Chaque
@@ -711,20 +769,6 @@ export type SupportIndicatorType = (typeof SUPPORT_INDICATOR_TYPES)[number];
 export const isSupportIndicatorType = (value: unknown): value is SupportIndicatorType =>
   SUPPORT_INDICATOR_TYPES.includes(value as SupportIndicatorType);
 
-/**
- * Un indicateur du panneau des statistiques. Commun à toutes les sociétés,
- * comme les étiquettes du support : il se calcule sur les demandes de celle
- * qu'on regarde. Le serveur range sa configuration sans la relire.
- */
-export interface SupportIndicator {
-  id: Id;
-  /** La section du panneau qui le porte. */
-  section_id: Id;
-  type: SupportIndicatorType;
-  config: Record<string, unknown>;
-  position: number;
-  created_at: string;
-}
 
 /**
  * Ce que le panneau des statistiques du mode Assets peut montrer. Comme pour
@@ -745,19 +789,6 @@ export type AssetIndicatorType = (typeof ASSET_INDICATOR_TYPES)[number];
 export const isAssetIndicatorType = (value: unknown): value is AssetIndicatorType =>
   ASSET_INDICATOR_TYPES.includes(value as AssetIndicatorType);
 
-/**
- * Un indicateur du panneau des statistiques du mode Assets. Commun à toutes
- * les sociétés : il se calcule sur les postes de celle qu'on regarde.
- */
-export interface AssetIndicator {
-  id: Id;
-  /** La section du panneau qui le porte. */
-  section_id: Id;
-  type: AssetIndicatorType;
-  config: Record<string, unknown>;
-  position: number;
-  created_at: string;
-}
 
 /**
  * Ce que les sections du mode Projet peuvent montrer. Comme pour le Support,
@@ -783,19 +814,6 @@ export type ProjectIndicatorType = (typeof PROJECT_INDICATOR_TYPES)[number];
 export const isProjectIndicatorType = (value: unknown): value is ProjectIndicatorType =>
   PROJECT_INDICATOR_TYPES.includes(value as ProjectIndicatorType);
 
-/**
- * Un indicateur des sections du mode Projet. Commun à tous les tableaux : il
- * se calcule sur les projets de celui qu'on regarde.
- */
-export interface ProjectIndicator {
-  id: Id;
-  /** La section du panneau qui le porte. */
-  section_id: Id;
-  type: ProjectIndicatorType;
-  config: Record<string, unknown>;
-  position: number;
-  created_at: string;
-}
 
 /**
  * Ce que les sections du mode Tâche peuvent montrer : le tableau de listes,
@@ -820,19 +838,6 @@ export type TaskIndicatorType = (typeof TASK_INDICATOR_TYPES)[number];
 export const isTaskIndicatorType = (value: unknown): value is TaskIndicatorType =>
   TASK_INDICATOR_TYPES.includes(value as TaskIndicatorType);
 
-/**
- * Un indicateur des sections du mode Tâche. Commun à tous les tableaux : il se
- * calcule sur les cartes de celui qu'on regarde.
- */
-export interface TaskIndicator {
-  id: Id;
-  /** La section du panneau qui le porte. */
-  section_id: Id;
-  type: TaskIndicatorType;
-  config: Record<string, unknown>;
-  position: number;
-  created_at: string;
-}
 
 /**
  * Ce qu'une section peut porter. Chaque valeur désigne un widget du client
@@ -846,7 +851,11 @@ export const ACCESS_BLOCK_TYPES = [
   "number",
   "clock",
   "rss",
-  "uptime",
+  "image",
+  "weather",
+  "calendar",
+  "mail",
+  "todo",
 ] as const;
 
 export type AccessBlockType = (typeof ACCESS_BLOCK_TYPES)[number];
@@ -865,19 +874,6 @@ export const ACCESS_BLOCK_CONVERSIONS: Partial<Record<AccessBlockType, AccessBlo
   subcategory: "category",
 };
 
-/**
- * Un élément posé dans une section. Le serveur ne connaît pas sa
- * configuration : il la range et la rend telle quelle, sa forme appartient au
- * widget qui la lit.
- */
-export interface AccessBlock {
-  id: Id;
-  section_id: Id;
-  type: AccessBlockType;
-  config: Record<string, unknown>;
-  position: number;
-  created_at: string;
-}
 
 /** Un article d'un flux, tel que le serveur le tire de la source. */
 export interface AccessFeedArticle {
@@ -900,6 +896,15 @@ export interface AccessFeed {
   fetched_at: string;
 }
 
+/**
+ * Ce que donne une adresse de flux, sondée depuis le réglage d'un widget RSS :
+ * injoignable, lisible mais pas comme un flux, ou un flux de ce format
+ * (« RSS 2.0 », « Atom », « JSON Feed »…).
+ */
+export type AccessFeedProbe =
+  | { state: "ok"; format: string }
+  | { state: "injoignable" | "invalide"; message: string };
+
 /** L'intervalle de relève d'un flux, en minutes : par défaut, et ses bornes. */
 export const ACCESS_FEED_INTERVAL_DEFAUT = 30;
 export const ACCESS_FEED_INTERVAL_MIN = 5;
@@ -908,50 +913,107 @@ export const ACCESS_FEED_INTERVAL_MAX = 24 * 60;
 /** Les articles qu'un élément montre au plus, et donc que la base en garde. */
 export const ACCESS_FEED_QUANTITE_MAX = 50;
 
-/**
- * Les vérifications d'un widget Uptime. « icmp » : un ping. « tcp » : une
- * connexion au port. « snmp » : la lecture d'un OID en SNMP v2c. « zabbix » :
- * la clé « agent.ping » demandée à l'agent Zabbix de la machine.
- */
-export const UPTIME_CHECK_TYPES = ["icmp", "tcp", "snmp", "zabbix"] as const;
-
-export type UptimeCheckType = (typeof UPTIME_CHECK_TYPES)[number];
-
-export const isUptimeCheckType = (value: unknown): value is UptimeCheckType =>
-  UPTIME_CHECK_TYPES.includes(value as UptimeCheckType);
-
-/** Le port de chaque vérification quand l'élément n'en donne pas. */
-export const UPTIME_PORTS_DEFAUT: Record<UptimeCheckType, number | null> = {
-  icmp: null,
-  tcp: null,
-  snmp: 161,
-  zabbix: 10050,
-};
-
-/** « pending » : pas encore vérifiée depuis qu'elle a été ajoutée. */
-export type UptimeState = "up" | "down" | "pending";
-
-/** L'état d'une machine, tel que la dernière vérification du serveur l'a laissé. */
-export interface UptimeStatus {
-  /** L'identifiant de la machine dans la configuration de l'élément. */
-  machine: string;
-  state: UptimeState;
-  /** Depuis quand elle est dans cet état, ISO 8601. */
-  since: string | null;
-  /** La dernière vérification, ISO 8601. */
-  checked_at: string | null;
-  /** Ce que la vérification a vu : la valeur lue, ou la raison de l'échec. */
+/** Un lieu trouvé pour un widget Météo : de quoi le nommer et le situer. */
+export interface WeatherPlace {
+  name: string;
+  /** La région et le pays, pour distinguer deux lieux du même nom. */
   detail: string;
+  latitude: number;
+  longitude: number;
 }
 
-export interface AccessUptime {
-  statuses: UptimeStatus[];
+/** Une heure ou un jour de prévision. */
+export interface WeatherPoint {
+  /** ISO 8601, à l'heure locale du lieu. */
+  time: string;
+  /** Le code météo de l'OMM (WMO 4677), que le client traduit en pictogramme. */
+  code: number;
+  temperature: number;
+  /** La température minimale, pour un jour. */
+  min?: number;
+  /** La probabilité de précipitations, en pour cent. */
+  precipitation: number;
 }
 
-/** L'intervalle de vérification, en secondes : par défaut, et ses bornes. */
-export const UPTIME_INTERVAL_DEFAUT = 60;
-export const UPTIME_INTERVAL_MIN = 10;
-export const UPTIME_INTERVAL_MAX = 24 * 60 * 60;
+/**
+ * La météo d'un lieu, telle qu'Open-Meteo la donne et que le serveur la garde
+ * un quart d'heure : l'instant, les prochaines heures et les prochains jours.
+ */
+export interface AccessWeather {
+  current: {
+    time: string;
+    code: number;
+    temperature: number;
+    apparent: number;
+    humidity: number;
+    wind: number;
+    is_day: boolean;
+  };
+  hourly: WeatherPoint[];
+  daily: WeatherPoint[];
+}
+
+/** Un rendez-vous de l'agenda Outlook de la personne, lu par Graph. */
+export interface AccessCalendarEvent {
+  id: string;
+  subject: string;
+  /** ISO 8601, en UTC. */
+  start: string;
+  end: string;
+  all_day: boolean;
+  location: string;
+  /** « busy », « tentative », « free », « oof »… tel que Graph le dit. */
+  show_as: string;
+  /** L'adresse du rendez-vous dans Outlook. */
+  url: string;
+}
+
+/** Une adresse d'un e-mail : son nom et son adresse. */
+export interface MailAddress {
+  name: string;
+  email: string;
+}
+
+/** Un e-mail de la boîte de réception, tel que la grille du widget Mail le montre. */
+export interface AccessMail {
+  id: string;
+  subject: string;
+  from: MailAddress;
+  /** ISO 8601, en UTC. */
+  received_at: string;
+  preview: string;
+  is_read: boolean;
+  has_attachments: boolean;
+  /** « low », « normal » ou « high ». */
+  importance: string;
+}
+
+/** Une page de la boîte de réception. */
+export interface AccessMailPage {
+  messages: AccessMail[];
+  /** Vrai quand la boîte en a d'autres au-delà de cette page. */
+  more: boolean;
+  /** Les non lus de la boîte de réception, donnés avec la première page seulement. */
+  unread?: number;
+}
+
+/** Une pièce jointe d'un e-mail ouvert : son contenu se demande à part. */
+export interface AccessMailAttachment {
+  id: string;
+  name: string;
+  size: number;
+}
+
+/** Un e-mail ouvert dans le tiroir : son corps, nettoyé par le serveur, et le reste. */
+export interface AccessMailDetail extends AccessMail {
+  to: MailAddress[];
+  cc: MailAddress[];
+  /** Le corps, en HTML nettoyé : les images intégrées y sont déjà. */
+  html: string;
+  attachments: AccessMailAttachment[];
+  /** L'adresse du message dans Outlook sur le web. */
+  url: string;
+}
 
 // --- Mode Assets -----------------------------------------------------------
 // Les postes, tels qu'un agent d'inventaire (FusionInventory, GLPI Agent) les
@@ -977,8 +1039,14 @@ export interface Asset {
   id: Id;
   /** Ce que la machine dit d'elle-même (HARDWARE/NAME). */
   name: string;
-  /** Vide tant que le « tag » de l'agent ne désigne aucune société connue. */
-  company_id: Id | null;
+  /** Le tableau dont une liste de postes reçoit son tag ; nul sinon. */
+  board_id: Id | null;
+  /** Le contexte que cette liste lui donne ; nul si elle ne lui en donne pas. */
+  context_id: Id | null;
+  /** Le widget « Assets » qui le montre, celui qui reçoit son tag ; vide sinon. */
+  list_key: string;
+  /** Le tag de l'agent GLPI : ce qu'une liste de postes reçoit (asset-indicators/liste.tsx). */
+  tag: string;
   /**
    * La dernière personne connectée sur le poste, telle que l'agent l'a vue :
    * la session ouverte au moment de l'inventaire, ou à défaut la dernière

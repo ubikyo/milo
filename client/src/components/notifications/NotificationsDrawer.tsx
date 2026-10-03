@@ -1,4 +1,13 @@
-import { ActionIcon, Button, Drawer, Group, Menu, Stack, Tabs, Text } from "@mantine/core";
+import {
+  ActionIcon,
+  Button,
+  Drawer,
+  Group,
+  Menu,
+  Stack,
+  Tabs,
+  Text,
+} from "@mantine/core";
 import {
   IconBell,
   IconChevronDown,
@@ -13,9 +22,13 @@ import { useEffect, useState } from "react";
 import type { ComponentType, CSSProperties } from "react";
 import type { Notification, NotificationKind } from "@milo/shared";
 import { api } from "../../api";
-import { messageErreur } from "../../lib/errors";
-import { NEUTRAL_HOVER, RED } from "../../themes/colors";
-import { DRAWER_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
+import { messageErreur, notifierErreur } from "../../lib/errors";
+import { RED } from "../../themes/colors";
+import {
+  ACTIONS_BUTTON_STYLE,
+  DRAWER_MENU_OFFSET,
+  TAB_MENU_STYLES,
+} from "../../themes/menus";
 import { tabStyle } from "../../themes/tabs";
 import classes from "../../assets/styles/NotificationsDrawer.module.css";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
@@ -26,7 +39,6 @@ import DrawerScrollArea, {
   DRAWER_TABS_STYLES,
 } from "../ui/DrawerScroll";
 import EmptyPanel from "../ui/EmptyPanel";
-import ErrorAlert from "../ui/ErrorAlert";
 import BoutonFermer from "../ui/BoutonFermer";
 
 // Les dernières notifications reçues, ouvertes depuis le menu du compte. À
@@ -83,7 +95,6 @@ export default function NotificationsDrawer({
   revision,
 }: NotificationsDrawerProps) {
   const [liste, setListe] = useState<Notification[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [confirmer, setConfirmer] = useState(false);
 
   useEffect(() => {
@@ -92,7 +103,7 @@ export default function NotificationsDrawer({
     api
       .getNotifications()
       .then((lues) => actif && setListe(lues))
-      .catch((e) => actif && setError(messageErreur(e)));
+      .catch((e) => actif && notifierErreur(messageErreur(e)));
     return () => {
       actif = false;
     };
@@ -107,7 +118,7 @@ export default function NotificationsDrawer({
       await api.deleteNotification(notification.id);
     } catch (e) {
       setListe(avant);
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   };
 
@@ -117,7 +128,7 @@ export default function NotificationsDrawer({
       await api.clearNotifications();
       setListe([]);
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   };
 
@@ -136,7 +147,12 @@ export default function NotificationsDrawer({
             et le menu « Actions » au bout, où on le cherche. */}
         <Tabs
           defaultValue="notifications"
-          style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+          }}
           styles={DRAWER_TABS_STYLES}
         >
           <Tabs.List mb="md">
@@ -162,7 +178,12 @@ export default function NotificationsDrawer({
                   rightSection={<IconChevronDown size={14} />}
                   ml="auto"
                   mb={4}
-                  style={{ alignSelf: "center", "--button-hover": NEUTRAL_HOVER } as CSSProperties}
+                  style={
+                    {
+                      alignSelf: "center",
+                      ...ACTIONS_BUTTON_STYLE,
+                    } as CSSProperties
+                  }
                 >
                   Actions
                 </Button>
@@ -183,8 +204,6 @@ export default function NotificationsDrawer({
           <Tabs.Panel value="notifications" style={DRAWER_PANEL_STYLE}>
             <DrawerScrollArea fill>
               <Stack gap={30} style={{ flex: 1, minHeight: 0 }}>
-                {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
-
                 {liste && liste.length === 0 && (
                   <EmptyPanel icon={IconBell} message="Aucune notification" />
                 )}
@@ -201,7 +220,9 @@ export default function NotificationsDrawer({
                       data-ouvrable={ouvrable || undefined}
                       role={ouvrable ? "button" : undefined}
                       tabIndex={ouvrable ? 0 : undefined}
-                      onClick={ouvrable ? () => onOpen(notification) : undefined}
+                      onClick={
+                        ouvrable ? () => onOpen(notification) : undefined
+                      }
                       onKeyDown={
                         ouvrable
                           ? (event) => {
@@ -212,7 +233,12 @@ export default function NotificationsDrawer({
                     >
                       <Group className={classes.entete} gap="sm" wrap="nowrap">
                         <Icone size={16} />
-                        <Text size="sm" fw={600} truncate style={{ flex: 1, minWidth: 0 }}>
+                        <Text
+                          size="sm"
+                          fw={600}
+                          truncate
+                          style={{ flex: 1, minWidth: 0 }}
+                        >
                           {notification.title}
                         </Text>
                         <Group gap={0} wrap="nowrap">
@@ -259,7 +285,10 @@ export default function NotificationsDrawer({
         onConfirm={toutSupprimer}
         title="Supprimer les notifications"
         message={
-          <>Voulez-vous vraiment supprimer toutes les notifications ? Cette action est irréversible.</>
+          <>
+            Voulez-vous vraiment supprimer toutes les notifications ? Cette
+            action est irréversible.
+          </>
         }
       />
     </>

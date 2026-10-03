@@ -66,6 +66,8 @@ const textesHtml = [
   selection<{ html: string }>("SELECT description AS html FROM projects WHERE description <> ''"),
   selection<{ html: string }>("SELECT text AS html FROM card_comments"),
   selection<{ html: string }>("SELECT text AS html FROM comments"),
+  // Les images d'un widget Image : sa configuration cite leurs adresses.
+  selection<{ html: string }>("SELECT config AS html FROM board_widgets WHERE type = 'image'"),
 ];
 
 /**

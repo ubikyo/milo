@@ -27,9 +27,15 @@
   }
 }
 
-/* Déjà à la valeur par défaut : estompé, et rien ne réagit. */
+/* Déjà à la valeur par défaut : rien ne réagit, et seule l'icône s'estompe.
+   Le filet garde sa couleur — celle de la bordure du champ, la même que sous
+   les flèches d'un champ numérique : estompé avec le reste, il se fondait
+   dans le fond. */
 .bouton[aria-disabled="true"] {
   cursor: default;
-  opacity: 0.35;
   background-color: transparent;
+}
+
+.bouton[aria-disabled="true"] > svg {
+  opacity: 0.35;
 }

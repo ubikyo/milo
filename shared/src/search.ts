@@ -11,10 +11,10 @@ export interface SearchResult {
   id: Id;
   /** Ce que la ligne affiche en premier : le nom, le sujet, le libellé. */
   title: string;
-  /** Où l'élément se trouve : la société, le tableau, la liste… */
+  /** Où l'élément se trouve : le contexte, le tableau, la liste… */
   context: string;
-  /** Accès : la catégorie qui porte l'élément, où le mode s'ouvre. */
-  category_id?: Id;
+  /** Un widget : le tableau qui le porte, qui s'ouvre. */
+  board_id?: Id;
   /** Accès : l'adresse d'un lien, qui s'ouvre directement. */
   url?: string;
 }

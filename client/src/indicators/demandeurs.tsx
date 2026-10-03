@@ -1,8 +1,8 @@
-import { BarsList } from "@mantine/charts";
 import { Select, Stack } from "@mantine/core";
 import { IconMailForward } from "@tabler/icons-react";
 import { avec, nombre } from "../widgets/types";
 import { ChampNom, NOM, Rien, TitreIndicateur } from "./commun";
+import { BarresEtiquettes, type Barre } from "./etiquettes";
 import type { SupportIndicatorWidget } from "./types";
 
 // Qui écrit le plus au support : les expéditeurs des demandes reçues par
@@ -29,13 +29,18 @@ export const demandeursIndicator: SupportIndicatorWidget = {
   Display: ({ config, requests }) => {
     // Un expéditeur se reconnaît à son adresse : son nom peut changer d'un
     // e-mail à l'autre, on garde le premier lu.
-    const parAdresse = new Map<string, { name: string; value: number }>();
+    const parAdresse = new Map<string, Barre>();
     for (const demande of requests) {
       const adresse = demande.sender_email.trim().toLowerCase();
       if (!adresse) continue;
       const deja = parAdresse.get(adresse);
       if (deja) deja.value += 1;
-      else parAdresse.set(adresse, { name: demande.sender_name.trim() || adresse, value: 1 });
+      else
+        parAdresse.set(adresse, {
+          name: demande.sender_name.trim() || adresse,
+          value: 1,
+          color: "teal.6",
+        });
     }
     const data = [...parAdresse.values()]
       .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
@@ -47,13 +52,7 @@ export const demandeursIndicator: SupportIndicatorWidget = {
         {data.length === 0 ? (
           <Rien>Aucun demandeur</Rien>
         ) : (
-          <BarsList
-            data={data}
-            barHeight={24}
-            barColor="teal.6"
-            variant="filled"
-            barTextColor="white"
-          />
+          <BarresEtiquettes data={data} />
         )}
       </Stack>
     );

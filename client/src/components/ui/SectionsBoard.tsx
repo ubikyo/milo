@@ -1,6 +1,7 @@
 import { Box, Center, Group, Menu, ScrollArea } from "@mantine/core";
 import { useAccesWidget } from "../../lib/droits";
 import {
+  IconClipboard,
   IconColumns,
   IconCopyPlus,
   IconGripHorizontal,
@@ -57,6 +58,12 @@ interface SectionsBoardProps<S extends BoardSection> {
   /** « null » tant que les sections ne sont pas lues ; rien ne s'affiche alors. */
   sections: S[] | null;
   locked: boolean;
+  /**
+   * Déverrouiller la rangée. Avec lui, une rangée vide et verrouillée propose
+   * tout de même d'ajouter une section : le geste la déverrouille d'abord.
+   * Sans lui — figée faute de droit —, elle ne propose rien.
+   */
+  onUnlock?: () => void | Promise<void>;
   /** Les widgets d'une section, dans l'ordre : le dépôt se calcule sur eux. */
   widgetIds: (section: S) => Id[];
   /** Ce que la section porte. « drag » est inerte pour les copies qui suivent le pointeur. */
@@ -71,6 +78,16 @@ interface SectionsBoardProps<S extends BoardSection> {
   onAddSection: (index?: number) => void;
   /** La copie, avec ses widgets, se pose à droite de l'original. */
   onDuplicateSection: (section: S) => void | Promise<void>;
+  /**
+   * Le widget copié (lib/presse-papiers.ts), à coller au bout d'une section :
+   * son nom, et de quoi le poser. Sans lui, le menu ne propose pas de coller.
+   */
+  coller?: { libelle: string; onColler: (section: S) => void | Promise<void> };
+  /**
+   * Un widget lâché sur la corbeille, qui paraît à gauche d'« Ajouter un
+   * widget » le temps du glisser. Sans lui, pas de corbeille.
+   */
+  onDeleteWidget?: (id: Id) => void;
   /** Supprimée depuis le clic droit : la rangée a déjà posé la question. */
   onDeleteSection: (section: S) => void | Promise<void>;
   /** Le nouvel ordre des colonnes, posé par leur poignée. */
@@ -120,6 +137,12 @@ const GRIP_ZONE = GRIP_SIZE + 2 * TRAIT_ECART;
 
 // L'air entre le trait du cadre et le contenu, en haut et en bas.
 const CADRE_PADDING = 8;
+
+// Ce qui coiffe le contenu d'une colonne : la bande de la poignée et l'air
+// sous le trait. Il ne prend pas de place au-dessus des widgets : la colonne
+// le porte en débord, et la zone de défilement remonte d'autant pour le
+// montrer — les sections commencent ainsi juste sous la marge de la rangée.
+const BANDE_HAUT = GRIP_ZONE + CADRE_PADDING;
 
 /** Ce dont le cadre d'une colonne déborde dans l'écart, de chaque côté. */
 interface Debords {
@@ -262,6 +285,7 @@ const masquees = (
 export default function SectionsBoard<S extends BoardSection>({
   sections,
   locked,
+  onUnlock,
   widgetIds,
   renderWidgets,
   widgets,
@@ -269,6 +293,8 @@ export default function SectionsBoard<S extends BoardSection>({
   onReorderWidgets,
   onAddSection,
   onDuplicateSection,
+  coller,
+  onDeleteWidget,
   onDeleteSection,
   onReorderSections,
   onChangeSection,
@@ -281,8 +307,18 @@ export default function SectionsBoard<S extends BoardSection>({
   const [widgetGlisse, setWidgetGlisse] = useState<Id | null>(null);
   /** Le tiroir des widgets, ouvert par une colonne. */
   const [tiroirOuvert, setTiroirOuvert] = useState(false);
+  // Sortir de la modification referme le tiroir : on n'y pose plus rien.
+  useEffect(() => {
+    if (locked) setTiroirOuvert(false);
+  }, [locked]);
   /** Le type du widget pris dans le tiroir, le temps du glisser. */
   const [typeNouveau, setTypeNouveau] = useState<string | null>(null);
+  /**
+   * La corbeille survolée par le widget tenu : elle se colore, et un widget
+   * lâché au-dessus d'elle s'y jette à la fin du glisser, même si le
+   * navigateur n'a pas livré le dépôt.
+   */
+  const [surCorbeille, setSurCorbeille] = useState(false);
   /** La colonne survolée pendant le glisser : c'est elle qui reçoit. */
   const [colonneSurvolee, setColonneSurvolee] = useState<Id | null>(null);
   /** La colonne tenue par sa poignée : voir « Colonnes : glisser ». */
@@ -341,10 +377,23 @@ export default function SectionsBoard<S extends BoardSection>({
     await onReorderWidgets(sectionId, suivant);
   };
 
+  /** Le widget tenu, lâché sur la corbeille : une seule fois, par le dépôt ou la fin du glisser. */
+  const jeterDansLaCorbeille = () => {
+    const id = widgetGlisse;
+    setSurCorbeille(false);
+    setWidgetGlisse(null);
+    setColonneSurvolee(null);
+    if (id !== null && id !== NOUVEAU) onDeleteWidget?.(id);
+  };
+
   const drag: WidgetDrag = {
     dragged: widgetGlisse,
     onDragStart: setWidgetGlisse,
-    onDragEnd: () => setWidgetGlisse(null),
+    onDragEnd: () => {
+      if (surCorbeille) jeterDansLaCorbeille();
+      setWidgetGlisse(null);
+      setSurCorbeille(false);
+    },
     onDrop: deposer,
   };
 
@@ -521,7 +570,7 @@ export default function SectionsBoard<S extends BoardSection>({
       c="dimmed"
       style={{
         position: "absolute",
-        top: 0,
+        top: -BANDE_HAUT,
         left: 0,
         right: 0,
         height: GRIP_ZONE,
@@ -577,9 +626,10 @@ export default function SectionsBoard<S extends BoardSection>({
           display: "flex",
           flexDirection: "column",
           position: "relative",
-          // Les bandes de la poignée et du pied, et l'air sous le trait, tenus
-          // verrouillé ou non : le contenu ne bouge pas d'un mode à l'autre.
-          paddingBlock: GRIP_ZONE + CADRE_PADDING,
+          // La bande du pied, et l'air au-dessus du trait, tenus verrouillé ou
+          // non : le contenu ne bouge pas d'un mode à l'autre. Celle de la
+          // poignée déborde au-dessus (BANDE_HAUT).
+          paddingBottom: GRIP_ZONE + CADRE_PADDING,
         }}
       >
         {/* Le cadre en pointillé, posé par-dessus et non autour : il déborde
@@ -591,7 +641,7 @@ export default function SectionsBoard<S extends BoardSection>({
             <Box
               style={{
                 position: "absolute",
-                top: GRIP_ZONE,
+                top: -CADRE_PADDING,
               bottom: GRIP_ZONE,
               left: -debords.gauche,
               right: -debords.droite,
@@ -776,7 +826,7 @@ export default function SectionsBoard<S extends BoardSection>({
                     // à la même distance, comme dans un écart. Entre la bande
                     // de la poignée et celle du pied, à la hauteur du cadre.
                     style={{
-                      top: GRIP_ZONE,
+                      top: -CADRE_PADDING,
                       bottom: GRIP_ZONE,
                       left: -(autour.avant + INSERT_ZONE) / 2,
                     }}
@@ -787,7 +837,7 @@ export default function SectionsBoard<S extends BoardSection>({
                     <ColumnInsert
                       label="Insérer une section ici"
                       style={{
-                        top: GRIP_ZONE,
+                        top: -CADRE_PADDING,
                         bottom: GRIP_ZONE,
                         right: -(autour.apres + INSERT_ZONE) / 2,
                       }}
@@ -817,17 +867,32 @@ export default function SectionsBoard<S extends BoardSection>({
 
   // Tant que les sections ne sont pas lues, on n'affiche rien : « aucune
   // section » serait une conclusion prématurée. Verrouillée, la rangée vide
-  // ne propose plus d'en ajouter.
-  const contenu = !sections ? null : sections.length === 0 ? (
+  // propose d'en ajouter si elle peut se déverrouiller : le geste la
+  // déverrouille d'abord, puis pose la section.
+  const ajoutPossible = !locked || Boolean(onUnlock);
+  // Verrouillée, une rangée dont aucune section ne porte rien n'a rien à
+  // montrer : l'écran vide revient, comme sans section. Le geste la
+  // déverrouille alors sans en ajouter une de plus — les siennes attendent.
+  const vide =
+    sections !== null &&
+    (sections.length === 0 || (locked && sections.every((s) => widgetIds(s).length === 0)));
+  const contenu = !sections ? null : vide ? (
     <EmptyPanel
       icon={IconColumns}
       message="Aucune section"
-      actionLabel={locked ? undefined : "Ajouter une section"}
-      onAction={locked ? undefined : () => onAddSection()}
+      actionLabel={ajoutPossible ? "Créer une section" : undefined}
+      onAction={
+        ajoutPossible
+          ? async () => {
+              if (locked) await onUnlock?.();
+              if (sections.length === 0) onAddSection();
+            }
+          : undefined
+      }
     />
   ) : (
     <ScrollArea
-      style={{ flex: 1, minHeight: 0, marginInline: -marge }}
+      style={{ flex: 1, minHeight: 0, marginInline: -marge, marginTop: -BANDE_HAUT }}
       type="always"
       scrollbarSize={2}
       styles={{
@@ -850,7 +915,7 @@ export default function SectionsBoard<S extends BoardSection>({
         // colonne, et la zone de défilement rogne ce qui dépasse : elle
         // s'élargit d'autant dans la marge de la page, et le contenu s'en
         // retire, pour que les colonnes restent à leur place.
-        viewport: { paddingInline: marge },
+        viewport: { paddingInline: marge, paddingTop: BANDE_HAUT },
         content: { display: "flex", flexDirection: "column", minHeight: "100%" },
       }}
     >
@@ -866,17 +931,67 @@ export default function SectionsBoard<S extends BoardSection>({
           choisit la place en y glissant le widget. Verrouillée, ou sans
           section où le poser, la rangée ne le propose pas. */}
       {!locked && sections && sections.length > 0 && (
-        <AddButton
-          label="Ajouter un widget"
-          onClick={() => setTiroirOuvert(true)}
-          h={AIDE_TAILLE}
+        <Box
           style={{
             position: "fixed",
             right: PAGE_GUTTER + AIDE_TAILLE + AIDE_ECART,
             bottom: PAGE_GUTTER,
             zIndex: 200,
+            display: "flex",
+            alignItems: "center",
+            gap: AIDE_ECART,
           }}
-        />
+        >
+          {/* Le temps qu'on tient un widget posé — pas celui qu'on tire du
+              tiroir —, une corbeille à gauche : y lâcher le widget le
+              supprime, après la question habituelle. */}
+          {onDeleteWidget && widgetGlisse !== null && widgetGlisse !== NOUVEAU && (
+            <Box
+              aria-label="Supprimer le widget"
+              onDragEnter={(e) => {
+                e.preventDefault();
+                setSurCorbeille(true);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                setSurCorbeille(true);
+              }}
+              // Passer sur l'icône n'est pas sortir : seul compte ce qui mène
+              // hors de la corbeille.
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                  setSurCorbeille(false);
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                jeterDansLaCorbeille();
+              }}
+              style={{
+                width: AIDE_TAILLE,
+                height: AIDE_TAILLE,
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                // Le rouge du projet, l'icône en blanc ; survolée par le
+                // widget tenu, elle fonce d'un cran.
+                color: "var(--mantine-color-white)",
+                backgroundColor: RED,
+                filter: surCorbeille ? "brightness(0.85)" : undefined,
+                transition: "filter 120ms ease",
+              }}
+            >
+              <IconTrash size={18} style={{ pointerEvents: "none" }} />
+            </Box>
+          )}
+          <AddButton
+            label="Ajouter un widget"
+            onClick={() => setTiroirOuvert(true)}
+            h={AIDE_TAILLE}
+          />
+        </Box>
       )}
 
       {/* La copie qui suit le pointeur : la colonne entière, à sa taille,
@@ -919,6 +1034,21 @@ export default function SectionsBoard<S extends BoardSection>({
 
       {menuSection && (
         <PointMenu position={menuSection.position} onClose={() => setMenuSection(null)}>
+          {coller && (
+            <>
+              <Menu.Item
+                leftSection={<IconClipboard size={16} />}
+                onClick={() => {
+                  const { section } = menuSection;
+                  setMenuSection(null);
+                  void coller.onColler(section);
+                }}
+              >
+                Coller « {coller.libelle} »
+              </Menu.Item>
+              <Menu.Divider />
+            </>
+          )}
           <Menu.Item
             leftSection={<IconCopyPlus size={16} />}
             onClick={() => void onDuplicateSection(menuSection.section)}
@@ -949,7 +1079,11 @@ export default function SectionsBoard<S extends BoardSection>({
           <>
             Voulez-vous vraiment supprimer cette section ?
             {sectionASupprimer && widgetIds(sectionASupprimer).length > 0 && (
-              <> Ses widgets seront supprimés avec elle.</>
+              <>
+                {" "}
+                Ses widgets seront supprimés avec elle, et avec eux les projets, les tâches, les
+                demandes ou les assets que leurs listes montrent.
+              </>
             )}{" "}
             Cette action est irréversible.
           </>

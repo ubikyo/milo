@@ -9,10 +9,16 @@ export const seedIfEmpty = (db: Database): void => {
   };
   if (count > 0) return;
 
-  // Les catégories appartiennent à un tableau : il vient donc en premier.
-  const { lastInsertRowid: boardId } = db
-    .prepare("INSERT INTO project_boards (name, position, created_at) VALUES (?, 0, ?)")
-    .run("Tableau", new Date().toISOString());
+  // Les catégories appartiennent à un tableau : celui de la vue Projets,
+  // posé avec les vues de départ (migrations.ts, vuesEtTableaux).
+  const tableau = db
+    .prepare(
+      `SELECT b.id FROM boards b JOIN views v ON v.id = b.view_id
+       WHERE v.name = 'Projets' ORDER BY b.position, b.id LIMIT 1`,
+    )
+    .get() as { id: number } | undefined;
+  if (!tableau) return;
+  const boardId = tableau.id;
 
   const insertCategory = db.prepare("INSERT INTO categories (board_id, name) VALUES (?, ?)");
   const categoryIds: Record<string, number | bigint> = {};
@@ -20,11 +26,16 @@ export const seedIfEmpty = (db: Database): void => {
     categoryIds[name] = insertCategory.run(boardId, name).lastInsertRowid;
   }
 
-  const insertCompany = db.prepare("INSERT INTO companies (name) VALUES (?)");
-  const companyIds: Record<string, number | bigint> = {};
-  for (const name of ["Arco Marketing", "Arco Digital", "Arco Studio"]) {
-    companyIds[name] = insertCompany.run(name).lastInsertRowid;
-  }
+  // Les contextes du tableau remplacent son « Contexte par défaut ».
+  db.prepare("DELETE FROM contexts WHERE board_id = ?").run(boardId);
+  const insertContext = db.prepare(
+    "INSERT INTO contexts (board_id, name, position, created_at) VALUES (?, ?, ?, ?)",
+  );
+  const contextIds: Record<string, number | bigint> = {};
+  ["Arco Marketing", "Arco Digital", "Arco Studio"].forEach((name, position) => {
+    contextIds[name] = insertContext.run(boardId, name, position, new Date().toISOString())
+      .lastInsertRowid;
+  });
 
   const now = new Date();
   const iso = (daysAgo: number): string => {
@@ -34,8 +45,8 @@ export const seedIfEmpty = (db: Database): void => {
   };
 
   const insertProject = db.prepare(`
-    INSERT INTO projects (name, description, board_id, category_id, company_id, status, created_at, updated_at)
-    VALUES (@name, @description, @board_id, @category_id, @company_id, @status, @created_at, @updated_at)
+    INSERT INTO projects (name, description, board_id, category_id, context_id, status, created_at, updated_at)
+    VALUES (@name, @description, @board_id, @category_id, @context_id, @status, @created_at, @updated_at)
   `);
   const insertComment = db.prepare(`
     INSERT INTO comments (project_id, text, created_at, updated_at)
@@ -47,7 +58,7 @@ export const seedIfEmpty = (db: Database): void => {
     board_id: boardId,
     description: "Nouvelle version du site institutionnel avec Mantine.",
     category_id: categoryIds["Web"],
-    company_id: companyIds["Arco Marketing"],
+    context_id: contextIds["Arco Marketing"],
     status: 65,
     created_at: iso(20),
     updated_at: iso(2),
@@ -70,7 +81,7 @@ export const seedIfEmpty = (db: Database): void => {
     board_id: boardId,
     description: "App interne de gestion des congés.",
     category_id: categoryIds["Mobile"],
-    company_id: companyIds["Arco Digital"],
+    context_id: contextIds["Arco Digital"],
     status: 100,
     created_at: iso(45),
     updated_at: iso(5),
@@ -87,7 +98,7 @@ export const seedIfEmpty = (db: Database): void => {
     board_id: boardId,
     description: "Bascule des serveurs sur la nouvelle infra.",
     category_id: categoryIds["Interne"],
-    company_id: companyIds["Arco Studio"],
+    context_id: contextIds["Arco Studio"],
     status: 10,
     created_at: iso(3),
     updated_at: iso(3),

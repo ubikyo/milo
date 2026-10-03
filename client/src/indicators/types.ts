@@ -62,6 +62,8 @@ export interface SupportIndicatorWidget {
   fill?: boolean;
   /** Vrai quand il se nomme sur place : voir IndicatorWidgetBase. */
   inlineEdit?: boolean;
+  /** La largeur de son tiroir : voir IndicatorWidgetBase. */
+  drawerSize?: number;
   /** L'air qu'il laisse autour de lui : voir IndicatorWidgetBase. */
   marges?: IndicatorWidgetBase<SupportIndicatorType>["marges"];
   /** Vrai quand il ne doit pas paraître : voir IndicatorWidgetBase. */

@@ -370,6 +370,9 @@ export default function SupportMessages({
           }
 
           const gauche = recu(m);
+          // Une réponse par défaut, partie d'office : signée Milo, elle se
+          // distingue de celles qu'écrit l'équipe.
+          const automatique = !gauche && m.author?.id === MILO_ACTOR_ID;
         // L'adresse et la date : estompées sur le fond du message, en blanc
         // adouci sur le vert d'une réponse.
         const secondaire = gauche ? "dimmed" : "inherit";
@@ -392,11 +395,16 @@ export default function SupportMessages({
                 px="md"
                 py={8}
                 // Une réponse de l'équipe : l'entête au vert du bouton d'envoi,
-                // son texte en blanc.
+                // son texte en blanc. Une réponse automatique : en bleu.
                 style={
                   gauche
                     ? { borderBottom: "1px solid var(--mantine-color-default-border)" }
-                    : { backgroundColor: "var(--mantine-color-teal-filled)", color: "white" }
+                    : {
+                        backgroundColor: automatique
+                          ? "var(--mantine-color-blue-filled)"
+                          : "var(--mantine-color-teal-filled)",
+                        color: "white",
+                      }
                 }
               >
                 <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>

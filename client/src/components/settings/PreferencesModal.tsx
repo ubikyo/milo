@@ -12,11 +12,9 @@ import { IconDeviceDesktop, IconMoon, IconSun } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
-import { DEFAULT_MODE, MODES } from "@milo/shared";
-import ErrorAlert from "../ui/ErrorAlert";
 import { initialsOf } from "../ui/ActorAvatars";
-import { messageErreur } from "../../lib/errors";
-import type { Mode, PublicUser } from "@milo/shared";
+import { messageErreur, notifierErreur } from "../../lib/errors";
+import type { PublicUser, View } from "@milo/shared";
 import type { ComponentType } from "react";
 import BoutonFermer from "../ui/BoutonFermer";
 
@@ -69,13 +67,15 @@ interface PreferencesModalProps {
   opened: boolean;
   onClose: () => void;
   user: PublicUser | null;
+  /** Les vues que le compte voit : celle d'ouverture se choisit parmi elles. */
+  views: View[];
   onUpdated: (user: PublicUser) => void;
 }
 
 /**
  * Le profil. L'identité vient d'Entra et s'y modifie : elle se lit ici, et se
  * relit à chaque connexion. Le mot de passe est celui de Microsoft. Restent ce
- * que chacun règle pour lui-même — le mode d'ouverture, le thème —, qui ne
+ * que chacun règle pour lui-même — la vue d'ouverture, le thème —, qui ne
  * s'appliquent qu'à l'enregistrement : « Fermer » les laisse tels qu'ils
  * étaient.
  */
@@ -83,37 +83,35 @@ export default function PreferencesModal({
   opened,
   onClose,
   user,
+  views,
   onUpdated,
 }: PreferencesModalProps) {
   const { colorScheme, setColorScheme } = useMantineColorScheme();
-  const [mode, setMode] = useState<Mode>(DEFAULT_MODE);
+  // La vue d'ouverture ; vide, la première.
+  const [vue, setVue] = useState("");
   const [theme, setTheme] = useState<Scheme>("auto");
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Chaque ouverture repart de ce qui est en place.
   useEffect(() => {
     if (!opened) return;
-    setMode(user?.default_mode ?? DEFAULT_MODE);
+    setVue(user?.default_view ?? "");
     setTheme((colorScheme ?? "auto") as Scheme);
-    setError(null);
     // Le thème n'est relu qu'à l'ouverture : le relire pendant qu'on choisit
     // effacerait le choix en cours.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, user]);
 
   const enregistrer = async () => {
-    setError(null);
     setBusy(true);
     try {
-      // Le mode appartient au compte, et part au serveur ; le thème est celui
+      // La vue appartient au compte, et part au serveur ; le thème est celui
       // du navigateur, que Mantine mémorise.
-      if (mode !== user?.default_mode)
-        onUpdated(await api.updateMe({ default_mode: mode }));
+      if (vue !== (user?.default_view ?? "")) onUpdated(await api.updateMe({ default_view: vue }));
       setColorScheme(theme);
       onClose();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setBusy(false);
     }
@@ -151,9 +149,6 @@ export default function PreferencesModal({
           </div>
         </Group>
 
-        {error && (
-          <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>
-        )}
 
         {/* Le libellé est posé à gauche du champ, et non au-dessus comme les
             libellés de Mantine : les deux réglages s'alignent sur la même
@@ -161,13 +156,18 @@ export default function PreferencesModal({
         <Stack gap="md">
           <Group gap={GAP} wrap="nowrap" align="center">
             <Text size="sm" fw={500} w={LABEL_WIDTH}>
-              Mode par défaut
+              Vue par défaut
             </Text>
             <Select
-              aria-label="Mode par défaut"
-              data={MODES.map((m) => ({ value: m.value, label: m.label }))}
-              value={mode}
-              onChange={(value) => value && setMode(value as Mode)}
+              aria-label="Vue par défaut"
+              // « La première » : celle qui ouvre le sélecteur, dans l'ordre
+              // que chacun a rangé. Une vue disparue y ramène aussi.
+              data={[
+                { value: "premiere", label: "La première" },
+                ...views.map((v) => ({ value: String(v.id), label: v.name })),
+              ]}
+              value={views.some((v) => String(v.id) === vue) ? vue : "premiere"}
+              onChange={(value) => value && setVue(value === "premiere" ? "" : value)}
               allowDeselect={false}
               w={FIELD_WIDTH}
             />

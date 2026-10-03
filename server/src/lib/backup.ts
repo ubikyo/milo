@@ -14,22 +14,17 @@
 //      dessus : échanger le fichier sous leurs pieds demanderait de tout
 //      redémarrer. Les données sont donc recopiées table par table dans la
 //      base en place, qui garde son schéma — celui d'aujourd'hui, migrations
-//      comprises. Une sauvegarde plus ancienne se restaure ainsi sans rien de
-//      particulier : ses colonnes sont un sous-ensemble des nôtres, et celles
-//      qui lui manquent prennent leur valeur par défaut.
+//      comprises. Une sauvegarde plus ancienne est d'abord migrée dans son
+//      propre fichier (migrerLaSauvegarde) : elle arrive au schéma
+//      d'aujourd'hui, et ses données se recopient telles quelles.
 
 import Database from "better-sqlite3";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { BackupInfo, RestoreResult } from "@milo/shared";
-import {
-  permissionsParTypeDeWidget,
-  separerParametrage,
-  numeroterReferences,
-  poserSectionsParDefaut,
-  rattacherIndicateurs,
-} from "../db/migrations.js";
+import { migrate, numeroterReferences } from "../db/migrations.js";
+import { INDEXES, SCHEMA } from "../db/schema.js";
 import { db, transaction } from "../db/query.js";
 import { env } from "../env.js";
 import { depaqueter, empaqueter } from "./archive.js";
@@ -143,6 +138,25 @@ const verifierLaBase = (chemin: string): void => {
 
   for (const attendue of TABLES_ATTENDUES) {
     if (!tables.has(attendue)) badRequest("Cette sauvegarde ne vient pas de Milo");
+  }
+};
+
+/**
+ * La sauvegarde, mise au schéma d'aujourd'hui dans son propre fichier : une
+ * base d'avant les vues ne se recopie pas telle quelle — ses tableaux n'ont
+ * pas de vue, ses catégories d'accès n'existent plus. Ses rattrapages et sa
+ * conversion se font donc chez elle, avant d'en recopier quoi que ce soit.
+ */
+const migrerLaSauvegarde = (chemin: string): void => {
+  const base = new Database(chemin);
+  try {
+    base.pragma("foreign_keys = ON");
+    base.exec(SCHEMA);
+    migrate(base);
+    base.exec(INDEXES);
+    numeroterReferences(base);
+  } finally {
+    base.close();
   }
 };
 
@@ -261,18 +275,8 @@ export const restaurerSauvegarde = (archive: Buffer): RestoreResult => {
     fs.writeFileSync(chemin, base!);
     verifierLaBase(chemin);
 
+    migrerLaSauvegarde(chemin);
     const { tables, rows } = remplacerLesDonnees(chemin);
-    // Une sauvegarde d'avant les sections des statistiques laisse ses
-    // indicateurs sans section, celle d'avant les références communes
-    // numérote ses cartes par tableau, et celle d'avant les sections des
-    // projets et des tâches n'en a pas : on les repose. Celle d'avant les
-    // permissions par type de widget ne les a pas : ceux qui avaient un accès
-    // reçoivent « Modifier » partout.
-    separerParametrage(db);
-    permissionsParTypeDeWidget(db);
-    rattacherIndicateurs(db);
-    numeroterReferences(db);
-    poserSectionsParDefaut(db);
     const medias = restaurerLesMedias(fichiers);
 
     // Écrit après coup : la restauration vient de remplacer la table des

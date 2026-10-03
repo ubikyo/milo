@@ -2,7 +2,7 @@ import { Group, NumberInput } from "@mantine/core";
 import { LARGEUR_CHAMP, avecReinitialiser } from "./champs-style";
 import { nombre } from "./types";
 import type { AccessWidget, Marges } from "./types";
-import type { AccessBlock, AccessBlockType } from "@milo/shared";
+import type { BoardWidget, AccessBlockType } from "@milo/shared";
 
 // L'air au-dessus et au-dessous d'un élément de colonne.
 //
@@ -62,21 +62,21 @@ export const margesDe = (
  * dans leur ordre.
  */
 export const voisinsDe = (
-  blocks: AccessBlock[],
-  bloc: AccessBlock,
+  blocks: BoardWidget[],
+  bloc: BoardWidget,
   widgetDe: (type: AccessBlockType) => AccessWidget | undefined,
   locked: boolean,
 ): Voisins => {
   const visibles = blocks.filter((b) => {
     if (b.section_id !== bloc.section_id) return false;
     if (b.id === bloc.id) return true;
-    const widget = widgetDe(b.type);
+    const widget = widgetDe(b.type as AccessBlockType);
     return widget !== undefined && !widget.hidden?.(b.config, locked);
   });
   const rang = visibles.findIndex((b) => b.id === bloc.id);
   return {
-    previousType: visibles[rang - 1]?.type ?? null,
-    nextType: visibles[rang + 1]?.type ?? null,
+    previousType: (visibles[rang - 1]?.type as AccessBlockType | undefined) ?? null,
+    nextType: (visibles[rang + 1]?.type as AccessBlockType | undefined) ?? null,
   };
 };
 
@@ -106,7 +106,6 @@ export function ChampsMarges({ widget, config, onChange, voisins }: ChampsMarges
   const champ = (label: string, cle: string, valeur: number, ordinaire: number) => (
     <NumberInput
       label={label}
-      description={`Par défaut : ${ordinaire} px`}
       placeholder={String(ordinaire)}
       value={valeur}
       onChange={(v) => regler(cle, ordinaire, v)}

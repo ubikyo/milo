@@ -45,8 +45,14 @@ export const LARGEUR_CHAMP = 120;
 /** La place du bouton de réinitialisation, à gauche dans le champ. */
 const LARGEUR_BOUTON = 28;
 
-/** Celle de l'aperçu de la couleur, qui le suit dans le champ couleur. */
-const LARGEUR_APERCU = 26;
+/**
+ * L'air laissé entre le filet du bouton et ce qui le suit dans le champ : sans
+ * lui, le texte vient contre le filet et le bouton ne s'en détache pas.
+ */
+const ECART = 8;
+
+/** L'aperçu de la couleur, qui suit le bouton dans le champ couleur. */
+const TAILLE_APERCU = 16;
 
 /** La configuration reçue, où un réglage est posé — ou retiré s'il vaut l'ordinaire. */
 const regle = (
@@ -84,8 +90,14 @@ function Reinitialiser({ actif, onClick }: { actif: boolean; onClick: () => void
  * section laisse passer les clics : par défaut, Mantine les lui retire.
  */
 export const avecReinitialiser = (actif: boolean, onClick: () => void) => ({
-  leftSection: <Reinitialiser actif={actif} onClick={onClick} />,
-  leftSectionWidth: LARGEUR_BOUTON,
+  // La section s'étend au-delà du bouton, de l'écart qui le sépare du texte :
+  // le champ fait commencer sa saisie là où elle s'arrête.
+  leftSection: (
+    <div style={{ width: "100%", height: "100%", paddingInlineEnd: ECART }}>
+      <Reinitialiser actif={actif} onClick={onClick} />
+    </div>
+  ),
+  leftSectionWidth: LARGEUR_BOUTON + ECART,
   leftSectionPointerEvents: "all" as const,
 });
 
@@ -108,13 +120,11 @@ interface ChampCouleurProps extends ChampProps {
 export function ChampCouleur({ config, onChange, cle, defaut, libelleDefaut }: ChampCouleurProps) {
   const valeur = texte(config, cle, defaut ?? "");
   const ordinaire = defaut ?? "";
-  const reinitialiser = avecReinitialiser(valeur.toLowerCase() !== ordinaire.toLowerCase(), () =>
-    onChange(regle(config, cle, "", ordinaire)),
-  );
+  const actif = valeur.toLowerCase() !== ordinaire.toLowerCase();
+  const reinitialiser = () => onChange(regle(config, cle, "", ordinaire));
   return (
     <ColorInput
       label="Couleur"
-      description={`Par défaut : ${libelleDefaut ?? defaut}`}
       placeholder={libelleDefaut ?? defaut}
       value={valeur}
       onChange={(v) => onChange(regle(config, cle, v.toLowerCase(), ordinaire))}
@@ -125,19 +135,27 @@ export function ChampCouleur({ config, onChange, cle, defaut, libelleDefaut }: C
       // à céder dans un champ si étroit.
       withEyeDropper={false}
       w={LARGEUR_CHAMP}
-      {...reinitialiser}
       // La section de gauche est celle où Mantine montre la couleur : le
-      // bouton la prend, et l'aperçu se range à sa suite. Sans couleur
-      // choisie, il montre celle du texte, que l'élément prend alors.
+      // bouton la prend, et l'aperçu se range à sa suite, écarté du filet
+      // comme du texte. Sans couleur choisie, il montre celle du texte, que
+      // l'élément prend alors.
       leftSection={
-        <div style={{ display: "flex", width: "100%", height: "100%" }}>
-          <div style={{ width: LARGEUR_BOUTON, flexShrink: 0 }}>{reinitialiser.leftSection}</div>
-          <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center" }}>
-            <ColorSwatch color={valeur || "var(--mantine-color-text)"} size={16} />
+        <div style={{ display: "flex", alignItems: "center", width: "100%", height: "100%" }}>
+          <div style={{ width: LARGEUR_BOUTON, height: "100%", flexShrink: 0 }}>
+            <Reinitialiser actif={actif} onClick={reinitialiser} />
           </div>
+          <ColorSwatch
+            color={valeur || "var(--mantine-color-text)"}
+            size={TAILLE_APERCU}
+            style={{ marginInlineStart: ECART, flexShrink: 0 }}
+          />
         </div>
       }
-      leftSectionWidth={LARGEUR_BOUTON + LARGEUR_APERCU}
+      leftSectionWidth={LARGEUR_BOUTON + ECART + TAILLE_APERCU + ECART}
+      leftSectionPointerEvents="all"
+      // Le code couleur a besoin de toute la place qui reste : la marge de
+      // droite du champ se resserre d'autant.
+      styles={{ input: { paddingInlineEnd: 6 } }}
     />
   );
 }
@@ -153,7 +171,6 @@ export function ChampTaille({ config, onChange, cle, defaut, min, max }: ChampTa
   return (
     <NumberInput
       label="Taille de la police"
-      description={`Par défaut : ${defaut} px`}
       placeholder={String(defaut)}
       value={valeur}
       onChange={(v) => onChange(regle(config, cle, v === "" ? "" : Number(v), defaut))}

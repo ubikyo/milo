@@ -6,7 +6,6 @@
 import type {
   SupportCommentFormat,
   SupportMailStatus,
-  AccessBlockType,
   CardKind,
   Id,
   SectionWidthUnit,
@@ -22,11 +21,15 @@ export interface UserRow {
   email: string;
   password_hash: string;
   default_mode: string;
+  /** La vue d'ouverture : son identifiant, ou vide. */
+  default_view: string;
   created_at: string;
   entra_id: string;
   /** JSON : les identifiants des groupes Entra du compte. */
   entra_groups: string;
   system: SqliteBool;
+  /** Le workspace choisi : nul, ou peut-être un qu'il n'a plus (users.ts, workspaceCourant). */
+  workspace_id: Id | null;
 }
 
 export interface SessionRow {
@@ -37,29 +40,34 @@ export interface SessionRow {
   expires_at: string;
 }
 
-export interface CompanyRow {
+/** Un contexte d'un tableau. */
+export interface ContextRow {
   id: Id;
+  board_id: Id;
   name: string;
-  support_email: string;
-  support_url: string;
+  position: number;
+  created_at: string;
 }
 
-export interface RoleRow {
+
+/** Une vue du sélecteur du bas. */
+export interface WorkspaceRow {
   id: Id;
   name: string;
-  is_admin: SqliteBool;
-  /** JSON : les droits, mode par mode. */
-  permissions: string;
+  position: number;
+  created_at: string;
 }
 
-export interface ProjectBoardRow {
+export interface ViewRow {
   id: Id;
+  workspace_id: Id;
   name: string;
   position: number;
   is_private: SqliteBool;
   owner_id: Id | null;
   created_at: string;
 }
+
 
 /** Un type de jalons : ses jalons y sont du texte JSON. */
 export interface MilestoneTypeRow {
@@ -93,23 +101,14 @@ export interface CategoryRow {
   name: string;
   /** JSON : un tableau de { value, label }. */
   milestones: string;
-}
-
-/** Une catégorie du mode Accès : le premier niveau du mode, sans parent. */
-export interface AccessCategoryRow {
-  id: Id;
-  name: string;
   position: number;
-  owner_id: Id | null;
-  is_private: SqliteBool;
-  is_locked: SqliteBool;
-  created_at: string;
 }
 
-/** Une section d'une catégorie d'accès : une colonne, et la largeur qu'elle dit. */
-export interface AccessSectionRow {
+
+/** Une section d'un tableau : une colonne de widgets. */
+export interface BoardSectionRow {
   id: Id;
-  category_id: Id;
+  board_id: Id;
   width_unit: SectionWidthUnit;
   width_value: number | null;
   /** L'écart qui la sépare de la colonne suivante, en pixels. */
@@ -120,18 +119,20 @@ export interface AccessSectionRow {
   created_at: string;
 }
 
+
 /**
- * Un élément d'une section, tel que la base le range : sa configuration y est
- * du texte JSON. L'API, elle, rend un objet (`AccessBlock`).
+ * Un widget d'une section, tel que la base le range : sa configuration y est
+ * du texte JSON. L'API, elle, rend un objet (`BoardWidget`).
  */
-export interface AccessBlockRow {
+export interface BoardWidgetRow {
   id: Id;
   section_id: Id;
-  type: AccessBlockType;
+  type: string;
   config: string;
   position: number;
   created_at: string;
 }
+
 
 export interface AccessFeedRow {
   url: string;
@@ -143,14 +144,6 @@ export interface AccessFeedRow {
   error: string;
 }
 
-export interface AccessUptimeRow {
-  key: string;
-  state: "up" | "down";
-  since: string;
-  checked_at: string;
-  detail: string;
-}
-
 export interface ProjectRow {
   id: Id;
   number: number;
@@ -158,7 +151,8 @@ export interface ProjectRow {
   description: string;
   board_id: Id;
   category_id: Id;
-  company_id: Id | null;
+  context_id: Id | null;
+  list_key: string;
   milestone_type_id: Id | null;
   status: number;
   created_at: string;
@@ -168,13 +162,15 @@ export interface ProjectRow {
 /** Une ligne de projet jointe à ses tables de référence. */
 export interface ProjectJoinedRow extends ProjectRow {
   category_name: string;
-  company_name: string | null;
+  context_name: string | null;
 }
 
+/** Un tableau d'une vue. */
 export interface BoardRow {
   id: Id;
-  company_id: Id;
+  view_id: Id;
   name: string;
+  all_contexts_label: string;
   position: number;
   show_card_numbers: SqliteBool;
   is_private: SqliteBool;
@@ -183,12 +179,17 @@ export interface BoardRow {
   created_at: string;
 }
 
+/** Les tableaux de projets sont des tableaux comme les autres. */
+export type ProjectBoardRow = BoardRow;
+
+
 export interface TaskListRow {
   id: Id;
   board_id: Id;
   name: string;
   position: number;
   color: string;
+  list_key: string;
   created_at: string;
 }
 
@@ -199,6 +200,7 @@ export interface TaskCardRow {
   position: number;
   number: number;
   kind: CardKind;
+  context_id: Id | null;
   description: string;
   due_date: string;
   created_at: string;
@@ -273,11 +275,15 @@ export type WithAuthorColumns<T> = T & {
   author_email: string | null;
 };
 
-/** Une demande de support : elle pend à une société. */
+/** Une demande de support : elle pend à un contexte. */
 export interface SupportRequestRow {
   id: Id;
   number: number;
-  company_id: Id;
+  board_id: Id;
+  context_id: Id | null;
+  list_key: string;
+  /** La boîte où elle est arrivée ; vide pour une demande saisie. */
+  mailbox: string;
   subject: string;
   status: SupportStatus;
   due_date: string;
@@ -300,32 +306,7 @@ export interface SupportLabelRow {
   created_at: string;
 }
 
-/**
- * Un indicateur d'un panneau des statistiques — Support ou Assets — : sa
- * configuration, en JSON.
- */
-/** Une section d'un panneau des statistiques : une colonne. */
-export interface IndicatorSectionRow {
-  id: Id;
-  panel: "support" | "assets" | "projects" | "tasks";
-  width_unit: SectionWidthUnit;
-  width_value: number | null;
-  /** L'écart qui la sépare de la colonne suivante, en pixels. */
-  gap: number;
-  position: number;
-  /** Nul : la structure publique ; sinon, celle de ce compte. */
-  owner_id: Id | null;
-  created_at: string;
-}
 
-export interface IndicatorRow<Type extends string = string> {
-  id: Id;
-  section_id: Id;
-  type: Type;
-  config: string;
-  position: number;
-  created_at: string;
-}
 
 export interface SupportCommentRow {
   id: Id;
@@ -396,7 +377,9 @@ export interface AssetRow {
   deviceid: string;
   name: string;
   tag: string;
-  company_id: Id | null;
+  board_id: Id | null;
+  context_id: Id | null;
+  list_key: string;
   content: string;
   last_user: string;
   last_inventory: string;

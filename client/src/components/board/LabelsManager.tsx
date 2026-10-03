@@ -2,7 +2,6 @@ import { NumberInput, Stack, TextInput, UnstyledButton } from "@mantine/core";
 import { IconPencil, IconTags, IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
-import ErrorAlert from "../ui/ErrorAlert";
 import LabelChip from "../ui/LabelChip";
 import { DEFAULT_LABEL_COLOR, LABEL_HUES } from "@milo/shared";
 import type { Label, LabelHue, ProjectLabel, SupportLabel } from "@milo/shared";
@@ -37,7 +36,6 @@ function ChampPoids({
       onChange={(v) => onChange(v === "" ? "" : Number(v))}
       onBlur={onBlur}
       onKeyDown={(e) => {
-        // Consommée : le tiroir qui porte ce champ n'enregistre pas en plus.
         if (e.key === "Enter") {
           e.preventDefault();
           e.currentTarget.blur();
@@ -65,7 +63,7 @@ function ChampPoids({
 import LabelColorPicker from "../ui/LabelColorPicker";
 import ListItems from "../ui/ListItems";
 import { DragHandle, InsertLine, usePileGlissante } from "../ui/PileGlissante";
-import { messageErreur } from "../../lib/errors";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 
 /**
  * Les étiquettes d'un tableau, gérées en ligne comme les sociétés ou les
@@ -112,7 +110,6 @@ export default function LabelsManager({
   const [newWeight, setNewWeight] = useState<number | "">(0);
   // Les poids en cours de saisie, par étiquette : enregistrés en quittant le champ.
   const [poids, setPoids] = useState<Record<number, number | "">>({});
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Etiquette | null>(null);
   // L'ordre qu'on vient de poser, le temps que la liste relue le rapporte :
@@ -135,13 +132,12 @@ export default function LabelsManager({
   });
 
   const run = async (action: () => Promise<unknown>): Promise<boolean> => {
-    setError(null);
     setBusy(true);
     try {
       await action();
       return true;
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
       return false;
     } finally {
       setBusy(false);
@@ -149,7 +145,6 @@ export default function LabelsManager({
   };
 
   const startEdit = (label: Etiquette) => {
-    setError(null);
     setEditingId(label.id);
     setEditingName(label.name);
   };
@@ -193,7 +188,6 @@ export default function LabelsManager({
 
   return (
     <Stack gap="sm">
-      {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
 
       <ListItems
         maxRows={8}
@@ -281,7 +275,6 @@ export default function LabelsManager({
                         value={editingName}
                         onChange={(e) => setEditingName(e.currentTarget.value)}
                         onKeyDown={(e) => {
-                          // Consommée : le tiroir qui porte ce champ n'enregistre pas en plus.
                           if (e.key === "Enter") {
                             e.preventDefault();
                             saveEdit();

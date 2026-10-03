@@ -309,7 +309,6 @@ function ChecklistItem({
           onChange={(e) => setEdite(e.currentTarget.value)}
           onBlur={valider}
           onKeyDown={(e) => {
-            // Consommée : la fiche n'enregistre pas en plus.
             if (e.key === "Enter") {
               e.preventDefault();
               valider();
@@ -475,7 +474,6 @@ function Checklist({
               onChange={(e) => setTitre(e.currentTarget.value)}
               onBlur={validerTitre}
               onKeyDown={(e) => {
-                // Consommée : la fiche n'enregistre pas en plus.
                 if (e.key === "Enter") {
                   e.preventDefault();
                   validerTitre();

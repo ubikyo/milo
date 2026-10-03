@@ -1,7 +1,7 @@
-import { BarsList } from "@mantine/charts";
 import { Stack } from "@mantine/core";
 import { IconDatabase } from "@tabler/icons-react";
 import { diskUsage } from "../lib/poste";
+import { BarresEtiquettes } from "../indicators/etiquettes";
 import { NOM, Rien, TitreIndicateur } from "./commun";
 import type { AssetIndicatorWidget } from "./types";
 
@@ -21,10 +21,6 @@ const TRANCHES = [
   { name: "70 à 84 %", jusqua: 85, color: "orange.6" },
   { name: "85 à 100 %", jusqua: Infinity, color: "red.6" },
 ];
-
-/** La moitié de l'air que BarsList laisse à gauche du libellé. */
-const PADDING =
-  "0 var(--mantine-spacing-sm) 0 calc(var(--mantine-spacing-sm) / 2)";
 
 export const disquesIndicator: AssetIndicatorWidget = {
   type: "disks",
@@ -56,17 +52,7 @@ export const disquesIndicator: AssetIndicatorWidget = {
         {mesures === 0 ? (
           <Rien>Aucun disque mesuré</Rien>
         ) : (
-          <BarsList
-            data={data}
-            barHeight={24}
-            // Des barres pleines, le libellé en blanc dessus : en « light »,
-            // le fond à peine teinté laissait le texte illisible.
-            variant="filled"
-            barTextColor="white"
-            getBarProps={() => ({
-              style: { padding: PADDING, whiteSpace: "nowrap" },
-            })}
-          />
+          <BarresEtiquettes data={data} />
         )}
       </Stack>
     );

@@ -113,8 +113,7 @@ function Lignes({ config, onChange }: WidgetConfigProps) {
     premierChamp.current?.focus();
   };
 
-  // Entrée ajoute depuis l'un ou l'autre champ de la ligne d'ajout, et est
-  // consommée : le tiroir n'enregistre pas en plus.
+  // Entrée ajoute depuis l'un ou l'autre champ de la ligne d'ajout.
   const toucheAjout = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();

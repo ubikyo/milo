@@ -8,6 +8,8 @@ import { now } from "../lib/time.js";
 import { touch, touchNow } from "../middleware/events.js";
 import { boardOuvert } from "../repositories/boards.js";
 import { copyTaskList } from "../repositories/copy-list.js";
+import { cleDansLeTableau } from "../repositories/listes.js";
+import { transaction } from "../db/query.js";
 import { listsWithCards, reorderTaskLists, taskCards, taskLists } from "../repositories/tasks.js";
 
 const LISTE_INTROUVABLE = "Liste introuvable";
@@ -33,7 +35,9 @@ taskListRoutes.post("/", (req, res) => {
   // Nouvelle liste ajoutée à la fin de celles de ce tableau, ou au rang
   // demandé : le « + » entre deux listes l'y glisse.
   const { next } = taskLists.nextPosition(boardId);
-  const { lastInsertRowid } = taskLists.create.run(boardId, name, next, now());
+  // Dans le widget « Tâches » d'où elle est créée, à défaut le premier.
+  const cle = cleDansLeTableau(Number(boardId), "task.list", req.body.list_key);
+  const { lastInsertRowid } = taskLists.create.run(boardId, name, next, cle, now());
   const id = Number(lastInsertRowid);
   const rang = Number(req.body.index);
   if (req.body.index !== undefined && Number.isInteger(rang) && rang >= 0) {
@@ -123,7 +127,14 @@ taskListRoutes.put("/:id", (req, res) => {
     ? taskLists.nextPosition(boardId).next
     : (req.body.position ?? existing.position);
 
-  taskLists.update.run(boardId, name, position, color, existing.id);
+  transaction(() => {
+    // Dans un autre tableau, elle va à son premier widget « Tâches ».
+    const cle = change
+      ? cleDansLeTableau(Number(boardId), "task.list", undefined)
+      : existing.list_key;
+    taskLists.update.run(boardId, name, position, color, cle, existing.id);
+    if (change) taskCards.recontextualiser.run(boardId, existing.id);
+  })();
   res.json(taskLists.byId.get(existing.id));
 });
 

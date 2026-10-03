@@ -5,20 +5,27 @@
 // (system) est à part : il n'a qu'un mot de passe, ne sert qu'au paramétrage,
 // et ne se montre dans aucune liste.
 
-import type { AppPermissions, CompanyRights, PublicUser, WidgetRights } from "@milo/shared";
+import type {
+  AdminPermissions,
+  CompanyRights,
+  Id,
+  PublicUser,
+  WidgetRights,
+  WorkspaceRef,
+} from "@milo/shared";
 import {
-  DEFAULT_MODE,
   TOUTES_SOCIETES,
-  isMode,
   peutLire,
   permissionsDesWidgets,
   reunirWidgetRights,
-  validAppPermissions,
+  validAdminPermissions,
+  validWidgetRights,
   widgetRightsPartout,
 } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import type { SessionRow, UserRow } from "../db/rows.js";
 import { fullName, gravatarUrl } from "../lib/auth.js";
+import { workspaces } from "./workspaces.js";
 
 /** L'identifiant du compte « admin ». */
 export const ADMIN_USERNAME = "admin";
@@ -45,7 +52,8 @@ export const users = {
      WHERE id = ?`,
   ),
   setPassword: mutation("UPDATE users SET password_hash = ? WHERE id = ?"),
-  setDefaultMode: mutation("UPDATE users SET default_mode = ? WHERE id = ?"),
+  setDefaultView: mutation("UPDATE users SET default_view = ? WHERE id = ?"),
+  setWorkspace: mutation("UPDATE users SET workspace_id = ? WHERE id = ?"),
   /** Vrai si cet identifiant désigne une personne. Sert à filtrer les rattachements. */
   exists: selection<{ id: number }>("SELECT id FROM users WHERE id = ? AND system = 0"),
 };
@@ -63,41 +71,100 @@ export const sessions = {
   purgeExpired: mutation("DELETE FROM sessions WHERE expires_at != '' AND expires_at < ?"),
 };
 
-/** Ses permissions pour l'application : les siennes et celles de ses groupes. */
-const permissionsDuCompte = selection<{ settings: string; widgets: string }>(
-  `SELECT settings, widgets FROM principal_permissions
-   WHERE (principal_type = 'user' AND principal_id = ?)
-      OR (principal_type = 'group' AND principal_id IN (SELECT value FROM json_each(?)))`,
-);
+/** Qui il est pour les permissions : lui, ou l'un de ses groupes. */
+const PRINCIPAL_DU_COMPTE = `(principal_type = 'user' AND principal_id = ?)
+      OR (principal_type = 'group' AND principal_id IN (SELECT value FROM json_each(?)))`;
 
 /**
- * Ses permissions pour l'application, réunies — les siennes et celles de ses
- * groupes : le Paramétrage le plus large, et pour chaque type de widget la
- * permission la plus large. Le compte « admin » a tout.
+ * Ses accès, workspace par workspace : les siens et ceux de ses groupes, une
+ * ligne par principal et par workspace.
  */
-const permissionsApplication = (user: UserRow): AppPermissions => {
-  if (user.system) return { settings: "update", widgets: widgetRightsPartout("update") };
-  const toutes = permissionsDuCompte
+const accesDuCompte = selection<{ workspace_id: number; widgets: string }>(
+  `SELECT workspace_id, widgets FROM principal_permissions WHERE ${PRINCIPAL_DU_COMPTE}`,
+);
+
+/** Son administration : la sienne et celle de ses groupes. */
+const administrationDuCompte = selection<{ settings: string; workspaces: string }>(
+  `SELECT settings, workspaces FROM principal_admin WHERE ${PRINCIPAL_DU_COMPTE}`,
+);
+
+/** Ses accès, relus : un JSON illisible n'accorde rien. */
+const lignesDu = (user: UserRow): { workspace: Id; widgets: WidgetRights }[] =>
+  accesDuCompte.all(user.entra_id, JSON.stringify(groupesDu(user))).map((l) => {
+    let widgets: unknown = {};
+    try {
+      widgets = JSON.parse(l.widgets);
+    } catch {
+      // Un JSON illisible n'accorde rien.
+    }
+    return { workspace: l.workspace_id, widgets: validWidgetRights(widgets) };
+  });
+
+/**
+ * Son administration, réunie — la sienne et celle de ses groupes : le
+ * Paramétrage le plus large, la gestion des workspaces si l'une l'accorde.
+ * Le compte « admin » a tout.
+ */
+const administrationDu = (user: UserRow): AdminPermissions => {
+  if (user.system) return { settings: "update", workspaces: "update" };
+  const toutes = administrationDuCompte
     .all(user.entra_id, JSON.stringify(groupesDu(user)))
-    .map((l) => {
-      let widgets: unknown = {};
-      try {
-        widgets = JSON.parse(l.widgets);
-      } catch {
-        // Un JSON illisible n'accorde rien.
-      }
-      return validAppPermissions({ settings: l.settings, widgets });
-    });
-  const settings = toutes.some((p) => p.settings === "update")
-    ? "update"
-    : toutes.some((p) => p.settings === "view")
-      ? "view"
-      : "";
-  return { settings, widgets: reunirWidgetRights(toutes.map((p) => p.widgets)) };
+    .map(validAdminPermissions);
+  return {
+    settings: toutes.some((p) => p.settings === "update")
+      ? "update"
+      : toutes.some((p) => p.settings === "view")
+        ? "view"
+        : "",
+    workspaces: toutes.some((p) => p.workspaces === "update") ? "update" : "",
+  };
 };
 
+/**
+ * Les workspaces auxquels il a accès — où il lit au moins un type de widget —,
+ * dans leur ordre : tous pour le compte « admin ».
+ */
+export const workspacesDu = (user: UserRow): WorkspaceRef[] => {
+  const tous = workspaces.all.all().map(({ id, name }) => ({ id, name }));
+  if (user.system) return tous;
+  const ouverts = new Set(
+    lignesDu(user)
+      .filter((l) => Object.values(l.widgets).some(peutLire))
+      .map((l) => l.workspace),
+  );
+  return tous.filter((w) => ouverts.has(w.id));
+};
+
+/**
+ * Le workspace où il travaille : celui qu'il a choisi s'il y a encore accès,
+ * sinon le premier des siens — « null » s'il n'en a aucun.
+ */
+export const workspaceCourant = (user: UserRow): Id | null => {
+  const siens = workspacesDu(user);
+  return (siens.find((w) => w.id === user.workspace_id) ?? siens[0])?.id ?? null;
+};
+
+/** Peut-il gérer les workspaces ? Le compte « admin », ou à qui l'administration l'accorde. */
+export const peutGererWorkspaces = (user: UserRow): boolean =>
+  administrationDu(user).workspaces === "update";
+
+/**
+ * Ses permissions par type de widget dans le workspace où il travaille
+ * (« workspace_id », que requireAuth tient à jour), réunies — les siennes et
+ * celles de ses groupes, la plus large pour chaque type. Le compte « admin »
+ * a tout.
+ */
+const widgetsDuWorkspace = (user: UserRow): WidgetRights =>
+  user.system
+    ? widgetRightsPartout("update")
+    : reunirWidgetRights(
+        lignesDu(user)
+          .filter((l) => l.workspace === user.workspace_id)
+          .map((l) => l.widgets),
+      );
+
 /** Ses permissions par type de widget. */
-export const droitsWidgets = (user: UserRow): WidgetRights => permissionsApplication(user).widgets;
+export const droitsWidgets = (user: UserRow): WidgetRights => widgetsDuWorkspace(user);
 
 /**
  * Ses droits dans les modes, déduits de ses permissions par type de widget
@@ -124,42 +191,61 @@ export interface DroitsParametrage {
 }
 
 /**
- * Ses droits sur le Paramétrage, tenus de ses permissions — les siennes ou
- * celles d'un de ses groupes. Le compte « admin » les a tous. « Modifier »
+ * Ses droits sur le Paramétrage, tenus de son administration — la sienne ou
+ * celle d'un de ses groupes. Le compte « admin » les a tous. « Modifier »
  * comprend « Voir ».
  */
 export const droitsParametrage = (user: UserRow): DroitsParametrage => {
-  const { settings } = permissionsApplication(user);
+  const { settings } = administrationDu(user);
   return { view: settings !== "", update: settings === "update" };
 };
 
 /**
- * Le compte a-t-il accès à Milo ? Le compte « admin », ou quelqu'un qui lit
- * au moins un type de widget ou voit le Paramétrage — directement, ou par
- * l'un de ses groupes.
+ * Le compte a-t-il accès à Milo ? Le compte « admin », quelqu'un qui a accès
+ * à au moins un workspace — directement, ou par l'un de ses groupes —, qui
+ * voit le Paramétrage ou qui gère les workspaces.
  */
-export const aAcces = (user: UserRow): boolean => {
-  if (user.system) return true;
-  const { settings, widgets } = permissionsApplication(user);
-  return settings !== "" || Object.values(widgets).some(peutLire);
+export const aAcces = (user: UserRow): boolean =>
+  Boolean(user.system) ||
+  workspacesDu(user).length > 0 ||
+  administrationDu(user).settings !== "" ||
+  peutGererWorkspaces(user);
+
+/**
+ * Le compte, son workspace remis d'aplomb : celui qu'il a choisi s'il y a
+ * encore accès, sinon le premier des siens. Le changement s'enregistre, pour
+ * que les requêtes qui le relisent en SQL (« @me ») trouvent le même.
+ */
+export const dansSonWorkspace = (user: UserRow): UserRow => {
+  const courant = workspaceCourant(user);
+  if (courant === user.workspace_id) return user;
+  users.setWorkspace.run(courant, user.id);
+  return { ...user, workspace_id: courant };
 };
 
 /** Un compte tel qu'il se montre : jamais son empreinte de mot de passe. */
-export const publicUser = (user: UserRow): PublicUser => ({
-  id: user.id,
-  first_name: user.first_name,
-  last_name: user.last_name,
-  // `name` reste exposé : il alimente les initiales et les listes d'acteurs.
-  name: fullName(user.first_name, user.last_name) || user.email,
-  email: user.email,
-  gravatar_url: gravatarUrl(user.email),
-  settings: droitsParametrage(user),
-  rights: droitsSocietes(user),
-  widgets: droitsWidgets(user),
-  system: Boolean(user.system),
-  default_mode: isMode(user.default_mode) ? user.default_mode : DEFAULT_MODE,
-  created_at: user.created_at,
-});
+export const publicUser = (compte: UserRow): PublicUser => {
+  // Rien ne s'enregistre ici : la liste des comptes passe aussi par là.
+  const user = { ...compte, workspace_id: workspaceCourant(compte) };
+  return {
+    id: user.id,
+    first_name: user.first_name,
+    last_name: user.last_name,
+    // `name` reste exposé : il alimente les initiales et les listes d'acteurs.
+    name: fullName(user.first_name, user.last_name) || user.email,
+    email: user.email,
+    gravatar_url: gravatarUrl(user.email),
+    settings: droitsParametrage(user),
+    rights: droitsSocietes(user),
+    widgets: droitsWidgets(user),
+    system: Boolean(user.system),
+    default_view: user.default_view ?? "",
+    workspace: user.workspace_id,
+    workspaces: workspacesDu(user),
+    manage_workspaces: peutGererWorkspaces(user),
+    created_at: user.created_at,
+  };
+};
 
 /**
  * Une personne telle qu'elle accompagne autre chose : acteur, membre, auteur.

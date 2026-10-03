@@ -31,6 +31,7 @@ import {
   taskCards,
   taskLists,
 } from "../repositories/tasks.js";
+import { contexteDuTableau, contexts } from "../repositories/contexts.js";
 
 const CARTE_INTROUVABLE = "Carte introuvable";
 const COMMENTAIRE_INTROUVABLE = "Commentaire introuvable";
@@ -40,6 +41,10 @@ const photo = (id: Id): Champ[] => {
   const carte = taskCards.byId.get(id)!;
   return [
     { libelle: "Titre", valeur: cite(carte.text) },
+    {
+      libelle: "Contexte",
+      valeur: cite(carte.context_id ? contexts.byId.get(carte.context_id)?.name : null),
+    },
     { libelle: "Description", valeur: carte.description ?? "", opaque: true },
     { libelle: "Échéance", valeur: date(carte.due_date) },
     { libelle: "Membres", valeur: liste(membersOf(id).map((m) => m.name)) },
@@ -71,6 +76,8 @@ taskCardRoutes.post("/", (req, res) => {
 
   const list = orNotFound(taskLists.byId.get(listId), "Liste introuvable");
   boardOuvert(list.board_id, req, "create");
+  // Le contexte qu'on dit, à défaut le premier du tableau.
+  const contexte = contexteDuTableau(list.board_id, req.body.context_id);
 
   // Nouvelle carte ajoutée à la fin de sa liste.
   const { next } = taskCards.nextPosition(list.id);
@@ -83,6 +90,7 @@ taskCardRoutes.post("/", (req, res) => {
     // Un séparateur ne porte pas de référence, et n'en consomme donc pas.
     kind === "separator" ? 0 : prochaineReference(),
     kind,
+    contexte,
     timestamp,
   );
 
@@ -163,23 +171,27 @@ taskCardRoutes.put("/reorder", (req, res) => {
     badRequest("Une carte n'appartient pas à ce tableau");
   }
 
-  // L'ordre reçu doit couvrir toutes les cartes déjà dans la liste d'accueil,
-  // sinon celles omises garderaient une position devenue fausse.
-  const presentes = new Set(ordre);
-  if (taskCards.idsOfList.all(list.id).some((c) => !presentes.has(c.id))) {
-    badRequest("L'ordre reçu ne couvre pas toutes les cartes de cette liste");
-  }
+  // Un contexte choisi cache les cartes des autres : l'ordre reçu ne nomme
+  // que celles qu'on voit. Elles reprennent, dans leur nouvel ordre, les
+  // places qu'elles tenaient ; les cartes cachées gardent la leur, et celles
+  // venues d'une autre liste se rangent à la suite.
+  const recu = new Set(ordre);
+  const restants = [...ordre];
+  const complet = taskCards.idsOfList
+    .all(list.id)
+    .map((c) => (recu.has(c.id) ? (restants.shift() ?? c.id) : c.id));
+  const ordreComplet = [...complet, ...restants];
 
   // D'où vient chaque carte, avant que l'écriture ne l'efface. Glisser une
   // carte dans sa propre liste ne change rien à ce qu'elle dit et ne notifie
   // personne ; la faire passer de « À faire » à « Terminé », si.
   const listeAvant = new Map<Id, Id>();
-  for (const id of ordre) {
+  for (const id of ordreComplet) {
     const carte = taskCards.byId.get(id);
     if (carte) listeAvant.set(carte.id, carte.list_id);
   }
 
-  reorderTaskCards(list.id, ordre);
+  reorderTaskCards(list.id, ordreComplet);
 
   for (const [cardId, origine] of listeAvant) {
     if (origine === list.id) continue;
@@ -215,7 +227,7 @@ taskCardRoutes.get("/:id", (req, res) => {
 });
 
 /**
- * Où se trouve cette carte : sa liste, son tableau, sa société. Sert au lien
+ * Où se trouve cette carte : sa liste, son tableau, sa vue. Sert au lien
  * qui l'ouvre — l'application doit se placer sur le bon tableau avant de
  * pouvoir montrer la fiche, et le client ne peut pas le deviner d'une carte
  * qu'il n'affiche pas encore.
@@ -225,7 +237,7 @@ taskCardRoutes.get("/:id/emplacement", (req, res) => {
   const list = orNotFound(taskLists.byId.get(card.list_id), "Liste introuvable");
   const board = orNotFound(boards.byId.get(list.board_id), "Tableau introuvable");
 
-  res.json({ company_id: board.company_id, board_id: board.id, list_id: list.id });
+  res.json({ view_id: board.view_id, board_id: board.id, list_id: list.id });
 });
 
 // Modification d'une carte : son texte seul depuis le tableau, sa fiche
@@ -238,7 +250,12 @@ taskCardRoutes.put("/:id", (req, res) => {
   // Un séparateur n'a pas de fiche, donc pas de fil où noter ce qui change.
   const avant = existing.kind === "separator" ? null : photo(existing.id);
 
-  taskCards.update.run(text, description, dueDate, existing.id);
+  const contexte =
+    req.body.context_id === undefined
+      ? existing.context_id
+      : contexteDuTableau(boardOfCard(existing), req.body.context_id);
+
+  taskCards.update.run(text, description, dueDate, contexte, existing.id);
 
   if (Array.isArray(req.body.member_ids)) {
     replaceCardMembers(existing.id, toIds(req.body.member_ids));

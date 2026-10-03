@@ -3,7 +3,14 @@
 
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../env.js";
-import { aAcces, droitsParametrage, sessions, users } from "../repositories/users.js";
+import {
+  aAcces,
+  dansSonWorkspace,
+  droitsParametrage,
+  peutGererWorkspaces,
+  sessions,
+  users,
+} from "../repositories/users.js";
 import type { UserRow } from "../db/rows.js";
 import { HttpError } from "../lib/http.js";
 
@@ -40,11 +47,11 @@ export const requireAuth = (req: Request, _res: Response, next: NextFunction): v
     throw new HttpError(401, "Session expirée");
   }
 
-  const user = users.byId.get(session.user_id);
-  if (!user) throw new HttpError(401, "Authentification requise");
+  const compte = users.byId.get(session.user_id);
+  if (!compte) throw new HttpError(401, "Authentification requise");
   // Un accès retiré depuis la connexion ferme la session à la requête
   // suivante, sans attendre qu'elle expire.
-  if (!aAcces(user)) {
+  if (!aAcces(compte)) {
     sessions.close.run(token);
     throw new HttpError(401, "Votre accès à Milo a été retiré");
   }
@@ -61,7 +68,9 @@ export const requireAuth = (req: Request, _res: Response, next: NextFunction): v
     );
   }
 
-  req.user = user;
+  // Ce qu'il voit et ce qu'il peut faire suivent son workspace : il doit en
+  // être un qu'il a encore.
+  req.user = dansSonWorkspace(compte);
   req.token = token;
   next();
 };
@@ -99,6 +108,17 @@ export const requireSettingsToWrite = (req: Request, res: Response, next: NextFu
 export const requireSettingsUpdate = (req: Request, _res: Response, next: NextFunction): void => {
   if (!droitsParametrage(req.user).update) {
     throw new HttpError(403, "Réservé à qui peut modifier le Paramétrage");
+  }
+  next();
+};
+
+/**
+ * La gestion des workspaces : le compte « admin », ou qui en a le droit dans
+ * un workspace. Posé après `requireAuth`.
+ */
+export const requireWorkspaces = (req: Request, _res: Response, next: NextFunction): void => {
+  if (!peutGererWorkspaces(req.user)) {
+    throw new HttpError(403, "Réservé à qui peut gérer les workspaces");
   }
   next();
 };

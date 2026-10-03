@@ -1,23 +1,22 @@
 import { ActionIcon, Group, HoverCard, Kbd, Stack, Text } from "@mantine/core";
 import { PAGE_GUTTER } from "../../themes/layout";
-import type { Mode } from "@milo/shared";
 
-// Action à gauche, raccourci à droite. « mode » limite un raccourci au mode
-// où il agit : pas de nouveau projet en mode Tâche.
-const SHORTCUTS: { action: string; key: string; mode?: Mode }[] = [
-  { action: "Nouveau projet", key: "N", mode: "projects" },
-  { action: "Nouvelle demande", key: "N", mode: "support" },
-  { action: "Changer de mode", key: "Tab" },
+// Action à gauche, raccourci à droite. « si » limite un raccourci au tableau
+// où il agit : pas de nouveau projet sans liste de projets.
+type Condition = "projets" | "demandes";
+
+const SHORTCUTS: { action: string; key: string; si?: Condition }[] = [
+  { action: "Nouveau projet", key: "N", si: "projets" },
+  { action: "Nouvelle demande", key: "N", si: "demandes" },
+  { action: "Changer de vue", key: "Tab" },
   { action: "Tableau suivant", key: "⌥ Tab" },
-  { action: "Société suivante", key: "S" },
-  { action: "Verrouiller / déverrouiller", key: "V", mode: "access" },
-  { action: "Verrouiller / déverrouiller", key: "V", mode: "support" },
-  { action: "Verrouiller / déverrouiller", key: "V", mode: "assets" },
-  { action: "Verrouiller / déverrouiller", key: "V", mode: "projects" },
-  { action: "Verrouiller / déverrouiller", key: "V", mode: "tasks" },
+  { action: "Contexte suivant", key: "S" },
+  { action: "Modifier l’interface / terminer", key: "I" },
 ];
 
-export default function ShortcutsHelp({ mode }: { mode: Mode }) {
+/** Ce que le tableau ouvert porte : une liste de projets, une liste de demandes. */
+export default function ShortcutsHelp({ projets, demandes }: { projets: boolean; demandes: boolean }) {
+  const vrai: Record<Condition, boolean> = { projets, demandes };
   return (
     <HoverCard position="top-end" withArrow shadow="md" openDelay={100}>
       <HoverCard.Target>
@@ -36,7 +35,7 @@ export default function ShortcutsHelp({ mode }: { mode: Mode }) {
           <Text size="xs" fw={700} tt="uppercase" c="dimmed">
             Raccourcis clavier
           </Text>
-          {SHORTCUTS.filter((s) => !s.mode || s.mode === mode).map(
+          {SHORTCUTS.filter((s) => !s.si || vrai[s.si]).map(
             ({ action, key }) => (
               <Group key={action} justify="space-between" gap="xl" wrap="nowrap">
                 <Text size="sm">{action}</Text>

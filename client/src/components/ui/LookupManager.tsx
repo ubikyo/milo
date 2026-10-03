@@ -2,7 +2,6 @@ import { Stack, Text, TextInput, UnstyledButton } from "@mantine/core";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import DeleteConfirmModal from "./DeleteConfirmModal";
-import ErrorAlert from "./ErrorAlert";
 import ListItems from "./ListItems";
 import type { RowAction } from "./ListItems";
 import type { ComponentType, ReactNode } from "react";
@@ -16,7 +15,7 @@ export interface LookupItem {
   name: string;
   project_count?: number;
 }
-import { messageErreur } from "../../lib/errors";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 
 /**
  * Liste éditable pour les ressources qui n'ont qu'un nom : sociétés et
@@ -110,18 +109,16 @@ export default function LookupManager({
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
   const [newName, setNewName] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<LookupItem | null>(null);
 
   const run = async (action: () => Promise<unknown>): Promise<boolean> => {
-    setError(null);
     setBusy(true);
     try {
       await action();
       return true;
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
       return false;
     } finally {
       setBusy(false);
@@ -129,7 +126,6 @@ export default function LookupManager({
   };
 
   const startEdit = (item: LookupItem) => {
-    setError(null);
     setEditingId(item.id);
     setEditingName(item.name);
   };
@@ -155,7 +151,6 @@ export default function LookupManager({
 
   return (
     <Stack gap="sm">
-      {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
 
       <ListItems
         maxRows={maxRows}
@@ -202,7 +197,6 @@ export default function LookupManager({
                   value={editingName}
                   onChange={(e) => setEditingName(e.currentTarget.value)}
                   onKeyDown={(e) => {
-                    // Consommée : le tiroir qui porte ce champ n'enregistre pas en plus.
                     if (e.key === "Enter") {
                       e.preventDefault();
                       saveEdit();

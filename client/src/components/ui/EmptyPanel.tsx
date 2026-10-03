@@ -11,12 +11,14 @@ import type { ComponentType, ReactNode } from "react";
 // bouton d'ajout quand l'écran a une action à proposer. « fill » à faux pour
 // les invites logées dans un cadre, qui se règlent sur leur contenu.
 interface EmptyPanelProps {
-  icon: ComponentType<{ size?: number }>;
+  icon: ComponentType<{ size?: number; color?: string }>;
   message?: ReactNode;
   actionLabel?: string;
   onAction?: () => void;
   size?: "sm" | "md" | "lg";
   fill?: boolean;
+  /** Vrai quand l'écran signale un problème : l'icône passe au jaune. */
+  avertissement?: boolean;
 }
 
 export default function EmptyPanel({
@@ -26,12 +28,18 @@ export default function EmptyPanel({
   onAction,
   size = "lg",
   fill = true,
+  avertissement = false,
 }: EmptyPanelProps) {
   return (
     <EmptyState
       size={size}
       withIndicatorBackground
-      icon={<Icon size={size === "lg" ? 22 : 16} />}
+      icon={
+        <Icon
+          size={size === "lg" ? 22 : 16}
+          color={avertissement ? "var(--mantine-color-yellow-5)" : undefined}
+        />
+      }
       // Le message passe par « title » : c'est là que Mantine le rend. Sans
       // cette ligne, l'écran vide n'affichait qu'une icône — la phrase était
       // reçue en propriété et jetée.

@@ -1,13 +1,15 @@
 import { ActionIcon, Collapse, Group, Menu, Paper, Stack, Text, Textarea } from "@mantine/core";
 import {
   IconChevronLeft,
+  IconChevronRight,
   IconMessage,
   IconPencil,
   IconSend2,
   IconTrash,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import { useState } from "react";
+import { Fragment, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { RED } from "../../themes/colors";
 import { PersonAvatar } from "../ui/ActorAvatars";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
@@ -41,6 +43,37 @@ const HEADER_LINE = "1px dotted var(--mantine-color-default-border)";
 // Retrait du texte dans sa bulle. Le champ qui le remplace en saisie prend le
 // même : le texte ne bouge pas d'un pixel quand on passe de l'un à l'autre.
 const COMMENT_PADDING = 30;
+
+// Un mot de Milo : l'entête, une ligne d'air, puis une puce par champ. Le
+// texte garde sa flèche « A → B » — le serveur s'en sert pour regrouper les
+// retouches — mais elle s'affiche en chevron.
+const FLECHE = " → ";
+
+function texteSysteme(texte: string): ReactNode {
+  const [entete = "", ...lignes] = texte.split("\n");
+  const ligne = (l: string) =>
+    l.split(FLECHE).map((morceau, i) => (
+      <Fragment key={i}>
+        {i > 0 && (
+          <IconChevronRight
+            size={14}
+            style={{ verticalAlign: "-2px", margin: "0 4px" }}
+            aria-label="devient"
+          />
+        )}
+        {morceau}
+      </Fragment>
+    ));
+  return (
+    <>
+      {entete}
+      {lignes.length > 0 && <div style={{ height: "0.75em" }} />}
+      {lignes.map((l, i) => (
+        <div key={i}>{ligne(l)}</div>
+      ))}
+    </>
+  );
+}
 
 interface CommentBubbleProps {
   comment: FilItem;
@@ -145,6 +178,16 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
                   onClick={() => setDeplie((d) => !d)}
                   aria-label={deplie ? "Replier le commentaire" : "Déplier le commentaire"}
                   aria-expanded={deplie}
+                  // Déplié, le survol est un gris neutre : celui de Mantine
+                  // tire sur le bleu. En sombre, dark-4 plutôt que
+                  // NEUTRAL_HOVER, qui se confond avec le fond de la bulle.
+                  style={
+                    plie
+                      ? undefined
+                      : ({
+                          "--ai-hover": "light-dark(#ececec, var(--mantine-color-dark-4))",
+                        } as CSSProperties)
+                  }
                 >
                   {/* Vers la gauche plié, vers le bas déplié : le chevron
                     tourne comme celui d'un accordéon. */}
@@ -186,8 +229,13 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
                 aria-label="Modifier le commentaire"
               />
             ) : (
-              <Text size="sm" p={COMMENT_PADDING} style={{ whiteSpace: "pre-wrap" }}>
-                {comment.text}
+              <Text
+                component={systeme ? "div" : "p"}
+                size="sm"
+                p={COMMENT_PADDING}
+                style={{ whiteSpace: "pre-wrap" }}
+              >
+                {systeme ? texteSysteme(comment.text) : comment.text}
               </Text>
             )}
           </Collapse>

@@ -1,5 +1,5 @@
 // La réponse de l'équipe à une demande reçue par e-mail : le message écrit
-// dans Milo part à l'expéditeur, depuis la boîte de support de la société, en
+// dans Milo part à l'expéditeur, depuis la boîte où sa demande est arrivée, en
 // réponse à son e-mail — dans la même conversation, l'original cité dessous.
 //
 // La réponse porte le numéro du ticket : une réponse de l'expéditeur y revient
@@ -9,16 +9,11 @@
 
 import { supportTicketRef } from "@milo/shared";
 import type { Id, SupportMailStatus } from "@milo/shared";
-import { selection } from "../db/query.js";
 import type { SupportRequestRow, TicketFileRow } from "../db/rows.js";
 import { lireTicket } from "./ticket-files.js";
 import { env } from "../env.js";
 import { supportComments } from "../repositories/support.js";
 import { entraConfiguree, repondreParGraph } from "./entra.js";
-
-const boiteDe = selection<{ support_email: string }>(
-  "SELECT support_email FROM companies WHERE id = ?",
-);
 
 /**
  * La boîte d'où répondre à une demande, ou rien : une demande saisie dans
@@ -26,7 +21,7 @@ const boiteDe = selection<{ support_email: string }>(
  */
 export const boiteDeReponse = (demande: SupportRequestRow): string => {
   if (!demande.sender_email || !demande.mail_id || !entraConfiguree()) return "";
-  return boiteDe.get(demande.company_id)?.support_email ?? "";
+  return demande.mailbox;
 };
 
 /**

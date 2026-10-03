@@ -5,7 +5,7 @@ import { texte } from "../../widgets/types";
 // Le titre d'un indicateur : son nom, ou à défaut celui que le widget lui
 // donne. Un double clic le change sur place ; un simple clic ouvre le tiroir,
 // comme ailleurs sur la carte — attendu le temps de voir s'il en vient un
-// second.
+// second. En gras et en blanc, comme les titres des colonnes.
 
 /** La clé du nom dans la configuration : la même pour tous les widgets. */
 export const NOM = "nom";
@@ -47,7 +47,7 @@ export default function TitreIndicateur({ config, defaut }: { config: unknown; d
     return (
       // Comme le renommage d'un onglet (BoardTabs) : un champ nu, qui prend
       // la police du titre et ne déplace rien.
-      <Text size="sm" c="dimmed">
+      <Text size="sm" c="#ffffff" fw={700}>
         <input
           value={saisie}
           onChange={(e) => setSaisie(e.currentTarget.value)}
@@ -84,7 +84,8 @@ export default function TitreIndicateur({ config, defaut }: { config: unknown; d
   return (
     <Text
       size="sm"
-      c="dimmed"
+      c="#ffffff"
+      fw={700}
       truncate
       onClick={
         carte

@@ -1,0 +1,82 @@
+/* Une ligne du menu des contextes : le gris neutre de l'application au
+   survol (themes/colors.ts, NEUTRAL_HOVER), et la poignée et la corbeille,
+   qui ne paraissent qu'alors. */
+.ligne {
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Posé thème par thème, comme le survol des menus de Mantine : sans
+   light-dark(), que tous les navigateurs ne lisent pas. */
+:where([data-mantine-color-scheme="light"]) .ligne:hover:not([data-saisie]) {
+  background-color: #ececec;
+}
+
+/* En sombre, le gris neutre de l'application est celui du fond du menu
+   (dark-6) : le survol prend celui des menus de Mantine. */
+:where([data-mantine-color-scheme="dark"]) .ligne:hover:not([data-saisie]) {
+  background-color: var(--mantine-color-dark-4);
+}
+
+.revele {
+  opacity: 0;
+}
+
+.ligne:hover .revele {
+  opacity: 1;
+}
+
+/* La liste posée dans l'onglet actif : sans fond ni retrait, pour tenir au
+   plus près du nom du tableau. Un gris, qui fonce au survol. La classe est
+   doublée : Mantine pose la couleur du bouton par sa propre classe, qu'il
+   faut devancer quel que soit l'ordre des feuilles. */
+.cibleOnglet.cibleOnglet {
+  color: var(--mantine-color-gray-6);
+  transition: color 120ms ease;
+}
+
+.cibleOnglet.cibleOnglet:hover {
+  color: var(--mantine-color-gray-9);
+}
+
+:where([data-mantine-color-scheme="dark"]) .cibleOnglet.cibleOnglet {
+  color: var(--mantine-color-dark-2);
+}
+
+:where([data-mantine-color-scheme="dark"]) .cibleOnglet.cibleOnglet:hover {
+  color: var(--mantine-color-dark-0);
+}
+
+/* À l'essai : liste ouverte, l'onglet qui la porte prend son fond, et la
+   rangée, l'onglet et la liste une même bordure, plus claire que celle de
+   Mantine (dark-4 se voyait à peine) : le filet de la rangée, le cadre de
+   l'onglet et celui de la liste se suivent. L'attribut est posé par
+   ContextesMenu, sur l'onglet et sur sa rangée ; doublé pour passer devant
+   les règles de Mantine. Le bas de l'onglet prend le fond : il se raccorde à
+   la liste. */
+:where([data-mantine-color-scheme="light"]) {
+  --bord-contextes: var(--mantine-color-gray-4);
+  --fond-contextes: var(--mantine-color-white);
+}
+
+:where([data-mantine-color-scheme="dark"]) {
+  --bord-contextes: var(--mantine-color-dark-3);
+  --fond-contextes: var(--mantine-color-dark-6);
+}
+
+:global([role="tablist"][data-contextes-ouvert][data-contextes-ouvert]) {
+  --tab-border-color: var(--bord-contextes);
+}
+
+:global([role="tab"][data-contextes-ouvert][data-contextes-ouvert]) {
+  background-color: var(--fond-contextes);
+  border-color: var(--bord-contextes);
+  border-bottom-color: var(--fond-contextes);
+}
+
+/* La liste posée dans l'onglet garde sa bordure haute, dans le gris clair
+   de l'essai : un trait la sépare de l'onglet, dans le prolongement du filet
+   de la rangée. */
+.listeOnglet.listeOnglet {
+  --popover-border-color: var(--bord-contextes);
+}

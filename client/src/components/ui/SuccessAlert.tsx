@@ -2,8 +2,8 @@ import { Alert, type AlertProps } from "@mantine/core";
 import { GREEN } from "../../themes/colors";
 import { alertStyles } from "../../themes/alerts";
 
-// Le pendant vert d'ErrorAlert, au même cadre près : ce qui vient de réussir se
-// dit du même ton que ce qui vient d'échouer, la couleur seule les sépare.
+// Ce qui vient de réussir, dit dans la fenêtre même. Les erreurs, elles, passent
+// par une notification qui reste jusqu'à être fermée (lib/errors).
 const STYLES = alertStyles(GREEN);
 
 interface SuccessAlertProps extends AlertProps {

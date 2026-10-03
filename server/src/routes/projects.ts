@@ -6,19 +6,24 @@ import type { Id, Project } from "@milo/shared";
 import { selection, transaction } from "../db/query.js";
 import type { ProjectJoinedRow, ProjectRow } from "../db/rows.js";
 import { badRequest, orNotFound, requireText, toIds } from "../lib/http.js";
-import { clauseSocietes, exiger, filtreSocietes } from "../lib/droits.js";
+import { exiger, peut } from "../lib/droits.js";
 import { descriptionPropre, memeDescription } from "../lib/html.js";
 import { cite, consigner, ecarts, liste, messageModification } from "../lib/historique.js";
 import type { Champ } from "../lib/historique.js";
 import { concernes, notifier, notifierSuppression, racine } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
+import { categories } from "../repositories/project-boards.js";
+import { contexteDuTableau } from "../repositories/contexts.js";
+import { cleDansLeTableau } from "../repositories/listes.js";
 import {
-  CLAUSE_TABLEAUX_VISIBLES,
-  categories,
-  projectBoardOuvert,
-  projectBoards,
-} from "../repositories/project-boards.js";
+  CLAUSE_TABLEAUX_VISIBLES as clauseTableauxVisibles,
+  boards,
+  tableauOuvert as projectBoardOuvert,
+} from "../repositories/boards.js";
+
+/** Les projets des tableaux que « @me » voit. */
+const CLAUSE_TABLEAUX_VISIBLES = clauseTableauxVisibles("projects.board_id");
 import {
   PROJECT_SELECT,
   acteursDe,
@@ -41,9 +46,9 @@ const PROJET_INTROUVABLE = "Projet introuvable";
 const photo = (p: Project): Champ[] => [
   { libelle: "Nom", valeur: cite(p.name) },
   { libelle: "Description", valeur: p.description, opaque: true },
-  { libelle: "Tableau", valeur: cite(projectBoards.byId.get(p.board_id)?.name) },
+  { libelle: "Tableau", valeur: cite(boards.byId.get(p.board_id)?.name) },
   { libelle: "Catégorie", valeur: cite(p.category_name) },
-  { libelle: "Société", valeur: cite(p.company_name) },
+  { libelle: "Contexte", valeur: cite(p.context_name) },
   {
     libelle: "Type de jalons",
     valeur: cite(p.milestone_type_id ? milestoneTypes.byId.get(p.milestone_type_id)?.name : null),
@@ -69,25 +74,22 @@ const projetCree = (req: Request, id: Id): void => {
 
 /**
  * Un projet d'un tableau fermé aux autres est, pour eux, introuvable : ni dans
- * la liste, ni par son identifiant, ni en écriture. De même pour celui d'une
- * société où l'on n'a pas le droit de voir les projets.
+ * la liste, ni par son identifiant, ni en écriture. De même sans le droit de
+ * voir les projets.
  */
 const projetOuvert = (req: Request, id: unknown): ProjectRow => {
   const project = orNotFound(projects.raw.get(id), PROJET_INTROUVABLE);
   projectBoardOuvert(project.board_id, req.user);
-  exiger(req, "projects", "view", project.company_id, PROJET_INTROUVABLE);
+  exiger(req, "projects", "view", PROJET_INTROUVABLE);
   return project;
 };
 
-/** Le projet, si l'on a en plus ce droit dans sa société. */
+/** Le projet, si l'on a en plus ce droit. */
 export const projetPour = (req: Request, id: unknown, droit: "update" | "delete"): ProjectRow => {
   const project = projetOuvert(req, id);
-  exiger(req, "projects", droit, project.company_id);
+  exiger(req, "projects", droit);
   return project;
 };
-
-/** La clause qui écarte les projets des sociétés qu'on ne voit pas. */
-const CLAUSE_SOCIETES_VISIBLES = clauseSocietes("projects.company_id");
 
 export const projectRoutes = Router();
 
@@ -99,7 +101,7 @@ projectRoutes.use(touch("projects"));
 const CLAUSES: Record<string, string> = {
   board: "projects.board_id = @board",
   category: "projects.category_id = @category",
-  company: "projects.company_id = @company",
+  context: "projects.context_id = @context",
   actor: "projects.id IN (SELECT project_id FROM project_actors WHERE user_id = @actor)",
 };
 
@@ -121,8 +123,9 @@ const requetePour = (clauses: string[]) => {
 projectRoutes.get("/", (req, res) => {
   // Les tableaux fermés aux autres sont écartés d'office : la clause précède
   // les filtres du client et ne dépend pas d'eux.
-  const clauses: string[] = [CLAUSE_TABLEAUX_VISIBLES, CLAUSE_SOCIETES_VISIBLES];
-  const params: Record<string, unknown> = { me: req.user.id, ...filtreSocietes(req, "projects") };
+  if (!peut(req, "projects", "view")) return void res.json([]);
+  const clauses: string[] = [CLAUSE_TABLEAUX_VISIBLES];
+  const params: Record<string, unknown> = { me: req.user.id };
 
   for (const [nom, clause] of Object.entries(CLAUSES)) {
     const valeur = req.query[nom];
@@ -142,27 +145,26 @@ projectRoutes.get("/", (req, res) => {
 });
 
 // Les acteurs proposés par le filtre « Acteurs » : ceux qui le sont d'au moins
-// un projet du tableau — et de la société, quand elle est choisie. Les autres
+// un projet du tableau — et du contexte, quand il est choisi. Les autres
 // filtres n'y comptent pas : filtrer par acteur ne doit pas faire disparaître
 // les autres acteurs de la liste.
 const acteursDesProjets = selection<{ user_id: Id }>(
   `SELECT DISTINCT project_actors.user_id FROM project_actors
      JOIN projects ON projects.id = project_actors.project_id
     WHERE ${CLAUSE_TABLEAUX_VISIBLES}
-      AND ${CLAUSE_SOCIETES_VISIBLES}
       AND (@board IS NULL OR projects.board_id = @board)
-      AND (@company IS NULL OR projects.company_id = @company)`,
+      AND (@context IS NULL OR projects.context_id = @context)`,
 );
 
 projectRoutes.get("/actors", (req, res) => {
+  if (!peut(req, "projects", "view")) return void res.json([]);
   const filtre = (valeur: unknown) => (valeur && valeur !== "all" ? String(valeur) : null);
   res.json(
     acteursDesProjets
       .all({
         me: req.user.id,
-        ...filtreSocietes(req, "projects"),
         board: filtre(req.query["board"]),
-        company: filtre(req.query["company"]),
+        context: filtre(req.query["context"]),
       })
       .map((l) => l.user_id),
   );
@@ -203,7 +205,7 @@ projectRoutes.post("/", (req, res) => {
     description = "",
     board_id,
     category_id,
-    company_id = null,
+    context_id,
     milestone_type_id = null,
     status = 0,
     actor_ids = [],
@@ -213,9 +215,10 @@ projectRoutes.post("/", (req, res) => {
   if (!name || !board_id || !category_id) {
     badRequest("name, board_id et category_id sont requis");
   }
-  projectBoardOuvert(board_id, req.user);
-  exiger(req, "projects", "create", company_id);
+  const board = projectBoardOuvert(board_id, req.user);
+  exiger(req, "projects", "create");
   verifierCategorie(category_id, board_id);
+  const contexte = contexteDuTableau(board.id, context_id);
   const typeJalons = typeDeJalons(milestone_type_id);
 
   const timestamp = now();
@@ -230,7 +233,9 @@ projectRoutes.post("/", (req, res) => {
       description: descriptionPropre(description),
       board_id,
       category_id,
-      company_id,
+      context_id: contexte,
+      // Le widget « Projets » d'où il est créé, à défaut le premier.
+      list_key: cleDansLeTableau(board.id, "project.list", req.body.list_key),
       milestone_type_id: typeJalons,
       status,
       created_at: timestamp,
@@ -268,7 +273,7 @@ projectRoutes.post("/", (req, res) => {
  */
 projectRoutes.post("/:id/copy", (req, res) => {
   const source = projetOuvert(req, req.params.id);
-  exiger(req, "projects", "create", source.company_id);
+  exiger(req, "projects", "create");
   const board = projectBoardOuvert(req.body.board_id ?? source.board_id, req.user);
   const name = requireText(req.body.name ?? source.name, "Le nom de la copie est requis");
 
@@ -288,7 +293,18 @@ projectRoutes.post("/:id/copy", (req, res) => {
       description: source.description,
       board_id: board.id,
       category_id: Number(categoryId),
-      company_id: source.company_id,
+      // Un autre tableau a d'autres contextes : la copie prend celui qu'on
+      // dit, ou le premier.
+      context_id: contexteDuTableau(
+        board.id,
+        req.body.context_id,
+        board.id === source.board_id ? source.context_id : null,
+      ),
+      list_key: cleDansLeTableau(
+        board.id,
+        "project.list",
+        board.id === source.board_id ? source.list_key : undefined,
+      ),
       milestone_type_id: source.milestone_type_id,
       status: source.status,
       created_at: timestamp,
@@ -343,7 +359,7 @@ projectRoutes.put("/:id", (req, res) => {
     description = existing.description,
     board_id = existing.board_id,
     category_id = existing.category_id,
-    company_id = existing.company_id,
+    context_id,
     milestone_type_id = existing.milestone_type_id,
     status = existing.status,
     actor_ids,
@@ -351,11 +367,14 @@ projectRoutes.put("/:id", (req, res) => {
   } = req.body;
 
   // Un projet ne sort pas d'un tableau privé et n'y entre pas.
-  projectBoardOuvert(board_id, req.user);
-  // Passer un projet à une autre société, c'est l'y ajouter.
-  if (!memeValeur(company_id, existing.company_id)) {
-    exiger(req, "projects", "create", company_id);
-  }
+  const board = projectBoardOuvert(board_id, req.user);
+  // Le contexte doit être du tableau du projet : changé de tableau, le projet
+  // prend celui qu'on dit, ou le premier du nouveau.
+  const contexte = contexteDuTableau(
+    board.id,
+    context_id,
+    board.id === existing.board_id ? existing.context_id : null,
+  );
   verifierCategorie(category_id, board_id);
   const typeJalons = typeDeJalons(milestone_type_id);
 
@@ -371,7 +390,7 @@ projectRoutes.put("/:id", (req, res) => {
     memeDescription(propre, existing.description) &&
     memeValeur(board_id, existing.board_id) &&
     memeValeur(category_id, existing.category_id) &&
-    memeValeur(company_id, existing.company_id) &&
+    memeValeur(contexte, existing.context_id) &&
     memeValeur(typeJalons, existing.milestone_type_id) &&
     memeValeur(status, existing.status) &&
     memesIds(actor_ids, acteursDe(existing.id)) &&
@@ -384,7 +403,12 @@ projectRoutes.put("/:id", (req, res) => {
       description: propre,
       board_id,
       category_id,
-      company_id,
+      context_id: contexte,
+      // Changé de tableau, il va au premier widget « Projets » du nouveau.
+      list_key:
+        board.id === existing.board_id
+          ? existing.list_key
+          : cleDansLeTableau(board.id, "project.list", undefined),
       milestone_type_id: typeJalons,
       status,
       updated_at: inchange ? existing.updated_at : now(),

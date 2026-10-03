@@ -3,9 +3,8 @@ import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { useDroits } from "../../lib/droits";
 import { modalHeaderStyles } from "../../themes/modals";
-import ErrorAlert from "../ui/ErrorAlert";
-import type { Board, Company, Id, TaskList } from "@milo/shared";
-import { messageErreur } from "../../lib/errors";
+import type { Board, Id, TaskList, View } from "@milo/shared";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 import BoutonFermer from "../ui/BoutonFermer";
 
 // Déplacer ou copier une liste vers un tableau. Les deux gestes posent la même
@@ -18,9 +17,10 @@ import BoutonFermer from "../ui/BoutonFermer";
 // se nomme, puisque deux listes du même nom dans la même colonne ne se
 // distingueraient plus.
 //
-// La destination n'est pas bornée à la société courante : un tableau
-// appartient à une société, on choisit donc d'abord laquelle. Les tableaux se
-// lisent alors pour elle — l'écran n'a en mémoire que ceux qu'il affiche.
+// La destination n'est pas bornée à la vue courante : un tableau appartient à
+// une vue, on choisit donc d'abord laquelle. Les tableaux se lisent alors pour
+// elle — l'écran n'a en mémoire que ceux qu'il affiche. Dans un autre tableau,
+// les cartes prennent le premier de ses contextes.
 export type ListAction = "move" | "copy";
 
 interface MoveOrCopyListModalProps {
@@ -28,8 +28,8 @@ interface MoveOrCopyListModalProps {
   onClose: () => void;
   mode: ListAction;
   list: TaskList | null;
-  /** La société du tableau ouvert : la destination s'y pose par défaut. */
-  companyId: Id | null;
+  /** La vue du tableau ouvert : la destination s'y cherche par défaut. */
+  viewId: Id | null;
   onDone: () => void | Promise<void>;
 }
 
@@ -41,71 +41,69 @@ export default function MoveOrCopyListModal({
   onClose,
   mode,
   list,
-  companyId,
+  viewId,
   onDone,
 }: MoveOrCopyListModalProps) {
   const peut = useDroits();
-  const [companies, setCompanies] = useState<Company[] | null>(null);
-  const [societe, setSociete] = useState<string | null>(null);
-  /** Les tableaux de la société retenue ; « null » tant qu'on les lit. */
+  const [views, setViews] = useState<View[] | null>(null);
+  const [vue, setVue] = useState<string | null>(null);
+  /** Les tableaux de la vue retenue ; « null » tant qu'on les lit. */
   const [boards, setBoards] = useState<Board[] | null>(null);
   const [boardId, setBoardId] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const copie = mode === "copy";
 
-  // À l'ouverture : la société du tableau courant, et pour une copie son
-  // tableau — dupliquer une liste sur place ne doit rien demander de plus que
-  // son nom.
+  // À l'ouverture : la vue du tableau courant, et pour une copie son tableau
+  // — dupliquer une liste sur place ne doit rien demander de plus que son
+  // nom.
   useEffect(() => {
     if (!opened) return;
-    setSociete(companyId === null ? null : String(companyId));
+    setVue(viewId === null ? null : String(viewId));
     setBoardId(copie && list ? String(list.board_id) : null);
     setName(list ? nomDeCopie(list.name) : "");
-    setError(null);
 
     let annule = false;
     api
-      .getCompanies()
+      .getViews()
       .then((lues) => {
-        if (!annule) setCompanies(lues);
+        if (!annule) setViews(lues);
       })
       .catch((e) => {
-        if (!annule) setError(messageErreur(e));
+        if (!annule) notifierErreur(messageErreur(e));
       });
     return () => {
       annule = true;
     };
-  }, [opened, list, copie, companyId]);
+  }, [opened, list, copie, viewId]);
 
-  // Les tableaux suivent la société retenue. Une réponse arrivée après un
+  // Les tableaux suivent la vue retenue. Une réponse arrivée après un
   // nouveau choix serait périmée : on l'abandonne.
   useEffect(() => {
-    if (!opened || !societe) {
+    if (!opened || !vue) {
       setBoards(null);
       return;
     }
     let annule = false;
     setBoards(null);
     api
-      .getBoards(societe)
+      .getBoards(vue)
       .then((lus) => {
         if (!annule) setBoards(lus);
       })
       .catch((e) => {
-        if (!annule) setError(messageErreur(e));
+        if (!annule) notifierErreur(messageErreur(e));
       });
     return () => {
       annule = true;
     };
-  }, [opened, societe]);
+  }, [opened, vue]);
 
-  // Changer de société, c'est repartir du choix du tableau : celui qu'on avait
+  // Changer de vue, c'est repartir du choix du tableau : celui qu'on avait
   // retenu n'appartient pas à la nouvelle.
-  const changerSociete = (valeur: string | null) => {
-    setSociete(valeur);
+  const changerVue = (valeur: string | null) => {
+    setVue(valeur);
     setBoardId(null);
   };
 
@@ -114,16 +112,14 @@ export default function MoveOrCopyListModal({
     .filter((board) => copie || board.id !== list?.board_id)
     .map((board) => ({ value: String(board.id), label: board.name }));
 
-  // Seules les sociétés où l'on peut ajouter des tâches accueillent.
-  const companyOptions = (companies ?? []).filter((c) => peut("tasks", "create", c.id)).map((c) => ({
-    value: String(c.id),
-    label: c.name,
-  }));
+  // Sans le droit d'ajouter des tâches, aucune vue n'accueille.
+  const viewOptions = peut("tasks", "create")
+    ? (views ?? []).map((v) => ({ value: String(v.id), label: v.name }))
+    : [];
 
   const valider = async () => {
     if (!boardId || !list) return;
     setSaving(true);
-    setError(null);
     try {
       if (copie) {
         await api.copyTaskList(list.id, { board_id: Number(boardId), name: name.trim() });
@@ -133,13 +129,13 @@ export default function MoveOrCopyListModal({
       await onDone();
       onClose();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setSaving(false);
     }
   };
 
-  // Une société sans tableau d'accueil ne peut rien recevoir : on le dit au
+  // Une vue sans tableau d'accueil ne peut rien recevoir : on le dit au
   // lieu de laisser une liste déroulante vide.
   const aucuneDestination = boards !== null && boardOptions.length === 0;
 
@@ -154,18 +150,17 @@ export default function MoveOrCopyListModal({
       styles={modalHeaderStyles(32)}
     >
       <Stack gap="md">
-        {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
 
-        {/* La société précède le tableau : elle commande la liste des
+        {/* La vue précède le tableau : elle commande la liste des
             destinations possibles. */}
         <Select
-          label="Société"
-          placeholder="Choisir une société"
-          data={companyOptions}
-          value={societe}
-          onChange={changerSociete}
+          label="Vue"
+          placeholder="Choisir une vue"
+          data={viewOptions}
+          value={vue}
+          onChange={changerVue}
           allowDeselect={false}
-          searchable={companyOptions.length > 8}
+          searchable={viewOptions.length > 8}
         />
 
         <Select
@@ -175,15 +170,15 @@ export default function MoveOrCopyListModal({
           value={boardId}
           onChange={setBoardId}
           allowDeselect={false}
-          disabled={!societe || boards === null || aucuneDestination}
+          disabled={!vue || boards === null || aucuneDestination}
           searchable={boardOptions.length > 8}
         />
 
         {aucuneDestination && (
           <Text size="sm" c="dimmed">
             {copie
-              ? "Cette société n'a aucun tableau où copier cette liste."
-              : "Cette société n'a aucun autre tableau où déplacer cette liste."}
+              ? "Cette vue n'a aucun tableau où copier cette liste."
+              : "Cette vue n'a aucun autre tableau où déplacer cette liste."}
           </Text>
         )}
 

@@ -1,51 +1,99 @@
-import { Button, Group, Modal, Select, Stack, Text } from "@mantine/core";
+import { Button, Group, Modal, Select, Stack, Switch, Text } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
-import { useDroits } from "../../lib/droits";
 import { modalHeaderStyles } from "../../themes/modals";
-import ErrorAlert from "./ErrorAlert";
-import { messageErreur } from "../../lib/errors";
-import type { Company, CopyResult, Id } from "@milo/shared";
+import { messageErreur, notifierErreur } from "../../lib/errors";
+import type { CopyResult, Id, View } from "@milo/shared";
 import BoutonFermer from "./BoutonFermer";
 
-// Copier les étiquettes — ou les catégories — d'un tableau vers un autre.
+// Copier les étiquettes, les catégories ou les contextes d'un tableau vers un
+// autre.
 //
-// Le choix de la destination n'est pas le même des deux côtés, et c'est tout
-// ce qui sépare les deux usages : un tableau de tâches appartient à une
-// société, on désigne donc d'abord laquelle, puis l'un de ses tableaux ; un
-// tableau de projets n'appartient à personne, la liste suffit.
+// La destination se choisit en deux temps : la vue, puis l'un de ses
+// tableaux. La vue du tableau d'origine est proposée d'abord.
 //
 // Ce qui existe déjà dans le tableau d'accueil, au même nom, n'est pas
-// redoublé. Le serveur le compte, et la boîte le dit plutôt que de laisser
-// croire que tout est passé.
+// redoublé. Le serveur le compte, et la notification qui suit la copie le dit
+// plutôt que de laisser croire que tout est passé. Les étiquettes et les
+// contextes peuvent aussi remplacer ceux de l'accueil : un interrupteur
+// les efface d'abord.
 
-/** Ce qu'on copie. Les deux sont féminins : les accords du compte rendu tiennent. */
-export type ChoseACopier = "labels" | "categories";
+/** Ce qu'on copie. */
+export type ChoseACopier = "labels" | "categories" | "contexts";
 
-const MOTS: Record<ChoseACopier, { titre: string; une: string; plusieurs: string }> = {
-  labels: { titre: "Copier les étiquettes", une: "étiquette", plusieurs: "étiquettes" },
-  categories: { titre: "Copier les catégories", une: "catégorie", plusieurs: "catégories" },
+const MOTS: Record<
+  ChoseACopier,
+  { titre: string; une: string; plusieurs: string; feminin: boolean }
+> = {
+  labels: { titre: "Copier les étiquettes", une: "étiquette", plusieurs: "étiquettes", feminin: true },
+  categories: {
+    titre: "Copier les catégories",
+    une: "catégorie",
+    plusieurs: "catégories",
+    feminin: true,
+  },
+  contexts: { titre: "Copier les contextes", une: "contexte", plusieurs: "contextes", feminin: false },
 };
 
-/** Ce que la copie a donné, en une phrase. */
-const compteRendu = (chose: ChoseACopier, { copied, skipped }: CopyResult): string => {
+/**
+ * Ce que la copie a donné, en une phrase. « ou » situe le tableau d'accueil :
+ * « là-bas » depuis l'origine, « ici » quand on y colle.
+ */
+export const compteRendu = (
+  chose: ChoseACopier,
+  { copied, skipped, removed, kept }: CopyResult,
+  ou = "là-bas",
+): string => {
   const mots = MOTS[chose];
   const nom = (n: number) => (n > 1 ? mots.plusieurs : mots.une);
+  // Les accords suivent le genre de ce qu'on copie.
+  const aucun = mots.feminin ? "aucune" : "aucun";
+  const copie = mots.feminin ? "copiée" : "copié";
 
-  if (copied === 0 && skipped === 0) return `Ce tableau n'a aucune ${mots.une} à copier.`;
+  if (copied === 0 && skipped === 0) return `Ce tableau n'a ${aucun} ${mots.une} à copier.`;
 
   const copiees =
     copied === 0
-      ? `Aucune ${mots.une} copiée`
-      : `${copied} ${nom(copied)} copiée${copied > 1 ? "s" : ""}`;
+      ? `${mots.feminin ? "Aucune" : "Aucun"} ${mots.une} ${copie}`
+      : `${copied} ${nom(copied)} ${copie}${copied > 1 ? "s" : ""}`;
 
-  if (skipped === 0) return `${copiees}.`;
+  // Ce qui a été effacé avant, quand on l'a demandé.
+  const effaces = removed
+    ? ` ${removed} ${nom(removed)} ${mots.feminin ? "effacée" : "effacé"}${removed > 1 ? "s" : ""} avant.`
+    : "";
+
+  // Ce que le remplacement a dû garder : des catégories qui rangent des projets.
+  const gardes = kept
+    ? ` ${kept} ${nom(kept)} ${mots.feminin ? "gardée" : "gardé"}${kept > 1 ? "s" : ""} : ${
+        kept > 1 ? "elles rangent" : "elle range"
+      } encore des projets.`
+    : "";
+
+  if (skipped === 0) return `${copiees}.${effaces}${gardes}`;
 
   const deja =
     skipped > 1
-      ? `${skipped} portaient déjà ce nom là-bas`
-      : `1 portait déjà ce nom là-bas`;
-  return `${copiees} — ${deja}.`;
+      ? `${skipped} portaient déjà ce nom ${ou}`
+      : `1 portait déjà ce nom ${ou}`;
+  return `${copiees} — ${deja}.${effaces}${gardes}`;
+};
+
+/**
+ * L'interrupteur qui efface d'abord ce que l'accueil porte — les contextes
+ * avec tout ce qu'ils contiennent. Les catégories n'en ont pas.
+ */
+const REMPLACER: Partial<Record<ChoseACopier, string>> = {
+  labels: "Effacer les étiquettes existantes",
+  contexts: "Effacer les contextes existants",
+};
+
+/**
+ * Les contextes emportent aussi, par défaut, le libellé de « Tous les … » —
+ * le sélecteur global — du tableau d'origine.
+ */
+const RENOMMER: Partial<Record<ChoseACopier, string>> = {
+  contexts: "Renommer le sélecteur global",
 };
 
 interface CopyToBoardModalProps {
@@ -54,15 +102,14 @@ interface CopyToBoardModalProps {
   chose: ChoseACopier;
   /** Le tableau d'origine : il n'est pas une destination. */
   sourceId: Id;
+  /** La vue du tableau d'origine : la destination s'y cherche d'abord. */
+  viewId: Id | string | null;
   /**
-   * « tasks » quand le tableau appartient à une société — la destination se
-   * cherche alors société par société ; « projects » quand il n'en a pas.
+   * La copie à faire, une fois la destination choisie. « remplacer » : effacer
+   * d'abord ce que la destination porte (REMPLACER) ; « renommer » : lui
+   * donner le libellé de « Tous les … » de l'origine (RENOMMER).
    */
-  univers: "tasks" | "projects";
-  /** La société du tableau d'origine : la destination s'y pose par défaut. */
-  companyId?: Id | string | null;
-  /** La copie à faire, une fois la destination choisie. */
-  onCopy: (boardId: Id) => Promise<CopyResult>;
+  onCopy: (boardId: Id, remplacer: boolean, renommer: boolean) => Promise<CopyResult>;
 }
 
 export default function CopyToBoardModal({
@@ -70,74 +117,69 @@ export default function CopyToBoardModal({
   onClose,
   chose,
   sourceId,
-  univers,
-  companyId,
+  viewId,
   onCopy,
 }: CopyToBoardModalProps) {
-  const peut = useDroits();
-  const [companies, setCompanies] = useState<Company[] | null>(null);
-  const [societe, setSociete] = useState<string | null>(null);
+  const [vues, setVues] = useState<View[] | null>(null);
+  const [vue, setVue] = useState<string | null>(null);
   /** Les tableaux où l'on peut copier ; « null » tant qu'on les lit. */
   const [boards, setBoards] = useState<{ id: Id; name: string }[] | null>(null);
   const [boardId, setBoardId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  /** Ce que la copie a donné. Tant qu'il est là, la boîte n'affiche plus le choix. */
-  const [fait, setFait] = useState<CopyResult | null>(null);
+  const [remplacer, setRemplacer] = useState(false);
+  const [renommer, setRenommer] = useState(true);
 
-  const parSociete = univers === "tasks";
   const mots = MOTS[chose];
+  const remplacement = REMPLACER[chose];
+  const renommage = RENOMMER[chose];
 
-  // À l'ouverture : on repart à zéro, et les sociétés se lisent si la
-  // destination se cherche par elles.
+  // À l'ouverture : on repart à zéro, sur la vue du tableau d'origine.
   useEffect(() => {
     if (!opened) return;
     setBoardId(null);
-    setError(null);
-    setFait(null);
-    setSociete(parSociete && companyId != null ? String(companyId) : null);
-    if (!parSociete) return;
-
+    setRemplacer(false);
+    setRenommer(true);
+    setVue(viewId != null ? String(viewId) : null);
     let annule = false;
     api
-      .getCompanies()
+      .getViews()
       .then((lues) => {
-        if (!annule) setCompanies(lues);
+        if (!annule) setVues(lues);
       })
       .catch((e) => {
-        if (!annule) setError(messageErreur(e));
+        if (!annule) notifierErreur(messageErreur(e));
       });
     return () => {
       annule = true;
     };
-  }, [opened, parSociete, companyId]);
+  }, [opened, viewId]);
 
-  // Les tableaux : ceux de la société retenue, ou tous ceux des projets. Une
-  // réponse arrivée après un nouveau choix serait périmée : on l'abandonne.
+  // Les tableaux de la vue retenue. Une réponse arrivée après un nouveau
+  // choix serait périmée : on l'abandonne.
   useEffect(() => {
-    if (!opened || (parSociete && !societe)) {
+    if (!opened || !vue) {
       setBoards(null);
       return;
     }
     let annule = false;
     setBoards(null);
-    const lecture = parSociete ? api.getBoards(societe!) : api.getProjectBoards();
-    lecture
+    api
+      .getBoards(vue)
       .then((lus) => {
         if (!annule) setBoards(lus);
       })
       .catch((e) => {
-        if (!annule) setError(messageErreur(e));
+        if (!annule) notifierErreur(messageErreur(e));
       });
     return () => {
       annule = true;
     };
-  }, [opened, parSociete, societe]);
+  }, [opened, vue]);
 
-  // Changer de société, c'est repartir du choix du tableau : celui qu'on avait
+  // Changer de vue, c'est repartir du choix du tableau : celui qu'on avait
   // retenu n'appartient pas à la nouvelle.
-  const changerSociete = (valeur: string | null) => {
-    setSociete(valeur);
+  const changerVue = (valeur: string | null) => {
+    setVue(valeur);
     setBoardId(null);
   };
 
@@ -146,22 +188,25 @@ export default function CopyToBoardModal({
     .filter((board) => board.id !== sourceId)
     .map((board) => ({ value: String(board.id), label: board.name }));
 
-  // Seules les sociétés où l'on peut ajouter des tâches accueillent.
-  const companyOptions = (companies ?? []).filter((c) => peut("tasks", "create", c.id)).map((c) => ({
-    value: String(c.id),
-    label: c.name,
-  }));
+  const vueOptions = (vues ?? []).map((v) => ({ value: String(v.id), label: v.name }));
 
   const aucuneDestination = boards !== null && boardOptions.length === 0;
 
   const valider = async () => {
     if (!boardId) return;
     setSaving(true);
-    setError(null);
     try {
-      setFait(await onCopy(Number(boardId)));
+      // Le tableau d'accueil n'est pas celui qu'on regarde : la notification
+      // est le seul endroit où dire ce que la copie a donné.
+      const fait = await onCopy(
+        Number(boardId),
+        remplacement ? remplacer : false,
+        renommage ? renommer : false,
+      );
+      notifications.show({ color: "teal", title: mots.titre, message: compteRendu(chose, fait) });
+      onClose();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setSaving(false);
     }
@@ -178,58 +223,58 @@ export default function CopyToBoardModal({
       styles={modalHeaderStyles(32)}
     >
       <Stack gap="md">
-        {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
 
-        {/* La copie faite, le choix n'a plus lieu d'être : reste ce qu'elle a
-            donné. Il n'y a pas d'autre endroit où le dire — le tableau
-            d'accueil n'est pas celui qu'on regarde. */}
-        {fait ? (
-          <Text size="sm">{compteRendu(chose, fait)}</Text>
-        ) : (
-          <>
-            {/* La société précède le tableau : elle commande la liste des
-                destinations possibles. */}
-            {parSociete && (
-              <Select
-                label="Société"
-                placeholder="Choisir une société"
-                data={companyOptions}
-                value={societe}
-                onChange={changerSociete}
-                allowDeselect={false}
-                searchable={companyOptions.length > 8}
-              />
-            )}
+        {/* La vue précède le tableau : elle commande la liste des
+            destinations possibles. */}
+        <Select
+          label="Vue"
+          placeholder="Choisir une vue"
+          data={vueOptions}
+          value={vue}
+          onChange={changerVue}
+          allowDeselect={false}
+          searchable={vueOptions.length > 8}
+        />
 
-            <Select
-              label="Tableau de destination"
-              placeholder={boards === null ? "Lecture des tableaux…" : "Choisir un tableau"}
-              data={boardOptions}
-              value={boardId}
-              onChange={setBoardId}
-              allowDeselect={false}
-              disabled={(parSociete && !societe) || boards === null || aucuneDestination}
-              searchable={boardOptions.length > 8}
-            />
+        <Select
+          label="Tableau de destination"
+          placeholder={boards === null ? "Lecture des tableaux…" : "Choisir un tableau"}
+          data={boardOptions}
+          value={boardId}
+          onChange={setBoardId}
+          allowDeselect={false}
+          disabled={!vue || boards === null || aucuneDestination}
+          searchable={boardOptions.length > 8}
+        />
 
-            {aucuneDestination && (
-              <Text size="sm" c="dimmed">
-                {parSociete
-                  ? "Cette société n'a aucun autre tableau où copier."
-                  : "Il n'y a aucun autre tableau où copier."}
-              </Text>
-            )}
-          </>
+        {aucuneDestination && (
+          <Text size="sm" c="dimmed">
+            Cette vue n'a aucun autre tableau où copier.
+          </Text>
+        )}
+        {renommage && (
+          <Switch
+            label={renommage}
+            checked={renommer}
+            onChange={(e) => setRenommer(e.currentTarget.checked)}
+            color="teal"
+          />
+        )}
+        {remplacement && (
+          <Switch
+            label={remplacement}
+            checked={remplacer}
+            onChange={(e) => setRemplacer(e.currentTarget.checked)}
+            color="teal"
+          />
         )}
       </Stack>
 
       <Group justify="flex-end" mt={32}>
         <BoutonFermer onClick={onClose} />
-        {!fait && (
-          <Button color="teal" onClick={valider} loading={saving} disabled={!boardId}>
-            Copier
-          </Button>
-        )}
+        <Button color="teal" onClick={valider} loading={saving} disabled={!boardId}>
+          Copier
+        </Button>
       </Group>
     </Modal>
   );

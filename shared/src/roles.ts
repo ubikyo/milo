@@ -1,6 +1,7 @@
-// Les permissions d'un utilisateur ou d'un groupe Entra : le Paramétrage
-// (Voir ou Modifier), et une permission par type de widget — Aucun, Lire,
-// Modifier (widget-kinds.ts). Elles valent pour toutes les sociétés.
+// Les permissions d'un utilisateur ou d'un groupe Entra : dans chaque
+// workspace, une permission par type de widget — Aucun, Lire, Modifier
+// (widget-kinds.ts) ; pour toute l'application, le Paramétrage (Voir ou
+// Modifier) et la gestion des workspaces.
 //
 // Les droits de chaque mode — Voir, Ajouter, Modifier, Supprimer — que les
 // routes et l'interface vérifient s'en déduisent : un mode suit le type de
@@ -10,12 +11,7 @@
 import type { Id } from "./domain.js";
 import { MODES } from "./modes.js";
 import type { Mode } from "./modes.js";
-import {
-  GENRES_DU_MODE,
-  accesLePlusLarge,
-  validWidgetRights,
-  widgetRightsPartout,
-} from "./widget-kinds.js";
+import { GENRES_DU_MODE, accesLePlusLarge } from "./widget-kinds.js";
 import type { WidgetRights } from "./widget-kinds.js";
 
 export const RIGHTS = [
@@ -72,28 +68,40 @@ export const SETTINGS_ACCESS = [
 export type SettingsAccess = (typeof SETTINGS_ACCESS)[number]["value"];
 
 /**
- * Les permissions d'un utilisateur ou d'un groupe pour l'application : le
- * Paramétrage, et une permission par type de widget.
+ * La gestion des workspaces : les créer, les renommer, les supprimer, et
+ * régler les accès de chacun. Le compte « admin » l'a toujours.
  */
-export interface AppPermissions {
+export const WORKSPACES_ACCESS = [
+  { value: "", label: "Aucun" },
+  { value: "update", label: "Gérer" },
+] as const;
+
+export type WorkspacesAccess = (typeof WORKSPACES_ACCESS)[number]["value"];
+
+/**
+ * L'administration d'un utilisateur ou d'un groupe, pour toute
+ * l'application : le Paramétrage, et la gestion des workspaces. Elle ne
+ * dépend d'aucun workspace — leurs accès, eux, ne portent que sur les types
+ * de widgets.
+ */
+export interface AdminPermissions {
   settings: SettingsAccess;
-  widgets: WidgetRights;
+  workspaces: WorkspacesAccess;
 }
 
-/** Celles d'un utilisateur ou d'un groupe qui n'en a pas encore : rien. */
-export const defaultAppPermissions = (): AppPermissions => ({
-  settings: "",
-  widgets: widgetRightsPartout(""),
-});
+/** Celle d'un utilisateur ou d'un groupe qui n'en a pas encore : aucune. */
+export const defaultAdminPermissions = (): AdminPermissions => ({ settings: "", workspaces: "" });
 
-/** Des permissions reçues de l'extérieur, ramenées à ce qui existe. */
-export const validAppPermissions = (value: unknown): AppPermissions => {
+/** Une administration reçue de l'extérieur, ramenée à ce qui existe. */
+export const validAdminPermissions = (value: unknown): AdminPermissions => {
   const source = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   return {
     settings: SETTINGS_ACCESS.some((a) => a.value === source["settings"])
       ? (source["settings"] as SettingsAccess)
       : "",
-    widgets: validWidgetRights(source["widgets"]),
+    workspaces: WORKSPACES_ACCESS.some((a) => a.value === source["workspaces"])
+      ? (source["workspaces"] as WorkspacesAccess)
+      : "",
   };
 };
 

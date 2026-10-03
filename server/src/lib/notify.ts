@@ -22,6 +22,7 @@ import { selection } from "../db/query.js";
 import { follows } from "../repositories/follows.js";
 import { taskCards } from "../repositories/tasks.js";
 import { env } from "../env.js";
+import { adresseDEnvoi } from "./entra.js";
 import { envoyerCourrier, messagerieConfiguree } from "./mail.js";
 import { gabarit } from "./mail-template.js";
 import type { Ligne } from "./mail-template.js";
@@ -42,8 +43,7 @@ export type Auteur = Pick<UserRow, "id" | "name" | "email">;
 export interface Fait {
   /**
    * L'élément suivi : un projet, une carte, une demande de support. Un
-   * élément du mode Accès ne se suit pas : ses notifications partent d'ailleurs
-   * (lib/uptime.ts).
+   * élément du mode Accès ne se suit pas.
    */
   kind: Exclude<NotificationKind, "access">;
   targetId: Id;
@@ -168,64 +168,14 @@ const empiler = (destinataire: UserRow, fait: Fait, lien: string, expediteur: st
 
 // --- D'où part l'e-mail ----------------------------------------------------
 
-/**
- * La boîte de support de la société de l'élément : un projet a la sienne, une
- * liste et une carte ont celle de leur tableau. Vide quand l'élément n'a pas
- * de société ou que la société n'a pas d'e-mail de support — la notification
- * reste alors à l'écran.
- */
-const boites: Record<FollowKind, ReturnType<typeof selection<{ support_email: string }>>> = {
-  project: selection(
-    `SELECT c.support_email FROM projects p
-     JOIN companies c ON c.id = p.company_id WHERE p.id = ?`,
-  ),
-  list: selection(
-    `SELECT c.support_email FROM task_lists l
-     JOIN boards b ON b.id = l.board_id
-     JOIN companies c ON c.id = b.company_id WHERE l.id = ?`,
-  ),
-  card: selection(
-    `SELECT c.support_email FROM task_cards t
-     JOIN task_lists l ON l.id = t.list_id
-     JOIN boards b ON b.id = l.board_id
-     JOIN companies c ON c.id = b.company_id WHERE t.id = ?`,
-  ),
-  support: selection(
-    `SELECT c.support_email FROM support_requests r
-     JOIN companies c ON c.id = r.company_id WHERE r.id = ?`,
-  ),
-};
-
-const boiteDe = (kind: FollowKind, id: Id): string => boites[kind].get(id)?.support_email ?? "";
-
 // --- Qui est prévenu -------------------------------------------------------
 
-/** La société de l'élément suivi, et le mode dont il relève. */
-const societes: Record<Fait["kind"], { area: Area; get: (id: Id) => { company_id: Id | null } | undefined }> = {
-  project: {
-    area: "projects",
-    get: (id) => societeDuProjet.get(id),
-  },
-  card: {
-    area: "tasks",
-    get: (id) => societeDeLaCarte.get(id),
-  },
-  support: {
-    area: "support",
-    get: (id) => societeDeLaDemande.get(id),
-  },
+/** Le mode dont relève l'élément suivi. */
+const domaines: Record<Fait["kind"], Area> = {
+  project: "projects",
+  card: "tasks",
+  support: "support",
 };
-const societeDuProjet = selection<{ company_id: Id | null }>(
-  "SELECT company_id FROM projects WHERE id = ?",
-);
-const societeDeLaCarte = selection<{ company_id: Id | null }>(
-  `SELECT b.company_id FROM task_cards t
-   JOIN task_lists l ON l.id = t.list_id
-   JOIN boards b ON b.id = l.board_id WHERE t.id = ?`,
-);
-const societeDeLaDemande = selection<{ company_id: Id | null }>(
-  "SELECT company_id FROM support_requests WHERE id = ?",
-);
 
 /**
  * Les acteurs d'un élément, sauf celui qui vient d'agir : ceux d'un projet,
@@ -277,11 +227,9 @@ const aPrevenir = (fait: Fait): UserRow[] => {
     parId.set(personne.id, personne);
   }
   for (const id of fait.sauf ?? []) parId.delete(id);
-  // Qui ne voit plus l'élément — son rôle dans la société a changé depuis
-  // qu'il le suit — n'en est plus prévenu.
-  const { area, get } = societes[fait.kind];
-  const societe = get(fait.targetId)?.company_id ?? null;
-  return [...parId.values()].filter((p) => can(droitsSocietes(p), area, "view", societe));
+  // Qui ne voit plus l'élément — ses permissions ont changé depuis qu'il le
+  // suit — n'en est plus prévenu.
+  return [...parId.values()].filter((p) => can(droitsSocietes(p), domaines[fait.kind], "view"));
 };
 
 /**
@@ -296,8 +244,7 @@ export const notifier = (fait: Fait): void => {
 
     const lien = `${fait.base}/${lienElement(fait.kind, fait.targetId)}`;
     const quand = now();
-    const expediteur =
-      fait.base && messagerieConfiguree() ? boiteDe(fait.kind, fait.targetId) : "";
+    const expediteur = fait.base && messagerieConfiguree() ? adresseDEnvoi() : "";
 
     for (const personne of destinataires) {
       notifications.emettre(personne.id, {
@@ -329,22 +276,18 @@ export const racine = (req: { protocol: string; get(nom: string): string | undef
 // --- Assignation d'une demande de support ----------------------------------
 
 export interface Assignation {
-  /** La demande, son numéro de ticket et son objet, sa société. */
-  demande: { id: Id; number: number; subject: string; company_id: Id };
+  /** La demande, son numéro de ticket et son objet. */
+  demande: { id: Id; number: number; subject: string };
   /** Les comptes qui viennent d'y être assignés. */
   destinataires: UserRow[];
   auteur: UserRow;
   base: string;
 }
 
-const boiteDeSociete = selection<{ support_email: string }>(
-  "SELECT support_email FROM companies WHERE id = ?",
-);
-
 /**
  * Une personne assignée à des demandes : une notification à l'écran par
- * demande, tout de suite, et un seul e-mail par personne et par société qui
- * les liste toutes — assigner dix tickets d'un coup n'envoie pas dix e-mails.
+ * demande, tout de suite, et un seul e-mail par personne qui les liste
+ * toutes — assigner dix tickets d'un coup n'envoie pas dix e-mails.
  * On ne se prévient pas soi-même. Ne lève jamais : l'assignation est déjà
  * enregistrée.
  */
@@ -356,9 +299,7 @@ export const notifierAssignations = (assignations: Assignation[]): void => {
     for (const { demande, destinataires, auteur, base } of assignations) {
       const titre = titreDemande(demande);
       const lien = `${base}/${lienElement("support", demande.id)}`;
-      const boite = messagerieConfiguree()
-        ? (boiteDeSociete.get(demande.company_id)?.support_email ?? "")
-        : "";
+      const boite = messagerieConfiguree() ? adresseDEnvoi() : "";
 
       for (const personne of destinataires) {
         if (personne.id === auteur.id) continue;
@@ -374,7 +315,7 @@ export const notifierAssignations = (assignations: Assignation[]): void => {
         } satisfies Notification);
 
         if (!boite || !personne.email) continue;
-        const cleEnvoi = `${personne.id}:${demande.company_id}`;
+        const cleEnvoi = String(personne.id);
         const courant = courriers.get(cleEnvoi);
         if (courant) courant.lignes.push({ texte: titre, repetitions: 1 });
         else {

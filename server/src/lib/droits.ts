@@ -1,18 +1,14 @@
-// Les droits par société, tels que les routes les vérifient.
-//
-// Un rôle se donne société par société (role_assignments) : on peut tout
-// faire chez l'une, seulement lire chez l'autre, ne rien voir chez une
-// troisième. Chaque route des modes passe par ici avant de lire ou d'écrire
-// ce qui appartient à une société.
+// Les droits, tels que les routes les vérifient : une permission par type de
+// widget, qui vaut partout. Chaque route passe par ici avant de lire ou
+// d'écrire ce qu'un widget montre.
 //
 // Ce qui ne se voit pas est introuvable (404), comme un tableau privé : on
 // n'a pas à deviner qu'il existe. Ce qui se voit sans se modifier est refusé
 // (403).
 
-import type { NextFunction, Request, Response } from "express";
-import type { Area, CompanyRights, Id, Mode, Right, WidgetAccess } from "@milo/shared";
-import { TOUTES_SOCIETES, can, companiesWith, genreDuWidget } from "@milo/shared";
-import { selection } from "../db/query.js";
+import type { Request } from "express";
+import type { Area, CompanyRights, Right, WidgetAccess } from "@milo/shared";
+import { can, genreDuWidget } from "@milo/shared";
 import { droitsSocietes, droitsWidgets } from "../repositories/users.js";
 import { HttpError } from "./http.js";
 
@@ -27,9 +23,9 @@ export const droitsDe = (req: Request): CompanyRights => {
   return droits;
 };
 
-/** Le compte a-t-il ce droit dans cette société ? (shared, `can`). */
-export const peut = (req: Request, area: Area, right: Right, companyId?: unknown): boolean =>
-  can(droitsDe(req), area, right, companyId as Id | string | null | undefined);
+/** Le compte a-t-il ce droit ? (shared, `can`). */
+export const peut = (req: Request, area: Area, right: Right): boolean =>
+  can(droitsDe(req), area, right);
 
 const REFUS: Record<Right, string> = {
   view: "Introuvable",
@@ -46,42 +42,11 @@ export const exiger = (
   req: Request,
   area: Area,
   right: Right,
-  companyId?: unknown,
   introuvable?: string,
 ): void => {
-  if (peut(req, area, right, companyId)) return;
+  if (peut(req, area, right)) return;
   throw new HttpError(right === "view" ? 404 : 403, right === "view" && introuvable ? introuvable : REFUS[right]);
 };
-
-/**
- * De quoi filtrer une requête SQL sur les sociétés visibles : `societes` est
- * la liste JSON des sociétés où le compte a le droit (à passer à
- * `json_each`), `sansSociete` vaut 1 si ce qui n'a pas de société se voit.
- */
-export const filtreSocietes = (
-  req: Request,
-  area: Area,
-  right: Right = "view",
-): { societes: string; sansSociete: 0 | 1 } => {
-  const droits = droitsDe(req);
-  // Des droits pour toutes les sociétés (« * ») valent pour chacune d'elles.
-  const partout = droits[TOUTES_SOCIETES]?.[area]?.includes(right) ?? false;
-  return {
-    societes: JSON.stringify(
-      partout ? toutesLesSocietes.all().map((c) => c.id) : companiesWith(droits, area, right),
-    ),
-    sansSociete: peut(req, area, right, null) ? 1 : 0,
-  };
-};
-
-const toutesLesSocietes = selection<{ id: number }>("SELECT id FROM companies");
-
-/**
- * La clause SQL qui va avec : `colonne` est la colonne de la société.
- * Paramètres nommés @societes et @sansSociete.
- */
-export const clauseSocietes = (colonne: string): string =>
-  `(${colonne} IN (SELECT value FROM json_each(@societes)) OR (${colonne} IS NULL AND @sansSociete = 1))`;
 
 const DROIT_DE_LA_METHODE: Record<string, Right> = {
   POST: "create",
@@ -93,45 +58,32 @@ const DROIT_DE_LA_METHODE: Record<string, Right> = {
 /** Le droit qu'une écriture demande, d'après sa méthode ; « Voir » pour une lecture. */
 export const droitDeLaMethode = (req: Request): Right => DROIT_DE_LA_METHODE[req.method] ?? "view";
 
+
+
+/** La permission du compte sur le type de ce widget (shared, genreDuWidget). */
+export const accesAuWidget = (req: Request, type: string): WidgetAccess =>
+  droitsWidgets(req.user)[genreDuWidget(type)];
+
 /**
- * Pour un mode qui n'appartient à aucune société (le mode Accès) : chaque
- * requête demande le droit que dit sa méthode — lire, « Voir » ; POST,
- * « Ajouter » ; PUT, « Modifier » ; DELETE, « Supprimer » —, dans au moins
- * une société. Toutes les écritures du routeur doivent suivre cette
- * convention, sauf celles que « voirSuffit » désigne : elles ne touchent que
- * ce qui est à soi.
+ * Le compte peut-il organiser les vues et les tableaux partagés — les créer,
+ * les renommer, les ranger, poser leurs sections ? Il lui faut modifier au
+ * moins un type de widget : sans quoi il n'aurait rien à y poser.
  */
-export const exigerParMethode =
-  (area: Area, voirSuffit?: (req: Request) => boolean) =>
-  (req: Request, _res: Response, next: NextFunction): void => {
-    exiger(req, area, voirSuffit?.(req) ? "view" : (DROIT_DE_LA_METHODE[req.method] ?? "view"));
-    next();
-  };
+export const peutOrganiser = (req: Request): boolean =>
+  Object.values(droitsWidgets(req.user)).some((acces) => acces === "update");
 
-/** Pour un mode sans société, comme « exigerParMethode », mais « Voir » seulement. */
-export const exigerVoir =
-  (area: Area) =>
-  (req: Request, _res: Response, next: NextFunction): void => {
-    exiger(req, area, "view");
-    next();
-  };
-
-/** La permission du compte sur le type de ce widget, posé dans les sections de ce mode. */
-export const accesAuWidget = (req: Request, mode: Mode, type: string): WidgetAccess =>
-  droitsWidgets(req.user)[genreDuWidget(mode, type)];
+/** Lève si le compte ne peut pas organiser les vues et les tableaux partagés. */
+export const exigerOrganiser = (req: Request): void => {
+  if (!peutOrganiser(req)) throw new HttpError(403, "Vous n'avez pas le droit de modifier ici");
+};
 
 /**
  * Lève si le compte n'a pas cette permission sur le type du widget : 404 quand
  * il ne le lit même pas — ce qu'on ne voit pas est introuvable —, 403 quand
  * il le lit sans pouvoir le modifier.
  */
-export const exigerWidget = (
-  req: Request,
-  mode: Mode,
-  type: string,
-  voulu: "view" | "update",
-): void => {
-  const acces = accesAuWidget(req, mode, type);
+export const exigerWidget = (req: Request, type: string, voulu: "view" | "update"): void => {
+  const acces = accesAuWidget(req, type);
   if (acces === "") throw new HttpError(404, "Widget introuvable");
   if (voulu === "update" && acces !== "update") {
     throw new HttpError(403, "Vous n'avez pas le droit de modifier ce widget");

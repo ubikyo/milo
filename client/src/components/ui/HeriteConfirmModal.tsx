@@ -25,12 +25,12 @@ export default function HeriteConfirmModal({
       opened={opened}
       onClose={onClose}
       onConfirm={onConfirm}
-      title="Retirer « Hérité »"
+      title="Retirer « Héritée »"
       message={
         <>
           Vous travaillerez sur votre propre copie des sections et des widgets : vous pourrez en
           modifier la structure sans toucher à celle des autres utilisateurs. Les changements de la
-          structure partagée ne vous parviendront plus. Recocher « Hérité » effacera votre copie.
+          structure partagée ne vous parviendront plus. Recocher « Héritée » effacera votre copie.
         </>
       }
       confirmLabel="Valider"
@@ -44,7 +44,7 @@ export default function HeriteConfirmModal({
       opened={opened}
       onClose={onClose}
       onConfirm={onConfirm}
-      title="Cocher « Hérité »"
+      title="Cocher « Héritée »"
       message={
         <>
           Vous retrouverez la structure partagée et ses widgets. Votre propre copie des sections et
@@ -56,10 +56,4 @@ export default function HeriteConfirmModal({
       cancelLabel="Annuler"
     />
   );
-}
-
-/** « Hérité » d'un panneau entier — Support, Assets, Projet, Tâche —, tel que les pages le reçoivent. */
-export interface PanelInheritance {
-  inherited: boolean;
-  onToggle: () => void | Promise<void>;
 }

@@ -1,0 +1,22 @@
+/* Les pastilles de couleur du menu d'une liste : six teintes sur trois
+   nuances, réparties sur toute la largeur du menu. Au survol, la pastille grossit et se cerne,
+   pour qu'on voie laquelle on s'apprête à choisir. */
+.grille {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  justify-items: center;
+  padding: var(--mantine-spacing-xs);
+}
+
+.pastille {
+  cursor: pointer;
+  transition: transform 120ms, box-shadow 120ms;
+}
+
+.pastille:hover {
+  transform: scale(1.15);
+  box-shadow:
+    0 0 0 2px var(--mantine-color-body),
+    0 0 0 3px var(--mantine-color-dimmed);
+}

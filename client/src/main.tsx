@@ -5,7 +5,7 @@ import "@mantine/tiptap/styles.css";
 import "@mantine/dates/styles.css";
 // Feuille des notifications de suivi, en bas à droite.
 import "@mantine/notifications/styles.css";
-// Feuille des graphiques : la matrice du widget Uptime.
+// Feuille des graphiques : ceux des indicateurs.
 import "@mantine/charts/styles.css";
 // Posée après celles de Mantine : elle en reprend l'anneau de focus.
 // Le curseur gris de toutes les barres de défilement.

@@ -8,8 +8,7 @@ import {
 } from "@milo/shared";
 import type { SupportLabel } from "@milo/shared";
 import { api } from "../../api";
-import { messageErreur } from "../../lib/errors";
-import ErrorAlert from "../ui/ErrorAlert";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 import LabelPicker, { SUPPORT_LABELS_API } from "../ui/LabelPicker";
 import SupportTemplates from "./SupportTemplates";
 
@@ -31,13 +30,12 @@ export default function SupportTab({ canEdit }: SupportTabProps) {
   // Les étiquettes du Support, et celles qu'un e-mail reçoit d'office.
   const [etiquettes, setEtiquettes] = useState<SupportLabel[]>([]);
   const [labelIds, setLabelIds] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
 
   const relireEtiquettes = useCallback(async () => {
     try {
       setEtiquettes(await api.getSupportLabels());
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   }, []);
 
@@ -49,21 +47,20 @@ export default function SupportTab({ canEdit }: SupportTabProps) {
         setEnregistres(r.default_due_days);
         setLabelIds(r.default_label_ids.map(String));
       })
-      .catch((e) => setError(messageErreur(e)));
+      .catch((e) => notifierErreur(messageErreur(e)));
     void relireEtiquettes();
   }, [relireEtiquettes]);
 
   const choisirEtiquettes = async (ids: string[]) => {
     const avant = labelIds;
     setLabelIds(ids);
-    setError(null);
     try {
       const r = await api.updateSupportSettings({
         default_label_ids: ids.map(Number),
       });
       setLabelIds(r.default_label_ids.map(String));
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
       setLabelIds(avant);
     }
   };
@@ -71,20 +68,18 @@ export default function SupportTab({ canEdit }: SupportTabProps) {
   const enregistrer = async () => {
     const valeur = jours ?? 0;
     if (valeur === enregistres) return;
-    setError(null);
     try {
       const r = await api.updateSupportSettings({ default_due_days: valeur });
       setJours(r.default_due_days);
       setEnregistres(r.default_due_days);
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
       setJours(enregistres);
     }
   };
 
   return (
     <Stack gap="xl">
-      {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
       {/* Les réglages d'une valeur côte à côte, chacun à sa largeur ; les
           notifications, plus bas, prennent toute celle du panneau. */}
       <Group gap="xl" align="flex-start" wrap="nowrap">
@@ -147,7 +142,7 @@ export default function SupportTab({ canEdit }: SupportTabProps) {
         emptyIcon={IconMessageReply}
         emptyText="Aucune réponse pour le moment"
         canEdit={canEdit}
-        onError={setError}
+        onError={notifierErreur}
         // Partie d'office, une notification n'a personne qui l'écrit.
         groupesVariables={["Expéditeur", "Demande"]}
       />
@@ -163,7 +158,7 @@ export default function SupportTab({ canEdit }: SupportTabProps) {
         emptyIcon={IconSignature}
         emptyText="Aucun contenu pour le moment"
         canEdit={canEdit}
-        onError={setError}
+        onError={notifierErreur}
       />
     </Stack>
   );

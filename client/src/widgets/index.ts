@@ -6,13 +6,17 @@
 // ici — et une valeur de plus dans « ACCESS_BLOCK_TYPES » (shared/domain.ts),
 // qui est ce que la base range.
 
+import { calendrierWidget } from "./calendrier";
 import { categorieWidget } from "./categorie";
 import { horlogeWidget } from "./horloge";
+import { imageWidget } from "./image";
 import { lienWidget } from "./lien";
+import { mailWidget } from "./mail";
+import { meteoWidget } from "./meteo";
 import { numeroWidget } from "./numero";
 import { rssWidget } from "./rss";
 import { sousCategorieWidget } from "./sous-categorie";
-import { uptimeWidget } from "./uptime";
+import { todoWidget } from "./todo";
 import type { AccessWidget } from "./types";
 import type { AccessBlockType } from "@milo/shared";
 
@@ -23,8 +27,12 @@ export const WIDGETS: AccessWidget[] = [
   lienWidget,
   numeroWidget,
   horlogeWidget,
+  imageWidget,
+  meteoWidget,
+  calendrierWidget,
+  mailWidget,
+  todoWidget,
   rssWidget,
-  uptimeWidget,
 ];
 
 const PAR_TYPE = new Map<AccessBlockType, AccessWidget>(WIDGETS.map((p) => [p.type, p]));

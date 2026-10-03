@@ -33,8 +33,8 @@ import OrigineAnnuaire from "./OrigineAnnuaire";
 //   - une recherche, qui filtre les comptes de Milo et interroge l'annuaire
 //     Entra : une personne qui n'est pas encore dans Milo s'y choisit aussi,
 //     et son compte est créé à ce moment-là ;
-//   - là où un acteur ne fait qu'être prévenu — les machines d'un élément
-//     Uptime —, des groupes Entra aussi (« onGroupsChange ») : la recherche
+//   - là où un acteur ne fait qu'être prévenu, des groupes Entra aussi
+//     (« onGroupsChange ») : la recherche
 //     les propose sous les personnes, et ils se posent en vignettes devant
 //     elles.
 

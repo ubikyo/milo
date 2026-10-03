@@ -27,6 +27,8 @@ import { now } from "../lib/time.js";
 import { cardComments } from "./cards.js";
 import { motDeCreation } from "./comments.js";
 import { prochaineReference } from "./references.js";
+import { contexteDuTableau, contexts } from "./contexts.js";
+import { cleDansLeTableau } from "./listes.js";
 import { reorderTaskCards, taskCards, taskLists } from "./tasks.js";
 
 // --- Lectures de la source -------------------------------------------------
@@ -60,7 +62,8 @@ const piecesDeLaCarte = selection<AttachmentRow>(
 // --- Écritures de la copie -------------------------------------------------
 
 const creerListe = mutation(
-  "INSERT INTO task_lists (board_id, name, position, color, created_at) VALUES (?, ?, ?, ?, ?)",
+  `INSERT INTO task_lists (board_id, name, position, color, list_key, created_at)
+   VALUES (?, ?, ?, ?, ?, ?)`,
 );
 // Ni l'une ni l'autre ne passe par `taskCards.create`, qui ne les prend pas :
 // elles se posent juste après l'insertion.
@@ -162,7 +165,22 @@ const copierCarte = (carte: TaskCardRow, copie: CopieDeCarte): Id => {
   // porter le même repère. Un séparateur n'en a pas.
   const numero = separateur ? 0 : prochaineReference();
   const carteId = Number(
-    taskCards.create.run(listeId, text, rang, numero, carte.kind, timestamp).lastInsertRowid,
+    taskCards.create
+      .run(
+        listeId,
+        text,
+        rang,
+        numero,
+        carte.kind,
+        // Dans son tableau, la copie garde le contexte de l'original ; ailleurs,
+        // elle prend le premier du tableau d'accueil.
+        contexteDuTableau(
+          boardId,
+          undefined,
+          contexts.byId.get(carte.context_id)?.board_id === boardId ? carte.context_id : null,
+        ),
+        timestamp,
+      ).lastInsertRowid,
   );
 
   if (carte.description) poserDescription.run(carte.description, carteId);
@@ -256,7 +274,17 @@ export const copyTaskList = transaction((copie: CopieDeListe): Id => {
   // La copie se range à la fin du tableau d'accueil, comme une liste qu'on
   // viendrait d'y créer — y compris quand c'est le tableau d'origine.
   const { next } = taskLists.nextPosition(boardId);
-  const listeId = Number(creerListe.run(boardId, name, next, color, timestamp).lastInsertRowid);
+  // Dans son tableau, la copie reste dans le widget de l'original ; ailleurs,
+  // elle va au premier widget « Tâches » du tableau d'accueil.
+  const source = taskLists.byId.get(sourceId);
+  const cle = cleDansLeTableau(
+    boardId,
+    "task.list",
+    source?.board_id === boardId ? source.list_key : undefined,
+  );
+  const listeId = Number(
+    creerListe.run(boardId, name, next, color, cle, timestamp).lastInsertRowid,
+  );
 
   // Les étiquettes déjà appariées d'un tableau à l'autre, pour ne les chercher
   // — et ne les créer — qu'une fois par liste copiée.

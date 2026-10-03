@@ -1,13 +1,11 @@
 // Le démarrage : rien d'autre que mettre l'application à l'écoute, le ménage
 // périodique — les sessions expirées, les fichiers que plus rien ne cite — et
-// la relève des boîtes de support et celle des flux RSS, et la vérification
-// des machines des éléments Uptime.
+// la relève des boîtes de support et celle des flux RSS.
 
 import { createApp } from "./app.js";
 import { env } from "./env.js";
 import { INTERVALLE_RELEVE_FLUX, releverLesFlux } from "./lib/feed.js";
 import { INTERVALLE_RELEVE, releverLesBoites } from "./lib/support-mail.js";
-import { INTERVALLE_TOUR_UPTIME, verifierLesMachines } from "./lib/uptime.js";
 import { INTERVALLE_ENTRETIEN, entretenirAbonnements } from "./lib/support-webhooks.js";
 import { menageDesMedias } from "./repositories/attachments.js";
 import { sessions } from "./repositories/users.js";
@@ -47,15 +45,6 @@ const releverFlux = () => {
 };
 releverFlux();
 setInterval(releverFlux, INTERVALLE_RELEVE_FLUX).unref();
-
-// Les machines des éléments Uptime sont vérifiées par le serveur, chacune à
-// l'intervalle que ses éléments règlent : la vérification de fond regarde
-// toutes les cinq secondes lesquelles sont arrivées à échéance.
-const verifierMachines = () => {
-  verifierLesMachines().catch((erreur) => console.error("Vérification Uptime :", erreur));
-};
-verifierMachines();
-setInterval(verifierMachines, INTERVALLE_TOUR_UPTIME).unref();
 
 const server = app.listen(env.port, () => {
   console.log(`API Milo disponible sur http://localhost:${env.port}`);

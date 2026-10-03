@@ -296,7 +296,6 @@ export default function ListItems({
                 value={add.value}
                 onChange={(e) => add.onChange(e.currentTarget.value)}
                 onKeyDown={(e) => {
-                  // Consommée : le tiroir qui porte ce champ n'enregistre pas en plus.
                   if (e.key === "Enter") {
                     e.preventDefault();
                     add.onSubmit();

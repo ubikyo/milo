@@ -1,9 +1,8 @@
 import { ActionIcon, Anchor, Group, NumberInput, TextInput } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import { api } from "../../api";
-import { messageErreur } from "../../lib/errors";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 import { ADD_ACTION, RED } from "../../themes/colors";
 import { PLUS_GAP, PLUS_SIZE } from "../../themes/plus";
 import ChipPicker from "./ChipPicker";
@@ -223,7 +222,7 @@ export default function LabelPicker({
     } catch (e) {
       // Une étiquette encore portée ne se supprime pas : le serveur dit par
       // combien de ressources.
-      notifications.show({ color: RED, title: "Suppression impossible", message: messageErreur(e) });
+      notifierErreur(messageErreur(e), "Suppression impossible");
       return;
     }
     // La carte ouverte la perd aussitôt : sans cela, l'enregistrement la lui
@@ -277,7 +276,6 @@ export default function LabelPicker({
         value={name}
         onChange={(e) => onName(e.currentTarget.value)}
         onKeyDown={(e) => {
-          // Consommée : le tiroir qui porte ce champ n'enregistre pas en plus.
           if (e.key === "Enter") {
             e.preventDefault();
             onSubmit();

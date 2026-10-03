@@ -18,7 +18,8 @@ import {
 import type { Area, Id, SearchResult, SupportStatus } from "@milo/shared";
 import db from "../db/index.js";
 import { selection } from "../db/query.js";
-import { accesAuWidget, clauseSocietes, filtreSocietes, peut } from "../lib/droits.js";
+import { CLAUSE_TABLEAUX_VISIBLES } from "../repositories/boards.js";
+import { accesAuWidget, peut } from "../lib/droits.js";
 
 /** Ce que chaque sorte rend au plus : la liste reste lisible d'un coup d'œil. */
 const PAR_SORTE = 6;
@@ -53,16 +54,15 @@ interface ProjetTrouve {
   number: number;
   name: string;
   board: string;
-  company: string | null;
+  context: string | null;
 }
 
 const projetsTrouves = selection<ProjetTrouve>(
-  `SELECT p.id, p.number, p.name, pb.name AS board, c.name AS company
+  `SELECT p.id, p.number, p.name, b.name AS board, c.name AS context
      FROM projects p
-     JOIN project_boards pb ON pb.id = p.board_id
-     LEFT JOIN companies c ON c.id = p.company_id
-    WHERE (pb.is_private = 0 OR pb.owner_id = @me)
-      AND ${clauseSocietes("p.company_id")}
+     JOIN boards b ON b.id = p.board_id
+     LEFT JOIN contexts c ON c.id = p.context_id
+    WHERE ${CLAUSE_TABLEAUX_VISIBLES("p.board_id")}
       AND (${contient("p.name")} OR ${contient("p.description")} OR ${sesReference("p.number", PROJECT_REFERENCE_PREFIX)})
     ORDER BY p.updated_at DESC
     LIMIT ${PAR_SORTE}`,
@@ -74,18 +74,17 @@ interface CarteTrouvee {
   text: string;
   list: string;
   board: string;
-  company: string;
+  context: string | null;
 }
 
 const cartesTrouvees = selection<CarteTrouvee>(
-  `SELECT tc.id, tc.number, tc.text, tl.name AS list, b.name AS board, c.name AS company
+  `SELECT tc.id, tc.number, tc.text, tl.name AS list, b.name AS board, c.name AS context
      FROM task_cards tc
      JOIN task_lists tl ON tl.id = tc.list_id
      JOIN boards b ON b.id = tl.board_id
-     JOIN companies c ON c.id = b.company_id
+     LEFT JOIN contexts c ON c.id = tc.context_id
     WHERE tc.kind = 'card'
-      AND (b.is_private = 0 OR b.owner_id = @me)
-      AND ${clauseSocietes("b.company_id")}
+      AND ${CLAUSE_TABLEAUX_VISIBLES("b.id")}
       AND (${contient("tc.text")} OR ${contient("tc.description")} OR ${sesReference("tc.number", TASK_REFERENCE_PREFIX)})
     ORDER BY tc.created_at DESC
     LIMIT ${PAR_SORTE}`,
@@ -96,14 +95,16 @@ interface DemandeTrouvee {
   number: number;
   subject: string;
   status: SupportStatus;
-  company: string;
+  context: string | null;
+  board: string;
 }
 
 const demandesTrouvees = selection<DemandeTrouvee>(
-  `SELECT sr.id, sr.number, sr.subject, sr.status, c.name AS company
+  `SELECT sr.id, sr.number, sr.subject, sr.status, c.name AS context, b.name AS board
      FROM support_requests sr
-     JOIN companies c ON c.id = sr.company_id
-    WHERE ${clauseSocietes("sr.company_id")}
+     JOIN boards b ON b.id = sr.board_id
+     LEFT JOIN contexts c ON c.id = sr.context_id
+    WHERE ${CLAUSE_TABLEAUX_VISIBLES("b.id")}
       AND (${contient("sr.subject")}
        OR ${contient("sr.sender_name")}
        OR ${contient("sr.sender_email")}
@@ -116,14 +117,14 @@ interface PosteTrouve {
   id: Id;
   name: string;
   last_user: string;
-  company: string | null;
+  context: string | null;
 }
 
 const postesTrouves = selection<PosteTrouve>(
-  `SELECT a.id, a.name, a.last_user, c.name AS company
+  `SELECT a.id, a.name, a.last_user, c.name AS context
      FROM assets a
-     LEFT JOIN companies c ON c.id = a.company_id
-    WHERE ${clauseSocietes("a.company_id")}
+     LEFT JOIN contexts c ON c.id = a.context_id
+    WHERE a.board_id IS NOT NULL AND ${CLAUSE_TABLEAUX_VISIBLES("a.board_id")}
       AND (${contient("a.name")} OR ${contient("a.last_user")} OR ${contient("a.tag")})
     ORDER BY a.name
     LIMIT ${PAR_SORTE}`,
@@ -133,26 +134,27 @@ interface BlocVisible {
   id: Id;
   type: string;
   config: string;
-  category_id: Id;
-  category: string;
+  board_id: Id;
+  board: string;
 }
 
-// Les éléments du mode Accès portent leur texte dans un JSON dont la forme
-// dépend du widget : ils sont peu nombreux, on les lit tous et on les
-// fouille ici plutôt qu'en SQL.
+// Les widgets communs portent leur texte dans un JSON dont la forme dépend du
+// widget : ils sont peu nombreux, on les lit tous et on les fouille ici
+// plutôt qu'en SQL.
 const blocsVisibles = selection<BlocVisible>(
-  `SELECT ab.id, ab.type, ab.config, s.category_id, cat.name AS category
-     FROM access_blocks ab
-     JOIN access_sections s ON s.id = ab.section_id
-     JOIN access_categories cat ON cat.id = s.category_id
-    WHERE (cat.is_private = 0 OR cat.owner_id = ?)
+  `SELECT w.id, w.type, w.config, b.id AS board_id, b.name AS board
+     FROM board_widgets w
+     JOIN board_sections s ON s.id = w.section_id
+     JOIN boards b ON b.id = s.board_id
+    WHERE ${CLAUSE_TABLEAUX_VISIBLES("b.id")}
+      AND w.type IN ('category', 'subcategory', 'link', 'number')
       -- La structure que ce compte voit : la sienne s'il en a une, sinon la
-      -- publique. Une catégorie privée n'a que la publique.
+      -- publique. Un tableau privé n'a que la publique.
       AND s.owner_id IS (
         SELECT pl.user_id FROM personal_layouts pl
-         WHERE pl.user_id = ? AND pl.scope = 'access:' || cat.id AND cat.is_private = 0
+         WHERE pl.user_id = @me AND pl.scope = 'board:' || b.id AND b.is_private = 0
       )
-    ORDER BY cat.position, s.position, ab.position, ab.id`,
+    ORDER BY b.position, s.position, w.position, w.id`,
 );
 
 const texte = (valeur: unknown): string => (typeof valeur === "string" ? valeur.trim() : "");
@@ -193,9 +195,9 @@ const lectureDuBloc = (
 const accesTrouves = (req: Request, plie: string): SearchResult[] => {
   const userId = req.user.id;
   const trouves: SearchResult[] = [];
-  for (const bloc of blocsVisibles.all(userId, userId)) {
+  for (const bloc of blocsVisibles.all({ me: userId })) {
     // Un élément dont le compte ne lit pas le type de widget ne se trouve pas.
-    if (accesAuWidget(req, "access", bloc.type) === "") continue;
+    if (accesAuWidget(req, bloc.type) === "") continue;
     let config: Record<string, unknown>;
     try {
       config = JSON.parse(bloc.config) ?? {};
@@ -208,8 +210,8 @@ const accesTrouves = (req: Request, plie: string): SearchResult[] => {
       kind: "access",
       id: bloc.id,
       title: lu.title,
-      context: bloc.category,
-      category_id: bloc.category_id,
+      context: bloc.board,
+      board_id: bloc.board_id,
       url: lu.url,
     });
     if (trouves.length >= PAR_SORTE) break;
@@ -226,39 +228,39 @@ searchRoutes.get("/", (req, res) => {
   const plie = plier(req.query.q).trim();
   if (plie.length < SEARCH_MIN_LENGTH) return void res.json([]);
 
-  // Chaque sorte ne cherche que dans les sociétés où l'on voit son mode.
-  const sansMoi = { q: motif(plie) };
-  const params = { ...sansMoi, me: req.user.id };
-  const dans = (area: Area) => filtreSocietes(req, area);
+  // Chaque sorte ne cherche que si l'on en voit le type de widget.
+  const params = { q: motif(plie), me: req.user.id };
+  const dans = <T>(area: Area, trouver: () => T[]): T[] => (peut(req, area, "view") ? trouver() : []);
 
   const resultats: SearchResult[] = [
-    ...projetsTrouves.all({ ...params, ...dans("projects") }).map((p) => ({
+    ...dans("projects", () => projetsTrouves.all(params)).map((p) => ({
       kind: "project" as const,
       id: p.id,
       title: p.name,
-      context: joindre(p.number > 0 ? projectReference(p.number) : null, p.company, p.board),
+      context: joindre(p.number > 0 ? projectReference(p.number) : null, p.context, p.board),
     })),
-    ...cartesTrouvees.all({ ...params, ...dans("tasks") }).map((c) => ({
+    ...dans("tasks", () => cartesTrouvees.all(params)).map((c) => ({
       kind: "card" as const,
       id: c.id,
       title: c.text,
-      context: joindre(c.number > 0 ? taskReference(c.number) : null, c.company, c.board, c.list),
+      context: joindre(c.number > 0 ? taskReference(c.number) : null, c.context, c.board, c.list),
     })),
-    ...demandesTrouvees.all({ ...sansMoi, ...dans("support") }).map((d) => ({
+    ...dans("support", () => demandesTrouvees.all(params)).map((d) => ({
       kind: "support" as const,
       id: d.id,
       title: d.subject || "(sans objet)",
       context: joindre(
         d.number > 0 ? reference(d.number) : null,
-        d.company,
+        d.context,
+        d.board,
         supportStatusLabel(d.status),
       ),
     })),
-    ...postesTrouves.all({ ...sansMoi, ...dans("assets") }).map((a) => ({
+    ...dans("assets", () => postesTrouves.all(params)).map((a) => ({
       kind: "asset" as const,
       id: a.id,
       title: a.name,
-      context: joindre(a.company, a.last_user),
+      context: joindre(a.context, a.last_user),
     })),
     ...(peut(req, "access", "view") ? accesTrouves(req, plie) : []),
   ];

@@ -5,9 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { backupFileName } from "@milo/shared";
 import { api } from "../../api";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
-import ErrorAlert from "../ui/ErrorAlert";
 import SuccessAlert from "../ui/SuccessAlert";
-import { messageErreur } from "../../lib/errors";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 import type { BackupInfo, RestoreResult } from "@milo/shared";
 
 // Même colonne de libellés que les autres onglets des réglages.
@@ -42,7 +41,6 @@ export default function BackupTab() {
   const [info, setInfo] = useState<BackupInfo | null>(null);
   const [aRestaurer, setARestaurer] = useState<File | null>(null);
   const [resultat, setResultat] = useState<RestoreResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
   // Laquelle des deux opérations est en cours : chacune a son bouton, et
   // aucune des deux ne doit laisser croire que l'autre travaille.
   const [enCours, setEnCours] = useState<
@@ -53,7 +51,7 @@ export default function BackupTab() {
     try {
       setInfo(await api.getBackupInfo());
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   }, []);
 
@@ -62,7 +60,6 @@ export default function BackupTab() {
   }, [reload]);
 
   const telecharger = async () => {
-    setError(null);
     setEnCours("telechargement");
     try {
       const archive = await api.downloadBackup();
@@ -75,7 +72,7 @@ export default function BackupTab() {
       lien.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setEnCours(null);
     }
@@ -85,14 +82,13 @@ export default function BackupTab() {
     if (!aRestaurer) return;
     const archive = aRestaurer;
     setARestaurer(null);
-    setError(null);
     setResultat(null);
     setEnCours("restauration");
     try {
       setResultat(await api.restoreBackup(archive));
       await reload();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setEnCours(null);
     }
@@ -100,7 +96,6 @@ export default function BackupTab() {
 
   return (
     <Stack gap="lg">
-      {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
 
       <Stack gap="xs">
         {info && (

@@ -12,12 +12,11 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useEffect, useState } from "react";
-import { messageErreur } from "../../lib/errors";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 import classes from "../../assets/styles/SupportReplyModal.module.css";
 import { STRONG_TEXT } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import BoutonFermer from "../ui/BoutonFermer";
-import ErrorAlert from "../ui/ErrorAlert";
 import RichTextField, { FIELD_BG, useRichEditor } from "../ui/RichText";
 import { SUPPORT_REPLY_VARIABLES, SUPPORT_VARIABLE_GROUPS } from "@milo/shared";
 import type { SupportVariableGroup } from "@milo/shared";
@@ -82,7 +81,6 @@ export default function SupportReplyModal({
   );
   const editor = useRichEditor({ placeholder: "Le modèle de la réponse" });
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   // Les provenances dépliées : aucune à l'ouverture.
   const [ouverts, setOuverts] = useState<string[]>([]);
 
@@ -90,7 +88,6 @@ export default function SupportReplyModal({
   useEffect(() => {
     if (!reply) return;
     editor?.commands.setContent(reply.html || "");
-    setError(null);
     setOuverts([]);
   }, [reply, editor]);
 
@@ -103,12 +100,11 @@ export default function SupportReplyModal({
 
   const enregistrer = async () => {
     setSaving(true);
-    setError(null);
     try {
       await onSave({ html: editor?.getHTML() ?? "" });
       onClose();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setSaving(false);
     }
@@ -126,9 +122,6 @@ export default function SupportReplyModal({
       styles={modalHeaderStyles(MODAL_PADDING)}
     >
       <Stack gap="md">
-        {error && (
-          <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>
-        )}
 
         {/* Les variables ne pèsent pas sur la hauteur : posées en absolu dans
             leur colonne, elles prennent celle de l'éditeur et défilent

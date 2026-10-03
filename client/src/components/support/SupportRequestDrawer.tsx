@@ -21,10 +21,13 @@ import {
   IconMessage,
   IconSettings,
 } from "@tabler/icons-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../../api";
-import { NEUTRAL_HOVER } from "../../themes/colors";
-import { DRAWER_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
+import {
+  ACTIONS_BUTTON_STYLE,
+  DRAWER_MENU_OFFSET,
+  TAB_MENU_STYLES,
+} from "../../themes/menus";
 import { tabStyle } from "../../themes/tabs";
 import { ACTOR_GAP, PersonAvatar, SenderAvatar } from "../ui/ActorAvatars";
 import ActorPicker from "../ui/ActorPicker";
@@ -36,13 +39,12 @@ import DrawerScrollArea, {
   DRAWER_TABS_STYLES,
 } from "../ui/DrawerScroll";
 import EmptyPanel from "../ui/EmptyPanel";
-import ErrorAlert from "../ui/ErrorAlert";
 import LabelPicker, { SUPPORT_LABELS_API } from "../ui/LabelPicker";
 import CommentThread from "../project/CommentThread";
 import { FIELDSET_NU, useDroits } from "../../lib/droits";
 import SupportMessages, { SupportReply } from "./SupportMessages";
 import type { EnvoiReponse, MessageSupport } from "./SupportMessages";
-import { messageErreur } from "../../lib/errors";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 import {
   DEFAULT_SUPPORT_STATUS,
   MILO_ACTOR_ID,
@@ -53,7 +55,8 @@ import {
 } from "@milo/shared";
 import type { CSSProperties } from "react";
 import type {
-  Company,
+  Context,
+  Id,
   PublicUser,
   SupportContent,
   SupportContentEvent,
@@ -121,13 +124,17 @@ interface SupportRequestDrawerProps {
   /** « null » à la création, la demande visée sinon. */
   request: SupportRequest | null;
   /**
-   * La société proposée à la création : celle de la liste déroulante, ou la
-   * première de la liste quand elle est sur « toutes les sociétés ». Une
-   * demande déjà ouverte garde la sienne, quelle que soit cette valeur.
+   * Le contexte proposé à la création : celui qu'on regarde, ou le premier du
+   * tableau sous « Tous les contextes ». Une demande déjà ouverte garde le
+   * sien, quelle que soit cette valeur.
    */
-  companyId: string;
-  /** Toutes les sociétés : une demande peut passer de l'une à l'autre. */
-  companies: Company[];
+  contextId: string;
+  /** Les contextes du tableau : une demande peut passer de l'un à l'autre. */
+  contexts: Context[];
+  /** Le tableau ouvert : une demande saisie sans contexte y prend le premier. */
+  boardId: Id | null;
+  /** À la création : le widget « Demandes de support » d'où on la saisit. */
+  listKey?: string;
   /** Le statut de l'onglet ouvert : celui que prend une demande créée là. */
   defaultStatus: SupportStatus;
   /** L'objet proposé à la création : celui de l'élément d'où on la crée. */
@@ -150,8 +157,10 @@ export default function SupportRequestDrawer({
   opened,
   onClose,
   request,
-  companyId,
-  companies,
+  contextId,
+  contexts,
+  boardId,
+  listKey,
   defaultStatus,
   defaultSubject = "",
   assignCurrentUser = true,
@@ -165,17 +174,12 @@ export default function SupportRequestDrawer({
   const [subject, setSubject] = useState("");
   const [status, setStatus] = useState<SupportStatus>(DEFAULT_SUPPORT_STATUS);
   /**
-   * La société de la demande. À la création elle est proposée — celle qui est
-   * choisie, ou la première quand la liste est sur « toutes » —, et reste
-   * modifiable : c'est ainsi qu'on rattrape une demande ouverte au mauvais
-   * endroit.
+   * Le contexte de la demande. À la création il est proposé — celui qu'on
+   * regarde, ou le premier —, et reste modifiable : c'est ainsi qu'on
+   * rattrape une demande ouverte au mauvais endroit.
    */
-  const [societeId, setSocieteId] = useState(companyId);
-  /**
-   * Les étiquettes de cette société-là. Elles se lisent ici et non dans
-   * l'application : sous « toutes les sociétés », celle-ci n'en connaît
-   * aucune, et la demande, elle, appartient toujours à une société précise.
-   */
+  const [contexteId, setContexteId] = useState(contextId);
+  /** Les étiquettes du support, communes à tous les contextes. */
   const [etiquettes, setEtiquettes] = useState<SupportLabel[]>([]);
   /** Les acteurs retenus, en chaînes : ceux qui s'occupent de la demande. */
   const [actorIds, setActorIds] = useState<string[]>([]);
@@ -190,40 +194,22 @@ export default function SupportRequestDrawer({
     utilisateur: SupportPerson | null;
     expediteur: SupportPerson | null;
   }>({ utilisateur: null, expediteur: null });
-  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string | null>("settings");
   const [confirmDeleteOpened, setConfirmDeleteOpened] = useState(false);
   const [enregistrement, setEnregistrement] = useState(false);
 
-  // Ce que le compte peut faire de la demande dépend de sa société : sans le
-  // droit de la modifier, la fiche se lit seulement.
+  // Sans le droit de modifier les demandes, la fiche se lit seulement.
   const peut = useDroits();
-  const lectureSeule = Boolean(request) && !peut("support", "update", request?.company_id);
-  const peutSupprimer = Boolean(request) && peut("support", "delete", request?.company_id);
-  // Lu par l'ouverture du tiroir sans en dépendre.
-  const peutRef = useRef(peut);
-  const companiesRef = useRef(companies);
-  useEffect(() => {
-    peutRef.current = peut;
-    companiesRef.current = companies;
-  }, [peut, companies]);
+  const lectureSeule = Boolean(request) && !peut("support", "update");
+  const peutSupprimer = Boolean(request) && peut("support", "delete");
 
   useEffect(() => {
     if (!opened) return;
     // Un tiroir rouvert repart des paramètres, quel que soit l'onglet quitté.
     setActiveTab("settings");
-    setError(null);
 
     if (!request) {
-      // Une demande ouverte depuis un onglet y reste : elle en prend le statut.
-      // La société proposée doit permettre d'ajouter une demande ; sinon, la
-      // première qui le permet.
-      const permise = peutRef.current("support", "create", companyId)
-        ? companyId
-        : String(
-            companiesRef.current.find((c) => peutRef.current("support", "create", c.id))?.id ?? "",
-          );
-      setSocieteId(permise);
+      setContexteId(contextId);
       setSubject(defaultSubject);
       setStatus(defaultStatus);
       // Qui crée la demande s'en occupe, jusqu'à ce qu'on en décide autrement.
@@ -234,7 +220,7 @@ export default function SupportRequestDrawer({
       return;
     }
 
-    setSocieteId(String(request.company_id));
+    setContexteId(String(request.context_id));
     setSubject(request.subject);
     setStatus(request.status);
     setActorIds(request.actors.map((a) => String(a.id)));
@@ -243,15 +229,23 @@ export default function SupportRequestDrawer({
     api
       .getSupportRequest(request.id)
       .then((fiche) => setComments(fiche.comments))
-      .catch((e) => setError(messageErreur(e)));
-  }, [opened, request, defaultStatus, defaultSubject, companyId, assignCurrentUser, currentUser.id]);
+      .catch((e) => notifierErreur(messageErreur(e)));
+  }, [
+    opened,
+    request,
+    defaultStatus,
+    defaultSubject,
+    contextId,
+    assignCurrentUser,
+    currentUser.id,
+  ]);
 
   /** Les étiquettes du support : communes à toutes les sociétés. */
   const relireEtiquettes = useCallback(async () => {
     try {
       setEtiquettes(await api.getSupportLabels());
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   }, []);
 
@@ -264,7 +258,7 @@ export default function SupportRequestDrawer({
     api
       .getSupportContents()
       .then(setContenus)
-      .catch((e) => setError(messageErreur(e)));
+      .catch((e) => notifierErreur(messageErreur(e)));
   }, [opened]);
 
   const demandeId = request?.id;
@@ -274,7 +268,7 @@ export default function SupportRequestDrawer({
     api
       .getSupportVariables(demandeId)
       .then(setPersonnes)
-      .catch((e) => setError(messageErreur(e)));
+      .catch((e) => notifierErreur(messageErreur(e)));
   }, [opened, demandeId]);
 
   // Un seul fil côté serveur, deux côté fiche : les échanges avec
@@ -313,7 +307,7 @@ export default function SupportRequestDrawer({
    * sans objet se lit par son fil.
    */
   const saisie = (): SupportRequestInput => ({
-    company_id: Number(societeId),
+    context_id: contexteId ? Number(contexteId) : undefined,
     subject: subject.trim(),
     status,
     actor_ids: actorIds.map(Number),
@@ -357,13 +351,16 @@ export default function SupportRequestDrawer({
   // avec le message plutôt que d'emporter la saisie.
   const sauvegarder = async () => {
     if (!request && !remplie) return onClose();
-    setError(null);
     setEnregistrement(true);
     try {
       if (request) {
         await api.updateSupportRequest(request.id, saisie());
       } else {
-        const creee = await api.createSupportRequest(saisie());
+        const creee = await api.createSupportRequest({
+          ...saisie(),
+          board_id: boardId ?? undefined,
+          list_key: listKey || undefined,
+        });
         // Les échanges tenus avant la création partent à sa suite.
         for (const comment of comments) {
           await api.addSupportComment(
@@ -376,7 +373,7 @@ export default function SupportRequestDrawer({
       await onSaved();
       onClose();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setEnregistrement(false);
     }
@@ -389,7 +386,7 @@ export default function SupportRequestDrawer({
       await api.deleteSupportRequest(request.id);
       await onDeleted();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   };
 
@@ -457,7 +454,9 @@ export default function SupportRequestDrawer({
     if (!request || typeof id !== "number") {
       setComments((fil) =>
         fil.map((c) =>
-          c.id === id ? { ...c, text: texte, updated_at: new Date().toISOString() } : c,
+          c.id === id
+            ? { ...c, text: texte, updated_at: new Date().toISOString() }
+            : c,
         ),
       );
       return;
@@ -525,9 +524,12 @@ export default function SupportRequestDrawer({
                     rightSection={<IconChevronDown size={14} />}
                     ml="auto"
                     mb={4}
-                    // Le même gris neutre que les autres menus « Actions » :
-                    // celui de Mantine tire sur le bleu au survol.
-                    style={{ alignSelf: "center", "--button-hover": NEUTRAL_HOVER } as CSSProperties}
+                    style={
+                      {
+                        alignSelf: "center",
+                        ...ACTIONS_BUTTON_STYLE,
+                      } as CSSProperties
+                    }
                   >
                     Actions
                   </Button>
@@ -555,8 +557,6 @@ export default function SupportRequestDrawer({
                 défile, et la réponse tout en bas : seul le fil défile, la
                 fiche et l'éditeur restent en place. */}
               <Stack gap="xl" style={{ flex: 1, minHeight: 0 }}>
-                {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
-
                 {/* En lecture seule, les champs de la fiche sont éteints d'un
                     coup : c'est ce que fait un « fieldset » désactivé. */}
                 <fieldset disabled={lectureSeule} style={FIELDSET_NU}>
@@ -566,7 +566,9 @@ export default function SupportRequestDrawer({
                       acteurs tiennent en peu de place : leur colonne a une
                       largeur fixe, les étiquettes prennent le reste. */}
                     <Group align="flex-start" gap="md" wrap="nowrap">
-                      <div style={{ flex: `0 0 ${ACTEURS_WIDTH}px`, minWidth: 0 }}>
+                      <div
+                        style={{ flex: `0 0 ${ACTEURS_WIDTH}px`, minWidth: 0 }}
+                      >
                         <ActorPicker
                           chipHeight={CHIP_HEIGHT}
                           chipGap={ACTOR_GAP}
@@ -575,7 +577,10 @@ export default function SupportRequestDrawer({
                           value={actorIds}
                           onChange={setActorIds}
                           renderChip={(u) => (
-                            <span style={{ display: "inline-flex" }} aria-label={u.name}>
+                            <span
+                              style={{ display: "inline-flex" }}
+                              aria-label={u.name}
+                            >
                               {estExpediteur(u.email) ? (
                                 <SenderAvatar person={u} size={CHIP_HEIGHT} />
                               ) : (
@@ -599,14 +604,14 @@ export default function SupportRequestDrawer({
                         />
                       </div>
                       <div style={{ flex: "7 1 0", minWidth: 0 }}>
-                        {/* Les étiquettes sont communes à toutes les sociétés : les
+                        {/* Les étiquettes sont communes à tous les contextes : les
                           renommer ou les recolorer touche toutes les demandes. */}
                         <LabelPicker
                           chipHeight={CHIP_HEIGHT}
                           labels={etiquettes}
                           value={labelIds}
                           onChange={setLabelIds}
-                          boardId={societeId}
+                          boardId={contexteId}
                           onLabelsChanged={relireEtiquettes}
                           labelsApi={SUPPORT_LABELS_API}
                           emptyText="Aucune étiquette"
@@ -627,7 +632,7 @@ export default function SupportRequestDrawer({
                       )}
                     </Group>
 
-                    {/* L'objet, la société, le statut et l'échéance, côte à côte.
+                    {/* L'objet, le contexte, le statut et l'échéance, côte à côte.
                       L'objet porte du texte : il prend deux parts de la largeur,
                       les trois réglages courts une chacun. */}
                     <Group align="flex-start" gap="md" wrap="nowrap">
@@ -640,33 +645,28 @@ export default function SupportRequestDrawer({
                           onChange={(e) => setSubject(e.currentTarget.value)}
                         />
                       </div>
-                      <div style={{ flex: "1 1 0", minWidth: 0 }}>
-                        {/* La société à qui appartient la demande. Sous « toutes les
-                          sociétés », une demande neuve part chez la première de la
-                          liste : c'est ici qu'on la remet où il faut. Ses étiquettes,
-                          communes à toutes les sociétés, la suivent. */}
-                        <Select
-                          label="Société"
-                          // Les sociétés où l'on peut ajouter une demande — l'y
-                          // passer, c'est l'y ajouter —, et la sienne.
-                          data={companies
-                            .filter(
-                              (c) =>
-                                peut("support", "create", c.id) ||
-                                c.id === request?.company_id,
-                            )
-                            .map((c) => ({
+                      {/* Le contexte auquel appartient la demande. Sous « Tous les
+                        contextes », une demande neuve part dans le premier : c'est
+                        ici qu'on la remet où il faut. Ses étiquettes, communes à
+                        tous les contextes, la suivent. Un tableau sans contexte
+                        n'a rien à proposer. */}
+                      {contexts.length > 0 && (
+                        <div style={{ flex: "1 1 0", minWidth: 0 }}>
+                          <Select
+                            label="Contexte"
+                            data={contexts.map((c) => ({
                               value: String(c.id),
                               label: c.name,
                             }))}
-                          value={societeId || null}
-                          onChange={(value) => {
-                            if (!value || value === societeId) return;
-                            setSocieteId(value);
-                          }}
-                          allowDeselect={false}
-                        />
-                      </div>
+                            value={contexteId || null}
+                            onChange={(value) => {
+                              if (!value || value === contexteId) return;
+                              setContexteId(value);
+                            }}
+                            allowDeselect={false}
+                          />
+                        </div>
+                      )}
                       <div style={{ flex: "1 1 0", minWidth: 0 }}>
                         {/* Le statut est ce que disent les onglets : le changer ici
                           fait passer la demande de l'un à l'autre. */}
@@ -758,7 +758,7 @@ export default function SupportRequestDrawer({
                                     try {
                                       await supprimerCommentaire(id);
                                     } catch (e) {
-                                      setError(messageErreur(e));
+                                      notifierErreur(messageErreur(e));
                                     }
                                   }
                             }
@@ -796,7 +796,7 @@ export default function SupportRequestDrawer({
                       try {
                         await ajouterCommentaire(html, envoi);
                       } catch (e) {
-                        setError(messageErreur(e));
+                        notifierErreur(messageErreur(e));
                         // Relancée : l'éditeur garde ainsi le texte refusé.
                         throw e;
                       }
@@ -809,32 +809,31 @@ export default function SupportRequestDrawer({
           <Tabs.Panel value="comments" style={DRAWER_PANEL_STYLE}>
             <DrawerScrollArea fill>
               <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
-                {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
                 {/* Entre membres de l'équipe : rien de ce qui s'écrit ici ne
                     part à l'expéditeur. */}
                 <CommentThread
                   comments={notes}
                   onAdd={(texte) =>
                     void ajouterNote(texte).catch((e) =>
-                      setError(messageErreur(e)),
+                      notifierErreur(messageErreur(e)),
                     )
                   }
                   onUpdate={(id, texte) =>
                     void modifierNote(id, texte).catch((e) =>
-                      setError(messageErreur(e)),
+                      notifierErreur(messageErreur(e)),
                     )
                   }
                   onDelete={(id) =>
                     void supprimerCommentaire(id).catch((e) =>
-                      setError(messageErreur(e)),
+                      notifierErreur(messageErreur(e)),
                     )
                   }
                   readOnly={lectureSeule}
                 />
                 {!request && notes.length > 0 && (
                   <Text size="xs" c="dimmed">
-                    {notes.length} commentaire{notes.length > 1 ? "s" : ""} seront
-                    enregistrés avec la demande.
+                    {notes.length} commentaire{notes.length > 1 ? "s" : ""}{" "}
+                    seront enregistrés avec la demande.
                   </Text>
                 )}
               </Stack>
@@ -845,7 +844,9 @@ export default function SupportRequestDrawer({
         <DrawerFooter
           onSave={lectureSeule ? undefined : sauvegarder}
           onClose={onClose}
-          onDelete={peutSupprimer ? () => setConfirmDeleteOpened(true) : undefined}
+          onDelete={
+            peutSupprimer ? () => setConfirmDeleteOpened(true) : undefined
+          }
           saving={enregistrement}
         />
       </Drawer>
@@ -857,8 +858,8 @@ export default function SupportRequestDrawer({
         title="Supprimer la demande"
         message={
           <>
-            Voulez-vous vraiment supprimer cette demande ? Ses échanges seront supprimés. Cette
-            action est irréversible.
+            Voulez-vous vraiment supprimer cette demande ? Ses échanges seront
+            supprimés. Cette action est irréversible.
           </>
         }
       />

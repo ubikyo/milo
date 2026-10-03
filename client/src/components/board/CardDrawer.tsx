@@ -6,6 +6,7 @@ import {
   Input,
   Menu,
   ScrollArea,
+  Select,
   Stack,
   Tabs,
   Text,
@@ -29,7 +30,7 @@ import {
 } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api";
-import { NEUTRAL_HOVER, RED } from "../../themes/colors";
+import { RED } from "../../themes/colors";
 import {
   COULEUR_ECHEANCE,
   MOT_ECHEANCE,
@@ -37,7 +38,11 @@ import {
   formatChampEcheance,
   etatEcheance,
 } from "../../lib/echeance";
-import { DRAWER_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
+import {
+  ACTIONS_BUTTON_STYLE,
+  DRAWER_MENU_OFFSET,
+  TAB_MENU_STYLES,
+} from "../../themes/menus";
 import { tabStyle } from "../../themes/tabs";
 import DrawerFooter from "../ui/DrawerFooter";
 import { ACTOR_GAP } from "../ui/ActorAvatars";
@@ -50,15 +55,15 @@ import type { Destination, TacheSource } from "./TaskDestination";
 import LabelPicker from "../ui/LabelPicker";
 import CommentThread from "../project/CommentThread";
 import { FIELDSET_NU } from "../../lib/droits";
-import ErrorAlert from "../ui/ErrorAlert";
 import { ReferenceTag } from "../ui/ReferenceTag";
 import classes from "../../assets/styles/CardDrawer.module.css";
-import { messageErreur } from "../../lib/errors";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 import type { CSSProperties, DragEvent as ReactDragEvent } from "react";
 import { taskReference } from "@milo/shared";
 import type {
   Attachment,
   CardComment,
+  Context,
   Checklist,
   Id,
   Label,
@@ -76,7 +81,6 @@ const TABS = [
 // Retrait du tiroir. Il sert à trois choses : le retrait lui-même, l'entête
 // commun, et le décalage de la barre de défilement vers la bordure gauche.
 const DRAWER_PADDING = 40;
-
 
 // Hauteur des bulles de membres et des étiquettes : la même pour les deux, et
 // pour le « + » qui les suit, afin que les deux colonnes s'alignent.
@@ -156,7 +160,12 @@ interface CardDrawerProps {
   labels: Label[];
   users: PublicUser[];
   boardId: string | null;
-  onLabelsChanged: (patch?: { id: number; data: Partial<Label> }) => void | Promise<void>;
+  /** Les contextes du tableau : la carte appartient à l'un d'eux. */
+  contexts?: Context[];
+  onLabelsChanged: (patch?: {
+    id: number;
+    data: Partial<Label>;
+  }) => void | Promise<void>;
   onSaved: () => void | Promise<void>;
   /** Suivie : on est prévenu de chaque modification de cette carte. */
   suivie: boolean;
@@ -181,6 +190,7 @@ export default function CardDrawer({
   labels,
   users,
   boardId,
+  contexts = [],
   onLabelsChanged,
   onSaved,
   suivie,
@@ -192,12 +202,17 @@ export default function CardDrawer({
 }: CardDrawerProps) {
   const creation = !card && source !== null;
   /** Où la tâche créée ira. */
-  const [destination, setDestination] = useState<Destination>({ boardId: null, listId: null });
+  const [destination, setDestination] = useState<Destination>({
+    boardId: null,
+    listId: null,
+  });
   /** Les étiquettes du tableau choisi : elles ne sont propres qu'à lui. */
   const [labelsDestination, setLabelsDestination] = useState<Label[]>([]);
   const [text, setText] = useState("");
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [labelIds, setLabelIds] = useState<string[]>([]);
+  /** Le contexte de la carte ; vide tant qu'elle n'est pas lue. */
+  const [contexte, setContexte] = useState("");
   const [comments, setComments] = useState<CardComment[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -209,7 +224,6 @@ export default function CardDrawer({
   /** Vrai quand le sélecteur est ouvert : par le menu, ou pour la modifier. */
   const [choisitDate, setChoisitDate] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<string | null>("settings");
 
@@ -229,12 +243,11 @@ export default function CardDrawer({
    */
   const collerImage = async (fichier: File): Promise<string> => {
     if (!card) return "";
-    setError(null);
     try {
       const { url } = await api.uploadCardImage(card.id, fichier);
       return url;
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
       return "";
     }
   };
@@ -253,13 +266,13 @@ export default function CardDrawer({
     if (!opened || !card) return;
     // Un tiroir rouvert repart des paramètres, quel que soit l'onglet quitté.
     setActiveTab("settings");
-    setError(null);
     setLoading(true);
     api
       .getTaskCard(card.id)
       .then((fiche) => {
         setText(fiche.text);
         setNumero(fiche.number);
+        setContexte(fiche.context_id ? String(fiche.context_id) : "");
         setEcheance(fiche.due_date || "");
         setChoisitDate(false);
         setMemberIds((fiche.members || []).map((m) => String(m.id)));
@@ -269,7 +282,7 @@ export default function CardDrawer({
         setAttachments(fiche.attachments || []);
         editor?.commands.setContent(fiche.description || "");
       })
-      .catch((e) => setError(messageErreur(e)))
+      .catch((e) => notifierErreur(messageErreur(e)))
       .finally(() => setLoading(false));
   }, [opened, card, editor]);
 
@@ -278,7 +291,6 @@ export default function CardDrawer({
   useEffect(() => {
     if (!opened || !source || card) return;
     setActiveTab("settings");
-    setError(null);
     setLoading(false);
     setText(source.title);
     setNumero(null);
@@ -303,7 +315,7 @@ export default function CardDrawer({
     if (!creation) return;
     setLabelIds([]);
     setLabelsDestination([]);
-    lireLabelsDestination().catch((e) => setError(messageErreur(e)));
+    lireLabelsDestination().catch((e) => notifierErreur(messageErreur(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [creation, destination.boardId]);
 
@@ -317,12 +329,11 @@ export default function CardDrawer({
 
   const ajouterChecklist = async () => {
     if (!card) return;
-    setError(null);
     try {
       await api.createChecklist(card.id, "Checklist");
       await refreshChecklists();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   };
 
@@ -336,31 +347,30 @@ export default function CardDrawer({
    */
   const deposerFichiers = async (fichiers: File[]) => {
     if (!card || readOnly || fichiers.length === 0) return;
-    setError(null);
     for (const fichier of fichiers) {
       try {
         const piece = await api.uploadAttachment(card.id, fichier);
         setAttachments((deja) => [piece, ...deja]);
       } catch (e) {
-        setError(messageErreur(e));
+        notifierErreur(messageErreur(e));
       }
     }
   };
 
   const supprimerPiece = async (piece: Attachment) => {
-    setError(null);
     try {
       await api.deleteAttachment(piece.id);
       setAttachments((deja) => deja.filter((p) => p.id !== piece.id));
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     }
   };
 
   // --- Glisser-déposer sur le tiroir ----------------------------------------
   // Seuls les fichiers venus du dehors comptent : glisser une checklist ou du
   // texte à l'intérieur du tiroir ne doit rien déclencher.
-  const desFichiers = (e: ReactDragEvent) => e.dataTransfer.types.includes("Files");
+  const desFichiers = (e: ReactDragEvent) =>
+    e.dataTransfer.types.includes("Files");
 
   const finDuSurvol = () => {
     profondeur.current = 0;
@@ -399,7 +409,6 @@ export default function CardDrawer({
   const sauvegarder = async () => {
     if (creation) return creer();
     if (!card || loading) return onClose();
-    setError(null);
     setSaving(true);
     try {
       await api.updateTaskCardDetails(card.id, {
@@ -410,11 +419,12 @@ export default function CardDrawer({
         member_ids: memberIds.map(Number),
         label_ids: labelIds.map(Number),
         due_date: echeance,
+        ...(contexte ? { context_id: Number(contexte) } : {}),
       });
       await onSaved();
       onClose();
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setSaving(false);
     }
@@ -424,13 +434,18 @@ export default function CardDrawer({
   // description, dans la liste choisie ; puis ce que la fiche y ajoute.
   const creer = async () => {
     const texte = text.trim();
-    if (!destination.listId) return setError("Choisir la liste où créer la tâche.");
-    if (!texte) return setError("La tâche doit avoir un titre.");
-    setError(null);
+    if (!destination.listId)
+      return notifierErreur("Choisir la liste où créer la tâche.");
+    if (!texte) return notifierErreur("La tâche doit avoir un titre.");
     setSaving(true);
     try {
       const description = editor?.getHTML() ?? "";
-      const carte = await api.createTaskCard(Number(destination.listId), texte, "card", description);
+      const carte = await api.createTaskCard(
+        Number(destination.listId),
+        texte,
+        "card",
+        description,
+      );
       if (memberIds.length || labelIds.length || echeance) {
         await api.updateTaskCardDetails(carte.id, {
           text: texte,
@@ -443,7 +458,7 @@ export default function CardDrawer({
       onClose();
       onCreated?.(carte.id);
     } catch (e) {
-      setError(messageErreur(e));
+      notifierErreur(messageErreur(e));
     } finally {
       setSaving(false);
     }
@@ -527,21 +542,28 @@ export default function CardDrawer({
         <Tabs
           value={activeTab}
           onChange={setActiveTab}
-          style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+          }}
           styles={{ panel: { paddingTop: 20 } }}
         >
           <Tabs.List mb="md">
             {/* Une tâche encore à créer n'a pas de fil : il attendra qu'elle existe. */}
-            {TABS.filter(({ value }) => !creation || value === "settings").map(({ value, label, icon: Icon }) => (
-              <Tabs.Tab
-                key={value}
-                value={value}
-                leftSection={<Icon size={16} />}
-                style={tabStyle(activeTab === value)}
-              >
-                {label}
-              </Tabs.Tab>
-            ))}
+            {TABS.filter(({ value }) => !creation || value === "settings").map(
+              ({ value, label, icon: Icon }) => (
+                <Tabs.Tab
+                  key={value}
+                  value={value}
+                  leftSection={<Icon size={16} />}
+                  style={tabStyle(activeTab === value)}
+                >
+                  {label}
+                </Tabs.Tab>
+              ),
+            )}
 
             {/* Ce qui s'ajoute à la fiche se choisit ici, au bout de la rangée
                 d'onglets : ce ne sont pas des volets à ouvrir, mais des blocs à
@@ -560,9 +582,7 @@ export default function CardDrawer({
                   rightSection={<IconChevronDown size={14} />}
                   ml="auto"
                   mb={4}
-                  // Le même gris neutre que le menu « Actions » des onglets de
-                  // tableaux : celui de Mantine tire sur le bleu au survol.
-                  style={{ alignSelf: "center", "--button-hover": NEUTRAL_HOVER }}
+                  style={{ alignSelf: "center", ...ACTIONS_BUTTON_STYLE }}
                 >
                   Actions
                 </Button>
@@ -623,22 +643,28 @@ export default function CardDrawer({
 
           <Tabs.Panel
             value="settings"
-            style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+            style={{
+              flex: 1,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+            }}
           >
             {/* La barre ne se montre que pendant le défilement, comme sur le
                 tableau ; le style la déporte sur la bordure gauche du tiroir. */}
             <ScrollArea
               type="scroll"
               scrollbars="y"
-              classNames={{ scrollbar: classes.scrollbar, thumb: classes.thumb }}
+              classNames={{
+                scrollbar: classes.scrollbar,
+                thumb: classes.thumb,
+              }}
               style={{ flex: 1, minHeight: 0 }}
             >
               {/* En lecture seule, tous les champs de la fiche sont éteints
                   d'un coup : c'est ce que fait un « fieldset » désactivé. */}
               <fieldset disabled={readOnly} style={FIELDSET_NU}>
                 <Stack gap="xl">
-                  {error && <ErrorAlert onClose={() => setError(null)}>{error}</ErrorAlert>}
-
                   {/* Ce qui range la carte vient avant ce qui la nomme : les deux
                     colonnes s'ouvrent chacune sur leur propre liste. Les bulles
                     des membres tiennent en peu de place, les étiquettes portent du
@@ -665,10 +691,15 @@ export default function CardDrawer({
                         labels={creation ? labelsDestination : labels}
                         value={labelIds}
                         onChange={setLabelIds}
-                        boardId={(creation ? destination.boardId : boardId) ?? ""}
+                        boardId={
+                          (creation ? destination.boardId : boardId) ?? ""
+                        }
                         onLabelsChanged={
                           creation
-                            ? () => lireLabelsDestination().catch((e) => setError(messageErreur(e)))
+                            ? () =>
+                                lireLabelsDestination().catch((e) =>
+                                  notifierErreur(messageErreur(e)),
+                                )
                             : onLabelsChanged
                         }
                       />
@@ -724,7 +755,11 @@ export default function CardDrawer({
                       timePickerProps={{ clearable: true }}
                       onChange={(valeur) => {
                         const date = valeur ? new Date(valeur) : null;
-                        setEcheance(date && !Number.isNaN(date.getTime()) ? date.toISOString() : "");
+                        setEcheance(
+                          date && !Number.isNaN(date.getTime())
+                            ? date.toISOString()
+                            : "",
+                        );
                       }}
                       onDropdownClose={() => setChoisitDate(false)}
                       withSeconds={false}
@@ -733,7 +768,13 @@ export default function CardDrawer({
                       popoverProps={{ withinPortal: true }}
                     />
                   ) : (
-                    echeance && <DueDate value={echeance} onEdit={() => setChoisitDate(true)} onRemove={() => setEcheance("")} />
+                    echeance && (
+                      <DueDate
+                        value={echeance}
+                        onEdit={() => setChoisitDate(true)}
+                        onRemove={() => setEcheance("")}
+                      />
+                    )
                   )}
 
                   {/* Où la tâche ira, avant ce qui la nomme. Une carte ouverte
@@ -743,30 +784,48 @@ export default function CardDrawer({
                       key={`${source.kind}-${source.id}`}
                       source={source}
                       onChange={setDestination}
-                      onError={setError}
+                      onError={notifierErreur}
                     />
                   )}
 
-                  <TextInput
-                    label="Titre"
-                    placeholder="Titre de la carte"
-                    value={text}
-                    onChange={(e) => setText(e.currentTarget.value)}
-                    required
-                  />
+                  {/* Le titre, et le contexte de la carte à côté : deux parts
+                      pour le titre, une pour le contexte. */}
+                  <Group align="flex-start" gap="md" wrap="nowrap">
+                    <TextInput
+                      label="Titre"
+                      placeholder="Titre de la carte"
+                      value={text}
+                      onChange={(e) => setText(e.currentTarget.value)}
+                      required
+                      style={{ flex: "2 1 0", minWidth: 0 }}
+                    />
+                    {card && contexts.length > 0 && (
+                      <Select
+                        label="Contexte"
+                        data={contexts.map((c) => ({
+                          value: String(c.id),
+                          label: c.name,
+                        }))}
+                        value={contexte || null}
+                        onChange={(valeur) => valeur && setContexte(valeur)}
+                        allowDeselect={false}
+                        style={{ flex: "1 1 0", minWidth: 0 }}
+                      />
+                    )}
+                  </Group>
 
                   <RichTextField editor={editor} label="Description" />
 
                   {/* Les checklists ferment la fiche : elles s'ajoutent par le menu
                     « Actions » et s'enregistrent d'elles-mêmes. */}
                   {card && (
-                  <CardChecklists
-                    cardId={card.id}
-                    checklists={checklists}
-                    users={users}
-                    onChanged={refreshChecklists}
-                    onError={setError}
-                  />
+                    <CardChecklists
+                      cardId={card.id}
+                      checklists={checklists}
+                      users={users}
+                      onChanged={refreshChecklists}
+                      onError={notifierErreur}
+                    />
                   )}
 
                   {/* Les pièces jointes ferment la fiche. Comme les checklists,
@@ -783,7 +842,12 @@ export default function CardDrawer({
 
           <Tabs.Panel
             value="comments"
-            style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+            style={{
+              flex: 1,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+            }}
           >
             <ScrollArea
               type="scroll"
@@ -811,7 +875,11 @@ export default function CardDrawer({
 
       {/* La carte se supprime depuis son menu « Actions », pas d'ici : le pied
           ne porte donc que les deux gestes communs à tous les tiroirs. */}
-      <DrawerFooter onSave={readOnly ? undefined : sauvegarder} onClose={onClose} saving={saving} />
+      <DrawerFooter
+        onSave={readOnly ? undefined : sauvegarder}
+        onClose={onClose}
+        saving={saving}
+      />
 
       {/* Le sélecteur de fichiers, ouvert par le menu « Actions » comme par le
           bouton de l'encart. Il est remis à zéro après coup : sans cela,

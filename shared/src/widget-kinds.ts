@@ -1,8 +1,8 @@
 // Les types de widgets, et les permissions qui s'y attachent.
 //
 // Un widget appartient à un type : ceux du mode Accès sont communs à tous les
-// modes (« common »), sauf Uptime qui surveille des machines (« telemetry ») ;
-// ceux d'un mode ne servent qu'à lui. La permission d'un utilisateur ou d'un
+// modes (« common »), sauf ceux qui lisent Microsoft 365 — le courrier et
+// l'agenda de qui regarde (« m365 ») ; ceux d'un mode ne servent qu'à lui. La permission d'un utilisateur ou d'un
 // groupe se règle type par type — Aucun, Lire, Modifier — et vaut pour le
 // widget comme pour ses données : « Support » en Modifier, c'est poser ses
 // widgets et traiter des demandes.
@@ -11,7 +11,7 @@ import type { Mode } from "./modes.js";
 
 export const WIDGET_KINDS = [
   { value: "common", label: "Commun" },
-  { value: "telemetry", label: "Télémétrie" },
+  { value: "m365", label: "365" },
   { value: "project", label: "Projet" },
   { value: "task", label: "Tâche" },
   { value: "helpdesk", label: "Support" },
@@ -73,23 +73,116 @@ export const peutLire = (acces: WidgetAccess): boolean => acces !== "";
 
 /** Les types de chaque mode : ses données suivent le plus large d'entre eux. */
 export const GENRES_DU_MODE: Record<Mode, readonly WidgetKind[]> = {
-  access: ["common", "telemetry"],
+  access: ["common", "m365"],
   projects: ["project"],
   tasks: ["task"],
   support: ["helpdesk"],
   assets: ["asset"],
 };
 
-/** Les widgets du mode Accès que les sections des autres modes reprennent : des widgets communs. */
-const COMMUNS_EN_SECTION = new Set(["category", "subcategory", "link", "number", "clock"]);
+/**
+ * Les widgets communs à toutes les vues, sans préfixe : les titres, le lien,
+ * les attributs, l'horloge, le flux RSS, les images, la météo, la liste de
+ * choses à faire — et ceux de Microsoft 365 (WIDGETS_365), le calendrier et
+ * le courrier.
+ */
+export const COMMON_WIDGET_TYPES = [
+  "category",
+  "subcategory",
+  "link",
+  "number",
+  "clock",
+  "rss",
+  "image",
+  "weather",
+  "calendar",
+  "mail",
+  "todo",
+] as const;
 
 /**
- * Le type d'un widget, d'après le mode dont il occupe les sections et ce que
- * la base range de lui. Le client le déclare widget par widget ; le serveur,
- * qui ne connaît que les types rangés, le retrouve ici.
+ * Les widgets propres à un type de données, sous leur préfixe : ceux du
+ * Support (« support. »), des Assets (« asset. »), des projets
+ * (« project. ») et des tâches (« task. »).
  */
-export const genreDuWidget = (mode: Mode, type: string): WidgetKind => {
-  if (mode === "access") return type === "uptime" ? "telemetry" : "common";
-  if (COMMUNS_EN_SECTION.has(type)) return "common";
-  return GENRES_DU_MODE[mode][0]!;
+const PROPRES = {
+  support: ["list", "tickets", "status", "actors", "trend", "age", "due", "labels", "senders"],
+  asset: ["list", "assets", "compliance", "systems", "disks"],
+  project: ["list", "projects", "progress", "categories", "actors", "labels"],
+  task: ["list", "cards", "lists", "due", "members", "labels"],
+} as const;
+
+/** Le préfixe des widgets de chaque type de données, et le type de widget qui va avec. */
+const PREFIXES: Record<keyof typeof PROPRES, WidgetKind> = {
+  support: "helpdesk",
+  asset: "asset",
+  project: "project",
+  task: "task",
+};
+
+/**
+ * Tout ce qu'une section peut porter : la chaîne rangée en base, qui ne
+ * change jamais. C'est le widget du client qui sait l'afficher et le
+ * configurer ; le serveur ne vérifie que son existence.
+ */
+export const BOARD_WIDGET_TYPES: readonly string[] = [
+  ...COMMON_WIDGET_TYPES,
+  ...Object.entries(PROPRES).flatMap(([prefixe, types]) =>
+    types.map((type) => `${prefixe}.${type}`),
+  ),
+];
+
+export const isBoardWidgetType = (value: unknown): value is string =>
+  typeof value === "string" && BOARD_WIDGET_TYPES.includes(value);
+
+/**
+ * Les widgets qui possèdent leurs éléments : deux « Projets » d'un même
+ * tableau ne montrent pas les mêmes projets. Chacun porte, dans sa
+ * configuration, la clé de sa liste (CLE_DE_LISTE) ; ses éléments la
+ * portent aussi, et partent avec le dernier widget qui la tient.
+ */
+export const LIST_WIDGET_TYPES: readonly string[] = [
+  "project.list",
+  "task.list",
+  "support.list",
+  "asset.list",
+];
+
+export const isListWidgetType = (type: string): boolean => LIST_WIDGET_TYPES.includes(type);
+
+/** La clé de la configuration d'un widget de liste qui désigne ses éléments. */
+export const CLE_DE_LISTE = "liste";
+
+/** La clé de liste d'une configuration ; vide si elle n'en porte pas. */
+export const cleDeListe = (config: unknown): string => {
+  const valeur = (config as Record<string, unknown> | null)?.[CLE_DE_LISTE];
+  return typeof valeur === "string" ? valeur : "";
+};
+
+/**
+ * Les widgets qui lisent Microsoft 365, par Entra : le calendrier (l'agenda
+ * Outlook) et le courrier (la boîte de réception). Leur type est « m365 ».
+ */
+export const WIDGETS_365: readonly string[] = ["calendar", "mail"];
+
+/** Le type de widget d'un widget, d'après ce que la base range de lui. */
+export const genreDuWidget = (type: string): WidgetKind => {
+  if (WIDGETS_365.includes(type)) return "m365";
+  const prefixe = type.split(".")[0] as keyof typeof PREFIXES;
+  return type.includes(".") && PREFIXES[prefixe] ? PREFIXES[prefixe] : "common";
+};
+
+/**
+ * Le type rangé d'un widget des anciens panneaux — Support, Assets, Projet,
+ * Tâche —, sous son préfixe. Les widgets communs gardent le leur.
+ */
+export const typeDuPanneau = (
+  panneau: "support" | "assets" | "projects" | "tasks",
+  type: string,
+): string => {
+  if ((COMMON_WIDGET_TYPES as readonly string[]).includes(type)) return type;
+  const prefixe = { support: "support", assets: "asset", projects: "project", tasks: "task" }[
+    panneau
+  ];
+  return `${prefixe}.${type}`;
 };

@@ -16,15 +16,18 @@ import { useDroits } from "../../lib/droits";
 import { useCallback, useEffect, useState } from "react";
 import LabelsManager from "../board/LabelsManager";
 import { api } from "../../api";
-import { messageErreur } from "../../lib/errors";
-import { NEUTRAL_HOVER, RED } from "../../themes/colors";
+import { messageErreur, notifierErreur } from "../../lib/errors";
+import { RED } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
-import { ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
+import {
+  ACTIONS_BUTTON_STYLE,
+  ROW_MENU_OFFSET,
+  TAB_MENU_STYLES,
+} from "../../themes/menus";
 import ActorPicker from "../ui/ActorPicker";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import PointMenu, { type PointMenuPosition } from "../ui/PointMenu";
 import { supportTicketRef } from "@milo/shared";
-import type { CSSProperties } from "react";
 import type { PublicUser, SupportLabel, SupportRequest } from "@milo/shared";
 import BoutonFermer from "../ui/BoutonFermer";
 
@@ -57,7 +60,9 @@ interface SupportActionsProps {
 /** « HLP-3, HLP-5 et HLP-8 » : les tickets visés, tels qu'on les cite. */
 const citer = (demandes: SupportRequest[]): string => {
   const refs = demandes.map((d) => supportTicketRef(d.number));
-  return refs.length < 2 ? (refs[0] ?? "") : `${refs.slice(0, -1).join(", ")} et ${refs.at(-1)}`;
+  return refs.length < 2
+    ? (refs[0] ?? "")
+    : `${refs.slice(0, -1).join(", ")} et ${refs.at(-1)}`;
 };
 
 /**
@@ -87,7 +92,7 @@ export default function SupportActions({
     try {
       setEtiquettes(await api.getSupportLabels());
     } catch (e) {
-      notifications.show({ color: RED, message: messageErreur(e) });
+      notifierErreur(messageErreur(e));
     }
   }, []);
   useEffect(() => {
@@ -107,19 +112,26 @@ export default function SupportActions({
   const n = vises.length;
   // La fusion garde la plus récente : c'est elle qu'on annonce.
   const gardee = [...vises].sort((a, b) =>
-    a.created_at === b.created_at ? b.id - a.id : a.created_at < b.created_at ? 1 : -1,
+    a.created_at === b.created_at
+      ? b.id - a.id
+      : a.created_at < b.created_at
+        ? 1
+        : -1,
   )[0];
   const autres = vises.filter((d) => d !== gardee);
 
-  // Les gestes suivent les droits du compte dans la société de chaque
-  // demande visée : il les faut tous, pour chacune.
+  // Les gestes suivent les droits du compte sur le support.
   const peut = useDroits();
   const peutSur = (demandes: SupportRequest[], droit: "update" | "delete") =>
-    demandes.length > 0 && demandes.every((d) => peut("support", droit, d.company_id));
+    demandes.length > 0 && peut("support", droit);
   const modifierCochees = peutSur(selected, "update");
   const supprimerCochees = peutSur(selected, "delete");
-  const modifierVisee = contexte ? peutSur([contexte.demande], "update") : false;
-  const supprimerVisee = contexte ? peutSur([contexte.demande], "delete") : false;
+  const modifierVisee = contexte
+    ? peutSur([contexte.demande], "update")
+    : false;
+  const supprimerVisee = contexte
+    ? peutSur([contexte.demande], "delete")
+    : false;
 
   const executer = async (action: () => Promise<unknown>, succes: string) => {
     setEnCours(true);
@@ -128,11 +140,7 @@ export default function SupportActions({
       notifications.show({ color: "teal", message: succes });
       await onDone();
     } catch (e) {
-      notifications.show({
-        color: RED,
-        title: "Action impossible",
-        message: messageErreur(e),
-      });
+      notifierErreur(messageErreur(e), "Action impossible");
     } finally {
       setEnCours(false);
       setAConfirmer(null);
@@ -205,15 +213,19 @@ export default function SupportActions({
           montées, elles se referment encore après que les cases se sont
           décochées. */}
       {selected.length > 0 && (
-        <Menu position="bottom-end" withinPortal offset={ROW_MENU_OFFSET} styles={TAB_MENU_STYLES}>
+        <Menu
+          position="bottom-end"
+          withinPortal
+          offset={ROW_MENU_OFFSET}
+          styles={TAB_MENU_STYLES}
+        >
           <Menu.Target>
             <Button
               variant="subtle"
               color="gray"
               size="xs"
               rightSection={<IconChevronDown size={14} />}
-              // Le gris de Mantine tire sur le bleu au survol : le nôtre est neutre.
-              style={{ "--button-hover": NEUTRAL_HOVER } as CSSProperties}
+              style={ACTIONS_BUTTON_STYLE}
             >
               Actions ({selected.length})
             </Button>
@@ -277,7 +289,10 @@ export default function SupportActions({
 
       {/* Le clic droit sur une ligne : ses gestes, pour elle seule. */}
       {contexte && (
-        <PointMenu position={contexte.position} onClose={() => onContexteClose?.()}>
+        <PointMenu
+          position={contexte.position}
+          onClose={() => onContexteClose?.()}
+        >
           {/* Suivre vient en tête, comme dans le tiroir de la demande. Le
               menu ne se referme pas, pour qu'on voie la coche changer. */}
           {onToggleFollow && (
@@ -285,7 +300,9 @@ export default function SupportActions({
               <Menu.Item
                 leftSection={<IconEye size={16} />}
                 rightSection={
-                  followedIds.includes(contexte.demande.id) ? <IconCheck size={14} /> : null
+                  followedIds.includes(contexte.demande.id) ? (
+                    <IconCheck size={14} />
+                  ) : null
                 }
                 onClick={() => onToggleFollow(contexte.demande)}
                 closeMenuOnClick={false}
@@ -438,9 +455,15 @@ export default function SupportActions({
       >
         <Stack gap="md">
           <Text size="xs" c="dimmed">
-            Les acteurs sélectionnés ci-dessous seront ajoutés à la liste existante et informés aussitôt.
+            Les acteurs sélectionnés ci-dessous seront ajoutés à la liste
+            existante et informés aussitôt.
           </Text>
-          <ActorPicker label="Acteurs" users={users} value={acteurs} onChange={setActeurs} />
+          <ActorPicker
+            label="Acteurs"
+            users={users}
+            value={acteurs}
+            onChange={setActeurs}
+          />
           <Group justify="flex-end" mt={MODAL_PADDING - 16}>
             <BoutonFermer
               onClick={() => {
@@ -449,7 +472,12 @@ export default function SupportActions({
               }}
               disabled={enCours}
             />
-            <Button color="teal" onClick={assigner} loading={enCours} disabled={!acteurs.length}>
+            <Button
+              color="teal"
+              onClick={assigner}
+              loading={enCours}
+              disabled={!acteurs.length}
+            >
               Assigner
             </Button>
           </Group>

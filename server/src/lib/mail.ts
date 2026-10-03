@@ -3,9 +3,8 @@
 // (lib/entra.ts), et part toujours de la boîte de support d'une société :
 // celle de l'élément dont il parle.
 
-import { selection } from "../db/query.js";
-import { entraConfiguree, envoyerParGraph } from "./entra.js";
-import { badRequest, fail, orNotFound } from "./http.js";
+import { adresseDEnvoi, entraConfiguree, envoyerParGraph } from "./entra.js";
+import { badRequest, fail } from "./http.js";
 import { gabarit } from "./mail-template.js";
 import type { PieceJointe } from "./mail-template.js";
 
@@ -36,26 +35,22 @@ export interface Courrier {
  */
 export const envoyerCourrier = (courrier: Courrier): Promise<void> => envoyerParGraph(courrier);
 
-const societe = selection<{ name: string; support_email: string }>(
-  "SELECT name, support_email FROM companies WHERE id = ?",
-);
-
 /**
- * Le message d'essai, parti de la boîte de support d'une société. Son échec
- * se lit dans la fenêtre qui l'a demandé.
+ * Le message d'essai, parti de l'adresse d'envoi. Son échec se lit dans la
+ * fenêtre qui l'a demandé.
  */
-export const envoyerLeTest = async (destinataire: string, companyId: number): Promise<void> => {
-  const { name, support_email } = orNotFound(societe.get(companyId), "Société introuvable");
-  if (!support_email) badRequest(`${name} n'a pas d'e-mail de support`);
+export const envoyerLeTest = async (destinataire: string): Promise<void> => {
+  const expediteur = adresseDEnvoi();
+  if (!expediteur) badRequest("Renseignez l'adresse d'envoi dans Paramétrage → Entra");
 
   try {
     await envoyerCourrier({
-      from: support_email,
+      from: expediteur,
       to: destinataire,
       subject: "Milo — Message de test",
       ...gabarit({
         titre: "Message de test",
-        intro: `Ce message confirme l'envoi par Milo depuis la boîte de support de ${name}.`,
+        intro: `Ce message confirme l'envoi par Milo depuis ${expediteur}.`,
         pied: "Envoyé depuis Paramétrage → Entra.",
       }),
     });

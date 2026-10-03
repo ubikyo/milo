@@ -14,9 +14,8 @@ import {
 import { IconDeviceLaptop, IconRefresh } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api";
-import ErrorAlert from "../ui/ErrorAlert";
 import SuccessAlert from "../ui/SuccessAlert";
-import { messageErreur } from "../../lib/errors";
+import { messageErreur, notifierErreur } from "../../lib/errors";
 import { tabStyle } from "../../themes/tabs";
 import { SANS_CADRE, TABLEAUX, VIDE } from "./InventoryTables";
 import AssetSummaryPanel, { FOND_CARTE } from "./AssetSummaryPanel";
@@ -313,7 +312,6 @@ function ContenuSection({ section, os }: { section: AssetSection; os: AssetDetai
 
 export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps) {
   const [detail, setDetail] = useState<AssetDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
   /** L'onglet affiché ; le premier s'ouvre avec la fiche. */
   const [domaine, setDomaine] = useState<string | null>(null);
   /** Ce qu'a donné la dernière demande d'inventaire, dit en une phrase. */
@@ -338,7 +336,6 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
     // Le poste change, ou le tiroir se rouvre : on repart de la liste fermée
     // et on relit. L'inventaire est volumineux, il ne voyage que là.
     setDomaine(null);
-    setError(null);
     setAvis(null);
     setDemande(false);
     setDetail(null);
@@ -354,7 +351,7 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
         setDomaine(RESUME);
       })
       .catch((e) => {
-        if (!abandonne) setError(messageErreur(e));
+        if (!abandonne) notifierErreur(messageErreur(e));
       });
     return () => {
       abandonne = true;
@@ -372,7 +369,6 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
    */
   const redemanderInventaire = async () => {
     if (assetId === null || demande) return;
-    setError(null);
     setAvis(null);
     setDemande(true);
 
@@ -406,7 +402,7 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
           + "L'inventaire arrivera peut-être plus tard : rouvrez le poste pour voir.",
       );
     } catch (e) {
-      if (vivant.current) setError(messageErreur(e));
+      if (vivant.current) notifierErreur(messageErreur(e));
     } finally {
       if (vivant.current) setDemande(false);
     }
@@ -466,7 +462,6 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
           </Group>
         </Group>
 
-        {error && <ErrorAlert>{error}</ErrorAlert>}
         {avis && <SuccessAlert onClose={() => setAvis(null)}>{avis}</SuccessAlert>}
 
         {/* Les onglets en colonne le long du bord gauche, chacun réunissant

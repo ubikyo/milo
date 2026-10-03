@@ -3,33 +3,34 @@
 
 import type {
   DirectoryUser,
-  AccessBlock,
-  AccessBlockInput,
-  AccessBlockReorderInput,
-  AccessCategory,
-  AccessCategoryInput,
+  AccessCalendarEvent,
   AccessFeed,
-  AccessUptime,
-  AccessSection,
-  AccessSectionInput,
+  AccessFeedProbe,
+  AccessMailDetail,
+  AccessMailPage,
+  AccessWeather,
+  WeatherPlace,
   ApiError,
   Asset,
   AssetDetail,
-  AssetIndicator,
-  AssetIndicatorInput,
-  ProjectIndicator,
-  ProjectIndicatorInput,
-  TaskIndicator,
-  TaskIndicatorInput,
   IndicatorSection,
   IndicatorSectionInput,
+  DispositionExportee,
   LayoutState,
+  MailboxOptinState,
+  ResultatImport,
   AssetRefresh,
   Attachment,
   AuthResult,
   BackupInfo,
   Board,
   BoardInput,
+  ContextInput,
+  BoardWidget,
+  BoardWidgetInput,
+  View,
+  Workspace,
+  ViewInput,
   CardLocation,
   CascadeResult,
   Category,
@@ -38,15 +39,16 @@ import type {
   ChecklistItem,
   ChecklistItemInput,
   Comment,
-  Company,
   MilestoneType,
-  AppPermissions,
+  AdminPermissions,
   CopyResult,
   EntraPrincipal,
   EntraSettings,
   EntraSettingsInput,
   EntraStatus,
   MailboxCheck,
+  PrincipalAdministration,
+  WidgetRights,
   PrincipalAssignments,
   FollowKind,
   Follows,
@@ -55,8 +57,6 @@ import type {
   ListColor,
   MailTestResult,
   Project,
-  ProjectBoard,
-  ProjectBoardInput,
   ProjectCopyInput,
   ProjectDetail,
   ProjectFilters,
@@ -67,8 +67,6 @@ import type {
   SetupInput,
   SetupState,
   SupportComment,
-  SupportIndicator,
-  SupportIndicatorInput,
   SupportLabel,
   SupportLabelInput,
   SupportRequest,
@@ -80,8 +78,6 @@ import type {
   TaskCardRow,
   TaskList,
   TaskListCopyInput,
-  TabOrderMode,
-  TabOrders,
   DeveloperSettings,
   SupportContent,
   SupportContentEvent,
@@ -214,25 +210,30 @@ const queryString = (params: Record<string, unknown>): string => {
 };
 
 /**
- * Les sections d'un panneau des statistiques — Support ou Assets : ses
- * colonnes, comme celles d'une catégorie d'accès.
+ * Les sections d'un tableau : ses colonnes, et ce qu'en fait « Hérité ». Les
+ * sections se lisent et se créent par le tableau ; elles se modifient ensuite
+ * par leur identifiant.
  */
-const sectionsDuPanneau = (base: string) => ({
-  all: () => get<IndicatorSection[]>(`${base}/sections`),
-  create: (data: IndicatorSectionInput) => post<IndicatorSection>(`${base}/sections`, data),
+const sectionsDuTableau = (boardId: Id | string) => ({
+  all: () => get<IndicatorSection[]>(`/boards/${boardId}/sections`),
+  create: (data: IndicatorSectionInput) =>
+    post<IndicatorSection>(`/boards/${boardId}/sections`, data),
   update: (id: Id, data: IndicatorSectionInput) =>
-    put<IndicatorSection>(`${base}/sections/${id}`, data),
-  /** La copie, avec ses indicateurs, se pose juste à droite de l'original. */
-  duplicate: (id: Id) => post<IndicatorSection>(`${base}/sections/${id}/duplicate`, {}),
-  remove: (id: Id) => del(`${base}/sections/${id}`),
-  reorder: (ids: Id[]) => put<IndicatorSection[]>(`${base}/sections/reorder`, { ids }),
+    put<IndicatorSection>(`/board-sections/${id}`, data),
+  /** La copie, avec ses widgets, se pose juste à droite de l'original. */
+  duplicate: (id: Id) => post<IndicatorSection>(`/board-sections/${id}/duplicate`, {}),
+  remove: (id: Id) => del(`/board-sections/${id}`),
+  reorder: (ids: Id[]) => put<IndicatorSection[]>(`/boards/${boardId}/sections/reorder`, { ids }),
   /** « Hérité » : la structure publique, ou sa propre copie (décoché). */
-  getLayout: () => get<LayoutState>(`${base}/layout`),
-  setLayout: (inherited: boolean) => put<LayoutState>(`${base}/layout`, { inherited }),
+  getLayout: () => get<LayoutState>(`/boards/${boardId}/layout`),
+  setLayout: (inherited: boolean) => put<LayoutState>(`/boards/${boardId}/layout`, { inherited }),
+  /** Une disposition exportée remplace la structure regardée. */
+  importer: (disposition: DispositionExportee) =>
+    post<ResultatImport>(`/boards/${boardId}/import`, disposition),
 });
 
-/** Les écritures et lectures des sections d'un panneau. */
-export type SectionsDuPanneau = ReturnType<typeof sectionsDuPanneau>;
+/** Les écritures et lectures des sections d'un tableau. */
+export type SectionsDuPanneau = ReturnType<typeof sectionsDuTableau>;
 
 export const api = {
   // --- Session -------------------------------------------------------------
@@ -265,17 +266,40 @@ export const api = {
   searchDirectoryGroups: (q: string) =>
     get<EntraPrincipal[]>(`/users/directory/groups?q=${encodeURIComponent(q)}`),
 
-  // --- Accès (utilisateurs et groupes Entra) -------------------------------
-  getAssignments: () => get<PrincipalAssignments[]>("/assignments"),
-  // La liste des rôles envoyée remplace tout ; vide, elle retire l'accès.
-  setAssignments: (principal: EntraPrincipal, app: AppPermissions) =>
+  // --- Workspaces ----------------------------------------------------------
+  // Passer dans un autre de ses workspaces.
+  switchWorkspace: (workspace: Id) => put<PublicUser>("/auth/me/workspace", { workspace }),
+  // Leur gestion : réservée à qui en a le droit.
+  getWorkspaces: () => get<Workspace[]>("/workspaces"),
+  createWorkspace: (name: string) => post<Workspace>("/workspaces", { name }),
+  updateWorkspace: (id: Id, name: string) => put<Workspace>(`/workspaces/${id}`, { name }),
+  deleteWorkspace: (id: Id) => del(`/workspaces/${id}`),
+
+  // --- Accès d'un workspace (utilisateurs et groupes Entra) ---------------
+  getAssignments: (workspace: Id) =>
+    get<PrincipalAssignments[]>(`/assignments?workspace=${workspace}`),
+  // Les types envoyés remplacent tout ; sans aucun, l'accès se retire.
+  setAssignments: (principal: EntraPrincipal, permissions: WidgetRights, workspace: Id) =>
     put<PrincipalAssignments[]>(
-      `/assignments/${principal.type}/${encodeURIComponent(principal.id)}`,
-      { name: principal.name, email: principal.email, app },
+      `/assignments/${principal.type}/${encodeURIComponent(principal.id)}?workspace=${workspace}`,
+      { name: principal.name, email: principal.email, permissions },
     ),
-  deleteAssignments: (principal: EntraPrincipal) =>
+  deleteAssignments: (principal: EntraPrincipal, workspace: Id) =>
     request<PrincipalAssignments[]>(
-      `/assignments/${principal.type}/${encodeURIComponent(principal.id)}`,
+      `/assignments/${principal.type}/${encodeURIComponent(principal.id)}?workspace=${workspace}`,
+      { method: "DELETE" },
+    ),
+
+  // --- Administration : Paramétrage et gestion des workspaces --------------
+  getAdministration: () => get<PrincipalAdministration[]>("/administration"),
+  setAdministration: (principal: EntraPrincipal, permissions: AdminPermissions) =>
+    put<PrincipalAdministration[]>(
+      `/administration/${principal.type}/${encodeURIComponent(principal.id)}`,
+      { name: principal.name, email: principal.email, permissions },
+    ),
+  deleteAdministration: (principal: EntraPrincipal) =>
+    request<PrincipalAdministration[]>(
+      `/administration/${principal.type}/${encodeURIComponent(principal.id)}`,
       { method: "DELETE" },
     ),
   searchDirectory: (q: string, groupsOnly = false) =>
@@ -296,8 +320,7 @@ export const api = {
   updateEntraSettings: (data: EntraSettingsInput) =>
     put<EntraSettings>("/entra", data),
   // Le message d'essai part de la boîte de support de la société choisie.
-  testMail: (to: string, company_id: Id) =>
-    post<MailTestResult>("/entra/test", { to, company_id }),
+  testMail: (to: string) => post<MailTestResult>("/entra/test", { to }),
   checkMailboxes: () => get<MailboxCheck[]>("/entra/mailboxes"),
   getEntraStatus: () => get<EntraStatus>("/entra/status"),
   connectEntra: () => post<EntraStatus>("/entra/connect"),
@@ -311,97 +334,101 @@ export const api = {
   unfollow: (kind: FollowKind, id: Id) =>
     request<Follows>(`/follows/${kind}/${id}`, { method: "DELETE" }),
 
-  // --- Mode Accès ----------------------------------------------------------
-  // Les catégories ne pendent à rien : elles se lisent toutes, moins celles
-  // que d'autres ont fermées.
-  getAccessCategories: () => get<AccessCategory[]>("/access-categories"),
-  createAccessCategory: (data: AccessCategoryInput) =>
-    post<AccessCategory>("/access-categories", data),
-  updateAccessCategory: (id: Id, data: AccessCategoryInput) =>
-    put<AccessCategory>(`/access-categories/${id}`, data),
-  deleteAccessCategory: (id: Id) =>
-    request<null>(`/access-categories/${id}`, { method: "DELETE" }),
-  // L'ordre des onglets est celui de tout le monde, comme celui des listes
-  // d'un tableau : il se range dans la base, pas dans le navigateur.
-  reorderAccessCategories: (ids: Id[]) =>
-    put<AccessCategory[]>("/access-categories/reorder", { ids }),
+  // --- Vues et tableaux ---------------------------------------------------
+  // Les vues, dans l'ordre que le compte a rangé. Une vue naît avec son
+  // premier tableau.
+  getViews: () => get<View[]>("/views"),
+  createView: (name: string) => post<{ view: View; board: Board }>("/views", { name }),
+  updateView: (id: Id, data: ViewInput) => put<View>(`/views/${id}`, data),
+  deleteView: (id: Id) => del(`/views/${id}`),
+  reorderViews: (ids: Id[]) => put<View[]>("/views/reorder", { ids }),
 
-  // Les sections sont les colonnes d'une catégorie : elles ne se lisent que
-  // pour l'une d'elles.
-  getAccessSections: (categoryId: Id | string) =>
-    get<AccessSection[]>(
-      `/access-sections${queryString({ category: categoryId })}`,
-    ),
-  createAccessSection: (data: AccessSectionInput) =>
-    post<AccessSection>("/access-sections", data),
-  updateAccessSection: (id: Id, data: AccessSectionInput) =>
-    put<AccessSection>(`/access-sections/${id}`, data),
-  /** La copie se pose juste à droite de l'original, avec ses éléments. */
-  duplicateAccessSection: (id: Id) =>
-    post<AccessSection>(`/access-sections/${id}/duplicate`),
-  /** « Hérité » d'une catégorie : sa structure publique, ou sa propre copie. */
-  getAccessLayout: (categoryId: Id | string) =>
-    get<LayoutState>(`/access-sections/layout${queryString({ category: categoryId })}`),
-  setAccessLayout: (category_id: Id, inherited: boolean) =>
-    put<LayoutState>("/access-sections/layout", { category_id, inherited }),
-  reorderAccessSections: (category_id: Id, ids: Id[]) =>
-    put<AccessSection[]>("/access-sections/reorder", { category_id, ids }),
-  deleteAccessSection: (id: Id) =>
-    request<null>(`/access-sections/${id}`, { method: "DELETE" }),
+  // Les tableaux d'une vue, dans l'ordre que le compte a rangé.
+  getBoards: (viewId: Id | string) => get<Board[]>(`/boards${queryString({ view: viewId })}`),
+  createBoard: (view_id: Id | string, name: string) => post<Board>("/boards", { view_id, name }),
+  /** Un tableau seul : de quoi savoir dans quelle vue il se trouve. */
+  getBoard: (id: Id | string) => get<Board>(`/boards/${id}`),
+  updateBoard: (id: Id, data: BoardInput) => put<Board>(`/boards/${id}`, data),
+  deleteBoard: (id: Id | string) => del(`/boards/${id}`),
 
-  // Ce que les sections portent. La page les lit par catégorie entière : une
-  // requête, et non une par colonne.
-  getAccessBlocks: (categoryId: Id | string) =>
-    get<AccessBlock[]>(
-      `/access-blocks${queryString({ category: categoryId })}`,
-    ),
-  // Le flux d'un élément RSS, tel que la base le garde : le serveur relève
-  // la source lui-même, à l'intervalle que l'élément règle.
-  getAccessFeed: (blockId: Id) =>
-    get<AccessFeed>(`/access-blocks/${blockId}/feed`),
-  // L'état des machines d'un élément Uptime : le serveur les vérifie
-  // lui-même, à l'intervalle que l'élément règle.
-  getAccessUptime: (blockId: Id) =>
-    get<AccessUptime>(`/access-blocks/${blockId}/uptime`),
-  createAccessBlock: (data: AccessBlockInput) =>
-    post<AccessBlock>("/access-blocks", data),
-  // Seule la configuration bouge : changer de type ferait un autre élément.
-  updateAccessBlock: (id: Id, data: AccessBlockInput) =>
-    put<AccessBlock>(`/access-blocks/${id}`, data),
+  // Les contextes d'un tableau : chaque écriture rend le tableau à jour.
+  addContext: (boardId: Id, name: string) =>
+    post<Board>(`/boards/${boardId}/contexts`, { name } satisfies ContextInput),
+  renameContext: (id: Id, name: string) =>
+    put<Board>(`/contexts/${id}`, { name } satisfies ContextInput),
+  deleteContext: (id: Id) => request<Board>(`/contexts/${id}`, { method: "DELETE" }),
+  reorderContexts: (boardId: Id, ids: Id[]) =>
+    put<Board>(`/boards/${boardId}/contexts/reorder`, { ids }),
+  /** Le contexte que ce compte regarde dans ce tableau ; nul pour tous. */
+  selectContext: (boardId: Id, contextId: Id | null) =>
+    put<Board>(`/boards/${boardId}/contexts/selected`, { context_id: contextId }),
+  reorderBoards: (view_id: Id | string, ids: Id[]) =>
+    put<Board[]>("/boards/reorder", { view_id, ids }),
+
+  // Ce qu'un tableau porte : ses sections et ses widgets.
+  boardSections: sectionsDuTableau,
+  getBoardWidgets: (boardId: Id | string) => get<BoardWidget[]>(`/boards/${boardId}/widgets`),
+  createBoardWidget: (data: BoardWidgetInput) => post<BoardWidget>("/board-widgets", data),
+  // Seule la configuration bouge — sauf la catégorie et la sous-catégorie,
+  // qui se convertissent l'une en l'autre.
+  updateBoardWidget: (id: Id, data: BoardWidgetInput) =>
+    put<BoardWidget>(`/board-widgets/${id}`, data),
   /** La copie se pose juste sous l'original. */
-  duplicateAccessBlock: (id: Id) =>
-    post<AccessBlock>(`/access-blocks/${id}/duplicate`),
-  deleteAccessBlock: (id: Id) =>
-    request<null>(`/access-blocks/${id}`, { method: "DELETE" }),
-  // Le rangement d'une colonne : ce qu'elle porte désormais, dans l'ordre. Un
-  // élément venu d'une autre colonne de la même catégorie y est admis.
-  reorderAccessBlocks: (data: AccessBlockReorderInput) =>
-    put<AccessBlock[]>("/access-blocks/reorder", data),
-
-  // --- Mode Projet ---------------------------------------------------------
-  getProjectBoards: () => get<ProjectBoard[]>("/project-boards"),
-  createProjectBoard: (name: string) =>
-    post<ProjectBoard>("/project-boards", { name }),
-  // Un simple nom suffit encore ; le tiroir, lui, envoie ses réglages.
-  updateProjectBoard: (id: Id, data: string | ProjectBoardInput) =>
-    put<ProjectBoard>(
-      `/project-boards/${id}`,
-      typeof data === "string" ? { name: data } : data,
+  duplicateBoardWidget: (id: Id) => post<BoardWidget>(`/board-widgets/${id}/duplicate`, {}),
+  deleteBoardWidget: (id: Id) => del(`/board-widgets/${id}`),
+  /** Ce que la section porte désormais : un widget venu d'une autre y passe. */
+  reorderBoardWidgets: (sectionId: Id, ids: Id[]) =>
+    put<BoardWidget[]>("/board-widgets/reorder", { section_id: sectionId, ids }),
+  // La confirmation des boîtes de support : leur état, et la relance du lien
+  // à celles qui attendent.
+  // Chaque liste — par sa clé de liste — confirme ses propres adresses.
+  getMailboxOptins: (liste: string, emails: string[]) =>
+    get<MailboxOptinState[]>(
+      `/mailbox-optins?liste=${encodeURIComponent(liste)}&emails=${encodeURIComponent(emails.join(","))}`,
     ),
-  deleteProjectBoard: (id: Id) =>
-    request<CascadeResult>(`/project-boards/${id}`, {
-      method: "DELETE",
-    }),
-  reorderProjectBoards: (ids: Id[]) =>
-    put<ProjectBoard[]>("/project-boards/reorder", { ids }),
+  resendMailboxOptins: (liste: string, emails: string[]) =>
+    post<{ sent: number }>("/mailbox-optins/resend", { liste, emails }),
+  /** Le code à quatre chiffres de l'e-mail, à la place du lien. */
+  confirmMailboxOptin: (liste: string, email: string, code: string) =>
+    post<MailboxOptinState>("/mailbox-optins/confirm", { liste, email, code }),
+  // Le flux d'un widget RSS, tel que la base le garde : le serveur relève
+  // la source lui-même, à l'intervalle que le widget règle.
+  getAccessFeed: (widgetId: Id) => get<AccessFeed>(`/board-widgets/${widgetId}/feed`),
+  probeAccessFeed: (url: string) =>
+    get<AccessFeedProbe>(`/board-widgets/feed/probe?url=${encodeURIComponent(url)}`),
+  // La météo du lieu d'un widget Météo, et la recherche d'un lieu pour le régler.
+  getAccessWeather: (widgetId: Id) => get<AccessWeather>(`/board-widgets/${widgetId}/weather`),
+  searchWeatherPlaces: (q: string) =>
+    get<WeatherPlace[]>(`/board-widgets/weather/places?q=${encodeURIComponent(q)}`),
+  // Les rendez-vous Outlook de qui regarde, entre deux instants.
+  getAccessCalendar: (widgetId: Id, start: Date, end: Date) =>
+    get<AccessCalendarEvent[]>(
+      `/board-widgets/${widgetId}/calendar?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`,
+    ),
+  // La boîte de réception de qui regarde, page par page, un e-mail ouvert et ses pièces jointes.
+  getAccessMails: (widgetId: Id, skip: number, top: number, unread: boolean) =>
+    get<AccessMailPage>(
+      `/board-widgets/${widgetId}/mails?skip=${skip}&top=${top}${unread ? "&unread=1" : ""}`,
+    ),
+  getAccessMail: (widgetId: Id, mailId: string) =>
+    get<AccessMailDetail>(`/board-widgets/${widgetId}/mails/${encodeURIComponent(mailId)}`),
+  downloadAccessMailAttachment: (widgetId: Id, mailId: string, attachmentId: string) =>
+    download(
+      `/board-widgets/${widgetId}/mails/${encodeURIComponent(mailId)}/attachments/${encodeURIComponent(attachmentId)}`,
+    ),
+  // Une image déposée pour un widget Image : c'est son adresse que le widget range.
+  uploadWidgetImage: (file: File) => upload<{ url: string }>("/widget-images", file),
 
-  // Les catégories appartiennent à un tableau de projets.
+  // --- Projets -------------------------------------------------------------
+  // Les catégories appartiennent à un tableau.
   getCategories: (boardId?: string | null) =>
     get<Category[]>(`/categories${queryString({ board: boardId })}`),
   createCategory: (board_id: Id | string, name: string) =>
     post<Category>("/categories", { board_id, name }),
-  copyCategories: (from_board: Id, to_board: Id) =>
-    post<CopyResult>("/categories/copy", { from_board, to_board }),
+  // « replace » : celles du tableau d'accueil s'en vont d'abord, hormis
+  // celles qui rangent encore des projets.
+  copyCategories: (from_board: Id, to_board: Id, replace = false) =>
+    post<CopyResult>("/categories/copy", { from_board, to_board, replace }),
   // Le nom et les jalons se modifient séparément : ce qui n'est pas envoyé reste.
   updateCategory: (
     id: Id,
@@ -413,6 +440,9 @@ export const api = {
     ),
   deleteCategory: (id: Id) =>
     request<CascadeResult>(`/categories/${id}`, { method: "DELETE" }),
+  // L'ordre complet des catégories d'un tableau.
+  reorderCategories: (board_id: Id, ids: Id[]) =>
+    put<Category[]>("/categories/reorder", { board_id, ids }),
 
   getProjectLabels: (boardId: string | Id) =>
     get<ProjectLabel[]>(`/project-labels${queryString({ board: boardId })}`),
@@ -420,18 +450,21 @@ export const api = {
     post<ProjectLabel>("/project-labels", { board_id, name, color, weight }),
   // Les étiquettes d'un tableau posées dans un autre. Celles qui y portent
   // déjà le même nom ne sont pas redoublées : le compte rendu les compte.
-  copyProjectLabels: (from_board: Id, to_board: Id) =>
-    post<CopyResult>("/project-labels/copy", { from_board, to_board }),
+  // « replace » : celles du tableau d'accueil s'en vont d'abord.
+  copyProjectLabels: (from_board: Id, to_board: Id, replace = false) =>
+    post<CopyResult>("/project-labels/copy", { from_board, to_board, replace }),
   updateProjectLabel: (id: Id, data: { name?: string; color?: string; weight?: number }) =>
     put<ProjectLabel>(`/project-labels/${id}`, data),
   deleteProjectLabel: (id: Id) => del(`/project-labels/${id}`),
+  reorderProjectLabels: (board_id: Id, ids: Id[]) =>
+    put<ProjectLabel[]>("/project-labels/reorder", { board_id, ids }),
 
   getProjects: (filters: ProjectFilters = {}) =>
     get<Project[]>(
       `/projects${queryString(filters as Record<string, unknown>)}`,
     ),
   /** Les comptes acteurs d'au moins un projet du tableau (et de la société). */
-  getProjectActorIds: (filters: Pick<ProjectFilters, "board" | "company">) =>
+  getProjectActorIds: (filters: Pick<ProjectFilters, "board" | "context">) =>
     get<Id[]>(`/projects/actors${queryString(filters as Record<string, unknown>)}`),
   getProject: (id: Id) => get<ProjectDetail>(`/projects/${id}`),
   createProject: (data: ProjectInput) => post<Project>("/projects", data),
@@ -449,23 +482,6 @@ export const api = {
     put<Comment>(`/comments/${id}`, { text }),
   deleteComment: (id: Id) => del(`/comments/${id}`),
 
-  // --- Sociétés -----------------------------------------------------------
-  getCompanies: () => get<Company[]>("/companies"),
-  createCompany: (name: string) => post<Company>("/companies", { name }),
-  // Un nom seul (la liste renomme), ou les champs à changer.
-  updateCompany: (
-    id: Id,
-    data:
-      string | Partial<Pick<Company, "name" | "support_email" | "support_url">>,
-  ) =>
-    put<Company>(
-      `/companies/${id}`,
-      typeof data === "string" ? { name: data } : data,
-    ),
-  deleteCompany: (id: Id) =>
-    request<CascadeResult>(`/companies/${id}`, { method: "DELETE" }),
-
-
   // Les types de jalons, réglés dans les réglages. Le nom et les jalons se
   // modifient séparément : ce qui n'est pas envoyé reste.
   getMilestoneTypes: () => get<MilestoneType[]>("/milestone-types"),
@@ -477,27 +493,14 @@ export const api = {
   ) => put<MilestoneType>(`/milestone-types/${id}`, data),
   deleteMilestoneType: (id: Id) => del(`/milestone-types/${id}`),
 
-  // --- Mode Tâche ----------------------------------------------------------
-  getBoards: (companyId: string | Id) =>
-    get<Board[]>(`/boards${queryString({ company: companyId })}`),
-  createBoard: (company_id: Id | string, name: string) =>
-    post<Board>("/boards", { company_id, name }),
-  // Un simple nom suffit encore ; le tiroir, lui, envoie ses réglages.
-  updateBoard: (id: Id, data: string | BoardInput) =>
-    put<Board>(
-      `/boards/${id}`,
-      typeof data === "string" ? { name: data } : data,
-    ),
-  deleteBoard: (id: Id | string) => del(`/boards/${id}`),
-  // Les tableaux du mode Tâche se rangent société par société.
-  reorderBoards: (company_id: Id | string, ids: Id[]) =>
-    put<Board[]>("/boards/reorder", { company_id, ids }),
 
+  // --- Tâches --------------------------------------------------------------
   getTaskLists: (boardId: string | Id) =>
     get<TaskList[]>(`/task-lists${queryString({ board: boardId })}`),
   // Sans « index », la liste va au bout du tableau.
-  createTaskList: (board_id: Id | string, name: string, index?: number) =>
-    post<TaskList>("/task-lists", { board_id, name, index }),
+  /** « list_key » : le widget « Tâches » d'où elle est créée. */
+  createTaskList: (board_id: Id | string, name: string, index?: number, list_key?: string) =>
+    post<TaskList>("/task-lists", { board_id, name, index, list_key }),
   updateTaskList: (
     id: Id,
     data: { name?: string; color?: ListColor; board_id?: Id },
@@ -520,7 +523,16 @@ export const api = {
     text: string,
     kind: "card" | "separator" = "card",
     description?: string,
-  ) => post<TaskCardRow>("/task-cards", { list_id, text, kind, description }),
+    /** Le contexte de la carte ; à défaut, le premier du tableau. */
+    context_id?: Id | null,
+  ) =>
+    post<TaskCardRow>("/task-cards", {
+      list_id,
+      text,
+      kind,
+      description,
+      context_id: context_id ?? undefined,
+    }),
   updateTaskCard: (id: Id, text: string) =>
     put<TaskCardDetail>(`/task-cards/${id}`, { text }),
   /** La copie se pose juste sous l'original, avec tout ce qu'il porte. */
@@ -576,8 +588,9 @@ export const api = {
   // Les postes remontés par les agents d'inventaire. La liste ne porte que le
   // nom : tout le reste attend l'ouverture du poste, et ne voyage donc que
   // pour celui qu'on regarde.
-  getAssets: (companyId: string | Id) =>
-    get<Asset[]>(`/assets${queryString({ company: companyId })}`),
+  /** Les postes d'un tableau : d'un contexte, ou de tous (« all »). */
+  getAssets: (boardId: Id, context: string | Id) =>
+    get<Asset[]>(`/assets${queryString({ board: boardId, context })}`),
   getAsset: (id: Id) => get<AssetDetail>(`/assets/${id}`),
 
   // Les notifications reçues, pour le tiroir « Notifications ».
@@ -588,10 +601,6 @@ export const api = {
   // La recherche de la rangée d'onglets, sur tout ce que la personne voit.
   search: (q: string) => get<SearchResult[]>(`/search${queryString({ q })}`),
 
-  // L'ordre des onglets fixes des modes Support et Assets, commun à tous.
-  getTabOrders: () => get<TabOrders>("/tab-orders"),
-  reorderTabs: (mode: TabOrderMode, values: string[]) =>
-    put<TabOrders>(`/tab-orders/${mode}`, { values }),
 
   // La section « Développeur » du Paramétrage, commune à tous.
   // La section « Support » du Paramétrage : l'échéance par défaut.
@@ -634,65 +643,11 @@ export const api = {
   // et c'est le flux d'événements qui prévient.
   refreshAsset: (id: Id) => post<AssetRefresh>(`/assets/${id}/refresh`, {}),
   deleteAsset: (id: Id) => del(`/assets/${id}`),
-  // Les indicateurs du panneau des statistiques des Assets : comme ceux du
-  // Support, communs à toutes les sociétés et calculés ici sur les postes de
-  // celle qu'on regarde.
-  getAssetIndicators: () => get<AssetIndicator[]>("/asset-indicators"),
-  createAssetIndicator: (data: AssetIndicatorInput) =>
-    post<AssetIndicator>("/asset-indicators", data),
-  updateAssetIndicator: (id: Id, data: AssetIndicatorInput) =>
-    put<AssetIndicator>(`/asset-indicators/${id}`, data),
-  deleteAssetIndicator: (id: Id) => del(`/asset-indicators/${id}`),
-  /** Ce que la section porte désormais : un indicateur venu d'une autre y passe. */
-  reorderAssetIndicators: (sectionId: Id, ids: Id[]) =>
-    put<AssetIndicator[]>("/asset-indicators/reorder", { section_id: sectionId, ids }),
-  assetIndicatorSections: sectionsDuPanneau("/asset-indicators"),
-
-  // --- Sections des modes Projet et Tâche -----------------------------------
-  // Communes à tous les tableaux : leurs widgets se calculent ici sur celui
-  // qu'on regarde.
-  getProjectIndicators: () => get<ProjectIndicator[]>("/project-indicators"),
-  createProjectIndicator: (data: ProjectIndicatorInput) =>
-    post<ProjectIndicator>("/project-indicators", data),
-  updateProjectIndicator: (id: Id, data: ProjectIndicatorInput) =>
-    put<ProjectIndicator>(`/project-indicators/${id}`, data),
-  deleteProjectIndicator: (id: Id) => del(`/project-indicators/${id}`),
-  reorderProjectIndicators: (sectionId: Id, ids: Id[]) =>
-    put<ProjectIndicator[]>("/project-indicators/reorder", { section_id: sectionId, ids }),
-  projectIndicatorSections: sectionsDuPanneau("/project-indicators"),
-
-  getTaskIndicators: () => get<TaskIndicator[]>("/task-indicators"),
-  createTaskIndicator: (data: TaskIndicatorInput) => post<TaskIndicator>("/task-indicators", data),
-  updateTaskIndicator: (id: Id, data: TaskIndicatorInput) =>
-    put<TaskIndicator>(`/task-indicators/${id}`, data),
-  deleteTaskIndicator: (id: Id) => del(`/task-indicators/${id}`),
-  reorderTaskIndicators: (sectionId: Id, ids: Id[]) =>
-    put<TaskIndicator[]>("/task-indicators/reorder", { section_id: sectionId, ids }),
-  taskIndicatorSections: sectionsDuPanneau("/task-indicators"),
-
   // --- Mode Support --------------------------------------------------------
-  // Les indicateurs du panneau des statistiques : communs à toutes les
-  // sociétés, ils se calculent ici sur les demandes de celle qu'on regarde.
-  getSupportIndicators: () => get<SupportIndicator[]>("/support-indicators"),
-  createSupportIndicator: (data: SupportIndicatorInput) =>
-    post<SupportIndicator>("/support-indicators", data),
-  // Seule la configuration bouge : changer de type ferait un autre indicateur.
-  updateSupportIndicator: (id: Id, data: SupportIndicatorInput) =>
-    put<SupportIndicator>(`/support-indicators/${id}`, data),
-  deleteSupportIndicator: (id: Id) => del(`/support-indicators/${id}`),
-  /** Ce que la section porte désormais : un indicateur venu d'une autre y passe. */
-  reorderSupportIndicators: (sectionId: Id, ids: Id[]) =>
-    put<SupportIndicator[]>("/support-indicators/reorder", { section_id: sectionId, ids }),
-  supportIndicatorSections: sectionsDuPanneau("/support-indicators"),
-  // Le verrou du panneau, un seul pour tout le monde : verrouillé, on n'y
-  // ajoute ni ne déplace plus d'indicateur.
 
-  // Les demandes pendent à une société : elles se lisent toutes pour celle qui
-  // est choisie, et ce sont les onglets qui les rangent par statut.
-  getSupportRequests: (companyId: string | Id) =>
-    get<SupportRequest[]>(
-      `/support-requests${queryString({ company: companyId })}`,
-    ),
+  /** Les demandes d'un tableau : d'un contexte, ou de tous (« all »). */
+  getSupportRequests: (boardId: Id, context: string | Id) =>
+    get<SupportRequest[]>(`/support-requests${queryString({ board: boardId, context })}`),
   getSupportRequest: (id: Id) =>
     get<SupportRequestDetail>(`/support-requests/${id}`),
   createSupportRequest: (data: SupportRequestInput) =>
@@ -749,11 +704,19 @@ export const api = {
     get<Label[]>(`/labels${queryString({ board: boardId })}`),
   createLabel: (board_id: Id | string, name: string, color: string) =>
     post<Label>("/labels", { board_id, name, color }),
-  copyLabels: (from_board: Id, to_board: Id) =>
-    post<CopyResult>("/labels/copy", { from_board, to_board }),
+  // Les contextes d'un tableau, recopiés dans un autre : leurs noms seuls.
+  // « replace » : ceux du tableau d'accueil s'en vont d'abord, avec ce
+  // qu'ils contiennent.
+  // « rename_all » : le tableau reprend aussi le libellé de « Tous les … ».
+  copyContexts: (from_board: Id, to_board: Id, replace = false, rename_all = false) =>
+    post<CopyResult>(`/boards/${from_board}/contexts/copy`, { to_board, replace, rename_all }),
+  copyLabels: (from_board: Id, to_board: Id, replace = false) =>
+    post<CopyResult>("/labels/copy", { from_board, to_board, replace }),
   updateLabel: (id: Id, data: { name?: string; color?: string }) =>
     put<Label>(`/labels/${id}`, data),
   deleteLabel: (id: Id) => del(`/labels/${id}`),
+  // L'ordre complet des étiquettes d'un tableau.
+  reorderLabels: (board_id: Id, ids: Id[]) => put<Label[]>("/labels/reorder", { board_id, ids }),
 };
 
 /**

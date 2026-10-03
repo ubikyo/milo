@@ -13,7 +13,7 @@
 
 import express, { Router } from "express";
 import type { Request } from "express";
-import { HttpError, badRequest, orNotFound } from "../lib/http.js";
+import { HttpError, badRequest, notFound, orNotFound } from "../lib/http.js";
 import { exiger, peut } from "../lib/droits.js";
 import { finDeSupport } from "../lib/endoflife.js";
 import { decompresser, lireXml, texteDe } from "../lib/inventory.js";
@@ -24,9 +24,11 @@ import {
   assetDetail,
   assetOf,
   assets,
-  societeDuTag,
   utilisateurDuContenu,
 } from "../repositories/assets.js";
+import { boardLisible, boards, tableauOuvert } from "../repositories/boards.js";
+import { contexteDuTableau } from "../repositories/contexts.js";
+import { receptionDuTag } from "../repositories/receptions.js";
 
 /**
  * Un inventaire de poste pèse quelques centaines de kilo-octets — six cents
@@ -115,6 +117,8 @@ inventoryRoutes.post("/", corpsAgent, (req: Request, res) => {
   // est à l'heure du poste, qu'on suppose être celle de Paris.
   const horodatage = heureDeParis(texteDe(contenu, "ACCESSLOG", "LOGDATE")) ?? now();
   const existant = assets.byDeviceId.get(deviceid);
+  // La liste de postes qui reçoit son tag, et le contexte qu'elle lui donne.
+  const reception = receptionDuTag(tag);
   const json = JSON.stringify(contenu);
   const utilisateur = utilisateurDuContenu(contenu);
 
@@ -122,7 +126,9 @@ inventoryRoutes.post("/", corpsAgent, (req: Request, res) => {
     assets.update.run(
       name,
       tag,
-      societeDuTag(tag),
+      reception?.board_id ?? null,
+      reception?.context_id ?? null,
+      reception?.liste ?? "",
       json,
       utilisateur,
       horodatage,
@@ -133,7 +139,9 @@ inventoryRoutes.post("/", corpsAgent, (req: Request, res) => {
       deviceid,
       name,
       tag,
-      societeDuTag(tag),
+      reception?.board_id ?? null,
+      reception?.context_id ?? null,
+      reception?.liste ?? "",
       json,
       utilisateur,
       horodatage,
@@ -150,25 +158,29 @@ export const assetRoutes = Router();
 
 assetRoutes.use(touch("assets"));
 
-/** Le poste, si l'on voit les assets de sa société. */
+/** Le poste, si l'on voit les assets et le tableau de son contexte. */
 const posteVisible = (req: Request, id: unknown) => {
   const poste = orNotFound(assets.byId.get(id), POSTE_INTROUVABLE);
-  exiger(req, "assets", "view", poste.company_id, POSTE_INTROUVABLE);
+  exiger(req, "assets", "view", POSTE_INTROUVABLE);
+  if (!boardLisible(boards.byId.get(poste.board_id), req.user)) notFound(POSTE_INTROUVABLE);
   return poste;
 };
 
 /**
- * Les postes de la société choisie. Sans société précise — « toutes » —, ils
- * sortent tous : c'est là que se voient ceux dont le tag ne désigne rien.
+ * Les postes d'un tableau : de l'un de ses contextes, ou de tous. Un poste
+ * dont le tag n'est reçu par aucune liste ne se montre nulle part.
  */
 assetRoutes.get("/", (req, res) => {
-  const company = req.query.company;
-  const lignes =
-    !company || company === "all" ? assets.all.all() : assets.ofCompany.all(company);
-  // Les sociétés dont on ne voit pas les assets sont écartées ; un poste sans
-  // société se voit de qui voit les assets d'au moins une.
+  if (!peut(req, "assets", "view")) return void res.json([]);
+  const board = tableauOuvert(req.query.board, req.user);
+  const contexte = req.query.context;
   res.json(
-    lignes.filter((l) => peut(req, "assets", "view", l.company_id)).map((ligne) => assetOf(ligne)),
+    assets.ofBoard
+      .all({
+        board: board.id,
+        context: contexte && contexte !== "all" ? contexteDuTableau(board.id, contexte) : null,
+      })
+      .map((ligne) => assetOf(ligne)),
   );
 });
 

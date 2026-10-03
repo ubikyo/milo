@@ -30,7 +30,7 @@ import {
   ACCESS_FEED_INTERVAL_MIN,
   ACCESS_FEED_QUANTITE_MAX,
 } from "@milo/shared";
-import type { AccessFeed, AccessFeedArticle } from "@milo/shared";
+import type { AccessFeed, AccessFeedArticle, AccessFeedProbe } from "@milo/shared";
 import type { AccessFeedRow } from "../db/rows.js";
 import { accessFeeds } from "../repositories/access.js";
 import { HttpError, badRequest } from "./http.js";
@@ -318,8 +318,15 @@ const lireXml = (xml: string, source: string, quantite: number): AccessFeedArtic
 
 // --- Relève ----------------------------------------------------------------
 
-/** Les derniers articles de la source, lus, au plus « quantite ». */
-const lireSource = async (adresse: string, quantite: number): Promise<AccessFeedArticle[]> => {
+/** Ce que la source a rendu : son texte, son type annoncé, l'adresse finale. */
+interface Telecharge {
+  texte: string;
+  type: string;
+  url: URL;
+}
+
+/** Le contenu de la source, redirections suivies et vérifiées. */
+const telecharger = async (adresse: string): Promise<Telecharge> => {
   let url = await verifier(adresse);
   let reponse: Response | undefined;
   for (let saut = 0; saut <= REDIRECTIONS_MAX; saut++) {
@@ -343,11 +350,58 @@ const lireSource = async (adresse: string, quantite: number): Promise<AccessFeed
     url = await verifier(new URL(suite, url).toString());
   }
   if (!reponse!.ok) throw new HttpError(502, `La source a répondu ${reponse!.status}`);
+  return { texte: await lireBorne(reponse!), type: reponse!.headers.get("content-type") ?? "", url };
+};
 
-  const texte = await lireBorne(reponse!);
-  return estJson(reponse!.headers.get("content-type") ?? "", texte)
-    ? lireJson(texte, url.href, quantite)
-    : lireXml(texte, url.href, quantite);
+const lireTelecharge = ({ texte, type, url }: Telecharge, quantite: number): AccessFeedArticle[] =>
+  estJson(type, texte) ? lireJson(texte, url.href, quantite) : lireXml(texte, url.href, quantite);
+
+/** Les derniers articles de la source, lus, au plus « quantite ». */
+const lireSource = async (adresse: string, quantite: number): Promise<AccessFeedArticle[]> =>
+  lireTelecharge(await telecharger(adresse), quantite);
+
+/**
+ * Le nom du format d'un flux déjà lu sans erreur : la version qu'annonce un
+ * flux RSS, « RSS 1.0 » pour le RDF, « Atom », et « JSON Feed » pour un flux
+ * qui suit jsonfeed.org — « JSON » pour un catalogue qui n'en suit aucun.
+ */
+const formatDe = ({ texte, type }: Telecharge): string => {
+  if (estJson(type, texte)) {
+    const racine: unknown = JSON.parse(texte);
+    const version = estObjet(racine) ? racine["version"] : undefined;
+    return typeof version === "string" && /jsonfeed\.org/i.test(version) ? "JSON Feed" : "JSON";
+  }
+  const sansPreambule = texte
+    .replace(/<\?[\s\S]*?\?>/g, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<!DOCTYPE[^>]*>/gi, "");
+  const racine = sansPreambule.match(/<(?:[\w.-]+:)?([\w.-]+)([^>]*)>/);
+  if (racine?.[1] === "feed") return "Atom";
+  if (racine?.[1] === "RDF") return "RSS 1.0";
+  if (racine?.[1] === "rss") return `RSS ${attribut(racine[2] ?? "", "version") || "2.0"}`;
+  return "RSS";
+};
+
+/**
+ * Ce que donne une adresse, pour le réglage d'un élément : « injoignable »
+ * quand la source ne rend rien — hôte introuvable, pas de réponse, une
+ * erreur —, « invalide » quand ce qu'elle rend ne se lit pas comme un flux, et
+ * sinon le nom de son format. Rien n'est rangé : la relève reste celle des
+ * éléments enregistrés.
+ */
+export const sonderFlux = async (adresse: string): Promise<AccessFeedProbe> => {
+  let telecharge: Telecharge;
+  try {
+    telecharge = await telecharger(adresse);
+  } catch (erreur) {
+    return { state: "injoignable", message: (erreur as Error).message };
+  }
+  try {
+    lireTelecharge(telecharge, 1);
+    return { state: "ok", format: formatDe(telecharge) };
+  } catch (erreur) {
+    return { state: "invalide", message: (erreur as Error).message };
+  }
 };
 
 /**
