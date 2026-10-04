@@ -1,5 +1,4 @@
 import {
-  Badge,
   Button,
   Drawer,
   Group,
@@ -11,33 +10,25 @@ import {
   Tabs,
   Text,
   TextInput,
-  UnstyledButton,
 } from "@mantine/core";
-import { DateTimePicker } from "@mantine/dates";
 import {
   IconCalendarEvent,
   IconCheck,
   IconChecklist,
   IconChevronDown,
-  IconClock,
   IconEye,
+  IconLink,
   IconMessage,
   IconPaperclip,
-  IconPencil,
+  IconPhoto,
   IconSettings,
-  IconTrash,
   IconUpload,
 } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api";
-import { RED } from "../../themes/colors";
-import {
-  COULEUR_ECHEANCE,
-  MOT_ECHEANCE,
-  dateLongue,
-  formatChampEcheance,
-  etatEcheance,
-} from "../../lib/echeance";
+import { reduireImage } from "../../lib/reduireImage";
+import CardCovers from "./CardCovers";
+import CardEcheance, { ECHEANCE_VIDE, type Echeance } from "./CardEcheance";
 import {
   ACTIONS_BUTTON_STYLE,
   DRAWER_MENU_OFFSET,
@@ -50,6 +41,10 @@ import ActorPicker from "../ui/ActorPicker";
 import RichTextField, { useRichEditor } from "../ui/RichText";
 import CardAttachments from "./CardAttachments";
 import CardChecklists from "./CardChecklists";
+import CardDependances, {
+  nouveauBrouillon,
+  type BrouillonDependance,
+} from "./CardDependances";
 import TaskDestination, { descriptionDe } from "./TaskDestination";
 import type { Destination, TacheSource } from "./TaskDestination";
 import LabelPicker from "../ui/LabelPicker";
@@ -62,7 +57,9 @@ import type { CSSProperties, DragEvent as ReactDragEvent } from "react";
 import { taskReference } from "@milo/shared";
 import type {
   Attachment,
+  CardCover,
   CardComment,
+  CardLink,
   Context,
   Checklist,
   Id,
@@ -85,62 +82,6 @@ const DRAWER_PADDING = 40;
 // Hauteur des bulles de membres et des étiquettes : la même pour les deux, et
 // pour le « + » qui les suit, afin que les deux colonnes s'alignent.
 const CHIP_HEIGHT = 30;
-
-/**
- * L'échéance telle qu'elle se lit au-dessus du titre : la date en toutes
- * lettres, et la bulle qui dit où on en est. Cliquer ouvre le choix — la
- * modifier, ou la retirer —, comme une étiquette qu'on rouvre là où elle se
- * montre.
- */
-interface DueDateProps {
-  value: string;
-  onEdit: () => void;
-  onRemove: () => void;
-}
-
-function DueDate({ value, onEdit, onRemove }: DueDateProps) {
-  const etat = etatEcheance(value);
-
-  return (
-    <Input.Wrapper label="Échéance">
-      <Group gap="xs" wrap="nowrap">
-        <Menu position="bottom-start" withinPortal shadow="md">
-          <Menu.Target>
-            <UnstyledButton
-              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-              aria-label="Modifier ou retirer l'échéance"
-            >
-              <Text span c="dimmed" style={{ display: "inline-flex" }}>
-                <IconClock size={16} />
-              </Text>
-              <Text size="sm">{dateLongue(value)}</Text>
-            </UnstyledButton>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Item leftSection={<IconPencil size={16} />} onClick={onEdit}>
-              Modifier
-            </Menu.Item>
-            <Menu.Item
-              color={RED}
-              leftSection={<IconTrash size={16} />}
-              onClick={onRemove}
-            >
-              Supprimer
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-
-        {/* Rien à dire quand l'échéance est encore loin : la date seule
-            suffit, et une bulle neutre ne dirait rien de plus. */}
-        {etat !== "aucun" && (
-          <Badge color={COULEUR_ECHEANCE[etat]} variant="filled" radius="sm">
-            {MOT_ECHEANCE[etat]}
-          </Badge>
-        )}
-      </Group>
-    </Input.Wrapper>
-  );
-}
 
 /**
  * La fiche d'une carte. Elle s'ouvre au clic sur la carte et se referme en
@@ -210,25 +151,58 @@ export default function CardDrawer({
   const [labelsDestination, setLabelsDestination] = useState<Label[]>([]);
   const [text, setText] = useState("");
   const [memberIds, setMemberIds] = useState<string[]>([]);
+  /**
+   * Les acteurs retirés depuis l'ouverture : le serveur les retirera des
+   * checklists à « Sauvegarder », la fiche les y cache déjà.
+   */
+  const [acteursRetires, setActeursRetires] = useState<string[]>([]);
   const [labelIds, setLabelIds] = useState<string[]>([]);
   /** Le contexte de la carte ; vide tant qu'elle n'est pas lue. */
   const [contexte, setContexte] = useState("");
   const [comments, setComments] = useState<CardComment[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [covers, setCovers] = useState<CardCover[]>([]);
+  const [links, setLinks] = useState<CardLink[]>([]);
+  /** Les dépendances ajoutées dont l'autre carte n'est pas encore choisie. */
+  const [brouillons, setBrouillons] = useState<BrouillonDependance[]>([]);
+  /** Les secondes entre deux couvertures sur le tableau ; s'enregistre avec la fiche. */
+  const [rotation, setRotation] = useState(0);
+  /** Vrai tant que les fichiers survolent le bloc des couvertures : ils en deviendront. */
+  const [surCouvertures, setSurCouvertures] = useState(false);
   /** Vrai tant que des fichiers survolent le tiroir : l'invite de dépôt se montre. */
   const [survolFichier, setSurvolFichier] = useState(false);
   const [numero, setNumero] = useState<number | null>(null);
-  /** L'échéance de la carte, en ISO ; vide quand elle n'en a pas. */
-  const [echeance, setEcheance] = useState("");
-  /** Vrai quand le sélecteur est ouvert : par le menu, ou pour la modifier. */
-  const [choisitDate, setChoisitDate] = useState(false);
+  /** L'échéance de la carte : son début, sa fin, sa récurrence, son rappel. */
+  const [echeance, setEcheance] = useState<Echeance>(ECHEANCE_VIDE);
+  /** Vrai quand le bloc se montre : la carte a une échéance, ou on l'ajoute. */
+  const [avecEcheance, setAvecEcheance] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<string | null>("settings");
 
+  /**
+   * Le bloc qu'on vient d'ajouter à la fiche, à amener sous les yeux : son
+   * sélecteur, dont on vise la dernière occurrence — une checklist ou une
+   * dépendance s'ajoute au bout des autres. Il attend que le bloc paraisse :
+   * une checklist ne s'affiche qu'au retour du serveur.
+   */
+  const [aMontrer, setAMontrer] = useState<string | null>(null);
+  const zoneFiche = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!aMontrer) return;
+    const cibles = zoneFiche.current?.querySelectorAll(aMontrer);
+    const cible = cibles?.[cibles.length - 1];
+    if (!cible) return;
+    cible.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    setAMontrer(null);
+    // Se relance quand un bloc peut paraître.
+  }, [aMontrer, avecEcheance, checklists, brouillons, attachments, covers]);
+
   /** Le sélecteur de fichiers, ouvert par le menu « Actions » et par l'encart. */
   const champFichier = useRef<HTMLInputElement>(null);
+  /** Le sélecteur des images de couverture : des images seules, une ou plusieurs. */
+  const champCouverture = useRef<HTMLInputElement>(null);
   /**
    * Combien d'éléments du tiroir le glisser a franchis. Un simple booléen
    * clignoterait : passer d'un enfant à l'autre déclenche une sortie avant
@@ -266,6 +240,7 @@ export default function CardDrawer({
     if (!opened || !card) return;
     // Un tiroir rouvert repart des paramètres, quel que soit l'onglet quitté.
     setActiveTab("settings");
+    setAMontrer(null);
     setLoading(true);
     api
       .getTaskCard(card.id)
@@ -273,13 +248,24 @@ export default function CardDrawer({
         setText(fiche.text);
         setNumero(fiche.number);
         setContexte(fiche.context_id ? String(fiche.context_id) : "");
-        setEcheance(fiche.due_date || "");
-        setChoisitDate(false);
+        setEcheance({
+          forme: fiche.due_form || "date",
+          debut: fiche.start_date || "",
+          fin: fiche.due_date || "",
+          recurrence: fiche.recurrence || "",
+          rappel: fiche.reminder || "",
+        });
+        setAvecEcheance(Boolean(fiche.due_date));
         setMemberIds((fiche.members || []).map((m) => String(m.id)));
+        setActeursRetires([]);
         setLabelIds((fiche.labels || []).map((l) => String(l.id)));
         setComments(fiche.comments || []);
         setChecklists(fiche.checklists || []);
         setAttachments(fiche.attachments || []);
+        setCovers(fiche.covers || []);
+        setLinks(fiche.links || []);
+        setBrouillons([]);
+        setRotation(fiche.cover_interval || 0);
         editor?.commands.setContent(fiche.description || "");
       })
       .catch((e) => notifierErreur(messageErreur(e)))
@@ -294,13 +280,17 @@ export default function CardDrawer({
     setLoading(false);
     setText(source.title);
     setNumero(null);
-    setEcheance("");
-    setChoisitDate(false);
+    setEcheance(ECHEANCE_VIDE);
+    setAvecEcheance(false);
     setMemberIds(currentUserId === undefined ? [] : [String(currentUserId)]);
     setLabelIds([]);
     setComments([]);
     setChecklists([]);
     setAttachments([]);
+    setCovers([]);
+    setLinks([]);
+    setBrouillons([]);
+    setRotation(0);
     editor?.commands.setContent(descriptionDe(source));
   }, [opened, source, card, editor, currentUserId]);
 
@@ -332,6 +322,7 @@ export default function CardDrawer({
     try {
       await api.createChecklist(card.id, "Checklist");
       await refreshChecklists();
+      setAMontrer("[data-checklist]");
     } catch (e) {
       notifierErreur(messageErreur(e));
     }
@@ -351,9 +342,59 @@ export default function CardDrawer({
       try {
         const piece = await api.uploadAttachment(card.id, fichier);
         setAttachments((deja) => [piece, ...deja]);
+        setAMontrer("[data-zone='pieces']");
       } catch (e) {
         notifierErreur(messageErreur(e));
       }
+    }
+  };
+
+  /**
+   * Les images de couverture déposées — glissées sur leur bloc, ou choisies.
+   * Elles partent l'une après l'autre et se rangent au bout, comme le serveur
+   * les place. Ce qui n'est pas une image est refusé par le serveur, et le dit.
+   */
+  const deposerCouvertures = async (fichiers: File[]) => {
+    if (!card || readOnly || fichiers.length === 0) return;
+    for (const fichier of fichiers) {
+      try {
+        const cover = await api.uploadCover(card.id, await reduireImage(fichier));
+        setCovers((deja) => [...deja, cover]);
+        setAMontrer("[data-couvertures]");
+      } catch (e) {
+        notifierErreur(messageErreur(e));
+      }
+    }
+  };
+
+  const rangerCouvertures = async (ids: Id[]) => {
+    if (!card) return;
+    // L'ordre se montre tout de suite ; le serveur rend celui qu'il a retenu.
+    setCovers((deja) => ids.map((id) => deja.find((c) => c.id === id)!).filter(Boolean));
+    try {
+      setCovers(await api.reorderCovers(card.id, ids));
+    } catch (e) {
+      notifierErreur(messageErreur(e));
+    }
+  };
+
+  const supprimerCouverture = async (cover: CardCover) => {
+    try {
+      await api.deleteCover(cover.id);
+      setCovers((deja) => deja.filter((c) => c.id !== cover.id));
+    } catch (e) {
+      notifierErreur(messageErreur(e));
+    }
+  };
+
+  const rangerPieces = async (ids: Id[]) => {
+    if (!card) return;
+    // L'ordre se montre tout de suite ; le serveur rend celui qu'il a retenu.
+    setAttachments((deja) => ids.map((id) => deja.find((p) => p.id === id)!).filter(Boolean));
+    try {
+      setAttachments(await api.reorderAttachments(card.id, ids));
+    } catch (e) {
+      notifierErreur(messageErreur(e));
     }
   };
 
@@ -375,7 +416,12 @@ export default function CardDrawer({
   const finDuSurvol = () => {
     profondeur.current = 0;
     setSurvolFichier(false);
+    setSurCouvertures(false);
   };
+
+  /** Vrai quand le glisser passe sur le bloc des couvertures (CardCovers). */
+  const versCouvertures = (e: ReactDragEvent) =>
+    e.target instanceof Element && e.target.closest("[data-couvertures]") !== null;
 
   const survol = {
     onDragEnter: (e: ReactDragEvent) => {
@@ -393,16 +439,31 @@ export default function CardDrawer({
       // Sans cela, le navigateur ouvrirait le fichier à la place de la page.
       e.preventDefault();
       e.dataTransfer.dropEffect = "copy";
+      setSurCouvertures(versCouvertures(e));
     },
     onDrop: (e: ReactDragEvent) => {
       if (!desFichiers(e)) return;
       e.preventDefault();
       finDuSurvol();
-      void deposerFichiers(Array.from(e.dataTransfer.files));
+      const fichiers = Array.from(e.dataTransfer.files);
+      // Lâchés sur le bloc des couvertures, les fichiers en deviennent ;
+      // partout ailleurs, ce sont des pièces jointes.
+      if (versCouvertures(e)) void deposerCouvertures(fichiers);
+      else void deposerFichiers(fichiers);
     },
     // Un glisser abandonné en chemin laisserait l'invite allumée.
     onDragEnd: finDuSurvol,
   };
+
+  // L'échéance telle que le serveur la reçoit. Sans fin, rien ne tient : ni
+  // début, ni récurrence, ni rappel.
+  const champsEcheance = {
+    due_date: echeance.fin,
+    due_form: echeance.fin ? echeance.forme : "date",
+    start_date: echeance.fin && echeance.forme === "periode" ? echeance.debut : "",
+    recurrence: echeance.fin ? echeance.recurrence : "",
+    reminder: echeance.fin ? echeance.rappel : "",
+  } as const;
 
   // « Sauvegarder » : le seul geste qui écrit. Si le serveur refuse, le
   // tiroir reste ouvert avec le message : la saisie n'est jamais perdue.
@@ -418,7 +479,8 @@ export default function CardDrawer({
         description: editor?.getHTML() ?? "",
         member_ids: memberIds.map(Number),
         label_ids: labelIds.map(Number),
-        due_date: echeance,
+        ...champsEcheance,
+        cover_interval: rotation,
         ...(contexte ? { context_id: Number(contexte) } : {}),
       });
       await onSaved();
@@ -446,13 +508,13 @@ export default function CardDrawer({
         "card",
         description,
       );
-      if (memberIds.length || labelIds.length || echeance) {
+      if (memberIds.length || labelIds.length || echeance.fin) {
         await api.updateTaskCardDetails(carte.id, {
           text: texte,
           description,
           member_ids: memberIds.map(Number),
           label_ids: labelIds.map(Number),
-          due_date: echeance,
+          ...champsEcheance,
         });
       }
       onClose();
@@ -534,7 +596,9 @@ export default function CardDrawer({
           <div className={classes.dropZone}>
             <Group gap="xs" wrap="nowrap">
               <IconUpload size={22} />
-              <Text fw={600}>Glisser ici</Text>
+              <Text fw={600}>
+                {surCouvertures ? "Déposer en image de couverture" : "Glisser ici"}
+              </Text>
             </Group>
           </div>
         )}
@@ -610,7 +674,18 @@ export default function CardDrawer({
                           leftSection={<IconChecklist size={16} />}
                           onClick={ajouterChecklist}
                         >
-                          Checklist
+                          Ajouter checklist
+                        </Menu.Item>
+                        {/* La ligne s'ouvre vide : elle s'enregistre quand
+                            l'autre carte est choisie. */}
+                        <Menu.Item
+                          leftSection={<IconLink size={16} />}
+                          onClick={() => {
+                            setBrouillons((deja) => [...deja, nouveauBrouillon()]);
+                            setAMontrer("[data-dependance]");
+                          }}
+                        >
+                          Ajouter une dépendance
                         </Menu.Item>
                       </>
                     )}
@@ -622,9 +697,12 @@ export default function CardDrawer({
                 {!readOnly && (
                   <Menu.Item
                     leftSection={<IconCalendarEvent size={16} />}
-                    onClick={() => setChoisitDate(true)}
+                    onClick={() => {
+                      setAvecEcheance(true);
+                      setAMontrer("[data-zone='echeance']");
+                    }}
                   >
-                    Date
+                    Ajouter échéance
                   </Menu.Item>
                 )}
                 {/* Les fichiers se glissent sur le tiroir ; ceci est l'autre
@@ -634,7 +712,15 @@ export default function CardDrawer({
                     leftSection={<IconPaperclip size={16} />}
                     onClick={() => champFichier.current?.click()}
                   >
-                    Pièce jointe
+                    Ajouter pièce jointe
+                  </Menu.Item>
+                )}
+                {!creation && !readOnly && (
+                  <Menu.Item
+                    leftSection={<IconPhoto size={16} />}
+                    onClick={() => champCouverture.current?.click()}
+                  >
+                    Ajouter image de couverture
                   </Menu.Item>
                 )}
               </Menu.Dropdown>
@@ -664,7 +750,7 @@ export default function CardDrawer({
               {/* En lecture seule, tous les champs de la fiche sont éteints
                   d'un coup : c'est ce que fait un « fieldset » désactivé. */}
               <fieldset disabled={readOnly} style={FIELDSET_NU}>
-                <Stack gap="xl">
+                <Stack gap="xl" ref={zoneFiche}>
                   {/* Ce qui range la carte vient avant ce qui la nomme : les deux
                     colonnes s'ouvrent chacune sur leur propre liste. Les bulles
                     des membres tiennent en peu de place, les étiquettes portent du
@@ -682,7 +768,13 @@ export default function CardDrawer({
                         label="Acteurs"
                         users={users}
                         value={memberIds}
-                        onChange={setMemberIds}
+                        onChange={(ids) => {
+                          setActeursRetires((deja) => [
+                            ...deja.filter((id) => !ids.includes(id)),
+                            ...memberIds.filter((id) => !ids.includes(id) && !deja.includes(id)),
+                          ]);
+                          setMemberIds(ids);
+                        }}
                       />
                     </div>
                     <div style={{ flex: "7 1 0", minWidth: 0 }}>
@@ -734,49 +826,6 @@ export default function CardDrawer({
                     )}
                   </Group>
 
-                  {/* L'échéance coiffe le titre : c'est la première chose qu'on
-                      veut savoir en ouvrant une carte, avant même son intitulé.
-                      Tant qu'il n'y en a pas, rien ne s'affiche — la fiche ne
-                      porte pas un champ vide de plus. */}
-                  {choisitDate ? (
-                    <DateTimePicker
-                      label="Échéance"
-                      placeholder="Choisir une date, et une heure si besoin"
-                      value={echeance || null}
-                      // L'heure est facultative : laissée vide, l'échéance tient
-                      // à la date seule, et le champ comme la fiche n'en montrent
-                      // que la date (lib/echeance.ts). Le calendrier ne se referme
-                      // pas au premier clic, pour laisser le temps de régler
-                      // l'heure si on en veut une : c'est sa fermeture, et elle
-                      // seule, qui rend la main.
-                      valueFormat={formatChampEcheance}
-                      // L'heure se vide comme elle se règle : l'effacer ramène
-                      // l'échéance à la date seule.
-                      timePickerProps={{ clearable: true }}
-                      onChange={(valeur) => {
-                        const date = valeur ? new Date(valeur) : null;
-                        setEcheance(
-                          date && !Number.isNaN(date.getTime())
-                            ? date.toISOString()
-                            : "",
-                        );
-                      }}
-                      onDropdownClose={() => setChoisitDate(false)}
-                      withSeconds={false}
-                      clearable
-                      autoFocus
-                      popoverProps={{ withinPortal: true }}
-                    />
-                  ) : (
-                    echeance && (
-                      <DueDate
-                        value={echeance}
-                        onEdit={() => setChoisitDate(true)}
-                        onRemove={() => setEcheance("")}
-                      />
-                    )
-                  )}
-
                   {/* Où la tâche ira, avant ce qui la nomme. Une carte ouverte
                       depuis son tableau sait déjà où elle est. */}
                   {creation && source && (
@@ -814,6 +863,36 @@ export default function CardDrawer({
                     )}
                   </Group>
 
+                  {/* L'échéance suit ce qui nomme la carte. Tant qu'il n'y en a
+                      pas, rien ne s'affiche — la fiche ne porte pas un champ
+                      vide de plus. */}
+                  {avecEcheance && (
+                    <div data-zone="echeance">
+                      <CardEcheance
+                        value={echeance}
+                        onChange={setEcheance}
+                        onRemove={() => {
+                          setEcheance(ECHEANCE_VIDE);
+                          setAvecEcheance(false);
+                        }}
+                        readOnly={readOnly}
+                      />
+                    </div>
+                  )}
+
+                  {/* Les couvertures suivent l'échéance. */}
+                  {card && (
+                    <CardCovers
+                      covers={covers}
+                      intervalle={rotation}
+                      onIntervalle={setRotation}
+                      onPick={() => champCouverture.current?.click()}
+                      onReorder={rangerCouvertures}
+                      onDelete={supprimerCouverture}
+                      readOnly={readOnly}
+                    />
+                  )}
+
                   <RichTextField editor={editor} label="Description" />
 
                   {/* Les checklists ferment la fiche : elles s'ajoutent par le menu
@@ -825,16 +904,47 @@ export default function CardDrawer({
                       users={users}
                       onChanged={refreshChecklists}
                       onError={notifierErreur}
+                      // Qui reçoit un élément devient acteur de la carte. Il
+                      // rejoint les acteurs de la fiche, et s'enregistre avec
+                      // eux à « Sauvegarder ».
+                      onMembers={(ids) => {
+                        const poses = ids.map(String);
+                        setMemberIds((deja) => [
+                          ...deja,
+                          ...poses.filter((id) => !deja.includes(id)),
+                        ]);
+                        setActeursRetires((deja) => deja.filter((id) => !poses.includes(id)));
+                      }}
+                      masques={acteursRetires}
+                    />
+                  )}
+
+                  {/* Les dépendances suivent les checklists : elles aussi
+                      s'ajoutent par le menu « Actions » et s'enregistrent
+                      d'elles-mêmes. */}
+                  {card && (
+                    <CardDependances
+                      cardId={card.id}
+                      links={links}
+                      onLinks={setLinks}
+                      brouillons={brouillons}
+                      onBrouillons={setBrouillons}
+                      boardId={boardId}
+                      onError={notifierErreur}
+                      readOnly={readOnly}
                     />
                   )}
 
                   {/* Les pièces jointes ferment la fiche. Comme les checklists,
                       l'encart ne paraît que lorsqu'il y a quelque chose dedans. */}
-                  <CardAttachments
-                    attachments={attachments}
-                    onPick={() => champFichier.current?.click()}
-                    onDelete={supprimerPiece}
-                  />
+                  <div data-zone="pieces">
+                    <CardAttachments
+                      attachments={attachments}
+                      onPick={() => champFichier.current?.click()}
+                      onReorder={rangerPieces}
+                      onDelete={supprimerPiece}
+                    />
+                  </div>
                 </Stack>
               </fieldset>
             </ScrollArea>
@@ -894,6 +1004,18 @@ export default function CardDrawer({
           const fichiers = Array.from(e.currentTarget.files ?? []);
           e.currentTarget.value = "";
           void deposerFichiers(fichiers);
+        }}
+      />
+      <input
+        ref={champCouverture}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          const fichiers = Array.from(e.currentTarget.files ?? []);
+          e.currentTarget.value = "";
+          void deposerCouvertures(fichiers);
         }}
       />
     </Drawer>

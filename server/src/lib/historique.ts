@@ -142,7 +142,7 @@ interface DernierMot {
 }
 
 /**
- * Le fil de chaque élément. Celui d'une demande de support a deux onglets :
+ * Le fil de chaque élément. Celui d'un ticket a deux onglets :
  * les échanges avec l'expéditeur, et les commentaires de l'équipe. Ces mots
  * vont dans le second — ils ne regardent pas l'expéditeur.
  */

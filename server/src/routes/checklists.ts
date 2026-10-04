@@ -4,8 +4,9 @@
 
 import { Router } from "express";
 import type { Request } from "express";
+import type { Id } from "@milo/shared";
 import { badRequest, orNotFound, requireText, toIds } from "../lib/http.js";
-import { concernes, notifier, notifierSuppression, racine } from "../lib/notify.js";
+import { concernes, notifier, notifierRattachement, notifierSuppression, racine } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { boardOuvert } from "../repositories/boards.js";
@@ -15,6 +16,7 @@ import {
   checklistWithItems,
   checklists,
   checklistsOfCard,
+  idsMembresElement,
   itemsOfChecklist,
   reorderChecklistItems,
   reorderChecklists,
@@ -56,7 +58,7 @@ const checklistOuverte = (id: unknown, req: Request) => {
  * elle que la notification nomme. Les réordonnancements n'appellent pas cette
  * fonction — glisser un élément ne change pas ce que la checklist dit.
  */
-const carteModifiee = (cardId: unknown, req: Request): void => {
+const carteModifiee = (cardId: unknown, req: Request, sauf: Id[] = []): void => {
   const carte = taskCards.byId.get(cardId);
   if (!carte) return;
   notifier({
@@ -65,6 +67,7 @@ const carteModifiee = (cardId: unknown, req: Request): void => {
     titre: carte.text,
     message: "a modifié une checklist",
     auteur: req.user,
+    sauf,
     base: racine(req),
   });
 };
@@ -204,11 +207,29 @@ checklistItemRoutes.put("/:id", (req, res) => {
 
   checklistItems.update.run(text, done, dueDate, existing.id);
 
+  // Qui arrive sur l'élément en est prévenu, à l'écran et par e-mail ; la
+  // notification de modification de la checklist ne le prévient pas en plus.
+  let rattaches: Id[] = [];
   if (Array.isArray(req.body.member_ids)) {
+    const avant = new Set(idsMembresElement(existing.id));
     replaceChecklistItemMembers(existing.id, toIds(req.body.member_ids));
+    const carte = taskCards.byId.get(checklist.card_id);
+    if (carte) {
+      rattaches = notifierRattachement({
+        kind: "card",
+        targetId: carte.id,
+        titre: carte.text,
+        message: text
+          ? `vous a ajouté à l'élément « ${text} » d'une checklist`
+          : "vous a ajouté à un élément d'une checklist",
+        destinataires: idsMembresElement(existing.id).filter((id) => !avant.has(id)),
+        auteur: req.user,
+        base: racine(req),
+      });
+    }
   }
 
-  carteModifiee(checklist.card_id, req);
+  carteModifiee(checklist.card_id, req, rattaches);
 
   // La réponse renvoie la checklist entière, pour que le tiroir se remette à
   // jour d'un bloc.

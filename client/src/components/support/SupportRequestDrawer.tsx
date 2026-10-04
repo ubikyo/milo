@@ -13,7 +13,7 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { DateTimePicker } from "@mantine/dates";
+import CardEcheance, { ECHEANCE_VIDE } from "../board/CardEcheance";
 import {
   IconCheck,
   IconChevronDown,
@@ -78,6 +78,10 @@ const TABS = [
 // fiche au-dessus prend de la place : on y lit toujours au moins un message.
 const MESSAGES_MIN_HEIGHT = 200;
 
+// Le statut et l'échéance, sur la ligne sous l'objet.
+const LARGEUR_STATUT = 120;
+const LARGEUR_ECHEANCE = 320;
+
 const DRAWER_PADDING = 40;
 
 /** Une réponse de l'équipe : ni un e-mail reçu, ni un mot de Milo. */
@@ -98,10 +102,10 @@ const evenementDuFil = (echanges: MessageSupport[]): SupportContentEvent =>
 // Bien plus large que les autres tiroirs (560) : une demande tient ses
 // acteurs, ses étiquettes et ses échanges côte à côte, et son fil se lit sans
 // que chaque commentaire retombe à la ligne.
-const DRAWER_WIDTH = 920;
+const DRAWER_WIDTH = 820;
 
-// À la création, 100 px de plus que pour une demande ouverte.
-const DRAWER_WIDTH_CREATION = DRAWER_WIDTH + 100;
+// À la création, 200 px de plus que pour une demande ouverte.
+const DRAWER_WIDTH_CREATION = DRAWER_WIDTH + 200;
 
 // La colonne des acteurs, dans l'onglet « Ticket » : de quoi tenir quelques
 // bulles et le « + », sans prendre la place des étiquettes.
@@ -112,8 +116,8 @@ const ACTEURS_WIDTH = 140;
 const CHIP_HEIGHT = 30;
 
 /**
- * La fiche d'une demande de support. Elle s'ouvre au clic sur une ligne, ou
- * vide depuis « Nouvelle demande de support », et se referme en enregistrant.
+ * La fiche d'un ticket. Elle s'ouvre au clic sur une ligne, ou
+ * vide depuis « Nouveau ticket », et se referme en enregistrant.
  *
  * Ses acteurs et ses étiquettes se posent comme les membres et les étiquettes
  * d'une carte : on en choisit autant qu'il faut, dans la même liste à cocher.
@@ -133,7 +137,7 @@ interface SupportRequestDrawerProps {
   contexts: Context[];
   /** Le tableau ouvert : une demande saisie sans contexte y prend le premier. */
   boardId: Id | null;
-  /** À la création : le widget « Demandes de support » d'où on la saisit. */
+  /** À la création : le widget « Tickets » d'où on la saisit. */
   listKey?: string;
   /** Le statut de l'onglet ouvert : celui que prend une demande créée là. */
   defaultStatus: SupportStatus;
@@ -371,7 +375,9 @@ export default function SupportRequestDrawer({
         }
       }
       await onSaved();
-      onClose();
+      // « Mettre à jour » laisse la demande ouverte ; une création, elle,
+      // referme le tiroir.
+      if (!request) onClose();
     } catch (e) {
       notifierErreur(messageErreur(e));
     } finally {
@@ -632,11 +638,15 @@ export default function SupportRequestDrawer({
                       )}
                     </Group>
 
-                    {/* L'objet, le contexte, le statut et l'échéance, côte à côte.
-                      L'objet porte du texte : il prend deux parts de la largeur,
-                      les trois réglages courts une chacun. */}
+                    {/* L'objet et le contexte, côte à côte. L'objet finit au droit
+                      de l'échéance, dessous ; le contexte prend le reste. */}
                     <Group align="flex-start" gap="md" wrap="nowrap">
-                      <div style={{ flex: "2 1 0", minWidth: 0 }}>
+                      <div
+                        style={{
+                          width: `calc(${LARGEUR_STATUT + LARGEUR_ECHEANCE}px + var(--mantine-spacing-md))`,
+                          flexShrink: 0,
+                        }}
+                      >
                         {/* Celui de l'e-mail pour une demande reçue, et qui reste
                           retouchable. */}
                         <TextInput
@@ -667,7 +677,11 @@ export default function SupportRequestDrawer({
                           />
                         </div>
                       )}
-                      <div style={{ flex: "1 1 0", minWidth: 0 }}>
+                    </Group>
+
+                    {/* Le statut et l'échéance, à la ligne. */}
+                    <Group align="flex-start" gap="md" wrap="nowrap">
+                      <div style={{ width: LARGEUR_STATUT, flexShrink: 0 }}>
                         {/* Le statut est ce que disent les onglets : le changer ici
                           fait passer la demande de l'un à l'autre. */}
                         <Select
@@ -683,26 +697,33 @@ export default function SupportRequestDrawer({
                           allowDeselect={false}
                         />
                       </div>
-                      <div style={{ flex: "1 1 0", minWidth: 0 }}>
-                        <DateTimePicker
-                          label="Échéance"
-                          placeholder="Aucune"
-                          value={echeance || null}
-                          // Choisir un jour ne suffit pas : il reste l'heure à régler.
-                          // C'est la fermeture du calendrier qui rend la main.
-                          onChange={(valeur) => {
-                            const date = valeur ? new Date(valeur) : null;
-                            setEcheance(
-                              date && !Number.isNaN(date.getTime())
-                                ? date.toISOString()
-                                : "",
-                            );
-                          }}
-                          withSeconds={false}
-                          clearable
-                          popoverProps={{ withinPortal: true }}
+                      {/* Comme celle d'une tâche : la date, l'heure et l'état. */}
+                      <div style={{ width: LARGEUR_ECHEANCE, flexShrink: 0 }}>
+                        <CardEcheance
+                          simple
+                          value={{ ...ECHEANCE_VIDE, fin: echeance }}
+                          onChange={(v) => setEcheance(v.fin)}
+                          onRemove={() => setEcheance("")}
                         />
                       </div>
+                      {/* Une demande ouverte s'enregistre ici, calé à droite de
+                        la ligne, plutôt qu'au pied du tiroir : les échanges, dessous,
+                        ont leur propre envoi. La création garde « Sauvegarder »
+                        en bas. */}
+                      {request && !lectureSeule && (
+                        <Button
+                          color="teal"
+                          onClick={sauvegarder}
+                          loading={enregistrement}
+                          style={{
+                            alignSelf: "flex-end",
+                            flexShrink: 0,
+                            marginLeft: "auto",
+                          }}
+                        >
+                          Mettre à jour
+                        </Button>
+                      )}
                     </Group>
                   </Stack>
                 </fieldset>
@@ -842,7 +863,7 @@ export default function SupportRequestDrawer({
         </Tabs>
 
         <DrawerFooter
-          onSave={lectureSeule ? undefined : sauvegarder}
+          onSave={lectureSeule || request ? undefined : sauvegarder}
           onClose={onClose}
           onDelete={
             peutSupprimer ? () => setConfirmDeleteOpened(true) : undefined

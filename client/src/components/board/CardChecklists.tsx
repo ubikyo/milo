@@ -2,8 +2,8 @@ import {
   Checkbox,
   Group,
   Input,
+  Box,
   Menu,
-  Paper,
   Popover,
   Progress,
   Stack,
@@ -14,20 +14,20 @@ import {
 import { DatePicker } from "@mantine/dates";
 import {
   IconCalendar,
-  IconPlus,
   IconTrash,
   IconUserPlus,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
-import { ADD_ACTION, FIELD_ICON, RED } from "../../themes/colors";
-import { PLUS_GAP, PLUS_SIZE } from "../../themes/plus";
+import { FIELD_ICON, RED } from "../../themes/colors";
 import { ACTOR_GAP, PersonAvatar } from "../ui/ActorAvatars";
 import ActorPicker from "../ui/ActorPicker";
+import AddButton from "../ui/AddButton";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import PointMenu, { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
 import { DragHandle, InsertLine, usePileGlissante } from "../ui/PileGlissante";
+import { ARRONDI, FOND_LIGNE, RETRAIT_LIGNE, RETRAIT_NOM, styleLigne } from "../ui/LignesDuTiroir";
 import { messageErreur } from "../../lib/errors";
 import type {
   CSSProperties,
@@ -46,13 +46,17 @@ import type {
 // carte, la ligne est déjà bien remplie.
 const ITEM_AVATAR_SIZE = 22;
 
-// La date porte une bulle verte à la hauteur des pastilles de personnes : les
-// deux se suivent sur la ligne, elles doivent s'aligner. Le vert est celui de
-// la progression d'une checklist et de la pastille d'une carte terminée.
-const DATE_BUBBLE = {
-  height: ITEM_AVATAR_SIZE,
-  borderRadius: ITEM_AVATAR_SIZE / 2,
+// La date se pose comme une étiquette de carte (CardLabel) : un rectangle à
+// peine arrondi, le texte gras et serré. Le vert est celui de la progression
+// d'une checklist et de la pastille d'une carte terminée.
+const DATE_TAG = {
+  height: 20,
+  borderRadius: 4,
   padding: "0 8px",
+  fontSize: 11,
+  fontWeight: 600,
+  lineHeight: 1,
+  whiteSpace: "nowrap" as const,
   backgroundColor: "var(--mantine-color-teal-filled)",
   color: "var(--mantine-color-white)",
 };
@@ -62,21 +66,40 @@ const DATE_BUBBLE = {
 const PROGRESS_HEIGHT = 6;
 const PROGRESS_WIDTH = 90;
 
-// Écart entre deux éléments d'une checklist, et entre deux checklists.
-const ITEM_GAP = 2;
+// Écart entre deux lignes d'une checklist — le fond du tiroir s'y montre,
+// comme entre les catégories et les étiquettes du tiroir d'un widget —, et
+// entre deux checklists.
+const ITEM_GAP = 1;
 const CHECKLIST_GAP = 16;
 
 // Hauteur des saisies posées sur une ligne déjà écrite — le titre d'une
-// checklist, le libellé d'un élément. C'est celle des boutons qui les
-// accompagnent (ActionIcon « sm ») : la ligne garde donc la même hauteur,
-// qu'on lise ou qu'on modifie.
-const INLINE_HEIGHT = 26;
+// checklist, le libellé d'un élément. C'est celle des noms des catégories et
+// des étiquettes du tiroir d'un widget (« xs ») : les lignes ont la même
+// hauteur d'un tiroir à l'autre, et la même qu'on lise ou qu'on modifie.
+const INLINE_HEIGHT = 30;
+
+// La hauteur d'une ligne : la saisie, et l'air que la ligne garde au-dessus
+// et au-dessous d'elle.
+const LIGNE_HEIGHT = INLINE_HEIGHT + 2 * RETRAIT_LIGNE;
+
+// Une ligne de checklist : celle du tiroir d'un widget, mais avec autant d'air
+// à droite qu'à gauche — elle finit sur une date ou un pourcentage, pas sur
+// un champ calé au bord.
+const styleLigneChecklist = (rang: number, total: number, tenue: boolean): CSSProperties => ({
+  ...styleLigne(rang, total, tenue),
+  paddingRight: RETRAIT_NOM,
+});
+
+// L'entête d'une checklist se détache de ses éléments : un gris neutre plus
+// foncé sur le clair ; sur le sombre, un cran plus loin du fond du tiroir.
+const FOND_ENTETE = "light-dark(#dcdcdc, var(--mantine-color-dark-5))";
 
 // Ces saisies ne portent aucun cadre, pas même le bleu que Mantine pose au
 // focus : on ne fait que continuer à lire la même ligne, elle ne doit pas
 // s'encadrer au clic. C'est le parti pris des cartes et des listes du tableau.
 const inlineInput = (extra?: CSSProperties) => ({
   input: {
+    borderRadius: `var(--mantine-radius-${ARRONDI})`,
     "--input-bd": "transparent",
     "--input-bd-focus": "transparent",
     height: INLINE_HEIGHT,
@@ -101,8 +124,8 @@ const avancement = (items: Element[]): number => {
 };
 
 // La date d'échéance d'un élément : une pastille qui ouvre un calendrier.
-// Sans date, il ne reste que l'icône, discrète ; avec, le jour s'encadre d'une
-// bulle verte, qu'on repère sans lire.
+// Sans date, il ne reste que l'icône, discrète ; avec, le jour prend la place
+// de l'icône dans une étiquette verte, qu'on repère sans lire.
 interface ItemDateProps {
   value: string;
   onChange: (value: string) => void;
@@ -132,12 +155,11 @@ function ItemDate({ value, onChange }: ItemDateProps) {
             alignItems: "center",
             gap: 4,
             flexShrink: 0,
-            ...(texte ? DATE_BUBBLE : null),
+            ...(texte ? DATE_TAG : null),
           }}
           aria-label="Date de l'élément"
         >
-          <IconCalendar size={16} />
-          {texte && <Text size="xs">{texte}</Text>}
+          {texte ?? <IconCalendar size={16} />}
         </UnstyledButton>
       </Popover.Target>
       <Popover.Dropdown p="xs">
@@ -214,7 +236,10 @@ function ItemMembers({ members, users, onChange }: ItemMembersProps) {
 interface ChecklistItemProps {
   item: Element;
   users: PublicUser[];
-  dragged: boolean;
+  /** Le style de la ligne dans la pile : son fond, ses bouts arrondis. */
+  ligne: CSSProperties;
+  /** Les acteurs retirés de la carte, pas encore sauvegardés : ils ne se montrent plus. */
+  masques: string[];
   /**
    * Vrai pour l'élément qu'on vient d'ajouter : il s'ouvre en saisie, le
    * curseur dedans.
@@ -232,7 +257,8 @@ interface ChecklistItemProps {
 function ChecklistItem({
   item,
   users,
-  dragged,
+  ligne,
+  masques,
   // Vrai pour l'élément qu'on vient d'ajouter : il s'ouvre en saisie, le
   // curseur dedans. Sans cela, ajouter une ligne donnerait un « Sans
   // libellé » qu'il faudrait encore cliquer pour l'écrire.
@@ -246,7 +272,6 @@ function ChecklistItem({
   onContextMenu,
 }: ChecklistItemProps) {
   const [edite, setEdite] = useState<string | null>(autoEdit ? item.text : null);
-  const [survole, setSurvole] = useState(false);
 
   useEffect(() => {
     if (autoEdit) setEdite(item.text);
@@ -271,18 +296,12 @@ function ChecklistItem({
       wrap="nowrap"
       align="center"
       data-checklist-item={item.id}
-      onMouseEnter={() => setSurvole(true)}
-      onMouseLeave={() => setSurvole(false)}
       onContextMenu={(e) => !dansUneSaisie(e) && onContextMenu(positionDuMenu(e))}
-      style={{ opacity: dragged ? 0.4 : 1, minHeight: 28 }}
+      style={{ ...ligne, minHeight: LIGNE_HEIGHT }}
     >
       {/* Seule la poignée déplace la ligne : tout le reste répond déjà au
           clic, une ligne glissable de bout en bout les gênerait. */}
-      <DragHandle
-        onPointerDown={onPointerDown}
-        visible={survole}
-        label="Glisser pour réordonner"
-      />
+      <DragHandle onPointerDown={onPointerDown} label="Glisser pour réordonner" />
 
       <Checkbox
         checked={Boolean(item.done)}
@@ -324,7 +343,11 @@ function ChecklistItem({
         />
       )}
 
-      <ItemMembers members={item.members} users={users} onChange={onMembers} />
+      <ItemMembers
+        members={(item.members || []).filter((m) => !masques.includes(String(m.id)))}
+        users={users}
+        onChange={onMembers}
+      />
       <ItemDate value={item.due_date} onChange={onDate} />
     </Group>
   );
@@ -340,6 +363,8 @@ interface ChecklistProps {
   onError?: (message: string) => void;
   dragged: boolean;
   onHandlePointerDown: (event: ReactPointerEvent) => void;
+  onMembers?: (ids: number[]) => void;
+  masques: string[];
 }
 
 function Checklist({
@@ -349,12 +374,13 @@ function Checklist({
   onError,
   dragged,
   onHandlePointerDown,
+  onMembers,
+  masques,
 }: ChecklistProps) {
   /** Le titre en cours de saisie ; « null » tant qu'on ne le modifie pas. */
   const [titre, setTitre] = useState<string | null>(null);
   const [aSupprimer, setASupprimer] = useState<ChecklistType | null>(null);
   const [itemASupprimer, setItemASupprimer] = useState<Element | null>(null);
-  const [survole, setSurvole] = useState(false);
   // L'élément qu'on vient d'ajouter : il s'ouvre en saisie.
   const [nouvelItem, setNouvelItem] = useState<Id | null>(null);
   // Le menu contextuel ouvert : celui de l'entête (sans élément) ou d'un
@@ -364,6 +390,8 @@ function Checklist({
   );
 
   const items = checklist.items || [];
+  // L'entête ouvre la pile, les éléments la suivent.
+  const lignes = items.length + 1;
   const pourcentage = avancement(items);
 
   // Tout ce qui part au serveur passe par ici : une panne se dit à l'écran,
@@ -423,18 +451,11 @@ function Checklist({
   };
 
   return (
-    <Paper
-      radius="md"
-      p="sm"
-      data-checklist={checklist.id}
-      onMouseEnter={() => setSurvole(true)}
-      onMouseLeave={() => setSurvole(false)}
-      // Le fond des champs de la fiche, sans leur bordure : la checklist se lit
-      // comme l'un d'eux.
-      bg="var(--mantine-color-default)"
-      style={{ opacity: dragged ? 0.4 : 1 }}
-    >
-      <Stack gap="xs">
+    // Une pile de lignes sur le fond gris du tiroir, comme les catégories et
+    // les étiquettes dans les réglages d'un widget : l'entête en tête, les
+    // éléments dessous, « Ajouter » au bout.
+    <Box data-checklist={checklist.id} style={{ opacity: dragged ? 0.4 : 1 }}>
+      <Stack gap={ITEM_GAP} ref={zoneRef}>
         {/* Entête : la poignée, le titre, la progression. */}
         <Group
           gap="xs"
@@ -443,12 +464,12 @@ function Checklist({
           onContextMenu={(e) =>
             !dansUneSaisie(e) && setMenu({ item: null, position: positionDuMenu(e) })
           }
+          style={{ ...styleLigneChecklist(0, lignes, false), backgroundColor: FOND_ENTETE }}
         >
           {/* La poignée ouvre l'entête : c'est par elle qu'on range les
               checklists entre elles. */}
           <DragHandle
             onPointerDown={onHandlePointerDown}
-            visible={survole}
             label="Glisser pour réordonner la checklist"
           />
           {titre === null ? (
@@ -499,6 +520,8 @@ function Checklist({
               size={PROGRESS_HEIGHT}
               radius="xl"
               w={PROGRESS_WIDTH}
+              // Le fond de la barre est celui des éléments de la checklist.
+              styles={{ root: { backgroundColor: FOND_LIGNE } }}
             />
             <Text size="xs" c="dimmed" w={34} ta="right">
               {pourcentage}%
@@ -506,36 +529,33 @@ function Checklist({
           </Group>
         </Group>
 
-        <Stack gap={ITEM_GAP} ref={zoneRef}>
-          {items.map((item, index) => (
-            <div key={item.id}>
-              {drag?.target === index && <InsertLine gap={ITEM_GAP} />}
-              <ChecklistItem
-                item={item}
-                users={users}
-                dragged={drag?.id === item.id}
-                autoEdit={nouvelItem === item.id}
-                onEditDone={() => setNouvelItem(null)}
-                onPointerDown={onPointerDown(item.id, index)}
-                onToggle={(done) => modifierItem(item, { done })}
-                onRename={(text) => modifierItem(item, { text })}
-                onDate={(due_date) => modifierItem(item, { due_date })}
-                onMembers={(member_ids) => modifierItem(item, { member_ids })}
-                onContextMenu={(position) => setMenu({ item, position })}
-              />
-            </div>
-          ))}
-          {drag && drag.target >= items.length && <InsertLine gap={ITEM_GAP} />}
-
-          {/* Le vert des actions « ajouter », comme au bout d'une liste. */}
-          <UnstyledButton onClick={ajouterItem} mt={4}>
-            <Group gap={PLUS_GAP} wrap="nowrap" c={ADD_ACTION.color}>
-              <IconPlus size={PLUS_SIZE} />
-              <Text size="sm">Ajouter un élément</Text>
-            </Group>
-          </UnstyledButton>
-        </Stack>
+        {items.map((item, index) => (
+          <div key={item.id}>
+            {drag?.target === index && <InsertLine gap={ITEM_GAP} />}
+            <ChecklistItem
+              item={item}
+              users={users}
+              ligne={styleLigneChecklist(index + 1, lignes, drag?.id === item.id)}
+              masques={masques}
+              autoEdit={nouvelItem === item.id}
+              onEditDone={() => setNouvelItem(null)}
+              onPointerDown={onPointerDown(item.id, index)}
+              onToggle={(done) => modifierItem(item, { done })}
+              onRename={(text) => modifierItem(item, { text })}
+              onDate={(due_date) => modifierItem(item, { due_date })}
+              onMembers={(member_ids) => {
+                onMembers?.(member_ids);
+                return modifierItem(item, { member_ids });
+              }}
+              onContextMenu={(position) => setMenu({ item, position })}
+            />
+          </div>
+        ))}
+        {drag && drag.target >= items.length && <InsertLine gap={ITEM_GAP} />}
       </Stack>
+
+      {/* Au plus près de la pile qu'il allonge. */}
+      <AddButton label="Ajouter un élément" onClick={ajouterItem} mt={4} />
 
       {menu && (
         <PointMenu position={menu.position} onClose={() => setMenu(null)}>
@@ -589,7 +609,7 @@ function Checklist({
           </>
         }
       />
-    </Paper>
+    </Box>
   );
 }
 
@@ -605,6 +625,18 @@ interface CardChecklistsProps {
   users: PublicUser[];
   onChanged: () => void | Promise<void>;
   onError?: (message: string) => void;
+  /**
+   * Les personnes posées sur un élément : la fiche ajoute à ses acteurs
+   * celles qui n'y sont pas encore — on ne confie pas une part d'une tâche à
+   * qui n'y prend pas part.
+   */
+  onMembers?: (ids: number[]) => void;
+  /**
+   * Les acteurs qu'on vient de retirer de la carte. Le serveur les retire des
+   * éléments à « Sauvegarder » ; d'ici là, les éléments ne les montrent déjà
+   * plus.
+   */
+  masques?: string[];
 }
 
 export default function CardChecklists({
@@ -613,6 +645,8 @@ export default function CardChecklists({
   users,
   onChanged,
   onError,
+  onMembers,
+  masques = [],
 }: CardChecklistsProps) {
   const listes = checklists || [];
 
@@ -640,7 +674,9 @@ export default function CardChecklists({
       <Stack gap={CHECKLIST_GAP} ref={zoneRef}>
         {listes.map((checklist, index) => (
           <div key={checklist.id}>
-            {drag?.target === index && <InsertLine gap={CHECKLIST_GAP} />}
+            {drag?.target === index && (
+              <InsertLine gap={CHECKLIST_GAP} auBord={index === 0} />
+            )}
             <Checklist
               checklist={checklist}
               users={users}
@@ -648,6 +684,8 @@ export default function CardChecklists({
               onError={onError}
               dragged={drag?.id === checklist.id}
               onHandlePointerDown={onPointerDown(checklist.id, index)}
+              onMembers={onMembers}
+              masques={masques}
             />
           </div>
         ))}

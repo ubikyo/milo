@@ -20,7 +20,7 @@ export const RESOURCES = [
   "task-lists",
   "labels",
   "project-labels",
-  /** Les demandes de support, et les étiquettes qu'elles portent. */
+  /** Les tickets, et les étiquettes qu'elles portent. */
   "support-requests",
   "support-labels",
   /** Les postes : ce que les agents d'inventaire remontent. */

@@ -534,7 +534,7 @@ export default function ContextesMenu({
         message={
           <>
             Voulez-vous vraiment supprimer « {aSupprimer?.name} » ? Ses projets, ses tâches, ses
-            demandes de support et ses assets seront supprimés. Cette action est irréversible.
+            tickets et ses assets seront supprimés. Cette action est irréversible.
           </>
         }
       />

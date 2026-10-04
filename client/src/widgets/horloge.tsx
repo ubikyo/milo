@@ -264,6 +264,9 @@ export const horlogeWidget: AccessWidget = {
 
   marges: () => ({ haute: 0, basse: MARGE_BASSE }),
 
+  // Il dessine lui-même son cadre, réglé dans le bloc « Apparence » du tiroir.
+  cadrePropre: true,
+
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
       {/* Changer de mode ramène la taille à celle du mode : 18 px de texte ne
@@ -346,14 +349,4 @@ export const horlogeWidget: AccessWidget = {
     </Stack>
   ),
 
-  // Encadrée, l'horloge prend un fond et se détache de la colonne. Posé
-  // après les marges, en dernier du tiroir.
-  ConfigFin: ({ config, onChange }) => (
-    <Checkbox
-      label="Encadrer"
-      checked={estEncadre(config)}
-      onChange={(e) => onChange(avec(config, ENCADRE, e.currentTarget.checked))}
-      color="teal"
-    />
-  ),
 };

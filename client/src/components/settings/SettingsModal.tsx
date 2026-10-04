@@ -9,6 +9,7 @@ import {
   Title,
 } from "@mantine/core";
 import {
+  IconBell,
   IconCode,
   IconDatabaseExport,
   IconDeviceLaptop,
@@ -21,11 +22,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { EntraSettings, PublicUser, Workspace } from "@milo/shared";
 import { api } from "../../api";
 import { messageErreur, notifierErreur } from "../../lib/errors";
-import { modalHeaderStyles } from "../../themes/modals";
+import {
+  HAUTEUR_MAX_PARAMETRAGE,
+  HAUTEUR_PARAMETRAGE,
+  LARGEUR_PARAMETRAGE,
+  PADDING_PARAMETRAGE,
+  modalHeaderStyles,
+} from "../../themes/modals";
 import { tabStyle } from "../../themes/tabs";
 import BackupTab from "./BackupTab";
 import EntraTab from "./EntraTab";
 import DeveloperTab from "./DeveloperTab";
+import NotificationsTab from "./NotificationsTab";
 import SupportTab from "./SupportTab";
 import AssetsTab from "./AssetsTab";
 import WorkspacesTab from "./WorkspacesTab";
@@ -42,6 +50,7 @@ const TABS: {
   // Le Paramétrage et la gestion des workspaces : pour toute l'application.
   { value: "administration", label: "Administration", icon: IconShieldLock },
   { value: "entra", label: "Entra", icon: IconBrandWindows },
+  { value: "notifications", label: "Notifications", icon: IconBell },
   { value: "developer", label: "Développeur", icon: IconCode },
   // Les réglages propres à un mode : le Support, les Assets.
   { value: "support", label: "Support", icon: IconHeadset },
@@ -257,14 +266,16 @@ export default function SettingsModal({
       closeOnEscape={!standalone}
       closeOnClickOutside={!standalone}
       title="Paramétrage"
-      size={950}
-      padding={40}
+      // Au milieu de l'écran, comme les autres fenêtres.
+      centered
+      size={LARGEUR_PARAMETRAGE}
+      padding={PADDING_PARAMETRAGE}
       withCloseButton={false}
       styles={{
         ...MODAL_HEADER,
         content: {
-          height: 725,
-          maxHeight: "90vh",
+          height: HAUTEUR_PARAMETRAGE,
+          maxHeight: HAUTEUR_MAX_PARAMETRAGE,
           display: "flex",
           flexDirection: "column",
           // Repère pour la barre de défilement déportée (voir ListItems)
@@ -337,6 +348,8 @@ export default function SettingsModal({
         )}
 
         {panel("backup", <BackupTab />)}
+
+        {panel("notifications", <NotificationsTab canEdit={canEdit} />)}
 
         {panel(
           "developer",

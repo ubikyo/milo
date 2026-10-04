@@ -18,6 +18,7 @@ import { assetRoutes, inventoryRoutes } from "./routes/assets.js";
 import {
   attachmentRoutes,
   cardMediaRoutes,
+  coverRoutes,
   mediaRoutes,
   ticketFileRoutes,
 } from "./routes/attachments.js";
@@ -43,6 +44,7 @@ import { assetSettingsRoutes } from "./routes/asset-settings.js";
 import { milestoneTypeRoutes } from "./routes/milestone-types.js";
 import { followRoutes } from "./routes/follows.js";
 import { labelRoutes, projectLabelRoutes } from "./routes/labels.js";
+import { cardLinkRoutes, linkRoutes } from "./routes/links.js";
 import { entraRoutes } from "./routes/entra.js";
 import { administrationRoutes, assignmentRoutes } from "./routes/assignments.js";
 import { workspaceRoutes } from "./routes/workspaces.js";
@@ -57,6 +59,7 @@ import { taskCardRoutes, cardCommentRoutes } from "./routes/task-cards.js";
 import { taskListRoutes } from "./routes/task-lists.js";
 import { userRoutes } from "./routes/users.js";
 import { developerRoutes } from "./routes/developer.js";
+import { notificationSettingsRoutes } from "./routes/notification-settings.js";
 import { supportMailRoutes } from "./routes/support-mail.js";
 import { optinRoutes } from "./routes/optins.js";
 
@@ -147,12 +150,15 @@ export const createApp = (): express.Express => {
 
   app.use("/api/task-lists", taskListRoutes);
   app.use("/api/task-cards/:id/checklists", cardChecklistRoutes);
+  app.use("/api/task-cards/:id/links", cardLinkRoutes);
   app.use("/api/task-cards/:id", cardMediaRoutes);
   app.use("/api/attachments", attachmentRoutes);
+  app.use("/api/covers", coverRoutes);
   app.use("/api/task-cards", taskCardRoutes);
   app.use("/api/card-comments", cardCommentRoutes);
   app.use("/api/checklists", checklistRoutes);
   app.use("/api/checklist-items", checklistItemRoutes);
+  app.use("/api/card-links", linkRoutes);
   app.use("/api/labels", labelRoutes);
 
   app.use("/api/assets", assetRoutes);
@@ -173,6 +179,7 @@ export const createApp = (): express.Express => {
   // Lus par tous — ils règlent l'interface de chacun —, écrits depuis le
   // Paramétrage seulement.
   app.use("/api/developer", requireSettingsToWrite, developerRoutes);
+  app.use("/api/notification-settings", requireSettingsToWrite, notificationSettingsRoutes);
 
   app.use("/api", notFoundHandler);
   app.use(errorHandler);

@@ -84,17 +84,3 @@ export const sansHeure = (due: string | null | undefined): boolean => {
   const date = dayjs(due ?? "");
   return date.isValid() && date.hour() === 0 && date.minute() === 0 && date.second() === 0;
 };
-
-/**
- * Entier, pour la fiche : « 5 octobre 2026 à 17:00 », ou « 5 octobre 2026 »
- * seul quand l'échéance n'a pas d'heure.
- */
-export const dateLongue = (due: string | null | undefined): string =>
-  formate(due, sansHeure(due) ? "D MMMM YYYY" : "D MMMM YYYY [à] HH:mm");
-
-/**
- * Ce que montre le champ du calendrier, qui reçoit « YYYY-MM-DD HH:mm:ss » :
- * « 05/10/2026 17:00 », ou la date seule quand l'heure est restée vide.
- */
-export const formatChampEcheance = (valeur: string): string =>
-  dayjs(valeur).format(sansHeure(valeur) ? "DD/MM/YYYY" : "DD/MM/YYYY HH:mm");

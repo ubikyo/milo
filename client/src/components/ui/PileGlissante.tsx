@@ -27,8 +27,10 @@ const DRAG_THRESHOLD = 4;
 
 // Le trait d'insertion pendant un glisser : posé entre deux voisins, il ne
 // prend aucune hauteur dans la pile — rien ne bouge, et les mesures prises au
-// départ restent justes.
-export function InsertLine({ gap = 0 }: { gap?: number }) {
+// départ restent justes. En tête de pile (« auBord »), il n'a pas de voisin
+// au-dessus : il se pose sur le bord haut du premier, sans déborder sur ce qui
+// précède la pile — l'intitulé d'un champ.
+export function InsertLine({ gap = 0, auBord = false }: { gap?: number; auBord?: boolean }) {
   return (
     <div style={{ position: "relative", height: 0 }}>
       <div
@@ -36,7 +38,7 @@ export function InsertLine({ gap = 0 }: { gap?: number }) {
           position: "absolute",
           left: 0,
           right: 0,
-          top: -gap / 2 - 1,
+          top: auBord ? 0 : -gap / 2 - 1,
           borderTop: "2px solid var(--mantine-color-teal-5)",
         }}
       />

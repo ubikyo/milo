@@ -15,9 +15,23 @@
 
 import type { WidgetKind } from "./genres";
 import type { ComponentType } from "react";
+import type { LigneReglage } from "../components/ui/LignesReglages";
 import type { AccessBlockType, Id } from "@milo/shared";
 
 /** Ce que le tiroir passe aux champs d'un widget. */
+/**
+ * La clé du cadre, la même pour tous les widgets : tous peuvent s'encadrer,
+ * le registre (board-widgets) s'en chargeant pour ceux qui ne le font pas
+ * eux-mêmes (cadrePropre).
+ */
+export const ENCADRE = "encadre";
+
+/** Vrai quand le widget est encadré ; sans réglage, « defaut » vaut. */
+export const estEncadre = (config: unknown, defaut = false): boolean => {
+  const valeur = (config as Record<string, unknown> | null)?.[ENCADRE];
+  return typeof valeur === "boolean" ? valeur : defaut;
+};
+
 export interface WidgetConfigProps {
   config: unknown;
   onChange: (config: Record<string, unknown>) => void;
@@ -65,6 +79,19 @@ export interface AccessWidget {
   Display: ComponentType<WidgetDisplayProps>;
   /** Les champs de son tiroir. Le tiroir lui-même est commun à tous. */
   Config: ComponentType<WidgetConfigProps>;
+  /**
+   * Ses lignes d'apparence — la couleur et la taille d'un titre, la couleur
+   * d'un lien. Le tiroir les pose dans le bloc « Apparence », avant les
+   * marges communes à tous.
+   */
+  apparence?: (config: unknown, onChange: WidgetConfigProps["onChange"]) => LigneReglage[];
+  /**
+   * Vrai quand le widget dessine lui-même son cadre (ENCADRE) — l'air autour
+   * de l'heure d'une horloge, par exemple. Sinon, le registre l'encadre.
+   */
+  cadrePropre?: boolean;
+  /** Vrai quand il est encadré tant que rien n'est réglé — les attributs. */
+  cadreParDefaut?: boolean;
   /**
    * Les champs qu'il pose tout en bas du tiroir, après les marges communes à
    * tous — l'interrupteur d'un lien, qui se lit comme un dernier mot.

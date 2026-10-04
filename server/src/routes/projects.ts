@@ -10,7 +10,7 @@ import { exiger, peut } from "../lib/droits.js";
 import { descriptionPropre, memeDescription } from "../lib/html.js";
 import { cite, consigner, ecarts, liste, messageModification } from "../lib/historique.js";
 import type { Champ } from "../lib/historique.js";
-import { concernes, notifier, notifierSuppression, racine } from "../lib/notify.js";
+import { concernes, notifier, notifierRattachement, notifierSuppression, racine } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { categories } from "../repositories/project-boards.js";
@@ -62,15 +62,31 @@ const photo = (p: Project): Champ[] => [
 const projetCree = (req: Request, id: Id): void => {
   const cree = projects.joined.get(id);
   if (!cree) return;
+  // Ses acteurs y arrivent : chacun en est prévenu à l'écran et par e-mail,
+  // et la notification de création ne les prévient pas une seconde fois.
+  const rattaches = acteursRattaches(req, cree.id, cree.name, new Set());
   notifier({
     kind: "project",
     targetId: cree.id,
     titre: cree.name,
     message: "a créé le projet",
     auteur: req.user,
+    sauf: rattaches,
     base: racine(req),
   });
 };
+
+/** Prévient ceux qui viennent d'arriver parmi les acteurs du projet ; rend les prévenus. */
+const acteursRattaches = (req: Request, id: Id, nom: string, avant: Set<Id>): Id[] =>
+  notifierRattachement({
+    kind: "project",
+    targetId: id,
+    titre: nom,
+    message: "vous a ajouté comme acteur",
+    destinataires: acteursDe(id).filter((a) => !avant.has(a)),
+    auteur: req.user,
+    base: racine(req),
+  });
 
 /**
  * Un projet d'un tableau fermé aux autres est, pour eux, introuvable : ni dans
@@ -380,6 +396,7 @@ projectRoutes.put("/:id", (req, res) => {
 
   const propre = descriptionPropre(description);
   const avant = photo(oneWithRelations(projects.joined.get(existing.id)!));
+  const acteursAvant = new Set(acteursDe(existing.id));
 
   // La date de modification ne bouge que si quelque chose a bougé. Le tiroir
   // enregistre en se refermant : sans cette comparaison, ouvrir une fiche pour
@@ -424,6 +441,7 @@ projectRoutes.put("/:id", (req, res) => {
   // Ce qui a bougé se note dans le fil, signé Milo, et prévient ceux qui
   // suivent le projet ou en sont acteurs. Rien n'a bougé : rien ne part.
   const lignes = inchange ? [] : ecarts(avant, photo(suivant));
+  const rattaches = acteursRattaches(req, suivant.id, suivant.name, acteursAvant);
   if (lignes.length) {
     consigner("project", suivant.id, req.user, lignes);
     notifier({
@@ -432,6 +450,7 @@ projectRoutes.put("/:id", (req, res) => {
       titre: suivant.name,
       message: messageModification(lignes),
       auteur: req.user,
+      sauf: rattaches,
       base: racine(req),
     });
   }

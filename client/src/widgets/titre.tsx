@@ -1,6 +1,6 @@
-import { Group, Stack, TextInput, Title } from "@mantine/core";
+import { Stack, TextInput, Title } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
-import { ChampCouleur, ChampTaille } from "./champs-style";
+import { poser, type LigneReglage } from "../components/ui/LignesReglages";
 import { avec, nombre, texte } from "./types";
 import type { AccessWidget, WidgetDisplayProps } from "./types";
 import type { ComponentType } from "react";
@@ -46,6 +46,34 @@ interface TitreOptions {
    */
   margeHaute?: number | ((previousType: AccessBlockType) => number);
 }
+
+/** La ligne « Texte » du tiroir : la couleur et la taille du titre. */
+const ligneTexte = (
+  config: unknown,
+  onChange: (config: Record<string, unknown>) => void,
+  options: TitreOptions,
+): LigneReglage => {
+  const couleur = texte(config, COULEUR);
+  const taille = nombre(config, TAILLE, options.taille);
+  return {
+    nom: "Texte",
+    quoi: "du titre",
+    // La couleur du titre, ramenée à la sienne, n'est plus rangée.
+    couleur: {
+      valeur: couleur,
+      onChange: (v) => onChange(poser(config, { [COULEUR]: v === options.couleur ? "" : v })),
+    },
+    taille: {
+      valeur: taille,
+      defaut: options.taille,
+      min: TAILLE_MIN,
+      max: TAILLE_MAX,
+      onChange: (v) => onChange(poser(config, { [TAILLE]: v === options.taille ? "" : v })),
+    },
+    modifiee: (couleur !== "" && couleur !== options.couleur) || taille !== options.taille,
+    reinitialiser: () => onChange(poser(config, { [COULEUR]: "", [TAILLE]: "" })),
+  };
+};
 
 const affichage = (options: TitreOptions): ComponentType<WidgetDisplayProps> =>
   function TitreEditable({ config, onChange }: WidgetDisplayProps) {
@@ -171,6 +199,8 @@ export const creerTitreWidget = (options: TitreOptions): AccessWidget => ({
     basse: options.margeBasse,
   }),
 
+  apparence: (config, onChange) => [ligneTexte(config, onChange, options)],
+
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
       <TextInput
@@ -180,17 +210,6 @@ export const creerTitreWidget = (options: TitreOptions): AccessWidget => ({
         onChange={(e) => onChange(avec(config, TITRE, e.currentTarget.value))}
         autoFocus
       />
-      <Group align="flex-start">
-        <ChampCouleur config={config} onChange={onChange} cle={COULEUR} defaut={options.couleur} />
-        <ChampTaille
-          config={config}
-          onChange={onChange}
-          cle={TAILLE}
-          defaut={options.taille}
-          min={TAILLE_MIN}
-          max={TAILLE_MAX}
-        />
-      </Group>
     </Stack>
   ),
 });

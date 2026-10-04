@@ -6,7 +6,7 @@ import ListItems from "../components/ui/ListItems";
 import { DragHandle, InsertLine, usePileGlissante } from "../components/ui/PileGlissante";
 import { STRONG_TEXT } from "../themes/colors";
 import { COULEUR_SOUS_CATEGORIE, ECART_SOUS_CATEGORIE } from "./sous-categorie";
-import { texte } from "./types";
+import { estEncadre, texte } from "./types";
 import type { AccessWidget, WidgetConfigProps } from "./types";
 import type { AccessBlockType } from "@milo/shared";
 import type { KeyboardEvent } from "react";
@@ -222,10 +222,18 @@ export const numeroWidget: AccessWidget = {
   icon: IconHash,
   defaultConfig: { [LIGNES]: [] },
 
+  // Toujours encadrés jusqu'ici : ils le restent tant qu'on ne retire pas
+  // leur cadre, dans le bloc « Apparence » du tiroir.
+  cadrePropre: true,
+  cadreParDefaut: true,
+
   Display: ({ config }) => {
     const liste = lignes(config);
     return (
-      <div className={classes.encart} style={{ border: "none" }}>
+      <div
+        className={estEncadre(config, true) ? classes.encart : undefined}
+        style={{ border: "none" }}
+      >
         {liste.length === 0 ? (
           <Text size="sm" c={COULEUR_SOUS_CATEGORIE}>
             Attributs

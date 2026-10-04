@@ -3,13 +3,21 @@
 
 import { Router } from "express";
 import type { Request } from "express";
-import { isCardKind } from "@milo/shared";
+import {
+  RAPPELS,
+  RECURRENCES,
+  isCardKind,
+  isFormeEcheance,
+  isRappel,
+  isRecurrence,
+  isRotationCouverture,
+} from "@milo/shared";
 import type { Id, Right } from "@milo/shared";
 import { badRequest, forbidden, orNotFound, requireText, toIds } from "../lib/http.js";
 import { descriptionPropre } from "../lib/html.js";
 import { cite, consigner, date, ecarts, liste, messageModification } from "../lib/historique.js";
 import type { Champ } from "../lib/historique.js";
-import { concernes, notifier, notifierSuppression, racine } from "../lib/notify.js";
+import { concernes, notifier, notifierRattachement, notifierSuppression, racine } from "../lib/notify.js";
 import { echeance, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { boardOuvert, boards } from "../repositories/boards.js";
@@ -46,10 +54,43 @@ const photo = (id: Id): Champ[] => {
       valeur: cite(carte.context_id ? contexts.byId.get(carte.context_id)?.name : null),
     },
     { libelle: "Description", valeur: carte.description ?? "", opaque: true },
+    { libelle: "Début", valeur: carte.start_date ? date(carte.start_date) : "—" },
     { libelle: "Échéance", valeur: date(carte.due_date) },
+    { libelle: "Récurrence", valeur: libelleDe(RECURRENCES, carte.recurrence) },
+    { libelle: "Rappel", valeur: libelleDe(RAPPELS, carte.reminder) },
     { libelle: "Membres", valeur: liste(membersOf(id).map((m) => m.name)) },
     { libelle: "Étiquettes", valeur: liste(labelsOf(id).map((l) => l.name)) },
   ];
+};
+
+/** Le libellé d'une récurrence ou d'un rappel, pour le fil. */
+const libelleDe = (
+  options: readonly { value: string; label: string }[],
+  valeur: string,
+): string => options.find((o) => o.value === valeur)?.label ?? "—";
+
+/** Le début d'une période : « AAAA-MM-JJ », ou vide. Absent, il reste tel quel. */
+const debut = (valeur: unknown, actuel: string): string => {
+  if (valeur === undefined) return actuel;
+  const texte = String(valeur ?? "").trim();
+  if (!texte) return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(texte)) badRequest("Date de début invalide");
+  return texte;
+};
+
+/** Une valeur d'une liste fermée. Absente, elle reste telle quelle. */
+const choix = <T extends string>(valeur: unknown, actuelle: T, valide: (v: unknown) => v is T): T => {
+  if (valeur === undefined) return actuelle;
+  const texte: unknown = valeur ?? "";
+  if (valide(texte)) return texte;
+  return badRequest("Valeur inconnue");
+};
+
+/** Un nombre d'une liste fermée. Absent, il reste tel quel. */
+const choixNombre = (valeur: unknown, actuel: number, valide: (v: unknown) => v is number): number => {
+  if (valeur === undefined) return actuel;
+  if (valide(valeur)) return valeur;
+  return badRequest("Valeur inconnue");
 };
 
 export const taskCardRoutes = Router();
@@ -223,7 +264,7 @@ taskCardRoutes.put("/reorder", (req, res) => {
 });
 
 taskCardRoutes.get("/:id", (req, res) => {
-  res.json(cardDetail(carteOuverte(req.params.id, req)));
+  res.json(cardDetail(carteOuverte(req.params.id, req), req.user.id));
 });
 
 /**
@@ -247,6 +288,14 @@ taskCardRoutes.put("/:id", (req, res) => {
   const text = requireText(req.body.text ?? existing.text, "Le texte de la carte est requis");
   const description = descriptionPropre(req.body.description ?? existing.description ?? "");
   const dueDate = echeance(req.body.due_date, existing.due_date);
+  // Sans échéance, ni début, ni récurrence, ni rappel : ils n'ont rien à quoi
+  // se rapporter.
+  const forme = dueDate ? choix(req.body.due_form, existing.due_form, isFormeEcheance) : "date";
+  // Une date seule n'a pas de début.
+  const startDate =
+    dueDate && forme === "periode" ? debut(req.body.start_date, existing.start_date) : "";
+  const recurrence = dueDate ? choix(req.body.recurrence, existing.recurrence, isRecurrence) : "";
+  const reminder = dueDate ? choix(req.body.reminder, existing.reminder, isRappel) : "";
   // Un séparateur n'a pas de fiche, donc pas de fil où noter ce qui change.
   const avant = existing.kind === "separator" ? null : photo(existing.id);
 
@@ -255,8 +304,20 @@ taskCardRoutes.put("/:id", (req, res) => {
       ? existing.context_id
       : contexteDuTableau(boardOfCard(existing), req.body.context_id);
 
-  taskCards.update.run(text, description, dueDate, contexte, existing.id);
+  taskCards.update.run({
+    id: existing.id,
+    text,
+    description,
+    due_date: dueDate,
+    start_date: startDate,
+    due_form: forme,
+    recurrence,
+    reminder,
+    context_id: contexte,
+    cover_interval: choixNombre(req.body.cover_interval, existing.cover_interval, isRotationCouverture),
+  });
 
+  const membresAvant = new Set(membersOf(existing.id).map((m) => m.id));
   if (Array.isArray(req.body.member_ids)) {
     replaceCardMembers(existing.id, toIds(req.body.member_ids));
   }
@@ -270,6 +331,22 @@ taskCardRoutes.put("/:id", (req, res) => {
   // prévenus au même titre que ceux qui la suivent (lib/notify.ts). Une fiche
   // enregistrée sans changement ne note rien et ne prévient personne.
   const lignes = avant ? ecarts(avant, photo(suivante.id)) : [];
+  // Les nouveaux acteurs ont leur propre notification, à l'écran et par
+  // e-mail ; celle de la modification ne les prévient pas une seconde fois.
+  const rattaches =
+    existing.kind === "separator"
+      ? []
+      : notifierRattachement({
+          kind: "card",
+          targetId: suivante.id,
+          titre: suivante.text,
+          message: "vous a ajouté comme acteur",
+          destinataires: membersOf(suivante.id)
+            .map((m) => m.id)
+            .filter((id) => !membresAvant.has(id)),
+          auteur: req.user,
+          base: racine(req),
+        });
   if (lignes.length) {
     consigner("card", suivante.id, req.user, lignes);
     notifier({
@@ -278,11 +355,12 @@ taskCardRoutes.put("/:id", (req, res) => {
       titre: suivante.text,
       message: messageModification(lignes),
       auteur: req.user,
+      sauf: rattaches,
       base: racine(req),
     });
   }
 
-  res.json(cardDetail(suivante));
+  res.json(cardDetail(suivante, req.user.id));
 });
 
 // Suppression d'une carte ou d'un séparateur : ses membres, étiquettes,

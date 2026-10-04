@@ -1,38 +1,34 @@
-import {
-  ActionIcon,
-  Stack,
-  Text,
-  TextInput,
-  UnstyledButton,
-} from "@mantine/core";
-import {
-  IconCornerDownLeft,
-  IconDeviceLaptop,
-  IconNetwork,
-  IconPencil,
-  IconTrash,
-} from "@tabler/icons-react";
+import { Group, Input, Menu, ScrollArea, Stack, TextInput } from "@mantine/core";
+import { IconDeviceLaptop, IconNetwork, IconTrash } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { ASSET_MODEL_MAX, VLAN_NAME_MAX } from "@milo/shared";
 import type { AssetSettings } from "@milo/shared";
 import { api } from "../../api";
+import defilement from "../../assets/styles/ListeScroll.module.css";
 import { messageErreur, notifierErreur } from "../../lib/errors";
+import { RED } from "../../themes/colors";
+import AddButton from "../ui/AddButton";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
-import ListItems from "../ui/ListItems";
-import type { ClipboardEvent, ComponentType, KeyboardEvent } from "react";
+import {
+  ARRONDI,
+  ListeVide,
+  RETRAIT_LIGNE,
+  styleChampNom,
+  styleLigne,
+} from "../ui/LignesDuTiroir";
+import PointMenu, { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
+import type { ClipboardEvent, ComponentType } from "react";
 
 // La section « Assets » du Paramétrage, et ses deux listes :
 // - « Modèles » : le nom commercial de l'identifiant qu'un poste déclare —
 //   Apple ne remonte que « Mac14,6 » ;
 // - « VLAN » : le VLAN qui porte chaque sous-réseau (« 10.1.106.0/24 » → 106).
-// Chacune est celle des sociétés (ListItems, comme LookupManager), à
-// plusieurs champs par ligne.
-//
-// Tout se passe sur la ligne : cliquer une ligne l'édite sur place (Entrée
-// enregistre, Échap annule), le clic droit ouvre « Modifier » et
-// « Supprimer ». La ligne d'ajout garde le focus : on enchaîne les saisies.
-// Les VLAN se collent aussi par lots : une ligne « sous-réseau VLAN nom »
-// chacun, le nom facultatif.
+// Elles se présentent comme les listes des tiroirs (ChampsColonnes) : une
+// ligne par entrée, ses champs à même la ligne. Une ligne part au serveur
+// quand on la quitte, complète et changée ; Échap la ramène à ce qu'elle
+// était. Le clic droit la supprime ; « Ajouter » pose une ligne vide au bout.
+// Les VLAN se collent aussi par lots dans une ligne ajoutée : une ligne
+// « sous-réseau VLAN nom » chacun, le nom facultatif.
 
 /** La largeur de la première colonne : identifiant ou sous-réseau. */
 const LARGEUR_PREMIERE = 200;
@@ -43,19 +39,14 @@ const VLAN_LONGUEUR = 4;
 /** La largeur de la colonne des numéros de VLAN. */
 const LARGEUR_VLAN = 60;
 
-/** Hauteur d'un champ d'édition : celle du texte qu'il remplace (LookupManager). */
-const FIELD_HEIGHT = 22;
+/** Au-delà, la liste défile. */
+const LIGNES_VISIBLES = 5;
 
-const STYLES_CHAMP = {
-  input: {
-    height: FIELD_HEIGHT,
-    minHeight: FIELD_HEIGHT,
-    lineHeight: `${FIELD_HEIGHT}px`,
-  },
-};
-
-/** Taille du symbole Entrée au bout de la ligne d'ajout (ListItems). */
-const ENTER_SIZE = 14;
+/**
+ * La hauteur d'une ligne et de l'écart qui la suit : un champ « xs » (30 px),
+ * le retrait de la ligne en haut et en bas (2 × 4 px), et le filet de 1 px.
+ */
+const HAUTEUR_LIGNE = 30 + 2 * 4 + 1;
 
 /** Une ligne d'une liste : ses champs, tels qu'on les saisit, dans l'ordre des colonnes. */
 type Ligne = string[];
@@ -75,68 +66,114 @@ interface Colonne {
 const vide = (colonnes: Colonne[]): Ligne => colonnes.map(() => "");
 
 const styleColonne = (colonne: Colonne) =>
-  colonne.largeur
-    ? { width: colonne.largeur, flexShrink: 0 }
-    : { flex: 1, minWidth: 0 };
+  colonne.largeur ? { width: colonne.largeur, flexShrink: 0 } : { flex: 1, minWidth: 0 };
 
-/** Les champs d'une ligne, côte à côte : à l'ajout comme à l'édition. */
-function ChampsLigne({
-  colonnes,
-  valeur,
-  onChange,
-  onKeyDown,
-  onBlur,
-  onPaste,
-  disabled,
-  autoFocus,
-}: {
+const nettoye = (l: Ligne): Ligne => l.map((v) => v.trim());
+
+interface LigneEditableProps {
   colonnes: Colonne[];
   valeur: Ligne;
-  onChange: (valeur: Ligne) => void;
-  onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
-  onBlur?: () => void;
+  rang: number;
+  total: number;
+  /** Vrai pour la ligne ajoutée, pas encore enregistrée. */
+  nouvelle?: boolean;
+  /** La ligne complète et changée part : vrai quand le serveur l'a prise. */
+  onValider: (ligne: Ligne) => Promise<boolean>;
+  /** La ligne ajoutée, quittée vide ou abandonnée. */
+  onAbandon?: () => void;
+  onContextMenu?: (e: React.MouseEvent<HTMLElement>) => void;
   onPaste?: (e: ClipboardEvent<HTMLInputElement>) => void;
-  disabled: boolean;
-  autoFocus?: boolean;
-}) {
+}
+
+/** Une ligne : ses champs à même la ligne, et son brouillon le temps de la saisie. */
+function LigneEditable({
+  colonnes,
+  valeur,
+  rang,
+  total,
+  nouvelle,
+  onValider,
+  onAbandon,
+  onContextMenu,
+  onPaste,
+}: LigneEditableProps) {
+  const [brouillon, setBrouillon] = useState<Ligne>(valeur);
+  const [focus, setFocus] = useState<number | null>(null);
+  const ligne = useRef<HTMLDivElement | null>(null);
+  // Échap quitte la ligne sans rien envoyer : la sortie qui suit le sait.
+  const annule = useRef(false);
+
+  const complet = (l: Ligne) => colonnes.every((c, i) => c.facultative || Boolean(l[i]));
+
+  // Quitter un champ pour un autre de la même ligne n'enregistre pas.
+  const quitter = async () => {
+    const apres = nettoye(brouillon);
+    if (annule.current) {
+      annule.current = false;
+      if (nouvelle) return onAbandon?.();
+      return setBrouillon(valeur);
+    }
+    if (nouvelle) {
+      if (apres.every((v) => !v)) return onAbandon?.();
+      // Incomplète, la ligne ajoutée attend la suite.
+      if (complet(apres)) await onValider(apres);
+      return;
+    }
+    // Vidée ou inchangée : elle revient à ce qu'elle était.
+    if (!complet(apres) || apres.every((v, i) => v === valeur[i])) return setBrouillon(valeur);
+    if (!(await onValider(apres))) setBrouillon(valeur);
+  };
+
   return (
-    <>
+    <Group
+      ref={ligne}
+      gap="xs"
+      wrap="nowrap"
+      onContextMenu={onContextMenu}
+      onBlur={(e) => {
+        if (ligne.current?.contains(e.relatedTarget as Node | null)) return;
+        void quitter();
+      }}
+      style={{ ...styleLigne(rang, total, false), paddingLeft: RETRAIT_LIGNE }}
+    >
       {colonnes.map((colonne, i) => (
         <TextInput
           key={colonne.label}
+          size="sm"
+          radius={ARRONDI}
           placeholder={colonne.label}
-          value={valeur[i] ?? ""}
+          aria-label={colonne.label}
+          value={brouillon[i] ?? ""}
           onChange={(e) => {
             const texte = e.currentTarget.value;
-            onChange(
-              valeur.map((v, j) =>
-                j === i
-                  ? colonne.numerique
-                    ? texte.replace(/\D/g, "")
-                    : texte
-                  : v,
-              ),
+            setBrouillon((avant) =>
+              avant.map((v, j) => (j === i ? (colonne.numerique ? texte.replace(/\D/g, "") : texte) : v)),
             );
           }}
-          onKeyDown={onKeyDown}
-          onBlur={onBlur}
-          onPaste={onPaste}
+          onKeyDown={(e) => {
+            // Consommée : la fenêtre qui porte ce champ n'enregistre pas en plus.
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+            if (e.key === "Escape") {
+              annule.current = true;
+              e.currentTarget.blur();
+            }
+          }}
+          onPaste={i === 0 ? onPaste : undefined}
           maxLength={colonne.maxLength}
           inputMode={colonne.numerique ? "numeric" : undefined}
-          variant="unstyled"
-          size="sm"
-          styles={STYLES_CHAMP}
+          autoFocus={nouvelle && i === 0}
+          onFocus={() => setFocus(i)}
+          onBlurCapture={() => setFocus(null)}
           style={styleColonne(colonne)}
-          disabled={disabled}
-          autoFocus={autoFocus && i === 0}
-          aria-label={colonne.label}
+          styles={{ input: styleChampNom(focus === i) }}
         />
       ))}
-    </>
+    </Group>
   );
 }
-
-const nettoye = (l: Ligne): Ligne => l.map((v) => v.trim());
 
 /**
  * Une liste à plusieurs champs par ligne. Elle part entière au serveur à chaque
@@ -144,7 +181,7 @@ const nettoye = (l: Ligne): Ligne => l.map((v) => v.trim());
  * garde.
  *
  * `decouper`, s'il est donné, permet de coller plusieurs lignes d'un coup dans
- * la ligne d'ajout : chaque ligne du presse-papiers devient une ligne.
+ * la ligne ajoutée : chaque ligne du presse-papiers devient une ligne.
  */
 function ListeLignes({
   titre,
@@ -167,35 +204,18 @@ function ListeLignes({
   titreSuppression: string;
   decouper?: (ligne: string) => Ligne | null;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [nouveau, setNouveau] = useState<Ligne>(() => vide(colonnes));
-  // Le rang de la ligne en cours d'édition, et ses champs.
-  const [enEdition, setEnEdition] = useState<number | null>(null);
-  const [brouillon, setBrouillon] = useState<Ligne>(() => vide(colonnes));
+  // La ligne ajoutée, en attente de ses champs.
+  const [enAjout, setEnAjout] = useState(false);
+  const [menu, setMenu] = useState<{ rang: number; position: PointMenuPosition } | null>(null);
   const [aSupprimer, setASupprimer] = useState<number | null>(null);
-  // Quitter un champ pour l'autre de la même ligne n'enregistre pas.
-  const ligneEditee = useRef<HTMLDivElement | null>(null);
-
-  // Les colonnes obligatoires remplies : la ligne peut partir.
-  const complet = (l: Ligne) =>
-    colonnes.every((c, i) => c.facultative || Boolean(l[i]?.trim()));
 
   const envoyer = async (liste: Ligne[]): Promise<boolean> => {
-    setBusy(true);
     try {
       return await enregistrer(liste);
     } catch (e) {
       notifierErreur(messageErreur(e));
       return false;
-    } finally {
-      setBusy(false);
     }
-  };
-
-  const ajouter = async () => {
-    if (!complet(nouveau)) return;
-    if (await envoyer([...lignes, nettoye(nouveau)]))
-      setNouveau(vide(colonnes));
   };
 
   /**
@@ -205,8 +225,8 @@ function ListeLignes({
    */
   const coller = (e: ClipboardEvent<HTMLInputElement>) => {
     if (!decouper) return;
-    const texte = e.clipboardData.getData("text");
-    const brutes = texte
+    const brutes = e.clipboardData
+      .getData("text")
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean);
@@ -222,178 +242,91 @@ function ListeLignes({
       }
       lues.push(lue);
     }
-    void envoyer([...lignes, ...lues]).then(
-      (ok) => ok && setNouveau(vide(colonnes)),
-    );
+    void envoyer([...lignes, ...lues]).then((ok) => ok && setEnAjout(false));
   };
 
-  const editer = (rang: number) => {
-    setEnEdition(rang);
-    setBrouillon(lignes[rang] ?? vide(colonnes));
-  };
-
-  const annulerEdition = () => {
-    setEnEdition(null);
-    setBrouillon(vide(colonnes));
-  };
-
-  // Une ligne vidée ou inchangée : on referme sans rien demander au serveur.
-  const enregistrerEdition = async () => {
-    if (enEdition === null) return;
-    const avant = lignes[enEdition];
-    const apres = nettoye(brouillon);
-    if (!complet(apres) || apres.every((v, i) => v === avant?.[i])) {
-      return annulerEdition();
-    }
-    if (await envoyer(lignes.map((l, i) => (i === enEdition ? apres : l))))
-      annulerEdition();
-  };
-
-  const touches =
-    (valider: () => void, annuler: () => void) =>
-    (e: KeyboardEvent<HTMLInputElement>) => {
-      // Consommée : la fenêtre qui porte ce champ n'enregistre pas en plus.
-      if (e.key === "Enter") {
-        e.preventDefault();
-        valider();
-      }
-      if (e.key === "Escape") annuler();
-    };
+  const total = lignes.length + (enAjout ? 1 : 0);
 
   return (
-    <Stack gap={4}>
-      {/* Le libellé au-dessus de la liste, comme celui d'un champ. */}
-      <Text size="sm" fw={500}>
-        {titre}
-      </Text>
-      <ListItems
-        maxRows={5}
-        isEmpty={lignes.length === 0}
-        emptyIcon={emptyIcon}
-        emptyText={emptyText}
-        add={{
-          input: (
-            <>
-              <ChampsLigne
+    <Input.Wrapper label={titre}>
+      {total === 0 ? (
+        <ListeVide icon={emptyIcon} message={emptyText} />
+      ) : (
+        // Cinq lignes au plus à la fois : au-delà, la liste défile. Une ligne
+        // ajoutée, qui prend le focus, s'y montre d'elle-même.
+        <ScrollArea.Autosize
+          mah={LIGNES_VISIBLES * HAUTEUR_LIGNE}
+          type="auto"
+          scrollbars="y"
+          classNames={{ scrollbar: defilement.scrollbar, thumb: defilement.thumb }}
+        >
+          <Stack gap={1}>
+            {lignes.map((ligne, rang) => (
+              <LigneEditable
+                // Une ligne relue du serveur repart de sa nouvelle valeur.
+                key={`${rang}-${ligne.join("|")}`}
                 colonnes={colonnes}
-                valeur={nouveau}
-                onChange={setNouveau}
-                onKeyDown={touches(
-                  () => void ajouter(),
-                  () => setNouveau(vide(colonnes)),
-                )}
-                onPaste={decouper ? coller : undefined}
-                disabled={busy}
+                valeur={ligne}
+                rang={rang}
+                total={total}
+                onValider={(apres) => envoyer(lignes.map((l, i) => (i === rang ? apres : l)))}
+                onContextMenu={(e) => setMenu({ rang, position: positionDuMenu(e) })}
               />
-              {/* Au bout, la touche qui valide : Entrée ajoute. Elle se clique
-                  aussi, pour qui préfère la souris. */}
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                size="sm"
-                onClick={() => void ajouter()}
-                disabled={busy}
-                style={{ flexShrink: 0, opacity: 0.5 }}
-                aria-label={libelleAjout}
-              >
-                <IconCornerDownLeft size={ENTER_SIZE} />
-              </ActionIcon>
-            </>
-          ),
-        }}
-      >
-        {lignes.map((ligne, rang) => (
-          <ListItems.Row
-            key={`${ligne[0]}-${rang}`}
-            actions={[
-              {
-                label: "Modifier",
-                icon: IconPencil,
-                onClick: () => editer(rang),
-              },
-              {
-                label: "Supprimer",
-                icon: IconTrash,
-                onClick: () => setASupprimer(rang),
-                danger: true,
-              },
-            ]}
-          >
-            {enEdition === rang ? (
-              <div
-                ref={ligneEditee}
-                style={{
-                  display: "flex",
-                  gap: "var(--mantine-spacing-xs)",
-                  flex: 1,
-                  minWidth: 0,
+            ))}
+            {enAjout && (
+              <LigneEditable
+                colonnes={colonnes}
+                valeur={vide(colonnes)}
+                rang={total - 1}
+                total={total}
+                nouvelle
+                onValider={async (apres) => {
+                  const ok = await envoyer([...lignes, apres]);
+                  if (ok) setEnAjout(false);
+                  return ok;
                 }}
-                onBlur={(e) => {
-                  if (
-                    !ligneEditee.current?.contains(
-                      e.relatedTarget as Node | null,
-                    )
-                  ) {
-                    void enregistrerEdition();
-                  }
-                }}
-              >
-                <ChampsLigne
-                  colonnes={colonnes}
-                  valeur={brouillon}
-                  onChange={setBrouillon}
-                  onKeyDown={touches(
-                    () => void enregistrerEdition(),
-                    annulerEdition,
-                  )}
-                  disabled={busy}
-                  autoFocus
-                />
-              </div>
-            ) : (
-              <UnstyledButton
-                onClick={() => editer(rang)}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  display: "flex",
-                  gap: "var(--mantine-spacing-xs)",
-                }}
-              >
-                {colonnes.map((colonne, i) => (
-                  <Text
-                    key={colonne.label}
-                    size="sm"
-                    c={i === 0 ? "dimmed" : undefined}
-                    truncate
-                    style={styleColonne(colonne)}
-                  >
-                    {ligne[i]}
-                  </Text>
-                ))}
-              </UnstyledButton>
+                onAbandon={() => setEnAjout(false)}
+                onPaste={decouper ? coller : undefined}
+              />
             )}
-          </ListItems.Row>
-        ))}
-      </ListItems>
+          </Stack>
+        </ScrollArea.Autosize>
+      )}
+      {/* Au plus près de la liste qu'il allonge. */}
+      <AddButton label={libelleAjout} onClick={() => setEnAjout(true)} mt={4} />
+
+      {menu && (
+        <PointMenu position={menu.position} onClose={() => setMenu(null)}>
+          <Menu.Item
+            color={RED}
+            leftSection={<IconTrash size={16} />}
+            onClick={() => {
+              setASupprimer(menu.rang);
+              setMenu(null);
+            }}
+          >
+            Supprimer
+          </Menu.Item>
+        </PointMenu>
+      )}
 
       <DeleteConfirmModal
         opened={aSupprimer !== null}
         onClose={() => setASupprimer(null)}
         onConfirm={async () => {
-          if (aSupprimer !== null)
-            await envoyer(lignes.filter((_, i) => i !== aSupprimer));
+          const rang = aSupprimer;
           setASupprimer(null);
+          if (rang !== null) await envoyer(lignes.filter((_, i) => i !== rang));
         }}
         title={titreSuppression}
         message={
           <>
-            Voulez-vous vraiment supprimer « {lignes[aSupprimer ?? -1]?.[0]} » ?
-            Cette action est irréversible.
+            Voulez-vous vraiment supprimer « {lignes[aSupprimer ?? -1]?.[0]} » ? Cette action est
+            irréversible.
           </>
         }
       />
-    </Stack>
+    </Input.Wrapper>
   );
 }
 
@@ -401,7 +334,8 @@ const COLONNES_MODELES: Colonne[] = [
   {
     label: "Identifiant",
     maxLength: ASSET_MODEL_MAX,
-    largeur: LARGEUR_PREMIERE,
+    // Plus court qu'un sous-réseau : « Mac14,6 ».
+    largeur: LARGEUR_PREMIERE - 40,
   },
   { label: "Nom commercial", maxLength: ASSET_MODEL_MAX },
 ];
@@ -465,8 +399,8 @@ export default function AssetsTab() {
           })
         }
         emptyIcon={IconDeviceLaptop}
-        emptyText="Aucun modèle pour le moment"
-        libelleAjout="Ajouter le modèle"
+        emptyText="Aucun modèle"
+        libelleAjout="Ajouter un modèle"
         titreSuppression="Supprimer le modèle"
       />
       <ListeLignes
@@ -483,8 +417,8 @@ export default function AssetsTab() {
           })
         }
         emptyIcon={IconNetwork}
-        emptyText="Aucun VLAN pour le moment"
-        libelleAjout="Ajouter le VLAN"
+        emptyText="Aucun VLAN"
+        libelleAjout="Ajouter un VLAN"
         titreSuppression="Supprimer le VLAN"
         decouper={decouperVlan}
       />

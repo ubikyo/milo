@@ -14,7 +14,13 @@
 //      rafale.
 
 import crypto from "node:crypto";
-import type { FollowKind, Id, Notification, NotificationKind } from "@milo/shared";
+import type {
+  FollowKind,
+  Id,
+  Notification,
+  NotificationKind,
+  NotificationSettings,
+} from "@milo/shared";
 import { can, lienElement, supportTicketRef } from "@milo/shared";
 import type { Area } from "@milo/shared";
 import type { UserRow } from "../db/rows.js";
@@ -27,22 +33,51 @@ import { envoyerCourrier, messagerieConfiguree } from "./mail.js";
 import { gabarit } from "./mail-template.js";
 import type { Ligne } from "./mail-template.js";
 import { notifications } from "../repositories/notifications.js";
-import { droitsSocietes } from "../repositories/users.js";
+import { readSetting } from "../repositories/settings.js";
+import { droitsSocietes, users } from "../repositories/users.js";
 import { now } from "./time.js";
 
-/** Le temps pendant lequel les faits s'accumulent avant de partir en un e-mail. */
-const FENETRE = env.notifyWindowMs;
+// --- Les réglages (Paramétrage › Notifications) ---------------------------
 
 /**
- * Qui a agi. Un compte le plus souvent ; l'expéditeur d'un e-mail reçu sur une
- * demande de support n'en a pas toujours — son identifiant vaut alors 0, qui
+ * Les réglages de la section « Notifications ». Le délai de regroupement
+ * part, tant qu'on ne l'a pas réglé, de MILO_NOTIFY_WINDOW_MINUTES.
+ */
+export const reglagesNotifications = (): NotificationSettings => ({
+  toasts: readSetting<boolean>("notify_toasts", true) !== false,
+  email: readSetting<boolean>("notify_email", true) !== false,
+  emailMode: readSetting<string>("notify_email_mode", "grouped") === "immediate" ? "immediate" : "grouped",
+  emailDelayMinutes: readSetting<number>("notify_email_delay", env.notifyWindowMs / 60000),
+});
+
+/**
+ * Le temps pendant lequel les faits s'accumulent avant de partir en un
+ * e-mail. Zéro quand les e-mails partent à chaque évènement : la minuterie
+ * part au tour suivant, et seuls les faits d'un même geste se retrouvent
+ * ensemble.
+ */
+const fenetre = (): number => {
+  const r = reglagesNotifications();
+  return r.emailMode === "immediate" ? 0 : r.emailDelayMinutes * 60 * 1000;
+};
+
+/**
+ * La boîte d'où partent les e-mails de notification, ou rien : les e-mails
+ * sont coupés dans le Paramétrage, ou la messagerie n'est pas configurée.
+ */
+const boiteDEnvoi = (): string =>
+  reglagesNotifications().email && messagerieConfiguree() ? adresseDEnvoi() : "";
+
+/**
+ * Qui a agi. Un compte le plus souvent ; l'expéditeur d'un e-mail reçu sur un
+ * ticket n'en a pas toujours — son identifiant vaut alors 0, qui
  * n'écarte personne.
  */
 export type Auteur = Pick<UserRow, "id" | "name" | "email">;
 
 export interface Fait {
   /**
-   * L'élément suivi : un projet, une carte, une demande de support. Un
+   * L'élément suivi : un projet, une carte, un ticket. Un
    * élément du mode Accès ne se suit pas.
    */
   kind: Exclude<NotificationKind, "access">;
@@ -162,7 +197,7 @@ const empiler = (destinataire: UserRow, fait: Fait, lien: string, expediteur: st
     lien,
     faits: [{ texte: ligne, repetitions: 1 }],
     // `unref` laisse le processus se terminer sans attendre la fenêtre.
-    minuterie: setTimeout(() => partir(cleEnvoi), FENETRE).unref(),
+    minuterie: setTimeout(() => partir(cleEnvoi), fenetre()).unref(),
   });
 };
 
@@ -244,7 +279,7 @@ export const notifier = (fait: Fait): void => {
 
     const lien = `${fait.base}/${lienElement(fait.kind, fait.targetId)}`;
     const quand = now();
-    const expediteur = fait.base && messagerieConfiguree() ? adresseDEnvoi() : "";
+    const expediteur = fait.base ? boiteDEnvoi() : "";
 
     for (const personne of destinataires) {
       notifications.emettre(personne.id, {
@@ -273,7 +308,142 @@ export const notifier = (fait: Fait): void => {
 export const racine = (req: { protocol: string; get(nom: string): string | undefined }): string =>
   `${req.protocol}://${req.get("host") ?? ""}`;
 
-// --- Assignation d'une demande de support ----------------------------------
+// --- Rattachement d'un acteur ---------------------------------------------
+
+export interface Rattachement {
+  /** L'élément où la personne arrive : un projet, une carte. */
+  kind: "project" | "card";
+  targetId: Id;
+  /** Le nom de l'élément, tel qu'il s'affiche. */
+  titre: string;
+  /**
+   * Ce qui vient de se passer, adressé à la personne : « vous a ajouté comme
+   * acteur », « vous a ajouté à l'élément « … » d'une checklist ».
+   */
+  message: string;
+  /** Les comptes qui viennent d'arriver. */
+  destinataires: Id[];
+  auteur: Auteur;
+  base: string;
+}
+
+/**
+ * Une personne rattachée à un élément — acteur d'un projet ou d'une carte,
+ * personne d'un élément de checklist — : une notification à l'écran, et un
+ * e-mail aussitôt, sans attendre la fenêtre des modifications : on veut
+ * savoir tout de suite qu'une part du travail nous revient. On ne se prévient
+ * pas soi-même, ni qui ne voit pas l'élément. Ne lève jamais : le
+ * rattachement est déjà enregistré.
+ *
+ * Rend les comptes prévenus : la notification de modification du même geste
+ * les écarte (`Fait.sauf`), pour ne pas les prévenir deux fois.
+ */
+export const notifierRattachement = (r: Rattachement): Id[] => {
+  const prevenus: Id[] = [];
+  try {
+    const quand = now();
+    const lien = `${r.base}/${lienElement(r.kind, r.targetId)}`;
+    const boite = r.base ? boiteDEnvoi() : "";
+    const qui = r.auteur.name || r.auteur.email;
+
+    for (const id of new Set(r.destinataires)) {
+      if (id === r.auteur.id) continue;
+      const personne = users.byId.get(id);
+      if (!personne || personne.system) continue;
+      if (!can(droitsSocietes(personne), domaines[r.kind], "view")) continue;
+
+      notifications.emettre(personne.id, {
+        id: crypto.randomBytes(8).toString("hex"),
+        kind: r.kind,
+        target_id: r.targetId,
+        title: r.titre,
+        message: r.message,
+        author: qui,
+        deleted: false,
+        created_at: quand,
+      } satisfies Notification);
+      prevenus.push(personne.id);
+
+      if (!boite || !personne.email) continue;
+      envoyerCourrier({
+        from: boite,
+        to: personne.email,
+        subject: `Milo — ${r.titre}`,
+        ...gabarit({
+          titre: r.titre,
+          intro: `${qui} ${r.message}.`,
+          action: { url: lien, libelle: "Ouvrir dans Milo" },
+          pied: "Vous recevez ce message parce que vous avez été ajouté à cet élément dans Milo.",
+        }),
+      }).catch((erreur: unknown) => {
+        console.error("Notification de rattachement non remise :", erreur);
+      });
+    }
+  } catch (erreur) {
+    console.error("Notification de rattachement abandonnée :", erreur);
+  }
+  return prevenus;
+};
+
+// --- Rappel d'une échéance ------------------------------------------------
+
+export interface RappelEcheance {
+  carte: { id: Id; text: string };
+  /** Ce que dit le rappel : « vous rappelle l'échéance du 5 octobre à 17:00 ». */
+  message: string;
+  destinataires: Id[];
+  /** La racine de l'application (MILO_PUBLIC_URL) ; vide, l'e-mail ne part pas. */
+  base: string;
+}
+
+/**
+ * Le rappel d'une échéance : il vient de Milo, pas d'une personne. Une
+ * notification à l'écran et un e-mail à chaque acteur de la carte qui la voit
+ * encore. Ne lève jamais.
+ */
+export const notifierRappel = (r: RappelEcheance): void => {
+  try {
+    const quand = now();
+    const lien = `${r.base}/${lienElement("card", r.carte.id)}`;
+    const boite = r.base ? boiteDEnvoi() : "";
+
+    for (const id of new Set(r.destinataires)) {
+      const personne = users.byId.get(id);
+      if (!personne || personne.system) continue;
+      if (!can(droitsSocietes(personne), "tasks", "view")) continue;
+
+      notifications.emettre(personne.id, {
+        id: crypto.randomBytes(8).toString("hex"),
+        kind: "card",
+        target_id: r.carte.id,
+        title: r.carte.text,
+        message: r.message,
+        author: "Milo",
+        deleted: false,
+        created_at: quand,
+      } satisfies Notification);
+
+      if (!boite || !personne.email) continue;
+      envoyerCourrier({
+        from: boite,
+        to: personne.email,
+        subject: `Milo — ${r.carte.text}`,
+        ...gabarit({
+          titre: r.carte.text,
+          intro: `Milo ${r.message}.`,
+          action: { url: lien, libelle: "Ouvrir dans Milo" },
+          pied: "Vous recevez ce message parce que vous êtes acteur de cette tâche dans Milo.",
+        }),
+      }).catch((erreur: unknown) => {
+        console.error("Rappel d'échéance non remis :", erreur);
+      });
+    }
+  } catch (erreur) {
+    console.error("Rappel d'échéance abandonné :", erreur);
+  }
+};
+
+// --- Assignation d'un ticket ------------------------------------------------
 
 export interface Assignation {
   /** La demande, son numéro de ticket et son objet. */
@@ -299,7 +469,7 @@ export const notifierAssignations = (assignations: Assignation[]): void => {
     for (const { demande, destinataires, auteur, base } of assignations) {
       const titre = titreDemande(demande);
       const lien = `${base}/${lienElement("support", demande.id)}`;
-      const boite = messagerieConfiguree() ? adresseDEnvoi() : "";
+      const boite = boiteDEnvoi();
 
       for (const personne of destinataires) {
         if (personne.id === auteur.id) continue;
@@ -347,7 +517,7 @@ export const notifierAssignations = (assignations: Assignation[]): void => {
           // Une seule demande : le lien l'ouvre. Plusieurs : il ouvre Milo,
           // où elles attendent dans le mode Support.
           action: { url: une ? lien : base, libelle: "Ouvrir dans Milo" },
-          pied: "Vous recevez ce message parce qu'une demande de support vous a été assignée dans Milo.",
+          pied: "Vous recevez ce message parce qu'un ticket vous a été assigné dans Milo.",
         }),
       }).catch((erreur: unknown) => {
         console.error("Notification d'assignation non remise :", erreur);
@@ -361,7 +531,7 @@ export const notifierAssignations = (assignations: Assignation[]): void => {
 // --- Suppressions ----------------------------------------------------------
 //
 // Supprimer un élément prévient ceux qui s'y trouvaient engagés : les autres
-// acteurs d'un projet ou d'une demande de support, et ceux qui les suivent ;
+// acteurs d'un projet ou d'un ticket, et ceux qui les suivent ;
 // dans le mode Tâches, ceux qui suivent la carte, la liste ou le tableau. La
 // notification passe à l'écran et se range dans « Notifications », sans
 // e-mail : ce qu'elle annonce est fait, et un lien n'ouvrirait plus rien.
@@ -450,6 +620,6 @@ export const notifierSuppression = (suppression: Suppression): void => {
   }
 };
 
-/** Le nom d'une demande de support, tel que les notifications l'affichent. */
+/** Le nom d'un ticket, tel que les notifications l'affichent. */
 export const titreDemande = (demande: { number: number; subject: string }): string =>
   `${supportTicketRef(demande.number)}${demande.subject ? ` — ${demande.subject}` : ""}`;

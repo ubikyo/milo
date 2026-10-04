@@ -31,6 +31,9 @@ import {
   IconCopyPlus,
   IconEye,
   IconFolderSymlink,
+  IconLink,
+  IconPaperclip,
+  IconMessage,
   IconPencil,
   IconAlignLeft,
   IconPlus,
@@ -45,6 +48,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -58,7 +62,8 @@ import ColumnInsert, { COLUMN_INSERT_ZONE } from "../ui/ColumnInsert";
 import AddButton from "../ui/AddButton";
 import { useDroits } from "../../lib/droits";
 import { CardLabel } from "../ui/LabelChip";
-import Confetti from "../ui/Confetti";
+import EffetFete, { basculerMarque, effetsDuTitre, MARQUES } from "../ui/EffetsFete";
+import type { Effet, Zone } from "../ui/EffetsFete";
 import CardDrawer from "./CardDrawer";
 import MoveOrCopyListModal, { type ListAction } from "./MoveOrCopyListModal";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
@@ -171,12 +176,12 @@ interface CarteProvisoire {
   kind: "card" | "separator";
 }
 
-/** La salve de confettis en cours, tirée au-dessus d'une liste. */
-interface Confettis {
-  cle: number;
-  x: number;
-  y: number;
-  width: number;
+/** Une fête en cours, jouée sur une liste et la carte qui vient d'y arriver. */
+interface Fete {
+  cle: string;
+  effet: Effet;
+  liste: Zone;
+  carte: Zone | null;
 }
 
 /** La saisie d'une nouvelle carte : où elle se posera, et de quel genre. */
@@ -299,12 +304,11 @@ export function useListColors() {
 const CARD_PLACEHOLDER_BG =
   "light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-9))";
 
-// Une liste dont le titre porte cette marque fête chaque carte qui la rejoint.
-const MARQUE_FETE = "✨";
-
 // Rayon des cartes : le même pour la carte, son emplacement d'accueil, la copie
 // qui suit le pointeur et le champ de saisie qui la remplace en édition.
 const CARD_RADIUS = 8;
+/** La hauteur de l'image de couverture en tête d'une carte. */
+const COVER_HEIGHT = 120;
 
 // Les listes et les cartes n'ont pas de bordure : les champs qui les modifient
 // n'en portent pas non plus, pas même le bleu que Mantine pose au focus.
@@ -393,6 +397,17 @@ const toucheCarte =
 // des projets, où une ligne serrée les contraignait. Leur recouvrement, lui,
 // reste celui des projets.
 const CARD_AVATAR_SIZE = 25;
+// L'écart entre les lignes d'une carte : étiquettes, titre, pictos.
+const CARD_CONTENT_GAP = 4;
+// L'air au-dessus de chaque colonne de la dernière ligne, quand elles sont
+// empilées.
+const CARD_STACKED_SPACE = 10;
+// Sur la dernière ligne : l'écart entre un picto et sa valeur, serré pour
+// qu'ils se lisent ensemble, et celui entre deux éléments, plus large.
+const ICON_VALUE_GAP = 2;
+const CARD_ITEMS_GAP = 10;
+// Entre deux tags (numéro, échéance), l'écart d'avant.
+const TAGS_GAP = 6;
 
 // La pastille d'échéance : une horloge et le jour, en abrégé. Dès qu'une carte
 // porte une date, elle se montre ; c'est sa couleur qui alerte, ou non. Rouge
@@ -402,17 +417,31 @@ const CARD_AVATAR_SIZE = 25;
 const DUE_BG: Record<EtatEcheance, string> = {
   retard: "var(--mantine-color-red-filled)",
   bientot: "var(--mantine-color-orange-filled)",
-  // Le gris des fonds discrets : la bulle se détache de la carte sans crier.
-  aucun: "light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5))",
+  // Loin encore : le vert de ce qui va bien, comme « À venir » dans la fiche.
+  aucun: "var(--mantine-color-green-filled)",
 };
 
-// Sur un fond plein, le blanc ; sur le fond neutre, la couleur du texte
-// ordinaire — du blanc y serait illisible en thème clair.
-const DUE_FG: Record<EtatEcheance, string> = {
-  retard: "var(--mantine-color-white)",
-  bientot: "var(--mantine-color-white)",
-  aucun: "light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-0))",
-};
+// Les trois fonds sont pleins : le texte y est blanc.
+const DUE_FG = "var(--mantine-color-white)";
+
+// Le numéro d'une carte, en étiquette verte : la même forme que l'échéance.
+function CardNumberTag({ number }: { number: number }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "1px 6px",
+        borderRadius: 6,
+        backgroundColor: "var(--mantine-color-green-filled)",
+        color: "var(--mantine-color-white)",
+        flexShrink: 0,
+      }}
+    >
+      <Text size="xs">{taskReference(number)}</Text>
+    </span>
+  );
+}
 
 interface CardDueBadgeProps {
   card: TaskCard;
@@ -431,11 +460,11 @@ function CardDueBadge({ card }: CardDueBadgeProps) {
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 4,
+        gap: ICON_VALUE_GAP,
         padding: "1px 6px",
         borderRadius: 6,
         backgroundColor: DUE_BG[etat],
-        color: DUE_FG[etat],
+        color: DUE_FG,
         flexShrink: 0,
       }}
     >
@@ -480,8 +509,8 @@ function CardChecklistBadge({ card, onToggle }: CardChecklistBadgeProps) {
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 4,
-        padding: "1px 6px",
+        gap: ICON_VALUE_GAP,
+        padding: "1px 0",
         borderRadius: 6,
         backgroundColor: complete ? CHECKLIST_DONE_BG : "transparent",
         color: complete ? "var(--mantine-color-white)" : "inherit",
@@ -556,29 +585,134 @@ interface CardNumberProps {
 function CardNumber({ card, withNumber, onChecklistToggle }: CardNumberProps) {
   const membres = card.members || [];
 
+  const pieces = card.attachment_count || 0;
+  const commentaires = card.comment_count || 0;
+  const liens = card.link_count || 0;
+  // Une carte qui attend encore le serveur n'a pas de numéro.
+  const avecNumero = withNumber && card.number > 0;
+
+  // Les colonnes passées chacune sur sa ligne : le CSS ne sait pas le dire,
+  // on le lit à leur position. Recalculé à chaque changement de taille.
+  const gauche = useRef<HTMLDivElement | null>(null);
+  const droite = useRef<HTMLDivElement | null>(null);
+  const [empilees, setEmpilees] = useState(false);
+  useLayoutEffect(() => {
+    const g = gauche.current;
+    const d = droite.current;
+    if (!g || !d) {
+      setEmpilees(false);
+      return undefined;
+    }
+    // Côte à côte, centrées, leurs hauts diffèrent si leurs hauteurs
+    // diffèrent : seuls des acteurs tout entiers au-dessus des pictos disent
+    // qu'elles sont empilées.
+    const mesurer = () =>
+      setEmpilees(d.getBoundingClientRect().bottom <= g.getBoundingClientRect().top + 1);
+    mesurer();
+    const observateur = new ResizeObserver(mesurer);
+    observateur.observe(g);
+    observateur.observe(d);
+    return () => observateur.disconnect();
+  }, [membres.length]);
+
+  // Deux colonnes : à gauche les pictos, à droite les acteurs. Chacune part
+  // de la largeur de son contenu sur une ligne et ne descend jamais en
+  // dessous (« fit-content ») : tant que les deux tiennent ensemble, elles
+  // restent côte à côte ; sinon, elles passent chacune sur sa ligne, en
+  // pleine largeur. « wrap-reverse »
+  // empile alors les lignes de bas en haut : les acteurs, venus en second,
+  // montent au-dessus des pictos.
   return (
-    <Group justify="space-between" align="center" wrap="nowrap" gap="xs">
-      <Group gap={6} align="center" wrap="nowrap" c="dimmed">
-        {/* Le picto dit qu'il y a autre chose à lire dans la fiche. */}
-        {card.has_description && (
-          <IconAlignLeft size={14} aria-label="Cette carte a une description" />
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap-reverse",
+        alignItems: "center",
+      }}
+    >
+      {/* Empilées, chaque colonne prend 10px d'air au-dessus d'elle. Les
+          pictos, en bas, les prennent en entier ; les acteurs, en haut, ont
+          déjà l'écart qui les sépare du titre, qu'on en retire. */}
+      <Group
+        ref={gauche}
+        gap={CARD_ITEMS_GAP}
+        align="center"
+        wrap="wrap"
+        c="dimmed"
+        pt={empilees ? CARD_STACKED_SPACE : 0}
+        style={{ flex: "1 1 auto", minWidth: "fit-content", maxWidth: "100%", rowGap: 4 }}
+      >
+        {/* Le numéro ouvre la ligne. Une carte qui attend encore le serveur
+            n'en a pas. */}
+        {/* Les tags se suivent de plus près que les autres éléments. */}
+        {(avecNumero || dateCourte(card.due_date)) && (
+          <Group gap={TAGS_GAP} align="center" wrap="wrap" style={{ rowGap: 4 }}>
+            {avecNumero && <CardNumberTag number={card.number} />}
+            {/* Puis l'échéance : une carte en retard doit se voir avant qu'on
+                lise ce qu'elle porte. */}
+            <CardDueBadge card={card} />
+          </Group>
         )}
-        {/* L'échéance ouvre la ligne : une carte en retard doit se voir
-            avant qu'on lise ce qu'elle porte. */}
-        <CardDueBadge card={card} />
-        {/* Les cases cochées passent avant le numéro : c'est l'avancement
-            qu'on cherche du regard, pas le repère. */}
         <CardChecklistBadge
           card={card}
           onToggle={onChecklistToggle}
         />
-        {/* Une carte qui attend encore le serveur n'a pas de référence. */}
-        {withNumber && card.number > 0 && <Text size="xs">{taskReference(card.number)}</Text>}
+        {/* Le picto dit qu'il y a autre chose à lire dans la fiche. */}
+        {card.has_description && (
+          <IconAlignLeft size={14} aria-label="Cette carte a une description" />
+        )}
+        {commentaires > 0 && (
+          <Group
+            gap={ICON_VALUE_GAP}
+            align="center"
+            wrap="nowrap"
+            aria-label={`Cette carte a ${commentaires} commentaire${commentaires > 1 ? "s" : ""}`}
+          >
+            <IconMessage size={14} />
+            <Text size="xs">{commentaires}</Text>
+          </Group>
+        )}
+        {liens > 0 && (
+          <Group
+            gap={ICON_VALUE_GAP}
+            align="center"
+            wrap="nowrap"
+            aria-label={`Cette carte a ${liens} dépendance${liens > 1 ? "s" : ""}`}
+          >
+            <IconLink size={14} />
+            <Text size="xs">{liens}</Text>
+          </Group>
+        )}
+        {pieces > 0 && (
+          <Group
+            gap={ICON_VALUE_GAP}
+            align="center"
+            wrap="nowrap"
+            aria-label={`Cette carte a ${pieces} pièce${pieces > 1 ? "s" : ""} jointe${pieces > 1 ? "s" : ""}`}
+          >
+            <IconPaperclip size={14} />
+            <Text size="xs">{pieces}</Text>
+          </Group>
+        )}
       </Group>
+      {/* À droite, les acteurs, calés dans le coin de la carte. Leur retrait
+          tient lieu d'écart entre les colonnes : il ne compte que quand elles
+          sont côte à côte. */}
       {membres.length > 0 && (
-        <ActorAvatars actors={membres} size={CARD_AVATAR_SIZE} max={4} />
+        <Group
+          ref={droite}
+          gap={6}
+          justify="flex-end"
+          align="center"
+          wrap="wrap"
+          pl={CARD_ITEMS_GAP}
+          pt={empilees ? CARD_STACKED_SPACE - CARD_CONTENT_GAP : 0}
+          style={{ flex: "1 1 auto", minWidth: "fit-content", maxWidth: "100%", rowGap: 4 }}
+        >
+          <ActorAvatars actors={membres} size={CARD_AVATAR_SIZE} max={4} />
+        </Group>
       )}
-    </Group>
+    </div>
   );
 }
 
@@ -596,6 +730,90 @@ const styleSeparateur = (card: TaskCard, palette: Palette): CSSProperties | null
         color: palette.texteSeparateur,
       }
     : null;
+
+// La couverture d'une carte, d'un bord à l'autre : elle mange le retrait de la
+// carte (« xs ») et suit son arrondi, bordure déduite. Plusieurs images se
+// relaient à l'intervalle choisi dans la fiche ; sans intervalle, la première
+// reste.
+function Couverture({ urls, intervalle }: { urls: string[]; intervalle: number }) {
+  const [rang, setRang] = useState(0);
+  const [pause, setPause] = useState(false);
+  // Le tableau relu redonne une liste neuve : seul un changement d'images
+  // relance la rotation depuis la première.
+  const cle = urls.join("|");
+  const nombre = urls.length;
+  const courant = nombre ? rang % nombre : 0;
+
+  useEffect(() => setRang(0), [cle]);
+
+  // Comme le widget image : le survol suspend le défilement, et un point
+  // choisi repart pour un intervalle entier.
+  useEffect(() => {
+    if (!intervalle || nombre < 2 || pause) return;
+    const minuterie = window.setTimeout(
+      () => setRang((r) => (r + 1) % nombre),
+      intervalle * 1000,
+    );
+    return () => window.clearTimeout(minuterie);
+  }, [cle, nombre, intervalle, pause, rang]);
+
+  return (
+    <div
+      onMouseEnter={() => setPause(true)}
+      onMouseLeave={() => setPause(false)}
+      style={{
+        position: "relative",
+        width: "calc(100% + 2 * var(--mantine-spacing-xs))",
+        margin: "calc(-1 * var(--mantine-spacing-xs)) calc(-1 * var(--mantine-spacing-xs)) 11px",
+      }}
+    >
+      <img
+        src={urls[courant] ?? urls[0]}
+        alt=""
+        decoding="async"
+        draggable={false}
+        style={{
+          display: "block",
+          width: "100%",
+          height: COVER_HEIGHT,
+          objectFit: "cover",
+          borderTopLeftRadius: CARD_RADIUS - 2,
+          borderTopRightRadius: CARD_RADIUS - 2,
+        }}
+      />
+      {/* Les points du widget image, posés sur la photo, en bas : en blanc,
+          avec une ombre, pour se lire sur n'importe quelle image. Ils
+          répondent eux-mêmes au clic : ni glisser, ni fiche ouverte. */}
+      {nombre > 1 && (
+        <Group
+          gap={6}
+          justify="center"
+          wrap="nowrap"
+          style={{ position: "absolute", left: 0, right: 0, bottom: 8 }}
+        >
+          {urls.map((src, i) => (
+            <UnstyledButton
+              key={`${src}-${i}`}
+              data-no-card-drag="true"
+              data-no-list-drag="true"
+              aria-label={`Image ${i + 1}`}
+              onClick={() => setRang(i)}
+              onDoubleClick={(e) => e.stopPropagation()}
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                backgroundColor: "var(--mantine-color-white)",
+                opacity: i === courant ? 1 : 0.5,
+                boxShadow: "0 0 2px rgba(0, 0, 0, 0.6)",
+              }}
+            />
+          ))}
+        </Group>
+      )}
+    </div>
+  );
+}
 
 // Ce que montre une carte. Posé à part : la carte elle-même, la copie qui suit
 // le pointeur et les cartes de la liste qu'on déplace s'en servent toutes.
@@ -636,11 +854,16 @@ function CardContent({
   );
 
   return (
-    <Stack gap={4}>
+    <Stack gap={CARD_CONTENT_GAP}>
+      {/* La couverture ouvre la carte, d'un bord à l'autre : elle mange le
+          retrait de la carte (« xs ») et suit son arrondi, bordure déduite. */}
+      {card.cover_urls.length > 0 && (
+        <Couverture urls={card.cover_urls} intervalle={card.cover_interval} />
+      )}
       {/* Les étiquettes coiffent le titre. Cliquer l'une d'elles les replie ou
           les déploie toutes, sur tout le tableau. */}
       {etiquettes.length > 0 && (
-        <Group gap={4} align="center">
+        <Group gap={3} align="center" pb={5} style={{ rowGap: 4 }}>
           {etiquettes.map((label) => (
             <CardLabel
               key={label.id}
@@ -779,6 +1002,8 @@ interface ListCardProps {
   onMove: () => void;
   onCopy: () => void;
   onColor: (color: string) => void;
+  /** Pose ou retire la marque d'une animation au bout du titre. */
+  onAnimation: (effet: Effet) => void;
   onSeparator: () => void;
   /** Suivre cette liste, c'est être prévenu de ce qui arrive à ses cartes. */
   suivie: boolean;
@@ -810,6 +1035,7 @@ function ListCard({
   onMove,
   onCopy,
   onColor,
+  onAnimation,
   onSeparator,
   suivie,
   onToggleFollow,
@@ -962,7 +1188,8 @@ function ListCard({
             <>
               <Menu.Divider />
               {/* Les pastilles se passent d'intitulé : une couleur se
-                  reconnaît. */}
+                  reconnaît. La section, elle, en porte un. */}
+              <Menu.Label>Couleur de la liste</Menu.Label>
               <div className={pastilles.grille}>
                 {LIST_COLORS.map((couleur) => (
                   <ColorSwatch
@@ -989,6 +1216,27 @@ function ListCard({
               >
                 Aucune
               </Menu.Item>
+              <Menu.Divider />
+              {/* L'arrivée d'une carte se fête selon les marques du titre :
+                  chaque emoji pose la sienne au bout, ou la retire. */}
+              <Menu.Label>Animation à l'arrivée</Menu.Label>
+              <div className={pastilles.animations}>
+                {MARQUES.map((m) => (
+                  <UnstyledButton
+                    key={m.effet}
+                    className={pastilles.animation}
+                    onClick={() => {
+                      setMenu(null);
+                      onAnimation(m.effet);
+                    }}
+                    title={m.label}
+                    aria-label={m.label}
+                    aria-pressed={list.name.includes(m.marque)}
+                  >
+                    {m.emoji}
+                  </UnstyledButton>
+                ))}
+              </div>
             </>
           )}
 
@@ -1362,23 +1610,33 @@ export default function TaskBoard({
   // Pas de liste ajoutée : verrouillé, ou sans le droit.
   const sansAjoutDeListe = verrouille || !droits.ajouter;
 
-  // Salve de confettis en cours, tirée au-dessus d'une liste.
-  const [confettis, setConfettis] = useState<Confettis | null>(null);
+  // Fêtes en cours : une par marque du titre de la liste d'accueil.
+  const [fetes, setFetes] = useState<Fete[]>([]);
 
-  // Une carte qui arrive dans une liste marquée ✨ se fête. La salve part du
-  // haut de la liste, mesurée à l'écran : le tableau défile, sa position n'est
-  // connue qu'à cet instant.
-  const feteArrivee = (list: TaskList) => {
-    if (!list.name.includes(MARQUE_FETE)) return;
-    const element = document.querySelector(`[data-list-id="${list.id}"]`);
-    if (!element) return;
-    const rect = element.getBoundingClientRect();
-    setConfettis({
-      cle: Date.now(),
-      x: rect.left,
-      y: rect.top,
-      width: rect.width,
-    });
+  // Une carte qui arrive dans une liste marquée (✨, ❤️, 👍, 🚀, 🔥, ❄️, ⚡) se
+  // fête. La liste et la carte sont mesurées à l'écran : le tableau défile, leur
+  // position n'est connue qu'à cet instant. La carte vient d'être déplacée : on
+  // attend qu'elle soit peinte à sa nouvelle place avant de la mesurer.
+  const feteArrivee = (list: TaskList, cardId: Id) => {
+    const effets = effetsDuTitre(list.name);
+    if (effets.length === 0) return;
+    const zone = (el: Element | null): Zone | null => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.left, y: r.top, width: r.width, height: r.height };
+    };
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const liste = zone(document.querySelector(`[data-list-id="${list.id}"]`));
+        if (!liste) return;
+        const carte = zone(document.querySelector(`[data-card-id="${cardId}"]`));
+        const cle = Date.now();
+        setFetes((avant) => [
+          ...avant,
+          ...effets.map((effet) => ({ cle: `${cle}-${effet}`, effet, liste, carte })),
+        ]);
+      }),
+    );
   };
 
   // État du glisser en cours : une liste, ou une carte.
@@ -1437,6 +1695,21 @@ export default function TaskBoard({
       await api.updateTaskList(list.id, { name: nom });
       await onListsChanged();
     } catch (e) {
+      notifierErreur(messageErreur(e));
+    }
+  };
+
+  // --- Animation d'une liste ---------------------------------------------
+  // La marque se pose au bout du titre : c'est lui qui décide de la fête.
+  const setListAnimation = async (list: TaskList, effet: Effet) => {
+    const name = basculerMarque(list.name, effet);
+    if (!name || name === list.name) return;
+    setOrdreLocal(colonnes.map((l) => (l.id === list.id ? { ...l, name } : l)));
+    try {
+      await api.updateTaskList(list.id, { name });
+      await onListsChanged();
+    } catch (e) {
+      setOrdreLocal(null);
       notifierErreur(messageErreur(e));
     }
   };
@@ -1883,7 +2156,7 @@ export default function TaskBoard({
       // La carte rejoint sa destination sans attendre la réponse du serveur.
       setOrdreLocal(withCardMoved(colonnes, d.id, accueil.id, target.index));
       // Venue d'une autre liste : l'arrivée se fête, si la liste le demande.
-      if (target.listId !== d.listId) feteArrivee(accueil);
+      if (target.listId !== d.listId) feteArrivee(accueil, d.id);
       try {
         await api.reorderTaskCards(accueil.id, ordre);
         await onListsChanged();
@@ -2228,6 +2501,7 @@ export default function TaskBoard({
                   onMove={() => setListeVisee({ list, mode: "move" })}
                   onCopy={() => setListeVisee({ list, mode: "copy" })}
                   onColor={(color) => setListColor(list, color)}
+                  onAnimation={(effet) => setListAnimation(list, effet)}
                   onSeparator={() =>
                     startCompose(list, (list.cards || []).length, "separator")
                   }
@@ -2308,15 +2582,15 @@ export default function TaskBoard({
         </Paper>
       )}
 
-      {confettis && (
-        <Confetti
-          key={confettis.cle}
-          x={confettis.x}
-          y={confettis.y}
-          width={confettis.width}
-          onDone={() => setConfettis(null)}
+      {fetes.map((fete) => (
+        <EffetFete
+          key={fete.cle}
+          effet={fete.effet}
+          liste={fete.liste}
+          carte={fete.carte}
+          onDone={() => setFetes((avant) => avant.filter((f) => f.cle !== fete.cle))}
         />
-      )}
+      ))}
 
       <CardDrawer
         opened={cardOuverte !== null}

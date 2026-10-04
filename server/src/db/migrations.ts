@@ -203,6 +203,38 @@ export const migrate = (db: Database): void => {
   administrationGlobale(db);
   sansUptimeAvec365(db);
   categoriesRangees(db);
+  // Cartes créées avant la période, la récurrence et le rappel de l'échéance.
+  const colonnesDesCartes = columns(db, "task_cards");
+  for (const colonne of ["start_date", "recurrence", "reminder", "reminded_for"]) {
+    if (!colonnesDesCartes.includes(colonne)) {
+      db.exec(`ALTER TABLE task_cards ADD COLUMN ${colonne} TEXT NOT NULL DEFAULT ''`);
+    }
+  }
+  // Pièces jointes d'avant leur ordre : la plus récente reste en tête.
+  if (!columns(db, "card_attachments").includes("position")) {
+    db.exec("ALTER TABLE card_attachments ADD COLUMN position INTEGER NOT NULL DEFAULT 0");
+    db.exec("UPDATE card_attachments SET position = -id");
+  }
+  if (!colonnesDesCartes.includes("overdue_for")) {
+    db.exec("ALTER TABLE task_cards ADD COLUMN overdue_for TEXT NOT NULL DEFAULT ''");
+  }
+  if (!columns(db, "checklist_items").includes("overdue_for")) {
+    db.exec("ALTER TABLE checklist_items ADD COLUMN overdue_for TEXT NOT NULL DEFAULT ''");
+  }
+  if (!colonnesDesCartes.includes("due_form")) {
+    db.exec("ALTER TABLE task_cards ADD COLUMN due_form TEXT NOT NULL DEFAULT 'date'");
+    // Une échéance qui avait un début était une période.
+    db.exec("UPDATE task_cards SET due_form = 'periode' WHERE start_date != ''");
+  }
+  if (!colonnesDesCartes.includes("cover_interval")) {
+    db.exec("ALTER TABLE task_cards ADD COLUMN cover_interval INTEGER NOT NULL DEFAULT 0");
+  }
+  // Couvertures d'avant leur nom et leur taille.
+  const colonnesDesCouvertures = columns(db, "card_covers");
+  if (colonnesDesCouvertures.length > 0 && !colonnesDesCouvertures.includes("name")) {
+    db.exec("ALTER TABLE card_covers ADD COLUMN name TEXT NOT NULL DEFAULT ''");
+    db.exec("ALTER TABLE card_covers ADD COLUMN size INTEGER NOT NULL DEFAULT 0");
+  }
   // Les vues sans workspace — celles d'avant eux, celles qu'une base neuve
   // vient de recevoir (vuesEtTableaux) — vont dans le premier.
   db.prepare("UPDATE views SET workspace_id = ? WHERE workspace_id IS NULL").run(
@@ -690,7 +722,7 @@ const rattraperAvantLesVues = (db: Database): void => {
     db.exec("ALTER TABLE access_categories DROP COLUMN gap");
   }
 
-  // Demandes de support créées quand elles n'avaient qu'un acteur : il passe
+  // Tickets créés quand ils n'avaient qu'un acteur : il passe
   // dans la table des acteurs, et la colonne s'en va. SQLite refuse de retirer
   // une colonne indexée ou citée par une clé étrangère : l'index tombe
   // d'abord, et les clés étrangères sont suspendues le temps du retrait.

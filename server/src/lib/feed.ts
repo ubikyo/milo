@@ -30,7 +30,12 @@ import {
   ACCESS_FEED_INTERVAL_MIN,
   ACCESS_FEED_QUANTITE_MAX,
 } from "@milo/shared";
-import type { AccessFeed, AccessFeedArticle, AccessFeedProbe } from "@milo/shared";
+import type {
+  AccessFeed,
+  AccessFeedArticle,
+  AccessFeedProbe,
+  AccessFeedSource,
+} from "@milo/shared";
 import type { AccessFeedRow } from "../db/rows.js";
 import { accessFeeds } from "../repositories/access.js";
 import { HttpError, badRequest } from "./http.js";
@@ -426,7 +431,9 @@ const relever = (url: string, quantite: number): Promise<void> => {
 
 /** Ce qu'un élément RSS règle, lu dans sa configuration et ramené à ses bornes. */
 export interface ReglagesFlux {
-  url: string;
+  /** Ses sources, dans l'ordre réglé, sans doublon. */
+  urls: string[];
+  /** Les articles montrés : au plus, chaque source en fournit autant. */
   quantite: number;
   /** En minutes. */
   intervalle: number;
@@ -438,13 +445,27 @@ const borne = (valeur: unknown, defaut: number, min: number, max: number): numbe
 };
 
 /**
+ * Les adresses des sources : la liste « sources », une entrée par ligne du
+ * tiroir. Un élément rangé avant elle n'a que son « url », relue tant que la
+ * liste n'a pas été enregistrée.
+ */
+const adressesDe = (config: Record<string, unknown>): string[] => {
+  const brutes = Array.isArray(config.sources)
+    ? config.sources.map((s: unknown) =>
+        estObjet(s) && typeof s.url === "string" ? s.url : "",
+      )
+    : [typeof config.url === "string" ? config.url : ""];
+  return [...new Set(brutes.map((u) => u.trim()).filter(Boolean))];
+};
+
+/**
  * Les réglages d'un élément RSS. Le serveur ne lit d'ordinaire pas la
  * configuration d'un widget ; celle-ci, il la lit parce qu'il relève le flux
  * lui-même. Les clés et les valeurs par défaut sont celles du widget
  * (client/src/widgets/rss.tsx).
  */
 export const reglagesFlux = (config: Record<string, unknown>): ReglagesFlux => ({
-  url: typeof config.url === "string" ? config.url.trim() : "",
+  urls: adressesDe(config),
   quantite: borne(config.quantite, 5, 1, ACCESS_FEED_QUANTITE_MAX),
   intervalle: borne(
     config.intervalle,
@@ -468,13 +489,14 @@ const sourcesSuivies = (): Map<string, { quantite: number; intervalle: number }>
       continue;
     }
     if (!lu || typeof lu !== "object" || Array.isArray(lu)) continue;
-    const { url, quantite, intervalle } = reglagesFlux(lu as Record<string, unknown>);
-    if (!url) continue;
-    const connue = sources.get(url);
-    sources.set(url, {
-      quantite: Math.max(quantite, connue?.quantite ?? 0),
-      intervalle: Math.min(intervalle, connue?.intervalle ?? Infinity),
-    });
+    const { urls, quantite, intervalle } = reglagesFlux(lu as Record<string, unknown>);
+    for (const url of urls) {
+      const connue = sources.get(url);
+      sources.set(url, {
+        quantite: Math.max(quantite, connue?.quantite ?? 0),
+        intervalle: Math.min(intervalle, connue?.intervalle ?? Infinity),
+      });
+    }
   }
   return sources;
 };
@@ -525,23 +547,47 @@ const articlesDe = (ligne: AccessFeedRow): AccessFeedArticle[] => {
 };
 
 /**
- * Le flux d'un élément, tel que la base le garde. La source n'est relevée sur
- * le champ que lorsque la base n'a rien à montrer — un élément neuf, une
+ * Une source d'un élément, telle que la base la garde. Elle n'est relevée sur
+ * le champ que lorsque la base n'a rien à montrer — une source neuve, une
  * adresse changée, une quantité relevée — ; sinon, c'est la relève de fond qui
  * la tient à jour, et la page n'attend jamais la source.
  */
-export const fluxDe = async ({ url, quantite }: ReglagesFlux): Promise<AccessFeed> => {
-  if (!url) badRequest("L'adresse du flux est requise");
+const sourceDe = async (
+  url: string,
+  quantite: number,
+  suivies: () => Map<string, { quantite: number }>,
+): Promise<AccessFeedSource> => {
   let ligne = accessFeeds.byUrl.get(url);
   const servable = ligne?.fetched_at != null && ligne.quantity >= quantite;
   // Une source qui vient d'échouer n'est pas relancée à chaque visite.
   const essaiPermis = !ligne || !ligne.error
     || Date.now() - Date.parse(ligne.tried_at) >= NOUVEL_ESSAI;
   if (!servable && essaiPermis) {
-    const voulue = Math.max(quantite, sourcesSuivies().get(url)?.quantite ?? 0);
+    const voulue = Math.max(quantite, suivies().get(url)?.quantite ?? 0);
     await relever(url, voulue);
     ligne = accessFeeds.byUrl.get(url);
   }
-  if (!ligne?.fetched_at) throw new HttpError(502, ligne?.error || "Relève impossible");
-  return { articles: articlesDe(ligne).slice(0, quantite), fetched_at: ligne.fetched_at };
+  if (!ligne?.fetched_at) {
+    return { url, articles: [], fetched_at: null, error: ligne?.error || "Relève impossible" };
+  }
+  return {
+    url,
+    articles: articlesDe(ligne).slice(0, quantite),
+    fetched_at: ligne.fetched_at,
+    error: null,
+  };
+};
+
+/**
+ * Le flux d'un élément : chacune de ses sources, dans l'ordre réglé. Elles se
+ * lisent ensemble, et l'échec de l'une ne retient pas les autres.
+ */
+export const fluxDe = async ({ urls, quantite }: ReglagesFlux): Promise<AccessFeed> => {
+  if (!urls.length) badRequest("L'adresse du flux est requise");
+  // Les sources suivies ne se relisent qu'une fois, et seulement s'il faut.
+  let suivies: Map<string, { quantite: number }> | undefined;
+  const lesSuivies = () => (suivies ??= sourcesSuivies());
+  return {
+    sources: await Promise.all(urls.map((url) => sourceDe(url, quantite, lesSuivies))),
+  };
 };

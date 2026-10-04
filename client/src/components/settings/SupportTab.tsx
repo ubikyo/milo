@@ -9,7 +9,7 @@ import {
 import type { SupportLabel } from "@milo/shared";
 import { api } from "../../api";
 import { messageErreur, notifierErreur } from "../../lib/errors";
-import LabelPicker, { SUPPORT_LABELS_API } from "../ui/LabelPicker";
+import EtiquettesNouveauMessage from "./EtiquettesNouveauMessage";
 import SupportTemplates from "./SupportTemplates";
 
 // La section « Support » du Paramétrage : ce que reçoit d'office une demande
@@ -104,32 +104,15 @@ export default function SupportTab({ canEdit }: SupportTabProps) {
           }}
           disabled={!canEdit || jours === null}
         />
-        {/* Les étiquettes sont communes à toutes les sociétés, comme dans la
-          fiche d'une demande. Sans droit de modifier, le champ se lit
-          seulement : le fieldset désactive ses boutons. */}
-        <fieldset
-          disabled={!canEdit}
-          style={{
-            border: 0,
-            padding: 0,
-            margin: 0,
-            minWidth: 0,
-            flex: 1,
-            maxWidth: 420,
-          }}
-        >
-          <LabelPicker
-            label="Étiquettes nouveau message"
-            labels={etiquettes}
-            value={labelIds}
-            onChange={(ids) => void choisirEtiquettes(ids)}
-            boardId={0}
-            onLabelsChanged={relireEtiquettes}
-            labelsApi={SUPPORT_LABELS_API}
-            emptyText="Aucune étiquette"
-          />
-        </fieldset>
       </Group>
+      {/* Les étiquettes qu'un ticket arrivé par e-mail reçoit d'office, à la
+          ligne et sur toute la largeur, comme les listes qui suivent. */}
+      <EtiquettesNouveauMessage
+        etiquettes={etiquettes}
+        value={labelIds}
+        onChange={(ids) => void choisirEtiquettes(ids)}
+        canEdit={canEdit}
+      />
       <SupportTemplates
         label="Notifications automatiques"
         evenements={SUPPORT_REPLY_EVENTS}
@@ -137,7 +120,7 @@ export default function SupportTab({ canEdit }: SupportTabProps) {
         creer={api.createSupportReply}
         modifier={api.updateSupportReply}
         supprimer={api.deleteSupportReply}
-        addTitle="Réponse"
+        addTitle="Ajouter une réponse"
         entityLabel="la réponse"
         emptyIcon={IconMessageReply}
         emptyText="Aucune réponse pour le moment"
@@ -153,7 +136,7 @@ export default function SupportTab({ canEdit }: SupportTabProps) {
         creer={api.createSupportContent}
         modifier={api.updateSupportContent}
         supprimer={api.deleteSupportContent}
-        addTitle="Contenu"
+        addTitle="Ajouter un contenu"
         entityLabel="le contenu"
         emptyIcon={IconSignature}
         emptyText="Aucun contenu pour le moment"

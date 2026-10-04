@@ -327,6 +327,23 @@ export const SCHEMA = `
     -- carte se rend pour une heure dite. Vide plutôt que NULL, comme partout
     -- ailleurs : une échéance absente se lit de la même façon.
     due_date TEXT NOT NULL DEFAULT '',
+    -- Le début de la période (« AAAA-MM-JJ »), quand l'échéance va « du … au
+    -- … » ; vide quand elle ne dit que « jusqu'à ».
+    start_date TEXT NOT NULL DEFAULT '',
+    -- La forme de l'échéance : « date » seule, ou « periode » (début et fin).
+    due_form TEXT NOT NULL DEFAULT 'date',
+    -- La récurrence et le rappel de l'échéance (shared/echeance.ts) ; vides
+    -- pour « Jamais » et « Aucun ».
+    recurrence TEXT NOT NULL DEFAULT '',
+    reminder TEXT NOT NULL DEFAULT '',
+    -- L'échéance dont le rappel est parti : il ne repart pas, sauf si
+    -- l'échéance ou le rappel changent.
+    reminded_for TEXT NOT NULL DEFAULT '',
+    -- L'échéance dont le dépassement a été signalé, sur le même principe.
+    overdue_for TEXT NOT NULL DEFAULT '',
+    -- Les secondes entre deux images de couverture sur le tableau ; zéro, la
+    -- première reste en place.
+    cover_interval INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
 
@@ -378,6 +395,8 @@ export const SCHEMA = `
     done INTEGER NOT NULL DEFAULT 0,
     -- Vide plutôt que NULL : une date absente se lit de la même façon partout.
     due_date TEXT NOT NULL DEFAULT '',
+    -- La date dont le dépassement a été signalé : il ne l'est qu'une fois.
+    overdue_for TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
@@ -407,7 +426,36 @@ export const SCHEMA = `
     size INTEGER NOT NULL DEFAULT 0,
     -- Qui l'a déposé. Le compte supprimé laisse la pièce jointe en place.
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    -- L'ordre dans la fiche ; une pièce déposée se range en tête.
+    position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
+  );
+
+  -- Images de couverture d'une carte : des fichiers du dossier des médias,
+  -- rangés entre eux. La première est celle que montre la carte sur le
+  -- tableau.
+  CREATE TABLE IF NOT EXISTS card_covers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_id INTEGER NOT NULL REFERENCES task_cards(id) ON DELETE CASCADE,
+    file TEXT NOT NULL,
+    -- Le nom d'origine et la taille en octets, comme une pièce jointe.
+    name TEXT NOT NULL DEFAULT '',
+    size INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  -- Dépendances entre cartes : « bloque », « est le parent de », « est lié
+  -- à », « est un doublon de ». Une liaison s'écrit une fois, de sa source vers
+  -- sa cible ; la cible la lit à l'envers (shared, dependances.ts). Elle part
+  -- avec l'une ou l'autre carte.
+  CREATE TABLE IF NOT EXISTS card_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id INTEGER NOT NULL REFERENCES task_cards(id) ON DELETE CASCADE,
+    target_id INTEGER NOT NULL REFERENCES task_cards(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (source_id, target_id, kind)
   );
 
   -- Commentaires d'une carte. Table à part de ceux des projets : les deux
@@ -429,9 +477,9 @@ export const SCHEMA = `
 
 
 
-  -- Les demandes de support. Chacune appartient à un contexte d'un tableau :
-  -- celui que la liste des demandes associe à la boîte où elle est arrivée,
-  -- ou celui qu'on a choisi en la saisissant.
+  -- Les tickets. Chacun appartient à un contexte d'un tableau :
+  -- celui que la liste des tickets associe à la boîte où il est arrivé,
+  -- ou celui qu'on a choisi en le saisissant.
   CREATE TABLE IF NOT EXISTS support_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     -- Le tableau qui la montre, et le contexte auquel elle appartient :
@@ -442,7 +490,7 @@ export const SCHEMA = `
     -- La boîte où elle est arrivée, d'où partent les réponses ; vide pour une
     -- demande saisie.
     mailbox TEXT NOT NULL DEFAULT '',
-    -- Le widget « Demandes de support » qui la montre, comme pour un projet.
+    -- Le widget « Tickets » qui la montre, comme pour un projet.
     list_key TEXT NOT NULL DEFAULT '',
     -- Le numéro de ticket (« HLP-12 ») : il suit celui de la demande
     -- précédente, tous contextes confondus. Le dernier donné est gardé dans
@@ -682,6 +730,8 @@ export const INDEXES = `
 
   CREATE INDEX IF NOT EXISTS idx_card_attachments_card ON card_attachments(card_id, id);
   CREATE INDEX IF NOT EXISTS idx_card_attachments_file ON card_attachments(file);
+  CREATE INDEX IF NOT EXISTS idx_card_covers_card ON card_covers(card_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_card_links_target ON card_links(target_id);
 
   -- Les demandes se lisent par contexte, de la plus récente à la plus ancienne.
   -- Les postes du mode Assets : ce qu'un agent d'inventaire (FusionInventory,

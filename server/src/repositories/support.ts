@@ -1,4 +1,4 @@
-// Les demandes de support : leur contexte, leurs acteurs, leurs étiquettes et
+// Les tickets : leur contexte, leurs acteurs, leurs étiquettes et
 // leur fil. Les étiquettes, elles, sont communes à tous les contextes.
 //
 // Une demande pend à un contexte d'un tableau : celui que la liste des

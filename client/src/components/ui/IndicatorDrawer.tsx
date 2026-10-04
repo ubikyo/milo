@@ -155,6 +155,9 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
                   ) : (
                     <ChampNom config={config} onChange={setConfig} defaut={widget.label} />
                   ))}
+                {/* Le bloc « Apparence », commun à tous les widgets
+                    (board-widgets). */}
+                {widget?.Apparence && <widget.Apparence config={config} onChange={setConfig} />}
               </Stack>
             </DrawerScrollArea>
           </Tabs.Panel>
@@ -172,8 +175,8 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
         opened={confirmDeleteOpened}
         onClose={() => setConfirmDeleteOpened(false)}
         onConfirm={remove}
-        title="Supprimer l'indicateur"
-        message={<>Voulez-vous vraiment supprimer cet indicateur ? Cette action est irréversible.</>}
+        title="Supprimer le widget"
+        message={<>Voulez-vous vraiment supprimer ce widget ? Cette action est irréversible.</>}
       />
     </>
   );

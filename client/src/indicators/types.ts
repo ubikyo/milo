@@ -58,6 +58,8 @@ export interface SupportIndicatorWidget {
   Config?: ComponentType<IndicatorConfigProps>;
   /** Vrai quand le widget prend ses clics en charge : voir IndicatorWidgetBase. */
   ownClicks?: boolean;
+  /** Vrai quand il montre une valeur : voir IndicatorWidgetBase. */
+  avecValeur?: boolean;
   /** Vrai quand il occupe toute la hauteur de sa section : voir IndicatorWidgetBase. */
   fill?: boolean;
   /** Vrai quand il se nomme sur place : voir IndicatorWidgetBase. */

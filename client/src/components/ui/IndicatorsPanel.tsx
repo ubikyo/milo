@@ -2,7 +2,7 @@ import { Box, Menu, Stack, UnstyledButton } from "@mantine/core";
 import { IconCopy, IconCopyPlus, IconPencil, IconTrash } from "@tabler/icons-react";
 import { useRef, useState, type ComponentType, type ReactNode } from "react";
 import encart from "../../assets/styles/AccessNumero.module.css";
-import { avec } from "../../widgets/types";
+import { avec, estEncadre, texte } from "../../widgets/types";
 import { useAccesWidget } from "../../lib/droits";
 import { RED } from "../../themes/colors";
 import { copierWidget, useWidgetCopie } from "../../lib/presse-papiers";
@@ -13,7 +13,7 @@ import { ELEMENTS_DE_LA_LISTE } from "../../lib/listes";
 import IndicatorDrawer from "./IndicatorDrawer";
 import PointMenu, { positionDuMenu, type PointMenuPosition } from "./PointMenu";
 import SectionsBoard from "./SectionsBoard";
-import { CarteIndicateurContext, NOM } from "./TitreIndicateur";
+import { CarteIndicateurContext, FOND, NOM } from "./TitreIndicateur";
 import { TraitInsertion, useWidgetDrop, type WidgetDrag } from "./WidgetDrop";
 import type { SectionsDuPanneau } from "../../api";
 import type { IndicatorConfigProps } from "../../indicators/types";
@@ -22,7 +22,7 @@ import type { Id, IndicatorSection } from "@milo/shared";
 import type { WidgetKind } from "../../widgets/genres";
 
 /** L'écart entre deux indicateurs d'une section. */
-const ECART = 20;
+export const ECART = 20;
 
 /** La hauteur d'un indicateur : son nom en haut, la quantité en bas. */
 const HAUTEUR = 120;
@@ -66,6 +66,11 @@ export interface IndicatorWidgetBase<Type extends string> {
    */
   ownClicks?: boolean;
   /**
+   * Vrai quand le widget montre une valeur — un nombre de tickets, de cartes,
+   * de projets, de postes : son tiroir en propose la taille.
+   */
+  avecValeur?: boolean;
+  /**
    * Vrai quand le widget occupe toute la hauteur que sa section lui laisse —
    * les listes de projets, de tâches, de demandes, de postes —, s'il est le
    * dernier de sa section ; suivi d'un autre, il s'en tient à son contenu.
@@ -88,6 +93,11 @@ export interface IndicatorWidgetBase<Type extends string> {
     previousType: string | null,
     nextType: string | null,
   ) => { haute: number; basse: number };
+  /**
+   * Le bloc « Apparence » de son tiroir, sous ses propres champs : la carte,
+   * le cadre et les marges (board-widgets).
+   */
+  Apparence?: ComponentType<IndicatorConfigProps>;
   /** Vrai quand il ne doit pas paraître — un lien éteint, une fois verrouillé. */
   hidden?: (config: unknown, locked: boolean) => boolean;
   /** La largeur de son tiroir, quand ses champs ne tiennent pas dans celle de tous. */
@@ -242,9 +252,13 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
     setTiroirOuvert(true);
   };
 
-  // Un widget sans champs n'a que son nom, qui se change au double-clic sur
-  // son titre : il n'a pas de tiroir.
-  const aUnTiroir = (indicateur: Indicateur<Type>) => Boolean(widgetOf(indicateur.type)?.Config);
+  // Un widget sans champs à lui naît sans tiroir (poser), mais en a un
+  // ensuite : son apparence — cadre, marges — se règle comme celle de tous.
+  // Seul un widget qui n'aurait ni l'un ni l'autre n'en a pas.
+  const aUnTiroir = (indicateur: Indicateur<Type>) => {
+    const widget = widgetOf(indicateur.type);
+    return Boolean(widget?.Config || widget?.Apparence);
+  };
 
   const modifier = (indicateur: Indicateur<Type>) => {
     if (!aUnTiroir(indicateur)) return;
@@ -398,10 +412,10 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
         opened={aSupprimer !== null}
         onClose={() => setASupprimer(null)}
         onConfirm={supprimer}
-        title="Supprimer l'indicateur"
+        title="Supprimer le widget"
         message={
           <>
-            Voulez-vous vraiment supprimer cet indicateur ?
+            Voulez-vous vraiment supprimer ce widget ?
             {aSupprimer && ELEMENTS_DE_LA_LISTE[String(aSupprimer.type)] && (
               <> {ELEMENTS_DE_LA_LISTE[String(aSupprimer.type)]} seront supprimés avec lui.</>
             )}{" "}
@@ -576,15 +590,24 @@ function IndicateursDeSection<Type extends string, P extends IndicatorWidgetBase
                   role="button"
                   tabIndex={0}
                   w="100%"
-                  className={encart.encart}
+                  // Sans cadre, la carte perd son fond et son retrait : il ne
+                  // reste que son contenu.
+                  className={estEncadre(indicateur.config, true) ? encart.encart : undefined}
                   onClick={() => !fige && onOpen(indicateur)}
                   onContextMenu={menuDe}
                   style={{
                     display: "flex",
                     flexDirection: "column",
                     minHeight: HAUTEUR,
-                    padding: "var(--mantine-spacing-md)",
+                    padding: estEncadre(indicateur.config, true)
+                      ? "var(--mantine-spacing-md)"
+                      : 0,
                     border: "none",
+                    // Le fond choisi dans le tiroir, sinon celui de l'encart.
+                    ...(estEncadre(indicateur.config, true) &&
+                      texte(indicateur.config, FOND) && {
+                      backgroundColor: texte(indicateur.config, FOND),
+                    }),
                   }}
                 >
                   {render(widget, indicateur.config, rendu)}

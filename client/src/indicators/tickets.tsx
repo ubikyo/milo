@@ -1,8 +1,8 @@
-import { Select, Stack, Text } from "@mantine/core";
+import { Select, Stack } from "@mantine/core";
 import { IconTicket } from "@tabler/icons-react";
 import { etatEcheance } from "../lib/echeance";
 import { avec, texte } from "../widgets/types";
-import { ChampNom, NOM, TitreIndicateur } from "./commun";
+import { ChampNom, NOM, TitreIndicateur, ValeurIndicateur } from "./commun";
 import type { SupportIndicatorWidget } from "./types";
 import type { Id, SupportRequest } from "@milo/shared";
 
@@ -58,6 +58,7 @@ export const ticketsIndicator: SupportIndicatorWidget = {
   kind: "helpdesk",
   label: "Indicateur",
   icon: IconTicket,
+  avecValeur: true,
   defaultConfig: { [NOM]: "", [TYPE]: TYPE_PAR_DEFAUT.value },
 
   Display: ({ config, requests, userId }) => {
@@ -67,9 +68,9 @@ export const ticketsIndicator: SupportIndicatorWidget = {
       <Stack gap={4} justify="space-between" style={{ flex: 1 }}>
         {/* Sans nom, l'indicateur se présente par son type. */}
         <TitreIndicateur config={config} defaut={type.label} />
-        <Text fz={28} fw={600} lh={1}>
+        <ValeurIndicateur config={config}>
           {requests.filter((d) => type.compte(d, userId)).length}
-        </Text>
+        </ValeurIndicateur>
       </Stack>
     );
   },

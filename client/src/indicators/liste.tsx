@@ -58,7 +58,7 @@ function Liste({ config }: { config: unknown }) {
 export const listeIndicator: SupportIndicatorWidget = {
   type: "list",
   kind: "helpdesk",
-  label: "Demandes de support",
+  label: "Tickets",
   icon: IconList,
   defaultConfig: {},
   ownClicks: true,

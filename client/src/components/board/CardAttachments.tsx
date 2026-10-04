@@ -1,25 +1,18 @@
-import {
-  Box,
-  Group,
-  Input,
-  Menu,
-  Paper,
-  Stack,
-  Text,
-  UnstyledButton,
-} from "@mantine/core";
-import { IconExternalLink, IconPlus, IconTrash } from "@tabler/icons-react";
+import { Box, Group, Input, Menu, Stack, Text } from "@mantine/core";
+import { IconExternalLink, IconTrash } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useState } from "react";
-import { ADD_ACTION, FIELD_ICON, RED } from "../../themes/colors";
-import { PLUS_GAP, PLUS_SIZE } from "../../themes/plus";
+import type { ComponentPropsWithoutRef, DragEvent, ReactNode } from "react";
+import { FIELD_ICON, RED } from "../../themes/colors";
+import AddButton from "../ui/AddButton";
+import { Poignee, deplacer } from "../ui/LignesDuTiroir";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import PointMenu, {
   positionDuMenu,
   type PointMenuPosition,
 } from "../ui/PointMenu";
-import type { Attachment } from "@milo/shared";
+import type { Attachment, Id } from "@milo/shared";
 import classes from "../../assets/styles/CardAttachments.module.css";
 
 // « il y a 3 minutes » plutôt qu'une date : une pièce jointe vient d'être
@@ -61,15 +54,21 @@ const taille = (octets: number): string => {
   return `${(octets / (1024 * 1024)).toFixed(1).replace(".", ",")} Mo`;
 };
 
-// Toute la ligne ouvre la pièce dans un nouvel onglet ; « Supprimer » est dans
-// son menu contextuel, au clic droit, comme pour les checklists et les cartes
-// du tableau.
-interface LigneProps {
-  piece: Attachment;
+/** Ce qu'une ligne montre d'un fichier : une pièce jointe, une couverture. */
+export type Fichier = Pick<Attachment, "url" | "name" | "created_at" | "size" | "is_image">;
+
+// Toute la ligne ouvre le fichier dans un nouvel onglet ; « Supprimer » est
+// dans son menu contextuel, au clic droit, comme pour les checklists et les
+// cartes du tableau. Les images de couverture (CardCovers) se montrent sur la
+// même ligne, une poignée devant pour les ranger.
+interface LigneProps extends Omit<ComponentPropsWithoutRef<"a">, "onContextMenu"> {
+  piece: Fichier;
   onContextMenu: (position: PointMenuPosition) => void;
+  /** Posé avant la vignette : la poignée qui range les couvertures. */
+  poignee?: ReactNode;
 }
 
-function Ligne({ piece, onContextMenu }: LigneProps) {
+export function LigneFichier({ piece, onContextMenu, poignee, ...props }: LigneProps) {
   return (
     <a
       href={piece.url}
@@ -78,8 +77,10 @@ function Ligne({ piece, onContextMenu }: LigneProps) {
       className={classes.ligne}
       aria-label={`Ouvrir ${piece.name}`}
       onContextMenu={(e) => onContextMenu(positionDuMenu(e))}
+      {...props}
     >
       <Group gap="sm" wrap="nowrap" align="center">
+        {poignee}
         {/* L'encart : la photo si c'en est une, sinon son extension au centre. */}
         <Box
           w={VIGNETTE_L}
@@ -98,6 +99,9 @@ function Ligne({ piece, onContextMenu }: LigneProps) {
             <img
               src={piece.url}
               alt={piece.name}
+              // Décodée à part : une grande photo ne fige pas la fiche.
+              decoding="async"
+              loading="lazy"
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
             />
           ) : (
@@ -117,15 +121,63 @@ function Ligne({ piece, onContextMenu }: LigneProps) {
           </Text>
         </div>
 
-        {/* Au survol, le rappel que le clic ouvre un nouvel onglet. */}
+        {/* Le rappel que le clic ouvre un nouvel onglet. */}
         <IconExternalLink
           size={16}
-          className={classes.ouvrir}
           style={{ flexShrink: 0, color: FIELD_ICON }}
         />
       </Group>
     </a>
   );
+}
+
+/**
+ * Une pile de fichiers qu'on range à la poignée — les pièces jointes, les
+ * couvertures. L'ordre bouge à l'écran pendant le glisser et ne part qu'au
+ * lâcher, s'il a changé. Rend ce qu'il faut poser sur chaque ligne.
+ */
+export function useFichiersRanges<T extends { id: Id; name: string }>(
+  fichiers: T[],
+  onReorder: (ids: Id[]) => void | Promise<void>,
+  actif: boolean,
+) {
+  const [ordre, setOrdre] = useState<T[] | null>(null);
+  const [tenue, setTenue] = useState<number | null>(null);
+
+  const lacher = () => {
+    const fin = ordre;
+    setTenue(null);
+    setOrdre(null);
+    if (fin && fin.some((f, i) => f.id !== fichiers[i]?.id)) void onReorder(fin.map((f) => f.id));
+  };
+
+  const ligne = (fichier: T, rang: number) => ({
+    onDragOver: (e: DragEvent<HTMLAnchorElement>) => {
+      if (tenue === null || !ordre) return;
+      e.preventDefault();
+      const suivant = deplacer(ordre, tenue, rang);
+      if (!suivant) return;
+      setTenue(rang);
+      setOrdre(suivant);
+    },
+    onDrop: (e: DragEvent<HTMLAnchorElement>) => e.preventDefault(),
+    style: { opacity: tenue === rang ? 0.5 : 1 },
+    poignee: actif && (
+      // Un clic sur la poignée ne doit pas ouvrir le fichier.
+      <span onClick={(e) => e.preventDefault()} style={{ display: "flex" }}>
+        <Poignee
+          label={`Déplacer ${fichier.name || "le fichier"}`}
+          onDragStart={() => {
+            setTenue(rang);
+            setOrdre(fichiers);
+          }}
+          onDragEnd={lacher}
+        />
+      </span>
+    ),
+  });
+
+  return { affiches: ordre ?? fichiers, ligne };
 }
 
 /**
@@ -141,12 +193,15 @@ interface CardAttachmentsProps {
   attachments: Attachment[];
   /** Ouvre le sélecteur de fichiers du tiroir, celui-là même que le menu « Actions » ouvre. */
   onPick: () => void;
+  /** L'ordre complet, au lâcher d'une poignée. */
+  onReorder: (ids: Id[]) => void | Promise<void>;
   onDelete: (piece: Attachment) => void | Promise<void>;
 }
 
 export default function CardAttachments({
   attachments,
   onPick,
+  onReorder,
   onDelete,
 }: CardAttachmentsProps) {
   const [aSupprimer, setASupprimer] = useState<Attachment | null>(null);
@@ -156,6 +211,7 @@ export default function CardAttachments({
   } | null>(null);
 
   const pieces = attachments || [];
+  const { affiches, ligne } = useFichiersRanges(pieces, onReorder, true);
   if (pieces.length === 0) return null;
 
   return (
@@ -163,26 +219,22 @@ export default function CardAttachments({
     // titre, la description, les checklists —, et disparaît avec eux quand la
     // carte n'a aucune pièce jointe.
     <Input.Wrapper label="Pièces jointes">
-      {/* Le fond des champs de la fiche, sans leur bordure, comme les
-          checklists. */}
-      <Paper radius="md" p="sm" bg="var(--mantine-color-default)">
-        <Stack gap="sm">
-          {pieces.map((piece) => (
-            <Ligne
+      {/* Une pile de lignes grises, comme les checklists : le fond du
+          tiroir se montre entre deux pièces. */}
+      <Box>
+        <Stack gap={2}>
+          {affiches.map((piece, rang) => (
+            <LigneFichier
               key={piece.id}
               piece={piece}
               onContextMenu={(position) => setMenu({ piece, position })}
+              {...ligne(piece, rang)}
             />
           ))}
-
-          {/* Le vert des actions « ajouter », comme au bout d'une checklist. */}
-          <UnstyledButton onClick={onPick} mt={4}>
-            <Group gap={PLUS_GAP} wrap="nowrap" c={ADD_ACTION.color}>
-              <IconPlus size={PLUS_SIZE} />
-              <Text size="sm">Ajouter un fichier</Text>
-            </Group>
-          </UnstyledButton>
         </Stack>
+
+        {/* Au plus près de la pile qu'il allonge. */}
+        <AddButton label="Ajouter un fichier" onClick={onPick} mt={4} />
 
         {menu && (
           <PointMenu position={menu.position} onClose={() => setMenu(null)}>
@@ -207,7 +259,7 @@ export default function CardAttachments({
           title="Supprimer la pièce jointe"
           message={<>Voulez-vous vraiment supprimer « {aSupprimer?.name} » ?</>}
         />
-      </Paper>
+      </Box>
     </Input.Wrapper>
   );
 }

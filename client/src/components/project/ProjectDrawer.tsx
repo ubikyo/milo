@@ -36,6 +36,7 @@ import {
 } from "../../themes/menus";
 import { tabStyle } from "../../themes/tabs";
 import champs from "../../assets/styles/EcartField.module.css";
+import { largeurChamp } from "../../lib/largeurChamp";
 import { TYPE_JALONS_PAR_DEFAUT } from "@milo/shared";
 import CommentThread from "./CommentThread";
 import { MilestoneLabels, marquesJalons } from "./milestoneMarks";
@@ -68,17 +69,6 @@ import type { FilItem } from "./CommentThread";
 import BoutonFermer from "../ui/BoutonFermer";
 
 /** La fiche en cours de saisie. Tout y est en chaînes : ce sont des champs. */
-
-let mesureur: CanvasRenderingContext2D | null = null;
-
-/** La largeur d'un petit champ discret qui montre ce texte : texte, air et bordure. */
-const largeurChamp = (texte: string): number => {
-  mesureur ??= document.createElement("canvas").getContext("2d");
-  if (!mesureur) return texte.length * 7 + 6;
-  // La taille des petits champs discrets (EcartField.module.css), la police de la page.
-  mesureur.font = `11px ${getComputedStyle(document.body).fontFamily}`;
-  return Math.ceil(mesureur.measureText(texte).width) + 6;
-};
 
 interface Formulaire {
   name: string;

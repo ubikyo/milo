@@ -56,7 +56,7 @@ const membresDeLElement = selection<{ user_id: Id }>(
   "SELECT user_id FROM checklist_item_members WHERE item_id = ?",
 );
 const piecesDeLaCarte = selection<AttachmentRow>(
-  "SELECT * FROM card_attachments WHERE card_id = ? ORDER BY id",
+  "SELECT * FROM card_attachments WHERE card_id = ? ORDER BY position, id",
 );
 
 // --- Écritures de la copie -------------------------------------------------
@@ -68,7 +68,10 @@ const creerListe = mutation(
 // Ni l'une ni l'autre ne passe par `taskCards.create`, qui ne les prend pas :
 // elles se posent juste après l'insertion.
 const poserDescription = mutation("UPDATE task_cards SET description = ? WHERE id = ?");
-const poserEcheance = mutation("UPDATE task_cards SET due_date = ? WHERE id = ?");
+const poserEcheance = mutation(
+  `UPDATE task_cards SET due_date = ?, start_date = ?, due_form = ?, recurrence = ?, reminder = ?
+   WHERE id = ?`,
+);
 const lierMembre = mutation("INSERT OR IGNORE INTO card_members (card_id, user_id) VALUES (?, ?)");
 const lierEtiquette = mutation(
   "INSERT OR IGNORE INTO card_labels (card_id, label_id) VALUES (?, ?)",
@@ -86,9 +89,15 @@ const lierMembreElement = mutation(
 // La copie cite le même fichier que l'original : rien n'est recopié sur le
 // disque, et le fichier ne s'en va qu'avec la dernière ligne qui le cite
 // (repositories/attachments.ts).
+// Les couvertures se recopient de même, dans leur ordre.
+const poserRotation = mutation("UPDATE task_cards SET cover_interval = ? WHERE id = ?");
+const reprendreCouvertures = mutation(
+  `INSERT INTO card_covers (card_id, file, name, size, position, created_at)
+   SELECT ?, file, name, size, position, ? FROM card_covers WHERE card_id = ?`,
+);
 const reprendrePiece = mutation(
-  `INSERT INTO card_attachments (card_id, file, name, mime, size, user_id, created_at)
-   VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  `INSERT INTO card_attachments (card_id, file, name, mime, size, user_id, created_at, position)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 );
 
 // --- Étiquettes d'un tableau à l'autre --------------------------------------
@@ -185,7 +194,17 @@ const copierCarte = (carte: TaskCardRow, copie: CopieDeCarte): Id => {
 
   if (carte.description) poserDescription.run(carte.description, carteId);
   // L'échéance suit la carte : une copie a la même date à tenir.
-  if (carte.due_date) poserEcheance.run(carte.due_date, carteId);
+  if (carte.due_date) {
+    poserEcheance.run(
+      carte.due_date,
+      carte.start_date,
+      carte.due_form,
+      carte.recurrence,
+      carte.reminder,
+      carteId,
+    );
+  }
+  poserRotation.run(carte.cover_interval, carteId);
 
   for (const { user_id } of membresDeLaCarte.all(carte.id)) {
     lierMembre.run(carteId, user_id);
@@ -194,6 +213,8 @@ const copierCarte = (carte: TaskCardRow, copie: CopieDeCarte): Id => {
   for (const label of etiquettesDeLaCarte.all(carte.id)) {
     lierEtiquette.run(carteId, etiquetteCorrespondante(label, boardId, etiquettes, timestamp));
   }
+
+  reprendreCouvertures.run(carteId, timestamp, carte.id);
 
   for (const piece of piecesDeLaCarte.all(carte.id)) {
     reprendrePiece.run(
@@ -206,6 +227,7 @@ const copierCarte = (carte: TaskCardRow, copie: CopieDeCarte): Id => {
       // l'apporte dans cette liste-ci.
       userId,
       timestamp,
+      piece.position,
     );
   }
 

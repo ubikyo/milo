@@ -17,8 +17,25 @@ const HAUTEUR_BARRE = 24;
 export interface Barre {
   name: string;
   value: number;
+  /**
+   * Lue seulement avec « couleursPropres » ; sinon la barre prend sa couleur
+   * de sa valeur (couleurDeValeur).
+   */
   color: string;
 }
+
+/** Du plus bas au meilleur : rouge, orange, jaune, citron vert, vert. */
+const DEGRADE = ["red.6", "orange.6", "yellow.6", "lime.6", "green.6"];
+
+/**
+ * La couleur d'une barre selon sa place entre la plus basse et la plus haute
+ * du graphique : la plus haute en vert, la plus basse en rouge, les autres
+ * entre les deux. Toutes égales — ou une seule —, elles sont vertes.
+ */
+const couleurDeValeur = (valeur: number, min: number, max: number): string => {
+  const t = max > min ? (valeur - min) / (max - min) : 1;
+  return DEGRADE[Math.round(t * (DEGRADE.length - 1))] as string;
+};
 
 /** Le libellé d'une barre, posé à son bord gauche et jamais renvoyé à la ligne. */
 function Libelle({ children, color }: { children: string; color: string }) {
@@ -41,7 +58,8 @@ function Libelle({ children, color }: { children: string; color: string }) {
   );
 }
 
-// Les barres des étiquettes, à la façon du BarsList de Mantine, mais dont le
+// Les barres des étiquettes, à la façon du BarsList de Mantine, colorées de
+// rouge — la plus basse — à vert — la plus haute —, mais dont le
 // libellé déborde de la barre plutôt que de passer à la ligne quand elle est
 // trop courte pour lui. Il est posé deux fois au même endroit : dessous, dans
 // la couleur du texte ; dans la barre, dans la couleur qui se lit sur elle —
@@ -55,19 +73,23 @@ function Libelle({ children, color }: { children: string; color: string }) {
 export function BarresEtiquettes({
   data,
   libelleDedans = false,
+  couleursPropres = false,
 }: {
   data: Barre[];
   libelleDedans?: boolean;
+  /** Chaque barre garde sa couleur — celle d'une liste — au lieu du dégradé. */
+  couleursPropres?: boolean;
 }) {
   const theme = useMantineTheme();
   const max = Math.max(...data.map((d) => d.value), 0);
+  const min = Math.min(...data.map((d) => d.value));
   return (
     <Stack gap="xs">
       {data.map((barre) => {
         // Pleine comme l'étiquette elle-même (LabelChip) : le texte passe au
         // noir sur une couleur claire, au blanc sinon.
         const couleurs = theme.variantColorResolver({
-          color: barre.color,
+          color: couleursPropres ? barre.color : couleurDeValeur(barre.value, min, max),
           theme,
           variant: "filled",
           autoContrast: true,
@@ -180,7 +202,7 @@ export const etiquettesIndicator: SupportIndicatorWidget = {
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
         <TitreIndicateur config={config} defaut={LIBELLE} />
-        {data.length === 0 ? <Rien>Aucune étiquette</Rien> : <BarresEtiquettes data={data} />}
+        {data.length === 0 ? <Rien>Aucune étiquette</Rien> : <BarresEtiquettes data={data} couleursPropres />}
       </Stack>
     );
   },

@@ -1,4 +1,4 @@
-import { Select, Stack, Text } from "@mantine/core";
+import { Select, Stack } from "@mantine/core";
 import { IconDeviceDesktop } from "@tabler/icons-react";
 import { DISQUE_PLEIN, JOURS_SANS_INVENTAIRE } from "../lib/poste";
 import { avec, texte } from "../widgets/types";
@@ -10,6 +10,7 @@ import {
   sansProtection,
   silencieux,
   TitreIndicateur,
+  ValeurIndicateur,
   windows10,
 } from "./commun";
 import type { AssetIndicatorWidget } from "./types";
@@ -50,6 +51,7 @@ export const postesIndicator: AssetIndicatorWidget = {
   kind: "asset",
   label: "Indicateur",
   icon: IconDeviceDesktop,
+  avecValeur: true,
   defaultConfig: { [NOM]: "", [TYPE]: TYPE_PAR_DEFAUT.value },
 
   Display: ({ config, assets }) => {
@@ -58,9 +60,9 @@ export const postesIndicator: AssetIndicatorWidget = {
       // Le nom en haut, la quantité en bas à gauche, comme les tickets.
       <Stack gap={4} justify="space-between" style={{ flex: 1 }}>
         <TitreIndicateur config={config} defaut={type.label} />
-        <Text fz={28} fw={600} lh={1}>
+        <ValeurIndicateur config={config}>
           {assets.filter(type.compte).length}
-        </Text>
+        </ValeurIndicateur>
       </Stack>
     );
   },

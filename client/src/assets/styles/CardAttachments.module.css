@@ -1,35 +1,35 @@
-/* Une pièce jointe de la fiche : toute la ligne l'ouvre au clic, et prend un
-   fond au survol. Sur le sombre, le gris neutre des survols (NEUTRAL_HOVER)
-   est celui du bloc qui la porte : on monte d'un cran. La marge négative
-   rend au bloc l'espace que prend le fond, pour que l'alignement ne bouge pas. */
+/* Une pièce jointe de la fiche : une ligne de la pile, sur le gris neutre des
+   lignes du tiroir (FOND_LIGNE, LignesDuTiroir) ; seuls les bouts de la pile
+   s'arrondissent. Toute la ligne ouvre la pièce au clic, et fonce d'un cran au
+   survol. */
 .ligne {
   display: block;
-  border-radius: var(--mantine-radius-sm);
-  padding: 4px 6px;
-  margin: -4px -6px;
+  padding: 10px;
+  background-color: light-dark(#ededed, var(--mantine-color-dark-6));
   color: inherit;
   text-decoration: none;
   cursor: pointer;
 }
 
+.ligne:first-child {
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+
+.ligne:last-child {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
 .ligne:hover {
-  background-color: light-dark(#ececec, var(--mantine-color-dark-5));
+  background-color: light-dark(#e2e2e2, var(--mantine-color-dark-5));
 }
 
-.ouvrir {
-  opacity: 0;
-}
-
-.ligne:hover .ouvrir,
-.ligne:focus-visible .ouvrir {
-  opacity: 1;
-}
-
-/* L'encart de gauche : gris au repos, il passe au blanc au survol de la ligne
-   pour se détacher du fond qu'elle prend. Sur le sombre, il prend le fond du
-   bloc, plus foncé que celui du survol. */
+/* L'encart de gauche : il se détache du gris de la ligne — blanc sur le
+   clair ; sur le sombre, un cran au-dessus de la ligne, puis en dessous quand
+   elle monte au survol. */
 .vignette {
-  background-color: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5));
+  background-color: light-dark(var(--mantine-color-white), var(--mantine-color-dark-5));
 }
 
 .ligne:hover .vignette {

@@ -21,6 +21,7 @@ import type {
   ResultatImport,
   AssetRefresh,
   Attachment,
+  CardCover,
   AuthResult,
   BackupInfo,
   Board,
@@ -35,6 +36,9 @@ import type {
   CascadeResult,
   Category,
   Milestone,
+  CardLink,
+  CardLinkInput,
+  LinkCandidates,
   Checklist,
   ChecklistItem,
   ChecklistItemInput,
@@ -79,6 +83,7 @@ import type {
   TaskList,
   TaskListCopyInput,
   DeveloperSettings,
+  NotificationSettings,
   SupportContent,
   SupportContentEvent,
   SupportPerson,
@@ -573,11 +578,34 @@ export const api = {
   reorderChecklistItems: (checklistId: Id, ids: Id[]) =>
     put<Checklist>(`/checklists/${checklistId}/items/reorder`, { ids }),
 
+  // Dépendances d'une carte : chacune se lit depuis la carte qui la regarde —
+  // « bloque » ici, « est bloqué par » sur l'autre. Enregistrées aussitôt.
+  createCardLink: (cardId: Id, data: CardLinkInput) =>
+    post<CardLink>(`/task-cards/${cardId}/links`, data),
+  updateCardLink: (id: Id, cardId: Id, data: CardLinkInput) =>
+    put<CardLink>(`/card-links/${id}`, { ...data, card_id: cardId }),
+  deleteCardLink: (id: Id, cardId: Id) =>
+    del(`/card-links/${id}${queryString({ card: cardId })}`),
+  // Les cartes qu'une dépendance peut relier, page par page : celles du
+  // tableau d'abord, puis celles des autres tableaux.
+  getLinkCandidates: (cardId: Id, q: string, offset: number) =>
+    get<LinkCandidates>(`/task-cards/${cardId}/links/candidates${queryString({ q, offset })}`),
+
   // Pièces jointes d'une carte : les fichiers déposés dessus. Le dépôt et le
   // retrait partent aussitôt, sans attendre la fermeture du tiroir.
   uploadAttachment: (cardId: Id, file: File) =>
     upload<Attachment>(`/task-cards/${cardId}/attachments`, file),
   deleteAttachment: (id: Id) => del(`/attachments/${id}`),
+  reorderAttachments: (cardId: Id, ids: Id[]) =>
+    put<Attachment[]>(`/task-cards/${cardId}/attachments/order`, { ids }),
+
+  // Images de couverture d'une carte : déposées, rangées et retirées aussitôt.
+  // La première est celle que la carte montre sur le tableau.
+  uploadCover: (cardId: Id, file: File) =>
+    upload<CardCover>(`/task-cards/${cardId}/covers`, file),
+  reorderCovers: (cardId: Id, ids: Id[]) =>
+    put<CardCover[]>(`/task-cards/${cardId}/covers/order`, { ids }),
+  deleteCover: (id: Id) => del(`/covers/${id}`),
 
   // Une image collée dans la description d'une carte : elle est déposée tout
   // de suite, et c'est son adresse que l'éditeur insère.
@@ -638,6 +666,9 @@ export const api = {
   getDeveloperSettings: () => get<DeveloperSettings>("/developer"),
   updateDeveloperSettings: (data: DeveloperSettings) =>
     put<DeveloperSettings>("/developer", data),
+  getNotificationSettings: () => get<NotificationSettings>("/notification-settings"),
+  updateNotificationSettings: (data: Partial<NotificationSettings>) =>
+    put<NotificationSettings>("/notification-settings", data),
   // « Inventorie-toi maintenant » : le serveur appelle l'agent sur le poste.
   // Rien n'en revient — l'inventaire arrive ensuite par la porte des agents,
   // et c'est le flux d'événements qui prévient.

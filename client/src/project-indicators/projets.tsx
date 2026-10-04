@@ -1,8 +1,8 @@
-import { Select, Stack, Text } from "@mantine/core";
+import { Select, Stack } from "@mantine/core";
 import { IconFolders } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { avec, texte } from "../widgets/types";
-import { ChampNom, NOM, TitreIndicateur, termine } from "./commun";
+import { ChampNom, NOM, TitreIndicateur, ValeurIndicateur, termine } from "./commun";
 import type { ProjectIndicatorWidget } from "./types";
 import type { Id, Project } from "@milo/shared";
 
@@ -65,6 +65,7 @@ export const projetsIndicator: ProjectIndicatorWidget = {
   kind: "project",
   label: "Indicateur",
   icon: IconFolders,
+  avecValeur: true,
   defaultConfig: { [NOM]: "", [TYPE]: TYPE_PAR_DEFAUT.value },
 
   Display: ({ config, projects, userId }) => {
@@ -73,9 +74,9 @@ export const projetsIndicator: ProjectIndicatorWidget = {
       // Le nom en haut, la quantité en bas à gauche, comme les tickets.
       <Stack gap={4} justify="space-between" style={{ flex: 1 }}>
         <TitreIndicateur config={config} defaut={type.label} />
-        <Text fz={28} fw={600} lh={1}>
+        <ValeurIndicateur config={config}>
           {projects.filter((p) => type.compte(p, userId)).length}
-        </Text>
+        </ValeurIndicateur>
       </Stack>
     );
   },

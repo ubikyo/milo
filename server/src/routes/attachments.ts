@@ -9,7 +9,7 @@
 import { cheminTicket, fichierCite } from "../lib/ticket-files.js";
 import express, { Router } from "express";
 import type { Request } from "express";
-import { HttpError, badRequest, orNotFound } from "../lib/http.js";
+import { HttpError, badRequest, orNotFound, toIds } from "../lib/http.js";
 import {
   TAILLE_MAX,
   cheminMedia,
@@ -19,7 +19,15 @@ import {
 } from "../lib/medias.js";
 import { concernes, notifier, notifierSuppression, racine } from "../lib/notify.js";
 import { now } from "../lib/time.js";
-import { attachmentOf, attachments, removeAttachment } from "../repositories/attachments.js";
+import {
+  attachmentOf,
+  attachments,
+  attachmentsOf,
+  removeAttachment,
+  reorderAttachments,
+} from "../repositories/attachments.js";
+import { coverOf, covers, coversOf, removeCover, reorderCovers } from "../repositories/covers.js";
+import { touch } from "../middleware/events.js";
 import { boardOuvert } from "../repositories/boards.js";
 import { boardOfCard, taskCards } from "../repositories/tasks.js";
 
@@ -124,6 +132,54 @@ cardMediaRoutes.post("/images", corpsFichier, (req, res) => {
   }
 
   res.status(201).json({ url: urlMedia(ecrireMedia(contenu, nom)) });
+});
+
+// Une image de couverture. Seules les images que le serveur rend telles
+// quelles passent : une couverture se montre, elle ne se télécharge pas. La
+// carte la montre sur le tableau : les listes se relisent.
+cardMediaRoutes.post("/covers", touch("task-lists"), corpsFichier, (req, res) => {
+  const { id } = req.params as { id?: string };
+  const card = carteOuverte(id, req);
+  const { contenu, nom } = fichierRecu(req);
+  if (!(typeEnLigne(nom) ?? "").startsWith("image/")) {
+    badRequest("Ce format d'image ne peut pas servir de couverture");
+  }
+
+  const { lastInsertRowid } = covers.create.run(
+    card.id,
+    ecrireMedia(contenu, nom),
+    nom,
+    contenu.length,
+    covers.nextPosition(card.id).next,
+    now(),
+  );
+  res.status(201).json(coverOf(covers.byId.get(lastInsertRowid)!));
+});
+
+// L'ordre des pièces jointes, tel que la fiche le montre.
+cardMediaRoutes.put("/attachments/order", (req, res) => {
+  const { id } = req.params as { id?: string };
+  const card = carteOuverte(id, req);
+  reorderAttachments(card.id, toIds(req.body.ids));
+  res.json(attachmentsOf(card.id));
+});
+
+// L'ordre des couvertures : la première est celle du tableau.
+cardMediaRoutes.put("/covers/order", touch("task-lists"), (req, res) => {
+  const { id } = req.params as { id?: string };
+  const card = carteOuverte(id, req);
+  reorderCovers(card.id, toIds(req.body.ids));
+  res.json(coversOf(card.id));
+});
+
+/** Monté sous `/api/covers`. */
+export const coverRoutes = Router();
+
+coverRoutes.delete("/:id", touch("task-lists"), (req, res) => {
+  const couverture = orNotFound(covers.byId.get(req.params.id), "Image de couverture introuvable");
+  carteOuverte(couverture.card_id, req);
+  removeCover(couverture);
+  res.status(204).end();
 });
 
 /** Monté sous `/api/attachments`. */

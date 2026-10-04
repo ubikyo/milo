@@ -4,7 +4,7 @@
 import { DISQUE_PLEIN, diskUsage, joursDepuisInventaire, JOURS_SANS_INVENTAIRE } from "../lib/poste";
 import type { Asset } from "@milo/shared";
 
-export { ChampNom, NOM, Rien, TitreIndicateur } from "../indicators/commun";
+export { ChampNom, NOM, Rien, TitreIndicateur, ValeurIndicateur } from "../indicators/commun";
 
 /** Un volume système dont on sait qu'il n'est pas chiffré. */
 export const nonChiffre = (a: Asset): boolean => a.system_disk_encrypted === false;

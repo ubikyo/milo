@@ -1,0 +1,15 @@
+/* Les champs de la ligne d'échéance : sans cadre ni fond sur le gris de la
+   ligne, comme le nom d'une catégorie dans le tiroir d'un widget
+   (ChampsListeDuTableau). Ils prennent le fond du tiroir quand on les saisit. */
+.champ :global(.mantine-Input-input) {
+  height: var(--input-height-xs);
+  min-height: var(--input-height-xs);
+  border-width: 0;
+  background-color: transparent;
+}
+
+.champ :global(.mantine-Input-input):focus,
+.champ :global(.mantine-Input-input):focus-within,
+.champ :global(.mantine-Input-input)[data-expanded] {
+  background-color: var(--mantine-color-body);
+}

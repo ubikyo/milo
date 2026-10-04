@@ -13,6 +13,8 @@ import type {
   WithAuthorColumns,
 } from "../db/rows.js";
 import { attachmentsOf } from "./attachments.js";
+import { coversOf } from "./covers.js";
+import { linksOf } from "./links.js";
 import { withAuthor } from "./comments.js";
 import { actorOf } from "./users.js";
 
@@ -34,9 +36,33 @@ const ajouterMembre = mutation(
    SELECT ?, id FROM users WHERE id = ?`,
 );
 
+const idsDesMembres = selection<{ user_id: Id }>(
+  "SELECT user_id FROM card_members WHERE card_id = ?",
+);
+
+// Un acteur retiré de la carte l'est aussi des éléments de ses checklists : on
+// ne garde pas une part d'une tâche à qui n'y prend plus part. Seuls ceux qu'on
+// retire ici sont touchés — une personne posée sur un élément sans être acteur
+// de la carte y reste.
+const retirerDesElements = mutation(
+  `DELETE FROM checklist_item_members
+   WHERE user_id = ?
+     AND item_id IN (
+       SELECT checklist_items.id
+       FROM checklist_items
+       JOIN card_checklists ON card_checklists.id = checklist_items.checklist_id
+       WHERE card_checklists.card_id = ?
+     )`,
+);
+
 export const replaceCardMembers = transaction((cardId: Id, userIds: Id[]) => {
+  const retires = idsDesMembres
+    .all(cardId)
+    .map((m) => m.user_id)
+    .filter((id) => !userIds.includes(id));
   supprimerMembres.run(cardId);
   for (const userId of userIds) ajouterMembre.run(cardId, userId);
+  for (const userId of retires) retirerDesElements.run(userId, cardId);
 });
 
 const etiquettesDeLaCarte = selection<LabelRow>(
@@ -114,6 +140,13 @@ const ajouterMembreElement = mutation(
   `INSERT OR IGNORE INTO checklist_item_members (item_id, user_id)
    SELECT ?, id FROM users WHERE id = ?`,
 );
+
+const membresDeLElement = selection<{ user_id: Id }>(
+  "SELECT user_id FROM checklist_item_members WHERE item_id = ?",
+);
+
+export const idsMembresElement = (itemId: Id): Id[] =>
+  membresDeLElement.all(itemId).map((m) => m.user_id);
 
 export const replaceChecklistItemMembers = transaction((itemId: Id, userIds: Id[]) => {
   supprimerMembresElement.run(itemId);
@@ -198,11 +231,13 @@ export const cardComments = {
 };
 
 /** La carte et tout ce qui l'accompagne, pour son tiroir. */
-export const cardDetail = (card: TaskCardRow): TaskCardDetail => ({
+export const cardDetail = (card: TaskCardRow, userId: Id): TaskCardDetail => ({
   ...card,
   members: membersOf(card.id),
   labels: labelsOf(card.id),
   checklists: checklistsOfCard(card.id),
   attachments: attachmentsOf(card.id),
+  covers: coversOf(card.id),
+  links: linksOf(card.id, userId),
   comments: cardComments.ofCard.all(card.id).map(withAuthor),
 });

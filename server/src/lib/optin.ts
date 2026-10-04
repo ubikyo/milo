@@ -20,7 +20,7 @@ import { gabarit } from "./mail-template.js";
  * L'objet de l'e-mail du code. La relève le reconnaît, parti de l'adresse
  * d'envoi, et ne l'importe jamais (lib/support-mail.ts).
  */
-export const SUJET_CONFIRMATION = "Milo — Confirmez la réception des demandes de support";
+export const SUJET_CONFIRMATION = "Milo — Confirmez la réception des tickets";
 
 const codeNeuf = (): string => String(randomInt(0, 10_000)).padStart(4, "0");
 
@@ -51,7 +51,7 @@ const envoyer = async (liste: string, email: string, usage = ""): Promise<void> 
     subject: SUJET_CONFIRMATION,
     ...gabarit({
       titre: "Confirmez cette boîte de support",
-      intro: `Milo doit relever les e-mails de ${email} pour en faire des demandes de support${usage ? ` (${usage})` : ""}. Pour confirmer que cette boîte vous appartient, saisissez ce code dans Milo : Actions → Confirmer une adresse. Rien n'en sera importé avant.`,
+      intro: `Milo doit relever les e-mails de ${email} pour en faire des tickets${usage ? ` (${usage})` : ""}. Pour confirmer que cette boîte vous appartient, saisissez ce code dans Milo : Actions → Confirmer une adresse. Rien n'en sera importé avant.`,
       lignes: [{ texte: `Code de confirmation : ${code}`, repetitions: 1 }],
       pied: "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.",
     }),

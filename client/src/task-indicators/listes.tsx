@@ -28,7 +28,7 @@ export const listesIndicator: TaskIndicatorWidget = {
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
         <TitreIndicateur config={config} defaut={LIBELLE} />
-        {data.length === 0 ? <Rien>Aucune liste</Rien> : <BarresEtiquettes data={data} libelleDedans />}
+        {data.length === 0 ? <Rien>Aucune liste</Rien> : <BarresEtiquettes data={data} libelleDedans couleursPropres />}
       </Stack>
     );
   },

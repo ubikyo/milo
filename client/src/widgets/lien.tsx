@@ -2,7 +2,7 @@ import { Anchor, Stack, Switch, Text, TextInput } from "@mantine/core";
 import { IconLink } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import classes from "../assets/styles/AccessLink.module.css";
-import { ChampCouleur } from "./champs-style";
+import { poser } from "../components/ui/LignesReglages";
 import { avec, texte } from "./types";
 import type { AccessWidget, WidgetDisplayProps } from "./types";
 
@@ -246,6 +246,21 @@ export const lienWidget: AccessWidget = {
   // Serrés comme les lignes d'un paragraphe : l'interligne suffit à les séparer.
   marges: () => ({ haute: 0, basse: 0 }),
 
+  // Sans couleur choisie, le lien suit celle du texte : blanc sur le thème
+  // sombre, noir sur le clair.
+  apparence: (config, onChange) => [
+    {
+      nom: "Texte",
+      quoi: "du lien",
+      couleur: {
+        valeur: texte(config, COULEUR),
+        onChange: (v) => onChange(poser(config, { [COULEUR]: v })),
+      },
+      modifiee: texte(config, COULEUR) !== "",
+      reinitialiser: () => onChange(poser(config, { [COULEUR]: "" })),
+    },
+  ],
+
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
       <TextInput
@@ -260,14 +275,6 @@ export const lienWidget: AccessWidget = {
         placeholder="https://"
         value={texte(config, URL)}
         onChange={(e) => onChange(avec(config, URL, e.currentTarget.value))}
-      />
-      {/* Sans couleur choisie, le lien suit celle du texte : blanc sur le
-          thème sombre, noir sur le clair. */}
-      <ChampCouleur
-        config={config}
-        onChange={onChange}
-        cle={COULEUR}
-        libelleDefaut="couleur du texte"
       />
     </Stack>
   ),

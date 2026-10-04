@@ -5,6 +5,7 @@
 import { createApp } from "./app.js";
 import { env } from "./env.js";
 import { INTERVALLE_RELEVE_FLUX, releverLesFlux } from "./lib/feed.js";
+import { INTERVALLE_RAPPELS, envoyerLesRappels } from "./lib/rappels.js";
 import { INTERVALLE_RELEVE, releverLesBoites } from "./lib/support-mail.js";
 import { INTERVALLE_ENTRETIEN, entretenirAbonnements } from "./lib/support-webhooks.js";
 import { menageDesMedias } from "./repositories/attachments.js";
@@ -45,6 +46,17 @@ const releverFlux = () => {
 };
 releverFlux();
 setInterval(releverFlux, INTERVALLE_RELEVE_FLUX).unref();
+
+// Les rappels des échéances partent à la minute près.
+const rappeler = () => {
+  try {
+    envoyerLesRappels();
+  } catch (erreur) {
+    console.error("Rappels des échéances :", erreur);
+  }
+};
+rappeler();
+setInterval(rappeler, INTERVALLE_RAPPELS).unref();
 
 const server = app.listen(env.port, () => {
   console.log(`API Milo disponible sur http://localhost:${env.port}`);

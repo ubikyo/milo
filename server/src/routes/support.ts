@@ -349,7 +349,7 @@ supportRequestRoutes.post("/", (req, res) => {
     prochainNumeroDeTicket(),
     board.id,
     contexte,
-    // Le widget « Demandes de support » d'où elle est saisie, à défaut le
+    // Le widget « Tickets » d'où elle est saisie, à défaut le
     // premier du tableau.
     cleDansLeTableau(board.id, "support.list", req.body.list_key),
     String(req.body.subject ?? "").trim(),

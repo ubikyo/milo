@@ -8,7 +8,7 @@ import { cleDeListe } from "@milo/shared";
 export const ELEMENTS_DE_LA_LISTE: Record<string, string> = {
   "project.list": "Les projets qu'il montre",
   "task.list": "Les listes de tâches qu'il montre, et leurs cartes,",
-  "support.list": "Les demandes de support qu'il montre",
+  "support.list": "Les tickets qu'il montre",
   "asset.list": "Les assets qu'il montre",
 };
 

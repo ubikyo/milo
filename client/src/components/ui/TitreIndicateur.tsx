@@ -1,6 +1,6 @@
 import { Text } from "@mantine/core";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { texte } from "../../widgets/types";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { nombre, texte } from "../../widgets/types";
 
 // Le titre d'un indicateur : son nom, ou à défaut celui que le widget lui
 // donne. Un double clic le change sur place ; un simple clic ouvre le tiroir,
@@ -9,6 +9,49 @@ import { texte } from "../../widgets/types";
 
 /** La clé du nom dans la configuration : la même pour tous les widgets. */
 export const NOM = "nom";
+
+// L'allure de la carte, la même pour tous les indicateurs : la couleur et la
+// taille de son titre et de sa valeur, et la couleur de
+// son fond (ChampsApparence). Absentes, la carte garde l'allure de l'encart
+// (IndicatorsPanel).
+export const FOND = "fond";
+
+/** Un texte de la carte — son titre, sa valeur — et ses réglages. */
+export interface TexteDeCarte {
+  cleTaille: string;
+  cleCouleur: string;
+  tailleDefaut: number;
+  /** Les bornes de la taille : lisible, sans déborder de la carte. */
+  tailleMin: number;
+  tailleMax: number;
+  /** Sa couleur sans réglage ; à défaut, celle du texte du thème. */
+  couleurDefaut?: string;
+}
+
+/** Le titre : en blanc, comme les titres des colonnes, à la taille « sm ». */
+export const TITRE: TexteDeCarte = {
+  cleTaille: "taille_titre",
+  cleCouleur: "couleur_titre",
+  tailleDefaut: 14,
+  tailleMin: 8,
+  tailleMax: 48,
+  couleurDefaut: "#ffffff",
+};
+
+/** La valeur d'un indicateur qui compte — tickets, cartes, projets, postes. */
+export const VALEUR: TexteDeCarte = {
+  cleTaille: "taille_valeur",
+  cleCouleur: "couleur_valeur",
+  tailleDefaut: 28,
+  tailleMin: 12,
+  tailleMax: 96,
+};
+
+/** L'allure qu'un texte de la carte prend de la configuration. */
+export const allureDe = (config: unknown, t: TexteDeCarte) => ({
+  fontSize: nombre(config, t.cleTaille, t.tailleDefaut),
+  color: texte(config, t.cleCouleur) || t.couleurDefaut,
+});
 
 /** Le temps laissé à un second clic avant d'ouvrir le tiroir. */
 const DOUBLE_CLIC = 250;
@@ -26,6 +69,7 @@ export const CarteIndicateurContext = createContext<CarteIndicateur | null>(null
 export default function TitreIndicateur({ config, defaut }: { config: unknown; defaut: string }) {
   const carte = useContext(CarteIndicateurContext);
   const nom = texte(config, NOM).trim() || defaut;
+  const allure = allureDe(config, TITRE);
   const [saisie, setSaisie] = useState<string | null>(null);
   const attente = useRef<number | undefined>(undefined);
   // Échap referme la saisie sans rien ranger : le « blur » qui peut suivre ne
@@ -47,7 +91,7 @@ export default function TitreIndicateur({ config, defaut }: { config: unknown; d
     return (
       // Comme le renommage d'un onglet (BoardTabs) : un champ nu, qui prend
       // la police du titre et ne déplace rien.
-      <Text size="sm" c="#ffffff" fw={700}>
+      <Text fw={700} style={allure}>
         <input
           value={saisie}
           onChange={(e) => setSaisie(e.currentTarget.value)}
@@ -83,10 +127,9 @@ export default function TitreIndicateur({ config, defaut }: { config: unknown; d
 
   return (
     <Text
-      size="sm"
-      c="#ffffff"
       fw={700}
       truncate
+      style={allure}
       onClick={
         carte
           ? (e) => {
@@ -108,6 +151,15 @@ export default function TitreIndicateur({ config, defaut }: { config: unknown; d
       }
     >
       {nom}
+    </Text>
+  );
+}
+
+/** La valeur d'un indicateur qui compte, à l'allure choisie dans son tiroir. */
+export function ValeurIndicateur({ config, children }: { config: unknown; children: ReactNode }) {
+  return (
+    <Text fw={600} lh={1} style={allureDe(config, VALEUR)}>
+      {children}
     </Text>
   );
 }

@@ -264,14 +264,9 @@ export const todoWidget: AccessWidget = {
 
   marges: () => ({ haute: 0, basse: 15 }),
 
+  // Il dessine lui-même son cadre, réglé dans le bloc « Apparence » du tiroir.
+  cadrePropre: true,
+
   Config: Champs,
 
-  ConfigFin: ({ config, onChange }) => (
-    <Checkbox
-      label="Encadrer"
-      checked={coche(config, ENCADRE, false)}
-      onChange={(e) => onChange(avec(config, ENCADRE, e.currentTarget.checked))}
-      color="teal"
-    />
-  ),
 };

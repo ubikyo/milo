@@ -33,17 +33,18 @@ export default function WorkspaceAccess({
       remove={(principal) => api.deleteAssignments(principal, workspace)}
       vide={() => widgetRightsPartout("")}
       resume={(widgets) => pluriel(Object.values(widgets).filter(peutLire).length, "type")}
-      sections={(widgets, changer) => [
-        {
-          label: "Par type de widget",
-          lignes: WIDGET_KINDS.map((k) => ({
-            nom: k.label,
-            options: WIDGET_ACCESS,
-            valeur: widgets[k.value],
-            onChange: (valeur) => changer({ ...widgets, [k.value]: valeur as WidgetAccess }),
-          })),
-        },
-      ]}
+      // Une permission par type de widget, réglée à même la ligne, en
+      // colonnes : un type de plus fait une colonne de plus.
+      enColonnes
+      enLigne={(widgets, changer) =>
+        WIDGET_KINDS.map((k) => ({
+          nom: k.label,
+          options: WIDGET_ACCESS,
+          valeur: widgets[k.value],
+          onChange: (valeur: string) =>
+            changer({ ...widgets, [k.value]: valeur as WidgetAccess }),
+        }))
+      }
       emptyText="Aucun accès pour le moment"
       onChange={onChange}
       retirer={{

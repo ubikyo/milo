@@ -1,5 +1,5 @@
 import { Stack } from "@mantine/core";
-import { IconList } from "@tabler/icons-react";
+import { IconList, IconTag } from "@tabler/icons-react";
 import AssetsList, { COLONNES_ASSETS, TAGS } from "../components/assets/AssetsList";
 import ChampReception, { receptionsAProbleme } from "../components/ui/ChampReception";
 import ProblemeDeConfiguration from "../components/ui/ProblemeDeConfiguration";
@@ -21,7 +21,9 @@ function ChampsListe(props: IndicatorConfigProps) {
         champ="tag"
         label="Tags de l'agent GLPI"
         placeholder="Tag de l'agent"
-        ajouter="Ajouter un tag"
+        ajouter="Ajouter un tag GLPI agent"
+        icone={IconTag}
+        vide="Aucun tag GLPI agent"
         suggestions={assetTags}
         {...props}
       />

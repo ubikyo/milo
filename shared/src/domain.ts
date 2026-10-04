@@ -7,6 +7,8 @@
 // type dit la vérité plutôt que de la maquiller, et `Boolean(x)` reste
 // nécessaire pour les lire.
 
+import type { CardLink } from "./dependances.js";
+import type { FormeEcheance, Rappel, Recurrence } from "./echeance.js";
 import type { CompanyRights } from "./roles.js";
 import type { WidgetRights } from "./widget-kinds.js";
 
@@ -345,6 +347,11 @@ export interface TaskCard {
    * heure dite.
    */
   due_date: string;
+  /** Le début de la période, « AAAA-MM-JJ », ou vide : l'échéance seule. */
+  start_date: string;
+  due_form: FormeEcheance;
+  recurrence: Recurrence;
+  reminder: Rappel;
   created_at: string;
   has_description: boolean;
   members: Actor[];
@@ -352,6 +359,16 @@ export interface TaskCard {
   checklist_total: number;
   checklist_done: number;
   checklist_open: OpenChecklistItem[];
+  /** Les adresses des images de couverture, dans leur ordre. */
+  cover_urls: string[];
+  /** Les secondes entre deux couvertures sur le tableau ; zéro, la première reste. */
+  cover_interval: number;
+  /** Combien de dépendances la relient à d'autres cartes, dans un sens ou dans l'autre. */
+  link_count: number;
+  /** Combien de pièces jointes elle porte. */
+  attachment_count: number;
+  /** Combien de commentaires porte son fil. */
+  comment_count: number;
 }
 
 export interface ChecklistItem {
@@ -380,6 +397,23 @@ export interface Checklist {
  * faut pour l'afficher sans aller le lire — son nom d'origine, sa taille, et
  * l'adresse où le prendre.
  */
+/**
+ * Une image de couverture d'une carte. Elles se rangent entre elles : la
+ * première est celle que la carte montre sur le tableau.
+ */
+export interface CardCover {
+  id: Id;
+  card_id: Id;
+  file: string;
+  /** Le nom d'origine, et la taille en octets. */
+  name: string;
+  size: number;
+  position: number;
+  created_at: string;
+  /** Où la lire : « /api/medias/<file> ». */
+  url: string;
+}
+
 export interface Attachment {
   id: Id;
   card_id: Id;
@@ -390,6 +424,8 @@ export interface Attachment {
   mime: string;
   /** En octets. */
   size: number;
+  /** L'ordre dans la fiche : la plus petite en tête. */
+  position: number;
   created_at: string;
   /** Où le lire : « /api/medias/<file> ». */
   url: string;
@@ -420,11 +456,20 @@ export interface TaskCardDetail {
   context_id: Id | null;
   /** ISO 8601 avec l'heure, ou vide. Voir `TaskCard.due_date`. */
   due_date: string;
+  /** Voir `TaskCard.start_date`. */
+  start_date: string;
+  due_form: FormeEcheance;
+  recurrence: Recurrence;
+  reminder: Rappel;
+  cover_interval: number;
   created_at: string;
   members: Actor[];
   labels: Label[];
   checklists: Checklist[];
   attachments: Attachment[];
+  covers: CardCover[];
+  /** Ses dépendances, lues depuis elle : « bloque » ici, « est bloqué par » sur l'autre. */
+  links: CardLink[];
   comments: CardComment[];
 }
 
@@ -515,7 +560,7 @@ export const isSectionWidthUnit = (value: unknown): value is SectionWidthUnit =>
 // --- Mode Support ----------------------------------------------------------
 
 /**
- * Où en est une demande de support. Ce sont les onglets du mode, dans leur
+ * Où en est un ticket. Ce sont les onglets du mode, dans leur
  * ordre d'affichage — « Tous » n'en est pas un : il ne filtre rien.
  */
 export const SUPPORT_STATUSES = [
@@ -624,7 +669,7 @@ export interface SupportLabel {
 }
 
 /**
- * Une demande de support. Elle appartient à la société choisie dans la liste
+ * Un ticket. Il appartient à la société choisie dans la liste
  * déroulante de l'entête, et porte ceux qui s'en occupent — autant qu'il faut,
  * comme les membres d'une carte.
  */
@@ -639,7 +684,7 @@ export interface SupportRequest {
   board_id: Id;
   /** Le contexte du tableau auquel elle appartient ; nul si le tableau n'en a pas. */
   context_id: Id | null;
-  /** Le widget « Demandes de support » qui la montre (shared, CLE_DE_LISTE). */
+  /** Le widget « Tickets » qui la montre (shared, CLE_DE_LISTE). */
   list_key: string;
   /**
    * La boîte de support où elle est arrivée, et d'où partent les réponses ;
@@ -885,15 +930,27 @@ export interface AccessFeedArticle {
 }
 
 /**
- * Le flux d'un widget RSS, tel que la base le garde. Le serveur relève la
- * source à son rythme — l'intervalle que chaque élément règle — et range ses
- * derniers articles, déjà lus, qu'ils viennent de RSS, d'Atom ou de JSON : la
- * page les lit en base plutôt que d'aller chercher la source à chaque visite.
+ * Une source d'un widget RSS, telle que la base la garde. Le serveur relève
+ * la source à son rythme — l'intervalle que chaque élément règle — et range
+ * ses derniers articles, déjà lus, qu'ils viennent de RSS, d'Atom ou de JSON :
+ * la page les lit en base plutôt que d'aller chercher la source à chaque
+ * visite.
+ */
+export interface AccessFeedSource {
+  url: string;
+  articles: AccessFeedArticle[];
+  /** La dernière relève réussie, ISO 8601 ; nulle tant qu'aucune n'a abouti. */
+  fetched_at: string | null;
+  /** Ce qui a empêché de la lire, quand rien n'est à montrer ; sinon nul. */
+  error: string | null;
+}
+
+/**
+ * Le flux d'un widget RSS : ses sources, dans l'ordre que l'élément règle.
+ * Une source qui échoue n'empêche pas les autres de se montrer.
  */
 export interface AccessFeed {
-  articles: AccessFeedArticle[];
-  /** La dernière relève réussie, ISO 8601. */
-  fetched_at: string;
+  sources: AccessFeedSource[];
 }
 
 /**

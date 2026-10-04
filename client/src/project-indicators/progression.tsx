@@ -10,8 +10,10 @@ import type { ProjectIndicatorWidget } from "./types";
 
 const LIBELLE = "Progression";
 
+// « Non démarrés » en gris foncé — un gris neutre, ceux de Mantine tirent sur
+// le bleu.
 const TRANCHES = [
-  { name: "Non démarrés", color: "gray.5", retient: (s: number) => s === 0 },
+  { name: "Non démarrés", color: "#383838", retient: (s: number) => s === 0 },
   { name: "Moins de 50 %", color: "orange.6", retient: (s: number) => s > 0 && s < 50 },
   { name: "50 % et plus", color: "blue.6", retient: (s: number) => s >= 50 && s < 100 },
   { name: "Terminés", color: "green.6", retient: (s: number) => s >= 100 },

@@ -257,7 +257,7 @@ export interface AssetsListe {
   onOpenAsset: (asset: Asset) => void;
   /** « Créer une tâche », au clic droit sur un poste. */
   onCreateTask?: (asset: Asset) => void;
-  /** « Créer une demande de support », au clic droit sur un poste. */
+  /** « Créer un ticket », au clic droit sur un poste. */
   onCreateSupportRequest?: (asset: Asset) => void;
 }
 
@@ -473,7 +473,7 @@ export default function AssetsList({ config }: { config: unknown }) {
               leftSection={<IconHeadset size={16} />}
               onClick={() => liste.onCreateSupportRequest?.(contexte.poste)}
             >
-              Créer une demande de support
+              Créer un ticket
             </Menu.Item>
           )}
         </PointMenu>

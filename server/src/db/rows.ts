@@ -8,6 +8,9 @@ import type {
   SupportMailStatus,
   CardKind,
   Id,
+  FormeEcheance,
+  Rappel,
+  Recurrence,
   SectionWidthUnit,
   SqliteBool,
   SupportStatus,
@@ -203,6 +206,13 @@ export interface TaskCardRow {
   context_id: Id | null;
   description: string;
   due_date: string;
+  start_date: string;
+  due_form: FormeEcheance;
+  recurrence: Recurrence;
+  reminder: Rappel;
+  reminded_for: string;
+  overdue_for: string;
+  cover_interval: number;
   created_at: string;
 }
 
@@ -231,6 +241,7 @@ export interface ChecklistItemRow {
   text: string;
   done: SqliteBool;
   due_date: string;
+  overdue_for: string;
   position: number;
   created_at: string;
 }
@@ -243,6 +254,7 @@ export interface AttachmentRow {
   mime: string;
   size: number;
   user_id: Id | null;
+  position: number;
   created_at: string;
 }
 
@@ -275,7 +287,7 @@ export type WithAuthorColumns<T> = T & {
   author_email: string | null;
 };
 
-/** Une demande de support : elle pend à un contexte. */
+/** Un ticket : il pend à un contexte. */
 export interface SupportRequestRow {
   id: Id;
   number: number;

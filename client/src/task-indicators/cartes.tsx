@@ -1,8 +1,8 @@
-import { Select, Stack, Text } from "@mantine/core";
+import { Select, Stack } from "@mantine/core";
 import { IconCards } from "@tabler/icons-react";
 import { etatEcheance } from "../lib/echeance";
 import { avec, texte } from "../widgets/types";
-import { ChampNom, NOM, TitreIndicateur, tachesDe } from "./commun";
+import { ChampNom, NOM, TitreIndicateur, ValeurIndicateur, tachesDe } from "./commun";
 import type { TaskIndicatorWidget } from "./types";
 import type { Id, TaskCard } from "@milo/shared";
 
@@ -49,6 +49,7 @@ export const cartesIndicator: TaskIndicatorWidget = {
   kind: "task",
   label: "Indicateur",
   icon: IconCards,
+  avecValeur: true,
   defaultConfig: { [NOM]: "", [TYPE]: TYPE_PAR_DEFAUT.value },
 
   Display: ({ config, lists, userId }) => {
@@ -57,9 +58,9 @@ export const cartesIndicator: TaskIndicatorWidget = {
       // Le nom en haut, la quantité en bas à gauche, comme les tickets.
       <Stack gap={4} justify="space-between" style={{ flex: 1 }}>
         <TitreIndicateur config={config} defaut={type.label} />
-        <Text fz={28} fw={600} lh={1}>
+        <ValeurIndicateur config={config}>
           {tachesDe(lists).filter((c) => type.compte(c, userId)).length}
-        </Text>
+        </ValeurIndicateur>
       </Stack>
     );
   },

@@ -4,6 +4,9 @@ import type { Actor, Id, Label, OpenChecklistItem, TaskCard, TaskList } from "@m
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { LabelRow, NextRow, TaskCardRow, TaskListRow } from "../db/rows.js";
 import { porteDuContenu } from "../lib/html.js";
+import { attachmentCountsOfBoard } from "./attachments.js";
+import { coverUrlsOfBoard } from "./covers.js";
+import { linkCountsOfBoard } from "./links.js";
 import { actorOf } from "./users.js";
 
 export const taskLists = {
@@ -39,7 +42,14 @@ export const taskCards = {
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ),
   update: mutation(
-    "UPDATE task_cards SET text = ?, description = ?, due_date = ?, context_id = ? WHERE id = ?",
+    `UPDATE task_cards
+     SET text = @text, description = @description, due_date = @due_date,
+         start_date = @start_date, due_form = @due_form, recurrence = @recurrence, reminder = @reminder,
+         context_id = @context_id, cover_interval = @cover_interval,
+         -- Une échéance ou un rappel qui change rouvre le rappel.
+         reminded_for = CASE WHEN due_date = @due_date AND reminder = @reminder
+                             THEN reminded_for ELSE '' END
+     WHERE id = @id`,
   ),
   /**
    * Les cartes d'une liste passée à un autre tableau prennent le premier de
@@ -142,6 +152,17 @@ const restantsDuTableau = selection<{ card_id: Id; id: Id; text: string }>(
             checklist_items.position, checklist_items.id`,
 );
 
+// Le nombre de commentaires de chaque carte : la carte l'affiche à côté de ses
+// acteurs.
+const commentairesDuTableau = selection<{ card_id: Id; total: number }>(
+  `SELECT card_comments.card_id, COUNT(*) AS total
+   FROM card_comments
+   JOIN task_cards ON task_cards.id = card_comments.card_id
+   JOIN task_lists ON task_lists.id = task_cards.list_id
+   WHERE task_lists.board_id = ?
+   GROUP BY card_comments.card_id`,
+);
+
 const pousser = <K, V>(map: Map<K, V[]>, cle: K, valeur: V): void => {
   const deja = map.get(cle);
   if (deja) deja.push(valeur);
@@ -177,9 +198,19 @@ export const listsWithCards = (boardId: unknown): TaskList[] => {
   // Les cartes sont rangées par liste en un passage : les parcourir une fois
   // par liste revenait à lire le tableau autant de fois qu'il a de colonnes.
   const parListe = new Map<Id, TaskCard[]>();
+  const couvertures = coverUrlsOfBoard(boardId);
+  const liaisons = linkCountsOfBoard(boardId);
+  const piecesJointes = attachmentCountsOfBoard(boardId);
+  const commentaires = new Map(
+    commentairesDuTableau.all(boardId).map((r) => [r.card_id, r.total]),
+  );
   for (const { description, ...card } of cartesDuTableau.all(boardId)) {
     pousser(parListe, card.list_id, {
       ...card,
+      cover_urls: couvertures.get(card.id) ?? [],
+      link_count: liaisons.get(card.id) ?? 0,
+      attachment_count: piecesJointes.get(card.id) ?? 0,
+      comment_count: commentaires.get(card.id) ?? 0,
       has_description: porteDuContenu(description),
       members: membres.get(card.id) ?? [],
       labels: etiquettes.get(card.id) ?? [],

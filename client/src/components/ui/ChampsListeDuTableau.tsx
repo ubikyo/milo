@@ -1,8 +1,8 @@
 import { Group, Input, Menu, NumberInput, Stack, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconFlag, IconTrash } from "@tabler/icons-react";
+import { IconCategory, IconFlag, IconTag, IconTrash } from "@tabler/icons-react";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { DragEvent } from "react";
+import type { ComponentType, DragEvent } from "react";
 import { api } from "../../api";
 import { messageErreur, notifierErreur } from "../../lib/errors";
 import { RED } from "../../themes/colors";
@@ -15,11 +15,14 @@ import { EnregistrementsDuTiroirContext } from "./IndicatorDrawer";
 import LabelColorPicker from "./LabelColorPicker";
 import {
   ARRONDI,
+  BoutonDeLigne,
+  ListeVide,
   Poignee,
   RETRAIT_LIGNE,
   RETRAIT_NOM,
   STYLE_SAISIE,
   deplacer,
+  pluriel,
   styleLigne,
 } from "./LignesDuTiroir";
 import PointMenu, { positionDuMenu, type PointMenuPosition } from "./PointMenu";
@@ -67,6 +70,9 @@ interface Sorte {
   portee: string;
   /** « la catégorie », pour les messages. */
   une: string;
+  /** L'icône et le message de la liste vide (ListeVide). */
+  icone: ComponentType<{ size?: number; color?: string }>;
+  vide: string;
   avecCouleur: boolean;
   avecPoids: boolean;
   /** Faux quand le serveur range la liste lui-même : pas de poignée. */
@@ -86,6 +92,8 @@ const SORTES: Record<SorteDeListe, Sorte> = {
     ajouter: "Ajouter une catégorie",
     portee: "Les catégories configurées ci-dessous sont communes à l'ensemble des widgets, de type projet, du tableau actuel et uniquement pour ce tableau.",
     une: "la catégorie",
+    icone: IconCategory,
+    vide: "Aucune catégorie",
     avecCouleur: false,
     avecPoids: false,
     ordonnable: true,
@@ -100,6 +108,8 @@ const SORTES: Record<SorteDeListe, Sorte> = {
     ajouter: "Ajouter une étiquette",
     portee: "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type tâche, du tableau actuel et uniquement pour ce tableau.",
     une: "l'étiquette",
+    icone: IconTag,
+    vide: "Aucune étiquette",
     avecCouleur: true,
     avecPoids: false,
     ordonnable: true,
@@ -114,6 +124,8 @@ const SORTES: Record<SorteDeListe, Sorte> = {
     ajouter: "Ajouter une étiquette",
     portee: "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type projet, du tableau actuel et uniquement pour ce tableau.",
     une: "l'étiquette",
+    icone: IconTag,
+    vide: "Aucune étiquette",
     avecCouleur: true,
     avecPoids: true,
     ordonnable: true,
@@ -125,10 +137,12 @@ const SORTES: Record<SorteDeListe, Sorte> = {
     ranger: (boardId, ids) => api.reorderProjectLabels(boardId, ids),
   },
   "milestone-types": {
-    titre: "Jalons",
+    titre: "Types de jalons",
     ajouter: "Ajouter un type de jalons",
-    portee: "Les types de jalons configurés ci-dessous sont communs à l'ensemble des tableaux de projets. Le clic droit sur un type règle ses jalons.",
+    portee: "Les types de jalons configurés ci-dessous sont communs à l'ensemble des tableaux de projets.",
     une: "le type de jalons",
+    icone: IconFlag,
+    vide: "Aucun type de jalons",
     avecCouleur: false,
     avecPoids: false,
     ordonnable: false,
@@ -150,6 +164,13 @@ const enLigne = (e: Element): Ligne => ({
   color: e.color ?? DEFAULT_LABEL_COLOR,
   weight: e.weight ?? 0,
 });
+
+/**
+ * Les jalons qu'un type montre dans sa fenêtre (MilestonesModal) : les siens,
+ * et toujours celui de fin, à 100 %.
+ */
+const nombreDeJalons = (type: Element | undefined): number =>
+  (type?.milestones ?? []).filter((m) => m.value !== 100).length + 1;
 
 export default function ChampsListeDuTableau({ sorte }: { sorte: SorteDeListe }) {
   const s = SORTES[sorte];
@@ -267,6 +288,7 @@ export default function ChampsListeDuTableau({ sorte }: { sorte: SorteDeListe })
       description={s.portee}
       styles={{ description: { paddingBottom: 20 } }}
     >
+      {lignes.length === 0 && <ListeVide icon={s.icone} message={s.vide} />}
       {lignes.length > 0 && (
         <Stack gap={1}>
           {lignes.map((ligne, rang) => (
@@ -347,6 +369,14 @@ export default function ChampsListeDuTableau({ sorte }: { sorte: SorteDeListe })
                     saisie === `${ligne.cle}-poids` ? { input: STYLE_SAISIE } : undefined
                   }
                 />
+              )}
+              {/* Les jalons d'un type déjà créé : leur nombre, et leur fenêtre
+                  au clic. Ils s'enregistrent depuis elle, sans attendre
+                  « Sauvegarder ». */}
+              {sorte === "milestone-types" && ligne.id !== undefined && (
+                <BoutonDeLigne icon={IconFlag} onClick={() => setJalonsDe(ligne.id!)}>
+                  {pluriel(nombreDeJalons(originaux.find((o) => o.id === ligne.id)), "jalon")}
+                </BoutonDeLigne>
               )}
             </Group>
           ))}

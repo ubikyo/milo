@@ -47,6 +47,7 @@ import ShortcutsHelp from "./components/ui/ShortcutsHelp";
 import DispositionModal from "./components/ui/DispositionModal";
 import PointMenu, { positionDuMenu, type PointMenuPosition } from "./components/ui/PointMenu";
 import CodeKonami from "./components/ui/CodeKonami";
+import { poserLInterface, viderLaPage } from "./lib/chuteInterface";
 import SettingsModal from "./components/settings/SettingsModal";
 import type {
   Asset,
@@ -162,6 +163,28 @@ export default function App() {
   // jamais pendant une lecture.
   const [lectures, setLectures] = useState(0);
   const chargement = lectures > 0;
+
+  // Juste après la connexion, la page reste vierge le temps des lectures, puis
+  // l'interface s'y pose morceau par morceau. Les lectures s'enchaînent : on
+  // attend qu'elles se taisent un instant — et jamais plus de quelques
+  // secondes, pour ne pas laisser la page vide.
+  const [entree, setEntree] = useState(false);
+  useEffect(() => {
+    if (!entree || chargement) return;
+    const t = setTimeout(() => {
+      setEntree(false);
+      poserLInterface();
+    }, 600);
+    return () => clearTimeout(t);
+  }, [entree, chargement]);
+  useEffect(() => {
+    if (!entree) return;
+    const t = setTimeout(() => {
+      setEntree(false);
+      poserLInterface();
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [entree]);
   const lire = useCallback(async <T,>(lecture: () => Promise<T>): Promise<T> => {
     setLectures((n) => n + 1);
     try {
@@ -264,6 +287,9 @@ export default function App() {
 
   // Vérifie la session au démarrage.
   useEffect(() => {
+    // Vrai au retour d'une connexion Microsoft : l'interface s'y construira
+    // sous les yeux, comme après une connexion par mot de passe.
+    let connexion = false;
     const check = async () => {
       // Le retour de Microsoft porte la session, ou l'erreur, dans le
       // fragment de l'adresse : on le lit, puis on l'efface de la barre
@@ -272,6 +298,7 @@ export default function App() {
       if (retour.has("token") || retour.has("auth_error")) {
         const jeton = retour.get("token");
         if (jeton) setToken(jeton);
+        connexion = Boolean(jeton);
         setErreurConnexion(retour.get("auth_error"));
         window.history.replaceState(null, "", window.location.pathname + window.location.search);
       }
@@ -286,6 +313,10 @@ export default function App() {
             setNeedsSetup(true);
           } else if (getToken()) {
             setUser(await api.me());
+            if (connexion) {
+              viderLaPage();
+              setEntree(true);
+            }
           }
           break;
         } catch (erreur) {
@@ -332,6 +363,9 @@ export default function App() {
     setToken(token);
     setUser(account);
     setNeedsSetup(false);
+    // L'interface se construira sous les yeux, une fois chargée.
+    viderLaPage();
+    setEntree(true);
   };
 
   const handleLogout = async () => {
@@ -644,9 +678,22 @@ export default function App() {
     [ouvrirCible],
   );
 
+  // Paramétrage › Notifications : éteintes, les notifications ne passent plus
+  // à l'écran — elles se rangent toujours dans le tiroir. Relu à chaque
+  // fermeture du Paramétrage, où le réglage a pu changer.
+  const toastsActifs = useRef(true);
+  useEffect(() => {
+    if (!user || settingsOpened) return;
+    api
+      .getNotificationSettings()
+      .then((r) => (toastsActifs.current = r.toasts))
+      .catch(() => undefined);
+  }, [user, settingsOpened]);
+
   /** Ce qu'on voit quand un élément suivi change, chez quelqu'un d'autre. */
   const montrerNotification = useCallback(
     (avis: NotificationSuivi) => {
+      if (!toastsActifs.current) return;
       notifications.show({
         id: avis.id,
         title: avis.title,
@@ -1431,10 +1478,9 @@ export default function App() {
                 assignCurrentUser={objetDemandeAcces === null}
                 users={users}
                 currentUser={user}
-                onSaved={async () => {
-                  setSupportDrawerOpened(false);
-                  await loadSupportRequests();
-                }}
+                // Le tiroir se ferme lui-même après une création ; une mise à
+                // jour le laisse ouvert.
+                onSaved={loadSupportRequests}
                 onDeleted={async () => {
                   setSupportDrawerOpened(false);
                   await loadSupportRequests();
@@ -1536,7 +1582,10 @@ export default function App() {
                 projets={widgets.some((w) => w.type === "project.list")}
                 demandes={widgets.some((w) => w.type === "support.list")}
               />
-              <CodeKonami />
+              <CodeKonami
+                enModification={enModification}
+                onQuitterModification={() => setEnModification(false)}
+              />
 
               {/* « Créer une tâche » : la fiche d'une carte, vide, qui choisit où
                 elle va. On reste où l'on est ; la notification mène à la tâche. */}

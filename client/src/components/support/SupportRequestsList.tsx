@@ -765,7 +765,7 @@ function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportLi
       <EmptyPanel
         icon={IconLifebuoy}
         message="Aucune demande"
-        actionLabel="Nouvelle demande de support"
+        actionLabel="Nouveau ticket"
         onAction={onAddRequest}
         size="md"
       />
@@ -863,7 +863,7 @@ function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportLi
           {onAddRequest && (
             <Table.Tr style={{ backgroundColor: "transparent" }}>
               <Table.Td colSpan={nombreDeColonnes}>
-                <AddButton label="Nouvelle demande de support" onClick={onAddRequest} />
+                <AddButton label="Nouveau ticket" onClick={onAddRequest} />
               </Table.Td>
             </Table.Tr>
           )}

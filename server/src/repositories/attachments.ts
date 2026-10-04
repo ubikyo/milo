@@ -6,8 +6,9 @@
 // le fichier que lorsque la dernière ligne qui le citait s'en va.
 
 import type { Attachment, Id } from "@milo/shared";
-import { mutation, scalar, selection } from "../db/query.js";
+import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { AttachmentRow, CountRow } from "../db/rows.js";
+import { covers } from "./covers.js";
 import { estUneImage, mediasCites, supprimerLesOrphelins, supprimerMedia, urlMedia } from "../lib/medias.js";
 
 export const attachments = {
@@ -17,16 +18,28 @@ export const attachments = {
     "SELECT * FROM card_attachments WHERE file = ? ORDER BY id LIMIT 1",
   ),
   ofCard: selection<AttachmentRow>(
-    "SELECT * FROM card_attachments WHERE card_id = ? ORDER BY id DESC",
+    "SELECT * FROM card_attachments WHERE card_id = ? ORDER BY position, id DESC",
   ),
+  /** Une pièce déposée se range en tête : avant la première. */
   create: mutation(
-    `INSERT INTO card_attachments (card_id, file, name, mime, size, user_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO card_attachments (card_id, file, name, mime, size, user_id, created_at, position)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7,
+       (SELECT COALESCE(MIN(position), 1) - 1 FROM card_attachments WHERE card_id = ?1))`,
   ),
   remove: mutation("DELETE FROM card_attachments WHERE id = ?"),
   /** Combien de lignes citent encore ce fichier. Zéro : il peut partir du disque. */
-  countOfFile: scalar<CountRow>("SELECT COUNT(*) AS count FROM card_attachments WHERE file = ?"),
+  countOfFile: scalar<CountRow>(
+    `SELECT (SELECT COUNT(*) FROM card_attachments WHERE file = @file)
+          + (SELECT COUNT(*) FROM card_covers WHERE file = @file) AS count`,
+  ),
 };
+
+const ranger = mutation("UPDATE card_attachments SET position = ? WHERE id = ? AND card_id = ?");
+
+/** L'ordre complet des pièces d'une carte ; un identifiant d'une autre carte est ignoré. */
+export const reorderAttachments = transaction((cardId: Id, ids: Id[]) => {
+  ids.forEach((id, index) => ranger.run(index, id, cardId));
+});
 
 /** Une pièce jointe telle qu'elle revient au client : avec son adresse. */
 export const attachmentOf = (row: AttachmentRow): Attachment => ({
@@ -34,6 +47,20 @@ export const attachmentOf = (row: AttachmentRow): Attachment => ({
   url: urlMedia(row.file),
   is_image: estUneImage(row.file),
 });
+
+// Le nombre de pièces jointes de chaque carte d'un tableau : c'est ce qui
+// allume le trombone de la carte.
+const comptesDuTableau = selection<{ card_id: Id; total: number }>(
+  `SELECT card_attachments.card_id, COUNT(*) AS total
+   FROM card_attachments
+   JOIN task_cards ON task_cards.id = card_attachments.card_id
+   JOIN task_lists ON task_lists.id = task_cards.list_id
+   WHERE task_lists.board_id = ?
+   GROUP BY card_attachments.card_id`,
+);
+
+export const attachmentCountsOfBoard = (boardId: unknown): Map<Id, number> =>
+  new Map(comptesDuTableau.all(boardId).map((r) => [r.card_id, r.total]));
 
 export const attachmentsOf = (cardId: Id): Attachment[] =>
   attachments.ofCard.all(cardId).map(attachmentOf);
@@ -45,7 +72,7 @@ export const attachmentsOf = (cardId: Id): Attachment[] =>
  */
 export const removeAttachment = (row: AttachmentRow): void => {
   attachments.remove.run(row.id);
-  if (attachments.countOfFile(row.file).count === 0) supprimerMedia(row.file);
+  if (attachments.countOfFile({ file: row.file }).count === 0) supprimerMedia(row.file);
 };
 
 // --- Ménage ----------------------------------------------------------------
@@ -80,6 +107,7 @@ export const menageDesMedias = (): number => {
   const cites = new Set<string>();
 
   for (const { file } of fichiersDesPiecesJointes.all()) cites.add(file);
+  for (const { file } of covers.files.all()) cites.add(file);
   for (const lecture of textesHtml) {
     for (const { html } of lecture.all()) {
       for (const fichier of mediasCites(html)) cites.add(fichier);

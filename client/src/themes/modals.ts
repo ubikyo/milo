@@ -35,3 +35,16 @@ export const modalHeaderStyles = (padding: number) => ({
   },
   body: { paddingTop: padding },
 });
+
+/**
+ * La largeur de la fenêtre du Paramétrage, que reprennent les fenêtres qui
+ * s'ouvrent depuis elle — les accès d'un workspace (WorkspacesTab).
+ */
+export const LARGEUR_PARAMETRAGE = 900;
+
+/** Sa hauteur, bornée à l'écran : les fenêtres qui s'en ouvrent la reprennent aussi. */
+export const HAUTEUR_PARAMETRAGE = 725;
+export const HAUTEUR_MAX_PARAMETRAGE = "90vh";
+
+/** Son retrait intérieur, plus large que celui des autres fenêtres (MODAL_PADDING). */
+export const PADDING_PARAMETRAGE = 40;

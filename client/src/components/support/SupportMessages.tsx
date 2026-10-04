@@ -311,11 +311,14 @@ export default function SupportMessages({
   // Le dernier message en vue, comme dans une messagerie : à l'ouverture et à
   // chaque message ajouté. Seul le cadre du fil défile — « scrollIntoView »
   // ferait aussi descendre le tiroir, qui doit s'ouvrir en haut du ticket.
+  // Le cadre est le premier parent qui coupe ce qui dépasse, « hidden »
+  // compris : tout juste monté, celui de Mantine (ScrollArea) l'est tant que sa
+  // barre n'est pas prête. Ne chercher que « auto » ou « scroll » le sautait et
+  // faisait descendre tout le tiroir.
   useEffect(() => {
     let cadre = fin.current?.parentElement ?? null;
     while (cadre) {
-      const { overflowY } = getComputedStyle(cadre);
-      if (overflowY === "auto" || overflowY === "scroll") break;
+      if (getComputedStyle(cadre).overflowY !== "visible") break;
       cadre = cadre.parentElement;
     }
     if (cadre) cadre.scrollTop = cadre.scrollHeight;

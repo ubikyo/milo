@@ -3,10 +3,30 @@ import { api } from "../../api";
 import PrincipalsPermissions from "./PrincipalsPermissions";
 import {
   SETTINGS_ACCESS,
-  WORKSPACES_ACCESS,
   defaultAdminPermissions,
 } from "@milo/shared";
 import type { AdminPermissions, SettingsAccess, WorkspacesAccess } from "@milo/shared";
+
+/**
+ * La gestion des workspaces et le Paramétrage se disent par oui ou par non :
+ * « update » pour oui, dans WORKSPACES_ACCESS comme dans SETTINGS_ACCESS. Le
+ * Paramétrage en lecture seule (« view ») ne se choisit plus ; qui l'a encore
+ * le voit sous « Voir », le temps qu'on lui donne oui ou non.
+ */
+const OUI_NON = [
+  { value: "", label: "Non" },
+  { value: "update", label: "Oui" },
+] as const satisfies readonly { value: WorkspacesAccess & SettingsAccess; label: string }[];
+
+/** Le Paramétrage par oui ou par non, et « Voir » seulement pour qui l'a déjà. */
+const choixParametrage = (actuel: SettingsAccess) =>
+  actuel === "view" ? [...OUI_NON, { value: "view", label: "Voir" }] : OUI_NON;
+
+/** La largeur de la colonne « Workspaces » : de quoi lire son en-tête. */
+const LARGEUR_WORKSPACES = 80;
+
+/** Celle de la colonne « Paramétrage ». */
+const LARGEUR_PARAMETRAGE = 80;
 
 /** Ce qu'il administre, d'un coup d'œil. */
 const resume = ({ settings, workspaces }: AdminPermissions): string =>
@@ -41,26 +61,26 @@ export default function AdministrationTab({
       remove={(principal) => api.deleteAdministration(principal)}
       vide={defaultAdminPermissions}
       resume={resume}
-      sections={(permissions, changer) => [
+      // Deux permissions seulement : elles se règlent sur la ligne, en
+      // colonnes comme les accès d'un workspace — le Paramétrage d'abord, puis
+      // les workspaces, à l'ajout comme ensuite.
+      enColonnes
+      enLigne={(permissions, changer) => [
         {
-          label: "Pour l'application",
-          lignes: [
-            {
-              nom: "Paramétrage",
-              options: SETTINGS_ACCESS,
-              valeur: permissions.settings,
-              onChange: (valeur) =>
-                changer({ ...permissions, settings: valeur as SettingsAccess }),
-            },
-            {
-              nom: "Workspaces",
-              options: WORKSPACES_ACCESS,
-              valeur: permissions.workspaces,
-              onChange: (valeur) =>
-                changer({ ...permissions, workspaces: valeur as WorkspacesAccess }),
-              disabled: !canManageWorkspaces,
-            },
-          ],
+          nom: "Paramétrage",
+          options: choixParametrage(permissions.settings),
+          valeur: permissions.settings,
+          onChange: (valeur) => changer({ ...permissions, settings: valeur as SettingsAccess }),
+          largeur: LARGEUR_PARAMETRAGE,
+        },
+        {
+          nom: "Workspaces",
+          options: OUI_NON,
+          valeur: permissions.workspaces,
+          largeur: LARGEUR_WORKSPACES,
+          onChange: (valeur) =>
+            changer({ ...permissions, workspaces: valeur as WorkspacesAccess }),
+          disabled: !canManageWorkspaces,
         },
       ]}
       emptyText="Aucun administrateur pour le moment"

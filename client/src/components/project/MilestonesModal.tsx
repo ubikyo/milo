@@ -1,21 +1,30 @@
 import {
   Button,
   Group,
+  Menu,
   Modal,
   NumberInput,
   Slider,
   Stack,
   Text,
   TextInput,
-  UnstyledButton,
 } from "@mantine/core";
-import { IconFlag, IconPencil, IconTrash } from "@tabler/icons-react";
+import { IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { RED, couleurJalonParDefaut } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import LabelColorPicker from "../ui/LabelColorPicker";
 import { useLabelColors } from "../ui/LabelChip";
-import ListItems from "../ui/ListItems";
+import AddButton from "../ui/AddButton";
+import {
+  ARRONDI,
+  RETRAIT_LIGNE,
+  RETRAIT_NOM,
+  STYLE_SAISIE,
+  styleChampNom,
+  styleLigne,
+} from "../ui/LignesDuTiroir";
+import PointMenu, { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
 import { MilestoneLabels, marquesJalons } from "./milestoneMarks";
 import { messageErreur, notifierErreur } from "../../lib/errors";
 import { DEFAULT_LABEL_COLOR } from "@milo/shared";
@@ -43,14 +52,15 @@ interface MilestonesModalProps {
   onSave: (milestones: Milestone[]) => Promise<unknown>;
 }
 
-// Hauteur d'une ligne de jalon et de ses champs : celles des étiquettes
-// (LabelsManager), dont la liste reprend la présentation.
-const ROW_HEIGHT_JALON = 40;
-const FIELD_HEIGHT = 22;
+/** L'air ajouté à gauche de la pastille de couleur d'un jalon. */
+const ECART_COULEUR = 3;
+/** L'air entre le pourcentage et le libellé. */
+const ECART_LIBELLE = 4;
+/** L'air entre la pastille et le pourcentage. */
+const ECART_POURCENTAGE = 10;
 
-// Largeur du pourcentage : de quoi écrire « 100 % », à la place qu'occupe la
-// pastille de couleur d'une étiquette.
-const LARGEUR_POURCENTAGE = 52;
+// Largeur du pourcentage : de quoi écrire « 100 % » dans un champ.
+const LARGEUR_POURCENTAGE = 54;
 
 interface ChampPourcentageProps {
   value: number | "";
@@ -62,43 +72,45 @@ interface ChampPourcentageProps {
 // Les autres jalons s'arrêtent avant la fin : 100 % est déjà pris.
 const MAX_JALON = FIN - 1;
 
-/** Le pourcentage d'un jalon, sans cadre : la liste en est le cadre. */
+/** Le pourcentage d'un jalon : un champ « xs » de la ligne, comme une largeur de colonne. */
 function ChampPourcentage({
   value,
   onChange,
   onBlur,
   label,
 }: ChampPourcentageProps) {
+  const [saisi, setSaisi] = useState(false);
   return (
     <NumberInput
       value={value}
       onChange={(v) => onChange(v === "" ? "" : Number(v))}
-      onBlur={onBlur}
+      onFocus={() => setSaisi(true)}
+      onBlur={() => {
+        setSaisi(false);
+        onBlur?.();
+      }}
       min={0}
       max={MAX_JALON}
       clampBehavior="strict"
       allowDecimal={false}
       suffix="%"
       hideControls
-      variant="unstyled"
-      size="sm"
+      size="xs"
+      radius={ARRONDI}
       w={LARGEUR_POURCENTAGE}
       style={{ flexShrink: 0 }}
+      // Le corps du libellé, à droite : un champ « xs » a la hauteur des
+      // autres, mais un texte plus petit.
       styles={{
-        input: {
-          height: FIELD_HEIGHT,
-          minHeight: FIELD_HEIGHT,
-          lineHeight: `${FIELD_HEIGHT}px`,
-        },
+        input: { fontSize: "var(--mantine-font-size-sm)", ...(saisi ? STYLE_SAISIE : null) },
       }}
       aria-label={label}
     />
   );
 }
 
-// La ligne d'ajout porte une couleur et un nom, sans pourcentage : le jalon
-// se pose à mi-chemin entre le dernier jalon et la fin, et son pourcentage se
-// règle ensuite sur sa ligne.
+// Le jalon ajouté se pose à mi-chemin entre le dernier jalon et la fin : son
+// pourcentage se règle ensuite sur sa ligne.
 const aMiChemin = (liste: Saisie[]) => {
   const dernier = liste
     .filter((s) => !s.fixe)
@@ -153,19 +165,19 @@ export default function MilestonesModal({
 }: MilestonesModalProps) {
   const [saisies, setSaisies] = useState<Saisie[]>([]);
   const [saving, setSaving] = useState(false);
-  // La ligne dont le libellé est en cours de modification.
-  const [enEdition, setEnEdition] = useState<number | null>(null);
-  const [nouveauLibelle, setNouveauLibelle] = useState("");
-  const [nouvelleCouleur, setNouvelleCouleur] = useState(DEFAULT_LABEL_COLOR);
+  // Le champ qui a le focus : il prend le fond de la fenêtre.
+  const [saisie, setSaisie] = useState<number | null>(null);
+  // Le jalon qu'on vient d'ajouter : son libellé prend le focus.
+  const [aNommer, setANommer] = useState<number | null>(null);
+  const [menu, setMenu] = useState<{ cle: number; position: PointMenuPosition } | null>(null);
   const couleurs = useLabelColors();
 
   useEffect(() => {
     if (!type) return;
     const liste = avecFin(type.milestones);
     setSaisies(liste);
-    setEnEdition(null);
-    setNouveauLibelle("");
-    setNouvelleCouleur(DEFAULT_LABEL_COLOR);
+    setSaisie(null);
+    setANommer(null);
   }, [type]);
 
   const modifier = (cle: number, patch: Partial<Saisie>) =>
@@ -183,18 +195,18 @@ export default function MilestonesModal({
       ),
     );
 
+  // Le libellé est facultatif : la couleur suffit. Le jalon se range à sa
+  // place, et son libellé prend le focus.
   const ajouter = () => {
-    // Le libellé est facultatif : la couleur suffit.
-    const liste = [
-      ...saisies,
-      versSaisie({
-        value: aMiChemin(saisies),
-        label: nouveauLibelle.trim(),
-        color: nouvelleCouleur,
-      }),
-    ].sort((a, b) => (Number(a.value) || 0) - (Number(b.value) || 0));
-    setSaisies(liste);
-    setNouveauLibelle("");
+    const nouveau = versSaisie({
+      value: aMiChemin(saisies),
+      label: "",
+      color: DEFAULT_LABEL_COLOR,
+    });
+    setSaisies(
+      [...saisies, nouveau].sort((a, b) => (Number(a.value) || 0) - (Number(b.value) || 0)),
+    );
+    setANommer(nouveau.cle);
   };
 
   // Le libellé est facultatif : un jalon sans libellé colore sa tranche mais
@@ -241,134 +253,101 @@ export default function MilestonesModal({
     >
       <Stack gap="md">
 
-        {/* La même liste que les étiquettes d'un tableau (LabelsManager) :
-            le pourcentage tient la place de la couleur, le libellé se
-            modifie d'un clic, la dernière ligne ajoute. */}
-        <ListItems
-          // Cinq jalons visibles : au-delà, la liste défile.
-          maxRows={5}
-          rowHeight={ROW_HEIGHT_JALON}
-          isEmpty={saisies.length === 0}
-          emptyIcon={IconFlag}
-          emptyText="Aucun jalon : le curseur des projets de cette catégorie restera nu"
-          add={{
-            placeholder: "Nom jalon (facultatif)",
-            value: nouveauLibelle,
-            onChange: setNouveauLibelle,
-            onSubmit: ajouter,
-            onCancel: () => setNouveauLibelle(""),
-            // La couleur, dans la colonne des lignes au-dessus.
-            section: (
-              <LabelColorPicker
-                color={nouvelleCouleur}
-                onChange={setNouvelleCouleur}
-                label="le nouveau jalon"
-              />
-            ),
-          }}
-        >
-          {saisies.map((s) => (
-            <ListItems.Row
-              key={s.cle}
-              height={ROW_HEIGHT_JALON}
-              // La fin ne se supprime pas : son menu n'a que « Modifier ».
-              actions={[
-                {
-                  label: "Modifier",
-                  icon: IconPencil,
-                  onClick: () => setEnEdition(s.cle),
-                },
-                ...(s.fixe
-                  ? []
-                  : [
-                      {
-                        label: "Retirer",
-                        icon: IconTrash,
-                        onClick: () =>
-                          setSaisies((liste) =>
-                            liste.filter((x) => x.cle !== s.cle),
-                          ),
-                        danger: true,
-                      },
-                    ]),
-              ]}
-            >
-              <>
-                <LabelColorPicker
-                  color={s.color}
-                  onChange={(color) => modifier(s.cle, { color })}
-                  label={s.label || `le jalon à ${s.value}%`}
-                />
-
-                {s.fixe ? (
-                  // La fin ne se déplace pas : sa valeur se lit, sans champ.
-                  <Text
-                    size="sm"
-                    w={LARGEUR_POURCENTAGE}
-                    style={{ flexShrink: 0 }}
-                  >
-                    {FIN}%
-                  </Text>
-                ) : (
-                  <ChampPourcentage
-                    value={s.value}
-                    onChange={(value) => modifier(s.cle, { value })}
-                    onBlur={trier}
-                    label={`Pourcentage de ${s.label || "ce jalon"}`}
+        {/* Les jalons se présentent comme les listes des tiroirs
+            (ChampsColonnes) : une ligne par jalon — sa couleur, son
+            pourcentage, son libellé à même la ligne. Le clic droit le retire
+            — la fin, à 100 %, reste ; « Ajouter » en pose un à mi-chemin. */}
+        <div>
+          <Stack gap={1}>
+            {saisies.map((s, rang) => (
+              <Group
+                key={s.cle}
+                gap="sm"
+                wrap="nowrap"
+                onContextMenu={(e) => {
+                  if (s.fixe) return;
+                  setMenu({ cle: s.cle, position: positionDuMenu(e) });
+                }}
+                style={{
+                  ...styleLigne(rang, saisies.length, false),
+                  // La pastille de couleur, en tête, s'écarte un peu plus du bord.
+                  paddingLeft: RETRAIT_LIGNE + ECART_COULEUR,
+                }}
+              >
+                {/* La pastille et le pourcentage se suivent de près : le champ
+                    du pourcentage porte déjà son propre retrait. */}
+                <Group gap={ECART_POURCENTAGE} wrap="nowrap" style={{ flexShrink: 0 }}>
+                  <LabelColorPicker
+                    color={s.color}
+                    onChange={(color) => modifier(s.cle, { color })}
+                    label={s.label || `le jalon à ${s.value}%`}
                   />
-                )}
 
-                {enEdition === s.cle ? (
-                  <TextInput
-                    value={s.label}
-                    onChange={(e) =>
-                      modifier(s.cle, { label: e.currentTarget.value })
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === "Escape")
-                        setEnEdition(null);
-                    }}
-                    onBlur={() => setEnEdition(null)}
-                    variant="unstyled"
-                    size="sm"
-                    style={{ flex: 1, minWidth: 0 }}
-                    // Le champ occupe exactement la place du libellé qu'il
-                    // remplace : la ligne ne bouge pas d'un pixel.
-                    styles={{
-                      input: {
-                        height: FIELD_HEIGHT,
-                        minHeight: FIELD_HEIGHT,
-                        lineHeight: `${FIELD_HEIGHT}px`,
-                      },
-                    }}
-                    placeholder="Libellé (facultatif)"
-                    autoFocus
-                    aria-label="Libellé du jalon"
-                  />
-                ) : (
-                  <UnstyledButton
-                    onClick={() => setEnEdition(s.cle)}
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      display: "flex",
-                      alignItems: "center",
-                      height: FIELD_HEIGHT,
-                    }}
-                  >
+                  {s.fixe ? (
+                    // La fin ne se déplace pas : sa valeur se lit, sans champ.
                     <Text
                       size="sm"
-                      truncate
-                      c={s.label.trim() ? undefined : "dimmed"}
+                      w={LARGEUR_POURCENTAGE}
+                      pl={RETRAIT_NOM}
+                      style={{ flexShrink: 0 }}
                     >
-                      {s.label.trim() || "Libellé (facultatif)"}
+                      {FIN}%
                     </Text>
-                  </UnstyledButton>
-                )}
-              </>
-            </ListItems.Row>
-          ))}
-        </ListItems>
+                  ) : (
+                    <ChampPourcentage
+                      value={s.value}
+                      onChange={(value) => modifier(s.cle, { value })}
+                      onBlur={trier}
+                      label={`Pourcentage de ${s.label || "ce jalon"}`}
+                    />
+                  )}
+                </Group>
+
+                <TextInput
+                  size="sm"
+                  radius={ARRONDI}
+                  // Plus près du pourcentage que l'écart de la ligne.
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    marginLeft: `calc(${ECART_LIBELLE}px - var(--mantine-spacing-sm))`,
+                  }}
+                  styles={{ input: styleChampNom(saisie === s.cle) }}
+                  placeholder="Libellé (facultatif)"
+                  aria-label="Libellé du jalon"
+                  value={s.label}
+                  onChange={(e) => modifier(s.cle, { label: e.currentTarget.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+                  }}
+                  autoFocus={aNommer === s.cle}
+                  onFocus={() => setSaisie(s.cle)}
+                  onBlur={() => {
+                    setSaisie(null);
+                    setANommer(null);
+                  }}
+                />
+              </Group>
+            ))}
+          </Stack>
+          {/* Au plus près de la liste qu'il allonge. */}
+          <AddButton label="Ajouter un jalon" onClick={ajouter} mt={4} />
+        </div>
+
+        {menu && (
+          <PointMenu position={menu.position} onClose={() => setMenu(null)}>
+            <Menu.Item
+              color={RED}
+              leftSection={<IconTrash size={16} />}
+              onClick={() => {
+                setSaisies((liste) => liste.filter((x) => x.cle !== menu.cle));
+                setMenu(null);
+              }}
+            >
+              Retirer
+            </Menu.Item>
+          </PointMenu>
+        )}
 
         {/* Le curseur tel qu'un projet le montrera, sans y toucher : rempli
             jusqu'au bout, chaque tranche de la couleur de son jalon. */}
@@ -393,11 +372,6 @@ export default function MilestonesModal({
         {doublon && (
           <Text size="xs" c={RED}>
             Deux jalons ne peuvent pas porter la même valeur.
-          </Text>
-        )}
-        {incomplet && (
-          <Text size="xs" c="dimmed">
-            Chaque jalon demande une valeur.
           </Text>
         )}
 

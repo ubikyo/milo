@@ -25,7 +25,7 @@ interface BoardPanelProps {
   onUnlock?: () => void | Promise<void>;
   /** « Créer une tâche », au clic droit sur un lien. */
   onCreateTask?: (widget: BoardWidget) => void;
-  /** « Créer une demande de support », au clic droit sur un lien. */
+  /** « Créer un ticket », au clic droit sur un lien. */
   onCreateSupportRequest?: (widget: BoardWidget) => void;
 }
 
@@ -73,7 +73,7 @@ export default function BoardPanel({
         convertir: (widget, type) => api.updateBoardWidget(widget.id, { type }),
       }}
       // Seul un lien désigne quelque chose sur quoi travailler : un titre, un
-      // numéro ou une horloge n'appellent ni tâche ni demande de support.
+      // numéro ou une horloge n'appellent ni tâche ni ticket.
       menuEnPlus={(widget, fermer) =>
         widget.type === "link" && (onCreateTask || onCreateSupportRequest) ? (
           <>
@@ -96,7 +96,7 @@ export default function BoardPanel({
                   onCreateSupportRequest(widget as BoardWidget);
                 }}
               >
-                Créer une demande de support
+                Créer un ticket
               </Menu.Item>
             )}
           </>

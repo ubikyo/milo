@@ -42,7 +42,18 @@ export default function ModeBar({
   account,
 }: ModeBarProps) {
   return (
-    <Tabs value={value} onChange={onChange} mb={50}>
+    // Les onglets restent sur une seule ligne, quelle que soit la largeur de la
+    // fenêtre : c'est la recherche qui cède la place, pas la rangée qui se
+    // replie. Chaque onglet garde son nom entier, sur une ligne.
+    <Tabs
+      value={value}
+      onChange={onChange}
+      mb={50}
+      styles={{
+        list: { flexWrap: "nowrap" },
+        tab: { flexShrink: 0, whiteSpace: "nowrap" },
+      }}
+    >
       {/* La hauteur est celle de tous les modes : ailleurs c'est le bouton
           « Actions » qui la donne, ici elle est dite une fois pour toutes. */}
       <Tabs.List mih={TAB_ROW_HEIGHT}>
@@ -52,7 +63,7 @@ export default function ModeBar({
           pl={LOGO_PADDING_LEFT}
           pr="md"
           className={logoClasses.enseigne}
-          style={{ alignSelf: "center", display: "flex" }}
+          style={{ alignSelf: "center", display: "flex", flexShrink: 0 }}
         >
           <Logo variant={2} h={LOGO_HEIGHT} />
           {/* Le numéro de version, sous le logo, pour qui s'y attarde. */}
@@ -73,7 +84,7 @@ export default function ModeBar({
         <Box
           ml="auto"
           pl="md"
-          style={{ alignSelf: "center", display: "flex", alignItems: "center" }}
+          style={{ alignSelf: "center", display: "flex", alignItems: "center", flexShrink: 0 }}
         >
           <AccountControls {...account} actions={actions} />
         </Box>

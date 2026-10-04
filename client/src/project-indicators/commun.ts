@@ -3,7 +3,7 @@
 
 import type { Project } from "@milo/shared";
 
-export { ChampNom, NOM, Rien, TitreIndicateur } from "../indicators/commun";
+export { ChampNom, NOM, Rien, TitreIndicateur, ValeurIndicateur } from "../indicators/commun";
 export { BarresEtiquettes, type Barre } from "../indicators/etiquettes";
 
 /** Un projet à 100 % est terminé ; en deçà, il est en cours. */

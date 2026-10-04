@@ -39,6 +39,8 @@ export interface LignePermission {
   onChange: (valeur: string) => void;
   /** Elle se lit sans se changer. */
   disabled?: boolean;
+  /** Sa largeur quand elle se règle à même la ligne (PrincipalsPermissions). */
+  largeur?: number;
 }
 
 /** Des permissions qui vont ensemble, sous un libellé. */

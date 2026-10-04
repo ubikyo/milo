@@ -20,7 +20,7 @@ type Etiquette = Label | ProjectLabel | SupportLabel;
  * changent d'un mode à l'autre, les gestes non.
  *
  * `parentId` est ce à quoi les étiquettes pendent : un tableau pour les cartes
- * et les projets, une société pour les demandes de support.
+ * et les projets, une société pour les tickets.
  */
 export interface LabelsApi {
   create: (parentId: number, name: string, color: string, weight: number) => Promise<Etiquette>;

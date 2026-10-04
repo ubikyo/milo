@@ -38,7 +38,7 @@ export const etiquettesTachesIndicator: TaskIndicatorWidget = {
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
         <TitreIndicateur config={config} defaut={LIBELLE} />
-        {data.length === 0 ? <Rien>Aucune étiquette</Rien> : <BarresEtiquettes data={data} />}
+        {data.length === 0 ? <Rien>Aucune étiquette</Rien> : <BarresEtiquettes data={data} couleursPropres />}
       </Stack>
     );
   },

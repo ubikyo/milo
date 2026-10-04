@@ -1,5 +1,5 @@
 // La recherche globale : le champ de la rangée d'onglets. Elle fouille les
-// projets, les cartes, les demandes de support, les postes et les éléments du
+// projets, les cartes, les tickets, les postes et les éléments du
 // mode Accès, et n'en rend que ce que la personne voit ailleurs — un tableau
 // ou une catégorie privés restent fermés aux autres ici aussi.
 

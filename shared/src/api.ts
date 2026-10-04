@@ -1,6 +1,7 @@
 // Ce que le client envoie au serveur. Les réponses, elles, sont décrites par
 // les types du domaine (domain.ts).
 
+import type { FormeEcheance, Rappel, Recurrence } from "./echeance.js";
 import type {
   CardKind,
   Id,
@@ -144,6 +145,13 @@ export interface TaskCardInput {
   description?: string;
   /** ISO 8601 avec l'heure, ou vide pour retirer l'échéance. */
   due_date?: string;
+  /** « AAAA-MM-JJ », ou vide : l'échéance sans début. */
+  start_date?: string;
+  due_form?: FormeEcheance;
+  recurrence?: Recurrence;
+  reminder?: Rappel;
+  /** Voir `TaskCard.cover_interval`. */
+  cover_interval?: number;
   member_ids?: Id[];
   label_ids?: Id[];
 }
@@ -225,14 +233,14 @@ export interface CopyResult {
 }
 
 /**
- * Le tiroir d'une demande de support : son contexte, qu'on peut changer pour
+ * Le tiroir d'un ticket : son contexte, qu'on peut changer pour
  * un autre du même tableau.
  */
 export interface SupportRequestInput {
   context_id?: Id;
   /** À la création sans contexte : le tableau, dont elle prend le premier. */
   board_id?: Id;
-  /** À la création : le widget « Demandes de support » qui la montre. */
+  /** À la création : le widget « Tickets » qui la montre. */
   list_key?: string;
   subject?: string;
   status?: SupportStatus;
