@@ -7,7 +7,7 @@ import {
   BOARD_WIDGETS,
   boardWidget,
   type BoardData,
-} from "../../board-widgets";
+} from "../../widgets";
 import IndicatorsPanel, { type IndicatorsApi } from "./IndicatorsPanel";
 import type { BoardWidget, Id, IndicatorSection } from "@milo/shared";
 

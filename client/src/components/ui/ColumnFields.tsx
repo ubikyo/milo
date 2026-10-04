@@ -5,7 +5,7 @@ import type { DragEvent } from "react";
 import classes from "../../assets/styles/ColumnFields.module.css";
 import { RED } from "../../themes/colors";
 import { withField } from "../../widgets/types";
-import type { IndicatorConfigProps } from "../../indicators/types";
+import type { IndicatorConfigProps } from "../../widgets/support/types";
 import AddButton from "./AddButton";
 import {
   ROUNDING,

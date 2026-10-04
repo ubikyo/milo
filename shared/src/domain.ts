@@ -1102,7 +1102,7 @@ export interface Asset {
   context_id: Id | null;
   /** The "Assets" widget that shows it, the one that receives its tag; empty otherwise. */
   list_key: string;
-  /** The GLPI agent tag: what a machine list receives (asset-indicators/list.tsx). */
+  /** The GLPI agent tag: what a machine list receives (widgets/asset/list.tsx). */
   tag: string;
   /**
    * The last person signed in on the machine, as the agent saw it:

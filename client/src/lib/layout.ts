@@ -13,7 +13,7 @@
 
 import { listKey, isListWidgetType, migrateWidgetConfig } from "@milo/shared";
 import type { BoardWidget, ExportedLayout, IndicatorSection } from "@milo/shared";
-import type { BoardWidgetDefinition } from "../board-widgets";
+import type { BoardWidgetDefinition } from "../widgets";
 
 const FORMAT = "deflate-raw";
 

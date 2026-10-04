@@ -1,11 +1,11 @@
 import { Stack } from "@mantine/core";
-import { categoryWidget } from "./category";
-import { clockWidget } from "./clock";
-import { linkWidget } from "./link";
+import { categoryWidget } from "./common/category";
+import { clockWidget } from "./common/clock";
+import { linkWidget } from "./common/link";
 import { marginsOf } from "./margins";
-import { numberWidget } from "./number";
-import { subcategoryWidget } from "./subcategory";
-import type { IndicatorConfigProps } from "../indicators/types";
+import { numberWidget } from "./common/number";
+import { subcategoryWidget } from "./common/subcategory";
+import type { IndicatorConfigProps } from "./support/types";
 import type { AccessWidget, Margins } from "./types";
 import type { ComponentType } from "react";
 import type { AccessBlockType } from "@milo/shared";

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import inset from "../../assets/styles/AccessNumber.module.css";
 import type { ComponentType, DragEvent } from "react";
 import { kindLabel, type WidgetKind } from "../../widgets/kinds";
-import { SUBCATEGORY_GAP } from "../../widgets/subcategory";
+import { SUBCATEGORY_GAP } from "../../widgets/common/subcategory";
 
 // What a section can receive, one widget per row: its handle, its
 // icon, its name, in the widgets inset. The drawer opens on the left, and
@@ -98,14 +98,14 @@ export default function WidgetDrawer<P extends WidgetChoice>({
       // Mantine's scrollbar, along the drawer's right edge.
       scrollAreaComponent={ScrollArea.Autosize}
     >
-      {/* A category title (widgets/category.tsx): its size, its
+      {/* A category title (widgets/common/category.tsx): its size, its
           color, and 20 px of space before the list. */}
       <Title order={1} size={18} c="var(--mantine-color-white)" mb={20}>
         Widgets
       </Title>
       {groups.map((group, rank) => (
         <div key={group.kind}>
-          {/* A subcategory title (widgets/subcategory.tsx): its
+          {/* A subcategory title (widgets/common/subcategory.tsx): its
               size, its weight, the space under it; 40 px above when
               other widgets precede it. */}
           <Title

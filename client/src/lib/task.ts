@@ -5,7 +5,7 @@
 import { projectReference, supportTicketRef } from "@milo/shared";
 import type { AccessBlockType, Asset, BoardWidget, Id, Project, SupportRequest } from "@milo/shared";
 import type { SourceTask } from "../components/board/TaskDestination";
-import { widgetFor } from "../widgets";
+import { widgetFor } from "../widgets/common";
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 

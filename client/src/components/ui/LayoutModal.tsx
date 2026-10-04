@@ -9,7 +9,7 @@ import {
 } from "@mantine/core";
 import { IconAlertTriangle, IconCheck, IconCopy } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
-import { boardWidget } from "../../board-widgets";
+import { boardWidget } from "../../widgets";
 import { useWidgetAccess } from "../../lib/rights";
 import {
   preview,

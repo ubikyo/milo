@@ -41,7 +41,7 @@ import { RED, STRONG_TEXT } from "../../themes/colors";
 import type { Asset } from "@milo/shared";
 
 // The Assets mode workstation list: a section widget, like the
-// indicators (asset-indicators/list.tsx). It holds its sort and its right-click
+// indicators (widgets/asset/list.tsx). It holds its sort and its right-click
 // menu; the workstations, and what is opened from them, come from the page
 // (AssetsListContext). Its configuration only names the columns it
 // shows.

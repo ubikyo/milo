@@ -1,7 +1,7 @@
 import { Stack } from "@mantine/core";
 import { IconLayoutColumns } from "@tabler/icons-react";
 import type { ReactNode } from "react";
-import type { BoardData } from "../board-widgets";
+import type { BoardData } from "../widgets";
 import { AssetsListContext, type AssetsListHandle } from "../components/assets/AssetsList";
 import { TaskBoardContext, type TaskBoardProps } from "../components/board/TaskBoard";
 import { ProjectsListContext, type ProjectsList } from "../components/project/ProjectTable";

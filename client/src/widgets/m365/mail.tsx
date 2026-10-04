@@ -1,0 +1,544 @@
+import {
+  Badge,
+  Box,
+  Button,
+  Checkbox,
+  Drawer,
+  Group,
+  Loader,
+  NumberInput,
+  ScrollArea,
+  Stack,
+  Table,
+  Text,
+  Title,
+} from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { IconExternalLink, IconMail, IconPaperclip } from "@tabler/icons-react";
+import dayjs from "dayjs";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import { api } from "../../api";
+import classes from "../../assets/styles/AccessNumber.module.css";
+import EmailFrame from "../../components/support/EmailFrame";
+import { NEUTRAL_HOVER } from "../../themes/colors";
+import { withField, count } from "../types";
+import type { AccessWidget } from "../types";
+import type { AccessMail, AccessMailDetail, Id, MailAddress } from "@milo/shared";
+
+// Mail: the viewer's inbox, as a grid — everyone sees their own, whatever the
+// board. It is read from Entra by the server (server/src/lib/entra.ts, Mail.Read
+// application permission), page by page: the next one arrives when scrolling
+// down to the bottom of the grid. A click on a row opens the email in a
+// drawer, as the sender wrote it (EmailFrame, the Support one), with its
+// attachments.
+//
+// Nothing is modified in the mailbox: an email opened here is not marked read there.
+
+const QUANTITY = "count";
+const HEIGHT = "height";
+const COLUMNS = "columns";
+const UNREAD = "unreadOnly";
+const HEADER = "header";
+const FRAMED = "framed";
+
+/** The emails of a page: those the grid requests at once. */
+const QUANTITY_DEFAULT = 15;
+const QUANTITY_MIN = 5;
+const QUANTITY_MAX = 100;
+
+/** The grid's height, beyond which it scrolls. */
+const DEFAULT_HEIGHT = 360;
+const HEIGHT_MIN = 120;
+const HEIGHT_MAX = 1600;
+
+/** The page rereads the mailbox at this rate: new emails are placed at the top. */
+const RELOAD_INTERVAL = 2 * 60_000;
+
+const PROPOSED_COLUMNS = [
+  { value: "sender", label: "Expéditeur" },
+  { value: "subject", label: "Objet" },
+  { value: "preview", label: "Aperçu" },
+  { value: "date", label: "Reçu le" },
+  { value: "attachments", label: "Pièces jointes" },
+];
+
+const DEFAULT_COLUMNS = ["sender", "subject", "date"];
+
+const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean => {
+  const value = (config as Record<string, unknown> | null)?.[key];
+  return value === undefined ? defaultValue : Boolean(value);
+};
+
+/** The stored columns, in the grid's order, without whatever is not one. */
+const columnsOf = (config: unknown): string[] => {
+  const value = (config as Record<string, unknown> | null)?.[COLUMNS];
+  if (!Array.isArray(value)) return DEFAULT_COLUMNS;
+  return PROPOSED_COLUMNS.map((c) => c.value).filter((c) => value.includes(c));
+};
+
+const bound = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+/** Today, the time; this year, the day; before that, the full date. */
+const whenLabel = (iso: string): string => {
+  const date = dayjs(iso);
+  if (date.isSame(dayjs(), "day")) return date.format("HH:mm");
+  if (date.isSame(dayjs(), "year")) return date.format("D MMM");
+  return date.format("DD/MM/YYYY");
+};
+
+const nameOf = (a: MailAddress) => a.name || a.email || "Inconnu";
+
+const size = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+};
+
+/** The emails opened, for the duration of the page: reopening them requests nothing. */
+const alreadyOpened = new Map<string, AccessMailDetail>();
+
+function Reader({
+  blockId,
+  header,
+  onClose,
+}: {
+  blockId: Id;
+  header: AccessMail | null;
+  onClose: () => void;
+}) {
+  const [detail, setDetail] = useState<AccessMailDetail | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!header) return;
+    const known = alreadyOpened.get(header.id);
+    setDetail(known ?? null);
+    setError("");
+    if (known) return;
+    let active = true;
+    api
+      .getAccessMail(blockId, header.id)
+      .then((d) => {
+        alreadyOpened.set(d.id, d);
+        if (active) setDetail(d);
+      })
+      .catch((e: Error) => active && setError(e.message));
+    return () => {
+      active = false;
+    };
+  }, [blockId, header]);
+
+  const download = async (attachmentId: string, name: string) => {
+    if (!header) return;
+    try {
+      const file = await api.downloadAccessMailAttachment(blockId, header.id, attachmentId);
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      notifications.show({ color: "red", message: (e as Error).message });
+    }
+  };
+
+  const addresses = (list: MailAddress[]) =>
+    list.map((a) => (a.name ? `${a.name} <${a.email}>` : a.email)).join(", ");
+
+  return (
+    <Drawer
+      opened={header !== null}
+      onClose={onClose}
+      position="right"
+      size={760}
+      // In a portal, but under the widget for React: nothing in it makes the widget drag.
+      data-no-widget-drag
+      title={
+        <Title order={4} lineClamp={2}>
+          {header?.subject || "Sans objet"}
+        </Title>
+      }
+    >
+      {/* The drawer lives in a portal, but its events bubble up through
+          React to the widget: right click does not open its settings there. */}
+      <Stack
+        gap="md"
+        data-no-widget-drag
+        onContextMenu={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        {header && (
+          <Stack gap={2}>
+            <Group justify="space-between" wrap="nowrap" align="flex-start">
+              <Text size="sm" fw={600}>
+                {nameOf(header.from)}{" "}
+                {header.from.name && (
+                  <Text span size="sm" c="dimmed" fw={400}>
+                    &lt;{header.from.email}&gt;
+                  </Text>
+                )}
+              </Text>
+              <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>
+                {dayjs(header.received_at).format("dddd D MMMM YYYY, HH:mm")}
+              </Text>
+            </Group>
+            {detail && detail.to.length > 0 && (
+              <Text size="xs" c="dimmed">
+                À : {addresses(detail.to)}
+              </Text>
+            )}
+            {detail && detail.cc.length > 0 && (
+              <Text size="xs" c="dimmed">
+                Cc : {addresses(detail.cc)}
+              </Text>
+            )}
+          </Stack>
+        )}
+        {detail && (detail.attachments.length > 0 || detail.url) && (
+          <Group gap="xs">
+            {detail.attachments.map((p) => (
+              <Badge
+                key={p.id}
+                variant="default"
+                leftSection={<IconPaperclip size={12} />}
+                style={{ cursor: "pointer", textTransform: "none" }}
+                onClick={() => download(p.id, p.name)}
+                title="Télécharger"
+              >
+                {p.name} · {size(p.size)}
+              </Badge>
+            ))}
+            {detail.url && (
+              <Button
+                component="a"
+                href={detail.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                size="compact-xs"
+                variant="subtle"
+                color="gray"
+                rightSection={<IconExternalLink size={12} />}
+                ml="auto"
+              >
+                Ouvrir dans Outlook
+              </Button>
+            )}
+          </Group>
+        )}
+        {error && (
+          <Text size="sm" c="red">
+            {error}
+          </Text>
+        )}
+        {!detail && !error && (
+          <Group gap="xs" c="dimmed">
+            <Loader size="xs" color="gray" />
+            <Text size="sm">Chargement de l'e-mail…</Text>
+          </Group>
+        )}
+        {detail && <EmailFrame html={detail.html} />}
+      </Stack>
+    </Drawer>
+  );
+}
+
+type State =
+  | { phase: "loading" }
+  | { phase: "ready"; messages: AccessMail[]; more: boolean; unread: number | null }
+  | { phase: "error"; message: string };
+
+function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
+  const quantity = bound(count(config, QUANTITY, QUANTITY_DEFAULT), QUANTITY_MIN, QUANTITY_MAX);
+  const height = bound(count(config, HEIGHT, DEFAULT_HEIGHT), HEIGHT_MIN, HEIGHT_MAX);
+  const unreadOnly = isChecked(config, UNREAD, false);
+  const columns = columnsOf(config);
+  const [state, setState] = useState<State>({ phase: "loading" });
+  const [more, setMore] = useState(false);
+  const [isOpen, setOpened] = useState<AccessMail | null>(null);
+  // The next page is requested only one at a time, even if the bottom of the
+  // grid is reached several times while it arrives.
+  const ongoing = useRef(false);
+
+  // The first page, reread at an interval: what has arrived since is placed at
+  // the top, and the emails already there resume their state — read elsewhere, for example.
+  useEffect(() => {
+    if (!blockId) return;
+    let active = true;
+    setState({ phase: "loading" });
+    const read = (first: boolean) =>
+      api
+        .getAccessMails(blockId, 0, quantity, unreadOnly)
+        .then((page) => {
+          if (!active) return;
+          setState((before) => {
+            if (first || before.phase !== "ready") {
+              return { phase: "ready", messages: page.messages, more: page.more, unread: page.unread ?? null };
+            }
+            const fresh = new Map(page.messages.map((m) => [m.id, m]));
+            const known = new Set(before.messages.map((m) => m.id));
+            return {
+              ...before,
+              unread: page.unread ?? before.unread,
+              messages: [
+                ...page.messages.filter((m) => !known.has(m.id)),
+                ...before.messages.map((m) => fresh.get(m.id) ?? m),
+              ],
+            };
+          });
+        })
+        .catch((e: Error) => active && first && setState({ phase: "error", message: e.message }));
+    read(true);
+    const heartbeat = setInterval(() => read(false), RELOAD_INTERVAL);
+    return () => {
+      active = false;
+      clearInterval(heartbeat);
+    };
+  }, [blockId, quantity, unreadOnly]);
+
+  const loadMore = useCallback(() => {
+    if (state.phase !== "ready" || !state.more || ongoing.current) return;
+    ongoing.current = true;
+    setMore(true);
+    api
+      .getAccessMails(blockId, state.messages.length, quantity, unreadOnly)
+      .then((page) =>
+        setState((before) => {
+          if (before.phase !== "ready") return before;
+          const known = new Set(before.messages.map((m) => m.id));
+          return {
+            ...before,
+            more: page.more,
+            messages: [...before.messages, ...page.messages.filter((m) => !known.has(m.id))],
+          };
+        }),
+      )
+      .catch((e: Error) => notifications.show({ color: "red", message: e.message }))
+      .finally(() => {
+        ongoing.current = false;
+        setMore(false);
+      });
+  }, [state, blockId, quantity, unreadOnly]);
+
+  const content = (() => {
+    if (state.phase === "loading") {
+      return (
+        <Group gap="xs" c="dimmed">
+          <Loader size="xs" color="gray" />
+          <Text size="sm">Chargement de la boîte de réception…</Text>
+        </Group>
+      );
+    }
+    if (state.phase === "error") {
+      return (
+        <Group gap={6} wrap="nowrap" align="flex-start">
+          <IconMail size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <Text size="sm" c="red" lineClamp={3}>
+            {state.message}
+          </Text>
+        </Group>
+      );
+    }
+
+    return (
+      <Stack gap={6}>
+        {isChecked(config, HEADER, true) && (
+          <Group gap={6} c="dimmed">
+            <IconMail size={14} />
+            <Text size="xs">
+              Boîte de réception
+              {state.unread !== null && ` · ${state.unread} non lu${state.unread > 1 ? "s" : ""}`}
+            </Text>
+          </Group>
+        )}
+        {state.messages.length === 0 ? (
+          <Text size="sm" c="dimmed">
+            {unreadOnly ? "Aucun e-mail non lu" : "Aucun e-mail"}
+          </Text>
+        ) : (
+          <ScrollArea.Autosize mah={height} onBottomReached={loadMore} type="hover" offsetScrollbars="y">
+            <Table
+              highlightOnHover
+              stickyHeader
+              verticalSpacing={4}
+              horizontalSpacing="xs"
+              fz="sm"
+              style={{ "--table-hover-color": NEUTRAL_HOVER, tableLayout: "fixed" } as CSSProperties}
+            >
+              <Table.Thead>
+                <Table.Tr>
+                  {columns.map((c) => (
+                    <Table.Th
+                      key={c}
+                      fz="xs"
+                      c="dimmed"
+                      fw={500}
+                      w={c === "date" ? 72 : c === "attachments" ? 28 : c === "sender" ? "30%" : undefined}
+                      ta={c === "date" ? "right" : undefined}
+                    >
+                      {c === "attachments" ? <IconPaperclip size={12} /> : PROPOSED_COLUMNS.find((p) => p.value === c)?.label}
+                    </Table.Th>
+                  ))}
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {state.messages.map((m) => (
+                  <Table.Tr key={m.id} onClick={() => setOpened(m)} style={{ cursor: "pointer" }}>
+                    {columns.map((c) => {
+                      const weight = m.is_read ? 400 : 600;
+                      if (c === "sender") {
+                        return (
+                          <Table.Td key={c}>
+                            <Text size="sm" fw={weight} truncate title={m.from.email}>
+                              {nameOf(m.from)}
+                            </Text>
+                          </Table.Td>
+                        );
+                      }
+                      if (c === "subject") {
+                        return (
+                          <Table.Td key={c}>
+                            <Text size="sm" fw={weight} truncate c={m.importance === "high" ? "red" : undefined}>
+                              {m.subject || "Sans objet"}
+                            </Text>
+                          </Table.Td>
+                        );
+                      }
+                      if (c === "preview") {
+                        return (
+                          <Table.Td key={c}>
+                            <Text size="sm" c="dimmed" truncate>
+                              {m.preview}
+                            </Text>
+                          </Table.Td>
+                        );
+                      }
+                      if (c === "date") {
+                        return (
+                          <Table.Td key={c} ta="right">
+                            <Text size="xs" c="dimmed" fw={weight} style={{ whiteSpace: "nowrap" }}>
+                              {whenLabel(m.received_at)}
+                            </Text>
+                          </Table.Td>
+                        );
+                      }
+                      return (
+                        <Table.Td key={c} c="dimmed">
+                          {m.has_attachments && <IconPaperclip size={12} />}
+                        </Table.Td>
+                      );
+                    })}
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+            {/* The bottom of the grid requests the next page; when the grid
+                does not scroll yet, the button does the same. */}
+            {state.more && (
+              <Group justify="center" py={6}>
+                {more ? (
+                  <Loader size="xs" color="gray" />
+                ) : (
+                  <Button size="compact-xs" variant="subtle" color="gray" onClick={loadMore}>
+                    Charger les suivants
+                  </Button>
+                )}
+              </Group>
+            )}
+          </ScrollArea.Autosize>
+        )}
+        <Reader blockId={blockId} header={isOpen} onClose={() => setOpened(null)} />
+      </Stack>
+    );
+  })();
+
+  if (!isChecked(config, FRAMED, false)) return content;
+  return (
+    <Box className={classes.inset} style={{ border: "none" }}>
+      {content}
+    </Box>
+  );
+}
+
+export const mailWidget: AccessWidget = {
+  type: "mail",
+  kind: "m365",
+  label: "Mail",
+  icon: IconMail,
+  defaultConfig: {
+    [QUANTITY]: QUANTITY_DEFAULT,
+    [HEIGHT]: DEFAULT_HEIGHT,
+    [COLUMNS]: DEFAULT_COLUMNS,
+    [UNREAD]: false,
+    [HEADER]: true,
+    [FRAMED]: false,
+  },
+  // Each row opens its email.
+  ownClicks: true,
+
+  Display: Mail,
+
+  margins: () => ({ top: 0, bottom: 15 }),
+
+  // It draws its own frame, set in the drawer's "Apparence" block.
+  ownFrame: true,
+
+  Config: ({ config, onChange }) => (
+    <Stack gap="xl">
+      <Text size="sm" c="dimmed">
+        Chacun voit sa propre boîte de réception, lue dans Entra (permission Mail.Read).
+      </Text>
+      <Group align="flex-start">
+        {/* A field emptied while typing stores the default value. */}
+        <NumberInput
+          label="E-mails par chargement"
+          value={count(config, QUANTITY, QUANTITY_DEFAULT)}
+          onChange={(v) => onChange(withField(config, QUANTITY, v === "" ? QUANTITY_DEFAULT : Number(v)))}
+          min={QUANTITY_MIN}
+          max={QUANTITY_MAX}
+          allowNegative={false}
+          allowDecimal={false}
+          w={170}
+        />
+        <NumberInput
+          label="Hauteur de la grille"
+          value={count(config, HEIGHT, DEFAULT_HEIGHT)}
+          onChange={(v) => onChange(withField(config, HEIGHT, v === "" ? DEFAULT_HEIGHT : Number(v)))}
+          min={HEIGHT_MIN}
+          max={HEIGHT_MAX}
+          suffix=" px"
+          allowNegative={false}
+          allowDecimal={false}
+          w={150}
+        />
+      </Group>
+      <Checkbox.Group
+        label="Colonnes"
+        value={columnsOf(config)}
+        onChange={(values) => values.length && onChange(withField(config, COLUMNS, values))}
+      >
+        <Stack gap="xs" mt={6}>
+          {PROPOSED_COLUMNS.map((c) => (
+            <Checkbox key={c.value} value={c.value} label={c.label} color="teal" />
+          ))}
+        </Stack>
+      </Checkbox.Group>
+      <Stack gap="sm">
+        <Checkbox
+          label="Non lus uniquement"
+          checked={isChecked(config, UNREAD, false)}
+          onChange={(e) => onChange(withField(config, UNREAD, e.currentTarget.checked))}
+          color="teal"
+        />
+        <Checkbox
+          label="Afficher le nombre de non lus"
+          checked={isChecked(config, HEADER, true)}
+          onChange={(e) => onChange(withField(config, HEADER, e.currentTarget.checked))}
+          color="teal"
+        />
+      </Stack>
+    </Stack>
+  ),
+
+};

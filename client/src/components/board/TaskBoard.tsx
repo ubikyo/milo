@@ -1449,7 +1449,7 @@ export interface TaskBoardProps {
   onCardOpened: (id: Id | null) => void;
   /** The "Tâches" widget that shows it: its lists, and those created in it. */
   listKey?: string;
-  /** Show the card number: a widget option (task-indicators/list.tsx). */
+  /** Show the card number: a widget option (widgets/task/list.tsx). */
   withNumber?: boolean;
 }
 
@@ -1462,7 +1462,7 @@ export const withNumbers = (config: unknown): boolean =>
 
 /**
  * The open board, as the page stages it: the lists widget
- * (task-indicators/list.tsx) reads it here, wherever it is placed in the
+ * (widgets/task/list.tsx) reads it here, wherever it is placed in the
  * sections.
  */
 export const TaskBoardContext = createContext<TaskBoardProps | null>(null);

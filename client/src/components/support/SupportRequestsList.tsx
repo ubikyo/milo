@@ -39,7 +39,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { Actor, SupportRequest, SupportStatus } from "@milo/shared";
 
 // The Support mode's request list: a section widget, like the
-// indicators (indicators/list.tsx). What it shows and what can be done in it —
+// indicators (widgets/support/list.tsx). What it shows and what can be done in it —
 // the open tab, sorting, filters, checked boxes, the right-click
 // menu — belongs to the page: the "Actions" menu in the tab row
 // acts on the requests checked here. The page provides it through

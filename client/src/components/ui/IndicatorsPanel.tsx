@@ -16,7 +16,7 @@ import SectionsBoard from "./SectionsBoard";
 import { IndicatorCardContext, BACKGROUND, NAME } from "./IndicatorTitle";
 import { InsertionLine, useWidgetDrop, type WidgetDrag } from "./WidgetDrop";
 import type { PanelSections } from "../../api";
-import type { IndicatorConfigProps } from "../../indicators/types";
+import type { IndicatorConfigProps } from "../../widgets/support/types";
 import { isListWidgetType } from "@milo/shared";
 import type { Id, IndicatorSection } from "@milo/shared";
 import type { WidgetKind } from "../../widgets/kinds";

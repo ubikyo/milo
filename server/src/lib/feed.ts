@@ -458,7 +458,7 @@ const addressesOf = (config: Record<string, unknown>): string[] => {
  * The settings of an RSS item. The server does not ordinarily read a
  * widget's configuration; this one it reads because it polls the feed
  * itself. The keys and default values are the widget's
- * (client/src/widgets/rss.tsx).
+ * (client/src/widgets/common/rss.tsx).
  */
 export const feedSettings = (config: Record<string, unknown>): FeedSettings => ({
   urls: addressesOf(config),

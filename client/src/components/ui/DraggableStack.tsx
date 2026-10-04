@@ -5,7 +5,7 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import type { Id } from "@milo/shared";
 
 // Drag and drop of a vertical stack: checklists and their items
-// (CardChecklists), the attribute rows of Access mode (widgets/number).
+// (CardChecklists), the attribute rows of Access mode (widgets/common/number).
 
 /** The drag in progress: what is being moved, and the rank where it will land. */
 interface Drag {

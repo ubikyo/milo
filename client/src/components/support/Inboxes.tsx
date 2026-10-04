@@ -39,7 +39,7 @@ import { ROW_INSET, NAME_INSET } from "../ui/DrawerRows";
 import { withField } from "../../widgets/types";
 import ReceptionField, { inboxesOf } from "../ui/ReceptionField";
 import { MAILBOXES } from "./SupportRequestsList";
-import type { IndicatorConfigProps } from "../../indicators/types";
+import type { IndicatorConfigProps } from "../../widgets/support/types";
 import { listKey } from "@milo/shared";
 
 // The inboxes from which a ticket list receives its tickets, in rows like the

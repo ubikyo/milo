@@ -220,7 +220,7 @@ const COLUMNS: Column[] = [
 
 /**
  * The columns the list widget offers to show (Display in
- * project-indicators/list.tsx).
+ * widgets/project/list.tsx).
  */
 export const PROJECT_COLUMNS: { key: ColumnKey; label: string }[] = COLUMNS.map(
   ({ key, label }) => ({ key, label: key === "number" ? "Référence" : label }),
@@ -824,7 +824,7 @@ export type ProjectsList = Omit<ProjectTableProps, "config" | "projects" | "onAd
 
 /**
  * The open board's project list, as the page stages it:
- * the list widget (project-indicators/list.tsx) reads it here, wherever it is
+ * the list widget (widgets/project/list.tsx) reads it here, wherever it is
  * placed in the sections.
  */
 export const ProjectsListContext = createContext<ProjectsList | null>(null);

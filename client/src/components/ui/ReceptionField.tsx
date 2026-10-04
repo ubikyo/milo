@@ -5,7 +5,7 @@ import type { ComponentType, ReactNode } from "react";
 import { useReferences } from "../../lib/references";
 import { RED } from "../../themes/colors";
 import { withField } from "../../widgets/types";
-import type { IndicatorConfigProps } from "../../indicators/types";
+import type { IndicatorConfigProps } from "../../widgets/support/types";
 import type { Id } from "@milo/shared";
 import AddButton from "./AddButton";
 import {
