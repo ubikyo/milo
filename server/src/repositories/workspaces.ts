@@ -18,7 +18,7 @@ export const workspaces = {
   remove: mutation("DELETE FROM workspaces WHERE id = ?"),
 };
 
-/** All the views of a workspace, private ones included. */
+/** All the views of a workspace, whoever owns them. */
 export const workspaceViews = selection<{ id: number }>(
   "SELECT id FROM views WHERE workspace_id = ?",
 );

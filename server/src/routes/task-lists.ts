@@ -81,7 +81,7 @@ taskListRoutes.post("/:id/copy", (req, res) => {
   const boardId = req.body.board_id ?? existing.board_id;
 
   // Both the source board and the destination board must be open to this
-  // person: a list does not leave a private board, and does not enter one.
+  // person: a list does not leave a board one does not see, nor enter one.
   // Copying adds a list to the destination board; the source board,
   // loses nothing.
   openTaskBoard(existing.board_id, req);
@@ -113,7 +113,7 @@ taskListRoutes.put("/:id", (req, res) => {
   // of the destination board, like a list just created there.
   const boardId = req.body.board_id ?? existing.board_id;
   // Both the source board and the destination board must be open to this
-  // person: a list does not leave a private board, and does not enter one.
+  // person: a list does not leave a board one does not see, nor enter one.
   // Changing board means adding the list to the destination one.
   openTaskBoard(existing.board_id, req, "update");
   openTaskBoard(

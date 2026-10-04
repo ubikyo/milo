@@ -1,8 +1,10 @@
 // Projects, and what comes with them: their actors and labels.
 
+import { DEFAULT_LABEL_GROUP } from "@milo/shared";
 import type { Actor, Id, Project, ProjectLabel } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { IdRow, NextRow, ProjectJoinedRow, ProjectRow } from "../db/rows.js";
+import { projectLabelGroups } from "./label-groups.js";
 import { actorOf } from "./users.js";
 
 export const PROJECT_SELECT = `
@@ -62,7 +64,7 @@ const labelsFor = selection<LabelLinkRow>(
    FROM project_label_links
    JOIN project_labels ON project_labels.id = project_label_links.label_id
    WHERE project_label_links.project_id IN (SELECT value FROM json_each(?))
-   ORDER BY project_labels.weight DESC, project_labels.position, project_labels.id`,
+   ORDER BY project_labels.position, project_labels.id`,
 );
 
 const groupBy = <Row, Value>(
@@ -159,21 +161,42 @@ const nextLabelRank = scalar<NextRow>(
   "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM project_labels WHERE board_id = ?",
 );
 const createLabel = mutation(
-  "INSERT INTO project_labels (board_id, name, color, weight, position, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+  "INSERT INTO project_labels (board_id, group_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?, ?)",
 );
 const fullLabels = selection<{
   id: Id;
   board_id: Id;
+  group_id: Id;
   name: string;
   color: string;
-  weight: number;
 }>(
   `SELECT project_labels.*
    FROM project_label_links
    JOIN project_labels ON project_labels.id = project_label_links.label_id
    WHERE project_label_links.project_id = ?
-   ORDER BY project_labels.weight DESC, project_labels.position, project_labels.id`,
+   ORDER BY project_labels.position, project_labels.id`,
 );
+
+/** The twin, created in the group of the same name — itself created if needed. */
+const createTwin = (
+  label: { group_id: Id; name: string; color: string },
+  targetBoard: Id,
+  timestamp: string,
+): Id => {
+  const groupName = projectLabelGroups.byId(label.group_id)?.name ?? DEFAULT_LABEL_GROUP;
+  const id = Number(
+    createLabel.run(
+      targetBoard,
+      projectLabelGroups.named(targetBoard, groupName),
+      label.name,
+      label.color,
+      nextLabelRank(targetBoard).next,
+      timestamp,
+    ).lastInsertRowid,
+  );
+  projectLabelGroups.renumber(targetBoard);
+  return id;
+};
 
 /** A project's labels, carried over to its copy. */
 export const copyProjectLabels = transaction(
@@ -183,16 +206,7 @@ export const copyProjectLabels = transaction(
         label.board_id === targetBoard
           ? label.id
           : (twinLabel.get(targetBoard, label.name, label.color)?.id ??
-            Number(
-              createLabel.run(
-                targetBoard,
-                label.name,
-                label.color,
-                label.weight,
-                nextLabelRank(targetBoard).next,
-                timestamp,
-              ).lastInsertRowid,
-            ));
+            createTwin(label, targetBoard, timestamp));
       addLabel.run(copyId, id, targetBoard);
     }
   },

@@ -42,3 +42,11 @@
   background-color: var(--milo-scrollbar);
   border-radius: 0;
 }
+
+/* Its content takes at least the whole height of the area: an empty list
+   centers its prompt there (ShareViewModal). */
+.viewport > div {
+  display: flex !important;
+  flex-direction: column;
+  min-height: 100%;
+}

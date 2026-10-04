@@ -46,6 +46,8 @@ const SEARCH_MIN = 2;
 // Wider than the other lists: the name, the star at the end, and the address
 // of directory people.
 const LIST_WIDTH = 320;
+// The list's height, past which it scrolls.
+const LIST_MAX_HEIGHT = 350;
 
 const RULE = "1px solid var(--mantine-color-default-border)";
 
@@ -240,6 +242,7 @@ export default function ActorPicker({
       fullWidthOptions
       separated
       dropdownWidth={LIST_WIDTH}
+      listMaxHeight={LIST_MAX_HEIGHT}
       emptyText={
         search.trim()
           ? searchDirectory || newItems.length || listGroups.length

@@ -58,57 +58,95 @@ export const validPermissions = (value: unknown): Permissions => {
   return result;
 };
 
-/** Access to the Settings: none, Voir, or Modifier (which includes Voir). */
-export const SETTINGS_ACCESS = [
-  { value: "", label: "Aucun" },
-  { value: "view", label: "Voir" },
-  { value: "update", label: "Modifier" },
+/**
+ * The application's administration, section by section — "Paramétrage", the
+ * workspaces —, and the rights each one offers. Without a right, a section
+ * gives nothing. The "admin" account has them all.
+ *
+ *   - Paramétrage: "Accéder" opens it, and changes it.
+ *   - Workspaces: "Voir" opens their tab and each one's access, read-only;
+ *     "Créer" adds one, renames them and sets their access; "Supprimer"
+ *     deletes one.
+ */
+export const ADMIN_SECTIONS = [
+  {
+    value: "settings",
+    label: "Paramétrage",
+    rights: [{ value: "access", label: "Accéder" }],
+  },
+  {
+    value: "workspaces",
+    label: "Workspaces",
+    rights: [
+      { value: "view", label: "Voir" },
+      { value: "create", label: "Créer" },
+      { value: "delete", label: "Supprimer" },
+    ],
+  },
 ] as const;
 
-export type SettingsAccess = (typeof SETTINGS_ACCESS)[number]["value"];
+export type AdminSection = (typeof ADMIN_SECTIONS)[number]["value"];
+
+/** A section's rights. */
+export type AdminRight<S extends AdminSection = AdminSection> = Extract<
+  (typeof ADMIN_SECTIONS)[number],
+  { value: S }
+>["rights"][number]["value"];
 
 /**
- * Workspace management: creating, renaming, deleting them, and
- * setting the access of each. The "admin" account always has it.
+ * The administration of a user or a group, for the whole application: the
+ * rights it holds in each section. It does not depend on any workspace —
+ * their access, for its part, only covers widget types.
  */
-export const WORKSPACES_ACCESS = [
-  { value: "", label: "Aucun" },
-  { value: "update", label: "Gérer" },
-] as const;
+export type AdminPermissions = { [S in AdminSection]: AdminRight<S>[] };
 
-export type WorkspacesAccess = (typeof WORKSPACES_ACCESS)[number]["value"];
+/** That of a user or a group that has none yet: no right. */
+export const defaultAdminPermissions = (): AdminPermissions => ({ settings: [], workspaces: [] });
 
-/**
- * The administration of a user or a group, for the whole
- * application: the Settings, and workspace management. It does not
- * depend on any workspace — their access, for its part, only covers widget
- * types.
- */
-export interface AdminPermissions {
-  settings: SettingsAccess;
-  workspaces: WorkspacesAccess;
-}
+/** What someone may do with workspaces, right by right. */
+export type WorkspaceRights = { [R in AdminRight<"workspaces">]: boolean };
 
-/** That of a user or a group that has none yet: none. */
-export const defaultAdminPermissions = (): AdminPermissions => ({ settings: "", workspaces: "" });
+/** All of them: the "admin" account's. */
+export const fullAdminPermissions = (): AdminPermissions => ({
+  settings: ["access"],
+  workspaces: ["view", "create", "delete"],
+});
 
-/** An administration received from outside, reduced to what exists. */
+/** An administration received from outside, reduced to what exists, in order. */
 export const validAdminPermissions = (value: unknown): AdminPermissions => {
   const source = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
-  return {
-    settings: SETTINGS_ACCESS.some((a) => a.value === source["settings"])
-      ? (source["settings"] as SettingsAccess)
-      : "",
-    workspaces: WORKSPACES_ACCESS.some((a) => a.value === source["workspaces"])
-      ? (source["workspaces"] as WorkspacesAccess)
-      : "",
-  };
+  const result = defaultAdminPermissions();
+  for (const section of ADMIN_SECTIONS) {
+    const received = source[section.value];
+    const list = Array.isArray(received) ? received : [];
+    (result[section.value] as string[]) = section.rights
+      .map((r) => r.value)
+      .filter((r) => list.includes(r));
+  }
+  return result;
 };
+
+/** Rights as stored, in JSON: unreadable, they grant nothing. */
+export const parseAdminRights = (json: string): AdminPermissions => {
+  try {
+    return validAdminPermissions(JSON.parse(json));
+  } catch {
+    return defaultAdminPermissions();
+  }
+};
+
+/** Their administration, merged — their own and their groups': each right held by one. */
+export const mergeAdminPermissions = (all: AdminPermissions[]): AdminPermissions =>
+  validAdminPermissions(
+    Object.fromEntries(
+      ADMIN_SECTIONS.map((s) => [s.value, all.flatMap((p) => p[s.value] as string[])]),
+    ),
+  );
 
 /**
  * The rights of each mode, derived from the per-type permissions: a mode follows
  * the widest of its widgets' types. "Lire" opens the mode read-only;
- * "Modifier" gives it everything the area offers.
+ * "Modifier" gives it everything the area offers but deleting, "Supprimer" everything.
  */
 export const widgetPermissions = (widgets: WidgetRights): Permissions => {
   const result: Permissions = {};
@@ -117,8 +155,11 @@ export const widgetPermissions = (widgets: WidgetRights): Permissions => {
       (acc, kind) => widestAccess(acc, widgets[kind]),
       "" as WidgetRights[keyof WidgetRights],
     );
+    // "Modifier" gives everything the area offers but deleting; "Supprimer",
+    // that too.
     if (access === "view") result[area] = ["view"];
-    if (access === "update") result[area] = [...rightsFor(area)];
+    if (access === "update") result[area] = rightsFor(area).filter((r) => r !== "delete");
+    if (access === "delete") result[area] = [...rightsFor(area)];
   }
   return result;
 };

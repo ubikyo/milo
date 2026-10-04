@@ -4,17 +4,23 @@
 // account sees it, with its contexts up to date.
 //
 // Contexts are the board's shared structure: changing them requires being
-// able to organize boards (lib/rights.ts). Choosing the one being looked at
-// only concerns oneself: seeing the board is enough.
+// able to organize boards (lib/rights.ts), and controlling the board — owning
+// it, or a "full" share. Choosing the one being looked at only concerns
+// oneself: seeing the board is enough.
 
 import { Router } from "express";
 import type { Request } from "express";
 import { mutation } from "../db/query.js";
 import type { ContextRow } from "../db/rows.js";
-import { requireOrganize } from "../lib/rights.js";
+import { requireOrganize, requireStructureRight } from "../lib/rights.js";
 import { badRequest, notFound, requireText } from "../lib/http.js";
 import { touch, touchNow } from "../middleware/events.js";
-import { boards, readableBoard, openBoard } from "../repositories/boards.js";
+import {
+  boards,
+  readableBoard,
+  openBoard,
+  requireBoardControl,
+} from "../repositories/boards.js";
 import {
   addContext,
   boardContext,
@@ -32,15 +38,24 @@ const renameAll = mutation("UPDATE boards SET all_contexts_label = ? WHERE id = 
 
 /** The route's board, as this account sees it. */
 const render = (req: Request, boardId: number) =>
-  boardForAccount(boards.byId.get(boardId)!, req.user.id);
+  boardForAccount(boards.byId.get(boardId)!, req.user);
 
-/** A context of a board that this account sees. */
+/** A context of a board that this account sees, and may change. */
 const openContext = (id: unknown, req: Request): ContextRow => {
   const context = contexts.byId.get(id);
-  if (!context || !readableBoard(boards.byId.get(context.board_id), req.user)) {
+  const board = context && boards.byId.get(context.board_id);
+  if (!context || !board || !readableBoard(board, req.user)) {
     return notFound(CONTEXT_NOT_FOUND);
   }
+  requireBoardControl(board, req.user);
   return context;
+};
+
+/** The route's board, which this account sees and may change. */
+const controlledBoard = (req: Request) => {
+  const board = openBoard((req.params as { id: string }).id, req.user);
+  requireBoardControl(board, req.user);
+  return board;
 };
 
 /** Mounted under /api/boards/:id/contexts. */
@@ -62,8 +77,8 @@ boardContextRoutes.put("/selected", (req, res) => {
 boardContextRoutes.use(touch("boards"));
 
 boardContextRoutes.post("/", (req, res) => {
-  requireOrganize(req);
-  const board = openBoard((req.params as { id: string }).id, req.user);
+  requireStructureRight(req, "contexts", "create");
+  const board = controlledBoard(req);
   const name = requireText(req.body.name, "Le nom du contexte est requis");
   addContext(board.id, name);
   res.status(201).json(render(req, board.id));
@@ -76,10 +91,13 @@ boardContextRoutes.post("/", (req, res) => {
 // destination also takes the label of "Tous les contextes", the global
 // selector.
 boardContextRoutes.post("/copy", (req, res) => {
-  requireOrganize(req);
+  requireStructureRight(req, "contexts", "create");
+  // Replacing the destination's deletes them, with what they contain.
+  if (req.body.replace === true) requireStructureRight(req, "contexts", "delete");
   const source = openBoard((req.params as { id: string }).id, req.user);
   if (!req.body.to_board) badRequest("Le tableau de destination est requis");
   const target = openBoard(req.body.to_board, req.user);
+  requireBoardControl(target, req.user);
   if (source.id === target.id) badRequest("Choisissez un autre tableau que celui-ci");
   const replaceExisting = req.body.replace === true;
   if (replaceExisting) touchNow(res, "projects", "task-lists", "support-requests", "assets");
@@ -90,7 +108,7 @@ boardContextRoutes.post("/copy", (req, res) => {
 
 boardContextRoutes.put("/reorder", (req, res) => {
   requireOrganize(req);
-  const board = openBoard((req.params as { id: string }).id, req.user);
+  const board = controlledBoard(req);
   const order = receivedOrder(
     req.body.ids,
     contexts.ofBoard.all(board.id),
@@ -118,7 +136,7 @@ contextRoutes.delete(
   "/:id",
   touch("boards", "projects", "task-lists", "support-requests", "assets"),
   (req, res) => {
-    requireOrganize(req);
+    requireStructureRight(req, "contexts", "delete");
     const context = openContext(req.params.id, req);
     contexts.remove.run(context.id);
     res.json(render(req, context.board_id));

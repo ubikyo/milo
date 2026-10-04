@@ -88,6 +88,10 @@ export const NEUTRAL_HOVER = "light-dark(#ececec, #2e2e2e)";
 // blue, this one is neutral. Dark on the light theme, light on the dark one.
 export const NEUTRAL_TEXT = "light-dark(#4d4d4d, #c4c4c4)";
 
+// Behind the options of a segmented choice: a neutral gray, where Mantine's
+// leans blue. The chosen option stands on it in green.
+export const SEGMENTS_BG = "light-dark(#fafafa, var(--mantine-color-dark-5))";
+
 // The focus line: gray, never the blue of Mantine's primary color.
 // Two shades, one per theme — a dark gray would get lost on the dark background,
 // where a light gray stands out.

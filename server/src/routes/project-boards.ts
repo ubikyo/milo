@@ -114,7 +114,7 @@ categoryRoutes.get("/", (req, res) => {
   const { board } = req.query;
   if (board && board !== "all") {
     // The targeted board must be open to this person: its categories do not
-    // leave a private board.
+    // leave a board one does not see.
     const visible = openBoard(board, req.user);
     return void res.json(categoriesOfBoard.all(visible.id).map(renderedCategory));
   }

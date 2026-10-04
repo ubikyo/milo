@@ -80,8 +80,8 @@ function DeletionMessage({ item }: { item: LookupItem | null }) {
   );
 }
 
-// Height of the field that renames a row: that of the text it replaces, as in
-// the labels list (LabelsManager).
+// Height of the field that renames a row: that of the text it replaces, so
+// the row does not jump.
 const FIELD_HEIGHT = 22;
 
 // The right inset of a row that carries labels: tight, so that the gap to the

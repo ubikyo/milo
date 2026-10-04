@@ -3,6 +3,7 @@ import { IconCopy, IconCopyPlus, IconPencil, IconTrash } from "@tabler/icons-rea
 import { useRef, useState, type ComponentType, type ReactNode } from "react";
 import inset from "../../assets/styles/AccessNumber.module.css";
 import { withField, isFramed, text } from "../../widgets/types";
+import { paddingStyle, sideMargins } from "../../widgets/margins";
 import { useWidgetAccess } from "../../lib/rights";
 import { RED } from "../../themes/colors";
 import { copyWidget, useCopiedWidget } from "../../lib/clipboard";
@@ -17,12 +18,16 @@ import { IndicatorCardContext, BACKGROUND, NAME } from "./IndicatorTitle";
 import { InsertionLine, useWidgetDrop, type WidgetDrag } from "./WidgetDrop";
 import type { PanelSections } from "../../api";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
-import { isListWidgetType } from "@milo/shared";
+import { accessIncludes, canUpdate, isListWidgetType } from "@milo/shared";
 import type { Id, IndicatorSection } from "@milo/shared";
 import type { WidgetKind } from "../../widgets/kinds";
+import { alignmentProps, isVerticallyAligned } from "../../widgets/alignment";
 
 /** The gap between two indicators of a section. */
 export const GAP = 20;
+
+/** A framed card's padding while nothing is set ("spacing md"). */
+export const CARD_PADDING = 16;
 
 /** An indicator's height: its name at the top, the quantity at the bottom. */
 const HEIGHT = 120;
@@ -65,6 +70,8 @@ export interface IndicatorWidgetBase<Type extends string> {
    * only opens through a right click, outside its rows.
    */
   ownClicks?: boolean;
+  /** True when its content stays modifiable while the screen is locked (todo). */
+  liveContent?: boolean;
   /**
    * True when the widget shows a value — a number of tickets, cards, projects,
    * positions: its drawer offers its size.
@@ -190,7 +197,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
   // knows and the account can place.
   const copy = useCopiedWidget();
   const toPaste = copy ? widgetOf(copy.type as Type) : undefined;
-  const pastable = copy && toPaste && access(toPaste.kind) === "update" ? copy : null;
+  const pastable = copy && toPaste && canUpdate(access(toPaste.kind)) ? copy : null;
   const [drawerOpen, setDrawerOpened] = useState(false);
   const [modified, setModified] = useState<Indicator<Type> | null>(null);
   /** The widget dropped from the left drawer, waiting for its settings. */
@@ -306,7 +313,9 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
         onDeleteWidget={(id) => {
           const indicator = indicators.find((i) => i.id === id);
           const widget = indicator ? widgetOf(indicator.type) : undefined;
-          if (indicator && widget && access(widget.kind) === "update") setToDelete(indicator);
+          if (indicator && widget && accessIncludes(access(widget.kind), "delete")) {
+            setToDelete(indicator);
+          }
         }}
         paste={
           pastable
@@ -341,7 +350,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
           const widget = widgetOf(indicator.type);
           // Frozen — the screen locked, or a type the account can only read —,
           // the widget only offers the actions that do not reshape it.
-          const frozen = locked || !widget || access(widget.kind) !== "update";
+          const frozen = locked || !widget || !canUpdate(access(widget.kind));
           const close = () => setMenu(null);
           const extra = extraMenu?.(indicator, close) ?? null;
           const toType = conversion?.to[indicator.type];
@@ -510,7 +519,11 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
   // no gap between them.
   const fill = (rank: number) =>
     rank === visibleItems.length - 1 && Boolean(visibleItems[rank]?.widget.fill);
-  const stretched = fill(visibleItems.length - 1);
+  // A widget aligned vertically takes the height left too, wherever it is:
+  // its content moves in it (widgets/alignment.ts).
+  const grows = (rank: number) =>
+    fill(rank) || isVerticallyAligned(visibleItems[rank]?.indicator.config);
+  const stretched = visibleItems.some((_, rank) => grows(rank));
   return (
     <Stack gap={0} style={stretched ? { flex: 1, minHeight: 0 } : undefined}>
       {visibleItems.map(({ indicator, widget }, rank) => {
@@ -520,13 +533,17 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
         // Frozen — the screen locked, or a type the account can only read —, a
         // widget cannot be dragged, opened or modified: a widget that is
         // modified in place receives nothing to save.
-        const frozen = locked || access(widget.kind) !== "update";
+        const frozen = locked || !canUpdate(access(widget.kind));
+        // A widget whose content is used outside edit mode still saves it
+        // there; it stays frozen for everything else.
+        const writable = !frozen || (Boolean(widget.liveContent) && canUpdate(access(widget.kind)));
         const widgetRender: WidgetRender = {
           id: indicator.id,
-          onChange: frozen ? () => {} : (config) => onChange(indicator, config),
-          locked: frozen,
+          onChange: writable ? (config) => onChange(indicator, config) : () => {},
+          locked: !writable,
         };
         const dragProps = { ...propsOf(indicator.id, index), ...(frozen ? { draggable: false } : {}) };
+        const alignment = alignmentProps(indicator.config);
         // The right-click menu — edit, delete — is only for widgets that can be
         // modified, or that have other actions to offer.
         const menuOf = (e: React.MouseEvent<HTMLElement>) => {
@@ -550,9 +567,10 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
             style={{
               position: "relative",
               marginTop: gapBefore,
+              ...sideMargins(indicator.config),
               opacity: drag.dragged === indicator.id ? 0.4 : 1,
               cursor: frozen || widget.ownClicks ? "default" : "grab",
-              ...(fill(rank)
+              ...(grows(rank)
                 ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
                 : {}),
             }}
@@ -568,11 +586,14 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
               // is, without the indicators' inset.
               <Box
                 onContextMenu={menuOf}
-                style={
-                  fill(rank)
+                // Where the content sits, as the drawer sets it.
+                className={alignment.className}
+                style={{
+                  ...(fill(rank)
                     ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
-                    : undefined
-                }
+                    : {}),
+                  ...alignment.style,
+                }}
               >
                 {render(widget, indicator.config, widgetRender)}
               </Box>
@@ -594,17 +615,26 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
                   w="100%"
                   // Without a frame, the card loses its background and its
                   // inset: only its content remains.
-                  className={isFramed(indicator.config, true) ? inset.inset : undefined}
+                  className={[
+                    isFramed(indicator.config, true) ? inset.inset : undefined,
+                    alignment.className,
+                  ]
+                    .filter(Boolean)
+                    .join(" ") || undefined}
                   onClick={() => !frozen && onOpen(indicator)}
                   onContextMenu={menuOf}
                   style={{
                     display: "flex",
                     flexDirection: "column",
                     minHeight: HEIGHT,
-                    padding: isFramed(indicator.config, true)
-                      ? "var(--mantine-spacing-md)"
-                      : 0,
+                    ...paddingStyle(
+                      indicator.config,
+                      isFramed(indicator.config, true) ? CARD_PADDING : 0,
+                    ),
                     border: "none",
+                    // Where the content sits in the card, as the drawer sets
+                    // it: aligned vertically, the card fills its place.
+                    ...alignment.style,
                     // The background chosen in the drawer, otherwise that of
                     // the inset.
                     ...(isFramed(indicator.config, true) &&

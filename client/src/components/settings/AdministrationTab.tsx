@@ -1,95 +1,85 @@
 import { useCallback } from "react";
 import { api } from "../../api";
 import PrincipalsPermissions from "./PrincipalsPermissions";
-import {
-  SETTINGS_ACCESS,
-  defaultAdminPermissions,
-} from "@milo/shared";
-import type { AdminPermissions, SettingsAccess, WorkspacesAccess } from "@milo/shared";
+import SectionRights from "./SectionRights";
+import type { SectionPermissions } from "./SectionRights";
+import { usePermissionsDraft } from "./usePermissionsDraft";
+import type { SaveRef } from "./usePermissionsDraft";
+import { pluralize } from "../ui/DrawerRows";
+import { ADMIN_SECTIONS, defaultAdminPermissions, validAdminPermissions } from "@milo/shared";
+import type { AdminPermissions, WorkspaceRights } from "@milo/shared";
+
+/** What it administers, at a glance: its number of rights, "3 autorisations". */
+const summary = (permissions: AdminPermissions): string => {
+  const count = ADMIN_SECTIONS.reduce((n, s) => n + permissions[s.value].length, 0);
+  return pluralize(count, "autorisation");
+};
+
+/** Two administrations with the same rights, whatever their order. */
+const same = (a: AdminPermissions, b: AdminPermissions) =>
+  ADMIN_SECTIONS.every(
+    (s) =>
+      a[s.value].length === b[s.value].length &&
+      (a[s.value] as string[]).every((r) => (b[s.value] as string[]).includes(r)),
+  );
 
 /**
- * Workspace management and "Paramétrage" are expressed as yes or no:
- * "update" for yes, in WORKSPACES_ACCESS as in SETTINGS_ACCESS. Read-only
- * "Paramétrage" ("view") can no longer be chosen; whoever still has it
- * sees it under "Voir", until they are given yes or no.
- */
-const YES_NO = [
-  { value: "", label: "Non" },
-  { value: "update", label: "Oui" },
-] as const satisfies readonly { value: WorkspacesAccess & SettingsAccess; label: string }[];
-
-/** "Paramétrage" as yes or no, and "Voir" only for whoever already has it. */
-const settingsChoice = (current: SettingsAccess) =>
-  current === "view" ? [...YES_NO, { value: "view", label: "Voir" }] : YES_NO;
-
-/** The width of the "Workspaces" column: enough to read its header. */
-const WORKSPACES_WIDTH = 80;
-
-/** That of the "Paramétrage" column. */
-const SETTINGS_WIDTH = 80;
-
-/** What it administers, at a glance. */
-const summary = ({ settings, workspaces }: AdminPermissions): string =>
-  [
-    settings && `Paramétrage : ${SETTINGS_ACCESS.find((a) => a.value === settings)?.label}`,
-    workspaces && "Workspaces",
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
-/**
- * The application's administration: the Entra users and groups
- * who view or edit "Paramétrage", and those who manage workspaces.
- * It depends on no workspace — their access is set from
- * each one (WorkspacesTab). Only whoever manages workspaces can grant
- * that management.
+ * The application's administration: the Entra users and groups, and their
+ * rights on "Paramétrage" and on workspaces. It depends on no workspace —
+ * their access is set from each one (WorkspacesTab). A chevron unfolds
+ * someone's rights under their row; someone just added has none. A right on
+ * workspaces is only granted or removed by whoever holds it; the author's
+ * own rights, and their groups', are only added to. Nothing goes to the
+ * server before the modal's "Enregistrer" (usePermissionsDraft).
  */
 export default function AdministrationTab({
-  canManageWorkspaces,
+  workspaceRights,
+  saveRef,
   onChange,
 }: {
-  canManageWorkspaces: boolean;
-  /** After a change: one's own administration may have changed. */
+  /** The author's rights on workspaces: those they can grant. */
+  workspaceRights: WorkspaceRights;
+  /** Where the tab deposits its save function, for the modal's "Enregistrer". */
+  saveRef?: SaveRef;
+  /** After a save: one's own administration may have changed. */
   onChange?: () => void;
 }) {
-  const load = useCallback(() => api.getAdministration(), []);
+  const read = useCallback(() => api.getAdministration(), []);
+  const draft = usePermissionsDraft<AdminPermissions>({
+    read,
+    write: api.setAdministration,
+    erase: api.deleteAdministration,
+    same,
+    saveRef,
+    onSaved: onChange,
+  });
 
   return (
     <PrincipalsPermissions<AdminPermissions>
-      load={load}
-      save={(principal, permissions) => api.setAdministration(principal, permissions)}
-      remove={(principal) => api.deleteAdministration(principal)}
+      load={draft.load}
+      save={draft.save}
+      remove={draft.remove}
       empty={defaultAdminPermissions}
       summary={summary}
-      // Only two permissions: they are set on the row, in
-      // columns like a workspace's access — "Paramétrage" first, then
-      // workspaces, on adding as afterwards.
-      inColumns
-      inline={(permissions, change) => [
-        {
-          name: "Paramétrage",
-          options: settingsChoice(permissions.settings),
-          value: permissions.settings,
-          onChange: (value) => change({ ...permissions, settings: value as SettingsAccess }),
-          width: SETTINGS_WIDTH,
-        },
-        {
-          name: "Workspaces",
-          options: YES_NO,
-          value: permissions.workspaces,
-          width: WORKSPACES_WIDTH,
-          onChange: (value) =>
-            change({ ...permissions, workspaces: value as WorkspacesAccess }),
-          disabled: !canManageWorkspaces,
-        },
-      ]}
+      details={(permissions, change, entry) => (
+        <SectionRights
+          sections={ADMIN_SECTIONS}
+          permissions={permissions as SectionPermissions}
+          onChange={(p) => change(validAdminPermissions(p))}
+          canGrant={(section, right) =>
+            section !== "workspaces" || workspaceRights[right as keyof WorkspaceRights]
+          }
+          // Their own saved rights, or their group's, stay.
+          kept={entry.own ? (draft.savedOf(entry.principal) as SectionPermissions) : undefined}
+          attached
+        />
+      )}
       emptyText="Aucun administrateur pour le moment"
-      onChange={onChange}
       removeDialog={{
         label: "Retirer l'administration",
         message: (name) => (
           <>
-            Voulez-vous vraiment retirer à « {name} » le Paramétrage et la gestion des
+            Voulez-vous vraiment retirer à « {name} » ses droits sur le Paramétrage et les
             workspaces ?
           </>
         ),

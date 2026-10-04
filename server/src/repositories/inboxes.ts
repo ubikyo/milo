@@ -23,7 +23,7 @@ const receivers = selection<ReceiverWidget>(
   `SELECT w.config, s.board_id FROM board_widgets w
    JOIN board_sections s ON s.id = w.section_id
    WHERE w.type = ?
-   ORDER BY s.owner_id IS NOT NULL, w.id`,
+   ORDER BY w.id`,
 );
 
 /** What a widget receives, and the context where it files it. */

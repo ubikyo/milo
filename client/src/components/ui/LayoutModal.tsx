@@ -22,6 +22,7 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import { RED } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import CloseButton from "./CloseButton";
+import { canUpdate } from "@milo/shared";
 import type {
   BoardWidget,
   ExportedLayout,
@@ -167,7 +168,7 @@ function Import({
               d,
               widgets,
               boardWidget,
-              (w) => access(w.kind) === "update",
+              (w) => canUpdate(access(w.kind)),
             ),
           });
         }

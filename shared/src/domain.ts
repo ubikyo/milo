@@ -9,8 +9,14 @@
 
 import type { CardLink } from "./dependencies.js";
 import type { DueShape, Reminder, Recurrence } from "./due.js";
-import type { CompanyRights } from "./roles.js";
+import type { CompanyRights, WorkspaceRights } from "./roles.js";
 import type { WidgetRights } from "./widget-kinds.js";
+import type { EntraPrincipal, PrincipalPermissions } from "./entra.js";
+import type {
+  ApplicationRights,
+  NotificationRights,
+  StructureRights,
+} from "./workspace-access.js";
 
 export type SqliteBool = 0 | 1;
 
@@ -47,6 +53,23 @@ export interface PublicUser {
    */
   widgets: WidgetRights;
   /**
+   * The notifications they receive in the workspace they work in — their own
+   * and their groups' combined. Without any, no "Notifications" menu.
+   */
+  notifications: NotificationRights;
+  /**
+   * What they may do with the interface of the workspace they work in —
+   * modify it, import or export a layout —, their own and their groups'
+   * combined.
+   */
+  application: ApplicationRights;
+  /**
+   * What they may do with the views, boards and contexts of the workspace
+   * they work in — read, create, delete —, their own and their groups'
+   * combined.
+   */
+  structure: StructureRights;
+  /**
    * The local "admin" account: it is only used for configuration, is not shown
    * in any list and is the actor of nothing.
    */
@@ -60,8 +83,11 @@ export interface PublicUser {
   workspace: Id | null;
   /** The workspaces they have access to: the selector offers more than one. */
   workspaces: WorkspaceRef[];
-  /** They can manage workspaces: create them, rename them, set their access. */
-  manage_workspaces: boolean;
+  /**
+   * Their rights on workspaces: see them (their tab, each one's access),
+   * create them — rename them and set their access too —, delete them.
+   */
+  workspace_rights: WorkspaceRights;
   created_at: string;
 }
 
@@ -126,17 +152,58 @@ export const ALL_CONTEXTS = "Tous les contextes";
 
 /**
  * A view: what the bottom selector offers. It carries boards, which
- * carry the widgets. Shared with everyone, unless private: it is then shown
- * only to its author.
+ * carry the widgets. It belongs to whoever created it; others see it once
+ * one of its boards is shared with them (ViewShares).
  */
 export interface View {
   id: Id;
   name: string;
   position: number;
-  is_private: SqliteBool;
-  /** Null for a view open to everyone. */
+  /** Its author. Null once that account is gone. */
   owner_id: Id | null;
+  /** True for its owner: renaming, deleting, sharing it and adding boards are theirs. */
+  is_owner: boolean;
+  /**
+   * Hidden by this account: shown, greyed, at the end of the row in interface
+   * editing only. At least one view stays shown.
+   */
+  is_hidden: boolean;
   created_at: string;
+}
+
+/**
+ * What a board's sharing grants: "read", its layout stays as it is —
+ * its widgets still work, by widget rights; "full", everything but
+ * deleting and sharing it, which stay its owner's.
+ */
+export const SHARE_LEVELS = [
+  { value: "read", label: "Lecture seule" },
+  { value: "full", label: "Contrôle total" },
+] as const;
+
+export type ShareLevel = (typeof SHARE_LEVELS)[number]["value"];
+
+export const isShareLevel = (value: unknown): value is ShareLevel =>
+  SHARE_LEVELS.some((l) => l.value === value);
+
+/** What the reading account holds on a board: it owns it, or it was shared with it. */
+export type BoardAccess = "owner" | ShareLevel;
+
+/**
+ * What a user or a group receives in a view: its boards shared with them,
+ * by id, and how far. A board left out is not shared with them.
+ */
+export type ViewSharePermissions = Record<string, ShareLevel>;
+
+/**
+ * A view's sharing, as its "Partager" window reads it: its boards, whom they
+ * can go to — the users and groups with access to its workspace —, and to
+ * whom they went.
+ */
+export interface ViewShares {
+  boards: { id: Id; name: string }[];
+  principals: EntraPrincipal[];
+  shares: PrincipalPermissions<ViewSharePermissions>[];
 }
 
 /**
@@ -157,16 +224,17 @@ export interface Board {
   context_id: Id | null;
   position: number;
   show_card_numbers: SqliteBool;
-  is_private: SqliteBool;
   /** Locked in this window: the client sets it, the server does not keep it. */
   is_locked: SqliteBool;
-  /** Null for a board open to everyone. */
+  /** Its author. Null once that account is gone. */
   owner_id: Id | null;
+  /** What the reading account may do with it. */
+  access: BoardAccess;
   /**
-   * "Hérité", for the reading account: true if it sees the public structure
-   * of the board, false if it works on its own copy.
+   * Hidden by this account: shown, greyed, at the end of the row in interface
+   * editing only. At least one board of its view stays shown.
    */
-  inherited?: boolean;
+  is_hidden: boolean;
   created_at: string;
 }
 
@@ -183,8 +251,6 @@ export interface BoardSection {
   /** The gap separating it from the next section, in pixels. The last one's is unused. */
   gap: number;
   position: number;
-  /** Null: the public structure; otherwise, that of this account ("Hérité" unchecked). */
-  owner_id: Id | null;
   created_at: string;
 }
 
@@ -250,11 +316,13 @@ export interface Category {
 export interface ProjectLabel {
   id: Id;
   board_id: Id;
+  /** Its group: every label belongs to one (LabelGroup). */
+  group_id: Id;
+  /** The name of its group, on the lists that read it along. */
+  group_name?: string;
   name: string;
   /** "hue.shade" of the Mantine palette, for example "red.6". */
   color: string;
-  /** The weight: the heaviest come first, in the grids. */
-  weight: number;
   position: number;
   created_at: string;
 }
@@ -302,9 +370,32 @@ export interface ProjectDetail extends Project {
 
 // --- Tasks mode ------------------------------------------------------------
 
+/**
+ * A group of labels: a title that gathers some of them. Every label belongs to
+ * one, and the groups are ordered among themselves. A board's labels have their
+ * own (board_id); those of Support belong to no board.
+ */
+export interface LabelGroup {
+  id: Id;
+  board_id?: Id;
+  name: string;
+  position: number;
+  created_at: string;
+}
+
+/** A group and its labels, in order: what is sent to arrange them. */
+export interface LabelGroupLayout {
+  id: Id;
+  label_ids: Id[];
+}
+
 export interface Label {
   id: Id;
   board_id: Id;
+  /** Its group: every label belongs to one (LabelGroup). */
+  group_id: Id;
+  /** The name of its group, on the lists that read it along. */
+  group_name?: string;
   name: string;
   color: string;
   position: number;
@@ -589,25 +680,29 @@ export const isSupportStatus = (value: unknown): value is SupportStatus =>
   SUPPORT_STATUSES.some((s) => s.value === value);
 
 /**
- * The support urgency labels, set once and for all. They
- * are labels like the others: they can be renamed, recolored, and
- * deleted only when no request carries them anymore.
+ * The support urgency labels, set once and for all, from the least to the
+ * most urgent. They are labels like the others: they can be renamed,
+ * recolored, and deleted only when no request carries them anymore.
  */
 export const SUPPORT_URGENCY_LABELS = [
-  { name: "Sans urgence", color: "green.8", weight: 10 },
-  { name: "Dès que possible", color: "orange.8", weight: 20 },
-  { name: "Urgent", color: "red.8", weight: 30 },
+  { name: "Sans urgence", color: "green.8" },
+  { name: "Dès que possible", color: "orange.8" },
+  { name: "Urgent", color: "red.8" },
 ] as const;
 
 /**
  * The channel through which a request arrived: set with the urgency
- * labels at installation, with no weight.
+ * labels at installation.
  */
 export const SUPPORT_CHANNEL_LABELS = [
-  { name: "E-mail", color: "gray.7", weight: 0 },
-  { name: "Téléphone", color: "gray.7", weight: 0 },
-  { name: "Sur place", color: "gray.7", weight: 0 },
+  { name: "E-mail", color: "gray.7" },
+  { name: "Téléphone", color: "gray.7" },
+  { name: "Sur place", color: "gray.7" },
 ] as const;
+
+/** The groups the urgency and channel labels are gathered in. */
+export const SUPPORT_URGENCY_GROUP = "Urgence";
+export const SUPPORT_CHANNEL_GROUP = "Canal";
 
 /** What a fresh installation sets automatically on an incoming email. */
 export const SUPPORT_NEW_MESSAGE_LABELS = ["Sans urgence", "E-mail"] as const;
@@ -659,11 +754,13 @@ export const supportStatusLabel = (status: SupportStatus): string =>
  */
 export interface SupportLabel {
   id: Id;
+  /** Its group: every label belongs to one (LabelGroup). */
+  group_id: Id;
+  /** The name of its group, on the lists that read it along. */
+  group_name?: string;
   name: string;
   /** "hue.shade" of the Mantine palette, for example "red.6". */
   color: string;
-  /** The weight: the heaviest come first, in the grids. */
-  weight: number;
   position: number;
   created_at: string;
 }
@@ -774,15 +871,6 @@ export interface SupportRequestDetail extends SupportRequest {
  * Task: a column, like an access section. Its width is read the
  * same way.
  */
-/**
- * "Hérité": checked, you see the public structure of a board — its
- * sections and what they carry, shared with everyone. Unchecked, you work
- * on your own copy.
- */
-export interface LayoutState {
-  inherited: boolean;
-}
-
 /** The widgets' sections: those of a board. */
 export type IndicatorSection = BoardSection;
 

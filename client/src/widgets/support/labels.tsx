@@ -2,11 +2,12 @@ import { Box, Checkbox, Group, Stack, Text, useMantineTheme } from "@mantine/cor
 import { IconTags } from "@tabler/icons-react";
 import { withField } from "../types";
 import { NameField, ongoing, NAME, Nothing, IndicatorTitle } from "./common";
+import { LabelGroupSelect, groupOf, labelBars } from "../label-groups";
 import type { SupportIndicatorWidget } from "./types";
-import type { Id } from "@milo/shared";
 
 // The most carried labels, each in its color: what occupies
-// support. Settled requests only count if asked.
+// support — all of them, or those of one group. Settled requests only count
+// if asked.
 
 const LABEL = "Étiquettes";
 const ALL = "include_all";
@@ -182,21 +183,9 @@ export const labelsIndicator: SupportIndicatorWidget = {
 
   Display: ({ config, requests }) => {
     const counted = allRequests(config) ? requests : requests.filter(ongoing);
-    const byLabel = new Map<Id, Bar>();
-    for (const request of counted) {
-      for (const label of request.labels) {
-        const already = byLabel.get(label.id);
-        if (already) already.value += 1;
-        else
-          byLabel.set(label.id, {
-            name: label.name,
-            value: 1,
-            color: label.color,
-          });
-      }
-    }
-    const data = [...byLabel.values()].sort(
-      (a, b) => b.value - a.value || a.name.localeCompare(b.name),
+    const data = labelBars(
+      counted.map((r) => r.labels),
+      groupOf(config),
     );
 
     return (
@@ -210,6 +199,7 @@ export const labelsIndicator: SupportIndicatorWidget = {
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
       <NameField config={config} onChange={onChange} defaultValue={LABEL} />
+      <LabelGroupSelect base="/support-labels" config={config} onChange={onChange} />
       <Checkbox
         label="Compter aussi les tickets résolus et fermés"
         checked={allRequests(config)}

@@ -52,13 +52,18 @@ const DOUBLE_CLICK_THRESHOLD = 250;
 /** The name of a context that was just added, immediately in edit mode. */
 const NEW_CONTEXT = "Nouveau contexte";
 
+/**
+ * What may be done with the contexts, each one according to its right
+ * (Accès): add one ("Créer"), delete one ("Supprimer"), rename and reorder
+ * them (modifying the interface). Missing, the action is not offered.
+ */
 export interface ContextManagement {
-  onAdd: (name: string) => Promise<void>;
-  onRename: (id: Id, name: string) => Promise<void>;
+  onAdd?: (name: string) => Promise<void>;
+  onRename?: (id: Id, name: string) => Promise<void>;
   /** Rename "Tous les contextes". */
-  onRenameAll: (name: string) => Promise<void>;
-  onDelete: (id: Id) => Promise<void>;
-  onReorder: (ids: Id[]) => Promise<void>;
+  onRenameAll?: (name: string) => Promise<void>;
+  onDelete?: (id: Id) => Promise<void>;
+  onReorder?: (ids: Id[]) => Promise<void>;
 }
 
 export interface ContextsMenuProps {
@@ -195,7 +200,7 @@ export default function ContextsMenu({
   };
 
   function openRename(target: Renamed) {
-    if (!management) return;
+    if (!management?.onRename) return;
     clearTimeout(click.current);
     finished.current = false;
     setRenamed(target);
@@ -211,15 +216,15 @@ export default function ContextsMenu({
     if (id === ALL ? trimmedName === all : trimmedName === items.find((c) => c.id === id)?.name) return;
     setProvisional({ id, name: trimmedName });
     try {
-      if (id === ALL) await management.onRenameAll(trimmedName);
-      else await management.onRename(id, trimmedName);
+      if (id === ALL) await management.onRenameAll?.(trimmedName);
+      else await management.onRename?.(id, trimmedName);
     } finally {
       setProvisional(null);
     }
   };
 
   const add = async () => {
-    if (!management) return;
+    if (!management?.onAdd) return;
     setAddInProgress(items.length);
     await management.onAdd(NEW_CONTEXT);
   };
@@ -231,7 +236,7 @@ export default function ContextsMenu({
   };
 
   const drop = async () => {
-    if (!dragging || !management) return;
+    if (!dragging || !management?.onReorder) return;
     const start = ordered.findIndex((c) => c.id === dragging.id);
     setDragged(null);
     const target = dragging.target > start ? dragging.target - 1 : dragging.target;
@@ -457,7 +462,7 @@ export default function ContextsMenu({
             {ordered.map((context, index) => (
               <div
                 key={context.id}
-                draggable={Boolean(management) && renamed?.id !== context.id}
+                draggable={Boolean(management?.onReorder) && renamed?.id !== context.id}
                 onDragStart={(e) => {
                   e.dataTransfer.effectAllowed = "move";
                   e.dataTransfer.setData("text/plain", String(context.id));
@@ -477,8 +482,8 @@ export default function ContextsMenu({
                   context.name,
                   { id: context.id, name: context.name },
                   {
-                    handle: Boolean(management),
-                    trash: management ? () => setToDelete(context) : undefined,
+                    handle: Boolean(management?.onReorder),
+                    trash: management?.onDelete ? () => setToDelete(context) : undefined,
                     style: dragging?.id === context.id ? { opacity: 0.4 } : undefined,
                   },
                 )}
@@ -488,7 +493,7 @@ export default function ContextsMenu({
           </div>
           {/* With no context: a space, the contexts icon in the middle, above
               the add. */}
-          {management && items.length === 0 && (
+          {management?.onAdd && items.length === 0 && (
             <Center py="md">
               <Center
                 w={40}
@@ -499,7 +504,7 @@ export default function ContextsMenu({
               </Center>
             </Center>
           )}
-          {management && (
+          {management?.onAdd && (
             <>
               {items.length > 0 && <Divider my={4} />}
               <Anchor
@@ -530,7 +535,7 @@ export default function ContextsMenu({
         onConfirm={() => {
           const context = toDelete;
           setToDelete(null);
-          if (context) void management?.onDelete(context.id);
+          if (context) void management?.onDelete?.(context.id);
         }}
         title="Supprimer le contexte"
         message={

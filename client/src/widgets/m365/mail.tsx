@@ -1,6 +1,5 @@
 import {
   Badge,
-  Box,
   Button,
   Checkbox,
   Drawer,
@@ -19,7 +18,7 @@ import dayjs from "dayjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { api } from "../../api";
-import classes from "../../assets/styles/AccessNumber.module.css";
+import { Frame } from "../margins";
 import EmailFrame from "../../components/support/EmailFrame";
 import { NEUTRAL_HOVER } from "../../themes/colors";
 import { withField, count } from "../types";
@@ -453,11 +452,10 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
     );
   })();
 
-  if (!isChecked(config, FRAMED, false)) return content;
   return (
-    <Box className={classes.inset} style={{ border: "none" }}>
+    <Frame config={config} framed={isChecked(config, FRAMED, false)}>
       {content}
-    </Box>
+    </Frame>
   );
 }
 

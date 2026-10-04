@@ -24,6 +24,7 @@ import { Fragment, createContext, useContext, useMemo, useState } from "react";
 import ActorAvatars, { ACTOR_AVATAR_SIZE, ACTOR_GAP, SenderAvatar } from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
 import { keptColumns, defaultWidths } from "../ui/ColumnFields";
+import type { ListColumn } from "../ui/ColumnFields";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
@@ -35,8 +36,9 @@ import { STRONG_TEXT } from "../../themes/colors";
 import { SUPPORT_STATUSES, listKey, supportStatusLabel, supportTicketRef } from "@milo/shared";
 import { useIsEditing } from "../../lib/editing";
 import { inList } from "../../lib/lists";
+import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
 import type { CSSProperties, ReactNode } from "react";
-import type { Actor, SupportRequest, SupportStatus } from "@milo/shared";
+import type { Actor, Id, SupportRequest, SupportStatus } from "@milo/shared";
 
 // The Support mode's request list: a section widget, like the
 // indicators (widgets/support/list.tsx). What it shows and what can be done in it —
@@ -85,9 +87,8 @@ function Empty() {
 function LabelsCell({ labels }: { labels: SupportRequest["labels"] }) {
   if (!labels.length) return <Empty />;
 
-  // The heaviest first: the server sorts them that way, the drawer's input
-  // does not.
-  const shown = [...labels].sort((a, b) => b.weight - a.weight).slice(0, LABELS_SHOWN);
+  // In their order — group after group —, whatever the order they were set in.
+  const shown = ofGroup(labels, null).slice(0, LABELS_SHOWN);
   const remaining = labels.length - shown.length;
 
   return (
@@ -211,10 +212,16 @@ const LABELS_MIN_WIDTH = 260;
 const DATE_WIDTH = 130;
 export type ColumnKey = "ticket" | "subject" | "actors" | "labels" | "due" | "status" | "received";
 
+/** The sort: a column, and for the labels, its group — two can coexist. */
 interface Sort {
   key: ColumnKey;
+  group?: Id;
   direction: "asc" | "desc";
 }
+
+/** True when the sort is that of this column — and of this group, for the labels. */
+const sameSort = (sort: Sort, key: ColumnKey, group: Id | undefined): boolean =>
+  sort.key === key && (key !== "labels" || sort.group === group);
 
 /** A funnel option: "all" means "no filter". */
 interface FilterOption {
@@ -237,8 +244,9 @@ const VALUES: Record<ColumnKey, (d: SupportRequest) => string | number | null> =
     const a = shownActors(d);
     return a.length ? a.map((x) => x.name).join(", ") : null;
   },
-  // By the heaviest of the labels: the one the cell shows first.
-  labels: (d) => (d.labels.length ? Math.max(...d.labels.map((l) => l.weight)) : null),
+  // By the first label, in the labels' order — group after group: the one the
+  // cell shows first. A column limited to a group reads its own (useSupportList).
+  labels: (d) => labelRank(d.labels, null),
   due: (d) => d.due_date || null,
   status: (d) => STATUS_ORDER[d.status],
   received: (d) => d.created_at,
@@ -382,6 +390,7 @@ function TextFilter({
 function SortableTh({
   label,
   column,
+  group,
   sort,
   onSort,
   filter,
@@ -390,18 +399,20 @@ function SortableTh({
 }: {
   label: string;
   column: ColumnKey;
+  /** For a labels column, the group it shows. */
+  group?: Id;
   sort: Sort;
-  onSort: (key: ColumnKey) => void;
+  onSort: (key: ColumnKey, group?: Id) => void;
   filter?: ReactNode;
   style?: CSSProperties;
   handle: ReactNode;
 }) {
-  const active = sort.key === column;
+  const active = sameSort(sort, column, group);
   const Icon = !active ? IconSelector : sort.direction === "asc" ? IconChevronUp : IconChevronDown;
   return (
     <Table.Th style={style}>
       <Group gap={4} wrap="nowrap">
-        <UnstyledButton onClick={() => onSort(column)} style={{ flex: 1, minWidth: 0 }}>
+        <UnstyledButton onClick={() => onSort(column, group)} style={{ flex: 1, minWidth: 0 }}>
           <Group gap={4} wrap="nowrap" justify="space-between">
             <Text size="sm" fw={600} c={STRONG_TEXT}>
               {label}
@@ -422,11 +433,12 @@ function SortableTh({
 export const MAILBOXES = "mailboxes";
 
 /** The columns the list can show, in order. */
-export const SUPPORT_COLUMNS: { key: ColumnKey; label: string }[] = [
+export const SUPPORT_COLUMNS: ListColumn[] = [
   { key: "ticket", label: "Ticket" },
   { key: "subject", label: "Objet" },
   { key: "actors", label: "Acteurs" },
-  { key: "labels", label: "Étiquettes" },
+  // It picks the group it shows.
+  { key: "labels", label: "Étiquettes", labelGroups: "/support-labels" },
   { key: "status", label: "Statut" },
   { key: "received", label: "Reçu le" },
   { key: "due", label: "Échéance" },
@@ -473,7 +485,10 @@ export const useSupportList = (requests: SupportRequest[] | null, tab: string) =
   }, [inTab]);
 
   const shown = useMemo(() => {
-    const value = VALUES[sort.key];
+    const value =
+      sort.key === "labels"
+        ? (d: SupportRequest) => labelRank(d.labels, sort.group)
+        : VALUES[sort.key];
     const factor = sort.direction === "asc" ? 1 : -1;
     return inTab
       .filter((d) => chosen(filters, d))
@@ -564,6 +579,8 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
   // The retained columns, in the order chosen by the configuration.
   // A column may come back: "id" distinguishes each occurrence.
   const columns = keptColumns(SUPPORT_COLUMNS, config);
+  // A labels column limited to a group takes its name.
+  const labelGroups = useLabelGroups("/support-labels");
   // The checkbox at the start of each row, then the columns.
   const columnCount = columns.length + 1;
   const resize = useResizableColumns(
@@ -586,12 +603,13 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
       return next;
     });
 
-  const sortBy = (key: ColumnKey) =>
+  const sortBy = (key: ColumnKey, group?: Id) =>
     setSort((current) =>
-      current.key === key
-        ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+      sameSort(current, key, group)
+        ? { key, group, direction: current.direction === "asc" ? "desc" : "asc" }
         : {
             key,
+            group,
             direction: key === "subject" || key === "actors" || key === "labels" ? "asc" : "desc",
           },
     );
@@ -602,11 +620,13 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
     column: ColumnKey,
     filter?: ReactNode,
     style?: CSSProperties,
+    group?: Id,
   ) => (
     <SortableTh
       key={id}
       label={label}
       column={column}
+      group={group}
       sort={sort}
       onSort={sortBy}
       filter={filter}
@@ -617,7 +637,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
 
   // Each column's header: the columns are displayed in the order of the
   // configuration, the checkbox staying first.
-  const headers: Record<ColumnKey, (id: string) => ReactNode> = {
+  const headers: Record<ColumnKey, (id: string, group?: Id) => ReactNode> = {
     ticket: (id) =>
       th(
         id,
@@ -647,10 +667,10 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
         />,
         { width: 1, whiteSpace: "nowrap" },
       ),
-    labels: (id) =>
+    labels: (id, group) =>
       th(
         id,
-        "Étiquettes",
+        labelsColumnTitle(labelGroups, group),
         "labels",
         <ChoiceFilter
           label="étiquette"
@@ -659,6 +679,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
           onChange={filter("label")}
         />,
         { minWidth: LABELS_MIN_WIDTH },
+        group,
       ),
     status: (id) =>
       th(
@@ -704,7 +725,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
   };
 
   // Each column's cell, for a request.
-  const cells: Record<ColumnKey, (request: SupportRequest) => ReactNode> = {
+  const cells: Record<ColumnKey, (request: SupportRequest, group?: Id) => ReactNode> = {
     ticket: (request) => (
       <Table.Td key="ticket" style={{ whiteSpace: "nowrap" }}>
         <ReferenceTag reference={supportTicketRef(request.number)} template={REFERENCE_TEMPLATE} />
@@ -726,9 +747,10 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
         <ActorsCell request={request} />
       </Table.Td>
     ),
-    labels: (request) => (
+    // Limited to a group, the column shows only its labels.
+    labels: (request, group) => (
       <Table.Td key="labels">
-        <LabelsCell labels={request.labels} />
+        <LabelsCell labels={ofGroup(request.labels, group)} />
       </Table.Td>
     ),
     status: (request) => (
@@ -803,7 +825,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
           <Table.Tr>
             {/* No "check all": requests are chosen one by one. */}
             <Table.Th style={{ width: 1 }} />
-            {columns.map((c) => headers[c.key](c.id))}
+            {columns.map((c) => headers[c.key as ColumnKey](c.id, c.group))}
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -835,7 +857,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
                 />
               </Table.Td>
               {columns.map((c) => (
-                <Fragment key={c.id}>{cells[c.key](request)}</Fragment>
+                <Fragment key={c.id}>{cells[c.key as ColumnKey](request, c.group)}</Fragment>
               ))}
             </Table.Tr>
           ))}

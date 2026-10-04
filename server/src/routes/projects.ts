@@ -382,7 +382,7 @@ projectRoutes.put("/:id", (req, res) => {
     label_ids,
   } = req.body;
 
-  // A project does not leave a private board and does not enter one.
+  // A project does not leave a board one does not see, nor enter one.
   const board = projectBoardOpen(board_id, req.user);
   // The context must belong to the project's board: moved to another board,
   // the project takes the one specified, or the new board's first.

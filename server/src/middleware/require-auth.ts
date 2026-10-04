@@ -7,7 +7,7 @@ import {
   hasAccess,
   inOwnWorkspace,
   settingsRights,
-  canManageWorkspaces,
+  workspaceRights,
   sessions,
   users,
 } from "../repositories/users.js";
@@ -113,12 +113,18 @@ export const requireSettingsUpdate = (req: Request, _res: Response, next: NextFu
 };
 
 /**
- * Workspace management: the "admin" account, or whoever has the right in a
- * workspace. Set after `requireAuth`.
+ * Workspaces, right by right (administration): reading them requires
+ * "Voir", deleting one "Supprimer", the rest — adding, renaming — "Créer".
+ * Set after `requireAuth`.
  */
 export const requireWorkspaces = (req: Request, _res: Response, next: NextFunction): void => {
-  if (!canManageWorkspaces(req.user)) {
-    throw new HttpError(403, "Réservé à qui peut gérer les workspaces");
+  const rights = workspaceRights(req.user);
+  if (req.method === "GET") {
+    if (!rights.view) throw new HttpError(403, "Réservé à qui peut voir les workspaces");
+  } else if (req.method === "DELETE") {
+    if (!rights.delete) throw new HttpError(403, "Réservé à qui peut supprimer les workspaces");
+  } else if (!rights.create) {
+    throw new HttpError(403, "Réservé à qui peut créer les workspaces");
   }
   next();
 };

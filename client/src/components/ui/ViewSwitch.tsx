@@ -1,5 +1,5 @@
 import { ActionIcon, Group, Menu, SegmentedControl } from "@mantine/core";
-import { IconCheck, IconEyeOff, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconEye, IconEyeOff, IconPencil, IconPlus, IconShare, IconTrash } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import type { View } from "@milo/shared";
 import { ADD_ACTION, RED } from "../../themes/colors";
@@ -11,9 +11,12 @@ import { useTabReorder } from "./useTabReorder";
 
 // The views, at the bottom left: the counterpart of the shortcuts "?", same
 // inset, in the opposite corner. A "+" at the end creates one, which goes
-// straight into name entry; right-clicking one renames it — in
-// place, like a tab —, closes it for others or deletes it; dragging
-// reorders it — for oneself only.
+// straight into name entry; right-clicking one of one's own renames it — in
+// place, like a tab —, shares its boards or deletes it; dragging reorders
+// it — for oneself only. Views shared by others offer none of that. In
+// interface editing, "Masquer" hides any of them, for oneself: greyed at the
+// end of the row, it no longer shows outside editing. The last view shown
+// cannot be hidden.
 
 interface ViewSwitchProps {
   /** The views the account sees, in the order it arranged them. */
@@ -26,17 +29,22 @@ interface ViewSwitchProps {
    * board locked —, views cannot be dragged.
    */
   onReorder?: (ids: number[]) => void | Promise<void>;
-  /** Without it — without the right to organize views —, no "+" nor menu. */
+  /** Without it — without the right to organize views —, no "+". */
   onCreate?: () => void | Promise<void>;
+  /** Each for one's own views only: without any of them, no menu. */
   onRename?: (id: number, name: string) => void | Promise<void>;
-  onTogglePrivate?: (id: number) => void | Promise<void>;
+  onShare?: (view: View) => void;
   onDelete?: (id: number) => void | Promise<void>;
+  /** "Masquer" or "Afficher": for every view, its own or shared. */
+  onToggleHidden?: (view: View) => void | Promise<void>;
   /**
    * The view to switch to name entry as soon as it appears — the one just
    * created. "onRenameOpened" says that it is done.
    */
   toRename?: number | null;
   onRenameOpened?: () => void;
+  /** Name entry is over: validated — even unchanged —, or abandoned with Escape. */
+  onRenameEnded?: (id: number, abandoned: boolean) => void;
 }
 
 /**
@@ -64,6 +72,9 @@ function Line({ side }: { side: "left" | "right" }) {
 const sonSelecteur = (element: HTMLElement) =>
   element.closest<HTMLElement>(".mantine-SegmentedControl-root");
 
+/** A hidden view, in interface editing: greyed. */
+const HIDDEN_OPACITY = 0.4;
+
 /** The frame's radius, which the indicator and the cells take over as is. */
 const RADIUS = "var(--sc-radius, var(--mantine-radius-default))";
 
@@ -74,10 +85,12 @@ export default function ViewSwitch({
   onReorder,
   onCreate,
   onRename,
-  onTogglePrivate,
+  onShare,
   onDelete,
+  onToggleHidden,
   toRename,
   onRenameOpened,
+  onRenameEnded,
 }: ViewSwitchProps) {
   // Views are dragged like the tabs of a row (useTabReorder).
   const { ordered, tabProps, guardChange, insertAt } = useTabReorder(
@@ -102,7 +115,6 @@ export default function ViewSwitch({
   // save twice.
   const finished = useRef(false);
   const [toDelete, setToDelete] = useState<View | null>(null);
-  const [toOpen, setToOpen] = useState<View | null>(null);
 
   // The page content stops just above: it needs to know where
   // this control begins, and only the selector knows. Tracked, because its
@@ -126,10 +138,14 @@ export default function ViewSwitch({
     };
   }, [order]);
 
-  const withMenu = Boolean(onRename || onTogglePrivate || onDelete);
+  const owned = (view: View) => view.is_owner;
+  const withMenu = (view: View) =>
+    Boolean(onToggleHidden) || (owned(view) && Boolean(onRename || onShare || onDelete));
+  // The last view shown stays: it cannot be hidden.
+  const lastShown = (view: View) => !view.is_hidden && views.filter((v) => !v.is_hidden).length <= 1;
 
   const openRename = (view: View) => {
-    if (!onRename) return;
+    if (!onRename || !view.is_owner) return;
     finished.current = false;
     setRenamed({ id: view.id, name: view.name });
   };
@@ -149,6 +165,7 @@ export default function ViewSwitch({
     finished.current = true;
     const { id, name } = renamed;
     setRenamed(null);
+    onRenameEnded?.(id, !validate);
     const trimmedName = name.trim();
     const view = views.find((v) => v.id === id);
     if (!validate || !trimmedName || !view || trimmedName === view.name || !onRename) return;
@@ -179,11 +196,15 @@ export default function ViewSwitch({
               label: (
                 <span
                   // No own position: the line sits against the cell.
-                  {...tabProps(view.id, index, { display: "inline-block" })}
+                  {...tabProps(view.id, index, {
+                    display: "inline-block",
+                    // Hidden: greyed, only shown in interface editing.
+                    ...(view.is_hidden ? { opacity: HIDDEN_OPACITY } : null),
+                  })}
                   // A double-click renames, as on a tab.
                   onDoubleClick={() => openRename(view)}
                   onContextMenu={(e) => {
-                    if (!withMenu) return;
+                    if (!withMenu(view)) return;
                     // The view's menu sits above its segment.
                     const segment =
                       e.currentTarget.closest(".mantine-SegmentedControl-control") ??
@@ -275,7 +296,7 @@ export default function ViewSwitch({
 
       {menu && (
         <PointMenu position={menu.position} placement="top-start" onClose={() => setMenu(null)}>
-          {onRename && (
+          {onRename && owned(menu.view) && (
             <Menu.Item
               leftSection={<IconPencil size={16} />}
               onClick={() => openRename(menu.view)}
@@ -283,19 +304,21 @@ export default function ViewSwitch({
               Renommer
             </Menu.Item>
           )}
-          {onTogglePrivate && (
+          {onToggleHidden && (
             <Menu.Item
-              leftSection={<IconEyeOff size={16} />}
-              rightSection={menu.view.is_private ? <IconCheck size={14} /> : null}
-              // Making it private happens at once; opening it to everyone is confirmed.
-              onClick={() =>
-                menu.view.is_private ? setToOpen(menu.view) : onTogglePrivate(menu.view.id)
-              }
+              leftSection={menu.view.is_hidden ? <IconEye size={16} /> : <IconEyeOff size={16} />}
+              disabled={lastShown(menu.view)}
+              onClick={() => void onToggleHidden(menu.view)}
             >
-              Privé
+              {menu.view.is_hidden ? "Afficher" : "Masquer"}
             </Menu.Item>
           )}
-          {onDelete && (
+          {onShare && owned(menu.view) && (
+            <Menu.Item leftSection={<IconShare size={16} />} onClick={() => onShare(menu.view)}>
+              Partager
+            </Menu.Item>
+          )}
+          {onDelete && owned(menu.view) && (
             <>
               <Menu.Divider />
               <Menu.Item
@@ -309,26 +332,6 @@ export default function ViewSwitch({
           )}
         </PointMenu>
       )}
-
-      <DeleteConfirmModal
-        opened={toOpen !== null}
-        onClose={() => setToOpen(null)}
-        onConfirm={() => {
-          const view = toOpen;
-          setToOpen(null);
-          if (view && onTogglePrivate) void onTogglePrivate(view.id);
-        }}
-        title="Retirer « Privé »"
-        message={
-          <>
-            « {toOpen?.name} » ne sera plus privée : tous ceux qui ont accès à Milo pourront la
-            voir.
-          </>
-        }
-        confirmLabel="Valider"
-        cancelLabel="Annuler"
-        confirmColor="teal"
-      />
 
       <DeleteConfirmModal
         opened={toDelete !== null}

@@ -2,7 +2,7 @@ import { Stack, Switch } from "@mantine/core";
 import { IconLayoutKanban } from "@tabler/icons-react";
 import { NUMBERS, TaskBoardWidget, withNumbers } from "../../components/board/TaskBoard";
 import CopyPasteActions from "../../components/ui/CopyPasteActions";
-import BoardListFields from "../../components/ui/BoardListFields";
+import LabelGroupFields from "../../components/ui/LabelGroupFields";
 import { withField } from "../types";
 import type { TaskIndicatorWidget } from "./types";
 
@@ -30,7 +30,7 @@ export const taskListIndicator: TaskIndicatorWidget = {
           onChange={(e) => onChange(withField(config, NUMBERS, e.currentTarget.checked))}
         />
         {/* The board's labels: they go to saving. */}
-        <BoardListFields kind="task-labels" />
+        <LabelGroupFields kind="task-labels" />
       </Stack>
     </>
   ),

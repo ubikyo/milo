@@ -1,4 +1,4 @@
-import { Box, Checkbox, Group, Loader, NumberInput, Select, SimpleGrid, Stack, Text } from "@mantine/core";
+import { Checkbox, Group, Loader, NumberInput, Select, SimpleGrid, Stack, Text } from "@mantine/core";
 import { AreaChart, BarChart } from "@mantine/charts";
 import { useDebouncedValue } from "@mantine/hooks";
 import {
@@ -18,7 +18,7 @@ import {
 import { useEffect, useState } from "react";
 import type { ComponentType } from "react";
 import { api } from "../../api";
-import classes from "../../assets/styles/AccessNumber.module.css";
+import { Frame } from "../margins";
 import { withField, count, text } from "../types";
 import type { AccessWidget, WidgetConfigProps } from "../types";
 import type { AccessWeather, Id, WeatherPlace } from "@milo/shared";
@@ -41,11 +41,16 @@ const LATITUDE = "latitude";
 const LONGITUDE = "longitude";
 const SIZE = "size";
 const SHOW_LOCATION = "showPlace";
+const SHOW_ICON = "showIcon";
+const SHOW_SKY = "showSky";
 const DETAILS = "details";
 const FORECASTS = "forecast";
 const FRAMED = "framed";
 
 const DEFAULT_SIZE = 32;
+
+/** The padding while the drawer sets none, framed or not. */
+const DEFAULT_PADDING = 20;
 const SIZE_MIN = 12;
 const SIZE_MAX = 96;
 
@@ -238,18 +243,27 @@ function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
 
     const { current } = state.weather;
     const sky = skyOf(current.code, current.is_day);
+    const caption = [
+      isChecked(config, SHOW_LOCATION, false) ? place : "",
+      isChecked(config, SHOW_SKY, false) ? sky.label : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
     return (
       <Stack gap="xs">
         <Group gap="sm" wrap="nowrap" justify="center">
-          <sky.icon size={Math.round(size * 1.3)} color={sky.color} stroke={1.5} />
+          {isChecked(config, SHOW_ICON, true) && (
+            <sky.icon size={Math.round(size * 1.3)} color={sky.color} stroke={1.5} />
+          )}
           <Stack gap={0}>
             <Text fz={size} fw={600} lh={1.1}>
               {degrees(current.temperature)}
             </Text>
-            <Text size="xs" c="dimmed" lineClamp={1}>
-              {isChecked(config, SHOW_LOCATION, true) && place ? `${place} · ` : ""}
-              {sky.label}
-            </Text>
+            {caption && (
+              <Text size="xs" c="dimmed" lineClamp={1}>
+                {caption}
+              </Text>
+            )}
           </Stack>
         </Group>
         {isChecked(config, DETAILS, false) && (
@@ -273,11 +287,10 @@ function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
     );
   })();
 
-  if (!isChecked(config, FRAMED, false)) return content;
   return (
-    <Box className={classes.inset} style={{ border: "none" }}>
+    <Frame config={config} framed={isChecked(config, FRAMED, false)} padding={DEFAULT_PADDING}>
       {content}
-    </Box>
+    </Frame>
   );
 }
 
@@ -347,7 +360,9 @@ export const weatherWidget: AccessWidget = {
   icon: IconSun,
   defaultConfig: {
     [SIZE]: DEFAULT_SIZE,
-    [SHOW_LOCATION]: true,
+    [SHOW_LOCATION]: false,
+    [SHOW_ICON]: true,
+    [SHOW_SKY]: false,
     [DETAILS]: false,
     [FORECASTS]: "none",
     [FRAMED]: false,
@@ -360,6 +375,7 @@ export const weatherWidget: AccessWidget = {
 
   // It draws its own frame, set in the drawer's "Apparence" block.
   ownFrame: true,
+  padding: () => DEFAULT_PADDING,
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
@@ -386,8 +402,20 @@ export const weatherWidget: AccessWidget = {
       />
       <Stack gap="sm">
         <Checkbox
+          label="Afficher le pictogramme"
+          checked={isChecked(config, SHOW_ICON, true)}
+          onChange={(e) => onChange(withField(config, SHOW_ICON, e.currentTarget.checked))}
+          color="teal"
+        />
+        <Checkbox
+          label="Afficher le type de temps"
+          checked={isChecked(config, SHOW_SKY, false)}
+          onChange={(e) => onChange(withField(config, SHOW_SKY, e.currentTarget.checked))}
+          color="teal"
+        />
+        <Checkbox
           label="Afficher le nom du lieu"
-          checked={isChecked(config, SHOW_LOCATION, true)}
+          checked={isChecked(config, SHOW_LOCATION, false)}
           onChange={(e) => onChange(withField(config, SHOW_LOCATION, e.currentTarget.checked))}
           color="teal"
         />

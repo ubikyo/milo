@@ -56,11 +56,20 @@ export default function NewMessageLabels({
     checks.reset();
   };
 
-  /** The labels a row can take: its own, and those not already taken. */
-  const options = (id: string) =>
-    labels
-      .filter((e) => String(e.id) === id || !selected.includes(String(e.id)))
-      .map((e) => ({ value: String(e.id), label: e.name }));
+  /**
+   * The labels a row can take: its own, and those not already taken, under
+   * the name of their group.
+   */
+  const options = (id: string) => {
+    const groups: { group: string; items: { value: string; label: string }[] }[] = [];
+    for (const e of labels) {
+      if (String(e.id) !== id && selected.includes(String(e.id))) continue;
+      const group = e.group_name ?? "";
+      if (groups.at(-1)?.group !== group) groups.push({ group, items: [] });
+      groups.at(-1)!.items.push({ value: String(e.id), label: e.name });
+    }
+    return groups;
+  };
 
   const replaceExisting = (rank: number, id: string | null) => {
     setAdding(false);

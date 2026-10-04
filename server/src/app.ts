@@ -131,7 +131,8 @@ export const createApp = (): express.Express => {
   app.use("/api/follows", followRoutes);
   app.use("/api/notifications", notificationRoutes);
 
-  // Views and their boards: everyone sees them, unless private; organizing
+  // Views and their boards: their owner sees them, and those they are shared
+  // with (repositories/shares.ts); organizing
   // them requires being able to edit at least one widget type (lib/rights.ts).
   // What a board carries follows the permissions of each widget type.
   app.use("/api/views", viewRoutes);

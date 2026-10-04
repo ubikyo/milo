@@ -30,6 +30,7 @@ import { RED, STRONG_TEXT } from "../../themes/colors";
 import ActorAvatars, { ACTOR_AVATAR_SIZE } from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
 import { keptColumns, defaultWidths } from "../ui/ColumnFields";
+import type { ListColumn } from "../ui/ColumnFields";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
@@ -38,8 +39,9 @@ import { ReferenceTag } from "../ui/ReferenceTag";
 import { useResizableColumns } from "../ui/useResizableColumns";
 import { listKey, projectReference } from "@milo/shared";
 import { inList } from "../../lib/lists";
+import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
 import type { ReactNode } from "react";
-import type { Category, Project, PublicUser } from "@milo/shared";
+import type { Category, Id, Project, PublicUser } from "@milo/shared";
 import type { ProjectAction } from "./MoveOrCopyProjectModal";
 import { useRights } from "../../lib/rights";
 import { useIsEditing } from "../../lib/editing";
@@ -82,8 +84,13 @@ interface Column {
   width?: number;
 }
 
+/** A shown column: its occurrence, and for the labels, the group it shows. */
+type ShownColumn = Column & { id: string; group?: Id };
+
+/** The sort: a column, and for the labels, its group — two can coexist. */
 interface Sort {
   key: ColumnKey;
+  group?: Id;
   direction: "asc" | "desc";
 }
 
@@ -132,11 +139,8 @@ function LabelsCell({ labels }: { labels: Project["labels"] }) {
     );
   }
 
-  // Heaviest first: the server orders them this way, the drawer's input
-  // does not.
-  const shown = [...labels]
-    .sort((a, b) => b.weight - a.weight)
-    .slice(0, LABELS_SHOWN);
+  // In their order — group after group —, whatever the order they were set in.
+  const shown = ofGroup(labels, null).slice(0, LABELS_SHOWN);
   const remaining = labels.length - shown.length;
 
   return (
@@ -204,11 +208,11 @@ const COLUMNS: Column[] = [
   { key: "updated_at", label: "Date modification", value: (p) => p.updated_at },
   {
     key: "labels",
-    // Sort on the heaviest label: the one the cell shows
-    // first. Projects without labels go to the bottom.
+    // Sort on the first label, in the labels' order — group after group: the
+    // one the cell shows first. Projects without labels go to the bottom.
+    // A column limited to a group reads only its labels (shownColumns).
     label: "Étiquettes",
-    value: (p) =>
-      p.labels?.length ? Math.max(...p.labels.map((l) => l.weight)) : null,
+    value: (p) => labelRank(p.labels ?? [], null),
   },
   {
     key: "status",
@@ -222,9 +226,12 @@ const COLUMNS: Column[] = [
  * The columns the list widget offers to show (Display in
  * widgets/project/list.tsx).
  */
-export const PROJECT_COLUMNS: { key: ColumnKey; label: string }[] = COLUMNS.map(
-  ({ key, label }) => ({ key, label: key === "number" ? "Référence" : label }),
-);
+export const PROJECT_COLUMNS: ListColumn[] = COLUMNS.map(({ key, label }) => ({
+  key,
+  label: key === "number" ? "Référence" : label,
+  // The labels column picks the group it shows.
+  ...(key === "labels" ? { labelGroups: "/project-labels" as const } : {}),
+}));
 
 // Beyond ten options — actors, quickly numerous —, the list scrolls.
 // A menu row: its line of text, and its inset above and below.
@@ -284,12 +291,16 @@ function ColumnFilter({ label, options, value, onChange }: ColumnFilterProps) {
   );
 }
 
+/** True when the sort is that of this column — and of this group, for the labels. */
+const sameSort = (sort: Sort, key: ColumnKey, group: Id | undefined): boolean =>
+  sort.key === key && (key !== "labels" || sort.group === group);
+
 // Sort and filter are two distinct controls: the sort button only
 // covers the label, otherwise opening the filter would sort the column in passing.
 interface SortableThProps {
-  column: Column;
+  column: ShownColumn;
   sort: Sort;
-  onSort: (key: ColumnKey) => void;
+  onSort: (column: ShownColumn) => void;
   filter: ReactNode;
   handle: ReactNode;
   /** Widths are frozen by a resize. */
@@ -304,7 +315,7 @@ function SortableTh({
   handle,
   frozen,
 }: SortableThProps) {
-  const active = sort.key === column.key;
+  const active = sameSort(sort, column.key, column.group);
   const Icon = !active
     ? IconSelector
     : sort.direction === "asc"
@@ -318,7 +329,7 @@ function SortableTh({
           The minimum set on the content holds it. */}
       <Group gap={4} wrap="nowrap" miw={frozen ? undefined : column.width}>
         <UnstyledButton
-          onClick={() => onSort(column.key)}
+          onClick={() => onSort(column)}
           style={{ flex: 1, minWidth: 0 }}
         >
           <Group gap={4} wrap="nowrap" justify="space-between">
@@ -485,7 +496,7 @@ interface ProjectRowProps {
   project: Project;
   active: boolean;
   /** The columns shown, in the order the widget has set. */
-  columns: (Column & { id: string })[];
+  columns: ShownColumn[];
   onEdit: (project: Project) => void;
   onContextMenu?: (project: Project, x: number, y: number) => void;
 }
@@ -564,7 +575,16 @@ function ProjectRow({
       }}
     >
       {columns.map((column) => (
-        <Fragment key={column.id}>{CELLS[column.key](project)}</Fragment>
+        <Fragment key={column.id}>
+          {column.key === "labels" ? (
+            // Limited to a group, the column shows only its labels.
+            <Table.Td>
+              <LabelsCell labels={ofGroup(project.labels ?? [], column.group)} />
+            </Table.Td>
+          ) : (
+            CELLS[column.key](project)
+          )}
+        </Fragment>
       ))}
     </Table.Tr>
   );
@@ -614,9 +634,22 @@ export default function ProjectTable({
   // The columns the widget shows, in the set order; without a setting,
   // all of them.
   // A column can come back: "id" distinguishes each occurrence.
-  const columns = keptColumns(PROJECT_COLUMNS, config).flatMap((c) => {
+  // A labels column limited to a group sorts on that group's labels, and
+  // takes its name.
+  const labelGroups = useLabelGroups("/project-labels");
+  const columns: ShownColumn[] = keptColumns(PROJECT_COLUMNS, config).flatMap((c) => {
     const column = COLUMNS.find((col) => col.key === c.key);
-    return column ? [{ ...column, id: c.id }] : [];
+    if (!column) return [];
+    if (column.key !== "labels") return [{ ...column, id: c.id }];
+    return [
+      {
+        ...column,
+        id: c.id,
+        group: c.group,
+        label: labelsColumnTitle(labelGroups, c.group),
+        value: (p: Project) => labelRank(p.labels ?? [], c.group),
+      },
+    ];
   });
   // The widget's default widths, as long as nobody has dragged the
   // columns.
@@ -675,15 +708,18 @@ export default function ProjectTable({
     return null;
   };
 
-  const handleSort = (key: ColumnKey) =>
+  // Names and labels start from the top: A to Z, the first labels first.
+  const handleSort = ({ key, group }: ShownColumn) =>
     setSort((current) =>
-      current.key === key
-        ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
-        : { key, direction: key === "name" ? "asc" : "desc" },
+      sameSort(current, key, group)
+        ? { key, group, direction: current.direction === "asc" ? "desc" : "asc" }
+        : { key, group, direction: key === "name" || key === "labels" ? "asc" : "desc" },
     );
 
   const sorted = useMemo(() => {
-    const column = COLUMNS.find((c) => c.key === sort.key);
+    const column =
+      columns.find((c) => sameSort(sort, c.key, c.group)) ??
+      COLUMNS.find((c) => c.key === sort.key);
     if (!column) return projects;
     const factor = sort.direction === "asc" ? 1 : -1;
 
@@ -702,7 +738,10 @@ export default function ProjectTable({
         factor
       );
     });
-  }, [projects, sort]);
+    // "columns" is rebuilt on each render: the configuration it comes from is
+    // what changes it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, sort, config]);
 
   // With no project to show, the table has no reason to exist: only the empty
   // state is displayed. It then carries what is needed to undo the filters. During

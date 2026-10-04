@@ -1,13 +1,13 @@
 import { Checkbox, Stack } from "@mantine/core";
 import { IconTags } from "@tabler/icons-react";
 import { withField } from "../types";
+import { LabelGroupSelect, groupOf, labelBars } from "../label-groups";
 import { LabelBars, NameField, NAME, Nothing, IndicatorTitle, isFinished } from "./common";
-import type { Bar } from "./common";
 import type { ProjectIndicatorWidget } from "./types";
-import type { Id } from "@milo/shared";
 
 // The labels most carried by the open board's projects, each
-// in its color. Finished projects only count if asked.
+// in its color: all of them, or those of one group. Finished projects only
+// count if asked.
 
 const LABEL = "Étiquettes";
 const ALL = "include_all";
@@ -24,21 +24,9 @@ export const projectLabelsIndicator: ProjectIndicatorWidget = {
 
   Display: ({ config, projects }) => {
     const accounts = allProjects(config) ? projects : projects.filter((p) => !isFinished(p));
-    const byLabel = new Map<Id, Bar>();
-    for (const project of accounts) {
-      for (const label of project.labels) {
-        const already = byLabel.get(label.id);
-        if (already) already.value += 1;
-        else
-          byLabel.set(label.id, {
-            name: label.name,
-            value: 1,
-            color: label.color,
-          });
-      }
-    }
-    const data = [...byLabel.values()].sort(
-      (a, b) => b.value - a.value || a.name.localeCompare(b.name),
+    const data = labelBars(
+      accounts.map((p) => p.labels),
+      groupOf(config),
     );
 
     return (
@@ -52,6 +40,7 @@ export const projectLabelsIndicator: ProjectIndicatorWidget = {
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
       <NameField config={config} onChange={onChange} defaultValue={LABEL} />
+      <LabelGroupSelect base="/project-labels" config={config} onChange={onChange} />
       <Checkbox
         label="Compter aussi les projets terminés"
         checked={allProjects(config)}

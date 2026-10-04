@@ -64,6 +64,9 @@ export interface Margins {
   bottom: number;
 }
 
+/** A padding, in pixels: the same on all four sides, or side by side. */
+export type Padding = number | { Top: number; Right: number; Bottom: number; Left: number };
+
 export interface AccessWidget {
   /** What the database stores: it never changes. */
   type: AccessBlockType;
@@ -90,6 +93,11 @@ export interface AccessWidget {
   ownFrame?: boolean;
   /** True when it is framed as long as nothing is set — the attributes. */
   defaultFrame?: boolean;
+  /**
+   * Its padding while nothing is set, when it is not the attributes inset's
+   * when framed (FRAME_PADDING) and none otherwise — a clock's.
+   */
+  padding?: (config: unknown) => Padding;
   /**
    * The fields it places at the very bottom of the drawer, after the margins
    * shared by all — a link's switch, which reads like a last word.
@@ -119,6 +127,12 @@ export interface AccessWidget {
    * the address. Always true when "inlineEdit" is.
    */
   ownClicks?: boolean;
+  /**
+   * True when what the widget holds is used outside edit mode — a to-do
+   * list's items: it keeps modifying them while the screen is locked, as long
+   * as the account can modify its type.
+   */
+  liveContent?: boolean;
   /**
    * True when the element must not appear at all. A disabled link remains
    * visible while the category is open — otherwise it could no longer be

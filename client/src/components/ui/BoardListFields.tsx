@@ -1,6 +1,6 @@
-import { Group, Input, NumberInput, Stack, TextInput } from "@mantine/core";
+import { Group, Input, Stack, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconCategory, IconFlag, IconTag } from "@tabler/icons-react";
+import { IconCategory, IconFlag } from "@tabler/icons-react";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, DragEvent } from "react";
 import { api } from "../../api";
@@ -27,30 +27,29 @@ import {
   rowStyle,
 } from "./DrawerRows";
 
-// The categories or labels of the open board, in the drawer of a
-// "Projets" or "Tâches" widget, with the same look as its columns
-// (ColumnFields): one row per item, its handle for dragging, its
-// name inline, its color and its weight for a label. Right-click
-// removes it; "Ajouter" adds an empty row at the end.
+// The categories of the open board, in the drawer of a "Projets" widget,
+// with the same look as its columns (ColumnFields): one row per item, its
+// handle for dragging, its name inline. Its box selects it for deletion;
+// "Ajouter" adds an empty row at the end. The labels, gathered in groups,
+// have their own list (LabelGroupFields).
 //
 // These are not widget settings but board data: nothing is
 // sent before "Sauvegarder" (DrawerRegistrationsContext), and "Fermer"
 // leaves everything as before. What is still in use — a category that files
-// projects, a label in place — cannot be removed: the server refuses, and
+// projects — cannot be removed: the server refuses, and
 // the notification says so.
 //
 // Milestone types are set here too, under the categories, although they
 // are shared by all boards: sorted by name, they have no
 // handle, and their milestones open from their row's menu.
 
-/** What the list manages: a category, a card or project label. */
-export type ListKind = "categories" | "task-labels" | "project-labels" | "milestone-types";
+/** What the list manages: a category, a milestone type. Labels have their groups (LabelGroupFields). */
+export type ListKind = "categories" | "milestone-types";
 
 interface Element {
   id: Id;
   name: string;
   color?: string;
-  weight?: number;
   milestones?: Milestone[];
 }
 
@@ -60,7 +59,6 @@ interface Row {
   id?: Id;
   name: string;
   color: string;
-  weight: number;
 }
 
 interface ListKindInfo {
@@ -74,7 +72,6 @@ interface ListKindInfo {
   icon: ComponentType<{ size?: number; color?: string }>;
   empty: string;
   withColor: boolean;
-  withWeight: boolean;
   /** False when the server orders the list itself: no handle. */
   orderable: boolean;
   read: (boardId: Id) => Promise<Element[]>;
@@ -95,46 +92,12 @@ const KINDS: Record<ListKind, ListKindInfo> = {
     icon: IconCategory,
     empty: "Aucune catégorie",
     withColor: false,
-    withWeight: false,
     orderable: true,
     read: (boardId) => api.getCategories(String(boardId)),
     create: (boardId, l) => api.createCategory(boardId, l.name),
     updateStatement: (id, l) => api.updateCategory(id, { name: l.name }),
     remove: (id) => api.deleteCategory(id),
     store: (boardId, ids) => api.reorderCategories(boardId, ids),
-  },
-  "task-labels": {
-    title: "Étiquettes",
-    add: "Ajouter une étiquette",
-    scope: "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type tâche, du tableau actuel et uniquement pour ce tableau.",
-    nounPhrase: "l'étiquette",
-    icon: IconTag,
-    empty: "Aucune étiquette",
-    withColor: true,
-    withWeight: false,
-    orderable: true,
-    read: (boardId) => api.getLabels(boardId),
-    create: (boardId, l) => api.createLabel(boardId, l.name, l.color),
-    updateStatement: (id, l) => api.updateLabel(id, { name: l.name, color: l.color }),
-    remove: (id) => api.deleteLabel(id),
-    store: (boardId, ids) => api.reorderLabels(boardId, ids),
-  },
-  "project-labels": {
-    title: "Étiquettes",
-    add: "Ajouter une étiquette",
-    scope: "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type projet, du tableau actuel et uniquement pour ce tableau.",
-    nounPhrase: "l'étiquette",
-    icon: IconTag,
-    empty: "Aucune étiquette",
-    withColor: true,
-    withWeight: true,
-    orderable: true,
-    read: (boardId) => api.getProjectLabels(boardId),
-    create: (boardId, l) => api.createProjectLabel(boardId, l.name, l.color, l.weight),
-    updateStatement: (id, l) =>
-      api.updateProjectLabel(id, { name: l.name, color: l.color, weight: l.weight }),
-    remove: (id) => api.deleteProjectLabel(id),
-    store: (boardId, ids) => api.reorderProjectLabels(boardId, ids),
   },
   "milestone-types": {
     title: "Types de jalons",
@@ -144,7 +107,6 @@ const KINDS: Record<ListKind, ListKindInfo> = {
     icon: IconFlag,
     empty: "Aucun type de jalons",
     withColor: false,
-    withWeight: false,
     orderable: false,
     read: () => api.getMilestoneTypes(),
     create: (_boardId, l) => api.createMilestoneType(l.name),
@@ -162,7 +124,6 @@ const inline = (e: Element): Row => ({
   id: e.id,
   name: e.name,
   color: e.color ?? DEFAULT_LABEL_COLOR,
-  weight: e.weight ?? 0,
 });
 
 /**
@@ -233,8 +194,7 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
           const change =
             !o ||
             o.name !== row.name ||
-            (s.withColor && (o.color ?? DEFAULT_LABEL_COLOR) !== row.color) ||
-            (s.withWeight && (o.weight ?? 0) !== row.weight);
+            (s.withColor && (o.color ?? DEFAULT_LABEL_COLOR) !== row.color);
           if (change) await s.updateStatement(l.id, row);
           ids.push(l.id);
         }
@@ -255,7 +215,7 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
 
   const add = () => {
     const key = newKey();
-    setRows((before) => [...before, { key, name: "", color: DEFAULT_LABEL_COLOR, weight: 0 }]);
+    setRows((before) => [...before, { key, name: "", color: DEFAULT_LABEL_COLOR }]);
     setToName(key);
   };
 
@@ -378,23 +338,6 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
                   onChange={(color) => change(rank, { color })}
                   label={row.name || s.nounPhrase}
                   palettePadding={0}
-                />
-              )}
-              {s.withWeight && (
-                <NumberInput
-                  size="xs"
-                  radius={ROUNDING}
-                  w={80}
-                  placeholder="Poids"
-                  allowDecimal={false}
-                  aria-label={`Poids de ${row.name || s.nounPhrase}`}
-                  value={row.weight}
-                  onChange={(value) => change(rank, { weight: Number(value) || 0 })}
-                  onFocus={() => setInput(`${row.key}-poids`)}
-                  onBlur={() => setInput(null)}
-                  styles={
-                    input === `${row.key}-poids` ? { input: INPUT_STYLE } : undefined
-                  }
                 />
               )}
               {/* The milestones of an already created type: their count, and their modal

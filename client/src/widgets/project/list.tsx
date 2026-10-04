@@ -4,6 +4,7 @@ import { PROJECT_COLUMNS, ProjectsListWidget } from "../../components/project/Pr
 import CopyPasteActions from "../../components/ui/CopyPasteActions";
 import ColumnFields, { LIST_COLUMNS } from "../../components/ui/ColumnFields";
 import BoardListFields from "../../components/ui/BoardListFields";
+import LabelGroupFields from "../../components/ui/LabelGroupFields";
 import { useSettingsMode } from "../../lib/rights";
 import type { WidgetConfigProps } from "../types";
 import type { ProjectIndicatorWidget } from "./types";
@@ -50,7 +51,7 @@ function Settings(props: WidgetConfigProps) {
             under its columns: they go to saving, with the
             configuration. */}
         <BoardListFields kind="categories" />
-        <BoardListFields kind="project-labels" />
+        <LabelGroupFields kind="project-labels" />
         {canEditSettings && <BoardListFields kind="milestone-types" />}
       </Stack>
     </>

@@ -4,7 +4,7 @@ import { IconCalendar } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
-import classes from "../../assets/styles/AccessNumber.module.css";
+import { Frame } from "../margins";
 import { withField } from "../types";
 import type { AccessWidget } from "../types";
 import type { AccessCalendarEvent, Id } from "@milo/shared";
@@ -162,11 +162,10 @@ function CalendarWidget({ blockId, config }: { blockId: Id; config: unknown }) {
     </Stack>
   );
 
-  if (!isChecked(config, FRAMED, false)) return content;
   return (
-    <Box className={classes.inset} style={{ border: "none" }}>
+    <Frame config={config} framed={isChecked(config, FRAMED, false)}>
       {content}
-    </Box>
+    </Frame>
   );
 }
 

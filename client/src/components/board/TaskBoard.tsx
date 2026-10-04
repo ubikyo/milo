@@ -487,9 +487,9 @@ const CHECKLIST_DONE_BG = "var(--mantine-color-teal-filled)";
 // stuck-together checkboxes read as a block, whereas they are checked one by one.
 const CHECKLIST_PANEL_RULE = "1px solid var(--mantine-color-default-border)";
 const CHECKLIST_PANEL_MARGIN = 10;
-const CHECKLIST_PANEL_PAD = 10;
-const CHECKLIST_PANEL_BOTTOM = 15;
-const CHECKLIST_ITEM_GAP = 8;
+const CHECKLIST_PANEL_PAD = 16;
+const CHECKLIST_PANEL_BOTTOM = 3;
+const CHECKLIST_ITEM_GAP = 9;
 
 interface CardChecklistBadgeProps {
   card: TaskCard;
@@ -546,7 +546,13 @@ function CardChecklistPanel({ card, onCheck }: CardChecklistPanelProps) {
       pt={CHECKLIST_PANEL_PAD}
       pb={CHECKLIST_PANEL_BOTTOM}
       mt={CHECKLIST_PANEL_MARGIN}
-      style={{ borderTop: CHECKLIST_PANEL_RULE }}
+      px="xs"
+      // The rule runs edge to edge, like the cover: it eats the card's inset
+      // ("xs"), given back to the rows by the padding.
+      style={{
+        borderTop: CHECKLIST_PANEL_RULE,
+        marginInline: "calc(-1 * var(--mantine-spacing-xs))",
+      }}
     >
       {remaining.map((item) => (
         <Checkbox

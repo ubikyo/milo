@@ -1,12 +1,11 @@
 import { Stack } from "@mantine/core";
 import { IconTags } from "@tabler/icons-react";
-import { LabelBars, NAME, Nothing, IndicatorTitle, tasksOf } from "./common";
-import type { Bar } from "./common";
+import { LabelGroupSelect, groupOf, labelBars } from "../label-groups";
+import { LabelBars, NameField, NAME, Nothing, IndicatorTitle, tasksOf } from "./common";
 import type { TaskIndicatorWidget } from "./types";
-import type { Id } from "@milo/shared";
 
 // The labels most carried by the open board's cards, each
-// in its color.
+// in its color: all of them, or those of one group.
 
 const LABEL = "Étiquettes";
 
@@ -18,21 +17,9 @@ export const taskLabelsIndicator: TaskIndicatorWidget = {
   defaultConfig: { [NAME]: "" },
 
   Display: ({ config, lists }) => {
-    const byLabel = new Map<Id, Bar>();
-    for (const card of tasksOf(lists)) {
-      for (const label of card.labels) {
-        const already = byLabel.get(label.id);
-        if (already) already.value += 1;
-        else
-          byLabel.set(label.id, {
-            name: label.name,
-            value: 1,
-            color: label.color,
-          });
-      }
-    }
-    const data = [...byLabel.values()].sort(
-      (a, b) => b.value - a.value || a.name.localeCompare(b.name),
+    const data = labelBars(
+      tasksOf(lists).map((c) => c.labels),
+      groupOf(config),
     );
 
     return (
@@ -42,4 +29,11 @@ export const taskLabelsIndicator: TaskIndicatorWidget = {
       </Stack>
     );
   },
+
+  Config: ({ config, onChange }) => (
+    <Stack gap="xl">
+      <NameField config={config} onChange={onChange} defaultValue={LABEL} />
+      <LabelGroupSelect base="/labels" config={config} onChange={onChange} />
+    </Stack>
+  ),
 };

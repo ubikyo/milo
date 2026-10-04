@@ -1,55 +1,34 @@
 import {
   ActionIcon,
   Avatar,
+  Badge,
   Box,
+  Collapse,
   Group,
-  Menu,
-  ScrollArea,
-  Select,
   Stack,
   Text,
-  Tooltip,
   UnstyledButton,
 } from "@mantine/core";
-import {
-  IconCheck,
-  IconEye,
-  IconMinus,
-  IconPencil,
-  IconShieldLock,
-  IconUser,
-  IconUsersGroup,
-  IconX,
-} from "@tabler/icons-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
-import scroll from "../../assets/styles/ListScroll.module.css";
+import { IconChevronDown, IconUser, IconUsersGroup } from "@tabler/icons-react";
+import { useCallback, useEffect, useState } from "react";
+import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import {
   ROUNDING,
-  RowButton,
   RowCheckbox,
+  RowCheckboxSpace,
   ListFooter,
   useRowSelection,
   EmptyList,
   ROW_INSET,
   NAME_INSET,
-  INPUT_STYLE,
+  HEADER_BACKGROUND,
   nameFieldStyle,
   rowStyle,
 } from "../ui/DrawerRows";
-import PointMenu, {
-  menuPosition,
-  type PointMenuPosition,
-} from "../ui/PointMenu";
 import DirectoryPicker from "./DirectoryPicker";
-import PrincipalPermissionsModal from "./PrincipalPermissionsModal";
-import type {
-  PermissionRow,
-  SectionPermissions,
-} from "./PrincipalPermissionsModal";
+import PrincipalSelect from "./PrincipalSelect";
 import { errorMessage, notifyError } from "../../lib/errors";
-import { GREEN } from "../../themes/colors";
 import type { EntraPrincipal, PrincipalPermissions } from "@milo/shared";
 
 /** The background of a row's icon: a neutral gray, darker than the row. */
@@ -64,230 +43,94 @@ const EXTRA_PADDING = 5;
  */
 const ROW_HEIGHT = `calc(${2 * (ROW_INSET + EXTRA_PADDING)}px + (var(--mantine-font-size-sm) + var(--mantine-font-size-xs)) * var(--mantine-line-height))`;
 
+/** The gap between a row's elements ("sm"). */
+const GAP = 12;
+
+/** The chevron's room, in front of the icon. */
+const CHEVRON_SIZE = 16;
+
+/**
+ * The room right of a row's checkbox, up to the chevron — tighter than its
+ * own margin (2 px) and the row's gap: the chevron is pulled back by the
+ * difference.
+ */
+const AFTER_CHECKBOX = 10;
+
+/** The room between unfolded permissions and the next principal. */
+const UNFOLDED_SPACE = 30;
+
+/**
+ * "Ajouter" under the last one unfolded, stacked under its own: a shorter
+ * button, drawn up against it — its text a line below the other's.
+ */
+const STACKED_HEIGHT = 20;
+const STACKED_OFFSET = -5;
+
+/** The top of a stack's first row, rounded. */
+const ROUNDED_TOP = (({ borderTopLeftRadius, borderTopRightRadius }) => ({
+  borderTopLeftRadius,
+  borderTopRightRadius,
+}))(rowStyle(0, 2, false));
+
+/** The unfolding's duration: that of Mantine's accordions. */
+const UNFOLD_DURATION = 200;
+
+/** The chevron's background on hover: a neutral gray, darker than the header. */
+const CHEVRON_HOVER = "light-dark(#cdcdcd, var(--mantine-color-dark-4))";
+
 const key = (p: EntraPrincipal) => `${p.type}:${p.id}`;
 
 interface PrincipalsPermissionsProps<T> {
   load: () => Promise<PrincipalPermissions<T>[]>;
   /** Saves a principal's permissions; returns the updated list. */
-  save: (
-    principal: EntraPrincipal,
-    permissions: T,
-  ) => Promise<PrincipalPermissions<T>[]>;
-  /** Removes everything from it; returns the updated list. */
+  save: (principal: EntraPrincipal, permissions: T) => Promise<PrincipalPermissions<T>[]>;
+  /** Removes it from the list; returns the updated list. */
   remove: (principal: EntraPrincipal) => Promise<PrincipalPermissions<T>[]>;
   /** Those of someone coming from the directory: none. */
   empty: () => T;
   /** What it has, at a glance, at the end of its row. */
   summary: (permissions: T) => string;
   /**
-   * The permissions modal (PrincipalPermissionsModal). Without it, the
-   * permissions are set on the row (inline): no modal, no right-click
-   * menu ("Permissions").
+   * Its permissions, unfolded under its row by the chevron in front of the
+   * user or group (SectionRights).
    */
-  sections?: (
+  details: (
     permissions: T,
     change: (permissions: T) => void,
-  ) => SectionPermissions[];
-  /**
-   * A few permissions, set inline in the row rather than in the
-   * modal: those of the administration — Workspaces, Paramétrage. The add
-   * row carries them too, to the right of the search: you pick who, then
-   * what they have, in one go.
-   */
-  /**
-   * With "inline": permissions that may be numerous — one per widget
-   * type —, in columns under a header that names them, rather than
-   * named in each choice. Beyond the width, the list scrolls
-   * sideways.
-   */
-  inColumns?: boolean;
-  inline?: (
-    permissions: T,
-    change: (permissions: T) => void,
-  ) => PermissionRow[];
+    entry: PrincipalPermissions<T>,
+  ) => ReactNode;
   emptyText: string;
   /**
-   * The action that removes everything from it, and its confirmation — for
-   * one principal; several are named in a message built from the label.
+   * The action that removes it, and its confirmation — for one principal;
+   * several are named in a message built from the label.
    */
   removeDialog: { label: string; message: (name: string) => ReactNode };
+  /** Read-only: no adding, no removal, no change. */
+  readOnly?: boolean;
+  /** Empty, the list takes the whole free height, its prompt centered in it. */
+  fillEmpty?: boolean;
   /**
-   * After a save or a removal: its own rights may have changed
-   * — one more workspace in its selector, for example.
+   * Those that can be added, picked from a list — the workspace's users and
+   * groups, for a view's sharing. Without it, the Entra directory is searched.
    */
-  onChange?: () => void;
-}
-
-/** Width of a permission choice on the row: wide enough to read "Modifier". */
-const CHOICE_WIDTH = 130;
-
-/**
- * In columns: the width of a column — wide enough to read "Support" in the
- * header —, and the gap between two.
- */
-const COLUMN_WIDTH = 52;
-const COLUMNS_GAP = 4;
-/** The gap between a row's elements ("sm"), which the header reuses. */
-const GAP = 12;
-
-/** The background of a read permission: the neutral gray of the row buttons. */
-const READ_BACKGROUND = "light-dark(#d4d4d4, var(--mantine-color-dark-4))";
-
-/** The side of a yes/no box, smaller than a level's button, and its icon. */
-const CHECK_SIZE = 20;
-const CHECK_ICON_SIZE = 14;
-
-/** A level's icon: none, read, edit; otherwise, its initial. */
-const LEVEL_ICONS: Record<string, typeof IconMinus> = {
-  "": IconMinus,
-  view: IconEye,
-  update: IconPencil,
-};
-
-/**
- * A permission's level, in a column: a small button that moves to the
- * next on each click — Aucun, Lire, Modifier, then Aucun. None: a faded
- * dash; read: an eye on the neutral gray; edit: a pencil on the
- * application's green. The tooltip says which.
- */
-function LevelButton({
-  name,
-  options,
-  value,
-  onChange,
-  disabled,
-}: PermissionRow) {
-  const rank = Math.max(
-    0,
-    options.findIndex((o) => o.value === value),
-  );
-  const current = options[rank];
-  const next = options[(rank + 1) % options.length];
-  // A yes/no is a small checkbox: a check on green, or a cross on red when
-  // refused. A widget type's levels have their own icon.
-  const yesNo = options.some((o) => o.label === "Oui");
-  const refused = yesNo && !value;
-  const Icon =
-    current?.label === "Oui" ? IconCheck : refused ? IconX : LEVEL_ICONS[value];
-  const background =
-    value === "update"
-      ? GREEN
-      : refused
-        ? "var(--mantine-color-red-6)"
-        : value
-          ? READ_BACKGROUND
-          : "transparent";
-  const color =
-    value === "update" || refused
-      ? "#ffffff"
-      : value
-        ? "var(--mantine-color-text)"
-        : "var(--mantine-color-dimmed)";
-  return (
-    // A yes/no box speaks for itself: no tooltip.
-    <Tooltip
-      label={`${name} : ${current?.label ?? ""}`}
-      disabled={yesNo}
-      withinPortal
-    >
-      <ActionIcon
-        variant="filled"
-        radius={3}
-        size={yesNo ? CHECK_SIZE : undefined}
-        onClick={() => next && onChange(next.value)}
-        disabled={disabled}
-        aria-label={`${name} : ${current?.label ?? ""}. Passer à ${next?.label ?? ""}`}
-        style={{ backgroundColor: background, color: color }}
-      >
-        {Icon ? (
-          <Icon size={yesNo ? CHECK_ICON_SIZE : 16} />
-        ) : (
-          <Text size="xs" fw={600}>
-            {current?.label.charAt(0)}
-          </Text>
-        )}
-      </ActionIcon>
-    </Tooltip>
-  );
-}
-
-/** The levels of a row in columns, each centered under its header. */
-function LevelsInColumns({ rows }: { rows: PermissionRow[] }) {
-  return (
-    <Group gap={COLUMNS_GAP} wrap="nowrap" style={{ flexShrink: 0 }}>
-      {rows.map((l) => (
-        <Box
-          key={l.name}
-          w={l.width ?? COLUMN_WIDTH}
-          style={{ display: "flex", justifyContent: "center" }}
-        >
-          <LevelButton {...l} />
-        </Box>
-      ))}
-    </Group>
-  );
-}
-
-// "Aucun" cannot be a Select's empty value: it needs its own.
-const NONE = "none";
-
-/**
- * The permissions set inline in the row (inline): one choice each, its
- * name as a prompt — "Workspaces", "Paramétrage" —, at the end of the row.
- */
-function InlineChoice({
-  rows,
-  inColumns,
-}: {
-  rows: PermissionRow[];
-  /** In columns: the name is in the header, not in the choice. */
-  inColumns?: boolean;
-}) {
-  const [entered, setEntered] = useState<string | null>(null);
-  if (inColumns) return <LevelsInColumns rows={rows} />;
-  return (
-    <>
-      {rows.map(({ name, options, value, onChange, disabled, width }) => (
-        <Select
-          key={name}
-          aria-label={name}
-          // Its name in front of the value: "Workspaces : Modifier".
-          leftSection={
-            <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
-              {name}
-            </Text>
-          }
-          leftSectionWidth={name.length * 6.5 + 14}
-          data={options.map((o) => ({
-            value: o.value || NONE,
-            label: o.label,
-          }))}
-          value={value || NONE}
-          onChange={(v) => onChange(v === NONE || !v ? "" : v)}
-          allowDeselect={false}
-          disabled={disabled}
-          size="xs"
-          radius={ROUNDING}
-          w={width ?? CHOICE_WIDTH + name.length * 6.5}
-          style={{ flexShrink: 0 }}
-          comboboxProps={{ withinPortal: true }}
-          onFocus={() => setEntered(name)}
-          onBlur={() => setEntered(null)}
-          styles={entered === name ? { input: INPUT_STYLE } : undefined}
-        />
-      ))}
-    </>
-  );
+  candidates?: EntraPrincipal[];
+  /**
+   * The account itself, and its groups, can be neither removed nor replaced
+   * — the administration. Otherwise they are only tagged.
+   */
+  protectOwn?: boolean;
 }
 
 /**
  * Entra users and groups and their permissions: the access of a workspace
  * (WorkspaceAccess), the application's administration (AdministrationTab).
- * They look like the drawer lists (ColumnFields): one row each, its name, its
- * address if it has one, and at the end the button that summarizes its
- * permissions and opens their modal — right-click opens it too. Checked rows
- * lose everything together; "Ajouter" adds a row that searches the directory, and
- * choosing immediately opens the permissions modal.
+ * They look like a checklist: one header row each — its name, its address if
+ * it has one, how many permissions it has —, its permissions unfolded below
+ * by a chevron. Checked rows are removed together; "Ajouter" adds a row that
+ * searches the directory: whoever is chosen enters the list without any
+ * permission, unfolded to receive them. Clicking a name puts someone else in
+ * its place. The account itself, and its groups ("own"), are tagged — and,
+ * with "protectOwn", can be neither removed nor replaced.
  */
 export default function PrincipalsPermissions<T>({
   load,
@@ -295,86 +138,39 @@ export default function PrincipalsPermissions<T>({
   remove,
   empty,
   summary,
-  sections,
-  inline,
-  inColumns = false,
+  details,
   emptyText,
   removeDialog,
-  onChange,
+  readOnly = false,
+  protectOwn = true,
+  fillEmpty = false,
+  candidates,
 }: PrincipalsPermissionsProps<T>) {
   const [access, setAccess] = useState<PrincipalPermissions<T>[]>([]);
-  // The one whose permissions modal is open: a principal from the list,
-  // or the one just chosen from the directory.
-  const [permissionsOf, setPermissionsOf] = useState<EntraPrincipal | null>(
-    null,
-  );
   // Those awaiting confirmation of their removal.
   const [pendingDelete, setPendingDelete] = useState<EntraPrincipal[]>([]);
-  // The added row, where the directory is searched — and, set inline in
-  // the row, the permissions given to it.
+  // The added row, where the directory is searched.
   const [adding, setAdding] = useState(false);
-  const [newValue, setNewEntry] = useState<EntraPrincipal | null>(null);
-  const [newItems, setNewValues] = useState<T>(empty);
-  const addRow = useRef<HTMLDivElement | null>(null);
-
   // The row whose user or group is being changed, by clicking its name.
   const [toReplace, setToReplace] = useState<string | null>(null);
+  // The rows unfolded, by key.
+  const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(new Set());
 
-  /**
-   * Another one in its place: it receives the same permissions, then the
-   * old one loses theirs. If it already had a row, its permissions are
-   * replaced by these.
-   */
-  const replaceExisting = async (
-    old: EntraPrincipal,
-    newValue: EntraPrincipal,
-    permissions: T,
-  ) => {
-    try {
-      await save(newValue, permissions);
-      setAccess(await remove(old));
-      onChange?.();
-    } catch (e) {
-      notifyError(errorMessage(e));
-      void reload();
-    }
-  };
-
-  const closeAdd = () => {
-    setAdding(false);
-    setNewEntry(null);
-    setNewValues(empty());
-  };
-
-  /** Immediately saves permissions set on the row. */
-  const handleSave = async (principal: EntraPrincipal, permissions: T) => {
-    try {
-      setAccess(await save(principal, permissions));
-      onChange?.();
-      return true;
-    } catch (e) {
-      notifyError(errorMessage(e));
-      return false;
-    }
-  };
-
-  /**
-   * The add row is submitted as soon as it has a who and at least one
-   * permission: the order matters little, search first or permissions.
-   */
-  const tryAdd = async (
-    principal: EntraPrincipal | null,
-    permissions: T,
-  ) => {
-    if (!principal || !inline) return;
-    if (inline(permissions, () => {}).every((l) => !l.value)) return;
-    if (await handleSave(principal, permissions)) closeAdd();
-  };
-  // Only with the permissions modal (sections): its "Permissions" entry.
-  const [menu, setMenu] = useState<{
-    principal: EntraPrincipal;
-    position: PointMenuPosition;
-  } | null>(null);
+  /** Is the row at this rank the last of the list, unfolded? */
+  const lastUnfolded = (rank: number) =>
+    !adding &&
+    rank >= 0 &&
+    rank === access.length - 1 &&
+    unfolded.has(key(access[rank]!.principal));
+  /** Does the row at this rank follow an unfolded one? */
+  const afterUnfolded = (rank: number) =>
+    rank > 0 && unfolded.has(key(access[rank - 1]!.principal));
+  const toggleUnfolded = (k: string) =>
+    setUnfolded((before) => {
+      const next = new Set(before);
+      if (!next.delete(k)) next.add(k);
+      return next;
+    });
 
   const reload = useCallback(async () => {
     try {
@@ -388,19 +184,30 @@ export default function PrincipalsPermissions<T>({
     reload();
   }, [reload]);
 
-  const current = permissionsOf
-    ? access.find((a) => key(a.principal) === key(permissionsOf))
-    : undefined;
-  // Someone coming from the directory has none yet: none.
-  const initials = current?.permissions ?? empty();
-
-  const total = access.length + (adding ? 1 : 0);
-  const selection = useRowSelection(access.map((a) => key(a.principal)));
+  const handleSave = async (principal: EntraPrincipal, permissions: T) => {
+    try {
+      setAccess(await save(principal, permissions));
+    } catch (e) {
+      notifyError(errorMessage(e));
+    }
+  };
 
   /**
-   * Removes the checked principals, one call each: the last answer is the
-   * updated list. On error, the list is reread.
+   * Another one in its place: it receives the same permissions, then the
+   * old one leaves. If it already had a row, its permissions are replaced
+   * by these.
    */
+  const replaceExisting = async (old: EntraPrincipal, other: EntraPrincipal, permissions: T) => {
+    try {
+      await save(other, permissions);
+      setAccess(await remove(old));
+    } catch (e) {
+      notifyError(errorMessage(e));
+      void reload();
+    }
+  };
+
+  /** Removes the checked principals, one call each: the last answer is the updated list. */
   const removeAll = async (list: EntraPrincipal[]) => {
     try {
       for (const principal of list) setAccess(await remove(principal));
@@ -408,8 +215,10 @@ export default function PrincipalsPermissions<T>({
       notifyError(errorMessage(e));
       void reload();
     }
-    onChange?.();
   };
+
+  const total = access.length + (adding ? 1 : 0);
+  const selection = useRowSelection(access.map((a) => key(a.principal)));
 
   /** « A », « B » et « C ». */
   const names = (list: EntraPrincipal[]) => {
@@ -420,270 +229,277 @@ export default function PrincipalsPermissions<T>({
   };
   // "Retirer l'accès" → "retirer l'accès", in the middle of a sentence.
   const action = removeDialog.label.charAt(0).toLowerCase() + removeDialog.label.slice(1);
-  // A row's name takes what the permissions leave it, at the end.
+  // A row's name takes what the summary leaves it, at the end.
   const nameStyle = { flex: 1, minWidth: 0 };
 
-  return (
-    <Stack gap="sm">
-      <div>
-        {total === 0 ? (
-          <EmptyList icon={IconUsersGroup} message={emptyText} />
-        ) : (
-          <ScrollArea
-            type="auto"
-            scrollbars={inColumns ? "x" : false}
-            classNames={{
-              scrollbar: scroll.scrollbar,
-              thumb: scroll.thumb,
-            }}
+  /** Its name, and a user's address under it; a group only has its name — its icon says what it is. */
+  const identity = (principal: EntraPrincipal, own?: boolean) => (
+    <>
+      <Group gap={6} wrap="nowrap">
+        <Text size="sm" truncate>
+          {principal.name || principal.email}
+        </Text>
+        {/* Oneself, or one's group: a green tag says so, as the VLAN's in Assets. */}
+        {own && (
+          <Badge
+            color="green"
+            variant="filled"
+            size="sm"
+            radius="sm"
+            tt="none"
+            style={{ flexShrink: 0 }}
           >
-            {inColumns && inline && (
-              // The columns header: the name of each permission, above
-              // its choices.
-              <Group
-                gap={GAP}
-                wrap="nowrap"
-                pb={4}
-                style={{
-                  paddingLeft: NAME_INSET,
-                  paddingRight: ROW_INSET,
-                }}
-              >
-                {/* The space of the icon and the name: the columns line up at the
-                    end, like the rows' levels. */}
-                <Box style={{ flex: 1 }} />
-                <Group
-                  gap={COLUMNS_GAP}
-                  wrap="nowrap"
-                  style={{ flexShrink: 0 }}
-                >
-                  {inline(empty(), () => {}).map((l) => (
-                    <Text
-                      key={l.name}
-                      size="xs"
-                      fw={500}
-                      c="dimmed"
-                      w={l.width ?? COLUMN_WIDTH}
-                      ta="center"
-                      truncate
-                    >
-                      {l.name}
-                    </Text>
-                  ))}
-                </Group>
-              </Group>
-            )}
-            <Stack gap={1}>
-              {access.map(({ principal, permissions }, rank) => (
-                <Group
-                  key={key(principal)}
-                  gap="sm"
-                  wrap="nowrap"
-                  onContextMenu={
-                    sections
-                      ? (e) => setMenu({ principal, position: menuPosition(e) })
-                      : undefined
-                  }
-                  style={{
-                    ...rowStyle(rank, total, false),
-                    paddingLeft: NAME_INSET,
-                    // On two lines, name and address: a bit more air.
-                    paddingBlock: ROW_INSET + EXTRA_PADDING,
-                    // A group, with no address, keeps the height of a
-                    // user: all rows are equal.
-                    minHeight: ROW_HEIGHT,
-                  }}
-                >
-                  {/* First, before the icon: the columns line up at the end
-                      of the row, they do not move. */}
-                  <RowCheckbox
-                    label={`Sélectionner ${principal.name || principal.email}`}
-                    checked={selection.isChecked(key(principal))}
-                    onChange={(on) => selection.toggle(key(principal), on)}
-                  />
-                  {/* A neutral gray behind the icon: Mantine's grays lean
-                    blue. */}
-                  <Avatar
-                    size={28}
-                    radius="xl"
-                    styles={{
-                      root: { flexShrink: 0 },
-                      placeholder: {
-                        backgroundColor: AVATAR_BACKGROUND,
-                        color: "var(--mantine-color-text)",
-                      },
+            {principal.type === "group" ? "Groupe courant" : "Utilisateur courant"}
+          </Badge>
+        )}
+      </Group>
+      {principal.type !== "group" && principal.email && (
+        <Text size="xs" c="dimmed" truncate>
+          {principal.email}
+        </Text>
+      )}
+    </>
+  );
+
+  const filled = fillEmpty && total === 0;
+  const stacked = lastUnfolded(access.length - 1);
+
+  // Those not yet listed, when they are picked from a given list.
+  const available = (candidates ?? []).filter(
+    (c) => !access.some((a) => key(a.principal) === key(c)),
+  );
+  const pickerPlaceholder = candidates
+    ? "Choisir un utilisateur ou un groupe"
+    : "Chercher un utilisateur ou un groupe Entra";
+  /** The directory search, or the given list without those already listed. */
+  const picker = (props: ComponentProps<typeof DirectoryPicker>) => {
+    if (!candidates) return <DirectoryPicker {...props} />;
+    const { resetOnSelect, groupsOnly: _groupsOnly, ...rest } = props;
+    return (
+      <PrincipalSelect
+        candidates={available}
+        {...rest}
+        // Restart from an empty field after each choice.
+        {...(resetOnSelect ? { value: null } : null)}
+      />
+    );
+  };
+
+  return (
+    <Stack gap="sm" style={filled ? { flex: 1 } : undefined}>
+      <div style={filled ? { flex: 1, display: "flex", flexDirection: "column" } : undefined}>
+        {total === 0 ? (
+          <EmptyList icon={IconUsersGroup} message={emptyText} fill={filled} />
+        ) : (
+          <Stack gap={1}>
+            {access.map((entry, rank) => {
+              const { principal, permissions, own } = entry;
+              const open = unfolded.has(key(principal));
+              const locked = own && protectOwn;
+              return (
+                // One block per principal: folded, the panel adds no gap to the list's.
+                <div key={key(principal)}>
+                  <Group
+                    gap="sm"
+                    wrap="nowrap"
+                    style={{
+                      ...rowStyle(rank, total, false),
+                      // After an unfolded one, a block of its own: rounded at the top.
+                      ...(afterUnfolded(rank) ? ROUNDED_TOP : null),
+                      // A header above its permissions: the darker gray of a
+                      // checklist's title, square at the bottom when they are
+                      // unfolded against it.
+                      backgroundColor: HEADER_BACKGROUND,
+                      ...(open ? { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 } : null),
+                      paddingLeft: NAME_INSET,
+                      // On two lines, name and address: a bit more air.
+                      paddingBlock: ROW_INSET + EXTRA_PADDING,
+                      // A group, with no address, keeps the height of a user:
+                      // all rows are equal.
+                      minHeight: ROW_HEIGHT,
                     }}
                   >
-                    {principal.type === "group" ? (
-                      <IconUsersGroup size={16} />
-                    ) : (
-                      <IconUser size={16} />
-                    )}
-                  </Avatar>
-                  {toReplace === key(principal) ? (
-                    // Another one from the directory in its place, with its permissions.
-                    // Left without a choice, the search returns the row as it was.
-                    <DirectoryPicker
-                      aria-label={`Remplacer ${principal.name}`}
-                      placeholder="Chercher un utilisateur ou un groupe Entra"
-                      value={principal}
-                      onChange={(other) => {
-                        setToReplace(null);
-                        if (other && key(other) !== key(principal)) {
-                          void replaceExisting(principal, other, permissions);
-                        }
-                      }}
-                      onBlur={() => setToReplace(null)}
-                      autoFocus
-                      size="sm"
-                      radius={ROUNDING}
-                      style={nameStyle}
-                      styles={{ input: nameFieldStyle(true) }}
-                      comboboxProps={{ withinPortal: true }}
-                    />
-                  ) : (
-                    <UnstyledButton
-                      onClick={() => setToReplace(key(principal))}
-                      title="Changer d'utilisateur ou de groupe"
-                      style={nameStyle}
+                    {/* Oneself, or one's group, cannot be removed: an empty
+                        space keeps the row aligned. */}
+                    {!readOnly &&
+                      (locked ? (
+                        <RowCheckboxSpace />
+                      ) : (
+                        <RowCheckbox
+                          label={`Sélectionner ${principal.name || principal.email}`}
+                          checked={selection.isChecked(key(principal))}
+                          onChange={(on) => selection.toggle(key(principal), on)}
+                        />
+                      ))}
+                    {/* Unfolds its permissions under the row, and folds them back. */}
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      size={CHEVRON_SIZE + 4}
+                      // A neutral gray on hover, darker than the header:
+                      // Mantine's grays lean blue.
+                      style={
+                        {
+                          "--ai-hover": CHEVRON_HOVER,
+                          marginLeft: readOnly ? 0 : AFTER_CHECKBOX - 2 - GAP,
+                        } as CSSProperties
+                      }
+                      onClick={() => toggleUnfolded(key(principal))}
+                      aria-expanded={open}
+                      aria-label={`Permissions de ${principal.name || principal.email}`}
                     >
-                      <Text size="sm" truncate>
-                        {principal.name || principal.email}
-                      </Text>
-                      {/* A user's address under their name; a group only has
-                      its name — its icon says what it is. */}
-                      {principal.type !== "group" && principal.email && (
-                        <Text size="xs" c="dimmed" truncate>
-                          {principal.email}
-                        </Text>
+                      {/* Down when folded, up when unfolded — turning with
+                          the panel, like the accordions. */}
+                      <IconChevronDown
+                        size={CHEVRON_SIZE}
+                        style={{
+                          transform: open ? "rotate(180deg)" : undefined,
+                          transition: `transform ${UNFOLD_DURATION}ms ease`,
+                        }}
+                      />
+                    </ActionIcon>
+                    {/* A neutral gray behind the icon: Mantine's grays lean blue. */}
+                    <Avatar
+                      size={28}
+                      radius="xl"
+                      styles={{
+                        root: { flexShrink: 0 },
+                        placeholder: {
+                          backgroundColor: AVATAR_BACKGROUND,
+                          color: "var(--mantine-color-text)",
+                        },
+                      }}
+                    >
+                      {principal.type === "group" ? (
+                        <IconUsersGroup size={16} />
+                      ) : (
+                        <IconUser size={16} />
                       )}
-                    </UnstyledButton>
-                  )}
-
-                  {inline ? (
-                    // Its permissions inline in the row: they are sent on choice.
-                    <InlineChoice
-                      inColumns={inColumns}
-                      rows={inline(
-                        permissions,
-                        (p) => void handleSave(principal, p),
-                      )}
-                    />
-                  ) : (
-                    // What it has, at a glance, and its modal on click.
-                    <RowButton
-                      icon={IconShieldLock}
-                      onClick={() => setPermissionsOf(principal)}
+                    </Avatar>
+                    {toReplace === key(principal) ? (
+                      // Another one — from the directory, or the given list —
+                      // in its place, with its
+                      // permissions. Left without a choice, the search returns
+                      // the row as it was.
+                      picker({
+                        "aria-label": `Remplacer ${principal.name}`,
+                        placeholder: pickerPlaceholder,
+                        value: principal,
+                        onChange: (other) => {
+                          setToReplace(null);
+                          if (other && key(other) !== key(principal)) {
+                            void replaceExisting(principal, other, permissions);
+                          }
+                        },
+                        onBlur: () => setToReplace(null),
+                        autoFocus: true,
+                        size: "sm",
+                        radius: ROUNDING,
+                        style: nameStyle,
+                        styles: { input: nameFieldStyle(true) },
+                        comboboxProps: { withinPortal: true },
+                      })
+                    ) : readOnly || locked ? (
+                      // Not replaced either: that would remove it.
+                      <Box style={nameStyle}>{identity(principal, own)}</Box>
+                    ) : (
+                      <UnstyledButton
+                        onClick={() => setToReplace(key(principal))}
+                        title="Changer d'utilisateur ou de groupe"
+                        style={nameStyle}
+                      >
+                        {identity(principal, own)}
+                      </UnstyledButton>
+                    )}
+                    {/* What it has, at a glance, at the end of the row, as far
+                        from the right edge as the checkbox from the left. */}
+                    <Text
+                      size="xs"
+                      c="dimmed"
+                      style={{ flexShrink: 0, marginRight: NAME_INSET - ROW_INSET }}
                     >
                       {summary(permissions)}
-                    </RowButton>
-                  )}
-                </Group>
-              ))}
-              {adding && (
-                <Group
-                  ref={addRow}
-                  gap="sm"
-                  wrap="nowrap"
-                  // Left without choosing anything, the row disappears. Going from
-                  // the search to the permissions does not leave it.
-                  onBlur={(e) => {
-                    if (
-                      addRow.current?.contains(
-                        e.relatedTarget as Node | null,
-                      )
-                    )
-                      return;
-                    if (inline && newValue) return;
-                    closeAdd();
-                  }}
-                  style={{
-                    ...rowStyle(total - 1, total, false),
-                    paddingLeft: ROW_INSET,
-                  }}
-                >
-                  <DirectoryPicker
-                    aria-label="Ajouter un utilisateur ou un groupe"
-                    placeholder="Chercher un utilisateur ou un groupe Entra"
-                    value={inline ? newValue : null}
-                    resetOnSelect={!inline}
-                    // With inline permissions, the choice stays in the field
-                    // while they are set on the right. Otherwise, choosing opens
-                    // the permissions modal: it only enters the list once
-                    // saved.
-                    onChange={(principal) => {
-                      if (inline) {
-                        setNewEntry(principal);
-                        void tryAdd(principal, newItems);
-                        return;
-                      }
-                      if (!principal) return;
-                      closeAdd();
-                      setPermissionsOf(principal);
-                    }}
-                    autoFocus
-                    size="sm"
-                    radius={ROUNDING}
-                    style={{ flex: 1, minWidth: 0 }}
-                    styles={{ input: nameFieldStyle(true) }}
-                    comboboxProps={{ withinPortal: true }}
-                  />
-                  {inline && (
-                    <InlineChoice
-                      inColumns={inColumns}
-                      rows={inline(newItems, (p) => {
-                        setNewValues(p);
-                        void tryAdd(newValue, p);
-                      })}
-                    />
-                  )}
-                </Group>
-              )}
-            </Stack>
-          </ScrollArea>
+                    </Text>
+                  </Group>
+                  {/* Right under the row, from its left edge: its permissions,
+                      then some air before the next one. They unfold like the
+                      accordions (Assets). */}
+                  <Collapse
+                    expanded={open}
+                    transitionDuration={UNFOLD_DURATION}
+                    keepMounted={false}
+                  >
+                    <Box
+                      // The last one has nothing below it but "Ajouter": no
+                      // room, the two buttons stack up.
+                      style={{
+                        paddingTop: 1,
+                        paddingBottom: lastUnfolded(rank) ? 0 : UNFOLDED_SPACE,
+                      }}
+                    >
+                      {details(permissions, (p) => void handleSave(principal, p), entry)}
+                    </Box>
+                  </Collapse>
+                </div>
+              );
+            })}
+            {adding && (
+              <Group
+                gap="sm"
+                wrap="nowrap"
+                style={{
+                  ...rowStyle(total - 1, total, false),
+                  ...(afterUnfolded(access.length) ? ROUNDED_TOP : null),
+                  paddingLeft: ROW_INSET,
+                }}
+              >
+                {picker({
+                  "aria-label": "Ajouter un utilisateur ou un groupe",
+                  placeholder: pickerPlaceholder,
+                  value: null,
+                  resetOnSelect: true,
+                  // Chosen, it enters the list right away, without any
+                  // permission, unfolded to receive them.
+                  onChange: (principal) => {
+                    if (!principal) return;
+                    setAdding(false);
+                    setUnfolded((before) => new Set(before).add(key(principal)));
+                    void handleSave(principal, empty());
+                  },
+                  // Left without choosing anything, the row disappears.
+                  onBlur: () => setAdding(false),
+                  autoFocus: true,
+                  size: "sm",
+                  radius: ROUNDING,
+                  style: { flex: 1, minWidth: 0 },
+                  styles: { input: nameFieldStyle(true) },
+                  comboboxProps: { withinPortal: true },
+                })}
+              </Group>
+            )}
+          </Stack>
         )}
         {/* As close as possible to the list it extends. */}
-        <ListFooter
-          addLabel="Ajouter un utilisateur ou un groupe"
-          onAdd={() => setAdding(true)}
-          checkedCount={selection.checked.length}
-          onDeleteChecked={() =>
-            setPendingDelete(
-              access
-                .map((a) => a.principal)
-                .filter((p) => selection.isChecked(key(p))),
-            )
-          }
-        />
+        {!readOnly && (
+          // Stacked right under the "Ajouter" of the last one unfolded: tighter,
+          // like a second line of the same list. The button sits in a line:
+          // its block is what is drawn up.
+          <div style={stacked ? { marginTop: STACKED_OFFSET } : undefined}>
+            <ListFooter
+              {...(stacked ? { mt: 0, h: STACKED_HEIGHT } : null)}
+              {...(available.length > 0 || !candidates
+                ? { addLabel: "Ajouter un utilisateur ou un groupe", onAdd: () => setAdding(true) }
+                : null)}
+              checkedCount={selection.checked.length}
+              onDeleteChecked={() =>
+                setPendingDelete(
+                  access.map((a) => a.principal).filter((p) => selection.isChecked(key(p))),
+                )
+              }
+            />
+          </div>
+        )}
       </div>
-
-      {menu && sections && (
-        <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          <Menu.Item
-            leftSection={<IconShieldLock size={16} />}
-            onClick={() => {
-              setPermissionsOf(menu.principal);
-              setMenu(null);
-            }}
-          >
-            Permissions
-          </Menu.Item>
-        </PointMenu>
-      )}
-
-      {sections && (
-        <PrincipalPermissionsModal
-          principal={permissionsOf}
-          initial={initials}
-          sections={sections}
-          onSave={async (permissions) => {
-            if (!permissionsOf) return;
-            setAccess(await save(permissionsOf, permissions));
-            onChange?.();
-          }}
-          onClose={() => setPermissionsOf(null)}
-        />
-      )}
 
       <DeleteConfirmModal
         opened={pendingDelete.length > 0}

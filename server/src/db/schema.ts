@@ -13,9 +13,10 @@ export const SCHEMA = `
   );
 
   -- Les vues : ce que le sélecteur du bas propose. Chacune porte ses
-  -- tableaux. Une vue privée ne se montre qu'à son auteur ; ouverte à tous,
-  -- elle n'a pas de propriétaire. Elle appartient à un workspace — nul le
-  -- temps que les rattrapages la lui donnent (migrations.ts, workspaces).
+  -- tableaux. Elle appartient à celui qui l'a créée ; les autres la voient
+  -- dès qu'un de ses tableaux leur est partagé (board_shares). Elle
+  -- appartient à un workspace — nul le temps que les rattrapages la lui
+  -- donnent (migrations.ts, workspaces). « is_private » ne sert plus.
   CREATE TABLE IF NOT EXISTS views (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -46,9 +47,16 @@ export const SCHEMA = `
   -- "asset": "view", … } (shared, widget-kinds.ts). Sans ligne, aucun accès
   -- au workspace. Désignés par leur identifiant d'objet Entra, qui ne change
   -- pas quand on les renomme ; le nom et l'adresse sont gardés pour
-  -- l'affichage. « modes » ne sert plus : les modes se déduisent des types ;
-  -- « settings » et « workspaces » non plus : l'administration vaut pour
-  -- toute l'application (principal_admin).
+  -- l'affichage. Les notifications reçues dans le workspace, en JSON —
+  -- ["screen", "email"], et ce qu'on peut faire de son interface — la
+  -- modifier, en importer ou exporter la disposition : ["interface",
+  -- "layout"] —, et ses droits sur les vues, tableaux et contextes :
+  -- { "views": ["view", "create"], … } (shared, workspace-access.ts). Une
+  -- ligne peut
+  -- n'accorder rien : elle attend qu'on lui donne des droits. « modes » ne
+  -- sert plus : les modes se déduisent des types ; « settings » et
+  -- « workspaces » non plus : l'administration vaut pour toute l'application
+  -- (principal_admin).
   CREATE TABLE IF NOT EXISTS principal_permissions (
     principal_type TEXT NOT NULL CHECK (principal_type IN ('user', 'group')),
     principal_id TEXT NOT NULL,
@@ -59,12 +67,18 @@ export const SCHEMA = `
     widgets TEXT NOT NULL DEFAULT '{}',
     workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     workspaces TEXT NOT NULL DEFAULT '' CHECK (workspaces IN ('', 'update')),
+    notifications TEXT NOT NULL DEFAULT '[]',
+    application TEXT NOT NULL DEFAULT '[]',
+    structure TEXT NOT NULL DEFAULT '{}',
     PRIMARY KEY (workspace_id, principal_type, principal_id)
   );
 
   -- L'administration d'un utilisateur ou d'un groupe Entra, pour toute
-  -- l'application : le Paramétrage ('' : aucun, 'view', 'update') et la
-  -- gestion des workspaces ('' ou 'update'). Sans ligne, ni l'un ni l'autre.
+  -- l'application : ses droits par section, en JSON — { "settings":
+  -- ["access"], "workspaces": ["view", "create"] } (shared, roles.ts). Une
+  -- ligne peut n'en porter aucun : elle attend qu'on lui en donne. Sans
+  -- ligne, aucun droit. « settings » et « workspaces » ne servent plus : ils
+  -- portaient l'administration d'avant ses droits par section.
   CREATE TABLE IF NOT EXISTS principal_admin (
     principal_type TEXT NOT NULL CHECK (principal_type IN ('user', 'group')),
     principal_id TEXT NOT NULL,
@@ -72,6 +86,7 @@ export const SCHEMA = `
     principal_email TEXT NOT NULL DEFAULT '',
     settings TEXT NOT NULL DEFAULT '' CHECK (settings IN ('', 'view', 'update')),
     workspaces TEXT NOT NULL DEFAULT '' CHECK (workspaces IN ('', 'update')),
+    rights TEXT NOT NULL DEFAULT '{}',
     PRIMARY KEY (principal_type, principal_id)
   );
 
@@ -207,14 +222,25 @@ export const SCHEMA = `
   -- Étiquettes d'un tableau de projets : un nom et une couleur, posés sur ses
   -- projets. Jumelles de celles des cartes (« labels »), mais rattachées à un
   -- tableau de projets : les deux modes ne partagent pas leurs étiquettes.
-  CREATE TABLE IF NOT EXISTS project_labels (
+  -- Groups of a projects board's labels: every label belongs to one, and
+  -- the groups are ordered among themselves.
+  CREATE TABLE IF NOT EXISTS project_label_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS project_labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    -- Its group, on the same board. "position" orders the whole board,
+    -- group after group (repositories/label-groups.ts).
+    group_id INTEGER REFERENCES project_label_groups(id),
+    name TEXT NOT NULL,
     -- « teinte.nuance » de la palette Mantine, par exemple « red.6 ».
     color TEXT NOT NULL DEFAULT 'blue.6',
-    -- Le poids : les plus lourdes passent devant, dans les grilles.
-    weight INTEGER NOT NULL DEFAULT 0,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
@@ -226,9 +252,10 @@ export const SCHEMA = `
   );
 
   -- Les tableaux d'une vue : ses onglets. Un tableau contient ses projets et
-  -- ses listes de tâches, et ses sections de widgets. Un tableau privé ne se
-  -- montre qu'à son auteur. « all_contexts_label » : le libellé, renommable,
-  -- de l'entrée qui montre tous ses contextes.
+  -- ses listes de tâches, et ses sections de widgets. Il appartient à celui
+  -- qui l'a créé, et se montre à ceux à qui il est partagé (board_shares).
+  -- « all_contexts_label » : le libellé, renommable, de l'entrée qui montre
+  -- tous ses contextes. « is_private » ne sert plus.
   CREATE TABLE IF NOT EXISTS boards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     view_id INTEGER NOT NULL REFERENCES views(id) ON DELETE CASCADE,
@@ -240,6 +267,21 @@ export const SCHEMA = `
     is_private INTEGER NOT NULL DEFAULT 0,
     is_locked INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
+  );
+
+  -- Les partages d'un tableau, faits depuis « Partager » sur sa vue : à un
+  -- utilisateur ou un groupe Entra, désigné par son identifiant d'objet ; le
+  -- nom et l'adresse sont gardés pour l'affichage. « read » : lecture seule,
+  -- sa disposition ne se modifie pas ; « full » : contrôle total, tout sauf
+  -- le supprimer et le partager.
+  CREATE TABLE IF NOT EXISTS board_shares (
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    principal_type TEXT NOT NULL CHECK (principal_type IN ('user', 'group')),
+    principal_id TEXT NOT NULL,
+    principal_name TEXT NOT NULL DEFAULT '',
+    principal_email TEXT NOT NULL DEFAULT '',
+    level TEXT NOT NULL CHECK (level IN ('read', 'full')),
+    PRIMARY KEY (board_id, principal_type, principal_id)
   );
 
   -- Les contextes d'un tableau : la liste en haut à gauche. Ses projets, ses
@@ -262,9 +304,8 @@ export const SCHEMA = `
     PRIMARY KEY (user_id, board_id)
   );
 
-  -- Les sections d'un tableau : ses colonnes. « owner_id » nul : la
-  -- structure publique, partagée par tous ceux qui l'héritent ; sinon la
-  -- structure propre à ce compte (personal_layouts).
+  -- Les sections d'un tableau : ses colonnes. « owner_id » ne sert plus :
+  -- il désignait la structure propre à un compte, du temps de « Hérité ».
   CREATE TABLE IF NOT EXISTS board_sections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
@@ -357,9 +398,22 @@ export const SCHEMA = `
   -- Étiquettes d'un tableau : un nom et une couleur, posés sur ses cartes.
   -- Elles appartiennent au tableau, comme les catégories d'un tableau de
   -- projets : deux tableaux peuvent nommer la même étiquette.
+  -- Groups of a board's labels: every label belongs to one, and the groups
+  -- are ordered among themselves.
+  CREATE TABLE IF NOT EXISTS label_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS labels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    -- Its group, on the same board. "position" orders the whole board,
+    -- group after group (repositories/label-groups.ts).
+    group_id INTEGER REFERENCES label_groups(id),
     name TEXT NOT NULL,
     -- « teinte.nuance » de la palette Mantine, par exemple « red.6 ».
     color TEXT NOT NULL DEFAULT 'blue.6',
@@ -529,13 +583,23 @@ export const SCHEMA = `
 
   -- Étiquettes du mode Support : jumelles de celles des cartes, mais communes
   -- à tout le support — tous les contextes partagent les mêmes.
+  -- Groups of the Support labels: every label belongs to one, and the
+  -- groups are ordered among themselves.
+  CREATE TABLE IF NOT EXISTS support_label_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS support_labels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- Its group. "position" orders all the labels, group after group
+    -- (repositories/label-groups.ts).
+    group_id INTEGER REFERENCES support_label_groups(id),
     name TEXT NOT NULL,
     -- « teinte.nuance » de la palette Mantine, par exemple « red.6 ».
     color TEXT NOT NULL DEFAULT 'blue.6',
-    -- Le poids : les plus lourdes passent devant, dans les grilles.
-    weight INTEGER NOT NULL DEFAULT 0,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
@@ -625,9 +689,8 @@ export const SCHEMA = `
     PRIMARY KEY (user_id, scope)
   );
 
-  -- Les structures qu'un compte n'hérite plus : « Hérité » décoché, il voit
-  -- et modifie ses propres sections et widgets (owner_id) au lieu des
-  -- publics. « scope » nomme le tableau : « board:<id> ».
+  -- Ne sert plus : les structures qu'un compte n'héritait plus, du temps de
+  -- « Hérité ». Gardée pour les rattrapages qui la lisent.
   CREATE TABLE IF NOT EXISTS personal_layouts (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     scope TEXT NOT NULL,
@@ -708,6 +771,9 @@ export const INDEXES = `
 
   CREATE INDEX IF NOT EXISTS idx_project_actors_user ON project_actors(user_id);
   CREATE INDEX IF NOT EXISTS idx_project_labels_board ON project_labels(board_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_project_labels_group ON project_labels(group_id);
+  CREATE INDEX IF NOT EXISTS idx_project_label_groups_board
+    ON project_label_groups(board_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_project_label_links_label ON project_label_links(label_id);
 
   CREATE INDEX IF NOT EXISTS idx_boards_view ON boards(view_id, position, id);
@@ -722,6 +788,8 @@ export const INDEXES = `
 
   CREATE INDEX IF NOT EXISTS idx_card_members_user ON card_members(user_id);
   CREATE INDEX IF NOT EXISTS idx_labels_board ON labels(board_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_labels_group ON labels(group_id);
+  CREATE INDEX IF NOT EXISTS idx_label_groups_board ON label_groups(board_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_card_labels_label ON card_labels(label_id);
 
   CREATE INDEX IF NOT EXISTS idx_card_checklists_card ON card_checklists(card_id, position, id);
@@ -789,6 +857,7 @@ export const INDEXES = `
 
   CREATE INDEX IF NOT EXISTS idx_support_labels_position
     ON support_labels(position, id);
+  CREATE INDEX IF NOT EXISTS idx_support_labels_group ON support_labels(group_id);
   CREATE INDEX IF NOT EXISTS idx_support_request_labels_label
     ON support_request_labels(label_id);
 

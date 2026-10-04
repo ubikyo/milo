@@ -1,6 +1,6 @@
-import { Group, Menu, Modal, ScrollArea, Stack, Text } from "@mantine/core";
+import { Button, Group, Menu, Modal, ScrollArea, Stack, Text } from "@mantine/core";
 import { IconStack2, IconTrash, IconUsers } from "@tabler/icons-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { RED } from "../../themes/colors";
@@ -24,9 +24,15 @@ import {
 } from "../ui/DrawerRows";
 import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 import WorkspaceAccess from "./WorkspaceAccess";
-import type { Workspace } from "@milo/shared";
+import { canRead } from "@milo/shared";
+import type { Workspace, WorkspaceRights } from "@milo/shared";
 
 interface WorkspacesTabProps {
+  /**
+   * The account's rights on workspaces: "Voir" alone shows them read-only;
+   * "Créer" adds, renames and sets their access; "Supprimer" deletes.
+   */
+  rights: WorkspaceRights;
   workspaces: Workspace[];
   /** Re-reads the list — and the account, whose selector offers it. */
   onChanged: () => Promise<void>;
@@ -43,6 +49,7 @@ interface WorkspacesTabProps {
  * a name.
  */
 export default function WorkspacesTab({
+  rights,
   workspaces,
   onChanged,
   onAccessChanged,
@@ -62,7 +69,16 @@ export default function WorkspacesTab({
   const readAccess = useCallback(async () => {
     try {
       const accounts = await Promise.all(
-        workspaces.map(async (w) => [w.id, (await api.getAssignments(w.id)).length] as const),
+        // Those listed without any readable type have no access yet.
+        workspaces.map(
+          async (w) =>
+            [
+              w.id,
+              (await api.getAssignments(w.id)).filter((a) =>
+                Object.values(a.permissions.widgets).some(canRead),
+              ).length,
+            ] as const,
+        ),
       );
       setAccess(Object.fromEntries(accounts));
     } catch (e) {
@@ -73,6 +89,26 @@ export default function WorkspacesTab({
   useEffect(() => {
     void readAccess();
   }, [readAccess]);
+
+  // The access modal's pending changes (WorkspaceAccess): sent by its
+  // "Enregistrer".
+  const saveAccess = useRef<(() => Promise<boolean>) | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const closeAccess = () => {
+    setAccessOf(null);
+    void readAccess();
+  };
+
+  const saveAndClose = async () => {
+    setSaving(true);
+    try {
+      if ((await saveAccess.current?.()) === false) return;
+    } finally {
+      setSaving(false);
+    }
+    closeAccess();
+  };
 
   const write = async (action: () => Promise<unknown>) => {
     try {
@@ -111,6 +147,7 @@ export default function WorkspacesTab({
                   name={w.name}
                   placeholder="Nom du workspace"
                   label={`Nom de ${w.name}`}
+                  readOnly={!rights.create}
                   onValidate={(name) => {
                     if (name && name !== w.name) void write(() => api.updateWorkspace(w.id, name));
                   }}
@@ -151,7 +188,9 @@ export default function WorkspacesTab({
           </Stack>
         )}
         {/* As close as possible to the list it extends. */}
-        <AddButton label="Ajouter un workspace" onClick={() => setAdding(true)} mt={4} />
+        {rights.create && (
+          <AddButton label="Ajouter un workspace" onClick={() => setAdding(true)} mt={4} />
+        )}
       </div>
 
       {menu && (
@@ -165,7 +204,7 @@ export default function WorkspacesTab({
           >
             Accès
           </Menu.Item>
-          {workspaces.length > 1 && (
+          {rights.delete && workspaces.length > 1 && (
             <>
               <Menu.Divider />
               <Menu.Item
@@ -202,10 +241,7 @@ export default function WorkspacesTab({
 
       <Modal
         opened={accessOf !== null}
-        onClose={() => {
-          setAccessOf(null);
-          void readAccess();
-        }}
+        onClose={closeAccess}
         title={`Accès — ${accessOf?.name ?? ""}`}
         centered
         // A fade in place, without sliding: the size of Settings and
@@ -242,15 +278,22 @@ export default function WorkspacesTab({
             style={{ flex: 1, minHeight: 0 }}
             classNames={{ scrollbar: scroll.scrollbar, thumb: scroll.thumb }}
           >
-            {accessOf && <WorkspaceAccess workspace={accessOf.id} onChange={onAccessChanged} />}
+            {accessOf && <WorkspaceAccess
+                workspace={accessOf.id}
+                readOnly={!rights.create}
+                saveRef={saveAccess}
+                onChange={onAccessChanged}
+              />}
           </ScrollArea>
+          {/* "Fermer" drops what was not saved; "Enregistrer" sends it, then
+              closes — unless the server refused. */}
           <Group justify="flex-end">
-            <CloseButton
-              onClick={() => {
-                setAccessOf(null);
-                void readAccess();
-              }}
-            />
+            <CloseButton onClick={closeAccess} />
+            {rights.create && (
+              <Button color="teal" onClick={saveAndClose} loading={saving}>
+                Enregistrer
+              </Button>
+            )}
           </Group>
         </Stack>
       </Modal>

@@ -7,7 +7,12 @@
 // a join table.
 
 import { parseAttachments } from "../lib/ticket-files.js";
-import { MILO_ACTOR, SUPPORT_URGENCY_LABELS, supportTicketRef } from "@milo/shared";
+import {
+  MILO_ACTOR,
+  SUPPORT_URGENCY_GROUP,
+  SUPPORT_URGENCY_LABELS,
+  supportTicketRef,
+} from "@milo/shared";
 import type {
   Actor,
   Id,
@@ -26,6 +31,7 @@ import type {
 } from "../db/rows.js";
 import { withAuthor } from "./comments.js";
 import { nextReference } from "./references.js";
+import { supportLabelGroups } from "./label-groups.js";
 import { actorOf } from "./users.js";
 
 export const REQUEST_NOT_FOUND = "Demande introuvable";
@@ -134,16 +140,23 @@ export const supportRequests = {
 export const nextTicketNumber = nextReference;
 
 export const supportLabels = {
-  byId: selection<SupportLabelRow>("SELECT * FROM support_labels WHERE id = ?"),
+  // With the name of their group: the lists title them by it.
+  byId: selection<SupportLabelRow>(
+    `SELECT l.*, g.name AS group_name FROM support_labels l
+     LEFT JOIN support_label_groups g ON g.id = l.group_id WHERE l.id = ?`,
+  ),
   // All of them: they are shared across all of support.
-  all: selection<SupportLabelRow>("SELECT * FROM support_labels ORDER BY position, id"),
+  all: selection<SupportLabelRow>(
+    `SELECT l.*, g.name AS group_name FROM support_labels l
+     LEFT JOIN support_label_groups g ON g.id = l.group_id ORDER BY l.position, l.id`,
+  ),
   nextPosition: scalar<NextRow>(
     "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM support_labels",
   ),
   create: mutation(
-    "INSERT INTO support_labels (name, color, weight, position, created_at) VALUES (?, ?, ?, ?, ?)",
+    "INSERT INTO support_labels (group_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?)",
   ),
-  update: mutation("UPDATE support_labels SET name = ?, color = ?, weight = ? WHERE id = ?"),
+  update: mutation("UPDATE support_labels SET name = ?, color = ? WHERE id = ?"),
   remove: mutation("DELETE FROM support_labels WHERE id = ?"),
   byName: selection<SupportLabelRow>(
     "SELECT * FROM support_labels WHERE name = ? COLLATE NOCASE LIMIT 1",
@@ -161,34 +174,49 @@ export const namedLabel = (name: string): SupportLabelRow => {
   const already = supportLabels.byName.get(name);
   if (already) return already;
   const template = SUPPORT_URGENCY_LABELS.find((l) => l.name === name);
+  // An urgency goes back among the urgencies.
+  const group = template
+    ? supportLabelGroups.named(undefined, SUPPORT_URGENCY_GROUP)
+    : supportLabelGroups.groupFor(undefined, null);
   const { next } = supportLabels.nextPosition();
   const { lastInsertRowid } = supportLabels.create.run(
+    group,
     name,
     template?.color ?? "red.6",
-    template?.weight ?? 0,
     next,
     new Date().toISOString(),
   );
+  supportLabelGroups.renumber(undefined);
   return supportLabels.byId.get(lastInsertRowid)!;
 };
 
-const prioritiesByWeight = selection<SupportLabelRow>(
+/** A label rewritten, and moved to the end of its new group if it changes. */
+export const updateSupportLabel = transaction(
+  (
+    existing: SupportLabelRow,
+    { name, color, group }: { name: string; color: string; group: Id },
+  ) => {
+    supportLabels.update.run(name, color, existing.id);
+    if (group !== existing.group_id) supportLabelGroups.moveTo(existing.id, group, undefined);
+  },
+);
+
+const firstPriority = selection<SupportLabelRow>(
   `SELECT * FROM support_labels
    WHERE name COLLATE NOCASE IN (SELECT value FROM json_each(?))
-   ORDER BY weight, position, id
+   ORDER BY position, id
    LIMIT 1`,
 );
 
 /**
- * The lightest urgency label, as the weights have been set. If none is
- * left, the model's lightest one is recreated.
+ * The least urgent label: the first urgency in the labels' order. If none is
+ * left, the model's first one is recreated.
  */
 export const lightestPriority = (): SupportLabelRow => {
   const names = SUPPORT_URGENCY_LABELS.map((l) => l.name);
-  const foundItem = prioritiesByWeight.get(JSON.stringify(names));
+  const foundItem = firstPriority.get(JSON.stringify(names));
   if (foundItem) return foundItem;
-  const template = [...SUPPORT_URGENCY_LABELS].sort((a, b) => a.weight - b.weight)[0]!;
-  return namedLabel(template.name);
+  return namedLabel(SUPPORT_URGENCY_LABELS[0].name);
 };
 
 // --- Request actors --------------------------------------------------------
@@ -242,7 +270,7 @@ const requestLabels = selection<LinkedLabelRow>(
    FROM support_request_labels
    JOIN support_labels ON support_labels.id = support_request_labels.label_id
    WHERE support_request_labels.request_id IN (SELECT value FROM json_each(?))
-   ORDER BY support_labels.weight DESC, support_labels.position, support_labels.id`,
+   ORDER BY support_labels.position, support_labels.id`,
 );
 
 const requestActors = selection<{ request_id: Id; id: Id; name: string; email: string }>(

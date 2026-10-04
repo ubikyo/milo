@@ -33,6 +33,8 @@ interface LabelColorPickerProps {
   withinPortal?: boolean;
   /** The padding around the palette; Mantine's "xs" by default. */
   palettePadding?: number | string;
+  /** The space to the swatch's right, in pixels: none by default. */
+  marginRight?: number;
 }
 
 export default function LabelColorPicker({
@@ -41,6 +43,7 @@ export default function LabelColorPicker({
   label,
   withinPortal = true,
   palettePadding = "xs",
+  marginRight = 0,
 }: LabelColorPickerProps) {
   const [opened, setOpened] = useState(false);
   const colors = useLabelColors();
@@ -69,7 +72,7 @@ export default function LabelColorPicker({
             e.stopPropagation();
             setOpened((o) => !o);
           }}
-          style={{ cursor: "pointer", flexShrink: 0, alignSelf: "center" }}
+          style={{ cursor: "pointer", flexShrink: 0, alignSelf: "center", marginRight }}
           aria-label={`Couleur de ${label}`}
         />
       </Popover.Target>

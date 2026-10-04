@@ -35,7 +35,7 @@ export const cardLinks = {
 };
 
 // The other card is shown only if its board is visible to that person: a
-// dependency toward a private board does not let it be guessed.
+// dependency toward a board not shared with them does not let it be guessed.
 const cardLinkRecords = selection<
   CardLinkRow & {
     other_id: Id;

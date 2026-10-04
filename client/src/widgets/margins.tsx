@@ -1,20 +1,48 @@
-import { insertRow, type SettingRow } from "../components/ui/SettingRows";
-import { count } from "./types";
-import type { AccessWidget, Margins } from "./types";
+import { Box } from "@mantine/core";
+import type { CSSProperties, ReactNode } from "react";
+import inset from "../assets/styles/AccessNumber.module.css";
+import { insertRow, type SettingRow, type SizeSetting } from "../components/ui/SettingRows";
+import { count, isFramed } from "./types";
+import type { AccessWidget, Margins, Padding } from "./types";
 import type { BoardWidget, AccessBlockType } from "@milo/shared";
 
-// The space above and below a column element.
+// The space around a column element (margin) and inside it (padding), on its
+// four sides.
 //
-// Each widget says the one it usually leaves, depending on what surrounds it
-// ("margins"). The configuration can override it, element by element: its two
-// fields are stored only when they differ from that usual value, so that an
-// element left as is still follows its neighbors when it is moved.
+// Above and below, each widget says the margin it usually leaves, depending
+// on what surrounds it ("margins"); on the sides, it leaves none. The padding
+// is that of its frame when it has one, none otherwise. The configuration can
+// override each of them, side by side: a field is stored only when it differs
+// from the usual value, so that an element left as is still follows its
+// neighbors when it is moved, and its frame when it is switched on or off.
 
 const HIGH_MARGIN = "marginTop";
 const LOW_MARGIN = "marginBottom";
+const LEFT_MARGIN = "marginLeft";
+const RIGHT_MARGIN = "marginRight";
+
+/** The four sides, in the CSS order, with the arrow that names them in the drawer. */
+const SIDES = [
+  { side: "Top", arrow: "↑", what: "haut" },
+  { side: "Right", arrow: "→", what: "droit" },
+  { side: "Bottom", arrow: "↓", what: "bas" },
+  { side: "Left", arrow: "←", what: "gauche" },
+] as const;
+
+type Side = (typeof SIDES)[number]["side"];
+
+/** The space on each side, in pixels. */
+export type Sides = Record<Side, number>;
+
+/** A padding, side by side. */
+const sidesOf = (p: Padding): Sides =>
+  typeof p === "number" ? { Top: p, Right: p, Bottom: p, Left: p } : p;
 
 /** Beyond that, the element would get lost far from its column. */
 const MARGIN_MAX = 200;
+
+/** The padding of a frame (the attributes inset) while nothing is set. */
+export const FRAME_PADDING = 10;
 
 interface Neighbors {
   previousType: AccessBlockType | null;
@@ -81,51 +109,122 @@ export const configuredMargins = (config: unknown, regular: Margins): Margins =>
 });
 
 /**
- * The two margin rows, at the end of the drawer's "Apparence" block
- * (SettingRows), for any widget: they show the margin in effect —
- * "ordinaires" as long as nothing is set. Bringing a field back to the usual
- * value, clearing it or clicking its button removes the setting.
+ * The margins on the sides, none while nothing is set. Above and below, the
+ * column sets them between its elements (configuredMargins).
  */
-export const marginRowsFor = (
+export const sideMargins = (config: unknown): CSSProperties => ({
+  marginLeft: configured(config, LEFT_MARGIN) ?? 0,
+  marginRight: configured(config, RIGHT_MARGIN) ?? 0,
+});
+
+/** The padding on each side: the configuration's, "regular" elsewhere. */
+export const paddingOf = (config: unknown, regular: Padding): Sides => {
+  const usual = sidesOf(regular);
+  return {
+    Top: configured(config, "paddingTop") ?? usual.Top,
+    Right: configured(config, "paddingRight") ?? usual.Right,
+    Bottom: configured(config, "paddingBottom") ?? usual.Bottom,
+    Left: configured(config, "paddingLeft") ?? usual.Left,
+  };
+};
+
+/** The same, as a style. */
+export const paddingStyle = (config: unknown, regular: Padding): CSSProperties => {
+  const p = paddingOf(config, regular);
+  return { padding: `${p.Top}px ${p.Right}px ${p.Bottom}px ${p.Left}px` };
+};
+
+/**
+ * A widget's frame — the attributes inset, without a border — with its
+ * padding. Unframed, the element keeps only the padding it is given, and is
+ * left as is when it has none.
+ */
+export function Frame({
+  config,
+  framed,
+  padding,
+  children,
+}: {
+  config: unknown;
+  framed: boolean;
+  /** The padding while nothing is set, when it is not the frame's or none. */
+  padding?: Padding;
+  children: ReactNode;
+}) {
+  const regular = padding ?? (framed ? FRAME_PADDING : 0);
+  const sides = paddingOf(config, regular);
+  if (!framed && Object.values(sides).every((v) => v === 0)) return <>{children}</>;
+  return (
+    <Box
+      className={framed ? inset.inset : undefined}
+      style={{ ...paddingStyle(config, regular), border: "none" }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+/**
+ * The "Margin" and "Padding" rows, at the end of the drawer's "Apparence"
+ * block (SettingRows), for any widget: each carries its four sides and shows
+ * the space in effect. Bringing a field back to the usual value, clearing it
+ * or clicking the row's button removes the setting.
+ */
+export const spacingRows = (
   regular: Margins,
+  padding: Padding,
   config: unknown,
   onChange: (config: Record<string, unknown>) => void,
 ): SettingRow[] => {
-  const current = configuredMargins(config, regular);
-
-  const adjust = (key: string, regular: number, value: number | "") =>
-    onChange(insertRow(config, { [key]: value === regular ? "" : value }));
-
-  const row = (
-    name: string,
-    what: string,
-    key: string,
-    value: number,
-    regular: number,
-  ): SettingRow => ({
-    name,
-    what,
-    size: {
-      value,
-      defaultValue: regular,
-      min: 0,
-      max: MARGIN_MAX,
-      onChange: (v) => adjust(key, regular, v),
-    },
-    modified: value !== regular,
-    reset: () => adjust(key, regular, ""),
-  });
+  const row = (name: string, kind: string, what: string, usual: Sides): SettingRow => {
+    const key = (side: Side) => `${kind}${side}`;
+    const sizes = SIDES.map(({ side, arrow, what: where }): SizeSetting => {
+      const value = configured(config, key(side)) ?? usual[side];
+      return {
+        value,
+        defaultValue: usual[side],
+        min: 0,
+        max: MARGIN_MAX,
+        onChange: (v) =>
+          onChange(insertRow(config, { [key(side)]: v === usual[side] ? "" : v })),
+        prefix: arrow,
+        what: `${what} ${where}`,
+      };
+    });
+    return {
+      name,
+      what,
+      sizes,
+      modified: sizes.some((size) => size.value !== size.defaultValue),
+      reset: () =>
+        onChange(insertRow(config, Object.fromEntries(SIDES.map(({ side }) => [key(side), ""])))),
+    };
+  };
 
   return [
-    row("Haut", "de la marge haute", HIGH_MARGIN, current.top, regular.top),
-    row("Bas", "de la marge basse", LOW_MARGIN, current.bottom, regular.bottom),
+    row("Margin", "margin", "de la marge", {
+      Top: regular.top,
+      Right: 0,
+      Bottom: regular.bottom,
+      Left: 0,
+    }),
+    row("Padding", "padding", "du padding", sidesOf(padding)),
   ];
 };
 
-/** The margin rows of an Access mode widget, based on its usual value. */
+/**
+ * The margin and padding rows of an Access mode widget, based on its usual
+ * margins and on its frame's padding.
+ */
 export const marginRows = (
   widget: AccessWidget,
   config: Record<string, unknown>,
   onChange: (config: Record<string, unknown>) => void,
   neighbors: Neighbors,
-): SettingRow[] => marginRowsFor(regularOf(widget, neighbors), config, onChange);
+): SettingRow[] =>
+  spacingRows(
+    regularOf(widget, neighbors),
+    widget.padding?.(config) ?? (isFramed(config, widget.defaultFrame) ? FRAME_PADDING : 0),
+    config,
+    onChange,
+  );

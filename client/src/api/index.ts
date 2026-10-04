@@ -16,7 +16,6 @@ import type {
   IndicatorSection,
   IndicatorSectionInput,
   ExportedLayout,
-  LayoutState,
   MailboxOptinState,
   ImportResult,
   AssetRefresh,
@@ -32,6 +31,8 @@ import type {
   View,
   Workspace,
   ViewInput,
+  ViewShares,
+  ViewSharesInput,
   CardLocation,
   CascadeResult,
   Category,
@@ -52,12 +53,16 @@ import type {
   EntraStatus,
   MailboxCheck,
   PrincipalAdministration,
-  WidgetRights,
+  WorkspacePermissions,
   PrincipalAssignments,
   FollowKind,
   Follows,
   Id,
   Label,
+  LabelGroup,
+  LabelGroupLayout,
+  LabelInput,
+  LabelsBase,
   ListColor,
   MailTestResult,
   Project,
@@ -214,9 +219,8 @@ const queryString = (params: Record<string, unknown>): string => {
 };
 
 /**
- * A board's sections: its columns, and what "Hérité" does with them. Sections
- * are read and created through the board; they are then modified
- * by their identifier.
+ * A board's sections: its columns. Sections are read and created through the
+ * board; they are then modified by their identifier.
  */
 const boardSections = (boardId: Id | string) => ({
   all: () => get<IndicatorSection[]>(`/boards/${boardId}/sections`),
@@ -228,10 +232,7 @@ const boardSections = (boardId: Id | string) => ({
   duplicate: (id: Id) => post<IndicatorSection>(`/board-sections/${id}/duplicate`, {}),
   remove: (id: Id) => del(`/board-sections/${id}`),
   reorder: (ids: Id[]) => put<IndicatorSection[]>(`/boards/${boardId}/sections/reorder`, { ids }),
-  /** "Hérité": the public structure, or its own copy (unticked). */
-  getLayout: () => get<LayoutState>(`/boards/${boardId}/layout`),
-  setLayout: (inherited: boolean) => put<LayoutState>(`/boards/${boardId}/layout`, { inherited }),
-  /** An exported layout replaces the viewed structure. */
+  /** An exported layout replaces the board's structure. */
   importSections: (layout: ExportedLayout) =>
     post<ImportResult>(`/boards/${boardId}/import`, layout),
 });
@@ -282,8 +283,9 @@ export const api = {
   // --- Workspace access (Entra users and groups) --------------------------
   getAssignments: (workspace: Id) =>
     get<PrincipalAssignments[]>(`/assignments?workspace=${workspace}`),
-  // The types sent replace everything; with none, access is withdrawn.
-  setAssignments: (principal: EntraPrincipal, permissions: WidgetRights, workspace: Id) =>
+  // The types and notifications sent replace everything; with none, the
+  // principal stays listed without any access.
+  setAssignments: (principal: EntraPrincipal, permissions: WorkspacePermissions, workspace: Id) =>
     put<PrincipalAssignments[]>(
       `/assignments/${principal.type}/${encodeURIComponent(principal.id)}?workspace=${workspace}`,
       { name: principal.name, email: principal.email, permissions },
@@ -342,9 +344,16 @@ export const api = {
   // The views, in the order the account arranged them. A view is born with its
   // first board.
   getViews: () => get<View[]>("/views"),
-  createView: (name: string) => post<{ view: View; board: Board }>("/views", { name }),
+  /** Born without a board. */
+  createView: (name: string) => post<View>("/views", { name }),
   updateView: (id: Id, data: ViewInput) => put<View>(`/views/${id}`, data),
   deleteView: (id: Id) => del(`/views/${id}`),
+  /** "Masquer" for this account; returns its views. */
+  hideView: (id: Id, hidden: boolean) => put<View[]>(`/views/${id}/hidden`, { hidden }),
+  /** "Partager": the view's boards, whom they can go to, and to whom they went. */
+  getViewShares: (id: Id) => get<ViewShares>(`/views/${id}/shares`),
+  /** Replaces the view's sharing as a whole. */
+  setViewShares: (id: Id, data: ViewSharesInput) => put<ViewShares>(`/views/${id}/shares`, data),
   reorderViews: (ids: Id[]) => put<View[]>("/views/reorder", { ids }),
 
   // A view's boards, in the order the account arranged them.
@@ -354,6 +363,8 @@ export const api = {
   getBoard: (id: Id | string) => get<Board>(`/boards/${id}`),
   updateBoard: (id: Id, data: BoardInput) => put<Board>(`/boards/${id}`, data),
   deleteBoard: (id: Id | string) => del(`/boards/${id}`),
+  /** "Masquer" for this account; returns the boards of its view. */
+  hideBoard: (id: Id, hidden: boolean) => put<Board[]>(`/boards/${id}/hidden`, { hidden }),
 
   // A board's contexts: each write returns the updated board.
   addContext: (boardId: Id, name: string) =>
@@ -450,18 +461,33 @@ export const api = {
 
   getProjectLabels: (boardId: string | Id) =>
     get<ProjectLabel[]>(`/project-labels${queryString({ board: boardId })}`),
-  createProjectLabel: (board_id: Id | string, name: string, color: string, weight = 0) =>
-    post<ProjectLabel>("/project-labels", { board_id, name, color, weight }),
+  createProjectLabel: (
+    board_id: Id | string,
+    name: string,
+    color: string,
+    group_id?: Id,
+  ) => post<ProjectLabel>("/project-labels", { board_id, name, color, group_id }),
   // A board's labels placed in another. Those that already carry
   // the same name there are not duplicated: the report counts them.
   // "replace": those of the destination board go first.
   copyProjectLabels: (from_board: Id, to_board: Id, replace = false) =>
     post<CopyResult>("/project-labels/copy", { from_board, to_board, replace }),
-  updateProjectLabel: (id: Id, data: { name?: string; color?: string; weight?: number }) =>
+  updateProjectLabel: (id: Id, data: LabelInput) =>
     put<ProjectLabel>(`/project-labels/${id}`, data),
   deleteProjectLabel: (id: Id) => del(`/project-labels/${id}`),
-  reorderProjectLabels: (board_id: Id, ids: Id[]) =>
-    put<ProjectLabel[]>("/project-labels/reorder", { board_id, ids }),
+
+  // The groups of a kind of labels: those of a board ("board_id"), or of
+  // Support, which belong to none.
+  getLabelGroups: (base: LabelsBase, board?: Id | string) =>
+    get<LabelGroup[]>(`${base}/groups${queryString({ board })}`),
+  createLabelGroup: (base: LabelsBase, name: string, board_id?: Id | string) =>
+    post<LabelGroup>(`${base}/groups`, { board_id, name }),
+  renameLabelGroup: (base: LabelsBase, id: Id, name: string) =>
+    put<LabelGroup>(`${base}/groups/${id}`, { name }),
+  deleteLabelGroup: (base: LabelsBase, id: Id) => del(`${base}/groups/${id}`),
+  // Every group in order, each with all its labels: labels may change group.
+  arrangeLabels: (base: LabelsBase, groups: LabelGroupLayout[], board_id?: Id | string) =>
+    put<null>(`${base}/arrange`, { board_id, groups }),
 
   getProjects: (filters: ProjectFilters = {}) =>
     get<Project[]>(
@@ -717,20 +743,17 @@ export const api = {
   // Support mode labels: they belong to the company, just as
   // those of a board belong to it.
   getSupportLabels: () => get<SupportLabel[]>("/support-labels"),
-  createSupportLabel: (name: string, color: string, weight = 0) =>
-    post<SupportLabel>("/support-labels", { name, color, weight }),
+  createSupportLabel: (name: string, color: string, group_id?: Id) =>
+    post<SupportLabel>("/support-labels", { name, color, group_id }),
   updateSupportLabel: (id: Id, data: SupportLabelInput) =>
     put<SupportLabel>(`/support-labels/${id}`, data),
   deleteSupportLabel: (id: Id) => del(`/support-labels/${id}`),
-  // The full order, all labels named once.
-  reorderSupportLabels: (ids: Id[]) =>
-    put<SupportLabel[]>("/support-labels/reorder", { ids }),
 
   // A board's labels: a name and a color, placed on its cards.
   getLabels: (boardId: string | Id) =>
     get<Label[]>(`/labels${queryString({ board: boardId })}`),
-  createLabel: (board_id: Id | string, name: string, color: string) =>
-    post<Label>("/labels", { board_id, name, color }),
+  createLabel: (board_id: Id | string, name: string, color: string, group_id?: Id) =>
+    post<Label>("/labels", { board_id, name, color, group_id }),
   // A board's contexts, copied into another: their names only.
   // "replace": those of the destination board go first, with what
   // they contain.
@@ -739,11 +762,8 @@ export const api = {
     post<CopyResult>(`/boards/${from_board}/contexts/copy`, { to_board, replace, rename_all }),
   copyLabels: (from_board: Id, to_board: Id, replace = false) =>
     post<CopyResult>("/labels/copy", { from_board, to_board, replace }),
-  updateLabel: (id: Id, data: { name?: string; color?: string }) =>
-    put<Label>(`/labels/${id}`, data),
+  updateLabel: (id: Id, data: LabelInput) => put<Label>(`/labels/${id}`, data),
   deleteLabel: (id: Id) => del(`/labels/${id}`),
-  // The full order of a board's labels.
-  reorderLabels: (board_id: Id, ids: Id[]) => put<Label[]>("/labels/reorder", { board_id, ids }),
 };
 
 /**

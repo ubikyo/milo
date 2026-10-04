@@ -3,13 +3,13 @@
 // do not share their labels.
 //
 // One router serves both. They used to be two twin blocks of code in the old
-// file; since both kinds of boards can be private, only the table being
+// file; since both kinds of boards can be out of sight, only the table being
 // queried still tells them apart.
 
 import { Router } from "express";
 import type { Request } from "express";
 import type { CopyResult, Id, Resource, Right } from "@milo/shared";
-import { DEFAULT_LABEL_COLOR, isLabelColor } from "@milo/shared";
+import { DEFAULT_LABEL_COLOR, DEFAULT_LABEL_GROUP, isLabelColor } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { LabelRow, NextRow } from "../db/rows.js";
 import { require } from "../lib/rights.js";
@@ -18,7 +18,9 @@ import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { openTaskBoard } from "../repositories/boards.js";
 import { openBoard } from "../repositories/boards.js";
-import { receivedOrder, arrangeLabels, arrangeProjectLabels } from "../repositories/reorder.js";
+import { boardLabelGroups, projectLabelGroups } from "../repositories/label-groups.js";
+import type { LabelGroupStore } from "../repositories/label-groups.js";
+import { mountLabelGroups } from "./label-groups.js";
 
 const LABEL_NOT_FOUND = "Étiquette introuvable";
 
@@ -33,54 +35,46 @@ interface LabelTable {
    * sides, and doesn't want an id received as is.
    */
   verifyBoard: (boardId: unknown, req: Request, right: Right) => Id;
-  /** True when these labels carry a weight: project labels only. */
-  withWeight?: boolean;
-  /** The table's arrangement, board by board (repositories/reorder.ts). */
-  store: (ids: Id[], boardId: Id) => void;
+  /** The groups of these labels (repositories/label-groups.ts). */
+  groups: LabelGroupStore;
 }
-
-/** The received weight: an integer, positive or not. */
-const labelWeight = (value: unknown): number => {
-  const weight = Number(value);
-  if (!Number.isInteger(weight)) badRequest("Le poids doit être un nombre entier");
-  return weight;
-};
 
 const createRoutes = ({
   table,
   touched,
   verifyBoard,
-  withWeight = false,
-  store,
+  groups,
 }: LabelTable): Router => {
-  const byId = selection<LabelRow>(`SELECT * FROM ${table} WHERE id = ?`);
+  const groupTable = table === "labels" ? "label_groups" : "project_label_groups";
+  // With the name of their group: the lists title them by it.
+  const byId = selection<LabelRow>(
+    `SELECT l.*, g.name AS group_name FROM ${table} l
+     LEFT JOIN ${groupTable} g ON g.id = l.group_id WHERE l.id = ?`,
+  );
   const ofBoard = selection<LabelRow>(
-    `SELECT * FROM ${table} WHERE board_id = ? ORDER BY position, id`,
+    `SELECT l.*, g.name AS group_name FROM ${table} l
+     LEFT JOIN ${groupTable} g ON g.id = l.group_id
+     WHERE l.board_id = ? ORDER BY l.position, l.id`,
   );
   const nextRank = scalar<NextRow>(
     `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM ${table} WHERE board_id = ?`,
   );
-  // Without a weight, the column does not exist: we only write what the table carries.
-  const insertion = mutation(
-    withWeight
-      ? `INSERT INTO ${table} (board_id, name, color, position, created_at, weight) VALUES (?, ?, ?, ?, ?, ?)`
-      : `INSERT INTO ${table} (board_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?)`,
+  // Put last on the board, the label then takes its place at the end of its
+  // group when positions are renumbered.
+  const create = mutation(
+    `INSERT INTO ${table} (board_id, group_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
   );
-  const create = {
-    run: (boardId: unknown, name: string, color: string, rank: number, instant: string, weight = 0) =>
-      withWeight
-        ? insertion.run(boardId, name, color, rank, instant, weight)
-        : insertion.run(boardId, name, color, rank, instant),
-  };
-  const updatedAt = mutation(
-    withWeight
-      ? `UPDATE ${table} SET name = ?, color = ?, weight = ? WHERE id = ?`
-      : `UPDATE ${table} SET name = ?, color = ? WHERE id = ?`,
+  const updateStatement = mutation(`UPDATE ${table} SET name = ?, color = ? WHERE id = ?`);
+  // The label rewritten, and moved to the end of its new group if it changes.
+  const update = transaction(
+    (
+      existing: LabelRow,
+      { name, color, group }: { name: string; color: string; group: Id },
+    ) => {
+      updateStatement.run(name, color, existing.id);
+      if (group !== existing.group_id) groups.moveTo(existing.id, group, existing.board_id);
+    },
   );
-  const updateStatement = {
-    run: (name: string, color: string, weight: number, id: Id) =>
-      withWeight ? updatedAt.run(name, color, weight, id) : updatedAt.run(name, color, id),
-  };
   const withSameName = selection<LabelRow>(
     `SELECT * FROM ${table} WHERE board_id = ? AND name = ? COLLATE NOCASE LIMIT 1`,
   );
@@ -103,26 +97,32 @@ const createRoutes = ({
    */
   const copy = transaction((source: Id, target: Id, replaceExisting: boolean): CopyResult => {
     const removed = replaceExisting ? clearFromBoard.run(target).changes : 0;
+    if (replaceExisting) groups.clear(target);
     const timestamp = now();
     let rank = nextRank(target).next;
     let copied = 0;
     let skipped = 0;
 
+    // Each label goes into the group of the same name, created if needed: read
+    // in group order, the groups arrive in the source's order.
     for (const label of ofBoard.all(source)) {
       if (withSameName.get(target, label.name)) {
         skipped += 1;
         continue;
       }
-      create.run(target, label.name, label.color, rank, timestamp, label.weight ?? 0);
+      const group = groups.named(target, label.group_name ?? DEFAULT_LABEL_GROUP);
+      create.run(target, group, label.name, label.color, rank, timestamp);
       rank += 1;
       copied += 1;
     }
+    groups.renumber(target);
 
     return { copied, skipped, removed };
   });
 
   const routes = Router();
   routes.use(touch(...touched));
+  mountLabelGroups(routes, groups, (req, boardId, right) => verifyBoard(boardId, req, right));
 
   routes.get("/", (req, res) => {
     const { board } = req.query;
@@ -137,11 +137,12 @@ const createRoutes = ({
     const color = req.body.color || DEFAULT_LABEL_COLOR;
     if (!boardId) badRequest("Le tableau est requis");
     if (!isLabelColor(color)) badRequest("Couleur inconnue");
-    verifyBoard(boardId, req, "create");
-    const weight = labelWeight(req.body.weight ?? 0);
+    const board = verifyBoard(boardId, req, "create");
+    const group = groups.groupFor(board, req.body.group_id);
 
-    const { next } = nextRank(boardId);
-    const { lastInsertRowid } = create.run(boardId, name, color, next, now(), weight);
+    const { next } = nextRank(board);
+    const { lastInsertRowid } = create.run(board, group, name, color, next, now());
+    groups.renumber(board);
     res.status(201).json(byId.get(lastInsertRowid));
   });
 
@@ -163,15 +164,6 @@ const createRoutes = ({
     res.json(copy(source, target, replaceExisting));
   });
 
-  // The order of a board's labels, dragged in the widget's drawer: it names
-  // all those of the board, each once. Declared before "/:id".
-  routes.put("/reorder", (req, res) => {
-    const boardId = verifyBoard(req.body.board_id, req, "update");
-    const ids = receivedOrder(req.body.ids, ofBoard.all(boardId), "L'ordre doit nommer toutes les étiquettes");
-    store(ids, boardId);
-    res.json(ofBoard.all(boardId));
-  });
-
   routes.put("/:id", (req, res) => {
     const existing = orNotFound(byId.get(req.params.id), LABEL_NOT_FOUND);
     verifyBoard(existing.board_id, req, "update");
@@ -179,9 +171,14 @@ const createRoutes = ({
     const name = requireText(req.body.name ?? existing.name, "Le nom de l'étiquette est requis");
     const color = req.body.color ?? existing.color;
     if (!isLabelColor(color)) badRequest("Couleur inconnue");
-    const weight = labelWeight(req.body.weight ?? existing.weight ?? 0);
 
-    updateStatement.run(name, color, weight, existing.id);
+    // Named, its group must be of the same board; the label goes at its end.
+    const group =
+      req.body.group_id === undefined
+        ? existing.group_id
+        : groups.groupFor(existing.board_id, req.body.group_id);
+
+    update(existing, { name, color, group });
     res.json(byId.get(existing.id));
   });
 
@@ -197,16 +194,16 @@ const createRoutes = ({
   return routes;
 };
 
-/** Labels of a task board: it can be private. */
+/** Labels of a task board: it may not be shared with everyone. */
 export const labelRoutes = createRoutes({
   table: "labels",
   // Cards carry their labels: the board is re-read with them.
   touched: ["labels", "task-lists"],
   verifyBoard: (boardId, req, right) => openTaskBoard(boardId, req, right).id,
-  store: arrangeLabels,
+  groups: boardLabelGroups,
 });
 
-/** Labels of a project board: it can be private too. */
+/** Labels of a project board: likewise. */
 export const projectLabelRoutes = createRoutes({
   table: "project_labels",
   touched: ["project-labels", "projects"],
@@ -216,6 +213,5 @@ export const projectLabelRoutes = createRoutes({
     require(req, "projects", right);
     return openBoard(boardId, req.user).id;
   },
-  withWeight: true,
-  store: arrangeProjectLabels,
+  groups: projectLabelGroups,
 });

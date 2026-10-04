@@ -3,9 +3,8 @@
 // LIST_KEY), which its projects, task lists, requests and workstations carry
 // too.
 //
-// The key is born with the widget and never changes; a board's personal copy
-// ("Hérité" unchecked) keeps it, to show the same items. Items go away with
-// the last widget holding their key.
+// The key is born with the widget and never changes. Items go away with the
+// last widget holding their key.
 
 import { randomUUID } from "node:crypto";
 import { LIST_KEY, listKey, isListWidgetType } from "@milo/shared";
@@ -38,7 +37,7 @@ const boardKeys = selection<{ key: string | null }>(
   `SELECT json_extract(w.config, '$.${LIST_KEY}') AS key FROM board_widgets w
    JOIN board_sections s ON s.id = w.section_id
    WHERE s.board_id = ? AND w.type = ? AND json_valid(w.config)
-   ORDER BY s.owner_id IS NOT NULL, s.position, s.id, w.position, w.id`,
+   ORDER BY s.position, s.id, w.position, w.id`,
 );
 
 /**

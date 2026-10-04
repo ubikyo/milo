@@ -1,21 +1,13 @@
 // A board's sections and the widgets they carry. A widget is designated by its
 // type (shared, BOARD_WIDGET_TYPES); the server stores its configuration as
 // JSON without re-reading it — the client's widget is what knows what it
-// means.
-//
-// A board has its public structure (null owner_id), shared by all who inherit
-// it, and that of each account that no longer inherits it
-// (repositories/layouts.ts). "IS" rather than "=" in queries: null there
-// equals null, so the public structure is read by the same query as an
-// account's.
+// means. A board has one structure, seen by all who see it.
 
 import type { BoardWidget, Id } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { BoardSectionRow, BoardWidgetRow, NextRow } from "../db/rows.js";
 import { withNewKey } from "./lists.js";
 import { now } from "../lib/time.js";
-
-type Owner = Id | null;
 
 /** The widget as the API returns it: its configuration re-read as an object. */
 export const renderedWidget = (row: BoardWidgetRow): BoardWidget => {
@@ -32,22 +24,18 @@ export const renderedWidget = (row: BoardWidgetRow): BoardWidget => {
 };
 
 const sectionsOf = selection<BoardSectionRow>(
-  "SELECT * FROM board_sections WHERE board_id = ? AND owner_id IS ? ORDER BY position, id",
+  "SELECT * FROM board_sections WHERE board_id = ? ORDER BY position, id",
 );
 const sectionById = selection<BoardSectionRow>("SELECT * FROM board_sections WHERE id = ?");
 const nextSection = scalar<NextRow>(
-  `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM board_sections
-   WHERE board_id = ? AND owner_id IS ?`,
+  "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM board_sections WHERE board_id = ?",
 );
 const createSection = mutation(
-  `INSERT INTO board_sections (board_id, width_unit, width_value, gap, position, owner_id, created_at)
-   VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  `INSERT INTO board_sections (board_id, width_unit, width_value, gap, position, created_at)
+   VALUES (?, ?, ?, ?, ?, ?)`,
 );
 const placeSection = mutation("UPDATE board_sections SET position = ? WHERE id = ?");
 const removeSection = mutation("DELETE FROM board_sections WHERE id = ?");
-const removeSectionsOf = mutation(
-  "DELETE FROM board_sections WHERE board_id = ? AND owner_id = ?",
-);
 
 const widgetById = selection<BoardWidgetRow>("SELECT * FROM board_widgets WHERE id = ?");
 const sectionWidgets = selection<BoardWidgetRow>(
@@ -56,7 +44,7 @@ const sectionWidgets = selection<BoardWidgetRow>(
 const widgetsOf = selection<BoardWidgetRow>(
   `SELECT w.* FROM board_widgets w
    JOIN board_sections s ON s.id = w.section_id
-   WHERE s.board_id = ? AND s.owner_id IS ?
+   WHERE s.board_id = ?
    ORDER BY s.position, s.id, w.position, w.id`,
 );
 const nextWidget = scalar<NextRow>(
@@ -73,17 +61,10 @@ const arrangeSections = transaction((ids: Id[]) => {
 });
 
 /**
- * A section and what it carries, copied for "owner" into board "boardId". The
- * personal copy keeps the list widgets' keys, to show their items; a
- * duplicated section carries new, empty lists (repositories/lists.ts).
+ * A section and what it carries, copied into board "boardId". The copy
+ * carries new, empty lists (repositories/lists.ts).
  */
-const copySection = (
-  original: BoardSectionRow,
-  boardId: Id,
-  owner: Owner,
-  position: number,
-  sameLists = false,
-): Id => {
+const copySection = (original: BoardSectionRow, boardId: Id, position: number): Id => {
   const timestamp = now();
   const id = Number(
     createSection.run(
@@ -92,42 +73,32 @@ const copySection = (
       original.width_value,
       original.gap,
       position,
-      owner,
       timestamp,
     ).lastInsertRowid,
   );
   sectionWidgets.all(original.id).forEach((w, place) => {
-    createWidget.run(
-      id,
-      w.type,
-      sameLists ? w.config : withNewKey(w.type, w.config),
-      place,
-      timestamp,
-    );
+    createWidget.run(id, w.type, withNewKey(w.type, w.config), place, timestamp);
   });
   return id;
 };
 
 export const boardSections = {
-  all: (boardId: Id, owner: Owner) => sectionsOf.all(boardId, owner),
+  all: (boardId: Id) => sectionsOf.all(boardId),
   byId: (id: unknown) => sectionById.get(id),
   /** Added at the end, or at the requested position. */
   create: transaction(
     (
       boardId: Id,
-      owner: Owner,
       unit: string,
       value: number | null,
       gap: number,
       rank: number | null,
     ): Id => {
-      const { next } = nextSection(boardId, owner);
-      const id = Number(
-        createSection.run(boardId, unit, value, gap, next, owner, now()).lastInsertRowid,
-      );
+      const { next } = nextSection(boardId);
+      const id = Number(createSection.run(boardId, unit, value, gap, next, now()).lastInsertRowid);
       if (rank !== null) {
         const others = sectionsOf
-          .all(boardId, owner)
+          .all(boardId)
           .map((s) => s.id)
           .filter((other) => other !== id);
         arrangeSections([...others.slice(0, rank), id, ...others.slice(rank)]);
@@ -141,10 +112,10 @@ export const boardSections = {
   store: arrangeSections,
   /** The copy, with its widgets, is placed just right of the original. */
   duplicate: transaction((original: BoardSectionRow): Id => {
-    const { next } = nextSection(original.board_id, original.owner_id);
-    const id = copySection(original, original.board_id, original.owner_id, next);
+    const { next } = nextSection(original.board_id);
+    const id = copySection(original, original.board_id, next);
     const order = sectionsOf
-      .all(original.board_id, original.owner_id)
+      .all(original.board_id)
       .map((s) => s.id)
       .filter((other) => other !== id);
     order.splice(order.indexOf(original.id) + 1, 0, id);
@@ -155,22 +126,7 @@ export const boardSections = {
   remove: mutation("DELETE FROM board_sections WHERE id = ?"),
 
   /**
-   * "Hérité" unchecked: this account starts from a copy of the board's public
-   * structure — sections and widgets —, which it modifies without touching
-   * others'. A copy already there is removed first.
-   */
-  customize: transaction((boardId: Id, userId: Id): void => {
-    removeSectionsOf.run(boardId, userId);
-    sectionsOf.all(boardId, null).forEach((section, place) => {
-      copySection(section, boardId, userId, place, true);
-    });
-  }),
-  /** "Hérité" checked again: its structure goes away, it returns to the public one. */
-  inherit: (boardId: Id, userId: Id): void => {
-    removeSectionsOf.run(boardId, userId);
-  },
-  /**
-   * An imported layout replaces the board's "owner" structure: its new
+   * An imported layout replaces the board's structure: its new
    * sections, and their widgets, whose configuration arrives ready to store —
    * list key included. The old structure's "guard" widgets, which the account
    * cannot remove, move to the end of the first section; the rest of the old
@@ -179,7 +135,6 @@ export const boardSections = {
   importSections: transaction(
     (
       boardId: Id,
-      owner: Owner,
       sections: {
         unit: string;
         value: number | null;
@@ -188,7 +143,7 @@ export const boardSections = {
       }[],
       keptCount: Id[],
     ): void => {
-      const old = sectionsOf.all(boardId, owner).map((s) => s.id);
+      const old = sectionsOf.all(boardId).map((s) => s.id);
       const timestamp = now();
       const placed = sections.map((section, place) => {
         const id = Number(
@@ -198,7 +153,6 @@ export const boardSections = {
             section.value,
             section.gap,
             place,
-            owner,
             timestamp,
           ).lastInsertRowid,
         );
@@ -210,7 +164,7 @@ export const boardSections = {
           placed[0] ??
           ({
             id: Number(
-              createSection.run(boardId, "auto", null, 50, 0, owner, timestamp).lastInsertRowid,
+              createSection.run(boardId, "auto", null, 50, 0, timestamp).lastInsertRowid,
             ),
             count: 0,
           } as const);
@@ -223,7 +177,7 @@ export const boardSections = {
   setFirst: transaction((boardId: Id, type: string | null): void => {
     const timestamp = now();
     const id = Number(
-      createSection.run(boardId, "auto", null, 50, 0, null, timestamp).lastInsertRowid,
+      createSection.run(boardId, "auto", null, 50, 0, timestamp).lastInsertRowid,
     );
     if (type) createWidget.run(id, type, withNewKey(type, "{}"), 0, timestamp);
   }),
@@ -232,7 +186,7 @@ export const boardSections = {
 export const boardWidgets = {
   byId: (id: unknown) => widgetById.get(id),
   /** Those of all of a structure's sections, in column order then each one's order. */
-  all: (boardId: Id, owner: Owner) => widgetsOf.all(boardId, owner),
+  all: (boardId: Id) => widgetsOf.all(boardId),
   bySection: (sectionId: Id) => sectionWidgets.all(sectionId),
   create: (sectionId: Id, type: string, config: string): Id => {
     const { next } = nextWidget(sectionId);

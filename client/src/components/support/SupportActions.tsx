@@ -13,8 +13,8 @@ import {
   IconUserPlus,
 } from "@tabler/icons-react";
 import { useRights } from "../../lib/rights";
-import { useCallback, useEffect, useState } from "react";
-import LabelsManager from "../board/LabelsManager";
+import { useCallback, useRef, useState } from "react";
+import LabelGroupsEditor from "../ui/LabelGroupsEditor";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { RED } from "../../themes/colors";
@@ -28,7 +28,7 @@ import ActorPicker from "../ui/ActorPicker";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import PointMenu, { type PointMenuPosition } from "../ui/PointMenu";
 import { supportTicketRef } from "@milo/shared";
-import type { PublicUser, SupportLabel, SupportRequest } from "@milo/shared";
+import type { PublicUser, SupportRequest } from "@milo/shared";
 import CloseButton from "../ui/CloseButton";
 
 /** The action awaiting its confirmation. */
@@ -86,18 +86,16 @@ export default function SupportActions({
   const [toConfirm, setToConfirm] = useState<ToConfirm>(null);
   /** Label management: shared by all of support. */
   const [managesLabels, setManagingLabels] = useState(false);
-  const [labels, setLabels] = useState<SupportLabel[]>([]);
   const openLabels = () => setManagingLabels(true);
-  const reloadLabels = useCallback(async () => {
-    try {
-      setLabels(await api.getSupportLabels());
-    } catch (e) {
-      notifyError(errorMessage(e));
-    }
+  // The editor's save, run by "Enregistrer".
+  const saveLabels = useRef<(() => Promise<void>) | null>(null);
+  const [savingLabels, setSavingLabels] = useState(false);
+  const registerLabels = useCallback((save: () => Promise<void>) => {
+    saveLabels.current = save;
+    return () => {
+      if (saveLabels.current === save) saveLabels.current = null;
+    };
   }, []);
-  useEffect(() => {
-    if (managesLabels) void reloadLabels();
-  }, [managesLabels, reloadLabels]);
   const [assignment, setAssignment] = useState(false);
   const [actors, setActors] = useState<string[]>([]);
   const [ongoing, setInProgress] = useState(false);
@@ -386,38 +384,25 @@ export default function SupportActions({
         styles={modalHeaderStyles(MODAL_PADDING)}
       >
         <Stack gap="md">
-          <LabelsManager
-            labels={labels}
-            emptyText="Aucune étiquette"
-            carriers="des demandes qui la portent"
-            withWeight
-            onCreate={async (name, color, weight) => {
-              await api.createSupportLabel(name, color, weight);
-              await reloadLabels();
-            }}
-            onUpdate={async (id, data) => {
-              await api.updateSupportLabel(id, data);
-              await reloadLabels();
-            }}
-            onReorder={async (ids) => {
-              await api.reorderSupportLabels(ids);
-              await reloadLabels();
-            }}
-            onDelete={async (id) => {
-              await api.deleteSupportLabel(id);
-              await reloadLabels();
-            }}
-          />
-          {/* Each action on a label is sent to the server right away:
-              "Enregistrer" closes and has the list re-read, so that the
-              requests show the labels as they were just
-              left. "Fermer" simply closes. */}
+          <LabelGroupsEditor base="/support-labels" register={registerLabels} />
+          {/* Nothing is sent before "Enregistrer": it saves, closes and has
+              the requests re-read, so that they show the labels as they were
+              just left. "Fermer" leaves everything as before. */}
           <Group justify="flex-end" mt={MODAL_PADDING - 16}>
             <CloseButton onClick={() => setManagingLabels(false)} />
             <Button
               color="teal"
+              loading={savingLabels}
               onClick={async () => {
-                setManagingLabels(false);
+                setSavingLabels(true);
+                try {
+                  await saveLabels.current?.();
+                  setManagingLabels(false);
+                } catch (e) {
+                  notifyError(errorMessage(e));
+                } finally {
+                  setSavingLabels(false);
+                }
                 await onRefresh();
               }}
             >

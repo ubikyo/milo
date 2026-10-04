@@ -2,12 +2,11 @@
 // targeted widget and the shape of its configuration — an object —, without
 // reading it: it is the client's widget that knows what it means.
 //
-// Everyone sees and edits the structure they are looking at: the public one,
-// or their own ("Hérité" unchecked). A section or widget of another structure
-// is not found. Setting the public structure requires being able to organize
-// boards (lib/rights.ts); one's own structure is only one's own. A widget, in
-// turn, can only be placed, configured and removed with "Modifier" on its
-// type.
+// A board has one structure, seen by all who see the board. Setting it
+// requires being able to organize boards (lib/rights.ts) and controlling the
+// board — owning it, or a "full" share: "read" leaves its layout as it is. A
+// widget, in turn, can only be placed, configured and removed with "Modifier"
+// on its type.
 
 import express, { Router } from "express";
 import type { NextFunction, Request, Response } from "express";
@@ -15,15 +14,17 @@ import {
   LIST_KEY,
   SECTIONS_GAP_DEFAULT,
   SECTIONS_GAP_MAX,
+  accessIncludes,
+  canUpdate,
   listKey,
   isBoardWidgetType,
   isListWidgetType,
   isSectionWidthUnit,
   migrateWidgetConfig,
 } from "@milo/shared";
-import type { AccessMailDetail, Id, Resource, ImportResult } from "@milo/shared";
+import type { AccessMailDetail, Resource, ImportResult } from "@milo/shared";
 import type { BoardRow, BoardWidgetRow } from "../db/rows.js";
-import { widgetAccess, requireOrganize, requireWidget } from "../lib/rights.js";
+import { widgetAccess, requireLayout, requireOrganize, requireWidget } from "../lib/rights.js";
 import {
   entraAgenda,
   mailOfMailbox,
@@ -34,7 +35,7 @@ import {
 import { cleanEmail } from "../lib/html.js";
 import { feedOf, feedSettings, probeFeed } from "../lib/feed.js";
 import { askForConfirmations } from "../lib/optin.js";
-import { badRequest, notFound, orNotFound, toIds } from "../lib/http.js";
+import { badRequest, orNotFound, toIds } from "../lib/http.js";
 import { SIZE_MAX, writeMedia, inlineType, mediaUrl } from "../lib/media.js";
 import { searchPlace, weatherCoordinates, weatherOf } from "../lib/weather.js";
 import { columnsGap, requestedRank, widthUnit, widthValue } from "../lib/sections.js";
@@ -44,8 +45,7 @@ import { reassignWorkstationContexts } from "../repositories/assets.js";
 import { withNewKey, keyInBoard, keepKey, cleanLists } from "../repositories/lists.js";
 import { receivedTags } from "../repositories/inboxes.js";
 import { boardSections, boardWidgets, renderedWidget } from "../repositories/board-widgets.js";
-import { openBoard } from "../repositories/boards.js";
-import { personalLayouts, boardScope } from "../repositories/layouts.js";
+import { openBoard, requireBoardControl } from "../repositories/boards.js";
 
 const SECTION_NOT_FOUND = "Section introuvable";
 const WIDGET_NOT_FOUND = "Widget introuvable";
@@ -55,25 +55,10 @@ const CONVERSIONS: Record<string, string> = { category: "subcategory", subcatego
 
 type Account = Request["user"];
 
-/**
- * The structure this account looks at in this board: the public one (null),
- * or their own. A private board only has its public structure.
- */
-const owner = (board: BoardRow, user: Account): Id | null =>
-  board.is_private ? null : personalLayouts.owner(user.id, boardScope(board.id));
-
-/** The open board, and the structure this account looks at in it. */
-const openStructure = (boardId: unknown, user: Account) => {
-  const board = openBoard(boardId, user);
-  return { board, owner: owner(board, user) };
-};
-
-/** The requested section, if it belongs to the structure being looked at; and its board. */
+/** The requested section, if its board is seen; and that board. */
 const openedSection = (id: unknown, user: Account) => {
   const section = orNotFound(boardSections.byId(id), SECTION_NOT_FOUND);
-  const { board, owner } = openStructure(section.board_id, user);
-  if (section.owner_id !== owner) notFound(SECTION_NOT_FOUND);
-  return { section, board, owner };
+  return { section, board: openBoard(section.board_id, user) };
 };
 
 /**
@@ -82,13 +67,21 @@ const openedSection = (id: unknown, user: Account) => {
  */
 const openWidget = (id: unknown, req: Request) => {
   const widget = orNotFound(boardWidgets.byId(id), WIDGET_NOT_FOUND);
-  requireWidget(req, widget.type, req.method === "GET" ? "view" : "update");
+  requireWidget(
+    req,
+    widget.type,
+    req.method === "GET" ? "view" : req.method === "DELETE" ? "delete" : "update",
+  );
   return { widget, ...openedSection(widget.section_id, req.user) };
 };
 
-/** Setting the public structure requires being able to organize; one's own does not. */
-const requireStructure = (req: Request, owner: Id | null): void => {
-  if (owner === null) requireOrganize(req);
+/**
+ * Setting a board's structure requires being able to organize, and
+ * controlling the board: a "read" share leaves it as it is.
+ */
+const requireStructure = (req: Request, board: BoardRow): void => {
+  requireOrganize(req);
+  requireBoardControl(board, req.user);
 };
 
 /** The widgets whose type the account reads: the others are not returned to it. */
@@ -141,17 +134,16 @@ export const boardContentRoutes = Router({ mergeParams: true });
 boardContentRoutes.use(touch("board-widgets"), followLists);
 
 boardContentRoutes.get("/sections", (req, res) => {
-  const { board, owner } = openStructure((req.params as { id: string }).id, req.user);
-  res.json(boardSections.all(board.id, owner));
+  const board = openBoard((req.params as { id: string }).id, req.user);
+  res.json(boardSections.all(board.id));
 });
 
 boardContentRoutes.post("/sections", (req, res) => {
-  const { board, owner } = openStructure((req.params as { id: string }).id, req.user);
-  requireStructure(req, owner);
+  const board = openBoard((req.params as { id: string }).id, req.user);
+  requireStructure(req, board);
   const unit = widthUnit(req.body.width_unit, "auto");
   const id = boardSections.create(
     board.id,
-    owner,
     unit,
     widthValue(unit, req.body.width_value),
     columnsGap(req.body.gap, SECTIONS_GAP_DEFAULT),
@@ -161,10 +153,10 @@ boardContentRoutes.post("/sections", (req, res) => {
 });
 
 boardContentRoutes.put("/sections/reorder", (req, res) => {
-  const { board, owner } = openStructure((req.params as { id: string }).id, req.user);
-  requireStructure(req, owner);
+  const board = openBoard((req.params as { id: string }).id, req.user);
+  requireStructure(req, board);
   const ids = toIds(req.body.ids);
-  const known = boardSections.all(board.id, owner).map((s) => s.id);
+  const known = boardSections.all(board.id).map((s) => s.id);
   if (
     ids.length !== known.length ||
     new Set(ids).size !== ids.length ||
@@ -173,7 +165,7 @@ boardContentRoutes.put("/sections/reorder", (req, res) => {
     badRequest("La liste des identifiants ne correspond pas aux sections");
   }
   boardSections.store(ids);
-  res.json(boardSections.all(board.id, owner));
+  res.json(boardSections.all(board.id));
 });
 
 /** A plain object, or nothing: what a received layout can carry. */
@@ -212,8 +204,9 @@ const importedSection = (received: Record<string, unknown>) => {
  * gets a new one: another board's key designates nothing here.
  */
 boardContentRoutes.post("/import", (req, res) => {
-  const { board, owner } = openStructure((req.params as { id: string }).id, req.user);
-  requireStructure(req, owner);
+  const board = openBoard((req.params as { id: string }).id, req.user);
+  requireLayout(req);
+  requireStructure(req, board);
   const body = subject(req.body);
   if (!body || body.version !== 1 || !Array.isArray(body.sections)) {
     badRequest("Disposition illisible");
@@ -225,7 +218,7 @@ boardContentRoutes.post("/import", (req, res) => {
     const widgets = (Array.isArray(received.widgets) ? received.widgets : []).flatMap((w: unknown) => {
       const widget = subject(w);
       const type = widget?.type;
-      if (!isBoardWidgetType(type) || widgetAccess(req, type) !== "update") {
+      if (!isBoardWidgetType(type) || !canUpdate(widgetAccess(req, type))) {
         discarded += 1;
         return [];
       }
@@ -245,10 +238,10 @@ boardContentRoutes.post("/import", (req, res) => {
   });
   // What the account cannot remove stays — even what it does not see.
   const keptCount = boardWidgets
-    .all(board.id, owner)
-    .filter((w) => widgetAccess(req, w.type) !== "update")
+    .all(board.id)
+    .filter((w) => !accessIncludes(widgetAccess(req, w.type), "delete"))
     .map((w) => w.id);
-  boardSections.importSections(board.id, owner, sections, keptCount);
+  boardSections.importSections(board.id, sections, keptCount);
   const result: ImportResult = {
     placed: sections.reduce((n, s) => n + s.widgets.length, 0),
     discarded,
@@ -258,8 +251,8 @@ boardContentRoutes.post("/import", (req, res) => {
 });
 
 boardContentRoutes.get("/widgets", (req, res) => {
-  const { board, owner } = openStructure((req.params as { id: string }).id, req.user);
-  res.json(allReadable(req, boardWidgets.all(board.id, owner)));
+  const board = openBoard((req.params as { id: string }).id, req.user);
+  res.json(allReadable(req, boardWidgets.all(board.id)));
 });
 
 // --- A section ---------------------------------------------------------------
@@ -269,8 +262,8 @@ export const boardSectionRoutes = Router();
 boardSectionRoutes.use(touch("board-widgets"), followLists);
 
 boardSectionRoutes.put("/:id", (req, res) => {
-  const { section: existing, owner } = openedSection(req.params.id, req.user);
-  requireStructure(req, owner);
+  const { section: existing, board } = openedSection(req.params.id, req.user);
+  requireStructure(req, board);
   const unit = widthUnit(req.body.width_unit, existing.width_unit);
   // Changing unit without restating the value would keep the old one, which
   // no longer means anything: "30 %" does not become "30 px".
@@ -283,14 +276,14 @@ boardSectionRoutes.put("/:id", (req, res) => {
 });
 
 boardSectionRoutes.post("/:id/duplicate", (req, res) => {
-  const { section: existing, owner } = openedSection(req.params.id, req.user);
-  requireStructure(req, owner);
+  const { section: existing, board } = openedSection(req.params.id, req.user);
+  requireStructure(req, board);
   res.status(201).json(boardSections.byId(boardSections.duplicate(existing)));
 });
 
 boardSectionRoutes.delete("/:id", (req, res) => {
-  const { section: existing, owner } = openedSection(req.params.id, req.user);
-  requireStructure(req, owner);
+  const { section: existing, board } = openedSection(req.params.id, req.user);
+  requireStructure(req, board);
   // What it carried goes with it, through the foreign key.
   boardSections.remove.run(existing.id);
   res.status(204).end();
@@ -309,20 +302,21 @@ boardWidgetRoutes.use(touch("board-widgets"), followLists);
  * "/:id", otherwise "reorder" would be taken for an id.
  */
 boardWidgetRoutes.put("/reorder", (req, res) => {
-  const { section, board, owner } = openedSection(req.body.section_id, req.user);
-  requireStructure(req, owner);
+  const { section, board } = openedSection(req.body.section_id, req.user);
+  requireStructure(req, board);
   const ids = toIds(req.body.ids);
   // Only the widgets the account sees, of the same structure, are arranged.
-  const known = new Set(allReadable(req, boardWidgets.all(board.id, owner)).map((w) => w.id));
+  const known = new Set(allReadable(req, boardWidgets.all(board.id)).map((w) => w.id));
   if (ids.length !== new Set(ids).size || ids.some((id) => !known.has(id))) {
     badRequest("La liste des identifiants ne correspond pas aux widgets");
   }
   boardWidgets.store(section.id, ids);
-  res.json(allReadable(req, boardWidgets.all(board.id, owner)));
+  res.json(allReadable(req, boardWidgets.all(board.id)));
 });
 
 boardWidgetRoutes.post("/", (req, res) => {
-  const { section } = openedSection(req.body.section_id, req.user);
+  const { section, board } = openedSection(req.body.section_id, req.user);
+  requireStructure(req, board);
   const type: unknown = req.body.type;
   if (!isBoardWidgetType(type)) badRequest("Widget inconnu");
   requireWidget(req, type as string, "update");
@@ -343,10 +337,12 @@ boardWidgetRoutes.post("/", (req, res) => {
 
 // A widget's type cannot be changed: that would be another widget. Only its
 // configuration moves — except between category and subcategory, which
-// share theirs.
+// share theirs. Its configuration also carries what some widgets hold, a to-do
+// list's items: it moves under a "read" share too.
 boardWidgetRoutes.put("/:id", (req, res) => {
-  const { widget } = openWidget(req.params.id, req);
+  const { widget, board } = openWidget(req.params.id, req);
   if (req.body.type !== undefined && req.body.type !== widget.type) {
+    requireStructure(req, board);
     if (CONVERSIONS[widget.type] !== req.body.type) {
       badRequest("Ce widget ne se convertit pas en ce type");
     }
@@ -360,14 +356,16 @@ boardWidgetRoutes.put("/:id", (req, res) => {
 });
 
 boardWidgetRoutes.post("/:id/duplicate", (req, res) => {
-  const { widget } = openWidget(req.params.id, req);
+  const { widget, board } = openWidget(req.params.id, req);
+  requireStructure(req, board);
   // A list widget owns its items: it is not duplicated.
   if (isListWidgetType(widget.type)) badRequest("Ce widget ne se duplique pas");
   res.status(201).json(renderedWidget(boardWidgets.byId(boardWidgets.duplicate(widget))!));
 });
 
 boardWidgetRoutes.delete("/:id", (req, res) => {
-  const { widget } = openWidget(req.params.id, req);
+  const { widget, board } = openWidget(req.params.id, req);
+  requireStructure(req, board);
   boardWidgets.remove.run(widget.id);
   res.status(204).end();
 });

@@ -4,26 +4,32 @@
 
 import { Router } from "express";
 import type { Request } from "express";
-import type { Board, Id, LayoutState } from "@milo/shared";
+import type { Board, Id } from "@milo/shared";
 import { mutation, selection, transaction } from "../db/query.js";
-import type { BoardRow } from "../db/rows.js";
-import { requireOrganize } from "../lib/rights.js";
-import { badRequest, requireText } from "../lib/http.js";
+import type { BoardRow, UserRow } from "../db/rows.js";
+import { requireInterface, requireOrganize, requireStructureRight } from "../lib/rights.js";
+import { structureRights } from "../repositories/users.js";
+import { HttpError, badRequest, requireText } from "../lib/http.js";
 import { concerned, notifyDeletion } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { boardSections } from "../repositories/board-widgets.js";
 import { followLists } from "./board-widgets.js";
-import { boards, openBoard } from "../repositories/boards.js";
+import {
+  boards,
+  openBoard,
+  requireBoardControl,
+  requireBoardOwner,
+} from "../repositories/boards.js";
 import {
   selectedContext,
   contextOf,
   contexts,
 } from "../repositories/contexts.js";
-import { personalLayouts, boardScope } from "../repositories/layouts.js";
 import { receivedOrder } from "../repositories/reorder.js";
-import { inOrderOf, userTabOrders } from "../repositories/tab-orders.js";
+import { hiddenTabs, inOrderOf, userTabOrders, withHidden } from "../repositories/tab-orders.js";
 import { openView } from "../repositories/views.js";
+import { boardAccess, ownsView } from "../repositories/shares.js";
 
 /** A setting arrives as a boolean; the database stores it as 0 or 1. */
 const flag = (value: unknown, defaultValue: 0 | 1): 0 | 1 =>
@@ -33,24 +39,35 @@ const flag = (value: unknown, defaultValue: 0 | 1): 0 | 1 =>
 const viewScope = (viewId: Id) => `boards:${viewId}`;
 
 /**
- * A board as this account sees it: its "Hérité" and the context it looks at
- * are its own. A private board only has its public structure
- * (repositories/layouts.ts).
+ * A board as this account sees it: what it may do with it, and the context
+ * it looks at, are its own. Without "Lire" on contexts, it has none: nothing
+ * is filtered.
  */
-export const boardForAccount = (board: BoardRow, userId: Id): Board => ({
-  ...board,
-  contexts: contexts.ofBoard.all(board.id).map(contextOf),
-  context_id: selectedContext(userId, board.id),
-  is_locked: 0,
-  inherited:
-    Boolean(board.is_private) || !personalLayouts.personal(userId, boardScope(board.id)),
-});
+export const boardForAccount = (board: BoardRow, user: UserRow): Board => {
+  const readsContexts = structureRights(user).contexts.view;
+  const { is_private: _unused, ...rest } = board;
+  return {
+    ...rest,
+    contexts: readsContexts ? contexts.ofBoard.all(board.id).map(contextOf) : [],
+    context_id: readsContexts ? selectedContext(user.id, board.id) : null,
+    is_locked: 0,
+    access: boardAccess(board, user) ?? "read",
+    is_hidden: hiddenTabs.of(user.id, viewScope(board.view_id)).has(String(board.id)),
+  };
+};
 
-/** The boards of a view that this account sees, in their own order. */
-const visibleBoards = (viewId: Id, userId: Id): Board[] =>
-  inOrderOf(userId, viewScope(viewId), boards.visibleIn.all(viewId, userId)).map((b) =>
-    boardForAccount(b, userId),
-  );
+/**
+ * The boards of a view that this account sees, in their own order — those it
+ * hid at the end: none without "Lire" on boards.
+ */
+const visibleBoards = (viewId: Id, user: UserRow): Board[] =>
+  structureRights(user).boards.view
+    ? withHidden(
+        user.id,
+        viewScope(viewId),
+        inOrderOf(user.id, viewScope(viewId), boards.visibleIn.all(viewId, user.id)),
+      ).map((b) => boardForAccount(b, user))
+    : [];
 
 const boardProjects = selection<{ id: Id; name: string }>(
   "SELECT id, name FROM projects WHERE board_id = ?",
@@ -68,7 +85,6 @@ const deleteCascade = transaction((id: Id): void => {
   deleteBoardProjects.run(id);
   deleteBoardCategories.run(id);
   boards.remove.run(id);
-  personalLayouts.forgetScope.run(boardScope(id));
 });
 
 /**
@@ -106,13 +122,13 @@ export const deleteBoard = (board: BoardRow, req: Request): void => {
 
 /**
  * A new board in a view, after the others, with no context: they are added
- * from its list. With no first widget, it is born with no section: its empty
- * screen offers to create one.
+ * from its list. It belongs to its creator. With no first widget, it is born
+ * with no section: its empty screen offers to create one.
  */
 export const createBoard = transaction(
-  (viewId: Id, name: string, firstWidget: string | null): Id => {
+  (viewId: Id, name: string, owner: Id, firstWidget: string | null): Id => {
     const { next } = boards.nextPosition(viewId);
-    const id = Number(boards.create.run(viewId, name, next, 1, 0, null, now()).lastInsertRowid);
+    const id = Number(boards.create.run(viewId, name, next, 1, owner, now()).lastInsertRowid);
     if (firstWidget) boardSections.setFirst(id, firstWidget);
     return id;
   },
@@ -131,21 +147,27 @@ boardRoutes.get("/", (req, res) => {
   const { view } = req.query;
   if (!view) badRequest("La vue est requise");
   const openedView = openView(view, req.user);
-  res.json(visibleBoards(openedView.id, req.user.id));
+  res.json(visibleBoards(openedView.id, req.user));
 });
 
 boardRoutes.post("/", (req, res) => {
-  requireOrganize(req);
+  requireStructureRight(req, "boards", "create");
   const openedView = openView(req.body.view_id, req.user);
+  // A view's boards are added by its owner: those it is shared with only see
+  // what was shared.
+  if (!ownsView(openedView, req.user)) {
+    throw new HttpError(403, "Seul le propriétaire de cette vue peut y ajouter un tableau");
+  }
   const name = requireText(req.body.name, "Le nom du tableau est requis");
-  const id = createBoard(openedView.id, name, null);
-  res.status(201).json(boardForAccount(boards.byId.get(id)!, req.user.id));
+  const id = createBoard(openedView.id, name, req.user.id, null);
+  res.status(201).json(boardForAccount(boards.byId.get(id)!, req.user));
 });
 
 // Arrange the tabs. Declared before "/:id", otherwise "reorder" would be
 // taken for an id. The order is this account's only
-// (repositories/tab-orders.ts): seeing it is enough to arrange it.
+// (repositories/tab-orders.ts); it follows the right to modify the interface.
 boardRoutes.put("/reorder", (req, res) => {
+  requireInterface(req);
   const openedView = openView(req.body.view_id, req.user);
   const order = receivedOrder(
     req.body.ids,
@@ -153,25 +175,37 @@ boardRoutes.put("/reorder", (req, res) => {
     "La liste des identifiants ne correspond pas aux tableaux de cette vue",
   );
   userTabOrders.store(req.user.id, viewScope(openedView.id), order);
-  res.json(visibleBoards(openedView.id, req.user.id));
+  res.json(visibleBoards(openedView.id, req.user));
+});
+
+// "Masquer": hidden for this account, it only shows in interface editing,
+// greyed at the end of the row. The last board shown in a view stays.
+boardRoutes.put("/:id/hidden", (req, res) => {
+  requireInterface(req);
+  const board = openBoard(req.params.id, req.user);
+  const hidden = req.body.hidden === true;
+  if (hidden) {
+    const others = visibleBoards(board.view_id, req.user).filter(
+      (b) => b.id !== board.id && !b.is_hidden,
+    );
+    if (others.length === 0) badRequest("Le dernier tableau affiché ne peut pas être masqué");
+  }
+  hiddenTabs.set(req.user.id, viewScope(board.view_id), board.id, hidden);
+  res.json(visibleBoards(board.view_id, req.user));
 });
 
 // A single board: its view above all, where the application must position
 // itself to open what it contains — a project, a card, a widget found by
 // search.
 boardRoutes.get("/:id", (req, res) => {
-  res.json(boardForAccount(openBoard(req.params.id, req.user), req.user.id));
+  res.json(boardForAccount(openBoard(req.params.id, req.user), req.user));
 });
 
 boardRoutes.put("/:id", (req, res) => {
   requireOrganize(req);
   const existing = openBoard(req.params.id, req.user);
+  requireBoardControl(existing, req.user);
   const name = requireText(req.body.name ?? existing.name, "Le nom du tableau est requis");
-  const isPrivate = flag(req.body.is_private, existing.is_private);
-  // A board only has an owner when private: closing it means reserving it
-  // for oneself; reopening it gives it back to everyone, with no owner. Only
-  // whoever closed it still sees it, and so can reopen it.
-  const owner = isPrivate ? (existing.is_private ? existing.owner_id : req.user.id) : null;
   const all = requireText(
     req.body.all_contexts_label ?? existing.all_contexts_label,
     "Le libellé de « Tous les contextes » est requis",
@@ -180,38 +214,15 @@ boardRoutes.put("/:id", (req, res) => {
     name,
     all,
     flag(req.body.show_card_numbers, existing.show_card_numbers),
-    isPrivate,
-    owner,
     existing.id,
   );
-  res.json(boardForAccount(boards.byId.get(existing.id)!, req.user.id));
+  res.json(boardForAccount(boards.byId.get(existing.id)!, req.user));
 });
 
 boardRoutes.delete("/:id", (req, res) => {
-  requireOrganize(req);
-  deleteBoard(openBoard(req.params.id, req.user), req);
+  requireStructureRight(req, "boards", "delete");
+  const board = openBoard(req.params.id, req.user);
+  requireBoardOwner(board, req.user);
+  deleteBoard(board, req);
   res.status(204).end();
-});
-
-// A board's "Hérité": its public structure, or its own copy. Unchecking it
-// starts from a copy of the public one — sections and widgets —; checking it
-// again erases one's own. Seeing it is enough: it is only set for oneself. A
-// private board only has its public structure.
-boardRoutes.get("/:id/layout", (req, res) => {
-  const board = openBoard(req.params.id, req.user);
-  res.json({ inherited: boardForAccount(board, req.user.id).inherited } as LayoutState);
-});
-
-boardRoutes.put("/:id/layout", (req, res) => {
-  const board = openBoard(req.params.id, req.user);
-  if (board.is_private) badRequest("Un tableau privé n'a pas de structure partagée");
-  const scope = boardScope(board.id);
-  if (req.body.inherited) {
-    boardSections.inherit(board.id, req.user.id);
-    personalLayouts.remove(req.user.id, scope);
-  } else if (!personalLayouts.personal(req.user.id, scope)) {
-    boardSections.customize(board.id, req.user.id);
-    personalLayouts.insertRow(req.user.id, scope);
-  }
-  res.json({ inherited: boardForAccount(board, req.user.id).inherited } as LayoutState);
 });

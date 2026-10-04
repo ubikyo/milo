@@ -12,13 +12,30 @@ import type {
   PublicUser,
   WidgetRights,
   WorkspaceRef,
+  WorkspaceRights,
+  NotificationRight,
+  NotificationRights,
+  ApplicationRight,
+  ApplicationRights,
+  StructurePermissions,
+  StructureRights,
 } from "@milo/shared";
 import {
   ALL_COMPANIES,
   canRead,
+  fullAdminPermissions,
+  mergeAdminPermissions,
   widgetPermissions,
   mergeWidgetRights,
-  validAdminPermissions,
+  parseAdminRights,
+  mergeNotificationRights,
+  validNotificationRights,
+  fullApplicationRights,
+  mergeApplicationRights,
+  validApplicationRights,
+  fullStructureRights,
+  mergeStructureRights,
+  validStructurePermissions,
   validWidgetRights,
   widgetRightsEverywhere,
 } from "@milo/shared";
@@ -79,45 +96,60 @@ const ACCOUNT_PRINCIPAL = `(principal_type = 'user' AND principal_id = ?)
  * Their access, workspace by workspace: their own and their groups', one
  * row per principal and per workspace.
  */
-const accountAccess = selection<{ workspace_id: number; widgets: string }>(
-  `SELECT workspace_id, widgets FROM principal_permissions WHERE ${ACCOUNT_PRINCIPAL}`,
+const accountAccess = selection<{
+  workspace_id: number;
+  widgets: string;
+  notifications: string;
+  application: string;
+  structure: string;
+}>(
+  `SELECT workspace_id, widgets, notifications, application, structure FROM principal_permissions
+   WHERE ${ACCOUNT_PRINCIPAL}`,
 );
 
 /** Their administration: their own and their groups'. */
-const accountAdministration = selection<{ settings: string; workspaces: string }>(
-  `SELECT settings, workspaces FROM principal_admin WHERE ${ACCOUNT_PRINCIPAL}`,
+const accountAdministration = selection<{ rights: string }>(
+  `SELECT rights FROM principal_admin WHERE ${ACCOUNT_PRINCIPAL}`,
 );
 
+/** JSON as stored: unreadable, it grants nothing. */
+const parsed = (json: string): unknown => {
+  try {
+    return JSON.parse(json);
+  } catch {
+    return undefined;
+  }
+};
+
 /** Their access, re-read: unreadable JSON grants nothing. */
-const userRows = (user: UserRow): { workspace: Id; widgets: WidgetRights }[] =>
-  accountAccess.all(user.entra_id, JSON.stringify(groupsOf(user))).map((l) => {
-    let widgets: unknown = {};
-    try {
-      widgets = JSON.parse(l.widgets);
-    } catch {
-      // Unreadable JSON grants nothing.
-    }
-    return { workspace: l.workspace_id, widgets: validWidgetRights(widgets) };
-  });
+const userRows = (
+  user: UserRow,
+): {
+  workspace: Id;
+  widgets: WidgetRights;
+  notifications: NotificationRight[];
+  application: ApplicationRight[];
+  structure: StructurePermissions;
+}[] =>
+  accountAccess.all(user.entra_id, JSON.stringify(groupsOf(user))).map((l) => ({
+    workspace: l.workspace_id,
+    widgets: validWidgetRights(parsed(l.widgets)),
+    notifications: validNotificationRights(parsed(l.notifications)),
+    application: validApplicationRights(parsed(l.application)),
+    structure: validStructurePermissions(parsed(l.structure)),
+  }));
 
 /**
- * Their administration, merged — their own and their groups': the widest
- * "Paramétrage" setting, workspace management if any of them grants it.
- * The "admin" account has everything.
+ * Their administration, merged — their own and their groups': each right
+ * that one of them grants. The "admin" account has everything.
  */
 const administrationOf = (user: UserRow): AdminPermissions => {
-  if (user.system) return { settings: "update", workspaces: "update" };
-  const all = accountAdministration
-    .all(user.entra_id, JSON.stringify(groupsOf(user)))
-    .map(validAdminPermissions);
-  return {
-    settings: all.some((p) => p.settings === "update")
-      ? "update"
-      : all.some((p) => p.settings === "view")
-        ? "view"
-        : "",
-    workspaces: all.some((p) => p.workspaces === "update") ? "update" : "",
-  };
+  if (user.system) return fullAdminPermissions();
+  return mergeAdminPermissions(
+    accountAdministration
+      .all(user.entra_id, JSON.stringify(groupsOf(user)))
+      .map((row) => parseAdminRights(row.rights)),
+  );
 };
 
 /**
@@ -144,9 +176,19 @@ export const currentWorkspace = (user: UserRow): Id | null => {
   return (own.find((w) => w.id === user.workspace_id) ?? own[0])?.id ?? null;
 };
 
-/** Can they manage workspaces? The "admin" account, or whoever administration grants it to. */
-export const canManageWorkspaces = (user: UserRow): boolean =>
-  administrationOf(user).workspaces === "update";
+/** Their rights on workspaces: the "admin" account's, or those administration grants them. */
+export const workspaceRights = (user: UserRow): WorkspaceRights => {
+  const { workspaces } = administrationOf(user);
+  return {
+    view: workspaces.includes("view"),
+    create: workspaces.includes("create"),
+    delete: workspaces.includes("delete"),
+  };
+};
+
+/** Do they hold at least one right on workspaces? */
+const anyWorkspaceRight = (user: UserRow): boolean =>
+  Object.values(workspaceRights(user)).some(Boolean);
 
 /**
  * Their permissions per widget type in the workspace they work in
@@ -156,7 +198,7 @@ export const canManageWorkspaces = (user: UserRow): boolean =>
  */
 const workspaceWidgets = (user: UserRow): WidgetRights =>
   user.system
-    ? widgetRightsEverywhere("update")
+    ? widgetRightsEverywhere("delete")
     : mergeWidgetRights(
         userRows(user)
           .filter((l) => l.workspace === user.workspace_id)
@@ -165,6 +207,50 @@ const workspaceWidgets = (user: UserRow): WidgetRights =>
 
 /** Their permissions per widget type. */
 export const widgetRights = (user: UserRow): WidgetRights => workspaceWidgets(user);
+
+/**
+ * The notifications they receive in the workspace they work in — the one
+ * they chose if they still have access to it —, merged: their own and their
+ * groups'. The "admin" account receives them all.
+ */
+export const notificationRights = (user: UserRow): NotificationRights => {
+  if (user.system) return { screen: true, email: true };
+  const workspace = currentWorkspace(user);
+  return mergeNotificationRights(
+    userRows(user)
+      .filter((l) => l.workspace === workspace)
+      .map((l) => l.notifications),
+  );
+};
+
+/**
+ * What they may do with the interface of the workspace they work in, merged
+ * — their own and their groups'. The "admin" account may do everything.
+ */
+export const applicationRights = (user: UserRow): ApplicationRights => {
+  if (user.system) return fullApplicationRights();
+  const workspace = currentWorkspace(user);
+  return mergeApplicationRights(
+    userRows(user)
+      .filter((l) => l.workspace === workspace)
+      .map((l) => l.application),
+  );
+};
+
+/**
+ * What they may do with the views, boards and contexts of the workspace they
+ * work in, merged — their own and their groups'. The "admin" account may do
+ * everything.
+ */
+export const structureRights = (user: UserRow): StructureRights => {
+  if (user.system) return fullStructureRights();
+  const workspace = currentWorkspace(user);
+  return mergeStructureRights(
+    userRows(user)
+      .filter((l) => l.workspace === workspace)
+      .map((l) => l.structure),
+  );
+};
 
 /**
  * Their rights in the modes, derived from their permissions per widget type
@@ -192,24 +278,24 @@ export interface SettingsRights {
 
 /**
  * Their rights on "Paramétrage", held through their administration — their own
- * or one of their groups'. The "admin" account has them all. "Modifier"
- * includes "Voir".
+ * or one of their groups'. The "admin" account has them all. "Accéder" opens
+ * it and changes it.
  */
 export const settingsRights = (user: UserRow): SettingsRights => {
-  const { settings } = administrationOf(user);
-  return { view: settings !== "", update: settings === "update" };
+  const access = administrationOf(user).settings.includes("access");
+  return { view: access, update: access };
 };
 
 /**
  * Does the account have access to Milo? The "admin" account, someone with
  * access to at least one workspace — directly, or through one of their
- * groups —, who sees "Paramétrage" or who manages workspaces.
+ * groups —, who holds a right on "Paramétrage" or on workspaces.
  */
 export const hasAccess = (user: UserRow): boolean =>
   Boolean(user.system) ||
   workspacesOf(user).length > 0 ||
-  administrationOf(user).settings !== "" ||
-  canManageWorkspaces(user);
+  settingsRights(user).view ||
+  anyWorkspaceRight(user);
 
 /**
  * The account, with its workspace straightened out: the one they chose if
@@ -238,11 +324,14 @@ export const publicUser = (account: UserRow): PublicUser => {
     settings: settingsRights(user),
     rights: companyRights(user),
     widgets: widgetRights(user),
+    notifications: notificationRights(user),
+    application: applicationRights(user),
+    structure: structureRights(user),
     system: Boolean(user.system),
     default_view: user.default_view ?? "",
     workspace: user.workspace_id,
     workspaces: workspacesOf(user),
-    manage_workspaces: canManageWorkspaces(user),
+    workspace_rights: workspaceRights(user),
     created_at: user.created_at,
   };
 };

@@ -1,0 +1,9 @@
+/*
+ * A widget's content, aligned in its place (widgets/alignment.ts): what it
+ * holds keeps its own height and width — a content stretched to fill the place
+ * could not be moved in it.
+ */
+.aligned > * {
+  flex: 0 0 auto !important;
+  max-width: 100%;
+}

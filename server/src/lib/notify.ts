@@ -34,7 +34,7 @@ import { template } from "./mail-template.js";
 import type { Row } from "./mail-template.js";
 import { notifications } from "../repositories/notifications.js";
 import { readSetting } from "../repositories/settings.js";
-import { companyRights, users } from "../repositories/users.js";
+import { companyRights, notificationRights, users } from "../repositories/users.js";
 import { now } from "./time.js";
 
 // --- Settings (Paramétrage › Notifications) ---------------------------------
@@ -291,7 +291,8 @@ export const notify = (occurrence: Occurrence): void => {
         created_at: whenLabel,
       } satisfies Notification);
 
-      if (sender) enqueue(person, occurrence, link, sender);
+      // By e-mail only for whoever has the right to it.
+      if (sender && notificationRights(person).email) enqueue(person, occurrence, link, sender);
     }
   } catch (error) {
     console.error("Follow-up notification abandoned:", error);
@@ -363,7 +364,7 @@ export const notifyLinked = (r: Linkage): Id[] => {
       } satisfies Notification);
       notified.push(person.id);
 
-      if (!mailbox || !person.email) continue;
+      if (!mailbox || !person.email || !notificationRights(person).email) continue;
       sendMail({
         from: mailbox,
         to: person.email,
@@ -422,7 +423,7 @@ export const notifyReminder = (r: DueReminder): void => {
         created_at: whenLabel,
       } satisfies Notification);
 
-      if (!mailbox || !person.email) continue;
+      if (!mailbox || !person.email || !notificationRights(person).email) continue;
       sendMail({
         from: mailbox,
         to: person.email,
@@ -482,7 +483,7 @@ export const notifyAssignments = (assignments: Assignment[]): void => {
           created_at: whenLabel,
         } satisfies Notification);
 
-        if (!mailbox || !person.email) continue;
+        if (!mailbox || !person.email || !notificationRights(person).email) continue;
         const sendKey = String(person.id);
         const current = mails.get(sendKey);
         if (current) current.rows.push({ text: title, repetitions: 1 });

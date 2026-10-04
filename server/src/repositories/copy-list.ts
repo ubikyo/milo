@@ -12,6 +12,7 @@
 // Attachments, however, follow: they are documents on file, not a
 // conversation. Only the rows are copied — both cards cite the same file.
 
+import { DEFAULT_LABEL_GROUP } from "@milo/shared";
 import type { Id } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type {
@@ -26,6 +27,7 @@ import { cardComments } from "./cards.js";
 import { creationNote } from "./comments.js";
 import { nextReference } from "./references.js";
 import { boardContext, contexts } from "./contexts.js";
+import { boardLabelGroups } from "./label-groups.js";
 import { keyInBoard } from "./lists.js";
 import { reorderTaskCards, taskCards, taskLists } from "./tasks.js";
 
@@ -113,8 +115,25 @@ const nextLabelRank = scalar<{ next: number }>(
   "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM labels WHERE board_id = ?",
 );
 const createLabel = mutation(
-  "INSERT INTO labels (board_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?)",
+  "INSERT INTO labels (board_id, group_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?, ?)",
 );
+
+/** The twin, created in the group of the same name — itself created if needed. */
+const createTwin = (label: LabelRow, targetBoard: Id, timestamp: string): Id => {
+  const groupName = boardLabelGroups.byId(label.group_id)?.name ?? DEFAULT_LABEL_GROUP;
+  const id = Number(
+    createLabel.run(
+      targetBoard,
+      boardLabelGroups.named(targetBoard, groupName),
+      label.name,
+      label.color,
+      nextLabelRank(targetBoard).next,
+      timestamp,
+    ).lastInsertRowid,
+  );
+  boardLabelGroups.renumber(targetBoard);
+  return id;
+};
 
 /**
  * The destination board's label that matches this one. In the source board,
@@ -132,17 +151,7 @@ const matchingLabel = (
   if (already !== undefined) return already;
 
   const twin = twinLabel.get(targetBoard, label.name, label.color);
-  const id =
-    twin?.id ??
-    Number(
-      createLabel.run(
-        targetBoard,
-        label.name,
-        label.color,
-        nextLabelRank(targetBoard).next,
-        timestamp,
-      ).lastInsertRowid,
-    );
+  const id = twin?.id ?? createTwin(label, targetBoard, timestamp);
 
   cache.set(label.id, id);
   return id;

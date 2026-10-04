@@ -1,10 +1,9 @@
 import { Button, Menu } from "@mantine/core";
 import { IconCheck, IconChevronDown } from "@tabler/icons-react";
 import { useState } from "react";
-import type { CSSProperties } from "react";
 import { api } from "../../api";
-import { NEUTRAL_HOVER } from "../../themes/colors";
-import { ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
+import { ACTIONS_BUTTON_STYLE, ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
+import classes from "../../assets/styles/WorkspaceMenu.module.css";
 import { errorMessage, notifyError } from "../../lib/errors";
 import type { PublicUser } from "@milo/shared";
 
@@ -38,15 +37,15 @@ export default function WorkspaceMenu({ user }: { user: PublicUser }) {
       styles={TAB_MENU_STYLES}
     >
       <Menu.Target>
-        {/* The same button as the contexts list. */}
+        {/* Bare text, like "Actions": no background nor padding, only the
+            text reacts to hover. */}
         <Button
           variant="subtle"
-          color="gray"
           size="xs"
           rightSection={<IconChevronDown size={14} />}
           aria-label="Workspace"
           loading={switching}
-          style={{ "--button-hover": NEUTRAL_HOVER } as CSSProperties}
+          style={ACTIONS_BUTTON_STYLE}
         >
           {current?.name ?? "Workspace"}
         </Button>
@@ -55,6 +54,7 @@ export default function WorkspaceMenu({ user }: { user: PublicUser }) {
         {user.workspaces.map((w) => (
           <Menu.Item
             key={w.id}
+            className={classes.item}
             onClick={() => void select(w.id)}
             // The tick of the current workspace; the others keep its place,
             // so that names stay aligned.

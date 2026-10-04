@@ -44,6 +44,10 @@ export default function DirectoryPicker({
   const [matches, setFound] = useState<EntraPrincipal[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [ongoing, setInProgress] = useState(false);
+  // The list only opens once something is typed: an empty field has nothing
+  // to offer but a prompt.
+  const [opened, setOpened] = useState(false);
+  const typing = search.trim() !== "" && search !== value?.name;
 
   useEffect(() => {
     const term = search.trim();
@@ -95,6 +99,9 @@ export default function DirectoryPicker({
       }}
       searchValue={search}
       onSearchChange={setSearch}
+      dropdownOpened={opened && typing}
+      onDropdownOpen={() => setOpened(true)}
+      onDropdownClose={() => setOpened(false)}
       // The directory has already filtered: the list does not filter again behind it.
       filter={({ options }) => options}
       nothingFoundMessage={

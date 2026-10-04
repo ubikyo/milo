@@ -107,15 +107,19 @@ export default function AccountControls({
           >
             Profil
           </Menu.Item>
-          <Menu.Item
-            leftSection={<IconBell size={16} />}
-            onClick={onOpenNotifications}
-          >
-            Notifications
-          </Menu.Item>
-          {/* Settings opens with the "Voir" right, or to manage
+          {/* Only for whoever receives notifications in their workspace, on
+              screen or by e-mail (Accès). */}
+          {(user.notifications.screen || user.notifications.email) && (
+            <Menu.Item
+              leftSection={<IconBell size={16} />}
+              onClick={onOpenNotifications}
+            >
+              Notifications
+            </Menu.Item>
+          )}
+          {/* Settings opens with its "Accéder" right, or to see
               workspaces. */}
-          {(user.settings.view || user.manage_workspaces) && (
+          {(user.settings.view || user.workspace_rights.view) && (
             <Menu.Item
               leftSection={<IconSettings size={16} />}
               onClick={onOpenSettings}

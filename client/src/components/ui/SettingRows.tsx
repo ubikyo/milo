@@ -4,6 +4,7 @@ import {
   Group,
   Input,
   NumberInput,
+  SegmentedControl,
   Stack,
   Switch,
   Text,
@@ -11,7 +12,7 @@ import {
 } from "@mantine/core";
 import { IconRestore } from "@tabler/icons-react";
 import { useState } from "react";
-import { GREEN } from "../../themes/colors";
+import { GREEN, SEGMENTS_BG } from "../../themes/colors";
 import { SHADES, SHADES_PER_ROW } from "../../widgets/style-fields";
 import {
   ROUNDING,
@@ -27,7 +28,7 @@ import {
 // color and size, or its switch, aligned right.
 
 /** The width of the row's name: the rows' fields line up beneath it. */
-const NAME_WIDTH = 41;
+const NAME_WIDTH = 65;
 
 /** The space between the button and the name. */
 const NAME_GAP = 10;
@@ -52,21 +53,39 @@ export const insertRow = (
   return next;
 };
 
+/** A size in pixels, set in a row. */
+export interface SizeSetting {
+  value: number;
+  defaultValue: number;
+  min: number;
+  max: number;
+  /** Empty when the field is. */
+  onChange: (value: number | "") => void;
+  /**
+   * When a row carries several: what tells them apart — the field's
+   * prefix, an arrow for a padding's top or bottom —, and what its label
+   * says ("du padding haut").
+   */
+  prefix?: string;
+  what?: string;
+}
+
 export interface SettingRow {
   name: string;
   /** "du titre", "de la marge haute": what the field labels say. */
   what: string;
   color?: { value: string; onChange: (value: string) => void };
-  size?: {
-    value: number;
-    defaultValue: number;
-    min: number;
-    max: number;
-    /** Empty when the field is. */
-    onChange: (value: number | "") => void;
-  };
+  size?: SizeSetting;
+  /** Several sizes side by side, aligned right — a padding's top and bottom. */
+  sizes?: SizeSetting[];
   /** A setting that turns on or off — a widget's frame —, aligned right. */
   toggle?: { value: boolean; onChange: (value: boolean) => void };
+  /** One option among a few — an alignment —, side by side, aligned right. */
+  choice?: {
+    value: string;
+    data: { value: string; label: string }[];
+    onChange: (value: string) => void;
+  };
   /** True when one of the row's settings differs from the default. */
   modified: boolean;
   reset: () => void;
@@ -142,9 +161,12 @@ function Color({
 function Size({
   size,
   label,
+  first = true,
 }: {
-  size: NonNullable<SettingRow["size"]>;
+  size: SizeSetting;
   label: string;
+  /** The first of the row's sizes: it pushes them all to the right. */
+  first?: boolean;
 }) {
   const [input, setInput] = useState(false);
   return (
@@ -152,8 +174,9 @@ function Size({
       size="xs"
       radius={ROUNDING}
       w={SIZE_WIDTH}
-      style={{ marginLeft: "auto" }}
+      style={first ? { marginLeft: "auto" } : undefined}
       placeholder={String(size.defaultValue)}
+      prefix={size.prefix ? `${size.prefix} ` : undefined}
       suffix=" px"
       min={size.min}
       max={size.max}
@@ -215,6 +238,42 @@ export default function SettingRows({
             )}
             {l.size && (
               <Size size={l.size} label={`Taille ${l.what}`} />
+            )}
+            {l.sizes?.map((size, rank) => (
+              <Size
+                key={rank}
+                size={size}
+                label={`Taille ${size.what ?? l.what}`}
+                first={rank === 0}
+              />
+            ))}
+            {l.choice && (
+              <SegmentedControl
+                size="xs"
+                color="teal"
+                radius="xs"
+                data={l.choice.data}
+                // The chosen option fills the control to its edges, in green on
+                // the others' gray.
+                styles={{
+                  root: { padding: 0, backgroundColor: SEGMENTS_BG },
+                  indicator: { borderRadius: "var(--sc-radius)" },
+                  label: { borderRadius: "var(--sc-radius)" },
+                }}
+                value={l.choice.value}
+                onChange={l.choice.onChange}
+                // A click on the option already shown still chooses it: the
+                // default one shows without being chosen — a horizontal "Gauche"
+                // that must then really apply.
+                onClickCapture={(e) => {
+                  const choice = l.choice!;
+                  const label = (e.target as HTMLElement).closest("label")?.textContent;
+                  const option = choice.data.find((o) => o.label === label);
+                  if (option?.value === choice.value) choice.onChange(option.value);
+                }}
+                aria-label={l.name}
+                style={{ marginLeft: "auto" }}
+              />
             )}
             {l.toggle && (
               <Switch

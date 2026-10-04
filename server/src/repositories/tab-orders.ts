@@ -44,3 +44,28 @@ export const inOrderOf = <T extends { id: Id }>(userId: Id, scope: string, rows:
     (a, b) => (rank.get(String(a.id)) ?? Infinity) - (rank.get(String(b.id)) ?? Infinity),
   );
 };
+
+/**
+ * The tabs this account hid (shared, View and Board "is_hidden"), stored like
+ * an order: "hidden:views", or "hidden:boards:<view>".
+ */
+export const hiddenTabs = {
+  of: (userId: Id, scope: string): Set<string> => new Set(userTabOrders.read(userId, `hidden:${scope}`)),
+  set: (userId: Id, scope: string, id: Id, hidden: boolean): void => {
+    const ids = hiddenTabs.of(userId, scope);
+    if (hidden) ids.add(String(id));
+    else ids.delete(String(id));
+    userTabOrders.store(userId, `hidden:${scope}`, [...ids]);
+  },
+};
+
+/** Rows with what this account hid at the end, flagged — the rest keeps its order. */
+export const withHidden = <T extends { id: Id }>(
+  userId: Id,
+  scope: string,
+  rows: T[],
+): (T & { is_hidden: boolean })[] => {
+  const hidden = hiddenTabs.of(userId, scope);
+  const flagged = rows.map((r) => ({ ...r, is_hidden: hidden.has(String(r.id)) }));
+  return [...flagged.filter((r) => !r.is_hidden), ...flagged.filter((r) => r.is_hidden)];
+};

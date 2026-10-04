@@ -3,9 +3,9 @@
 // A widget belongs to a type: those of the Access mode are shared by all
 // modes ("common"), except those that read Microsoft 365 — the mail and
 // calendar of whoever is looking ("m365"); those of a mode serve only that mode. The permission of a user or
-// group is set type by type — Aucun, Lire, Modifier — and applies to the
-// widget as to its data: "Support" at Modifier means placing its
-// widgets and handling requests.
+// group is set type by type — Aucun, Lire, Modifier, Supprimer — and applies
+// to the widget as to its data: "Support" at Modifier means placing its
+// widgets and handling requests; at Supprimer, deleting them too.
 
 import type { Mode } from "./modes.js";
 
@@ -24,11 +24,15 @@ export type WidgetKind = (typeof WIDGET_KINDS)[number]["value"];
 export const kindLabel = (kind: WidgetKind): string =>
   WIDGET_KINDS.find((k) => k.value === kind)?.label ?? kind;
 
-/** The permission on a type: none, read, or edit (which includes read). */
+/**
+ * The permission on a type: none, read, edit, or delete — each one includes
+ * the previous ones.
+ */
 export const WIDGET_ACCESS = [
   { value: "", label: "Aucun" },
   { value: "view", label: "Lire" },
   { value: "update", label: "Modifier" },
+  { value: "delete", label: "Supprimer" },
 ] as const;
 
 export type WidgetAccess = (typeof WIDGET_ACCESS)[number]["value"];
@@ -53,7 +57,11 @@ export const validWidgetRights = (value: unknown): WidgetRights => {
   ) as WidgetRights;
 };
 
-const RANK: Record<WidgetAccess, number> = { "": 0, view: 1, update: 2 };
+const RANK: Record<WidgetAccess, number> = { "": 0, view: 1, update: 2, delete: 3 };
+
+/** Does this permission include that one? "Supprimer" includes "Modifier". */
+export const accessIncludes = (access: WidgetAccess, wanted: WidgetAccess): boolean =>
+  RANK[access] >= RANK[wanted];
 
 /** The widest of two permissions. */
 export const widestAccess = (a: WidgetAccess, b: WidgetAccess): WidgetAccess =>
@@ -70,6 +78,9 @@ export const mergeWidgetRights = (rightSets: WidgetRights[]): WidgetRights =>
 
 /** "Lire" or better. */
 export const canRead = (access: WidgetAccess): boolean => access !== "";
+
+/** "Modifier" or better. */
+export const canUpdate = (access: WidgetAccess): boolean => accessIncludes(access, "update");
 
 /** The types of each mode: its data follows the widest of them. */
 export const MODE_KINDS: Record<Mode, readonly WidgetKind[]> = {

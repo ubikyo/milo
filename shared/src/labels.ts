@@ -26,6 +26,12 @@ export const LABEL_COLORS: string[] = LABEL_SHADES.flatMap((shade) =>
   LABEL_HUES.map((hue) => `${hue}.${shade}`),
 );
 
+/**
+ * The group a label goes into when none is named: the first one, or this one,
+ * created when there is none yet.
+ */
+export const DEFAULT_LABEL_GROUP = "Priorités";
+
 /** Default color of a label: the blue of the middle shade. */
 export const DEFAULT_LABEL_COLOR = "blue.6";
 

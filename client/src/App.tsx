@@ -24,7 +24,13 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { RED } from "./themes/colors";
-import { DEFAULT_SUPPORT_STATUS, RESOURCES, emptyFollows, isNotification } from "@milo/shared";
+import {
+  DEFAULT_SUPPORT_STATUS,
+  RESOURCES,
+  canUpdate,
+  emptyFollows,
+  isNotification,
+} from "@milo/shared";
 import { RightsProvider, canFrom } from "./lib/rights";
 import { errorMessage, notifyError } from "./lib/errors";
 import { ReferencesContext } from "./lib/references";
@@ -43,6 +49,7 @@ import MoveOrCopyProjectModal from "./components/project/MoveOrCopyProjectModal"
 import type { ProjectAction } from "./components/project/MoveOrCopyProjectModal";
 import ProjectDrawer from "./components/project/ProjectDrawer";
 import ViewSwitch from "./components/ui/ViewSwitch";
+import ShareViewModal from "./components/ui/ShareViewModal";
 import ShortcutsHelp from "./components/ui/ShortcutsHelp";
 import LayoutModal from "./components/ui/LayoutModal";
 import PointMenu, { menuPosition, type PointMenuPosition } from "./components/ui/PointMenu";
@@ -139,8 +146,14 @@ export default function App() {
   // "Modifier l'interface" applies to the whole application: all
   // boards, all views. It only lives in this window, which opens
   // outside edit mode; I or a right click on the background toggle it.
+  // Only for whoever has the right to modify the interface in their
+  // workspace (Accès); importing and exporting a layout has its own.
   const [isEditing, setIsEditing] = useState(false);
-  const toggleEdit = () => setIsEditing((before) => !before);
+  const canEditInterface = Boolean(user?.application.interface);
+  const canMoveLayout = Boolean(user?.application.layout);
+  const toggleEdit = () => {
+    if (canEditInterface) setIsEditing((before) => !before);
+  };
   // The right-click menu on the application background, and the window
   // for exporting or importing the open board's layout.
   const background = useRef<HTMLDivElement>(null);
@@ -155,9 +168,10 @@ export default function App() {
   // The account's rights. The server checks them; here, they hide what one
   // doesn't see and remove what one can't do.
   const can = useMemo(() => canFrom(user?.rights ?? {}), [user]);
-  // Organizing the shared views and boards requires being able to edit
-  // at least one widget type (like the server, lib/rights.ts).
-  const canArrange = Object.values(user?.widgets ?? {}).some((a) => a === "update");
+  // Organizing the shared views and boards requires the right to modify the
+  // interface, and being able to edit at least one widget type (like the
+  // server, lib/rights.ts).
+  const canArrange = canEditInterface && Object.values(user?.widgets ?? {}).some(canUpdate);
 
   // Reads in progress. An empty screen is a conclusion: it is never drawn
   // during a read.
@@ -195,6 +209,15 @@ export default function App() {
   }, []);
 
   const boards = boardsRead?.key === viewId ? boardsRead.items : null;
+  // Outside interface editing, what the account hid does not show.
+  const shownViews = useMemo(
+    () => views && (isEditing ? views : views.filter((v) => !v.is_hidden)),
+    [views, isEditing],
+  );
+  const shownBoards = useMemo(
+    () => boards && (isEditing ? boards : boards.filter((b) => !b.is_hidden)),
+    [boards, isEditing],
+  );
   const board = boards?.find((b) => String(b.id) === boardId) ?? null;
   const sections = sectionsRead?.key === boardId ? sectionsRead.items : null;
   const widgets = useMemo(
@@ -554,27 +577,29 @@ export default function App() {
   // The opening view, once the session is open: the account's, or
   // failing that the first.
   useEffect(() => {
-    if (!user || !views || appliedView.current === user.id) return;
+    if (!user || !shownViews || appliedView.current === user.id) return;
     appliedView.current = user.id;
-    const desiredView = views.find((v) => String(v.id) === user.default_view) ?? views[0];
+    const desiredView =
+      shownViews.find((v) => String(v.id) === user.default_view) ?? shownViews[0];
     if (desiredView) setViewId(String(desiredView.id));
-  }, [user, views]);
+  }, [user, shownViews]);
 
-  // The open view must exist: deleting one goes back to the first.
+  // The open view must be shown: deleting it — or hiding it, once interface
+  // editing is left — goes back to the first.
   useEffect(() => {
-    if (!views || appliedView.current === null) return;
-    if (!views.some((v) => String(v.id) === viewId))
-      setViewId(views[0] ? String(views[0].id) : null);
-  }, [views, viewId]);
+    if (!shownViews || appliedView.current === null) return;
+    if (!shownViews.some((v) => String(v.id) === viewId))
+      setViewId(shownViews[0] ? String(shownViews[0].id) : null);
+  }, [shownViews, viewId]);
 
-  // The open board must exist in the view: changing view, or deleting
-  // a board, goes back to the first in the list.
+  // The open board must be shown in the view: changing view, deleting a
+  // board or hiding it goes back to the first in the list.
   useEffect(() => {
-    if (!boards) return;
-    const first = boards[0];
+    if (!shownBoards) return;
+    const first = shownBoards[0];
     if (!first) return setBoardId(null);
-    if (!boards.some((b) => String(b.id) === boardId)) setBoardId(String(first.id));
-  }, [boards, boardId]);
+    if (!shownBoards.some((b) => String(b.id) === boardId)) setBoardId(String(first.id));
+  }, [shownBoards, boardId]);
 
   // A filter can point to a category or an actor that has just
   // disappeared.
@@ -676,10 +701,14 @@ export default function App() {
       .catch(() => undefined);
   }, [user, settingsOpened]);
 
+  // And only for whoever has the right to them in their workspace (Accès).
+  const screenRight = useRef(false);
+  screenRight.current = Boolean(user?.notifications.screen);
+
   /** What is seen when a followed item changes, by someone else. */
   const showNotification = useCallback(
     (notice: FollowNotification) => {
-      if (!toastsEnabled.current) return;
+      if (!toastsEnabled.current || !screenRight.current) return;
       notifications.show({
         id: notice.id,
         title: notice.title,
@@ -843,34 +872,72 @@ export default function App() {
 
   // The views' "+" immediately creates "Nouvelle vue", with its first
   // board, and opens it: its name is then typed in place.
-  const createView = async () => {
+  const createView = async (): Promise<Id | null> => {
     try {
-      const { view, board: first } = await api.createView("Nouvelle vue");
+      const view = await api.createView("Nouvelle vue");
       await loadViews();
       setViewId(String(view.id));
-      setBoardId(String(first.id));
+      setBoardId(null);
       setViewToRename(view.id);
+      return view.id;
     } catch (e) {
       reportRejection(e);
+      return null;
     }
   };
 
-  const viewOf = (id: Id) => views?.find((v) => v.id === id);
+  // "Créer une vue", from the empty screen: interface editing, and the new
+  // view straight into name entry. Escape there undoes it all — the view goes
+  // away, editing ends, the empty screen comes back.
+  const firstView = useRef<Id | null>(null);
+  const createFirstView = async () => {
+    if (canEditInterface) setIsEditing(true);
+    firstView.current = await createView();
+  };
+  const endViewRename = (id: Id, abandoned: boolean) => {
+    if (id !== firstView.current) return;
+    firstView.current = null;
+    if (!abandoned) return;
+    setIsEditing(false);
+    void write(() => api.deleteView(id), loadViews);
+  };
 
-  const addBoard = async () => {
-    if (!viewId) return;
+  const viewOf = (id: Id) => views?.find((v) => v.id === id);
+  // A view's boards are added by its owner: those it is shared with only see
+  // what was shared.
+  const ownsOpenView = Boolean(viewId && viewOf(Number(viewId))?.is_owner);
+  // The view whose "Partager" window is open.
+  const [sharedView, setSharedView] = useState<View | null>(null);
+
+  const addBoard = async (): Promise<Id | null> => {
+    if (!viewId) return null;
     try {
       // "Nouveau tableau", opened immediately: its name is typed in place.
       const created = await api.createBoard(viewId, "Nouveau tableau");
       await loadBoards();
       setBoardId(String(created.id));
       setBoardToRename(created.id);
+      return created.id;
     } catch (e) {
       reportRejection(e);
+      return null;
     }
   };
 
-  const boardOf = (id: Id) => boards?.find((b) => b.id === id);
+  // "Créer un tableau", from an empty view: like "Créer une vue" — interface
+  // editing, the board straight into name entry, and Escape undoes it all.
+  const firstBoard = useRef<Id | null>(null);
+  const createFirstBoard = async () => {
+    if (canEditInterface) setIsEditing(true);
+    firstBoard.current = await addBoard();
+  };
+  const endBoardRename = (id: Id, abandoned: boolean) => {
+    if (id !== firstBoard.current) return;
+    firstBoard.current = null;
+    if (!abandoned) return;
+    setIsEditing(false);
+    void write(() => api.deleteBoard(id), loadBoards);
+  };
 
   /** The board as the server just returned it, in its place. */
   const setBoard = (next: Board) =>
@@ -900,47 +967,49 @@ export default function App() {
         await loadBoards();
       },
     );
+  // Each action according to its right (Accès): adding ("Créer"), deleting
+  // ("Supprimer"), renaming and reordering (organizing the interface). A
+  // board shared read-only keeps its contexts as they are.
+  const contextRights = user?.structure.contexts;
   const contextManagement =
-    board && canArrange
+    board &&
+    board.access !== "read" &&
+    (contextRights?.create || contextRights?.delete || canArrange)
       ? {
-          onAdd: (name: string) => writeContexts(() => api.addContext(board.id, name)),
-          onRename: (id: Id, name: string) => writeContexts(() => api.renameContext(id, name)),
-          onRenameAll: (name: string) =>
-            writeContexts(() => api.updateBoard(board.id, { all_contexts_label: name })),
-          onDelete: async (id: Id) => {
-            await writeContexts(() => api.deleteContext(id));
-            await Promise.all([
-              loadProjects(),
-              loadTaskLists(),
-              loadSupportRequests(),
-              loadAssets(),
-            ]);
-          },
-          onReorder: (ids: Id[]) => {
-            setBoard({
-              ...board,
-              contexts: ids
-                .map((id) => board.contexts.find((c) => c.id === id))
-                .filter((c): c is NonNullable<typeof c> => Boolean(c)),
-            });
-            return writeContexts(() => api.reorderContexts(board.id, ids));
-          },
+          onAdd: contextRights?.create
+            ? (name: string) => writeContexts(() => api.addContext(board.id, name))
+            : undefined,
+          onRename: canArrange
+            ? (id: Id, name: string) => writeContexts(() => api.renameContext(id, name))
+            : undefined,
+          onRenameAll: canArrange
+            ? (name: string) =>
+                writeContexts(() => api.updateBoard(board.id, { all_contexts_label: name }))
+            : undefined,
+          onDelete: contextRights?.delete
+            ? async (id: Id) => {
+                await writeContexts(() => api.deleteContext(id));
+                await Promise.all([
+                  loadProjects(),
+                  loadTaskLists(),
+                  loadSupportRequests(),
+                  loadAssets(),
+                ]);
+              }
+            : undefined,
+          onReorder: canArrange
+            ? (ids: Id[]) => {
+                setBoard({
+                  ...board,
+                  contexts: ids
+                    .map((id) => board.contexts.find((c) => c.id === id))
+                    .filter((c): c is NonNullable<typeof c> => Boolean(c)),
+                });
+                return writeContexts(() => api.reorderContexts(board.id, ids));
+              }
+            : undefined,
         }
       : undefined;
-
-  // A board's "Hérité": unticking it (confirmed by the menu) starts from a
-  // copy of its shared structure, re-ticking it erases its own.
-  const toggleInherited = async (id: Id) => {
-    const board = boardOf(id);
-    if (!board) return;
-    await write(
-      () => api.boardSections(id).setLayout(board.inherited === false),
-      async () => {
-        await loadBoards();
-        if (String(id) === boardId) await loadWidgets();
-      },
-    );
-  };
 
   // A project, a request: added from a list widget, they are the
   // widget's own (lib/lists.ts); without a designated widget, the server gives them to the
@@ -977,8 +1046,8 @@ export default function App() {
       if (event.code === "Tab" && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
         event.preventDefault();
         const list = event.altKey
-          ? (boards ?? []).map((b) => String(b.id))
-          : (views ?? []).map((v) => String(v.id));
+          ? (shownBoards ?? []).map((b) => String(b.id))
+          : (shownViews ?? []).map((v) => String(v.id));
         if (!list.length) return;
         const current = event.altKey ? boardId : viewId;
         const next = list[(list.indexOf(current ?? "") + 1) % list.length]!;
@@ -1144,20 +1213,21 @@ export default function App() {
     onSearchOpen: openSearch,
   };
 
-  // The open board is frozen: outside interface editing, or — on its
-  // shared structure — for lack of the right to organize it. Its own structure
-  // ("Hérité" unticked) is only one's own.
-  const inherits = board?.inherited !== false;
-  const frozen = boardId ? !isEditing || (inherits && !canArrange) : true;
+  // The open board's layout can be changed by whoever can organize boards,
+  // unless it was shared with them read-only.
+  const arrangeable = Boolean(board) && canArrange && board?.access !== "read";
+  // The open board is frozen: outside interface editing, or for lack of the
+  // right to change its layout.
+  const frozen = boardId ? !isEditing || !arrangeable : true;
   // Outside edit mode, the tabs are frozen too: neither boards nor
   // views can be dragged or added.
   const tabsLocked = !isEditing;
   // The open board's structure is replaced by an import: one must be
   // able to touch it, as to edit it.
-  const editableLayout = Boolean(board) && !(inherits && !canArrange);
+  const editableLayout = arrangeable;
   // The boards as this window shows them: its lock is its own.
   const displayedBoards =
-    boards?.map((b) => ({
+    shownBoards?.map((b) => ({
       ...b,
       is_locked: isEditing ? (0 as const) : (1 as const),
     })) ?? null;
@@ -1200,6 +1270,8 @@ export default function App() {
                 const target = e.target as HTMLElement;
                 if (e.defaultPrevented || !background.current?.contains(target)) return;
                 if (target.closest("input, textarea, [contenteditable='true']")) return;
+                // Nothing to offer without either right.
+                if (!canEditInterface && !(canMoveLayout && board)) return;
                 setBackgroundMenu(menuPosition(e));
               }}
             >
@@ -1219,60 +1291,64 @@ export default function App() {
                   paddingBottom: `calc(var(${MODE_SWITCH_TOP}, ${MODE_SWITCH_TOP_FALLBACK}px) + ${BOTTOM_CLEARANCE}px)`,
                 }}
               >
-                {viewId && (
+                {/* Without any view, the page stays — its row carries the account —,
+                    with the prompt to create one in place of the boards. */}
+                {(viewId || shownViews?.length === 0) && (
                   <ViewPage
-                    boards={displayedBoards}
+                    noView={!viewId}
+                    onCreateView={user.structure.views.create ? createFirstView : undefined}
+                    boards={displayedBoards ?? (viewId ? null : [])}
                     boardId={boardId}
                     onBoardChange={setBoardId}
                     // Outside edit mode, no board "+" nor view "+" (tabsLocked).
-                    onAddBoard={canArrange && !tabsLocked ? addBoard : undefined}
+                    onAddBoard={
+                      user.structure.boards.create && ownsOpenView && !tabsLocked
+                        ? () => void addBoard()
+                        : undefined
+                    }
+                    onCreateFirstBoard={
+                      user.structure.boards.create && ownsOpenView
+                        ? () => void createFirstBoard()
+                        : undefined
+                    }
+                    onRenameEnded={endBoardRename}
                     toRename={boardToRename}
                     onRenameOpened={() => setBoardToRename(null)}
-                    // Rename, delete, make private or inherited: in
-                    // edit mode only.
+                    // Rename, delete: in edit mode only — each tab then
+                    // keeps what its access allows (BoardTabs).
                     onRenameBoard={
                       canArrange && isEditing
                         ? (id, name) => write(() => api.updateBoard(id, { name }), loadBoards)
                         : undefined
                     }
                     onDeleteBoard={
-                      canArrange && isEditing
+                      user.structure.boards.delete && isEditing
                         ? (id) => write(() => api.deleteBoard(id), loadBoards)
                         : undefined
                     }
+                    onToggleBoardHidden={
+                      isEditing
+                        ? (id, hidden) => write(() => api.hideBoard(id, hidden), loadBoards)
+                        : undefined
+                    }
                     onReorderBoards={
-                      tabsLocked
+                      tabsLocked || !viewId
                         ? undefined
                         : (ids) => write(() => api.reorderBoards(viewId, ids), loadBoards)
                     }
-                    onTogglePrivateBoard={
-                      canArrange && isEditing
-                        ? (id) =>
-                            write(
-                              () =>
-                                api.updateBoard(id, {
-                                  is_private: !boardOf(id)?.is_private,
-                                }),
-                              loadBoards,
-                            )
-                        : undefined
-                    }
-                    onToggleBoardInherited={isEditing ? toggleInherited : undefined}
                     // Contexts are the board's common structure: copying
-                    // them requires being able to organize, and edit mode —
-                    // like adding or renaming them.
-                    onCopyContexts={canArrange && isEditing ? setCopiedContexts : undefined}
+                    // them requires the right to create them, and edit mode
+                    // — like adding them.
+                    onCopyContexts={
+                      contextRights?.create && isEditing ? setCopiedContexts : undefined
+                    }
                     sections={sections}
                     widgets={widgets}
                     onWidgetsChanged={loadWidgets}
                     locked={frozen}
                     // Switching to edit mode only makes sense for whoever can touch the
                     // structure they are viewing: without the right, nothing is offered.
-                    onUnlock={
-                      boardId && !(inherits && !canArrange)
-                        ? () => setIsEditing(true)
-                        : undefined
-                    }
+                    onUnlock={boardId && arrangeable ? () => setIsEditing(true) : undefined}
                     data={{
                       requests: visibleRequests ?? [],
                       projects: viewedProjects ?? [],
@@ -1364,17 +1440,19 @@ export default function App() {
 
               {backgroundMenu && (
                 <PointMenu position={backgroundMenu} onClose={() => setBackgroundMenu(null)}>
-                  <Menu.Item
-                    leftSection={
-                      isEditing ? <IconCheck size={16} /> : <IconLayoutDashboard size={16} />
-                    }
-                    onClick={toggleEdit}
-                  >
-                    {isEditing ? "Terminer la modification" : "Modifier l’interface"}
-                  </Menu.Item>
-                  {board && (
+                  {canEditInterface && (
+                    <Menu.Item
+                      leftSection={
+                        isEditing ? <IconCheck size={16} /> : <IconLayoutDashboard size={16} />
+                      }
+                      onClick={toggleEdit}
+                    >
+                      {isEditing ? "Terminer la modification" : "Modifier l’interface"}
+                    </Menu.Item>
+                  )}
+                  {board && canMoveLayout && (
                     <>
-                      <Menu.Divider />
+                      {canEditInterface && <Menu.Divider />}
                       <Menu.Item
                         leftSection={<IconFileExport size={16} />}
                         disabled={!sections?.length}
@@ -1529,39 +1607,39 @@ export default function App() {
               />
 
               <ViewSwitch
-                views={views ?? []}
+                views={shownViews ?? []}
                 value={viewId}
                 onChange={changeView}
                 onReorder={
                   tabsLocked ? undefined : (ids) => write(() => api.reorderViews(ids), loadViews)
                 }
-                onCreate={canArrange && !tabsLocked ? createView : undefined}
+                onCreate={
+                  user.structure.views.create && !tabsLocked ? () => void createView() : undefined
+                }
                 toRename={viewToRename}
                 onRenameOpened={() => setViewToRename(null)}
-                // Rename, delete, make private: in edit mode only.
+                onRenameEnded={endViewRename}
+                // Rename, delete: in edit mode only. Sharing is not the
+                // interface: it is offered at any time. All three only for
+                // one's own views (ViewSwitch).
                 onRename={
                   canArrange && isEditing
                     ? (id, name) => write(() => api.updateView(id, { name }), loadViews)
                     : undefined
                 }
-                onTogglePrivate={
-                  canArrange && isEditing
-                    ? (id) =>
-                        write(
-                          () =>
-                            api.updateView(id, {
-                              is_private: !viewOf(id)?.is_private,
-                            }),
-                          loadViews,
-                        )
+                onShare={setSharedView}
+                onToggleHidden={
+                  isEditing
+                    ? (view) => write(() => api.hideView(view.id, !view.is_hidden), loadViews)
                     : undefined
                 }
                 onDelete={
-                  canArrange && isEditing
+                  user.structure.views.delete && isEditing
                     ? (id) => write(() => api.deleteView(id), loadViews)
                     : undefined
                 }
               />
+              <ShareViewModal view={sharedView} onClose={() => setSharedView(null)} />
               <ShortcutsHelp
                 projects={widgets.some((w) => w.type === "project.list")}
                 requests={widgets.some((w) => w.type === "support.list")}

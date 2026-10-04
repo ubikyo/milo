@@ -8,11 +8,17 @@
 import type { Database } from "better-sqlite3";
 import {
   QUERY_PARAMS,
+  DEFAULT_LABEL_GROUP,
+  SUPPORT_CHANNEL_GROUP,
   SUPPORT_CHANNEL_LABELS,
+  SUPPORT_URGENCY_GROUP,
   SUPPORT_NEW_MESSAGE_DUE_DAYS,
   SUPPORT_NEW_MESSAGE_LABELS,
   SUPPORT_URGENCY_LABELS,
   migrateSupportTemplate,
+  canUpdate,
+  fullAdminPermissions,
+  validApplicationRights,
   migrateWidgetConfig,
   panelType,
   validWidgetRights,
@@ -207,6 +213,11 @@ export const migrate = (db: Database): void => {
   // After all the access catch-ups: they may have set a Settings right.
   workspaceManagement(db);
   globalAdministration(db);
+  adminRights(db);
+  workspaceNotifications(db);
+  workspaceApplication(db);
+  workspaceStructure(db);
+  interfaceRights(db);
   withoutUptimeWith365(db);
   sortedCategories(db);
   // Cards created before the period, the recurrence and the due-date reminder.
@@ -248,9 +259,117 @@ export const migrate = (db: Database): void => {
   );
   // The follows index, renamed (idx_follows_target, schema.ts).
   db.exec("DROP INDEX IF EXISTS idx_follows_cible");
+  ownedViews(db);
+  // Shares from before the name and address kept for display.
+  if (!columns(db, "board_shares").includes("principal_name")) {
+    db.exec("ALTER TABLE board_shares ADD COLUMN principal_name TEXT NOT NULL DEFAULT ''");
+    db.exec("ALTER TABLE board_shares ADD COLUMN principal_email TEXT NOT NULL DEFAULT ''");
+  }
+  labelGroups(db);
+  // Labels no longer carry a weight: their order — group after group — is
+  // what the lists follow.
+  for (const table of ["project_labels", "support_labels"]) {
+    if (columns(db, table).includes("weight")) {
+      db.exec(`ALTER TABLE ${table} DROP COLUMN weight`);
+    }
+  }
   // Last: values stored in French, translated once the earlier catch-ups,
   // which read them, have run.
   englishValues(db);
+};
+
+/**
+ * Labels from before their groups — and any label left without one: each goes
+ * into the first group of its board, created ("Priorités") when there is none.
+ * Support's urgency and channel labels get a group of their own. Their
+ * positions are then renumbered group after group, the order every list reads
+ * (repositories/label-groups.ts).
+ */
+const labelGroups = (db: Database): void => {
+  const instant = new Date().toISOString();
+  for (const [labels, groups] of [
+    ["labels", "label_groups"],
+    ["project_labels", "project_label_groups"],
+  ] as const) {
+    if (!columns(db, labels).includes("group_id")) {
+      db.exec(`ALTER TABLE ${labels} ADD COLUMN group_id INTEGER REFERENCES ${groups}(id)`);
+    }
+    const boards = db
+      .prepare(`SELECT DISTINCT board_id FROM ${labels} WHERE group_id IS NULL`)
+      .all() as { board_id: number }[];
+    if (boards.length === 0) continue;
+    const first = db.prepare(
+      `SELECT id FROM ${groups} WHERE board_id = ? ORDER BY position, id LIMIT 1`,
+    );
+    const create = db.prepare(
+      `INSERT INTO ${groups} (board_id, name, position, created_at) VALUES (?, ?, 0, ?)`,
+    );
+    const attach = db.prepare(
+      `UPDATE ${labels} SET group_id = ? WHERE board_id = ? AND group_id IS NULL`,
+    );
+    const order = db.prepare(
+      `SELECT l.id FROM ${labels} l JOIN ${groups} g ON g.id = l.group_id
+       WHERE l.board_id = ? ORDER BY g.position, g.id, l.position, l.id`,
+    );
+    const place = db.prepare(`UPDATE ${labels} SET position = ? WHERE id = ?`);
+    db.transaction(() => {
+      for (const { board_id } of boards) {
+        const existing = first.get(board_id) as { id: number } | undefined;
+        const group =
+          existing?.id ??
+          Number(create.run(board_id, DEFAULT_LABEL_GROUP, instant).lastInsertRowid);
+        attach.run(group, board_id);
+        (order.all(board_id) as { id: number }[]).forEach(({ id }, rank) =>
+          place.run(rank, id),
+        );
+      }
+    })();
+  }
+
+  if (!columns(db, "support_labels").includes("group_id")) {
+    db.exec(
+      "ALTER TABLE support_labels ADD COLUMN group_id INTEGER REFERENCES support_label_groups(id)",
+    );
+  }
+  const loose = db
+    .prepare("SELECT id, name FROM support_labels WHERE group_id IS NULL ORDER BY position, id")
+    .all() as { id: number; name: string }[];
+  if (loose.length === 0) return;
+  const byName = db.prepare(
+    "SELECT id FROM support_label_groups WHERE name = ? COLLATE NOCASE ORDER BY position, id",
+  );
+  const first = db.prepare("SELECT id FROM support_label_groups ORDER BY position, id LIMIT 1");
+  const create = db.prepare(
+    `INSERT INTO support_label_groups (name, position, created_at)
+     VALUES (?, (SELECT COALESCE(MAX(position), -1) + 1 FROM support_label_groups), ?)`,
+  );
+  const named = (name: string): number =>
+    (byName.get(name) as { id: number } | undefined)?.id ??
+    Number(create.run(name, instant).lastInsertRowid);
+  const attach = db.prepare("UPDATE support_labels SET group_id = ? WHERE id = ?");
+  const sameName = (a: string, b: string) => a.localeCompare(b, "fr", { sensitivity: "base" }) === 0;
+  // Before any group, the others gather in "Priorités"; afterwards, a label left
+  // without one joins the first.
+  const existing = first.get() as { id: number } | undefined;
+  db.transaction(() => {
+    for (const { id, name } of loose) {
+      const group = SUPPORT_URGENCY_LABELS.some((l) => sameName(l.name, name))
+        ? named(SUPPORT_URGENCY_GROUP)
+        : SUPPORT_CHANNEL_LABELS.some((l) => sameName(l.name, name))
+          ? named(SUPPORT_CHANNEL_GROUP)
+          : (existing?.id ?? named(DEFAULT_LABEL_GROUP));
+      attach.run(group, id);
+    }
+    const place = db.prepare("UPDATE support_labels SET position = ? WHERE id = ?");
+    (
+      db
+        .prepare(
+          `SELECT l.id FROM support_labels l JOIN support_label_groups g ON g.id = l.group_id
+           ORDER BY g.position, g.id, l.position, l.id`,
+        )
+        .all() as { id: number }[]
+    ).forEach(({ id }, rank) => place.run(rank, id));
+  })();
 };
 
 /**
@@ -269,6 +388,221 @@ const sortedCategories = (db: Database): void => {
             OR (earlier.name = categories.name COLLATE NOCASE AND earlier.id < categories.id))
       )
     `);
+  })();
+};
+
+/** Set once the administration has taken its rights per section. */
+const ADMIN_RIGHTS = "admin_rights";
+
+/**
+ * The administration goes from a level per section to rights per section
+ * ("rights", shared roles.ts). Whoever was already listed receives them all:
+ * Paramétrage "Accéder", Workspaces "Voir", "Créer", "Supprimer". Runs after
+ * globalAdministration, which may have just filled the table.
+ */
+const adminRights = (db: Database): void => {
+  if (readSetting(db, ADMIN_RIGHTS)) return;
+  db.transaction(() => {
+    if (!columns(db, "principal_admin").includes("rights")) {
+      db.exec("ALTER TABLE principal_admin ADD COLUMN rights TEXT NOT NULL DEFAULT '{}'");
+    }
+    db.prepare("UPDATE principal_admin SET rights = ?").run(
+      JSON.stringify(fullAdminPermissions()),
+    );
+    writeSetting(db, ADMIN_RIGHTS, true);
+  })();
+};
+
+/** Set once workspace access has taken its notifications and "Supprimer". */
+const WORKSPACE_NOTIFICATIONS = "workspace_notifications";
+
+/**
+ * A workspace's access gains the notifications received there and, per
+ * widget type, "Supprimer" above "Modifier". Nobody loses what they had:
+ * every access receives both notifications — they were everyone's — and
+ * "Modifier", which deleted too, becomes "Supprimer".
+ */
+const workspaceNotifications = (db: Database): void => {
+  if (readSetting(db, WORKSPACE_NOTIFICATIONS)) return;
+  db.transaction(() => {
+    if (!columns(db, "principal_permissions").includes("notifications")) {
+      db.exec(
+        "ALTER TABLE principal_permissions ADD COLUMN notifications TEXT NOT NULL DEFAULT '[]'",
+      );
+    }
+    const rows = db.prepare("SELECT rowid, widgets FROM principal_permissions").all() as {
+      rowid: number;
+      widgets: string;
+    }[];
+    const write = db.prepare(
+      "UPDATE principal_permissions SET widgets = ?, notifications = ? WHERE rowid = ?",
+    );
+    for (const { rowid, widgets } of rows) {
+      let readValue: unknown = {};
+      try {
+        readValue = JSON.parse(widgets);
+      } catch {
+        // Unreadable: granted nothing.
+      }
+      const rights = Object.fromEntries(
+        Object.entries(validWidgetRights(readValue)).map(([kind, access]) => [
+          kind,
+          access === "update" ? "delete" : access,
+        ]),
+      );
+      write.run(JSON.stringify(rights), JSON.stringify(["screen", "email"]), rowid);
+    }
+    writeSetting(db, WORKSPACE_NOTIFICATIONS, true);
+  })();
+};
+
+/** Set once workspace access has taken its application rights. */
+const WORKSPACE_APPLICATION = "workspace_application";
+
+/**
+ * A workspace's access gains what one may do with its interface: modify it,
+ * import or export a layout. Nobody loses what they had: whoever could
+ * modify a widget type — and so organize the interface — receives both.
+ */
+const workspaceApplication = (db: Database): void => {
+  if (readSetting(db, WORKSPACE_APPLICATION)) return;
+  db.transaction(() => {
+    if (!columns(db, "principal_permissions").includes("application")) {
+      db.exec(
+        "ALTER TABLE principal_permissions ADD COLUMN application TEXT NOT NULL DEFAULT '[]'",
+      );
+    }
+    const rows = db.prepare("SELECT rowid, widgets FROM principal_permissions").all() as {
+      rowid: number;
+      widgets: string;
+    }[];
+    const write = db.prepare("UPDATE principal_permissions SET application = ? WHERE rowid = ?");
+    for (const { rowid, widgets } of rows) {
+      let readValue: unknown = {};
+      try {
+        readValue = JSON.parse(widgets);
+      } catch {
+        // Unreadable: granted nothing.
+      }
+      if (Object.values(validWidgetRights(readValue)).some(canUpdate)) {
+        write.run(JSON.stringify(["interface", "layout"]), rowid);
+      }
+    }
+    writeSetting(db, WORKSPACE_APPLICATION, true);
+  })();
+};
+
+/** Set once workspace access has taken its rights on views, boards and contexts. */
+const WORKSPACE_STRUCTURE = "workspace_structure";
+
+/**
+ * A workspace's access gains its rights on the views, boards and contexts:
+ * read, create, delete. Nobody loses what they had: everyone reads them, and
+ * whoever could modify the interface — and so organize them — also creates
+ * and deletes them.
+ */
+const workspaceStructure = (db: Database): void => {
+  if (readSetting(db, WORKSPACE_STRUCTURE)) return;
+  db.transaction(() => {
+    if (!columns(db, "principal_permissions").includes("structure")) {
+      db.exec(
+        "ALTER TABLE principal_permissions ADD COLUMN structure TEXT NOT NULL DEFAULT '{}'",
+      );
+    }
+    const rows = db.prepare("SELECT rowid, application FROM principal_permissions").all() as {
+      rowid: number;
+      application: string;
+    }[];
+    const write = db.prepare("UPDATE principal_permissions SET structure = ? WHERE rowid = ?");
+    for (const { rowid, application } of rows) {
+      let readValue: unknown = [];
+      try {
+        readValue = JSON.parse(application);
+      } catch {
+        // Unreadable: granted nothing.
+      }
+      const rights = validApplicationRights(readValue).includes("interface")
+        ? ["view", "create", "delete"]
+        : ["view"];
+      write.run(JSON.stringify({ views: rights, boards: rights, contexts: rights }), rowid);
+    }
+    writeSetting(db, WORKSPACE_STRUCTURE, true);
+  })();
+};
+
+/** Set once the interface rights have gained "private" and "inheritance". */
+const INTERFACE_RIGHTS = "interface_rights";
+
+/**
+ * The interface gains two rights: making a view or a board private, and no
+ * longer inheriting a board's shared structure. Both followed the right to
+ * modify the interface: whoever had it receives them.
+ */
+const interfaceRights = (db: Database): void => {
+  if (readSetting(db, INTERFACE_RIGHTS)) return;
+  db.transaction(() => {
+    const rows = db.prepare("SELECT rowid, application FROM principal_permissions").all() as {
+      rowid: number;
+      application: string;
+    }[];
+    const write = db.prepare("UPDATE principal_permissions SET application = ? WHERE rowid = ?");
+    for (const { rowid, application } of rows) {
+      let readValue: unknown = [];
+      try {
+        readValue = JSON.parse(application);
+      } catch {
+        // Unreadable: granted nothing.
+      }
+      const rights = validApplicationRights(readValue);
+      if (!rights.includes("interface")) continue;
+      write.run(
+        JSON.stringify(validApplicationRights([...rights, "private", "inheritance"])),
+        rowid,
+      );
+    }
+    writeSetting(db, INTERFACE_RIGHTS, true);
+  })();
+};
+
+/** Set once the views and boards from before their owner have received one. */
+const OWNED_VIEWS = "owned_views";
+
+/**
+ * The account that receives them, by its Entra object id — the one that
+ * built them. Without it, the first person account takes them.
+ */
+const FIRST_OWNER = "90f2c24f-f652-49db-86b6-144e36c603c0";
+
+/**
+ * Views and boards now belong to whoever created them, and are shared from
+ * "Partager": "Privé" and "Hérité" go away. Those that were open to
+ * everyone go to FIRST_OWNER; a board without an owner follows its view's.
+ * The structures of accounts that no longer inherited a board go away with
+ * "Hérité": each board keeps its shared one. A database without any person
+ * yet — a new one — waits for its first: its views would belong to nobody.
+ */
+const ownedViews = (db: Database): void => {
+  db.transaction(() => {
+    db.exec("DELETE FROM board_sections WHERE owner_id IS NOT NULL");
+    db.exec("DELETE FROM personal_layouts");
+  })();
+  if (readSetting(db, OWNED_VIEWS)) return;
+  const owner = (db
+    .prepare("SELECT id FROM users WHERE entra_id = ? AND system = 0")
+    .get(FIRST_OWNER) ??
+    db.prepare("SELECT id FROM users WHERE system = 0 ORDER BY id LIMIT 1").get()) as
+    | { id: number }
+    | undefined;
+  if (!owner) return;
+  db.transaction(() => {
+    db.prepare("UPDATE views SET owner_id = ? WHERE owner_id IS NULL").run(owner.id);
+    db.exec(
+      `UPDATE boards SET owner_id = (SELECT owner_id FROM views WHERE views.id = boards.view_id)
+       WHERE owner_id IS NULL`,
+    );
+    db.exec("UPDATE views SET is_private = 0");
+    db.exec("UPDATE boards SET is_private = 0");
+    writeSetting(db, OWNED_VIEWS, true);
   })();
 };
 
@@ -849,23 +1183,6 @@ const catchUpBeforeViews = (db: Database): void => {
     );
   }
 
-  // Labels from before weight: all weigh zero, except urgency ones, which
-  // take theirs back.
-  if (!columns(db, "support_labels").includes("weight")) {
-    db.transaction(() => {
-      db.exec("ALTER TABLE support_labels ADD COLUMN weight INTEGER NOT NULL DEFAULT 0");
-      const setWeight = db.prepare(
-        "UPDATE support_labels SET weight = ? WHERE name = ? COLLATE NOCASE",
-      );
-      for (const { name, weight } of SUPPORT_URGENCY_LABELS) setWeight.run(weight, name);
-    })();
-  }
-
-  // Project labels from before weight: all weigh zero.
-  if (!columns(db, "project_labels").includes("weight")) {
-    db.exec("ALTER TABLE project_labels ADD COLUMN weight INTEGER NOT NULL DEFAULT 0");
-  }
-
   // New installation: Support receives its labels — urgency, then channel —,
   // and an incoming email automatically receives "Sans urgence", "E-mail" and
   // fifteen working days of due date. The urgency labels marker, absent, says
@@ -877,15 +1194,13 @@ const catchUpBeforeViews = (db: Database): void => {
   if (empty) {
     db.transaction(() => {
       const create = db.prepare(
-        "INSERT INTO support_labels (name, color, weight, position, created_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO support_labels (name, color, position, created_at) VALUES (?, ?, ?, ?)",
       );
       const instant = new Date().toISOString();
       const ids = new Map<string, number>();
-      [...SUPPORT_URGENCY_LABELS, ...SUPPORT_CHANNEL_LABELS].forEach(
-        ({ name, color, weight }, rank) => {
-          ids.set(name, Number(create.run(name, color, weight, rank, instant).lastInsertRowid));
-        },
-      );
+      [...SUPPORT_URGENCY_LABELS, ...SUPPORT_CHANNEL_LABELS].forEach(({ name, color }, rank) => {
+        ids.set(name, Number(create.run(name, color, rank, instant).lastInsertRowid));
+      });
       const setting = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
       setting.run(
         "support_default_label_ids",
@@ -904,12 +1219,12 @@ const catchUpBeforeViews = (db: Database): void => {
       const exists = db.prepare("SELECT 1 FROM support_labels WHERE name = ? COLLATE NOCASE");
       const rank = db.prepare("SELECT COALESCE(MAX(position), -1) + 1 AS next FROM support_labels");
       const create = db.prepare(
-        "INSERT INTO support_labels (name, color, weight, position, created_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO support_labels (name, color, position, created_at) VALUES (?, ?, ?, ?)",
       );
       const instant = new Date().toISOString();
-      for (const { name, color, weight } of SUPPORT_URGENCY_LABELS) {
+      for (const { name, color } of SUPPORT_URGENCY_LABELS) {
         if (exists.get(name)) continue;
-        create.run(name, color, weight, (rank.get() as { next: number }).next, instant);
+        create.run(name, color, (rank.get() as { next: number }).next, instant);
       }
       db.prepare("INSERT INTO settings (key, value) VALUES (?, 'true')").run(URGENCIES);
     })();

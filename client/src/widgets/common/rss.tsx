@@ -15,7 +15,7 @@ import { Fragment, useEffect, useState } from "react";
 import type { DragEvent } from "react";
 import { api } from "../../api";
 import classes from "../../assets/styles/AccessLink.module.css";
-import inset from "../../assets/styles/AccessNumber.module.css";
+import { Frame } from "../margins";
 import {
   ROUNDING,
   EmptyList,
@@ -159,12 +159,16 @@ const distributed = (sources: Source[], quantity: number): Article[][] => {
 };
 
 /**
- * The articles kept from all sources, from newest to oldest. Those without a
- * date follow, in the sources' order.
+ * The "quantity" latest articles of all sources together, from newest to
+ * oldest: a busy source can take every place. Those without a date follow, in
+ * the sources' order.
  */
-const interleave = (parts: Article[][]): Article[] => {
+const merged = (sources: Source[], quantity: number): Article[] => {
   const articleTime = (a: Article) => a.date?.getTime() ?? -Infinity;
-  return parts.flat().sort((a, b) => articleTime(b) - articleTime(a));
+  return sources
+    .flatMap((s) => s.articles)
+    .sort((a, b) => articleTime(b) - articleTime(a))
+    .slice(0, quantity);
 };
 
 /** A source's short name: its host, without "www.". */
@@ -244,11 +248,10 @@ type State =
 
 function Feed({ blockId, config }: { blockId: Id; config: unknown }) {
   const content = <Articles blockId={blockId} config={config} />;
-  if (!isFramed(config)) return content;
   return (
-    <Box className={inset.inset} style={{ border: "none" }}>
+    <Frame config={config} framed={isFramed(config)}>
       {content}
-    </Box>
+    </Frame>
   );
 }
 
@@ -366,8 +369,8 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
   // The title is cleaned at display time rather than at read time: articles
   // already read thus benefit from a revised cleanup, without waiting for the
   // next fetch.
-  const parts = distributed(state.sources, quantity);
   if (grouped) {
+    const parts = distributed(state.sources, quantity);
     const groups = state.sources
       .map((s, i) => ({ url: s.url, articles: parts[i]! }))
       .filter((s) => s.articles.length);
@@ -394,7 +397,7 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
     );
   }
 
-  const articles = interleave(parts);
+  const articles = merged(state.sources, quantity);
   if (!articles.length) return <NoArticle />;
   const sourceOf = new Map(
     state.sources.flatMap((s) => s.articles.map((a) => [a, nameOf(s.url)] as const)),
@@ -701,9 +704,9 @@ function Settings({ config, onChange }: WidgetConfigProps) {
             onChange={(e) => onChange(withField(config, DATES, e.currentTarget.checked))}
             color="teal"
           />
-          {/* The displayed articles are shared among the sources, in turn:
-              merged, they are sorted by date; grouped, each source shows its
-              share, in the list's order. */}
+          {/* Merged, the latest articles of all sources are shown, sorted by
+              date; grouped, the displayed articles are shared among the
+              sources, in turn, in the list's order. */}
           <Switch
             label="Regrouper les articles par source"
             checked={isGrouped(config)}

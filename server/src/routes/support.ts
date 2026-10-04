@@ -70,7 +70,8 @@ import { sendAutoReply, statusEvent } from "../lib/support-auto-reply.js";
 import { due, timestamp, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { SYSTEM_COMMENT, creationNote } from "../repositories/comments.js";
-import { receivedOrder, arrangeSupportLabels } from "../repositories/reorder.js";
+import { supportLabelGroups } from "../repositories/label-groups.js";
+import { mountLabelGroups } from "./label-groups.js";
 import {
   REQUEST_NOT_FOUND,
   SUPPORT_LABEL_NOT_FOUND,
@@ -82,6 +83,7 @@ import {
   nextTicketNumber,
   replaceSupportActors,
   replaceSupportLabels,
+  updateSupportLabel,
   supportCommentOf,
   supportComments,
   supportLabels,
@@ -654,19 +656,17 @@ supportCommentRoutes.delete("/:id", (req, res) => {
 // They are shared across all of support, whatever the company: renaming,
 // recoloring or deleting them touches every request that carries them.
 
-/** The received weight: an integer, positive or not. */
-const labelWeight = (value: unknown): number => {
-  const weight = Number(value);
-  if (!Number.isInteger(weight)) badRequest("Le poids doit être un nombre entier");
-  return weight;
-};
-
 export const supportLabelRoutes = Router();
 
 supportLabelRoutes.use(touch("support-labels", "support-requests"));
 
 // Shared across all companies, they follow the support rights in any of
 // them.
+
+mountLabelGroups(supportLabelRoutes, supportLabelGroups, (req, _boardId, right) => {
+  require(req, "support", right);
+  return undefined;
+});
 
 supportLabelRoutes.get("/", (req, res) => {
   if (!requestCan(req, "support", "view")) return void res.json([]);
@@ -681,25 +681,12 @@ supportLabelRoutes.post("/", (req, res) => {
   if (supportLabels.byName.get(name)) conflict("Cette étiquette existe déjà");
   const color = req.body.color || DEFAULT_LABEL_COLOR;
   if (!isLabelColor(color)) badRequest("Couleur inconnue");
-  const weight = labelWeight(req.body.weight ?? 0);
+  const group = supportLabelGroups.groupFor(undefined, req.body.group_id);
 
   const { next } = supportLabels.nextPosition();
-  const { lastInsertRowid } = supportLabels.create.run(name, color, weight, next, now());
+  const { lastInsertRowid } = supportLabels.create.run(group, name, color, next, now());
+  supportLabelGroups.renumber(undefined);
   res.status(201).json(supportLabels.byId.get(lastInsertRowid));
-});
-
-// Arrange the labels: the order in which lists present them. Declared before
-// "/:id", otherwise "reorder" would be taken for an id. All are visible to
-// everyone: the received order names them all, each once.
-supportLabelRoutes.put("/reorder", (req, res) => {
-  require(req, "support", "update");
-  const order = receivedOrder(
-    req.body.ids,
-    supportLabels.all.all(),
-    "L'ordre doit nommer chaque étiquette une fois",
-  );
-  arrangeSupportLabels(order);
-  res.json(supportLabels.all.all());
 });
 
 supportLabelRoutes.put("/:id", (req, res) => {
@@ -713,9 +700,12 @@ supportLabelRoutes.put("/:id", (req, res) => {
   if (namesake && namesake.id !== existing.id) conflict("Cette étiquette existe déjà");
   const color = req.body.color ?? existing.color;
   if (!isLabelColor(color)) badRequest("Couleur inconnue");
-  const weight = labelWeight(req.body.weight ?? existing.weight);
+  const group =
+    req.body.group_id === undefined
+      ? existing.group_id
+      : supportLabelGroups.groupFor(undefined, req.body.group_id);
 
-  supportLabels.update.run(name, color, weight, existing.id);
+  updateSupportLabel(existing, { name, color, group });
   res.json(supportLabels.byId.get(existing.id));
 });
 

@@ -25,6 +25,7 @@ import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import { DragHandle, InsertLine, useDraggableStack } from "../ui/DraggableStack";
 import {
   ROUNDING,
+  HEADER_BACKGROUND,
   ROW_BACKGROUND,
   ROW_INSET,
   NAME_INSET,
@@ -90,10 +91,6 @@ const checklistRowStyle = (rank: number, total: number, held: boolean): CSSPrope
   ...rowStyle(rank, total, held),
   paddingRight: NAME_INSET,
 });
-
-// A checklist header stands out from its items: a darker neutral gray on
-// light; on dark, one step further from the drawer background.
-const HEADER_BACKGROUND = "light-dark(#dcdcdc, var(--mantine-color-dark-5))";
 
 // These inputs have no frame, not even the blue Mantine adds on focus:
 // we are only continuing to read the same row, it must not get framed

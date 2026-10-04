@@ -10,7 +10,7 @@
 // its presence (`has_secret`).
 
 import type { AdminPermissions } from "./roles.js";
-import type { WidgetRights } from "./widget-kinds.js";
+import type { WorkspacePermissions } from "./workspace-access.js";
 
 /** A user or a group of the directory. */
 /** A person of the directory, offered as an actor. */
@@ -67,10 +67,15 @@ export interface EntraSettingsInput {
 export interface PrincipalPermissions<T> {
   principal: EntraPrincipal;
   permissions: T;
+  /**
+   * The administration only: the account reading it, or one of its groups.
+   * Its rights can be added to, never removed — one does not lock oneself out.
+   */
+  own?: boolean;
 }
 
-/** Their access to a workspace: one permission per widget type. */
-export type PrincipalAssignments = PrincipalPermissions<WidgetRights>;
+/** Their access to a workspace: one permission per widget type, and their notifications. */
+export type PrincipalAssignments = PrincipalPermissions<WorkspacePermissions>;
 
 /** Their administration of the application: the Settings and the workspaces. */
 export type PrincipalAdministration = PrincipalPermissions<AdminPermissions>;

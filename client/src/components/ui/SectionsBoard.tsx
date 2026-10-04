@@ -22,6 +22,7 @@ import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
 import SectionDropZone, { DOTTED } from "./SectionDropZone";
 import WidgetDrawer, { type WidgetChoice } from "./WidgetDrawer";
 import { InsertionLine, type WidgetDrag } from "./WidgetDrop";
+import { canUpdate } from "@milo/shared";
 import type { Id, SectionWidthUnit } from "@milo/shared";
 
 // Sections as columns, and the widgets they hold. This is the row of Access
@@ -1022,7 +1023,7 @@ export default function SectionsBoard<S extends BoardSection>({
         opened={drawerOpen}
         onClose={() => setDrawerOpened(false)}
         // The drawer only offers the types the account can edit.
-        widgets={widgets.filter((w) => access(w.kind) === "update")}
+        widgets={widgets.filter((w) => canUpdate(access(w.kind)))}
         onDragStart={(widget) => {
           setNewType(widget.type);
           setDraggedWidget(NEW_VALUE);

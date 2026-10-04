@@ -1,31 +1,42 @@
 // Permissions of users and Entra groups, in two parts:
 //
 // - a workspace's access (`assignmentRoutes`): one permission per widget
-//   type. It is set from the workspace, by whoever manages workspaces;
-// - the application's administration (`administrationRoutes`): "Paramétrage"
-//   and workspace management, which depend on no workspace. It is read with
-//   "Paramétrage", changed with its "Modifier" right; only whoever manages
-//   workspaces grants or removes their management.
+//   type. It is set from the workspace: read with the "Voir" right on
+//   workspaces, changed with "Créer";
+// - the application's administration (`administrationRoutes`): rights on
+//   "Paramétrage" and on workspaces, which depend on no workspace. It goes
+//   with "Paramétrage"; a right on workspaces is only granted or removed by
+//   whoever holds it.
 //
-// A user or group exists here only through what they have: they appear with
-// their first permission, and disappear when they have none left.
+// A user or group stays listed without any right, until they are removed.
+// In the administration, their own rights, and their groups', are only added
+// to: one does not lock oneself out.
 
 import { Router } from "express";
 import type { NextFunction, Request, Response } from "express";
-import { validAdminPermissions, validWidgetRights } from "@milo/shared";
+import {
+  defaultAdminPermissions,
+  parseAdminRights,
+  validAdminPermissions,
+  validApplicationRights,
+  validNotificationRights,
+  validStructurePermissions,
+  validWidgetRights,
+} from "@milo/shared";
 import type {
   AdminPermissions,
   EntraPrincipal,
   Id,
   PrincipalAdministration,
   PrincipalAssignments,
-  WidgetRights,
+  WorkspacePermissions,
 } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import { HttpError, badRequest, requireText } from "../lib/http.js";
 import { searchInDirectory } from "../lib/entra.js";
 import { touch } from "../middleware/events.js";
-import { settingsRights, canManageWorkspaces } from "../repositories/users.js";
+import { groupsOf, settingsRights, workspaceRights } from "../repositories/users.js";
+import type { UserRow } from "../db/rows.js";
 import { WORKSPACE_NOT_FOUND, workspaces } from "../repositories/workspaces.js";
 
 interface PrincipalRow {
@@ -37,11 +48,13 @@ interface PrincipalRow {
 
 interface AccessRow extends PrincipalRow {
   widgets: string;
+  notifications: string;
+  application: string;
+  structure: string;
 }
 
 interface AdministrationRow extends PrincipalRow {
-  settings: string;
-  workspaces: string;
+  rights: string;
 }
 
 const workspaceAccess = selection<AccessRow>(
@@ -52,11 +65,13 @@ const forgetAccess = mutation(
 );
 const setAccess = mutation(
   `INSERT INTO principal_permissions
-     (workspace_id, principal_type, principal_id, principal_name, principal_email, widgets)
-   VALUES (?, ?, ?, ?, ?, ?)
+     (workspace_id, principal_type, principal_id, principal_name, principal_email, widgets,
+      notifications, application, structure)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
    ON CONFLICT (workspace_id, principal_type, principal_id) DO UPDATE SET
      principal_name = excluded.principal_name, principal_email = excluded.principal_email,
-     widgets = excluded.widgets`,
+     widgets = excluded.widgets, notifications = excluded.notifications,
+     application = excluded.application, structure = excluded.structure`,
 );
 
 const allAdministrations = selection<AdministrationRow>("SELECT * FROM principal_admin");
@@ -68,23 +83,29 @@ const forgetAdministration = mutation(
 );
 const setAdministration = mutation(
   `INSERT INTO principal_admin
-     (principal_type, principal_id, principal_name, principal_email, settings, workspaces)
-   VALUES (?, ?, ?, ?, ?, ?)
+     (principal_type, principal_id, principal_name, principal_email, rights)
+   VALUES (?, ?, ?, ?, ?)
    ON CONFLICT (principal_type, principal_id) DO UPDATE SET
      principal_name = excluded.principal_name, principal_email = excluded.principal_email,
-     settings = excluded.settings, workspaces = excluded.workspaces`,
+     rights = excluded.rights`,
 );
 
-/** A row's widget types, re-read: unreadable JSON grants nothing. */
-const widgetsOf = (row: AccessRow): WidgetRights => {
-  let widgets: unknown = {};
+/** JSON as stored: unreadable, it grants nothing. */
+const parsed = (json: string): unknown => {
   try {
-    widgets = JSON.parse(row.widgets);
+    return JSON.parse(json);
   } catch {
-    // Nothing to re-read: no type is granted.
+    return undefined;
   }
-  return validWidgetRights(widgets);
 };
+
+/** A row's widget types, notifications, application and structure rights, re-read. */
+const permissionsOf = (row: AccessRow): WorkspacePermissions => ({
+  widgets: validWidgetRights(parsed(row.widgets)),
+  notifications: validNotificationRights(parsed(row.notifications)),
+  application: validApplicationRights(parsed(row.application)),
+  structure: validStructurePermissions(parsed(row.structure)),
+});
 
 const principalOf = (row: PrincipalRow): EntraPrincipal => ({
   type: row.principal_type,
@@ -101,18 +122,30 @@ const byName = <T extends { principal: EntraPrincipal }>(list: T[]): T[] =>
       a.principal.name.localeCompare(b.principal.name, "fr", { sensitivity: "base" }),
   );
 
-const accessOf = (workspace: Id): PrincipalAssignments[] =>
+const accessOf = (workspace: Id, user: UserRow): PrincipalAssignments[] =>
   byName(
-    workspaceAccess
-      .all(workspace)
-      .map((row) => ({ principal: principalOf(row), permissions: widgetsOf(row) })),
+    workspaceAccess.all(workspace).map((row) => ({
+      principal: principalOf(row),
+      permissions: permissionsOf(row),
+      own: isOwn(user, row.principal_type, row.principal_id),
+    })),
   );
 
-const administrations = (): PrincipalAdministration[] =>
+/**
+ * Is it the account itself, or one of its groups? The "admin" account is
+ * neither: it holds everything without a row.
+ */
+const isOwn = (user: UserRow, type: string, id: string): boolean =>
+  !user.system &&
+  ((type === "user" && id === user.entra_id) || (type === "group" && groupsOf(user).includes(id)));
+
+const administrations = (user: UserRow): PrincipalAdministration[] =>
   byName(
-    allAdministrations
-      .all()
-      .map((row) => ({ principal: principalOf(row), permissions: validAdminPermissions(row) })),
+    allAdministrations.all().map((row) => ({
+      principal: principalOf(row),
+      permissions: parseAdminRights(row.rights),
+      own: isOwn(user, row.principal_type, row.principal_id),
+    })),
   );
 
 const typeOf = (value: unknown): "user" | "group" => {
@@ -137,10 +170,12 @@ const workspaceOf = (req: Request): Id => {
 
 // --- A workspace's access ----------------------------------------------------
 
-/** Reserved to whoever manages workspaces: that is where they are set from. */
+/** Read with "Voir" on workspaces, changed with "Créer": that is where they are set from. */
 const requireManagement = (req: Request, _res: Response, next: NextFunction): void => {
-  if (!canManageWorkspaces(req.user)) {
-    throw new HttpError(403, "Réservé à qui peut gérer les workspaces");
+  const rights = workspaceRights(req.user);
+  if (!rights.view) throw new HttpError(403, "Réservé à qui peut voir les workspaces");
+  if (req.method !== "GET" && !rights.create) {
+    throw new HttpError(403, "Réservé à qui peut créer les workspaces");
   }
   next();
 };
@@ -151,11 +186,11 @@ assignmentRoutes.use(touch("lookups"));
 
 /**
  * Search for a user or group in the directory, to give them access or an
- * administration: seeing "Paramétrage" or managing workspaces is enough.
+ * administration: a right on "Paramétrage" or on workspaces is enough.
  * Declared before the access guard.
  */
 assignmentRoutes.get("/search", (req, res, next) => {
-  if (!settingsRights(req.user).view && !canManageWorkspaces(req.user)) {
+  if (!settingsRights(req.user).view && !Object.values(workspaceRights(req.user)).some(Boolean)) {
     throw new HttpError(403, "Réservé à qui peut voir le Paramétrage");
   }
   searchInDirectory(String(req.query["q"] ?? ""), req.query["groups"] ? "groups" : "all")
@@ -166,41 +201,43 @@ assignmentRoutes.get("/search", (req, res, next) => {
 assignmentRoutes.use(requireManagement);
 
 assignmentRoutes.get("/", (req, res) => {
-  res.json(accessOf(workspaceOf(req)));
+  res.json(accessOf(workspaceOf(req), req.user));
 });
 
-// The principal's widget types in the workspace: they replace the previous
-// ones. No readable type: they no longer have access, their row is deleted.
+// The principal's widget types, notifications and application rights in the
+// workspace: they
+// replace the previous ones. Without any right, they stay listed, with no
+// access, until they are removed. Unlike the administration, one's own
+// access can be changed: it only concerns this workspace.
 assignmentRoutes.put("/:type/:id", (req, res) => {
   const workspace = workspaceOf(req);
   const principal = receivedPrincipal(req);
-  const widgets = validWidgetRights(req.body.permissions);
-  if (Object.values(widgets).every((access) => access === "")) {
-    forgetAccess.run(workspace, principal.type, principal.id);
-  } else {
-    setAccess.run(
-      workspace,
-      principal.type,
-      principal.id,
-      principal.name,
-      principal.email,
-      JSON.stringify(widgets),
-    );
-  }
-  res.json(accessOf(workspace));
+  const received = (req.body.permissions ?? {}) as Record<string, unknown>;
+  setAccess.run(
+    workspace,
+    principal.type,
+    principal.id,
+    principal.name,
+    principal.email,
+    JSON.stringify(validWidgetRights(received["widgets"])),
+    JSON.stringify(validNotificationRights(received["notifications"])),
+    JSON.stringify(validApplicationRights(received["application"])),
+    JSON.stringify(validStructurePermissions(received["structure"])),
+  );
+  res.json(accessOf(workspace, req.user));
 });
 
 assignmentRoutes.delete("/:type/:id", (req, res) => {
   const workspace = workspaceOf(req);
   forgetAccess.run(workspace, typeOf(req.params.type), req.params.id);
-  res.json(accessOf(workspace));
+  res.json(accessOf(workspace, req.user));
 });
 
 // --- The application's administration ----------------------------------------
 
 /**
- * "Paramétrage" is read with "Voir", changed with "Modifier". Whoever manages
- * workspaces without seeing "Paramétrage" does not come here.
+ * "Paramétrage" is read and changed with "Accéder". Whoever only has rights on
+ * workspaces does not come here.
  */
 const requireSettings = (req: Request, _res: Response, next: NextFunction): void => {
   const rights = settingsRights(req.user);
@@ -215,43 +252,54 @@ export const administrationRoutes = Router();
 
 administrationRoutes.use(touch("lookups"), requireSettings);
 
-administrationRoutes.get("/", (_req, res) => {
-  res.json(administrations());
+administrationRoutes.get("/", (req, res) => {
+  res.json(administrations(req.user));
 });
 
-// The principal's administration replaces the previous one; with nothing,
-// their row is deleted. Only whoever manages workspaces can grant or remove
-// their management: for the others, it stays as it was.
+/** The principal's administration as saved, or none. */
+const administrationBefore = (type: string, id: string): AdminPermissions => {
+  const row = principalAdministration.get(type, id);
+  return row ? parseAdminRights(row.rights) : defaultAdminPermissions();
+};
+
+// The principal's administration replaces the previous one; without any
+// right, they stay listed. A right on workspaces that the author does not
+// hold stays as it was: only whoever holds it grants or removes it. The
+// author's own rights, and their groups', are only added to.
 administrationRoutes.put("/:type/:id", (req, res) => {
   const principal = receivedPrincipal(req);
   const received: AdminPermissions = validAdminPermissions(req.body.permissions);
-  if (!canManageWorkspaces(req.user)) {
-    const before = principalAdministration.get(principal.type, principal.id);
-    received.workspaces = before ? validAdminPermissions(before).workspaces : "";
-  }
-  if (received.settings === "" && received.workspaces === "") {
-    forgetAdministration.run(principal.type, principal.id);
-  } else {
-    setAdministration.run(
-      principal.type,
-      principal.id,
-      principal.name,
-      principal.email,
-      received.settings,
-      received.workspaces,
-    );
-  }
-  res.json(administrations());
+  const own = workspaceRights(req.user);
+  const before = administrationBefore(principal.type, principal.id);
+  const kept = isOwn(req.user, principal.type, principal.id);
+  const permissions = validAdminPermissions({
+    settings: [...received.settings, ...(kept ? before.settings : [])],
+    workspaces: [
+      ...received.workspaces.filter((r) => own[r]),
+      ...before.workspaces.filter((r) => !own[r] || kept),
+    ],
+  });
+  setAdministration.run(
+    principal.type,
+    principal.id,
+    principal.name,
+    principal.email,
+    JSON.stringify(permissions),
+  );
+  res.json(administrations(req.user));
 });
 
 administrationRoutes.delete("/:type/:id", (req, res) => {
   const type = typeOf(req.params.type);
-  // Removing the administration of whoever manages workspaces means removing
-  // their management: reserved to whoever holds it.
-  const before = principalAdministration.get(type, req.params.id);
-  if (before && validAdminPermissions(before).workspaces === "update" && !canManageWorkspaces(req.user)) {
-    throw new HttpError(403, "Réservé à qui peut gérer les workspaces");
+  if (isOwn(req.user, type, req.params.id)) {
+    throw new HttpError(403, "Vos propres droits, ou ceux de vos groupes, ne se retirent pas");
+  }
+  // Removing someone removes their rights on workspaces: each one is
+  // reserved to whoever holds it.
+  const own = workspaceRights(req.user);
+  if (administrationBefore(type, req.params.id).workspaces.some((r) => !own[r])) {
+    throw new HttpError(403, "Réservé à qui détient ces droits sur les workspaces");
   }
   forgetAdministration.run(type, req.params.id);
-  res.json(administrations());
+  res.json(administrations(req.user));
 });

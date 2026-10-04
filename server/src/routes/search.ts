@@ -1,7 +1,7 @@
 // Global search: the field in the tab row. It searches projects, cards,
 // tickets, workstations and the Access mode's items, and only returns what
-// the person sees elsewhere — a private board or category stays closed to
-// others here too.
+// the person sees elsewhere — a board not shared with them stays closed here
+// too.
 
 import { Router } from "express";
 import type { Request } from "express";
@@ -148,12 +148,6 @@ const visibleBlocks = selection<VisibleBlock>(
      JOIN boards b ON b.id = s.board_id
     WHERE ${VISIBLE_BOARDS_CLAUSE("b.id")}
       AND w.type IN ('category', 'subcategory', 'link', 'number')
-      -- La structure que ce compte voit : la sienne s'il en a une, sinon la
-      -- publique. Un tableau privé n'a que la publique.
-      AND s.owner_id IS (
-        SELECT pl.user_id FROM personal_layouts pl
-         WHERE pl.user_id = @me AND pl.scope = 'board:' || b.id AND b.is_private = 0
-      )
     ORDER BY b.position, s.position, w.position, w.id`,
 );
 

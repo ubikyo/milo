@@ -1,12 +1,14 @@
 // Views: what the bottom selector offers. Each carries its boards
-// (repositories/boards.ts). A private view is only shown to its author, and
-// so are its boards. A view is only visible from its workspace: that is what
-// isolates them, since everything a board carries follows its view.
+// (repositories/boards.ts). A view is shown to its owner, and to whoever sees
+// one of its boards (repositories/shares.ts). A view is only visible from its
+// workspace: that is what isolates them, since everything a board carries
+// follows its view.
 
 import type { Id } from "@milo/shared";
 import { mutation, scalar, selection } from "../db/query.js";
 import type { NextRow, UserRow, ViewRow } from "../db/rows.js";
 import { HttpError } from "../lib/http.js";
+import { SEES_VIEW } from "./shares.js";
 
 export const VIEW_NOT_FOUND = "Vue introuvable";
 
@@ -14,28 +16,31 @@ export const views = {
   byId: selection<ViewRow>("SELECT * FROM views WHERE id = ?"),
   /** Those of a workspace that this account sees: (workspace, account). */
   visibleTo: selection<ViewRow>(
-    `SELECT * FROM views WHERE workspace_id = ? AND (is_private = 0 OR owner_id = ?)
-     ORDER BY position, id`,
+    `SELECT v.* FROM views v, users me
+     WHERE v.workspace_id = ? AND me.id = ? AND ${SEES_VIEW("v", "me")}
+     ORDER BY v.position, v.id`,
   ),
   nextPosition: scalar<NextRow>(
     "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM views WHERE workspace_id = ?",
   ),
   create: mutation(
-    `INSERT INTO views (workspace_id, name, position, is_private, owner_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO views (workspace_id, name, position, owner_id, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
   ),
-  update: mutation("UPDATE views SET name = ?, is_private = ?, owner_id = ? WHERE id = ?"),
+  rename: mutation("UPDATE views SET name = ? WHERE id = ?"),
   remove: mutation("DELETE FROM views WHERE id = ?"),
 };
 
+const seen = selection<{ id: Id }>(
+  `SELECT v.id FROM views v JOIN users me ON me.id = ? WHERE v.id = ? AND ${SEES_VIEW("v", "me")}`,
+);
+
 /**
- * A view is only visible from its workspace. When private, it belongs to
- * its author alone; with no author, it is open to everyone.
+ * A view is only visible from its workspace, to its owner and to whoever
+ * sees one of its boards.
  */
 export const isViewVisible = (view: ViewRow | undefined, user: UserRow): boolean =>
-  Boolean(view) &&
-  view?.workspace_id === user.workspace_id &&
-  (!view?.is_private || view.owner_id === user.id);
+  Boolean(view) && view?.workspace_id === user.workspace_id && Boolean(seen.get(user.id, view?.id));
 
 /**
  * The requested view, if it exists and this person may see it. Otherwise

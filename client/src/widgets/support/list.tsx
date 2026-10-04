@@ -8,6 +8,7 @@ import ConfigurationProblem from "../../components/ui/ConfigurationProblem";
 import { DRAWER_WIDTH } from "../../components/ui/IndicatorDrawer";
 import { useReferences } from "../../lib/references";
 import ColumnFields from "../../components/ui/ColumnFields";
+import LabelGroupFields from "../../components/ui/LabelGroupFields";
 import SupportRequestsList, {
   MAILBOXES,
   SUPPORT_COLUMNS,
@@ -17,13 +18,15 @@ import type { IndicatorConfigProps, SupportIndicatorWidget } from "./types";
 /**
  * The list's settings: the addresses it receives requests from,
  * each to a board context and confirmed by its inbox, what it
- * does with the retrieved e-mails, then its columns.
+ * does with the retrieved e-mails, then its columns, and Support's labels.
  */
 function ListFields(props: IndicatorConfigProps) {
   return (
     <Stack gap="xl">
       <Inboxes {...props} />
       <ColumnFields columns={SUPPORT_COLUMNS} {...props} />
+      {/* Support's labels: they go to saving. */}
+      <LabelGroupFields kind="support-labels" />
     </Stack>
   );
 }

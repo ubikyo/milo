@@ -1,4 +1,5 @@
-// Shared ordering of a table: support labels. Tabs — boards, access
+// Shared ordering of a table: a board's contexts, categories. Labels are
+// ordered with their groups (repositories/label-groups.ts). Tabs — boards, access
 // categories — are ordered, for their part, account by account
 // (repositories/tab-orders.ts); "receivedOrder" still serves them to validate
 // the received order.
@@ -44,18 +45,11 @@ const arrangement = (table: string, scope?: string) => {
   });
 };
 
-/** Support labels: shared by all contexts, a single order. */
-export const arrangeSupportLabels = arrangement("support_labels");
-
 /** A board's contexts: a shared order, board by board. */
 export const arrangeContexts = arrangement("contexts", "board_id");
 
 /** The categories of a projects board. */
 export const arrangeCategories = arrangement("categories", "board_id");
-
-/** A board's labels: those of cards, those of projects. */
-export const arrangeLabels = arrangement("labels", "board_id");
-export const arrangeProjectLabels = arrangement("project_labels", "board_id");
 
 /**
  * The received order, validated: it must name exactly the tabs that person

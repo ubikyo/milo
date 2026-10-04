@@ -218,10 +218,11 @@ export interface TaskCardRow {
 export interface LabelRow {
   id: Id;
   board_id: Id;
+  group_id: Id;
+  /** Its group's name, on the queries that read it along. */
+  group_name?: string;
   name: string;
   color: string;
-  /** The weight: only those of projects carry one. */
-  weight?: number;
   position: number;
   created_at: string;
 }
@@ -310,9 +311,10 @@ export interface SupportRequestRow {
 /** A Support-mode label: twin of "LabelRow", shared by the whole support. */
 export interface SupportLabelRow {
   id: Id;
+  group_id: Id;
+  group_name?: string;
   name: string;
   color: string;
-  weight: number;
   position: number;
   created_at: string;
 }

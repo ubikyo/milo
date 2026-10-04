@@ -17,6 +17,13 @@ import { PLUS_SIZE } from "../../themes/plus";
  */
 export const ROW_BACKGROUND = "light-dark(#ededed, var(--mantine-color-dark-6))";
 
+/**
+ * A header row's background — a checklist's title, a user above their
+ * permissions —: a darker neutral gray on light; on dark, one step further
+ * from the drawer background.
+ */
+export const HEADER_BACKGROUND = "light-dark(#dcdcdc, var(--mantine-color-dark-5))";
+
 /** The padding around a row's content, and to the left of its handle. */
 export const ROW_INSET = 4;
 export const NAME_INSET = 10;
@@ -116,13 +123,26 @@ export const move = <T,>(list: T[], held: number, to: number): T[] | null => {
 export function EmptyList({
   icon,
   message,
+  attached = false,
+  fill = false,
 }: {
   icon: ComponentType<{ size?: number; color?: string }>;
   message: string;
+  /** Right under a header row: square at the top, against it. */
+  attached?: boolean;
+  /** Takes the whole free height, its prompt centered in it. */
+  fill?: boolean;
 }) {
   return (
-    <Box py="md" style={{ backgroundColor: ROW_BACKGROUND, borderRadius: RADIUS }}>
-      <EmptyPanel icon={icon} message={message} size="sm" fill={false} />
+    <Box
+      py="md"
+      style={{
+        backgroundColor: ROW_BACKGROUND,
+        borderRadius: attached ? `0 0 ${RADIUS}px ${RADIUS}px` : RADIUS,
+        ...(fill ? { flex: 1, display: "flex", flexDirection: "column" as const } : null),
+      }}
+    >
+      <EmptyPanel icon={icon} message={message} size="sm" fill={fill} />
     </Box>
   );
 }
@@ -192,6 +212,7 @@ export function RowCheckbox({
   onChange,
   afterHandle = false,
   disabled = false,
+  indeterminate = false,
   gap = "sm",
 }: {
   label: string;
@@ -199,6 +220,8 @@ export function RowCheckbox({
   onChange: (checked: boolean) => void;
   afterHandle?: boolean;
   disabled?: boolean;
+  /** Some of what it stands for is checked, not all: a group's labels. */
+  indeterminate?: boolean;
   /** The row's gap, when it is not the usual "sm". */
   gap?: "sm" | "xs";
 }) {
@@ -207,6 +230,7 @@ export function RowCheckbox({
       size="xs"
       aria-label={label}
       checked={checked}
+      indeterminate={indeterminate}
       disabled={disabled}
       onChange={(e) => onChange(e.currentTarget.checked)}
       // Pressing the box must not start dragging the row.
@@ -290,16 +314,21 @@ export function ListFooter({
   checkedCount,
   onDeleteChecked,
   mt = 4,
+  h,
 }: {
   addLabel?: string;
   onAdd?: () => void;
   checkedCount: number;
   onDeleteChecked: () => void;
   mt?: number;
+  /** The button's height, tighter than an "xs" button's when stacked under another. */
+  h?: number;
 }) {
-  if (checkedCount > 0) return <DeleteSelectedButton count={checkedCount} onClick={onDeleteChecked} mt={mt} />;
+  if (checkedCount > 0) {
+    return <DeleteSelectedButton count={checkedCount} onClick={onDeleteChecked} mt={mt} h={h} />;
+  }
   if (!addLabel || !onAdd) return null;
-  return <AddButton label={addLabel} onClick={onAdd} mt={mt} />;
+  return <AddButton label={addLabel} onClick={onAdd} mt={mt} h={h} />;
 }
 
 /** « 1 jalon », « 3 jalons ». */
@@ -316,12 +345,15 @@ export function RowField({
   placeholder,
   label,
   autoFocus,
+  readOnly = false,
 }: {
   name: string;
   onValidate: (name: string) => void;
   placeholder: string;
   label: string;
   autoFocus?: boolean;
+  /** Shown, not edited. */
+  readOnly?: boolean;
 }) {
   const [input, setInput] = useState(name);
   const [focus, setFocus] = useState(false);
@@ -333,9 +365,10 @@ export function RowField({
       size="sm"
       radius={ROUNDING}
       style={{ flex: 1, minWidth: 0 }}
-      styles={{ input: nameFieldStyle(focus) }}
+      styles={{ input: nameFieldStyle(focus && !readOnly) }}
       placeholder={placeholder}
       aria-label={label}
+      readOnly={readOnly}
       value={input}
       onChange={(e) => setInput(e.currentTarget.value)}
       onKeyDown={(e) => {

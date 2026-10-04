@@ -1,5 +1,5 @@
 import { Stack } from "@mantine/core";
-import { IconLayoutColumns } from "@tabler/icons-react";
+import { IconLayoutBottombar, IconLayoutColumns } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import type { BoardData } from "../widgets";
 import { AssetsListContext, type AssetsListHandle } from "../components/assets/AssetsList";
@@ -34,6 +34,12 @@ export interface BoardSupport {
 }
 
 interface ViewPageProps {
+  /**
+   * The account sees no view: the prompt takes the place of the boards, with
+   * "onCreateView" if it may create one.
+   */
+  noView?: boolean;
+  onCreateView?: () => void;
   /** The view's boards; "null" until they are read. */
   boards: Board[] | null;
   boardId: string | null;
@@ -43,11 +49,13 @@ interface ViewPageProps {
   onRenameBoard?: (id: number, name: string) => void | Promise<void>;
   onDeleteBoard?: (id: number) => void | Promise<void>;
   onReorderBoards?: (ids: number[]) => void | Promise<void>;
-  onTogglePrivateBoard?: (id: number) => void | Promise<void>;
-  onToggleBoardInherited?: (id: number) => void | Promise<void>;
+  onToggleBoardHidden?: (id: number, hidden: boolean) => void | Promise<void>;
   /** The board just created: its name goes straight into entry. */
   toRename: number | null;
   onRenameOpened: () => void;
+  onRenameEnded?: (id: number, abandoned: boolean) => void;
+  /** The empty view's "Créer un tableau": available outside interface editing too. */
+  onCreateFirstBoard?: () => void;
   onCopyContexts?: (id: number) => void;
   /** The open board's sections; "null" until they are read. */
   sections: IndicatorSection[] | null;
@@ -78,6 +86,8 @@ interface ViewPageProps {
  * application reads and which this page brings within their reach.
  */
 export default function ViewPage({
+  noView = false,
+  onCreateView,
   boards,
   boardId,
   onBoardChange,
@@ -85,10 +95,11 @@ export default function ViewPage({
   onRenameBoard,
   onDeleteBoard,
   onReorderBoards,
-  onTogglePrivateBoard,
-  onToggleBoardInherited,
+  onToggleBoardHidden,
   toRename,
   onRenameOpened,
+  onRenameEnded,
+  onCreateFirstBoard,
   onCopyContexts,
   sections,
   widgets,
@@ -118,14 +129,23 @@ export default function ViewPage({
   // which stays: it is what carries the account. Nothing during a read:
   // the empty screen waits to be a certainty.
   let content: ReactNode = null;
-  if (!boards || boards.length === 0) {
+  if (noView) {
+    content = (
+      <EmptyPanel
+        icon={IconLayoutBottombar}
+        message="Aucune vue"
+        actionLabel="Créer une vue"
+        onAction={onCreateView}
+      />
+    );
+  } else if (!boards || boards.length === 0) {
     content =
       loading || !boards ? null : (
         <EmptyPanel
           icon={IconLayoutColumns}
-          message="Aucun tableau dans cette vue"
-          actionLabel="Nouveau tableau"
-          onAction={onAddBoard}
+          message="Aucun tableau"
+          actionLabel="Créer un tableau"
+          onAction={onCreateFirstBoard}
         />
       );
   } else if (openBoard) {
@@ -172,17 +192,12 @@ export default function ViewPage({
         onRename={onRenameBoard}
         onDelete={onDeleteBoard}
         onReorder={onReorderBoards}
-        onTogglePrivate={onTogglePrivateBoard}
+        onToggleHidden={onToggleBoardHidden}
         onCopyContexts={onCopyContexts}
-        inheritance={
-          onToggleBoardInherited && {
-            of: (tab) => tab.inherited !== false,
-            onToggle: onToggleBoardInherited,
-          }
-        }
         deleteWarning="Ses projets, ses listes de tâches et ses widgets seront supprimés."
         toRename={toRename}
         onRenameOpened={onRenameOpened}
+        onRenameEnded={onRenameEnded}
         account={account}
         actions={
           withRequests ? (

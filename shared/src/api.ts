@@ -2,6 +2,7 @@
 // the domain types (domain.ts).
 
 import type { DueShape, Reminder, Recurrence } from "./due.js";
+import type { EntraPrincipal } from "./entra.js";
 import type {
   CardKind,
   Id,
@@ -55,7 +56,14 @@ export interface UpdateMeInput {
 
 export interface ViewInput {
   name?: string;
-  is_private?: boolean;
+}
+
+/**
+ * A view's sharing, as "Partager" saves it: each user or group, and its
+ * boards with their level. Whoever is not listed no longer receives any.
+ */
+export interface ViewSharesInput {
+  shares: { principal: EntraPrincipal; permissions: Record<string, string> }[];
 }
 
 /** A context: its name. */
@@ -69,7 +77,6 @@ export interface BoardInput {
   name?: string;
   all_contexts_label?: string;
   show_card_numbers?: boolean;
-  is_private?: boolean;
 }
 
 /**
@@ -167,6 +174,8 @@ export interface LabelInput {
   board_id?: Id;
   name?: string;
   color?: string;
+  /** Another group: the label goes to its end. */
+  group_id?: Id;
 }
 
 export interface ProjectInput {
@@ -266,8 +275,12 @@ export type IndicatorSectionInput = BoardSectionInput;
 export interface SupportLabelInput {
   name?: string;
   color?: string;
-  weight?: number;
+  /** Another group: the label goes to its end. */
+  group_id?: Id;
 }
+
+/** The routes of a kind of labels: those of cards, of projects, of Support. */
+export type LabelsBase = "/labels" | "/project-labels" | "/support-labels";
 
 /**
  * The confirmation of a support mailbox: while it is pending, nothing is

@@ -11,6 +11,7 @@ import {
 import { DragHandle, InsertLine, useDraggableStack } from "../../components/ui/DraggableStack";
 import { STRONG_TEXT } from "../../themes/colors";
 import { SUBCATEGORY_COLOR, SUBCATEGORY_GAP } from "./subcategory";
+import { Frame } from "../margins";
 import { isFramed, text } from "../types";
 import type { AccessWidget, WidgetConfigProps } from "../types";
 import type { AccessBlockType } from "@milo/shared";
@@ -239,10 +240,7 @@ export const numberWidget: AccessWidget = {
   Display: ({ config }) => {
     const list = rows(config);
     return (
-      <div
-        className={isFramed(config, true) ? classes.inset : undefined}
-        style={{ border: "none" }}
-      >
+      <Frame config={config} framed={isFramed(config, true)}>
         {list.length === 0 ? (
           <Text size="sm" c={SUBCATEGORY_COLOR}>
             Attributs
@@ -263,7 +261,7 @@ export const numberWidget: AccessWidget = {
             ))}
           </div>
         )}
-      </div>
+      </Frame>
     );
   },
 

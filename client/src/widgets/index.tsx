@@ -8,7 +8,7 @@
 // "project.labels" —: two of them had the same name, each in
 // its own panel.
 
-import { Box, Stack } from "@mantine/core";
+import { Stack } from "@mantine/core";
 import type { ComponentType, ReactNode } from "react";
 import { COMMON_WIDGET_TYPES } from "@milo/shared";
 import type { AccessBlockType, Asset, Id, Project, SupportRequest, TaskList } from "@milo/shared";
@@ -18,12 +18,19 @@ import type { IndicatorConfigProps } from "./support/types";
 import { PROJECT_INDICATORS } from "./project";
 import { TASK_INDICATORS } from "./task";
 import { WIDGETS } from "./common";
-import { marginRows, marginRowsFor, marginsOf, configuredMargins } from "./margins";
-import inset from "../assets/styles/AccessNumber.module.css";
+import {
+  Frame,
+  FRAME_PADDING,
+  marginRows,
+  marginsOf,
+  configuredMargins,
+  spacingRows,
+} from "./margins";
 import { appearanceRows } from "../components/ui/AppearanceFields";
+import { alignmentRows } from "./alignment";
 import SettingRows, { frameRow } from "../components/ui/SettingRows";
 import { FRAMED, isFramed, type AccessWidget } from "./types";
-import { GAP } from "../components/ui/IndicatorsPanel";
+import { CARD_PADDING, GAP } from "../components/ui/IndicatorsPanel";
 import type { IndicatorWidgetBase, WidgetRender } from "../components/ui/IndicatorsPanel";
 
 /** What a board makes available to its widgets: its data, filtered by it. */
@@ -49,7 +56,7 @@ const COMMON = new Set<string>(COMMON_WIDGET_TYPES);
 /**
  * The fields of an Access mode widget: its own, then the
  * "Apparence" block — its own rows, its frame and its margins, common to
- * all —, then those it places at the very bottom — a link's switch.
+ * all — and its alignment, then those it places at the very bottom — a link's switch.
  * The drawer doesn't know its neighbors: the default proposed margins are
  * those of a widget alone in its column.
  */
@@ -72,6 +79,7 @@ const fieldsOf = (widget: AccessWidget): ComponentType<IndicatorConfigProps> =>
               widget.defaultFrame ?? false,
             ),
             ...marginRows(widget, subject, onChange, { previousType: null, nextType: null }),
+            ...alignmentRows(config, onChange),
           ]}
         />
         {widget.ConfigEnd && <widget.ConfigEnd config={config} onChange={onChange} />}
@@ -91,6 +99,7 @@ const fromAccess = (widget: AccessWidget): BoardWidgetDefinition => ({
   // already have their inset: none is placed in the indicators card.
   ownClicks: true,
   ...(widget.inlineEdit ? { inlineEdit: true } : {}),
+  ...(widget.liveContent ? { liveContent: true } : {}),
   ...(widget.drawerSize ? { drawerSize: widget.drawerSize } : {}),
   ...(widget.hidden ? { hidden: widget.hidden } : {}),
   margins: (config, previousType, nextType) =>
@@ -98,40 +107,33 @@ const fromAccess = (widget: AccessWidget): BoardWidgetDefinition => ({
       previousType: previousType as AccessBlockType | null,
       nextType: nextType as AccessBlockType | null,
     }),
-  show: (_data, config, { id, onChange, locked }) =>
-    frame(
+  show: (_data, config, { id, onChange, locked }) => {
+    const content = (
       <widget.Display
         blockId={id}
         config={config}
         onChange={onChange}
         onEdit={() => {}}
         locked={locked}
-      />,
-      // A widget that draws its own frame doesn't get a second one.
-      !widget.ownFrame && isFramed(config, widget.defaultFrame),
-    ),
+      />
+    );
+    // A widget that draws its own frame doesn't get a second one: its
+    // padding is its own too.
+    if (widget.ownFrame) return content;
+    return (
+      <Frame config={config} framed={isFramed(config, widget.defaultFrame)}>
+        {content}
+      </Frame>
+    );
+  },
 });
-
-/**
- * The frame the registry puts around a widget that doesn't draw it
- * itself: the attributes inset, without a border — that of clocks and
- * framed feeds.
- */
-const frame = (content: ReactNode, framed: boolean): ReactNode =>
-  framed ? (
-    <Box className={inset.inset} style={{ border: "none" }}>
-      {content}
-    </Box>
-  ) : (
-    content
-  );
 
 /** An indicator's spacing while nothing is set: half their gap, on each side. */
 const MARGINS_INDICATOR = { top: GAP / 2, bottom: GAP / 2 };
 
 /**
  * The "Apparence" block of an indicator: its card — title, value, background —
- * if it has one, its frame, its margins. A card is framed as long as nothing
+ * if it has one, its frame, its margins, its alignment. A card is framed as long as nothing
  * is set; a list, which keeps its clicks, is not.
  */
 const appearanceOf = (w: IndicatorWidgetBase<string>): ComponentType<IndicatorConfigProps> =>
@@ -143,7 +145,13 @@ const appearanceOf = (w: IndicatorWidgetBase<string>): ComponentType<IndicatorCo
         rows={[
           ...(card ? appearanceRows(config, onChange, w.withValue) : []),
           frameRow(config, onChange, FRAMED, isFramed(config, card), card),
-          ...marginRowsFor(MARGINS_INDICATOR, config, onChange),
+          ...spacingRows(
+            MARGINS_INDICATOR,
+            isFramed(config, card) ? (card ? CARD_PADDING : FRAME_PADDING) : 0,
+            config,
+            onChange,
+          ),
+          ...alignmentRows(config, onChange),
         ]}
       />
     );
@@ -169,8 +177,15 @@ const prefixed = <W extends IndicatorWidgetBase<string>>(
       // here, on request.
       Appearance: appearanceOf(w),
       margins: (config) => configuredMargins(config, MARGINS_INDICATOR),
+      // A card has its padding from the panel (IndicatorsPanel).
       show: (data, config, render) =>
-        frame(show(w, data, config, render), Boolean(w.ownClicks) && isFramed(config)),
+        w.ownClicks ? (
+          <Frame config={config} framed={isFramed(config)}>
+            {show(w, data, config, render)}
+          </Frame>
+        ) : (
+          show(w, data, config, render)
+        ),
     }));
 
 /** In the order the widgets drawer presents them, grouped by type. */

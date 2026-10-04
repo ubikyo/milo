@@ -1,9 +1,8 @@
 import { ActionIcon, Menu, Tabs } from "@mantine/core";
 import {
   IconCategory,
-  IconCheck,
+  IconEye,
   IconEyeOff,
-  IconHierarchy2,
   IconPencil,
   IconPlus,
   IconTrash,
@@ -11,7 +10,6 @@ import {
 import { Fragment, useEffect, useRef, useState } from "react";
 import { ADD_ACTION, RED } from "../../themes/colors";
 import DeleteConfirmModal from "./DeleteConfirmModal";
-import InheritConfirmModal from "./InheritConfirmModal";
 import ModeBar from "./ModeBar";
 import ContextsMenu from "./ContextsMenu";
 import AdjustedInput from "./AdjustedInput";
@@ -20,6 +18,7 @@ import { InsertLine, useTabReorder } from "./useTabReorder";
 import { tabStyle } from "../../themes/tabs";
 import type { AccountSlot } from "./AccountControls";
 import type { ReactNode, SyntheticEvent } from "react";
+import type { BoardAccess } from "@milo/shared";
 
 /** What happens in the contexts list does not bubble up to the tab. */
 const keep = (e: SyntheticEvent) => e.stopPropagation();
@@ -28,10 +27,13 @@ const keep = (e: SyntheticEvent) => e.stopPropagation();
 interface Tab {
   id: number;
   name: string;
-  /** The modes whose tabs are closed to others: Accès, Projet and Tâche. */
-  is_private?: number;
-  /** The Accès mode, whose every category has its own structure: "Hérité" for the account. */
-  inherited?: boolean;
+  /**
+   * What the account may do with it: a "read" share renames nothing, and
+   * only its owner deletes it. Without it, everything the props offer.
+   */
+  access?: BoardAccess;
+  /** Hidden by the account: greyed, only shown in interface editing. */
+  is_hidden?: boolean;
   /** Its contexts: without them, nothing to copy. */
   contexts?: readonly unknown[];
 }
@@ -66,10 +68,10 @@ interface BoardTabsProps {
   /** Without it — without the right to delete —, the menu does not offer it. */
   onDelete?: (id: number) => void | Promise<void>;
   /**
-   * Make the targeted tab private or visible to all again. Without it, the
-   * menu does not offer it.
+   * "Masquer" or "Afficher", for the account: any tab, its own or shared.
+   * The last one shown cannot be hidden. Without it, the menu does not offer it.
    */
-  onTogglePrivate?: (id: number) => void | Promise<void>;
+  onToggleHidden?: (id: number, hidden: boolean) => void | Promise<void>;
   /** Copy the tab's contexts to another. Without it, the menu does not offer it. */
   onCopyContexts?: (id: number) => void;
   /**
@@ -82,16 +84,6 @@ interface BoardTabsProps {
   deleteWarning?: ReactNode;
   /** The confirmation's title: not all tabs are boards. */
   deleteTitle?: string;
-  /**
-   * "Hérité": the targeted tab shows the shared structure — sections and
-   * widgets —, or the account's own copy. "of" says so for a tab
-   * (in Projet and Tâche, the same for all: the sections are shared there).
-   * Unchecking it is confirmed. Without it, the menu does not offer it.
-   */
-  inheritance?: {
-    of: (tab: Tab) => boolean;
-    onToggle: (id: number) => void | Promise<void>;
-  };
   /** The company and the account, which ModeBar places at the end of the row. */
   account: AccountSlot;
   /** The open board's "Actions" menu, placed between the company and the account. */
@@ -102,7 +94,18 @@ interface BoardTabsProps {
    */
   toRename?: number | null;
   onRenameOpened?: () => void;
+  /** Name entry is over: validated — even unchanged —, or abandoned with Escape. */
+  onRenameEnded?: (id: number, abandoned: boolean) => void;
 }
+
+/** A hidden tab, in interface editing: greyed. */
+const HIDDEN_OPACITY = 0.4;
+
+/** Can the account change this tab — rename it, its contexts? Not under a "read" share. */
+const changeable = (tab: Tab) => tab.access !== "read";
+
+/** Is the tab the account's own — or does it not say? Deleting it is the owner's. */
+const owned = (tab: Tab) => tab.access === undefined || tab.access === "owner";
 
 export default function BoardTabs({
   boards,
@@ -112,32 +115,22 @@ export default function BoardTabs({
   onEdit,
   onRename,
   onDelete,
-  onTogglePrivate,
+  onToggleHidden,
   onCopyContexts,
   onReorder,
   deleteWarning,
   deleteTitle = "Supprimer le tableau",
-  inheritance,
   account,
   actions,
   toRename,
   onRenameOpened,
+  onRenameEnded,
 }: BoardTabsProps) {
   const { contexts } = account;
   // The open context menu, and the tab it targets.
   const [menu, setMenu] = useState<{ tab: Tab; position: PointMenuPosition } | null>(null);
   // The tab whose deletion is being confirmed.
   const [toDelete, setToDelete] = useState<Tab | null>(null);
-  // The private tab about to be opened to all: this action is confirmed.
-  const [toOpen, setToOpen] = useState<Tab | null>(null);
-  // The tab whose "Hérité" is about to be toggled, and the state being left:
-  // this action is confirmed both ways. The state stays set on
-  // close: the message does not change while the modal fades out.
-  const [toToggle, setToSwitch] = useState<{
-    tab: Tab | null;
-    inherits: boolean;
-  }>({ tab: null, inherits: true });
-  const closeToggle = () => setToSwitch((b) => ({ ...b, tab: null }));
   const [plusHovered, setMoreHovered] = useState(false);
   // The tab being renamed and the name typed into it.
   const [renamed, setRenamed] = useState<{ id: number; name: string } | null>(null);
@@ -158,7 +151,7 @@ export default function BoardTabs({
   const changeTab = guardChange(onChange);
 
   const openRename = (tab: Tab) => {
-    if (!onRename) return;
+    if (!onRename || !changeable(tab)) return;
     finished.current = false;
     setRenamed({ id: tab.id, name: tab.name });
   };
@@ -179,6 +172,7 @@ export default function BoardTabs({
     finished.current = true;
     const { id, name } = renamed;
     setRenamed(null);
+    onRenameEnded?.(id, !validate);
     const trimmedName = name.trim();
     const tab = boards.find((b) => b.id === id);
     if (!validate || !trimmedName || !tab || trimmedName === tab.name || !onRename) return;
@@ -197,21 +191,25 @@ export default function BoardTabs({
   };
 
   // "Renommer" only applies if the tab can be edited: without a drawer or
-  // renaming, it would do nothing.
-  const editable = Boolean(onEdit || onRename);
+  // renaming, it would do nothing. A "read" share changes nothing; only its
+  // owner deletes a tab.
+  const editable = (tab: Tab) => Boolean(onEdit || onRename) && changeable(tab);
+  const deletable = (tab: Tab) => Boolean(onDelete) && owned(tab);
   // A menu with nothing in it does not open: this is the case for someone who only
   // reads.
-  const usefulMenu =
-    editable ||
-    Boolean(
-      onDelete ||
-        onCopyContexts ||
-        onTogglePrivate ||
-        inheritance,
-    );
+  const usefulMenu = (tab: Tab) =>
+    editable(tab) ||
+    deletable(tab) ||
+    Boolean(onToggleHidden) ||
+    (Boolean(onCopyContexts) && changeable(tab));
+  // The last tab shown stays: it cannot be hidden.
+  const lastShown = (tab: Tab) => !tab.is_hidden && boards.filter((b) => !b.is_hidden).length <= 1;
 
   // Copy the targeted tab's contexts: only if it has at least one.
-  const copyContexts = Boolean(onCopyContexts) && (menu?.tab.contexts?.length ?? 0) > 0;
+  const copyContexts =
+    Boolean(onCopyContexts) &&
+    Boolean(menu && changeable(menu.tab)) &&
+    (menu?.tab.contexts?.length ?? 0) > 0;
 
   return (
     <>
@@ -224,7 +222,7 @@ export default function BoardTabs({
               {...tabProps(board.id, index, tabStyle(value === String(board.id)))}
               onContextMenu={(e) => {
                 // The tab's menu hangs under it, like a row's.
-                if (usefulMenu) setMenu({ tab: board, position: menuAnchor(e) });
+                if (usefulMenu(board)) setMenu({ tab: board, position: menuAnchor(e) });
               }}
               onDoubleClick={() => openRename(board)}
             >
@@ -232,7 +230,16 @@ export default function BoardTabs({
                   text baseline: the contexts' label is smaller,
                   and the field aligns to the top of its line
                   (AdjustedInput). */}
-              <span style={{ display: "inline-flex", alignItems: "baseline" }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "baseline",
+                  // Hidden: greyed, only shown in interface editing. The
+                  // content only: the open tab's background, which covers
+                  // the row's line, stays opaque.
+                  ...(board.is_hidden ? { opacity: HIDDEN_OPACITY } : null),
+                }}
+              >
                 {renamed?.id === board.id ? (
                   <AdjustedInput
                     value={renamed.name}
@@ -330,7 +337,7 @@ export default function BoardTabs({
 
       {menu && (
         <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          {editable && (
+          {editable(menu.tab) && (
             <Menu.Item
               leftSection={<IconPencil size={16} />}
               onClick={() =>
@@ -338,6 +345,15 @@ export default function BoardTabs({
               }
             >
               Renommer
+            </Menu.Item>
+          )}
+          {onToggleHidden && (
+            <Menu.Item
+              leftSection={menu.tab.is_hidden ? <IconEye size={16} /> : <IconEyeOff size={16} />}
+              disabled={lastShown(menu.tab)}
+              onClick={() => void onToggleHidden(menu.tab.id, !menu.tab.is_hidden)}
+            >
+              {menu.tab.is_hidden ? "Afficher" : "Masquer"}
             </Menu.Item>
           )}
           {/* What the tab carries, carried over to another: apart from the rest. */}
@@ -352,45 +368,7 @@ export default function BoardTabs({
             </Menu.Item>
           )}
 
-          {/* The tab's settings, each checked when active. */}
-          {(onTogglePrivate || inheritance) && (
-            <>
-              <Menu.Divider />
-              <Menu.Label>Interface</Menu.Label>
-            </>
-          )}
-          {onTogglePrivate && (
-            <Menu.Item
-              leftSection={<IconEyeOff size={16} />}
-              rightSection={menu.tab.is_private ? <IconCheck size={14} /> : null}
-              // Making it private is immediate; opening it to all is confirmed.
-              onClick={() =>
-                menu.tab.is_private
-                  ? setToOpen(menu.tab)
-                  : onTogglePrivate(menu.tab.id)
-              }
-            >
-              Privée
-            </Menu.Item>
-          )}
-          {inheritance &&
-            (() => {
-              // A private tab belongs only to its author: there is nothing to
-              // share, nor therefore to inherit.
-              const isPrivate = Boolean(menu.tab.is_private);
-              const inherits = !isPrivate && inheritance.of(menu.tab);
-              return (
-                <Menu.Item
-                  leftSection={<IconHierarchy2 size={16} />}
-                  rightSection={inherits ? <IconCheck size={14} /> : null}
-                  disabled={isPrivate}
-                  onClick={() => setToSwitch({ tab: menu.tab, inherits })}
-                >
-                  Héritée
-                </Menu.Item>
-              );
-            })()}
-          {onDelete && (
+          {deletable(menu.tab) && (
             <>
               <Menu.Divider />
               <Menu.Item
@@ -404,37 +382,6 @@ export default function BoardTabs({
           )}
         </PointMenu>
       )}
-
-      <InheritConfirmModal
-        opened={toToggle.tab !== null}
-        inherited={toToggle.inherits}
-        onClose={closeToggle}
-        onConfirm={() => {
-          const tab = toToggle.tab;
-          closeToggle();
-          if (tab && inheritance) void inheritance.onToggle(tab.id);
-        }}
-      />
-
-      <DeleteConfirmModal
-        opened={toOpen !== null}
-        onClose={() => setToOpen(null)}
-        onConfirm={() => {
-          const tab = toOpen;
-          setToOpen(null);
-          if (tab && onTogglePrivate) void onTogglePrivate(tab.id);
-        }}
-        title="Retirer « Privée »"
-        message={
-          <>
-            « {toOpen?.name} » ne sera plus privé : tous ceux qui ont accès à ce mode
-            pourront le voir.
-          </>
-        }
-        confirmLabel="Valider"
-        cancelLabel="Annuler"
-        confirmColor="teal"
-      />
 
       <DeleteConfirmModal
         opened={toDelete !== null}

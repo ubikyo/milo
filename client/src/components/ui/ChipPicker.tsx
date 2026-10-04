@@ -66,6 +66,11 @@ interface ChipPickerProps<T extends ChipOption> {
   onClose?: () => void;
   closeBlocked?: boolean;
   /**
+   * As long as this is true, Escape leaves the list open: it belongs to an
+   * input in progress, which it cancels.
+   */
+  escapeBlocked?: boolean;
+  /**
    * Chips placed in front of the others, which cannot be chosen: a
    * fact rather than a choice — the sender of a request received by e-mail.
    */
@@ -91,6 +96,16 @@ interface ChipPickerProps<T extends ChipOption> {
   target?: ReactNode;
   /** Where the list opens; under the title's left edge by default. */
   position?: FloatingPosition;
+  /**
+   * The list's height limit, in pixels, past which it scrolls. Without it,
+   * the list shows ten rows.
+   */
+  listMaxHeight?: number;
+  /**
+   * Draws the list itself, in place of the options' rows: the labels, gathered
+   * in their groups. The chips are still read from `options`.
+   */
+  list?: ReactNode;
 }
 
 export default function ChipPicker<T extends ChipOption>({
@@ -128,6 +143,7 @@ export default function ChipPicker<T extends ChipOption>({
   // list would go away, and you would return to the card once the modal
   // is closed.
   closeBlocked = false,
+  escapeBlocked = false,
   leadingChips,
   listOptions = options,
   header,
@@ -135,6 +151,8 @@ export default function ChipPicker<T extends ChipOption>({
   separated = false,
   target,
   position = "bottom-start",
+  listMaxHeight,
+  list,
 }: ChipPickerProps<T>) {
   // When separated, the options run from edge to edge of the list, and their
   // border too; the last one has none — there is nothing to separate below.
@@ -204,6 +222,7 @@ export default function ChipPicker<T extends ChipOption>({
       // place, it is properly inside the drawer; "fixed" keeps it out of reach
       // of the surrounding scroll.
       withinPortal={false}
+      closeOnEscape={!escapeBlocked}
       floatingStrategy="fixed"
       shadow="md"
       // The anchor is the whole block: the list thus drops under the title.
@@ -286,14 +305,14 @@ export default function ChipPicker<T extends ChipOption>({
             )
           : header}
         {/* An empty text says nothing: the room goes to what follows the list. */}
-        {listOptions.length === 0 && emptyText && (
+        {!list && listOptions.length === 0 && emptyText && (
           <Text size="sm" c="dimmed" p="xs">
             {emptyText}
           </Text>
         )}
         {/* The thin bar of the application's other lists (ListItems). */}
         <ScrollArea.Autosize
-          mah={maxHeight}
+          mah={listMaxHeight ?? maxHeight}
           type="auto"
           scrollbars="y"
           scrollbarSize={2}
@@ -302,9 +321,13 @@ export default function ChipPicker<T extends ChipOption>({
           // the end of the row — the directory origin — out of the list.
           // Held to its width, it truncates.
           styles={{ content: { display: "block", minWidth: 0 } }}
+          // A list drawn by the caller runs to the dropdown's edges, so its bar
+          // sits against the border, as in the separated lists (ActorPicker).
+          mx={list && !separated ? -6 : undefined}
         >
-          <div ref={contentRef}>
-            {listOptions.length > 0 && (
+          <div ref={contentRef} style={list && !separated ? { padding: "0 6px" } : undefined}>
+            {list}
+            {!list && listOptions.length > 0 && (
               <Stack gap={separated ? 0 : 2}>
                 {listOptions.map((option, rank) =>
                   // Two layouts. Without its own click role, the element is

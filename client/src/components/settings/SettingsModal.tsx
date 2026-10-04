@@ -126,9 +126,9 @@ export default function SettingsModal({
   user,
   onUserChange,
 }: SettingsModalProps) {
-  const management = user.manage_workspaces;
-  // Without workspace management, their tab is not there: open on
+  // "Voir" on workspaces opens their tab; without it, the modal opens on
   // Entra.
+  const management = user.workspace_rights.view;
   const [activeTab, setActiveTab] = useState<string | null>(management ? "workspaces" : "entra");
   // All workspaces, for whoever manages them: their tab, and the choice of
   // the one whose access is being set.
@@ -176,11 +176,12 @@ export default function SettingsModal({
     if (!ready) setActiveTab((t) => (t && WITH_ENTRA.has(t) ? "entra" : t));
   }, []);
   /**
-   * Only the Entra tab has pending settings: the other tabs save each
-   * action. "Enregistrer" calls the function the tab deposits here;
-   * "Fermer" saves nothing.
+   * Only the Entra and Administration tabs have pending settings: the other
+   * tabs save each action. "Enregistrer" calls the function each of them
+   * deposits here; "Fermer" saves nothing.
    */
   const saveEntra = useRef<(() => Promise<boolean>) | null>(null);
+  const saveAdministration = useRef<(() => Promise<boolean>) | null>(null);
   const [registration, setSaving] = useState(false);
 
   // Saves then closes; a server refusal keeps the modal open, with its
@@ -190,6 +191,10 @@ export default function SettingsModal({
     try {
       if ((await saveEntra.current?.()) === false) {
         setActiveTab("entra");
+        return;
+      }
+      if ((await saveAdministration.current?.()) === false) {
+        setActiveTab("administration");
         return;
       }
     } finally {
@@ -309,6 +314,7 @@ export default function SettingsModal({
         {panel(
           "workspaces",
           <WorkspacesTab
+            rights={user.workspace_rights}
             workspaces={workspaces}
             onChanged={reloadWorkspaces}
             onAccessChanged={() => void reloadAccount()}
@@ -318,7 +324,8 @@ export default function SettingsModal({
         {panel(
           "administration",
           <AdministrationTab
-            canManageWorkspaces={management}
+            workspaceRights={user.workspace_rights}
+            saveRef={saveAdministration}
             onChange={() => void reloadAccount()}
           />,
         )}

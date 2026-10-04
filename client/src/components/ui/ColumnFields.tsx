@@ -4,8 +4,10 @@ import { IconChevronDown } from "@tabler/icons-react";
 import { useState } from "react";
 import type { DragEvent } from "react";
 import classes from "../../assets/styles/ColumnFields.module.css";
+import { useLabelGroups } from "../../lib/label-groups";
 import { withField } from "../../widgets/types";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
+import type { Id, LabelsBase } from "@milo/shared";
 import {
   ROUNDING,
   INPUT_BACKGROUND,
@@ -36,14 +38,22 @@ import {
 // columns: everyone can still adjust them for themselves, and double-clicking a
 // grid handle brings them back to it. When empty, the column takes the width of
 // its content.
+//
+// A labels column also says which group it shows — or all of them —: a second
+// select, after its name.
 
 export interface ListColumn {
   key: string;
   label: string;
+  /** The kind of labels it shows, when it shows labels: it then picks a group. */
+  labelGroups?: LabelsBase;
 }
 
-/** A shown column: "id" tells it apart from its duplicates in the grid. */
-export type ShownColumn<C extends ListColumn> = C & { id: string; width?: number };
+/**
+ * A shown column: "id" tells it apart from its duplicates in the grid. "group",
+ * for a labels column, is the group it shows; absent, all of them.
+ */
+export type ShownColumn<C extends ListColumn> = C & { id: string; width?: number; group?: Id };
 
 /** The shown columns, in order: one entry per row of the list. */
 export const LIST_COLUMNS = "columns";
@@ -57,6 +67,8 @@ const COLUMN_WIDTHS = "column_widths";
 interface Entry {
   key: string;
   width?: number;
+  /** A labels column's group; absent for all of them. */
+  group?: Id;
 }
 
 /**
@@ -65,6 +77,9 @@ interface Entry {
  */
 const VISIBLE_OPTIONS = 5;
 const OPTION_HEIGHT = 33.6875;
+
+/** The group option of a labels column that shows them all. */
+const ALL_GROUPS = "all";
 
 /** Below this, the column would show only an ellipsis — as in the grid. */
 const WIDTH_MIN = 40;
@@ -110,7 +125,11 @@ const entries = (columns: ListColumn[], config: unknown): Entry[] => {
           (e): e is Entry =>
             Boolean(e) && typeof e === "object" && columns.some((c) => c.key === e.key),
         )
-        .map((e) => ({ key: e.key, width: readWidth(e.width) }))
+        .map((e) => ({
+          key: e.key,
+          width: readWidth(e.width),
+          ...(typeof e.group === "number" ? { group: e.group } : {}),
+        }))
     : legacyEntries(columns, config);
   return readItems.length > 0 ? readItems : columns.map((c) => ({ key: c.key }));
 };
@@ -136,6 +155,7 @@ export const keptColumns = <C extends ListColumn>(
     ...columns.find((c) => c.key === e.key)!,
     id: ids[i]!,
     width: e.width,
+    group: e.group,
   }));
 };
 
@@ -218,7 +238,18 @@ export default function ColumnFields({
   };
 
   const changeWidth = (rank: number, value: string | number) =>
-    store(list.map((e, i) => (i === rank ? { key: e.key, width: readWidth(value) } : e)));
+    store(list.map((e, i) => (i === rank ? { ...e, width: readWidth(value) } : e)));
+
+  // A labels column's group: "all" stores none.
+  const groups = useLabelGroups(columns.find((c) => c.labelGroups)?.labelGroups);
+  const changeGroup = (rank: number, value: string | null) =>
+    store(
+      list.map((e, i) =>
+        i === rank
+          ? { key: e.key, width: e.width, ...(value && value !== ALL_GROUPS ? { group: Number(value) } : {}) }
+          : e,
+      ),
+    );
 
   // The held row takes the place of the one it hovers: the list reorders under
   // the pointer, and the configuration follows.
@@ -312,6 +343,26 @@ export default function ColumnFields({
                 classNames={{ option: classes.option }}
                 aria-label={newRow ? "Colonne à ajouter" : `Colonne ${column.label}`}
               />
+              {/* A labels column: which group it shows. */}
+              {"labelGroups" in column && column.labelGroups && (
+                <Select
+                  size="xs"
+                  radius={ROUNDING}
+                  w={150}
+                  ml={-6}
+                  data={[
+                    { value: ALL_GROUPS, label: "Tous les groupes" },
+                    ...groups.map((g) => ({ value: String(g.id), label: g.name })),
+                  ]}
+                  value={entry.group === undefined ? ALL_GROUPS : String(entry.group)}
+                  // A group deleted since then matches no option.
+                  placeholder="Groupe supprimé"
+                  onChange={(value) => changeGroup(rank, value)}
+                  allowDeselect={false}
+                  comboboxProps={{ shadow: "md" }}
+                  aria-label={`Groupe de la colonne ${column.label}`}
+                />
+              )}
               <NumberInput
                 size="xs"
                 radius={ROUNDING}
