@@ -6,16 +6,16 @@
 // ici — et une valeur de plus dans « ACCESS_BLOCK_TYPES » (shared/domain.ts),
 // qui est ce que la base range.
 
-import { calendarWidget } from "./calendrier";
-import { categoryWidget } from "./categorie";
-import { clockWidget } from "./horloge";
+import { calendarWidget } from "./calendar";
+import { categoryWidget } from "./category";
+import { clockWidget } from "./clock";
 import { imageWidget } from "./image";
-import { linkWidget } from "./lien";
+import { linkWidget } from "./link";
 import { mailWidget } from "./mail";
-import { weatherWidget } from "./meteo";
-import { numberWidget } from "./numero";
+import { weatherWidget } from "./weather";
+import { numberWidget } from "./number";
 import { rssWidget } from "./rss";
-import { subcategoryWidget } from "./sous-categorie";
+import { subcategoryWidget } from "./subcategory";
 import { todoWidget } from "./todo";
 import type { AccessWidget } from "./types";
 import type { AccessBlockType } from "@milo/shared";

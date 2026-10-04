@@ -16,7 +16,7 @@ import {
   writeMedia,
   inlineType,
   mediaUrl,
-} from "../lib/medias.js";
+} from "../lib/media.js";
 import { concerned, notify, notifyDeletion, root } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import {

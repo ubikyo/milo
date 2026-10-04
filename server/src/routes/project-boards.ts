@@ -12,7 +12,7 @@ import {
   refuseIfUsed,
   requireText,
 } from "../lib/http.js";
-import { require, requestCan } from "../lib/droits.js";
+import { require, requestCan } from "../lib/rights.js";
 import { touch } from "../middleware/events.js";
 import { VISIBLE_BOARDS_CLAUSE, openBoard } from "../repositories/boards.js";
 import { renderedCategory, categories, validMilestones } from "../repositories/project-boards.js";

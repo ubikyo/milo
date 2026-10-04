@@ -16,7 +16,7 @@ import { initialsOf } from "../ui/ActorAvatars";
 import { errorMessage, notifyError } from "../../lib/errors";
 import type { PublicUser, View } from "@milo/shared";
 import type { ComponentType } from "react";
-import CloseButton from "../ui/BoutonFermer";
+import CloseButton from "../ui/CloseButton";
 
 type Scheme = "auto" | "light" | "dark";
 

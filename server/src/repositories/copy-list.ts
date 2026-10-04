@@ -28,7 +28,7 @@ import { cardComments } from "./cards.js";
 import { creationNote } from "./comments.js";
 import { nextReference } from "./references.js";
 import { boardContext, contexts } from "./contexts.js";
-import { keyInBoard } from "./listes.js";
+import { keyInBoard } from "./lists.js";
 import { reorderTaskCards, taskCards, taskLists } from "./tasks.js";
 
 // --- Lectures de la source -------------------------------------------------

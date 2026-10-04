@@ -3,7 +3,7 @@
 
 import { Router } from "express";
 import type { MailboxOptinState } from "@milo/shared";
-import { requireWidget } from "../lib/droits.js";
+import { requireWidget } from "../lib/rights.js";
 import { confirmByCode, retry } from "../lib/optin.js";
 import { pollMailboxes } from "../lib/support-mail.js";
 import { maintainSubscriptions } from "../lib/support-webhooks.js";

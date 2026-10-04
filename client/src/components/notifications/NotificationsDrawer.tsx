@@ -39,7 +39,7 @@ import DrawerScrollArea, {
   DRAWER_TABS_STYLES,
 } from "../ui/DrawerScroll";
 import EmptyPanel from "../ui/EmptyPanel";
-import CloseButton from "../ui/BoutonFermer";
+import CloseButton from "../ui/CloseButton";
 
 // Les dernières notifications reçues, ouvertes depuis le menu du compte. À
 // l'écran, une notification passe et s'efface ; ici, elle reste jusqu'à ce

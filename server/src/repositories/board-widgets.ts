@@ -12,7 +12,7 @@
 import type { BoardWidget, Id } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { BoardSectionRow, BoardWidgetRow, NextRow } from "../db/rows.js";
-import { withNewKey } from "./listes.js";
+import { withNewKey } from "./lists.js";
 import { now } from "../lib/time.js";
 
 type Owner = Id | null;

@@ -29,14 +29,14 @@ import {
   type ReactNode,
 } from "react";
 import { OsLogo, ProtectionLogo } from "./AssetLogos";
-import { keptColumns, defaultWidths } from "../ui/ChampsColonnes";
+import { keptColumns, defaultWidths } from "../ui/ColumnFields";
 import EmptyPanel from "../ui/EmptyPanel";
-import GridScroll from "../ui/GrilleScroll";
+import GridScroll from "../ui/GridScroll";
 import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 import { useResizableColumns } from "../ui/useColonnesRedimensionnables";
-import { useIsEditing } from "../../lib/edition";
-import { inList } from "../../lib/listes";
-import { DISK_FULL, diskUsage, osLabel } from "../../lib/poste";
+import { useIsEditing } from "../../lib/editing";
+import { inList } from "../../lib/lists";
+import { DISK_FULL, diskUsage, osLabel } from "../../lib/workstation";
 import { RED, STRONG_TEXT } from "../../themes/colors";
 import type { Asset } from "@milo/shared";
 

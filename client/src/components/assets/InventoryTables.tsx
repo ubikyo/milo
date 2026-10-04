@@ -23,9 +23,9 @@ import {
 } from "@tabler/icons-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { NEUTRAL_HOVER, STRONG_TEXT } from "../../themes/colors";
-import GridScroll from "../ui/GrilleScroll";
+import GridScroll from "../ui/GridScroll";
 import { ReferenceTag } from "../ui/ReferenceTag";
-import { CARD_BACKGROUND } from "./fonds";
+import { CARD_BACKGROUND } from "./backgrounds";
 import { useResizableColumns } from "../ui/useColonnesRedimensionnables";
 import type { ComponentType, CSSProperties, ReactNode } from "react";
 import type { AssetEntry, AssetSection } from "@milo/shared";

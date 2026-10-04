@@ -30,7 +30,7 @@ import { env } from "../env.js";
 import { unpack, pack } from "./archive.js";
 import type { Entry } from "./archive.js";
 import { badRequest } from "./http.js";
-import { mediaPath } from "./medias.js";
+import { mediaPath } from "./media.js";
 import { ticketPathFor } from "./ticket-files.js";
 import { now } from "./time.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";

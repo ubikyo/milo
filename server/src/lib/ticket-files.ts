@@ -15,7 +15,7 @@ import type { SupportAttachment } from "@milo/shared";
 import { selection } from "../db/query.js";
 import type { TicketFileRow } from "../db/rows.js";
 import { env } from "../env.js";
-import { inlineType } from "./medias.js";
+import { inlineType } from "./media.js";
 
 /** Au-delà, une pièce jointe n'est pas rapatriée : l'e-mail le dit à sa place. */
 export const TICKET_SIZE_MAX = 50 * 1024 * 1024;

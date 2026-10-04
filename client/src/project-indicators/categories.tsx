@@ -1,8 +1,8 @@
 import { Checkbox, Stack } from "@mantine/core";
 import { IconCategory } from "@tabler/icons-react";
 import { withField } from "../widgets/types";
-import { LabelBars, NameField, NAME, Nothing, TitreIndicateur, isFinished } from "./commun";
-import type { Bar } from "./commun";
+import { LabelBars, NameField, NAME, Nothing, TitreIndicateur, isFinished } from "./common";
+import type { Bar } from "./common";
 import type { ProjectIndicatorWidget } from "./types";
 
 // Les catégories du tableau ouvert, par nombre de projets : où se porte le

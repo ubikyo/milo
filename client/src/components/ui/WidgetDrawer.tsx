@@ -1,10 +1,10 @@
 import { Drawer, Group, ScrollArea, Stack, Text, Title } from "@mantine/core";
 import { IconGripVertical } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
-import inset from "../../assets/styles/AccessNumero.module.css";
+import inset from "../../assets/styles/AccessNumber.module.css";
 import type { ComponentType, DragEvent } from "react";
-import { kindLabel, type WidgetKind } from "../../widgets/genres";
-import { SUBCATEGORY_GAP } from "../../widgets/sous-categorie";
+import { kindLabel, type WidgetKind } from "../../widgets/kinds";
+import { SUBCATEGORY_GAP } from "../../widgets/subcategory";
 
 // Ce qu'une section peut recevoir, un widget par ligne : sa poignée, son
 // icône, son nom, dans l'encart des widgets. Le tiroir s'ouvre à gauche, et

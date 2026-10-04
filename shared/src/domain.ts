@@ -7,8 +7,8 @@
 // type dit la vérité plutôt que de la maquiller, et `Boolean(x)` reste
 // nécessaire pour les lire.
 
-import type { CardLink } from "./dependances.js";
-import type { DueShape, Reminder, Recurrence } from "./echeance.js";
+import type { CardLink } from "./dependencies.js";
+import type { DueShape, Reminder, Recurrence } from "./due.js";
 import type { CompanyRights } from "./roles.js";
 import type { WidgetRights } from "./widget-kinds.js";
 

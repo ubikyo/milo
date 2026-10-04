@@ -10,7 +10,7 @@
 
 import { randomInt } from "node:crypto";
 import { optins, pair } from "../repositories/optins.js";
-import { listMailboxes } from "../repositories/receptions.js";
+import { listMailboxes } from "../repositories/inboxes.js";
 import { sendingAddress, entraConfigured } from "./entra.js";
 import { fail } from "./http.js";
 import { sendMail } from "./mail.js";

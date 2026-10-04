@@ -19,7 +19,7 @@ import type { Area, Id, SearchResult, SupportStatus } from "@milo/shared";
 import db from "../db/index.js";
 import { selection } from "../db/query.js";
 import { VISIBLE_BOARDS_CLAUSE } from "../repositories/boards.js";
-import { widgetAccess, requestCan } from "../lib/droits.js";
+import { widgetAccess, requestCan } from "../lib/rights.js";
 
 /** Ce que chaque sorte rend au plus : la liste reste lisible d'un coup d'œil. */
 const PER_KIND = 6;

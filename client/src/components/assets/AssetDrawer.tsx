@@ -19,12 +19,12 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import { tabStyle } from "../../themes/tabs";
 import { WITHOUT_FRAME, TABLEAUX, EMPTY } from "./InventoryTables";
 import AssetSummaryPanel, { CARD_BACKGROUND } from "./AssetSummaryPanel";
-import OperatingSystem from "./SystemeExploitation";
-import RecordTitle, { SPACE_BELOW_TITLE } from "./TitreFiche";
+import OperatingSystem from "./OperatingSystem";
+import RecordTitle, { SPACE_BELOW_TITLE } from "./RecordTitle";
 import classes from "../../assets/styles/AssetDrawer.module.css";
 import type { CSSProperties } from "react";
 import type { Asset, AssetDetail, AssetEntry, AssetSection } from "@milo/shared";
-import CloseButton from "../ui/BoutonFermer";
+import CloseButton from "../ui/CloseButton";
 
 const DRAWER_PADDING = 40;
 const DRAWER_WIDTH = 1100;

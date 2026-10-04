@@ -2,16 +2,16 @@
 // endroit les connaît : le tiroir des widgets, le panneau et celui des réglages
 // y prennent ce qu'il leur faut.
 
-import { actorsIndicator } from "./acteurs";
-import { ageIndicator } from "./anciennete";
-import { requestersIndicator } from "./demandeurs";
-import { duesIndicator } from "./echeances";
-import { labelsIndicator } from "./etiquettes";
-import { evolutionIndicator } from "./evolution";
-import { listIndicator } from "./liste";
-import { statusesIndicator } from "./statuts";
+import { actorsIndicator } from "./actors";
+import { ageIndicator } from "./age";
+import { requestersIndicator } from "./requesters";
+import { duesIndicator } from "./dueDates";
+import { labelsIndicator } from "./labels";
+import { evolutionIndicator } from "./trend";
+import { listIndicator } from "./list";
+import { statusesIndicator } from "./statuses";
 import { ticketsIndicator } from "./tickets";
-import { accessWidgets } from "../widgets/en-section";
+import { accessWidgets } from "../widgets/in-section";
 import type { IndicatorDisplayProps, SupportIndicatorWidget } from "./types";
 import type { SupportIndicatorType } from "@milo/shared";
 

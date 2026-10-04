@@ -33,7 +33,7 @@ import { transaction } from "../db/query.js";
 import type { SupportRequestRow, UserRow } from "../db/rows.js";
 import { readableBoard, boards, openBoard } from "../repositories/boards.js";
 import { boardContext, contexts } from "../repositories/contexts.js";
-import { keyInBoard } from "../repositories/listes.js";
+import { keyInBoard } from "../repositories/lists.js";
 import {
   concerned,
   notify,
@@ -52,7 +52,7 @@ import {
   requireText,
   toIds,
 } from "../lib/http.js";
-import { require, requestCan } from "../lib/droits.js";
+import { require, requestCan } from "../lib/rights.js";
 import { accountPerson, senderPerson } from "../lib/support-variables.js";
 import { cleanDescription } from "../lib/html.js";
 import {
@@ -63,8 +63,8 @@ import {
   eventLine,
   list,
   editMessage,
-} from "../lib/historique.js";
-import type { Field } from "../lib/historique.js";
+} from "../lib/history.js";
+import type { Field } from "../lib/history.js";
 import { pollMailboxes } from "../lib/support-mail.js";
 import { replyByEmail } from "../lib/support-reply.js";
 import { sendAutoReply, statusEvent } from "../lib/support-auto-reply.js";

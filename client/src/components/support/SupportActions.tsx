@@ -12,7 +12,7 @@ import {
   IconTrash,
   IconUserPlus,
 } from "@tabler/icons-react";
-import { useRights } from "../../lib/droits";
+import { useRights } from "../../lib/rights";
 import { useCallback, useEffect, useState } from "react";
 import LabelsManager from "../board/LabelsManager";
 import { api } from "../../api";
@@ -29,7 +29,7 @@ import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import PointMenu, { type PointMenuPosition } from "../ui/PointMenu";
 import { supportTicketRef } from "@milo/shared";
 import type { PublicUser, SupportLabel, SupportRequest } from "@milo/shared";
-import CloseButton from "../ui/BoutonFermer";
+import CloseButton from "../ui/CloseButton";
 
 /** L'action qui attend sa confirmation. */
 type ToConfirm = "merge" | "close" | "delete" | null;

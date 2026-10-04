@@ -14,7 +14,7 @@
 import express, { Router } from "express";
 import type { Request } from "express";
 import { HttpError, badRequest, notFound, orNotFound } from "../lib/http.js";
-import { require, requestCan } from "../lib/droits.js";
+import { require, requestCan } from "../lib/rights.js";
 import { endOfSupport } from "../lib/endoflife.js";
 import { decompresser, readXml, textOf } from "../lib/inventory.js";
 import { parisTime, now } from "../lib/time.js";
@@ -28,7 +28,7 @@ import {
 } from "../repositories/assets.js";
 import { readableBoard, boards, openBoard } from "../repositories/boards.js";
 import { boardContext } from "../repositories/contexts.js";
-import { tagInbox } from "../repositories/receptions.js";
+import { tagInbox } from "../repositories/inboxes.js";
 
 /**
  * Un inventaire de poste pèse quelques centaines de kilo-octets — six cents

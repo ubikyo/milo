@@ -6,7 +6,7 @@ import { useState } from "react";
 import type { ComponentPropsWithoutRef, DragEvent, ReactNode } from "react";
 import { FIELD_ICON, RED } from "../../themes/colors";
 import AddButton from "../ui/AddButton";
-import { Handle, move } from "../ui/LignesDuTiroir";
+import { Handle, move } from "../ui/DrawerRows";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import PointMenu, {
   menuPosition,

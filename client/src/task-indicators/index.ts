@@ -2,13 +2,13 @@
 // connaît : le tiroir des widgets, le panneau et celui des réglages y prennent
 // ce qu'il leur faut.
 
-import { cardsIndicator } from "./cartes";
-import { taskDuesIndicator } from "./echeances";
-import { taskLabelsIndicator } from "./etiquettes";
-import { listsIndicator } from "./listes";
-import { taskListIndicator } from "./liste";
-import { membersIndicator } from "./membres";
-import { accessWidgets } from "../widgets/en-section";
+import { cardsIndicator } from "./cards";
+import { taskDuesIndicator } from "./dueDates";
+import { taskLabelsIndicator } from "./labels";
+import { listsIndicator } from "./lists";
+import { taskListIndicator } from "./list";
+import { membersIndicator } from "./members";
+import { accessWidgets } from "../widgets/in-section";
 import type { TaskIndicatorDisplayProps, TaskIndicatorWidget } from "./types";
 import type { TaskIndicatorType } from "@milo/shared";
 

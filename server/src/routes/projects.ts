@@ -6,16 +6,16 @@ import type { Id, Project } from "@milo/shared";
 import { selection, transaction } from "../db/query.js";
 import type { ProjectJoinedRow, ProjectRow } from "../db/rows.js";
 import { badRequest, orNotFound, requireText, toIds } from "../lib/http.js";
-import { require, requestCan } from "../lib/droits.js";
+import { require, requestCan } from "../lib/rights.js";
 import { cleanDescription, sameDescription } from "../lib/html.js";
-import { quote, logAction, changes, list, editMessage } from "../lib/historique.js";
-import type { Field } from "../lib/historique.js";
+import { quote, logAction, changes, list, editMessage } from "../lib/history.js";
+import type { Field } from "../lib/history.js";
 import { concerned, notify, notifyLinked, notifyDeletion, root } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { categories } from "../repositories/project-boards.js";
 import { boardContext } from "../repositories/contexts.js";
-import { keyInBoard } from "../repositories/listes.js";
+import { keyInBoard } from "../repositories/lists.js";
 import {
   VISIBLE_BOARDS_CLAUSE as clauseTableauxVisibles,
   boards,

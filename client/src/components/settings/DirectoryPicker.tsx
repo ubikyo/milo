@@ -1,6 +1,6 @@
 import { Group, Select, Text } from "@mantine/core";
 import { IconUser, IconUsersGroup } from "@tabler/icons-react";
-import DirectoryOrigin from "../ui/OrigineAnnuaire";
+import DirectoryOrigin from "../ui/DirectoryOrigin";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { errorMessage } from "../../lib/errors";

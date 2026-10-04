@@ -23,13 +23,13 @@ import {
   INPUT_STYLE,
   nameFieldStyle,
   rowStyle,
-} from "../ui/LignesDuTiroir";
+} from "../ui/DrawerRows";
 import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 import { MilestoneLabels, milestoneMarks } from "./milestoneMarks";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { DEFAULT_LABEL_COLOR } from "@milo/shared";
 import type { Milestone, MilestoneType } from "@milo/shared";
-import CloseButton from "../ui/BoutonFermer";
+import CloseButton from "../ui/CloseButton";
 
 /** Un jalon en cours de saisie : la valeur peut être vidée pendant la frappe. */
 interface InputEntry {

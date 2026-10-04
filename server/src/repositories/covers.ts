@@ -5,7 +5,7 @@
 import type { CardCover, Id } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { NextRow } from "../db/rows.js";
-import { deleteMedia, mediaUrl } from "../lib/medias.js";
+import { deleteMedia, mediaUrl } from "../lib/media.js";
 import { attachments } from "./attachments.js";
 
 export interface CardCoverRow {

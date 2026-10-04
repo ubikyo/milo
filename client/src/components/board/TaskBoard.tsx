@@ -60,7 +60,7 @@ import ActorAvatars from "../ui/ActorAvatars";
 import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 import ColumnInsert, { COLUMN_INSERT_ZONE } from "../ui/ColumnInsert";
 import AddButton from "../ui/AddButton";
-import { useRights } from "../../lib/droits";
+import { useRights } from "../../lib/rights";
 import { CardLabel } from "../ui/LabelChip";
 import CelebrationEffect, { toggleMark, titleEffects, MARKS } from "../ui/EffetsFete";
 import type { Effect, Zone } from "../ui/EffetsFete";
@@ -71,9 +71,9 @@ import EmptyPanel from "../ui/EmptyPanel";
 import pastilles from "../../assets/styles/ListColors.module.css";
 import classes from "../../assets/styles/TaskBoard.module.css";
 import { errorMessage, notifyError } from "../../lib/errors";
-import { DUE_WORD, shortDate, dueState } from "../../lib/echeance";
+import { DUE_WORD, shortDate, dueState } from "../../lib/due";
 import { SelectionBorder } from "../ui/LabelColorPicker";
-import type { DueState } from "../../lib/echeance";
+import type { DueState } from "../../lib/due";
 import type {
   CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
@@ -82,7 +82,7 @@ import type {
   ReactNode,
 } from "react";
 import { listKey, isListColor, taskReference } from "@milo/shared";
-import { inList } from "../../lib/listes";
+import { inList } from "../../lib/lists";
 import type {
   Board,
   FollowKind,

@@ -5,7 +5,7 @@ import type { View } from "@milo/shared";
 import { ADD_ACTION, RED } from "../../themes/colors";
 import { MODE_SWITCH_TOP, PAGE_GUTTER } from "../../themes/layout";
 import DeleteConfirmModal from "./DeleteConfirmModal";
-import AdjustedInput from "./SaisieAjustee";
+import AdjustedInput from "./AdjustedInput";
 import PointMenu, { menuAnchor, type PointMenuPosition } from "./PointMenu";
 import { useTabReorder } from "./useTabReorder";
 

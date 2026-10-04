@@ -26,9 +26,9 @@ import {
 } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api";
-import { shrinkImage } from "../../lib/reduireImage";
+import { shrinkImage } from "../../lib/shrinkImage";
 import CardCovers from "./CardCovers";
-import CardDueDate, { EMPTY_DUE, type Due } from "./CardEcheance";
+import CardDueDate, { EMPTY_DUE, type Due } from "./CardDueDate";
 import {
   ACTIONS_BUTTON_STYLE,
   DRAWER_MENU_OFFSET,
@@ -44,12 +44,12 @@ import CardChecklists from "./CardChecklists";
 import CardDependencies, {
   newDraft,
   type DraftDependency,
-} from "./CardDependances";
+} from "./CardDependencies";
 import TaskDestination, { descriptionOf } from "./TaskDestination";
 import type { Destination, SourceTask } from "./TaskDestination";
 import LabelPicker from "../ui/LabelPicker";
 import CommentThread from "../project/CommentThread";
-import { BARE_FIELDSET } from "../../lib/droits";
+import { BARE_FIELDSET } from "../../lib/rights";
 import { ReferenceTag } from "../ui/ReferenceTag";
 import classes from "../../assets/styles/CardDrawer.module.css";
 import { errorMessage, notifyError } from "../../lib/errors";

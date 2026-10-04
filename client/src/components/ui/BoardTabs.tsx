@@ -11,10 +11,10 @@ import {
 import { Fragment, useEffect, useRef, useState } from "react";
 import { ADD_ACTION, RED } from "../../themes/colors";
 import DeleteConfirmModal from "./DeleteConfirmModal";
-import InheritConfirmModal from "./HeriteConfirmModal";
+import InheritConfirmModal from "./InheritConfirmModal";
 import ModeBar from "./ModeBar";
-import ContextsMenu from "./ContextesMenu";
-import AdjustedInput from "./SaisieAjustee";
+import ContextsMenu from "./ContextsMenu";
+import AdjustedInput from "./AdjustedInput";
 import PointMenu, { menuAnchor, type PointMenuPosition } from "./PointMenu";
 import { InsertLine, useTabReorder } from "./useTabReorder";
 import { tabStyle } from "../../themes/tabs";

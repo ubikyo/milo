@@ -1,25 +1,25 @@
 import { Box, Menu, Stack, UnstyledButton } from "@mantine/core";
 import { IconCopy, IconCopyPlus, IconPencil, IconTrash } from "@tabler/icons-react";
 import { useRef, useState, type ComponentType, type ReactNode } from "react";
-import inset from "../../assets/styles/AccessNumero.module.css";
+import inset from "../../assets/styles/AccessNumber.module.css";
 import { withField, isFramed, text } from "../../widgets/types";
-import { useWidgetAccess } from "../../lib/droits";
+import { useWidgetAccess } from "../../lib/rights";
 import { RED } from "../../themes/colors";
-import { copyWidget, useCopiedWidget } from "../../lib/presse-papiers";
+import { copyWidget, useCopiedWidget } from "../../lib/clipboard";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { notifications } from "@mantine/notifications";
 import DeleteConfirmModal from "./DeleteConfirmModal";
-import { LIST_ITEMS } from "../../lib/listes";
+import { LIST_ITEMS } from "../../lib/lists";
 import IndicatorDrawer from "./IndicatorDrawer";
 import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
 import SectionsBoard from "./SectionsBoard";
-import { IndicatorCardContext, BACKGROUND, NAME } from "./TitreIndicateur";
+import { IndicatorCardContext, BACKGROUND, NAME } from "./IndicatorTitle";
 import { InsertionLine, useWidgetDrop, type WidgetDrag } from "./WidgetDrop";
 import type { PanelSections } from "../../api";
 import type { IndicatorConfigProps } from "../../indicators/types";
 import { isListWidgetType } from "@milo/shared";
 import type { Id, IndicatorSection } from "@milo/shared";
-import type { WidgetKind } from "../../widgets/genres";
+import type { WidgetKind } from "../../widgets/kinds";
 
 /** L'écart entre deux indicateurs d'une section. */
 export const GAP = 20;

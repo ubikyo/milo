@@ -1,7 +1,7 @@
 import { Drawer, Stack, Tabs } from "@mantine/core";
 import { IconSettings } from "@tabler/icons-react";
 import { createContext, useCallback, useEffect, useRef, useState } from "react";
-import { NameField } from "../../indicators/commun";
+import { NameField } from "../../indicators/common";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { tabStyle } from "../../themes/tabs";
 import DeleteConfirmModal from "./DeleteConfirmModal";

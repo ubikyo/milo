@@ -36,7 +36,7 @@ import type {
   EntraStatus,
 } from "@milo/shared";
 import type { CSSProperties } from "react";
-import CloseButton from "../ui/BoutonFermer";
+import CloseButton from "../ui/CloseButton";
 
 /** Ce que montre l'état de la connexion, selon ce que le serveur en dit. */
 const STATES: Record<

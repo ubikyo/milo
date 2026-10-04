@@ -32,10 +32,10 @@ import {
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
-import inset from "../../assets/styles/AccessNumero.module.css";
+import inset from "../../assets/styles/AccessNumber.module.css";
 import { OsLogo, ProtectionLogo } from "./AssetLogos";
-import RecordTitle, { SPACE_BELOW_TITLE } from "./TitreFiche";
-import { CARD_BACKGROUND } from "./fonds";
+import RecordTitle, { SPACE_BELOW_TITLE } from "./RecordTitle";
+import { CARD_BACKGROUND } from "./backgrounds";
 import { diskColor } from "./AssetsList";
 import { EMPTY, size } from "./InventoryTables";
 import {
@@ -43,7 +43,7 @@ import {
   diskUsage,
   daysSinceInventory,
   osLabel,
-} from "../../lib/poste";
+} from "../../lib/workstation";
 import { Fragment } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { RED } from "../../themes/colors";

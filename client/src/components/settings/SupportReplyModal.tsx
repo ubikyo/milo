@@ -16,7 +16,7 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import classes from "../../assets/styles/SupportReplyModal.module.css";
 import { STRONG_TEXT } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
-import CloseButton from "../ui/BoutonFermer";
+import CloseButton from "../ui/CloseButton";
 import RichTextField, { FIELD_BG, useRichEditor } from "../ui/RichText";
 import { SUPPORT_REPLY_VARIABLES, SUPPORT_VARIABLE_GROUPS } from "@milo/shared";
 import type { SupportVariableGroup } from "@milo/shared";

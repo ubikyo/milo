@@ -23,7 +23,7 @@ import {
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import defilement from "../../assets/styles/ListeScroll.module.css";
+import defilement from "../../assets/styles/ListScroll.module.css";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import AddButton from "../ui/AddButton";
 import {
@@ -35,7 +35,7 @@ import {
   INPUT_STYLE,
   nameFieldStyle,
   rowStyle,
-} from "../ui/LignesDuTiroir";
+} from "../ui/DrawerRows";
 import PointMenu, {
   menuPosition,
   type PointMenuPosition,

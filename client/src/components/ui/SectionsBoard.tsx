@@ -1,5 +1,5 @@
 import { Box, Center, Group, Menu, ScrollArea } from "@mantine/core";
-import { useWidgetAccess } from "../../lib/droits";
+import { useWidgetAccess } from "../../lib/rights";
 import {
   IconClipboard,
   IconColumns,
@@ -15,9 +15,9 @@ import { PLUS_SIZE } from "../../themes/plus";
 import AddButton from "./AddButton";
 import ColumnInsert, { COLUMN_INSERT_ZONE as INSERT_ZONE } from "./ColumnInsert";
 import DeleteConfirmModal from "./DeleteConfirmModal";
-import GapField, { ECART_FIELD_HEIGHT, ECART_FIELD_WIDTH } from "./EcartField";
+import GapField, { ECART_FIELD_HEIGHT, ECART_FIELD_WIDTH } from "./GapField";
 import EmptyPanel from "./EmptyPanel";
-import WidthField from "./LargeurField";
+import WidthField from "./WidthField";
 import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
 import SectionDropZone, { DOTTED } from "./SectionDropZone";
 import WidgetDrawer, { type WidgetChoice } from "./WidgetDrawer";

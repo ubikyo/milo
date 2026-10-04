@@ -1,7 +1,7 @@
 import { Button, Group } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { RED } from "../../themes/colors";
-import CloseButton from "./BoutonFermer";
+import CloseButton from "./CloseButton";
 
 // Le pied de tous les tiroirs. Il porte les trois gestes, toujours au même
 // endroit : la suppression à gauche, « Fermer » et « Sauvegarder » à droite.

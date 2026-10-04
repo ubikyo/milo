@@ -6,7 +6,7 @@
 import { DomUtils, parseDocument } from "htmlparser2";
 import type { ChildNode, Element } from "domhandler";
 import sanitizeHtml from "sanitize-html";
-import { isMediaAddress } from "./medias.js";
+import { isMediaAddress } from "./media.js";
 
 const BALISES_RICHES = [
   "p", "br", "strong", "b", "em", "i", "u", "s", "del", "code", "pre",

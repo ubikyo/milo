@@ -2,13 +2,13 @@
 // connaît : le tiroir des widgets, le panneau et celui des réglages y prennent
 // ce qu'il leur faut.
 
-import { projectActorsIndicator } from "./acteurs";
+import { projectActorsIndicator } from "./actors";
 import { categoriesIndicator } from "./categories";
-import { projectLabelsIndicator } from "./etiquettes";
-import { projectsListIndicator } from "./liste";
-import { progressIndicator } from "./progression";
-import { projectsIndicator } from "./projets";
-import { accessWidgets } from "../widgets/en-section";
+import { projectLabelsIndicator } from "./labels";
+import { projectsListIndicator } from "./list";
+import { progressIndicator } from "./progress";
+import { projectsIndicator } from "./projects";
+import { accessWidgets } from "../widgets/in-section";
 import type { ProjectIndicatorDisplayProps, ProjectIndicatorWidget } from "./types";
 import type { ProjectIndicatorType } from "@milo/shared";
 

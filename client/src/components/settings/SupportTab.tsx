@@ -9,7 +9,7 @@ import {
 import type { SupportLabel } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
-import NewMessageLabels from "./EtiquettesNouveauMessage";
+import NewMessageLabels from "./NewMessageLabels";
 import SupportTemplates from "./SupportTemplates";
 
 // La section « Support » du Paramétrage : ce que reçoit d'office une demande

@@ -62,7 +62,7 @@ function WeightField({
 }
 import LabelColorPicker from "../ui/LabelColorPicker";
 import ListItems from "../ui/ListItems";
-import { DragHandle, InsertLine, useDraggableStack } from "../ui/PileGlissante";
+import { DragHandle, InsertLine, useDraggableStack } from "../ui/DraggableStack";
 import { errorMessage, notifyError } from "../../lib/errors";
 
 /**

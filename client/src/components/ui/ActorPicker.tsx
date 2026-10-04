@@ -17,13 +17,13 @@ import {
 } from "@tabler/icons-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
-import { useFavorites } from "../../lib/favoris";
+import { useFavorites } from "../../lib/favorites";
 import { ACTOR_AVATAR_SIZE, ACTOR_GAP, PersonAvatar } from "./ActorAvatars";
 import ChipPicker from "./ChipPicker";
 import type { FloatingPosition } from "@mantine/core";
 import type { ReactNode } from "react";
 import type { DirectoryUser, EntraPrincipal, PublicUser } from "@milo/shared";
-import DirectoryOrigin from "./OrigineAnnuaire";
+import DirectoryOrigin from "./DirectoryOrigin";
 
 // Le choix d'acteurs, le même partout — membres d'une carte, acteurs d'un
 // projet ou d'une demande, « Assigner à » :

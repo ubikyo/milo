@@ -8,7 +8,7 @@ import { now } from "../lib/time.js";
 import { touch, touchNow } from "../middleware/events.js";
 import { openTaskBoard } from "../repositories/boards.js";
 import { copyTaskList } from "../repositories/copy-list.js";
-import { keyInBoard } from "../repositories/listes.js";
+import { keyInBoard } from "../repositories/lists.js";
 import { transaction } from "../db/query.js";
 import { listsWithCards, reorderTaskLists, taskCards, taskLists } from "../repositories/tasks.js";
 

@@ -2,7 +2,7 @@ import { Button, Group, Modal, Text } from "@mantine/core";
 import type { ReactNode } from "react";
 import { RED } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
-import CloseButton from "./BoutonFermer";
+import CloseButton from "./CloseButton";
 
 interface DeleteConfirmModalProps {
   opened: boolean;

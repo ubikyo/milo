@@ -19,7 +19,7 @@ import type {
 } from "@milo/shared";
 import { mutation, selection, transaction } from "../db/query.js";
 import type { AssetRow } from "../db/rows.js";
-import { receivedTags } from "./receptions.js";
+import { receivedTags } from "./inboxes.js";
 import { templateName } from "../lib/asset-models.js";
 import { vlanOf, vlans } from "../lib/asset-vlans.js";
 import { sectionsOf, textOf } from "../lib/inventory.js";

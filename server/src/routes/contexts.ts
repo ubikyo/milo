@@ -11,7 +11,7 @@ import { Router } from "express";
 import type { Request } from "express";
 import { mutation } from "../db/query.js";
 import type { ContextRow } from "../db/rows.js";
-import { requireOrganize } from "../lib/droits.js";
+import { requireOrganize } from "../lib/rights.js";
 import { badRequest, notFound, requireText } from "../lib/http.js";
 import { touch, touchNow } from "../middleware/events.js";
 import { boards, readableBoard, openBoard } from "../repositories/boards.js";

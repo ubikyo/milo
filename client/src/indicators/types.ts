@@ -11,7 +11,7 @@
 // qui la relit avec les aides du mode Accès (texte, avec) — elles comblent ce
 // qui manque.
 
-import type { WidgetKind } from "../widgets/genres";
+import type { WidgetKind } from "../widgets/kinds";
 import type { ComponentType } from "react";
 import type { IndicatorWidgetBase } from "../components/ui/IndicatorsPanel";
 import type { Id, SupportIndicatorType, SupportRequest } from "@milo/shared";

@@ -36,7 +36,7 @@ import {
   supportComments,
   supportRequests,
 } from "../repositories/support.js";
-import { receivedMailboxes, type Inbox } from "../repositories/receptions.js";
+import { receivedMailboxes, type Inbox } from "../repositories/inboxes.js";
 import { users } from "../repositories/users.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 import {

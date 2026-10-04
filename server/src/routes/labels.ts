@@ -12,7 +12,7 @@ import type { CopyResult, Id, Resource, Right } from "@milo/shared";
 import { DEFAULT_LABEL_COLOR, isLabelColor } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { LabelRow, NextRow } from "../db/rows.js";
-import { require } from "../lib/droits.js";
+import { require } from "../lib/rights.js";
 import { badRequest, orNotFound, refuseIfUsed, requireText } from "../lib/http.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";

@@ -19,7 +19,7 @@ import dayjs from "dayjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { api } from "../api";
-import classes from "../assets/styles/AccessNumero.module.css";
+import classes from "../assets/styles/AccessNumber.module.css";
 import EmailFrame from "../components/support/EmailFrame";
 import { NEUTRAL_HOVER } from "../themes/colors";
 import { withField, count } from "./types";

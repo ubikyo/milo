@@ -11,7 +11,7 @@
 
 import crypto from "node:crypto";
 import { env } from "../env.js";
-import { receivedMailboxes } from "../repositories/receptions.js";
+import { receivedMailboxes } from "../repositories/inboxes.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 import {
   createSubscription,

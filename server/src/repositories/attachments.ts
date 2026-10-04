@@ -9,7 +9,7 @@ import type { Attachment, Id } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { AttachmentRow, CountRow } from "../db/rows.js";
 import { covers } from "./covers.js";
-import { isImage, citedMedia, deleteOrphans, deleteMedia, mediaUrl } from "../lib/medias.js";
+import { isImage, citedMedia, deleteOrphans, deleteMedia, mediaUrl } from "../lib/media.js";
 
 export const attachments = {
   byId: selection<AttachmentRow>("SELECT * FROM card_attachments WHERE id = ?"),

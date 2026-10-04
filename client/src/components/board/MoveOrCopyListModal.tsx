@@ -1,11 +1,11 @@
 import { Button, Group, Modal, Select, Stack, Text, TextInput } from "@mantine/core";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
-import { useRights } from "../../lib/droits";
+import { useRights } from "../../lib/rights";
 import { modalHeaderStyles } from "../../themes/modals";
 import type { Board, Id, TaskList, View } from "@milo/shared";
 import { errorMessage, notifyError } from "../../lib/errors";
-import CloseButton from "../ui/BoutonFermer";
+import CloseButton from "../ui/CloseButton";
 
 // Déplacer ou copier une liste vers un tableau. Les deux gestes posent la même
 // question — lequel ? — et la même boîte y répond, l'intitulé près.

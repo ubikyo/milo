@@ -11,9 +11,9 @@ import {
   SETTINGS_PADDING,
   modalHeaderStyles,
 } from "../../themes/modals";
-import defilement from "../../assets/styles/ListeScroll.module.css";
+import defilement from "../../assets/styles/ListScroll.module.css";
 import AddButton from "../ui/AddButton";
-import CloseButton from "../ui/BoutonFermer";
+import CloseButton from "../ui/CloseButton";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import {
   RowButton,
@@ -21,7 +21,7 @@ import {
   EmptyList,
   ROW_INSET,
   rowStyle,
-} from "../ui/LignesDuTiroir";
+} from "../ui/DrawerRows";
 import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 import WorkspaceAccess from "./WorkspaceAccess";
 import type { Workspace } from "@milo/shared";

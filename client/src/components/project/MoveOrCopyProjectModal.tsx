@@ -4,7 +4,7 @@ import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
 import type { Category, Project, ProjectBoard } from "@milo/shared";
 import { errorMessage, notifyError } from "../../lib/errors";
-import CloseButton from "../ui/BoutonFermer";
+import CloseButton from "../ui/CloseButton";
 
 // Déplacer ou copier un projet vers un tableau. Les deux gestes posent la même
 // question — lequel ? — et la même boîte y répond, comme pour une liste

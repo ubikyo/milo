@@ -29,20 +29,20 @@ import dayjs from "dayjs";
 import { RED, STRONG_TEXT } from "../../themes/colors";
 import ActorAvatars, { ACTOR_AVATAR_SIZE } from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
-import { keptColumns, defaultWidths } from "../ui/ChampsColonnes";
+import { keptColumns, defaultWidths } from "../ui/ColumnFields";
 import EmptyPanel from "../ui/EmptyPanel";
-import GridScroll from "../ui/GrilleScroll";
+import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
 import { menuPosition } from "../ui/PointMenu";
 import { ReferenceTag } from "../ui/ReferenceTag";
 import { useResizableColumns } from "../ui/useColonnesRedimensionnables";
 import { listKey, projectReference } from "@milo/shared";
-import { inList } from "../../lib/listes";
+import { inList } from "../../lib/lists";
 import type { ReactNode } from "react";
 import type { Category, Project, PublicUser } from "@milo/shared";
 import type { ProjectAction } from "./MoveOrCopyProjectModal";
-import { useRights } from "../../lib/droits";
-import { useIsEditing } from "../../lib/edition";
+import { useRights } from "../../lib/rights";
+import { useIsEditing } from "../../lib/editing";
 
 /** Une option d'entonnoir : « all » vaut « pas de filtre ». */
 interface FilterOption {

@@ -13,9 +13,9 @@
 // version antérieure, ou une base retouchée à la main, ne doit pas casser
 // l'affichage.
 
-import type { WidgetKind } from "./genres";
+import type { WidgetKind } from "./kinds";
 import type { ComponentType } from "react";
-import type { SettingRow } from "../components/ui/LignesReglages";
+import type { SettingRow } from "../components/ui/SettingRows";
 import type { AccessBlockType, Id } from "@milo/shared";
 
 /** Ce que le tiroir passe aux champs d'un widget. */

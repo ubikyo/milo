@@ -1,7 +1,7 @@
 // Ce que le client envoie au serveur. Les réponses, elles, sont décrites par
 // les types du domaine (domain.ts).
 
-import type { DueShape, Reminder, Recurrence } from "./echeance.js";
+import type { DueShape, Reminder, Recurrence } from "./due.js";
 import type {
   CardKind,
   Id,

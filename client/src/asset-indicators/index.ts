@@ -2,12 +2,12 @@
 // endroit les connaît : le tiroir des widgets, le panneau et celui des réglages
 // y prennent ce qu'il leur faut.
 
-import { complianceIndicator } from "./conformite";
-import { disksIndicator } from "./disques";
-import { assetListIndicator } from "./liste";
-import { workstationsIndicator } from "./postes";
-import { systemsIndicator } from "./systemes";
-import { accessWidgets } from "../widgets/en-section";
+import { complianceIndicator } from "./compliance";
+import { disksIndicator } from "./disks";
+import { assetListIndicator } from "./list";
+import { workstationsIndicator } from "./workstations";
+import { systemsIndicator } from "./systems";
+import { accessWidgets } from "../widgets/in-section";
 import type { AssetIndicatorDisplayProps, AssetIndicatorWidget } from "./types";
 import type { AssetIndicatorType } from "@milo/shared";
 

@@ -8,7 +8,7 @@ import AddButton from "../ui/AddButton";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import PointMenu, { type PointMenuPosition } from "../ui/PointMenu";
 import { FileRow, useOrderedFiles } from "./CardAttachments";
-import { SmallChoice } from "./CardEcheance";
+import { SmallChoice } from "./CardDueDate";
 
 const ROTATIONS = ROTATIONS_COUVERTURE.map((r) => ({ value: String(r.value), label: r.label }));
 

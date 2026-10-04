@@ -13,7 +13,7 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import CardDueDate, { EMPTY_DUE } from "../board/CardEcheance";
+import CardDueDate, { EMPTY_DUE } from "../board/CardDueDate";
 import {
   IconCheck,
   IconChevronDown,
@@ -41,7 +41,7 @@ import DrawerScrollArea, {
 import EmptyPanel from "../ui/EmptyPanel";
 import LabelPicker, { SUPPORT_LABELS_API } from "../ui/LabelPicker";
 import CommentThread from "../project/CommentThread";
-import { BARE_FIELDSET, useRights } from "../../lib/droits";
+import { BARE_FIELDSET, useRights } from "../../lib/rights";
 import SupportMessages, { SupportReply } from "./SupportMessages";
 import type { ReplySending, SupportMessage } from "./SupportMessages";
 import { errorMessage, notifyError } from "../../lib/errors";

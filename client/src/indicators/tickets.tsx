@@ -1,8 +1,8 @@
 import { Select, Stack } from "@mantine/core";
 import { IconTicket } from "@tabler/icons-react";
-import { dueState } from "../lib/echeance";
+import { dueState } from "../lib/due";
 import { withField, text } from "../widgets/types";
-import { NameField, NAME, TitreIndicateur, IndicatorValue } from "./commun";
+import { NameField, NAME, TitreIndicateur, IndicatorValue } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 import type { Id, SupportRequest } from "@milo/shared";
 

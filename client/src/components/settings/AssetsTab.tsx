@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ASSET_MODEL_MAX, VLAN_NAME_MAX } from "@milo/shared";
 import type { AssetSettings } from "@milo/shared";
 import { api } from "../../api";
-import defilement from "../../assets/styles/ListeScroll.module.css";
+import defilement from "../../assets/styles/ListScroll.module.css";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { RED } from "../../themes/colors";
 import AddButton from "../ui/AddButton";
@@ -15,7 +15,7 @@ import {
   ROW_INSET,
   nameFieldStyle,
   rowStyle,
-} from "../ui/LignesDuTiroir";
+} from "../ui/DrawerRows";
 import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 import type { ClipboardEvent, ComponentType } from "react";
 

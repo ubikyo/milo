@@ -36,7 +36,7 @@ import {
 } from "../../themes/menus";
 import { tabStyle } from "../../themes/tabs";
 import fields from "../../assets/styles/EcartField.module.css";
-import { fieldWidth } from "../../lib/largeurChamp";
+import { fieldWidth } from "../../lib/fieldWidth";
 import { DEFAULT_MILESTONE_TYPE } from "@milo/shared";
 import CommentThread from "./CommentThread";
 import { MilestoneLabels, milestoneMarks } from "./milestoneMarks";
@@ -53,7 +53,7 @@ import DrawerScrollArea, {
   DRAWER_STYLES,
   DRAWER_TABS_STYLES,
 } from "../ui/DrawerScroll";
-import { BARE_FIELDSET, useRights } from "../../lib/droits";
+import { BARE_FIELDSET, useRights } from "../../lib/rights";
 import LabelPicker, { PROJECT_LABELS_API } from "../ui/LabelPicker";
 import { errorMessage, notifyError } from "../../lib/errors";
 import type {
@@ -66,7 +66,7 @@ import type {
   PublicUser,
 } from "@milo/shared";
 import type { ThreadItem } from "./CommentThread";
-import CloseButton from "../ui/BoutonFermer";
+import CloseButton from "../ui/CloseButton";
 
 /** La fiche en cours de saisie. Tout y est en chaînes : ce sont des champs. */
 

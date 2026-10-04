@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { CSSProperties, MouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import classes from "../../assets/styles/Grille.module.css";
+import classes from "../../assets/styles/Grid.module.css";
 
 // Des colonnes de grille qu'on élargit ou rétrécit en tirant le bord droit de
 // leur en-tête.

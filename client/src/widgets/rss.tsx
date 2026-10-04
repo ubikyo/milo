@@ -16,7 +16,7 @@ import { Fragment, useEffect, useState } from "react";
 import type { DragEvent } from "react";
 import { api } from "../api";
 import classes from "../assets/styles/AccessLink.module.css";
-import inset from "../assets/styles/AccessNumero.module.css";
+import inset from "../assets/styles/AccessNumber.module.css";
 import AddButton from "../components/ui/AddButton";
 import {
   ROUNDING,
@@ -26,9 +26,9 @@ import {
   move,
   nameFieldStyle,
   rowStyle,
-} from "../components/ui/LignesDuTiroir";
+} from "../components/ui/DrawerRows";
 import PointMenu, { menuPosition, type PointMenuPosition } from "../components/ui/PointMenu";
-import ConfigurationProblem from "../components/ui/ProblemeDeConfiguration";
+import ConfigurationProblem from "../components/ui/ConfigurationProblem";
 import { RED } from "../themes/colors";
 import { withField, count, text } from "./types";
 import type { AccessWidget, WidgetConfigProps } from "./types";

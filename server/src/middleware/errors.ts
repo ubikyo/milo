@@ -3,7 +3,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../env.js";
 import { HttpError } from "../lib/http.js";
-import { SIZE_MAX_MB } from "../lib/medias.js";
+import { SIZE_MAX_MB } from "../lib/media.js";
 
 export const notFoundHandler = (req: Request, res: Response): void => {
   res.status(404).json({ error: `Route inconnue : ${req.method} ${req.path}` });

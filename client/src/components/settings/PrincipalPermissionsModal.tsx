@@ -4,7 +4,7 @@ import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import ListItems from "../ui/ListItems";
 import { errorMessage, notifyError } from "../../lib/errors";
 import type { EntraPrincipal } from "@milo/shared";
-import CloseButton from "../ui/BoutonFermer";
+import CloseButton from "../ui/CloseButton";
 
 // Le choix de la permission, au bout de la ligne : de quoi lire « Modifier ».
 const CHOICE_WIDTH = 200;

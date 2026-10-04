@@ -26,8 +26,8 @@ import ActorPicker from "../ui/ActorPicker";
 import AddButton from "../ui/AddButton";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
-import { DragHandle, InsertLine, useDraggableStack } from "../ui/PileGlissante";
-import { ROUNDING, ROW_BACKGROUND, ROW_INSET, NAME_INSET, rowStyle } from "../ui/LignesDuTiroir";
+import { DragHandle, InsertLine, useDraggableStack } from "../ui/DraggableStack";
+import { ROUNDING, ROW_BACKGROUND, ROW_INSET, NAME_INSET, rowStyle } from "../ui/DrawerRows";
 import { errorMessage } from "../../lib/errors";
 import type {
   CSSProperties,

@@ -6,7 +6,7 @@ import { Router } from "express";
 import type { Request } from "express";
 import type { Id, View } from "@milo/shared";
 import { transaction } from "../db/query.js";
-import { requireOrganize } from "../lib/droits.js";
+import { requireOrganize } from "../lib/rights.js";
 import { HttpError, requireText } from "../lib/http.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";

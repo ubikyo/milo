@@ -5,7 +5,7 @@ import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
 import { errorMessage, notifyError } from "../../lib/errors";
 import type { CopyResult, Id, View } from "@milo/shared";
-import CloseButton from "./BoutonFermer";
+import CloseButton from "./CloseButton";
 
 // Copier les étiquettes, les catégories ou les contextes d'un tableau vers un
 // autre.

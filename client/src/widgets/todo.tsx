@@ -1,7 +1,7 @@
 import { ActionIcon, Box, Checkbox, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { IconListCheck, IconPlus, IconX } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
-import classes from "../assets/styles/AccessNumero.module.css";
+import classes from "../assets/styles/AccessNumber.module.css";
 import { withField } from "./types";
 import type { AccessWidget, WidgetConfigProps, WidgetDisplayProps } from "./types";
 

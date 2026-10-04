@@ -22,7 +22,7 @@ import {
 } from "@milo/shared";
 import type { AccessMailDetail, Id, Resource, ImportResult } from "@milo/shared";
 import type { BoardRow, BoardWidgetRow } from "../db/rows.js";
-import { widgetAccess, requireOrganize, requireWidget } from "../lib/droits.js";
+import { widgetAccess, requireOrganize, requireWidget } from "../lib/rights.js";
 import {
   entraAgenda,
   mailOfMailbox,
@@ -34,14 +34,14 @@ import { cleanEmail } from "../lib/html.js";
 import { feedOf, feedSettings, probeFeed } from "../lib/feed.js";
 import { askForConfirmations } from "../lib/optin.js";
 import { badRequest, notFound, orNotFound, toIds } from "../lib/http.js";
-import { SIZE_MAX, writeMedia, inlineType, mediaUrl } from "../lib/medias.js";
-import { searchPlace, weatherCoordinates, weatherOf } from "../lib/meteo.js";
+import { SIZE_MAX, writeMedia, inlineType, mediaUrl } from "../lib/media.js";
+import { searchPlace, weatherCoordinates, weatherOf } from "../lib/weather.js";
 import { columnsGap, requestedRank, widthUnit, widthValue } from "../lib/sections.js";
 import { signalWrite, touch, touchNow } from "../middleware/events.js";
 import { ensureDefaultType } from "./milestone-types.js";
 import { reassignWorkstationContexts } from "../repositories/assets.js";
-import { withNewKey, keyInBoard, keepKey, cleanLists } from "../repositories/listes.js";
-import { receivedTags } from "../repositories/receptions.js";
+import { withNewKey, keyInBoard, keepKey, cleanLists } from "../repositories/lists.js";
+import { receivedTags } from "../repositories/inboxes.js";
 import { boardSections, boardWidgets, renderedWidget } from "../repositories/board-widgets.js";
 import { openBoard } from "../repositories/boards.js";
 import { personalLayouts, boardScope } from "../repositories/layouts.js";

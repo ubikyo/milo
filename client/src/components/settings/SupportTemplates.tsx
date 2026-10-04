@@ -14,7 +14,7 @@ import {
   ROW_INSET,
   INPUT_STYLE,
   rowStyle,
-} from "../ui/LignesDuTiroir";
+} from "../ui/DrawerRows";
 import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 import SupportReplyModal from "./SupportReplyModal";
 import type { ComponentType } from "react";

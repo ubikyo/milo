@@ -5,7 +5,7 @@
 import { createApp } from "./app.js";
 import { env } from "./env.js";
 import { FEED_POLL_INTERVAL, pollAllFeeds } from "./lib/feed.js";
-import { REMINDERS_INTERVAL, sendReminders } from "./lib/rappels.js";
+import { REMINDERS_INTERVAL, sendReminders } from "./lib/reminders.js";
 import { POLL_INTERVAL, pollMailboxes } from "./lib/support-mail.js";
 import { MAINTENANCE_INTERVAL, maintainSubscriptions } from "./lib/support-webhooks.js";
 import { mediaCleanup } from "./repositories/attachments.js";

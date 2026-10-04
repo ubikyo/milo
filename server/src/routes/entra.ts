@@ -14,7 +14,7 @@ import {
 } from "../lib/entra.js";
 import { badRequest, requireText } from "../lib/http.js";
 import { sendTest } from "../lib/mail.js";
-import { configuredMailboxes } from "../repositories/receptions.js";
+import { configuredMailboxes } from "../repositories/inboxes.js";
 
 export const entraRoutes = Router();
 

@@ -39,7 +39,7 @@ import AssetsTab from "./AssetsTab";
 import WorkspacesTab from "./WorkspacesTab";
 import AdministrationTab from "./AdministrationTab";
 import type { ComponentType, ReactNode } from "react";
-import CloseButton from "../ui/BoutonFermer";
+import CloseButton from "../ui/CloseButton";
 
 const TABS: {
   value: string;

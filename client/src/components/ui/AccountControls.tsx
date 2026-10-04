@@ -9,7 +9,7 @@ import { initialsOf } from "./ActorAvatars";
 import { ROW_CONTROL_HEIGHT, ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
 import type { ReactNode } from "react";
 import type { PublicUser, SearchResult } from "@milo/shared";
-import type { ContextsMenuProps } from "./ContextesMenu";
+import type { ContextsMenuProps } from "./ContextsMenu";
 import WorkspaceMenu from "./WorkspaceMenu";
 
 // Les contextes du tableau ouvert et le compte, au bout de la rangée d'onglets

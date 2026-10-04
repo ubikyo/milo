@@ -13,7 +13,7 @@ import ViewPage from "./pages/ViewPage";
 import NotificationsDrawer from "./components/notifications/NotificationsDrawer";
 import CardDrawer from "./components/board/CardDrawer";
 import type { SourceTask } from "./components/board/TaskDestination";
-import { accessSource, requestSource, workstationSource, projectSource } from "./lib/tache";
+import { accessSource, requestSource, workstationSource, projectSource } from "./lib/task";
 import { notifications } from "@mantine/notifications";
 import {
   IconCheck,
@@ -25,18 +25,18 @@ import {
 } from "@tabler/icons-react";
 import { RED } from "./themes/colors";
 import { DEFAULT_SUPPORT_STATUS, RESOURCES, emptyFollows, isNotification } from "@milo/shared";
-import { RightsProvider, canFrom } from "./lib/droits";
+import { RightsProvider, canFrom } from "./lib/rights";
 import { errorMessage, notifyError } from "./lib/errors";
 import { ReferencesContext } from "./lib/references";
-import { EditingContext } from "./lib/edition";
-import { addressTarget, noteInAddress } from "./lib/suivi";
-import type { Target } from "./lib/suivi";
+import { EditingContext } from "./lib/editing";
+import { addressTarget, noteInAddress } from "./lib/follow";
+import type { Target } from "./lib/follow";
 import AssetDrawer from "./components/assets/AssetDrawer";
 import SupportRequestDrawer from "./components/support/SupportRequestDrawer";
 import PreferencesModal from "./components/settings/PreferencesModal";
 import CopyToBoardModal from "./components/ui/CopyToBoardModal";
-import { CopyPasteContext } from "./components/ui/ActionsCopierColler";
-import type { Clipboard } from "./components/ui/ActionsCopierColler";
+import { CopyPasteContext } from "./components/ui/CopyPasteActions";
+import type { Clipboard } from "./components/ui/CopyPasteActions";
 import type { AccountSlot } from "./components/ui/AccountControls";
 import DeleteConfirmModal from "./components/ui/DeleteConfirmModal";
 import MoveOrCopyProjectModal from "./components/project/MoveOrCopyProjectModal";
@@ -44,10 +44,10 @@ import type { ProjectAction } from "./components/project/MoveOrCopyProjectModal"
 import ProjectDrawer from "./components/project/ProjectDrawer";
 import ViewSwitch from "./components/ui/ViewSwitch";
 import ShortcutsHelp from "./components/ui/ShortcutsHelp";
-import LayoutModal from "./components/ui/DispositionModal";
+import LayoutModal from "./components/ui/LayoutModal";
 import PointMenu, { menuPosition, type PointMenuPosition } from "./components/ui/PointMenu";
-import KonamiCode from "./components/ui/CodeKonami";
-import { placeInterface, clearPage } from "./lib/chuteInterface";
+import KonamiCode from "./components/ui/KonamiCode";
+import { placeInterface, clearPage } from "./lib/interfaceFall";
 import SettingsModal from "./components/settings/SettingsModal";
 import type {
   Asset,

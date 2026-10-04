@@ -15,8 +15,8 @@ import {
 import type { Id, Right } from "@milo/shared";
 import { badRequest, forbidden, orNotFound, requireText, toIds } from "../lib/http.js";
 import { cleanDescription } from "../lib/html.js";
-import { quote, logAction, date, changes, list, editMessage } from "../lib/historique.js";
-import type { Field } from "../lib/historique.js";
+import { quote, logAction, date, changes, list, editMessage } from "../lib/history.js";
+import type { Field } from "../lib/history.js";
 import { concerned, notify, notifyLinked, notifyDeletion, root } from "../lib/notify.js";
 import { due, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";

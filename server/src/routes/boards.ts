@@ -7,7 +7,7 @@ import type { Request } from "express";
 import type { Board, Id, LayoutState } from "@milo/shared";
 import { mutation, selection, transaction } from "../db/query.js";
 import type { BoardRow } from "../db/rows.js";
-import { requireOrganize } from "../lib/droits.js";
+import { requireOrganize } from "../lib/rights.js";
 import { badRequest, requireText } from "../lib/http.js";
 import { concerned, notifyDeletion } from "../lib/notify.js";
 import { now } from "../lib/time.js";

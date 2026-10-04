@@ -9,7 +9,7 @@ import type { Request } from "express";
 import type { Id, Right } from "@milo/shared";
 import { mutation, scalar, selection } from "../db/query.js";
 import type { BoardRow, NextRow, UserRow } from "../db/rows.js";
-import { require } from "../lib/droits.js";
+import { require } from "../lib/rights.js";
 import { HttpError } from "../lib/http.js";
 import { views, isViewVisible } from "./views.js";
 
