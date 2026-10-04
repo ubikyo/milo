@@ -2,34 +2,34 @@ import type { CSSProperties } from "react";
 import { NEUTRAL_TEXT, STRONG_TEXT } from "./colors";
 import { TAB_ROW_HEIGHT } from "./tabs";
 
-// Les menus qui pendent d'une rangée d'onglets — « Actions », la société, le
-// compte — ne flottent pas : ils se posent sur le filet qui ferme la rangée.
-// Le menu paraît ainsi sortir des onglets plutôt que se poser par-dessus.
+// The menus hanging from a row of tabs — "Actions", the company, the
+// account — do not float: they rest on the rule that closes the row. The menu
+// thus appears to come out of the tabs rather than sit on top of them.
 
 /**
- * Hauteur des commandes posées dans la rangée d'un mode. Les trois — les deux
- * boutons et la pastille du compte — la partagent, sans quoi elles ne
- * s'aligneraient pas et leurs menus tomberaient à des hauteurs différentes.
+ * Height of the controls placed in a mode's row. All three — the two buttons
+ * and the account badge — share it, otherwise they would not align and their
+ * menus would drop at different heights.
  */
 export const ROW_CONTROL_HEIGHT = 30;
 
 /**
- * Ce qui sépare le bas d'une commande du filet : la commande est centrée dans
- * la rangée, il reste donc la moitié de la différence de part et d'autre.
- * C'est cet écart que le menu comble pour venir toucher le filet.
+ * What separates the bottom of a control from the rule: the control is centered
+ * in the row, so half of the difference remains on each side. That is the gap
+ * the menu fills to touch the rule.
  */
 export const ROW_MENU_OFFSET = (TAB_ROW_HEIGHT - ROW_CONTROL_HEIGHT) / 2;
 
 /**
- * Le même écart dans la rangée d'onglets d'un tiroir. Là, aucune hauteur n'est
- * imposée : c'est le bouton qui la donne, et il ne reste que la marge basse
- * qu'il se donne pour se décoller du filet.
+ * The same gap in a drawer's row of tabs. There, no height is imposed: the
+ * button provides it, and only the bottom margin it gives itself to stand off
+ * the rule remains.
  */
 export const DRAWER_MENU_OFFSET = 4;
 
 /**
- * Le menu vient se raccorder au filet : sa bordure haute ferait un double
- * trait, et ses angles hauts un décroché.
+ * The menu joins the rule: its top border would make a double line, and its
+ * top corners a step.
  */
 export const TAB_MENU_STYLES = {
   dropdown: {
@@ -40,10 +40,10 @@ export const TAB_MENU_STYLES = {
 } as const;
 
 /**
- * Le bouton « Actions » : du texte nu, sans fond ni marge intérieure, même au
- * survol ou désactivé. Seul le texte réagit au survol, en passant du gris
- * neutre au contraste maximum. Le bouton garde sa hauteur : c'est sur elle que
- * les écarts ci-dessus sont calculés pour que le menu s'ouvre sous le filet.
+ * The "Actions" button: bare text, with no background or inner padding, even on
+ * hover or when disabled. Only the text reacts to hover, going from neutral
+ * gray to maximum contrast. The button keeps its height: the gaps above are
+ * computed from it so that the menu opens below the rule.
  */
 export const ACTIONS_BUTTON_STYLE = {
   background: "transparent",

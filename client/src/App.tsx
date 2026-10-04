@@ -75,22 +75,22 @@ import type {
 } from "@milo/shared";
 
 /**
- * Une liste lue, accompagnée de la sélection à laquelle elle répond : la vue
- * pour les tableaux, le tableau pour ce qu'il contient. On sait donc dès le
- * rendu si ce qu'on a en main concerne encore ce qui est affiché — une remise
- * à zéro par effet arriverait trop tard.
+ * A list that was read, along with the selection it answers: the view
+ * for boards, the board for what it contains. So we know at render
+ * time whether what we hold still concerns what is displayed — a reset
+ * through an effect would come too late.
  */
 interface LoadedFor<T> {
-  /** La vue ou le tableau qui a servi à la lire. */
+  /** The view or board that was used to read it. */
   key: string;
   items: T[];
 }
 
-/** Les types de widgets qu'un tableau porte, par leur préfixe : ce qu'il faut lire pour eux. */
+/** The widget types a board carries, by their prefix: what needs reading for them. */
 const withPrefix = (widgets: BoardWidget[], prefix: string) =>
   widgets.some((w) => w.type.startsWith(`${prefix}.`));
 
-/** Les éléments d'un contexte, ou tous (« all ») ; « null » tant qu'ils ne sont pas lus. */
+/** The items of a context, or all of them ("all"); "null" while they aren't read. */
 const inContext = <T extends { context_id: Id | null }>(
   items: T[] | null,
   context: string,
@@ -103,31 +103,31 @@ export default function App() {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
-  // La connexion par Microsoft est possible : l'application Entra est renseignée.
+  // Microsoft sign-in is possible: the Entra application is configured.
   const [entraReady, setEntraReady] = useState(false);
-  // Ce que le retour d'une connexion Microsoft a apporté comme erreur.
+  // The error a Microsoft sign-in return brought.
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  // Les types de jalons des réglages : un projet en choisit un.
+  // The milestone types from the settings: a project picks one.
   const [milestoneTypes, setMilestoneTypes] = useState<MilestoneType[]>([]);
   const [users, setUsers] = useState<PublicUser[]>([]);
 
-  // Les vues, dans l'ordre que le compte a rangé, et celle qui est ouverte.
+  // The views, in the order the account arranged them, and the open one.
   const [views, setViews] = useState<View[] | null>(null);
   const [viewId, setViewId] = useState<string | null>(null);
-  // La vue d'ouverture s'applique une fois, à l'ouverture de la session.
+  // The opening view applies once, when the session opens.
   const appliedView = useRef<number | null>(null);
-  // Les tableaux de la vue ouverte, et celui qui est ouvert.
+  // The open view's boards, and the one that is open.
   const [boardsRead, setBoardsRead] = useState<LoadedFor<Board> | null>(null);
   const [boardId, setBoardId] = useState<string | null>(null);
-  // Ce que le tableau ouvert porte : ses sections, ses widgets.
+  // What the open board carries: its sections, its widgets.
   const [sectionsRead, setSectionsRead] = useState<LoadedFor<IndicatorSection> | null>(null);
   const [loadedWidgets, setWidgetsRead] = useState<LoadedFor<BoardWidget> | null>(null);
-  // Ses données : ses projets, ses listes, les demandes et les postes de sa
-  // société. Chacune porte le tableau qui a servi à la lire.
+  // Its data: its projects, its lists, the requests and workstations of its
+  // company. Each carries the board that was used to read it.
   const [readProjects, setProjectsRead] = useState<LoadedFor<Project> | null>(null);
-  // Les comptes acteurs d'au moins un projet du tableau : les seuls que le
-  // filtre « Acteurs » propose.
+  // The actor accounts of at least one project of the board: the only ones the
+  // "Acteurs" filter offers.
   const [projectActorIds, setProjectActorIds] = useState<number[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [readProjectLabels, setProjectLabelsRead] = useState<LoadedFor<ProjectLabel> | null>(null);
@@ -136,38 +136,38 @@ export default function App() {
   const [supportRead, setSupportRead] = useState<LoadedFor<SupportRequest> | null>(null);
   const [assetsRead, setAssetsRead] = useState<LoadedFor<Asset> | null>(null);
 
-  // « Modifier l'interface » vaut pour toute l'application : tous les
-  // tableaux, toutes les vues. Il ne vit que dans cette fenêtre, qui s'ouvre
-  // hors modification ; I ou le clic droit sur le fond le basculent.
+  // "Modifier l'interface" applies to the whole application: all
+  // boards, all views. It only lives in this window, which opens
+  // outside edit mode; I or a right click on the background toggle it.
   const [isEditing, setIsEditing] = useState(false);
   const toggleEdit = () => setIsEditing((before) => !before);
-  // Le menu du clic droit sur le fond de l'application, et la fenêtre
-  // d'export ou d'import de la disposition du tableau ouvert.
+  // The right-click menu on the application background, and the window
+  // for exporting or importing the open board's layout.
   const background = useRef<HTMLDivElement>(null);
   const [backgroundMenu, setBackgroundMenu] = useState<PointMenuPosition | null>(null);
   const [layout, setLayout] = useState<"export" | "import" | null>(null);
 
-  // Les filtres de la liste des projets.
+  // The project list filters.
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [actorFilter, setActorFilter] = useState("all");
 
-  // Les droits du compte. Le serveur les vérifie ; ici, ils taisent ce qu'on
-  // ne voit pas et retirent ce qu'on ne peut pas faire.
+  // The account's rights. The server checks them; here, they hide what one
+  // doesn't see and remove what one can't do.
   const can = useMemo(() => canFrom(user?.rights ?? {}), [user]);
-  // Organiser les vues et les tableaux partagés demande de pouvoir modifier
-  // au moins un type de widget (comme le serveur, lib/droits.ts).
+  // Organizing the shared views and boards requires being able to edit
+  // at least one widget type (like the server, lib/rights.ts).
   const canArrange = Object.values(user?.widgets ?? {}).some((a) => a === "update");
 
-  // Lectures en cours. Un écran vide est une conclusion : on ne la tire
-  // jamais pendant une lecture.
+  // Reads in progress. An empty screen is a conclusion: it is never drawn
+  // during a read.
   const [reads, setReads] = useState(0);
   const loading = reads > 0;
 
-  // Juste après la connexion, la page reste vierge le temps des lectures, puis
-  // l'interface s'y pose morceau par morceau. Les lectures s'enchaînent : on
-  // attend qu'elles se taisent un instant — et jamais plus de quelques
-  // secondes, pour ne pas laisser la page vide.
+  // Right after sign-in, the page stays blank during the reads, then
+  // the interface settles in piece by piece. The reads chain together: we
+  // wait for them to go quiet for a moment — and never more than a few
+  // seconds, so as not to leave the page empty.
   const [entry, setEntered] = useState(false);
   useEffect(() => {
     if (!entry || loading) return;
@@ -208,17 +208,17 @@ export default function App() {
   const supportRequests = supportRead?.key === boardId ? supportRead.items : null;
   const assets = assetsRead?.key === boardId ? assetsRead.items : null;
 
-  // Ce que les widgets du tableau ouvert demandent à lire.
+  // What the open board's widgets ask to read.
   const projectsNeed = withPrefix(widgets, "project");
   const tasksNeed = withPrefix(widgets, "task");
   const supportNeed = withPrefix(widgets, "support");
   const assetsNeed = withPrefix(widgets, "asset");
-  // Le contexte que ce compte regarde dans le tableau ouvert, ou « all ».
+  // The context this account views in the open board, or "all".
   const selectedContext = board?.context_id ? String(board.context_id) : "all";
   const contexts = board?.contexts ?? [];
-  // Les cartes du contexte choisi ; les séparateurs, qui tranchent pour tous,
-  // restent. Gardé d'un rendu à l'autre : le tableau des tâches oublie son
-  // ordre provisoire quand ses listes changent.
+  // The cards of the chosen context; the separators, which decide for everyone,
+  // stay. Kept from one render to the next: the task board forgets its
+  // provisional order when its lists change.
   const visibleTasks = useMemo(
     () =>
       taskLists && selectedContext !== "all"
@@ -231,8 +231,8 @@ export default function App() {
         : taskLists,
     [taskLists, selectedContext],
   );
-  // Les projets, les demandes et les postes du contexte choisi, filtrés ici :
-  // la page les a lus pour tout le tableau.
+  // The projects, requests and workstations of the chosen context, filtered here:
+  // the page read them for the whole board.
   const viewedProjects = useMemo(
     () => inContext(projects, selectedContext),
     [projects, selectedContext],
@@ -244,38 +244,38 @@ export default function App() {
   const viewedWorkstations = useMemo(() => inContext(assets, selectedContext), [assets, selectedContext]);
 
   const [drawerOpened, setDrawerOpened] = useState(false);
-  /** Le widget de liste d'où l'on ajoute un projet ou une demande ; vide sinon. */
+  /** The list widget from which a project or request is added; empty otherwise. */
   const [addTargetList, setNewListName] = useState("");
-  // Le tableau dont on gère les catégories, et la fenêtre des types de jalons.
-  // Le tableau dont on copie les contextes vers un autre, depuis le menu de
-  // son onglet.
+  // The board whose categories are managed, and the milestone types window.
+  // The board whose contexts are copied to another, from its tab's
+  // menu.
   const [contextsCopy, setCopiedContexts] = useState<Id | null>(null);
-  // Les étiquettes et les catégories copiées depuis le menu « Actions » du
-  // widget d'un tableau, en attente d'être collées dans un autre.
+  // The labels and categories copied from a board widget's "Actions" menu,
+  // waiting to be pasted into another.
   const [clipboard, setClipboard] = useState<Clipboard>({});
   const [pastes, setPastes] = useState(0);
   const [assetDrawerOpened, setAssetDrawerOpened] = useState(false);
   const [openedAsset, setOpenedAsset] = useState<Asset | null>(null);
   const [supportDrawerOpened, setSupportDrawerOpened] = useState(false);
   const [editedSupportRequest, setEditedSupportRequest] = useState<SupportRequest | null>(null);
-  // L'objet d'une demande créée depuis un lien ; « null » pour une demande
-  // créée depuis une liste de demandes, qui part vide.
+  // The subject of a request created from a link; "null" for a request
+  // created from a request list, which starts empty.
   const [accessRequestSubject, setAccessRequestSubject] = useState<string | null>(null);
   const [settingsOpened, setSettingsOpened] = useState(false);
   const [preferencesOpened, setPreferencesOpened] = useState(false);
-  // Le tiroir des notifications, et ce qui le fait se relire.
+  // The notifications drawer, and what makes it re-read.
   const [notificationsOpened, setNotificationsOpened] = useState(false);
   const [notificationsRevision, setNotificationsRevision] = useState(0);
-  // « Créer une tâche » depuis un autre élément : d'où elle part.
+  // "Créer une tâche" from another item: where it starts from.
   const [sourceTask, setSourceTask] = useState<SourceTask | null>(null);
-  // Dernière version de données connue, pour détecter les modifications
-  // faites par quelqu'un d'autre.
+  // Last known data version, to detect changes
+  // made by someone else.
   const knownVersions = useRef<ResourceVersions | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [follows, setFollows] = useState<Follows>(emptyFollows());
-  // Carte désignée par l'adresse, en attente que son tableau soit lu.
+  // Card designated by the URL, waiting for its board to be read.
   const [cardToOpen, setCardToOpen] = useState<number | null>(null);
-  // Carte dont le tiroir est ouvert : c'est elle que l'adresse porte.
+  // Card whose drawer is open: it is the one the URL carries.
   const [displayedCard, setDisplayedCard] = useState<number | null>(null);
   const [movedProject, setMovedProject] = useState<{
     project: Project;
@@ -285,15 +285,15 @@ export default function App() {
 
   // --- Session ---------------------------------------------------------------
 
-  // Vérifie la session au démarrage.
+  // Checks the session at startup.
   useEffect(() => {
-    // Vrai au retour d'une connexion Microsoft : l'interface s'y construira
-    // sous les yeux, comme après une connexion par mot de passe.
+    // True on returning from a Microsoft sign-in: the interface will be built
+    // before the user's eyes, as after a password sign-in.
     let connection = false;
     const check = async () => {
-      // Le retour de Microsoft porte la session, ou l'erreur, dans le
-      // fragment de l'adresse : on le lit, puis on l'efface de la barre
-      // d'adresse — un jeton n'a rien à faire dans l'historique.
+      // The return from Microsoft carries the session, or the error, in the
+      // URL fragment: we read it, then erase it from the address
+      // bar — a token has no business in the history.
       const returnParams = new URLSearchParams(window.location.hash.slice(1));
       if (returnParams.has("token") || returnParams.has("auth_error")) {
         const token = returnParams.get("token");
@@ -303,8 +303,8 @@ export default function App() {
         window.history.replaceState(null, "", window.location.pathname + window.location.search);
       }
 
-      // Seul un refus du serveur ferme la session. Un serveur qui redémarre
-      // ou un réseau coupé ne dit rien du jeton : on le garde et on réessaie.
+      // Only a server refusal closes the session. A restarting server
+      // or a dropped network says nothing about the token: we keep it and retry.
       for (;;) {
         try {
           const { needs_setup, entra } = await api.getSetupState();
@@ -332,9 +332,9 @@ export default function App() {
     check();
   }, []);
 
-  // Debug (Paramétrage › Développeur) : hors Debug, ni sélection du texte ni
-  // menu du navigateur au clic droit. Nos propres menus contextuels, eux,
-  // s'ouvrent toujours.
+  // Debug (Paramétrage › Développeur): outside Debug, neither text selection nor
+  // the browser menu on right click. Our own context menus
+  // always open.
   const [debug, setDebug] = useState(false);
   useEffect(() => {
     if (!user) return;
@@ -354,7 +354,7 @@ export default function App() {
     return () => document.removeEventListener("contextmenu", block);
   }, [debug]);
 
-  // Session refusée par le serveur : retour à l'écran de connexion.
+  // Session refused by the server: back to the sign-in screen.
   useEffect(() => {
     setUnauthorizedHandler(() => setUser(null));
   }, []);
@@ -363,7 +363,7 @@ export default function App() {
     setToken(token);
     setUser(account);
     setNeedsSetup(false);
-    // L'interface se construira sous les yeux, une fois chargée.
+    // The interface will be built before the user's eyes, once loaded.
     clearPage();
     setEntered(true);
   };
@@ -372,14 +372,14 @@ export default function App() {
     try {
       await api.logout();
     } catch {
-      /* session déjà invalide côté serveur */
+      /* session already invalid on the server side */
     }
     setToken(null);
     setUser(null);
     setProjectsRead(null);
   };
 
-  // --- Lectures ----------------------------------------------------------------
+  // --- Reads -------------------------------------------------------------------
 
   const loadLookups = useCallback(async () => {
     const [nextUsers, nextMilestoneTypes] = await Promise.all([
@@ -395,14 +395,14 @@ export default function App() {
   }, [read]);
 
   const loadBoards = useCallback(async () => {
-    // Sans vue ouverte, il n'y a pas de tableaux à lire : ils restent
-    // inconnus, et non « aucun ».
+    // Without an open view, there are no boards to read: they stay
+    // unknown, not "none".
     if (!viewId) return setBoardsRead(null);
     const items = await read(() => api.getBoards(viewId));
     setBoardsRead({ key: viewId, items });
   }, [viewId, read]);
 
-  // Les sections et les widgets du tableau ouvert, d'un coup.
+  // The open board's sections and widgets, in one go.
   const loadWidgets = useCallback(async () => {
     if (!boardId) {
       setSectionsRead(null);
@@ -416,9 +416,9 @@ export default function App() {
     setWidgetsRead({ key: boardId, items: w });
   }, [boardId, read]);
 
-  // Les projets du tableau, de tous ses contextes : le contexte choisi les
-  // filtre ici (projetsVus), sans rien redemander au serveur — en changer
-  // est immédiat. Il en va de même des demandes et des postes.
+  // The board's projects, of all its contexts: the chosen context
+  // filters them here (viewedProjects), without asking the server for anything — changing it
+  // is immediate. The same goes for requests and workstations.
   const loadProjects = useCallback(async () => {
     if (!boardId || !projectsNeed) return setProjectsRead(null);
     const data = await read(() =>
@@ -432,22 +432,22 @@ export default function App() {
     setProjectsRead({ key: boardId, items: data });
   }, [boardId, projectsNeed, categoryFilter, statusFilter, actorFilter, read]);
 
-  // Les acteurs que propose le filtre « Acteurs » : ceux des projets du
-  // contexte choisi. Lus à part, ils ne retardent pas la liste.
+  // The actors offered by the "Acteurs" filter: those of the projects of the
+  // chosen context. Read separately, they don't delay the list.
   const loadProjectActors = useCallback(async () => {
     if (!boardId || !projectsNeed) return setProjectActorIds([]);
     setProjectActorIds(await api.getProjectActorIds({ board: boardId, context: selectedContext }));
   }, [boardId, projectsNeed, selectedContext]);
 
-  // Les catégories sont propres au tableau ouvert.
+  // Categories belong to the open board.
   const loadCategories = useCallback(async () => {
     if (!boardId || !projectsNeed) return setCategories([]);
     setCategories(await api.getCategories(boardId));
   }, [boardId, projectsNeed]);
 
-  // Les étiquettes des projets et celles des cartes, propres au tableau.
-  // Appelées avec un « patch », elles l'appliquent sur place, sans rien
-  // demander au serveur : une étiquette recolorée se voit aussitôt.
+  // The project labels and the card labels, specific to the board.
+  // Called with a "patch", they apply it in place, asking
+  // the server for nothing: a recolored label shows immediately.
   const loadProjectLabels = useCallback(
     async (patch?: { id: number; data: Partial<ProjectLabel> }) => {
       if (patch) {
@@ -495,15 +495,15 @@ export default function App() {
     setTaskListsRead({ key: boardId, items });
   }, [boardId, tasksNeed, read]);
 
-  // Les demandes du tableau, du contexte choisi — toutes, quel que soit leur
-  // statut.
+  // The board's requests, of the chosen context — all of them, whatever their
+  // status.
   const loadSupportRequests = useCallback(async () => {
     if (!boardId || !supportNeed) return setSupportRead(null);
     const items = await read(() => api.getSupportRequests(Number(boardId), "all"));
     setSupportRead({ key: boardId, items });
   }, [boardId, supportNeed, read]);
 
-  // Les postes du tableau, du contexte choisi.
+  // The board's workstations, of the chosen context.
   const loadAssets = useCallback(async () => {
     if (!boardId || !assetsNeed) return setAssetsRead(null);
     const items = await read(() => api.getAssets(Number(boardId), "all"));
@@ -516,7 +516,7 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    // Un suivi qui ne se lit pas n'empêche rien de fonctionner.
+    // A follow that can't be read prevents nothing from working.
     api
       .getFollows()
       .then(setFollows)
@@ -558,15 +558,15 @@ export default function App() {
     if (user) loadAssets().catch(() => {});
   }, [user, loadAssets]);
 
-  // Un tableau qui montre des demandes s'ouvre sur une relève des boîtes,
-  // sans attendre celle que le serveur fait de lui-même. Ce qu'elle apporte
-  // arrive par le flux d'événements.
+  // A board that shows requests opens with a mailbox poll,
+  // without waiting for the one the server does on its own. What it brings
+  // arrives through the event stream.
   useEffect(() => {
     if (user && supportNeed) api.syncSupportMail().catch(() => {});
   }, [user, supportNeed, boardId]);
 
-  // La vue d'ouverture, une fois la session ouverte : celle du compte, à
-  // défaut la première.
+  // The opening view, once the session is open: the account's, or
+  // failing that the first.
   useEffect(() => {
     if (!user || !views || appliedView.current === user.id) return;
     appliedView.current = user.id;
@@ -574,15 +574,15 @@ export default function App() {
     if (desiredView) setViewId(String(desiredView.id));
   }, [user, views]);
 
-  // La vue ouverte doit exister : en supprimer une ramène sur la première.
+  // The open view must exist: deleting one goes back to the first.
   useEffect(() => {
     if (!views || appliedView.current === null) return;
     if (!views.some((v) => String(v.id) === viewId))
       setViewId(views[0] ? String(views[0].id) : null);
   }, [views, viewId]);
 
-  // Le tableau ouvert doit exister dans la vue : changer de vue, ou supprimer
-  // un tableau, ramène sur le premier de la liste.
+  // The open board must exist in the view: changing view, or deleting
+  // a board, goes back to the first in the list.
   useEffect(() => {
     if (!boards) return;
     const first = boards[0];
@@ -590,8 +590,8 @@ export default function App() {
     if (!boards.some((b) => String(b.id) === boardId)) setBoardId(String(first.id));
   }, [boards, boardId]);
 
-  // Un filtre peut pointer vers une catégorie ou un acteur qui vient de
-  // disparaître.
+  // A filter can point to a category or an actor that has just
+  // disappeared.
   useEffect(() => {
     if (
       categoryFilter !== "all" &&
@@ -608,8 +608,8 @@ export default function App() {
   }, [users, actorFilter]);
 
   /**
-   * Suivre ou cesser de suivre. Le serveur rend la liste entière, qui remplace
-   * la nôtre.
+   * Follow or stop following. The server returns the whole list, which replaces
+   * ours.
    */
   const toggleFollow = useCallback(
     async (kind: FollowKind, id: number) => {
@@ -617,13 +617,13 @@ export default function App() {
       try {
         setFollows(following ? await api.unfollow(kind, id) : await api.follow(kind, id));
       } catch {
-        /* le serveur a refusé : la case reste dans l'état qu'il connaît */
+        /* the server refused: the checkbox stays in the state it knows */
       }
     },
     [follows],
   );
 
-  /** Se placer sur un tableau, où qu'il soit : sa vue d'abord. */
+  /** Go to a board, wherever it is: its view first. */
   const goToBoard = useCallback(async (id: Id) => {
     const board = await api.getBoard(id);
     setViewId(String(board.view_id));
@@ -631,9 +631,9 @@ export default function App() {
   }, []);
 
   /**
-   * Ouvre l'élément désigné, qu'il vienne de l'adresse, d'une notification ou
-   * de la recherche. Une demande et un poste s'ouvrent sur place ; un projet,
-   * une carte et un widget mènent d'abord à leur tableau.
+   * Opens the designated item, whether it comes from the URL, a notification or
+   * the search. A request and a workstation open in place; a project,
+   * a card and a widget lead first to their board.
    */
   const openTarget = useCallback(
     async (target: Target) => {
@@ -652,20 +652,20 @@ export default function App() {
         } else if (target.kind === "access") {
           await goToBoard(target.id);
         } else {
-          // Une carte : c'est le tableau qui l'ouvrira, une fois ses listes lues.
+          // A card: the board will open it, once its lists are read.
           const or = await api.getCardLocation(target.id);
           setViewId(String(or.view_id));
           setBoardId(String(or.board_id));
           setCardToOpen(target.id);
         }
       } catch {
-        /* élément supprimé entre-temps, ou devenu privé : il n'y a rien à ouvrir */
+        /* item deleted in the meantime, or made private: there is nothing to open */
       }
     },
     [goToBoard],
   );
 
-  /** Ce que la recherche a trouvé : un lien ouvre directement son adresse. */
+  /** What the search found: a link directly opens its URL. */
   const openSearch = useCallback(
     async (result: SearchResult) => {
       if (result.kind !== "access") return openTarget({ kind: result.kind, id: result.id });
@@ -678,9 +678,9 @@ export default function App() {
     [openTarget],
   );
 
-  // Paramétrage › Notifications : éteintes, les notifications ne passent plus
-  // à l'écran — elles se rangent toujours dans le tiroir. Relu à chaque
-  // fermeture du Paramétrage, où le réglage a pu changer.
+  // Paramétrage › Notifications: when off, notifications no longer show
+  // on screen — they still go into the drawer. Re-read on each
+  // close of the Paramétrage, where the setting may have changed.
   const toastsEnabled = useRef(true);
   useEffect(() => {
     if (!user || settingsOpened) return;
@@ -690,7 +690,7 @@ export default function App() {
       .catch(() => undefined);
   }, [user, settingsOpened]);
 
-  /** Ce qu'on voit quand un élément suivi change, chez quelqu'un d'autre. */
+  /** What is seen when a followed item changes, by someone else. */
   const showNotification = useCallback(
     (notice: FollowNotification) => {
       if (!toastsEnabled.current) return;
@@ -723,9 +723,9 @@ export default function App() {
     [openTarget],
   );
 
-  // Flux d'événements : le serveur pousse ses compteurs dès qu'une écriture a
-  // lieu, et le client ne relit que les jeux de données concernés. On consomme
-  // le flux avec `fetch`, `EventSource` n'acceptant pas d'en-tête.
+  // Event stream: the server pushes its counters as soon as a write
+  // happens, and the client only re-reads the affected datasets. The
+  // stream is consumed with `fetch`, `EventSource` not accepting headers.
   useEffect(() => {
     if (!user) return undefined;
 
@@ -745,8 +745,8 @@ export default function App() {
       labels: () => loadLabels(),
       "project-labels": () => loadProjectLabels(),
       "support-requests": loadSupportRequests,
-      // Les étiquettes du support se lisent dans le tiroir d'une demande, qui
-      // les relit à son ouverture.
+      // Support labels are read in a request's drawer, which
+      // re-reads them when it opens.
       "support-labels": () => {},
       assets: loadAssets,
     };
@@ -758,7 +758,7 @@ export default function App() {
         return;
       }
       const { versions } = message;
-      // Premier message : les compteurs servent de référence, sans rien relire.
+      // First message: the counters serve as a reference, with nothing re-read.
       const known = knownVersions.current;
       knownVersions.current = versions;
       if (known === null) return;
@@ -782,12 +782,12 @@ export default function App() {
             const { done, value } = await reader.read();
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
-            // Les événements sont séparés par une ligne vide.
+            // Events are separated by a blank line.
             const chunks = buffer.split("\n\n");
             buffer = chunks.pop() ?? "";
             for (const chunk of chunks) {
               const row = chunk.split("\n").find((l) => l.startsWith("data:"));
-              if (!row) continue; // commentaire de maintien de connexion
+              if (!row) continue; // keep-alive comment
               let message: FeedMessage;
               try {
                 message = JSON.parse(row.slice(5)) as FeedMessage;
@@ -798,10 +798,10 @@ export default function App() {
             }
           }
         } catch {
-          /* connexion perdue : nouvelle tentative après une courte pause */
+          /* connection lost: retry after a short pause */
         }
-        // Ce qui a changé pendant la coupure est inconnu : le premier message
-        // du flux repris servira de nouvelle référence.
+        // What changed during the outage is unknown: the first message
+        // of the resumed stream will serve as the new reference.
         knownVersions.current = null;
         if (!stopped) await new Promise((resolve) => setTimeout(resolve, 2000));
       }
@@ -828,13 +828,13 @@ export default function App() {
     showNotification,
   ]);
 
-  // --- Gestes ------------------------------------------------------------------
+  // --- Actions -----------------------------------------------------------------
 
-  // Un réglage refusé par le serveur : le menu s'est refermé, la raison se dit
-  // en notification.
+  // A setting refused by the server: the menu closed, the reason is given
+  // in a notification.
   const reportRejection = (e: unknown) => notifyError(errorMessage(e), "Modification refusée");
 
-  /** Écrire, signaler un refus, puis relire quoi qu'il arrive. */
+  /** Write, report a refusal, then re-read no matter what. */
   const write = async (writing: () => Promise<unknown>, reload: () => Promise<unknown>) => {
     try {
       await writing();
@@ -850,13 +850,13 @@ export default function App() {
     setBoardId(null);
   }, []);
 
-  // La vue et le tableau qu'on vient de créer : leur nom passe aussitôt en
-  // saisie, dès qu'ils paraissent.
+  // The view and board just created: their name goes straight into
+  // edit mode, as soon as they appear.
   const [viewToRename, setViewToRename] = useState<number | null>(null);
   const [boardToRename, setBoardToRename] = useState<number | null>(null);
 
-  // Le « + » des vues crée aussitôt « Nouvelle vue », avec son premier
-  // tableau, et l'ouvre : son nom se tape ensuite sur place.
+  // The views' "+" immediately creates "Nouvelle vue", with its first
+  // board, and opens it: its name is then typed in place.
   const createView = async () => {
     try {
       const { view, board: first } = await api.createView("Nouvelle vue");
@@ -874,7 +874,7 @@ export default function App() {
   const addBoard = async () => {
     if (!viewId) return;
     try {
-      // « Nouveau tableau », ouvert aussitôt : son nom se tape sur place.
+      // "Nouveau tableau", opened immediately: its name is typed in place.
       const created = await api.createBoard(viewId, "Nouveau tableau");
       await loadBoards();
       setBoardId(String(created.id));
@@ -886,7 +886,7 @@ export default function App() {
 
   const boardOf = (id: Id) => boards?.find((b) => b.id === id);
 
-  /** Le tableau tel que le serveur vient de le rendre, à sa place. */
+  /** The board as the server just returned it, in its place. */
   const setBoard = (next: Board) =>
     setBoardsRead((before) =>
       before
@@ -897,8 +897,8 @@ export default function App() {
         : before,
     );
 
-  // Le contexte qu'on regarde dans le tableau ouvert : choisi pour soi, il se
-  // voit aussitôt et se retrouve à la prochaine visite.
+  // The context viewed in the open board: chosen for oneself, it is
+  // seen at once and found again on the next visit.
   const changeContext = (value: string) => {
     if (!board) return;
     const contextId = value === "all" ? null : Number(value);
@@ -906,7 +906,7 @@ export default function App() {
     void write(() => api.selectContext(board.id, contextId), loadBoards);
   };
 
-  // Les contextes du tableau ouvert : chaque écriture rend le tableau à jour.
+  // The open board's contexts: each write returns the updated board.
   const writeContexts = (writing: () => Promise<Board>) =>
     write(
       async () => setBoard(await writing()),
@@ -942,8 +942,8 @@ export default function App() {
         }
       : undefined;
 
-  // « Hérité » d'un tableau : le décocher (confirmé par le menu) part d'une
-  // copie de sa structure partagée, le recocher efface la sienne.
+  // A board's "Hérité": unticking it (confirmed by the menu) starts from a
+  // copy of its shared structure, re-ticking it erases its own.
   const toggleInherited = async (id: Id) => {
     const board = boardOf(id);
     if (!board) return;
@@ -956,9 +956,9 @@ export default function App() {
     );
   };
 
-  // Un projet, une demande : ajoutés depuis un widget de liste, ils sont les
-  // siens (lib/listes.ts) ; sans widget désigné, le serveur les donne au
-  // premier du tableau.
+  // A project, a request: added from a list widget, they are the
+  // widget's own (lib/lists.ts); without a designated widget, the server gives them to the
+  // board's first.
   const handleOpenNewProject = useCallback((listKey = "") => {
     setNewListName(listKey);
     setSelectedProjectId(null);
@@ -972,14 +972,14 @@ export default function App() {
     setSupportDrawerOpened(true);
   }, []);
 
-  // Raccourcis clavier : Tab fait le tour des vues, Option/Alt + Tab celui des
-  // tableaux de la vue, N crée un projet ou une demande, S fait défiler les
-  // contextes du tableau, I entre dans la modification de
-  // l'interface ou en sort.
+  // Keyboard shortcuts: Tab cycles through the views, Option/Alt + Tab the
+  // view's boards, N creates a project or a request, S cycles through the
+  // board's contexts, I enters or leaves interface
+  // editing.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      // Jamais pendant une saisie de texte. Les listes déroulantes de Mantine
-      // sont des <input readonly> : les raccourcis y fonctionnent toujours.
+      // Never during text entry. Mantine's dropdowns
+      // are <input readonly>: shortcuts always work there.
       const el = document.activeElement as HTMLElement | null;
       const textInput =
         el &&
@@ -1031,7 +1031,7 @@ export default function App() {
   });
 
   /**
-   * Ce que l'adresse désignait à l'arrivée, ouvert une fois la session ouverte.
+   * What the URL designated on arrival, opened once the session is open.
    */
   const readAddress = useRef(false);
   useEffect(() => {
@@ -1041,7 +1041,7 @@ export default function App() {
     if (target) openTarget(target);
   }, [user, openTarget]);
 
-  // L'adresse suit ce qui est ouvert, pour qu'un rechargement le retrouve.
+  // The URL follows what is open, so a reload finds it again.
   useEffect(() => {
     if (drawerOpened && selectedProjectId) {
       noteInAddress({ kind: "project", id: selectedProjectId });
@@ -1052,7 +1052,7 @@ export default function App() {
     }
   }, [drawerOpened, selectedProjectId, displayedCard]);
 
-  /** Le tableau rapporte la carte ouverte : l'adresse la suit, la demande est servie. */
+  /** The board reports the open card: the URL follows it, the request is served. */
   const handleCardOpened = useCallback((id: number | null) => {
     setDisplayedCard(id);
     setCardToOpen(null);
@@ -1063,8 +1063,8 @@ export default function App() {
     setDrawerOpened(true);
   };
 
-  // La copie reste dans le tableau de l'original, sous « … (copie) », et
-  // s'ouvre aussitôt.
+  // The copy stays in the original's board, under "… (copie)", and
+  // opens immediately.
   const duplicateProject = async (project: Project) => {
     try {
       const projectCopy = await api.copyProject(project.id, {
@@ -1097,8 +1097,8 @@ export default function App() {
     }
   };
 
-  // Depuis un lien : la demande prend son titre pour objet, et naît
-  // « Nouveau », dans le contexte choisi du tableau.
+  // From a link: the request takes its title as its subject, and is born
+  // "Nouveau", in the board's chosen context.
   const openSupportRequestFromLink = (widget: BoardWidget) => {
     if (!board) return;
     setAccessRequestSubject(accessSource(widget, board.id).title);
@@ -1106,7 +1106,7 @@ export default function App() {
     setSupportDrawerOpened(true);
   };
 
-  // Depuis un poste : la demande prend son nom pour objet.
+  // From a workstation: the request takes its name as its subject.
   const openSupportRequestFromAsset = (workstation: Asset) => {
     setAccessRequestSubject(workstationSource(workstation).title);
     setEditedSupportRequest(null);
@@ -1124,7 +1124,7 @@ export default function App() {
       />
     );
 
-  // Le compte « admin » ne sert qu'au paramétrage : il ne voit que lui.
+  // The "admin" account is only for settings: it sees nothing else.
   if (user.system)
     return (
       <SettingsModal
@@ -1139,7 +1139,7 @@ export default function App() {
       />
     );
 
-  // Les contextes du tableau ouvert, et le compte.
+  // The open board's contexts, and the account.
   const account: AccountSlot = {
     contexts: board
       ? {
@@ -1147,8 +1147,8 @@ export default function App() {
           all: board.all_contexts_label,
           value: selectedContext,
           onChange: changeContext,
-          // Hors modification, le tableau garde ses contextes : on les choisit
-          // seulement, sans les ajouter, renommer, ranger ni supprimer.
+          // Outside edit mode, the board keeps its contexts: they are only chosen,
+          // not added, renamed, ordered or deleted.
           management: isEditing ? contextManagement : undefined,
         }
       : undefined,
@@ -1160,26 +1160,26 @@ export default function App() {
     onSearchOpen: openSearch,
   };
 
-  // Le tableau ouvert est figé : hors modification de l'interface, ou — sur sa
-  // structure partagée — faute de pouvoir l'organiser. Sa propre structure
-  // (« Hérité » décoché) n'est qu'à soi.
+  // The open board is frozen: outside interface editing, or — on its
+  // shared structure — for lack of the right to organize it. Its own structure
+  // ("Hérité" unticked) is only one's own.
   const inherits = board?.inherited !== false;
   const frozen = boardId ? !isEditing || (inherits && !canArrange) : true;
-  // Hors modification, les onglets sont figés aussi : ni les tableaux ni les
-  // vues ne se glissent, ni ne s'ajoutent.
+  // Outside edit mode, the tabs are frozen too: neither boards nor
+  // views can be dragged or added.
   const tabsLocked = !isEditing;
-  // La structure du tableau ouvert se remplace par un import : il faut
-  // pouvoir y toucher, comme pour la modifier.
+  // The open board's structure is replaced by an import: one must be
+  // able to touch it, as to edit it.
   const editableLayout = Boolean(board) && !(inherits && !canArrange);
-  // Les tableaux tels que cette fenêtre les montre : leur verrou est le sien.
+  // The boards as this window shows them: its lock is its own.
   const displayedBoards =
     boards?.map((b) => ({
       ...b,
       is_locked: isEditing ? (0 as const) : (1 as const),
     })) ?? null;
   const createTask = can("tasks", "create");
-  // La demande naît dans le tableau ouvert : sans widget « Demandes de
-  // support » pour la montrer, on ne la propose pas.
+  // The request is born in the open board: without a "Demandes de
+  // support" widget to show it, it isn't offered.
   const createRequest =
     can("support", "create") && widgets.some((w) => w.type === "support.list");
   const boardNameOf = (id: Id) => boards?.find((b) => b.id === id)?.name;
@@ -1193,8 +1193,8 @@ export default function App() {
             assetTags: [...new Set((assets ?? []).map((a) => a.tag).filter(Boolean))].sort(),
           }}
         >
-          {/* Le presse-papiers des étiquettes et des catégories, que le menu
-            « Actions » du tiroir d'un widget remplit et vide dans un autre. */}
+          {/* The clipboard of labels and categories, which the "Actions"
+            menu of a widget drawer fills and empties in another. */}
           <CopyPasteContext.Provider
             value={{
               board: board && { id: board.id, name: board.name },
@@ -1208,10 +1208,10 @@ export default function App() {
               ref={background}
               gap={0}
               h="100vh"
-              // Le clic droit sur le fond : ce qu'aucun élément — onglet, widget,
-              // section, ligne — n'a pris pour son propre menu. Une saisie garde
-              // celui du navigateur, pour copier et coller ; une fenêtre ou un
-              // tiroir, portés hors de la page, ne l'ouvrent pas.
+              // The right click on the background: what no element — tab, widget,
+              // section, row — took for its own menu. An input keeps
+              // the browser's, for copy and paste; a window or a
+              // drawer, rendered outside the page, don't open it.
               onContextMenu={(e) => {
                 const target = e.target as HTMLElement;
                 if (e.defaultPrevented || !background.current?.contains(target)) return;
@@ -1219,7 +1219,7 @@ export default function App() {
                 setBackgroundMenu(menuPosition(e));
               }}
             >
-              {/* La rangée d'onglets de la vue est la première ligne de l'écran. */}
+              {/* The view's tab row is the first line of the screen. */}
               <Box
                 pt={PAGE_GUTTER}
                 px={PAGE_GUTTER}
@@ -1229,9 +1229,9 @@ export default function App() {
                   minHeight: 0,
                   display: "flex",
                   flexDirection: "column",
-                  // Le contenu s'arrête 20px au-dessus du sélecteur de vues, posé en
-                  // bas à gauche par-dessus la page. Sa hauteur, c'est lui qui la
-                  // publie.
+                  // The content stops 20px above the view selector, placed at
+                  // the bottom left over the page. It publishes its
+                  // height itself.
                   paddingBottom: `calc(var(${MODE_SWITCH_TOP}, ${MODE_SWITCH_TOP_FALLBACK}px) + ${BOTTOM_CLEARANCE}px)`,
                 }}
               >
@@ -1240,12 +1240,12 @@ export default function App() {
                     boards={displayedBoards}
                     boardId={boardId}
                     onBoardChange={setBoardId}
-                    // Hors modification, ni « + » de tableau, ni de vue (ongletsFiges).
+                    // Outside edit mode, no board "+" nor view "+" (tabsLocked).
                     onAddBoard={canArrange && !tabsLocked ? addBoard : undefined}
                     toRename={boardToRename}
                     onRenameOpened={() => setBoardToRename(null)}
-                    // Renommer, supprimer, rendre privé ou hérité : en
-                    // modification seulement.
+                    // Rename, delete, make private or inherited: in
+                    // edit mode only.
                     onRenameBoard={
                       canArrange && isEditing
                         ? (id, name) => write(() => api.updateBoard(id, { name }), loadBoards)
@@ -1274,16 +1274,16 @@ export default function App() {
                         : undefined
                     }
                     onToggleBoardInherited={isEditing ? toggleInherited : undefined}
-                    // Les contextes sont la structure commune du tableau : les
-                    // copier demande de pouvoir organiser, et le mode édition —
-                    // comme les ajouter ou les renommer.
+                    // Contexts are the board's common structure: copying
+                    // them requires being able to organize, and edit mode —
+                    // like adding or renaming them.
                     onCopyContexts={canArrange && isEditing ? setCopiedContexts : undefined}
                     sections={sections}
                     widgets={widgets}
                     onWidgetsChanged={loadWidgets}
                     locked={frozen}
-                    // Passer en modification n'a de sens que pour qui peut toucher à la
-                    // structure qu'il regarde : faute de droit, rien ne se propose.
+                    // Switching to edit mode only makes sense for whoever can touch the
+                    // structure they are viewing: without the right, nothing is offered.
                     onUnlock={
                       boardId && !(inherits && !canArrange)
                         ? () => setIsEditing(true)
@@ -1313,7 +1313,7 @@ export default function App() {
                       onCategoryFilterChange: setCategoryFilter,
                       statusFilter,
                       onStatusFilterChange: setStatusFilter,
-                      // L'acteur retenu reste proposé même s'il n'a plus de projet.
+                      // The selected actor stays offered even if they no longer have a project.
                       users: users.filter(
                         (u) => projectActorIds.includes(u.id) || String(u.id) === actorFilter,
                       ),
@@ -1465,8 +1465,8 @@ export default function App() {
                 opened={supportDrawerOpened}
                 onClose={() => setSupportDrawerOpened(false)}
                 request={editedSupportRequest}
-                // Le contexte proposé à la création : celui qu'on regarde, ou le
-                // premier du tableau.
+                // The context offered at creation: the one being viewed, or the
+                // board's first.
                 contexts={contexts}
                 contextId={
                   selectedContext !== "all" ? selectedContext : String(contexts[0]?.id ?? "")
@@ -1478,8 +1478,8 @@ export default function App() {
                 assignCurrentUser={accessRequestSubject === null}
                 users={users}
                 currentUser={user}
-                // Le tiroir se ferme lui-même après une création ; une mise à
-                // jour le laisse ouvert.
+                // The drawer closes itself after a creation; an
+                // update leaves it open.
                 onSaved={loadSupportRequests}
                 onDeleted={async () => {
                   setSupportDrawerOpened(false);
@@ -1554,7 +1554,7 @@ export default function App() {
                 onCreate={canArrange && !tabsLocked ? createView : undefined}
                 toRename={viewToRename}
                 onRenameOpened={() => setViewToRename(null)}
-                // Renommer, supprimer, rendre privée : en modification seulement.
+                // Rename, delete, make private: in edit mode only.
                 onRename={
                   canArrange && isEditing
                     ? (id, name) => write(() => api.updateView(id, { name }), loadViews)
@@ -1587,15 +1587,15 @@ export default function App() {
                 onLeaveEditing={() => setIsEditing(false)}
               />
 
-              {/* « Créer une tâche » : la fiche d'une carte, vide, qui choisit où
-                elle va. On reste où l'on est ; la notification mène à la tâche. */}
+              {/* "Créer une tâche": a blank card record, which chooses where
+                it goes. We stay where we are; the notification leads to the task. */}
               <CardDrawer
                 opened={sourceTask !== null}
                 onClose={() => setSourceTask(null)}
                 card={null}
                 source={sourceTask}
-                // Depuis un lien, la tâche naît sans membre : on la signale sans
-                // s'en charger.
+                // From a link, the task is born without a member: we flag it without
+                // taking it on.
                 currentUserId={sourceTask?.kind === "access" ? undefined : user?.id}
                 labels={[]}
                 users={users}
@@ -1639,7 +1639,7 @@ export default function App() {
                 views={views ?? []}
                 onUpdated={(updated) => {
                   setUser(updated);
-                  // Le nom apparaît aussi dans les acteurs et la liste des utilisateurs.
+                  // The name also appears in the actors and the user list.
                   loadLookups();
                   loadProjects();
                 }}

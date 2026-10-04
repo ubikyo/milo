@@ -49,15 +49,15 @@ import type { CSSProperties, ReactNode } from "react";
 import { RED } from "../../themes/colors";
 import type { AssetDetail, AssetSummary } from "@milo/shared";
 
-// L'onglet « Résumé » de la fiche d'un poste : ce qu'on cherche d'abord en
-// l'ouvrant, rangé en cartes par thème. Le détail reste dans les autres onglets.
+// The "Résumé" tab of a workstation's record: what one looks for first on
+// opening it, arranged in cards by theme. The detail stays in the other tabs.
 
 dayjs.extend(relativeTime);
 
 /**
- * La grille suit la largeur du panneau, pas celle de la fenêtre : le tiroir
- * garde la même largeur sur tous les écrans. Trois cartes par ligne dès que le
- * panneau a la largeur d'un tiroir ouvert en entier.
+ * The grid follows the panel width, not the window's: the drawer
+ * keeps the same width on all screens. Three cards per row once the
+ * panel has the width of a fully open drawer.
  */
 export const BREAKPOINTS = {
   xs: "360px",
@@ -67,22 +67,22 @@ export const BREAKPOINTS = {
   xl: "960px",
 };
 
-/** Une carte : son titre précédé d'une icône, puis son contenu. */
+/** A card: its title preceded by an icon, then its content. */
 export function Card({
   title,
   icon,
   span,
   children,
 }: {
-  /** Le titre et son icône ; sans titre, la carte commence par son contenu. */
+  /** The title and its icon; without a title, the card starts with its content. */
   title?: string;
   icon?: ReactNode;
-  /** Sa largeur : un tiers par défaut, la moitié, deux tiers, ou toute la ligne. */
+  /** Its width: a third by default, a half, two thirds, or the whole row. */
   span?: "half" | 2 | "full";
   children: ReactNode;
 }) {
-  // Sur douze colonnes : une seule carte par ligne dans un panneau étroit,
-  // deux dans un moyen, trois dans un large.
+  // Out of twelve columns: a single card per row in a narrow panel, two
+  // in a medium one, three in a wide one.
   const colSpan =
     span === "full"
       ? 12
@@ -93,7 +93,7 @@ export function Card({
           : { base: 12, sm: 6, lg: 4 };
   return (
     <Grid.Col span={colSpan}>
-      {/* L'arrondi des widgets, sans filet, sur un gris neutre. */}
+      {/* The widgets' rounding, without a border, on a neutral gray. */}
       <Box
         className={inset.inset}
         p="md"
@@ -114,7 +114,7 @@ export function Card({
   );
 }
 
-/** Une ligne de carte : le libellé à gauche, la valeur à droite. */
+/** A card row: the label on the left, the value on the right. */
 export function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Group gap="sm" wrap="nowrap" align="flex-start">
@@ -127,8 +127,8 @@ export function Row({ label, children }: { label: string; children: ReactNode })
 }
 
 /**
- * Le tag de l'asset, moitié plus grand que dans la liste (20 px de haut,
- * 11 px de texte, 10 px de marge) : c'est le titre de la fiche.
+ * The asset tag, half as big again as in the list (20 px high,
+ * 11 px text, 10 px margin): it is the record's title.
  */
 const TAG_TITLE = {
   "--badge-height": "30px",
@@ -137,35 +137,35 @@ const TAG_TITLE = {
   maxWidth: "100%",
 } as CSSProperties;
 
-/** Le tag de l'asset, en tête du résumé : plus haut que les autres, sur toute la largeur. */
+/** The asset tag, at the head of the summary: taller than the others, over the full width. */
 const TAG_ASSET = { ...TAG_TITLE, "--badge-height": "44px" } as CSSProperties;
 
-/** La part libre de l'anneau : un gris neutre et clair, pas celui de Mantine qui tire sur le bleu. */
+/** The ring's free part: a light neutral gray, not Mantine's, which leans blue. */
 const RING_BACKGROUND = "light-dark(#e0e0e0, var(--mantine-color-dark-4))";
 
 export { CARD_BACKGROUND };
 
-/** Le diamètre du rond des jauges, et l'épaisseur de son anneau. */
+/** The diameter of the gauges' circle, and the thickness of its ring. */
 const CIRCLE_SIZE = 96;
 const RING = 10;
 
 /**
- * Le diamètre extérieur de l'anneau tel que Mantine le trace : un rayon de
- * (taille × 0,9 − 2 × épaisseur) / 2, plus la moitié du trait de chaque côté.
+ * The ring's outer diameter as Mantine draws it: a radius of
+ * (size × 0.9 − 2 × thickness) / 2, plus half the stroke on each side.
  */
 const RING_DIAMETER = CIRCLE_SIZE * 0.9 - RING;
 
-/** Le diamètre de la pastille posée sur le disque. */
+/** The diameter of the badge placed on the disc. */
 const DOT = 30;
 
-/** L'icône posée dans le disque. */
+/** The icon placed in the disc. */
 export const ROUND_ICON = 32;
 
 /**
- * Le haut d'une carte de jauge : le rond à gauche, la valeur en gros et son
- * détail à droite. Le rond est un anneau quand on connaît une occupation (le
- * disque) ; sinon, l'icône de la carte — l'agent ne dit rien de la charge du
- * processeur ni de la mémoire utilisée, et un anneau plein mentirait.
+ * The top of a gauge card: the circle on the left, the value in large and its
+ * detail on the right. The circle is a ring when a usage is known (the
+ * disk); otherwise, the card's icon — the agent says nothing about CPU load
+ * or memory used, and a full ring would lie.
  */
 function Gauge({
   circle,
@@ -176,7 +176,7 @@ function Gauge({
   circle: ReactNode;
   value: string | null;
   detail?: string;
-  /** Ce qui suit le détail, quand une ligne de texte ne suffit pas. */
+  /** What follows the detail, when a line of text isn't enough. */
   subtitle?: ReactNode;
 }) {
   return (
@@ -198,19 +198,19 @@ function Gauge({
 }
 
 /**
- * Le numéro de série, ou « VM » pour une machine virtuelle Parallels : le sien
- * (« Parallels-A1 B2 C3… ») n'identifie aucun matériel.
+ * The serial number, or "VM" for a Parallels virtual machine: its own
+ * ("Parallels-A1 B2 C3…") identifies no hardware.
  */
 const serialNumber = (serial: string): string =>
   /^parallels/i.test(serial.trim()) ? "VM" : serial || EMPTY;
 
-/** Moins de six mois avant la fin de support : il est temps d'y penser. */
+/** Less than six months before end of support: time to think about it. */
 const MONTHS_BEFORE_END = 6;
 
 /**
- * La fin de support du système, d'après endoflife.date : en rouge quand elle
- * est passée, en orange quand elle approche, en vert sinon — et en vert aussi
- * quand l'éditeur n'en a pas encore annoncé. En gris quand on ne sait pas.
+ * The system's end of support, according to endoflife.date: red when it
+ * has passed, orange when it is near, green otherwise — and green too
+ * when the vendor hasn't announced one yet. Gray when unknown.
  */
 function EndOfSupport({ support }: { support: AssetDetail["support"] }) {
   if (!support) {
@@ -241,12 +241,12 @@ function EndOfSupport({ support }: { support: AssetDetail["support"] }) {
 }
 
 /**
- * Le rond d'une jauge sans occupation connue : l'icône sur un disque du même
- * gris neutre que l'anneau du disque, pour que les trois jauges se répondent.
+ * The circle of a gauge with no known usage: the icon on a disc of the same
+ * neutral gray as the disk ring, so the three gauges echo each other.
  */
 export const CircleIcon = ({ children, bubble }: { children: ReactNode; bubble?: string }) => (
-  // La boîte garde la place de l'anneau, pour que les valeurs s'alignent ;
-  // le disque, lui, prend le diamètre que l'anneau dessine vraiment.
+  // The box keeps the ring's space, so the values align;
+  // the disc takes the diameter the ring actually draws.
   <Box
     w={CIRCLE_SIZE}
     h={CIRCLE_SIZE}
@@ -266,8 +266,8 @@ export const CircleIcon = ({ children, bubble }: { children: ReactNode; bubble?:
       }}
     >
       {children}
-      {/* Une précision dans une pastille ronde, à cheval sur le bas droit
-          du disque : l'architecture du processeur. */}
+      {/* A detail in a round badge, straddling the bottom right
+          of the disc: the processor architecture. */}
       {bubble && (
         <Box
           bg="teal"
@@ -294,7 +294,7 @@ export const CircleIcon = ({ children, bubble }: { children: ReactNode; bubble?:
   </Box>
 );
 
-/** Un état de la carte Sécurité : son icône et son texte, de la même couleur. */
+/** A state of the Sécurité card: its icon and its text, in the same color. */
 function State({
   color,
   icon,
@@ -315,9 +315,9 @@ function State({
 }
 
 /**
- * La protection du poste : en vert avec le nom de l'EPP/EDR quand il tourne,
- * en orange quand il est désactivé, en rouge quand Windows n'en déclare
- * aucun. Hors de Windows l'agent n'en sait rien : on le dit, en gris.
+ * The workstation's protection: green with the EPP/EDR name when it is running,
+ * orange when it is disabled, red when Windows declares
+ * none. Outside Windows the agent knows nothing about it: we say so, in gray.
  */
 function Protection({ protection }: { protection: AssetDetail["protection"] }) {
   if (protection.state === "none") {
@@ -346,9 +346,9 @@ function Protection({ protection }: { protection: AssetDetail["protection"] }) {
 }
 
 /**
- * Le chiffrement du volume système : en vert avec son nom et son algorithme
- * (« FileVault 2 — XTS-AES-128 »), en rouge quand le disque ne l'est pas, en
- * gris quand l'agent ne le dit pas.
+ * The system volume encryption: green with its name and algorithm
+ * ("FileVault 2 — XTS-AES-128"), red when the disk isn't encrypted, gray
+ * when the agent doesn't say.
  */
 function Encryption({
   encrypted,
@@ -382,9 +382,9 @@ function Encryption({
 }
 
 /**
- * Le pare-feu : en vert quand il est actif partout, en orange quand un profil
- * de Windows est éteint (on dit lequel), en rouge quand il l'est sur tous, en
- * gris quand l'agent ne le dit pas.
+ * The firewall: green when it is active everywhere, orange when a Windows
+ * profile is off (we say which), red when it is off on all, gray
+ * when the agent doesn't say.
  */
 function Firewall({ firewall }: { firewall: AssetSummary["firewall"] }) {
   switch (firewall.state) {
@@ -416,7 +416,7 @@ function Firewall({ firewall }: { firewall: AssetSummary["firewall"] }) {
   }
 }
 
-/** L'ordre des états de la carte Sécurité : ce qui manque d'abord. */
+/** The order of the Sécurité card states: what is missing first. */
 const SEVERITY = { red: 0, orange: 1, gray: 2, green: 3 } as const;
 type Severity = keyof typeof SEVERITY;
 
@@ -442,8 +442,8 @@ const firewallSeverity = ({ state }: AssetSummary["firewall"]): Severity =>
         : "green";
 
 /**
- * Les trois états de la carte Sécurité, le rouge en tête, puis l'orange, le
- * gris et le vert ; à gravité égale, l'ordre EPP/EDR, chiffrement, pare-feu.
+ * The three states of the Sécurité card, red first, then orange, gray
+ * and green; at equal severity, the order EPP/EDR, encryption, firewall.
  */
 const securityItems = (detail: AssetDetail) =>
   [
@@ -471,13 +471,13 @@ const securityItems = (detail: AssetDetail) =>
     .sort((a, b) => SEVERITY[a.severity] - SEVERITY[b.severity])
     .map(({ key, element }) => <Fragment key={key}>{element}</Fragment>);
 
-/** Les trois points de la carte Sécurité. */
+/** The three points of the Sécurité card. */
 const SECURITY_POINTS = 3;
 
 /**
- * Le score de sécurité, sur trois : un point par protection en vert — un
- * EPP/EDR actif, un disque chiffré, un pare-feu actif sur tous les profils.
- * Ce qui est désactivé, partiel ou non déclaré ne compte pas.
+ * The security score, out of three: one point per protection in green — an
+ * active EPP/EDR, an encrypted disk, a firewall active on all profiles.
+ * What is disabled, partial or undeclared doesn't count.
  */
 const securityScore = (detail: AssetDetail): number =>
   [
@@ -486,11 +486,11 @@ const securityScore = (detail: AssetDetail): number =>
     detail.summary.firewall.state === "on",
   ].filter(Boolean).length;
 
-/** Vert quand tout y est, orange à deux sur trois, rouge en dessous. */
+/** Green when all is in place, orange at two out of three, red below. */
 const scoreColor = (score: number): string =>
   score === SECURITY_POINTS ? "teal" : score === SECURITY_POINTS - 1 ? "orange" : RED;
 
-/** Le score de sécurité dans un anneau, à la taille de celui du stockage. */
+/** The security score in a ring, at the size of the storage one. */
 function SecurityScore({ score }: { score: number }) {
   return (
     <RingProgress
@@ -510,9 +510,9 @@ function SecurityScore({ score }: { score: number }) {
 }
 
 /**
- * « Ethernet — Intel(R) Ethernet I219-LM » : le type, puis le nom de la carte.
- * macOS et Windows nomment souvent l'interface d'après son type (« Wi-Fi »,
- * « Ethernet ») : le nom n'est alors pas répété.
+ * "Ethernet — Intel(R) Ethernet I219-LM": the type, then the adapter name.
+ * macOS and Windows often name the interface after its type ("Wi-Fi",
+ * "Ethernet"): the name is then not repeated.
  */
 const connectionType = (card: AssetSummary["networks"][number]): string => {
   const type = card.kind === "wifi" ? "Wi-Fi" : "Ethernet";
@@ -520,14 +520,14 @@ const connectionType = (card: AssetSummary["networks"][number]): string => {
   return name && name.toLowerCase() !== type.toLowerCase() ? `${type} — ${name}` : type;
 };
 
-/** Un texte, ou le tiret quand l'agent ne l'a pas donné. */
+/** A text, or the dash when the agent didn't provide it. */
 export const value = (text: string | null | undefined) => (
   <Text size="sm" c={text ? undefined : "dimmed"} style={{ wordBreak: "break-word" }}>
     {text || EMPTY}
   </Text>
 );
 
-/** Une valeur qu'on recopie ailleurs : l'identifiant TeamViewer, l'adresse. */
+/** A value copied elsewhere: the TeamViewer ID, the address. */
 function Copyable({ text, label }: { text: string; label: string }) {
   if (!text) return value(null);
   return (
@@ -541,8 +541,8 @@ function Copyable({ text, label }: { text: string; label: string }) {
 }
 
 /**
- * Le bouton qui copie une valeur, et qui dit l'avoir fait : la coche
- * remplace l'icône, et une bulle le dit sauf quand on n'en veut pas.
+ * The button that copies a value, and says it did: the check mark
+ * replaces the icon, and a tooltip says so except when it isn't wanted.
  */
 export function CopyValueButton({
   text,
@@ -570,8 +570,8 @@ export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
   const { summary, os, system_disk: disk } = detail;
   const used = diskUsage(disk);
   const old = daysSinceInventory(detail) > DAYS_WITHOUT_INVENTORY;
-  // Une machine virtuelle Parallels se déclare « Parallels International
-  // GmbH. Parallels ARM Virtual Machine » : son nom suffit.
+  // A Parallels virtual machine declares itself "Parallels International
+  // GmbH. Parallels ARM Virtual Machine": its name is enough.
   const hardware = [summary.manufacturer, summary.model].filter(Boolean).join(" ");
   const manufacturer = /^parallels/i.test(hardware) ? "Parallels" : hardware;
   const score = securityScore(detail);
@@ -585,9 +585,9 @@ export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
 
   return (
     <>
-      {/* Le titre de l'onglet, comme une catégorie du mode Accès : blanc,
-          en 18. En face, la date du dernier inventaire ; un poste muet depuis
-          longtemps est sans doute éteint ou perdu, elle le dit en orange. */}
+      {/* The tab title, like a category of the Access mode: white,
+          size 18. Opposite, the date of the last inventory; a workstation silent for
+          a long time is probably off or lost, so it says so in orange. */}
       <Group justify="space-between" align="center" wrap="nowrap" mb={SPACE_BELOW_TITLE}>
         <RecordTitle>Résumé</RecordTitle>
         <Text size="sm" c={old ? "orange" : "dimmed"} fw={old ? 600 : undefined}>
@@ -595,7 +595,7 @@ export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
         </Text>
       </Group>
       <Grid gap="md" type="container" breakpoints={BREAKPOINTS}>
-        {/* En tête, le tag de l'asset, seul, sur toute la largeur. */}
+        {/* At the head, the asset tag, alone, over the full width. */}
         <Grid.Col span={12}>
           <Badge
             color="green"
@@ -610,11 +610,11 @@ export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
           </Badge>
         </Grid.Col>
 
-        {/* Puis le système, sur toute la largeur aussi, avec à sa droite ce
-            qui identifie la machine : son numéro de série, son matériel, la
-            dernière personne connectée. */}
+        {/* Then the system, over the full width too, with on its right what
+            identifies the machine: its serial number, its hardware, the
+            last person logged in. */}
         <Card title="Système" icon={<IconDeviceLaptop size={16} />} span="full">
-          {/* Deux colonnes de même largeur. */}
+          {/* Two columns of the same width. */}
           <Box
             style={{
               display: "grid",
@@ -671,8 +671,8 @@ export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
           </Box>
         </Card>
 
-        {/* Puis les trois jauges : le processeur, la mémoire, et le volume
-          système avec les couleurs de la liste. */}
+        {/* Then the three gauges: the processor, the memory, and the system
+          volume with the list's colors. */}
         <Card title="Processeur" icon={<IconCpu size={16} />}>
           <Gauge
             circle={
@@ -724,8 +724,8 @@ export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
           />
         </Card>
 
-        {/* La carte qui sert : le serveur n'en garde qu'une, connectée, le
-            Wi-Fi d'abord (cartesDe). Le rond prend son icône. */}
+        {/* The card in use: the server keeps only one, connected, Wi-Fi
+            first (cardsOf). The circle takes its icon. */}
         <Card title="Réseau" icon={<IconNetwork size={16} />} span="half">
           <Group gap="md" wrap="nowrap">
             <CircleIcon>
@@ -741,8 +741,8 @@ export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
               <Stack gap="xs" style={{ minWidth: 0 }}>
                 {summary.networks.map((card, rank) => (
                   <Stack key={rank} gap={2}>
-                    {/* Chaque adresse se copie : c'est elle qu'on colle dans
-                        un terminal ou un outil de prise en main. */}
+                    {/* Each address is copyable: it is what gets pasted into
+                        a terminal or a remote-control tool. */}
                     <Group gap="xs">
                       {card.ips.map((ip) => (
                         <Group key={ip} gap={2} wrap="nowrap">
@@ -752,8 +752,8 @@ export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
                           <CopyValueButton text={ip} label={`Copier l'adresse ${ip}`} withoutBubble />
                         </Group>
                       ))}
-                      {/* Le VLAN du Paramétrage qui porte la carte, quand
-                          son sous-réseau y est déclaré. */}
+                      {/* The VLAN of the Paramétrage that carries the adapter, when
+                          its subnet is declared there. */}
                       {card.vlan && (
                         <Group gap={6} wrap="nowrap">
                           {card.vlan.name && <Text size="sm">{card.vlan.name}</Text>}
@@ -763,7 +763,7 @@ export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
                         </Group>
                       )}
                     </Group>
-                    {/* Au style du nom du VLAN. */}
+                    {/* In the style of the VLAN name. */}
                     <Text size="sm" style={{ wordBreak: "break-word" }}>
                       {connectionType(card)}
                     </Text>
@@ -783,7 +783,7 @@ export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
           </Group>
         </Card>
 
-        {/* Sans TeamViewer, il n'y a rien à dire sur l'accès. */}
+        {/* Without TeamViewer, there is nothing to say about access. */}
         {remoteAccess && (
           <Card title="Accès distant" icon={<IconDeviceLaptop size={16} />} span="half">
             <Row label="TeamViewer">

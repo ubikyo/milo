@@ -19,9 +19,9 @@ import type { AuthResult } from "@milo/shared";
 import type { FormEvent } from "react";
 
 /**
- * « setup » : le mot de passe du compte « admin » et le nom du premier
- * workspace, à la toute première ouverture. « microsoft » : la connexion de tout le monde. « admin » : celle
- * du compte « admin », qui ne sert qu'au paramétrage.
+ * "setup": the "admin" account's password and the name of the first
+ * workspace, on the very first opening. "microsoft": everyone's login. "admin": that
+ * of the "admin" account, which is only used for settings.
  */
 type LoginMode = "setup" | "microsoft" | "admin";
 
@@ -29,9 +29,9 @@ const ADMIN = "admin";
 
 interface LoginPageProps {
   needsSetup: boolean;
-  /** L'application Entra est renseignée : la connexion par Microsoft est possible. */
+  /** The Entra application is configured: Microsoft login is possible. */
   entra: boolean;
-  /** Ce que Microsoft ou le serveur a répondu au retour d'une connexion. */
+  /** What Microsoft or the server answered on return from a login. */
   initialError?: string | null;
   onAuthenticated: (result: AuthResult) => void;
 }
@@ -51,7 +51,7 @@ export default function LoginPage({
   const [workspace, setWorkspace] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Le refus rapporté par le retour de Microsoft, porté comme toute erreur.
+  // The refusal reported on return from Microsoft, carried like any error.
   useEffect(() => {
     if (initialError) notifyError(initialError);
   }, [initialError]);
@@ -111,8 +111,8 @@ export default function LoginPage({
 
 
             {mode === "microsoft" && (
-              // Un lien et non un appel : le navigateur quitte l'application
-              // pour la page de Microsoft, et revient avec sa session.
+              // A link and not a call: the browser leaves the application
+              // for Microsoft's page, and comes back with its session.
               <Button
                 component="a"
                 href={entraLoginUrl}
@@ -133,8 +133,8 @@ export default function LoginPage({
               />
             )}
 
-            {/* Le workspace de la première équipe : ses accès se règlent
-                ensuite, dans le Paramétrage. */}
+            {/* The first team's workspace: its access is set
+                afterwards, in the Paramétrage. */}
             {mode === "setup" && (
               <TextInput
                 label="Nom du workspace"

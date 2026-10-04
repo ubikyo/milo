@@ -18,58 +18,57 @@ import {
 } from "./DrawerRows";
 import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
 
-// Ce qu'une liste reçoit du dehors : les adresses e-mail d'où arrivent ses
-// tickets, les tags d'agent GLPI d'où arrivent ses postes. Chacun va à l'un
-// des contextes du tableau ; le serveur relit cette configuration
-// (server, repositories/receptions.ts).
+// What a list receives from outside: the e-mail addresses its tickets arrive
+// from, the GLPI agent tags its positions arrive from. Each goes to one of the
+// board's contexts; the server re-reads this configuration (server,
+// repositories/inboxes.ts).
 //
-// Elles se présentent comme les colonnes d'une liste (ChampsColonnes) : une
-// ligne par réception, sa valeur à même la ligne, son contexte à droite. Le
-// clic droit la retire ; « Ajouter » pose une ligne vide au bout, qui
-// s'efface si on la quitte sans rien y écrire. Sans réception, l'invite des
-// listes vides (ListeVide).
+// They look like a list's columns (ColumnFields): one row per reception, its
+// value on the row itself, its context on the right. A right click removes it;
+// "Ajouter" adds an empty row at the end, which disappears if left without
+// anything written in it. With no reception, the empty-list prompt (EmptyList).
 
-/** Une réception : la valeur reçue, et le contexte où elle se range. */
+/** A reception: the received value, and the context where it is filed. */
 type Inbox = Record<string, unknown> & { context_id?: number | null };
 
-/** La largeur du choix du contexte. */
+/** The width of the context choice. */
 const CONTEXT_WIDTH = 170;
 
 interface ReceptionFieldProps extends IndicatorConfigProps {
-  /** La clé de la configuration qui garde la liste : « mailboxes », « tags ». */
+  /** The configuration key that holds the list: "mailboxes", "tags". */
   key: string;
-  /** Le champ de chaque entrée qui porte la valeur reçue : « email », « tag ». */
+  /** The field of each entry that carries the received value: "email", "tag". */
   field: string;
   label: string;
-  /** Ce que le libellé explique, dessous. */
+  /** What the label explains, below. */
   description?: ReactNode;
-  /** L'invite du champ de saisie : « Adresse e-mail », « Tag de l'agent ». */
+  /** The input field's prompt: "Adresse e-mail", "Tag de l'agent". */
   placeholder: string;
-  /** Le libellé du bouton d'ajout : « Ajouter une adresse e-mail ». */
+  /** The add button's label: "Ajouter une adresse e-mail". */
   add: string;
-  /** L'icône et le message de la liste vide. */
+  /** The empty list's icon and message. */
   icon: ComponentType<{ size?: number; color?: string }>;
   empty: string;
-  /** Les valeurs déjà connues, proposées à la saisie. */
+  /** The values already known, offered while typing. */
   suggestions?: string[];
-  /** Ce que la ligne montre au bout, d'après sa valeur — l'état d'une adresse. */
+  /** What the row shows at its end, based on its value — an address's status. */
   state?: (value: string) => ReactNode;
-  /** La valeur telle qu'elle se range : une adresse sans espaces, par exemple. */
+  /** The value as it is stored: an address without spaces, for example. */
   normalizeValue?: (value: string) => string;
 }
 
-/** Les réceptions que la configuration garde. */
+/** The receptions the configuration holds. */
 export const inboxesOf = (config: unknown, key: string): Inbox[] => {
   const list = (config as Record<string, unknown> | null)?.[key];
   return Array.isArray(list) ? (list as Inbox[]) : [];
 };
 
 /**
- * Vrai quand les réceptions d'un widget ne tiennent pas : aucune réception —
- * la liste ne recevrait rien —, ou une seule qui n'est pas complète. Chacune
- * doit avoir sa valeur, lisible (« valide » : une adresse e-mail pour une
- * boîte), et, dans un tableau qui a des contextes, un contexte qui existe
- * toujours — pas un ajouté depuis, ni un supprimé.
+ * True when a widget's receptions do not hold up: no reception — the list would
+ * receive nothing —, or a single one that is incomplete. Each must have its
+ * value, readable ("valid": an e-mail address for a mailbox), and, in a board
+ * that has contexts, a context that still exists — not one added since, nor a
+ * deleted one.
  */
 export const inboxesWithProblem = (
   config: unknown,
@@ -88,9 +87,9 @@ export const inboxesWithProblem = (
 };
 
 /**
- * La liste des réceptions d'un widget : une ligne par adresse, ou par tag,
- * avec le contexte qui la reçoit. Se règle quand on pose la liste, et se
- * change ensuite dans son tiroir.
+ * A widget's list of receptions: one row per address, or per tag, with the
+ * context that receives it. Set when the list is placed, and changed afterwards
+ * in its drawer.
  */
 export default function ReceptionField({
   key,
@@ -110,14 +109,13 @@ export default function ReceptionField({
   const { contexts } = useReferences();
   const rows = inboxesOf(config, key);
   const contextOptions = contexts.map((c) => ({ value: String(c.id), label: c.name }));
-  /** Le champ qui a le focus : il prend le fond du tiroir. */
+  /** The field that has focus: it takes the drawer's background. */
   const [input, setInput] = useState<string | null>(null);
-  /** La ligne qu'on vient d'ajouter : sa valeur prend le focus. */
+  /** The row that was just added: its value takes focus. */
   const [toFill, setToFill] = useState<number | null>(null);
   /**
-   * La ligne dont les suggestions sont ouvertes. Elles attendent qu'on tape ou
-   * qu'on clique dans le champ : la ligne ajoutée prend le focus sans les
-   * déplier.
+   * The row whose suggestions are open. They wait for typing or a click in the
+   * field: the added row takes focus without unfolding them.
    */
   const [suggested, setSuggested] = useState<number | null>(null);
   const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
@@ -128,7 +126,7 @@ export default function ReceptionField({
     insertRow(rows.map((l, i) => (i === rank ? { ...l, ...change } : l)));
   const remove = (rank: number) => insertRow(rows.filter((_, i) => i !== rank));
 
-  // La ligne neuve va au premier contexte : on le change sur la ligne.
+  // The new row goes to the first context: it is changed on the row.
   const addRow = () => {
     insertRow([...rows, { [field]: "", context_id: contexts[0]?.id ?? null }]);
     setToFill(rows.length);
@@ -150,8 +148,8 @@ export default function ReceptionField({
               gap="sm"
               wrap="nowrap"
               onContextMenu={(e) => setMenu({ rank, position: menuPosition(e) })}
-              // Sans poignée, la valeur se cale à gauche comme le contexte à
-              // droite : à RETRAIT_LIGNE du bord de la ligne.
+              // Without a handle, the value sits to the left like the context
+              // to the right: at ROW_INSET from the row's edge.
               style={{ ...rowStyle(rank, rows.length, false), paddingLeft: ROW_INSET }}
             >
               <Autocomplete
@@ -187,11 +185,11 @@ export default function ReceptionField({
                   setInput(null);
                   setToFill(null);
                   setSuggested(null);
-                  // Une ligne quittée sans valeur s'efface.
+                  // A row left without a value disappears.
                   if (!valueFor(row).trim()) remove(rank);
                 }}
               />
-              {/* Un tableau sans contexte reçoit sans contexte : rien à choisir. */}
+              {/* A board without contexts receives without context: nothing to choose. */}
               {contextOptions.length > 0 && (
                 <Select
                   size="xs"
@@ -216,7 +214,7 @@ export default function ReceptionField({
         </Stack>
       )}
 
-      {/* Au plus près de la liste qu'il allonge. */}
+      {/* As close as possible to the list it extends. */}
       <AddButton label={add} onClick={addRow} mt={4} />
 
       {menu && (

@@ -5,9 +5,9 @@ import { dueState } from "../lib/due";
 import { NAME, Nothing, IndicatorTitle, tasksOf } from "./common";
 import type { TaskIndicatorWidget } from "./types";
 
-// Où en sont les échéances des cartes du tableau ouvert, comme au Support :
-// passées, proches, lointaines, ou absentes. La règle de « bientôt » est celle
-// des cartes (lib/echeance).
+// Where the open board's cards' due dates stand, as in Support:
+// past, near, far, or absent. The "soon" rule is that
+// of cards (lib/due).
 
 const LABEL = "Échéances";
 

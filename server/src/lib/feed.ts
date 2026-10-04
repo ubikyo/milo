@@ -1,26 +1,24 @@
-// La relève des flux pour le widget RSS du mode Accès.
+// Feed polling for the RSS widget of Access mode.
 //
-// Le navigateur ne peut pas lire un flux posé sur un autre site : la plupart
-// ne répondent pas aux requêtes d'une autre origine (CORS). Le serveur va donc
-// le chercher à sa place — et le garde. Chaque source est relevée à son rythme,
-// l'intervalle que règlent les éléments qui la suivent (30 minutes par
-// défaut), et ses derniers articles se rangent en base, déjà lus, à hauteur de
-// la plus grande quantité demandée. La page les lit là : ouvrir la page ne
-// sollicite plus la source.
+// The browser cannot read a feed hosted on another site: most do not answer
+// requests from another origin (CORS). The server therefore fetches it in its
+// place — and keeps it. Each source is polled at its own pace, the interval
+// set by the items that follow it (30 minutes by default), and its latest
+// articles are stored in the database, already read, up to the largest
+// quantity requested. The page reads them there: opening the page no longer
+// hits the source.
 //
-// Le flux se lit donc ici, qu'il soit en XML (RSS, Atom) ou en JSON. Le XML
-// d'un flux est simple — des articles, un titre, un lien, une date —, et une
-// lecture à la main suffit, comme pour les inventaires (lib/inventory.ts). Un
-// flux JSON peut peser plusieurs mégaoctets — le catalogue des vulnérabilités
-// exploitées de la CISA en fait près de deux — pour les quelques articles
-// qu'on en garde.
+// The feed is therefore read here, whether it is XML (RSS, Atom) or JSON. A
+// feed's XML is simple — articles, a title, a link, a date —, and a
+// hand-written reader is enough, as for the inventories (lib/inventory.ts). A
+// JSON feed can weigh several megabytes — CISA's catalog of exploited
+// vulnerabilities makes up nearly two — for the few articles that are kept.
 //
-// Aller chercher une adresse donnée par quelqu'un, c'est aussi la porte d'une
-// requête vers ce que seul le serveur voit. On refuse donc ce qui ne sort pas
-// de la machine — la boucle locale, les adresses de lien local, où se tiennent
-// les métadonnées des hébergeurs — et l'on suit les redirections à la main pour
-// vérifier chacune. Les adresses du réseau interne restent permises : un flux
-// d'intranet est un usage ordinaire.
+// Fetching an address given by someone is also a door for a request to what
+// only the server sees. We therefore refuse whatever does not leave the
+// machine — the loopback, link-local addresses, where hosting providers keep
+// their metadata — and follow redirects by hand to check each one. Internal
+// network addresses remain allowed: an intranet feed is an ordinary use.
 
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
@@ -41,31 +39,31 @@ import { accessFeeds } from "../repositories/access.js";
 import { HttpError, badRequest } from "./http.js";
 import { now } from "./time.js";
 
-/** Au-delà, la source est trop lente : la colonne attend déjà. */
+/** Beyond that, the source is too slow: the column is already waiting. */
 const TIMEOUT = 8_000;
 
 /**
- * Un flux XML tient en quelques centaines de kilo-octets ; un catalogue JSON
- * comme celui de la CISA approche deux mégaoctets et grossit. Au-delà, ce
- * n'est plus un flux.
+ * An XML feed fits in a few hundred kilobytes; a JSON catalog like CISA's
+ * approaches two megabytes and is growing. Beyond that, it is no longer a
+ * feed.
  */
 const SIZE_MAX = 10 * 1024 * 1024;
 
 const REDIRECTIONS_MAX = 3;
 
-/** La relève de fond regarde à ce rythme quels flux sont arrivés à échéance. */
+/** The background poll checks at this pace which feeds have come due. */
 export const FEED_POLL_INTERVAL = 60_000;
 
 /**
- * Une relève qui a échoué se retente plus tôt que l'intervalle réglé : une
- * source tombée une minute ne doit pas laisser l'élément vide une demi-heure.
+ * A poll that failed is retried sooner than the set interval: a source that
+ * was down for a minute must not leave the item empty for half an hour.
  */
 const RETRY_DELAY = 5 * 60_000;
 
-/** Les relèves en cours, par adresse : deux demandes n'en font qu'une. */
+/** Polls in progress, by address: two requests make only one. */
 const ongoing = new Map<string, Promise<void>>();
 
-/** Une adresse IP qui ne sort pas de la machine ou de son lien. */
+/** An IP address that does not leave the machine or its link. */
 const isForbidden = (ip: string): boolean => {
   const v4 = ip.startsWith("::ffff:") ? ip.slice(7) : ip;
   if (isIP(v4) === 4) {
@@ -76,7 +74,7 @@ const isForbidden = (ip: string): boolean => {
   return lowercased === "::" || lowercased === "::1" || lowercased.startsWith("fe80:");
 };
 
-/** L'adresse, vérifiée : http ou https, vers un hôte qui sort de la machine. */
+/** The address, checked: http or https, to a host that leaves the machine. */
 const verify = async (raw: string): Promise<URL> => {
   let url: URL;
   try {
@@ -98,7 +96,7 @@ const verify = async (raw: string): Promise<URL> => {
   return url;
 };
 
-/** Le corps de la réponse, arrêté dès qu'il dépasse la taille admise. */
+/** The response body, stopped as soon as it exceeds the allowed size. */
 const readBound = async (response: Response): Promise<string> => {
   const declaredLength = Number(response.headers.get("content-length"));
   if (declaredLength > SIZE_MAX) throw new HttpError(502, "Le flux est trop volumineux");
@@ -119,10 +117,10 @@ const isObject = (value: unknown): value is Subject =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
- * Les champs où chercher le titre, l'adresse et la date d'un article, du plus
- * courant au plus rare. JSON Feed (jsonfeed.org) d'abord, puis les noms que
- * prennent les catalogues qui n'en suivent aucun — « vulnerabilityName » et
- * « dateAdded » sont ceux de la CISA.
+ * The fields to look in for an article's title, address and date, from the
+ * most common to the rarest. JSON Feed (jsonfeed.org) first, then the names
+ * used by catalogs that follow none — "vulnerabilityName" and "dateAdded" are
+ * CISA's.
  */
 const TITLE_FIELDS = ["title", "name", "headline", "vulnerabilityName", "summary"];
 const LINK_FIELDS = ["url", "external_url", "link", "href", "permalink"];
@@ -131,7 +129,7 @@ const DATE_FIELDS = [
   "dateAdded", "date_modified", "dateModified", "updated",
 ];
 
-/** Les noms sous lesquels un flux JSON range ses articles. */
+/** The names under which a JSON feed stores its articles. */
 const ARTICLE_FIELDS = ["items", "entries", "articles", "vulnerabilities", "posts", "data"];
 
 const CVE = /^CVE-\d{4}-\d+$/i;
@@ -144,7 +142,7 @@ const firstText = (subject: Subject, fields: string[]): string => {
   return "";
 };
 
-/** L'identifiant CVE de l'article, quand il en porte un. */
+/** The article's CVE identifier, when it has one. */
 const cveDe = (subject: Subject): string => {
   const id = firstText(subject, ["cveID", "cveId", "cve", "id"]);
   return CVE.test(id) ? id.toUpperCase() : "";
@@ -160,9 +158,9 @@ const safeAddress = (link: string, source: string): string => {
 };
 
 /**
- * Un article d'un flux JSON. Une vulnérabilité se nomme par son identifiant
- * CVE, qui est ce qu'on cherche en la lisant, et mène à sa fiche du NVD quand
- * la source ne donne pas d'autre adresse.
+ * An article of a JSON feed. A vulnerability is named by its CVE identifier,
+ * which is what one looks for when reading it, and leads to its NVD record
+ * when the source gives no other address.
  */
 const articleJson = (subject: Subject, source: string): AccessFeedArticle => {
   const cve = cveDe(subject);
@@ -180,17 +178,17 @@ const articleJson = (subject: Subject, source: string): AccessFeedArticle => {
 };
 
 /**
- * Les plus récents des articles, du plus récent au plus ancien : une source
- * n'est pas toujours rangée par date — un catalogue JSON, ou le CERT-FR, qui
- * garde en tête de son flux RSS des bulletins de 2014 —, et c'est par les
- * derniers qu'on la lit. Les articles sans date gardent leur rang, à la suite.
+ * The most recent articles, from most recent to oldest: a source is not
+ * always sorted by date — a JSON catalog, or CERT-FR, which keeps bulletins
+ * from 2014 at the head of its RSS feed —, and it is by the latest ones that
+ * it is read. Articles without a date keep their rank, after the others.
  */
 const latest = (articles: AccessFeedArticle[], quantity: number): AccessFeedArticle[] => {
   const articleTime = (a: AccessFeedArticle) => (a.date ? Date.parse(a.date) : -Infinity);
   return articles.sort((a, b) => articleTime(b) - articleTime(a)).slice(0, quantity);
 };
 
-/** Les articles d'un flux JSON, les plus récents d'abord. */
+/** The articles of a JSON feed, most recent first. */
 const readJson = (text: string, source: string, quantity: number): AccessFeedArticle[] => {
   let root: unknown;
   try {
@@ -212,15 +210,15 @@ const readJson = (text: string, source: string, quantity: number): AccessFeedArt
   );
 };
 
-/** Un flux JSON s'annonce par son type, ou à défaut par son premier caractère. */
+/** A JSON feed announces itself by its type, or failing that by its first character. */
 const isJson = (type: string, text: string): boolean =>
   /json/i.test(type) || /^[\s\uFEFF]*[[{]/.test(text);
 
-// --- Lecture d'un flux XML -------------------------------------------------
+// --- Reading an XML feed ---------------------------------------------------
 
 const ENTITIES: Record<string, string> = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
 
-/** Les entités du texte, ramenées aux caractères qu'elles désignent. */
+/** The text's entities, brought back to the characters they stand for. */
 const stripTags = (text: string): string =>
   text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, code: string) => {
     if (code[0] !== "#") return ENTITIES[code] ?? match;
@@ -231,14 +229,14 @@ const stripTags = (text: string): string =>
   });
 
 /**
- * Les sections CDATA sont mises de côté le temps de lire les balises : leur
- * contenu — souvent le HTML d'un article — porte des « < » qui tromperaient la
- * lecture. Chacune laisse à sa place un repère, entre deux caractères d'usage
- * privé qu'un flux ne contient pas.
+ * CDATA sections are set aside while tags are read: their content — often an
+ * article's HTML — carries "<" that would fool the reader. Each leaves a
+ * marker in its place, between two private-use characters that a feed does
+ * not contain.
  */
 const MARKER = /\uE000(\d+)\uE000/;
 
-/** Les éléments de ce nom, quel que soit leur préfixe d'espace de noms. */
+/** The elements of this name, whatever their namespace prefix. */
 const items = (into: string, name: string): { attributes: string; content: string }[] =>
   Array.from(
     into.matchAll(
@@ -253,9 +251,9 @@ const attribute = (attributes: string, name: string): string | undefined => {
 };
 
 /**
- * Les articles d'un flux RSS ou Atom, les plus récents d'abord. Un XML qui
- * n'en est pas un — une page HTML, le plus souvent — lève : la colonne le dit
- * plutôt que de rester vide.
+ * The articles of an RSS or Atom feed, most recent first. XML that is not
+ * one — an HTML page, most often — throws: the column says so rather than
+ * staying empty.
  */
 const readXml = (xml: string, source: string, quantity: number): AccessFeedArticle[] => {
   const cdata: string[] = [];
@@ -265,7 +263,7 @@ const readXml = (xml: string, source: string, quantity: number): AccessFeedArtic
     )
     .replace(/<!--[\s\S]*?-->/g, "");
 
-  /** Le texte d'un élément : ses balises ôtées, ses entités et CDATA rendues. */
+  /** An element's text: tags removed, entities and CDATA resolved. */
   const text = (content: string): string =>
     content
       .split(MARKER)
@@ -283,9 +281,8 @@ const readXml = (xml: string, source: string, quantity: number): AccessFeedArtic
   };
 
   /**
-   * L'adresse d'un article. En RSS, c'est le texte de « link » ; en Atom, son
-   * attribut « href » — celui de la page (« alternate ») quand il y en a
-   * plusieurs.
+   * An article's address. In RSS, it is the text of "link"; in Atom, its
+   * "href" attribute — that of the page ("alternate") when there are several.
    */
   const linkOf = (article: string): string => {
     const links = items(article, "link");
@@ -321,16 +318,16 @@ const readXml = (xml: string, source: string, quantity: number): AccessFeedArtic
   );
 };
 
-// --- Relève ----------------------------------------------------------------
+// --- Polling ---------------------------------------------------------------
 
-/** Ce que la source a rendu : son texte, son type annoncé, l'adresse finale. */
+/** What the source returned: its text, its announced type, the final address. */
 interface Downloaded {
   text: string;
   type: string;
   url: URL;
 }
 
-/** Le contenu de la source, redirections suivies et vérifiées. */
+/** The source's content, redirects followed and checked. */
 const download = async (address: string): Promise<Downloaded> => {
   let url = await verify(address);
   let response: Response | undefined;
@@ -361,14 +358,14 @@ const download = async (address: string): Promise<Downloaded> => {
 const readDownloaded = ({ text, type, url }: Downloaded, quantity: number): AccessFeedArticle[] =>
   isJson(type, text) ? readJson(text, url.href, quantity) : readXml(text, url.href, quantity);
 
-/** Les derniers articles de la source, lus, au plus « quantite ». */
+/** The source's latest articles, read, at most "quantity". */
 const readSource = async (address: string, quantity: number): Promise<AccessFeedArticle[]> =>
   readDownloaded(await download(address), quantity);
 
 /**
- * Le nom du format d'un flux déjà lu sans erreur : la version qu'annonce un
- * flux RSS, « RSS 1.0 » pour le RDF, « Atom », et « JSON Feed » pour un flux
- * qui suit jsonfeed.org — « JSON » pour un catalogue qui n'en suit aucun.
+ * The name of the format of a feed already read without error: the version
+ * an RSS feed announces, "RSS 1.0" for RDF, "Atom", and "JSON Feed" for a
+ * feed that follows jsonfeed.org — "JSON" for a catalog that follows none.
  */
 const formatDe = ({ text, type }: Downloaded): string => {
   if (isJson(type, text)) {
@@ -388,11 +385,10 @@ const formatDe = ({ text, type }: Downloaded): string => {
 };
 
 /**
- * Ce que donne une adresse, pour le réglage d'un élément : « injoignable »
- * quand la source ne rend rien — hôte introuvable, pas de réponse, une
- * erreur —, « invalide » quand ce qu'elle rend ne se lit pas comme un flux, et
- * sinon le nom de son format. Rien n'est rangé : la relève reste celle des
- * éléments enregistrés.
+ * What an address yields, for an item's setting: "unreachable" when the
+ * source returns nothing — host not found, no answer, an error —, "invalid"
+ * when what it returns does not read as a feed, and otherwise the name of its
+ * format. Nothing is stored: polling remains that of the saved items.
  */
 export const probeFeed = async (address: string): Promise<AccessFeedProbe> => {
   let downloaded: Downloaded;
@@ -410,8 +406,8 @@ export const probeFeed = async (address: string): Promise<AccessFeedProbe> => {
 };
 
 /**
- * Relève la source et range ce qu'elle donne. Un échec se range aussi : les
- * articles d'avant restent, et l'erreur attend la prochaine tentative.
+ * Polls the source and stores what it gives. A failure is stored too: the
+ * earlier articles remain, and the error waits for the next attempt.
  */
 const poll = (url: string, quantity: number): Promise<void> => {
   const already = ongoing.get(url);
@@ -429,13 +425,13 @@ const poll = (url: string, quantity: number): Promise<void> => {
   return attempt;
 };
 
-/** Ce qu'un élément RSS règle, lu dans sa configuration et ramené à ses bornes. */
+/** What an RSS item sets, read from its configuration and clamped to its bounds. */
 export interface FeedSettings {
-  /** Ses sources, dans l'ordre réglé, sans doublon. */
+  /** Its sources, in the set order, without duplicates. */
   urls: string[];
-  /** Les articles montrés : au plus, chaque source en fournit autant. */
+  /** The articles shown: at most, each source supplies that many. */
   quantity: number;
-  /** En minutes. */
+  /** In minutes. */
   interval: number;
 }
 
@@ -445,9 +441,9 @@ const bound = (value: unknown, defaultValue: number, min: number, max: number): 
 };
 
 /**
- * Les adresses des sources : la liste « sources », une entrée par ligne du
- * tiroir. Un élément rangé avant elle n'a que son « url », relue tant que la
- * liste n'a pas été enregistrée.
+ * The addresses of the sources: the "sources" list, one entry per line of the
+ * drawer. An item stored before it only has its "url", re-read as long as the
+ * list has not been saved.
  */
 const addressesOf = (config: Record<string, unknown>): string[] => {
   const raw = Array.isArray(config.sources)
@@ -459,9 +455,9 @@ const addressesOf = (config: Record<string, unknown>): string[] => {
 };
 
 /**
- * Les réglages d'un élément RSS. Le serveur ne lit d'ordinaire pas la
- * configuration d'un widget ; celle-ci, il la lit parce qu'il relève le flux
- * lui-même. Les clés et les valeurs par défaut sont celles du widget
+ * The settings of an RSS item. The server does not ordinarily read a
+ * widget's configuration; this one it reads because it polls the feed
+ * itself. The keys and default values are the widget's
  * (client/src/widgets/rss.tsx).
  */
 export const feedSettings = (config: Record<string, unknown>): FeedSettings => ({
@@ -476,8 +472,8 @@ export const feedSettings = (config: Record<string, unknown>): FeedSettings => (
 });
 
 /**
- * Les sources suivies, chacune avec ce que ses éléments demandent : la plus
- * grande quantité, et l'intervalle le plus court.
+ * The followed sources, each with what its items ask for: the largest
+ * quantity, and the shortest interval.
  */
 const followedSources = (): Map<string, { quantity: number; interval: number }> => {
   const sources = new Map<string, { quantity: number; interval: number }>();
@@ -502,9 +498,9 @@ const followedSources = (): Map<string, { quantity: number; interval: number }> 
 };
 
 /**
- * Vrai quand la source est à relever : son intervalle écoulé depuis la
- * dernière tentative, ou plus tôt après un échec, ou dès qu'un élément demande
- * plus d'articles que la base n'en garde.
+ * True when the source is due for polling: its interval elapsed since the
+ * last attempt, or sooner after a failure, or as soon as an item asks for
+ * more articles than the database keeps.
  */
 const toRecord = (row: AccessFeedRow | undefined, quantity: number, interval: number) => {
   if (!row) return true;
@@ -516,10 +512,10 @@ const toRecord = (row: AccessFeedRow | undefined, quantity: number, interval: nu
 let pollInProgress = false;
 
 /**
- * La relève de fond : chaque source suivie dont l'échéance est passée est
- * relevée, une à une — rien ne presse, et les sources n'ont pas à recevoir
- * toutes leurs demandes à la même seconde. Les flux que plus aucun élément ne
- * suit quittent la base.
+ * The background poll: each followed source whose due time has passed is
+ * polled, one by one — nothing is urgent, and sources need not receive all
+ * their requests in the same second. Feeds that no item follows any more
+ * leave the database.
  */
 export const pollAllFeeds = async (): Promise<void> => {
   if (pollInProgress) return;
@@ -547,10 +543,10 @@ const articlesOf = (row: AccessFeedRow): AccessFeedArticle[] => {
 };
 
 /**
- * Une source d'un élément, telle que la base la garde. Elle n'est relevée sur
- * le champ que lorsque la base n'a rien à montrer — une source neuve, une
- * adresse changée, une quantité relevée — ; sinon, c'est la relève de fond qui
- * la tient à jour, et la page n'attend jamais la source.
+ * An item's source, as the database keeps it. It is only polled in the field
+ * when the database has nothing to show — a new source, a changed address, a
+ * raised quantity —; otherwise, the background poll keeps it up to date, and
+ * the page never waits for the source.
  */
 const sourceOf = async (
   url: string,
@@ -559,7 +555,7 @@ const sourceOf = async (
 ): Promise<AccessFeedSource> => {
   let row = accessFeeds.byUrl.get(url);
   const servable = row?.fetched_at != null && row.quantity >= quantity;
-  // Une source qui vient d'échouer n'est pas relancée à chaque visite.
+  // A source that has just failed is not retried on every visit.
   const attemptAllowed = !row || !row.error
     || Date.now() - Date.parse(row.tried_at) >= RETRY_DELAY;
   if (!servable && attemptAllowed) {
@@ -579,12 +575,12 @@ const sourceOf = async (
 };
 
 /**
- * Le flux d'un élément : chacune de ses sources, dans l'ordre réglé. Elles se
- * lisent ensemble, et l'échec de l'une ne retient pas les autres.
+ * An item's feed: each of its sources, in the set order. They are read
+ * together, and the failure of one does not hold back the others.
  */
 export const feedOf = async ({ urls, quantity }: FeedSettings): Promise<AccessFeed> => {
   if (!urls.length) badRequest("L'adresse du flux est requise");
-  // Les sources suivies ne se relisent qu'une fois, et seulement s'il faut.
+  // Followed sources are only re-read once, and only if needed.
   let followed: Map<string, { quantity: number }> | undefined;
   const getFollowed = () => (followed ??= followedSources());
   return {

@@ -12,15 +12,15 @@ import { DEFAULT_LABEL_COLOR } from "@milo/shared";
 import type { Label, ProjectLabel, SupportLabel } from "@milo/shared";
 import type { ReactNode } from "react";
 
-/** Les étiquettes des trois modes ont la même forme ici. */
+/** Labels of the three modes have the same shape here. */
 type AnyLabel = Label | ProjectLabel | SupportLabel;
 
 /**
- * Ce qu'il faut savoir faire pour gérer un jeu d'étiquettes. Les routes
- * changent d'un mode à l'autre, les gestes non.
+ * What it takes to manage a set of labels. The routes change from one mode to
+ * another, the actions do not.
  *
- * `parentId` est ce à quoi les étiquettes pendent : un tableau pour les cartes
- * et les projets, une société pour les tickets.
+ * `parentId` is what the labels hang from: a board for cards and projects, a
+ * company for tickets.
  */
 export interface LabelsApi {
   create: (parentId: number, name: string, color: string, weight: number) => Promise<AnyLabel>;
@@ -29,13 +29,13 @@ export interface LabelsApi {
     data: { name?: string; color?: string; weight?: number },
   ) => Promise<AnyLabel>;
   remove: (id: number) => Promise<unknown>;
-  /** Ce que la suppression emporte, dit dans les mots du mode. */
+  /** What deletion takes along, stated in the mode's own words. */
   carriers: string;
-  /** Vrai quand les étiquettes portent un poids : celles des projets et du support. */
+  /** True when labels carry a weight: those of projects and support. */
   withWeight?: boolean;
 }
 
-/** Une étiquette en cours de saisie : son nom et sa couleur, avant validation. */
+/** A label being edited: its name and color, before validation. */
 interface Draft {
   id?: number;
   name: string;
@@ -43,26 +43,24 @@ interface Draft {
   weight: number | "";
 }
 
-/** Le poids d'une étiquette ; celles qui n'en portent pas pèsent zéro. */
+/** A label's weight; those that carry none weigh zero. */
 const weightOf = (label: AnyLabel): number => ("weight" in label ? label.weight : 0);
 
-// Largeur du poids : de quoi écrire trois chiffres.
+// Width of the weight: enough to write three digits.
 const WEIGHT_WIDTH = 40;
 import LabelColorPicker from "./LabelColorPicker";
 
-// Décalage de l'étiquette dans la liste : elle respire de deux pixels après sa
-// case à cocher.
+// The label's offset in the list: it breathes two pixels after its checkbox.
 const LABEL_INDENT = 2;
 
-// Les étiquettes des cartes et celles des projets se choisissent, se
-// renomment, se recolorent et se suppriment de la même façon : seules les
-// routes changent. On les nomme ici plutôt que d'appeler « api » directement,
-// pour que le même composant serve aux deux modes.
+// Card labels and project labels are chosen, renamed, recolored and deleted in
+// the same way: only the routes change. They are named here rather than calling
+// "api" directly, so that the same component serves both modes.
 export const CARD_LABELS_API: LabelsApi = {
   create: api.createLabel,
   update: api.updateLabel,
   remove: api.deleteLabel,
-  // Ce que la suppression emporte, dit dans les mots du mode.
+  // What deletion takes along, stated in the mode's own words.
   carriers: "des cartes qui la portent",
 };
 
@@ -74,8 +72,8 @@ export const PROJECT_LABELS_API: LabelsApi = {
   withWeight: true,
 };
 
-// Celles du support sont communes à toutes les sociétés : elles ne pendent à
-// rien, et « boardId » n'a pas cours ici.
+// Support ones are shared by all companies: they hang from nothing, and
+// "boardId" does not apply here.
 export const SUPPORT_LABELS_API: LabelsApi = {
   create: (_boardId, name, color, weight) => api.createSupportLabel(name, color, weight),
   update: api.updateSupportLabel,
@@ -85,27 +83,26 @@ export const SUPPORT_LABELS_API: LabelsApi = {
 };
 
 /**
- * Les étiquettes d'une carte : un clic les coche pour les poser, un double
- * clic ouvre l'une d'elles pour la renommer ou la recolorer, la corbeille au bout de la ligne
- * la supprime, et le lien du bas en ajoute une sans quitter la liste. Renommer,
- * recolorer ou supprimer touche l'étiquette du tableau, donc toutes les cartes
- * qui la portent.
+ * A card's labels: a click checks them to apply them, a double click opens one
+ * to rename or recolor it, the trash at the end of the row deletes it, and the
+ * link at the bottom adds one without leaving the list. Renaming, recoloring or
+ * deleting affects the board's label, hence all the cards that carry it.
  */
 interface LabelPickerProps {
   labels: AnyLabel[];
-  /** Les identifiants retenus, en chaînes. */
+  /** The selected identifiers, as strings. */
   value: string[];
   onChange: (value: string[]) => void;
-  /** Ce à quoi ces étiquettes pendent : un tableau, ou une société en Support. */
+  /** What these labels hang from: a board, or a company in Support. */
   boardId: string | number;
-  /** Sans argument : relire. Avec un correctif : l'appliquer sur place. */
+  /** Without argument: re-read. With a patch: apply it in place. */
   onLabelsChanged: (patch?: { id: number; data: Partial<AnyLabel> }) => void | Promise<void>;
   chipHeight?: number;
-  /** Le mode auquel ces étiquettes appartiennent : les cartes par défaut. */
+  /** The mode these labels belong to: cards by default. */
   labelsApi?: LabelsApi;
-  /** Ce que dit la liste quand il n'y a encore aucune étiquette où choisir. */
+  /** What the list says when there is no label yet to choose from. */
   emptyText?: string;
-  /** Le titre du champ : « Étiquettes » par défaut. */
+  /** The field's title: "Étiquettes" by default. */
   label?: string;
 }
 
@@ -116,17 +113,17 @@ export default function LabelPicker({
   boardId,
   onLabelsChanged,
   chipHeight,
-  // Le mode auquel ces étiquettes appartiennent : les cartes par défaut.
+  // The mode these labels belong to: cards by default.
   labelsApi = CARD_LABELS_API,
   emptyText = "Aucune étiquette sur ce tableau",
   label = "Étiquettes",
 }: LabelPickerProps) {
-  // Étiquette en cours de modification — son nom et sa couleur y vivent tant
-  // qu'on n'a pas validé — et celle qu'on est en train d'ajouter.
+  // Label being modified — its name and color live there until validated — and
+  // the one being added.
   const [edited, setEdited] = useState<Draft | null>(null);
   const [adding, setAdding] = useState<Draft | null>(null);
-  // Étiquette survolée — sa corbeille seule se montre — et celle dont on
-  // attend la confirmation de suppression.
+  // Hovered label — only its trash shows — and the one awaiting deletion
+  // confirmation.
   const [hovering, setHovered] = useState<number | null>(null);
   const [toDelete, setToDelete] = useState<AnyLabel | null>(null);
 
@@ -137,29 +134,29 @@ export default function LabelPicker({
 
   const closeEdit = () => setEdited(null);
 
-  // Choisir une couleur est un geste qui se suffit : elle s'applique aussitôt,
-  // partout où l'étiquette se montre. Le nom, lui, attend d'être validé — on
-  // ne veut pas le voir changer à chaque lettre tapée.
+  // Choosing a color is a self-sufficient action: it applies immediately,
+  // everywhere the label shows. The name, on the other hand, waits to be
+  // validated — we do not want to see it change with every letter typed.
   const applyColor = async (label: AnyLabel, color: string) => {
     setEdited((e) => (e ? { ...e, color } : e));
     if (color === label.color) return;
-    // La couleur se pose d'abord à l'écran, puis part au serveur : sans cela,
-    // les cartes attendraient l'aller-retour pour changer de teinte.
+    // The color is first applied on screen, then sent to the server: otherwise
+    // the cards would wait for the round trip to change hue.
     onLabelsChanged({ id: label.id, data: { color } });
     await labelsApi.update(label.id, { color });
     await onLabelsChanged();
   };
 
-  // Le nom ne part au serveur qu'à la validation : ailleurs — la liste, les
-  // vignettes de la carte, les cartes du tableau — l'étiquette le garde tant
-  // qu'il n'a pas changé pour de bon.
+  // The name only goes to the server on validation: elsewhere — the list, the
+  // card's thumbnails, the board's cards — the label keeps it until it has
+  // really changed.
   const save = async (label: AnyLabel) => {
     const current = edited;
     closeEdit();
     if (!current) return;
     const name = current.name.trim();
     if (!name) return;
-    // Un poids vidé garde celui enregistré.
+    // An emptied weight keeps the saved one.
     const weight = current.weight === "" ? weightOf(label) : current.weight;
     if (name === label.name && current.color === label.color && weight === weightOf(label)) return;
     await labelsApi.update(label.id, {
@@ -175,9 +172,9 @@ export default function LabelPicker({
     setAdding({ name: "", color: DEFAULT_LABEL_COLOR, weight: 0 });
   };
 
-  // La liste se referme : ce qui était en cours de saisie se conclut, sans
-  // quoi le champ disparaîtrait avec elle et la couleur choisie serait perdue
-  // — le champ démonté n'a pas d'occasion de rendre la main.
+  // The list closes: what was being typed is concluded, otherwise the field
+  // would disappear with it and the chosen color would be lost — the unmounted
+  // field has no chance to hand control back.
   const finish = () => {
     if (edited) {
       const label = labels.find((l) => l.id === edited.id);
@@ -187,7 +184,7 @@ export default function LabelPicker({
     if (adding) create();
   };
 
-  // L'étiquette créée se pose aussitôt sur la carte : on vient de la demander.
+  // The created label is applied to the card right away: it was just requested.
   const create = async () => {
     const newValue = (adding?.name ?? "").trim();
     if (!newValue || !adding) {
@@ -205,8 +202,8 @@ export default function LabelPicker({
     onChange([...value, String(created.id)]);
   };
 
-  // Supprimer se demande avant de se faire : l'étiquette quitte le tableau, et
-  // donc tout ce qui la porte, pas seulement la fiche ouverte.
+  // Deleting asks before doing it: the label leaves the board, and so
+  // everything that carries it, not just the open card.
   const requestDeletion = (label: AnyLabel) => {
     closeEdit();
     setAdding(null);
@@ -220,19 +217,19 @@ export default function LabelPicker({
     try {
       await labelsApi.remove(label.id);
     } catch (e) {
-      // Une étiquette encore portée ne se supprime pas : le serveur dit par
-      // combien de ressources.
+      // A label that is still in use cannot be deleted: the server says by how
+      // many resources.
       notifyError(errorMessage(e), "Suppression impossible");
       return;
     }
-    // La carte ouverte la perd aussitôt : sans cela, l'enregistrement la lui
-    // reposerait, alors que le serveur ne la connaît plus.
+    // The open card loses it right away: otherwise saving would put it back,
+    // even though the server no longer knows it.
     onChange(value.filter((v) => v !== String(label.id)));
     await onLabelsChanged();
   };
 
-  // Une ligne de saisie : la pastille de couleur, le nom, puis le poids quand
-  // le mode en porte un. Sert à la modification comme à l'ajout.
+  // An input row: the color swatch, the name, then the weight when the mode has
+  // one. Used for editing as well as for adding.
   interface InputProps {
     color: string;
     name: string;
@@ -261,8 +258,8 @@ export default function LabelPicker({
       gap={6}
       wrap="nowrap"
       style={{ flex: 1, minWidth: 0 }}
-      // Les clics de la saisie restent à elle : placer le curseur ou choisir
-      // une couleur ne doit pas cocher ni décocher l'étiquette.
+      // The input's clicks stay with it: placing the cursor or choosing a color
+      // must not check or uncheck the label.
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
     >
@@ -282,8 +279,8 @@ export default function LabelPicker({
           }
           if (e.key === "Escape") onCancel();
         }}
-        // Le focus qui passe à la pastille ou à sa palette reste dans la
-        // saisie : sans cela, aller choisir une couleur la refermerait.
+        // Focus moving to the swatch or its palette stays within the input:
+        // otherwise, going to choose a color would close it.
         onBlur={(e) => {
           if (e.relatedTarget?.closest("[data-label-editor]")) return;
           onSubmit();
@@ -327,11 +324,12 @@ export default function LabelPicker({
     <>
       <ChipPicker
         chipHeight={chipHeight}
-        // Le « + » d'une étiquette est rectangulaire, comme elle : même rayon.
+        // A label's "+" is rectangular, like it: same radius.
         plusRadius={4}
         onClose={finish}
-        // La fenêtre de confirmation est un clic « au dehors » : la liste s'en
-        // irait, et l'on reviendrait à la carte sitôt la question répondue.
+        // The confirmation window counts as a click "outside": the list would
+        // go away, and we would be back at the card as soon as the question is
+        // answered.
         closeBlocked={toDelete !== null}
         label={label}
         options={labels}
@@ -339,15 +337,15 @@ export default function LabelPicker({
         onChange={onChange}
         emptyText={emptyText}
         fullWidthOptions
-        // Une étiquette déjà ouverte reste en saisie : le double clic dans son champ ne
-        // doit pas la rouvrir et effacer ce qu'on est en train d'écrire.
+        // A label that is already open stays in edit mode: double-clicking in
+        // its field must not reopen it and erase what is being written.
         onOptionClick={(l) => edited?.id !== l.id && openEdit(l)}
-        // La vignette de la carte ne suit pas la modification : elle montre
-        // l'étiquette telle qu'elle est enregistrée, et ne changera qu'une fois
-        // la saisie validée. Seule la ligne de la liste passe en saisie.
+        // The card's thumbnail does not follow the edit: it shows the label as
+        // it is saved, and will only change once the input is validated. Only
+        // the list row goes into edit mode.
         renderChip={(l) => <LabelChip label={l} height={chipHeight} />}
         render={(l) => (
-          // La ligne : l'étiquette — ou sa saisie — et, au bout, la corbeille.
+          // The row: the label — or its input — and, at the end, the trash.
           <Group
             gap={4}
             wrap="nowrap"
@@ -356,8 +354,8 @@ export default function LabelPicker({
             onMouseLeave={() => setHovered((id) => (id === l.id ? null : id))}
           >
             {edited?.id === l.id ? (
-              // En modification seulement : la pastille de couleur rejoint le
-              // nom. Au repos, l'étiquette se suffit à elle-même.
+              // In edit mode only: the color swatch joins the name. At rest,
+              // the label stands on its own.
               input({
                 color: edited.color,
                 name: edited.name,
@@ -370,15 +368,14 @@ export default function LabelPicker({
                 aria: `Renommer ${l.name}`,
               })
             ) : (
-              // L'étiquette tient toute la largeur de la liste, comme un bandeau.
+              // The label takes the whole width of the list, like a banner.
               <div style={{ flex: 1, minWidth: 0, paddingLeft: LABEL_INDENT }}>
                 <LabelChip label={l} height={chipHeight} fullWidth />
               </div>
             )}
 
-            {/* La corbeille ne paraît qu'au survol ou pendant la modification,
-                mais tient sa place en tout temps : la ligne ne bouge pas quand
-                la souris la traverse. */}
+            {/* The trash only appears on hover or during edit, but always keeps
+                its place: the row does not move when the mouse crosses it. */}
             <ActionIcon
               variant="subtle"
               color={RED}
@@ -387,8 +384,8 @@ export default function LabelPicker({
                 flexShrink: 0,
                 opacity: hovering === l.id || edited?.id === l.id ? 1 : 0,
               }}
-              // Le clic s'arrête ici : il ne doit pas cocher ni ouvrir
-              // l'étiquette qu'on s'apprête à supprimer.
+              // The click stops here: it must not check or open the label about
+              // to be deleted.
               onClick={(e) => {
                 e.stopPropagation();
                 requestDeletion(l);
@@ -435,8 +432,8 @@ export default function LabelPicker({
         }
       />
 
-      {/* Posée hors de la liste, qui l'emporterait en se refermant : la
-          question survit ainsi, et la liste reste ouverte derrière elle. */}
+      {/* Placed outside the list, which would take it along when closing: the
+          question thus survives, and the list stays open behind it. */}
       <DeleteConfirmModal
         opened={toDelete !== null}
         onClose={() => setToDelete(null)}

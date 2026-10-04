@@ -7,20 +7,20 @@ import type { Board, Id, TaskList, View } from "@milo/shared";
 import { errorMessage, notifyError } from "../../lib/errors";
 import CloseButton from "../ui/CloseButton";
 
-// Déplacer ou copier une liste vers un tableau. Les deux gestes posent la même
-// question — lequel ? — et la même boîte y répond, l'intitulé près.
+// Move or copy a list to a board. Both gestures ask the same
+// question — which one? — and the same dialog answers it, apart from the title.
 //
-// Ce qui les sépare tient en deux points. Déplacer emmène la liste ailleurs :
-// son propre tableau n'est pas une destination, et son nom ne bouge pas.
-// Copier la laisse où elle est : le tableau courant redevient une destination
-// — c'est le cas le plus courant, dupliquer une liste sur place — et la copie
-// se nomme, puisque deux listes du même nom dans la même colonne ne se
-// distingueraient plus.
+// Two points set them apart. Moving takes the list elsewhere:
+// its own board is not a destination, and its name does not change.
+// Copying leaves it where it is: the current board becomes a destination
+// again — this is the most common case, duplicating a list in place — and the copy
+// is named, since two lists with the same name in the same column could no
+// longer be told apart.
 //
-// La destination n'est pas bornée à la vue courante : un tableau appartient à
-// une vue, on choisit donc d'abord laquelle. Les tableaux se lisent alors pour
-// elle — l'écran n'a en mémoire que ceux qu'il affiche. Dans un autre tableau,
-// les cartes prennent le premier de ses contextes.
+// The destination is not limited to the current view: a board belongs to
+// a view, so you first choose which. The boards are then read for
+// it — the screen only holds in memory those it displays. In another board,
+// cards take the first of its contexts.
 export type ListAction = "move" | "copy";
 
 interface MoveOrCopyListModalProps {
@@ -28,12 +28,12 @@ interface MoveOrCopyListModalProps {
   onClose: () => void;
   mode: ListAction;
   list: TaskList | null;
-  /** La vue du tableau ouvert : la destination s'y cherche par défaut. */
+  /** The open board's view: the destination is searched there by default. */
   viewId: Id | null;
   onDone: () => void | Promise<void>;
 }
 
-/** « Ma liste » -> « Ma liste (copie) ». */
+/** "Ma liste" -> "Ma liste (copie)". */
 const copyName = (name: string): string => `${name} (copie)`;
 
 export default function MoveOrCopyListModal({
@@ -47,7 +47,7 @@ export default function MoveOrCopyListModal({
   const can = useRights();
   const [views, setViews] = useState<View[] | null>(null);
   const [view, setView] = useState<string | null>(null);
-  /** Les tableaux de la vue retenue ; « null » tant qu'on les lit. */
+  /** The boards of the chosen view; "null" while they are being read. */
   const [boards, setBoards] = useState<Board[] | null>(null);
   const [boardId, setBoardId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -55,9 +55,9 @@ export default function MoveOrCopyListModal({
 
   const copy = mode === "copy";
 
-  // À l'ouverture : la vue du tableau courant, et pour une copie son tableau
-  // — dupliquer une liste sur place ne doit rien demander de plus que son
-  // nom.
+  // On open: the current board's view, and for a copy its board
+  // — duplicating a list in place must ask nothing more than its
+  // name.
   useEffect(() => {
     if (!opened) return;
     setView(viewId === null ? null : String(viewId));
@@ -78,8 +78,8 @@ export default function MoveOrCopyListModal({
     };
   }, [opened, list, copy, viewId]);
 
-  // Les tableaux suivent la vue retenue. Une réponse arrivée après un
-  // nouveau choix serait périmée : on l'abandonne.
+  // The boards follow the chosen view. A response arriving after a
+  // new choice would be stale: it is dropped.
   useEffect(() => {
     if (!opened || !view) {
       setBoards(null);
@@ -100,19 +100,19 @@ export default function MoveOrCopyListModal({
     };
   }, [opened, view]);
 
-  // Changer de vue, c'est repartir du choix du tableau : celui qu'on avait
-  // retenu n'appartient pas à la nouvelle.
+  // Changing view means starting over from the board choice: the one that had
+  // been chosen does not belong to the new one.
   const changeView = (value: string | null) => {
     setView(value);
     setBoardId(null);
   };
 
-  // Déplacer exclut le tableau qui porte déjà la liste ; copier l'accepte.
+  // Moving excludes the board that already holds the list; copying accepts it.
   const boardOptions = (boards ?? [])
     .filter((board) => copy || board.id !== list?.board_id)
     .map((board) => ({ value: String(board.id), label: board.name }));
 
-  // Sans le droit d'ajouter des tâches, aucune vue n'accueille.
+  // Without the right to add tasks, no view accepts.
   const viewOptions = can("tasks", "create")
     ? (views ?? []).map((v) => ({ value: String(v.id), label: v.name }))
     : [];
@@ -135,8 +135,8 @@ export default function MoveOrCopyListModal({
     }
   };
 
-  // Une vue sans tableau d'accueil ne peut rien recevoir : on le dit au
-  // lieu de laisser une liste déroulante vide.
+  // A view with no host board can receive nothing: we say so
+  // instead of leaving an empty dropdown.
   const noDestination = boards !== null && boardOptions.length === 0;
 
   return (
@@ -151,8 +151,8 @@ export default function MoveOrCopyListModal({
     >
       <Stack gap="md">
 
-        {/* La vue précède le tableau : elle commande la liste des
-            destinations possibles. */}
+        {/* The view comes before the board: it drives the list of
+            possible destinations. */}
         <Select
           label="Vue"
           placeholder="Choisir une vue"
@@ -182,8 +182,8 @@ export default function MoveOrCopyListModal({
           </Text>
         )}
 
-        {/* La copie se nomme : posée dans le tableau d'origine, elle porterait
-            sinon le nom de la liste dont elle sort. */}
+        {/* The copy is named: placed in the original board, it would otherwise
+            carry the name of the list it comes from. */}
         {copy && (
           <TextInput
             label="Nom de la copie"

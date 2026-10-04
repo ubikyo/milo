@@ -1,9 +1,9 @@
-// Les types de jalons : Commande, Développement, Installation… Réglés une fois
-// pour toute l'application, dans les réglages. Un projet en choisit un, qui
-// pose les marques et les couleurs de son curseur d'avancement.
+// Milestone types: Commande, Développement, Installation… Set once for the
+// whole application, in the settings. A project picks one, which sets the
+// marks and colors of its progress slider.
 //
-// Supprimer un type ne supprime aucun projet : ceux qui le portaient gardent
-// leur avancement, et leur curseur redevient nu (ON DELETE SET NULL).
+// Deleting a type deletes no project: those carrying it keep their progress,
+// and their slider goes back to bare (ON DELETE SET NULL).
 
 import { Router } from "express";
 import { DEFAULT_MILESTONE_TYPE } from "@milo/shared";
@@ -34,7 +34,7 @@ export const milestoneTypes = {
   byId: selection<MilestoneTypeRow>("SELECT * FROM milestone_types WHERE id = ?"),
 };
 
-/** Les jalons du type « Défaut » : les couleurs de la progression d'un projet. */
+/** The milestones of the "Défaut" type: the colors of a project's progress. */
 const DEFAULT_MILESTONES: Milestone[] = [
   { value: 33, label: "", color: "red.6" },
   { value: 66, label: "", color: "orange.6" },
@@ -43,8 +43,8 @@ const DEFAULT_MILESTONES: Milestone[] = [
 const createWithMilestones = mutation("INSERT INTO milestone_types (name, milestones) VALUES (?, ?)");
 
 /**
- * Pose le type « Défaut » s'il n'existe pas — à l'arrivée d'un widget de
- * projets dans un tableau. Vrai s'il vient d'être créé.
+ * Sets the "Défaut" type if it does not exist — when a projects widget
+ * arrives in a board. True if it was just created.
  */
 export const ensureDefaultType = (): boolean => {
   if (byName.get(DEFAULT_MILESTONE_TYPE, 0)) return false;
@@ -52,21 +52,21 @@ export const ensureDefaultType = (): boolean => {
   return true;
 };
 
-/** La ligne telle que l'API la rend : ses jalons redeviennent une liste. */
+/** The row as the API returns it: its milestones become a list again. */
 const toType = (row: MilestoneTypeRow): MilestoneType => {
   let milestones: MilestoneType["milestones"] = [];
   try {
     milestones = validMilestones(JSON.parse(row.milestones)) ?? [];
   } catch {
-    // Un JSON illisible vaut une liste vide plutôt qu'une page en erreur.
+    // Unreadable JSON counts as an empty list rather than an error page.
   }
   return { id: row.id, name: row.name, milestones };
 };
 
 export const milestoneTypeRoutes = Router();
 
-// Les jalons se lisent sur les projets qui portent le type : les changer
-// change leur curseur et la couleur de leur progression.
+// Milestones are read on the projects carrying the type: changing them
+// changes their slider and the color of their progress.
 milestoneTypeRoutes.use(touch("lookups", "projects"));
 
 milestoneTypeRoutes.get("/", (_req, res) => {
@@ -81,7 +81,7 @@ milestoneTypeRoutes.post("/", (req, res) => {
   res.status(201).json(toType(milestoneTypes.byId.get(lastInsertRowid)!));
 });
 
-// Le nom et les jalons se modifient séparément : ce qui n'est pas envoyé reste.
+// The name and milestones are edited separately: what is not sent stays.
 milestoneTypeRoutes.put("/:id", (req, res) => {
   const existing = orNotFound(milestoneTypes.byId.get(req.params.id), TYPE_NOT_FOUND);
 
@@ -104,8 +104,8 @@ milestoneTypeRoutes.put("/:id", (req, res) => {
 milestoneTypeRoutes.delete("/:id", (req, res) => {
   const existing = orNotFound(milestoneTypes.byId.get(req.params.id), TYPE_NOT_FOUND);
   refuseIfUsed(existing.name, uses(existing.id).count);
-  // Détachés d'abord, sans compter sur la clé étrangère : une base ancienne a
-  // reçu la colonne par ALTER TABLE, et c'est ici qu'on veut en être sûr.
+  // Detached first, without relying on the foreign key: an old database got
+  // the column through ALTER TABLE, and this is where we want to be sure.
   transaction(() => {
     detach.run(existing.id);
     remove.run(existing.id);

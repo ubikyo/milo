@@ -1,11 +1,11 @@
-// Les réponses par défaut qui partent d'office : un évènement — l'arrivée
-// d'une demande par e-mail, sa fermeture… — envoie à l'expéditeur la réponse
-// que le Paramétrage lui a attribuée (Support › Réponses par défaut).
+// Default replies that are sent automatically: an event — the arrival of a
+// request by e-mail, its closing… — sends the sender the reply that the
+// Settings assigned to it (Support › Réponses par défaut).
 //
-// La réponse entre dans le fil de la demande, signée Milo, comme une réponse
-// de l'équipe : on voit ce qui est parti, et si c'est parti. Elle part de la
-// boîte de support, dans la conversation de l'e-mail d'origine
-// (lib/support-reply.ts) — une demande saisie dans Milo n'en reçoit donc pas.
+// The reply enters the request's thread, signed Milo, like a team reply: you
+// can see what was sent, and whether it went out. It is sent from the support
+// inbox, in the original e-mail's conversation (lib/support-reply.ts) — so a
+// request entered in Milo receives none.
 
 import { fillSupportTemplate, supportReplyValues } from "@milo/shared";
 import type { Id, SupportReplyEvent, SupportStatus } from "@milo/shared";
@@ -17,14 +17,14 @@ import { replyMailbox, replyByEmail } from "./support-reply.js";
 import { senderPerson } from "./support-variables.js";
 import { now } from "./time.js";
 
-/** L'évènement qu'un nouveau statut déclenche ; « Nouveau » n'en déclenche aucun. */
+/** The event a new status triggers; "Nouveau" triggers none. */
 export const statusEvent = (status: SupportStatus): SupportReplyEvent | null =>
   status === "new" ? null : status;
 
 /**
- * Envoie la réponse qu'appelle l'évènement, s'il y en a une et que la demande
- * a quelqu'un à qui répondre, et que son modèle est renseigné. Ne lève
- * jamais : un échec se lit sur le message, dans le fil.
+ * Sends the reply the event calls for, if there is one, the request has
+ * someone to reply to, and its template is filled in. Never throws: a failure
+ * is read on the message, in the thread.
  */
 export const sendAutoReply = async (
   requestId: Id,
@@ -37,7 +37,7 @@ export const sendAutoReply = async (
     if (!reply) return;
 
     if (!hasContent(reply.html)) return;
-    // Partie d'office, la réponse n'a pas d'utilisateur : ses variables restent vides.
+    // Sent automatically, the reply has no user: its variables stay empty.
     const sender = await senderPerson(request);
     const html = fillSupportTemplate(
       reply.html,
@@ -55,6 +55,6 @@ export const sendAutoReply = async (
     await replyByEmail(request, lastInsertRowid as Id, html);
     signalWrite("support-requests");
   } catch (error) {
-    console.error(`Réponse par défaut « ${event} » à la demande ${requestId} :`, error);
+    console.error(`Default reply "${event}" to request ${requestId}:`, error);
   }
 };

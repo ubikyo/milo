@@ -44,13 +44,13 @@ import type { ProjectAction } from "./MoveOrCopyProjectModal";
 import { useRights } from "../../lib/rights";
 import { useIsEditing } from "../../lib/editing";
 
-/** Une option d'entonnoir : « all » vaut « pas de filtre ». */
+/** A funnel option: "all" means "no filter". */
 interface FilterOption {
   value: string;
   label: string;
 }
 
-/** Ce que le tableau demande pour ses entonnoirs de colonnes. */
+/** What the table asks for its column funnels. */
 export interface ProjectFiltersProps {
   categories: Category[];
   categoryFilter: string;
@@ -62,7 +62,7 @@ export interface ProjectFiltersProps {
   onActorFilterChange: (value: string) => void;
 }
 
-/** Les clés de colonne : ce sur quoi on trie et ce qui se masque. */
+/** The column keys: what is sorted on and what gets hidden. */
 type ColumnKey =
   | "number"
   | "name"
@@ -77,7 +77,7 @@ type ColumnKey =
 interface Column {
   key: ColumnKey;
   label: string;
-  /** La valeur sur laquelle la colonne se trie. */
+  /** The value the column is sorted on. */
   value: (p: Project) => string | number | null;
   width?: number;
 }
@@ -87,24 +87,24 @@ interface Sort {
   direction: "asc" | "desc";
 }
 
-/** Le projet visé par le clic droit, et le point où le menu doit s'ouvrir. */
+/** The project targeted by the right-click, and the point where the menu should open. */
 interface ContextTarget {
   project: Project;
   x: number;
   y: number;
 }
 
-// Padding vertical des lignes ; la hauteur inclut le padding (box-sizing).
+// Vertical padding of the rows; the height includes the padding (box-sizing).
 const ROW_PADDING_Y = 5;
 
-// La colonne « Progression » est taillée sur son contenu : la barre et le
-// pourcentage, plus l'espace qui les sépare.
+// The "Progression" column is sized to its content: the bar and the
+// percentage, plus the space between them.
 const PROGRESS_WIDTH = 85;
 const PERCENT_WIDTH = 40;
 const STATUS_GAP = 10;
 const STATUS_WIDTH = PROGRESS_WIDTH + PERCENT_WIDTH + STATUS_GAP;
 
-// La référence la plus longue qu'on attend : le tag en prend la largeur.
+// The longest reference expected: the tag takes its width.
 const REFERENCE_TEMPLATE = projectReference(999);
 
 const formatDate = (value: string): string =>
@@ -116,10 +116,10 @@ const STATUS_OPTIONS: FilterOption[] = [
   { value: "done", label: "Terminé" },
 ];
 
-// Les étiquettes d'un projet, sur une seule ligne. Elles sont plus larges
-// que les pastilles d'acteurs : au-delà de deux, le compte des autres remplace
-// la liste, sans quoi la colonne prendrait la largeur du projet le plus
-// étiqueté.
+// A project's labels, on a single row. They are wider than the actor
+// badges: beyond two, the count of the others replaces the list,
+// otherwise the column would take the width of the most labeled
+// project.
 const LABELS_SHOWN = 2;
 const LABEL_HEIGHT = 20;
 
@@ -132,16 +132,16 @@ function LabelsCell({ labels }: { labels: Project["labels"] }) {
     );
   }
 
-  // Les plus lourdes devant : le serveur les range ainsi, la saisie du tiroir
-  // non.
+  // Heaviest first: the server orders them this way, the drawer's input
+  // does not.
   const shown = [...labels]
     .sort((a, b) => b.weight - a.weight)
     .slice(0, LABELS_SHOWN);
   const remaining = labels.length - shown.length;
 
   return (
-    // Même boîte de hauteur fixe que les acteurs : sans elle, la line-box
-    // ajoute un demi-pixel et la ligne devient plus haute que les autres.
+    // Same fixed-height box as the actors: without it, the line box
+    // adds half a pixel and the row becomes taller than the others.
     <div
       style={{
         height: ACTOR_AVATAR_SIZE,
@@ -169,8 +169,8 @@ function LabelsCell({ labels }: { labels: Project["labels"] }) {
   );
 }
 
-// Une barre neutre, grise : la liste se lit d'un coup d'œil sans que chaque ligne
-// crie sa couleur. La couleur des jalons se voit dans la fiche du projet.
+// A neutral, gray bar: the list reads at a glance without each row
+// shouting its color. The milestones' color shows in the project's details.
 function StatusCell({ status }: { status: number }) {
   return (
     <Group gap={STATUS_GAP} wrap="nowrap">
@@ -196,7 +196,7 @@ const COLUMNS: Column[] = [
   {
     key: "actors",
     label: "Acteurs",
-    // Tri sur les noms ; les projets sans acteur passent en bas.
+    // Sort on names; projects without actors go to the bottom.
     value: (p) =>
       p.actors?.length ? p.actors.map((a) => a.name).join(", ") : null,
   },
@@ -204,8 +204,8 @@ const COLUMNS: Column[] = [
   { key: "updated_at", label: "Date modification", value: (p) => p.updated_at },
   {
     key: "labels",
-    // Tri sur la plus lourde des étiquettes : celle que la cellule montre en
-    // tête. Les projets sans étiquette passent en bas.
+    // Sort on the heaviest label: the one the cell shows
+    // first. Projects without labels go to the bottom.
     label: "Étiquettes",
     value: (p) =>
       p.labels?.length ? Math.max(...p.labels.map((l) => l.weight)) : null,
@@ -219,21 +219,21 @@ const COLUMNS: Column[] = [
 ];
 
 /**
- * Les colonnes que le widget liste propose de montrer (Display dans
- * project-indicators/liste.tsx).
+ * The columns the list widget offers to show (Display in
+ * project-indicators/list.tsx).
  */
 export const PROJECT_COLUMNS: { key: ColumnKey; label: string }[] = COLUMNS.map(
   ({ key, label }) => ({ key, label: key === "number" ? "Référence" : label }),
 );
 
-// Au-delà de dix options — les acteurs, vite nombreux —, la liste défile.
-// Une ligne de menu : sa ligne de texte, et son retrait dessus et dessous.
+// Beyond ten options — actors, quickly numerous —, the list scrolls.
+// A menu row: its line of text, and its inset above and below.
 const FILTER_VISIBLE_ROWS = 10;
 const FILTER_ROW_HEIGHT =
   "(var(--mantine-font-size-sm) * var(--mantine-line-height) + var(--mantine-spacing-xs) / 1.5 * 2)";
 
-// Filtre d'une colonne. L'entonnoir se colore tant qu'une valeur est retenue,
-// pour qu'un tableau filtré ne passe pas pour un tableau vide.
+// A column's filter. The funnel is colored while a value is selected,
+// so a filtered table does not pass for an empty table.
 interface ColumnFilterProps {
   label: string;
   options: FilterOption[];
@@ -284,15 +284,15 @@ function ColumnFilter({ label, options, value, onChange }: ColumnFilterProps) {
   );
 }
 
-// Le tri et le filtre sont deux commandes distinctes : le bouton de tri ne
-// couvre que le libellé, sinon ouvrir le filtre trierait la colonne au passage.
+// Sort and filter are two distinct controls: the sort button only
+// covers the label, otherwise opening the filter would sort the column in passing.
 interface SortableThProps {
   column: Column;
   sort: Sort;
   onSort: (key: ColumnKey) => void;
   filter: ReactNode;
   handle: ReactNode;
-  /** Les largeurs sont figées par un redimensionnement. */
+  /** Widths are frozen by a resize. */
   frozen: boolean;
 }
 
@@ -313,9 +313,9 @@ function SortableTh({
 
   return (
     <Table.Th w={column.width}>
-      {/* En mise en page naturelle, la largeur d'une cellule n'est qu'un
-          souhait : une grille à l'étroit la ramène à celle de son contenu.
-          Le minimum posé sur le contenu la tient. */}
+      {/* In natural layout, a cell's width is only a wish:
+          a squeezed grid brings it back to that of its content.
+          The minimum set on the content holds it. */}
       <Group gap={4} wrap="nowrap" miw={frozen ? undefined : column.width}>
         <UnstyledButton
           onClick={() => onSort(column.key)}
@@ -337,8 +337,8 @@ function SortableTh({
   );
 }
 
-// Menu d'un projet, ouvert au clic droit et posé sous la souris : son ancre
-// est un point invisible placé aux coordonnées du clic.
+// A project's menu, opened on right-click and placed under the mouse: its anchor
+// is an invisible point placed at the click's coordinates.
 interface ProjectContextMenuProps {
   target: ContextTarget;
   onClose: () => void;
@@ -347,7 +347,7 @@ interface ProjectContextMenuProps {
   onDuplicate: (project: Project) => void;
   onDelete: (project: Project) => void;
   onCreateTask: (project: Project) => void;
-  /** La personne suit ce projet : elle est prévenue de chaque modification. */
+  /** The person follows this project: they are notified of every change. */
   following: boolean;
   onToggleFollow: (project: Project) => void;
 }
@@ -364,8 +364,8 @@ function ProjectContextMenu({
   onToggleFollow,
 }: ProjectContextMenuProps) {
   const { project, x, y } = target;
-  // Ce que le menu propose suit les droits du compte dans la société du
-  // projet : qui ne fait que lire n'y trouve que « Suivre ».
+  // What the menu offers follows the account's rights in the project's
+  // company: whoever only reads finds only "Suivre".
   const can = useRights();
   const updateStatement = can("projects", "update");
   const add = can("projects", "create");
@@ -373,8 +373,8 @@ function ProjectContextMenu({
   const createTask = can("tasks", "create");
   const isEditing = useIsEditing();
 
-  // En modification, le menu ne propose que « Copier », qui s'y fait
-  // seulement : le reste attend qu'on la quitte.
+  // When editing, the menu only offers "Copier", which only works there:
+  // the rest waits until editing is left.
   if (isEditing)
     return (
       <Menu
@@ -409,8 +409,8 @@ function ProjectContextMenu({
         />
       </Menu.Target>
       <Menu.Dropdown>
-        {/* Suivre vient en tête, comme dans le tiroir du projet. Le menu ne
-            se referme pas, pour qu'on voie la coche changer. */}
+        {/* Follow comes first, as in the project's drawer. The menu does
+            not close, so the checkmark can be seen changing. */}
         <Menu.Item
           leftSection={<IconEye size={16} />}
           rightSection={following ? <IconCheck size={14} /> : null}
@@ -428,8 +428,8 @@ function ProjectContextMenu({
             Modifier
           </Menu.Item>
         )}
-        {/* Sur place, sans question : la copie s'ouvre aussitôt dans le
-            tiroir, pour servir de base à un autre projet. */}
+        {/* In place, no question asked: the copy opens right away in the
+            drawer, to serve as a basis for another project. */}
         {add && (
           <Menu.Item
             leftSection={<IconCopyPlus size={16} />}
@@ -474,24 +474,24 @@ function ProjectContextMenu({
   );
 }
 
-// Une ligne du tableau : le clic ouvre le projet, le clic droit demande le
-// menu au tableau, qui l'ouvre au point cliqué.
+// A table row: a click opens the project, a right-click asks the
+// table for the menu, which opens at the clicked point.
 //
-// « active » est la ligne dont le menu est ouvert : elle garde le fond du
-// survol, sinon le menu flotterait sans qu'on sache sur quel projet il porte
-// dès que la souris quitte la ligne. La variable reprise est celle que Mantine
-// pose pour son propre survol : même couleur, dans les deux thèmes.
+// "active" is the row whose menu is open: it keeps the hover background,
+// otherwise the menu would float without it being clear which project it applies to
+// once the mouse leaves the row. The variable used is the one Mantine
+// sets for its own hover: same color, in both themes.
 interface ProjectRowProps {
   project: Project;
   active: boolean;
-  /** Les colonnes montrées, dans l'ordre que le widget a réglé. */
+  /** The columns shown, in the order the widget has set. */
   columns: (Column & { id: string })[];
   onEdit: (project: Project) => void;
   onContextMenu?: (project: Project, x: number, y: number) => void;
 }
 
-// Le contenu de chaque cellule, par colonne : la ligne les pose dans l'ordre
-// des colonnes montrées.
+// The content of each cell, by column: the row places them in the order
+// of the columns shown.
 const CELLS: Record<ColumnKey, (project: Project) => ReactNode> = {
   number: (project) => (
     <Table.Td style={{ whiteSpace: "nowrap" }}>
@@ -505,8 +505,8 @@ const CELLS: Record<ColumnKey, (project: Project) => ReactNode> = {
   ),
   name: (project) => (
     <Table.Td>
-      {/* Même taille que le reste de la ligne : un « Text » sans taille prend
-          le « md » de Mantine, alors que la table est en « sm ». */}
+      {/* Same size as the rest of the row: a "Text" without a size takes
+          Mantine's "md", whereas the table is "sm". */}
       <Text size="sm">{project.name}</Text>
     </Table.Td>
   ),
@@ -550,11 +550,11 @@ function ProjectRow({
     <Table.Tr
       onClick={() => onEdit(project)}
       onContextMenu={(e) => {
-        // Sans menu — en modification, sans le droit de copier —, le clic
-        // droit revient au menu du widget.
+        // Without a menu — when editing, without the right to copy —, right-click
+        // goes back to the widget menu.
         if (!onContextMenu) return;
-        // À la place du menu du navigateur, et de celui du widget qui porte
-        // la liste.
+        // In place of the browser menu, and of the widget menu that holds
+        // the list.
         const { x, y } = menuPosition(e);
         onContextMenu(project, x, y);
       }}
@@ -571,7 +571,7 @@ function ProjectRow({
 }
 
 interface ProjectTableProps extends ProjectFiltersProps {
-  /** La configuration du widget qui la porte : les colonnes montrées. */
+  /** The configuration of the widget that holds it: the columns shown. */
   config?: unknown;
   projects: Project[];
   loading: boolean;
@@ -579,11 +579,11 @@ interface ProjectTableProps extends ProjectFiltersProps {
   onMoveProject: (project: Project, mode: ProjectAction) => void;
   onDuplicateProject: (project: Project) => void;
   onDeleteProject: (project: Project) => void;
-  /** « Créer une tâche », au menu contextuel d'un projet. */
+  /** "Créer une tâche", in a project's context menu. */
   onCreateTask: (project: Project) => void;
-  /** Sans lui — sans le droit d'ajouter un projet —, pas de ligne d'ajout. */
+  /** Without it — without the right to add a project —, no add row. */
   onAddProject?: () => void;
-  /** Les projets que la personne suit, pour la coche de « Suivre ». */
+  /** The projects the person follows, for the "Suivre" checkmark. */
   followedIds: number[];
   onToggleFollow: (project: Project) => void;
 }
@@ -609,23 +609,23 @@ export default function ProjectTable({
   actorFilter,
   onActorFilterChange,
 }: ProjectTableProps) {
-  // Par défaut : les projets les plus avancés en premier.
+  // By default: the most advanced projects first.
   const [sort, setSort] = useState<Sort>({ key: "status", direction: "desc" });
-  // Les colonnes que le widget montre, dans l'ordre réglé ; sans réglage,
-  // toutes.
-  // Une colonne peut revenir : « id » distingue chaque occurrence.
+  // The columns the widget shows, in the set order; without a setting,
+  // all of them.
+  // A column can come back: "id" distinguishes each occurrence.
   const columns = keptColumns(PROJECT_COLUMNS, config).flatMap((c) => {
     const column = COLUMNS.find((col) => col.key === c.key);
     return column ? [{ ...column, id: c.id }] : [];
   });
-  // Les largeurs par défaut du widget, tant que personne n'a tiré les
-  // colonnes.
+  // The widget's default widths, as long as nobody has dragged the
+  // columns.
   const resize = useResizableColumns(
     "projects",
     columns.map((c) => c.id),
     defaultWidths(PROJECT_COLUMNS, config),
   );
-  // Projet visé par le clic droit, et le point où le menu doit s'ouvrir.
+  // Project targeted by the right-click, and the point where the menu should open.
   const [contextMenu, setContextMenu] = useState<ContextTarget | null>(null);
   const isEditing = useIsEditing();
   const canCopy = useRights()("projects", "create");
@@ -690,8 +690,8 @@ export default function ProjectTable({
     return [...projects].sort((a, b) => {
       const left = column.value(a);
       const right = column.value(b);
-      // Valeurs absentes (pas de société, pas d'acteur, pas d'étiquette)
-      // toujours en bas.
+      // Missing values (no company, no actor, no label)
+      // always at the bottom.
       if (left == null && right == null) return 0;
       if (left == null) return 1;
       if (right == null) return -1;
@@ -704,9 +704,9 @@ export default function ProjectTable({
     });
   }, [projects, sort]);
 
-  // Sans projet à montrer, le tableau n'a plus de raison d'être : seul l'état
-  // vide s'affiche. Il emporte alors de quoi défaire les filtres. Pendant une
-  // lecture, on n'affiche rien plutôt qu'une conclusion prématurée.
+  // With no project to show, the table has no reason to exist: only the empty
+  // state is displayed. It then carries what is needed to undo the filters. During
+  // a read, nothing is shown rather than a premature conclusion.
   if (projects.length === 0) {
     return loading ? null : (
       <EmptyPanel
@@ -721,17 +721,17 @@ export default function ProjectTable({
 
   return (
     <>
-      {/* Une section plus étroite que la liste la fait défiler de côté. */}
+      {/* A section narrower than the list makes it scroll sideways. */}
       <GridScroll>
         <Table
           {...resize.tableProps}
           highlightOnHover
           verticalSpacing={0}
-          // Les lignes font exactement la hauteur d'une pastille d'acteur, qu'il y
-          // ait des acteurs ou non. L'entête suit la même mesure.
+          // Rows are exactly the height of an actor badge, whether there
+          // are actors or not. The header follows the same measure.
           styles={{
-            // content-box : la hauteur décrit la zone de contenu, soit exactement
-            // une pastille, sans que le padding ni la bordure la rognent.
+            // content-box: the height describes the content area, i.e. exactly
+            // one badge, without the padding or border trimming it.
             td: {
               boxSizing: "content-box",
               height: ACTOR_AVATAR_SIZE,
@@ -743,7 +743,7 @@ export default function ProjectTable({
               height: ACTOR_AVATAR_SIZE,
               paddingTop: ROW_PADDING_Y,
               paddingBottom: ROW_PADDING_Y,
-              // Le libellé, le tri et le filtre se calent au milieu de la cellule.
+              // The label, sort and filter sit in the middle of the cell.
               verticalAlign: "middle",
             },
           }}
@@ -780,12 +780,12 @@ export default function ProjectTable({
               />
             ))}
 
-            {/* Dernière ligne du tableau : l'ajout d'un projet se fait là où la
-                liste se termine, et non plus dans l'entête de l'application. Sans
-                marge intérieure, le « + » s'aligne sur les noms de projets. Le fond
-                explicite neutralise le survol du tableau : cette ligne n'est pas
-                un projet, elle ne s'allume pas au passage de la souris, et la
-                variante « transparent » du bouton n'a pas de fond au survol. */}
+            {/* Last row of the table: adding a project happens where the
+                list ends, and no longer in the application header. With no
+                inner margin, the "+" aligns with the project names. The explicit
+                background neutralizes the table's hover: this row is not
+                a project, it does not light up when the mouse passes, and the
+                button's "transparent" variant has no background on hover. */}
             {onAddProject && (
               <Table.Tr style={{ backgroundColor: "transparent" }}>
                 <Table.Td colSpan={columns.length}>
@@ -814,25 +814,25 @@ export default function ProjectTable({
   );
 }
 
-/** Ce que la page donne à la liste, hors de la configuration du widget. */
+/** What the page gives the list, outside the widget's configuration. */
 export type ProjectsList = Omit<ProjectTableProps, "config" | "projects" | "onAddProject"> & {
-  /** « null » tant que les projets du tableau ne sont pas lus. */
+  /** "null" until the board's projects are read. */
   projects: Project[] | null;
-  /** Un projet ajouté depuis un widget : sa clé de liste dit lequel. */
+  /** A project added from a widget: its list key says which one. */
   onAddProject?: (listKey: string) => void;
 };
 
 /**
- * La liste des projets du tableau ouvert, telle que la page la met en scène :
- * le widget liste (project-indicators/liste.tsx) la lit ici, où qu'il soit
- * posé dans les sections.
+ * The open board's project list, as the page stages it:
+ * the list widget (project-indicators/list.tsx) reads it here, wherever it is
+ * placed in the sections.
  */
 export const ProjectsListContext = createContext<ProjectsList | null>(null);
 
 /**
- * La liste des projets en widget : ses colonnes viennent de sa configuration,
- * et elle ne montre que ses projets (lib/listes.ts). Un projet ajouté ici est
- * le sien.
+ * The project list as a widget: its columns come from its configuration,
+ * and it only shows its own projects (lib/lists.ts). A project added here is
+ * its own.
  */
 export function ProjectsListWidget({ config }: { config: unknown }) {
   const list = useContext(ProjectsListContext);

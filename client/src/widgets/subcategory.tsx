@@ -1,17 +1,17 @@
 import { IconFolderOpen } from "@tabler/icons-react";
 import { createWidgetTitle } from "./title";
 
-/** Le gris que d'autres éléments reprennent pour leurs libellés. */
+/** The gray that other elements reuse for their labels. */
 export const SUBCATEGORY_COLOR = "rgb(220, 220, 220)";
 
-/** L'air qu'elle laisse au-dessus et au-dessous d'elle, que d'autres éléments reprennent. */
+/** The space it leaves above and below itself, which other elements reuse. */
 export const SUBCATEGORY_GAP = 15;
 
-// Une sous-catégorie : le même rôle qu'une catégorie, un cran plus bas. Elle
-// se lit donc plus petite et plus légère, et laisse un peu moins d'air sous
-// elle. Sous sa catégorie, elle s'en écarte un peu ; précédée de tout autre
-// élément, elle laisse nettement plus d'air au-dessus : elle ouvre un groupe,
-// et s'écarte de celui d'avant.
+// A subcategory: the same role as a category, one step lower. It therefore
+// reads smaller and lighter, and leaves a little less space below it. Under its
+// category, it stands slightly apart; preceded by any other element, it leaves
+// clearly more space above: it opens a group, and sets itself apart from the
+// previous one.
 export const subcategoryWidget = createWidgetTitle({
   type: "subcategory",
   label: "Sous-catégorie",

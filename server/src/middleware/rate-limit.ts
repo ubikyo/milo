@@ -1,12 +1,12 @@
-// Limitation des tentatives sur les routes d'authentification.
+// Throttling of attempts on authentication routes.
 //
-// Rien ne freinait les essais de mot de passe : une adresse connue se
-// forçait aussi vite que le serveur savait répondre. scrypt coûte assez cher
-// pour que ce soit aussi une protection du serveur lui-même.
+// Nothing slowed down password attempts: a known address could be brute-forced
+// as fast as the server could respond. scrypt is costly enough that this is
+// also a protection for the server itself.
 //
-// Le compte est tenu en mémoire, par adresse IP. C'est suffisant ici :
-// l'application tourne sur un seul processus, et un redémarrage qui remet les
-// compteurs à zéro n'ouvre qu'une fenêtre de quelques essais.
+// The count is kept in memory, per IP address. That is enough here: the
+// application runs on a single process, and a restart that resets the counters
+// opens only a window of a few attempts.
 
 import type { NextFunction, Request, Response } from "express";
 import { HttpError } from "../lib/http.js";
@@ -17,17 +17,17 @@ interface Window {
 }
 
 export interface RateLimitOptions {
-  /** Nombre d'essais tolérés par fenêtre. */
+  /** Number of attempts tolerated per window. */
   max: number;
-  /** Durée de la fenêtre, en millisecondes. */
+  /** Window duration, in milliseconds. */
   windowMs: number;
 }
 
 export const rateLimit = ({ max, windowMs }: RateLimitOptions) => {
   const byKey = new Map<string, Window>();
 
-  // Ménage périodique : sans lui, la table garderait une entrée par adresse
-  // vue depuis le démarrage. `unref` laisse le processus se terminer.
+  // Periodic cleanup: without it, the table would keep one entry per address
+  // seen since startup. `unref` lets the process exit.
   setInterval(() => {
     const cutoff = Date.now() - windowMs;
     for (const [key, window] of byKey) {

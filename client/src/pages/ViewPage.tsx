@@ -19,9 +19,9 @@ import type {
   SupportRequest,
 } from "@milo/shared";
 
-/** Ce que la liste des demandes et son menu « Actions » demandent à l'application. */
+/** What the requests list and its "Actions" menu ask of the application. */
 export interface BoardSupport {
-  /** « null » tant que les demandes du tableau ne sont pas lues. */
+  /** "null" until the board's requests are read. */
   requests: SupportRequest[] | null;
   loading: boolean;
   users: PublicUser[];
@@ -34,48 +34,48 @@ export interface BoardSupport {
 }
 
 interface ViewPageProps {
-  /** Les tableaux de la vue ; « null » tant qu'ils ne sont pas lus. */
+  /** The view's boards; "null" until they are read. */
   boards: Board[] | null;
   boardId: string | null;
   onBoardChange: (id: string | null) => void;
-  /** Le menu de chaque onglet et le « + » : ce que le compte peut en faire. */
+  /** Each tab's menu and the "+": what the account can do with them. */
   onAddBoard?: () => void;
   onRenameBoard?: (id: number, name: string) => void | Promise<void>;
   onDeleteBoard?: (id: number) => void | Promise<void>;
   onReorderBoards?: (ids: number[]) => void | Promise<void>;
   onTogglePrivateBoard?: (id: number) => void | Promise<void>;
   onToggleBoardInherited?: (id: number) => void | Promise<void>;
-  /** Le tableau qu'on vient de créer : son nom passe aussitôt en saisie. */
+  /** The board just created: its name goes straight into entry. */
   toRename: number | null;
   onRenameOpened: () => void;
   onCopyContexts?: (id: number) => void;
-  /** Les sections du tableau ouvert ; « null » tant qu'elles ne sont pas lues. */
+  /** The open board's sections; "null" until they are read. */
   sections: IndicatorSection[] | null;
   widgets: BoardWidget[];
   onWidgetsChanged: () => void | Promise<void>;
-  /** Le tableau ouvert, figé : hors modification de l'interface, ou faute de droit. */
+  /** The open board, frozen: outside interface editing, or for lack of rights. */
   locked: boolean;
-  /** Passer en modification de l'interface ; absent quand il est figé faute de droit. */
+  /** Switch to interface editing; absent when frozen for lack of rights. */
   onUnlock?: () => void | Promise<void>;
-  /** Les données du tableau, filtrées par lui, pour ses widgets. */
+  /** The board's data, filtered by it, for its widgets. */
   data: BoardData;
   projects: ProjectsList;
   tasks: TaskBoardProps;
   support: BoardSupport;
   assets: AssetsListHandle;
-  /** « Créer une tâche » et « Créer une demande », au clic droit sur un lien. */
+  /** "Créer une tâche" and "Créer une demande", on right-click on a link. */
   onCreateTaskFromLink?: (widget: BoardWidget) => void;
   onCreateSupportFromLink?: (widget: BoardWidget) => void;
   loading: boolean;
-  /** La société — le filtre du tableau ouvert — et le compte, au bout de la rangée. */
+  /** The company — the open board's filter — and the account, at the end of the row. */
   account: AccountSlot;
 }
 
 /**
- * Une vue : ses tableaux en onglets, et sous eux les sections du tableau
- * ouvert. Les widgets y lisent les données du tableau — ses projets, ses
- * listes de tâches, les demandes et les postes de sa société —, que
- * l'application lit et que cette page leur met à portée.
+ * A view: its boards as tabs, and under them the open board's
+ * sections. Widgets there read the board's data — its projects, its
+ * task lists, the requests and workstations of its company —, which the
+ * application reads and which this page brings within their reach.
  */
 export default function ViewPage({
   boards,
@@ -105,18 +105,18 @@ export default function ViewPage({
   loading,
   account,
 }: ViewPageProps) {
-  // La liste des demandes garde son état ici — tri, filtres, cases cochées —
-  // pour que le menu « Actions » de la rangée porte sur ce qu'on a coché.
+  // The requests list keeps its state here — sort, filters, checked boxes —
+  // so that the row's "Actions" menu applies to what has been checked.
   const list = useSupportList(support.requests, "all");
   const { context, setContext, selection, setChecked } = list;
-  // Le menu « Actions » ne paraît que là où une liste de demandes est posée.
+  // The "Actions" menu only appears where a requests list is placed.
   const withRequests = widgets.some((w) => w.type === "support.list");
 
   const openBoard = boards?.find((b) => String(b.id) === boardId);
 
-  // Sans tableau, l'invite prend la place du contenu — mais sous la rangée,
-  // qui reste : c'est elle qui porte le compte. Rien pendant une lecture :
-  // l'écran vide attend d'être une certitude.
+  // Without a board, the prompt takes the place of the content — but under the row,
+  // which stays: it is what carries the account. Nothing during a read:
+  // the empty screen waits to be a certainty.
   let content: ReactNode = null;
   if (!boards || boards.length === 0) {
     content =
@@ -142,8 +142,8 @@ export default function ViewPage({
           >
             <AssetsListContext.Provider value={assets}>
               <BoardPanel
-                // Un autre tableau : un autre panneau, sans rien emporter du
-                // précédent — ni glisser en cours, ni tiroir ouvert.
+                // Another board: another panel, carrying nothing over from the
+                // previous one — neither a drag in progress, nor an open drawer.
                 key={openBoard.id}
                 boardId={openBoard.id}
                 sections={sections}

@@ -6,11 +6,11 @@ import type { SectionWidthUnit } from "@milo/shared";
 import classes from "../../assets/styles/GapField.module.css";
 import { GAP_FIELD_HEIGHT } from "./GapField";
 
-// La largeur d'une section, réglée au pied de sa colonne : le nombre quand
-// l'unité en demande un, puis l'unité. Discrète comme le champ de l'écart, à sa
-// hauteur. Choisir « px » ou « % » part aussitôt, avec la largeur que la
-// colonne a à l'écran : elle ne saute pas. Le nombre part à la validation —
-// Entrée ou perte du focus —, comme l'écart.
+// A section's width, set at the foot of its column: the number when
+// the unit requires one, then the unit. Discreet like the gap field, at its
+// height. Choosing "px" or "%" takes effect at once, with the width the
+// column has on screen: it does not jump. The number is sent on validation —
+// Enter or loss of focus —, like the gap.
 
 const UNITS: { value: SectionWidthUnit; label: string }[] = [
   { value: "auto", label: "auto" },
@@ -18,11 +18,11 @@ const UNITS: { value: SectionWidthUnit; label: string }[] = [
   { value: "percent", label: "%" },
 ];
 
-/** Le nombre que l'unité admet. */
+/** The number the unit admits. */
 const bound = (unit: SectionWidthUnit, count: number): number =>
   Math.max(1, unit === "percent" ? Math.min(Math.round(count), 100) : Math.round(count));
 
-/** La largeur d'une section : « width_value » n'a de sens qu'hors « auto ». */
+/** A section's width: "width_value" only makes sense outside "auto". */
 export interface SectionWidth {
   width_unit: SectionWidthUnit;
   width_value: number | null;
@@ -31,13 +31,13 @@ export interface SectionWidth {
 interface WidthFieldProps {
   value: SectionWidth;
   onChange: (width: SectionWidth) => void | Promise<void>;
-  /** La largeur que la colonne a à l'écran, dans cette unité. */
+  /** The width the column has on screen, in this unit. */
   measure: (unit: Exclude<SectionWidthUnit, "auto">) => number;
   style?: CSSProperties;
 }
 
 export default function WidthField({ value, onChange, measure, style }: WidthFieldProps) {
-  /** Ce qui est tapé ; « null » tant qu'on n'y a pas touché. */
+  /** What is typed; "null" until it has been touched. */
   const [input, setInput] = useState<number | string | null>(null);
 
   const select = (unit: SectionWidthUnit) => {
@@ -64,7 +64,7 @@ export default function WidthField({ value, onChange, measure, style }: WidthFie
     <Group
       gap={0}
       wrap="nowrap"
-      // Ni la poignée ni la rangée ne doivent prendre cet appui pour un glisser.
+      // Neither the handle nor the row must take this press for a drag.
       onPointerDown={(e) => e.stopPropagation()}
       style={{ position: "absolute", zIndex: 2, height: GAP_FIELD_HEIGHT, ...style }}
     >
@@ -108,7 +108,7 @@ export default function WidthField({ value, onChange, measure, style }: WidthFie
         rightSection={<IconChevronDown size={10} />}
         rightSectionWidth={12}
         comboboxProps={{ width: 72, position: "bottom" }}
-        // Au plus près du nombre : l'air intérieur des deux champs suffit.
+        // As close as possible to the number: the fields' inner space is enough.
         ml={value.width_unit === "auto" ? 0 : -3}
         aria-label="Unité de la largeur de la section"
         title="Largeur de la section"

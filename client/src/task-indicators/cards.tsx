@@ -6,8 +6,8 @@ import { NameField, NAME, IndicatorTitle, IndicatorValue, tasksOf } from "./comm
 import type { TaskIndicatorWidget } from "./types";
 import type { Id, TaskCard } from "@milo/shared";
 
-// Un nombre de cartes : celles du tableau ouvert qui répondent au type choisi
-// — toutes, celles en retard, celles que personne ne porte.
+// A number of cards: those of the open board that match the chosen type
+// — all, the late ones, those nobody carries.
 
 const TYPE = "type";
 
@@ -40,7 +40,7 @@ const TYPES: CardType[] = [
   },
 ];
 
-/** Le type rangé, ou le premier : une valeur inconnue ne fait rien tomber. */
+/** The stored type, or the first: an unknown value does not bring anything down. */
 const typeOf = (config: unknown) =>
   TYPES.find((t) => t.value === text(config, TYPE)) ?? DEFAULT_TYPE;
 
@@ -55,7 +55,7 @@ export const cardsIndicator: TaskIndicatorWidget = {
   Display: ({ config, lists, userId }) => {
     const type = typeOf(config);
     return (
-      // Le nom en haut, la quantité en bas à gauche, comme les tickets.
+      // The name at the top, the quantity at bottom left, like tickets.
       <Stack gap={4} justify="space-between" style={{ flex: 1 }}>
         <IndicatorTitle config={config} defaultValue={type.label} />
         <IndicatorValue config={config}>

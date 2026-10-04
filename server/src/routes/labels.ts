@@ -1,10 +1,10 @@
-// Les étiquettes : celles d'un tableau de tâches, posées sur ses cartes, et
-// leurs jumelles d'un tableau de projets, posées sur ses projets. Mêmes
-// règles, deux tables : les deux modes ne partagent pas leurs étiquettes.
+// Labels: those of a task board, set on its cards, and their twins of a
+// project board, set on its projects. Same rules, two tables: the two modes
+// do not share their labels.
 //
-// Un routeur les sert toutes deux. Elles avaient deux blocs de code jumeaux
-// dans l'ancien fichier ; les deux sortes de tableaux pouvant être privées,
-// seule la table qu'on interroge les distingue encore.
+// One router serves both. They used to be two twin blocks of code in the old
+// file; since both kinds of boards can be private, only the table being
+// queried still tells them apart.
 
 import { Router } from "express";
 import type { Request } from "express";
@@ -23,23 +23,23 @@ import { receivedOrder, arrangeLabels, arrangeProjectLabels } from "../repositor
 const LABEL_NOT_FOUND = "Étiquette introuvable";
 
 interface LabelTable {
-  /** Le nom de la table. Il n'entre dans le SQL qu'ici, jamais depuis une requête. */
+  /** The table name. It only enters the SQL here, never from a request. */
   table: "labels" | "project_labels";
-  /** Ce que le flux d'événements doit signaler quand ces étiquettes changent. */
+  /** What the event stream must signal when these labels change. */
   touched: Resource[];
   /**
-   * Le tableau qui porte ces étiquettes, s'il est ouvert à cette personne.
-   * Lève sinon, et rend l'identifiant vérifié — la copie en a besoin des deux
-   * côtés, et ne veut pas d'un identifiant reçu tel quel.
+   * The board that carries these labels, if it is open to this person.
+   * Throws otherwise, and returns the verified id — the copy needs both
+   * sides, and doesn't want an id received as is.
    */
   verifyBoard: (boardId: unknown, req: Request, right: Right) => Id;
-  /** Vrai quand ces étiquettes portent un poids : celles des projets seules. */
+  /** True when these labels carry a weight: project labels only. */
   withWeight?: boolean;
-  /** Le rangement de la table, tableau par tableau (repositories/reorder.ts). */
+  /** The table's arrangement, board by board (repositories/reorder.ts). */
   store: (ids: Id[], boardId: Id) => void;
 }
 
-/** Le poids reçu : un entier, positif ou non. */
+/** The received weight: an integer, positive or not. */
 const labelWeight = (value: unknown): number => {
   const weight = Number(value);
   if (!Number.isInteger(weight)) badRequest("Le poids doit être un nombre entier");
@@ -60,7 +60,7 @@ const createRoutes = ({
   const nextRank = scalar<NextRow>(
     `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM ${table} WHERE board_id = ?`,
   );
-  // Sans poids, la colonne n'existe pas : on n'écrit que ce que la table porte.
+  // Without a weight, the column does not exist: we only write what the table carries.
   const insertion = mutation(
     withWeight
       ? `INSERT INTO ${table} (board_id, name, color, position, created_at, weight) VALUES (?, ?, ?, ?, ?, ?)`
@@ -85,7 +85,7 @@ const createRoutes = ({
     `SELECT * FROM ${table} WHERE board_id = ? AND name = ? COLLATE NOCASE LIMIT 1`,
   );
   const remove = mutation(`DELETE FROM ${table} WHERE id = ?`);
-  // Ce qui porte l'étiquette : des cartes, ou des projets.
+  // What carries the label: cards, or projects.
   const uses = scalar<{ count: number }>(
     table === "labels"
       ? "SELECT COUNT(*) AS count FROM card_labels WHERE label_id = ?"
@@ -95,11 +95,11 @@ const createRoutes = ({
   const clearFromBoard = mutation(`DELETE FROM ${table} WHERE board_id = ?`);
 
   /**
-   * Les étiquettes d'un tableau posées dans un autre. Celles qui y portent
-   * déjà le même nom ne sont pas redoublées, quelle que soit leur couleur :
-   * deux étiquettes du même nom ne se distingueraient plus dans une liste.
-   * Les autres se rangent à la suite de celles de l'accueil. « remplacer » :
-   * celles de l'accueil s'en vont d'abord — et quittent ce qui les portait.
+   * The labels of one board set on another. Those already bearing the same
+   * name there are not duplicated, whatever their color: two labels with the
+   * same name could no longer be told apart in a list. The others are put
+   * after those of the destination. "replace": the destination's go first —
+   * and leave whatever carried them.
    */
   const copy = transaction((source: Id, target: Id, replaceExisting: boolean): CopyResult => {
     const removed = replaceExisting ? clearFromBoard.run(target).changes : 0;
@@ -145,8 +145,8 @@ const createRoutes = ({
     res.status(201).json(byId.get(lastInsertRowid));
   });
 
-  // Déclaré avant « /:id » n'est pas nécessaire — les verbes diffèrent —,
-  // mais la copie se lit mieux près de la création qu'en fin de fichier.
+  // Declared before "/:id" is not necessary — the verbs differ —, but the
+  // copy reads better next to the creation than at the end of the file.
   routes.post("/copy", (req, res) => {
     const { from_board, to_board } = req.body;
     if (!from_board || !to_board) {
@@ -156,15 +156,15 @@ const createRoutes = ({
     const replaceExisting = req.body.replace === true;
     const source = verifyBoard(from_board, req, "view");
     const target = verifyBoard(to_board, req, "create");
-    // Effacer celles de l'accueil, c'est en supprimer.
+    // Erasing the destination's means deleting some.
     if (replaceExisting) verifyBoard(to_board, req, "delete");
     if (source === target) badRequest("Choisissez un autre tableau que celui-ci");
 
     res.json(copy(source, target, replaceExisting));
   });
 
-  // L'ordre des étiquettes d'un tableau, glissé dans le tiroir du widget : il
-  // nomme toutes celles du tableau, chacune une fois. Déclaré avant « /:id ».
+  // The order of a board's labels, dragged in the widget's drawer: it names
+  // all those of the board, each once. Declared before "/:id".
   routes.put("/reorder", (req, res) => {
     const boardId = verifyBoard(req.body.board_id, req, "update");
     const ids = receivedOrder(req.body.ids, ofBoard.all(boardId), "L'ordre doit nommer toutes les étiquettes");
@@ -197,21 +197,21 @@ const createRoutes = ({
   return routes;
 };
 
-/** Étiquettes d'un tableau de tâches : il peut être privé. */
+/** Labels of a task board: it can be private. */
 export const labelRoutes = createRoutes({
   table: "labels",
-  // Les cartes portent leurs étiquettes : le tableau se relit avec elles.
+  // Cards carry their labels: the board is re-read with them.
   touched: ["labels", "task-lists"],
   verifyBoard: (boardId, req, right) => openTaskBoard(boardId, req, right).id,
   store: arrangeLabels,
 });
 
-/** Étiquettes d'un tableau de projets : il peut être privé, lui aussi. */
+/** Labels of a project board: it can be private too. */
 export const projectLabelRoutes = createRoutes({
   table: "project_labels",
   touched: ["project-labels", "projects"],
-  // Le tableau de projets n'appartient à aucune société : ses étiquettes
-  // suivent les droits du mode Projets dans n'importe laquelle.
+  // The project board belongs to no company: its labels follow the Projects
+  // mode's rights in any of them.
   verifyBoard: (boardId, req, right) => {
     require(req, "projects", right);
     return openBoard(boardId, req.user).id;

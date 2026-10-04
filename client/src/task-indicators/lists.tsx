@@ -4,10 +4,10 @@ import { LabelBars, NAME, Nothing, IndicatorTitle } from "./common";
 import type { TaskIndicatorWidget } from "./types";
 import { useListColors } from "../components/board/TaskBoard";
 
-// Les listes du tableau ouvert, par nombre de cartes, dans l'ordre du tableau :
-// où les tâches s'accumulent. Chaque barre prend le fond de sa liste sur le
-// tableau, résolu pour le thème courant, et couvre au moins son nom : une
-// liste vide se reconnaît encore à sa couleur.
+// The open board's lists, by number of cards, in the board's order:
+// where tasks pile up. Each bar takes its list's background from the
+// board, resolved for the current theme, and covers at least its name: an
+// empty list is still recognized by its color.
 
 const LABEL = "Cartes par liste";
 

@@ -1,9 +1,9 @@
-// Les réglages de l'application : ce qui ne tient à aucun compte en
-// particulier — la messagerie sortante, la trace de la dernière restauration.
+// Application settings: whatever belongs to no particular account — the
+// outgoing mail setup, the trace of the last restore.
 //
-// Une table clé / valeur, la valeur en JSON. Les réglages sont peu nombreux,
-// lus une fois par requête qui en a besoin, et leur forme change avec ce qu'on
-// y ajoute : une colonne par champ demanderait une migration à chaque fois.
+// A key / value table, the value as JSON. Settings are few, read once per
+// request that needs them, and their shape changes with whatever gets added:
+// a column per field would need a migration every time.
 
 import { mutation, selection } from "../db/query.js";
 import type { SettingRow } from "../db/rows.js";
@@ -15,10 +15,10 @@ const write = mutation(
 );
 
 /**
- * Le réglage, ou la valeur donnée s'il n'a jamais été écrit. Un JSON abîmé —
- * une base modifiée à la main, une restauration d'une version plus ancienne —
- * est traité comme une absence : l'application repart du défaut plutôt que de
- * refuser de démarrer.
+ * The setting, or the given value if it was never written. Corrupted JSON —
+ * a hand-edited database, a restore from an older version — is treated as
+ * absent: the application falls back to the default rather than refusing to
+ * start.
  */
 export const readSetting = <T>(key: string, defaultValue: T): T => {
   const row = read.get(key);

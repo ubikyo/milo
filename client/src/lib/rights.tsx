@@ -1,9 +1,9 @@
-// Les droits du compte, société par société, tels que l'interface les lit.
+// The account's rights, company by company, as the interface reads them.
 //
-// Le serveur les vérifie à chaque requête (server, lib/droits.ts) : ici, il
-// s'agit seulement de ne pas proposer ce qui serait refusé — un bouton
-// « Ajouter » chez une société où l'on ne fait que lire, une société dont on
-// ne voit rien dans la liste déroulante.
+// The server checks them on every request (server, lib/rights.ts): here, it
+// is only about not offering what would be refused — an "Ajouter"
+// button at a company where one can only read, a company of which
+// nothing shows in the dropdown.
 
 import { createContext, useContext } from "react";
 import type { CSSProperties, ReactNode } from "react";
@@ -19,7 +19,7 @@ import type {
 
 export type Can = (area: Area, right: Right) => boolean;
 
-/** Le droit demandé : il vaut partout. */
+/** The right asked for: it holds everywhere. */
 export const canFrom =
   (rights: CompanyRights): Can =>
   (area, right) =>
@@ -36,9 +36,9 @@ export function RightsProvider({
   children,
 }: {
   rights: CompanyRights;
-  /** Ses permissions par type de widget (shared, widget-kinds.ts). */
+  /** Its permissions by widget type (shared, widget-kinds.ts). */
   widgets: WidgetRights;
-  /** Le droit de modifier le Paramétrage — les types de jalons, entre autres. */
+  /** The right to edit the Paramétrage — milestone types, among others. */
   canEditSettings: boolean;
   children: ReactNode;
 }) {
@@ -51,16 +51,16 @@ export function RightsProvider({
   );
 }
 
-/** `peut(area, right)`, pour le compte connecté. */
+/** `can(area, right)`, for the signed-in account. */
 export const useRights = (): Can => useContext(RightsContext);
 
-/** Vrai quand le compte connecté peut modifier le Paramétrage. */
+/** True when the signed-in account can edit the Paramétrage. */
 export const useSettingsMode = (): boolean => useContext(SettingsAccessContext);
 
 /**
- * La permission du compte connecté sur un type de widget : « » (aucune), le
- * widget ne paraît pas ; « view », il se lit sans se modifier ; « update »,
- * il se pose, se range, se règle.
+ * The signed-in account's permission on a widget type: "" (none), the
+ * widget does not appear; "view", it can be read but not edited; "update",
+ * it can be placed, arranged, configured.
  */
 export const useWidgetAccess = (): ((kind: WidgetKind) => WidgetAccess) => {
   const widgets = useContext(WidgetsContext);
@@ -68,7 +68,7 @@ export const useWidgetAccess = (): ((kind: WidgetKind) => WidgetAccess) => {
 };
 
 /**
- * Un « fieldset » sans bordure ni marge : désactivé, il éteint d'un coup tous
- * les champs d'une fiche qu'on ne peut que lire.
+ * A borderless, marginless "fieldset": disabled, it turns off at once all
+ * the fields of a record that can only be read.
  */
 export const BARE_FIELDSET: CSSProperties = { border: 0, padding: 0, margin: 0, minWidth: 0 };

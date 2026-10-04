@@ -1,4 +1,4 @@
-// Le fil d'un projet.
+// A project's thread.
 
 import { mutation, selection } from "../db/query.js";
 import type { CommentRow, WithAuthorColumns } from "../db/rows.js";

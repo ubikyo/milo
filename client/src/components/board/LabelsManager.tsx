@@ -6,19 +6,19 @@ import LabelChip from "../ui/LabelChip";
 import { DEFAULT_LABEL_COLOR, LABEL_HUES } from "@milo/shared";
 import type { Label, LabelHue, ProjectLabel, SupportLabel } from "@milo/shared";
 
-// Hauteur d'une ligne d'étiquette : un peu plus haute que les autres listes,
-// l'étiquette y tenant un rectangle plein.
+// Height of a label row: slightly taller than the other lists,
+// since the label holds a solid rectangle.
 const LABEL_ROW_HEIGHT = 40;
 
-// Hauteur de l'étiquette et de son champ de saisie. La même pour les deux :
-// sans quoi passer en modification ferait sauter la ligne.
+// Height of the label and of its input field. The same for both:
+// otherwise switching to edit mode would make the row jump.
 const LABEL_FIELD_HEIGHT = 22;
 
-// Largeur du poids : de quoi écrire trois chiffres, comme le pourcentage des
-// jalons (MilestonesModal).
+// Width of the weight: enough to write three digits, like the percentage of
+// milestones (MilestonesModal).
 const WEIGHT_WIDTH = 52;
 
-/** Le poids d'une étiquette, sans cadre : la liste en est le cadre. */
+/** A label's weight, frameless: the list is the frame. */
 function WeightField({
   value,
   onChange,
@@ -66,12 +66,12 @@ import { DragHandle, InsertLine, useDraggableStack } from "../ui/DraggableStack"
 import { errorMessage, notifyError } from "../../lib/errors";
 
 /**
- * Les étiquettes d'un tableau, gérées en ligne comme les sociétés ou les
- * catégories (LookupManager) : cliquer le nom l'édite sur place, la pastille
- * ouvre le choix des couleurs, la dernière ligne ajoute. Quand l'ordre se
- * règle (« onReorder »), chaque ligne se glisse par sa poignée.
+ * A board's labels, managed inline like companies or
+ * categories (LookupManager): clicking the name edits it in place, the dot
+ * opens the color picker, the last row adds. When the order can be
+ * changed ("onReorder"), each row is dragged by its handle.
  */
-/** Les étiquettes des trois modes se gèrent exactement pareil. */
+/** Labels in all three modes are managed exactly the same way. */
 type AnyLabel = Label | ProjectLabel | SupportLabel;
 
 interface LabelsManagerProps {
@@ -82,13 +82,13 @@ interface LabelsManagerProps {
     data: { name?: string; color?: string; weight?: number },
   ) => Promise<unknown>;
   onDelete: (id: number) => Promise<unknown>;
-  /** Ce que dit la liste quand elle est vide : tout n'est pas un tableau. */
+  /** What the list says when empty: not everything is a board. */
   emptyText?: string;
-  /** Ce que la suppression emporte, dit dans les mots du mode. */
+  /** What deletion takes with it, said in the mode's own words. */
   carriers?: string;
-  /** Vrai quand les étiquettes portent un poids : le support seul en a un. */
+  /** True when labels carry a weight: only the support mode has one. */
   withWeight?: boolean;
-  /** L'ordre complet, une fois une ligne glissée. Sans elle, pas de poignée. */
+  /** The full order, once a row has been dragged. Without it, no handle. */
   onReorder?: (ids: number[]) => Promise<unknown>;
 }
 
@@ -105,15 +105,15 @@ export default function LabelsManager({
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
   const [newName, setNewName] = useState("");
-  // Couleur de l'étiquette en cours de saisie, choisie dans la ligne d'ajout.
+  // Color of the label being typed, chosen in the add row.
   const [newColor, setNewColor] = useState(DEFAULT_LABEL_COLOR);
   const [newWeight, setNewWeight] = useState<number | "">(0);
-  // Les poids en cours de saisie, par étiquette : enregistrés en quittant le champ.
+  // Weights being typed, per label: saved on leaving the field.
   const [weight, setWeights] = useState<Record<number, number | "">>({});
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<AnyLabel | null>(null);
-  // L'ordre qu'on vient de poser, le temps que la liste relue le rapporte :
-  // sans lui, la ligne lâchée reviendrait un instant à sa place d'avant.
+  // The order just set, until the reloaded list reports it:
+  // without it, the dropped row would briefly return to its previous place.
   const [placedOrder, setPlacedOrder] = useState<number[] | null>(null);
   useEffect(() => setPlacedOrder(null), [labels]);
   const bands = placedOrder
@@ -161,9 +161,9 @@ export default function LabelsManager({
     if (await run(() => onUpdate(editingId, { name: name }))) cancelEdit();
   };
 
-  // La couleur est celle choisie dans la ligne d'ajout ; une fois l'étiquette
-  // créée, la suivante passe à la teinte voisine, dans la même nuance, pour
-  // qu'on les distingue sans y penser.
+  // The color is the one chosen in the add row; once the label is
+  // created, the next one moves to the neighboring hue, in the same shade, so
+  // they can be told apart without thinking.
   const create = async () => {
     if (!newName.trim()) return;
     if (await run(() => onCreate(newName.trim(), newColor, Number(newWeight) || 0))) {
@@ -176,7 +176,7 @@ export default function LabelsManager({
     }
   };
 
-  // Un poids vidé revient à celui enregistré ; inchangé, il ne part pas.
+  // An emptied weight reverts to the saved one; unchanged, it is not sent.
   const saveWeights = async (label: AnyLabel) => {
     const entered = weight[label.id];
     const forget = () =>
@@ -246,8 +246,8 @@ export default function LabelsManager({
               >
                 {(active) => (
                   <>
-                    {/* Seule la poignée déplace la ligne : la pastille et le nom
-                        gardent leurs clics. */}
+                    {/* Only the handle moves the row: the dot and the name
+                        keep their clicks. */}
                     {onReorder && (
                       <DragHandle
                         onPointerDown={onPointerDown(label.id, rank)}
@@ -285,8 +285,8 @@ export default function LabelsManager({
                         variant="unstyled"
                         size="sm"
                         style={{ flex: 1, minWidth: 0 }}
-                        // Le champ occupe exactement la place de l'étiquette qu'il
-                        // remplace : la ligne ne bouge pas d'un pixel.
+                        // The field takes exactly the place of the label it
+                        // replaces: the row does not move by a pixel.
                         styles={{
                           input: {
                             height: LABEL_FIELD_HEIGHT,
@@ -301,8 +301,8 @@ export default function LabelsManager({
                     ) : (
                       <UnstyledButton
                         onClick={() => startEdit(label)}
-                        // En bloc, l'étiquette se poserait sur la ligne de base du
-                        // bouton et retomberait sous le milieu de la ligne.
+                        // As a block, the label would sit on the button's baseline
+                        // and drop below the middle of the row.
                         style={{
                           flex: 1,
                           minWidth: 0,
@@ -311,8 +311,8 @@ export default function LabelsManager({
                           height: LABEL_FIELD_HEIGHT,
                         }}
                       >
-                        {/* L'étiquette se montre telle qu'elle se posera sur une
-                              carte, pas en texte nu. */}
+                        {/* The label is shown as it will sit on a
+                            card, not as bare text. */}
                         <LabelChip label={label} height={LABEL_FIELD_HEIGHT} />
                       </UnstyledButton>
                     )}

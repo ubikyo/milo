@@ -1,17 +1,17 @@
-// Ce qui part quand un élément suivi change — ou un élément dont on est
-// acteur : une notification à l'écran, et un e-mail.
+// What goes out when a followed item changes — or an item one is an actor
+// of: an on-screen notification, and an e-mail.
 //
-// Deux principes tiennent le fichier.
+// Two principles hold the file together.
 //
-//   1. On ne se notifie jamais de ses propres gestes. C'est le dépôt qui
-//      écarte l'auteur (repositories/follows.ts), pas l'affichage : rien ne
-//      part, donc rien n'est à filtrer plus loin.
+//   1. One is never notified of one's own actions. It is the repository that
+//      excludes the author (repositories/follows.ts), not the display: nothing
+//      goes out, so there is nothing to filter further on.
 //
-//   2. La notification à l'écran est immédiate, l'e-mail ne l'est pas. Dix
-//      retouches d'un titre en deux minutes font dix notifications — elles
-//      s'empilent et disparaissent — mais un seul e-mail, qui les résume. Sans
-//      ce regroupement, suivre un projet actif reviendrait à s'inscrire à une
-//      rafale.
+//   2. The on-screen notification is immediate, the e-mail is not. Ten edits
+//      to a title in two minutes make ten notifications — they pile up and
+//      disappear — but a single e-mail, which sums them up. Without this
+//      grouping, following an active project would amount to signing up for
+//      a burst.
 
 import crypto from "node:crypto";
 import type {
@@ -37,11 +37,11 @@ import { readSetting } from "../repositories/settings.js";
 import { companyRights, users } from "../repositories/users.js";
 import { now } from "./time.js";
 
-// --- Les réglages (Paramétrage › Notifications) ---------------------------
+// --- Settings (Paramétrage › Notifications) ---------------------------------
 
 /**
- * Les réglages de la section « Notifications ». Le délai de regroupement
- * part, tant qu'on ne l'a pas réglé, de MILO_NOTIFY_WINDOW_MINUTES.
+ * The settings of the "Notifications" section. The grouping delay starts,
+ * until it has been set, from MILO_NOTIFY_WINDOW_MINUTES.
  */
 export const notificationSettings = (): NotificationSettings => ({
   toasts: readSetting<boolean>("notify_toasts", true) !== false,
@@ -51,10 +51,9 @@ export const notificationSettings = (): NotificationSettings => ({
 });
 
 /**
- * Le temps pendant lequel les faits s'accumulent avant de partir en un
- * e-mail. Zéro quand les e-mails partent à chaque évènement : la minuterie
- * part au tour suivant, et seuls les faits d'un même geste se retrouvent
- * ensemble.
+ * How long occurrences accumulate before going out as a single e-mail. Zero
+ * when e-mails go out on every event: the timer fires on the next tick, and
+ * only the occurrences of a single action end up together.
  */
 const window = (): number => {
   const r = notificationSettings();
@@ -62,79 +61,78 @@ const window = (): number => {
 };
 
 /**
- * La boîte d'où partent les e-mails de notification, ou rien : les e-mails
- * sont coupés dans le Paramétrage, ou la messagerie n'est pas configurée.
+ * The mailbox that notification e-mails go out from, or nothing: e-mails are
+ * turned off in Settings, or the mailer is not configured.
  */
 const sendingMailbox = (): string =>
   notificationSettings().email && mailboxConfigured() ? sendingAddress() : "";
 
 /**
- * Qui a agi. Un compte le plus souvent ; l'expéditeur d'un e-mail reçu sur un
- * ticket n'en a pas toujours — son identifiant vaut alors 0, qui
- * n'écarte personne.
+ * Who acted. An account most often; the sender of an e-mail received on a
+ * ticket does not always have one — their id is then 0, which excludes
+ * nobody.
  */
 export type Author = Pick<UserRow, "id" | "name" | "email">;
 
 export interface Occurrence {
   /**
-   * L'élément suivi : un projet, une carte, un ticket. Un
-   * élément du mode Accès ne se suit pas.
+   * The followed item: a project, a card, a ticket. An Access-mode item is
+   * not followed.
    */
   kind: Exclude<NotificationKind, "access">;
   targetId: Id;
-  /** Le nom de l'élément, tel qu'il s'affiche. */
+  /** The item's name, as displayed. */
   title: string;
-  /** Ce qui a changé, à la troisième personne : « a modifié la fiche ». */
+  /** What changed, in the third person: "a modifié la fiche". */
   message: string;
-  /** Qui a agi. C'est aussi la personne qu'on ne notifie pas. */
+  /** Who acted. This is also the person who is not notified. */
   author: Author;
   /**
-   * La liste d'où la carte vient, quand elle en change. Ceux qui suivaient
-   * cette liste-là sont prévenus eux aussi : une carte qui s'en va est une
-   * modification de ce qu'elle contient, au même titre qu'une carte qui
-   * arrive.
+   * The list the card comes from, when it changes lists. Those who followed
+   * that list are notified too: a card leaving is a modification of what it
+   * contains, just like a card arriving.
    */
   sourceList?: Id;
   /**
-   * Des comptes à ne pas prévenir cette fois : ceux qu'une autre notification
-   * vient de prévenir du même geste — les acteurs qu'on vient d'assigner à une
-   * demande ont déjà la leur.
+   * Accounts not to notify this time: those that another notification has
+   * just notified of the same action — the actors just assigned to a request
+   * already have theirs.
    */
   except?: Id[];
   /**
-   * La racine de l'application, telle qu'on l'a jointe : « https://milo.exemple.fr ».
-   * Vide quand on ne la connaît pas — une relève de boîte n'a pas de requête :
-   * la notification reste alors à l'écran, sans e-mail au lien cassé.
+   * The root of the app, as we were reached: "https://milo.exemple.fr".
+   * Empty when unknown — a mailbox poll has no request: the notification
+   * then stays on screen, with no e-mail carrying a broken link.
    */
   base: string;
 }
 
-// --- Les e-mails en attente ------------------------------------------------
+// --- Pending e-mails -------------------------------------------------------
 
 /**
- * Un fait empilé, c'est une ligne du gabarit : le texte, et le nombre de fois
- * qu'il s'est répété d'affilée. Corriger un titre trois fois de suite donne
- * trois fois la même phrase, et l'e-mail dit « (3 fois) » plutôt que de la
- * recopier.
+ * A queued occurrence is one line of the template: the text, and the number
+ * of times it repeated in a row. Correcting a title three times in a row
+ * gives the same sentence three times, and the e-mail says "(3 fois)" rather
+ * than copying it out.
  */
 type QueuedOccurrence = Row;
 
 interface Pending {
-  /** La boîte de support de la société de l'élément. */
+  /** The support mailbox of the item's company. */
   sender: string;
   recipient: string;
   title: string;
   link: string;
-  /** Les faits accumulés, dans l'ordre où ils sont arrivés. */
+  /** The accumulated occurrences, in the order they arrived. */
   occurrences: QueuedOccurrence[];
   timeout: NodeJS.Timeout;
 }
 
 /**
- * Un envoi en attente par couple (personne, élément). En mémoire, comme les
- * compteurs de version : un redémarrage perd ce qui n'est pas encore parti. Ce
- * qui se perd alors, c'est un résumé de quelques minutes, et la notification à
- * l'écran, elle, a déjà eu lieu.
+ * One pending send per (person, item) pair. In memory, like the version
+ * counters: a restart loses what has not gone out yet. What is lost then is
+ * a summary of a few minutes, and the on-screen notification has already
+ * happened.
  */
 const pending = new Map<string, Pending>();
 
@@ -164,14 +162,14 @@ const dispatch = (sendKey: string): void => {
     subject: `Milo — ${sending.title}`,
     ...body(sending),
   }).catch((error: unknown) => {
-    // Personne n'attend cette réponse : l'écriture qui l'a déclenchée est
-    // partie depuis longtemps. On la trace, et c'est tout — une notification
-    // perdue ne doit pas faire échouer une modification réussie.
-    console.error("Notification par e-mail non remise :", error);
+    // Nobody is waiting for this answer: the write that triggered it left
+    // long ago. We log it, and that is all — a lost notification must not
+    // make a successful modification fail.
+    console.error("E-mail notification not delivered:", error);
   });
 };
 
-/** Ajoute un fait à l'envoi en cours pour cette personne et cet élément. */
+/** Adds an occurrence to the send in progress for this person and this item. */
 const enqueue = (recipient: UserRow, occurrence: Occurrence, link: string, sender: string): void => {
   if (!recipient.email) return;
 
@@ -180,8 +178,8 @@ const enqueue = (recipient: UserRow, occurrence: Occurrence, link: string, sende
   const row = `${occurrence.author.name || occurrence.author.email} ${occurrence.message}`;
 
   if (current) {
-    // Le titre suit l'élément : s'il vient d'être renommé, c'est le nouveau
-    // nom qu'on veut lire dans l'e-mail.
+    // The title follows the item: if it has just been renamed, it is the new
+    // name we want to read in the e-mail.
     current.title = occurrence.title;
 
     const last = current.occurrences[current.occurrences.length - 1];
@@ -196,16 +194,16 @@ const enqueue = (recipient: UserRow, occurrence: Occurrence, link: string, sende
     title: occurrence.title,
     link,
     occurrences: [{ text: row, repetitions: 1 }],
-    // `unref` laisse le processus se terminer sans attendre la fenêtre.
+    // `unref` lets the process terminate without waiting for the window.
     timeout: setTimeout(() => dispatch(sendKey), window()).unref(),
   });
 };
 
-// --- D'où part l'e-mail ----------------------------------------------------
+// --- Where the e-mail comes from -------------------------------------------
 
-// --- Qui est prévenu -------------------------------------------------------
+// --- Who is notified -------------------------------------------------------
 
-/** Le mode dont relève l'élément suivi. */
+/** The mode the followed item belongs to. */
 const domains: Record<Occurrence["kind"], Area> = {
   project: "projects",
   card: "tasks",
@@ -213,10 +211,10 @@ const domains: Record<Occurrence["kind"], Area> = {
 };
 
 /**
- * Les acteurs d'un élément, sauf celui qui vient d'agir : ceux d'un projet,
- * les membres d'une carte, les acteurs d'une demande. L'auteur d'un ticket —
- * l'expéditeur de l'e-mail, quand il a un compte, en devient acteur — n'est
- * pas de l'équipe : il n'est pas prévenu des gestes de celle-ci.
+ * The actors of an item, except the one who has just acted: those of a
+ * project, the members of a card, the actors of a request. A ticket's
+ * author — the sender of the e-mail, when they have an account, becomes an
+ * actor — is not on the team: they are not notified of the team's actions.
  */
 const actors: Record<Occurrence["kind"], ReturnType<typeof selection<UserRow>>> = {
   project: selection(
@@ -237,11 +235,11 @@ const actors: Record<Occurrence["kind"], ReturnType<typeof selection<UserRow>>> 
 };
 
 /**
- * Les comptes à prévenir : ceux qui suivent l'élément, et ses acteurs. Une
- * carte a deux sources de suiveurs : ceux qui suivent la carte, et ceux qui
- * suivent la liste où elle se trouve — suivre une liste, c'est suivre ses
- * cartes. Une même personne peut être à plusieurs titres : elle n'est
- * prévenue qu'une fois.
+ * The accounts to notify: those who follow the item, and its actors. A card
+ * has two sources of followers: those who follow the card, and those who
+ * follow the list it is in — following a list means following its cards. The
+ * same person may be there in several capacities: they are notified only
+ * once.
  */
 const toNotify = (occurrence: Occurrence): UserRow[] => {
   const kinds: [FollowKind, Id][] = [[occurrence.kind, occurrence.targetId]];
@@ -262,15 +260,15 @@ const toNotify = (occurrence: Occurrence): UserRow[] => {
     byId.set(person.id, person);
   }
   for (const id of occurrence.except ?? []) byId.delete(id);
-  // Qui ne voit plus l'élément — ses permissions ont changé depuis qu'il le
-  // suit — n'en est plus prévenu.
+  // Whoever can no longer see the item — their permissions changed since they
+  // started following it — is no longer notified of it.
   return [...byId.values()].filter((p) => can(companyRights(p), domains[occurrence.kind], "view"));
 };
 
 /**
- * Le point d'entrée : une modification vient d'avoir lieu, on en tire ce qu'il
- * faut. Ne lève jamais — une notification qui échoue ne doit pas faire échouer
- * l'écriture qui l'a déclenchée, déjà enregistrée à ce stade.
+ * The entry point: a modification has just taken place, we draw from it what
+ * is needed. Never throws — a notification that fails must not make the
+ * write that triggered it fail, already saved at this stage.
  */
 export const notify = (occurrence: Occurrence): void => {
   try {
@@ -296,47 +294,48 @@ export const notify = (occurrence: Occurrence): void => {
       if (sender) enqueue(person, occurrence, link, sender);
     }
   } catch (error) {
-    console.error("Notification de suivi abandonnée :", error);
+    console.error("Follow-up notification abandoned:", error);
   }
 };
 
 /**
- * La racine par laquelle on nous a joints, pour bâtir un lien qui s'ouvre. Le
- * serveur n'a pas d'autre moyen de connaître son adresse publique, et c'est
- * celle-là qui est juste : c'est celle que la personne a dans son navigateur.
+ * The root through which we were reached, to build a link that opens. The
+ * server has no other way to know its public address, and this one is the
+ * right one: it is the one the person has in their browser.
  */
 export const root = (req: { protocol: string; get(name: string): string | undefined }): string =>
   `${req.protocol}://${req.get("host") ?? ""}`;
 
-// --- Rattachement d'un acteur ---------------------------------------------
+// --- Attaching an actor ---------------------------------------------------
 
 export interface Linkage {
-  /** L'élément où la personne arrive : un projet, une carte. */
+  /** The item the person arrives at: a project, a card. */
   kind: "project" | "card";
   targetId: Id;
-  /** Le nom de l'élément, tel qu'il s'affiche. */
+  /** The item's name, as displayed. */
   title: string;
   /**
-   * Ce qui vient de se passer, adressé à la personne : « vous a ajouté comme
-   * acteur », « vous a ajouté à l'élément « … » d'une checklist ».
+   * What has just happened, addressed to the person: "vous a ajouté comme
+   * acteur", "vous a ajouté à l'élément « … » d'une checklist".
    */
   message: string;
-  /** Les comptes qui viennent d'arriver. */
+  /** The accounts that have just arrived. */
   recipients: Id[];
   author: Author;
   base: string;
 }
 
 /**
- * Une personne rattachée à un élément — acteur d'un projet ou d'une carte,
- * personne d'un élément de checklist — : une notification à l'écran, et un
- * e-mail aussitôt, sans attendre la fenêtre des modifications : on veut
- * savoir tout de suite qu'une part du travail nous revient. On ne se prévient
- * pas soi-même, ni qui ne voit pas l'élément. Ne lève jamais : le
- * rattachement est déjà enregistré.
+ * A person attached to an item — actor of a project or a card, person on a
+ * checklist item —: an on-screen notification, and an e-mail right away,
+ * without waiting for the modification window: one wants to know at once
+ * that a share of the work falls to us. One does not notify oneself, nor
+ * whoever cannot see the item. Never throws: the attachment is already
+ * saved.
  *
- * Rend les comptes prévenus : la notification de modification du même geste
- * les écarte (`Fait.sauf`), pour ne pas les prévenir deux fois.
+ * Returns the accounts notified: the modification notification of the same
+ * action leaves them out (`Occurrence.except`), so as not to notify them
+ * twice.
  */
 export const notifyLinked = (r: Linkage): Id[] => {
   const notified: Id[] = [];
@@ -376,30 +375,30 @@ export const notifyLinked = (r: Linkage): Id[] => {
           footer: "Vous recevez ce message parce que vous avez été ajouté à cet élément dans Milo.",
         }),
       }).catch((error: unknown) => {
-        console.error("Notification de rattachement non remise :", error);
+        console.error("Attachment notification not delivered:", error);
       });
     }
   } catch (error) {
-    console.error("Notification de rattachement abandonnée :", error);
+    console.error("Attachment notification abandoned:", error);
   }
   return notified;
 };
 
-// --- Rappel d'une échéance ------------------------------------------------
+// --- Due-date reminder ----------------------------------------------------
 
 export interface DueReminder {
   card: { id: Id; text: string };
-  /** Ce que dit le rappel : « vous rappelle l'échéance du 5 octobre à 17:00 ». */
+  /** What the reminder says: "vous rappelle l'échéance du 5 octobre à 17:00". */
   message: string;
   recipients: Id[];
-  /** La racine de l'application (MILO_PUBLIC_URL) ; vide, l'e-mail ne part pas. */
+  /** The app's root (MILO_PUBLIC_URL); empty, the e-mail is not sent. */
   base: string;
 }
 
 /**
- * Le rappel d'une échéance : il vient de Milo, pas d'une personne. Une
- * notification à l'écran et un e-mail à chaque acteur de la carte qui la voit
- * encore. Ne lève jamais.
+ * A due-date reminder: it comes from Milo, not from a person. An on-screen
+ * notification and an e-mail to each actor of the card who still sees it.
+ * Never throws.
  */
 export const notifyReminder = (r: DueReminder): void => {
   try {
@@ -435,31 +434,30 @@ export const notifyReminder = (r: DueReminder): void => {
           footer: "Vous recevez ce message parce que vous êtes acteur de cette tâche dans Milo.",
         }),
       }).catch((error: unknown) => {
-        console.error("Rappel d'échéance non remis :", error);
+        console.error("Due-date reminder not delivered:", error);
       });
     }
   } catch (error) {
-    console.error("Rappel d'échéance abandonné :", error);
+    console.error("Due-date reminder abandoned:", error);
   }
 };
 
-// --- Assignation d'un ticket ------------------------------------------------
+// --- Ticket assignment ------------------------------------------------------
 
 export interface Assignment {
-  /** La demande, son numéro de ticket et son objet. */
+  /** The request, its ticket number and its subject. */
   request: { id: Id; number: number; subject: string };
-  /** Les comptes qui viennent d'y être assignés. */
+  /** The accounts that have just been assigned to it. */
   recipients: UserRow[];
   author: UserRow;
   base: string;
 }
 
 /**
- * Une personne assignée à des demandes : une notification à l'écran par
- * demande, tout de suite, et un seul e-mail par personne qui les liste
- * toutes — assigner dix tickets d'un coup n'envoie pas dix e-mails.
- * On ne se prévient pas soi-même. Ne lève jamais : l'assignation est déjà
- * enregistrée.
+ * A person assigned to requests: one on-screen notification per request,
+ * right away, and a single e-mail per person listing them all — assigning
+ * ten tickets at once does not send ten e-mails. One does not notify
+ * oneself. Never throws: the assignment is already saved.
  */
 export const notifyAssignments = (assignments: Assignment[]): void => {
   try {
@@ -514,62 +512,62 @@ export const notifyAssignments = (assignments: Assignment[]): void => {
             ? `${who} vous a assigné cette demande :`
             : `${who} vous a assigné ces ${rows.length} demandes :`,
           rows,
-          // Une seule demande : le lien l'ouvre. Plusieurs : il ouvre Milo,
-          // où elles attendent dans le mode Support.
+          // A single request: the link opens it. Several: it opens Milo,
+          // where they wait in Support mode.
           action: { url: nounPhrase ? link : base, label: "Ouvrir dans Milo" },
           footer: "Vous recevez ce message parce qu'un ticket vous a été assigné dans Milo.",
         }),
       }).catch((error: unknown) => {
-        console.error("Notification d'assignation non remise :", error);
+        console.error("Assignment notification not delivered:", error);
       });
     }
   } catch (error) {
-    console.error("Notification d'assignation abandonnée :", error);
+    console.error("Assignment notification abandoned:", error);
   }
 };
 
-// --- Suppressions ----------------------------------------------------------
+// --- Deletions -------------------------------------------------------------
 //
-// Supprimer un élément prévient ceux qui s'y trouvaient engagés : les autres
-// acteurs d'un projet ou d'un ticket, et ceux qui les suivent ;
-// dans le mode Tâches, ceux qui suivent la carte, la liste ou le tableau. La
-// notification passe à l'écran et se range dans « Notifications », sans
-// e-mail : ce qu'elle annonce est fait, et un lien n'ouvrirait plus rien.
+// Deleting an item notifies those who were involved in it: the other actors
+// of a project or a ticket, and those who follow them; in Tasks mode, those
+// who follow the card, the list or the board. The notification goes to the
+// screen and is filed under "Notifications", without an e-mail: what it
+// announces is done, and a link would open nothing any more.
 //
-// Les destinataires se lisent AVANT la suppression : après, les acteurs et
-// les cartes sont partis avec l'élément.
+// Recipients are read BEFORE the deletion: afterwards, the actors and the
+// cards are gone with the item.
 
-/** Une requête sur un seul élément, nommé « @id » autant de fois qu'il le faut. */
+/** A query on a single item, named "@id" as many times as needed. */
 const idsOf = (sql: string) => {
   const query = selection<{ user_id: Id }>(sql);
   return (id: Id): Id[] => query.all({ id }).map((l) => l.user_id);
 };
 
-/** Qui est concerné par un élément, pour lui annoncer sa suppression. */
+/** Who is concerned by an item, to announce its deletion to them. */
 export const concerned = {
-  /** Les acteurs du projet et ceux qui le suivent. */
+  /** The project's actors and those who follow it. */
   project: idsOf(
     `SELECT user_id FROM project_actors WHERE project_id = @id
      UNION SELECT user_id FROM follows WHERE kind = 'project' AND target_id = @id`,
   ),
-  /** Les acteurs de la demande et ceux qui la suivent. */
+  /** The request's actors and those who follow it. */
   request: idsOf(
     `SELECT user_id FROM support_request_actors WHERE request_id = @id
      UNION SELECT user_id FROM follows WHERE kind = 'support' AND target_id = @id`,
   ),
-  /** Ceux qui suivent la carte, et ceux qui suivent sa liste. */
+  /** Those who follow the card, and those who follow its list. */
   card: idsOf(
     `SELECT user_id FROM follows WHERE kind = 'card' AND target_id = @id
      UNION SELECT user_id FROM follows
       WHERE kind = 'list' AND target_id = (SELECT list_id FROM task_cards WHERE id = @id)`,
   ),
-  /** Ceux qui suivent la liste, et ceux qui suivent l'une de ses cartes. */
+  /** Those who follow the list, and those who follow one of its cards. */
   list: idsOf(
     `SELECT user_id FROM follows WHERE kind = 'list' AND target_id = @id
      UNION SELECT user_id FROM follows
       WHERE kind = 'card' AND target_id IN (SELECT id FROM task_cards WHERE list_id = @id)`,
   ),
-  /** Ceux qui suivent l'une des listes du tableau, ou l'une de ses cartes. */
+  /** Those who follow one of the board's lists, or one of its cards. */
   board: idsOf(
     `SELECT user_id FROM follows
       WHERE kind = 'list' AND target_id IN (SELECT id FROM task_lists WHERE board_id = @id)
@@ -581,24 +579,24 @@ export const concerned = {
 };
 
 export interface Deletion {
-  /** La famille de l'élément : « card » vaut pour tout le mode Tâches. */
+  /** The item's family: "card" stands for the whole Tasks mode. */
   kind: NotificationKind;
   targetId: Id;
-  /** Le nom de l'élément touché. */
+  /** The name of the affected item. */
   title: string;
-  /** Ce qui a été supprimé, à la troisième personne : « a supprimé le projet ». */
+  /** What was deleted, in the third person: "a supprimé le projet". */
   message: string;
   author: Author;
-  /** Les comptes à prévenir, lus avant la suppression (voir `concernes`). */
+  /** The accounts to notify, read before the deletion (see `concerned`). */
   recipients: Id[];
   /**
-   * Vrai quand c'est l'élément lui-même qui disparaît. Faux quand c'est une
-   * partie de lui — un commentaire, une pièce jointe — : il s'ouvre toujours.
+   * True when the item itself disappears. False when it is a part of it — a
+   * comment, an attachment —: it still opens.
    */
   vanished: boolean;
 }
 
-/** Annonce une suppression. Ne lève jamais : la suppression est déjà faite. */
+/** Announces a deletion. Never throws: the deletion is already done. */
 export const notifyDeletion = (deletion: Deletion): void => {
   try {
     const whenLabel = now();
@@ -616,10 +614,10 @@ export const notifyDeletion = (deletion: Deletion): void => {
       } satisfies Notification);
     }
   } catch (error) {
-    console.error("Notification de suppression abandonnée :", error);
+    console.error("Deletion notification abandoned:", error);
   }
 };
 
-/** Le nom d'un ticket, tel que les notifications l'affichent. */
+/** A ticket's name, as notifications display it. */
 export const requestTitle = (request: { number: number; subject: string }): string =>
   `${supportTicketRef(request.number)}${request.subject ? ` — ${request.subject}` : ""}`;

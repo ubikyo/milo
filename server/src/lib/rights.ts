@@ -1,10 +1,9 @@
-// Les droits, tels que les routes les vérifient : une permission par type de
-// widget, qui vaut partout. Chaque route passe par ici avant de lire ou
-// d'écrire ce qu'un widget montre.
+// Rights, as the routes check them: one permission per widget type, valid
+// everywhere. Every route goes through here before reading or writing what a
+// widget shows.
 //
-// Ce qui ne se voit pas est introuvable (404), comme un tableau privé : on
-// n'a pas à deviner qu'il existe. Ce qui se voit sans se modifier est refusé
-// (403).
+// What cannot be seen is not found (404), like a private board: no need to
+// hint that it exists. What can be seen but not modified is refused (403).
 
 import type { Request } from "express";
 import type { Area, CompanyRights, Right, WidgetAccess } from "@milo/shared";
@@ -12,7 +11,7 @@ import { can, widgetKind } from "@milo/shared";
 import { companyRights, widgetRights } from "../repositories/users.js";
 import { HttpError } from "./http.js";
 
-// Calculés une fois par requête : une route peut les consulter plusieurs fois.
+// Computed once per request: a route may consult them several times.
 const byQuery = new WeakMap<Request, CompanyRights>();
 
 export const rightsOf = (req: Request): CompanyRights => {
@@ -23,7 +22,7 @@ export const rightsOf = (req: Request): CompanyRights => {
   return rights;
 };
 
-/** Le compte a-t-il ce droit ? (shared, `can`). */
+/** Does the account have this right? (shared, `can`). */
 export const requestCan = (req: Request, area: Area, right: Right): boolean =>
   can(rightsOf(req), area, right);
 
@@ -35,8 +34,8 @@ const REFUSALS: Record<Right, string> = {
 };
 
 /**
- * Lève si le compte n'a pas ce droit : 404 pour « Voir », 403 pour le reste.
- * `introuvable` remplace le message du 404, pour qu'il nomme ce qui manque.
+ * Throws if the account lacks this right: 404 for "Voir", 403 for the rest.
+ * `notFound` replaces the 404 message, so that it names what is missing.
  */
 export const require = (
   req: Request,
@@ -55,32 +54,32 @@ const RIGHT_BY_METHOD: Record<string, Right> = {
   DELETE: "delete",
 };
 
-/** Le droit qu'une écriture demande, d'après sa méthode ; « Voir » pour une lecture. */
+/** The right a write requires, based on its method; "Voir" for a read. */
 export const rightForMethod = (req: Request): Right => RIGHT_BY_METHOD[req.method] ?? "view";
 
 
 
-/** La permission du compte sur le type de ce widget (shared, genreDuWidget). */
+/** The account's permission on this widget's type (shared, widgetKind). */
 export const widgetAccess = (req: Request, type: string): WidgetAccess =>
   widgetRights(req.user)[widgetKind(type)];
 
 /**
- * Le compte peut-il organiser les vues et les tableaux partagés — les créer,
- * les renommer, les ranger, poser leurs sections ? Il lui faut modifier au
- * moins un type de widget : sans quoi il n'aurait rien à y poser.
+ * Can the account organize shared views and boards — create them, rename
+ * them, arrange them, set their sections? It must be able to modify at least
+ * one widget type: otherwise it would have nothing to put in them.
  */
 export const canArrange = (req: Request): boolean =>
   Object.values(widgetRights(req.user)).some((access) => access === "update");
 
-/** Lève si le compte ne peut pas organiser les vues et les tableaux partagés. */
+/** Throws if the account cannot organize shared views and boards. */
 export const requireOrganize = (req: Request): void => {
   if (!canArrange(req)) throw new HttpError(403, "Vous n'avez pas le droit de modifier ici");
 };
 
 /**
- * Lève si le compte n'a pas cette permission sur le type du widget : 404 quand
- * il ne le lit même pas — ce qu'on ne voit pas est introuvable —, 403 quand
- * il le lit sans pouvoir le modifier.
+ * Throws if the account lacks this permission on the widget's type: 404 when
+ * it cannot even read it — what is not seen is not found —, 403 when it
+ * reads it without being able to modify it.
  */
 export const requireWidget = (req: Request, type: string, desired: "view" | "update"): void => {
   const access = widgetAccess(req, type);

@@ -1,6 +1,6 @@
-// L'onglet Entra du Paramétrage : l'application, le groupe des
-// administrateurs, l'adresse d'expédition, et les vérifications — un message
-// d'essai, l'accès aux boîtes de support que les listes de demandes reçoivent.
+// The Entra tab of "Paramétrage": the application, the administrators group,
+// the sending address, and the checks — a test message, access to the
+// support inboxes that the request lists receive.
 
 import { Router } from "express";
 import type { MailboxCheck } from "@milo/shared";
@@ -27,7 +27,7 @@ entraRoutes.put("/", (req, res) => {
   res.json(publicEntraSettings());
 });
 
-// L'état de la connexion de Milo à Entra, et les deux actions qui le changent.
+// The state of Milo's connection to Entra, and the two actions that change it.
 entraRoutes.get("/status", (_req, res, next) => {
   entraState()
     .then((state) => res.json(state))
@@ -57,10 +57,10 @@ entraRoutes.post("/test", (req, res, next) => {
 });
 
 /**
- * Milo peut-il lire l'adresse d'envoi et chaque boîte que les listes de
- * demandes reçoivent ? La lecture d'un message suffit à le savoir : une
- * permission Mail.Read absente, ou une stratégie d'accès qui écarte la boîte,
- * s'y voient tout de suite.
+ * Can Milo read the sending address and each inbox that the request lists
+ * receive? Reading a message is enough to tell: a missing Mail.Read
+ * permission, or an access policy that excludes the inbox, shows up right
+ * away.
  */
 entraRoutes.get("/mailboxes", (_req, res, next) => {
   const mailboxes = new Map<string, { email: string; usages: string[] }>();
@@ -71,8 +71,8 @@ entraRoutes.get("/mailboxes", (_req, res, next) => {
   };
   const sender = sendingAddress();
   if (sender) add(sender, "Adresse d'envoi");
-  // Toutes celles que les listes disent, confirmées ou non : une boîte qui
-  // attend sa confirmation doit déjà être lisible.
+  // All those the lists name, confirmed or not: an inbox awaiting its
+  // confirmation must already be readable.
   for (const mailbox of configuredMailboxes()) add(mailbox.value, mailbox.usage);
 
   Promise.all(

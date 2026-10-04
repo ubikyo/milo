@@ -1,6 +1,6 @@
-// Le registre des widgets des sections du mode Projet. Un seul endroit les
-// connaît : le tiroir des widgets, le panneau et celui des réglages y prennent
-// ce qu'il leur faut.
+// The registry of the Project mode sections' widgets. Only one place
+// knows them: the widgets drawer, the panel and the settings one take from it
+// what they need.
 
 import { projectActorsIndicator } from "./actors";
 import { categoriesIndicator } from "./categories";
@@ -12,7 +12,7 @@ import { accessWidgets } from "../widgets/in-section";
 import type { ProjectIndicatorDisplayProps, ProjectIndicatorWidget } from "./types";
 import type { ProjectIndicatorType } from "@milo/shared";
 
-/** Dans l'ordre où le tiroir des widgets les présente. */
+/** In the order in which the widgets drawer presents them. */
 export const PROJECT_INDICATORS: ProjectIndicatorWidget[] = [
   projectsListIndicator,
   ...accessWidgets<ProjectIndicatorType, ProjectIndicatorDisplayProps>(),
@@ -28,8 +28,8 @@ const BY_TYPE = new Map<ProjectIndicatorType, ProjectIndicatorWidget>(
 );
 
 /**
- * Le widget qui sait lire cet indicateur, ou « undefined » : un type rangé
- * par une version qui en connaissait un de plus n'a pas à faire tomber la page.
+ * The widget that can read this indicator, or "undefined": a type stored
+ * by a version that knew one more must not bring the page down.
  */
 export const projectIndicatorOf = (
   type: ProjectIndicatorType,

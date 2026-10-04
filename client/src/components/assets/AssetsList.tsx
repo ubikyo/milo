@@ -40,39 +40,39 @@ import { DISK_FULL, diskUsage, osLabel } from "../../lib/workstation";
 import { RED, STRONG_TEXT } from "../../themes/colors";
 import type { Asset } from "@milo/shared";
 
-// La liste des postes du mode Assets : un widget des sections, comme les
-// indicateurs (asset-indicators/liste.tsx). Elle tient son tri et le menu de
-// son clic droit ; les postes, et ce qu'on en ouvre, viennent de la page
-// (AssetsListeContext). Sa configuration ne dit que les colonnes qu'elle
-// montre.
+// The Assets mode workstation list: a section widget, like the
+// indicators (asset-indicators/list.tsx). It holds its sort and its right-click
+// menu; the workstations, and what is opened from them, come from the page
+// (AssetsListContext). Its configuration only names the columns it
+// shows.
 //
-// Il n'y a pas de ligne d'ajout : un poste n'est pas saisi, il se déclare —
-// c'est son agent qui l'inscrit.
+// There is no add row: a workstation isn't entered, it declares itself —
+// its agent registers it.
 
-// Padding vertical des lignes, comme dans les tableaux des projets et du
-// support : la hauteur inclut le padding (box-sizing).
+// Vertical row padding, as in the project and support tables: the height
+// includes the padding (box-sizing).
 const ROW_PADDING_Y = 5;
 const ROW_HEIGHT = 28;
 
-// Hauteur du tag de l'asset, comme celui du numéro de ticket au support.
+// Height of the asset tag, like that of the ticket number in support.
 const TAG_HEIGHT = 20;
 
-/** Une valeur que l'agent n'a pas su donner se lit pareil partout. */
+/** A value the agent couldn't provide reads the same everywhere. */
 const EMPTY = "—";
 
-// La colonne « Disque » est taillée comme la progression d'un projet : la
-// barre, le pourcentage, et l'espace qui les sépare.
+// The "Disque" column is sized like a project's progress: the
+// bar, the percentage, and the space between them.
 const DISK_BAR_WIDTH = 85;
 const DISK_PERCENT_WIDTH = 40;
 const DISK_GAP = 10;
 
-// --- Tri -------------------------------------------------------------------
-// Comme aux modes Projet et Support : un clic sur le libellé trie, un second
-// inverse le sens.
+// --- Sort ------------------------------------------------------------------
+// As in the Project and Support modes: a click on the label sorts, a second
+// reverses the direction.
 
 export type ColumnKey = "name" | "os" | "user" | "protection" | "encrypted" | "disk" | "inventory";
 
-/** Le rang d'une protection au tri : les postes sans protection d'abord. */
+/** A protection's sort rank: workstations without protection first. */
 const PROTECTION_RANK: Record<Asset["protection"]["state"], number> = {
   none: 0,
   inactive: 1,
@@ -85,13 +85,13 @@ interface Sort {
   direction: "asc" | "desc";
 }
 
-/** La valeur sur laquelle chaque colonne se trie ; « null » passe en bas. */
+/** The value each column sorts on; "null" goes to the bottom. */
 const VALUES: Record<ColumnKey, (a: Asset) => string | number | null> = {
   name: (a) => a.name || null,
-  // Le nom puis la version, lue comme un nombre : « 10 » vient après « 9 ».
+  // The name then the version, read as a number: "10" comes after "9".
   os: (a) => (a.os ? osLabel(a.os) : null),
   user: (a) => a.user || null,
-  // L'état d'abord, puis l'éditeur : les postes à surveiller se regroupent.
+  // The state first, then the vendor: workstations to watch group together.
   protection: (a) =>
     a.protection.state === "unknown"
       ? null
@@ -135,7 +135,7 @@ function SortableTh({
   );
 }
 
-/** Le système : son logo, son nom et sa version. */
+/** The system: its logo, its name and its version. */
 function OsCell({ os }: { os: Asset["os"] }) {
   if (!os) {
     return (
@@ -155,9 +155,9 @@ function OsCell({ os }: { os: Asset["os"] }) {
 }
 
 /**
- * La protection du poste : le logo de l'éditeur et son nom. Une protection
- * désactivée le dit en orange, un poste Windows sans protection en rouge ;
- * hors de Windows, l'agent n'en sait rien, et la case reste vide.
+ * The workstation's protection: the vendor logo and its name. A disabled
+ * protection says so in orange, a Windows workstation without protection in red;
+ * outside Windows, the agent knows nothing about it, and the cell stays empty.
  */
 function ProtectionCell({ protection }: { protection: Asset["protection"] }) {
   if (protection.state === "unknown") {
@@ -189,7 +189,7 @@ function ProtectionCell({ protection }: { protection: Asset["protection"] }) {
   );
 }
 
-/** Le chiffrement du volume système : un cadenas fermé, ou ouvert en rouge. */
+/** The system volume encryption: a closed padlock, or an open one in red. */
 function EncryptionCell({ encrypted }: { encrypted: boolean | null }) {
   if (encrypted == null) {
     return (
@@ -209,8 +209,8 @@ function EncryptionCell({ encrypted }: { encrypted: boolean | null }) {
 }
 
 /**
- * La couleur de l'occupation : vert tant qu'il reste de la place, orange de
- * 70 à 85 %, rouge au-delà.
+ * The usage color: green while there is room left, orange from
+ * 70 to 85%, red beyond.
  */
 export const diskColor = (used: number): string => {
   if (used > DISK_FULL) return RED;
@@ -218,7 +218,7 @@ export const diskColor = (used: number): string => {
   return "teal";
 };
 
-/** La part occupée du disque système, comme la progression d'un projet. */
+/** The used share of the system disk, like a project's progress. */
 function DiskCell({ disk }: { disk: Asset["system_disk"] }) {
   const used = diskUsage(disk);
   if (used == null) {
@@ -238,7 +238,7 @@ function DiskCell({ disk }: { disk: Asset["system_disk"] }) {
   );
 }
 
-/** Les colonnes que la liste sait montrer, dans l'ordre. */
+/** The columns the list can show, in order. */
 export const ASSET_COLUMNS: { key: ColumnKey; label: string }[] = [
   { key: "name", label: "Asset" },
   { key: "os", label: "Système" },
@@ -249,33 +249,33 @@ export const ASSET_COLUMNS: { key: ColumnKey; label: string }[] = [
   { key: "inventory", label: "Dernière actualisation" },
 ];
 
-/** Ce que la page donne à la liste. */
+/** What the page gives the list. */
 export interface AssetsListHandle {
-  /** « null » tant que les postes ne sont pas lus. */
+  /** "null" while the workstations aren't read yet. */
   assets: Asset[] | null;
   loading: boolean;
   onOpenAsset: (asset: Asset) => void;
-  /** « Créer une tâche », au clic droit sur un poste. */
+  /** "Créer une tâche", on right click on a workstation. */
   onCreateTask?: (asset: Asset) => void;
-  /** « Créer un ticket », au clic droit sur un poste. */
+  /** "Créer un ticket", on right click on a workstation. */
   onCreateSupportRequest?: (asset: Asset) => void;
 }
 
 export const AssetsListContext = createContext<AssetsListHandle | null>(null);
 
-/** La clé des tags GLPI reçus, dans la configuration de la liste : chacun vers un contexte. */
+/** The key of the received GLPI tags, in the list configuration: each mapped to a context. */
 export const TAGS = "tags";
 
 export default function AssetsList({ config }: { config: unknown }) {
   const list = useContext(AssetsListContext);
-  // Les postes du tableau, du contexte choisi, que la page a lus — ceux de
-  // ce widget seulement : ceux dont il reçoit le tag (lib/listes.ts).
+  // The board's workstations, of the chosen context, that the page read — those of
+  // this widget only: those whose tag it receives (lib/lists.ts).
   const all = list?.assets ?? null;
   const assets = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
   const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
   const isEditing = useIsEditing();
   const withMenu = Boolean(list?.onCreateTask || list?.onCreateSupportRequest);
-  /** Le poste dont le menu du clic droit est ouvert, et où il s'ouvre. */
+  /** The workstation whose right-click menu is open, and where it opens. */
   const [context, setContext] = useState<{ workstation: Asset; position: PointMenuPosition } | null>(
     null,
   );
@@ -295,16 +295,16 @@ export default function AssetsList({ config }: { config: unknown }) {
     });
   }, [assets, sort]);
 
-  // Les textes montent d'abord ; le disque et la date commencent par le plus
-  // plein et le plus récent.
+  // Texts go up first; the disk and the date start with the fullest and
+  // the most recent.
   const sortBy = (key: ColumnKey) =>
     setSort((current) =>
       current.key === key
         ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
         : {
             key,
-            // La protection et le chiffrement montent aussi : ce qui manque
-            // vient en tête.
+            // Protection and encryption go up too: what is missing
+            // comes first.
             direction:
               key === "name" ||
               key === "os" ||
@@ -316,8 +316,8 @@ export default function AssetsList({ config }: { config: unknown }) {
           },
     );
 
-  // Les colonnes montrées, dans l'ordre que la configuration règle.
-  // Une colonne peut revenir : « id » distingue chaque occurrence.
+  // The columns shown, in the order the configuration sets.
+  // A column can come back: "id" distinguishes each occurrence.
   const columns = keptColumns(ASSET_COLUMNS, config);
   const resize = useResizableColumns(
     "assets",
@@ -337,7 +337,7 @@ export default function AssetsList({ config }: { config: unknown }) {
     />
   );
 
-  /** L'en-tête de chaque colonne. */
+  /** The header of each column. */
   const headers: Record<ColumnKey, (id: string) => ReactNode> = {
     name: (id) => th(id, "Asset", "name"),
     os: (id) => th(id, "Système", "os"),
@@ -345,12 +345,12 @@ export default function AssetsList({ config }: { config: unknown }) {
     protection: (id) => th(id, "Antivirus", "protection"),
     encrypted: (id) => th(id, "Chiffré", "encrypted"),
     disk: (id) => th(id, "Disque", "disk", { width: DISK_BAR_WIDTH + DISK_PERCENT_WIDTH + DISK_GAP }),
-    // Ce qui date ce qu'on vient de lire : un poste éteint depuis trois
-    // semaines se repère là.
+    // What dates what was just read: a workstation off for three
+    // weeks is spotted there.
     inventory: (id) => th(id, "Dernière actualisation", "inventory"),
   };
 
-  /** La case de chaque colonne, pour un poste. */
+  /** Each column's cell, for a workstation. */
   const cells: Record<ColumnKey, (workstation: Asset) => ReactNode> = {
     name: (workstation) => (
       <Table.Td key="name" style={{ whiteSpace: "nowrap" }}>
@@ -423,14 +423,14 @@ export default function AssetsList({ config }: { config: unknown }) {
           <Table.Tr
             key={workstation.id}
             onClick={() => list?.onOpenAsset(workstation)}
-            // En modification, le clic droit revient au menu du widget.
+            // In edit mode, right click goes back to the widget's menu.
             onContextMenu={(e) => {
               if (isEditing || !withMenu) return;
               setContext({ workstation, position: menuPosition(e) });
             }}
             style={{
               cursor: "pointer",
-              // La ligne dont le menu est ouvert garde le fond du survol.
+              // The row whose menu is open keeps the hover background.
               backgroundColor:
                 context?.workstation.id === workstation.id ? "var(--table-hover-color)" : undefined,
             }}
@@ -445,8 +445,8 @@ export default function AssetsList({ config }: { config: unknown }) {
   );
 
   if (!list || !assets) return null;
-  // Sans poste à montrer, la liste le dit, sans rien proposer : rien ne
-  // s'ajoute d'ici, tout vient des agents.
+  // With no workstation to show, the list says so, without offering anything: nothing
+  // is added from here, everything comes from the agents.
   if (assets.length === 0) {
     return list.loading ? null : (
       <EmptyPanel icon={IconDeviceDesktop} message="Aucun poste" size="md" />
@@ -455,7 +455,7 @@ export default function AssetsList({ config }: { config: unknown }) {
 
   return (
     <>
-      {/* Une section plus étroite que la liste la fait défiler de côté. */}
+      {/* A section narrower than the list makes it scroll sideways. */}
       <GridScroll>{table}</GridScroll>
 
       {context && (

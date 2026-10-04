@@ -1,7 +1,7 @@
-// Le suivi : ce que chacun demande à être prévenu quand cela change.
+// Following: what each person asks to be notified about when it changes.
 //
-// Rien ici ne touche les compteurs d'événements : suivre un élément ne change
-// ce que voit personne d'autre, et le client tient sa propre liste à jour.
+// Nothing here touches the event counters: following an item changes what
+// nobody else sees, and the client keeps its own list up to date.
 
 import { Router } from "express";
 import { badRequest } from "../lib/http.js";
@@ -13,9 +13,9 @@ import { now } from "../lib/time.js";
 export const followRoutes = Router();
 
 /**
- * La sorte reçue. Écrite ainsi — un « return » sur une fonction qui lève —
- * pour que le garde de type rende bien un `FollowKind` à la suite, sans
- * transtypage.
+ * The received kind. Written this way — a "return" on a function that
+ * throws — so that the type guard does return a `FollowKind` afterwards,
+ * without a cast.
  */
 const kind = (value: unknown): FollowKind => {
   if (!isFollowKind(value)) return badRequest("Sorte d'élément inconnue");

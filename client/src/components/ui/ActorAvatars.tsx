@@ -17,15 +17,15 @@ const PALETTE: string[] = [
   "orange",
 ];
 
-// Diamètre des pastilles ; la hauteur des lignes du tableau s'y aligne.
+// Avatar diameter; the table rows' height aligns with it.
 export const ACTOR_AVATAR_SIZE = 28;
 
-// Écart entre deux pastilles voisines. Elles ne se chevauchent pas : elles se
-// suivent, et un filet d'air suffit à les séparer.
+// Gap between two neighboring avatars. They do not overlap: they follow
+// one another, and a thin gap of air is enough to separate them.
 export const ACTOR_GAP = 3;
 
-// Couleur tirée du nom : arbitraire à l'œil, mais stable d'un rendu à l'autre
-// et identique partout pour une même personne.
+// Color derived from the name: arbitrary to the eye, but stable from one render to the next
+// and identical everywhere for the same person.
 const colorFor = (key: string): string => {
   let hash = 0;
   for (let i = 0; i < key.length; i += 1) {
@@ -34,12 +34,12 @@ const colorFor = (key: string): string => {
   return PALETTE[hash % PALETTE.length] as string;
 };
 
-// « Jérôme Quintard » -> « JQ », « Camille » -> « CA ».
+// "Jérôme Quintard" -> "JQ", "Camille" -> "CA".
 //
-// Tant que la première connexion n'a pas eu lieu, le compte n'a pas de nom et
-// c'est l'adresse qui en tient lieu : « j.quintard@… » donnait « J. ». On lit
-// alors le prénom et le nom dans la partie qui précède l'arobase, dont les
-// morceaux sont séparés par un point, un tiret ou un souligné.
+// Until the first sign-in has happened, the account has no name and
+// the address stands in for it: "j.quintard@…" gave "J.". The first
+// and last names are then read from the part before the @, whose
+// pieces are separated by a dot, a hyphen or an underscore.
 export const initialsOf = (name: string | undefined): string => {
   const raw = String(name || "").trim();
   const atSign = raw.indexOf("@");
@@ -53,9 +53,9 @@ export const initialsOf = (name: string | undefined): string => {
   return (first.charAt(0) + last.charAt(0)).toUpperCase();
 };
 
-// Pastille d'une seule personne, hors groupe. Même couleur et mêmes initiales
-// que dans les acteurs, pour qu'on reconnaisse la même personne d'un écran à
-// l'autre.
+// Avatar of a single person, outside a group. Same color and same initials
+// as in the actors, so that the same person is recognized from one screen to
+// the other.
 export function PersonAvatar({
   person,
   size = 22,
@@ -77,10 +77,10 @@ export function PersonAvatar({
   );
 }
 
-// Milo, quand il signe un mot de l'application : son logo seul, sans pastille,
-// à la manière de la favicon — la déclinaison inversée, claire, sur un thème
-// sombre. Il est plus large que haut : il tient entier dans la place d'une
-// pastille, sans être rogné.
+// Milo, when it signs an application word: its logo alone, without an avatar,
+// in the manner of the favicon — the inverted variant, light, on a dark
+// theme. It is wider than tall: it fits whole in the space of an
+// avatar, without being cropped.
 function MiloAvatar({ size }: { size: number }) {
   const scheme = useComputedColorScheme("light", { getInitialValueInEffect: false });
   return (
@@ -117,11 +117,11 @@ export default function ActorAvatars({
   const hidden = actors.slice(max);
 
   return (
-    // Boîte de hauteur fixe : sans elle, la line-box ajoute un demi-pixel et la
-    // ligne du tableau devient plus haute que celles sans acteur.
+    // Fixed-height box: without it, the line-box adds half a pixel and the
+    // table row becomes taller than those without an actor.
     <div style={{ height: size, display: "flex", alignItems: "center", overflow: "hidden" }}>
-      {/* Une simple rangée : les pastilles se suivent sans se recouvrir, donc
-          sans le liseré qui servait à les détacher les unes des autres. */}
+      {/* A simple row: the avatars follow one another without overlapping, hence
+          without the outline that used to set them apart from one another. */}
       <Group gap={ACTOR_GAP} wrap="nowrap">
         {shown.map((actor) => (
           <Avatar
@@ -131,8 +131,8 @@ export default function ActorAvatars({
             variant="filled"
             color={colorFor(actor.email || actor.name)}
             src={actor.gravatar_url || null}
-            // Le nom ne s'affiche pas au survol : il reste lisible au clavier
-            // et aux lecteurs d'écran.
+            // The name is not displayed on hover: it stays readable by keyboard
+            // and screen readers.
             aria-label={actor.name}
           >
             {initialsOf(actor.name || actor.email)}
@@ -152,13 +152,13 @@ export default function ActorAvatars({
   );
 }
 
-// La pastille de l'arobase posée sur celle de l'expéditeur : un tiers
-// de la bulle, au coin bas droit, cerclée du fond pour s'en détacher.
+// The @ badge placed on the sender's avatar: a third
+// of the bubble, at the bottom-right corner, ringed with the background to stand out.
 const BADGE_RATIO = 0.5;
 
 /**
- * La bulle de la personne qui a envoyé l'e-mail d'une demande, marquée d'une
- * petite arobase, sur fond gris : on la reconnaît parmi les acteurs sans avoir à survoler.
+ * The avatar of the person who sent a request's e-mail, marked with a
+ * small @, on a gray background: it is recognized among the actors without hovering.
  */
 export function SenderAvatar({ person, size = ACTOR_AVATAR_SIZE }: { person: Actor; size?: number }) {
   const badge = Math.max(12, Math.round(size * BADGE_RATIO));

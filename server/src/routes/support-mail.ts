@@ -1,7 +1,7 @@
-// Ce que Microsoft appelle : les notifications de changement de Graph sur les
-// boîtes de support (lib/support-webhooks.ts). Sans session — c'est Microsoft
-// au bout, pas une personne : c'est le secret de l'abonnement (« clientState »)
-// qui dit qu'une notification vient bien de nous.
+// What Microsoft calls: Graph's change notifications on the support inboxes
+// (lib/support-webhooks.ts). No session — it is Microsoft at the other end,
+// not a person: it is the subscription's secret ("clientState") that says a
+// notification really comes from us.
 
 import { Router } from "express";
 import { pollMailboxes } from "../lib/support-mail.js";
@@ -14,20 +14,20 @@ interface Notification {
 }
 
 supportMailRoutes.post("/notifications", (req, res) => {
-  // La validation d'un abonnement : Graph attend son jeton en retour, en texte
-  // brut, dans les dix secondes.
+  // A subscription's validation: Graph expects its token back, as plain
+  // text, within ten seconds.
   const token = req.query["validationToken"];
   if (typeof token === "string") {
     res.type("text/plain").send(token);
     return;
   }
 
-  // Graph attend une réponse rapide : la relève se fait après.
+  // Graph expects a quick response: the poll happens afterwards.
   res.status(202).end();
 
   const secret = notificationsSecret();
   const notifications = (req.body?.value ?? []) as Notification[];
   if (notifications.some((n) => n.clientState === secret)) {
-    pollMailboxes().catch((error) => console.error("Relève sur notification :", error));
+    pollMailboxes().catch((error) => console.error("Poll on notification:", error));
   }
 });

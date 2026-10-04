@@ -5,12 +5,12 @@ import dayjs from "dayjs";
 import { ongoing, NAME, IndicatorTitle } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 
-// Depuis combien de temps les demandes en cours attendent : le reste à faire,
-// rangé par âge. Une barre qui grossit à droite, ce sont des demandes oubliées.
+// How long the open requests have been waiting: the remaining work,
+// arranged by age. A bar that grows to the right means forgotten requests.
 
 const LABEL = "Ancienneté";
 
-/** Les tranches d'âge, en jours depuis la réception : la borne haute est exclue. */
+/** The age brackets, in days since receipt: the upper bound is excluded. */
 const BANDS = [
   { label: "< 1 j", upTo: 1, color: "green.6" },
   { label: "1–3 j", upTo: 3, color: "teal.6" },

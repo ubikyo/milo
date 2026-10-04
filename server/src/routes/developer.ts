@@ -1,5 +1,5 @@
-// La section « Développeur » du Paramétrage : des réglages qui valent pour
-// toute l'application (voir shared/developer.ts).
+// The "Développeur" section of "Paramétrage": settings that apply to the
+// whole application (see shared/developer.ts).
 
 import { Router } from "express";
 import type { DeveloperSettings } from "@milo/shared";

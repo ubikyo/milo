@@ -1,17 +1,17 @@
-// Les rappels des échéances, relevés chaque minute (lib/notify.ts) :
+// Due-date reminders, polled every minute (lib/notify.ts):
 //
-//   - le rappel d'une carte, à l'avance choisie dans sa fiche ;
-//   - le dépassement de l'échéance d'une carte ;
-//   - le dépassement de la date d'un élément de checklist encore à faire ;
-//   - la récurrence : une échéance récurrente dépassée, et signalée, avance à
-//     sa prochaine occurrence. Son rappel et son dépassement se réarment
-//     d'eux-mêmes, puisqu'ils retiennent la date dont ils sont partis.
+//   - a card's reminder, at the lead time chosen in its detail panel;
+//   - a card's due date being overdue;
+//   - the date of a still-pending checklist item being overdue;
+//   - recurrence: an overdue, already-reported recurring due date advances to
+//     its next occurrence. Its reminder and overdue notice re-arm themselves,
+//     since they remember the date they started from.
 //
-// Chacun ne part qu'une fois par date : la ligne retient celle dont il est
-// parti, et une date ou un rappel qui change le rouvre. Un dépassement trop
-// ancien — plus d'un jour : le serveur était arrêté, ou la date a été posée
-// dans le passé — est marqué sans être signalé, pour ne pas déverser d'un coup
-// des alertes périmées.
+// Each one fires only once per date: the row remembers the date it fired for,
+// and a changed date or reminder reopens it. An overdue notice that is too
+// old — more than a day: the server was down, or the date was set in the
+// past — is marked without being reported, to avoid dumping stale alerts all
+// at once.
 
 import { reminderInstant } from "@milo/shared";
 import type { Id, Reminder } from "@milo/shared";
@@ -22,7 +22,7 @@ import { parisTime } from "./time.js";
 import { env } from "../env.js";
 import { notifyReminder } from "./notify.js";
 
-/** La relève de fond regarde chaque minute : c'est le pas du plus court rappel. */
+/** The background poll runs every minute: this is the step of the shortest reminder. */
 export const REMINDERS_INTERVAL = 60 * 1000;
 
 const pending = selection<{
@@ -71,20 +71,20 @@ const markItem = mutation(
   "UPDATE checklist_items SET overdue_for = ? WHERE id = ?",
 );
 
-/** Au-delà, un dépassement n'est plus une nouvelle : il est marqué sans être signalé. */
+/** Beyond this, an overdue notice is no longer news: it is marked without being reported. */
 const EXPIRY = 24 * 60 * 60 * 1000;
 const DAY = 24 * 60 * 60 * 1000;
 
-/** Minuit à Paris, le lendemain de ce jour (« AAAA-MM-JJ »). */
+/** Midnight in Paris, the day after this day ("YYYY-MM-DD"). */
 const tomorrowInParis = (day: string): Date | null => {
   const midnight = parisTime(`${day} 00:00`);
   return midnight ? new Date(new Date(midnight).getTime() + DAY) : null;
 };
 
 /**
- * Quand une échéance de carte est dépassée. Comme à l'écran (lib/echeance.ts
- * du client) : une échéance avec une heure l'est à cette heure ; sans heure —
- * minuit à Paris —, le jour entier compte, et elle ne l'est que le lendemain.
+ * When a card's due date is overdue. As on screen (lib/due.ts on the client):
+ * a due date with a time is overdue at that time; without a time — midnight in
+ * Paris —, the whole day counts, and it is overdue only the next day.
  */
 const cardOverdueAt = (iso: string): Date | null => {
   const date = new Date(iso);
@@ -97,13 +97,13 @@ const cardOverdueAt = (iso: string): Date | null => {
   return hour === "00:00" ? new Date(date.getTime() + DAY) : date;
 };
 
-/** « du 5 octobre 2026 », pour une date seule. */
+/** "du 5 octobre 2026", for a date alone. */
 const dayLabel = (day: string): string => {
   const date = new Date(`${day}T12:00:00Z`);
   return `du ${new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" }).format(date)}`;
 };
 
-/** « le 5 octobre à 17:00 », à l'heure de Paris ; la date seule à minuit. */
+/** "le 5 octobre à 17:00", in Paris time; the date alone at midnight. */
 const whenLabel = (iso: string): string => {
   const date = new Date(iso);
   const part = (options: Intl.DateTimeFormatOptions) =>
@@ -120,8 +120,8 @@ export const sendReminders = (currentTime: Date = new Date()): void => {
   for (const card of pending.all()) {
     const instant = reminderInstant(card.due_date, card.reminder);
     if (!instant || instant > currentTime) continue;
-    // Une échéance déjà passée ne se rappelle plus : le rappel serait faux.
-    // Elle est tout de même marquée, pour ne plus être relue.
+    // A due date already past is no longer reminded: the reminder would be
+    // wrong. It is still marked, so it is not read again.
     if (new Date(card.due_date) > currentTime) {
       notifyReminder({
         card,
@@ -149,7 +149,7 @@ export const sendReminders = (currentTime: Date = new Date()): void => {
 
   advanceRecurrences(currentTime);
 
-  // Un élément prévient ses personnes ; sans personne, les acteurs de la carte.
+  // An item notifies its people; with nobody, the card's actors.
   for (const element of overdueItems.all()) {
     const overdueAt = tomorrowInParis(element.due_date);
     if (!overdueAt || overdueAt > currentTime) continue;
@@ -169,7 +169,7 @@ export const sendReminders = (currentTime: Date = new Date()): void => {
   }
 };
 
-// --- Récurrence --------------------------------------------------------------
+// --- Recurrence --------------------------------------------------------------
 
 const recurring = selection<{
   id: Id;
@@ -184,7 +184,7 @@ const postpone = mutation(
   "UPDATE task_cards SET due_date = ?, start_date = ? WHERE id = ?",
 );
 
-/** Une heure de Paris, lue comme des chiffres : on compte au calendrier, pas en millisecondes. */
+/** A Paris hour, read as plain numbers: we count by calendar, not in milliseconds. */
 interface Clock {
   year: number;
   months: number;
@@ -218,7 +218,7 @@ const parisClock = (iso: string): Clock => {
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
-/** Le jour d'une horloge, décalé au calendrier ; un 31 qui n'existe pas tombe au dernier du mois. */
+/** A clock's day, shifted by calendar; a 31st that does not exist falls on the last day of the month. */
 const shift = (h: Clock, days: number, months: number): Clock => {
   const target = new Date(Date.UTC(h.year, h.months - 1 + months, 1));
   const last = new Date(
@@ -239,7 +239,7 @@ const shift = (h: Clock, days: number, months: number): Clock => {
   };
 };
 
-/** Le pas d'une récurrence depuis ce jour : en jours, ou en mois. */
+/** A recurrence's step from this day: in days, or in months. */
 const pas = (
   recurrence: Recurrence,
   h: Clock,
@@ -248,7 +248,7 @@ const pas = (
     case "daily":
       return { days: 1, months: 0 };
     case "weekdays": {
-      // Le vendredi mène au lundi, le samedi aussi.
+      // Friday leads to Monday, and so does Saturday.
       const week = new Date(Date.UTC(h.year, h.months - 1, h.day)).getUTCDay();
       return { days: week === 5 ? 3 : week === 6 ? 2 : 1, months: 0 };
     }
@@ -269,11 +269,10 @@ const toIso = (h: Clock): string | null =>
   );
 
 /**
- * Les échéances récurrentes dépassées passent à leur prochaine occurrence non
- * encore dépassée — plusieurs pas s'il le faut, après un arrêt du serveur. Le
- * début d'une période avance du même pas que sa fin : la période garde sa
- * longueur. Le jour d'origine est gardé : un « tous les mois » du 31 revient au
- * 31 quand le mois l'a.
+ * Overdue recurring due dates move to their next not-yet-overdue occurrence —
+ * several steps if needed, after a server stop. A period's start advances by
+ * the same step as its end: the period keeps its length. The original day is
+ * kept: an "every month" from the 31st returns to the 31st when the month has it.
  */
 const advanceRecurrences = (currentTime: Date): void => {
   let advanced = 0;
@@ -289,7 +288,7 @@ const advanceRecurrences = (currentTime: Date): void => {
     let days = 0;
     let months = 0;
     let nextDueDate: string | null = card.due_date;
-    // Mille pas au plus : une date absurde ne fait pas tourner la boucle sans fin.
+    // At most a thousand steps: an absurd date does not make the loop spin forever.
     for (let i = 0; i < 1000; i += 1) {
       const p = pas(card.recurrence, end);
       if (!p.days && !p.months) break;
@@ -312,6 +311,6 @@ const advanceRecurrences = (currentTime: Date): void => {
     );
     advanced += 1;
   }
-  // Les tableaux ouverts montrent la nouvelle date sans attendre.
+  // Open boards show the new date without waiting.
   if (advanced) signalWrite("task-lists");
 };

@@ -1,5 +1,5 @@
-// Les catégories des projets. Une catégorie appartient à un tableau : deux
-// tableaux peuvent nommer une catégorie de la même façon.
+// Project categories. A category belongs to a board: two boards can name a
+// category the same way.
 
 import { Router } from "express";
 import type { CopyResult, Id, Milestone } from "@milo/shared";
@@ -21,9 +21,9 @@ import { receivedOrder, arrangeCategories } from "../repositories/reorder.js";
 const CATEGORY_NOT_FOUND = "Catégorie introuvable";
 const EXISTING_CATEGORY = "Cette catégorie existe déjà";
 
-// --- Catégories ------------------------------------------------------------
-// Une catégorie appartient à un tableau de projets : deux tableaux peuvent
-// nommer une catégorie de la même façon.
+// --- Categories ------------------------------------------------------------
+// A category belongs to a project board: two boards can name a category the
+// same way.
 
 const categoriesWithCounts = selection<CategoryRow & { project_count: number }>(
   `SELECT categories.*,
@@ -43,11 +43,11 @@ const categoriesOfBoard = selection<CategoryRow & { project_count: number }>(
 const deleteCategory = mutation("DELETE FROM categories WHERE id = ?");
 
 /**
- * Les catégories d'un tableau posées dans un autre. Celles qui y portent déjà
- * le même nom ne sont pas redoublées — la base le refuserait de toute façon,
- * le nom étant unique par tableau. « remplacer » : celles de l'accueil s'en
- * vont d'abord, sauf celles qui rangent encore des projets — les effacer
- * emporterait ces projets. Le compte rendu les dit gardées.
+ * The categories of one board set on another. Those already bearing the same
+ * name there are not duplicated — the database would refuse it anyway, the
+ * name being unique per board. "replace": the destination's go first, except
+ * those still holding projects — deleting them would take those projects
+ * with them. The report says they were kept.
  */
 const copyCategories = transaction((source: Id, target: Id, replaceExisting: boolean): CopyResult => {
   let copied = 0;
@@ -90,7 +90,7 @@ const deleteCategoryCascade = transaction((id: number): number => {
   return count;
 });
 
-/** Les jalons du corps de la requête ; « undefined » quand ils n'y sont pas. */
+/** The milestones from the request body; "undefined" when they are not there. */
 const readMilestones = (received: unknown): Milestone[] | undefined => {
   if (received === undefined) return undefined;
   return (
@@ -113,12 +113,12 @@ categoryRoutes.get("/", (req, res) => {
   if (!requestCan(req, "projects", "view")) return void res.json([]);
   const { board } = req.query;
   if (board && board !== "all") {
-    // Le tableau visé doit être ouvert à cette personne : ses catégories ne
-    // sortent pas d'un tableau privé.
+    // The targeted board must be open to this person: its categories do not
+    // leave a private board.
     const visible = openBoard(board, req.user);
     return void res.json(categoriesOfBoard.all(visible.id).map(renderedCategory));
   }
-  // Sans filtre, les catégories des tableaux fermés aux autres sont écartées.
+  // Without a filter, the categories of boards closed to others are dropped.
   res.json(categoriesWithCounts.all({ me: req.user.id }).map(renderedCategory));
 });
 
@@ -129,7 +129,7 @@ categoryRoutes.post("/copy", (req, res) => {
     badRequest("Le tableau d'origine et celui de destination sont requis");
   }
   const replaceExisting = req.body.replace === true;
-  // Effacer celles de l'accueil, c'est en supprimer.
+  // Erasing the destination's means deleting some.
   if (replaceExisting) require(req, "projects", "delete");
 
   const source = openBoard(from_board, req.user);
@@ -139,8 +139,8 @@ categoryRoutes.post("/copy", (req, res) => {
   res.json(copyCategories(source.id, target.id, replaceExisting));
 });
 
-// L'ordre des catégories d'un tableau, glissé dans le tiroir du widget : il
-// nomme toutes celles du tableau, chacune une fois.
+// The order of a board's categories, dragged in the widget's drawer: it
+// names all those of the board, each once.
 categoryRoutes.put("/reorder", (req, res) => {
   require(req, "projects", "update");
   const { board_id, ids } = req.body;
@@ -170,8 +170,8 @@ categoryRoutes.put("/:id", (req, res) => {
   const existing = orNotFound(categories.byId.get(req.params.id), CATEGORY_NOT_FOUND);
   openBoard(existing.board_id, req.user);
 
-  // Le nom et les jalons se modifient chacun de leur côté : ce qui n'est pas
-  // envoyé ne change pas.
+  // The name and milestones are each edited on their own: what is not sent
+  // does not change.
   const milestones = readMilestones(req.body.milestones);
   const name =
     req.body.name === undefined ? null : requireText(req.body.name, "Le nom est requis");

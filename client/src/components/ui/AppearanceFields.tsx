@@ -2,10 +2,10 @@ import { count, text } from "../../widgets/types";
 import { insertRow, type SettingRow } from "./SettingRows";
 import { BACKGROUND, TITLE, VALUE, type CardText } from "./IndicatorTitle";
 
-// L'allure de la carte d'un indicateur, en lignes du bloc « Apparence »
-// (LignesReglages) : le titre et la valeur règlent leur couleur et leur
-// taille ; le fond, sa seule couleur. Le registre (board-widgets) y ajoute le
-// cadre et les marges, communs à tous les widgets.
+// The look of an indicator's card, as rows of the "Apparence" block
+// (SettingRows): the title and the value set their color and
+// size; the background, its color only. The registry (board-widgets) adds the
+// frame and the margins, common to all widgets.
 
 type Config = Record<string, unknown>;
 
@@ -42,8 +42,8 @@ const textLine = (
 };
 
 /**
- * Les lignes de la carte d'un indicateur : le titre, la valeur pour un
- * indicateur qui compte, puis le fond.
+ * The rows of an indicator's card: the title, the value for an
+ * indicator that counts, then the background.
  */
 export const appearanceRows = (
   config: unknown,

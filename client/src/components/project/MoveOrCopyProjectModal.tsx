@@ -6,36 +6,36 @@ import type { Category, Project, ProjectBoard } from "@milo/shared";
 import { errorMessage, notifyError } from "../../lib/errors";
 import CloseButton from "../ui/CloseButton";
 
-// Déplacer ou copier un projet vers un tableau. Les deux gestes posent la même
-// question — lequel ? — et la même boîte y répond, comme pour une liste
+// Move or copy a project to a board. Both gestures ask the same
+// question — which one? — and the same dialog answers it, as for a list
 // (MoveOrCopyListModal).
 //
-// Les catégories étant propres à chaque tableau, le projet en change aussi :
-// on demande donc celle qui l'accueille dans le tableau visé.
+// Categories being specific to each board, the project changes its own too:
+// we therefore ask which one hosts it in the target board.
 //
-// Ce qui les sépare : déplacer emmène le projet ailleurs, son propre tableau
-// n'est donc pas une destination et son nom ne bouge pas. Copier le laisse où
-// il est : le tableau courant redevient une destination — c'est le cas le plus
-// courant, dupliquer un projet sur place — et la copie se nomme, deux projets
-// du même nom dans le même tableau ne se distinguant plus.
+// What sets them apart: moving takes the project elsewhere, so its own board
+// is not a destination and its name does not change. Copying leaves it where
+// it is: the current board becomes a destination again — this is the most common
+// case, duplicating a project in place — and the copy is named, since two projects
+// with the same name in the same board could no longer be told apart.
 export type ProjectAction = "move" | "copy";
 
 interface MoveOrCopyProjectModalProps {
   opened: boolean;
   onClose: () => void;
-  /** « move » par défaut. */
+  /** "move" by default. */
   mode?: ProjectAction;
   /**
-   * Le projet visé. Son identifiant, son tableau, son nom et sa catégorie
-   * suffisent : le tableau de la liste en donne un entier, le tiroir seulement
-   * ceux-là.
+   * The targeted project. Its id, board, name and category
+   * are enough: the list's board gives a whole one, the drawer only
+   * these.
    */
   project: Pick<Project, "id" | "board_id" | "name" | "category_id"> | null;
   boards: ProjectBoard[];
   onMoved: () => void | Promise<void>;
 }
 
-/** « Mon projet » -> « Mon projet (copie) ». */
+/** "Mon projet" -> "Mon projet (copie)". */
 const copyName = (name: string): string => `${name} (copie)`;
 
 export default function MoveOrCopyProjectModal({
@@ -47,7 +47,7 @@ export default function MoveOrCopyProjectModal({
   onMoved,
 }: MoveOrCopyProjectModalProps) {
   const [boardId, setBoardId] = useState<string | null>(null);
-  // « null » tant que les catégories du tableau visé ne sont pas lues.
+  // "null" until the target board's categories are read.
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -55,8 +55,8 @@ export default function MoveOrCopyProjectModal({
 
   const copy = mode === "copy";
 
-  // À l'ouverture : pour une copie, le tableau du projet — dupliquer sur place
-  // est le cas courant — et un nom tout prêt.
+  // On open: for a copy, the project's board — duplicating in place
+  // is the common case — and a ready-made name.
   useEffect(() => {
     if (!opened) return;
     setBoardId(copy && project ? String(project.board_id) : null);
@@ -65,7 +65,7 @@ export default function MoveOrCopyProjectModal({
     setName(project ? copyName(project.name) : "");
   }, [opened, project, copy]);
 
-  // Les catégories du tableau visé, dès qu'il est choisi.
+  // The target board's categories, as soon as it is chosen.
   useEffect(() => {
     if (!boardId) {
       setCategories(null);
@@ -81,8 +81,8 @@ export default function MoveOrCopyProjectModal({
       .then((list) => {
         if (abandoned) return;
         setCategories(list);
-        // Dans son propre tableau, le projet garde sa catégorie ; ailleurs, la
-        // première proposée, qu'on peut changer.
+        // In its own board, the project keeps its category; elsewhere, the
+        // first one offered, which can be changed.
         const own = list.find((c) => c.id === project?.category_id);
         const chosen = Number(boardId) === project?.board_id ? own : undefined;
         setCategoryId(String((chosen ?? list[0])?.id ?? "") || null);
@@ -96,7 +96,7 @@ export default function MoveOrCopyProjectModal({
     };
   }, [boardId, project]);
 
-  // Déplacer exclut le tableau qui porte déjà le projet ; copier l'accepte.
+  // Moving excludes the board that already holds the project; copying accepts it.
   const boardOptions = boards
     .filter((board) => copy || board.id !== project?.board_id)
     .map((board) => ({ value: String(board.id), label: board.name }));
@@ -152,10 +152,10 @@ export default function MoveOrCopyProjectModal({
               allowDeselect={false}
             />
 
-            {/* Un projet porte toujours une catégorie, et celles du tableau
-                d'arrivée ne sont pas celles du tableau de départ. Le tableau
-                qui n'en a aucune le dit dans le champ : le déplacement reste
-                alors impossible. */}
+            {/* A project always has a category, and those of the destination board
+                are not those of the source board. A board with none
+                says so in the field: moving then remains
+                impossible. */}
             <Select
               label="Catégorie dans ce tableau"
               placeholder={
@@ -173,8 +173,8 @@ export default function MoveOrCopyProjectModal({
               required
             />
 
-            {/* La copie se nomme : posée dans le tableau d'origine, elle
-                porterait sinon le nom du projet dont elle sort. */}
+            {/* The copy is named: placed in the original board, it would
+                otherwise carry the name of the project it comes from. */}
             {copy && (
               <TextInput
                 label="Nom de la copie"

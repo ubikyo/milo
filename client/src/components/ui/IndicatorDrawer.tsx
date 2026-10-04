@@ -16,39 +16,38 @@ import type { Indicator, IndicatorWidgetBase, IndicatorsApi } from "./Indicators
 import type { Id } from "@milo/shared";
 
 /**
- * L'emplacement du menu « Actions » d'un widget, au bout de la rangée
- * d'onglets du tiroir — là où les autres écrans posent le leur (ModeBar). Les
- * champs du widget y portent leur menu (createPortal) ; nul tant qu'il n'est
- * pas monté.
+ * The location of a widget's "Actions" menu, at the end of the drawer's tab row
+ * — where the other screens put theirs (ModeBar). The widget's fields carry
+ * their menu there (createPortal); null until it is mounted.
  */
 export const DrawerActionsContext = createContext<HTMLElement | null>(null);
 
-/** Ce qu'un champ du tiroir enregistre lui-même, au clic sur « Sauvegarder ». */
+/** What a drawer field saves itself, on click of "Sauvegarder". */
 export type Registration = () => Promise<void>;
 
 /**
- * Inscrit ce qu'un champ enregistre au clic sur « Sauvegarder » — les
- * catégories ou les étiquettes du tableau, qui ne sont pas la configuration
- * du widget. Rend de quoi le désinscrire. Nul hors du tiroir.
+ * Registers what a field saves on click of "Sauvegarder" — the board's
+ * categories or labels, which are not the widget's configuration. Returns a way
+ * to unregister it. Null outside the drawer.
  */
 export const DrawerRegistrationsContext = createContext<
   ((registration: Registration) => () => void) | null
 >(null);
 
-/** La largeur du tiroir, quand le widget n'en demande pas d'autre (drawerSize). */
+/** The drawer's width, when the widget asks for no other (drawerSize). */
 export const DRAWER_WIDTH = 560;
 
-// Le tiroir d'un indicateur d'un panneau des statistiques — Support ou
-// Assets. Sa coquille est celle des éléments du mode Accès (AccessBlockDrawer) ;
-// ses champs appartiennent au widget. Un indicateur neuf n'existe qu'une
-// fois enregistré : renoncer ne laisse rien derrière soi.
+// The drawer of an indicator in a statistics panel — Support or Assets. Its
+// shell is that of Access mode's items (AccessBlockDrawer); its fields belong
+// to the widget. A new indicator only exists once saved: giving up leaves
+// nothing behind.
 interface IndicatorDrawerProps<Type extends string, P extends IndicatorWidgetBase<Type>> {
   opened: boolean;
   onClose: () => void;
-  /** L'indicateur modifié, ou « null » pour en créer un du widget « creating ». */
+  /** The indicator being edited, or "null" to create one of the "creating" widget. */
   indicator: Indicator<Type> | null;
   creating: P | null;
-  /** La section qui reçoit l'indicateur créé. */
+  /** The section that receives the created indicator. */
   sectionId: Id | null;
   widgetOf: (type: Type) => P | undefined;
   api: IndicatorsApi<Type>;
@@ -85,14 +84,14 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
     setSaving(false);
   }, [opened, indicator, creating]);
 
-  // « Sauvegarder » : le seul geste qui écrit. Un widget inconnu n'a rien à
-  // enregistrer : le tiroir se contente de se refermer.
+  // "Sauvegarder": the only action that writes. An unknown widget has nothing
+  // to save: the drawer just closes.
   const persist = async () => {
     if (!widget) return onClose();
     setSaving(true);
     try {
-      // Ce que les champs enregistrent eux-mêmes d'abord : une erreur arrête
-      // tout, la configuration comprise.
+      // What the fields save themselves comes first: an error stops everything,
+      // the configuration included.
       for (const save of registrations.current) await save();
       if (indicator) await api.update(indicator.id, { config });
       else if (sectionId !== null) {
@@ -126,8 +125,8 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
         size={widget?.drawerSize ?? DRAWER_WIDTH}
         padding={DRAWER_PADDING}
         withCloseButton={false}
-        // Seul le panneau de l'onglet défile : les onglets et les boutons du
-        // bas restent en place, comme dans les autres tiroirs (DrawerScroll).
+        // Only the open tab's panel scrolls: the tabs and the bottom buttons
+        // stay in place, as in the other drawers (DrawerScroll).
         styles={DRAWER_STYLES}
       >
         <Tabs defaultValue="settings" style={DRAWER_PANEL_STYLE} styles={DRAWER_TABS_STYLES}>
@@ -155,7 +154,7 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
                   ) : (
                     <NameField config={config} onChange={setConfig} defaultValue={widget.label} />
                   ))}
-                {/* Le bloc « Apparence », commun à tous les widgets
+                {/* The "Apparence" block, common to all widgets
                     (board-widgets). */}
                 {widget?.Appearance && <widget.Appearance config={config} onChange={setConfig} />}
               </Stack>

@@ -1,15 +1,15 @@
-// « Hérité » : la structure qu'un compte voit dans un tableau. Hérité, il
-// voit les sections publiques (owner_id nul), partagées avec tous ; sinon les
-// siennes (owner_id = lui).
+// "Hérité": the structure an account sees in a board. Inherited, it sees the
+// public sections (null owner_id), shared with everyone; otherwise its own
+// (owner_id = itself).
 //
-// Le choix se range dans personal_layouts, et non dans la présence de
-// sections à soi : une structure personnelle peut être vide.
+// The choice is stored in personal_layouts, and not in the presence of own
+// sections: a personal structure may be empty.
 
 import type { Id } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import { now } from "../lib/time.js";
 
-/** La portée de « Hérité » : un tableau. */
+/** The scope of "Hérité": a board. */
 export const boardScope = (boardId: Id): string => `board:${boardId}`;
 
 const row = selection<{ scope: string }>(
@@ -21,11 +21,11 @@ const insertRow = mutation(
 const remove = mutation("DELETE FROM personal_layouts WHERE user_id = ? AND scope = ?");
 
 export const personalLayouts = {
-  /** Vrai quand ce compte a sa propre structure ici. */
+  /** True when this account has its own structure here. */
   personal: (userId: Id, scope: string): boolean => Boolean(row.get(userId, scope)),
   /**
-   * Le propriétaire des sections que ce compte voit et modifie ici : lui, ou
-   * personne — la structure publique.
+   * The owner of the sections this account sees and modifies here: itself, or
+   * nobody — the public structure.
    */
   owner: (userId: Id, scope: string): Id | null =>
     row.get(userId, scope) ? userId : null,
@@ -35,6 +35,6 @@ export const personalLayouts = {
   remove: (userId: Id, scope: string): void => {
     remove.run(userId, scope);
   },
-  /** Un tableau supprimé n'a plus de structures personnelles à suivre. */
+  /** A deleted board has no personal structures left to follow. */
   forgetScope: mutation("DELETE FROM personal_layouts WHERE scope = ?"),
 };

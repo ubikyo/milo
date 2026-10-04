@@ -1,9 +1,9 @@
-// Les modes de l'application, dans l'ordre du sélecteur en bas à gauche.
-// Tab passe de l'un à l'autre, dans cet ordre.
+// The application modes, in the order of the selector at the bottom left.
+// Tab cycles from one to the next, in this order.
 //
-// Cette liste était écrite deux fois — une fois par le client pour son
-// sélecteur, une fois par le serveur pour valider le mode d'ouverture d'un
-// compte. Les deux la lisent désormais ici.
+// This list used to be written twice — once by the client for its
+// selector, once by the server to validate an account's opening mode.
+// Both now read it from here.
 
 export const MODES = [
   { value: "access", label: "Accès" },
@@ -15,7 +15,7 @@ export const MODES = [
 
 export type Mode = (typeof MODES)[number]["value"];
 
-/** Mode d'ouverture d'une session, tant que le compte n'en a pas choisi un autre. */
+/** Mode a session opens in, until the account has chosen another. */
 export const DEFAULT_MODE: Mode = "projects";
 
 export const isMode = (value: unknown): value is Mode =>

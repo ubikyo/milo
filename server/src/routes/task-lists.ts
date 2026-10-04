@@ -1,4 +1,4 @@
-// Les listes d'un tableau (ses colonnes) et leur réordonnancement.
+// The lists of a board (its columns) and their reordering.
 
 import { Router } from "express";
 import { isListColor } from "@milo/shared";
@@ -18,7 +18,7 @@ export const taskListRoutes = Router();
 
 taskListRoutes.use(touch("task-lists"));
 
-// Les listes appartiennent à un tableau : la requête doit préciser lequel.
+// Lists belong to a board: the request must specify which.
 taskListRoutes.get("/", (req, res) => {
   const { board } = req.query;
   if (!board) badRequest("Le paramètre board est requis");
@@ -32,10 +32,10 @@ taskListRoutes.post("/", (req, res) => {
   if (!boardId) badRequest("Le tableau est requis");
   openTaskBoard(boardId, req, "create");
 
-  // Nouvelle liste ajoutée à la fin de celles de ce tableau, ou au rang
-  // demandé : le « + » entre deux listes l'y glisse.
+  // New list added at the end of those of this board, or at the requested
+  // position: the "+" between two lists slips it in there.
   const { next } = taskLists.nextPosition(boardId);
-  // Dans le widget « Tâches » d'où elle est créée, à défaut le premier.
+  // In the "Tâches" widget it is created from, otherwise the first one.
   const key = keyInBoard(Number(boardId), "task.list", req.body.list_key);
   const { lastInsertRowid } = taskLists.create.run(boardId, name, next, key, now());
   const id = Number(lastInsertRowid);
@@ -50,15 +50,15 @@ taskListRoutes.post("/", (req, res) => {
   res.status(201).json({ ...taskLists.byId.get(id), cards: [] });
 });
 
-// Réordonnancement complet. Déclaré avant « /:id », sinon « reorder » serait
-// interprété comme un identifiant.
+// Full reordering. Declared before "/:id", otherwise "reorder" would be
+// interpreted as an id.
 taskListRoutes.put("/reorder", (req, res) => {
   const { ids, board_id } = req.body;
   if (!Array.isArray(ids)) badRequest("ids doit être un tableau");
   if (!board_id) badRequest("Le tableau est requis");
   const board = openTaskBoard(board_id, req, "update");
 
-  // L'ordre envoyé doit couvrir exactement les listes de ce tableau.
+  // The order sent must cover exactly the lists of this board.
   const known = new Set(taskLists.idsOfBoard.all(board.id).map((l) => l.id));
   const order = toIds(ids);
   if (order.length !== known.size || order.some((id) => !known.has(id))) {
@@ -70,26 +70,26 @@ taskListRoutes.put("/reorder", (req, res) => {
 });
 
 /**
- * Copier une liste, avec ses cartes et tout ce qu'elles portent. La copie va
- * dans le tableau demandé — qui peut être celui de l'original — et s'y range à
- * la fin. Déclaré avant « /:id » : sans cela « :id/copy » serait pris pour un
- * identifiant.
+ * Copy a list, with its cards and everything they carry. The copy goes
+ * into the requested board — which may be the original's — and is placed at
+ * the end. Declared before "/:id": otherwise ":id/copy" would be taken for an
+ * id.
  */
 taskListRoutes.post("/:id/copy", (req, res) => {
   const existing = orNotFound(taskLists.byId.get(req.params.id), LIST_NOT_FOUND);
   const name = requireText(req.body.name ?? existing.name, "Le nom de la liste est requis");
   const boardId = req.body.board_id ?? existing.board_id;
 
-  // Le tableau de départ comme celui d'accueil doivent être ouverts à cette
-  // personne : une liste ne sort pas d'un tableau privé, et n'y entre pas.
-  // Copier ajoute une liste au tableau d'accueil ; le tableau de départ, lui,
-  // n'en perd rien.
+  // Both the source board and the destination board must be open to this
+  // person: a list does not leave a private board, and does not enter one.
+  // Copying adds a list to the destination board; the source board,
+  // loses nothing.
   openTaskBoard(existing.board_id, req);
   const target = openTaskBoard(boardId, req, "create");
 
-  // Copier vers un autre tableau peut y créer les étiquettes qui manquaient :
-  // le client doit les relire, sans quoi les cartes arriveraient avec des
-  // étiquettes qu'il ne connaît pas encore.
+  // Copying to another board may create the labels that were missing there:
+  // the client must reread them, otherwise the cards would arrive with
+  // labels it does not know yet.
   if (target.id !== existing.board_id) touchNow(res, "labels");
 
   const copy = copyTaskList({
@@ -109,12 +109,12 @@ taskListRoutes.put("/:id", (req, res) => {
   const color = req.body.color ?? existing.color ?? "";
   if (!isListColor(color)) badRequest("Couleur inconnue");
 
-  // Changement de tableau : la liste emporte ses cartes et se range à la fin
-  // du tableau d'accueil, comme une liste qu'on viendrait d'y créer.
+  // Board change: the list takes its cards along and is placed at the end
+  // of the destination board, like a list just created there.
   const boardId = req.body.board_id ?? existing.board_id;
-  // Le tableau de départ comme celui d'accueil doivent être ouverts à cette
-  // personne : une liste ne sort pas d'un tableau privé, et n'y entre pas.
-  // Changer de tableau, c'est ajouter la liste à celui d'accueil.
+  // Both the source board and the destination board must be open to this
+  // person: a list does not leave a private board, and does not enter one.
+  // Changing board means adding the list to the destination one.
   openTaskBoard(existing.board_id, req, "update");
   openTaskBoard(
     boardId,
@@ -128,7 +128,7 @@ taskListRoutes.put("/:id", (req, res) => {
     : (req.body.position ?? existing.position);
 
   transaction(() => {
-    // Dans un autre tableau, elle va à son premier widget « Tâches ».
+    // In another board, it goes to its first "Tâches" widget.
     const key = change
       ? keyInBoard(Number(boardId), "task.list", undefined)
       : existing.list_key;
@@ -138,7 +138,7 @@ taskListRoutes.put("/:id", (req, res) => {
   res.json(taskLists.byId.get(existing.id));
 });
 
-// Vider une liste de ses tâches, la liste et ses séparateurs restant en place.
+// Empty a list of its tasks, the list and its separators staying in place.
 taskListRoutes.delete("/:id/cards", (req, res) => {
   const existing = orNotFound(taskLists.byId.get(req.params.id), LIST_NOT_FOUND);
   openTaskBoard(existing.board_id, req, "delete");

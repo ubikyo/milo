@@ -6,68 +6,65 @@ import { insertRow } from "../components/ui/SettingRows";
 import { withField, text } from "./types";
 import type { AccessWidget, WidgetDisplayProps } from "./types";
 
-// Un lien : l'adresse d'un service, le mot qui la désigne, et de quoi
-// l'éteindre sans le perdre.
+// A link: a service's address, the word that designates it, and the means to
+// switch it off without losing it.
 //
-// Le clic simple ouvre l'adresse dans une autre page ; le double-clic renomme
-// le lien là où il est, comme un titre de colonne — c'est l'intitulé qu'on
-// retouche le plus souvent, et le tiroir n'a plus à s'ouvrir pour lui. Le
-// reste — l'adresse, l'interrupteur — se règle dans le tiroir, que le clic
-// droit ouvre.
+// A single click opens the address in another page; a double click renames
+// the link in place, like a column title — it is the label most often
+// touched up, and the drawer no longer has to open for it. The rest — the
+// address, the switch — is set in the drawer, which a right click opens.
 //
-// Les deux gestes partagent le même mot, d'où le délai ci-dessous : le premier
-// clic attend de savoir s'il en vient un second. C'est ce que fait déjà une
-// carte du mode Tâche.
+// Both gestures share the same word, hence the delay below: the first click
+// waits to know whether a second one follows. This is what a Task mode card
+// already does.
 
 const LABEL = "label";
 const URL = "url";
 const ACTIVE = "enabled";
 const COLOR = "color";
 
-/** La couleur d'un lien qui n'en a pas reçu : celle du texte, selon le thème. */
+/** The color of a link that has been given none: the text's, depending on the theme. */
 const DEFAULT_COLOR = "var(--mantine-color-text)";
 
 /**
- * Délai laissé à un second clic avant que le premier n'ouvre l'adresse. Assez
- * court pour que l'ouverture ne traîne pas, assez long pour un double-clic
- * ordinaire — et bien en deçà de la fenêtre pendant laquelle le navigateur
- * tient encore le clic pour un geste de la personne, sans quoi il bloquerait
- * l'ouverture.
+ * Delay left to a second click before the first opens the address. Short
+ * enough that opening does not drag, long enough for an ordinary double click
+ * — and well within the window during which the browser still treats the click
+ * as a gesture by the person, without which it would block the opening.
  */
 const DOUBLE_CLICK_DELAY = 250;
 
 /**
- * L'interligne d'une ligne de lien. Celui de Mantine pour un texte « sm »
- * vaut 1,55 : la ligne devient alors nettement plus haute que le mot qu'elle
- * porte, et deux liens à la suite paraissent espacés sans qu'aucune marge
- * ne les sépare. Resserré à la valeur des titres de la colonne, la ligne fait
- * la hauteur du lien.
+ * The line height of a link row. Mantine's for an "sm" text is 1.55: the row
+ * then becomes clearly taller than the word it carries, and two consecutive
+ * links look spaced apart without any margin separating them. Tightened to
+ * the value of the column's titles, the row is as tall as the link.
  *
- * Posé en style plutôt que par la propriété « lh » : celle-ci n'atteint pas
- * la variable que Mantine lit pour l'interligne d'un « Text », et resterait
- * sans effet — comme « fz » sur un titre.
+ * Set as a style rather than through the "lh" prop: that one does not reach
+ * the variable Mantine reads for a "Text" line height, and would have no
+ * effect — like "fz" on a title.
  */
 const LINE_SPACING = { lineHeight: 1.3 };
 
 /**
- * L'ancre, elle, demande une précaution de plus. Mantine lui remet
- * « display: inline », et cette règle passe après celle qui la met en bloc
- * pour la couper à une ligne. Restée en ligne, l'ancre ne commande plus la
- * hauteur de sa rangée : c'est l'interligne du conteneur qui la fixe, soit
- * celui du corps de page — près de 25 pixels pour un mot de 14. On la remet
- * donc en bloc, dans la forme que la coupure à une ligne réclame.
+ * The anchor needs one more precaution. Mantine sets it back to
+ * "display: inline", and that rule comes after the one that makes it a block
+ * to truncate it to one line. Left inline, the anchor no longer drives its
+ * row's height: the container's line height sets it, i.e. the page body's —
+ * nearly 25 pixels for a 14-pixel word. It is therefore set back to block, in
+ * the form that the one-line truncation requires.
  */
 const LINK_ROW = {
   ...LINE_SPACING,
   display: "-webkit-box" as const,
-  // L'ancre s'arrête au mot : en bloc, elle occuperait toute la colonne et le
-  // survol s'allumerait bien au-delà du texte. « max-width » la borne tout de
-  // même, sans quoi un libellé trop long déborderait au lieu d'être coupé.
+  // The anchor stops at the word: as a block, it would take the whole column
+  // and the hover would light up well beyond the text. "max-width" still caps
+  // it, otherwise an overly long label would overflow instead of being cut.
   width: "fit-content" as const,
   maxWidth: "100%" as const,
 };
 
-/** Un lien neuf est allumé : on le crée pour s'en servir. */
+/** A new link is switched on: it is created to be used. */
 const isActive = (config: unknown): boolean => {
   const value = (config as Record<string, unknown> | null)?.[ACTIVE];
   return value === undefined ? true : Boolean(value);
@@ -79,7 +76,7 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
   const [editMode, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
 
-  // Un lien démonté pendant l'attente n'ouvrira rien.
+  // A link unmounted during the wait will open nothing.
   useEffect(
     () => () => {
       if (timer.current !== null) window.clearTimeout(timer.current);
@@ -87,8 +84,8 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
     [],
   );
 
-  // Le champ prend le focus dès qu'il paraît, et la saisie s'y trouve déjà
-  // sélectionnée : le double-clic vaut « je remplace cet intitulé ».
+  // The field takes focus as soon as it appears, and the input is already
+  // selected there: the double click means "I replace this label".
   useEffect(() => {
     if (!editMode) return;
     field.current?.focus();
@@ -102,8 +99,8 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
   const color = text(config, COLOR) || DEFAULT_COLOR;
 
   const click = () => {
-    // Le second clic d'un double-clic retombe ici : il ne relance rien, c'est
-    // « onDoubleClick » qui prendra la main et annulera l'attente.
+    // The second click of a double click lands here: it triggers nothing, it
+    // is "onDoubleClick" that will take over and cancel the wait.
     if (timer.current !== null) return;
     timer.current = window.setTimeout(() => {
       timer.current = null;
@@ -121,9 +118,9 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
     setEditing(true);
   };
 
-  // L'intitulé part au serveur en refermant la saisie — c'est le seul geste
-  // qu'elle porte. Inchangé, rien n'est envoyé. Effacé, le lien se remet à se
-  // lire par son adresse.
+  // The label goes to the server when the input closes — it is the only
+  // gesture it carries. Unchanged, nothing is sent. Cleared, the link goes
+  // back to being read by its address.
   const close = async () => {
     setEditing(false);
     const newValue = draft.trim();
@@ -133,10 +130,10 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
 
   if (editMode) {
     return (
-      // Le champ prend exactement la place du mot qu'il remplace : la taille
-      // et l'interligne de la ligne de lien, sans la bordure ni la hauteur
-      // minimale que Mantine laisse à un champ « unstyled » — sans quoi la
-      // colonne sauterait au double-clic.
+      // The field takes exactly the place of the word it replaces: the size
+      // and line height of the link row, without the border or the minimum
+      // height Mantine gives an "unstyled" field — otherwise the column would
+      // jump on double click.
       <TextInput
         ref={field}
         aria-label="Intitulé du lien"
@@ -146,7 +143,7 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
         onBlur={close}
         onKeyDown={(e) => {
           if (e.key === "Enter") close();
-          // Échap renonce : l'intitulé d'avant reste.
+          // Escape gives up: the previous label stays.
           if (e.key === "Escape") setEditing(false);
         }}
         variant="unstyled"
@@ -164,9 +161,9 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
     );
   }
 
-  // Éteint, le lien se lit encore — barré et grisé — tant que la catégorie
-  // est ouverte : c'est de là qu'on le rallume. Verrouillée, il ne paraît
-  // plus du tout (voir « hidden » plus bas).
+  // Switched off, the link can still be read — struck through and grayed —
+  // while the category is open: that is where it is switched back on. When
+  // locked, it no longer appears at all (see "hidden" below).
   if (!active) {
     return (
       <Text
@@ -182,8 +179,8 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
     );
   }
 
-  // Sans adresse, le lien n'ouvre rien, mais il garde la couleur des autres :
-  // il vient d'être ajouté et attend seulement d'être renseigné.
+  // Without an address, the link opens nothing, but it keeps the color of the
+  // others: it has just been added and is only waiting to be filled in.
   if (!url) {
     return (
       <Text
@@ -199,9 +196,9 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
   }
 
   return (
-    // L'adresse s'ouvre à côté. « href » est conservé pour ce que le clic
-    // droit et le clavier en font, mais c'est le gestionnaire qui ouvre :
-    // sans lui, un double-clic ouvrirait deux pages.
+    // The address opens alongside. "href" is kept for what the right click and
+    // the keyboard do with it, but it is the handler that opens: without it,
+    // a double click would open two pages.
     <Anchor
       href={url}
       target="_blank"
@@ -209,11 +206,11 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
       size="sm"
       style={LINK_ROW}
       lineClamp={1}
-      // Ni bleu ni souligné : le lien se lit comme le reste de la colonne.
-      // La couleur est posée ici plutôt qu'en feuille de style — elle
-      // l'emporte alors à coup sûr sur celle de Mantine, quel que soit l'ordre
-      // des feuilles. Le retrait et le fond au survol, eux, n'ont pas
-      // d'équivalent en ligne (assets/styles/AccessLink.module.css).
+      // Neither blue nor underlined: the link reads like the rest of the column.
+      // The color is set here rather than in a stylesheet — it then wins for
+      // sure over Mantine's, whatever the order of the sheets. The padding and
+      // the hover background, on the other hand, have no inline equivalent
+      // (assets/styles/AccessLink.module.css).
       c={color}
       underline="never"
       className={classes.link}
@@ -234,20 +231,20 @@ export const linkWidget: AccessWidget = {
   label: "Lien",
   icon: IconLink,
   defaultConfig: { [LABEL]: "", [URL]: "", [ACTIVE]: true },
-  // Le clic simple appartient au lien : la page ne l'enveloppe pas d'un
-  // bouton qui ouvrirait le tiroir.
+  // A single click belongs to the link: the page does not wrap it in a
+  // button that would open the drawer.
   ownClicks: true,
-  // Éteint et verrouillé, il disparaît : plus personne n'a à le voir, et
-  // personne ne peut plus le rallumer de toute façon.
+  // Switched off and locked, it disappears: nobody needs to see it anymore,
+  // and nobody can switch it back on anyway.
   hidden: (config, locked) => locked && !isActive(config),
 
   Display: LinkWidget,
 
-  // Serrés comme les lignes d'un paragraphe : l'interligne suffit à les séparer.
+  // Tight like a paragraph's lines: the line height is enough to separate them.
   margins: () => ({ top: 0, bottom: 0 }),
 
-  // Sans couleur choisie, le lien suit celle du texte : blanc sur le thème
-  // sombre, noir sur le clair.
+  // With no chosen color, the link follows the text's: white on the dark
+  // theme, black on the light one.
   appearance: (config, onChange) => [
     {
       name: "Texte",
@@ -279,9 +276,9 @@ export const linkWidget: AccessWidget = {
     </Stack>
   ),
 
-  // Éteindre plutôt que supprimer : l'adresse est conservée, elle ne se
-  // montre simplement plus une fois la catégorie verrouillée. Posé après les
-  // marges, en dernier du tiroir.
+  // Switch off rather than delete: the address is kept, it simply no longer
+  // shows once the category is locked. Placed after the margins, last in the
+  // drawer.
   ConfigEnd: ({ config, onChange }) => (
     <Switch
       label="Activé"

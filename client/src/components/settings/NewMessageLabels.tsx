@@ -15,20 +15,20 @@ import {
 } from "../ui/DrawerRows";
 import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 
-// Les étiquettes qu'un ticket arrivé par e-mail reçoit d'office, au
-// Paramétrage. Elles se présentent comme les colonnes d'une liste
-// (ChampsColonnes) : une ligne par étiquette, sa pastille et son nom, qu'un
-// clic remplace par une autre. Le clic droit la retire ; « Ajouter » pose une
-// ligne vide au bout, où l'on choisit laquelle — quittée sans choix, elle
-// s'efface. Une étiquette ne revient pas deux fois.
+// The labels a ticket received by e-mail gets automatically, in Settings
+// ("Paramétrage"). They look like the columns of a list (ColumnFields): one
+// row per label, with its dot and name, which a click replaces with another.
+// Right-click removes it; "Ajouter" adds an empty row at the end, where you
+// pick which one — left without a choice, it disappears. A label never
+// appears twice.
 
-/** La taille de la pastille de couleur, dans le champ. */
+/** Size of the color dot, in the field. */
 const BADGE_SIZE = 12;
 
 interface NewMessageLabelsProps {
-  /** Les étiquettes du Support. */
+  /** The Support labels. */
   labels: SupportLabel[];
-  /** Celles qu'un nouveau message reçoit. */
+  /** Those a new message receives. */
   value: string[];
   onChange: (ids: string[]) => void;
   canEdit: boolean;
@@ -41,17 +41,17 @@ export default function NewMessageLabels({
   canEdit,
 }: NewMessageLabelsProps) {
   const colors = useLabelColors();
-  // La ligne ajoutée, en attente de son étiquette.
+  // The added row, waiting for its label.
   const [adding, setAdding] = useState(false);
-  /** Le rang de la ligne dont la liste est ouverte : son champ prend le fond. */
+  /** Index of the row whose list is open: its field takes the background. */
   const [isOpen, setOpened] = useState<number | null>(null);
   const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
 
-  // Une étiquette supprimée depuis ne se montre plus.
+  // A label deleted since then is no longer shown.
   const selected = value.filter((id) => labels.some((e) => String(e.id) === id));
   const rows = adding ? [...selected, ""] : selected;
 
-  /** Les étiquettes qu'une ligne peut prendre : la sienne, et celles qui ne sont pas déjà prises. */
+  /** The labels a row can take: its own, and those not already taken. */
   const options = (id: string) =>
     labels
       .filter((e) => String(e.id) === id || !selected.includes(String(e.id)))
@@ -102,14 +102,14 @@ export default function NewMessageLabels({
                   value={id || null}
                   placeholder="Choisir une étiquette"
                   onChange={(choice) => replaceExisting(rank, choice)}
-                  // La ligne ajoutée, quittée sans étiquette, s'efface.
+                  // The added row, left without a label, disappears.
                   onBlur={() => newRow && setAdding(false)}
                   onDropdownOpen={() => setOpened(rank)}
                   onDropdownClose={() => setOpened(null)}
                   allowDeselect={false}
                   autoFocus={newRow}
                   disabled={!canEdit}
-                  // La pastille de l'étiquette, devant son nom.
+                  // The label's dot, in front of its name.
                   leftSection={dot(id)}
                   leftSectionWidth={id ? NAME_INSET + BADGE_SIZE : undefined}
                   rightSection={<IconChevronDown size={14} />}
@@ -131,7 +131,7 @@ export default function NewMessageLabels({
         </Stack>
       )}
 
-      {/* Au plus près de la liste qu'il allonge — tant qu'il reste une étiquette à ajouter. */}
+      {/* As close as possible to the list it extends — as long as a label remains to add. */}
       {canEdit && selected.length < labels.length && (
         <AddButton label="Ajouter une étiquette" onClick={() => setAdding(true)} mt={4} />
       )}

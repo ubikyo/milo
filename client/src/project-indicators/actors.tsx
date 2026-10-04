@@ -5,9 +5,9 @@ import { withField } from "../widgets/types";
 import { NameField, NAME, IndicatorTitle, isFinished } from "./common";
 import type { ProjectIndicatorWidget } from "./types";
 
-// La part de chaque acteur dans les projets du tableau ouvert, en barres
-// radiales, comme au Support. Les projets terminés n'y comptent que si on le
-// demande.
+// Each actor's share in the open board's projects, as radial
+// bars, like in Support. Finished projects only count if
+// asked.
 
 const LABEL = "Acteurs";
 const ALL = "include_all";

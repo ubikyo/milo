@@ -1,13 +1,13 @@
-// Les réglages de la section « Support » du Paramétrage, et le calcul des
-// jours ouvrés qui s'en sert. Ils valent pour toute l'application.
+// Settings of the "Support" section of the Settings, and the computation of
+// business days that uses them. They apply to the whole application.
 
 import { supportStatusLabel, supportTicketRef } from "./domain.js";
 import type { Id, SupportStatus } from "./domain.js";
 
 /**
- * Ce qui envoie d'office une réponse par défaut à l'expéditeur d'une demande
- * reçue par e-mail. L'arrivée et la relance viennent de la boîte de support ;
- * les autres suivent le statut de la demande.
+ * What automatically sends a default reply to the sender of a request
+ * received by email. Arrival and follow-up come from the support mailbox;
+ * the others follow the request status.
  */
 export const SUPPORT_REPLY_EVENTS = [
   { value: "new", label: "Nouvelle demande" },
@@ -27,12 +27,12 @@ export const supportReplyEventLabel = (event: string): string =>
   SUPPORT_REPLY_EVENTS.find((e) => e.value === event)?.label ?? "";
 
 /**
- * Quand un contenu par défaut se pose dans l'éditeur d'une réponse de l'équipe.
- * « Tout message » s'ajoute à la fin de tous — une signature ; les autres
- * suivent le fil de la demande, et passent devant :
- * - « Nouveau message » : le fil est vide, l'équipe écrit la première ;
- * - « Première réponse » : l'expéditeur a écrit, l'équipe pas encore ;
- * - « Réponse suivante » : l'équipe a déjà répondu.
+ * When a default content is placed in the editor of a team reply.
+ * "Tout message" is appended at the end of all — a signature; the others
+ * follow the request thread, and go first:
+ * - "Nouveau message": the thread is empty, the team writes the first one;
+ * - "Première réponse": the sender has written, the team has not yet;
+ * - "Réponse suivante": the team has already replied.
  */
 export const SUPPORT_CONTENT_EVENTS = [
   { value: "all", label: "Tout message" },
@@ -47,28 +47,28 @@ export const isSupportContentEvent = (value: unknown): value is SupportContentEv
   SUPPORT_CONTENT_EVENTS.some((e) => e.value === value);
 
 /**
- * Un contenu par défaut du Support : un intitulé, son modèle HTML, et
- * l'évènement qui le pose dans l'éditeur d'une réponse.
+ * A Support default content: a title, its HTML template, and
+ * the event that places it in the reply editor.
  */
 export interface SupportContent {
   id: Id;
   name: string;
   html: string;
-  /** « null » : il ne se pose nulle part. */
+  /** "null": it is placed nowhere. */
   event: SupportContentEvent | null;
 }
 
-/** D'où vient une variable : le compte qui écrit, l'expéditeur, la demande. */
+/** Where a variable comes from: the writing account, the sender, the request. */
 export const SUPPORT_VARIABLE_GROUPS = ["Utilisateur", "Expéditeur", "Demande"] as const;
 
 export type SupportVariableGroup = (typeof SUPPORT_VARIABLE_GROUPS)[number];
 
 /**
- * Ce qu'un modèle peut citer : « {{ticket.number}} » devient « HLP-12 » dans
- * le message. L'utilisateur (« user ») est le compte connecté, l'expéditeur
- * (« sender ») celui de la demande : leurs fiches viennent d'Entra. Les
- * modèles rangés avant citaient ces variables en français
- * (« {{demande.numero}} ») : la migration les a réécrites
+ * What a template can cite: "{{ticket.number}}" becomes "HLP-12" in
+ * the message. The user ("user") is the signed-in account, the sender
+ * ("sender") that of the request: their records come from Entra. Templates
+ * stored before cited these variables in French
+ * ("{{demande.numero}}"): the migration rewrote them
  * (LEGACY_SUPPORT_VARIABLES).
  */
 export const SUPPORT_REPLY_VARIABLES = [
@@ -99,7 +99,7 @@ export const SUPPORT_REPLY_VARIABLES = [
   label: string;
 }[];
 
-/** Les groupes et les champs des variables d'avant, vers ceux d'aujourd'hui. */
+/** The groups and fields of the former variables, mapped to today's. */
 const LEGACY_VARIABLE_GROUPS: Record<string, string> = {
   utilisateur: "user",
   expediteur: "sender",
@@ -124,9 +124,9 @@ const LEGACY_VARIABLE_FIELDS: Record<string, string> = {
 };
 
 /**
- * Un modèle HTML dont les variables françaises d'avant (« {{demande.numero}} »)
- * sont réécrites comme aujourd'hui (« {{ticket.number}} ») ; le reste tel
- * quel. Sert à la migration de la base.
+ * An HTML template whose former French variables ("{{demande.numero}}")
+ * are rewritten as today ("{{ticket.number}}"); the rest as
+ * is. Used by the database migration.
  */
 export const migrateSupportTemplate = (template: string): string =>
   template.replace(/\{\{(\s*)([\w.]+)(\s*)\}\}/g, (match, before: string, key: string, after: string) => {
@@ -139,9 +139,9 @@ export const migrateSupportTemplate = (template: string): string =>
   });
 
 /**
- * La fiche d'une personne, telle que les variables la citent : celle d'Entra,
- * ou, à défaut, ce qu'en sait Milo — son nom, son adresse. Ses champs sont
- * ceux des variables (« {{user.first_name}} »).
+ * The record of a person, as the variables cite it: the Entra one,
+ * or, failing that, what Milo knows — their name, their address. Its fields are
+ * those of the variables ("{{user.first_name}}").
  */
 export interface SupportPerson {
   first_name: string;
@@ -178,9 +178,9 @@ export const emptySupportPerson = (): SupportPerson => ({
 });
 
 /**
- * Le prénom et le nom d'une personne dont on n'a que le nom affiché — celui
- * que porte son e-mail. Les mots tout en capitales sont le nom (« QUINTARD
- * Jérôme ») ; sinon, le premier mot est le prénom et la suite le nom.
+ * The first and last name of a person of whom we only have the display name —
+ * the one their email carries. Words entirely in capitals are the last name ("QUINTARD
+ * Jérôme"); otherwise, the first word is the first name and the rest the last name.
  */
 export const splitPersonName = (full: string): { first_name: string; last_name: string } => {
   const words = full.trim().split(/\s+/).filter(Boolean);
@@ -195,18 +195,18 @@ export const splitPersonName = (full: string): { first_name: string; last_name: 
   return { first_name: words[0] ?? "", last_name: words.slice(1).join(" ") };
 };
 
-/** Ce qu'il faut savoir d'une demande pour en remplir les variables. */
+/** What must be known about a request to fill in its variables. */
 export interface RequestWithVariables {
-  /** Zéro : la demande n'est pas encore créée, elle n'a pas de numéro. */
+  /** Zero: the request is not created yet, it has no number. */
   number: number;
   subject: string;
   status: SupportStatus;
 }
 
 /**
- * Ce que valent les variables d'un modèle : l'utilisateur, l'expéditeur, la
- * demande. Une personne absente — pas d'expéditeur, pas d'utilisateur pour
- * une réponse partie d'office — laisse ses variables vides.
+ * What the variables of a template are worth: the user, the sender, the
+ * request. An absent person — no sender, no user for
+ * an automatically sent reply — leaves their variables empty.
  */
 export const supportReplyValues = ({
   user,
@@ -239,8 +239,8 @@ const escapeHtml = (text: string): string =>
     .replace(/"/g, "&quot;");
 
 /**
- * Un modèle HTML dont « {{ticket.number}} » est remplacé par sa valeur,
- * échappée ; une variable inconnue reste telle quelle.
+ * An HTML template in which "{{ticket.number}}" is replaced by its value,
+ * escaped; an unknown variable is left as is.
  */
 export const fillSupportTemplate = (template: string, values: Record<string, string>): string =>
   template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (match, key: string) =>
@@ -249,27 +249,27 @@ export const fillSupportTemplate = (template: string, values: Record<string, str
 
 export interface SupportSettings {
   /**
-   * L'échéance donnée d'office à une demande qui arrive par e-mail, en jours
-   * ouvrés après sa réception. Zéro : pas d'échéance.
+   * The due date automatically given to a request that arrives by email, in business
+   * days after its receipt. Zero: no due date.
    */
   default_due_days: number;
   /**
-   * Les étiquettes posées d'office sur une demande qui arrive par e-mail.
-   * Tant que le Paramétrage n'en a pas choisi, la priorité la plus légère.
+   * The labels automatically set on a request that arrives by email.
+   * As long as the Settings has not chosen any, the lightest priority.
    */
   default_label_ids: Id[];
 }
 
-/** Une réponse par défaut du Support : un intitulé, et son modèle HTML. */
+/** A Support default reply: a title, and its HTML template. */
 export interface SupportReply {
   id: Id;
   name: string;
   html: string;
-  /** L'évènement qui l'envoie d'office ; « null » : elle ne part qu'à la main. */
+  /** The event that sends it automatically; "null": it only goes out by hand. */
   event: SupportReplyEvent | null;
 }
 
-/** Au-delà, une échéance « par défaut » n'en est plus une. */
+/** Beyond this, a "default" due date is no longer one. */
 export const SUPPORT_DUE_DAYS_MAX = 60;
 
 export const emptySupportSettings = (): SupportSettings => ({
@@ -277,10 +277,10 @@ export const emptySupportSettings = (): SupportSettings => ({
   default_label_ids: [],
 });
 
-/** Une date du calendrier, sans heure ni fuseau. */
+/** A calendar date, without time or time zone. */
 export interface CalendarDay {
   year: number;
-  /** De 1 à 12. */
+  /** From 1 to 12. */
   months: number;
   day: number;
 }
@@ -288,7 +288,7 @@ export interface CalendarDay {
 const key = (year: number, months: number, day: number): string =>
   `${year}-${String(months).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
-/** Le dimanche de Pâques (algorithme grégorien anonyme). */
+/** Easter Sunday (anonymous Gregorian algorithm). */
 const easter = (year: number): Date => {
   const a = year % 19;
   const b = Math.floor(year / 100);
@@ -309,7 +309,7 @@ const easter = (year: number): Date => {
 
 const holidays = new Map<number, Set<string>>();
 
-/** Les jours fériés de France métropolitaine, pour une année. */
+/** Public holidays of metropolitan France, for a year. */
 const holidaysOf = (year: number): Set<string> => {
   const already = holidays.get(year);
   if (already) return already;
@@ -320,11 +320,11 @@ const holidaysOf = (year: number): Set<string> => {
   };
   const days = new Set([
     key(year, 1, 1),
-    afterEaster(1), // lundi de Pâques
+    afterEaster(1), // Easter Monday
     key(year, 5, 1),
     key(year, 5, 8),
     afterEaster(39), // Ascension
-    afterEaster(50), // lundi de Pentecôte
+    afterEaster(50), // Whit Monday
     key(year, 7, 14),
     key(year, 8, 15),
     key(year, 11, 1),
@@ -336,9 +336,9 @@ const holidaysOf = (year: number): Set<string> => {
 };
 
 /**
- * Le jour ouvré qui tombe `n` jours ouvrés après `depart` : ni samedi, ni
- * dimanche, ni jour férié. Le jour de départ ne compte pas — reçu un vendredi,
- * « un jour » tombe le lundi.
+ * The business day that falls `n` business days after `start`: neither Saturday,
+ * nor Sunday, nor a public holiday. The start day does not count — received on a Friday,
+ * "one day" falls on Monday.
  */
 export const addBusinessDays = (start: CalendarDay, n: number): CalendarDay => {
   const date = new Date(Date.UTC(start.year, start.months - 1, start.day));

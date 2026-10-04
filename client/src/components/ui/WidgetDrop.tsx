@@ -3,44 +3,44 @@ import { useState } from "react";
 import type { DragEvent } from "react";
 import type { Id } from "@milo/shared";
 
-// Le glisser-déposer des widgets d'une section, commun au mode Accès et aux
-// panneaux des statistiques (SectionsBoard).
+// Drag-and-drop of a section's widgets, shared by Access mode and the
+// statistics panels (SectionsBoard).
 //
-// Un widget se prend et se pose ailleurs : plus haut, plus bas, ou dans une
-// autre section. On vise un widget, pas un interstice : survoler sa moitié
-// haute pose avant lui, sa moitié basse après lui, et un trait le dit.
+// A widget is picked up and dropped elsewhere: higher, lower, or in another
+// section. One aims at a widget, not a gap: hovering its upper half
+// drops before it, its lower half after it, and a line says so.
 //
-// Ce trait est posé par-dessus, en absolu. Une première version glissait de
-// vraies fentes entre les widgets : elles s'ajoutaient à la hauteur de la
-// colonne et faisaient descendre tout le contenu dès qu'on prenait un widget.
-// Rien ne doit bouger tant que rien n'est déposé.
+// This line is laid over, absolutely. A first version slid
+// real slots between the widgets: they added to the column's height and
+// pushed all the content down as soon as a widget was picked up.
+// Nothing must move while nothing is dropped.
 //
-// Le glisser natif du navigateur suffit ici : un widget ne se réordonne pas
-// au pixel comme une carte de tableau, il se pose entre deux autres.
+// The browser's native drag is enough here: a widget is not reordered
+// to the pixel like a board card, it is dropped between two others.
 
-/** Ce que la rangée des sections passe à ce qu'une section porte. */
+/** What the sections row passes to what a section holds. */
 export interface WidgetDrag {
-  /** Le widget en cours de déplacement, ou « null » : il vient d'une section quelconque. */
+  /** The widget being moved, or "null": it comes from any section. */
   dragged: Id | null;
   onDragStart: (id: Id) => void;
   onDragEnd: () => void;
-  /** Pose le widget déplacé dans cette section, à cette place. */
+  /** Drops the moved widget in this section, at this position. */
   onDrop: (sectionId: Id, index: number) => void;
 }
 
-/** Épaisseur du trait qui dit où le widget se posera. */
+/** Thickness of the line saying where the widget will land. */
 const LINE_THICKNESS = 2;
 
-/** Là où le widget tenu se posera : un widget, et de quel côté. */
+/** Where the held widget will land: a widget, and on which side. */
 export interface WidgetTarget {
   id: Id;
   before: boolean;
 }
 
 /**
- * Les gestes du glisser sur les widgets d'une section. « propsDe » se pose sur
- * ce qui enveloppe chaque widget ; « index » est sa place parmi ceux que la
- * section porte — celle que le dépôt attend.
+ * The drag gestures on a section's widgets. "propsOf" is put on
+ * what wraps each widget; "index" is its place among those the
+ * section holds — the one the drop expects.
  */
 export const useWidgetDrop = (sectionId: Id, drag: WidgetDrag, locked: boolean) => {
   const [target, setTarget] = useState<WidgetTarget | null>(null);
@@ -48,7 +48,7 @@ export const useWidgetDrop = (sectionId: Id, drag: WidgetDrag, locked: boolean) 
   const propsOf = (id: Id, index: number) => ({
     draggable: !locked,
     onDragStart: (e: DragEvent<HTMLElement>) => {
-      // Certains navigateurs n'amorcent pas le glisser sans charge.
+      // Some browsers do not start the drag without a payload.
       e.dataTransfer.setData("text/plain", String(id));
       e.dataTransfer.effectAllowed = "move";
       drag.onDragStart(id);
@@ -77,11 +77,11 @@ export const useWidgetDrop = (sectionId: Id, drag: WidgetDrag, locked: boolean) 
 };
 
 /**
- * Le trait d'insertion, posé par-dessus le widget visé : il ne prend aucune
- * place, donc rien ne bouge tant que rien n'est déposé. « ecart » : l'air
- * entre deux widgets, au milieu duquel le trait se pose. « debout » : le
- * trait d'une colonne, à sa gauche ou à sa droite plutôt qu'au-dessus ou
- * au-dessous.
+ * The insertion line, laid over the targeted widget: it takes no
+ * room, so nothing moves while nothing is dropped. "gap": the space
+ * between two widgets, in the middle of which the line sits. "standing": the
+ * line of a column, on its left or right rather than above or
+ * below.
  */
 export function InsertionLine({
   before,

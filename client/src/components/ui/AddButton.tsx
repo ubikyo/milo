@@ -4,9 +4,9 @@ import { useState } from "react";
 import { ADD_ACTION } from "../../themes/colors";
 import { PLUS_SIZE } from "../../themes/plus";
 
-// Action « ajouter » posée au bout d'une liste : un libellé vert sans fond, un
-// ton plus foncé au survol. Sert en bas du tableau de projets comme au bout de
-// la rangée de listes du mode Tâche.
+// "Add" action placed at the end of a list: a green label without background, a
+// darker tone on hover. Used at the bottom of the projects table as well as at the end of
+// the Task mode's row of lists.
 interface AddButtonProps extends ButtonProps {
   label: string;
   onClick: () => void;
@@ -20,7 +20,7 @@ export default function AddButton({ label, onClick, ...props }: AddButtonProps) 
       variant="transparent"
       size="xs"
       justify="flex-start"
-      // Sans marge intérieure : le « + » s'aligne sur le contenu qui précède.
+      // No inner margin: the "+" aligns with the content that precedes it.
       px={0}
       c={hovered ? ADD_ACTION.hover : ADD_ACTION.color}
       onMouseEnter={() => setHovered(true)}

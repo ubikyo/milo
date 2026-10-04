@@ -19,15 +19,15 @@ import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu
 import SupportReplyModal from "./SupportReplyModal";
 import type { ComponentType } from "react";
 
-// Une liste de modèles du Support, au Paramétrage : les notifications
-// automatiques, les contenus par défaut. Elle se présente comme les listes
-// des tiroirs (ChampsColonnes) : une ligne par modèle, son intitulé à même la
-// ligne, l'évènement qui s'en sert — un seul par modèle, et un seul modèle
-// par évènement —, puis le bouton « Modèle » qui ouvre son HTML. Le clic
-// droit le supprime ; « Ajouter » pose une ligne vide, créée dès qu'elle a
-// un intitulé.
+// A list of Support templates, in Settings ("Paramétrage"): the automatic
+// notifications, the default contents. It looks like the drawer lists
+// (ColumnFields): one row per template, its title inline in the
+// row, the event that uses it — only one per template, and only one template
+// per event —, then the "Modèle" button that opens its HTML. Right-click
+// deletes it; "Ajouter" adds an empty row, created as soon as it has a
+// title.
 
-/** De quoi lire « Demande prise en charge ». */
+/** Wide enough to read "Demande prise en charge". */
 const EVENT_WIDTH = 190;
 
 interface Template<E extends string> {
@@ -41,12 +41,12 @@ interface EventChoiceProps<E extends string> {
   events: readonly { value: E; label: string }[];
   value: E | null;
   onChange: (event: E | null) => void;
-  /** Les évènements que portent déjà les autres modèles : grisés. */
+  /** The events already carried by the other templates: grayed out. */
   taken: E[];
   disabled?: boolean;
 }
 
-/** L'évènement d'un modèle : un champ « xs » de la ligne. */
+/** A template's event: an "xs" field of the row. */
 function EventChoice<E extends string>({
   events,
   value,
@@ -87,14 +87,14 @@ interface SupportTemplatesProps<E extends string> {
   create: (name: string, event: E | null) => Promise<unknown>;
   updateStatement: (id: Id, data: { name?: string; html?: string; event?: E | null }) => Promise<unknown>;
   remove: (id: Id) => Promise<unknown>;
-  /** Le bouton d'ajout, et ce qu'on supprime : « la réponse ». */
+  /** The add button, and what is being deleted: "la réponse". */
   addTitle: string;
   entityLabel: string;
   emptyIcon: ComponentType<{ size?: number }>;
   emptyText: string;
   canEdit: boolean;
   onError: (message: string) => void;
-  /** Les provenances de variables que ses modèles peuvent citer. */
+  /** The variable sources its templates may cite. */
   variableGroups?: readonly SupportVariableGroup[];
 }
 
@@ -113,10 +113,10 @@ export default function SupportTemplates<E extends string>({
   onError,
   variableGroups,
 }: SupportTemplatesProps<E>) {
-  // Les modèles, et celui dont la fenêtre est ouverte.
+  // The templates, and the one whose modal is open.
   const [templates, setTemplates] = useState<Template<E>[]>([]);
   const [templateOf, setTemplateOf] = useState<Id | null>(null);
-  // La ligne ajoutée, en attente de son intitulé.
+  // The added row, waiting for its title.
   const [adding, setAdding] = useState(false);
   const [menu, setMenu] = useState<{ template: Template<E>; position: PointMenuPosition } | null>(
     null,
@@ -135,7 +135,7 @@ export default function SupportTemplates<E extends string>({
     void reload();
   }, [reload]);
 
-  /** Un appel à l'API, suivi de la relecture des modèles. */
+  /** An API call, followed by re-reading the templates. */
   const write = async (action: () => Promise<unknown>) => {
     try {
       await action();
@@ -145,7 +145,7 @@ export default function SupportTemplates<E extends string>({
     await reload();
   };
 
-  /** Les évènements déjà pris, sauf celui du modèle donné. */
+  /** The events already taken, except the given template's. */
   const takenEvents = (except?: Id): E[] =>
     templates.flatMap((m) => (m.id !== except && m.event ? [m.event] : []));
 
@@ -187,7 +187,7 @@ export default function SupportTemplates<E extends string>({
                 <RowButton
                   icon={IconTemplate}
                   onClick={() => setTemplateOf(m.id)}
-                  // À 5 px du bout de la ligne, retrait compris.
+                  // 5 px from the end of the row, padding included.
                   rightMargin={5 - ROW_INSET}
                 >
                   Modèle
@@ -205,8 +205,8 @@ export default function SupportTemplates<E extends string>({
                   placeholder="Intitulé"
                   label={`Intitulé de ${entityLabel}`}
                   autoFocus
-                  // Quittée sans intitulé, la ligne s'efface ; nommée, elle est
-                  // créée, sans évènement : il se choisit ensuite sur sa ligne.
+                  // Left without a title, the row disappears; named, it is
+                  // created, with no event: it is chosen afterwards on its row.
                   onValidate={(name) => {
                     setAdding(false);
                     if (name) void write(() => create(name, null));
@@ -216,7 +216,7 @@ export default function SupportTemplates<E extends string>({
             )}
           </Stack>
         )}
-        {/* Au plus près de la liste qu'il allonge. */}
+        {/* As close as possible to the list it extends. */}
         {canEdit && <AddButton label={addTitle} onClick={() => setAdding(true)} mt={4} />}
       </Input.Wrapper>
 

@@ -1,5 +1,5 @@
-// Les catégories des projets, et leurs jalons. Une catégorie appartient à un
-// tableau ; sa visibilité est celle du tableau (repositories/boards.ts).
+// Project categories, and their milestones. A category belongs to a board; its
+// visibility is the board's (repositories/boards.ts).
 
 import { mutation, selection } from "../db/query.js";
 import { isLabelColor } from "@milo/shared";
@@ -16,7 +16,7 @@ export const categories = {
   byName: selection<CategoryRow>(
     "SELECT * FROM categories WHERE board_id = ? AND name = ? COLLATE NOCASE AND id != ?",
   ),
-  // Une catégorie neuve se range au bout de celles de son tableau.
+  // A new category is placed at the end of its board's.
   create: {
     run: (boardId: unknown, name: string, milestones: string) =>
       createCategory.run(boardId, name, milestones, boardId),
@@ -26,9 +26,9 @@ export const categories = {
 };
 
 /**
- * Les jalons reçus, remis en ordre : chaque jalon porte un libellé et une
- * valeur entière de 0 à 100, une seule fois par valeur, rangés par valeur.
- * Rend « null » si la liste n'en est pas une.
+ * The received milestones, put back in order: each milestone carries a label
+ * and an integer value from 0 to 100, once per value, sorted by value.
+ * Returns "null" if the input is not a list.
  */
 export const validMilestones = (received: unknown): Milestone[] | null => {
   if (!Array.isArray(received)) return null;
@@ -37,8 +37,8 @@ export const validMilestones = (received: unknown): Milestone[] | null => {
     if (!milestone || typeof milestone !== "object") return null;
     const { value, label, color } = milestone as Record<string, unknown>;
     const numericValue = Number(value);
-    // Le libellé est facultatif : sans lui, le jalon colore sa tranche mais ne
-    // s'écrit pas sous le curseur. Une couleur illisible est laissée de côté.
+    // The label is optional: without it, the milestone colors its segment but
+    // is not written under the slider. An unreadable color is left aside.
     const trimmedLabel = typeof label === "string" ? label.trim() : "";
     if (!Number.isInteger(numericValue) || numericValue < 0 || numericValue > 100) return null;
     byValue.set(numericValue, {
@@ -51,8 +51,8 @@ export const validMilestones = (received: unknown): Milestone[] | null => {
 };
 
 /**
- * La ligne telle que l'API la rend : ses jalons redeviennent une liste. Un
- * JSON illisible ne fait pas tomber la lecture : la catégorie sort sans jalon.
+ * The row as the API returns it: its milestones become a list again.
+ * Unreadable JSON does not break the read: the category comes out without milestones.
  */
 export const renderedCategory = <Row extends CategoryRow>(
   row: Row,
@@ -61,7 +61,7 @@ export const renderedCategory = <Row extends CategoryRow>(
   try {
     milestones = validMilestones(JSON.parse(row.milestones)) ?? [];
   } catch {
-    /* jalons illisibles : la catégorie s'en passe */
+    /* unreadable milestones: the category does without them */
   }
   return { ...row, milestones };
 };

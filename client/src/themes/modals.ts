@@ -1,25 +1,22 @@
 import { DARK_HEADER } from "./colors";
 
-// Entête commun aux fenêtres modales et aux tiroirs — Mantine les construit
-// sur la même base : un bandeau gris foncé et un titre blanc, identiques dans
-// les deux thèmes.
+// Header shared by modal windows and drawers — Mantine builds them on the
+// same base: a dark gray banner and a white title, identical in both themes.
 //
-// « padding » est le retrait de la fenêtre : il rétablit celui du haut du
-// corps, que Mantine supprime dès qu'il y a un entête, et le bandeau en prend
-// la moitié pour rester mince. Le retrait de fin est repris explicitement,
-// sinon Mantine le calcule sur le retrait de la fenêtre et les deux côtés du
-// bandeau seraient inégaux.
+// "padding" is the window's inset: it restores the top one of the body, which
+// Mantine removes as soon as there is a header, and the banner takes half of
+// it to stay thin. The end inset is set explicitly, otherwise Mantine computes
+// it from the window's inset and the two sides of the banner would be unequal.
 //
-// Le titre est dans la graisse la plus fine de la police, et fait une hausse
-// d'un cinquième par rapport à la taille de Mantine (16 × 1,2 ≈ 19 px). Même
-// titre pour toutes les fenêtres et tous les tiroirs.
+// The title uses the font's thinnest weight, and is one fifth larger than
+// Mantine's size (16 × 1.2 ≈ 19 px). Same title for all windows and drawers.
 //
-// Toutes les polices n'ont pas de graisse 100 : le navigateur prend alors la
-// plus fine dont elle dispose, souvent la normale. Le titre ne repose donc
-// sur rien d'autre que sa taille et son bandeau pour se distinguer.
+// Not all fonts have a weight of 100: the browser then takes the thinnest it
+// has, often the normal one. The title therefore relies on nothing but its
+// size and its banner to stand out.
 
-// Retrait des petites fenêtres — confirmation, saisie rapide : le double du
-// « md » de Mantine.
+// Inset of small windows — confirmation, quick entry: double Mantine's
+// "md".
 export const MODAL_PADDING = 32;
 
 export const modalHeaderStyles = (padding: number) => ({
@@ -37,14 +34,14 @@ export const modalHeaderStyles = (padding: number) => ({
 });
 
 /**
- * La largeur de la fenêtre du Paramétrage, que reprennent les fenêtres qui
- * s'ouvrent depuis elle — les accès d'un workspace (WorkspacesTab).
+ * The width of the Settings window, reused by the windows that open from it —
+ * a workspace's access (WorkspacesTab).
  */
 export const SETTINGS_WIDTH = 900;
 
-/** Sa hauteur, bornée à l'écran : les fenêtres qui s'en ouvrent la reprennent aussi. */
+/** Its height, capped to the screen: the windows opened from it reuse it too. */
 export const SETTINGS_HEIGHT = 725;
 export const SETTINGS_HEIGHT_MAX = "90vh";
 
-/** Son retrait intérieur, plus large que celui des autres fenêtres (MODAL_PADDING). */
+/** Its inner inset, wider than that of the other windows (MODAL_PADDING). */
 export const SETTINGS_PADDING = 40;

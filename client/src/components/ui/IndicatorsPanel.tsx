@@ -21,13 +21,13 @@ import { isListWidgetType } from "@milo/shared";
 import type { Id, IndicatorSection } from "@milo/shared";
 import type { WidgetKind } from "../../widgets/kinds";
 
-/** L'écart entre deux indicateurs d'une section. */
+/** The gap between two indicators of a section. */
 export const GAP = 20;
 
-/** La hauteur d'un indicateur : son nom en haut, la quantité en bas. */
+/** An indicator's height: its name at the top, the quantity at the bottom. */
 const HEIGHT = 120;
 
-/** Un indicateur rangé, quel que soit son panneau. */
+/** A stored indicator, whatever its panel. */
 export interface Indicator<Type extends string> {
   id: Id;
   section_id: Id;
@@ -35,58 +35,58 @@ export interface Indicator<Type extends string> {
   config: Record<string, unknown>;
 }
 
-/** Le nom d'un widget : celui qu'on lui a donné, sinon celui de son type. */
+/** A widget's name: the one it was given, otherwise that of its type. */
 const titleOf = (indicator: { config: Record<string, unknown> }, defaultValue: string): string => {
   const name = indicator.config[NAME];
   return (typeof name === "string" && name.trim()) || defaultValue;
 };
 
-/** Ce que tout widget d'un panneau porte ; son affichage, lui, dépend du panneau. */
+/** What every widget of a panel carries; how it is displayed depends on the panel. */
 export interface IndicatorWidgetBase<Type extends string> {
-  /** Ce que la base range : il ne change jamais. */
+  /** What the database stores: it never changes. */
   type: Type;
-  /** Son type : le groupe où le tiroir des widgets le range (widgets/genres.ts). */
+  /** Its type: the group where the widget drawer files it (widgets/kinds.ts). */
   kind: WidgetKind;
-  /** Son nom dans le tiroir des widgets, et en titre de son tiroir. */
+  /** Its name in the widget drawer, and as the title of its own drawer. */
   label: string;
   icon: ComponentType<{ size?: number }>;
   /** La configuration d'un indicateur neuf. */
   defaultConfig: Record<string, unknown>;
   /**
-   * Les champs de son tiroir. Le tiroir lui-même est commun à tous. Sans
-   * champs, le widget n'a que son nom à régler : choisi, il s'ajoute
-   * aussitôt, sous le nom de son type, et n'a pas de tiroir : son nom se
-   * change au double-clic sur son titre.
+   * The fields of its drawer. The drawer itself is shared by all. Without
+   * fields, the widget only has its name to set: once chosen, it is added right
+   * away, under its type's name, and has no drawer: its name is changed by
+   * double-clicking its title.
    */
   Config?: ComponentType<IndicatorConfigProps>;
   /**
-   * Vrai quand le widget prend ses clics en charge — une liste, dont chaque
-   * ligne ouvre ce qu'elle montre. Il se pose alors sans cadre de carte, et
-   * son tiroir ne s'ouvre que par le clic droit, hors de ses lignes.
+   * True when the widget handles its own clicks — a list, each row of which
+   * opens what it shows. It is then placed without a card frame, and its drawer
+   * only opens through a right click, outside its rows.
    */
   ownClicks?: boolean;
   /**
-   * Vrai quand le widget montre une valeur — un nombre de tickets, de cartes,
-   * de projets, de postes : son tiroir en propose la taille.
+   * True when the widget shows a value — a number of tickets, cards, projects,
+   * positions: its drawer offers its size.
    */
   withValue?: boolean;
   /**
-   * Vrai quand le widget occupe toute la hauteur que sa section lui laisse —
-   * les listes de projets, de tâches, de demandes, de postes —, s'il est le
-   * dernier de sa section ; suivi d'un autre, il s'en tient à son contenu.
+   * True when the widget takes all the height its section leaves it — the lists
+   * of projects, tasks, requests, positions —, if it is the last one in its
+   * section; when followed by another, it sticks to its content.
    */
   fill?: boolean;
   /**
-   * Vrai quand le widget se nomme à même la section — une catégorie, une
-   * sous-catégorie : choisi, il s'ajoute aussitôt, sans tiroir, et attend
-   * qu'on le renseigne au double-clic.
+   * True when the widget is named within the section itself — a category, a
+   * subcategory: once chosen, it is added right away, without a drawer, and
+   * waits to be filled in by double-click.
    */
   inlineEdit?: boolean;
   /**
-   * L'air qu'il laisse au-dessus et au-dessous de lui, selon le type de ses
-   * voisins — les widgets du mode Accès (widgets/en-section.tsx), serrés entre
-   * eux comme dans une colonne d'accès. Entre deux widgets qui le disent,
-   * c'est leur air qui les sépare ; sinon, l'écart des indicateurs.
+   * The space it leaves above and below itself, depending on the type of its
+   * neighbors — Access mode widgets (widgets/in-section.tsx), tight against
+   * each other as in an access column. Between two widgets that say so, it is
+   * their own spacing that separates them; otherwise, the indicator gap.
    */
   margins?: (
     config: unknown,
@@ -94,28 +94,28 @@ export interface IndicatorWidgetBase<Type extends string> {
     nextType: string | null,
   ) => { top: number; bottom: number };
   /**
-   * Le bloc « Apparence » de son tiroir, sous ses propres champs : la carte,
-   * le cadre et les marges (board-widgets).
+   * The "Apparence" block of its drawer, under its own fields: the card, the
+   * frame and the margins (board-widgets).
    */
   Appearance?: ComponentType<IndicatorConfigProps>;
-  /** Vrai quand il ne doit pas paraître — un lien éteint, une fois verrouillé. */
+  /** True when it must not appear — a disabled link, once locked. */
   hidden?: (config: unknown, locked: boolean) => boolean;
-  /** La largeur de son tiroir, quand ses champs ne tiennent pas dans celle de tous. */
+  /** The width of its drawer, when its fields do not fit in the common one. */
   drawerSize?: number;
 }
 
-/** Ce que le panneau passe au rendu d'un widget, en plus de sa configuration. */
+/** What the panel passes to a widget's rendering, besides its configuration. */
 export interface WidgetRender {
-  /** L'identifiant du widget : ceux que le serveur relève (RSS) se lisent par lui. */
+  /** The widget's identifier: the ones the server picks up (RSS) are read through it. */
   id: Id;
-  /** Enregistre une configuration modifiée sur place ; sans effet verrouillé. */
+  /** Saves a configuration modified in place; has no effect when locked. */
   onChange: (config: Record<string, unknown>) => void | Promise<void>;
   locked: boolean;
 }
 
-/** Les écritures d'un panneau, vers ses routes. */
+/** A panel's writes, to its routes. */
 export interface IndicatorsApi<Type extends string> {
-  /** Rend l'indicateur créé : il se pose au bout de sa section. */
+  /** Returns the created indicator: it lands at the end of its section. */
   create: (data: {
     section_id: Id;
     type: Type;
@@ -123,47 +123,50 @@ export interface IndicatorsApi<Type extends string> {
   }) => Promise<{ id: Id }>;
   update: (id: Id, data: { config: Record<string, unknown> }) => Promise<unknown>;
   remove: (id: Id) => Promise<unknown>;
-  /** Ce que la section porte désormais, dans l'ordre. */
+  /** What the section now holds, in order. */
   reorder: (sectionId: Id, ids: Id[]) => Promise<unknown>;
   sections: PanelSections;
 }
 
-// Les sections d'un mode qui liste — les demandes du Support, les postes des
-// Assets, les projets, les listes de tâches — et ce qu'elles portent. La liste y est un widget comme les
-// indicateurs : il n'y a plus de liste à gauche et de panneau à droite, tout
-// se range en sections (SectionsBoard), comme au mode Accès. Chaque section a
-// sa largeur, se glisse par sa poignée et s'ajoute par le « + » de l'écart.
-// Le clic sur un indicateur ouvre son tiroir, le clic droit le modifie ou le
-// supprime, et chaque widget se glisse d'une place ou d'une section à
-// l'autre. Verrouillé, l'écran se lit seulement.
+// The sections of a listing mode — Support requests, Assets positions,
+// projects, task lists — and what they hold. The list is a widget there, like
+// the indicators: there is no longer a list on the left and a panel on the
+// right, everything is organized in sections (SectionsBoard), as in Access
+// mode. Each section has its own width, is dragged by its handle and added with
+// the "+" in the gap. Clicking an indicator opens its drawer, right-clicking it
+// edits or deletes it, and each widget can be dragged from one place or section
+// to another. When locked, the screen is read-only.
 interface IndicatorsPanelProps<Type extends string, P extends IndicatorWidgetBase<Type>> {
-  /** « null » tant que les sections ne sont pas lues. */
+  /** "null" until the sections are read. */
   sections: IndicatorSection[] | null;
   indicators: Indicator<Type>[];
-  /** Les widgets du panneau, dans l'ordre du tiroir des widgets. */
+  /** The panel's widgets, in widget drawer order. */
   widgets: P[];
   widgetOf: (type: Type) => P | undefined;
-  /** Ce que le widget montre : c'est le panneau qui sait quoi lui passer. */
+  /** What the widget shows: the panel knows what to pass it. */
   render: (widget: P, config: unknown, widgetRender: WidgetRender) => ReactNode;
   api: IndicatorsApi<Type>;
   onChanged: () => void | Promise<void>;
   locked: boolean;
-  /** Déverrouiller l'écran : voir SectionsBoard. */
+  /** Unlock the screen: see SectionsBoard. */
   onUnlock?: () => void | Promise<void>;
-  /** Dupliquer un widget : la copie se pose sous l'original. Sans lui, le menu ne le propose pas. */
+  /**
+   * Duplicate a widget: the copy lands under the original. Without it, the menu
+   * does not offer it.
+   */
   onDuplicate?: (indicator: Indicator<Type>) => Promise<unknown>;
   /**
-   * Ce en quoi un type se convertit — la catégorie en sous-catégorie —, et
-   * de quoi le faire. Sans lui, le menu ne propose pas de conversion.
+   * What a type converts into — category into subcategory —, and how to do it.
+   * Without it, the menu offers no conversion.
    */
   conversion?: {
     to: Partial<Record<string, Type>>;
     convert: (indicator: Indicator<Type>, type: Type) => Promise<unknown>;
   };
   /**
-   * Des gestes de plus au clic droit d'un widget, qui ne le remanient pas :
-   * créer une tâche depuis un lien. Ils restent proposés quand le widget est
-   * figé. Rien à proposer : « null ».
+   * Extra actions on a widget's right click, which do not reshape it: creating
+   * a task from a link. They stay available when the widget is frozen. Nothing
+   * to offer: "null".
    */
   extraMenu?: (indicator: Indicator<Type>, close: () => void) => ReactNode;
 }
@@ -183,14 +186,14 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
   extraMenu,
 }: IndicatorsPanelProps<Type, P>) {
   const access = useWidgetAccess();
-  // Le widget copié, qu'on colle au bout d'une section : seulement un type
-  // que ce panneau connaît et que le compte peut poser.
+  // The copied widget, pasted at the end of a section: only a type this panel
+  // knows and the account can place.
   const copy = useCopiedWidget();
   const toPaste = copy ? widgetOf(copy.type as Type) : undefined;
   const pastable = copy && toPaste && access(toPaste.kind) === "update" ? copy : null;
   const [drawerOpen, setDrawerOpened] = useState(false);
   const [modified, setModified] = useState<Indicator<Type> | null>(null);
-  /** Le widget posé depuis le tiroir de gauche, en attente de ses réglages. */
+  /** The widget dropped from the left drawer, waiting for its settings. */
   const [created, setCreated] = useState<{ widget: P; sectionId: Id; index: number } | null>(null);
 
   const [menu, setMenu] = useState<{
@@ -199,7 +202,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
   } | null>(null);
   const [toDelete, setToDelete] = useState<Indicator<Type> | null>(null);
 
-  /** Écrire, puis relire quoi qu'il arrive : c'est la lecture qui fait foi. */
+  /** Write, then re-read no matter what: the read is the source of truth. */
   const write = async (writing: () => Promise<unknown>) => {
     try {
       await writing();
@@ -218,7 +221,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
   };
 
   /**
-   * Créer, puis ranger à la place visée : la création pose au bout de la
+   * Create, then move to the targeted place: creation puts it at the end of the
    * section.
    */
   const createAt = async (
@@ -234,9 +237,9 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
   };
 
   /**
-   * Un widget posé depuis le tiroir de gauche. Sans réglages, ou nommé sur
-   * place, il est créé aussitôt ; sinon son tiroir s'ouvre, et il ne naît
-   * qu'à l'enregistrement — à la place où il a été posé.
+   * A widget dropped from the left drawer. With no settings, or named in place,
+   * it is created right away; otherwise its drawer opens, and it is only born
+   * on save — at the place where it was dropped.
    */
   const insertRow = async (section: IndicatorSection, type: string, index: number) => {
     const widget = widgets.find((w) => w.type === type);
@@ -252,9 +255,9 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
     setDrawerOpened(true);
   };
 
-  // Un widget sans champs à lui naît sans tiroir (poser), mais en a un
-  // ensuite : son apparence — cadre, marges — se règle comme celle de tous.
-  // Seul un widget qui n'aurait ni l'un ni l'autre n'en a pas.
+  // A widget with no fields of its own is born without a drawer (drop), but has
+  // one afterwards: its appearance — frame, margins — is set like everyone
+  // else's. Only a widget with neither has none.
   const hasDrawer = (indicator: Indicator<Type>) => {
     const widget = widgetOf(indicator.type);
     return Boolean(widget?.Config || widget?.Appearance);
@@ -298,8 +301,8 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
           write(() => api.sections.create(rank !== undefined ? { index: rank } : {}))
         }
         onDuplicateSection={(section) => write(() => api.sections.duplicate(section.id))}
-        // Lâché sur la corbeille : la même question que « Supprimer », pour
-        // un widget que le compte peut modifier.
+        // Dropped on the trash: the same question as "Supprimer", for a widget
+        // the account can modify.
         onDeleteWidget={(id) => {
           const indicator = indicators.find((i) => i.id === id);
           const widget = indicator ? widgetOf(indicator.type) : undefined;
@@ -336,8 +339,8 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
         (() => {
           const { indicator } = menu;
           const widget = widgetOf(indicator.type);
-          // Figé — l'écran verrouillé, ou un type que le compte ne fait que
-          // lire —, le widget ne propose que les gestes qui ne le remanient pas.
+          // Frozen — the screen locked, or a type the account can only read —,
+          // the widget only offers the actions that do not reshape it.
           const frozen = locked || !widget || access(widget.kind) !== "update";
           const close = () => setMenu(null);
           const extra = extraMenu?.(indicator, close) ?? null;
@@ -350,7 +353,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
                   Modifier
                 </Menu.Item>
               )}
-              {/* Un widget de liste possède ses éléments : il ne se duplique pas. */}
+              {/* A list widget owns its items: it is not duplicated. */}
               {!frozen && onDuplicate && !isListWidgetType(String(indicator.type)) && (
                 <Menu.Item
                   leftSection={<IconCopyPlus size={16} />}
@@ -362,9 +365,8 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
                   Dupliquer
                 </Menu.Item>
               )}
-              {/* Copier, en modification seulement. Un widget de liste
-                  possède ses éléments : il ne se copie pas plus qu'il ne se
-                  duplique. */}
+              {/* Copy, in edit mode only. A list widget owns its items: it
+                  cannot be copied any more than duplicated. */}
               {!locked && widget && !isListWidgetType(String(indicator.type)) && (
                 <Menu.Item
                   leftSection={<IconCopy size={16} />}
@@ -431,7 +433,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
         creating={created?.widget ?? null}
         sectionId={created?.sectionId ?? null}
         widgetOf={widgetOf}
-        // La création passe par la place visée.
+        // Creation goes through the targeted place.
         api={{ ...api, create: (data) => createAt(data, created?.index ?? Number.MAX_SAFE_INTEGER) }}
         onSaved={async () => {
           setDrawerOpened(false);
@@ -453,11 +455,11 @@ interface SectionIndicatorsProps<Type extends string, P extends IndicatorWidgetB
   onOpen: (indicator: Indicator<Type>) => void;
   onRename: (indicator: Indicator<Type>, name: string) => Promise<void>;
   onContextMenu: (indicator: Indicator<Type>, position: PointMenuPosition) => void;
-  /** Vrai quand un widget figé a tout de même des gestes à proposer. */
+  /** True when a frozen widget still has actions to offer. */
   withFrozenMenu: (indicator: Indicator<Type>) => boolean;
 }
 
-/** Les indicateurs d'une section, en cartes, et le glisser qui les range. */
+/** A section's indicators, as cards, and the drag that reorders them. */
 function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Type>>({
   section,
   indicators,
@@ -472,16 +474,16 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
   withFrozenMenu,
 }: SectionIndicatorsProps<Type, P>) {
   const { target, propsOf } = useWidgetDrop(section.id, drag, locked);
-  // La permission du compte sur le type de chaque widget.
+  // The account's permission on each widget's type.
   const access = useWidgetAccess();
-  // Là où le dernier appui a eu lieu. Un widget qui glisse lui-même ce qu'il
-  // porte — les listes et les cartes du mode Tâche — le marque
-  // « data-no-widget-drag » : le glisser natif du widget n'y part pas.
+  // Where the last press happened. A widget that drags what it holds itself —
+  // the lists and cards of Task mode — marks it "data-no-widget-drag": the
+  // widget's native drag does not start there.
   const pressTarget = useRef<Element | null>(null);
 
-  // Un widget caché, d'un type inconnu — rangé par une version plus
-  // récente — ou d'un type que le compte ne lit pas ne paraît pas, et ne
-  // précède ni ne suit personne.
+  // A hidden widget, of an unknown type — stored by a more recent version — or
+  // of a type the account cannot read, does not appear, and neither precedes
+  // nor follows anyone.
   const visibleItems = indicators.flatMap((indicator) => {
     const widget = widgetOf(indicator.type);
     return widget && access(widget.kind) !== "" && !widget.hidden?.(indicator.config, locked)
@@ -489,7 +491,7 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
       : [];
   });
 
-  /** L'écart entre deux widgets visibles qui se suivent. */
+  /** The gap between two consecutive visible widgets. */
   const gapBetween = (rank: number): number => {
     const before = visibleItems[rank - 1];
     const after = visibleItems[rank];
@@ -502,22 +504,22 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
   };
 
   if (visibleItems.length === 0) return null;
-  // Un widget qui veut toute la hauteur l'obtient de proche en proche : la
-  // pile s'étire dans la colonne, et lui dans la pile. Seulement en bas de sa
-  // section : suivi d'un autre widget, il s'en tient à son contenu, sans
-  // laisser de vide entre eux.
+  // A widget that wants the full height gets it step by step: the stack
+  // stretches in the column, and it in the stack. Only at the bottom of its
+  // section: when followed by another widget, it sticks to its content, leaving
+  // no gap between them.
   const fill = (rank: number) =>
     rank === visibleItems.length - 1 && Boolean(visibleItems[rank]?.widget.fill);
   const stretched = fill(visibleItems.length - 1);
   return (
     <Stack gap={0} style={stretched ? { flex: 1, minHeight: 0 } : undefined}>
       {visibleItems.map(({ indicator, widget }, rank) => {
-        // Le rang parmi tous : c'est lui que le dépôt range.
+        // The rank among all: this is what the drop stores.
         const index = indicators.indexOf(indicator);
         const gapBefore = rank === 0 ? 0 : gapBetween(rank);
-        // Figé — l'écran verrouillé, ou un type que le compte ne fait que
-        // lire —, un widget ne se glisse, ne s'ouvre ni ne se modifie : un
-        // widget qui se modifie sur place ne reçoit rien à enregistrer.
+        // Frozen — the screen locked, or a type the account can only read —, a
+        // widget cannot be dragged, opened or modified: a widget that is
+        // modified in place receives nothing to save.
         const frozen = locked || access(widget.kind) !== "update";
         const widgetRender: WidgetRender = {
           id: indicator.id,
@@ -525,8 +527,8 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
           locked: frozen,
         };
         const dragProps = { ...propsOf(indicator.id, index), ...(frozen ? { draggable: false } : {}) };
-        // Le menu du clic droit — modifier, supprimer — n'est qu'aux widgets
-        // qu'on peut modifier, ou qui ont d'autres gestes à proposer.
+        // The right-click menu — edit, delete — is only for widgets that can be
+        // modified, or that have other actions to offer.
         const menuOf = (e: React.MouseEvent<HTMLElement>) => {
           if (frozen && !withFrozenMenu(indicator)) return;
           onContextMenu(indicator, menuPosition(e));
@@ -562,8 +564,8 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
               />
             )}
             {widget.ownClicks ? (
-              // Un widget qui garde ses clics — une liste, un titre — se pose
-              // tel quel, sans l'encart des indicateurs.
+              // A widget that keeps its clicks — a list, a title — is placed as
+              // is, without the indicators' inset.
               <Box
                 onContextMenu={menuOf}
                 style={
@@ -581,17 +583,17 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
                   rename: (name) => (frozen ? Promise.resolve() : onRename(indicator, name)),
                 }}
               >
-                {/* Une div et non un bouton : le titre s'y change sur place,
-                    et une saisie n'a rien à faire dans un bouton. Le fond et
-                    le trait sont ceux de l'encart de l'horloge et des
-                    numéros du mode Accès. */}
+                {/* A div and not a button: the title is changed in place there,
+                    and an input has no business inside a button. The background
+                    and line are those of the clock inset and of the Access mode
+                    numbers. */}
                 <UnstyledButton
                   component="div"
                   role="button"
                   tabIndex={0}
                   w="100%"
-                  // Sans cadre, la carte perd son fond et son retrait : il ne
-                  // reste que son contenu.
+                  // Without a frame, the card loses its background and its
+                  // inset: only its content remains.
                   className={isFramed(indicator.config, true) ? inset.inset : undefined}
                   onClick={() => !frozen && onOpen(indicator)}
                   onContextMenu={menuOf}
@@ -603,7 +605,8 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
                       ? "var(--mantine-spacing-md)"
                       : 0,
                     border: "none",
-                    // Le fond choisi dans le tiroir, sinon celui de l'encart.
+                    // The background chosen in the drawer, otherwise that of
+                    // the inset.
                     ...(isFramed(indicator.config, true) &&
                       text(indicator.config, BACKGROUND) && {
                       backgroundColor: text(indicator.config, BACKGROUND),

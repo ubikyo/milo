@@ -1,8 +1,8 @@
-# CI/CD Milo — build sur agent hébergé, déploiement sur la VM Ubuntu via un
-# agent self-hosted.
+# CI/CD Milo — build on a hosted agent, deployment to the Ubuntu VM via a
+# self-hosted agent.
 #
-# Le déploiement se déclenche uniquement sur un tag de version (v1.0.0, v1.1.0…),
-# conformément au fonctionnement « à chaque nouvelle release ».
+# Deployment is triggered only on a version tag (v1.0.0, v1.1.0…),
+# in line with the "on every new release" workflow.
 
 trigger:
   branches:
@@ -20,7 +20,7 @@ pr:
 
 variables:
   nodeVersion: "20.x"
-  # Chemins sur la VM
+  # Paths on the VM
   apiDir: /opt/milo/server
   webDir: /var/www/milo
   dbDir: /var/lib/milo
@@ -41,16 +41,16 @@ stages:
             inputs:
               versionSpec: $(nodeVersion)
 
-          # Un seul install : le dépôt est un espace de travail npm
+          # A single install: the repository is an npm workspace
           # (shared + server + client).
           - script: npm ci
             displayName: install
 
-          # --- Contrôles ---
-          # Le typage est vérifié sur les trois paquets d'un coup ; une
-          # incohérence entre ce que le serveur renvoie et ce que le client
-          # attend est une erreur de compilation, plus une surprise à
-          # l'exécution.
+          # --- Checks ---
+          # Types are checked across the three packages at once; an
+          # inconsistency between what the server returns and what the client
+          # expects is a compile error, not a surprise at
+          # runtime.
           - script: npm run typecheck
             displayName: typage (tsc)
           - script: npm run lint
@@ -60,7 +60,7 @@ stages:
           - script: npm run build
             displayName: build
 
-          # --- Serveur : démarrage à blanc sur le paquet déployé ---
+          # --- Server: dry-run startup on the deployed package ---
           - script: node scripts/package-api.mjs "$(Build.ArtifactStagingDirectory)/api"
             displayName: empaquetage api
           - script: |
@@ -81,7 +81,7 @@ stages:
               echo "Démarrage à blanc OK"
             displayName: serveur — démarrage à blanc
 
-          # --- Artefacts ---
+          # --- Artifacts ---
           - publish: client/dist
             artifact: web
             displayName: artefact web
@@ -93,13 +93,13 @@ stages:
   - stage: Deploy
     displayName: Déploiement sur la VM
     dependsOn: Build
-    # Uniquement sur un tag de version
+    # Only on a version tag
     condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))
     jobs:
       - deployment: vm
         displayName: VM Ubuntu
         pool:
-          name: Milo-VM # pool contenant l'agent self-hosted installé sur la VM
+          name: Milo-VM # pool containing the self-hosted agent installed on the VM
         environment: milo-production
         strategy:
           runOnce:
@@ -114,12 +114,12 @@ stages:
                     set -euo pipefail
                     sudo mkdir -p "$(webDir)" "$(apiDir)" "$(dbDir)"
 
-                    # Frontend : on remplace le contenu (--delete) car ce sont
-                    # des fichiers versionnés par hash.
+                    # Frontend: replace the contents (--delete) since these are
+                    # files versioned by hash.
                     sudo rsync -a --delete "$(Pipeline.Workspace)/web/" "$(webDir)/"
 
-                    # API : on remplace le code, jamais la base (elle est dans
-                    # $(dbPath), hors du dossier déployé).
+                    # API: replace the code, never the database (it is in
+                    # $(dbPath), outside the deployed folder).
                     sudo rsync -a --delete \
                       --exclude node_modules \
                       "$(Pipeline.Workspace)/api/" "$(apiDir)/"
@@ -127,10 +127,10 @@ stages:
 
                 - script: |
                     set -euo pipefail
-                    # better-sqlite3 est compilé ici, sur la VM cible.
-                    # Le manifeste de l'artefact fige les versions exactes
-                    # résolues au build : « install » y est aussi reproductible
-                    # que « ci » l'était.
+                    # better-sqlite3 is compiled here, on the target VM.
+                    # The artifact manifest pins the exact versions
+                    # resolved at build time: "install" is as reproducible here
+                    # as "ci" used to be.
                     cd "$(apiDir)"
                     sudo npm install --omit=dev --no-audit --no-fund
                     sudo chown -R milo:milo "$(apiDir)" "$(dbDir)"

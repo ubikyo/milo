@@ -15,27 +15,27 @@ import PointMenu, {
 import type { Attachment, Id } from "@milo/shared";
 import classes from "../../assets/styles/CardAttachments.module.css";
 
-// « il y a 3 minutes » plutôt qu'une date : une pièce jointe vient d'être
-// déposée le plus souvent, et c'est cela qu'on veut lire. Le français vient de
-// la locale chargée au démarrage (main.tsx).
+// "il y a 3 minutes" rather than a date: an attachment has most often just
+// been dropped, and that is what one wants to read. The French comes from
+// the locale loaded at startup (main.tsx).
 dayjs.extend(relativeTime);
 
-// L'encart de gauche : la photo, ou l'extension. Assez large pour qu'une
-// vignette se reconnaisse, assez bas pour que deux lignes de texte tiennent à
-// côté sans que la ligne ne s'étire.
+// The left inset: the photo, or the extension. Wide enough for a
+// thumbnail to be recognizable, low enough for two lines of text to fit
+// next to it without stretching the row.
 const THUMBNAIL_W = 64;
 const THUMBNAIL_H = 48;
 
-/** L'extension d'un nom de fichier, en capitales : « CER », « PDF », « ZIP ». */
+/** A file name's extension, in capitals: "CER", "PDF", "ZIP". */
 const extension = (name: string): string => {
   const found = /\.([A-Za-z0-9]{1,5})$/.exec(name.trim());
   return found ? found[1]!.toUpperCase() : "FIC";
 };
 
 /**
- * Quand la pièce jointe est arrivée. Tout frais, on dit « à l'instant » plutôt
- * que « il y a quelques secondes » ; passé une semaine, le relatif ne dit plus
- * rien d'utile et la date reprend la main.
+ * When the attachment arrived. Brand new, we say "à l'instant" rather than
+ * "il y a quelques secondes"; past a week, the relative time says nothing
+ * useful and the date takes over.
  */
 const since = (iso: string): string => {
   const date = dayjs(iso);
@@ -47,24 +47,23 @@ const since = (iso: string): string => {
   return date.locale("fr").format("DD/MM/YYYY [à] HH:mm");
 };
 
-/** Une taille de fichier, à l'unité qui se lit : « 240 Ko », « 3,1 Mo ». */
+/** A file size, in the unit that reads well: "240 Ko", "3,1 Mo". */
 const size = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} o`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} Ko`;
   return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} Mo`;
 };
 
-/** Ce qu'une ligne montre d'un fichier : une pièce jointe, une couverture. */
+/** What a row shows of a file: an attachment, a cover. */
 export type File = Pick<Attachment, "url" | "name" | "created_at" | "size" | "is_image">;
 
-// Toute la ligne ouvre le fichier dans un nouvel onglet ; « Supprimer » est
-// dans son menu contextuel, au clic droit, comme pour les checklists et les
-// cartes du tableau. Les images de couverture (CardCovers) se montrent sur la
-// même ligne, une poignée devant pour les ranger.
+// The whole row opens the file in a new tab; "Supprimer" is in its context
+// menu, on right click, like for checklists and board cards. Cover images
+// (CardCovers) show on the same row, with a handle in front to reorder them.
 interface RowProps extends Omit<ComponentPropsWithoutRef<"a">, "onContextMenu"> {
   attachment: File;
   onContextMenu: (position: PointMenuPosition) => void;
-  /** Posé avant la vignette : la poignée qui range les couvertures. */
+  /** Placed before the thumbnail: the handle that reorders the covers. */
   handle?: ReactNode;
 }
 
@@ -81,7 +80,7 @@ export function FileRow({ attachment, onContextMenu, handle, ...props }: RowProp
     >
       <Group gap="sm" wrap="nowrap" align="center">
         {handle}
-        {/* L'encart : la photo si c'en est une, sinon son extension au centre. */}
+        {/* The inset: the photo if it is one, otherwise its extension in the center. */}
         <Box
           w={THUMBNAIL_W}
           h={THUMBNAIL_H}
@@ -99,7 +98,7 @@ export function FileRow({ attachment, onContextMenu, handle, ...props }: RowProp
             <img
               src={attachment.url}
               alt={attachment.name}
-              // Décodée à part : une grande photo ne fige pas la fiche.
+              // Decoded separately: a large photo doesn't freeze the card.
               decoding="async"
               loading="lazy"
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -111,7 +110,7 @@ export function FileRow({ attachment, onContextMenu, handle, ...props }: RowProp
           )}
         </Box>
 
-        {/* Le nom, et dessous le moment du dépôt. */}
+        {/* The name, and below it the time of upload. */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <Text size="sm" fw={500} truncate>
             {attachment.name}
@@ -121,7 +120,7 @@ export function FileRow({ attachment, onContextMenu, handle, ...props }: RowProp
           </Text>
         </div>
 
-        {/* Le rappel que le clic ouvre un nouvel onglet. */}
+        {/* The reminder that the click opens a new tab. */}
         <IconExternalLink
           size={16}
           style={{ flexShrink: 0, color: FIELD_ICON }}
@@ -132,9 +131,9 @@ export function FileRow({ attachment, onContextMenu, handle, ...props }: RowProp
 }
 
 /**
- * Une pile de fichiers qu'on range à la poignée — les pièces jointes, les
- * couvertures. L'ordre bouge à l'écran pendant le glisser et ne part qu'au
- * lâcher, s'il a changé. Rend ce qu'il faut poser sur chaque ligne.
+ * A stack of files reordered with the handle — attachments,
+ * covers. The order moves on screen during the drag and is only sent on
+ * drop, if it changed. Renders what must be placed on each row.
  */
 export function useOrderedFiles<T extends { id: Id; name: string }>(
   files: T[],
@@ -163,7 +162,7 @@ export function useOrderedFiles<T extends { id: Id; name: string }>(
     onDrop: (e: DragEvent<HTMLAnchorElement>) => e.preventDefault(),
     style: { opacity: held === rank ? 0.5 : 1 },
     handle: active && (
-      // Un clic sur la poignée ne doit pas ouvrir le fichier.
+      // A click on the handle must not open the file.
       <span onClick={(e) => e.preventDefault()} style={{ display: "flex" }}>
         <Handle
           label={`Déplacer ${file.name || "le fichier"}`}
@@ -181,19 +180,19 @@ export function useOrderedFiles<T extends { id: Id; name: string }>(
 }
 
 /**
- * Les pièces jointes d'une carte, à la fin de sa fiche. Elles arrivent en
- * glissant des fichiers sur le tiroir, par le menu « Actions » ou par le lien
- * posé sous la liste ; tout part au serveur aussitôt, sans attendre
- * « Enregistrer », comme les checklists.
+ * A card's attachments, at the end of its sheet. They arrive by
+ * dragging files onto the drawer, through the "Actions" menu or through the link
+ * placed under the list; everything goes to the server at once, without waiting for
+ * "Enregistrer", like checklists.
  *
- * L'encart ne se montre que s'il y a quelque chose à montrer : une carte sans
- * pièce jointe ne porte pas un bloc vide de plus.
+ * The inset only shows when there is something to show: a card without
+ * attachments doesn't carry one more empty block.
  */
 interface CardAttachmentsProps {
   attachments: Attachment[];
-  /** Ouvre le sélecteur de fichiers du tiroir, celui-là même que le menu « Actions » ouvre. */
+  /** Opens the drawer's file picker, the very one the "Actions" menu opens. */
   onPick: () => void;
-  /** L'ordre complet, au lâcher d'une poignée. */
+  /** The full order, when a handle is dropped. */
   onReorder: (ids: Id[]) => void | Promise<void>;
   onDelete: (attachment: Attachment) => void | Promise<void>;
 }
@@ -215,12 +214,12 @@ export default function CardAttachments({
   if (attachmentList.length === 0) return null;
 
   return (
-    // Le bloc porte son intitulé comme les autres champs de la fiche — le
-    // titre, la description, les checklists —, et disparaît avec eux quand la
-    // carte n'a aucune pièce jointe.
+    // The block carries its heading like the other fields of the card — the
+    // title, the description, the checklists —, and disappears with them when the
+    // card has no attachment.
     <Input.Wrapper label="Pièces jointes">
-      {/* Une pile de lignes grises, comme les checklists : le fond du
-          tiroir se montre entre deux pièces. */}
+      {/* A stack of gray rows, like checklists: the drawer
+          background shows between two attachments. */}
       <Box>
         <Stack gap={2}>
           {displayed.map((attachment, rank) => (
@@ -233,7 +232,7 @@ export default function CardAttachments({
           ))}
         </Stack>
 
-        {/* Au plus près de la pile qu'il allonge. */}
+        {/* As close as possible to the stack it extends. */}
         <AddButton label="Ajouter un fichier" onClick={onPick} mt={4} />
 
         {menu && (

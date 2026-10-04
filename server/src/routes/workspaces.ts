@@ -1,10 +1,10 @@
-// Les workspaces, tels que les gère qui en a le droit (requireWorkspaces) :
-// les ajouter, les renommer, les supprimer. Leurs accès se règlent ailleurs,
-// workspace par workspace (routes/assignments.ts).
+// Workspaces, as managed by whoever has the right (requireWorkspaces):
+// adding, renaming, deleting them. Their access is set elsewhere,
+// workspace by workspace (routes/assignments.ts).
 //
-// Un workspace naît avec une vue et son tableau, pour que son équipe ait où
-// poser ses premiers widgets ; il part avec tout ce que ses vues portent. Le
-// dernier ne se supprime pas : il en faut toujours un.
+// A workspace is born with a view and its board, so that its team has somewhere to
+// place its first widgets; it leaves with everything its views carry. The
+// last one cannot be deleted: there must always be one.
 
 import { Router } from "express";
 import type { Workspace } from "@milo/shared";
@@ -19,14 +19,14 @@ import { createView } from "./views.js";
 
 const NAME_REQUIRED = "Le nom du workspace est requis";
 
-/** Le workspace demandé, ou « introuvable ». */
+/** The requested workspace, or "introuvable". */
 const openWorkspace = (id: unknown): Workspace => {
   const workspace = workspaces.byId.get(id);
   if (!workspace) throw new HttpError(404, WORKSPACE_NOT_FOUND);
   return workspace;
 };
 
-/** Un workspace neuf, à la suite des autres, avec sa première vue. */
+/** A new workspace, after the others, with its first view. */
 const createWorkspace = transaction((name: string): Workspace => {
   const { next } = workspaces.nextPosition();
   const id = Number(workspaces.create.run(name, next, now()).lastInsertRowid);
@@ -36,8 +36,8 @@ const createWorkspace = transaction((name: string): Workspace => {
 
 export const workspaceRoutes = Router();
 
-// Supprimer un workspace emporte ses vues, et tout ce qu'elles portent ; ses
-// accès changent ce que chacun voit.
+// Deleting a workspace takes its views with it, and everything they carry; its
+// access changes what each person sees.
 workspaceRoutes.use(
   touch(
     "lookups",
@@ -68,8 +68,8 @@ workspaceRoutes.put("/:id", (req, res) => {
 workspaceRoutes.delete("/:id", (req, res) => {
   const existing = openWorkspace(req.params.id);
   if (workspaces.all.all().length <= 1) conflict("Le dernier workspace ne se supprime pas");
-  // Chaque tableau part avec ce qu'il emporte et l'annonce, privés compris ;
-  // les vues et les accès suivent le workspace.
+  // Each board goes with what it carries and announces it, private ones included;
+  // the views and access follow the workspace.
   for (const { id: view } of workspaceViews.all(existing.id)) {
     for (const { id } of viewBoards.all(view)) {
       const board = boards.byId.get(id);

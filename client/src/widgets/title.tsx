@@ -6,19 +6,19 @@ import type { AccessWidget, WidgetDisplayProps } from "./types";
 import type { ComponentType } from "react";
 import type { AccessBlockType } from "@milo/shared";
 
-// Les titres d'une colonne : la catégorie, et la sous-catégorie sous elle. Le
-// même objet à deux niveaux — un titre qui se modifie là où il est, au
-// double-clic — et rien ne les distingue que leur taille, leur couleur et
-// l'air qu'ils laissent en dessous. Ils sont donc décrits une fois ici, et
-// chacun n'a plus qu'à dire ces trois-là.
+// The titles of a column: the category, and the subcategory below it. The
+// same object at two levels — a title that is edited where it stands, by
+// double click — and nothing distinguishes them but their size, their color
+// and the space they leave below. They are therefore described once here, and
+// each only has to state those three.
 
 const TITLE = "title";
 const COLOR = "color";
 const SIZE = "size";
 
 /**
- * Les bornes de la taille : en deçà le titre ne se lit plus, au-delà il
- * déborde de la colonne.
+ * The size bounds: below them the title is no longer legible, above them it
+ * overflows the column.
  */
 const SIZE_MIN = 8;
 const SIZE_MAX = 64;
@@ -27,27 +27,27 @@ interface TitleOptions {
   type: AccessBlockType;
   label: string;
   icon: ComponentType<{ size?: number }>;
-  /** Le niveau du titre : la sous-catégorie vient sous la catégorie. */
+  /** The title's level: the subcategory comes under the category. */
   order: 1 | 2;
-  /** Ce qu'un titre encore vide laisse voir : la place qu'il tient, et rien de plus. */
+  /** What a still-empty title shows: the space it takes, and nothing more. */
   placeholder: string;
-  /** La taille par défaut, que la configuration peut remplacer. */
+  /** The default size, which the configuration can override. */
   size: number;
-  /** La graisse du titre ; à défaut, celle de son niveau. */
+  /** The title's weight; by default, that of its level. */
   weight?: number;
-  /** La couleur par défaut, en hexadécimal : le sélecteur la montre telle quelle. */
+  /** The default color, in hexadecimal: the picker shows it as is. */
   color: string;
-  /** L'air laissé avant ce qui suit dans la colonne. */
+  /** The space left before what follows in the column. */
   lowMargin: number;
   /**
-   * L'air laissé au-dessus quand un élément le précède. En tête de colonne,
-   * le titre n'en prend pas : rien n'est à écarter. Elle peut dépendre du
-   * type de cet élément.
+   * The space left above when an element precedes it. At the head of a column,
+   * the title takes none: there is nothing to set apart. It can depend on the
+   * type of that element.
    */
   highMargin?: number | ((previousType: AccessBlockType) => number);
 }
 
-/** La ligne « Texte » du tiroir : la couleur et la taille du titre. */
+/** The drawer's "Texte" row: the title's color and size. */
 const textLine = (
   config: unknown,
   onChange: (config: Record<string, unknown>) => void,
@@ -58,7 +58,7 @@ const textLine = (
   return {
     name: "Texte",
     what: "du titre",
-    // La couleur du titre, ramenée à la sienne, n'est plus rangée.
+    // The title's color, brought back to its own, is no longer stored.
     color: {
       value: color,
       onChange: (v) => onChange(insertRow(config, { [COLOR]: v === options.color ? "" : v })),
@@ -79,8 +79,9 @@ const display = (options: TitleOptions): ComponentType<WidgetDisplayProps> =>
   function EditableTitle({ config, onChange }: WidgetDisplayProps) {
     const [editMode, setEditing] = useState(false);
     const [draft, setDraft] = useState("");
-    // Le titre qui vient d'être saisi, le temps que le serveur le renvoie :
-    // sans lui, l'ancien reparaîtrait un instant entre la saisie et la réponse.
+    // The title that has just been entered, until the server sends it back:
+    // without it, the old one would reappear for a moment between the entry
+    // and the response.
     const [pending, setPending] = useState<string | null>(null);
     const field = useRef<HTMLInputElement | null>(null);
 
@@ -89,8 +90,8 @@ const display = (options: TitleOptions): ComponentType<WidgetDisplayProps> =>
     const color = text(config, COLOR, options.color) || options.color;
     const title = pending ?? saved;
 
-    // Le champ prend le focus dès qu'il paraît, et la saisie s'y trouve déjà
-    // sélectionnée : le double-clic vaut « je remplace ce titre ».
+    // The field takes focus as soon as it appears, and the input is already
+    // selected there: the double click means "I replace this title".
     useEffect(() => {
       if (!editMode) return;
       field.current?.focus();
@@ -102,8 +103,8 @@ const display = (options: TitleOptions): ComponentType<WidgetDisplayProps> =>
       setEditing(true);
     };
 
-    // Le titre part au serveur en refermant la saisie — c'est le seul geste
-    // qu'elle porte. Inchangé, rien n'est envoyé.
+    // The title goes to the server when the input closes — it is the only
+    // gesture it carries. Unchanged, nothing is sent.
     const close = async () => {
       setEditing(false);
       const newValue = draft.trim();
@@ -112,8 +113,8 @@ const display = (options: TitleOptions): ComponentType<WidgetDisplayProps> =>
       try {
         await onChange(withField(config, TITLE, newValue));
       } finally {
-        // La configuration relue prend le relais — ou, si le serveur a
-        // refusé, le titre enregistré reparaît.
+        // The reread configuration takes over — or, if the server refused,
+        // the saved title reappears.
         setPending(null);
       }
     };
@@ -129,16 +130,16 @@ const display = (options: TitleOptions): ComponentType<WidgetDisplayProps> =>
           onBlur={close}
           onKeyDown={(e) => {
             if (e.key === "Enter") close();
-            // Échap renonce : le titre d'avant reste.
+            // Escape gives up: the previous title stays.
             if (e.key === "Escape") setEditing(false);
           }}
-          // Le champ prend exactement la place du titre qu'il remplace,
-          // sinon la ligne — et tout ce qui la suit — sauterait au
-          // double-clic. Mantine laisse deux choses au champ « unstyled » :
-          // une bordure transparente d'un pixel, et une hauteur minimale de
-          // 36 pixels, bien plus que la ligne d'un titre de 16 ou 18. Les
-          // deux sont retirées, et la graisse comme l'interligne sont repris
-          // du niveau de titre plutôt que devinés.
+          // The field takes exactly the place of the title it replaces,
+          // otherwise the row — and everything after it — would jump on
+          // double click. Mantine leaves two things on an "unstyled" field: a
+          // one-pixel transparent border, and a minimum height of 36 pixels,
+          // far more than the line of a 16 or 18 title. Both are removed, and
+          // the weight and line height are taken from the title level rather
+          // than guessed.
           variant="unstyled"
           styles={{
             input: {
@@ -163,10 +164,10 @@ const display = (options: TitleOptions): ComponentType<WidgetDisplayProps> =>
         fw={options.weight}
         onDoubleClick={openItem}
         c={color}
-        // La main : le titre se double-clique, il ne se saisit pas là où il
-        // est posé — le caret laisserait croire qu'on écrit déjà dedans.
-        // Un titre encore vide garde sa couleur : c'est le même titre, il
-        // attend seulement son nom.
+        // The hand: the title is double-clicked, not typed into where it
+        // stands — the caret would suggest one is already writing in it.
+        // A still-empty title keeps its color: it is the same title, it is
+        // only waiting for its name.
         style={{ cursor: "pointer" }}
       >
         {title || options.placeholder}
@@ -174,15 +175,15 @@ const display = (options: TitleOptions): ComponentType<WidgetDisplayProps> =>
     );
   };
 
-/** Le widget d'un titre, à partir de ce qui le distingue de l'autre. */
+/** A title's widget, from what distinguishes it from the other. */
 export const createWidgetTitle = (options: TitleOptions): AccessWidget => ({
   type: options.type,
-  // Les titres sont des widgets communs à tous les modes.
+  // Titles are widgets shared by all modes.
   kind: "common",
   label: options.label,
   icon: options.icon,
-  // Un titre neuf est vide : on le nomme en double-cliquant dessus, là où il
-  // est, plutôt que dans un tiroir qui s'ouvrirait aussitôt.
+  // A new title is empty: it is named by double-clicking it, where it
+  // stands, rather than in a drawer that would open right away.
   defaultConfig: { [TITLE]: "" },
   inlineEdit: true,
   ownClicks: true,

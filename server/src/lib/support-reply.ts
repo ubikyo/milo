@@ -1,11 +1,11 @@
-// La réponse de l'équipe à une demande reçue par e-mail : le message écrit
-// dans Milo part à l'expéditeur, depuis la boîte où sa demande est arrivée, en
-// réponse à son e-mail — dans la même conversation, l'original cité dessous.
+// The team's reply to a request received by e-mail: the message written in
+// Milo goes to the sender, from the inbox where their request arrived, in
+// reply to their e-mail — in the same conversation, the original quoted below.
 //
-// La réponse porte le numéro du ticket : une réponse de l'expéditeur y revient
-// (lib/support-mail.ts). Avec MILO_SUPPORT_REPLY=simulate, l'envoi est simulé
-// pour la mise au point : tout est préparé et consigné, mais rien ne quitte
-// Milo. Le message dit ensuite ce qu'il en est advenu (mail_status).
+// The reply carries the ticket number: a reply from the sender comes back to
+// it (lib/support-mail.ts). With MILO_SUPPORT_REPLY=simulate, sending is
+// simulated for debugging: everything is prepared and logged, but nothing
+// leaves Milo. The message then says what became of it (mail_status).
 
 import { supportTicketRef } from "@milo/shared";
 import type { Id, SupportMailStatus } from "@milo/shared";
@@ -16,8 +16,8 @@ import { supportComments } from "../repositories/support.js";
 import { entraConfigured, replyByGraph } from "./entra.js";
 
 /**
- * La boîte d'où répondre à une demande, ou rien : une demande saisie dans
- * Milo n'a personne à qui répondre, et sans Entra rien ne part.
+ * The inbox to reply from for a request, or nothing: a request entered in
+ * Milo has nobody to reply to, and without Entra nothing is sent.
  */
 export const replyMailbox = (request: SupportRequestRow): string => {
   if (!request.sender_email || !request.mail_id || !entraConfigured()) return "";
@@ -25,9 +25,9 @@ export const replyMailbox = (request: SupportRequestRow): string => {
 };
 
 /**
- * Envoie — ou simule — la réponse, et note sur le message ce qu'il en est
- * advenu. Ne lève jamais : le message est enregistré quoi qu'il arrive, c'est
- * son état qui dit si l'e-mail est parti.
+ * Sends — or simulates — the reply, and notes on the message what became of
+ * it. Never throws: the message is saved no matter what, its state says
+ * whether the e-mail went out.
  */
 export const replyByEmail = async (
   request: SupportRequestRow,
@@ -47,7 +47,7 @@ export const replyByEmail = async (
 
   if (!env.supportReplySend) {
     console.log(
-      `[Simulation] Réponse de ${mailbox} à ${request.sender_email} — « RE: ${request.subject} » (non envoyée)`,
+      `[Simulation] Reply from ${mailbox} to ${request.sender_email} — "RE: ${request.subject}" (not sent)`,
     );
     return record("simulated");
   }
@@ -67,7 +67,7 @@ export const replyByEmail = async (
     );
     return record("sent");
   } catch (error) {
-    console.error(`Réponse à ${request.sender_email} depuis ${mailbox} :`, error);
+    console.error(`Reply to ${request.sender_email} from ${mailbox}:`, error);
     return record("failed");
   }
 };

@@ -1,4 +1,4 @@
-// Les projets, et ce qui les accompagne : leurs acteurs et leurs étiquettes.
+// Projects, and what comes with them: their actors and labels.
 
 import type { Actor, Id, Project, ProjectLabel } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
@@ -33,12 +33,12 @@ export const projects = {
   touch: mutation("UPDATE projects SET updated_at = ? WHERE id = ?"),
 };
 
-// Les acteurs et les étiquettes sont lus pour tout un lot de projets en une
-// seule requête, et non une par projet.
+// Actors and labels are read for a whole batch of projects in a single
+// query, and not one per project.
 //
-// Le lot passe par `json_each` plutôt que par une liste de « ? » assemblée à
-// la main : le SQL ne dépend plus du nombre de projets, la requête est donc
-// préparée une fois pour toutes au lieu d'être recompilée à chaque lecture.
+// The batch goes through `json_each` rather than a hand-assembled list of
+// "?": the SQL no longer depends on the number of projects, so the query is
+// prepared once and for all instead of being recompiled on each read.
 
 interface ActorRow {
   project_id: Id;
@@ -80,7 +80,7 @@ const groupBy = <Row, Value>(
   return byKey;
 };
 
-/** Un lot de projets, chacun avec ses acteurs et ses étiquettes. */
+/** A batch of projects, each with its actors and labels. */
 export const withRelations = (rows: ProjectJoinedRow[]): Project[] => {
   if (rows.length === 0) return [];
   const ids = JSON.stringify(rows.map((p) => p.id));
@@ -99,11 +99,11 @@ export const withRelations = (rows: ProjectJoinedRow[]): Project[] => {
   }));
 };
 
-/** Un projet seul, avec ses acteurs et ses étiquettes. */
+/** A single project, with its actors and labels. */
 export const oneWithRelations = (row: ProjectJoinedRow): Project => withRelations([row])[0] as Project;
 
-// Les acteurs et les étiquettes d'un projet, en identifiants seuls : de quoi
-// savoir si ce qu'on reçoit change quelque chose.
+// A project's actors and labels, as identifiers only: enough to know whether
+// what is received changes anything.
 
 const actorIds = selection<{ user_id: Id }>(
   "SELECT user_id FROM project_actors WHERE project_id = ?",
@@ -125,9 +125,9 @@ const addActor = mutation(
 );
 
 /**
- * Les acteurs d'un projet, remplacés en bloc. Un identifiant qui ne désigne
- * aucun compte est ignoré plutôt que refusé : le `SELECT` de l'insertion s'en
- * charge, ce qui évite une requête de vérification par acteur.
+ * A project's actors, replaced wholesale. An identifier that designates no
+ * account is ignored rather than refused: the insertion's `SELECT` takes care
+ * of it, which avoids a verification query per actor.
  */
 export const replaceActors = transaction((projectId: Id, actorIds: Id[]) => {
   deleteActors.run(projectId);
@@ -141,14 +141,14 @@ const addLabel = mutation(
 );
 
 /**
- * Un projet ne porte que les étiquettes de son propre tableau : celles d'un
- * autre sont ignorées plutôt que refusées, comme pour les acteurs.
+ * A project carries only its own board's labels: those of another are
+ * ignored rather than refused, as for actors.
  */
 /**
- * L'étiquette du tableau d'accueil qui correspond à celle-ci : elle-même dans
- * son propre tableau, sa jumelle ailleurs — même nom, même couleur —, créée au
- * besoin. La même règle que pour la copie d'une liste (copy-list.ts) : sans
- * elle, la copie arriverait nue et on ne saurait plus ce que le projet portait.
+ * The destination board's label that matches this one: itself in its own
+ * board, its twin elsewhere — same name, same color —, created if needed. The
+ * same rule as for copying a list (copy-list.ts): without it, the copy would
+ * arrive bare and we would no longer know what the project carried.
  */
 const twinLabel = selection<{ id: Id }>(
   `SELECT id FROM project_labels
@@ -175,7 +175,7 @@ const fullLabels = selection<{
    ORDER BY project_labels.weight DESC, project_labels.position, project_labels.id`,
 );
 
-/** Les étiquettes d'un projet, reportées sur sa copie. */
+/** A project's labels, carried over to its copy. */
 export const copyProjectLabels = transaction(
   (sourceId: Id, copyId: Id, targetBoard: Id, timestamp: string) => {
     for (const label of fullLabels.all(sourceId)) {

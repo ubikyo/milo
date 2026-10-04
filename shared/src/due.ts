@@ -1,8 +1,8 @@
-// L'échéance d'une carte : sa récurrence et son rappel. Le client les propose
-// dans des listes, le serveur les vérifie et envoie le rappel : les deux lisent
-// les mêmes clés ici.
+// A card's due date: its recurrence and its reminder. The client offers them
+// in lists, the server checks them and sends the reminder: both read
+// the same keys here.
 
-/** L'intervalle de rotation des images de couverture, en secondes ; zéro pour « Jamais ». */
+/** The rotation interval of cover images, in seconds; zero for "Jamais". */
 export const COVER_ROTATIONS = [
   { value: 0, label: "Jamais" },
   { value: 5, label: "5s" },
@@ -15,8 +15,8 @@ export const isCoverRotation = (value: unknown): value is number =>
   COVER_ROTATIONS.some((r) => r.value === value);
 
 /**
- * La forme d'une échéance : une date seule (« Du »), ou une période (« Du /
- * au »), qui porte en plus un début.
+ * The shape of a due date: a single date ("Du"), or a period ("Du /
+ * au"), which also carries a start.
  */
 export const DUE_SHAPES = [
   { value: "date", label: "Du" },
@@ -28,7 +28,7 @@ export type DueShape = (typeof DUE_SHAPES)[number]["value"];
 export const isDueForm = (value: unknown): value is DueShape =>
   DUE_SHAPES.some((f) => f.value === value);
 
-/** La récurrence d'une échéance ; vide pour « Jamais ». */
+/** The recurrence of a due date; empty for "Jamais". */
 export const RECURRENCES = [
   { value: "", label: "Jamais" },
   { value: "daily", label: "Tous les jours" },
@@ -44,8 +44,8 @@ export const isRecurrence = (value: unknown): value is Recurrence =>
   RECURRENCES.some((r) => r.value === value);
 
 /**
- * Le rappel d'une échéance, en avance sur elle ; vide pour « Aucun ». Un mois
- * n'a pas de durée fixe : il se compte au calendrier (`instantDuRappel`).
+ * The reminder of a due date, ahead of it; empty for "Aucun". A month
+ * has no fixed duration: it is counted by the calendar (`reminderInstant`).
  */
 export const REMINDERS = [
   { value: "", label: "Aucun" },
@@ -79,7 +79,7 @@ const ADVANCED: Record<Exclude<Reminder, "" | "1M">, number> = {
   "2w": 14 * 24 * 60 * MINUTE,
 };
 
-/** L'instant où le rappel part, pour une échéance ISO ; null sans rappel. */
+/** The instant the reminder goes out, for an ISO due date; null without a reminder. */
 export const reminderInstant = (due: string, reminder: Reminder): Date | null => {
   const date = new Date(due);
   if (!reminder || Number.isNaN(date.getTime())) return null;

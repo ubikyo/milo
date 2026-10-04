@@ -5,16 +5,16 @@ import type { NotificationEmailMode, NotificationSettings } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 
-// La section « Notifications » du Paramétrage. Comme les autres onglets,
-// chaque geste part aussitôt au serveur.
+// The "Notifications" section of Settings ("Paramétrage"). Like the other
+// tabs, each action is sent to the server right away.
 
 const MODES: { value: NotificationEmailMode; label: string }[] = [
   { value: "immediate", label: "À chaque évènement" },
   { value: "grouped", label: "De manière groupée" },
 ];
 
-// Le délai réglé hors de la liste — par MILO_NOTIFY_WINDOW_MINUTES — y
-// prend sa place.
+// The delay set outside the list — by MILO_NOTIFY_WINDOW_MINUTES — takes its
+// place there.
 const delays = (current: number) =>
   [...new Set([...NOTIFICATION_EMAIL_DELAYS, current])]
     .sort((a, b) => a - b)
@@ -65,8 +65,8 @@ export default function NotificationsTab({ canEdit }: NotificationsTabProps) {
       {settings.email && (
         <Group
           gap="sm"
-          // Aligné sur le libellé de l'interrupteur : sa piste (38 px), puis
-          // l'écart qui l'en sépare.
+          // Aligned with the switch label: its track (38 px), then the gap
+          // separating it from the label.
           pl="calc(38px + var(--mantine-spacing-sm))"
           align="flex-end"
           wrap="nowrap"
@@ -89,7 +89,7 @@ export default function NotificationsTab({ canEdit }: NotificationsTabProps) {
               allowDeselect={false}
               disabled={frozen}
               w={100}
-              // Le libellé déborde du champ plutôt que de passer à la ligne.
+              // The label overflows the field instead of wrapping.
               styles={{ label: { whiteSpace: "nowrap" } }}
             />
           )}

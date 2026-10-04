@@ -1,76 +1,76 @@
-// Ce que Milo note dans le fil d'un élément quand on le modifie : qui, quand,
-// et ce qui a bougé, champ par champ. La création a déjà son mot
-// (repositories/comments.ts, `motDeCreation`) ; celui-ci le prolonge.
+// What Milo notes in an item's thread when it is modified: who, when, and
+// what changed, field by field. Creation already has its note
+// (repositories/comments.ts, `creationNote`); this one extends it.
 //
-// Le mot tient en un entête — « Projet modifié le … par … » — suivi d'une
-// ligne par champ. Le fil le montre plié, entête seul : c'est le client qui
-// déplie le détail.
+// The note consists of a header — "Projet modifié le … par …" — followed by
+// one line per field. The thread shows it folded, header only: it is the
+// client that unfolds the detail.
 //
-// Pour ne pas saturer le fil, les retouches d'une même personne qui se
-// suivent de près s'ajoutent au dernier mot au lieu d'en écrire un autre : la
-// carte créée puis aussitôt complétée par son tiroir n'en porte qu'un, et un
-// nom corrigé deux fois de suite dit « A → C », pas « A → B » puis « B → C ».
+// To avoid flooding the thread, edits by the same person that follow closely
+// are added to the last note instead of writing another: a card created and
+// then immediately completed through its drawer carries only one, and a name
+// corrected twice in a row says "A → C", not "A → B" then "B → C".
 
 import type { Id } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import { sameDescription } from "./html.js";
 import { timestamp, now } from "./time.js";
 
-/** Qui modifie : de quoi le nommer dans l'entête. */
+/** Who modifies: enough to name them in the header. */
 export interface Editor {
   name: string;
   email: string;
 }
 
-/** Un champ tel qu'on le lit, avant et après l'écriture. */
+/** A field as read, before and after the write. */
 export interface Field {
   label: string;
-  /** Sa valeur affichée, déjà mise en forme (voir `cite`, `liste`, `date`). */
+  /** Its displayed value, already formatted (see `quote`, `list`, `date`). */
   value: string;
   /**
-   * Une description : trop longue pour être recopiée, on dit seulement
-   * qu'elle a changé. Elle se compare comme le fait la fiche, sans égard aux
-   * retouches de forme de l'éditeur.
+   * A description: too long to be copied over, we only say that it changed.
+   * It is compared as the record does, regardless of the editor's formatting
+   * touch-ups.
    */
   opaque?: boolean;
 }
 
-/** Une ligne du mot, et le champ qu'elle concerne. */
+/** A line of the note, and the field it concerns. */
 export interface ChangeLine {
   label: string;
   row: string;
 }
 
-// --- Mise en forme des valeurs ----------------------------------------------
+// --- Value formatting -------------------------------------------------------
 
 const EMPTY = "—";
 
-/** Un texte libre, entre guillemets. */
+/** Free text, in quotes. */
 export const quote = (text: string | null | undefined): string =>
   text ? `« ${text} »` : EMPTY;
 
-/** Des noms — acteurs, étiquettes —, dans l'ordre alphabétique. */
+/** Names — actors, labels —, in alphabetical order. */
 export const list = (names: string[]): string =>
   names.length ? [...names].sort((a, b) => a.localeCompare(b, "fr")).join(", ") : EMPTY;
 
-/** Une échéance. */
+/** A due date. */
 export const date = (iso: string | null | undefined): string => (iso ? timestamp(iso) : EMPTY);
 
-// --- Ce qui a changé --------------------------------------------------------
+// --- What changed -----------------------------------------------------------
 
 const ARROW = " → ";
 const bullet = (label: string, rest: string): string => `• ${label} : ${rest}`;
 
 /**
- * Une ligne qui ne compare pas deux valeurs mais dit ce qui s'est passé :
- * « • Fusion : HLP-2, HLP-3 fusionnées ici ».
+ * A line that does not compare two values but says what happened:
+ * "• Fusion : HLP-2, HLP-3 fusionnées ici".
  */
 export const eventLine = (label: string, text: string): ChangeLine => ({
   label,
   row: bullet(label, text),
 });
 
-/** Les champs qui ont bougé entre deux lectures, dans l'ordre de la fiche. */
+/** The fields that moved between two reads, in the record's order. */
 export const changes = (before: Field[], after: Field[]): ChangeLine[] => {
   const previous = new Map(before.map((c) => [c.label, c]));
   const rows: ChangeLine[] = [];
@@ -91,14 +91,14 @@ export const changes = (before: Field[], after: Field[]): ChangeLine[] => {
   return rows;
 };
 
-/** « a modifié la fiche (nom, échéance) » : ce que disent les notifications. */
+/** "a modifié la fiche (nom, échéance)": what notifications say. */
 export const editMessage = (rows: ChangeLine[]): string =>
   `a modifié la fiche (${rows.map((l) => l.label.toLocaleLowerCase("fr")).join(", ")})`;
 
 /**
- * Ajoute de nouvelles lignes à celles d'un mot déjà écrit. Un champ déjà
- * noté garde sa valeur de départ et prend la nouvelle valeur d'arrivée ; s'il
- * revient à son point de départ, sa ligne disparaît.
+ * Appends new lines to those of a note already written. A field already
+ * noted keeps its starting value and takes the new end value; if it returns
+ * to its starting point, its line disappears.
  */
 const merge = (old: string[], newItems: ChangeLine[]): string[] => {
   const rows = [...old];
@@ -113,9 +113,9 @@ const merge = (old: string[], newItems: ChangeLine[]): string[] => {
     const newRow = row.slice(prefix.length);
     const end = old.indexOf(ARROW);
     const start = newRow.indexOf(ARROW);
-    // Une ligne sans flèche — une description modifiée, une fusion — ne se
-    // combine pas : identique, elle n'est pas répétée ; nouvelle, elle
-    // s'ajoute à la suite.
+    // A line without an arrow — a modified description, a merge — does not
+    // combine: identical, it is not repeated; new, it is appended after the
+    // others.
     if (end < 0 || start < 0) {
       if (!rows.includes(row)) rows.push(row);
       continue;
@@ -128,9 +128,9 @@ const merge = (old: string[], newItems: ChangeLine[]): string[] => {
   return rows;
 };
 
-// --- Le fil de chaque élément -----------------------------------------------
+// --- Each item's thread -----------------------------------------------------
 
-/** Les éléments dont le fil reçoit ces mots. */
+/** The items whose thread receives these notes. */
 export type Historized = "project" | "card" | "support";
 
 interface LastWord {
@@ -142,9 +142,9 @@ interface LastWord {
 }
 
 /**
- * Le fil de chaque élément. Celui d'un ticket a deux onglets :
- * les échanges avec l'expéditeur, et les commentaires de l'équipe. Ces mots
- * vont dans le second — ils ne regardent pas l'expéditeur.
+ * Each item's thread. A ticket's has two tabs: the exchanges with the
+ * sender, and the team's comments. These notes go in the second — they are
+ * none of the sender's business.
  */
 const thread = (table: string, column: string, isInternal: boolean) => ({
   last: selection<LastWord>(
@@ -169,13 +169,12 @@ const THREADS: Record<Historized, ReturnType<typeof thread> & { modified: string
   },
 };
 
-/** Le temps pendant lequel les retouches d'une personne rejoignent le même mot. */
+/** How long a person's edits keep joining the same note. */
 const GROUPING_WINDOW = 10 * 60 * 1000;
 
 /**
- * Note dans le fil de l'élément ce qui vient d'y changer. Rien n'est écrit
- * quand rien n'a bougé : enregistrer une fiche sans y toucher ne laisse pas
- * de trace.
+ * Notes in the item's thread what has just changed there. Nothing is written
+ * when nothing moved: saving a record without touching it leaves no trace.
  */
 export const logAction = (
   kind: Historized,
@@ -188,8 +187,8 @@ export const logAction = (
   const whenLabel = now();
   const name = author.name || author.email;
 
-  // Le dernier mot du fil, s'il est de Milo, sur un geste de la même
-  // personne, et récent : on le complète.
+  // The last note in the thread, if it is Milo's, on an action by the same
+  // person, and recent: we complete it.
   const word = last.get(itemId);
   if (word && word.system && word.user_id === null && name) {
     const [header = "", ...old] = word.text.split("\n");

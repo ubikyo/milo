@@ -1,28 +1,28 @@
-// Le suivi, côté client : ce qui s'ouvre depuis une adresse, et ce qui
-// s'affiche quand un élément suivi change.
+// Follow, client side: what opens from an address, and what
+// shows when a followed item changes.
 //
-// L'application n'a pas de routeur : un seul écran, des tiroirs, et l'état
-// dans React. L'adresse ne sert donc pas à naviguer — elle sert à pouvoir
-// désigner un élément de l'extérieur, depuis un e-mail ou un message. Elle est
-// tenue à jour pour que la page rechargée retrouve ce qui était ouvert.
+// The application has no router: a single screen, drawers, and the state
+// in React. The address is therefore not used to navigate — it serves to be able to
+// designate an item from outside, from an e-mail or a message. It is
+// kept up to date so that the reloaded page finds what was open.
 
 import type { Id, LinkTargetKind } from "@milo/shared";
 import { LEGACY_QUERY_PARAMS, QUERY_PARAMS, itemLink } from "@milo/shared";
 
 export interface Target {
-  /** Pour « access », l'identifiant est celui du tableau. */
+  /** For "access", the identifier is the board's. */
   kind: LinkTargetKind;
   id: Id;
 }
 
-/** Le nom de chaque paramètre, et l'élément qu'il désigne — les anciens noms compris. */
+/** The name of each parameter, and the item it designates — old names included. */
 const NAMES = Object.fromEntries(
   [QUERY_PARAMS, LEGACY_QUERY_PARAMS].flatMap((params) =>
     Object.entries(params).map(([kind, name]) => [name, kind as LinkTargetKind]),
   ),
 );
 
-/** Ce que l'adresse courante désigne, s'il y a lieu. */
+/** What the current address designates, if any. */
 export const addressTarget = (): Target | null => {
   const searchParams = new URLSearchParams(window.location.search);
 
@@ -36,10 +36,10 @@ export const addressTarget = (): Target | null => {
 };
 
 /**
- * Écrit l'élément ouvert dans l'adresse, ou l'en retire. `replaceState` et non
- * `pushState` : ouvrir un tiroir n'est pas une navigation, et la flèche
- * « retour » du navigateur ne doit pas se mettre à défaire des ouvertures de
- * fiches.
+ * Writes the open item into the address, or removes it. `replaceState` and not
+ * `pushState`: opening a drawer is not a navigation, and the browser's
+ * "back" arrow must not start undoing openings of
+ * records.
  */
 export const noteInAddress = (target: Target | null): void => {
   const address = target

@@ -1,5 +1,5 @@
-// La section « Notifications » du Paramétrage : des réglages qui valent pour
-// toute l'application (voir shared/notification-settings.ts).
+// The "Notifications" section of "Paramétrage": settings that apply to the
+// whole application (see shared/notification-settings.ts).
 
 import { Router } from "express";
 import type { NotificationSettings } from "@milo/shared";

@@ -1,7 +1,7 @@
-// L'envoi du courrier de Milo : les notifications de suivi et le message
-// d'essai. Il passe par Microsoft Graph, au nom de l'application Entra
-// (lib/entra.ts), et part toujours de la boîte de support d'une société :
-// celle de l'élément dont il parle.
+// Sending Milo's mail: follow-up notifications and the test message. It goes
+// through Microsoft Graph, on behalf of the Entra app (lib/entra.ts), and
+// always leaves from a company's support mailbox: that of the item it is
+// about.
 
 import { sendingAddress, entraConfigured, sendViaGraph } from "./entra.js";
 import { badRequest, fail } from "./http.js";
@@ -9,35 +9,35 @@ import { template } from "./mail-template.js";
 import type { MailAttachment } from "./mail-template.js";
 
 /**
- * Vrai quand la messagerie a de quoi envoyer. Les notifications de suivi le
- * demandent avant d'essayer : sans cela, chaque modification tenterait un
- * envoi voué à l'échec et emplirait le journal.
+ * True when the mailer has what it takes to send. Follow-up notifications
+ * ask before trying: otherwise, every modification would attempt a send
+ * doomed to fail and fill the log.
  */
 export const mailboxConfigured = (): boolean => entraConfigured();
 
 export interface Mail {
-  /** La boîte qui expédie : celle du support d'une société. */
+  /** The sending mailbox: that of a company's support. */
   from: string;
   to: string;
   subject: string;
   text: string;
-  /** La version mise en forme. Les clients en mode texte lisent `text`. */
+  /** The formatted version. Text-mode clients read `text`. */
   html?: string;
-  /** Ce que le HTML cite en « cid: » — le logo de l'entête. */
+  /** What the HTML cites as "cid:" — the header logo. */
   attachments?: MailAttachment[];
 }
 
 /**
- * Un envoi. Lève ce que Microsoft a répondu : c'est cela qui apprend quelque
- * chose — « boîte introuvable », « accès refusé » —, là où « échec de l'envoi »
- * ne dirait rien. À l'appelant de décider s'il le remonte à l'écran ou s'il se
- * contente de le tracer.
+ * A send. Throws what Microsoft answered: that is what teaches something —
+ * "mailbox not found", "access denied" —, where "send failed" would say
+ * nothing. It is up to the caller to decide whether to surface it on screen
+ * or merely to log it.
  */
 export const sendMail = (mail: Mail): Promise<void> => sendViaGraph(mail);
 
 /**
- * Le message d'essai, parti de l'adresse d'envoi. Son échec se lit dans la
- * fenêtre qui l'a demandé.
+ * The test message, sent from the sending address. Its failure is read in
+ * the window that requested it.
  */
 export const sendTest = async (recipient: string): Promise<void> => {
   const sender = sendingAddress();

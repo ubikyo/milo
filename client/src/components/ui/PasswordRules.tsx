@@ -2,7 +2,7 @@ import { Group, Stack, Text, ThemeIcon } from "@mantine/core";
 import { IconCheck, IconX } from "@tabler/icons-react";
 import { PASSWORD_RULES } from "@milo/shared";
 
-// Liste des règles avec leur état, mise à jour à chaque frappe.
+// List of rules with their state, updated on every keystroke.
 export default function PasswordRules({ password }: { password: string }) {
   return (
     <Stack gap={4}>

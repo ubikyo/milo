@@ -3,27 +3,26 @@ import { STRONG_TEXT } from "../../themes/colors";
 import { IconPlus } from "@tabler/icons-react";
 import { useLayoutEffect, useRef, useState } from "react";
 
-// La zone d'ajout d'une section — du mode Accès ou d'un panneau des
-// statistiques (SectionsBoard) : un cadre en pointillé, sans fond, qui occupe
-// la hauteur restante, et le « + » au centre dans une pastille verte, avec
-// « Ajouter un widget » dessous pour dire ce qu'il fait. Elle se
-// clique en entier — le bouton n'est qu'un repère visuel, pas une cible à
-// viser. Elle ouvre le tiroir des widgets.
+// A section's add zone — in Access mode or in a statistics panel
+// (SectionsBoard): a dotted frame, no background, filling the remaining height,
+// and the "+" in the center in a green badge, with "Ajouter un widget" below to
+// say what it does. The whole zone is clickable — the button is only a visual
+// cue, not a target to aim at. It opens the widget drawer.
 //
-// Elle ne se montre pas toujours. Une colonne qui porte déjà quelque chose n'a
-// plus besoin d'invite : la zone s'efface, et ne revient que si la colonne se
-// vide, ou le temps qu'on tienne un widget au-dessus — c'est alors elle qui
-// le reçoit. Verrouillée, elle garde sa place mais ne se voit plus : la
-// colonne ne change pas de hauteur pour autant.
+// It is not always shown. A column that already holds something no longer needs
+// a prompt: the zone disappears, and only returns if the column empties, or
+// while a widget is held above it — it is then the one that receives it. When
+// locked, it keeps its place but is no longer visible: the column does not
+// change height for that.
 interface SectionDropZoneProps {
   onClick: () => void;
-  /** Vrai pendant qu'un widget est tenu au-dessus : la zone accueille. */
+  /** True while a widget is held above: the zone welcomes it. */
   accepting?: boolean;
-  /** Vrai quand la catégorie est verrouillée : la zone occupe, mais ne se voit plus. */
+  /** True when the category is locked: the zone takes up space, but is no longer visible. */
   invisible?: boolean;
   /**
-   * La colonne porte déjà son cadre en pointillé : la zone ne double pas le
-   * trait, elle ne le montre que pour accueillir.
+   * The column already carries its dotted frame: the zone does not double the
+   * line, it only shows it to welcome a drop.
    */
   withoutFrame?: boolean;
   onDragOver?: (event: React.DragEvent) => void;
@@ -31,14 +30,14 @@ interface SectionDropZoneProps {
   onDrop?: (event: React.DragEvent) => void;
 }
 
-/** Le gris du pointillé : le filet de la rangée d'onglets. Le cadre des colonnes le reprend. */
+/** The dotted line's gray: the tab row's rule. The columns' frame uses it too. */
 export const DOTTED =
   "light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))";
 
-// Hauteur minimale : une colonne vide doit rester une zone, pas un trait.
+// Minimum height: an empty column must remain a zone, not a line.
 const MIN_HEIGHT = 120;
 
-// L'air que le libellé laisse de chaque côté avant de céder la place.
+// The room the label leaves on each side before giving way.
 const MARGIN_LABEL = 8;
 
 export default function SectionDropZone({
@@ -50,9 +49,9 @@ export default function SectionDropZone({
   onDragLeave,
   onDrop,
 }: SectionDropZoneProps) {
-  // Le libellé tient sur une ligne, ou ne se montre pas : une colonne
-  // étroite ne garde que le « + ». Il reste posé, mais hors du flux, pour
-  // qu'on mesure toujours sa largeur.
+  // The label fits on one line, or is not shown: a narrow column only keeps the
+  // "+". It stays rendered, but out of the flow, so its width can always be
+  // measured.
   const zone = useRef<HTMLButtonElement>(null);
   const label = useRef<HTMLParagraphElement>(null);
   const [fits, setFits] = useState(true);
@@ -79,15 +78,14 @@ export default function SectionDropZone({
       style={{
         flex: 1,
         minHeight: MIN_HEIGHT,
-        // Le libellé mis de côté ne déborde pas de la zone.
+        // The label set aside does not overflow the zone.
         position: "relative",
         overflow: "hidden",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        // Le filet de la rangée d'onglets, sauf pendant qu'on tient un élément
-        // au-dessus : il passe alors au blanc, pour dire que c'est ici que ça
-        // se pose.
+        // The tab row's rule, except while an item is held above: it then turns
+        // white, to say that this is where it lands.
         border: accepting
           ? "1px dashed var(--mantine-color-white)"
           : withoutFrame
@@ -95,7 +93,7 @@ export default function SectionDropZone({
             : `1px dashed ${DOTTED}`,
         borderRadius: "var(--mantine-radius-md)",
         backgroundColor: "transparent",
-        // Verrouillée : plus rien ne se voit, mais la place reste tenue.
+        // Locked: nothing shows any more, but the space stays held.
         visibility: invisible ? "hidden" : "visible",
       }}
     >

@@ -1,25 +1,24 @@
-// Le logo de Milo pour les e-mails.
+// Milo's logo for e-mails.
 //
-// Une image matricielle, et non le SVG de l'application : la moitié des
-// clients de messagerie ne rendent pas le SVG. Elle est écrite ici en base64
-// plutôt que posée dans un fichier, pour deux raisons — le serveur est
-// empaqueté en un fichier unique au déploiement (esbuild n'emporte pas les
-// ressources), et une image distante serait bloquée par défaut chez la
-// plupart des destinataires. Jointe au message et citée par son identifiant
-// (« cid: »), elle s'affiche sans rien demander à personne.
+// A raster image, not the app's SVG: half of the mail clients do not render
+// SVG. It is written here in base64 rather than placed in a file, for two
+// reasons — the server is bundled into a single file at deployment (esbuild
+// does not carry resources along), and a remote image would be blocked by
+// default for most recipients. Attached to the message and cited by its
+// identifier ("cid:"), it displays without asking anything of anyone.
 //
-// C'est la variante sombre du logo : elle se pose au pied du message, sur
-// fond blanc, où la variante claire serait invisible. 74 × 56, soit le double
-// de sa taille d'affichage, pour les écrans à forte densité.
+// This is the dark variant of the logo: it sits at the foot of the message,
+// on a white background, where the light variant would be invisible. 74 × 56,
+// double its display size, for high-density screens.
 //
-// Pour la refaire à partir de la source :
+// To redo it from the source:
 //   convert -background none -density 600 \
 //     client/src/assets/media/Milo-2.svg -resize x56 -strip PNG8:milo.png
 
-/** L'identifiant sous lequel le HTML cite l'image jointe. */
+/** The identifier under which the HTML cites the attached image. */
 export const LOGO_CID = "milo-logo";
 
-/** Ce que l'image mesure à l'écran, en pixels. */
+/** What the image measures on screen, in pixels. */
 export const LOGO_WIDTH_PX = 37;
 export const LOGO_HEIGHT_PX = 28;
 
@@ -39,5 +38,5 @@ const BASE64 =
   "I+HIi1xMRX5HsDM6Zv2totBfJYqsKK087f0t3mt5okwmrfqO9MVOCDN0SUhO2oqaoBXxJ9nhM+Q/z9/MmTT/yH/dJA/SQxnn" +
   "KQAAAABJRU5ErkJggg==";
 
-/** L'image, prête à être jointe au message. */
+/** The image, ready to be attached to the message. */
 export const attachedLogo = (): Buffer => Buffer.from(BASE64, "base64");

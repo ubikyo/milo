@@ -3,13 +3,13 @@ import { IconPlus } from "@tabler/icons-react";
 import { PLUS_SIZE } from "../../themes/plus";
 import type { ComponentType, ReactNode } from "react";
 
-// Écran d'invite, quand il n'y a encore rien à montrer : projets, tableaux,
-// listes, commentaires.
+// Prompt screen, when there is nothing to show yet: projects, boards, lists,
+// comments.
 //
-// C'est l'EmptyState de Mantine, avec les choix de l'application : une pastille
-// neutre derrière l'icône, l'occupation de toute la zone de contenu, et le
-// bouton d'ajout quand l'écran a une action à proposer. « fill » à faux pour
-// les invites logées dans un cadre, qui se règlent sur leur contenu.
+// This is Mantine's EmptyState, with the application's choices: a neutral badge
+// behind the icon, filling the whole content area, and the add button when the
+// screen has an action to offer. "fill" false for prompts housed in a frame,
+// which size themselves to their content.
 interface EmptyPanelProps {
   icon: ComponentType<{ size?: number; color?: string }>;
   message?: ReactNode;
@@ -17,7 +17,7 @@ interface EmptyPanelProps {
   onAction?: () => void;
   size?: "sm" | "md" | "lg";
   fill?: boolean;
-  /** Vrai quand l'écran signale un problème : l'icône passe au jaune. */
+  /** True when the screen reports a problem: the icon turns yellow. */
   warning?: boolean;
 }
 
@@ -40,18 +40,18 @@ export default function EmptyPanel({
           color={warning ? "var(--mantine-color-yellow-5)" : undefined}
         />
       }
-      // Le message passe par « title » : c'est là que Mantine le rend. Sans
-      // cette ligne, l'écran vide n'affichait qu'une icône — la phrase était
-      // reçue en propriété et jetée.
+      // The message goes through "title": that is where Mantine renders it.
+      // Without this line, the empty screen showed only an icon — the sentence
+      // was received as a prop and thrown away.
       title={message}
-      // Le titre de Mantine est en demi-gras (600) : ici le message se lit
-      // comme une phrase, pas comme un titre. Sa taille ne suit pas « size »
-      // (Mantine va jusqu'au xl) : même corps de texte sur tous les écrans vides.
+      // Mantine's title is semi-bold (600): here the message reads like a
+      // sentence, not a title. Its size does not follow "size" (Mantine goes up
+      // to xl): same text size on all empty screens.
       styles={{ title: { fontWeight: 400, fontSize: "var(--mantine-font-size-md)" } }}
-      // Centrée verticalement dans la hauteur qu'elle occupe.
+      // Vertically centered within the height it occupies.
       style={fill ? { flex: 1, minHeight: 0, justifyContent: "center" } : undefined}
     >
-      {/* Certains écrans n'ont rien à proposer ici : sans action, pas de bouton. */}
+      {/* Some screens have nothing to offer here: no action, no button. */}
       {actionLabel && onAction && (
         <EmptyState.Actions>
           <Button color="teal" leftSection={<IconPlus size={PLUS_SIZE} />} onClick={onAction}>

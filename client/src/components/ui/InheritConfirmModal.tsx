@@ -2,17 +2,16 @@ import DeleteConfirmModal from "./DeleteConfirmModal";
 
 interface InheritConfirmModalProps {
   opened: boolean;
-  /** L'état qu'on quitte : vrai, on décoche « Hérité » ; faux, on le coche. */
+  /** The state being left: true, "Hérité" is being unchecked; false, it is being checked. */
   inherited: boolean;
   onClose: () => void;
   onConfirm: () => void;
 }
 
 /**
- * La confirmation demandée quand on bascule « Hérité », dans un sens comme
- * dans l'autre. Le décocher quitte la structure partagée — ses sections et
- * ses widgets — pour sa propre copie ; le cocher efface cette copie. Le menu
- * d'onglet de chaque mode la pose.
+ * The confirmation asked when "Hérité" is toggled, in either direction.
+ * Unchecking it leaves the shared structure — its sections and widgets — for
+ * its own copy; checking it erases that copy. Each mode's tab menu places it.
  */
 export default function InheritConfirmModal({
   opened,
@@ -38,8 +37,7 @@ export default function InheritConfirmModal({
       confirmColor="teal"
     />
   ) : (
-    // Effacer sa copie ne se rattrape pas : le bouton est rouge, comme une
-    // suppression.
+    // Erasing one's copy cannot be undone: the button is red, like a deletion.
     <DeleteConfirmModal
       opened={opened}
       onClose={onClose}

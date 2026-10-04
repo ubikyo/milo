@@ -1,8 +1,8 @@
 import { useComputedColorScheme } from "@mantine/core";
 import { useEffect } from "react";
 
-// La favicon suit le thème réellement appliqué (y compris « System ») :
-// la déclinaison inversée est claire, donc lisible sur un onglet sombre.
+// The favicon follows the theme actually applied (including "System"): the
+// inverted variant is light, hence readable on a dark tab.
 export default function Favicon() {
   const scheme = useComputedColorScheme("light", { getInitialValueInEffect: false });
 

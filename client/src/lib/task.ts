@@ -1,6 +1,6 @@
-// « Créer une tâche » : ce que chaque mode donne à la fenêtre qui la crée
-// (components/board/CardDrawer.tsx, components/board/TaskDestination.tsx) — le nom de l'élément, et de quoi y
-// revenir.
+// "Créer une tâche": what each mode gives to the window that creates it
+// (components/board/CardDrawer.tsx, components/board/TaskDestination.tsx) — the
+// item's name, and how to get back to it.
 
 import { projectReference, supportTicketRef } from "@milo/shared";
 import type { AccessBlockType, Asset, BoardWidget, Id, Project, SupportRequest } from "@milo/shared";
@@ -33,9 +33,9 @@ export const workstationSource = (workstation: Asset): SourceTask => ({
 });
 
 /**
- * Un widget commun : son titre, son libellé ou sa première ligne, à défaut
- * le nom de son widget. Le lien ramène à son tableau ; un lien garde en plus
- * son adresse.
+ * A common widget: its title, its label or its first line, failing that
+ * the name of its widget. The link leads back to its board; a link also keeps
+ * its address.
  */
 export const accessSource = (block: BoardWidget, boardId: Id, boardName?: string): SourceTask => {
   const config = block.config ?? {};

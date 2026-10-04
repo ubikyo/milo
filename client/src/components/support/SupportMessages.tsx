@@ -40,20 +40,20 @@ import RecipientsInput from "./RecipientsInput";
 import EmailFrame from "./EmailFrame";
 import classes from "../../assets/styles/SupportMessages.module.css";
 
-/** Un message du fil, et ce qu'il est advenu de son envoi par e-mail. */
+/** A message in the thread, and what became of its sending by e-mail. */
 export type SupportMessage = ThreadItem & {
   mail_status?: SupportMailStatus;
   mail_to?: string;
   mail_cc?: string;
   mail_bcc?: string;
-  /** « email » : un e-mail reçu, montré tel quel dans un cadre. */
+  /** "email": a received e-mail, shown as is in a frame. */
   format?: SupportCommentFormat;
   attachments?: SupportAttachment[];
-  /** Un commentaire interne, de l'onglet « Commentaires ». */
+  /** An internal comment, from the "Commentaires" tab. */
   internal?: SqliteBool | boolean;
 };
 
-/** Ce que dit le pied d'une réponse, selon son envoi. */
+/** What a reply's footer says, depending on how it was sent. */
 const SENDING: Record<
   Exclude<SupportMailStatus, "">,
   { icon: typeof IconMailCheck; color: string; text: (a: string) => string }
@@ -75,22 +75,22 @@ const SENDING: Record<
   },
 };
 
-// Le fil d'une demande, lu comme une conversation par e-mail : ce qui vient
-// de l'expéditeur à gauche, ce que l'équipe écrit à droite, chacun sur les
-// trois quarts de la largeur. Les mots de l'application — création, fusion,
-// fermeture — se posent au milieu, en petit : ils ne sont de personne.
+// A request's thread, read like an e-mail conversation: what comes
+// from the sender on the left, what the team writes on the right, each at
+// three quarters of the width. The application's words — creation, merge,
+// closure — sit in the middle, small: they belong to no one.
 
 const MESSAGE_WIDTH = "75%";
 
-/** L'air entre deux messages, et autour du corps de chacun. */
+/** The air between two messages, and around each one's body. */
 const MESSAGES_GAP = 30;
 const MARGIN_MESSAGE = 30;
 
-/** Le fond d'un message, reçu comme envoyé : c'est la place qui dit de qui il vient. */
+/** A message's background, received or sent: its position says who it comes from. */
 const MESSAGE_BACKGROUND =
   "light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7))";
 
-/** « 1,2 Mo » : la taille d'une pièce jointe. */
+/** "1,2 Mo": an attachment's size. */
 const readableSize = (bytes: number): string => {
   if (bytes >= 1024 * 1024) {
     return `${(bytes / (1024 * 1024)).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Mo`;
@@ -100,21 +100,21 @@ const readableSize = (bytes: number): string => {
   return `${bytes} o`;
 };
 
-/** Une ligne de la liste des fichiers : ce qu'on montre, et ce qu'on en fait. */
+/** A row of the file list: what is shown, and what can be done with it. */
 interface FileRow {
   key: string;
   name: string;
   size: number;
-  /** L'adresse où le télécharger, une fois rangé. */
+  /** The address to download it from, once stored. */
   href?: string;
-  /** Le retirer, tant que la réponse n'est pas partie. */
+  /** Remove it, as long as the reply has not been sent. */
   onRemove?: () => void;
 }
 
 /**
- * Des fichiers, un par ligne : le nom à gauche, et les tailles alignées à
- * droite en colonne. Sert aux pièces jointes d'un message comme à celles d'une
- * réponse en cours d'écriture, qui se retirent d'une croix.
+ * Files, one per row: the name on the left, and the sizes right-aligned
+ * in a column. Used for a message's attachments as well as for those of a
+ * reply being written, which are removed with a cross.
  */
 function FileList({
   rows,
@@ -166,8 +166,8 @@ function FileList({
                 {name}
               </Anchor>
             ) : (
-              // Pas encore rangé, donc pas de lien : mais le même composant
-              // que les pièces jointes des messages, donc la même couleur.
+              // Not yet stored, so no link: but the same component
+              // as the messages' attachments, hence the same color.
               <Anchor
                 component="span"
                 size="sm"
@@ -198,7 +198,7 @@ function FileList({
   );
 }
 
-/** Les pièces jointes d'un e-mail, sous son corps : chacune se télécharge. */
+/** An e-mail's attachments, under its body: each one can be downloaded. */
 function Attachments({ attachments }: { attachments: SupportAttachment[] }) {
   return (
     <FileList
@@ -220,10 +220,10 @@ const escape = (text: string): string =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /**
- * Le texte d'un message, en HTML. Ceux d'avant l'éditeur sont du texte brut :
- * ils sont échappés et mis en paragraphes, comme le serveur le fait des
- * e-mails qu'il importe. Le reste a été nettoyé par le serveur à l'écriture ;
- * les paragraphes vides qu'y laisse l'éditeur, en fin de texte, sont retirés.
+ * A message's text, as HTML. Those from before the editor are plain text:
+ * they are escaped and put into paragraphs, as the server does with the
+ * e-mails it imports. The rest was sanitized by the server on write;
+ * the empty paragraphs the editor leaves at the end of the text are removed.
  */
 const asHtml = (text: string): string =>
   /<[a-z][\s\S]*>/i.test(text)
@@ -235,7 +235,7 @@ const asHtml = (text: string): string =>
         .map((block) => `<p>${escape(block).replace(/\n/g, "<br>")}</p>`)
         .join("");
 
-/** Un éditeur vide rend « <p></p> » : ce n'est pas un message. */
+/** An empty editor renders "<p></p>": that is not a message. */
 const isEmpty = (html: string): boolean =>
   !/<img\b/i.test(html) &&
   html
@@ -245,13 +245,13 @@ const isEmpty = (html: string): boolean =>
 
 interface SupportMessagesProps {
   messages: SupportMessage[];
-  /** L'adresse de l'expéditeur de la demande : ses messages sont les reçus. */
+  /** The address of the request's sender: its messages are the received ones. */
   senderEmail: string;
-  /** Sans lui — sans le droit de modifier la demande —, rien ne s'efface. */
+  /** Without it — without the right to edit the request —, nothing can be deleted. */
   onDelete?: (id: number | string) => Promise<void>;
 }
 
-/** Le pied d'une réponse : partie, simulée, ou refusée — et qui était en copie. */
+/** A reply's footer: sent, simulated, or refused — and who was in copy. */
 function SendFooter({
   status,
   a,
@@ -297,8 +297,8 @@ function SendFooter({
 }
 
 /**
- * Le fil des messages. Il ne défile pas lui-même : c'est le panneau qui le
- * contient qui s'en charge, et le dernier message y est amené en vue.
+ * The message thread. It does not scroll itself: the panel that
+ * contains it does, and the last message is brought into view.
  */
 export default function SupportMessages({
   messages,
@@ -308,13 +308,13 @@ export default function SupportMessages({
   const [toDelete, setToDelete] = useState<SupportMessage | null>(null);
   const end = useRef<HTMLDivElement | null>(null);
 
-  // Le dernier message en vue, comme dans une messagerie : à l'ouverture et à
-  // chaque message ajouté. Seul le cadre du fil défile — « scrollIntoView »
-  // ferait aussi descendre le tiroir, qui doit s'ouvrir en haut du ticket.
-  // Le cadre est le premier parent qui coupe ce qui dépasse, « hidden »
-  // compris : tout juste monté, celui de Mantine (ScrollArea) l'est tant que sa
-  // barre n'est pas prête. Ne chercher que « auto » ou « scroll » le sautait et
-  // faisait descendre tout le tiroir.
+  // The last message in view, as in a mail client: on opening and on
+  // each added message. Only the thread's frame scrolls — "scrollIntoView"
+  // would also scroll the drawer down, which must open at the top of the ticket.
+  // The frame is the first parent that clips overflow, "hidden"
+  // included: just mounted, Mantine's (ScrollArea) is one as long as its
+  // bar is not ready. Looking only for "auto" or "scroll" skipped it and
+  // scrolled the whole drawer down.
   useEffect(() => {
     let frame = end.current?.parentElement ?? null;
     while (frame) {
@@ -325,9 +325,9 @@ export default function SupportMessages({
   }, [messages.length]);
 
   /**
-   * Reçu : écrit par l'expéditeur, qu'il ait un compte ou non. Un message parti
-   * — ou qui devait partir — par e-mail est toujours une réponse de l'équipe,
-   * même quand celui qui l'écrit est aussi l'expéditeur de la demande.
+   * Received: written by the sender, whether or not they have an account. A message sent
+   * — or that was meant to be sent — by e-mail is always a team reply,
+   * even when its author is also the request's sender.
    */
   const received = (m: SupportMessage): boolean =>
     !m.mail_status &&
@@ -338,8 +338,8 @@ export default function SupportMessages({
           m.author.email.toLowerCase() === senderEmail.toLowerCase())),
     );
 
-  // Un seul bloc : dans la pile du tiroir, le repère de fin et la fenêtre de
-  // suppression prendraient chacun son écart sous le dernier message.
+  // A single block: in the drawer's stack, the end marker and the deletion
+  // modal would each take their gap under the last message.
   return (
     <div>
       <Stack gap={MESSAGES_GAP}>
@@ -351,7 +351,7 @@ export default function SupportMessages({
               </Text>
             );
           }
-          // L'ouverture du fil, signée Milo : un fait, avec son logo.
+          // The thread's opening, signed Milo: a fact, with its logo.
           if (m.system && m.author?.id === MILO_ACTOR_ID) {
             return (
               <Group key={m.id} gap={6} justify="center" wrap="nowrap">
@@ -362,8 +362,8 @@ export default function SupportMessages({
               </Group>
             );
           }
-          // Un mot de l'application signé d'un compte — « Fusionnée dans… »,
-          // « Fermée le… » — reste un fait, pas un message.
+          // An application word signed by an account — "Fusionnée dans…",
+          // "Fermée le…" — remains a fact, not a message.
           if (m.system && !received(m)) {
             return (
               <Text key={m.id} size="xs" c="dimmed" ta="center">
@@ -373,11 +373,11 @@ export default function SupportMessages({
           }
 
           const left = received(m);
-          // Une réponse par défaut, partie d'office : signée Milo, elle se
-          // distingue de celles qu'écrit l'équipe.
+          // A default reply, sent automatically: signed Milo, it is
+          // distinguished from those the team writes.
           const automatic = !left && m.author?.id === MILO_ACTOR_ID;
-        // L'adresse et la date : estompées sur le fond du message, en blanc
-        // adouci sur le vert d'une réponse.
+        // The address and date: faded on the message's background, in softened
+        // white on a reply's green.
         const secondary = left ? "dimmed" : "inherit";
         const opacity = left ? undefined : 0.85;
           return (
@@ -391,14 +391,14 @@ export default function SupportMessages({
                 overflow: "hidden",
               }}
             >
-              {/* L'entête d'un e-mail : qui, son adresse, quand. */}
+              {/* An e-mail's header: who, their address, when. */}
               <Group
                 justify="space-between"
                 wrap="nowrap"
                 px="md"
                 py={8}
-                // Une réponse de l'équipe : l'entête au vert du bouton d'envoi,
-                // son texte en blanc. Une réponse automatique : en bleu.
+                // A team reply: the header in the send button's green,
+                // its text in white. An automatic reply: in blue.
                 style={
                   left
                     ? { borderBottom: "1px solid var(--mantine-color-default-border)" }
@@ -432,8 +432,8 @@ export default function SupportMessages({
                     {formatDate(m.created_at)}
                     {m.updated_at !== m.created_at ? " (modifié)" : ""}
                   </Text>
-                  {/* Un mot de l'application ne s'efface pas, ni une réponse :
-                    elle est peut-être déjà partie chez l'expéditeur. */}
+                  {/* An application word is not deleted, nor is a reply:
+                    it may already have reached the sender. */}
                   {!m.system && left && onDelete && (
                     <ActionIcon
                       variant="subtle"
@@ -447,8 +447,8 @@ export default function SupportMessages({
                   )}
                 </Group>
               </Group>
-              {/* Un e-mail reçu tel qu'il a été écrit, dans son cadre ; un
-                message de Milo avec la typographie de l'éditeur. */}
+              {/* A received e-mail as it was written, in its frame; a
+                Milo message with the editor's typography. */}
               {m.format === "email" ? (
                 <div style={{ padding: MARGIN_MESSAGE }}>
                   <EmailFrame html={m.text} />
@@ -467,8 +467,8 @@ export default function SupportMessages({
               {m.attachments && m.attachments.length > 0 && (
                 <Attachments attachments={m.attachments} />
               )}
-              {/* Seul un échec se signale : une réponse partie va de soi, et
-                une simulation ne concerne que la mise au point. */}
+              {/* Only a failure is flagged: a sent reply goes without saying, and
+                a simulation only concerns debugging. */}
               {m.mail_status === "failed" && (
                 <SendFooter
                   status={m.mail_status}
@@ -482,7 +482,7 @@ export default function SupportMessages({
         })}
       </Stack>
 
-      {/* Hors de la pile : son écart s'ajouterait sous le dernier message. */}
+      {/* Outside the stack: its gap would add under the last message. */}
       <div ref={end} />
 
       <DeleteConfirmModal
@@ -500,22 +500,22 @@ export default function SupportMessages({
   );
 }
 
-/** Ce que le bouton d'envoi fait de la demande, une fois la réponse partie. */
+/** What the send button does to the request, once the reply has been sent. */
 export interface ReplySending {
   status: SupportStatus;
   cc: string[];
   bcc: string[];
-  /** Les pièces jointes, à déposer avant d'envoyer la réponse. */
+  /** The attachments, to upload before sending the reply. */
   files: File[];
 }
 
 /**
- * Le plafond des pièces jointes d'une réponse qui part par e-mail : celui du
- * serveur (lib/ticket-files.ts), que Graph impose.
+ * The ceiling on attachments for a reply sent by e-mail: the server's
+ * (lib/ticket-files.ts), which Graph imposes.
  */
 const SEND_SIZE_MAX = 3 * 1024 * 1024;
 
-/** Les trois façons d'envoyer, la première par défaut. */
+/** The three ways to send, the first being the default. */
 const SENDINGS: { status: SupportStatus; label: string }[] = [
   { status: "pending", label: "Envoyer et définir en attente" },
   { status: "resolved", label: "Envoyer et définir comme résolu" },
@@ -523,14 +523,14 @@ const SENDINGS: { status: SupportStatus; label: string }[] = [
 ];
 
 /**
- * La réponse : l'éditeur et son bouton, posés sous le panneau des messages.
- * L'éditeur se vide une fois le message parti ; s'il est refusé, le texte
- * reste, pour qu'on ne le perde pas.
+ * The reply: the editor and its button, placed under the messages panel.
+ * The editor is cleared once the message is sent; if it is refused, the text
+ * stays, so that it is not lost.
  *
- * Le bouton envoie et met la demande « En attente » ; sa flèche propose de la
- * dire résolue ou fermée à la place. « CC » et « CCI », dans la barre
- * d'outils, ouvrent chacun sa ligne d'adresses — seulement quand la réponse
- * part par e-mail.
+ * The button sends and sets the request to "En attente"; its arrow offers to
+ * mark it resolved or closed instead. "CC" and "CCI", in the
+ * toolbar, each open their address row — only when the reply
+ * goes by e-mail.
  */
 export function SupportReply({
   template = "",
@@ -540,16 +540,16 @@ export function SupportReply({
   blockedReason,
 }: {
   /**
-   * Ce que l'éditeur porte d'office — les contenus par défaut du Paramétrage :
-   * posé à vide, et de nouveau une fois la réponse partie.
+   * What the editor carries by default — the default contents from Settings:
+   * set when empty, and again once the reply has been sent.
    */
   template?: string;
   onSend: (html: string, sending: ReplySending) => Promise<void>;
-  /** Vrai quand la réponse part par e-mail : la copie a alors un sens. */
+  /** True when the reply goes by e-mail: copying then makes sense. */
   byEmail?: boolean;
-  /** Vrai quand la réponse peut porter des pièces jointes : la demande existe. */
+  /** True when the reply can carry attachments: the request exists. */
   withFiles?: boolean;
-  /** Quand l'envoi n'est pas encore possible : la raison, en infobulle. */
+  /** When sending is not yet possible: the reason, as a tooltip. */
   blockedReason?: string;
 }) {
   const editor = useRichEditor({ placeholder: "Écrire une réponse…" });
@@ -558,18 +558,18 @@ export function SupportReply({
   const [bcc, setBcc] = useState<string[] | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const filePicker = useRef<HTMLInputElement | null>(null);
-  // Ce que l'éditeur a reçu du modèle, tel que l'éditeur le rend.
+  // What the editor received from the template, as the editor renders it.
   const appliedTemplate = useRef("");
 
-  /** Pose le modèle, le curseur au début : on écrit avant la signature. */
+  /** Sets the template, cursor at the start: you write before the signature. */
   const applyTemplate = useCallback(() => {
     if (!editor) return;
     editor.chain().setContent(template).setTextSelection(1).run();
     appliedTemplate.current = editor.getHTML();
   }, [editor, template]);
 
-  // Un modèle qui change — le fil avance, une autre demande s'ouvre —
-  // remplace l'ancien tant qu'on n'y a pas touché ; jamais un texte écrit.
+  // A template that changes — the thread advances, another request opens —
+  // replaces the old one as long as it has not been touched; never written text.
   useEffect(() => {
     if (!editor) return;
     const current = editor.getHTML();
@@ -596,22 +596,22 @@ export function SupportReply({
       setBcc(null);
       setFiles([]);
     } catch {
-      // Le tiroir a déjà dit ce qui n'allait pas : le texte reste en place.
+      // The drawer has already said what went wrong: the text stays in place.
     } finally {
       setSending(false);
     }
   };
 
-  /** Ouvre la ligne, ou la referme — ses adresses avec elle. */
+  /** Opens the row, or closes it — its addresses with it. */
   const toggle = (
     row: string[] | null,
     insertRow: (v: string[] | null) => void,
   ) => insertRow(row === null ? [] : null);
 
-  // Le bouton envoie « en attente » ; sa flèche propose les deux autres issues.
-  // Sur toute la largeur, le bouton s'étire et prend les coins bas de l'éditeur.
-  // Gris foncé, un cran plus clair sur le thème sombre pour se détacher du
-  // champ ; le survol s'assombrit d'autant.
+  // The button sends "en attente"; its arrow offers the other two outcomes.
+  // Full width, the button stretches and takes the editor's bottom corners.
+  // Dark gray, a notch lighter in the dark theme to stand out from the
+  // field; hover darkens by the same amount.
   const corner = "calc(var(--mantine-radius-default) - 1px)";
   const gray = {
     "--button-bg": "light-dark(var(--mantine-color-dark-6), var(--mantine-color-dark-4))",
@@ -669,8 +669,8 @@ export function SupportReply({
   return (
     <RichTextField
       editor={editor}
-      // Une réponse s'écrit plus longuement qu'un commentaire : quinze lignes
-      // avant de défiler.
+      // A reply is written at greater length than a comment: fifteen lines
+      // before scrolling.
       maxLines={15}
       toolbarControls={
         (byEmail || withFiles) && (
@@ -709,8 +709,8 @@ export function SupportReply({
                 </RichTextEditor.Control>
               </>
             )}
-            {/* Le sélecteur lui-même, caché : le trombone l'ouvre. Plusieurs
-                fichiers à la fois, qui s'ajoutent à ceux déjà choisis. */}
+            {/* The selector itself, hidden: the paperclip opens it. Several
+                files at once, added to those already chosen. */}
             <input
               ref={filePicker}
               type="file"
@@ -725,8 +725,8 @@ export function SupportReply({
           </>
         )
       }
-      // Les pièces jointes choisies, comme dans les messages, sous le texte ;
-      // chacune se retire d'une croix tant que la réponse n'est pas partie.
+      // The chosen attachments, as in the messages, under the text;
+      // each is removed with a cross as long as the reply has not been sent.
       contentEnd={
         files.length > 0 && (
           <>
@@ -762,7 +762,7 @@ export function SupportReply({
           </>
         )
       }
-      // Sous l'éditeur, sur toute sa largeur, collé aux bordures.
+      // Under the editor, full width, flush against the borders.
       bottomBar={buttons}
     />
   );

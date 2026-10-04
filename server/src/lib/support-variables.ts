@@ -1,10 +1,10 @@
-// Les personnes que citent les modèles du Support (SUPPORT_REPLY_VARIABLES) :
-// le compte qui écrit, et l'expéditeur de la demande. Leurs fiches viennent
-// d'Entra — téléphone, poste, adresse… — quand l'annuaire est branché et
-// qu'il les connaît ; à défaut, de ce qu'en sait Milo : un nom, une adresse.
+// The people cited by the Support templates (SUPPORT_REPLY_VARIABLES): the
+// account writing, and the request's sender. Their profiles come from Entra —
+// phone, job title, address… — when the directory is connected and knows
+// them; otherwise, from what Milo knows: a name, an address.
 //
-// Une fiche lue est gardée quelques minutes : chaque réponse qui s'ouvre en
-// redemande, et l'annuaire n'a pas à répondre à chaque fois.
+// A profile read is kept for a few minutes: every reply that opens asks for
+// it again, and the directory need not answer each time.
 
 import { emptySupportPerson, splitPersonName } from "@milo/shared";
 import type { SupportPerson } from "@milo/shared";
@@ -15,7 +15,7 @@ import type { EntraRecord } from "./entra.js";
 const CACHE_DURATION = 10 * 60_000;
 const cache = new Map<string, { readValue: number; record: EntraRecord | null }>();
 
-/** La fiche, lue dans l'annuaire ou dans le cache ; « null » sur un échec. */
+/** The profile, read from the directory or from the cache; "null" on failure. */
 const record = async (
   key: string,
   read: () => Promise<EntraRecord | null>,
@@ -27,13 +27,13 @@ const record = async (
     cache.set(key, { readValue: Date.now(), record: readValue });
     return readValue;
   } catch (error) {
-    // Un annuaire injoignable ne bloque pas la réponse : Milo y supplée.
-    console.error(`Fiche Entra « ${key} » :`, error);
+    // An unreachable directory does not block the reply: Milo fills in.
+    console.error(`Entra profile "${key}":`, error);
     return null;
   }
 };
 
-/** Ce que Milo sait déjà, complété par la fiche d'Entra là où elle dit quelque chose. */
+/** What Milo already knows, completed by the Entra profile where it says something. */
 const completeText = (base: SupportPerson, f: EntraRecord | null): SupportPerson => {
   if (!f) return base;
   const entra: Partial<SupportPerson> = {
@@ -59,7 +59,7 @@ const completeText = (base: SupportPerson, f: EntraRecord | null): SupportPerson
   return merged;
 };
 
-/** Le compte qui écrit la réponse. */
+/** The account writing the reply. */
 export const accountPerson = async (user: UserRow): Promise<SupportPerson> => {
   const base: SupportPerson = {
     ...emptySupportPerson(),
@@ -72,7 +72,7 @@ export const accountPerson = async (user: UserRow): Promise<SupportPerson> => {
   return completeText(base, await record(`oid:${user.entra_id}`, () => entraRecord(user.entra_id)));
 };
 
-/** L'expéditeur de la demande ; « null » quand elle n'en a pas. */
+/** The request's sender; "null" when it has none. */
 export const senderPerson = async (
   request: Pick<SupportRequestRow, "sender_name" | "sender_email">,
 ): Promise<SupportPerson | null> => {

@@ -8,27 +8,27 @@ import {
 import type { AdminPermissions, SettingsAccess, WorkspacesAccess } from "@milo/shared";
 
 /**
- * La gestion des workspaces et le Paramétrage se disent par oui ou par non :
- * « update » pour oui, dans WORKSPACES_ACCESS comme dans SETTINGS_ACCESS. Le
- * Paramétrage en lecture seule (« view ») ne se choisit plus ; qui l'a encore
- * le voit sous « Voir », le temps qu'on lui donne oui ou non.
+ * Workspace management and "Paramétrage" are expressed as yes or no:
+ * "update" for yes, in WORKSPACES_ACCESS as in SETTINGS_ACCESS. Read-only
+ * "Paramétrage" ("view") can no longer be chosen; whoever still has it
+ * sees it under "Voir", until they are given yes or no.
  */
 const YES_NO = [
   { value: "", label: "Non" },
   { value: "update", label: "Oui" },
 ] as const satisfies readonly { value: WorkspacesAccess & SettingsAccess; label: string }[];
 
-/** Le Paramétrage par oui ou par non, et « Voir » seulement pour qui l'a déjà. */
+/** "Paramétrage" as yes or no, and "Voir" only for whoever already has it. */
 const settingsChoice = (current: SettingsAccess) =>
   current === "view" ? [...YES_NO, { value: "view", label: "Voir" }] : YES_NO;
 
-/** La largeur de la colonne « Workspaces » : de quoi lire son en-tête. */
+/** The width of the "Workspaces" column: enough to read its header. */
 const WORKSPACES_WIDTH = 80;
 
-/** Celle de la colonne « Paramétrage ». */
+/** That of the "Paramétrage" column. */
 const SETTINGS_WIDTH = 80;
 
-/** Ce qu'il administre, d'un coup d'œil. */
+/** What it administers, at a glance. */
 const summary = ({ settings, workspaces }: AdminPermissions): string =>
   [
     settings && `Paramétrage : ${SETTINGS_ACCESS.find((a) => a.value === settings)?.label}`,
@@ -38,18 +38,18 @@ const summary = ({ settings, workspaces }: AdminPermissions): string =>
     .join(" · ");
 
 /**
- * L'administration de l'application : les utilisateurs et les groupes Entra
- * qui voient ou modifient le Paramétrage, et ceux qui gèrent les workspaces.
- * Elle ne dépend d'aucun workspace — leurs accès, eux, se règlent depuis
- * chacun (WorkspacesTab). Seul qui gère les workspaces peut en accorder la
- * gestion.
+ * The application's administration: the Entra users and groups
+ * who view or edit "Paramétrage", and those who manage workspaces.
+ * It depends on no workspace — their access is set from
+ * each one (WorkspacesTab). Only whoever manages workspaces can grant
+ * that management.
  */
 export default function AdministrationTab({
   canManageWorkspaces,
   onChange,
 }: {
   canManageWorkspaces: boolean;
-  /** Après un changement : sa propre administration a pu changer. */
+  /** After a change: one's own administration may have changed. */
   onChange?: () => void;
 }) {
   const load = useCallback(() => api.getAdministration(), []);
@@ -61,9 +61,9 @@ export default function AdministrationTab({
       remove={(principal) => api.deleteAdministration(principal)}
       empty={defaultAdminPermissions}
       summary={summary}
-      // Deux permissions seulement : elles se règlent sur la ligne, en
-      // colonnes comme les accès d'un workspace — le Paramétrage d'abord, puis
-      // les workspaces, à l'ajout comme ensuite.
+      // Only two permissions: they are set on the row, in
+      // columns like a workspace's access — "Paramétrage" first, then
+      // workspaces, on adding as afterwards.
       inColumns
       inline={(permissions, change) => [
         {

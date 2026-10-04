@@ -1,7 +1,7 @@
-// Les contextes d'un tableau : la liste en haut à gauche. Tout ce que le
-// tableau porte — projets, cartes, demandes, postes — appartient à l'un
-// d'eux, et part avec lui (ON DELETE CASCADE). Chacun choisit, tableau par
-// tableau, celui qu'il regarde ; sans choix, il les regarde tous.
+// A board's contexts: the list at the top left. Everything the board
+// carries — projects, cards, requests, workstations — belongs to one of them,
+// and goes with it (ON DELETE CASCADE). Each person chooses, board by board,
+// which one they look at; with no choice, they look at all of them.
 
 import type { Context, CopyResult, Id } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
@@ -22,7 +22,7 @@ export const contexts = {
   ),
   rename: mutation("UPDATE contexts SET name = ? WHERE id = ?"),
   remove: mutation("DELETE FROM contexts WHERE id = ?"),
-  /** Le contexte que ce compte regarde dans ce tableau ; nul pour tous. */
+  /** The context this account looks at in this board; null for all. */
   selected: selection<{ context_id: Id | null }>(
     "SELECT context_id FROM user_board_contexts WHERE user_id = ? AND board_id = ?",
   ),
@@ -33,11 +33,11 @@ export const contexts = {
 };
 
 /**
- * Les contextes d'un tableau, recopiés à la suite de ceux d'un autre, dans
- * leur ordre. Un nom que le tableau d'arrivée porte déjà — à la casse près —
- * n'est pas redoublé : il est compté à part. « remplacer » : ceux du tableau
- * d'arrivée s'en vont d'abord, avec leurs projets, leurs cartes, leurs
- * demandes et leurs postes (ON DELETE CASCADE).
+ * A board's contexts, copied after those of another, in their order. A name
+ * the destination board already has — case aside — is not duplicated: it is
+ * counted separately. "replaceExisting": those of the destination board go
+ * away first, with their projects, cards, requests and workstations (ON DELETE
+ * CASCADE).
  */
 export const copyContexts = transaction(
   (since: Id, to: Id, replaceExisting: boolean): CopyResult => {
@@ -61,7 +61,7 @@ export const copyContexts = transaction(
 
 const clearContexts = mutation("DELETE FROM contexts WHERE board_id = ?");
 
-/** Un contexte à la suite des autres. */
+/** A context after the others. */
 export const addContext = (boardId: Id, name: string): Id => {
   const { next } = contexts.nextPosition(boardId);
   return Number(contexts.create.run(boardId, name, next, now()).lastInsertRowid);
@@ -70,9 +70,9 @@ export const addContext = (boardId: Id, name: string): Id => {
 export const contextOf = (row: ContextRow): Context => ({ ...row });
 
 /**
- * Le contexte reçu pour un élément de ce tableau : il doit en être. Absent,
- * c'est `defaut` — ou, à défaut, le premier du tableau ; nul quand le tableau
- * n'en a aucun.
+ * The context received for an item of this board: it must belong to it. When
+ * absent, it is `defaultValue` — or, failing that, the board's first; null
+ * when the board has none.
  */
 export const boardContext = (
   boardId: Id,
@@ -88,6 +88,6 @@ export const boardContext = (
   return context!.id;
 };
 
-/** Le contexte que ce compte regarde dans ce tableau ; nul pour tous. */
+/** The context this account looks at in this board; null for all. */
 export const selectedContext = (userId: Id, boardId: Id): Id | null =>
   contexts.selected.get(userId, boardId)?.context_id ?? null;

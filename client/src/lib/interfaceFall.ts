@@ -1,36 +1,36 @@
-// L'interface qui tombe et se pose : le code Konami la fait dégringoler puis
-// revenir ; la connexion la pose sur une page vierge.
+// The interface falling and landing: the Konami code makes it tumble down then
+// come back; login lays it onto a blank page.
 
 const random = (min: number, max: number): number => min + Math.random() * (max - min);
 
-// Avant la fête, l'interface se décroche : chaque morceau bascule sur un coin,
-// comme une affiche qui perd une punaise, puis tombe hors de l'écran. Tout
-// revient à la fin, d'un petit rebond. Tout passe par l'API d'animation du
-// navigateur : rien ne touche au rendu de React, et l'annulation rend chaque
-// morceau intact.
+// Before the party, the interface comes loose: each piece tips onto a corner,
+// like a poster losing a pin, then falls off screen. Everything
+// comes back at the end, with a small bounce. Everything goes through the browser's
+// animation API: nothing touches React's rendering, and cancelling returns each
+// piece intact.
 export const DETACH = 1300;
 export const DETACH_SPREAD = 600;
 const RETURN_DURATION = 700;
 const RETURN_SPREAD = 400;
-// Pas de gros morceau : au-delà de ces mesures, un élément est un cadre — la
-// page, une colonne, un widget. Il reste en place, perd son fond, et ce sont
-// ses enfants qui tombent.
+// No big pieces: beyond these measures, an element is a frame — the
+// page, a column, a widget. It stays in place, loses its background, and its
+// children are what fall.
 const AREA_MAX = 0.05;
 const WIDTH_MAX = 0.4;
 const HEIGHT_MAX = 0.35;
-// Ce qui tombe d'un bloc, quelle que soit sa taille : un onglet, une vue, une
-// liste de tâches.
+// What falls as a block, whatever its size: a tab, a view, a
+// task list.
 const BLOCK_ELEMENTS = [
   ".mantine-Tabs-tab",
   ".mantine-SegmentedControl-control",
   ".mantine-SegmentedControl-indicator",
   "[data-list-id]",
 ].join(",");
-// Les traits ne tombent pas — un filet qui dégringole n'a rien de beau : ils
-// s'effacent en fondu. Ceux des onglets et des grilles ne sont pas des
-// éléments : une classe posée sur la racine les éteint, la transition les
-// fait passer en douceur. Elle coupe aussi le pointeur : sans quoi, sous la
-// souris, un survol s'allumerait sur ce qui reste en place.
+// Lines do not fall — a rule tumbling down is not pretty: they
+// fade out. Those of tabs and grids are not
+// elements: a class set on the root turns them off, the transition
+// eases them. It also cuts the pointer: otherwise, under the
+// mouse, a hover would light up on what stays in place.
 const FADE = 400;
 const NO_DIVIDERS_CLASS = "milo-no-dividers";
 const WITHOUT_DIVIDERS = `
@@ -40,17 +40,17 @@ table, thead, tbody, tr, th, td { transition: border-color ${FADE}ms; }
 .${NO_DIVIDERS_CLASS} :is(table, thead, tbody, tr, th, td) { border-color: transparent !important; }
 .${NO_DIVIDERS_CLASS} * { pointer-events: none !important; }
 `;
-// Un trait : un séparateur déclaré, ou un élément de quelques pixels d'épais.
+// A line: a declared separator, or an element a few pixels thick.
 const DIVIDER_SELECTOR = "hr, [role='separator'], .mantine-Divider-root";
 const STROKE_THICKNESS = 4;
 
-/** Des éléments qui tombent ensemble, d'un seul mouvement, autour d'un même coin. */
+/** Elements that fall together, in a single movement, around the same corner. */
 interface Fall {
   items: HTMLElement[];
-  /** Le coin qui tient encore, à l'écran. */
+  /** The corner still holding, on screen. */
   pivot: { x: number; y: number };
   direction: 1 | -1;
-  /** Le haut du groupe à l'écran : la chute se mesure depuis lui. */
+  /** The top of the group on screen: the fall is measured from it. */
   top: number;
   delay: number;
 }
@@ -63,11 +63,11 @@ const visible = (rect: DOMRect): boolean =>
   rect.right > 0 &&
   rect.left < window.innerWidth;
 
-/** Le retard d'un morceau rangé de gauche à droite : il tombe en cascade. */
+/** The delay of a piece arranged left to right: it falls in cascade. */
 const cascading = (left: number): number =>
   (Math.max(0, left) / window.innerWidth) * DETACH_SPREAD + random(0, 80);
 
-/** Un groupe qui tombe autour du coin haut, à gauche ou à droite. */
+/** A group falling around the top corner, left or right. */
 function fallOf(items: HTMLElement[], rects: DOMRect[], delay: number): Fall {
   const direction = Math.random() < 0.5 ? -1 : 1;
   const left = Math.min(...rects.map((r) => r.left));
@@ -76,7 +76,7 @@ function fallOf(items: HTMLElement[], rects: DOMRect[], delay: number): Fall {
   return { items, pivot: { x: direction > 0 ? left : rightHand, y: top }, direction, top, delay };
 }
 
-/** Une grille tombe colonne par colonne : les cellules d'une colonne ensemble. */
+/** A grid falls column by column: the cells of a column together. */
 function columnsOf(table: HTMLTableElement): Fall[] {
   const columns = new Map<number, { items: HTMLElement[]; rects: DOMRect[] }>();
   for (const row of table.rows) {
@@ -98,8 +98,8 @@ function columnsOf(table: HTMLTableElement): Fall[] {
 }
 
 /**
- * Découpe l'interface en morceaux qui tomberont chacun de leur côté, et
- * relève les cadres qu'ils laissent : ceux-là perdent leur fond.
+ * Cuts the interface into pieces that will each fall their own way, and
+ * collects the frames they leave behind: those lose their background.
  */
 function splitInterface(): {
   falls: Fall[];
@@ -110,8 +110,8 @@ function splitInterface(): {
   const screen = window.innerWidth * window.innerHeight;
   const falls: Fall[] = [];
   const frames: HTMLElement[] = [];
-  // Les lignes d'une grille restent en place quand ses colonnes tombent : leur
-  // fond — celui du survol — doit partir avec elles.
+  // A grid's rows stay in place when its columns fall: their
+  // background — the hover one — must leave with them.
   const rows: HTMLElement[] = [];
   const lines: HTMLElement[] = [];
   const walk = (el: Element) => {
@@ -119,8 +119,8 @@ function splitInterface(): {
       if (!(child instanceof HTMLElement || child instanceof SVGSVGElement)) continue;
       if (["SCRIPT", "STYLE", "LINK", "TEMPLATE"].includes(child.tagName)) continue;
       const rect = child.getBoundingClientRect();
-      // Sans taille — « display: contents », un conteneur dont les enfants
-      // sont positionnés —, l'élément peut encore porter des choses visibles.
+      // Without a size — "display: contents", a container whose children
+      // are positioned —, the element may still carry visible things.
       if (rect.width === 0 || rect.height === 0) {
         walk(child);
         continue;
@@ -142,8 +142,8 @@ function splitInterface(): {
         if (child.tHead) rows.push(child.tHead);
         continue;
       }
-      // Un dessin — un graphique — tombe d'une pièce : ses parties ne sont
-      // pas des éléments qu'on découpe.
+      // A drawing — a chart — falls in one piece: its parts are
+      // not elements to cut up.
       if (child instanceof SVGSVGElement) {
         falls.push(fallOf([chunk], [rect], random(0, DETACH_SPREAD)));
         continue;
@@ -152,8 +152,8 @@ function splitInterface(): {
         rect.width * rect.height <= screen * AREA_MAX &&
         rect.width <= window.innerWidth * WIDTH_MAX &&
         rect.height <= window.innerHeight * HEIGHT_MAX;
-      // Un gros élément sans enfant ne se découpe pas, ni celui qui porte du
-      // texte à même lui : le texte resterait en l'air. Il tombe tel quel.
+      // A big element without children is not cut up, nor one that carries
+      // text itself: the text would be left hanging. It falls as is.
       const text = [...child.childNodes].some(
         (n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim(),
       );
@@ -169,23 +169,23 @@ function splitInterface(): {
   return { falls, frames, rows, lines };
 }
 
-/** Fait tomber l'interface ; la fonction rendue la fait revenir. */
+/** Makes the interface fall; the returned function brings it back. */
 export function detachInterface(): () => void {
   const rules = document.createElement("style");
   rules.textContent = WITHOUT_DIVIDERS;
   document.head.appendChild(rules);
   const root = document.documentElement;
-  // La transition doit être en place avant la classe, sinon elle ne joue pas :
-  // une lecture de mise en page l'y installe, sans attendre l'image suivante —
-  // le pointeur, lui, doit être coupé tout de suite.
+  // The transition must be in place before the class, otherwise it does not play:
+  // a layout read installs it there, without waiting for the next frame —
+  // the pointer, though, must be cut right away.
   void root.offsetHeight;
   root.classList.add(NO_DIVIDERS_CLASS);
 
   const { falls, frames, rows, lines } = splitInterface();
   const before: StyleBefore = new Map();
 
-  // Les cadres vidés perdent leur fond, leur bordure et leur ombre. Tous :
-  // un cadre sans fond aujourd'hui en prendrait un au survol.
+  // The emptied frames lose their background, border and shadow. All of them:
+  // a frame without a background today would take one on hover.
   const clearings = frames
     .map((frame) =>
       frame.animate(
@@ -193,14 +193,14 @@ export function detachInterface(): () => void {
         { duration: FADE, easing: "ease-out", fill: "forwards" },
       ),
     );
-  // Le survol d'une ligne s'éteint aussitôt : il ne doit pas traîner derrière
-  // les colonnes qui tombent.
+  // A row's hover goes out at once: it must not trail behind
+  // the falling columns.
   clearings.push(
     ...rows.map((row) =>
       row.animate({ backgroundColor: "transparent" }, { duration: 80, fill: "forwards" }),
     ),
   );
-  // Les traits s'effacent, sans bouger.
+  // Lines fade out, without moving.
   clearings.push(
     ...lines.map((line) =>
       line.animate({ opacity: 0 }, { duration: FADE, easing: "ease-out", fill: "forwards" }),
@@ -214,13 +214,13 @@ export function detachInterface(): () => void {
     const angle = direction * random(25, 60);
     return fall.items.map((el) => {
       before.set(el, { origin: el.style.transformOrigin, display: el.style.display });
-      // Un élément en ligne ne se transforme pas : on le fait bloc le temps de
-      // la chute, s'il tient sur une seule ligne.
+      // An inline element does not transform: it is made a block for the time of
+      // the fall, if it fits on a single line.
       if (getComputedStyle(el).display === "inline" && el.getClientRects().length === 1) {
         el.style.display = "inline-block";
       }
-      // Tous les éléments du groupe tournent autour du même coin : ils
-      // tombent d'une pièce.
+      // All the group's elements rotate around the same corner: they
+      // fall in one piece.
       const rect = el.getBoundingClientRect();
       el.style.transformOrigin = `${pivot.x - rect.left}px ${pivot.y - rect.top}px`;
       return el.animate(
@@ -234,8 +234,8 @@ export function detachInterface(): () => void {
             offset: 0.5,
             easing: "cubic-bezier(.55,0,1,.45)",
           },
-          // Un morceau pris dans une colonne qui coupe ses bords disparaît en
-          // s'effaçant, plutôt que d'un coup au bas de la colonne.
+          // A piece caught in a column that clips its edges disappears by
+          // fading, rather than all at once at the bottom of the column.
           { opacity: 1, offset: 0.85 },
           { transform: `translate(${drift}px, ${fallDistance}px) rotate(${angle}deg)`, opacity: 0 },
         ],
@@ -251,23 +251,23 @@ export function detachInterface(): () => void {
       e.reverse();
       e.onfinish = () => e.cancel();
     });
-    // Le retour se pose avant que la chute ne s'annule : sans quoi chaque
-    // morceau reparaîtrait un instant à sa place.
+    // The return is set before the fall is cancelled: otherwise each
+    // piece would reappear for a moment in its place.
     placePieces(falls, before);
     animations.forEach((a) => a.cancel());
   };
 }
 
-/** Ce qu'un morceau portait avant qu'on ne touche à son style. */
+/** What a piece carried before its style was touched. */
 type StyleBefore = Map<HTMLElement, { origin: string; display: string }>;
 
 /**
- * Fait revenir les morceaux à leur place : chacun descend un peu et rebondit.
- * Jusqu'à son départ, un morceau est invisible.
+ * Brings the pieces back to their place: each comes down a little and bounces.
+ * Until its departure, a piece is invisible.
  */
 function placePieces(falls: Fall[], before: StyleBefore) {
   for (const fall of falls) {
-    // Un groupe revient d'un seul mouvement, comme il est tombé.
+    // A group returns in a single movement, as it fell.
     const delay = random(0, RETURN_SPREAD);
     for (const el of fall.items) {
       const returnAnimation = el.animate(
@@ -287,14 +287,14 @@ function placePieces(falls: Fall[], before: StyleBefore) {
   }
 }
 
-// À la connexion, l'interface se construit sous les yeux : la page part vierge
-// le temps que tout se charge, puis chaque morceau se pose comme au retour du
-// code Konami.
+// At login, the interface builds itself before your eyes: the page starts blank
+// while everything loads, then each piece lands as on the return of the
+// Konami code.
 const BLANK_PAGE_CLASS = "milo-blank-page";
 const BLANK_PAGE = `.${BLANK_PAGE_CLASS} body > * { opacity: 0 !important; }`;
 let blankPage: HTMLStyleElement | null = null;
 
-/** Cache l'interface, en attendant de la poser. */
+/** Hides the interface, while waiting to lay it down. */
 export function clearPage() {
   if (!blankPage) {
     blankPage = document.createElement("style");
@@ -304,7 +304,7 @@ export function clearPage() {
   document.documentElement.classList.add(BLANK_PAGE_CLASS);
 }
 
-/** Pose l'interface, morceau par morceau, sur la page vierge. */
+/** Lays the interface down, piece by piece, on the blank page. */
 export function placeInterface() {
   const root = document.documentElement;
   const rules = document.createElement("style");
@@ -314,9 +314,9 @@ export function placeInterface() {
   root.classList.add(NO_DIVIDERS_CLASS);
 
   const { falls, frames, lines } = splitInterface();
-  // Rien n'a encore touché au style des morceaux : on ne restaure rien.
+  // Nothing has touched the pieces' style yet: nothing to restore.
   placePieces(falls, new Map());
-  // Les cadres prennent leur fond, et les traits paraissent, en fondu.
+  // The frames take their background, and the lines appear, fading in.
   const start = { backgroundColor: "transparent", borderColor: "transparent", boxShadow: "none" };
   frames.forEach((frame) =>
     frame.animate([{ ...start, offset: 0 }], { duration: FADE * 2, easing: "ease-out" }),
@@ -329,7 +329,7 @@ export function placeInterface() {
       fill: "backwards",
     }),
   );
-  // Tout est en place, invisible jusqu'à son tour : la page peut reparaître.
+  // Everything is in place, invisible until its turn: the page may reappear.
   root.classList.remove(BLANK_PAGE_CLASS);
   root.classList.remove(NO_DIVIDERS_CLASS);
   window.setTimeout(() => rules.remove(), FADE);

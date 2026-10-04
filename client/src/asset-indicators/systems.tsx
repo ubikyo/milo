@@ -5,39 +5,39 @@ import { NAME, Nothing, IndicatorTitle } from "./common";
 import type { AssetIndicatorWidget } from "./types";
 import type { Asset } from "@milo/shared";
 
-// Les systèmes du parc, en anneau, version par version : « Windows 11
-// 25H2 », « macOS 15.5 ». L'édition ne compte pas — « Professionnel » et
-// « Famille » font une même part —, c'est la version qui dit ce qui est à
-// mettre à jour.
+// The fleet's systems, as a ring, version by version: "Windows 11
+// 25H2", "macOS 15.5". The edition doesn't count — "Professionnel" and
+// "Famille" make up one share —, the version is what says what needs
+// updating.
 
 const LABEL = "Systèmes";
 
-/** Au-delà, les plus petites parts se fondent dans « Autres ». */
+/** Beyond that, the smallest shares merge into "Autres". */
 const PARTS = 5;
 
 const COLORS = ["blue.6", "teal.6", "grape.6", "yellow.6", "cyan.6"];
 
 const UNKNOWN = "Inconnu";
 
-/** Le système et sa version : « Windows 11 25H2 », « macOS 15.5 », « Ubuntu 24.04 ». */
+/** The system and its version: "Windows 11 25H2", "macOS 15.5", "Ubuntu 24.04". */
 const versionOf = (os: Asset["os"]): string => {
   if (!os || !os.name.trim()) return UNKNOWN;
-  // Sous macOS, le numéro de build entre parenthèses — « (24F74) » — ne fait
-  // pas une version : il est retiré, comme dans la liste.
+  // On macOS, the build number in parentheses — "(24F74)" — is not a
+  // version: it is removed, as in the list.
   const version = (
     os.family === "macos" ? os.version.replace(/\s*\([^)]*\)/g, "") : os.version
   ).trim();
   let name: string;
   if (os.family === "windows") {
-    // « Windows 11 Professionnel » : le nom sans l'édition.
+    // "Windows 11 Professionnel": the name without the edition.
     name = os.name.match(/Windows\s+(Server\s+)?\d+/i)?.[0] ?? os.name;
   } else if (os.family === "macos") {
     name = "macOS";
   } else {
-    // Ailleurs, le nom sans la version qu'il porte parfois déjà.
+    // Elsewhere, the name without the version it sometimes already carries.
     name = os.name.replace(/\s+[\d.]+.*$/, "").trim() || os.name;
   }
-  // macOS donne « 15.5.1 » : le correctif ne fait pas une part à lui seul.
+  // macOS gives "15.5.1": the patch doesn't make up a share on its own.
   const release =
     os.family === "macos" ? version.split(".").slice(0, 2).join(".") : version;
   return release ? `${name} ${release}` : name;

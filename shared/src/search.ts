@@ -1,6 +1,6 @@
-// La recherche : un champ au bout de la rangée d'onglets, qui fouille tout ce
-// que l'application porte — projets, cartes, demandes, postes, accès — et ne
-// rend que ce que la personne a le droit de voir.
+// Search: a field at the end of the tab row, which searches everything
+// the application holds — projects, cards, requests, machines, accesses — and
+// returns only what the person is allowed to see.
 
 import type { Id } from "./domain.js";
 
@@ -9,15 +9,15 @@ export type SearchKind = "project" | "card" | "support" | "asset" | "access";
 export interface SearchResult {
   kind: SearchKind;
   id: Id;
-  /** Ce que la ligne affiche en premier : le nom, le sujet, le libellé. */
+  /** What the row shows first: the name, the subject, the label. */
   title: string;
-  /** Où l'élément se trouve : le contexte, le tableau, la liste… */
+  /** Where the item is: the context, the board, the list… */
   context: string;
-  /** Un widget : le tableau qui le porte, qui s'ouvre. */
+  /** A widget: the board that carries it, which opens. */
   board_id?: Id;
-  /** Accès : l'adresse d'un lien, qui s'ouvre directement. */
+  /** Access: the address of a link, which opens directly. */
   url?: string;
 }
 
-/** En deçà, la recherche ne part pas : une lettre ramènerait tout. */
+/** Below this, the search does not run: a single letter would return everything. */
 export const SEARCH_MIN_LENGTH = 2;

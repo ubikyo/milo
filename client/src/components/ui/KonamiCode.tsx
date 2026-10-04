@@ -4,11 +4,11 @@ import type { CSSProperties } from "react";
 import { DETACH, DETACH_SPREAD, detachInterface } from "../../lib/interfaceFall";
 import Confetti from "./Confetti";
 
-// Une surprise pour qui connaît le code : ↑ ↑ ↓ ↓ ← ← → →, tapé n'importe
-// où dans l'application. Toute l'interface se décroche et tombe ; trois salves
-// de confettis tombent du haut de l'écran, il pleut des Jérôme et Milo signe son
-// auteur ; puis l'interface revient. Rien ne s'enregistre, rien ne
-// change : c'est un clin d'œil, pas une fonction.
+// A surprise for those who know the code: ↑ ↑ ↓ ↓ ← ← → →, typed anywhere in
+// the application. The whole interface comes loose and falls; three bursts of
+// confetti fall from the top of the screen, it rains Jérômes and Milo signs its
+// author; then the interface comes back. Nothing is saved, nothing changes: it
+// is a wink, not a feature.
 const CODE = [
   "ArrowUp",
   "ArrowUp",
@@ -20,11 +20,12 @@ const CODE = [
   "ArrowRight",
 ];
 
-// Les salves partent de trois points du haut de l'écran, l'une après l'autre.
+// The bursts start from three points at the top of the screen, one after the
+// other.
 const VOLLEYS = [0.2, 0.5, 0.8];
 const BURSTS_GAP = 250;
 
-// Et il pleut des Jérôme.
+// And it rains Jérômes.
 const DROP = "Jérôme ❤️";
 const JEROMES = 45;
 const JEROME_DURATION = 5600;
@@ -42,7 +43,7 @@ const JEROME_ANIMATIONS = `
 
 const random = (min: number, max: number): number => min + Math.random() * (max - min);
 
-// Les propriétés personnalisées (« --dx ») ne figurent pas dans CSSProperties.
+// Custom properties ("--dx") are not part of CSSProperties.
 type StyleWithVariables = CSSProperties & Record<`--${string}`, string | number>;
 
 function JeromeRain({ onDone }: { onDone: () => void }) {
@@ -104,29 +105,29 @@ function JeromeRain({ onDone }: { onDone: () => void }) {
   );
 }
 
-/** Une saisie en cours : le code ne s'y lit pas, on y écrit des flèches et des lettres. */
+/** An input in progress: the code is not read there, arrows and letters are being typed. */
 const inInput = (target: EventTarget | null): boolean =>
   target instanceof HTMLElement &&
   (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 
-// Le temps que l'interface sorte du mode modification avant de tomber : elle
-// doit tomber telle qu'on la voit d'ordinaire.
+// The time for the interface to leave edit mode before falling: it must fall as
+// it is normally seen.
 const EXIT_DURATION = 350;
 
 interface KonamiCodeProps {
-  /** L'interface est en cours de modification. */
+  /** The interface is being edited. */
   isEditing: boolean;
   onLeaveEditing: () => void;
 }
 
 export default function KonamiCode({ isEditing, onLeaveEditing }: KonamiCodeProps) {
-  // Lus depuis l'écoute du clavier, posée une fois pour toutes : par référence.
+  // Read from the keyboard listener, set up once and for all: through a ref.
   const modification = useRef({ isEditing, onLeaveEditing });
   useEffect(() => {
     modification.current = { isEditing, onLeaveEditing };
   }, [isEditing, onLeaveEditing]);
-  // Les dernières touches, autant que le code en compte : le code est trouvé
-  // quand elles le forment — même précédé d'une flèche de trop.
+  // The last keys, as many as the code has: the code is found when they form it
+  // — even preceded by one arrow too many.
   const keys = useRef<string[]>([]);
   const counter = useRef(0);
   const [volleys, setVolleys] = useState<{ key: number; x: number }[]>([]);
@@ -134,7 +135,8 @@ export default function KonamiCode({ isEditing, onLeaveEditing }: KonamiCodeProp
 
   useEffect(() => {
     const timeouts: number[] = [];
-    // Une fête à la fois : le code retapé pendant la chute n'y change rien.
+    // One celebration at a time: retyping the code during the fall changes
+    // nothing.
     let ongoing = false;
     const onKeyDown = (e: KeyboardEvent) => {
       if (inInput(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -144,8 +146,8 @@ export default function KonamiCode({ isEditing, onLeaveEditing }: KonamiCodeProp
       if (ongoing) return;
       ongoing = true;
 
-      // En modification, on en sort d'abord, et l'on attend que l'écran
-      // ordinaire soit revenu.
+      // In edit mode, it is left first, and we wait for the ordinary screen to
+      // be back.
       const { isEditing: toLeave, onLeaveEditing: leave } = modification.current;
       if (toLeave) leave();
       timeouts.push(
@@ -153,8 +155,8 @@ export default function KonamiCode({ isEditing, onLeaveEditing }: KonamiCodeProp
       );
     };
 
-    // L'interface tombe d'abord ; la fête commence quand l'écran est vide, et
-    // elle revient quand la pluie s'achève.
+    // The interface falls first; the celebration starts when the screen is
+    // empty, and it comes back when the rain ends.
     const detach = () => {
       const remind = detachInterface();
       const celebration = DETACH + DETACH_SPREAD;
@@ -178,7 +180,7 @@ export default function KonamiCode({ isEditing, onLeaveEditing }: KonamiCodeProp
       VOLLEYS.forEach((part, i) => {
         timeouts.push(
           window.setTimeout(() => {
-            // « x » est le bord gauche de la salve : on la centre sur son point.
+            // "x" is the burst's left edge: it is centered on its point.
             const width = window.innerWidth / VOLLEYS.length;
             const x = window.innerWidth * part - width / 2;
             setVolleys((s) => [...s, { key: counter.current++, x }]);

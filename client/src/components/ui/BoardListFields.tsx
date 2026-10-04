@@ -27,23 +27,23 @@ import {
 } from "./DrawerRows";
 import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
 
-// Les catégories ou les étiquettes du tableau ouvert, dans le tiroir d'un
-// widget « Projets » ou « Tâches », sous la même allure que ses colonnes
-// (ChampsColonnes) : une ligne par élément, sa poignée pour le glisser, son
-// nom à même la ligne, sa couleur et son poids pour une étiquette. Le clic
-// droit le retire ; « Ajouter » pose une ligne vide au bout.
+// The categories or labels of the open board, in the drawer of a
+// "Projets" or "Tâches" widget, with the same look as its columns
+// (ColumnFields): one row per item, its handle for dragging, its
+// name inline, its color and its weight for a label. Right-click
+// removes it; "Ajouter" adds an empty row at the end.
 //
-// Ce ne sont pas des réglages du widget mais des données du tableau : rien ne
-// part avant « Sauvegarder » (EnregistrementsDuTiroirContext), et « Fermer »
-// laisse tout comme avant. Ce qui sert encore — une catégorie qui range des
-// projets, une étiquette posée — ne se retire pas : le serveur le refuse, et
-// la notification le dit.
+// These are not widget settings but board data: nothing is
+// sent before "Sauvegarder" (DrawerRegistrationsContext), and "Fermer"
+// leaves everything as before. What is still in use — a category that files
+// projects, a label in place — cannot be removed: the server refuses, and
+// the notification says so.
 //
-// Les types de jalons se règlent ici aussi, sous les catégories, bien qu'ils
-// soient communs à tous les tableaux : rangés par nom, ils n'ont pas de
-// poignée, et leurs jalons s'ouvrent depuis le menu de leur ligne.
+// Milestone types are set here too, under the categories, although they
+// are shared by all boards: sorted by name, they have no
+// handle, and their milestones open from their row's menu.
 
-/** Ce que la liste gère : une catégorie, une étiquette de cartes ou de projets. */
+/** What the list manages: a category, a card or project label. */
 export type ListKind = "categories" | "task-labels" | "project-labels" | "milestone-types";
 
 interface Element {
@@ -54,7 +54,7 @@ interface Element {
   milestones?: Milestone[];
 }
 
-/** Une ligne du brouillon : « id » absent tant qu'elle n'est pas créée. */
+/** A row of the draft: "id" absent until it is created. */
 interface Row {
   key: string;
   id?: Id;
@@ -66,16 +66,16 @@ interface Row {
 interface ListKindInfo {
   title: string;
   add: string;
-  /** Ce que la liste partage, dit sous elle. */
+  /** What the list shares, stated under it. */
   scope: string;
-  /** « la catégorie », pour les messages. */
+  /** "la catégorie", for the messages. */
   nounPhrase: string;
-  /** L'icône et le message de la liste vide (ListeVide). */
+  /** The icon and message of the empty list (EmptyList). */
   icon: ComponentType<{ size?: number; color?: string }>;
   empty: string;
   withColor: boolean;
   withWeight: boolean;
-  /** Faux quand le serveur range la liste lui-même : pas de poignée. */
+  /** False when the server orders the list itself: no handle. */
   orderable: boolean;
   read: (boardId: Id) => Promise<Element[]>;
   create: (boardId: Id, row: Row) => Promise<{ id: Id }>;
@@ -166,8 +166,8 @@ const inline = (e: Element): Row => ({
 });
 
 /**
- * Les jalons qu'un type montre dans sa fenêtre (MilestonesModal) : les siens,
- * et toujours celui de fin, à 100 %.
+ * The milestones a type shows in its modal (MilestonesModal): its own,
+ * and always the final one, at 100%.
  */
 const milestoneCount = (type: Element | undefined): number =>
   (type?.milestones ?? []).filter((m) => m.value !== 100).length + 1;
@@ -177,19 +177,19 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
   const board = useContext(CopyPasteContext);
   const register = useContext(DrawerRegistrationsContext);
   const boardId = board?.board?.id ?? null;
-  // Un collage depuis le menu « Actions » change la liste : elle se relit.
+  // A paste from the "Actions" menu changes the list: it is re-read.
   const pastes = board?.pastes ?? 0;
 
-  /** Ce que le serveur porte, et le brouillon qu'on en fait. */
+  /** What the server holds, and the draft made from it. */
   const [originals, setOriginals] = useState<Element[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
   const [held, setHeld] = useState<number | null>(null);
-  /** La ligne dont un champ a le focus : il prend le fond du tiroir. */
+  /** The row whose field has focus: it takes the drawer's background. */
   const [input, setInput] = useState<string | null>(null);
-  /** La ligne qu'on vient d'ajouter : son nom prend le focus. */
+  /** The row just added: its name takes focus. */
   const [toName, setToName] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
-  /** Le type dont la fenêtre des jalons est ouverte. */
+  /** The type whose milestones modal is open. */
   const [milestonesOf, setMilestonesOf] = useState<Id | null>(null);
 
   const reload = useCallback(async () => {
@@ -207,8 +207,8 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
     void reload();
   }, [reload, pastes]);
 
-  // « Sauvegarder » : ce qui est parti, ce qui a changé, ce qui est nouveau,
-  // puis l'ordre. Un nom vide arrête tout avant le premier envoi.
+  // "Sauvegarder": what was removed, what changed, what is new,
+  // then the order. An empty name stops everything before the first send.
   const state = useRef({ originals, rows });
   state.current = { originals, rows };
   useEffect(() => {
@@ -244,8 +244,8 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
           ids.length === orderBefore.length && ids.every((id, i) => id === orderBefore[i]);
         if (!sameOrder && s.orderable) await s.store(boardId, ids);
       } finally {
-        // Ce qui est parti l'est : la liste repart du serveur, même après une
-        // erreur.
+        // What was removed is gone: the list restarts from the server, even after an
+        // error.
         await reload();
       }
     });
@@ -271,8 +271,8 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
     setRows(next);
   };
 
-  // Le type ouvert, gardé tant qu'il ne change pas : la fenêtre repart de lui
-  // à chaque nouvel objet, et perdrait ce qu'on y saisit.
+  // The open type, kept as long as it does not change: the modal restarts from it
+  // on each new object, and would lose what is entered in it.
   const openType = useMemo<MilestoneType | null>(() => {
     const original = originals.find((o) => o.id === milestonesOf);
     return original ? { id: original.id, name: original.name, milestones: original.milestones ?? [] } : null;
@@ -281,8 +281,8 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
   if (boardId === null) return null;
 
   return (
-    // Ce ne sont pas des réglages du widget : le dire sous le libellé, à
-    // 20 px de la liste.
+    // These are not widget settings: say so under the label, at
+    // 20 px from the list.
     <Input.Wrapper
       label={s.title}
       description={s.scope}
@@ -299,8 +299,8 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
               onDragOver={(e) => dragHover(e, rank)}
               onDrop={(e) => e.preventDefault()}
               onContextMenu={(e) => setMenu({ rank, position: menuPosition(e) })}
-              // Sans poignée, le champ se cale à gauche comme il se cale à
-              // droite : à RETRAIT_LIGNE du bord de la ligne.
+              // Without a handle, the field aligns left as it aligns
+              // right: at ROW_INSET from the row's edge.
               style={{
                 ...rowStyle(rank, rows.length, held === rank),
                 ...(s.orderable ? null : { paddingLeft: ROW_INSET }),
@@ -316,15 +316,15 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
               <TextInput
                 size="sm"
                 radius={ROUNDING}
-                // Le nom s'aligne sur la poignée, comme celui d'une colonne.
+                // The name aligns with the handle, like a column's.
                 style={{ flex: 1, marginLeft: s.orderable ? -NAME_INSET : 0 }}
                 styles={{
                   input: {
                     height: "var(--input-height-xs)",
                     minHeight: "var(--input-height-xs)",
                     paddingLeft: NAME_INSET,
-                    // Sans bordure, le texte tombe sous le nom d'une colonne ;
-                    // le contour du focus se pose au bord même du champ.
+                    // Without a border, the text lands under a column's name;
+                    // the focus outline sits at the field's very edge.
                     borderWidth: 0,
                     ...(input === `${row.key}-nom`
                       ? INPUT_STYLE
@@ -339,7 +339,7 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
                 onBlur={() => {
                   setInput(null);
                   setToName(null);
-                  // Une ligne ajoutée, quittée sans nom, s'efface.
+                  // An added row, left without a name, disappears.
                   if (row.id === undefined && !row.name.trim()) {
                     setRows((before) => before.filter((l) => l.key !== row.key));
                   }
@@ -370,9 +370,9 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
                   }
                 />
               )}
-              {/* Les jalons d'un type déjà créé : leur nombre, et leur fenêtre
-                  au clic. Ils s'enregistrent depuis elle, sans attendre
-                  « Sauvegarder ». */}
+              {/* The milestones of an already created type: their count, and their modal
+                  on click. They are saved from it, without waiting for
+                  "Sauvegarder". */}
               {kind === "milestone-types" && row.id !== undefined && (
                 <RowButton icon={IconFlag} onClick={() => setMilestonesOf(row.id!)}>
                   {pluralize(milestoneCount(originals.find((o) => o.id === row.id)), "jalon")}
@@ -383,13 +383,13 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
         </Stack>
       )}
 
-      {/* Au plus près de la liste qu'il allonge. */}
+      {/* As close as possible to the list it extends. */}
       <AddButton label={s.add} onClick={add} mt={4} />
 
       {menu && (
         <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          {/* Les jalons d'un type déjà créé : ils s'enregistrent depuis leur
-              fenêtre, sans attendre « Sauvegarder ». */}
+          {/* The milestones of an already created type: they are saved from their
+              modal, without waiting for "Sauvegarder". */}
           {kind === "milestone-types" && rows[menu.rank]?.id !== undefined && (
             <Menu.Item
               leftSection={<IconFlag size={16} />}
@@ -403,8 +403,8 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
             leftSection={<IconTrash size={16} />}
             onClick={() => {
               const row = rows[menu.rank];
-              // Une catégorie qui range des projets ne se retire pas : le
-              // serveur le refuserait à la sauvegarde.
+              // A category that files projects cannot be removed: the
+              // server would refuse it on save.
               const original = originals.find((o) => o.id === row?.id) as
                 | (Element & { project_count?: number })
                 | undefined;
@@ -433,7 +433,7 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
           onSave={async (milestones) => {
             if (milestonesOf === null) return;
             await api.updateMilestoneType(milestonesOf, { milestones });
-            // Le brouillon des noms reste tel quel : seuls les jalons changent.
+            // The names draft stays as is: only the milestones change.
             setOriginals((before) =>
               before.map((o) => (o.id === milestonesOf ? { ...o, milestones } : o)),
             );

@@ -26,36 +26,36 @@ import DeleteConfirmModal from "./DeleteConfirmModal";
 import { NO_CONTEXT } from "@milo/shared";
 import type { Context, Id } from "@milo/shared";
 
-// Les contextes du tableau ouvert : la liste du bout de la rangée. En tête,
-// « Tous les contextes », qui ne se range ni ne se supprime mais se renomme ;
-// puis les contextes, qu'un double clic renomme, qu'on glisse pour les ranger
-// et que la corbeille supprime — avec tout ce qui leur appartient. Au bout,
-// « Ajouter un contexte ».
+// The contexts of the open board: the list at the end of the row. At the top,
+// "Tous les contextes", which cannot be reordered or deleted but can be
+// renamed; then the contexts, which a double click renames, which can be
+// dragged to reorder them, and which the trash can deletes — along with
+// everything that belongs to them. At the end, "Ajouter un contexte".
 //
-// Un clic choisit aussitôt le contexte qu'on regarde. La liste, elle, attend
-// un instant avant de se refermer, pour qu'un double clic puisse encore
-// renommer ; sans le droit de renommer, elle se referme tout de suite.
+// A click immediately selects the context being viewed. The list itself waits a
+// moment before closing, so that a double click can still rename; without the
+// right to rename, it closes right away.
 
-/** Le fond de la pastille de l'icône, sans contexte : un gris neutre, pas bleuté. */
+/** The background of the icon badge, with no context: a neutral gray, not bluish. */
 const DOT = "light-dark(#ededed, var(--mantine-color-dark-4))";
 
-/** Les bornes de la largeur de la liste. */
+/** The bounds of the list width. */
 const WIDTH_MIN = 240;
 const WIDTH_MAX = 320;
 
-/** La valeur de « Tous les contextes ». */
+/** The value of "Tous les contextes". */
 export const ALL = "all";
 
-/** Le temps qu'attend un clic avant de choisir : un double clic le devance. */
+/** How long a click waits before selecting: a double click beats it. */
 const DOUBLE_CLICK_THRESHOLD = 250;
 
-/** Le nom d'un contexte qu'on vient d'ajouter, aussitôt en saisie. */
+/** The name of a context that was just added, immediately in edit mode. */
 const NEW_CONTEXT = "Nouveau contexte";
 
 export interface ContextManagement {
   onAdd: (name: string) => Promise<void>;
   onRename: (id: Id, name: string) => Promise<void>;
-  /** Renommer « Tous les contextes ». */
+  /** Rename "Tous les contextes". */
   onRenameAll: (name: string) => Promise<void>;
   onDelete: (id: Id) => Promise<void>;
   onReorder: (ids: Id[]) => Promise<void>;
@@ -63,22 +63,22 @@ export interface ContextManagement {
 
 export interface ContextsMenuProps {
   items: Context[];
-  /** Le libellé de « Tous les contextes », tel que le tableau le porte. */
+  /** The label of "Tous les contextes", as the board carries it. */
   all: string;
-  /** Le contexte regardé, ou « all ». */
+  /** The context being viewed, or "all". */
   value: string;
   onChange: (value: string) => void;
-  /** Sans elle — sans le droit d'organiser les tableaux —, la liste ne fait que choisir. */
+  /** Without it — without the right to organize boards —, the list only selects. */
   management?: ContextManagement;
   visibleFrom?: string;
   /**
-   * Posée dans l'onglet du tableau, à droite de son nom : l'onglet est déjà
-   * un bouton, la cible n'en est pas un autre, et la liste part de sa gauche.
+   * Placed in the board's tab, to the right of its name: the tab is already a
+   * button, the target is not another one, and the list starts from its left.
    */
   inTab?: boolean;
 }
 
-/** Ce qu'on renomme : un contexte, ou « Tous les contextes ». */
+/** What is being renamed: a context, or "Tous les contextes". */
 type Renamed = { id: Id | typeof ALL; name: string };
 
 export default function ContextsMenu({
@@ -91,24 +91,24 @@ export default function ContextsMenu({
   inTab = false,
 }: ContextsMenuProps) {
   const [isOpen, setOpened] = useState(false);
-  // Dans l'onglet, la liste tombe sur le filet de la rangée et part du bord
-  // gauche de l'onglet. La cible n'a que la hauteur de son texte, à droite du
-  // nom : les deux écarts se mesurent à l'ouverture, de la cible à l'onglet.
+  // In the tab, the list lands on the row's rule and starts from the tab's left
+  // edge. The target is only as tall as its text, to the right of the name:
+  // both gaps are measured on opening, from the target to the tab.
   const [tabGap, setTabOffset] = useState({
     mainAxis: ROW_MENU_OFFSET,
     crossAxis: 0,
   });
-  // La largeur de l'onglet, mesurée avec : la liste la prend, et ne
-  // s'élargit que si son contenu le demande.
+  // The tab's width, measured as well: the list takes it, and only grows wider
+  // if its content requires it.
   const [tabWidth, setTabWidth] = useState(0);
-  /** La cible, relevée à l'ouverture : la mesure la suit tant que la liste est ouverte. */
+  /** The target, captured on opening: the measurement follows it as long as the list is open. */
   const targetRef = useRef<HTMLElement | null>(null);
   const measure = (target: HTMLElement) => {
     const tab = target.closest('[role="tab"]')?.getBoundingClientRect();
     const button = target.getBoundingClientRect();
     if (!tab) return;
-    // Moins un pixel : le trait du haut de la liste se pose sur la ligne du
-    // filet, au lieu de tomber dessous.
+    // Minus one pixel: the top line of the list sits on the rule's line,
+    // instead of falling below it.
     setTabOffset({
       mainAxis: tab.bottom - button.bottom - 1,
       crossAxis: tab.left - button.left,
@@ -122,17 +122,17 @@ export default function ContextsMenu({
     }
     setOpened((o) => !o);
   };
-  // Liste ouverte, l'onglet peut changer de taille — « Tous les … » renommé,
-  // le libellé de la cible qui change : la liste suit.
+  // With the list open, the tab can change size — "Tous les …" renamed, the
+  // target's label changing: the list follows.
   useEffect(() => {
     const target = targetRef.current;
     const tab = target?.closest('[role="tab"]');
     if (!inTab || !isOpen || !target || !tab) return;
     const following = new ResizeObserver(() => measure(target));
     following.observe(tab);
-    // À l'essai : l'onglet prend le fond et la bordure de la liste ouverte
-    // (ContextsMenu.module.css, data-contexts-open).
-    // La rangée aussi : son filet s'éclaircit avec.
+    // Experimental: the tab takes the background and border of the open list
+    // (ContextsMenu.module.css, data-contexts-open). The row too: its rule
+    // lightens along with it.
     const band = tab.closest('[role="tablist"]');
     tab.setAttribute("data-contexts-open", "");
     band?.setAttribute("data-contexts-open", "");
@@ -143,19 +143,19 @@ export default function ContextsMenu({
     };
   }, [inTab, isOpen]);
   const [renamed, setRenamed] = useState<Renamed | null>(null);
-  // Le nom validé, montré le temps que le serveur réponde et que le tableau
-  // revienne relu : sans lui, l'ancien nom reparaîtrait un instant.
+  // The validated name, shown while the server responds and the board comes
+  // back re-read: without it, the old name would briefly reappear.
   const [provisional, setProvisional] = useState<Renamed | null>(null);
   const items = provisional
     ? received.map((c) => (c.id === provisional.id ? { ...c, name: provisional.name } : c))
     : received;
   const all = provisional?.id === ALL ? provisional.name : receivedAll;
   const [toDelete, setToDelete] = useState<Context | null>(null);
-  /** Le contexte tenu, et le rang où il se poserait. */
+  /** The held context, and the rank where it would land. */
   const [dragging, setDragged] = useState<{ id: Id; target: number } | null>(null);
-  /** Le nouvel ordre, montré sans attendre le serveur ; effacé dès qu'il répond. */
+  /** The new order, shown without waiting for the server; cleared as soon as it responds. */
   const [localOrder, setLocalOrder] = useState<Id[] | null>(null);
-  /** Vrai entre l'ajout et l'arrivée du contexte ajouté : il passe alors en saisie. */
+  /** True between the add and the arrival of the added context: it then goes into edit mode. */
   const [addInProgress, setAddInProgress] = useState<number | null>(null);
   const click = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const finished = useRef(false);
@@ -163,8 +163,8 @@ export default function ContextsMenu({
   useEffect(() => setLocalOrder(null), [received]);
   useEffect(() => () => clearTimeout(click.current), []);
 
-  // Le contexte qu'on vient d'ajouter passe en saisie de son nom dès qu'il
-  // paraît, au bout de la liste.
+  // The context that was just added goes into name edit mode as soon as it
+  // appears, at the end of the list.
   useEffect(() => {
     if (addInProgress === null || items.length <= addInProgress) return;
     const last = items[items.length - 1];
@@ -178,7 +178,8 @@ export default function ContextsMenu({
         .filter((c): c is Context => c !== undefined)
     : items;
 
-  // Sans contexte, la liste le dit plutôt que d'offrir « Tous » de rien.
+  // With no context, the list says so instead of offering "Tous" out of
+  // nothing.
   const current =
     items.length === 0
       ? NO_CONTEXT
@@ -223,7 +224,7 @@ export default function ContextsMenu({
     await management.onAdd(NEW_CONTEXT);
   };
 
-  // --- Le glisser-déposer : la ligne visée se lit à la hauteur du pointeur.
+  // --- Drag and drop: the targeted row is read from the pointer's height.
   const targetRank = (e: DragEvent<HTMLElement>, index: number): number => {
     const rect = e.currentTarget.getBoundingClientRect();
     return e.clientY < rect.top + rect.height / 2 ? index : index + 1;
@@ -245,7 +246,7 @@ export default function ContextsMenu({
     }
   };
 
-  /** Une ligne : son nom — ou sa saisie —, et ce qui la complète. */
+  /** A row: its name — or its input —, and what completes it. */
   const row = (
     key: string,
     trimmedName: string,
@@ -268,9 +269,9 @@ export default function ContextsMenu({
           ...extras.style,
         }}
       >
-        {/* La poignée tient sa place sur chaque ligne, « Tous » compris : les
-            noms restent alignés. Sans gestion — verrouillé, ou sans le droit
-            —, rien ne se glisse : les noms reprennent sa place. */}
+        {/* The handle keeps its place on every row, "Tous" included: the names
+            stay aligned. Without management — locked, or without the right —,
+            nothing can be dragged: the names take its place. */}
         {management && (
           <div
             className={extras.handle ? classes.reveal : undefined}
@@ -309,9 +310,9 @@ export default function ContextsMenu({
             onFocus={(e) => e.currentTarget.select()}
             autoFocus
             aria-label={`Renommer ${trimmedName}`}
-            // « size » à 1 : sans lui, le champ réclame d'office la place de
-            // vingt caractères, et la liste s'élargirait d'autant. Il prend
-            // la ligne par « flex ».
+            // "size" at 1: without it, the field claims room for twenty
+            // characters outright, and the list would widen accordingly. It
+            // fills the row through "flex".
             size={1}
             style={{
               flex: 1,
@@ -331,8 +332,8 @@ export default function ContextsMenu({
           </Text>
         )}
         {extras.trash && (
-          // La corbeille ne paraît qu'au survol, mais tient sa place : la ligne
-          // ne bouge pas quand la souris la traverse.
+          // The trash only appears on hover, but keeps its place: the row does
+          // not move when the mouse crosses it.
           <ActionIcon
             variant="subtle"
             color={RED}
@@ -354,7 +355,7 @@ export default function ContextsMenu({
     );
   };
 
-  /** Le trait qui dit où le contexte tenu se posera. */
+  /** The line that says where the held context will land. */
   const line = (
     <div style={{ height: 0, position: "relative" }}>
       <div
@@ -378,10 +379,10 @@ export default function ContextsMenu({
         withinPortal
         shadow="md"
         offset={inTab ? tabGap : ROW_MENU_OFFSET}
-        // Hors de l'onglet, la liste se raccorde au filet : ni bordure haute
-        // ni angles hauts. Dans l'onglet, elle garde sa bordure haute — le
-        // trait qui la sépare de l'onglet (classes.tabDropdown) —, sans
-        // angles hauts.
+        // Outside the tab, the list connects to the rule: no top border and no
+        // top corners. In the tab, it keeps its top border — the line that
+        // separates it from the tab (classes.tabDropdown) —, without top
+        // corners.
         styles={
           inTab
             ? {
@@ -393,26 +394,27 @@ export default function ContextsMenu({
               }
             : TAB_MENU_STYLES
         }
-        // La fenêtre de confirmation est un clic « au dehors » : la liste
-        // s'en irait, et l'on y reviendrait sitôt la question répondue.
+        // The confirmation window counts as a click "outside": the list would
+        // go away, and you would come back to it as soon as the question is
+        // answered.
         closeOnClickOutside={toDelete === null}
       >
         <Popover.Target>
-          {/* Le même bouton que le menu « Actions » de la rangée. */}
+          {/* The same button as the "Actions" menu of the row. */}
           <Button
             component={inTab ? "span" : "button"}
             role={inTab ? "button" : undefined}
-            // Dans l'onglet, plus léger que le nom du tableau ; ni fond ni
-            // retrait — le survol change la couleur du texte (cibleOnglet).
+            // In the tab, lighter than the board's name; no background or inset
+            // — hover changes the text color (tabTarget).
             fw={inTab ? 300 : undefined}
-            // Le chevron serré contre le libellé.
+            // The chevron tight against the label.
             styles={inTab ? { section: { marginInlineStart: 2 } } : undefined}
             variant={inTab ? "transparent" : "subtle"}
             color="gray"
             size="xs"
             px={inTab ? 0 : undefined}
-            // À la hauteur du texte : les 30 px du bouton agrandiraient
-            // l'onglet dès que la liste paraît — en modification, par exemple.
+            // At the height of the text: the button's 30 px would enlarge the
+            // tab as soon as the list appears — in edit mode, for example.
             h={inTab ? "auto" : undefined}
             className={inTab ? classes.tabTarget : undefined}
             rightSection={<IconChevronDown size={14} />}
@@ -429,14 +431,14 @@ export default function ContextsMenu({
         <Popover.Dropdown
           p={4}
           className={inTab ? classes.tabDropdown : undefined}
-          // Dans l'onglet, au moins sa largeur : la liste ne s'élargit que si
-          // son contenu le demande — sans contexte, il tient toujours. Ailleurs,
-          // ses propres bornes.
+          // In the tab, at least its width: the list only widens if its content
+          // requires it — with no context, it always fits. Elsewhere, its own
+          // bounds.
           {...(inTab && tabWidth > 0
             ? { miw: tabWidth, maw: Math.max(WIDTH_MAX, tabWidth) }
             : { miw: WIDTH_MIN, maw: WIDTH_MAX })}
         >
-          {/* Sans contexte, il ne reste que l'ajout. */}
+          {/* With no context, only the add remains. */}
           {items.length > 0 && (
             <>
               {row(ALL, all, { id: ALL, name: all })}
@@ -484,8 +486,8 @@ export default function ContextsMenu({
               </div>
             ))}
           </div>
-          {/* Sans contexte : un espace, l'icône des contextes au milieu, au-
-              dessus de l'ajout. */}
+          {/* With no context: a space, the contexts icon in the middle, above
+              the add. */}
           {management && items.length === 0 && (
             <Center py="md">
               <Center
@@ -519,9 +521,9 @@ export default function ContextsMenu({
         </Popover.Dropdown>
       </Popover>
 
-      {/* Posée hors de la liste, qui l'emporterait en se refermant. */}
+      {/* Placed outside the list, which would take it along when closing. */}
       <DeleteConfirmModal
-        // La liste reste ouverte pendant la question : la fenêtre passe devant.
+        // The list stays open during the question: the window goes in front.
         zIndex={getDefaultZIndex("popover") + 1}
         opened={toDelete !== null}
         onClose={() => setToDelete(null)}

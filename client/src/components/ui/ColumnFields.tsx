@@ -18,35 +18,34 @@ import {
 } from "./DrawerRows";
 import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
 
-// Les colonnes d'un widget liste — les projets, les demandes du Support, les
-// postes des Assets : lesquelles il montre, dans quel ordre, et à quelle
-// largeur par défaut.
+// The columns of a list widget — projects, Support requests, Assets positions:
+// which ones it shows, in what order, and at what default width.
 //
-// Chaque colonne montrée est une ligne : sa poignée pour la glisser à une
-// autre place, son nom, sa largeur. Le nom est un select : un clic ouvre la
-// liste des colonnes, pour la remplacer par une autre. Le clic droit la retire
-// (« Supprimer »). « Ajouter une colonne » pose une ligne vide au bout, où
-// l'on choisit laquelle. Une colonne peut revenir autant de fois qu'on
-// veut ; la liste en garde au moins une : la dernière ne se retire pas.
+// Each shown column is a row: its handle to drag it elsewhere, its name, its
+// width. The name is a select: a click opens the list of columns, to replace it
+// with another one. A right click removes it ("Supprimer"). "Ajouter une
+// colonne" adds an empty row at the end, where you pick which one. A column can
+// appear as many times as you like; the list keeps at least one: the last one
+// cannot be removed.
 //
-// La largeur est celle que la grille prend tant que personne n'a tiré ses
-// colonnes : chacun peut encore les ajuster pour soi, et le double-clic sur
-// une poignée de la grille y ramène. Vide, la colonne prend la largeur de son
-// contenu.
+// The width is the one the grid uses as long as nobody has dragged their
+// columns: everyone can still adjust them for themselves, and double-clicking a
+// grid handle brings them back to it. When empty, the column takes the width of
+// its content.
 
 export interface ListColumn {
   key: string;
   label: string;
 }
 
-/** Une colonne montrée : « id » la distingue de ses doubles, dans la grille. */
+/** A shown column: "id" tells it apart from its duplicates in the grid. */
 export type ShownColumn<C extends ListColumn> = C & { id: string; width?: number };
 
-/** Les colonnes montrées, dans l'ordre : une entrée par ligne de la liste. */
+/** The shown columns, in order: one entry per row of the list. */
 export const LIST_COLUMNS = "columns";
 
-// Les réglages d'avant la liste : un booléen par colonne, leur ordre, leurs
-// largeurs. Relus tant que la liste n'a pas été enregistrée.
+// The settings from before the list existed: one boolean per column, their
+// order, their widths. Read back as long as the list has not been saved.
 const COLUMNS = "column_visibility";
 const COLUMNS_ORDER = "column_order";
 const COLUMN_WIDTHS = "column_widths";
@@ -57,13 +56,13 @@ interface Entry {
 }
 
 /**
- * La liste des colonnes ne montre que cinq options à la fois, puis défile :
- * une option de taille « sm » mesure 33,6875 px.
+ * The column list shows only five options at a time, then scrolls: an option of
+ * size "sm" measures 33.6875 px.
  */
 const VISIBLE_OPTIONS = 5;
 const OPTION_HEIGHT = 33.6875;
 
-/** En deçà, la colonne ne montrerait plus qu'une ellipse — comme dans la grille. */
+/** Below this, the column would show only an ellipsis — as in the grid. */
 const WIDTH_MIN = 40;
 
 const field = (config: unknown, key: string): unknown =>
@@ -79,7 +78,7 @@ const subject = (config: unknown, key: string): Record<string, unknown> => {
 const readWidth = (value: unknown): number | undefined =>
   typeof value === "number" && value >= WIDTH_MIN ? value : undefined;
 
-/** Les entrées d'avant la liste : les colonnes non masquées, dans l'ordre réglé. */
+/** The entries from before the list existed: the non-hidden columns, in the configured order. */
 const legacyEntries = (columns: ListColumn[], config: unknown): Entry[] => {
   const raw = field(config, COLUMNS_ORDER);
   const order = Array.isArray(raw) ? raw.filter((k): k is string => typeof k === "string") : [];
@@ -96,8 +95,8 @@ const legacyEntries = (columns: ListColumn[], config: unknown): Entry[] => {
 };
 
 /**
- * Les entrées de la configuration, connues seulement. Sans liste — ou sans
- * aucune colonne connue —, toutes les colonnes.
+ * The configuration's entries, known ones only. Without a list — or without any
+ * known column — all the columns.
  */
 const entries = (columns: ListColumn[], config: unknown): Entry[] => {
   const raw = field(config, LIST_COLUMNS);
@@ -112,7 +111,7 @@ const entries = (columns: ListColumn[], config: unknown): Entry[] => {
   return readItems.length > 0 ? readItems : columns.map((c) => ({ key: c.key }));
 };
 
-/** L'identifiant de chaque entrée : sa clé, suivie de son rang pour un double. */
+/** The identifier of each entry: its key, followed by its rank for a duplicate. */
 const identifiers = (list: Entry[]): string[] => {
   const views = new Map<string, number>();
   return list.map(({ key }) => {
@@ -122,7 +121,7 @@ const identifiers = (list: Entry[]): string[] => {
   });
 };
 
-/** Les colonnes que la configuration montre, dans son ordre ; sans réglage, toutes. */
+/** The columns the configuration shows, in its order; with no setting, all of them. */
 export const keptColumns = <C extends ListColumn>(
   columns: C[],
   config: unknown,
@@ -137,9 +136,9 @@ export const keptColumns = <C extends ListColumn>(
 };
 
 /**
- * Les largeurs par défaut que la configuration donne, par identifiant, pour
- * la grille (useResizableColumns) ; « undefined » quand elle n'en
- * donne aucune — la grille garde alors sa mise en page naturelle.
+ * The default widths the configuration gives, by identifier, for the grid
+ * (useResizableColumns); "undefined" when it gives none — the grid then keeps
+ * its natural layout.
  */
 export const defaultWidths = (
   columns: ListColumn[],
@@ -160,35 +159,34 @@ export default function ColumnFields({
 }: IndicatorConfigProps & { columns: ListColumn[] }) {
   const list = entries(columns, config);
   const ids = identifiers(list);
-  /** Le rang de la ligne qu'on glisse. */
+  /** The rank of the row being dragged. */
   const [held, setHeld] = useState<number | null>(null);
-  /** Vrai pendant qu'une ligne ajoutée attend sa colonne, au bout de la liste. */
+  /** True while an added row waits for its column, at the end of the list. */
   const [adding, setAdding] = useState(false);
-  /** Le rang de la ligne dont la liste des colonnes est ouverte. */
+  /** The rank of the row whose column list is open. */
   const [isOpen, setOpened] = useState<number | null>(null);
-  /** Le rang de la ligne dont la largeur a le focus : son champ prend le fond du tiroir. */
+  /** The rank of the row whose width has focus: its field takes the drawer background. */
   const [input, setInput] = useState<number | null>(null);
-  /** Le menu du clic droit, et le rang de la ligne qu'il vise. */
+  /** The right-click menu, and the rank of the row it targets. */
   const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
 
-  /** Les lignes affichées : la liste, et au bout celle qu'on ajoute. */
+  /** The displayed rows: the list, and at the end the one being added. */
   const rows = adding ? [...list, { key: "" }] : list;
   const columnOf = (key: string) => columns.find((c) => c.key === key);
   const store = (next: Entry[]) => onChange(withField(config, LIST_COLUMNS, next));
 
-  // La dernière colonne qui reste ne se retire pas : la liste en montre au
-  // moins une.
+  // The last remaining column cannot be removed: the list shows at least one.
   const last = list.length === 1;
 
   const remove = (rank: number) => store(list.filter((_, i) => i !== rank));
 
-  // La nouvelle ligne se pose au bout, vide : c'est là qu'on dit quelle
-  // colonne on voulait. Elle n'entre dans la configuration qu'une colonne
-  // choisie ; quittée sans choix, elle s'efface.
+  // The new row is placed at the end, empty: this is where you say which column
+  // you wanted. It enters the configuration only once a column is chosen; left
+  // without a choice, it disappears.
   const add = () => setAdding(true);
 
-  // Une autre colonne à la même place : sa largeur repart de zéro. Sur la
-  // ligne ajoutée, la colonne choisie rejoint la liste.
+  // Another column in the same place: its width starts over from zero. On the
+  // added row, the chosen column joins the list.
   const replaceExisting = (rank: number, key: string | null) => {
     setAdding(false);
     if (!key) return;
@@ -200,8 +198,8 @@ export default function ColumnFields({
   const changeWidth = (rank: number, value: string | number) =>
     store(list.map((e, i) => (i === rank ? { key: e.key, width: readWidth(value) } : e)));
 
-  // La ligne tenue prend la place de celle qu'elle survole : la liste se
-  // range sous le pointeur, et la configuration suit.
+  // The held row takes the place of the one it hovers: the list reorders under
+  // the pointer, and the configuration follows.
   const dragHover = (e: DragEvent<HTMLElement>, rank: number) => {
     if (held === null) return;
     e.preventDefault();
@@ -215,10 +213,10 @@ export default function ColumnFields({
 
   return (
     <Input.Wrapper label="Colonnes">
-      {/* Le même écart sous le libellé que celui des autres champs. */}
+      {/* The same gap under the label as the other fields have. */}
       <Stack gap={1}>
         {rows.map((entry, rank) => {
-          // La ligne ajoutée n'a pas encore de colonne.
+          // The added row has no column yet.
           const column = columnOf(entry.key) ?? { key: "", label: "" };
           const newRow = rank === list.length;
           return (
@@ -236,45 +234,45 @@ export default function ColumnFields({
             >
               <Handle
                 label={`Déplacer la colonne ${column.label}`}
-                // La ligne ajoutée ne bouge ni ne se règle tant qu'elle n'a
-                // pas de colonne.
+                // The added row neither moves nor can be adjusted until it has
+                // a column.
                 active={!newRow}
                 onDragStart={() => setHeld(rank)}
                 onDragEnd={() => setHeld(null)}
               />
               <Select
-                // Le texte a la taille des noms.
+                // The text has the size of the names.
                 size="sm"
                 radius={ROUNDING}
-                // Le champ garde le même retrait que celui de la largeur, en
-                // haut et en bas, et s'avance sur son retrait de gauche : le
-                // nom reste aligné sur la poignée.
+                // The field keeps the same inset as the width field, top and
+                // bottom, and extends over its left inset: the name stays
+                // aligned with the handle.
                 style={{ flex: 1, marginLeft: -NAME_INSET }}
                 data={options}
                 value={entry.key || null}
                 placeholder="Choisir une colonne"
                 onChange={(value) => replaceExisting(rank, value)}
-                // La ligne ajoutée, quittée sans colonne, s'efface.
+                // The added row, left without a column, disappears.
                 onBlur={() => newRow && setAdding(false)}
                 onDropdownOpen={() => setOpened(rank)}
                 onDropdownClose={() => setOpened(null)}
                 allowDeselect={false}
                 autoFocus={newRow}
-                // Un select classique : le chevron toujours là, la liste
-                // ouverte au clic.
+                // A classic select: the chevron always there, the list opened
+                // on click.
                 rightSection={<IconChevronDown size={14} />}
                 rightSectionPointerEvents="none"
-                // La liste se présente comme la palette des couleurs d'une
-                // étiquette : un panneau flottant de Mantine, cerné et ombré.
+                // The list looks like the label color palette: a floating
+                // Mantine panel, with a border and a shadow.
                 comboboxProps={{ shadow: "md" }}
                 maxDropdownHeight={VISIBLE_OPTIONS * OPTION_HEIGHT}
                 styles={{
-                  // Le champ se présente comme celui de la largeur : son fond,
-                  // et celui du tiroir tant que la liste est ouverte.
+                  // The field looks like the width one: its background, and the
+                  // drawer's while the list is open.
                   input: {
                     height: "var(--input-height-xs)",
                     minHeight: "var(--input-height-xs)",
-                    // Sans bordure, le texte s'aligne sur les autres noms.
+                    // Without a border, the text aligns with the other names.
                     borderWidth: 0,
                     paddingLeft: NAME_INSET,
                     cursor: "pointer",
@@ -307,7 +305,7 @@ export default function ColumnFields({
         })}
       </Stack>
 
-      {/* Au plus près de la liste qu'il allonge. */}
+      {/* As close as possible to the list it extends. */}
       <AddButton label="Ajouter une colonne" onClick={add} mt={4} />
 
       {menu && (

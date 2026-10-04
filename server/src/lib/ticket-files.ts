@@ -1,12 +1,12 @@
-// Les fichiers des e-mails reçus au support : leurs images intégrées et leurs
-// pièces jointes. Ils vivent à plat dans leur propre dossier — « upload/
-// tickets » à la racine en développement, MILO_TICKETS_PATH en production —,
-// à part des médias des cartes, dont le ménage ne les connaît pas.
+// Files of e-mails received by support: their embedded images and their
+// attachments. They live flat in their own folder — "upload/tickets" at the
+// root in development, MILO_TICKETS_PATH in production —, apart from card
+// media, whose cleanup does not know them.
 //
-// Mêmes partis pris que les médias (lib/media.ts) : le fichier s'appelle
-// seize octets tirés au sort, le nom d'origine n'est gardé qu'en base pour
-// l'afficher, et le type rendu se déduit de l'extension — un .html joint à un
-// e-mail part en téléchargement, il ne s'exécute pas sur notre origine.
+// Same design choices as media (lib/media.ts): the file is named with sixteen
+// random bytes, the original name is kept only in the database to display it,
+// and the served type is deduced from the extension — an .html attached to an
+// e-mail is downloaded, it does not run on our origin.
 
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -17,22 +17,21 @@ import type { TicketFileRow } from "../db/rows.js";
 import { env } from "../env.js";
 import { inlineType } from "./media.js";
 
-/** Au-delà, une pièce jointe n'est pas rapatriée : l'e-mail le dit à sa place. */
+/** Beyond this, an attachment is not fetched: the e-mail says so in its place. */
 export const TICKET_SIZE_MAX = 50 * 1024 * 1024;
 
 /**
- * Au-delà, les pièces jointes d'une réponse ne partent pas par e-mail : Graph
- * refuse un envoi de plus de 4 Mo quand les fichiers voyagent dans la
- * requête, et le base64 les grossit d'un tiers. Au-delà, il faudrait passer
- * par un brouillon — et la permission Mail.ReadWrite.
+ * Beyond this, a reply's attachments are not sent by e-mail: Graph refuses a
+ * send of more than 4 MB when files travel in the request, and base64 inflates
+ * them by a third. Beyond that, a draft would be needed — and the
+ * Mail.ReadWrite permission.
  */
 export const SEND_SIZE_MAX = 3 * 1024 * 1024;
 export const SEND_SIZE_MAX_MB = SEND_SIZE_MAX / (1024 * 1024);
 
 /**
- * Les fichiers d'une réponse, tels que le client les a déposés : seuls des
- * noms des nôtres, présents sur le disque. La taille est relue sur le disque,
- * pas crue sur parole.
+ * A reply's files, as the client uploaded them: only names of ours, present
+ * on disk. The size is re-read from disk, not taken on trust.
  */
 export const uploadedFiles = (value: unknown): TicketFileRow[] | null => {
   if (value === undefined) return [];
@@ -53,7 +52,7 @@ export const uploadedFiles = (value: unknown): TicketFileRow[] | null => {
   return files;
 };
 
-/** Le contenu d'un fichier de ticket, pour l'envoyer. */
+/** A ticket file's content, to send it. */
 export const readTicket = (file: string): Buffer | null => {
   const relativePath = ticketPathFor(file);
   return relativePath && fs.existsSync(relativePath) ? fs.readFileSync(relativePath) : null;
@@ -68,11 +67,11 @@ const extensionOf = (name: string): string => {
   return found ? `.${found[1]!.toLowerCase()}` : "";
 };
 
-/** Le chemin d'un fichier de ticket, ou rien si le nom n'est pas l'un des nôtres. */
+/** A ticket file's path, or nothing if the name is not one of ours. */
 export const ticketPathFor = (file: string): string | null =>
   RANGE_NAME.test(file) ? path.join(env.ticketsPath, file) : null;
 
-/** Écrit le fichier et rend le nom sous lequel il est rangé. */
+/** Writes the file and returns the name under which it is stored. */
 export const writeTicket = (content: Buffer, originalName: string): string => {
   const file = `${crypto.randomBytes(16).toString("hex")}${extensionOf(originalName)}`;
   fs.writeFileSync(path.join(env.ticketsPath, file), content);
@@ -84,12 +83,12 @@ export const deleteTicket = (file: string): void => {
   if (relativePath) fs.rmSync(relativePath, { force: true });
 };
 
-/** L'adresse publique d'un fichier de ticket. */
+/** A ticket file's public address. */
 export const ticketUrl = (file: string): string => `/api/ticket-files/${file}`;
 
 export { inlineType };
 
-/** Les fichiers d'un message, relus de leur JSON ; rien s'il est illisible. */
+/** A message's files, re-read from their JSON; nothing if it is unreadable. */
 export const filesOf = (json: string): TicketFileRow[] => {
   try {
     const list = JSON.parse(json) as unknown;
@@ -99,7 +98,7 @@ export const filesOf = (json: string): TicketFileRow[] => {
   }
 };
 
-/** Les pièces jointes telles que le fil les montre : sans les images intégrées. */
+/** Attachments as the thread shows them: without the embedded images. */
 export const parseAttachments = (json: string): SupportAttachment[] =>
   filesOf(json)
     .filter((f) => !f.inline)
@@ -109,7 +108,7 @@ const messagesCiting = selection<{ attachments: string }>(
   "SELECT attachments FROM support_comments WHERE attachments LIKE ?",
 );
 
-/** Le fichier tel qu'un message le décrit : son nom d'origine, surtout. */
+/** The file as a message describes it: its original name, mainly. */
 export const quotedFile = (file: string): TicketFileRow | undefined => {
   for (const { attachments } of messagesCiting.all(`%"${file}"%`)) {
     const found = filesOf(attachments).find((f) => f.file === file);
@@ -119,9 +118,9 @@ export const quotedFile = (file: string): TicketFileRow | undefined => {
 };
 
 /**
- * Efface ceux de ces fichiers qu'aucun message ne cite plus. Une fusion
- * recopie le fil d'une demande dans une autre, fichiers compris : supprimer
- * l'une ne doit pas priver l'autre de ses images.
+ * Deletes those of these files that no message cites anymore. A merge copies
+ * a request's thread into another, files included: deleting one must not
+ * deprive the other of its images.
  */
 export const forgetFiles = (files: string[]): void => {
   for (const file of files) {

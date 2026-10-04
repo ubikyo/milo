@@ -29,57 +29,57 @@ import CloseButton from "../ui/CloseButton";
 const DRAWER_PADDING = 40;
 const DRAWER_WIDTH = 1100;
 
-/** Largeur de la colonne d'onglets : « Utilisateurs et groupes » y tient. */
+/** Width of the tabs column: "Utilisateurs et groupes" fits in it. */
 const TABS_WIDTH = 210;
 
-/** L'espace entre les boutons de l'en-tête et le reste de la fiche. */
+/** The space between the header buttons and the rest of the record. */
 const SPACE_BELOW_HEADER = 30;
 
 /**
- * Après une demande d'inventaire, l'agent refait son tour de machine et
- * renvoie le résultat : cela prend quelques secondes à quelques dizaines de
- * secondes selon le poste. On relit à intervalle régulier jusqu'à voir une
- * date changer, puis on renonce — sans bloquer quoi que ce soit, le tiroir
- * reste lisible pendant ce temps.
+ * After an inventory request, the agent runs through the machine again and
+ * sends back the result: this takes a few seconds to a few tens of
+ * seconds depending on the workstation. We re-read at regular intervals until a
+ * date changes, then give up — without blocking anything, the drawer
+ * stays readable meanwhile.
  */
 const REREAD_DELAY = 3_000;
 const RELOAD_ATTEMPTS = 10;
 
 /**
- * Ce qu'on ouvre pour prendre la main. Le schéma « teamviewer10: » lance le
- * TeamViewer installé sur le poste de qui clique ; l'adresse de secours passe
- * par le site de TeamViewer, qui le lance à son tour — utile depuis
- * TeamViewer 15, où le schéma ouvre parfois l'application sans enchaîner la
- * connexion.
+ * What we open to take control. The "teamviewer10:" scheme launches the
+ * TeamViewer installed on the clicker's machine; the fallback address goes
+ * through the TeamViewer website, which launches it in turn — useful since
+ * TeamViewer 15, where the scheme sometimes opens the application without chaining the
+ * connection.
  *
- * Aucun mot de passe ne voyage dans l'un ni dans l'autre : il est demandé à
- * l'arrivée, sauf si le poste figure dans les appareils du compte TeamViewer.
+ * No password travels in either: it is asked for
+ * on arrival, unless the workstation is among the TeamViewer account's devices.
  */
 export const teamviewerLink = (id: string) => `teamviewer10://control?device=${id}`;
 export const teamviewerFallbackLink = (id: string) =>
   `https://start.teamviewer.com/device/${id}/authorization/password/mode/control`;
 
 /**
- * La fiche d'un poste : ce que l'agent d'inventaire a remonté, rangé en
- * quelques onglets. Rien ne s'y modifie — un poste se décrit lui-même,
- * personne ne le saisit —, le pied ne porte donc que « Fermer ».
+ * A workstation's record: what the inventory agent reported, arranged in
+ * a few tabs. Nothing is edited there — a workstation describes itself,
+ * nobody enters it —, so the footer only carries "Fermer".
  */
 interface AssetDrawerProps {
   opened: boolean;
   onClose: () => void;
-  /** Le poste de la liste : le tiroir va chercher le reste lui-même. */
+  /** The workstation from the list: the drawer fetches the rest itself. */
   asset: Asset | null;
 }
 
 /**
- * Les champs qu'on sait nommer en français, par section. Les autres gardent
- * le nom de l'agent.
+ * The fields we can name in French, by section. The others keep
+ * the agent's name.
  */
 const FIELD_LABELS: Record<string, Record<string, string>> = {
   BIOS: { SMANUFACTURER: "Fabricant", SMODEL: "Modèle", SSN: "Numéro de série" },
 };
 
-/** Les champs d'une entrée, en deux colonnes : le nom, la valeur. */
+/** The fields of an entry, in two columns: the name, the value. */
 function Entry({ section, entry }: { section: string; entry: AssetEntry }) {
   const labels = FIELD_LABELS[section] ?? {};
   return (
@@ -87,9 +87,9 @@ function Entry({ section, entry }: { section: string; entry: AssetEntry }) {
       <Table.Tbody>
         {Object.entries(entry).map(([field, value]) => (
           <Table.Tr key={field}>
-            {/* Le nom des champs est celui de l'agent, en capitales, quand on
-                ne lui en connaît pas de meilleur : c'est lui qu'on retrouvera
-                dans la doc et dans le XML le jour où il faudra en discuter. */}
+            {/* The field name is the agent's, in capitals, when no better one
+                is known for it: that is the one we'll find
+                in the docs and in the XML the day it needs discussing. */}
             <Table.Td style={{ width: "30%", verticalAlign: "top" }}>
               {labels[field] ? (
                 <Text size="sm" c="dimmed">
@@ -113,13 +113,13 @@ function Entry({ section, entry }: { section: string; entry: AssetEntry }) {
   );
 }
 
-/** Un groupe d'onglet : une section de l'inventaire, sous son libellé. */
+/** A tab group: an inventory section, under its label. */
 interface LocalGroup {
   section: string;
   label: string;
 }
 
-/** Un onglet de la fiche : plusieurs sections de l'inventaire, à la suite. */
+/** A record tab: several inventory sections, one after another. */
 interface Tab {
   value: string;
   label: string;
@@ -127,11 +127,11 @@ interface Tab {
 }
 
 /**
- * Les onglets de la fiche et, dans chacun, les sections de l'inventaire
- * qu'il réunit, dans l'ordre où elles s'affichent. Les libellés disent ce
- * qu'on y trouve mieux que les noms de l'agent : DRIVES liste des volumes —
- * des partitions, des lecteurs réseau —, pas des disques ; ANTIVIRUS recense
- * aussi bien les EDR que les antivirus d'autrefois.
+ * The record tabs and, in each, the inventory sections
+ * it gathers, in the order they are displayed. The labels say what
+ * is in there better than the agent's names: DRIVES lists volumes —
+ * partitions, network drives —, not disks; ANTIVIRUS lists
+ * EDRs as well as old-style antivirus.
  */
 const TABS: Tab[] = [
   {
@@ -184,28 +184,28 @@ const TABS: Tab[] = [
 ];
 
 /**
- * Ce qu'on laisse de côté pour le moment : HARDWARE répète ce que disent les
- * autres sections, USERS ce que disent les comptes locaux.
+ * What is set aside for now: HARDWARE repeats what the
+ * other sections say, USERS what the local accounts say.
  */
 const EXCLUDED_SECTIONS = new Set(["HARDWARE", "USERS"]);
 
-/** L'onglet « Résumé », toujours le premier : il ne se lit pas dans une section. */
+/** The "Résumé" tab, always first: it isn't read from a section. */
 const SUMMARY = "summary";
 
-/** Les sections déjà rangées dans un onglet. */
+/** The sections already placed in a tab. */
 const PLACED_SECTIONS = new Set(TABS.flatMap((o) => o.groups.map((g) => g.section)));
 
-/** Un groupe tel qu'il s'affiche : son libellé, et la section de l'inventaire. */
+/** A group as displayed: its label, and the inventory section. */
 interface DisplayedGroup {
   label: string;
   section: AssetSection;
 }
 
 /**
- * Les onglets qui ont quelque chose à montrer, et leurs groupes non vides.
- * Ce qu'aucun onglet ne range — une section que l'agent ajouterait, ou que
- * seuls certains postes déclarent — va dans « Autres », sous son nom
- * d'agent, plutôt que de disparaître sans qu'on le sache.
+ * The tabs that have something to show, and their non-empty groups.
+ * What no tab places — a section the agent might add, or that
+ * only some workstations declare — goes in "Autres", under its agent
+ * name, rather than vanishing unnoticed.
  */
 const tabsOf = (sections: AssetSection[]) => {
   const byName = new Map(sections.map((s) => [s.name, s]));
@@ -224,23 +224,23 @@ const tabsOf = (sections: AssetSection[]) => {
   return tabs.filter((o) => o.groups.length > 0);
 };
 
-/** L'air sous une section dépliée, avant l'en-tête de la suivante. */
+/** The space under an expanded section, before the next one's header. */
 const SPACE_BELOW_SECTION = 30;
 
 /**
- * Les sections d'un onglet à la suite, chacune dans un accordéon, toutes
- * repliées à l'ouverture : on déplie ce qu'on vient lire. Repliée, une section
- * a son titre comme le reste du texte, en gris ; dépliée, celui d'une
- * catégorie.
- * Le compte dit si elle décrit une chose ou six cents. L'onglet n'est monté
- * qu'ouvert : y revenir replie tout de nouveau.
+ * A tab's sections one after another, each in an accordion, all
+ * collapsed on opening: you expand what you came to read. Collapsed, a section
+ * has its title like the rest of the text, in gray; expanded, that of a
+ * category.
+ * The count says whether it describes one thing or six hundred. The tab is only mounted
+ * when open: coming back to it collapses everything again.
  */
 function SectionsTab({
   groups,
   os,
 }: {
   groups: DisplayedGroup[];
-  /** Le système du poste, dont la Description prend le logo. */
+  /** The workstation's system, whose Description takes the logo. */
   os: AssetDetail["os"];
 }) {
   const [openSessions, setOpenedItems] = useState<string[]>([]);
@@ -250,10 +250,10 @@ function SectionsTab({
       value={openSessions}
       onChange={setOpenedItems}
       chevronPosition="right"
-      // Le titre de la première section tombe à la hauteur de « Résumé » :
-      // l'en-tête n'a pas de marge à lui, l'écart entre deux en-têtes vient
-      // de la feuille de style (AssetDrawer.module.css). Sous le titre, la
-      // grille s'écarte comme les cartes du Résumé.
+      // The first section's title falls at the height of "Résumé":
+      // the header has no margin of its own, the gap between two headers comes
+      // from the stylesheet (AssetDrawer.module.css). Under the title, the
+      // grid spaces out like the Summary cards.
       classNames={{ item: classes.section, control: classes.control }}
       styles={{
         item: { border: "none" },
@@ -266,7 +266,7 @@ function SectionsTab({
         <Accordion.Item
           key={section.name}
           value={section.name}
-          // Dépliée, la section s'écarte de la suivante.
+          // Expanded, the section is spaced from the next.
           mb={openSessions.includes(section.name) ? SPACE_BELOW_SECTION : 0}
         >
           <Accordion.Control>
@@ -280,7 +280,7 @@ function SectionsTab({
             </Group>
           </Accordion.Control>
           <Accordion.Panel>
-            {/* La grille sur le gris des cartes du Résumé, à leur arrondi. */}
+            {/* The grid on the gray of the Summary cards, with their rounding. */}
             {WITHOUT_FRAME.has(section.name) ? (
               <SectionContent section={section} os={os} />
             ) : (
@@ -295,9 +295,9 @@ function SectionsTab({
   );
 }
 
-/** Le contenu d'une section : son tableau quand elle en a un, ses fiches sinon. */
+/** A section's content: its table when it has one, its records otherwise. */
 function SectionContent({ section, os }: { section: AssetSection; os: AssetDetail["os"] }) {
-  // La description du système, en cartes comme le Résumé.
+  // The system description, in cards like the Summary.
   if (section.name === "OPERATINGSYSTEM") return <OperatingSystem section={section} os={os} />;
   const SectionTable = SECTION_TABLES[section.name];
   if (SectionTable) return <SectionTable section={section} />;
@@ -312,29 +312,29 @@ function SectionContent({ section, os }: { section: AssetSection; os: AssetDetai
 
 export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps) {
   const [detail, setDetail] = useState<AssetDetail | null>(null);
-  /** L'onglet affiché ; le premier s'ouvre avec la fiche. */
+  /** The displayed tab; the first opens with the record. */
   const [domain, setDomain] = useState<string | null>(null);
-  /** Ce qu'a donné la dernière demande d'inventaire, dit en une phrase. */
+  /** What the last inventory request gave, in one sentence. */
   const [notice, setNotice] = useState<string | null>(null);
-  /** Vrai de la demande jusqu'au retour de l'agent, ou jusqu'à ce qu'on renonce. */
+  /** True from the request until the agent responds, or until we give up. */
   const [request, setRequested] = useState(false);
   /**
-   * Faux dès que le tiroir se ferme ou change de poste : l'attente d'un
-   * inventaire dure plusieurs secondes, et ce qui revient ensuite ne concerne
-   * peut-être plus ce qu'on regarde.
+   * False as soon as the drawer closes or changes workstation: waiting for an
+   * inventory lasts several seconds, and what comes back afterwards may no longer
+   * concern what we are looking at.
    */
   const alive = useRef(true);
 
-  // L'identifiant, et non le poste : la liste se relit à chaque écriture que le
-  // serveur annonce, et le poste est alors un nouvel objet pour les mêmes
-  // données. S'y fier rechargerait le tiroir sous les yeux de qui le lit, et
-  // refermerait les sections qu'il vient d'ouvrir.
+  // The identifier, not the workstation: the list is re-read on every write the
+  // server announces, and the workstation is then a new object for the same
+  // data. Relying on it would reload the drawer before the reader's eyes, and
+  // collapse the sections they just opened.
   const assetId = asset?.id ?? null;
 
   useEffect(() => {
     if (!opened || assetId === null) return;
-    // Le poste change, ou le tiroir se rouvre : on repart de la liste fermée
-    // et on relit. L'inventaire est volumineux, il ne voyage que là.
+    // The workstation changes, or the drawer reopens: start again from the collapsed list
+    // and re-read. The inventory is bulky, it only travels there.
     setDomain(null);
     setNotice(null);
     setRequested(false);
@@ -347,7 +347,7 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
       .then((received) => {
         if (abandoned) return;
         setDetail(received);
-        // Le résumé s'ouvre : c'est ce qu'on vient chercher.
+        // The summary opens: it's what we come looking for.
         setDomain(SUMMARY);
       })
       .catch((e) => {
@@ -362,10 +362,10 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
   const wait = (ms: number) => new Promise((followUp) => setTimeout(followUp, ms));
 
   /**
-   * Redemander l'inventaire au poste. Le serveur ne fait que transmettre :
-   * l'agent renvoie son inventaire par la porte des agents, et c'est en
-   * relisant qu'on voit arriver le nouveau. Tant qu'il n'est pas là, ce qui
-   * est affiché reste affiché — c'est l'inventaire précédent, et il est daté.
+   * Ask the workstation for its inventory again. The server only relays:
+   * the agent sends its inventory back through the agents' door, and it is
+   * by re-reading that we see the new one arrive. Until it is there, what
+   * is displayed stays displayed — it's the previous inventory, and it is dated.
    */
   const refetchInventory = async () => {
     if (assetId === null || request) return;
@@ -385,8 +385,8 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
         if (!alive.current) return;
         if (received.last_inventory !== before) {
           setDetail(received);
-          // L'onglet ouvert le reste s'il existe encore : on regardait ce
-          // qu'il disait, c'est bien pour cela qu'on a redemandé l'inventaire.
+          // The open tab stays open if it still exists: we were looking at what
+          // it said, which is why we asked for the inventory again.
           const tabs = tabsOf(received.sections);
           setDomain((current) =>
             current === SUMMARY || (current && tabs.some((o) => o.value === current))
@@ -428,13 +428,13 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
       }}
     >
       <Stack gap="xs" style={{ flex: 1, minHeight: 0 }}>
-        {/* Le tag de l'asset est dans la carte Identité du Résumé. */}
+        {/* The asset tag is in the Identité card of the Summary. */}
         <Group justify="flex-end" wrap="nowrap" align="center" pb={SPACE_BELOW_HEADER}>
 
           <Group gap="sm" wrap="nowrap">
-            {/* Prendre la main. Le bouton n'existe que si l'agent a trouvé un
-                identifiant TeamViewer sur le poste : sans lui, il n'y a
-                personne à appeler. */}
+            {/* Take control. The button only exists if the agent found a
+                TeamViewer ID on the workstation: without it, there is
+                nobody to call. */}
             {detail?.teamviewer_id && (
               <Button
                 component="a"
@@ -447,8 +447,8 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
               </Button>
             )}
 
-            {/* L'adresse vient du dernier inventaire : en DHCP elle a pu
-                changer, et c'est le serveur qui le dira en échouant. */}
+            {/* The address comes from the last inventory: with DHCP it may have
+                changed, and the server will say so by failing. */}
             <Button
               variant="subtle"
               color="gray"
@@ -464,23 +464,23 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
 
         {notice && <SuccessAlert onClose={() => setNotice(null)}>{notice}</SuccessAlert>}
 
-        {/* Les onglets en colonne le long du bord gauche, chacun réunissant
-            plusieurs sections de l'inventaire. */}
+        {/* The tabs in a column along the left edge, each gathering
+            several inventory sections. */}
         {detail && (
           <Tabs
             orientation="vertical"
             value={domain}
             onChange={setDomain}
-            // Seul l'onglet ouvert est monté : un inventaire porte parfois
-            // six cents logiciels, et les garder tous en place alourdirait la
-            // fiche pour rien.
+            // Only the open tab is mounted: an inventory sometimes carries
+            // six hundred pieces of software, and keeping them all in place would weigh down the
+            // record for nothing.
             keepMounted={false}
             style={{ flex: 1, minHeight: 0, display: "flex" }}
             styles={{ panel: { paddingLeft: 20 } }}
           >
-            {/* La colonne d'onglets descend jusqu'au bas de la fiche : son
-                filet borde le panneau sur toute sa hauteur. Cinq onglets
-                tiennent sans défiler. */}
+            {/* The tabs column goes down to the bottom of the record: its
+                rule borders the panel over its full height. Five tabs
+                fit without scrolling. */}
             <Tabs.List style={{ flex: `0 0 ${TABS_WIDTH}px` }}>
               <Tabs.Tab value={SUMMARY} style={tabStyle(domain === SUMMARY)}>
                 Résumé
@@ -496,11 +496,11 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
               ))}
             </Tabs.List>
 
-            {/* Le domaine ouvert défile, et sa barre quitte le contenu pour
-                aller se coucher tout au bord droit du tiroir, sur toute sa
-                hauteur — comme celle des tableaux des modes Projet et Support
-                le long de la fenêtre. Elle ne mange donc plus de largeur au
-                panneau, d'où l'abandon de « offsetScrollbars ». */}
+            {/* The open area scrolls, and its bar leaves the content to
+                lie at the very right edge of the drawer, over its full
+                height — like that of the Project and Support mode tables
+                along the window. It no longer eats the panel's
+                width, hence dropping "offsetScrollbars". */}
             <ScrollArea
               type="always"
               scrollbarSize={2}

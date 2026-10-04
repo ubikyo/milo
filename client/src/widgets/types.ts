@@ -1,32 +1,31 @@
-// Le contrat d'un widget du mode Accès.
+// The contract of an Access mode widget.
 //
-// Une section ne sait pas ce qu'elle porte : elle range des éléments, chacun
-// désigné par un type (« link », « clock », …). C'est le widget qui sait quoi
-// en faire — comment l'afficher dans la colonne, et quels champs proposer pour
-// le configurer. Ajouter une sorte d'élément, c'est ajouter un fichier dans ce
-// dossier et l'inscrire dans « index.ts » : ni la page, ni le tiroir, ni la
-// boîte de choix n'ont à changer.
+// A section does not know what it carries: it stores elements, each
+// designated by a type ("link", "clock", …). The widget is what knows what to
+// do with them — how to display it in the column, and which fields to offer to
+// configure it. Adding a kind of element means adding a file in this folder
+// and registering it in "index.ts": neither the page, nor the drawer, nor the
+// choice box has to change.
 //
-// La configuration circule en « unknown » : sa forme appartient au widget, et
-// personne d'autre n'a à la connaître. Chaque widget la relit avec son propre
-// « lire », qui comble ce qui manque — une configuration rangée par une
-// version antérieure, ou une base retouchée à la main, ne doit pas casser
-// l'affichage.
+// The configuration travels as "unknown": its shape belongs to the widget,
+// and nobody else needs to know it. Each widget rereads it with its own
+// reader, which fills in what is missing — a configuration stored by an
+// earlier version, or a hand-edited database, must not break the display.
 
 import type { WidgetKind } from "./kinds";
 import type { ComponentType } from "react";
 import type { SettingRow } from "../components/ui/SettingRows";
 import type { AccessBlockType, Id } from "@milo/shared";
 
-/** Ce que le tiroir passe aux champs d'un widget. */
+/** What the drawer passes to a widget's fields. */
 /**
- * La clé du cadre, la même pour tous les widgets : tous peuvent s'encadrer,
- * le registre (board-widgets) s'en chargeant pour ceux qui ne le font pas
- * eux-mêmes (cadrePropre).
+ * The frame's key, the same for all widgets: all can be framed, the registry
+ * (board-widgets) taking care of those that do not do it themselves
+ * (ownFrame).
  */
 export const FRAMED = "framed";
 
-/** Vrai quand le widget est encadré ; sans réglage, « defaut » vaut. */
+/** True when the widget is framed; with no setting, "defaultValue" applies. */
 export const isFramed = (config: unknown, defaultValue = false): boolean => {
   const value = (config as Record<string, unknown> | null)?.[FRAMED];
   return typeof value === "boolean" ? value : defaultValue;
@@ -37,103 +36,100 @@ export interface WidgetConfigProps {
   onChange: (config: Record<string, unknown>) => void;
 }
 
-/** Ce que la colonne passe à l'affichage d'un widget. */
+/** What the column passes to a widget's display. */
 export interface WidgetDisplayProps {
-  /** L'élément affiché : un widget dont le serveur garde des données (RSS) les lit par lui. */
+  /** The displayed element: a widget whose data the server keeps (RSS) reads it through it. */
   blockId: Id;
   config: unknown;
   /**
-   * Enregistre une configuration modifiée depuis l'affichage lui-même. Seuls
-   * les widgets qui se modifient sur place s'en servent (voir « inlineEdit »).
+   * Stores a configuration modified from the display itself. Only widgets
+   * that edit in place use it (see "inlineEdit").
    */
   onChange: (config: Record<string, unknown>) => void | Promise<void>;
   /**
-   * Ouvre le tiroir de cet élément. Un widget qui laisse ses clics à la page
-   * n'a rien à en faire : c'est elle qui l'appelle. Il reste là pour celui qui
-   * les prend en charge et voudrait y mener par un geste à lui — aucun ne le
-   * fait aujourd'hui, le clic droit ouvrant déjà le tiroir de n'importe quel
-   * élément.
+   * Opens this element's drawer. A widget that leaves its clicks to the page
+   * has nothing to do with it: the page calls it. It remains there for one
+   * that handles them itself and would want to lead there by a gesture of its
+   * own — none does today, right click already opening the drawer of any
+   * element.
    */
   onEdit: () => void;
-  /** Catégorie verrouillée : le widget ne propose plus rien qui modifie. */
+  /** Locked category: the widget no longer offers anything that modifies. */
   locked: boolean;
 }
 
-/** L'air laissé au-dessus et au-dessous d'un élément, en pixels. */
+/** The space left above and below an element, in pixels. */
 export interface Margins {
   top: number;
   bottom: number;
 }
 
 export interface AccessWidget {
-  /** Ce que la base range : il ne change jamais. */
+  /** What the database stores: it never changes. */
   type: AccessBlockType;
-  /** Son type : le groupe où le tiroir des widgets le range (widgets/genres.ts). */
+  /** Its kind: the group in which the widget drawer sorts it (widgets/kinds.ts). */
   kind: WidgetKind;
-  /** Son nom dans le tiroir des widgets, et en titre de son tiroir. */
+  /** Its name in the widget drawer, and as the title of its drawer. */
   label: string;
   icon: ComponentType<{ size?: number }>;
-  /** La configuration d'un élément neuf. */
+  /** The configuration of a new element. */
   defaultConfig: Record<string, unknown>;
-  /** Ce que la colonne montre. */
+  /** What the column shows. */
   Display: ComponentType<WidgetDisplayProps>;
-  /** Les champs de son tiroir. Le tiroir lui-même est commun à tous. */
+  /** The fields of its drawer. The drawer itself is shared by all. */
   Config: ComponentType<WidgetConfigProps>;
   /**
-   * Ses lignes d'apparence — la couleur et la taille d'un titre, la couleur
-   * d'un lien. Le tiroir les pose dans le bloc « Apparence », avant les
-   * marges communes à tous.
+   * Its appearance rows — a title's color and size, a link's color. The drawer
+   * places them in the "Apparence" block, before the margins shared by all.
    */
   appearance?: (config: unknown, onChange: WidgetConfigProps["onChange"]) => SettingRow[];
   /**
-   * Vrai quand le widget dessine lui-même son cadre (ENCADRE) — l'air autour
-   * de l'heure d'une horloge, par exemple. Sinon, le registre l'encadre.
+   * True when the widget draws its own frame (ownFrame) — the space around a
+   * clock's time, for example. Otherwise, the registry frames it.
    */
   ownFrame?: boolean;
-  /** Vrai quand il est encadré tant que rien n'est réglé — les attributs. */
+  /** True when it is framed as long as nothing is set — the attributes. */
   defaultFrame?: boolean;
   /**
-   * Les champs qu'il pose tout en bas du tiroir, après les marges communes à
-   * tous — l'interrupteur d'un lien, qui se lit comme un dernier mot.
+   * The fields it places at the very bottom of the drawer, after the margins
+   * shared by all — a link's switch, which reads like a last word.
    */
   ConfigEnd?: ComponentType<WidgetConfigProps>;
   /**
-   * La largeur de son tiroir, en pixels, quand ses champs ne tiennent pas
-   * dans celle de tous (TIROIR_LARGEUR).
+   * The width of its drawer, in pixels, when its fields do not fit in the
+   * shared one (DRAWER_WIDTH).
    */
   drawerSize?: number;
   /**
-   * L'air qu'il laisse d'ordinaire, selon le type de l'élément visible qui le
-   * précède et de celui qui le suit — « null » en tête ou en bout de colonne.
-   * C'est la colonne qui le pose, et la configuration peut le remplacer
-   * (marges.tsx) : l'affichage n'en pose aucun lui-même.
+   * The space it usually leaves, depending on the type of the visible element
+   * that precedes it and of the one that follows — "null" at the head or end
+   * of a column. The column sets it, and the configuration can override it
+   * (margins.tsx): the display sets none itself.
    */
   margins: (previousType: AccessBlockType | null, nextType: AccessBlockType | null) => Margins;
   /**
-   * Vrai quand l'élément se nomme à même la colonne : rien ne s'ouvre à sa
-   * création, il paraît vide et attend qu'on le renseigne sur place.
+   * True when the element is named right in the column: nothing opens on its
+   * creation, it appears empty and waits to be filled in place.
    */
   inlineEdit?: boolean;
   /**
-   * Vrai quand le widget prend ses clics en charge : la page ne l'enveloppe
-   * alors pas d'un bouton qui ouvrirait son tiroir. C'est le cas d'un titre,
-   * qui se renomme au double-clic, comme d'un lien, dont le clic simple
-   * ouvre l'adresse. Toujours vrai lorsque « inlineEdit » l'est.
+   * True when the widget handles its own clicks: the page then does not wrap
+   * it in a button that would open its drawer. This is the case of a title,
+   * which is renamed by double click, as of a link, whose single click opens
+   * the address. Always true when "inlineEdit" is.
    */
   ownClicks?: boolean;
   /**
-   * Vrai quand l'élément ne doit pas paraître du tout. Un lien désactivé
-   * reste visible tant que la catégorie est ouverte — sans quoi on ne
-   * pourrait plus le réactiver — et disparaît une fois qu'elle est
-   * verrouillée.
+   * True when the element must not appear at all. A disabled link remains
+   * visible while the category is open — otherwise it could no longer be
+   * re-enabled — and disappears once it is locked.
    */
   hidden?: (config: unknown, locked: boolean) => boolean;
 }
 
 /**
- * Un champ de la configuration, quelle que soit la façon dont il a été rangé.
- * Une valeur absente ou d'un autre type vaut le repli plutôt que de s'afficher
- * en « undefined ».
+ * A configuration field, however it was stored. A missing value or one of
+ * another type yields the fallback rather than displaying as "undefined".
  */
 export const text = (config: unknown, key: string, defaultValue = ""): string => {
   const value = (config as Record<string, unknown> | null)?.[key];
@@ -141,9 +137,9 @@ export const text = (config: unknown, key: string, defaultValue = ""): string =>
 };
 
 /**
- * Le même, pour un champ attendu en nombre. Une valeur absente, vide ou
- * illisible vaut le repli ; une taille rangée en chaîne par une version
- * antérieure, elle, se relit tout de même.
+ * The same, for a field expected as a number. A missing, empty or unreadable
+ * value yields the fallback; a size stored as a string by an earlier version,
+ * on the other hand, is still read.
  */
 export const count = (config: unknown, key: string, defaultValue: number): number => {
   const value = (config as Record<string, unknown> | null)?.[key];
@@ -152,7 +148,7 @@ export const count = (config: unknown, key: string, defaultValue: number): numbe
   return Number.isFinite(readValue) ? readValue : defaultValue;
 };
 
-/** La configuration reçue, à laquelle on change un champ. */
+/** The received configuration, with one field changed. */
 export const withField = (
   config: unknown,
   key: string,

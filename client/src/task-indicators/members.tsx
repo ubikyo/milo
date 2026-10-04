@@ -4,8 +4,8 @@ import { ActorRings } from "../indicators/actors";
 import { NAME, IndicatorTitle, tasksOf } from "./common";
 import type { TaskIndicatorWidget } from "./types";
 
-// La part de chaque membre dans les cartes du tableau ouvert, en barres
-// radiales, comme les acteurs du Support.
+// Each member's share in the open board's cards, as radial
+// bars, like Support's actors.
 
 const LABEL = "Acteurs";
 

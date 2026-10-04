@@ -1,5 +1,5 @@
-// Ce qu'un commentaire partage avec son jumeau : les deux fils (projets et
-// cartes) ont la même forme et le même traitement de l'auteur.
+// What a comment shares with its twin: the two threads (projects and cards)
+// have the same shape and the same author handling.
 
 import type { Actor, Id, SqliteBool } from "@milo/shared";
 import { MILO_ACTOR } from "@milo/shared";
@@ -9,12 +9,13 @@ import { timestamp } from "../lib/time.js";
 import { users } from "./users.js";
 
 /**
- * L'auteur accompagne le commentaire, comme les acteurs accompagnent un
- * projet : une jointure plutôt qu'une requête par commentaire.
+ * The author accompanies the comment, as actors accompany a project: a join
+ * rather than a query per comment.
  *
- * Il est nul pour un commentaire d'avant cette colonne, ou dont le compte a
- * été supprimé : son texte reste, son auteur n'est plus connu. Un mot de
- * l'application sans compte derrière — l'ouverture d'un fil — est signé Milo.
+ * It is null for a comment predating this column, or whose account was
+ * deleted: its text stays, its author is no longer known. A note from the
+ * application with no account behind it — the opening of a thread — is signed
+ * Milo.
  */
 export const withAuthor = <T extends { user_id: number | null; system: SqliteBool }>(
   row: WithAuthorColumns<T>,
@@ -35,13 +36,13 @@ export const withAuthor = <T extends { user_id: number | null; system: SqliteBoo
   };
 };
 
-/** Les mots que l'application écrit elle-même : ni retouchés, ni effacés. */
+/** Notes the application writes itself: neither edited nor erased. */
 export const SYSTEM_COMMENT = "Ce commentaire est écrit par l'application";
 
 /**
- * Le mot qui ouvre un fil, signé Milo : ce qui a été créé, quand, et par qui.
- * Le créateur n'en est pas l'auteur — c'est Milo qui le dit —, son nom tient
- * donc dans le texte. Un compte sans nom se reconnaît à son adresse.
+ * The note that opens a thread, signed Milo: what was created, when, and by
+ * whom. The creator is not its author — Milo says it —, so their name is in
+ * the text. An account without a name is recognized by its address.
  */
 export const creationNote = (created: string, whenLabel: string, by: Id): string => {
   const creator = users.byId.get(by);

@@ -1,9 +1,9 @@
-// Les réglages de la section « Assets » du Paramétrage. Ils valent pour toute
-// l'application.
+// Settings of the "Assets" section of the Settings. They apply to the whole
+// application.
 
 /**
- * Un modèle de matériel : l'identifiant que le poste déclare (« Mac14,6 »)
- * et le nom sous lequel on le connaît (« MacBook Pro 16" (2023, M2 Max) »).
+ * A hardware model: the identifier the machine reports ("Mac14,6")
+ * and the name it is known by ("MacBook Pro 16" (2023, M2 Max)").
  */
 export interface AssetModel {
   identifier: string;
@@ -11,8 +11,8 @@ export interface AssetModel {
 }
 
 /**
- * Un sous-réseau (« 10.1.106.0/24 »), le VLAN qui le porte (106) et son nom
- * (« Wi-Fi invités »), vide quand on ne l'a pas donné.
+ * A subnet ("10.1.106.0/24"), the VLAN that carries it (106) and its name
+ * ("Wi-Fi invités"), empty when it was not given.
  */
 export interface AssetVlan {
   subnet: string;
@@ -21,18 +21,18 @@ export interface AssetVlan {
 }
 
 export interface AssetSettings {
-  /** La table des modèles, par identifiant. */
+  /** The model table, by identifier. */
   models: AssetModel[];
-  /** La table des VLAN, par sous-réseau. */
+  /** The VLAN table, by subnet. */
   vlans: AssetVlan[];
 }
 
-/** Au-delà, un identifiant ou un nom de modèle n'en est plus un. */
+/** Beyond this, an identifier or a model name is no longer one. */
 export const ASSET_MODEL_MAX = 120;
 
-/** Les numéros de VLAN utilisables (802.1Q). */
+/** The usable VLAN numbers (802.1Q). */
 export const VLAN_MIN = 1;
 export const VLAN_MAX = 4094;
 
-/** Au-delà, un nom de VLAN n'en est plus un. */
+/** Beyond this, a VLAN name is no longer one. */
 export const VLAN_NAME_MAX = 120;

@@ -4,14 +4,14 @@ import { IconProgress } from "@tabler/icons-react";
 import { NAME, Nothing, IndicatorTitle } from "./common";
 import type { ProjectIndicatorWidget } from "./types";
 
-// Où en sont les projets du tableau ouvert, en anneau : ceux qui n'ont pas
-// commencé, ceux qui avancent — avant ou après la moitié —, ceux qui sont
-// terminés.
+// Where the open board's projects stand, as a ring: those that have not
+// started, those moving forward — before or after halfway —, those that are
+// finished.
 
 const LABEL = "Progression";
 
-// « Non démarrés » en gris foncé — un gris neutre, ceux de Mantine tirent sur
-// le bleu.
+// "Non démarrés" in dark gray — a neutral gray, Mantine's lean toward
+// blue.
 const BANDS = [
   { name: "Non démarrés", color: "#383838", matches: (s: number) => s === 0 },
   { name: "Moins de 50 %", color: "orange.6", matches: (s: number) => s > 0 && s < 50 },

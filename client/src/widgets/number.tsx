@@ -11,10 +11,10 @@ import type { AccessWidget, WidgetConfigProps } from "./types";
 import type { AccessBlockType } from "@milo/shared";
 import type { KeyboardEvent } from "react";
 
-// Des numéros : des références que l'on vient lire — une ligne téléphonique,
-// un contrat, un poste. Chaque ligne porte un libellé, qui dit lequel, et le
-// numéro, qui se détache à droite. Toutes tiennent dans un même encart, sur
-// deux colonnes.
+// Numbers: references that people come to read — a phone line, a contract,
+// an extension. Each row carries a label, which says which one, and the
+// number, which stands out on the right. They all fit in a single inset, on
+// two columns.
 
 const ROWS = "lines";
 
@@ -25,19 +25,19 @@ interface Row {
 
 const EMPTY_ROW: Row = { label: "", number: "" };
 
-// Au-delà de dix lignes, la liste défile.
+// Beyond ten rows, the list scrolls.
 const VISIBLE_ROWS = 10;
 
-// Hauteur d'un champ dans sa ligne : celle du texte, comme le renommage d'une
-// catégorie (LookupManager). Un champ « sm » fait 36 px, plus que la ligne.
+// Height of a field in its row: the text's, like renaming a category
+// (LookupManager). An "sm" field is 36 px, more than the row.
 const FIELD_HEIGHT = 22;
 const INLINE_FIELD = {
   input: { height: FIELD_HEIGHT, minHeight: FIELD_HEIGHT, lineHeight: `${FIELD_HEIGHT}px` },
 };
 
 /**
- * Les lignes de l'élément ; une ligne abîmée comble ce qui lui manque. Un
- * élément rangé avant les lignes multiples a reçu la sienne à la migration
+ * The element's rows; a damaged row fills in what it lacks. An element stored
+ * before multiple rows received its own at migration
  * (migrateWidgetConfig).
  */
 const rows = (config: unknown): Row[] => {
@@ -47,18 +47,18 @@ const rows = (config: unknown): Row[] => {
     : [];
 };
 
-/** Les lignes seules. */
+/** The rows only. */
 const store = (list: Row[]): Record<string, unknown> => ({ [ROWS]: list });
 
-/** Les éléments qui portent déjà leur propre air, au-dessus et au-dessous d'eux. */
+/** The elements that already carry their own space, above and below them. */
 const TITLES: AccessBlockType[] = ["category", "subcategory"];
 
 /**
- * L'air autour de l'encart : celui d'une sous-catégorie, en haut comme en bas.
- * Rien en tête ni en bout de colonne. Rien non plus contre un titre, qui
- * laisse déjà le sien — les deux s'additionneraient, la colonne étant en
- * flex, où les marges ne se fondent pas. Et entre deux encarts, seul le
- * premier le pose, pour la même raison.
+ * The space around the inset: that of a subcategory, at the top as at the
+ * bottom. Nothing at the head or end of a column. Nothing either against a
+ * title, which already leaves its own — the two would add up, the column being
+ * a flex one, where margins do not collapse. And between two insets, only the
+ * first sets it, for the same reason.
  */
 const highMargin = (previous: AccessBlockType | null): number =>
   previous === null || previous === "number" || TITLES.includes(previous)
@@ -68,11 +68,10 @@ const lowMargin = (next: AccessBlockType | null): number =>
   next === null || TITLES.includes(next) ? 0 : SUBCATEGORY_GAP;
 
 /**
- * Les lignes, dans la liste des catégories et des étiquettes (ListItems) :
- * chaque ligne se modifie sur place, se glisse par sa poignée ou se déplace
- * d'un cran par le clic droit, qui la supprime aussi ; la dernière en ajoute
- * une. Au-delà de dix, la liste défile. Tout reste dans le brouillon du
- * tiroir jusqu'à l'enregistrement.
+ * The rows, in the list of categories and labels (ListItems): each row is
+ * edited in place, dragged by its handle or moved one step by right click,
+ * which also deletes it; the last one adds another. Beyond ten, the list
+ * scrolls. Everything stays in the drawer's draft until saved.
  */
 function Rows({ config, onChange }: WidgetConfigProps) {
   const list = rows(config);
@@ -82,8 +81,8 @@ function Rows({ config, onChange }: WidgetConfigProps) {
   const change = (index: number, field: keyof Row, value: string) =>
     onChange(store(list.map((l, i) => (i === index ? { ...l, [field]: value } : l))));
 
-  // Les lignes n'ont pas d'identifiant : leur rang en tient lieu, le temps
-  // du geste. L'ordre reçu est celui des anciens rangs.
+  // Rows have no identifier: their rank stands in for it, for the duration
+  // of the gesture. The order received is that of the old ranks.
   const handleReorder = (order: number[]) => onChange(store(order.flatMap((i) => list[i] ?? [])));
   const { zoneRef, drag, onPointerDown } = useDraggableStack({
     ids: list.map((_, i) => i),
@@ -91,14 +90,14 @@ function Rows({ config, onChange }: WidgetConfigProps) {
     onReorder: handleReorder,
   });
 
-  // Un cran vers le haut ou vers le bas, depuis le menu de la ligne.
+  // One step up or down, from the row's menu.
   const move = (index: number, to: number) => {
     const order = list.map((_, i) => i).filter((i) => i !== index);
     order.splice(to, 0, index);
     handleReorder(order);
   };
 
-  // Le focus revient au libellé : la saisie suivante enchaîne.
+  // Focus returns to the label: the next entry follows on.
   const add = () => {
     const row = { label: newRow.label.trim(), number: newRow.number.trim() };
     if (!row.label && !row.number) return;
@@ -107,7 +106,7 @@ function Rows({ config, onChange }: WidgetConfigProps) {
     firstField.current?.focus();
   };
 
-  // Entrée ajoute depuis l'un ou l'autre champ de la ligne d'ajout.
+  // Enter adds from either field of the add row.
   const addKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -124,8 +123,8 @@ function Rows({ config, onChange }: WidgetConfigProps) {
         emptyText="Aucun attribut"
         maxRows={VISIBLE_ROWS}
         add={{
-          // Le libellé se glisse avant le champ du numéro, qui porte au bout
-          // le symbole Entrée de la liste.
+          // The label slides in before the number field, which carries the
+          // list's Enter symbol at its end.
           section: (
             <TextInput
               ref={firstField}
@@ -140,8 +139,8 @@ function Rows({ config, onChange }: WidgetConfigProps) {
               autoFocus
             />
           ),
-          // Du texte et non un nombre : un numéro se copie tel qu'il s'écrit,
-          // avec ses espaces, ses points et son éventuel indicatif.
+          // Text and not a number: a number is copied as it is written, with
+          // its spaces, dots and any country code.
           placeholder: "Numéro",
           value: newRow.number,
           onChange: (number) => setNewRow({ ...newRow, number }),
@@ -171,7 +170,7 @@ function Rows({ config, onChange }: WidgetConfigProps) {
               >
                 {(active) => (
                   <>
-                    {/* Seule la poignée déplace la ligne : les champs gardent leurs clics. */}
+                    {/* Only the handle moves the row: the fields keep their clicks. */}
                     <DragHandle
                       onPointerDown={onPointerDown(i, i)}
                       visible={active}
@@ -216,8 +215,8 @@ export const numberWidget: AccessWidget = {
   icon: IconHash,
   defaultConfig: { [ROWS]: [] },
 
-  // Toujours encadrés jusqu'ici : ils le restent tant qu'on ne retire pas
-  // leur cadre, dans le bloc « Apparence » du tiroir.
+  // Always framed so far: they stay so until their frame is removed, in the
+  // drawer's "Apparence" block.
   ownFrame: true,
   defaultFrame: true,
 
@@ -239,8 +238,8 @@ export const numberWidget: AccessWidget = {
                 <Text size="sm" c={SUBCATEGORY_COLOR} truncate>
                   {l.label || "Numéro"}
                 </Text>
-                {/* Blanc sur le thème sombre ; sur le clair, dont l'encart est
-                    gris pâle, le blanc ne se lirait pas : quasi-noir. */}
+                {/* White on the dark theme; on the light one, whose inset is
+                    pale gray, white would not be legible: near-black. */}
                 <Text size="sm" fw={600} c={STRONG_TEXT} className={classes.number}>
                   {l.number || "—"}
                 </Text>

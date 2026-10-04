@@ -1,9 +1,9 @@
-// Les réponses par défaut du Support, réglées au Paramétrage. Chacune porte un
-// intitulé et son modèle HTML, saisi dans l'éditeur.
+// The Support's default replies, set in "Paramétrage". Each carries a title
+// and its HTML template, entered in the editor.
 //
-// Une réponse peut aussi partir d'office, sur un évènement — l'arrivée d'une
-// demande, sa fermeture… (lib/support-auto-reply.ts). Une réponse a au plus
-// un évènement, et un évènement n'envoie qu'une réponse.
+// A reply can also go out automatically, on an event — a request arriving,
+// its closing… (lib/support-auto-reply.ts). A reply has at most one event,
+// and an event only sends one reply.
 
 import { Router } from "express";
 import { isSupportReplyEvent } from "@milo/shared";
@@ -37,15 +37,15 @@ const toReply = (row: SupportReplyRow): SupportReply => ({
   event: isSupportReplyEvent(row.event) ? row.event : null,
 });
 
-/** La réponse qu'envoie un évènement, s'il y en a une. */
+/** The reply an event sends, if there is one. */
 export const replyFor = (event: SupportReplyEvent): SupportReply | undefined => {
   const row = byEvent.get(event, 0);
   return row && toReply(row);
 };
 
 /**
- * L'évènement reçu, vérifié : connu, et libre — aucune autre réponse ne le
- * porte. Vide : aucun évènement.
+ * The received event, verified: known, and free — no other reply carries
+ * it. Empty: no event.
  */
 const receivedEvent = (received: unknown, id: number): SupportReplyEvent | "" => {
   if (received === null || received === "") return "";
@@ -71,9 +71,9 @@ supportReplyRoutes.post("/", (req, res) => {
   res.status(201).json(toReply(byId.get(lastInsertRowid)!));
 });
 
-// L'intitulé et le modèle se modifient séparément : ce qui n'est pas envoyé
-// reste. Le HTML passe par la même remise à plat que les descriptions : il ne
-// garde que ce que l'éditeur sait produire.
+// The title and template are edited separately: what is not sent stays. The
+// HTML goes through the same flattening as descriptions: it only keeps what
+// the editor can produce.
 supportReplyRoutes.put("/:id", (req, res) => {
   const existing = orNotFound(byId.get(req.params.id), REPLY_NOT_FOUND);
 

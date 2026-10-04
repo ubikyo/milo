@@ -1,11 +1,11 @@
-// Les réglages de la section « Développeur » du Paramétrage. Ils valent pour
-// toute l'application, et non pour un compte.
+// Settings of the "Développeur" section of the Settings. They apply to
+// the whole application, not to an account.
 
 export interface DeveloperSettings {
   /**
-   * Debug : la sélection du texte et le menu du navigateur au clic droit
-   * reviennent partout. Éteint, l'interface s'en passe — elle se manipule
-   * comme une application, pas comme une page.
+   * Debug: text selection and the browser right-click menu
+   * come back everywhere. Off, the interface goes without them — it is handled
+   * like an application, not like a page.
    */
   debug: boolean;
 }

@@ -1,9 +1,9 @@
-// Rattrapages pour les bases créées avant tel ou tel ajout. Chacun se
-// reconnaît à une colonne ou une table manquante, et ne fait rien sur une base
-// neuve : le schéma l'a déjà créée complète.
+// Catch-up migrations for databases created before this or that addition.
+// Each one is recognized by a missing column or table, and does nothing on a
+// new database: the schema has already created it complete.
 //
-// Aucune ne s'exécute deux fois, et aucune ne se retire : une base de
-// production peut avoir n'importe quel âge.
+// None runs twice, and none is ever removed: a production database can be of
+// any age.
 
 import type { Database } from "better-sqlite3";
 import {
@@ -20,7 +20,7 @@ import {
 } from "@milo/shared";
 import { parisTime } from "../lib/time.js";
 
-/** Les jalons que tous les projets partageaient avant qu'ils suivent la catégorie. */
+/** The milestones all projects shared before they followed the category. */
 const HISTORICAL_MILESTONES = [
   { value: 10, label: "Étude" },
   { value: 20, label: "Devis" },
@@ -36,7 +36,7 @@ interface ColumnInfo {
 const columns = (db: Database, table: string): string[] =>
   (db.prepare(`PRAGMA table_info(${table})`).all() as ColumnInfo[]).map((c) => c.name);
 
-/** Les clés étrangères sont suspendues le temps d'un échange de table. */
+/** Foreign keys are suspended for the duration of a table swap. */
 const withoutForeignKeys = (db: Database, action: () => void): void => {
   db.pragma("foreign_keys = OFF");
   try {
@@ -47,11 +47,11 @@ const withoutForeignKeys = (db: Database, action: () => void): void => {
 };
 
 /**
- * Les indicateurs sans section — rangés avant que les panneaux des
- * statistiques en aient, ou revenus d'une sauvegarde de ce temps-là — passent
- * ensemble dans une première section à largeur automatique, en gardant leur
- * ordre : sans elle, le panneau ne les montrerait plus. Reposé après la
- * restauration d'une sauvegarde, comme le rôle Administrateur.
+ * Indicators without a section — stored before the statistics panels had any,
+ * or coming back from a backup of that time — go together into a first
+ * automatic-width section, keeping their order: without it, the panel would no
+ * longer show them. Reapplied after a backup restore, like the Administrateur
+ * role.
  */
 export const attachIndicators = (db: Database): void => {
   for (const [table, panel] of [
@@ -73,9 +73,9 @@ export const attachIndicators = (db: Database): void => {
   }
 };
 
-/** Posé une fois les références des projets et des cartes données par le compteur commun. */
+/** Set once the projects' and cards' references have been given by the shared counter. */
 const SHARED_REFERENCES = "shared_references";
-/** Le compteur des références (repositories/references.ts). */
+/** The references counter (repositories/references.ts). */
 const REFERENCE_COUNTER = "support_ticket_counter";
 
 const readSetting = (db: Database, key: string): unknown => {
@@ -96,13 +96,13 @@ const writeSetting = (db: Database, key: string, value: unknown): void => {
 };
 
 /**
- * Les projets et les cartes reçoivent leur référence « HLP- » du compteur des
- * tickets. Ceux d'avant le compteur commun — les cartes se numérotaient alors
- * par tableau, les projets pas du tout — sont renumérotés une fois, dans
- * l'ordre de leur création, à la suite du dernier ticket. Ensuite, seul ce
- * qui n'a pas de référence en reçoit une : un projet posé par la base de
- * démonstration. Reposé après la restauration d'une sauvegarde, comme le rôle
- * Administrateur : une sauvegarde d'avant le compteur commun se renumérote.
+ * Projects and cards receive their "HLP-" reference from the tickets counter.
+ * Those from before the shared counter — cards were then numbered per board,
+ * projects not at all — are renumbered once, in creation order, following the
+ * last ticket. Afterwards, only what has no reference gets one: a project
+ * placed by the demo database. Reapplied after a backup restore, like the
+ * Administrateur role: a backup from before the shared counter gets
+ * renumbered.
  */
 export const numberReferences = (db: Database): void => {
   const common = readSetting(db, SHARED_REFERENCES) === true;
@@ -137,7 +137,7 @@ export const numberReferences = (db: Database): void => {
       phoneNumber += 1;
       (kind === "project" ? project : card).run(phoneNumber, id);
     }
-    // Un séparateur ne porte pas de référence.
+    // A separator carries no reference.
     if (!common) db.exec("UPDATE task_cards SET number = 0 WHERE kind = 'separator'");
     writeSetting(db, REFERENCE_COUNTER, phoneNumber);
     writeSetting(db, SHARED_REFERENCES, true);
@@ -145,11 +145,11 @@ export const numberReferences = (db: Database): void => {
 };
 
 /**
- * Les modes Projet et Tâche montraient leur liste d'office : passés aux
- * sections, ils en reçoivent une première, qui porte la liste, pour ne pas
- * s'ouvrir vides. Posée une fois — le réglage s'en souvient : un panneau
- * qu'on a vidé exprès le reste. Reposée après la restauration d'une
- * sauvegarde d'avant les sections de ces modes.
+ * The Project and Task modes used to show their list by default: moved to
+ * sections, they receive a first one, which carries the list, so as not to
+ * open empty. Set once — the setting remembers it: a panel that was emptied on
+ * purpose stays empty. Reapplied after a restore of a backup from before the
+ * sections of these modes.
  */
 export const setDefaultSections = (db: Database): void => {
   for (const [table, panel] of [
@@ -175,18 +175,18 @@ export const setDefaultSections = (db: Database): void => {
 };
 
 /**
- * Les rattrapages, puis le passage aux vues. Une base qui connaît déjà les
- * vues — neuve, ou déjà convertie — n'a plus rien à rattraper : les
- * rattrapages d'avant parlent de tables qu'elle n'a plus.
+ * The catch-up migrations, then the switch to views. A database that already
+ * knows views — new, or already converted — has nothing left to catch up: the
+ * earlier catch-ups talk about tables it no longer has.
  */
 export const migrate = (db: Database): void => {
-  // Avant tout : les marqueurs des rattrapages prennent leur nom anglais, que
-  // chacun d'eux cherche désormais.
+  // First of all: the catch-up markers take their English name, which each
+  // of them now looks for.
   renameSettingKeys(db);
-  // Puis les accès qui suivent se posent dans le premier workspace.
+  // Then the access that follows is placed in the first workspace.
   workspaces(db);
   if (!columns(db, "boards").includes("view_id")) catchUpBeforeViews(db);
-  // Comptes d'avant la vue d'ouverture : la conversion la tire de leur mode.
+  // Accounts from before the opening view: the conversion derives it from their mode.
   if (!columns(db, "users").includes("default_view")) {
     db.exec("ALTER TABLE users ADD COLUMN default_view TEXT NOT NULL DEFAULT ''");
   }
@@ -197,26 +197,26 @@ export const migrate = (db: Database): void => {
   listsPerWidget(db);
   optionalContexts(db);
   confirmedMailboxes(db);
-  // Une demande par liste qui reçoit la boîte : l'unicité de l'e-mail passe
-  // à la liste (idx_support_requests_mailbox_list, schema.ts).
+  // One request per list that receives the mailbox: the email's uniqueness
+  // moves to the list (idx_support_requests_mailbox_list, schema.ts).
   db.exec("DROP INDEX IF EXISTS idx_support_requests_mailbox");
-  // La confirmation passe par le seul code : le jeton du lien s'en va.
+  // Confirmation goes through the code alone: the link's token goes away.
   if (columns(db, "list_mailbox_optins").includes("token")) {
     db.exec("ALTER TABLE list_mailbox_optins DROP COLUMN token");
   }
-  // Après tous les rattrapages des accès : ils ont pu poser un Paramétrage.
+  // After all the access catch-ups: they may have set a Settings right.
   workspaceManagement(db);
   globalAdministration(db);
   withoutUptimeWith365(db);
   sortedCategories(db);
-  // Cartes créées avant la période, la récurrence et le rappel de l'échéance.
+  // Cards created before the period, the recurrence and the due-date reminder.
   const cardColumns = columns(db, "task_cards");
   for (const column of ["start_date", "recurrence", "reminder", "reminded_for"]) {
     if (!cardColumns.includes(column)) {
       db.exec(`ALTER TABLE task_cards ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
     }
   }
-  // Pièces jointes d'avant leur ordre : la plus récente reste en tête.
+  // Attachments from before their order: the most recent stays first.
   if (!columns(db, "card_attachments").includes("position")) {
     db.exec("ALTER TABLE card_attachments ADD COLUMN position INTEGER NOT NULL DEFAULT 0");
     db.exec("UPDATE card_attachments SET position = -id");
@@ -229,33 +229,33 @@ export const migrate = (db: Database): void => {
   }
   if (!cardColumns.includes("due_form")) {
     db.exec("ALTER TABLE task_cards ADD COLUMN due_form TEXT NOT NULL DEFAULT 'date'");
-    // Une échéance qui avait un début était une période.
+    // A due date that had a start was a period.
     db.exec("UPDATE task_cards SET due_form = 'period' WHERE start_date != ''");
   }
   if (!cardColumns.includes("cover_interval")) {
     db.exec("ALTER TABLE task_cards ADD COLUMN cover_interval INTEGER NOT NULL DEFAULT 0");
   }
-  // Couvertures d'avant leur nom et leur taille.
+  // Covers from before their name and size.
   const coverColumns = columns(db, "card_covers");
   if (coverColumns.length > 0 && !coverColumns.includes("name")) {
     db.exec("ALTER TABLE card_covers ADD COLUMN name TEXT NOT NULL DEFAULT ''");
     db.exec("ALTER TABLE card_covers ADD COLUMN size INTEGER NOT NULL DEFAULT 0");
   }
-  // Les vues sans workspace — celles d'avant eux, celles qu'une base neuve
-  // vient de recevoir (vuesEtTableaux) — vont dans le premier.
+  // Views without a workspace — those from before workspaces, those a new
+  // database has just received (viewsAndBoards) — go into the first one.
   db.prepare("UPDATE views SET workspace_id = ? WHERE workspace_id IS NULL").run(
     firstWorkspace(db),
   );
-  // L'index des suivis, renommé (idx_follows_target, schema.ts).
+  // The follows index, renamed (idx_follows_target, schema.ts).
   db.exec("DROP INDEX IF EXISTS idx_follows_cible");
-  // En dernier : les valeurs rangées en français, traduites une fois que les
-  // rattrapages d'avant, qui les lisent, sont passés.
+  // Last: values stored in French, translated once the earlier catch-ups,
+  // which read them, have run.
   englishValues(db);
 };
 
 /**
- * Les catégories se rangent : d'avant leur position, elles prennent dans
- * chaque tableau l'ordre de leur nom, celui qu'elles avaient à l'écran.
+ * Categories get ordered: from before their position, they take within each
+ * board the order of their name, the one they had on screen.
  */
 const sortedCategories = (db: Database): void => {
   if (columns(db, "categories").includes("position")) return;
@@ -272,10 +272,10 @@ const sortedCategories = (db: Database): void => {
   })();
 };
 
-/** Le nom du workspace qu'une base reçoit quand elle n'en a aucun. */
+/** The name of the workspace a database receives when it has none. */
 const STARTING_WORKSPACE = "Milo";
 
-/** Le premier workspace, créé s'il n'y en a aucun : il en existe toujours un. */
+/** The first workspace, created if there is none: there is always one. */
 export const firstWorkspace = (db: Database): number => {
   const row = db.prepare("SELECT id FROM workspaces ORDER BY position, id LIMIT 1").get() as
     | { id: number }
@@ -288,12 +288,13 @@ export const firstWorkspace = (db: Database): number => {
   );
 };
 
-/** Posé une fois la gestion des workspaces donnée à qui modifiait le Paramétrage. */
+/** Set once workspace management has been given to whoever edited Settings. */
 const WORKSPACE_MANAGEMENT = "workspace_management";
 
 /**
- * Qui modifiait le Paramétrage avant les workspaces les gère d'emblée : sans
- * quoi seul le compte « admin » pourrait les créer et en donner la gestion.
+ * Whoever edited Settings before workspaces manages them straight away:
+ * otherwise only the "admin" account could create them and give out their
+ * management.
  */
 const workspaceManagement = (db: Database): void => {
   if (readSetting(db, WORKSPACE_MANAGEMENT)) return;
@@ -301,15 +302,15 @@ const workspaceManagement = (db: Database): void => {
   writeSetting(db, WORKSPACE_MANAGEMENT, true);
 };
 
-/** Posé une fois l'administration sortie des accès des workspaces. */
+/** Set once administration has moved out of the workspaces' access. */
 const GLOBAL_ADMINISTRATION = "global_administration";
 
 /**
- * Le Paramétrage et la gestion des workspaces valent pour toute
- * l'application : ils quittent les accès des workspaces pour l'administration
- * (principal_admin). Chacun garde le plus large de ce qu'il avait ici ou là.
- * Les accès qui ne lisent plus aucun type de widget s'effacent : ils
- * n'ouvraient le workspace que par le Paramétrage.
+ * Settings and workspace management apply to the whole application: they
+ * leave the workspaces' access for administration (principal_admin). Each
+ * keeps the broadest of what they had here or there. Access that no longer
+ * reads any widget type is deleted: it only opened the workspace through
+ * Settings.
  */
 const globalAdministration = (db: Database): void => {
   if (readSetting(db, GLOBAL_ADMINISTRATION)) return;
@@ -336,7 +337,7 @@ const globalAdministration = (db: Database): void => {
       try {
         readValue = JSON.parse(widgets);
       } catch {
-        // Illisible : n'accordait rien.
+        // Unreadable: granted nothing.
       }
       if (!Object.values(validWidgetRights(readValue)).some((access) => access !== "")) forget.run(rowid);
     }
@@ -344,14 +345,14 @@ const globalAdministration = (db: Database): void => {
   })();
 };
 
-/** Posé une fois Uptime retiré et le type « 365 » accordé. */
+/** Set once Uptime has been removed and the "365" type granted. */
 const WITHOUT_UPTIME_WITH_365 = "uptime_removed_m365_added";
 
 /**
- * Le widget Uptime s'en va, avec les machines qu'il vérifiait — et le type
- * « Télémétrie », qui n'était qu'à lui. Le calendrier et le courrier passent
- * du type « Commun » au type « 365 » : chacun y reçoit la permission qu'il
- * avait sur « Commun », pour ne perdre aucun des deux.
+ * The Uptime widget goes away, with the machines it checked — and the
+ * "Télémétrie" type, which was only its own. Calendar and mail move from the
+ * "Commun" type to the "365" type: each receives there the permission it had
+ * on "Commun", so as to lose neither.
  */
 const withoutUptimeWith365 = (db: Database): void => {
   if (readSetting(db, WITHOUT_UPTIME_WITH_365)) return;
@@ -369,7 +370,7 @@ const withoutUptimeWith365 = (db: Database): void => {
         const raw = JSON.parse(widgets) as unknown;
         if (raw && typeof raw === "object") readValue = raw as Record<string, unknown>;
       } catch {
-        // Illisible : n'accordait rien, et n'accorde toujours rien.
+        // Unreadable: granted nothing, and still grants nothing.
       }
       const { telemetry: _telemetry, ...rest } = readValue;
       write.run(JSON.stringify({ ...rest, m365: rest["m365"] ?? rest["common"] ?? "" }), rowid);
@@ -378,13 +379,13 @@ const withoutUptimeWith365 = (db: Database): void => {
   })();
 };
 
-/** Le premier workspace, dans une requête : là où se posent les accès d'avant eux. */
+/** The first workspace, in a query: where the access from before workspaces is placed. */
 const FIRST_WORKSPACE = "(SELECT id FROM workspaces ORDER BY position, id LIMIT 1)";
 
 /**
- * Les workspaces : les vues et les comptes en reçoivent un, et les accès
- * passent workspace par workspace. Ceux d'avant vont dans le premier, créé
- * pour l'occasion — les vues, elles, à la fin des rattrapages (migrate).
+ * Workspaces: views and accounts receive one, and access moves workspace by
+ * workspace. Those from before go into the first one, created for the
+ * occasion — views, for their part, at the end of the catch-ups (migrate).
  */
 const workspaces = (db: Database): void => {
   if (!columns(db, "views").includes("workspace_id")) {
@@ -418,11 +419,11 @@ const workspaces = (db: Database): void => {
   }
 };
 
-/** Les rattrapages des bases d'avant les vues, dans l'ordre où ils sont venus. */
+/** The catch-ups for databases from before views, in the order they came. */
 const catchUpBeforeViews = (db: Database): void => {
-  // Bases d'avant Entra : les comptes gardent leur ligne — ils sont acteurs,
-  // auteurs, membres — et s'y rattachent par leur e-mail à leur première
-  // connexion par Microsoft. Leurs mots de passe ne servent plus.
+  // Databases from before Entra: accounts keep their row — they are actors,
+  // authors, members — and attach to it by their email on their first
+  // Microsoft sign-in. Their passwords are no longer used.
   const accountColumns = columns(db, "users");
   if (accountColumns.length > 0 && !accountColumns.includes("entra_id")) {
     db.exec("ALTER TABLE users ADD COLUMN entra_id TEXT NOT NULL DEFAULT ''");
@@ -431,10 +432,10 @@ const catchUpBeforeViews = (db: Database): void => {
     db.exec("UPDATE users SET password_hash = ''");
     db.exec("DELETE FROM sessions");
   }
-  // Les rôles par compte ont précédé ceux par utilisateur ou groupe Entra.
+  // Per-account roles preceded those per Entra user or group.
   db.exec("DROP TABLE IF EXISTS user_company_roles");
 
-  // Bases d'avant le support des sociétés : son adresse e-mail et son site.
+  // Databases from before company support: its email address and its site.
   const companyColumns = columns(db, "companies");
   if (!companyColumns.includes("support_email")) {
     db.exec("ALTER TABLE companies ADD COLUMN support_email TEXT NOT NULL DEFAULT ''");
@@ -443,14 +444,14 @@ const catchUpBeforeViews = (db: Database): void => {
     db.exec("ALTER TABLE companies ADD COLUMN support_url TEXT NOT NULL DEFAULT ''");
   }
 
-  // Bases créées avant l'ajout des sociétés : on ajoute la colonne manquante.
+  // Databases created before companies were added: the missing column is added.
   const projectColumns = columns(db, "projects");
   if (!projectColumns.includes("company_id")) {
     db.exec("ALTER TABLE projects ADD COLUMN company_id INTEGER REFERENCES companies(id)");
   }
 
-  // Bases créées avant la séparation prénom / nom : on ajoute les colonnes et
-  // on découpe le nom existant au premier espace.
+  // Databases created before the first name / last name split: the columns are
+  // added and the existing name is split at the first space.
   const userColumns = columns(db, "users");
   if (userColumns.length > 0 && !userColumns.includes("first_name")) {
     db.exec("ALTER TABLE users ADD COLUMN first_name TEXT NOT NULL DEFAULT ''");
@@ -469,25 +470,25 @@ const catchUpBeforeViews = (db: Database): void => {
     })();
   }
 
-  // Comptes créés avant le choix d'un mode d'ouverture : ils ouvrent sur les
-  // projets, comme avant.
+  // Accounts created before the choice of an opening mode: they open on
+  // projects, as before.
   if (userColumns.length > 0 && !userColumns.includes("default_mode")) {
     db.exec("ALTER TABLE users ADD COLUMN default_mode TEXT NOT NULL DEFAULT 'projects'");
   }
 
-  // Comptes d'avant que la liste devienne un widget des sections : le
-  // panneau des statistiques ne se montrait ou ne se cachait que par eux. Il
-  // n'y a plus de panneau à part, le réglage s'en va.
+  // Accounts from before the list became a section widget: the statistics
+  // panel was shown or hidden only through them. There is no separate panel
+  // anymore, so the setting goes away.
   for (const column of ["support_stats", "asset_stats"]) {
     if (columns(db, "users").includes(column)) {
       db.exec(`ALTER TABLE users DROP COLUMN ${column}`);
     }
   }
 
-  // Sessions ouvertes avant qu'elles expirent : elles ne valaient que par leur
-  // présence en base, indéfiniment. On leur donne une date de fin, comptée à
-  // partir de maintenant plutôt que de leur création — sinon toutes les
-  // sessions en cours se fermeraient d'un coup au redémarrage.
+  // Sessions opened before they expired: they were valid only through their
+  // presence in the database, indefinitely. They are given an end date,
+  // counted from now rather than from their creation — otherwise all current
+  // sessions would close at once on restart.
   const sessionColumns = columns(db, "sessions");
   if (sessionColumns.length > 0 && !sessionColumns.includes("expires_at")) {
     db.exec("ALTER TABLE sessions ADD COLUMN last_seen_at TEXT NOT NULL DEFAULT ''");
@@ -495,14 +496,13 @@ const catchUpBeforeViews = (db: Database): void => {
   }
 
   const listColumns = columns(db, "task_lists");
-  // Une base d'avant les tableaux : ses listes pendent encore à une société.
-  // Les rattrapages qui suivent ne concernent qu'elle, jamais une base neuve.
+  // A database from before boards: its lists still hang from a company.
+  // The catch-ups that follow concern only it, never a new database.
   const listsBeforeBoards = listColumns.length > 0 && !listColumns.includes("board_id");
 
-  // Listes créées avant leur rattachement à une société : on les affecte à la
-  // première société connue. Cette colonne cède ensuite la place à
-  // « board_id » (migration suivante), mais le rattrapage reste nécessaire
-  // pour la traverser.
+  // Lists created before being attached to a company: they are assigned to
+  // the first known company. This column then gives way to "board_id" (next
+  // migration), but the catch-up is still needed to get through it.
   if (listsBeforeBoards && !listColumns.includes("company_id")) {
     db.exec(
       "ALTER TABLE task_lists ADD COLUMN company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE",
@@ -514,16 +514,15 @@ const catchUpBeforeViews = (db: Database): void => {
     }
   }
 
-  // Listes créées avant le choix d'une couleur : sans couleur, donc vide.
+  // Lists created before the choice of a color: no color, hence empty.
   if (listsBeforeBoards && !listColumns.includes("color")) {
     db.exec("ALTER TABLE task_lists ADD COLUMN color TEXT NOT NULL DEFAULT ''");
   }
 
-  // Listes rattachées directement à une société, avant l'arrivée des tableaux :
-  // chaque société qui avait des listes reçoit un tableau qui les recueille.
-  // SQLite ne sait pas retirer « company_id » (elle porte une clé étrangère) :
-  // la table est reconstruite, en conservant les identifiants pour que les
-  // cartes restent accrochées à leur liste.
+  // Lists attached directly to a company, before boards arrived: each company
+  // that had lists receives a board that collects them. SQLite cannot drop
+  // "company_id" (it carries a foreign key): the table is rebuilt, keeping the
+  // identifiers so that cards stay attached to their list.
   if (listsBeforeBoards) {
     const migrateItem = db.transaction(() => {
       db.exec(`
@@ -546,9 +545,9 @@ const catchUpBeforeViews = (db: Database): void => {
          FROM task_lists WHERE company_id IS ?`,
       );
 
-      // Une liste sans société (société supprimée en cours de route) n'a pas
-      // de tableau naturel : elle rejoint celui de la première société plutôt
-      // que de disparaître avec ses cartes.
+      // A list without a company (company deleted along the way) has no
+      // natural board: it joins the first company's rather than disappearing
+      // with its cards.
       const fallback = db.prepare("SELECT id FROM companies ORDER BY id LIMIT 1").get() as
         { id: number } | undefined;
       const companies = (
@@ -571,11 +570,11 @@ const catchUpBeforeViews = (db: Database): void => {
     withoutForeignKeys(db, migrateItem);
   }
 
-  // Bases créées avant les tableaux de projets : les catégories étaient
-  // globales et uniques par nom. Un premier tableau les recueille, ainsi que
-  // les projets existants. SQLite ne sait pas retirer la contrainte UNIQUE sur
-  // le nom : la table est reconstruite, en conservant les identifiants pour
-  // que les projets restent accrochés à leur catégorie.
+  // Databases created before project boards: categories were global and
+  // unique by name. A first board collects them, along with the existing
+  // projects. SQLite cannot drop the UNIQUE constraint on the name: the table
+  // is rebuilt, keeping the identifiers so that projects stay attached to
+  // their category.
   const categoryColumns = columns(db, "categories");
   if (categoryColumns.length > 0 && !categoryColumns.includes("board_id")) {
     const migrateItem = db.transaction(() => {
@@ -608,8 +607,8 @@ const catchUpBeforeViews = (db: Database): void => {
     withoutForeignKeys(db, migrateItem);
   }
 
-  // Commentaires écrits avant qu'on retienne leur auteur : la colonne est
-  // ajoutée vide, ces commentaires resteront sans auteur connu.
+  // Comments written before their author was recorded: the column is added
+  // empty, these comments will remain without a known author.
   const commentColumns = columns(db, "comments");
   if (commentColumns.length > 0 && !commentColumns.includes("user_id")) {
     db.exec(
@@ -617,8 +616,8 @@ const catchUpBeforeViews = (db: Database): void => {
     );
   }
 
-  // Cartes créées avant leur numérotation : on numérote chaque tableau à part,
-  // dans l'ordre de création de ses cartes.
+  // Cards created before their numbering: each board is numbered separately,
+  // in the creation order of its cards.
   const cardColumns = columns(db, "task_cards");
   if (cardColumns.length > 0 && !cardColumns.includes("number")) {
     db.exec("ALTER TABLE task_cards ADD COLUMN number INTEGER NOT NULL DEFAULT 0");
@@ -642,13 +641,13 @@ const catchUpBeforeViews = (db: Database): void => {
     })();
   }
 
-  // Cartes créées avant les séparateurs : elles sont toutes des cartes.
+  // Cards created before separators: they are all cards.
   if (cardColumns.length > 0 && !cardColumns.includes("kind")) {
     db.exec("ALTER TABLE task_cards ADD COLUMN kind TEXT NOT NULL DEFAULT 'card'");
   }
 
-  // Fils ouverts avant qu'on distingue les mots de l'application : on retrouve
-  // ceux qui notaient une création à leur texte, écrit par nous seuls.
+  // Threads opened before the application's own notes were distinguished: we
+  // find those that logged a creation by their text, written by us alone.
   for (const table of ["comments", "card_comments"]) {
     const columnNames = columns(db, table);
     if (columnNames.length > 0 && !columnNames.includes("system")) {
@@ -660,14 +659,14 @@ const catchUpBeforeViews = (db: Database): void => {
     }
   }
 
-  // Tableaux créés avant le réglage du numéro des cartes : ils le montrent.
+  // Boards created before the card number setting: they show it.
   const boardColumns = columns(db, "boards");
   if (boardColumns.length > 0 && !boardColumns.includes("show_card_numbers")) {
     db.exec("ALTER TABLE boards ADD COLUMN show_card_numbers INTEGER NOT NULL DEFAULT 1");
   }
 
-  // Tableaux créés avant l'option « Privé » : ils restent visibles de tous, et
-  // sans auteur connu — le premier à fermer l'un d'eux en devient l'auteur.
+  // Boards created before the "Privé" option: they stay visible to all, and
+  // without a known author — the first to close one becomes its author.
   if (boardColumns.length > 0 && !boardColumns.includes("owner_id")) {
     db.exec(
       "ALTER TABLE boards ADD COLUMN owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
@@ -677,13 +676,13 @@ const catchUpBeforeViews = (db: Database): void => {
     db.exec("ALTER TABLE boards ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0");
   }
 
-  // Tableaux créés avant l'option « Verrouillé » : leurs listes restent libres.
+  // Boards created before the "Verrouillé" option: their lists stay free.
   if (boardColumns.length > 0 && !boardColumns.includes("is_locked")) {
     db.exec("ALTER TABLE boards ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0");
   }
 
-  // Tableaux de projets créés avant l'option « Privé » : même règle que pour
-  // ceux des tâches — ouverts à tous, sans auteur connu.
+  // Project boards created before the "Privé" option: same rule as for the
+  // task ones — open to all, without a known author.
   const projectBoardColumns = columns(db, "project_boards");
   if (projectBoardColumns.length > 0 && !projectBoardColumns.includes("owner_id")) {
     db.exec(
@@ -694,32 +693,32 @@ const catchUpBeforeViews = (db: Database): void => {
     db.exec("ALTER TABLE project_boards ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0");
   }
 
-  // Cartes créées avant leur fiche : elles n'ont pas encore de description.
+  // Cards created before their detail page: they have no description yet.
   if (cardColumns.length > 0 && !cardColumns.includes("description")) {
     db.exec("ALTER TABLE task_cards ADD COLUMN description TEXT NOT NULL DEFAULT ''");
   }
 
-  // Cartes créées avant l'échéance : elles n'en portent pas.
+  // Cards created before the due date: they carry none.
   if (cardColumns.length > 0 && !cardColumns.includes("due_date")) {
     db.exec("ALTER TABLE task_cards ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
 
-  // Catégories d'accès créées avant le verrou : elles restent ouvertes.
+  // Access categories created before the lock: they stay open.
   const accessCategoryColumns = columns(db, "access_categories");
   if (accessCategoryColumns.length > 0 && !accessCategoryColumns.includes("is_locked")) {
     db.exec("ALTER TABLE access_categories ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0");
   }
 
-  // Sections créées quand elles portaient encore un nom : la largeur seule les
-  // définit désormais, la colonne s'en va.
+  // Sections created when they still carried a name: the width alone defines
+  // them now, the column goes away.
   const accessSectionColumns = columns(db, "access_sections");
   if (accessSectionColumns.includes("name")) {
     db.exec("ALTER TABLE access_sections DROP COLUMN name");
   }
 
-  // Sections d'avant l'écart propre à chacune : elles reprennent celui que
-  // leur catégorie fixait pour toutes ses colonnes, s'il y en avait un, et la
-  // catégorie ne le porte plus.
+  // Sections from before each one's own gap: they take the one their category
+  // set for all its columns, if there was one, and the category no longer
+  // carries it.
   if (accessSectionColumns.length > 0 && !accessSectionColumns.includes("gap")) {
     db.exec("ALTER TABLE access_sections ADD COLUMN gap INTEGER NOT NULL DEFAULT 20");
     if (accessCategoryColumns.includes("gap")) {
@@ -733,10 +732,10 @@ const catchUpBeforeViews = (db: Database): void => {
     db.exec("ALTER TABLE access_categories DROP COLUMN gap");
   }
 
-  // Tickets créés quand ils n'avaient qu'un acteur : il passe
-  // dans la table des acteurs, et la colonne s'en va. SQLite refuse de retirer
-  // une colonne indexée ou citée par une clé étrangère : l'index tombe
-  // d'abord, et les clés étrangères sont suspendues le temps du retrait.
+  // Tickets created when they had only one actor: it moves into the actors
+  // table, and the column goes away. SQLite refuses to drop a column that is
+  // indexed or cited by a foreign key: the index is dropped first, and the
+  // foreign keys are suspended for the duration of the removal.
   if (columns(db, "support_requests").includes("actor_id")) {
     db.exec(
       `INSERT OR IGNORE INTO support_request_actors (request_id, user_id)
@@ -748,10 +747,10 @@ const catchUpBeforeViews = (db: Database): void => {
     });
   }
 
-  // Demandes d'avant l'import des e-mails : ni objet, ni expéditeur, ni
-  // statut « Ouvert ». SQLite ne sait pas retoucher une contrainte CHECK : la
-  // table est reconstruite, en conservant les identifiants pour que les
-  // acteurs, les étiquettes et les fils restent accrochés à leur demande.
+  // Requests from before email import: no subject, no sender, no "Ouvert"
+  // status. SQLite cannot modify a CHECK constraint: the table is rebuilt,
+  // keeping the identifiers so that actors, labels and threads stay attached
+  // to their request.
   if (!columns(db, "support_requests").includes("mail_id")) {
     withoutForeignKeys(
       db,
@@ -778,8 +777,8 @@ const catchUpBeforeViews = (db: Database): void => {
       }),
     );
   }
-  // Demandes d'avant les numéros de ticket : elles sont numérotées dans
-  // l'ordre où elles sont arrivées, et le compteur repart du dernier.
+  // Requests from before ticket numbers: they are numbered in the order they
+  // arrived, and the counter restarts from the last one.
   if (!columns(db, "support_requests").includes("number")) {
     db.transaction(() => {
       db.exec("ALTER TABLE support_requests ADD COLUMN number INTEGER NOT NULL DEFAULT 0");
@@ -794,11 +793,11 @@ const catchUpBeforeViews = (db: Database): void => {
       ).run(String(requests.length));
     })();
   }
-  // Étiquettes du support d'avant leur mise en commun : chaque société avait
-  // les siennes. Celles qui portent le même nom n'en font plus qu'une — la
-  // plus ancienne, qui reprend les demandes des autres —, et la table perd sa
-  // colonne de société. SQLite ne sait pas retirer une colonne citée par une
-  // clé étrangère : la table est reconstruite, identifiants conservés.
+  // Support labels from before they were pooled: each company had its own.
+  // Those with the same name become one — the oldest, which takes over the
+  // others' requests —, and the table loses its company column. SQLite cannot
+  // drop a column cited by a foreign key: the table is rebuilt, identifiers
+  // kept.
   if (columns(db, "support_labels").includes("company_id")) {
     withoutForeignKeys(
       db,
@@ -838,8 +837,8 @@ const catchUpBeforeViews = (db: Database): void => {
           DROP TABLE support_labels;
           ALTER TABLE support_labels_migration RENAME TO support_labels;
         `);
-        // Une seule liste désormais : les rangs repartent de zéro, dans
-        // l'ordre où elles se suivaient.
+        // A single list now: the ranks restart from zero, in the order they
+        // followed one another.
         const store = db.prepare("UPDATE support_labels SET position = ? WHERE id = ?");
         (
           db.prepare("SELECT id FROM support_labels ORDER BY position, id").all() as {
@@ -850,8 +849,8 @@ const catchUpBeforeViews = (db: Database): void => {
     );
   }
 
-  // Étiquettes d'avant le poids : toutes pèsent zéro, sauf celles d'urgence,
-  // qui reprennent le leur.
+  // Labels from before weight: all weigh zero, except urgency ones, which
+  // take theirs back.
   if (!columns(db, "support_labels").includes("weight")) {
     db.transaction(() => {
       db.exec("ALTER TABLE support_labels ADD COLUMN weight INTEGER NOT NULL DEFAULT 0");
@@ -862,16 +861,16 @@ const catchUpBeforeViews = (db: Database): void => {
     })();
   }
 
-  // Étiquettes de projets d'avant le poids : toutes pèsent zéro.
+  // Project labels from before weight: all weigh zero.
   if (!columns(db, "project_labels").includes("weight")) {
     db.exec("ALTER TABLE project_labels ADD COLUMN weight INTEGER NOT NULL DEFAULT 0");
   }
 
-  // Installation neuve : le support reçoit ses étiquettes — l'urgence, puis le
-  // canal —, et un e-mail entrant reçoit d'office « Sans urgence », « E-mail »
-  // et quinze jours ouvrés d'échéance. Le marqueur des étiquettes d'urgence,
-  // absent, dit que la base est neuve ; une base plus ancienne qui n'en a pas
-  // non plus a déjà des étiquettes, et passe à l'étape suivante.
+  // New installation: Support receives its labels — urgency, then channel —,
+  // and an incoming email automatically receives "Sans urgence", "E-mail" and
+  // fifteen working days of due date. The urgency labels marker, absent, says
+  // the database is new; an older database that has none either already has
+  // labels, and moves on to the next step.
   const empty =
     !db.prepare("SELECT 1 FROM settings WHERE key = 'support_urgency_labels'").get() &&
     !db.prepare("SELECT 1 FROM support_labels LIMIT 1").get();
@@ -896,9 +895,9 @@ const catchUpBeforeViews = (db: Database): void => {
     })();
   }
 
-  // Bases d'avant les étiquettes d'urgence : le support les reçoit une fois.
-  // Le réglage le note — une étiquette supprimée ensuite ne revient pas à
-  // chaque démarrage.
+  // Databases from before urgency labels: Support receives them once. The
+  // setting records it — a label deleted afterwards does not come back at
+  // every startup.
   const URGENCIES = "support_urgency_labels";
   if (!db.prepare("SELECT 1 FROM settings WHERE key = ?").get(URGENCIES)) {
     db.transaction(() => {
@@ -921,43 +920,43 @@ const catchUpBeforeViews = (db: Database): void => {
     db.exec("ALTER TABLE support_comments ADD COLUMN sender_name TEXT NOT NULL DEFAULT ''");
     db.exec("ALTER TABLE support_comments ADD COLUMN sender_email TEXT NOT NULL DEFAULT ''");
   }
-  // La note « Demande reçue par e-mail le … » ouvrait le fil des demandes
-  // importées : l'e-mail qui suit dit déjà tout, elle s'en va — copies des
-  // fusions comprises.
+  // The note "Demande reçue par e-mail le …" opened the thread of imported
+  // requests: the email that follows already says it all, so it goes away —
+  // merge copies included.
   db.prepare(
     `DELETE FROM support_comments
      WHERE system = 1 AND user_id IS NULL AND text LIKE 'Demande reçue par e-mail le %'`,
   ).run();
 
-  // Fils d'avant les commentaires internes : tout y était échange.
+  // Threads from before internal comments: everything in them was an exchange.
   if (!columns(db, "support_comments").includes("internal")) {
     db.exec("ALTER TABLE support_comments ADD COLUMN internal INTEGER NOT NULL DEFAULT 0");
   }
 
-  // Messages d'avant les réponses par e-mail : aucun n'est parti.
+  // Messages from before email replies: none was sent.
   if (!columns(db, "support_comments").includes("mail_status")) {
     db.exec("ALTER TABLE support_comments ADD COLUMN mail_status TEXT NOT NULL DEFAULT ''");
     db.exec("ALTER TABLE support_comments ADD COLUMN mail_to TEXT NOT NULL DEFAULT ''");
   }
 
-  // Messages d'avant les e-mails montrés tels quels : du HTML de l'éditeur,
-  // sans fichier ni identifiant d'e-mail.
+  // Messages from before emails were shown as is: the editor's HTML, without
+  // a file or an email identifier.
   if (!columns(db, "support_comments").includes("format")) {
     db.exec("ALTER TABLE support_comments ADD COLUMN mail_id TEXT NOT NULL DEFAULT ''");
     db.exec("ALTER TABLE support_comments ADD COLUMN format TEXT NOT NULL DEFAULT ''");
     db.exec("ALTER TABLE support_comments ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]'");
   }
-  // Réponses d'avant la copie : personne n'y était en copie.
+  // Replies from before the copy: nobody was in copy.
   if (!columns(db, "support_comments").includes("mail_cc")) {
     db.exec("ALTER TABLE support_comments ADD COLUMN mail_cc TEXT NOT NULL DEFAULT ''");
     db.exec("ALTER TABLE support_comments ADD COLUMN mail_bcc TEXT NOT NULL DEFAULT ''");
   }
-  // Messages d'avant les réponses par défaut : aucun n'est parti d'office.
+  // Messages from before default replies: none was sent automatically.
   if (!columns(db, "support_comments").includes("auto_event")) {
     db.exec("ALTER TABLE support_comments ADD COLUMN auto_event TEXT NOT NULL DEFAULT ''");
   }
-  // Réponses par défaut d'avant les évènements : aucune ne part d'office. Celles
-  // qui en portaient une liste gardent le premier.
+  // Default replies from before events: none is sent automatically. Those
+  // that carried a list of them keep the first one.
   if (!columns(db, "support_replies").includes("event")) {
     db.exec("ALTER TABLE support_replies ADD COLUMN event TEXT NOT NULL DEFAULT ''");
     if (columns(db, "support_replies").includes("events")) {
@@ -971,17 +970,17 @@ const catchUpBeforeViews = (db: Database): void => {
     db.exec("ALTER TABLE support_requests ADD COLUMN conversation_id TEXT NOT NULL DEFAULT ''");
   }
 
-  // Postes inventoriés avant qu'on affiche qui s'y connecte : la colonne
-  // s'ajoute vide, et le prochain inventaire de chaque poste la remplit.
+  // Workstations inventoried before we displayed who connects to them: the
+  // column is added empty, and each workstation's next inventory fills it.
   const assetColumns = columns(db, "assets");
   if (assetColumns.length > 0 && !assetColumns.includes("last_user")) {
     db.exec("ALTER TABLE assets ADD COLUMN last_user TEXT NOT NULL DEFAULT ''");
   }
 
-  // Postes datés de la réception de leur inventaire, avant qu'on prenne
-  // l'heure que l'agent y inscrit (ACCESSLOG/LOGDATE). Seule cette valeur est
-  // extraite du JSON : relire les inventaires entiers à chaque démarrage
-  // coûterait pour rien. Un poste déjà à jour n'est pas réécrit.
+  // Workstations dated from the receipt of their inventory, before we took
+  // the time the agent writes in it (ACCESSLOG/LOGDATE). Only this value is
+  // extracted from the JSON: rereading whole inventories at every startup
+  // would cost for nothing. A workstation already up to date is not rewritten.
   if (assetColumns.length > 0) {
     const inventoryDates = db
       .prepare(
@@ -996,10 +995,10 @@ const catchUpBeforeViews = (db: Database): void => {
     }
   }
 
-  // La notion de bâtiment a été retirée : un projet n'en cite plus, et la
-  // table s'en va avec la colonne. SQLite refuse de retirer une colonne
-  // indexée ou citée par une clé étrangère : l'index tombe d'abord, et les
-  // clés étrangères sont suspendues le temps du retrait.
+  // The notion of building has been removed: a project no longer cites one,
+  // and the table goes away with the column. SQLite refuses to drop a column
+  // that is indexed or cited by a foreign key: the index is dropped first,
+  // and the foreign keys are suspended for the duration of the removal.
   if (projectColumns.includes("building_id")) {
     withoutForeignKeys(db, () => {
       db.exec("DROP INDEX IF EXISTS idx_projects_building");
@@ -1009,20 +1008,20 @@ const catchUpBeforeViews = (db: Database): void => {
   db.exec("DROP INDEX IF EXISTS idx_buildings_company");
   db.exec("DROP TABLE IF EXISTS buildings");
 
-  // Catégories d'avant les jalons propres à chacune : elles reprennent ceux
-  // que le curseur d'avancement affichait jusque-là pour tous les projets.
+  // Categories from before milestones of their own: they take those that the
+  // progress slider displayed until then for all projects.
   const categoryColumnNames = columns(db, "categories");
   if (categoryColumnNames.length > 0 && !categoryColumnNames.includes("milestones")) {
     db.exec("ALTER TABLE categories ADD COLUMN milestones TEXT NOT NULL DEFAULT '[]'");
     db.prepare("UPDATE categories SET milestones = ?").run(JSON.stringify(HISTORICAL_MILESTONES));
   }
 
-  // Bases d'avant les types de jalons : les jalons vivaient sur la catégorie.
-  // Chaque liste de jalons distincte devient un type, et les projets reçoivent
-  // celui de leur catégorie : le curseur de chacun garde les marques qu'il
-  // montrait. Les catégories qui portent la même liste partagent le type —
-  // celles restées sur les jalons historiques, presque toutes, se retrouvent
-  // sous « Standard » ; une liste retouchée prend le nom de sa catégorie.
+  // Databases from before milestone types: milestones lived on the category.
+  // Each distinct milestone list becomes a type, and projects receive that of
+  // their category: each one's slider keeps the marks it showed. Categories
+  // that carry the same list share the type — those left on the historical
+  // milestones, almost all, end up under "Standard"; an edited list takes its
+  // category's name.
   if (!columns(db, "projects").includes("milestone_type_id")) {
     db.exec(
       "ALTER TABLE projects ADD COLUMN milestone_type_id INTEGER REFERENCES milestone_types(id) ON DELETE SET NULL",
@@ -1051,7 +1050,7 @@ const catchUpBeforeViews = (db: Database): void => {
         let typeId = byList.get(list);
         if (typeId === undefined) {
           const desired = list === historical ? "Standard" : category.name;
-          // Un nom déjà pris par une autre liste reçoit un numéro.
+          // A name already taken by another list gets a number.
           let name = desired;
           for (let n = 2; byName.get(name); n += 1) name = `${desired} ${n}`;
           typeId = Number(create.run(name, list).lastInsertRowid);
@@ -1062,16 +1061,16 @@ const catchUpBeforeViews = (db: Database): void => {
     })();
   }
 
-  // Bases d'avant les notifications de suppression.
+  // Databases from before deletion notifications.
   if (!columns(db, "notifications").includes("deleted")) {
     db.exec("ALTER TABLE notifications ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0");
   }
 
-  // Statuts d'avant « Nouveau » : « Non résolu » disparaît. Ses demandes
-  // passent « Ouvert » — elles avaient été vues, elles ne sont pas nouvelles —
-  // et la contrainte CHECK est réécrite. SQLite ne sait pas la retoucher : la
-  // table est reconstruite depuis sa propre définition, identifiants
-  // conservés ; ses index sont reposés ensuite (db/index.ts, INDEXES).
+  // Statuses from before "Nouveau": "Non résolu" disappears. Its requests
+  // become "Ouvert" — they had been seen, they are not new — and the CHECK
+  // constraint is rewritten. SQLite cannot modify it: the table is rebuilt
+  // from its own definition, identifiers kept; its indexes are put back
+  // afterwards (db/index.ts, INDEXES).
   const definition = (
     db
       .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'support_requests'")
@@ -1100,8 +1099,8 @@ const catchUpBeforeViews = (db: Database): void => {
         db.exec("DROP TABLE support_requests");
         db.exec("ALTER TABLE support_requests_migration RENAME TO support_requests");
 
-        // Un ordre d'onglets rangé perd « Non résolu » et reçoit « Nouveau » en
-        // tête : c'est là qu'arrivent les demandes.
+        // A stored tab order loses "Non résolu" and receives "Nouveau" at the
+        // head: that is where requests arrive.
         const existingRow = db
           .prepare("SELECT value FROM settings WHERE key = 'tab_order_support'")
           .get() as { value: string } | undefined;
@@ -1121,8 +1120,8 @@ const catchUpBeforeViews = (db: Database): void => {
     );
   }
 
-  // Indicateurs d'avant les sections des panneaux des statistiques : la
-  // colonne s'ajoute, puis ils rejoignent une première section.
+  // Indicators from before the statistics panels' sections: the column is
+  // added, then they join a first section.
   for (const table of ["support_indicators", "asset_indicators"]) {
     if (!columns(db, table).includes("section_id")) {
       db.exec(
@@ -1132,10 +1131,10 @@ const catchUpBeforeViews = (db: Database): void => {
   }
   attachIndicators(db);
 
-  // Sections d'avant les modes Projet et Tâche : la contrainte CHECK de leur
-  // panneau ne connaît que le Support et les Assets. SQLite ne sait pas la
-  // retoucher : la table est reconstruite depuis sa propre définition,
-  // identifiants conservés ; ses index sont reposés ensuite (INDEXES).
+  // Sections from before the Project and Task modes: the CHECK constraint of
+  // their panel only knows Support and Assets. SQLite cannot modify it: the
+  // table is rebuilt from its own definition, identifiers kept; its indexes
+  // are put back afterwards (INDEXES).
   const sections = (
     db
       .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'indicator_sections'")
@@ -1165,8 +1164,8 @@ const catchUpBeforeViews = (db: Database): void => {
     );
   }
 
-  // Sections des panneaux d'avant l'écart propre à chacune : elles reprennent
-  // celui que leur panneau fixait dans ses réglages, qui s'en va.
+  // Panel sections from before each one's own gap: they take the one their
+  // panel set in its settings, which goes away.
   if (!columns(db, "indicator_sections").includes("gap")) {
     db.exec("ALTER TABLE indicator_sections ADD COLUMN gap INTEGER NOT NULL DEFAULT 50");
     for (const panel of ["support", "assets", "projects", "tasks"]) {
@@ -1189,15 +1188,15 @@ const catchUpBeforeViews = (db: Database): void => {
     }
   }
 
-  // Bases d'avant les références des projets.
+  // Databases from before project references.
   if (!columns(db, "projects").includes("number")) {
     db.exec("ALTER TABLE projects ADD COLUMN number INTEGER NOT NULL DEFAULT 0");
   }
   numberReferences(db);
   setDefaultSections(db);
 
-  // Bases d'avant « Hérité » : toutes les sections étaient publiques. Les
-  // index d'avant ne couvraient pas le propriétaire : ils sont refaits.
+  // Databases from before "Hérité": all sections were public. The earlier
+  // indexes did not cover the owner: they are rebuilt.
   for (const [table, index] of [
     ["access_sections", "idx_access_sections_category"],
     ["indicator_sections", "idx_indicator_sections_panel"],
@@ -1210,18 +1209,18 @@ const catchUpBeforeViews = (db: Database): void => {
     }
   }
 
-  // Un onglet n'a de propriétaire que privé : ceux d'avant cette règle
-  // retenaient leur auteur même ouverts à tous, et seul cet auteur pouvait
-  // alors les fermer. Ils n'en ont plus.
+  // A tab has an owner only when private: those from before this rule kept
+  // their author even when open to all, and only that author could then close
+  // them. They no longer have one.
   for (const table of ["boards", "project_boards", "access_categories"]) {
     if (columns(db, table).includes("owner_id")) {
       db.exec(`UPDATE ${table} SET owner_id = NULL WHERE is_private = 0`);
     }
   }
 
-  // Les mots d'ouverture d'un fil étaient signés de qui avait créé l'élément :
-  // ils le sont désormais de Milo, c'est-à-dire d'aucun compte, et le
-  // créateur passe dans le texte.
+  // A thread's opening words were signed by whoever had created the element:
+  // they are now signed by Milo, that is, by no account, and the creator
+  // moves into the text.
   for (const [table, start] of [
     ["comments", "Projet créé le %"],
     ["card_comments", "Carte créée le %"],
@@ -1242,19 +1241,19 @@ const catchUpBeforeViews = (db: Database): void => {
   permissionsByWidgetType(db);
 };
 
-/** Posé une fois le Paramétrage sorti des rôles. */
+/** Set once Settings has been moved out of the roles. */
 const SETTINGS_OUTSIDE_ROLES = "settings_out_of_roles";
 
 /**
- * Le Paramétrage se réglait dans les rôles, société par société ; il se règle
- * désormais pour l'application, par utilisateur ou groupe. Chacun garde ce
- * qu'il avait : « Modifier » s'il était administrateur quelque part ou si l'un
- * de ses rôles le cochait, sinon « Voir » si l'un le cochait. Tous les modes
- * lui restent ouverts. Puis la case disparaît des rôles.
+ * Settings used to be set in the roles, company by company; it is now set for
+ * the application, per user or group. Each keeps what they had: "Modifier" if
+ * they were an administrator somewhere or if one of their roles ticked it,
+ * otherwise "Voir" if one ticked it. All modes remain open to them. Then the
+ * checkbox disappears from the roles.
  */
 export const splitSettings = (db: Database): void => {
   if (readSetting(db, SETTINGS_OUTSIDE_ROLES)) return;
-  // Une base neuve n'a jamais eu de rôles : il n'y a rien à en sortir.
+  // A new database never had roles: there is nothing to move out of them.
   if (columns(db, "role_assignments").length === 0) {
     writeSetting(db, SETTINGS_OUTSIDE_ROLES, true);
     return;
@@ -1280,7 +1279,7 @@ export const splitSettings = (db: Database): void => {
       try {
         checkedItems = (JSON.parse(row.permissions) as Record<string, unknown>)["settings"] ?? [];
       } catch {
-        // Un JSON illisible n'accordait rien.
+        // An unreadable JSON granted nothing.
       }
       const list = Array.isArray(checkedItems) ? checkedItems : [];
       const access = row.is_admin || list.includes("update") ? 2 : list.includes("view") ? 1 : 0;
@@ -1293,8 +1292,8 @@ export const splitSettings = (db: Database): void => {
          (workspace_id, principal_type, principal_id, principal_name, principal_email, settings, modes)
        VALUES (${FIRST_WORKSPACE}, ?, ?, ?, ?, ?, ?)`,
     );
-    // Les modes ouverts ne servent plus : les types de widgets les remplacent
-    // (permissionsParTypeDeWidget).
+    // The open modes are no longer used: widget types replace them
+    // (permissionsByWidgetType).
     const modes = "[]";
     for (const { row, access } of byPrincipal.values()) {
       insertRow.run(
@@ -1313,15 +1312,14 @@ export const splitSettings = (db: Database): void => {
   })();
 };
 
-/** Posé une fois les permissions passées aux types de widgets. */
+/** Set once permissions have moved to widget types. */
 const PERMISSIONS_BY_TYPE = "permissions_by_widget_kind";
 
 /**
- * Les rôles, société par société, et les modes ouverts laissent la place à
- * une permission par type de widget, commune à toutes les sociétés. Chacun de
- * ceux qui avaient un accès — une permission réglée, ou un rôle quelque part —
- * reçoit « Modifier » pour tous les types et garde son Paramétrage. Puis les
- * rôles s'en vont.
+ * Roles, company by company, and open modes give way to one permission per
+ * widget type, shared by all companies. Each of those who had access — a set
+ * permission, or a role somewhere — receives "Modifier" for all types and
+ * keeps their Settings. Then the roles go away.
  */
 export const permissionsByWidgetType = (db: Database): void => {
   if (!columns(db, "principal_permissions").includes("widgets")) {
@@ -1347,10 +1345,10 @@ export const permissionsByWidgetType = (db: Database): void => {
   })();
 };
 
-/** Posé une fois les modes devenus des vues. */
+/** Set once the modes have become views. */
 const VIEWS_AND_BOARDS = "views_and_boards";
 
-/** Les modes d'avant les vues, dans l'ordre de leur sélecteur, et le nom de leur vue. */
+/** The modes from before views, in the order of their switch, and the name of their view. */
 const STARTING_VIEWS = [
   ["access", "Accès"],
   ["projects", "Projets"],
@@ -1362,10 +1360,9 @@ const STARTING_VIEWS = [
 type PreviousMode = (typeof STARTING_VIEWS)[number][0];
 
 /**
- * Une table refaite d'après son propre CREATE, retouché par « retouche » —
- * pour changer la table qu'une clé étrangère désigne. Les lignes et leurs
- * identifiants passent tels quels. Les clés étrangères doivent être
- * suspendues (sansClesEtrangeres).
+ * A table rebuilt from its own CREATE, patched by "patch" — to change the
+ * table a foreign key points to. The rows and their identifiers pass as is.
+ * Foreign keys must be suspended (withoutForeignKeys).
  */
 const rebuildTable = (
   db: Database,
@@ -1382,8 +1379,8 @@ const rebuildTable = (
     `CREATE TABLE ${table}_migration`,
   );
   db.exec(newRow);
-  // Les colonnes de la nouvelle table : reprises de l'ancienne, ou calculées
-  // d'après elle (« calculees ») ; celles qui disparaissent restent derrière.
+  // The new table's columns: taken from the old one, or computed from it
+  // ("computed"); those that disappear stay behind.
   const old = new Set(columns(db, table));
   const keptKeys = columns(db, `${table}_migration`).filter(
     (c) => c in computed || old.has(c),
@@ -1396,23 +1393,22 @@ const rebuildTable = (
 };
 
 /**
- * Les modes deviennent des vues, et leurs onglets des tableaux :
+ * Modes become views, and their tabs become boards:
  *
- * - Accès : chaque catégorie devient un tableau, ses colonnes et ses
- *   éléments ses sections et ses widgets ;
- * - Projets : chaque tableau de projets devient un tableau, avec ses
- *   catégories, ses étiquettes et ses projets ;
- * - Tâches : chaque tableau de tâches le reste, et sa société devient son
- *   filtre ;
- * - Support et Assets : un tableau chacun, « Demandes » et « Postes ».
+ * - Access: each category becomes a board, its columns and elements its
+ *   sections and widgets;
+ * - Projects: each project board becomes a board, with its categories, its
+ *   labels and its projects;
+ * - Tasks: each task board stays one, and its company becomes its filter;
+ * - Support and Assets: one board each, "Demandes" and "Postes".
  *
- * Les sections des panneaux de Projets et de Tâches, communes à tous leurs
- * tableaux, sont recopiées dans chacun ; celles du Support et des Assets vont
- * à leur unique tableau. Les structures personnelles (« Hérité » décoché), les
- * ordres d'onglets propres à chacun et la vue d'ouverture suivent.
+ * The panel sections of Projects and Tasks, shared by all their boards, are
+ * copied into each; those of Support and Assets go to their single board.
+ * Personal structures ("Hérité" unticked), each one's own tab orders and the
+ * opening view follow.
  *
- * Sur une base neuve, les cinq vues naissent avec un tableau chacun, et la
- * liste qui va avec.
+ * On a new database, the five views are born with one board each, and the
+ * list that goes with it.
  */
 export const viewsAndBoards = (db: Database): void => {
   if (readSetting(db, VIEWS_AND_BOARDS)) return;
@@ -1440,7 +1436,7 @@ export const viewsAndBoards = (db: Database): void => {
   );
 };
 
-/** Une base neuve : un tableau par vue, avec la liste de la vue. */
+/** A new database: one board per view, with the view's list. */
 const setStartingBoards = (
   db: Database,
   views: Record<PreviousMode, number>,
@@ -1472,16 +1468,15 @@ const setStartingBoards = (
   }
 };
 
-/** Une base d'avant les vues : chaque mode devient la sienne. */
+/** A database from before views: each mode becomes its own. */
 const convertModes = (
   db: Database,
   views: Record<PreviousMode, number>,
   currentTime: string,
 ): void => {
-  // --- Les tableaux ---------------------------------------------------------
-  // La table des tableaux de tâches devient celle de tous les tableaux : ses
-  // lignes gardent leur identifiant, les listes et les étiquettes de tâches
-  // n'ont donc pas à bouger.
+  // --- The boards -----------------------------------------------------------
+  // The task boards table becomes that of all boards: its rows keep their
+  // identifier, so the lists and the task labels do not have to move.
   db.exec(`CREATE TABLE boards_migration (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     view_id INTEGER NOT NULL REFERENCES views(id) ON DELETE CASCADE,
@@ -1543,19 +1538,19 @@ const convertModes = (
   db.exec("DROP TABLE boards");
   db.exec("ALTER TABLE boards_migration RENAME TO boards");
 
-  // Les projets, leurs catégories et leurs étiquettes suivent leur tableau,
-  // et désignent désormais la table de tous les tableaux.
+  // Projects, their categories and their labels follow their board, and now
+  // point to the table of all boards.
   for (const table of ["categories", "projects", "project_labels"]) {
     const move = db.prepare(`UPDATE ${table} SET board_id = ? WHERE board_id = ?`);
-    // Du plus grand identifiant au plus petit n'aiderait pas : les nouveaux
-    // identifiants viennent après tous les anciens, aucun ne se recouvre.
+    // Going from the largest identifier to the smallest would not help: the new
+    // identifiers come after all the old ones, none overlaps.
     for (const [old, newValue] of projectBoards) move.run(newValue, old);
     rebuildTable(db, table, (sql) =>
       sql.replace(/REFERENCES\s+"?project_boards"?\s*\(id\)/gi, "REFERENCES boards(id)"),
     );
   }
 
-  // --- Les sections et les widgets -----------------------------------------
+  // --- Sections and widgets ------------------------------------------------
   const createSection = db.prepare(
     `INSERT INTO board_sections (board_id, width_unit, width_value, gap, position, owner_id, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -1592,7 +1587,7 @@ const convertModes = (
       ).lastInsertRowid,
     );
 
-  // Accès : les colonnes de chaque catégorie, et ce qu'elles portent.
+  // Access: each category's columns, and what they carry.
   if (columns(db, "access_sections").length > 0) {
     const sections = db
       .prepare("SELECT * FROM access_sections ORDER BY position, id")
@@ -1610,7 +1605,7 @@ const convertModes = (
     }
   }
 
-  // Les panneaux : leurs sections vont à chacun des tableaux qui les montrait.
+  // Panels: their sections go to each of the boards that showed them.
   const panels = [
     ["support", "support_indicators", [supportBoard]],
     ["assets", "asset_indicators", [assetsBoard]],
@@ -1643,9 +1638,9 @@ const convertModes = (
     }
   }
 
-  // --- Ce qui est propre à chaque compte -----------------------------------
-  // « Hérité » décoché : la portée d'un panneau ou d'une catégorie devient
-  // celle de chacun de ses tableaux.
+  // --- What is specific to each account ------------------------------------
+  // "Hérité" unticked: the scope of a panel or a category becomes that of
+  // each of its boards.
   const scopes: [string, number[]][] = [
     ["support", [supportBoard]],
     ["assets", [assetsBoard]],
@@ -1669,9 +1664,8 @@ const convertModes = (
   }
   db.exec("DELETE FROM personal_layouts WHERE scope NOT LIKE 'board:%'");
 
-  // L'ordre des onglets : celui des modes devient celui des vues, ceux des
-  // tableaux suivent leur nouvel identifiant. Les onglets fixes du Support et
-  // des Assets n'existent plus.
+  // Tab order: the modes' becomes the views', the boards' follow their new
+  // identifier. The fixed tabs of Support and Assets no longer exist.
   const orders = db.prepare("SELECT user_id, scope, ids FROM user_tab_orders").all() as {
     user_id: number;
     scope: string;
@@ -1709,8 +1703,8 @@ const convertModes = (
     } else if (scope === "access-categories") {
       add(user_id, `boards:${views.access}`, translate(list, accessBoards));
     } else if (scope.startsWith("boards:")) {
-      // Les tableaux de tâches se rangeaient société par société : ils se
-      // rangent désormais ensemble, dans la vue Tâches.
+      // Task boards used to be ordered company by company: they are now
+      // ordered together, in the Tâches view.
       add(user_id, `boards:${views.tasks}`, list);
     }
   }
@@ -1722,12 +1716,12 @@ const convertModes = (
     for (const [scope, ids] of scopes2) setOrder.run(account, scope, JSON.stringify(ids));
   }
 
-  // La vue d'ouverture : celle du mode d'ouverture.
+  // The opening view: that of the opening mode.
   for (const [mode, view] of Object.entries(views)) {
     db.prepare("UPDATE users SET default_view = ? WHERE default_mode = ?").run(String(view), mode);
   }
 
-  // --- Ce qui ne sert plus --------------------------------------------------
+  // --- What is no longer used -----------------------------------------------
   for (const table of [
     "access_blocks",
     "access_sections",
@@ -1745,7 +1739,7 @@ const convertModes = (
 
 const CONTEXTS = "contexts";
 
-/** L'ordre des contextes nés des sociétés ; les autres suivent, par nom. */
+/** The order of the contexts born from companies; the others follow, by name. */
 const CONTEXTS_ORDER = [
   "Les manufactures",
   "Arco Marketing",
@@ -1762,21 +1756,21 @@ interface PreviousCompany {
 }
 
 /**
- * Les sociétés deviennent des contextes, propres à chaque tableau :
+ * Companies become contexts, specific to each board:
  *
- * - chaque tableau reçoit un contexte par société, dans l'ordre dit ; une
- *   base sans société n'en reçoit aucun ;
- * - un projet passe au contexte de sa société dans son tableau, une carte à
- *   celui de la société qui filtrait son tableau — à défaut, au premier ;
- * - les demandes et les postes vont au tableau de la première liste de
- *   demandes, ou de postes, posée en public, au contexte de leur société ;
- *   une demande garde la boîte de sa société, d'où partent ses réponses ;
- * - les listes de demandes reçoivent les boîtes des sociétés, chacune vers
- *   son contexte ; les listes de postes, les tags déjà reconnus ;
- * - l'adresse d'envoi commune est celle d'Arco Marketing, à défaut la
- *   première boîte connue.
+ * - each board receives one context per company, in the stated order; a
+ *   database without companies receives none;
+ * - a project moves to its company's context in its board, a card to that of
+ *   the company that filtered its board — failing that, to the first;
+ * - requests and workstations go to the board of the first list of requests,
+ *   or of workstations, set as public, in their company's context; a request
+ *   keeps its company's mailbox, from which its replies are sent;
+ * - request lists receive the companies' mailboxes, each toward its context;
+ *   workstation lists, the already recognized tags;
+ * - the shared sending address is Arco Marketing's, failing that the first
+ *   known mailbox.
  *
- * Les sociétés et le filtre des tableaux disparaissent.
+ * Companies and the boards' filter disappear.
  */
 export const contexts = (db: Database): void => {
   if (readSetting(db, CONTEXTS)) return;
@@ -1797,7 +1791,7 @@ export const contexts = (db: Database): void => {
           : []
       ).sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, "fr"));
 
-      // Les contextes de chaque tableau, et la correspondance des sociétés.
+      // Each board's contexts, and the mapping of companies.
       db.exec(
         "CREATE TEMP TABLE correspondance (board_id INTEGER, company_id INTEGER, context_id INTEGER)",
       );
@@ -1811,8 +1805,8 @@ export const contexts = (db: Database): void => {
       for (const { id } of boardRows) {
         const alreadyThere = db.prepare("SELECT 1 FROM contexts WHERE board_id = ?").get(id);
         if (alreadyThere) continue;
-        // Sans société, le tableau n'a pas de contexte : on en ajoute depuis
-        // sa liste.
+        // Without a company, the board has no context: one is added from its
+        // list.
         if (companies.length === 0) continue;
         companies.forEach((company, position) => {
           const context = createContext.run(
@@ -1830,8 +1824,8 @@ export const contexts = (db: Database): void => {
         `COALESCE((SELECT context_id FROM temp.correspondance c
                    WHERE c.board_id = ${board} AND c.company_id = ${company}), ${first(board)})`;
 
-      // Le tableau qui reçoit les demandes, celui qui reçoit les postes : celui
-      // de la première liste posée en public.
+      // The board that receives requests, the one that receives workstations:
+      // that of the first list set as public.
       const widgetBoard = (type: string): number | null =>
         (
           db
@@ -1853,7 +1847,7 @@ export const contexts = (db: Database): void => {
       const boardColumns = columns(db, "boards");
       const boardsFilter = boardColumns.includes("company_id");
 
-      // Les projets.
+      // Projects.
       if (columns(db, "projects").includes("company_id"))
         rebuildTable(
           db,
@@ -1868,7 +1862,7 @@ export const contexts = (db: Database): void => {
           },
         );
 
-      // Les cartes : le contexte de la société qui filtrait leur tableau.
+      // Cards: the context of the company that filtered their board.
       if (!columns(db, "task_cards").includes("context_id")) {
         db.exec(
           "ALTER TABLE task_cards ADD COLUMN context_id INTEGER REFERENCES contexts(id) ON DELETE CASCADE",
@@ -1887,10 +1881,10 @@ export const contexts = (db: Database): void => {
         } WHERE context_id IS NULL`,
       );
 
-      // Les demandes : le contexte de leur société, dans le tableau des demandes.
+      // Requests: their company's context, in the requests board.
       const requestColumns = columns(db, "support_requests");
       if (requestColumns.includes("company_id")) {
-        // Sans tableau où aller, une demande n'a plus où se montrer.
+        // With no board to go to, a request has nowhere to show.
         if (requestsBoard === null) db.exec("DELETE FROM support_requests");
         rebuildTable(
           db,
@@ -1910,7 +1904,7 @@ export const contexts = (db: Database): void => {
         );
       }
 
-      // Les postes : le contexte de leur société, dans le tableau des postes.
+      // Workstations: their company's context, in the workstations board.
       if (columns(db, "assets").includes("company_id")) {
         rebuildTable(
           db,
@@ -1928,8 +1922,8 @@ export const contexts = (db: Database): void => {
         );
       }
 
-      // Les listes de demandes reçoivent les boîtes des sociétés ; celle qui
-      // n'en recevait qu'une la garde seule.
+      // Request lists receive the companies' mailboxes; the one that received
+      // only one keeps it alone.
       const configs = db
         .prepare(
           `SELECT w.id, w.type, w.config, s.board_id FROM board_widgets w
@@ -1960,7 +1954,7 @@ export const contexts = (db: Database): void => {
         try {
           config = JSON.parse(widget.config) as Record<string, unknown>;
         } catch {
-          // Une configuration illisible repart de zéro.
+          // An unreadable configuration starts again from zero.
         }
         const boardContext = (company: number): number | null =>
           (companyContext.get(widget.board_id, company) as { context_id: number } | undefined)
@@ -1989,7 +1983,7 @@ export const contexts = (db: Database): void => {
         writeConfig.run(JSON.stringify(config), widget.id);
       }
 
-      // L'adresse d'envoi commune.
+      // The shared sending address.
       const entra = (readSetting(db, "entra") ?? null) as Record<string, unknown> | null;
       if (entra && !entra.mail_sender) {
         const sender =
@@ -2002,7 +1996,7 @@ export const contexts = (db: Database): void => {
           });
       }
 
-      // Le filtre des tableaux et les sociétés disparaissent.
+      // The boards' filter and the companies disappear.
       if (boardsFilter) {
         rebuildTable(db, "boards", (sql) =>
           sql.replace(
@@ -2041,21 +2035,20 @@ interface ListWidget {
 }
 
 /**
- * Chaque widget de liste possède ses éléments : il reçoit une clé, que ses
- * projets, ses listes de tâches, ses demandes et ses postes portent aussi.
+ * Each list widget owns its elements: it receives a key, which its projects,
+ * its task lists, its requests and its workstations carry too.
  *
- * Les copies personnelles (« Hérité » décoché) gardent la clé du widget
- * public dont elles sont la copie — le même type, au même rang dans le
- * tableau. Les éléments vont au premier widget public de leur tableau ; une
- * demande va d'abord à celui qui reçoit sa boîte, un poste à celui qui
- * reçoit son tag.
+ * Personal copies ("Hérité" unticked) keep the key of the public widget they
+ * are a copy of — the same type, at the same rank in the board. Elements go
+ * to the first public widget of their board; a request goes first to the one
+ * that receives its mailbox, a workstation to the one that receives its tag.
  */
 export const listsPerWidget = (db: Database): void => {
   if (readSetting(db, LISTS_PER_WIDGET)) return;
   db.transaction(() => {
     for (const table of ["projects", "task_lists", "support_requests", "assets"]) {
-      // Une base neuve n'a pas encore ses postes : leur table naît après les
-      // migrations, avec la colonne (schema.ts).
+      // A new database does not have its workstations yet: their table is born
+      // after the migrations, with the column (schema.ts).
       if (columns(db, table).length === 0) continue;
       if (!columns(db, table).includes("list_key")) {
         db.exec(`ALTER TABLE ${table} ADD COLUMN list_key TEXT NOT NULL DEFAULT ''`);
@@ -2078,9 +2071,9 @@ export const listsPerWidget = (db: Database): void => {
       }
     };
     const write = db.prepare("UPDATE board_widgets SET config = ? WHERE id = ?");
-    // Les clés des widgets publics, par tableau et par type, dans l'ordre.
+    // The keys of the public widgets, by board and by type, in order.
     const publicIds = new Map<string, string[]>();
-    // Le rang atteint, par compte, tableau et type, pour les copies.
+    // The rank reached, by account, board and type, for the copies.
     const ranks = new Map<string, number>();
     const configs = new Map<number, Record<string, unknown>>();
     for (const widget of widgets) {
@@ -2117,7 +2110,7 @@ export const listsPerWidget = (db: Database): void => {
     insertRow("projects", "project.list", "board_id");
     insertRow("task_lists", "task.list", "board_id");
 
-    // Le widget public d'un tableau qui reçoit cette valeur, sinon le premier.
+    // The public widget of a board that receives this value, otherwise the first.
     const receiver = (boardId: number, type: string, field: string, key: string, value: string) =>
       widgets.find((w) => {
         if (w.owner_id !== null || w.board_id !== boardId || w.type !== type) return false;
@@ -2175,9 +2168,9 @@ interface DetailedColumn {
 }
 
 /**
- * Un tableau peut n'avoir aucun contexte : ses projets et ses demandes n'en
- * ont pas non plus. Le contexte devient facultatif, et une demande comme un
- * poste portent leur tableau — c'était leur contexte qui le disait.
+ * A board may have no context: its projects and requests have none either.
+ * The context becomes optional, and a request like a workstation carries its
+ * board — it was their context that said it.
  */
 export const optionalContexts = (db: Database): void => {
   if (readSetting(db, OPTIONAL_CONTEXTS)) return;
@@ -2222,11 +2215,11 @@ export const optionalContexts = (db: Database): void => {
 const CONFIRMED_MAILBOXES = "mailboxes_confirmed_by_list";
 
 /**
- * Les boîtes de support se confirment liste par liste (lib/optin.ts). Celles
- * qu'une liste relevait avant la confirmation le restent, confirmées d'office
- * — depuis toujours, pour que leur relève ne s'arrête ni ne saute rien. Une
- * base passée par la confirmation par adresse (mailbox_optins) en garde
- * l'état, recopié pour chaque liste qui dit l'adresse.
+ * Support mailboxes are confirmed list by list (lib/optin.ts). Those a list
+ * was fetching before confirmation stay so, confirmed automatically — since
+ * always, so that their fetching neither stops nor skips anything. A database
+ * that went through confirmation by address (mailbox_optins) keeps its state,
+ * copied for each list that states the address.
  */
 export const confirmedMailboxes = (db: Database): void => {
   if (readSetting(db, CONFIRMED_MAILBOXES)) return;
@@ -2251,8 +2244,8 @@ export const confirmedMailboxes = (db: Database): void => {
     );
     const currentTime = new Date().toISOString();
     for (const { config } of configs) {
-      // Les clés d'avant leur traduction (« liste », « boites ») : cette étape
-      // ne passe que sur une base qui ne l'est pas encore (englishValues).
+      // The keys from before their translation ("liste", "boites"): this step
+      // only runs on a database that is not yet translated (englishValues).
       let readValue: { boites?: { email?: unknown }[]; liste?: unknown } = {};
       try {
         readValue = JSON.parse(config) as typeof readValue;
@@ -2264,8 +2257,8 @@ export const confirmedMailboxes = (db: Database): void => {
       for (const mailbox of Array.isArray(readValue.boites) ? readValue.boites : []) {
         const email = typeof mailbox?.email === "string" ? mailbox.email.trim().toLowerCase() : "";
         if (!email) continue;
-        // Par adresse, seules celles qui étaient confirmées le restent ; sans
-        // confirmation du tout, toutes l'étaient de fait.
+        // By address, only those that were confirmed stay so; without any
+        // confirmation at all, all of them were in effect.
         const confirmed = byAddress ? (before.get(email) ?? "") : "1970-01-01T00:00:00.000Z";
         insertRow.run(list, email, confirmed, currentTime);
       }
@@ -2276,10 +2269,10 @@ export const confirmedMailboxes = (db: Database): void => {
 };
 
 /**
- * Les marqueurs des rattrapages, renommés en anglais avec le code. Passe en
- * tout premier (migrer) : chaque rattrapage se reconnaît à son marqueur, et
- * ne doit pas repasser sur une base qui le portait sous son ancien nom. Une
- * base qui a déjà les deux garde le nouveau.
+ * The catch-up markers, renamed to English along with the code. Runs first
+ * of all (migrate): each catch-up is recognized by its marker, and must not
+ * run again on a database that carried it under its old name. A database that
+ * already has both keeps the new one.
  */
 const LEGACY_SETTING_KEYS: Record<string, string> = {
   references_communes: SHARED_REFERENCES,
@@ -2295,7 +2288,7 @@ const LEGACY_SETTING_KEYS: Record<string, string> = {
   listes_par_widget: LISTS_PER_WIDGET,
   contextes_facultatifs: OPTIONAL_CONTEXTS,
   boites_confirmees_par_liste: CONFIRMED_MAILBOXES,
-  // Le marqueur d'une étape d'avant la confirmation par liste, qui n'existe plus.
+  // The marker of a step from before per-list confirmation, which no longer exists.
   boites_confirmees: "mailboxes_confirmed",
 };
 
@@ -2321,10 +2314,10 @@ const renameSettingKeys = (db: Database): void => {
   })();
 };
 
-/** Posé une fois les valeurs rangées en français traduites (englishValues). */
+/** Set once the values stored in French have been translated (englishValues). */
 const ENGLISH_VALUES = "english_values";
 
-/** Les paramètres d'un lien vers un élément, avant et après (shared, follow.ts). */
+/** The parameters of a link to an element, before and after (shared, follow.ts). */
 const LEGACY_LINK_PARAMS: Record<string, string> = {
   projet: QUERY_PARAMS.project,
   carte: QUERY_PARAMS.card,
@@ -2333,7 +2326,7 @@ const LEGACY_LINK_PARAMS: Record<string, string> = {
   acces: QUERY_PARAMS.access,
 };
 
-/** Les liens « ?carte=12 » d'un HTML, réécrits « ?card=12 ». */
+/** The "?carte=12" links of an HTML, rewritten "?card=12". */
 const migrateLinks = (html: string): string =>
   html.replace(
     /\?(projet|carte|demande|poste|acces)=(\d+)/g,
@@ -2341,23 +2334,22 @@ const migrateLinks = (html: string): string =>
   );
 
 /**
- * Le code est passé du français à l'anglais : ce qu'il rangeait en français
- * se range désormais en anglais, et ce qui l'était déjà se traduit une fois.
+ * The code went from French to English: what it stored in French is now
+ * stored in English, and what already was gets translated once.
  *
- *   - Les réglages : « deconnecte » d'Entra, « expire » des abonnements aux
- *     boîtes du support.
- *   - La configuration de chaque widget (migrateWidgetConfig, shared) : ses
- *     clés et ses valeurs à choix.
- *   - La forme « periode » d'une échéance, qui devient « period ».
- *   - Les variables des modèles du Support, « {{demande.numero}} » devenant
- *     « {{ticket.number}} » (migrateSupportTemplate, shared).
- *   - Les liens vers un élément dans les descriptions (« ?carte=12 »), qui
- *     s'ouvrent encore sous leur ancien nom, et les adresses des médias
- *     (« /api/medias/… »), encore servies elles aussi : les e-mails déjà
- *     partis les citent.
+ *   - The settings: Entra's "deconnecte", the "expire" of the support mailbox
+ *     subscriptions.
+ *   - Each widget's configuration (migrateWidgetConfig, shared): its keys and
+ *     its choice values.
+ *   - The "periode" form of a due date, which becomes "period".
+ *   - The variables of the Support templates, "{{demande.numero}}" becoming
+ *     "{{ticket.number}}" (migrateSupportTemplate, shared).
+ *   - The links to an element in descriptions ("?carte=12"), which still
+ *     open under their old name, and the media addresses ("/api/medias/…"),
+ *     also still served: emails already sent cite them.
  *
- * Les rattrapages d'avant lisent et écrivent les anciennes clés : celui-ci
- * passe après eux, en dernier.
+ * The earlier catch-ups read and write the old keys: this one runs after
+ * them, last.
  */
 const englishValues = (db: Database): void => {
   if (readSetting(db, ENGLISH_VALUES)) return;
@@ -2396,7 +2388,7 @@ const englishValues = (db: Database): void => {
       try {
         config = JSON.parse(widget.config);
       } catch {
-        // Une configuration illisible reste telle quelle : le widget la comble.
+        // An unreadable configuration stays as it is: the widget fills it in.
         continue;
       }
       const migrated = JSON.stringify(migrateWidgetConfig(widget.type, config));
@@ -2429,8 +2421,8 @@ const englishValues = (db: Database): void => {
       }
     }
 
-    // Les adresses des médias, où qu'elles soient citées : descriptions,
-    // commentaires, modèles, configurations des widgets Images…
+    // The media addresses, wherever they are cited: descriptions,
+    // comments, templates, Images widget configurations…
     const tables = (
       db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")

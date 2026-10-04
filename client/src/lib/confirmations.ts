@@ -1,34 +1,34 @@
-// L'état de confirmation des boîtes d'une liste de demandes (server,
-// lib/optin.ts), lu pour ses adresses et relu régulièrement : une adresse
-// peut être confirmée depuis un autre écran à tout moment. Le tiroir de la
-// liste et la liste elle-même le lisent ; une confirmation faite dans Milo
-// prévient les autres lecteurs (signalerConfirmation) sans attendre.
+// The confirmation state of a requests list's inboxes (server,
+// lib/optin.ts), read for its addresses and re-read regularly: an address
+// can be confirmed from another screen at any time. The list's drawer
+// and the list itself read it; a confirmation made in Milo
+// notifies the other readers (signalConfirmation) without waiting.
 
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { MailboxOptinState } from "@milo/shared";
 
-/** Le temps entre deux lectures. */
+/** The time between two reads. */
 const RELOAD_INTERVAL = 10_000;
 
 const EVENT = "milo:confirmations";
 
 /**
- * Les derniers états lus, par liste et adresses : un widget qui revient —
- * un autre onglet, puis celui-ci — les retrouve aussitôt, sans repasser par
- * un état qu'il n'a pas.
+ * The last states read, by list and addresses: a widget that comes back —
+ * another tab, then this one — finds them at once, without going through
+ * a state it does not have.
  */
 const remembered = new Map<string, Map<string, MailboxOptinState>>();
 
-/** Une adresse vient d'être confirmée : chacun relit. */
+/** An address has just been confirmed: everyone re-reads. */
 export const signalConfirmation = (): void => {
   window.dispatchEvent(new Event(EVENT));
 };
 
 /**
- * Les états des adresses de la liste « liste », par adresse en minuscules.
- * « lus » reste faux jusqu'à la première réponse : rien ne se conclut avant.
- * Sans liste — un widget pas encore enregistré —, il n'y a rien à lire.
+ * The states of the addresses of list "list", by lowercase address.
+ * "isRead" stays false until the first response: nothing is concluded before.
+ * Without a list — a widget not yet saved —, there is nothing to read.
  */
 export const useConfirmations = (list: string, emails: string[]) => {
   const key = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))]
@@ -61,9 +61,9 @@ export const useConfirmations = (list: string, emails: string[]) => {
           setLoaded(true);
         })
         .catch(() => {
-          /* sans les états, rien ne se conclut : la prochaine lecture dira */
+          /* without the states, nothing is concluded: the next read will tell */
         });
-    // Tout de suite si rien n'est connu ; sinon, le temps que la saisie se pose.
+    // Right away if nothing is known; otherwise, once the input has settled.
     const delay = setTimeout(read, known ? 300 : 0);
     const interval = setInterval(read, RELOAD_INTERVAL);
     window.addEventListener(EVENT, read);

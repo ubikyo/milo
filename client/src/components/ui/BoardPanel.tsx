@@ -13,26 +13,26 @@ import type { BoardWidget, Id, IndicatorSection } from "@milo/shared";
 
 interface BoardPanelProps {
   boardId: Id;
-  /** « null » tant que les sections du tableau ne sont pas lues. */
+  /** "null" until the board's sections are read. */
   sections: IndicatorSection[] | null;
   widgets: BoardWidget[];
-  /** Ce que le tableau met à la disposition de ses widgets, filtré par lui. */
+  /** What the board makes available to its widgets, filtered by it. */
   data: BoardData;
   onChanged: () => void | Promise<void>;
-  /** Verrouillé dans cette fenêtre, ou faute de droit : l'écran se lit seulement. */
+  /** Locked in this window, or for lack of a right: the screen is read-only. */
   locked: boolean;
-  /** Déverrouiller le tableau dans cette fenêtre ; absent quand il est figé faute de droit. */
+  /** Unlock the board in this window; absent when it is frozen for lack of a right. */
   onUnlock?: () => void | Promise<void>;
-  /** « Créer une tâche », au clic droit sur un lien. */
+  /** "Créer une tâche", on right-click of a link. */
   onCreateTask?: (widget: BoardWidget) => void;
-  /** « Créer un ticket », au clic droit sur un lien. */
+  /** "Créer un ticket", on right-click of a link. */
   onCreateSupportRequest?: (widget: BoardWidget) => void;
 }
 
 /**
- * Les sections d'un tableau et ses widgets — tous ceux du registre, quel que
- * soit leur type : une liste de projets, un tableau de tâches, des liens, des
- * indicateurs. Chacun lit les données du tableau, filtrées par lui.
+ * A board's sections and its widgets — all those of the registry, whatever
+ * their type: a project list, a task board, links,
+ * indicators. Each reads the board's data, filtered by it.
  */
 export default function BoardPanel({
   boardId,
@@ -72,8 +72,8 @@ export default function BoardPanel({
         to: CONVERSIONS,
         convert: (widget, type) => api.updateBoardWidget(widget.id, { type }),
       }}
-      // Seul un lien désigne quelque chose sur quoi travailler : un titre, un
-      // numéro ou une horloge n'appellent ni tâche ni ticket.
+      // Only a link designates something to work on: a title, a
+      // number or a clock calls for neither a task nor a ticket.
       extraMenu={(widget, close) =>
         widget.type === "link" && (onCreateTask || onCreateSupportRequest) ? (
           <>

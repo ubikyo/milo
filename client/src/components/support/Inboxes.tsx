@@ -42,23 +42,23 @@ import { MAILBOXES } from "./SupportRequestsList";
 import type { IndicatorConfigProps } from "../../indicators/types";
 import { listKey } from "@milo/shared";
 
-// Les boîtes d'où une liste de tickets reçoit ses tickets, en lignes comme les
-// tags de l'agent GLPI (ChampReception) : une ligne par adresse, avec le
-// contexte où vont ses tickets et l'état de sa confirmation. Une adresse neuve reçoit
-// un code à quatre chiffres à l'enregistrement du widget, et ne se relève
-// qu'une fois ce code saisi par le menu « Actions », qui le renvoie aussi aux
-// adresses qui attendent (server, lib/optin.ts).
+// The inboxes from which a ticket list receives its tickets, in rows like the
+// GLPI agent's tags (ReceptionField): one row per address, with the
+// context where its tickets go and its confirmation state. A new address
+// receives a four-digit code when the widget is saved, and is only polled
+// once that code is entered via the "Actions" menu, which also resends it to
+// the addresses that are waiting (server, lib/optin.ts).
 
-/** Une boîte : son adresse, et le contexte de ses demandes. */
+/** An inbox: its address, and the context of its requests. */
 interface Mailbox {
   email: string;
   context_id: number | null;
 }
 
-/** La clé de la configuration qui dit de supprimer les e-mails relevés (server, receptions.ts). */
+/** The config key telling whether to delete the polled e-mails (server, inboxes.ts). */
 const DELETION = "delete_after_import";
 
-/** La place de l'état, au bout de la ligne : les badges s'alignent. */
+/** The state's slot, at the end of the row: the badges line up. */
 const STATE_WIDTH = 76;
 
 export const looksLikeAddress = (email: string) =>
@@ -70,7 +70,7 @@ const mailboxesOf = (config: unknown): Mailbox[] =>
     context_id: typeof r.context_id === "number" ? r.context_id : null,
   }));
 
-/** L'état d'une adresse : confirmée, ou en attente — une adresse pas encore enregistrée aussi. */
+/** An address's state: confirmed, or pending — an address not yet saved too. */
 function State({ confirmed }: { confirmed: boolean }) {
   return (
     <Box
@@ -79,13 +79,13 @@ function State({ confirmed }: { confirmed: boolean }) {
         flexShrink: 0,
         display: "flex",
         justifyContent: "flex-end",
-        // Le bout de la ligne n'est qu'à RETRAIT_LIGNE : l'étiquette, plus
-        // basse qu'un champ, s'en écarte jusqu'à RETRAIT_NOM, l'air qu'a la
-        // valeur à gauche.
+        // The row's end is only at ROW_INSET: the label, lower
+        // than a field, moves away from it up to NAME_INSET, the air the
+        // value has on the left.
         paddingRight: NAME_INSET - ROW_INSET,
       }}
     >
-      {/* L'étiquette des états de l'application (EntraTab) : pleine, verte ou rouge. */}
+      {/* The label of the application's states (EntraTab): filled, green or red. */}
       <Badge
         color={confirmed ? "green" : RED}
         variant="filled"
@@ -100,21 +100,21 @@ function State({ confirmed }: { confirmed: boolean }) {
   );
 }
 
-/** Les boîtes de réception d'une liste de demandes, et ce qu'elle fait des e-mails relevés. */
+/** The inboxes of a request list, and what it does with the polled e-mails. */
 export default function Inboxes({
   config,
   onChange,
 }: IndicatorConfigProps) {
   const mailboxes = mailboxesOf(config);
-  // La liste que le widget désigne : ses confirmations sont les siennes. Un
-  // widget pas encore enregistré n'en a pas — tout y attend.
+  // The list the widget designates: its confirmations are its own. A
+  // widget not yet saved has none — everything waits there.
   const list = listKey(config);
   const [retrying, setRetry] = useState(false);
   const [toConfirm, setToConfirm] = useState(false);
   const targetActions = useContext(DrawerActionsContext);
 
-  // Les états de confirmation, relus régulièrement : la boîte peut confirmer
-  // pendant que le tiroir est ouvert.
+  // The confirmation states, re-read regularly: the inbox may confirm
+  // while the drawer is open.
   const addresses = mailboxes
     .map((b) => b.email.trim().toLowerCase())
     .filter(looksLikeAddress);
@@ -142,7 +142,7 @@ export default function Inboxes({
 
   return (
     <Stack gap="xs">
-      {/* Le menu « Actions » se pose au bout de la rangée d'onglets du tiroir. */}
+      {/* The "Actions" menu sits at the end of the drawer's tab row. */}
       {targetActions &&
         createPortal(
           <Menu
@@ -158,7 +158,7 @@ export default function Inboxes({
                 size="xs"
                 rightSection={<IconChevronDown size={14} />}
                 loading={retrying}
-                // Rien à confirmer ni à relancer sans adresse en attente.
+                // Nothing to confirm or resend without a pending address.
                 disabled={pending.length === 0}
                 style={ACTIONS_BUTTON_STYLE}
               >
@@ -201,7 +201,7 @@ export default function Inboxes({
         icon={IconMail}
         empty="Aucune adresse e-mail"
         normalizeValue={(value) => value.trim()}
-        // Une adresse pas encore lisible n'a pas d'état à montrer.
+        // An address not yet readable has no state to show.
         state={(email) => (email.trim() ? <State confirmed={confirmed(email)} /> : null)}
         config={config}
         onChange={onChange}
@@ -228,8 +228,8 @@ export default function Inboxes({
 }
 
 /**
- * La saisie du code à quatre chiffres reçu par la boîte.
- * Plusieurs adresses attendent : on choisit d'abord laquelle.
+ * Entering the four-digit code received by the inbox.
+ * Several addresses are waiting: first choose which one.
  */
 function ConfirmModal({
   list,
@@ -247,7 +247,7 @@ function ConfirmModal({
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
-  // Chaque ouverture repart de zéro, sur la première adresse qui attend.
+  // Each opening starts from scratch, on the first address that is waiting.
   useEffect(() => {
     if (!opened) return;
     setEmail(addresses[0] ?? null);
@@ -313,7 +313,7 @@ function ConfirmModal({
             autoFocus
             value={code}
             onChange={setCode}
-            // Le quatrième chiffre posé, la confirmation part d'elle-même.
+            // Once the fourth digit is entered, the confirmation is sent by itself.
             onComplete={(entered) => void confirm(entered)}
             error={Boolean(error)}
             disabled={sending}

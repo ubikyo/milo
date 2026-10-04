@@ -1,7 +1,7 @@
-// Les descriptions sont saisies dans l'éditeur et gardées en HTML. Ce HTML est
-// réécrit avant d'être enregistré : il ne doit contenir que ce que l'éditeur
-// sait produire, sans quoi un compte pourrait y glisser du script. Les
-// commentaires, eux, sont du texte simple et ne passent pas par ici.
+// Descriptions are entered in the editor and kept as HTML. This HTML is
+// rewritten before being saved: it must contain only what the editor can
+// produce, otherwise an account could slip script into it. Comments, for
+// their part, are plain text and do not go through here.
 
 import { DomUtils, parseDocument } from "htmlparser2";
 import type { ChildNode, Element } from "domhandler";
@@ -17,21 +17,21 @@ const RICH_TAGS = [
 const sanitize = (html: unknown): string =>
   sanitizeHtml(String(html ?? ""), {
     allowedTags: RICH_TAGS,
-    // Un lien garde son adresse et s'ouvre ailleurs ; rien d'autre ne passe,
-    // et surtout aucun attribut « on… ».
+    // A link keeps its address and opens elsewhere; nothing else gets
+    // through, and above all no "on…" attribute.
     allowedAttributes: { a: ["href", "target", "rel"], img: ["src", "alt"] },
     allowedSchemes: ["http", "https", "mailto"],
-    // Un lien sans protocole connu perd son adresse plutôt que la page.
+    // A link without a known protocol loses its address rather than the page.
     allowProtocolRelative: false,
-    // Une image ne vient que de nos propres médias : c'est là que les images
-    // collées sont déposées. Une image d'ailleurs — y compris une « data: »
-    // qui ferait grossir la ligne sans fin — est jetée avec sa balise.
+    // An image only comes from our own media: that is where pasted images are
+    // stored. An image from elsewhere — including a "data:" one that would
+    // make the row grow without end — is dropped along with its tag.
     exclusiveFilter: (frame) => frame.tag === "img" && !isMediaAddress(frame.attribs["src"]),
   });
 
 /**
- * Un texte brut — le corps d'un e-mail, un message d'avant l'éditeur — mis en
- * HTML : échappé, un paragraphe par bloc, un saut de ligne par ligne.
+ * Plain text — an e-mail body, a message from before the editor — turned
+ * into HTML: escaped, one paragraph per block, one line break per line.
  */
 export const textToHtml = (text: string): string =>
   text
@@ -49,11 +49,11 @@ export const textToHtml = (text: string): string =>
     .join("");
 
 /**
- * Un éditeur vide rend « <p></p> » : ce n'est pas du contenu. Sert aussi bien
- * à remettre une description à plat qu'à savoir si une carte en porte une.
+ * An empty editor returns "<p></p>": that is not content. Serves equally to
+ * flatten a description and to know whether a card carries one.
  *
- * Une image en est : une description qui ne montre qu'une photo n'est pas une
- * description vide, et la carte doit porter sa pastille comme une autre.
+ * An image counts: a description that shows only a photo is not an empty
+ * description, and the card must carry its badge like any other.
  */
 export const hasContent = (html: unknown): boolean => {
   const text = String(html ?? "");
@@ -62,8 +62,8 @@ export const hasContent = (html: unknown): boolean => {
 };
 
 /**
- * La description telle qu'on la garde. Sans cette remise à plat, une fiche
- * sans texte compterait tout de même comme ayant une description.
+ * The description as it is kept. Without this flattening, a record without
+ * text would still count as having a description.
  */
 export const cleanDescription = (html: unknown): string => {
   const clean = sanitize(html);
@@ -71,29 +71,30 @@ export const cleanDescription = (html: unknown): string => {
 };
 
 /**
- * Deux descriptions qui disent la même chose. La description reçue est déjà
- * remise à plat ; celle en base ne l'est pas forcément — les fiches d'avant
- * cette remise à plat gardent le « <p></p> » d'un éditeur vide, ou un espace
- * insécable encore écrit « &nbsp; ». On compare donc les deux remises à plat,
- * sans quoi ouvrir une de ces fiches pour la relire la redaterait.
+ * Two descriptions that say the same thing. The received description is
+ * already flattened; the one in the database is not necessarily — records
+ * from before this flattening keep the "<p></p>" of an empty editor, or a
+ * non-breaking space still written "&nbsp;". So both are flattened before
+ * comparing, otherwise opening one of these records to reread it would
+ * change its date.
  *
- * Reste le cas des fiches d'avant l'éditeur : leur texte n'a aucune balise, et
- * l'éditeur le leur rend dans un paragraphe. C'est lui qui l'a mis là, pas
- * l'utilisateur : la nouvelle forme s'enregistre, mais la date ne bouge pas
- * pour autant.
+ * There remains the case of records from before the editor: their text has
+ * no tags, and the editor gives it back to them wrapped in a paragraph. The
+ * editor put it there, not the user: the new form is saved, but the date does
+ * not move for that.
  */
 export const sameDescription = (received: string, existing: string): boolean => {
   const clean = cleanDescription(existing);
   return received === clean || (!/<[a-z/!]/i.test(clean) && received === `<p>${clean}</p>`);
 };
 
-// --- E-mails reçus ---------------------------------------------------------
-// Un e-mail reçu se montre tel que son expéditeur l'a écrit : ses styles, ses
-// tableaux, ses polices, ses images. Il ne passe donc pas par la règle de
-// l'éditeur, qui n'en garderait presque rien, mais par la sienne : tout ce qui
-// met en page reste, tout ce qui s'exécute part — scripts, attributs « on… »,
-// formulaires, cadres. Le client le montre de plus dans un cadre isolé, sans
-// script (SupportMessages).
+// --- Received e-mails ---------------------------------------------------------
+// A received e-mail is shown as its sender wrote it: its styles, tables,
+// fonts, images. It therefore does not go through the editor's rule, which
+// would keep almost nothing of it, but through its own: everything that lays
+// out the page stays, everything that executes goes — scripts, "on…"
+// attributes, forms, frames. The client also shows it in an isolated frame,
+// without script (SupportMessages).
 
 const EMAIL_TAGS = [
   ...RICH_TAGS,
@@ -110,13 +111,13 @@ const EMAIL_ATTRIBUTES = [
   "colspan", "rowspan", "title", "role", "type", "start", "span",
 ];
 
-/** Au-delà, le corps est coupé : un fil de réponses ne grossit pas sans fin. */
+/** Beyond this, the body is cut: a thread of replies does not grow without end. */
 const EMAIL_LENGTH_MAX = 2 * 1024 * 1024;
 
 /**
- * Le corps d'un e-mail tel qu'on le garde. « images » donne, pour chaque
- * identifiant « cid: » d'une image intégrée, l'adresse où elle a été rangée.
- * Un e-mail en texte brut garde ses lignes telles quelles.
+ * The body of an e-mail as it is kept. "images" gives, for each "cid:"
+ * identifier of an embedded image, the address where it was stored. A
+ * plain-text e-mail keeps its lines as they are.
  */
 export const cleanEmail = (
   body: string,
@@ -130,7 +131,7 @@ export const cleanEmail = (
   }
   return sanitizeHtml(raw, {
     allowedTags: EMAIL_TAGS,
-    // Les feuilles de style de l'e-mail, qui le mettent en page.
+    // The e-mail's style sheets, which lay it out.
     allowVulnerableTags: true,
     allowedAttributes: {
       "*": EMAIL_ATTRIBUTES,
@@ -141,14 +142,14 @@ export const cleanEmail = (
     allowedSchemesByTag: { img: ["http", "https", "data", "cid"] },
     allowProtocolRelative: false,
     transformTags: {
-      // Un lien s'ouvre à côté de Milo, jamais à sa place.
+      // A link opens beside Milo, never in its place.
       a: (tagName, attribs) => ({
         tagName,
         attribs: { ...attribs, target: "_blank", rel: "noopener noreferrer" },
       }),
-      // Une image intégrée pointe vers le fichier rapatrié ; une image
-      // intégrée qu'on n'a pas pu rapatrier perd sa source plutôt que de
-      // montrer une adresse que le navigateur ne sait pas lire.
+      // An embedded image points to the fetched file; an embedded image that
+      // could not be fetched loses its source rather than showing an address
+      // the browser cannot read.
       img: (tagName, attribs) => {
         const src = attribs["src"] ?? "";
         if (!/^cid:/i.test(src)) return { tagName, attribs };
@@ -162,10 +163,9 @@ export const cleanEmail = (
 };
 
 /**
- * Où commence l'historique qu'une réponse cite : le bloc qu'Outlook — sur
- * ordinateur, sur le web ou sur mobile — pose avant le message auquel on
- * répond, la citation de Mail d'Apple, celle de Gmail. Graph préfixe parfois
- * les identifiants d'un « x_ ».
+ * Where the history that a reply cites begins: the block Outlook — on
+ * desktop, web or mobile — places before the message being answered, Apple
+ * Mail's quote, Gmail's. Graph sometimes prefixes the identifiers with "x_".
  */
 const HISTORY_START = /^(x_)?(appendonsend|divRplyFwdMsg|mail-editor-reference-message-container)$/;
 
@@ -175,20 +175,21 @@ const opensHistory = (e: Element): boolean =>
   /(^|\s)gmail_quote(\s|$)/.test(e.attribs["class"] ?? "");
 
 /**
- * Le corps d'une réponse sans l'historique qu'elle cite : tout ce qui suit le
- * premier repère, lui compris, est retiré. Un corps où rien ne resterait est
- * rendu tel quel — mieux vaut un historique en trop qu'un message vide.
+ * The body of a reply without the history it cites: everything after the
+ * first marker, itself included, is removed. A body where nothing would
+ * remain is returned as is — better one history too many than an empty
+ * message.
  */
 export const withoutHistory = (html: string): string => {
   const document = parseDocument(html);
   const marker = DomUtils.findOne(opensHistory, document.children, true);
   if (!marker) return html;
 
-  // Outlook sur ordinateur trace un filet juste avant l'entête « De : ».
+  // Desktop Outlook draws a rule just before the "De :" header.
   const before = DomUtils.prevElementSibling(marker);
   if (before?.name === "hr") DomUtils.removeElement(before);
 
-  // Ce qui suit le repère, à chaque niveau jusqu'à la racine.
+  // What follows the marker, at each level up to the root.
   let treeNode: ChildNode | null = marker;
   while (treeNode) {
     while (treeNode.next) DomUtils.removeElement(treeNode.next);

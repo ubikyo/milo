@@ -1,13 +1,13 @@
-// Les personnes : celles qui se sont connectées au moins une fois par
-// Microsoft, et celles d'avant Entra. Elles alimentent les listes d'acteurs
-// et de membres ; le compte « admin » n'en fait jamais partie.
+// People: those who have signed in at least once through
+// Microsoft, and those from before Entra. They feed the lists of actors
+// and members; the "admin" account is never part of them.
 //
-// Une personne naît de sa première connexion, ou de son choix comme acteur
-// dans l'annuaire Entra — avant même qu'elle se soit connectée. Son identité
-// vient toujours d'Entra ; ses accès se règlent ailleurs
-// (routes/assignments.ts), et un compte créé ici n'en donne aucun.
+// A person is born from their first sign-in, or from being chosen as an actor
+// in the Entra directory — even before they have signed in. Their identity
+// always comes from Entra; their access is set elsewhere
+// (routes/assignments.ts), and an account created here grants none.
 //
-// Chacun a aussi ses acteurs favoris : ceux qui passent en tête des listes.
+// Everyone also has favorite actors: those that come first in the lists.
 
 import { Router } from "express";
 import type { DirectoryUser, EntraPrincipal, Id } from "@milo/shared";
@@ -25,7 +25,7 @@ userRoutes.get("/", (_req, res) => {
   res.json(users.all.all().map(publicUser));
 });
 
-// --- Favoris ---------------------------------------------------------------
+// --- Favorites -------------------------------------------------------------
 
 const favoritesOf = selection<{ favorite_id: Id }>(
   `SELECT f.favorite_id FROM user_favorites f
@@ -42,7 +42,7 @@ const removeFavorite = mutation(
 
 const myFavorites = (userId: Id): Id[] => favoritesOf.all(userId).map((f) => f.favorite_id);
 
-/** Les favoris de la personne connectée, en identifiants. */
+/** The favorites of the signed-in person, as ids. */
 userRoutes.get("/favorites", (req, res) => {
   res.json(myFavorites(req.user.id));
 });
@@ -57,12 +57,12 @@ userRoutes.delete("/favorites/:id", (req, res) => {
   res.json(myFavorites(req.user.id));
 });
 
-// --- Annuaire --------------------------------------------------------------
+// --- Directory -------------------------------------------------------------
 
 /**
- * Les personnes de l'annuaire Entra dont le nom ou l'adresse commence par ce
- * qu'on tape — les groupes n'en sont pas : un acteur est une personne. Chacune
- * dit si elle a déjà un compte dans Milo.
+ * The people of the Entra directory whose name or address starts with what
+ * is typed — groups are not included: an actor is a person. Each one
+ * says whether they already have a Milo account.
  */
 userRoutes.get("/directory", (req, res, next) => {
   const q = String(req.query["q"] ?? "").trim();
@@ -92,9 +92,9 @@ userRoutes.get("/directory", (req, res, next) => {
 });
 
 /**
- * Les groupes de l'annuaire Entra dont le nom commence par ce qu'on tape. Un
- * groupe est un acteur là où l'on prévient sans assigner : ce sont ses
- * membres qui reçoivent la notification.
+ * The groups of the Entra directory whose name starts with what is typed. A
+ * group is an actor where people are notified without being assigned: its
+ * members receive the notification.
  */
 userRoutes.get("/directory/groups", (req, res, next) => {
   const q = String(req.query["q"] ?? "").trim();
@@ -108,9 +108,9 @@ userRoutes.get("/directory/groups", (req, res, next) => {
 });
 
 /**
- * Une personne de l'annuaire choisie comme acteur : son compte, créé s'il le
- * faut à partir de son profil Entra — relu ici, jamais pris tel que le client
- * l'envoie. Elle s'y retrouvera à sa première connexion, par son identifiant.
+ * A person from the directory chosen as an actor: their account, created if
+ * needed from their Entra profile — reread here, never taken as the client
+ * sends it. They will find themselves in it at their first sign-in, by their id.
  */
 userRoutes.post("/directory/:oid", touch("lookups"), (req, res, next) => {
   const oid = requireText(req.params.oid, "Identifiant requis");

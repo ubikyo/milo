@@ -95,7 +95,7 @@ import type {
   TaskList,
 } from "@milo/shared";
 
-/** Les couleurs d'une liste, résolues pour le thème courant. */
+/** A list's colors, resolved for the current theme. */
 interface Palette {
   background: string;
   text: string;
@@ -107,45 +107,45 @@ interface Palette {
   insertionLine: string;
 }
 
-/** Le glisser d'une liste, tel que le rendu le voit. */
+/** A list drag, as the render sees it. */
 interface ListDrag {
   id: Id;
-  /** Son rang de départ. */
+  /** Its starting rank. */
   from: number;
-  /** Le rang où elle se posera. */
+  /** The rank where it will land. */
   target: number;
-  /** Position du clone qui suit le pointeur. */
+  /** Position of the clone that follows the pointer. */
   x: number;
   y: number;
 }
 
 /**
- * Le même geste, suivi hors du rendu par une référence : il change à chaque
- * mouvement du pointeur, et n'a pas à provoquer de rendu tant que le seuil de
- * déclenchement n'est pas franchi.
+ * The same gesture, tracked outside rendering by a ref: it changes on every
+ * pointer movement, and must not trigger a render until the activation
+ * threshold is crossed.
  */
 interface ListDragInProgress {
   id: Id;
   index: number;
   startX: number;
   startY: number;
-  /** Décalage du pointeur dans la carte, pour que le clone suive sans saut. */
+  /** Pointer offset within the card, so the clone follows without jumping. */
   offsetX: number;
   offsetY: number;
-  /** Faux tant que le pointeur n'a pas franchi le seuil de déclenchement. */
+  /** False until the pointer has crossed the activation threshold. */
   started: boolean;
 }
 
-/** La liste d'accueil d'une carte et le rang qu'elle y prendra. */
+/** A card's host list and the rank it will take there. */
 interface CardTarget {
   listId: Id;
   index: number;
 }
 
-/** Le glisser d'une carte, tel que le rendu le voit. */
+/** A card drag, as the render sees it. */
 interface CardDrag {
   id: Id;
-  /** Le clone et l'emplacement d'accueil reprennent la taille de la carte. */
+  /** The clone and the drop placeholder take the card's size. */
   width: number;
   height: number;
   target: CardTarget | null;
@@ -163,11 +163,11 @@ interface CardDragInProgress {
   width: number;
   height: number;
   started: boolean;
-  /** Sans le droit de modifier, l'appui reste un clic : la carte ne glisse pas. */
+  /** Without the right to edit, a press stays a click: the card does not drag. */
   frozen: boolean;
 }
 
-/** Une carte qui vient d'être saisie, posée avant la réponse du serveur. */
+/** A card just typed in, placed before the server responds. */
 interface ProvisionalCard {
   id: string;
   list_id: Id;
@@ -176,7 +176,7 @@ interface ProvisionalCard {
   kind: "card" | "separator";
 }
 
-/** Une fête en cours, jouée sur une liste et la carte qui vient d'y arriver. */
+/** A celebration in progress, played on a list and the card that just arrived in it. */
 interface Celebration {
   key: string;
   effect: Effect;
@@ -184,39 +184,39 @@ interface Celebration {
   card: Zone | null;
 }
 
-/** La saisie d'une nouvelle carte : où elle se posera, et de quel genre. */
+/** Typing a new card: where it will land, and of what kind. */
 interface Composition {
   listId: Id;
   index: number;
   kind: "card" | "separator";
 }
 
-// Largeur d'une liste et espace entre deux listes.
+// Width of a list and gap between two lists.
 const LIST_WIDTH = 270;
 const LIST_GAP = 15;
-// Padding intérieur d'une liste : la moitié du « md » de Mantine (16px).
+// Inner padding of a list: half of Mantine's "md" (16px).
 const LIST_PADDING = 8;
-// Espace entre deux cartes d'une même liste.
+// Gap between two cards of the same list.
 const CARD_GAP = 8;
-// Déplacement du pointeur à partir duquel on considère qu'il s'agit d'un
-// glisser et non d'un clic (qui, lui, ouvre le renommage).
+// Pointer movement beyond which it is considered a drag
+// and not a click (which opens renaming).
 const DRAG_THRESHOLD = 5;
 
-// Délai laissé à un second clic avant que le premier n'ouvre la fiche : c'est
-// lui qui rend le double-clic possible sur une carte. Assez court pour que
-// l'ouverture ne traîne pas, assez long pour un double-clic ordinaire.
+// Delay given to a second click before the first opens the card details: it
+// is what makes double-click possible on a card. Short enough that
+// opening does not drag, long enough for an ordinary double-click.
 const DOUBLE_CLICK_DELAY = 250;
 
-// Fond neutre du tableau : la liste ressort du fond de la page, la carte reste
-// sombre pour se détacher de la liste qui la porte.
+// Neutral board background: the list stands out from the page background, the card stays
+// dark to stand out from the list that carries it.
 const LIST_BG =
   "light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5))";
 
-// Couleurs proposées dans le menu d'une liste : le rouge, l'orange, le vert
-// et le bleu des projets, le jaune et le violet (nuance 8), puis deux
-// nuances plus claires de chacun (6 et 4, éclaircies dans useListColors), en
-// trois lignes de six. « Aucune », à part, rend à la liste le
-// fond neutre du tableau. Le libellé ne s'affiche pas, il nomme la pastille.
+// Colors offered in a list's menu: the projects' red, orange, green
+// and blue, yellow and violet (shade 8), then two lighter
+// shades of each (6 and 4, lightened in useListColors), in
+// three rows of six. "Aucune", set apart, gives the list back the
+// board's neutral background. The label is not displayed, it names the swatch.
 const HUES = [
   { name: "red", label: "Rouge" },
   { name: "orange", label: "Orange" },
@@ -234,11 +234,11 @@ const LIST_COLORS = SHADES.flatMap(({ shade, label }) =>
   HUES.map((t) => ({ value: `${t.name}.${shade}`, label: `${t.label}${label}` })),
 );
 
-// Les couleurs d'une liste, résolues pour le thème courant. Tout part de son
-// fond : la bordure d'une carte l'éclaircit au survol, le « … » l'assombrit. Le
-// texte, lui, n'est jamais choisi à la main : « getContrastColor » de Mantine
-// tranche entre le noir et le blanc d'après la luminosité du fond qui le
-// porte, comme le fait « autoContrast » pour ses propres composants.
+// A list's colors, resolved for the current theme. Everything starts from its
+// background: a card's border lightens it on hover, the "…" darkens it. The
+// text is never picked by hand: Mantine's "getContrastColor"
+// chooses between black and white from the luminosity of the background
+// beneath it, as "autoContrast" does for its own components.
 export function useListColors() {
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme("light");
@@ -246,13 +246,13 @@ export function useListColors() {
   return useCallback(
     (color: string | null | undefined): Palette => {
       const dark = colorScheme === "dark";
-      // Le blanc n'est pas une teinte de la palette : il s'inverse d'un thème
-      // à l'autre, blanc sur le sombre et noir sur le clair.
+      // White is not a palette shade: it inverts from one theme
+      // to the other, white on dark and black on light.
       let background: string;
       let neutral = false;
-      // « red.8 » : la couleur des projets, éclaircie d'un quart par cran
-      // sous 8 — le thème n'en a qu'une nuance (main.tsx). « red » — une
-      // couleur d'avant — prend la nuance principale du thème.
+      // "red.8": the projects' color, lightened by a quarter per step
+      // below 8 — the theme only has one shade of it (main.tsx). "red" — an
+      // older color — takes the theme's main shade.
       const [name, shade] = (color ?? "").split(".");
       const palette = name ? theme.colors[name] : undefined;
       if (color === "white") background = dark ? theme.white : theme.black;
@@ -274,21 +274,21 @@ export function useListColors() {
         });
 
       const darkened = darken(background, 0.18);
-      // Un séparateur se pose sur le fond de sa liste, assombri plus franchement
-      // que le survol : il doit se lire comme un intertitre, pas comme un
-      // élément survolé. Sauf sur la liste neutre du thème sombre : les cartes y
-      // sont déjà plus sombres que la liste, et un séparateur assombri se
-      // confondrait avec elles — il s'éclaircit donc.
+      // A separator sits on its list's background, darkened more firmly
+      // than on hover: it must read as a heading, not as a
+      // hovered item. Except on the dark theme's neutral list: cards there
+      // are already darker than the list, and a darkened separator would
+      // blend in with them — so it lightens instead.
       const darkenedSeparator = neutral && dark ? lighten(background, 0.15) : darken(background, 0.35);
       return {
         background,
         text: readable(background),
-        // Ce qui se survole sur la liste s'assombrit, ce qui se pose dessus
-        // s'éclaircit : le « … » et le champ de renommage d'un côté, la
-        // bordure d'une carte de l'autre.
+        // What is hovered on the list darkens, what sits on it
+        // lightens: the "…" and the rename field on one side, the
+        // card border on the other.
         hover: darkened,
         hoverText: readable(darkened),
-        // La bordure d'une carte au survol : le fond de la liste éclairci.
+        // A card's border on hover: the list background, lightened.
         cardBorder: lighten(background, 0.45),
         separatorBackground: darkenedSeparator,
         separatorText: readable(darkenedSeparator),
@@ -299,26 +299,26 @@ export function useListColors() {
   );
 }
 
-// Fond de l'emplacement d'accueil d'une carte : en creux sous les cartes de sa
-// liste. Celui d'une liste n'en a plus besoin : elle s'y rappelle elle-même.
+// Background of a card's drop placeholder: recessed under the cards of its
+// list. A list's own no longer needs one: it recalls itself there.
 const CARD_PLACEHOLDER_BG =
   "light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-9))";
 
-// Rayon des cartes : le même pour la carte, son emplacement d'accueil, la copie
-// qui suit le pointeur et le champ de saisie qui la remplace en édition.
+// Card radius: the same for the card, its drop placeholder, the copy
+// following the pointer and the input field that replaces it when editing.
 const CARD_RADIUS = 8;
-/** La hauteur de l'image de couverture en tête d'une carte. */
+/** The height of the cover image at the top of a card. */
 const COVER_HEIGHT = 120;
 
-// Les listes et les cartes n'ont pas de bordure : les champs qui les modifient
-// n'en portent pas non plus, pas même le bleu que Mantine pose au focus.
+// Lists and cards have no border: the fields that edit them
+// have none either, not even the blue Mantine adds on focus.
 const INPUT_NO_BORDER = {
   input: { "--input-bd": "transparent", "--input-bd-focus": "transparent" },
 };
 
-// « Ajouter une carte » ne peint aucun fond, pas même au survol : c'est le
-// libellé qui s'éclaircit en devenant translucide. Le « + » est aligné sur le
-// bord gauche du contenu de la liste, sans marge intérieure.
+// "Ajouter une carte" paints no background, not even on hover: it is the
+// label that lightens by turning translucent. The "+" is aligned with the
+// left edge of the list's content, with no inner margin.
 interface AddCardButtonProps {
   label: string;
   onClick: () => void;
@@ -349,12 +349,12 @@ function AddCardButton({ label, onClick, color }: AddCardButtonProps) {
   );
 }
 
-// Le texte des cartes est saisi au kilomètre : les retours à la ligne comptent.
+// Card text is typed freely: line breaks count.
 const CARD_TEXT: CSSProperties = { whiteSpace: "pre-wrap", wordBreak: "break-word" };
 
-// Entrée valide la carte, Cmd (ou Ctrl) + Entrée va à la ligne. Le navigateur
-// n'insère rien de lui-même sur cette combinaison : on pose le retour à la
-// ligne à la position du curseur, qu'on replace juste après.
+// Enter submits the card, Cmd (or Ctrl) + Enter inserts a line break. The browser
+// inserts nothing by itself on this combination: we put the line
+// break at the cursor position, which we restore right after.
 const insertLineBreak = (
   element: HTMLTextAreaElement,
   setValue: (value: string) => void,
@@ -369,8 +369,8 @@ const insertLineBreak = (
   });
 };
 
-// Touches communes à la saisie d'une carte et à sa modification : Échap
-// annule, Entrée valide, Cmd/Ctrl + Entrée va à la ligne.
+// Keys shared by typing a card and editing it: Escape
+// cancels, Enter submits, Cmd/Ctrl + Enter inserts a line break.
 interface CardKeyDownOptions {
   setValue: (value: string) => void;
   onCancel: () => void;
@@ -390,41 +390,41 @@ const cardKeyDown =
   else onSubmit();
   };
 
-// La bordure de survol est toujours là, transparente au repos : la carte ne
-// bouge pas quand le pointeur la touche.
+// The hover border is always there, transparent at rest: the card does not
+// move when the pointer touches it.
 
-// Diamètre des bulles posées sur une carte : plus grandes que celles du tableau
-// des projets, où une ligne serrée les contraignait. Leur recouvrement, lui,
-// reste celui des projets.
+// Diameter of the avatars placed on a card: larger than those on the projects
+// board, where a tight row constrained them. Their overlap, however,
+// stays that of the projects.
 const CARD_AVATAR_SIZE = 25;
-// L'écart entre les lignes d'une carte : étiquettes, titre, pictos.
+// The gap between a card's rows: labels, title, icons.
 const CARD_CONTENT_GAP = 4;
-// L'air au-dessus de chaque colonne de la dernière ligne, quand elles sont
-// empilées.
+// The space above each column of the last row, when they are
+// stacked.
 const CARD_STACKED_SPACE = 10;
-// Sur la dernière ligne : l'écart entre un picto et sa valeur, serré pour
-// qu'ils se lisent ensemble, et celui entre deux éléments, plus large.
+// On the last row: the gap between an icon and its value, tight so
+// they read together, and the one between two items, wider.
 const ICON_VALUE_GAP = 2;
 const CARD_ITEMS_GAP = 10;
-// Entre deux tags (numéro, échéance), l'écart d'avant.
+// Between two tags (number, due date), the previous gap.
 const TAGS_GAP = 6;
 
-// La pastille d'échéance : une horloge et le jour, en abrégé. Dès qu'une carte
-// porte une date, elle se montre ; c'est sa couleur qui alerte, ou non. Rouge
-// passé le jour dit, orange dans les trois jours qui le précèdent, et sinon un
-// fond neutre — la date se lit, mais rien ne presse. Elle précède la pastille
-// des checklists, comme l'échéance précède le titre dans la fiche.
+// The due date badge: a clock and the day, abbreviated. As soon as a card
+// carries a date, it shows; its color is what alerts, or not. Red
+// past the due day, orange within the three days before it, and otherwise a
+// neutral background — the date is readable, but nothing is pressing. It precedes the
+// checklists badge, as the due date precedes the title in the card details.
 const DUE_BG: Record<DueState, string> = {
   late: "var(--mantine-color-red-filled)",
   soon: "var(--mantine-color-orange-filled)",
-  // Loin encore : le vert de ce qui va bien, comme « À venir » dans la fiche.
+  // Still far off: the green of what is going well, like "À venir" in the card details.
   none: "var(--mantine-color-green-filled)",
 };
 
-// Les trois fonds sont pleins : le texte y est blanc.
+// The three backgrounds are solid: the text on them is white.
 const DUE_FG = "var(--mantine-color-white)";
 
-// Le numéro d'une carte, en étiquette verte : la même forme que l'échéance.
+// A card's number, as a green label: the same shape as the due date.
 function CardNumberTag({ number }: { number: number }) {
   return (
     <span
@@ -474,17 +474,17 @@ function CardDueBadge({ card }: CardDueBadgeProps) {
   );
 }
 
-// La pastille des checklists : un symbole de case à cocher et le rapport des
-// cases cochées au total, cumulé sur toutes les checklists de la carte. Elle
-// se clique pour déplier, sous la carte, ce qu'il reste à faire. Une fois tout
-// coché, elle s'encadre de vert : la carte est faite, cela doit se voir sans
-// lire le compte.
+// The checklists badge: a checkbox symbol and the ratio of checked
+// boxes to the total, summed over all the card's checklists. It
+// can be clicked to expand, under the card, what is left to do. Once everything is
+// checked, it gets a green frame: the card is done, and that must show without
+// reading the count.
 const CHECKLIST_DONE_BG = "var(--mantine-color-teal-filled)";
 
-// Ce qu'il reste à cocher se détache du corps de la carte par un filet et un
-// peu d'air : déplié, on voit d'un coup où finit la carte et où commence sa
-// liste. Le même air sépare les lignes entre elles : deux cases à cocher
-// collées se lisent comme un bloc, alors qu'on les coche une par une.
+// What is left to check is set off from the card body by a rule and a
+// bit of space: when expanded, you see at a glance where the card ends and its
+// list begins. The same space separates the rows from each other: two
+// stuck-together checkboxes read as a block, whereas they are checked one by one.
 const CHECKLIST_PANEL_RULE = "1px solid var(--mantine-color-default-border)";
 const CHECKLIST_PANEL_MARGIN = 6;
 const CHECKLIST_PANEL_PAD = 10;
@@ -524,11 +524,11 @@ function CardChecklistBadge({ card, onToggle }: CardChecklistBadgeProps) {
   );
 }
 
-// Ce qu'il reste à faire, déplié sous la carte : les éléments non cochés de
-// toutes ses checklists. Cocher ici retire la ligne et fait avancer la
-// pastille, sans ouvrir la fiche. Plus rien à cocher, plus de panneau : la
-// pastille verte le dit déjà, un « Tout est coché » sous la carte ne ferait
-// que l'allonger.
+// What is left to do, expanded under the card: the unchecked items of
+// all its checklists. Checking here removes the row and advances the
+// badge, without opening the card details. Nothing left to check, no panel: the
+// green badge already says so, a "Tout est coché" under the card would
+// only lengthen it.
 interface CardChecklistPanelProps {
   card: TaskCard;
   onCheck: (itemId: Id) => void;
@@ -570,12 +570,12 @@ function CardChecklistPanel({ card, onCheck }: CardChecklistPanelProps) {
   );
 }
 
-// Bas de la carte : le signe d'une description et la référence à gauche, les
-// membres à droite. La référence (« TSK-12 ») est un repère discret pour la
-// désigner, donné par le compteur commun aux modes ; un tableau peut la taire
-// (« Numéros des cartes », dans son tiroir). Les bulles se
-// recouvrent comme dans le tableau des projets ; sans membre, la ligne n'en
-// montre aucune.
+// Bottom of the card: the description sign and the reference on the left, the
+// members on the right. The reference ("TSK-12") is a discreet marker to
+// designate it, given by the counter shared across modes; a board can hide it
+// ("Numéros des cartes", in its drawer). The avatars
+// overlap as in the projects board; with no members, the row shows
+// none.
 interface CardNumberProps {
   card: TaskCard;
   withNumber: boolean;
@@ -588,11 +588,11 @@ function CardNumber({ card, withNumber, onChecklistToggle }: CardNumberProps) {
   const attachments = card.attachment_count || 0;
   const comments = card.comment_count || 0;
   const links = card.link_count || 0;
-  // Une carte qui attend encore le serveur n'a pas de numéro.
+  // A card still waiting for the server has no number.
   const showNumber = withNumber && card.number > 0;
 
-  // Les colonnes passées chacune sur sa ligne : le CSS ne sait pas le dire,
-  // on le lit à leur position. Recalculé à chaque changement de taille.
+  // The columns each wrapped onto their own row: CSS cannot say so,
+  // so we read it from their position. Recomputed on every resize.
   const left = useRef<HTMLDivElement | null>(null);
   const rightHand = useRef<HTMLDivElement | null>(null);
   const [stacked, setStacked] = useState(false);
@@ -603,9 +603,9 @@ function CardNumber({ card, withNumber, onChecklistToggle }: CardNumberProps) {
       setStacked(false);
       return undefined;
     }
-    // Côte à côte, centrées, leurs hauts diffèrent si leurs hauteurs
-    // diffèrent : seuls des acteurs tout entiers au-dessus des pictos disent
-    // qu'elles sont empilées.
+    // Side by side, centered, their tops differ if their heights
+    // differ: only actors entirely above the icons indicate
+    // they are stacked.
     const measure = () =>
       setStacked(d.getBoundingClientRect().bottom <= g.getBoundingClientRect().top + 1);
     measure();
@@ -615,13 +615,13 @@ function CardNumber({ card, withNumber, onChecklistToggle }: CardNumberProps) {
     return () => observer.disconnect();
   }, [members.length]);
 
-  // Deux colonnes : à gauche les pictos, à droite les acteurs. Chacune part
-  // de la largeur de son contenu sur une ligne et ne descend jamais en
-  // dessous (« fit-content ») : tant que les deux tiennent ensemble, elles
-  // restent côte à côte ; sinon, elles passent chacune sur sa ligne, en
-  // pleine largeur. « wrap-reverse »
-  // empile alors les lignes de bas en haut : les acteurs, venus en second,
-  // montent au-dessus des pictos.
+  // Two columns: icons on the left, actors on the right. Each starts
+  // from its content width on one row and never goes below
+  // it ("fit-content"): as long as both fit together, they
+  // stay side by side; otherwise, they each go on their own row, at
+  // full width. "wrap-reverse"
+  // then stacks the rows bottom to top: the actors, coming second,
+  // rise above the icons.
   return (
     <div
       style={{
@@ -630,9 +630,9 @@ function CardNumber({ card, withNumber, onChecklistToggle }: CardNumberProps) {
         alignItems: "center",
       }}
     >
-      {/* Empilées, chaque colonne prend 10px d'air au-dessus d'elle. Les
-          pictos, en bas, les prennent en entier ; les acteurs, en haut, ont
-          déjà l'écart qui les sépare du titre, qu'on en retire. */}
+      {/* Stacked, each column takes 10px of space above it. The
+          icons, at the bottom, take all of it; the actors, at the top, already have
+          the gap that separates them from the title, which is subtracted. */}
       <Group
         ref={left}
         gap={CARD_ITEMS_GAP}
@@ -642,14 +642,14 @@ function CardNumber({ card, withNumber, onChecklistToggle }: CardNumberProps) {
         pt={stacked ? CARD_STACKED_SPACE : 0}
         style={{ flex: "1 1 auto", minWidth: "fit-content", maxWidth: "100%", rowGap: 4 }}
       >
-        {/* Le numéro ouvre la ligne. Une carte qui attend encore le serveur
-            n'en a pas. */}
-        {/* Les tags se suivent de plus près que les autres éléments. */}
+        {/* The number opens the row. A card still waiting for the server
+            has none. */}
+        {/* Tags follow each other more closely than the other items. */}
         {(showNumber || shortDate(card.due_date)) && (
           <Group gap={TAGS_GAP} align="center" wrap="wrap" style={{ rowGap: 4 }}>
             {showNumber && <CardNumberTag number={card.number} />}
-            {/* Puis l'échéance : une carte en retard doit se voir avant qu'on
-                lise ce qu'elle porte. */}
+            {/* Then the due date: a late card must be seen before you
+                read what it carries. */}
             <CardDueBadge card={card} />
           </Group>
         )}
@@ -657,7 +657,7 @@ function CardNumber({ card, withNumber, onChecklistToggle }: CardNumberProps) {
           card={card}
           onToggle={onChecklistToggle}
         />
-        {/* Le picto dit qu'il y a autre chose à lire dans la fiche. */}
+        {/* The icon says there is more to read in the card details. */}
         {card.has_description && (
           <IconAlignLeft size={14} aria-label="Cette carte a une description" />
         )}
@@ -695,9 +695,9 @@ function CardNumber({ card, withNumber, onChecklistToggle }: CardNumberProps) {
           </Group>
         )}
       </Group>
-      {/* À droite, les acteurs, calés dans le coin de la carte. Leur retrait
-          tient lieu d'écart entre les colonnes : il ne compte que quand elles
-          sont côte à côte. */}
+      {/* On the right, the actors, tucked into the card's corner. Their inset
+          stands in for the gap between columns: it only counts when they
+          are side by side. */}
       {members.length > 0 && (
         <Group
           ref={rightHand}
@@ -716,13 +716,13 @@ function CardNumber({ card, withNumber, onChecklistToggle }: CardNumberProps) {
   );
 }
 
-// Un séparateur n'est pas une carte à suivre : il titre ce qui vient ensuite.
-// Il se saisit, se modifie et se glisse comme une carte, mais il ne porte ni
-// numéro ni fond de carte.
+// A separator is not a card to follow: it titles what comes next.
+// It is typed, edited and dragged like a card, but carries neither a
+// number nor a card background.
 const isSeparator = (card: TaskCard): boolean => card.kind === "separator";
 
-// Le fond d'un séparateur : celui de sa liste, assombri. Une carte ordinaire
-// garde le fond que Mantine donne au Paper.
+// A separator's background: that of its list, darkened. An ordinary card
+// keeps the background Mantine gives the Paper.
 const separatorStyle = (card: TaskCard, palette: Palette): CSSProperties | null =>
   isSeparator(card)
     ? {
@@ -731,23 +731,23 @@ const separatorStyle = (card: TaskCard, palette: Palette): CSSProperties | null 
       }
     : null;
 
-// La couverture d'une carte, d'un bord à l'autre : elle mange le retrait de la
-// carte (« xs ») et suit son arrondi, bordure déduite. Plusieurs images se
-// relaient à l'intervalle choisi dans la fiche ; sans intervalle, la première
-// reste.
+// A card's cover, edge to edge: it eats the card's inset
+// ("xs") and follows its rounding, border deducted. Several images take
+// turns at the interval chosen in the card details; with no interval, the first
+// stays.
 function Cover({ urls, interval }: { urls: string[]; interval: number }) {
   const [rank, setRank] = useState(0);
   const [pause, setPaused] = useState(false);
-  // Le tableau relu redonne une liste neuve : seul un changement d'images
-  // relance la rotation depuis la première.
+  // The reloaded board gives a fresh list: only a change of images
+  // restarts the rotation from the first.
   const key = urls.join("|");
   const count = urls.length;
   const current = count ? rank % count : 0;
 
   useEffect(() => setRank(0), [key]);
 
-  // Comme le widget image : le survol suspend le défilement, et un point
-  // choisi repart pour un intervalle entier.
+  // Like the image widget: hover suspends scrolling, and a chosen
+  // dot restarts for a full interval.
   useEffect(() => {
     if (!interval || count < 2 || pause) return;
     const timeout = window.setTimeout(
@@ -781,9 +781,9 @@ function Cover({ urls, interval }: { urls: string[]; interval: number }) {
           borderTopRightRadius: CARD_RADIUS - 2,
         }}
       />
-      {/* Les points du widget image, posés sur la photo, en bas : en blanc,
-          avec une ombre, pour se lire sur n'importe quelle image. Ils
-          répondent eux-mêmes au clic : ni glisser, ni fiche ouverte. */}
+      {/* The image widget's dots, placed on the photo, at the bottom: in white,
+          with a shadow, to read on any image. They
+          respond to clicks themselves: no drag, no card details opened. */}
       {count > 1 && (
         <Group
           gap={6}
@@ -815,14 +815,14 @@ function Cover({ urls, interval }: { urls: string[]; interval: number }) {
   );
 }
 
-// Ce que montre une carte. Posé à part : la carte elle-même, la copie qui suit
-// le pointeur et les cartes de la liste qu'on déplace s'en servent toutes.
+// What a card shows. Set apart: the card itself, the copy that follows
+// the pointer and the cards of the list being moved all use it.
 interface CardContentProps {
   card: TaskCard;
   withNumber?: boolean;
   compactLabels?: boolean;
   onLabelClick?: () => void;
-  /** Les étiquettes du tableau : elles font foi sur celles que porte la carte. */
+  /** The board's labels: they take precedence over those the card carries. */
   labels?: Label[];
   checklistOpen?: boolean;
   onChecklistToggle?: () => void;
@@ -846,22 +846,22 @@ function CardContent({
       </Text>
     );
 
-  // Les étiquettes du tableau font foi : renommée ou recolorée, une étiquette
-  // se montre sous son nouveau jour sans attendre que les listes soient
-  // relues. La carte ne garde que le lien.
+  // The board's labels take precedence: renamed or recolored, a label
+  // shows in its new light without waiting for the lists to be
+  // reloaded. The card only keeps the link.
   const cardLabels = (card.labels || []).map(
     (e) => (labels || []).find((l) => l.id === e.id) || e,
   );
 
   return (
     <Stack gap={CARD_CONTENT_GAP}>
-      {/* La couverture ouvre la carte, d'un bord à l'autre : elle mange le
-          retrait de la carte (« xs ») et suit son arrondi, bordure déduite. */}
+      {/* The cover opens the card, edge to edge: it eats the
+          card's inset ("xs") and follows its rounding, border deducted. */}
       {card.cover_urls.length > 0 && (
         <Cover urls={card.cover_urls} interval={card.cover_interval} />
       )}
-      {/* Les étiquettes coiffent le titre. Cliquer l'une d'elles les replie ou
-          les déploie toutes, sur tout le tableau. */}
+      {/* Labels top the title. Clicking one of them collapses or
+          expands them all, across the whole board. */}
       {cardLabels.length > 0 && (
         <Group gap={3} align="center" pb={5} style={{ rowGap: 4 }}>
           {cardLabels.map((label) => (
@@ -882,7 +882,7 @@ function CardContent({
         withNumber={withNumber}
         onChecklistToggle={onChecklistToggle ?? (() => {})}
       />
-      {/* Déplié par la pastille : ce qu'il reste à cocher, sous la carte. */}
+      {/* Expanded by the badge: what is left to check, under the card. */}
       {checklistOpen && (
         <CardChecklistPanel card={card} onCheck={onChecklistCheck ?? (() => {})} />
       )}
@@ -890,13 +890,13 @@ function CardContent({
   );
 }
 
-// Hauteur de la zone qui répond au survol entre deux cartes : un peu plus que
-// l'écart qu'elle couvre, pour qu'elle soit facile à viser.
+// Height of the area that responds to hover between two cards: slightly more than
+// the gap it covers, so it is easy to aim at.
 const INSERT_ZONE = 12;
 
-// Insertion entre deux cartes : un trait pointillé avec un « + » au milieu,
-// qui n'apparaît qu'au survol. La zone ne prend aucune hauteur dans la pile —
-// elle chevauche l'écart entre les deux cartes, qui garde ses 8px.
+// Insertion between two cards: a dotted line with a "+" in the middle,
+// which only appears on hover. The area takes no height in the stack —
+// it overlaps the gap between the two cards, which keeps its 8px.
 function CardInsert({ color, onClick }: { color: string; onClick: () => void }) {
   const [hovering, setHovered] = useState(false);
 
@@ -919,8 +919,8 @@ function CardInsert({ color, onClick }: { color: string; onClick: () => void }) 
           gap: 6,
           cursor: "pointer",
           color: color,
-          // Le trait et son « + » s'effacent un peu : ils indiquent sans
-          // prendre le pas sur les cartes.
+          // The line and its "+" fade a little: they indicate without
+          // taking precedence over the cards.
           opacity: hovering ? 0.8 : 0,
           transition: "opacity 120ms",
         }}
@@ -933,8 +933,8 @@ function CardInsert({ color, onClick }: { color: string; onClick: () => void }) 
   );
 }
 
-// Carte figée : sans écoute du pointeur ni survol, pour les copies affichées
-// pendant un glisser.
+// Frozen card: no pointer listening or hover, for the copies shown
+// during a drag.
 interface CardStillProps {
   card: TaskCard;
   palette: Palette;
@@ -954,15 +954,15 @@ function CardStill({ card, palette, withNumber, compactLabels }: CardStillProps)
   );
 }
 
-// Insertion dans une copie : l'original n'est jamais touché.
+// Insertion into a copy: the original is never touched.
 const withInserted = <T,>(column: T[], index: number, value: T): T[] => {
   const copy = [...column];
   copy.splice(index, 0, value);
   return copy;
 };
 
-// Déplacement d'une carte dans une copie des listes, pour l'afficher avant que
-// le serveur ait répondu.
+// Moving a card within a copy of the lists, to show it before
+// the server has responded.
 const withCardMoved = (
   lists: TaskList[],
   cardId: Id,
@@ -983,7 +983,7 @@ const withCardMoved = (
 
 // --- Liste ----------------------------------------------------------------
 
-/** Le renommage en cours d'une liste. */
+/** A list's rename in progress. */
 interface ListEditing {
   id: Id;
   name: string;
@@ -1002,20 +1002,20 @@ interface ListCardProps {
   onMove: () => void;
   onCopy: () => void;
   onColor: (color: string) => void;
-  /** Pose ou retire la marque d'une animation au bout du titre. */
+  /** Sets or removes an animation mark at the end of the title. */
   onAnimation: (effect: Effect) => void;
   onSeparator: () => void;
-  /** Suivre cette liste, c'est être prévenu de ce qui arrive à ses cartes. */
+  /** Following this list means being notified of what happens to its cards. */
   followed: boolean;
   onToggleFollow: () => void;
-  /** Tableau verrouillé : la liste ne se déplace ni ne se supprime. */
+  /** Locked board: the list can neither be moved nor deleted. */
   isLocked: boolean;
-  /** Les droits du compte dans la société du tableau. */
+  /** The account's rights in the board's company. */
   rights: BoardRights;
   children?: ReactNode;
 }
 
-/** Ce que le compte peut faire dans le tableau ouvert, selon sa société. */
+/** What the account can do in the open board, depending on its company. */
 interface BoardRights {
   add: boolean;
   updateStatement: boolean;
@@ -1043,18 +1043,18 @@ function ListCard({
   rights,
   children,
 }: ListCardProps) {
-  // Le menu s'ouvre au clic droit, au point cliqué. Il se ferme de lui-même
-  // sur ses entrées, mais pas sur les pastilles de couleur, qui n'en sont
-  // pas : on le pilote pour qu'un choix le referme.
+  // The menu opens on right-click, at the clicked point. It closes by itself
+  // on its entries, but not on the color swatches, which are not
+  // entries: we drive it so a choice closes it.
   const [menu, setMenu] = useState<PointMenuPosition | null>(null);
   const colors = useListColors();
   const own = colors(list.color);
   const tasks = (list.cards || []).filter((c) => !isSeparator(c)).length;
 
-  // Un champ de saisie garde le menu du navigateur : couper, coller.
+  // An input field keeps the browser menu: cut, paste.
   const openMenu = (event: ReactMouseEvent<HTMLElement>) => {
     if ((event.target as HTMLElement).closest("input, textarea")) return;
-    // En modification, sans rien à proposer : le menu du widget.
+    // When editing, with nothing to offer: the widget's menu.
     if (!isLocked && !rights.add && !rights.updateStatement && !rights.canDelete) return;
     setMenu(menuPosition(event));
   };
@@ -1066,8 +1066,8 @@ function ListCard({
       radius="md"
       p={LIST_PADDING}
       data-list-id={list.id}
-      // Une liste se glisse par son propre geste : elle n'emporte pas le
-      // widget qui porte le tableau (IndicatorsPanel).
+      // A list is dragged by its own gesture: it does not carry along the
+      // widget that holds the board (IndicatorsPanel).
       data-no-widget-drag="true"
       onPointerDown={onPointerDown}
       onContextMenu={openMenu}
@@ -1078,12 +1078,12 @@ function ListCard({
         backgroundColor: own.background,
       }}
     >
-      {/* Aucun écart ici : le seul espacement de la liste est celui entre deux
-          cartes, posé par la pile de renderCards. Le titre et « ajouter une
-          carte » posent eux-mêmes leurs 5px de respiration. */}
+      {/* No gap here: the list's only spacing is that between two
+          cards, set by the renderCards stack. The title and "add a
+          card" set their own 5px of breathing room. */}
       <Stack gap={0}>
-        {/* Le titre respire de 5px sur sa gauche ; le champ qui le remplace,
-            lui, s'aligne sur le bord des cartes. */}
+        {/* The title has 5px of room on its left; the field that replaces it
+            aligns with the edge of the cards. */}
         <Group gap="xs" wrap="nowrap" pb={5} pl={editing ? 0 : 5}>
           {editing ? (
             <TextInput
@@ -1117,9 +1117,9 @@ function ListCard({
             </Text>
           )}
 
-          {/* Combien de cartes porte la liste, au bout du titre. Les
-              séparateurs ne comptent pas : ils rangent les cartes, ils n'en
-              sont pas. */}
+          {/* How many cards the list holds, at the end of the title. Separators
+              do not count: they organize the cards, they are not
+              cards. */}
           <Text size="xs" c={own.text} opacity={0.7} style={{ flexShrink: 0 }}>
             {tasks}
           </Text>
@@ -1128,20 +1128,20 @@ function ListCard({
         {children}
       </Stack>
 
-      {/* Mantine rend le focus à l'ancre un instant après la fermeture du
-          menu. « Séparateur » ouvre une saisie qui prend le focus dans le
-          même souffle : sans « returnFocus », elle le perdrait aussitôt et
-          se refermerait sur du vide. */}
+      {/* Mantine returns focus to the anchor a moment after the menu closes.
+          "Séparateur" opens an input that takes focus in the same
+          breath: without "returnFocus", it would lose it right away and
+          close on nothing. */}
       {menu && (
         <PointMenu position={menu} onClose={() => setMenu(null)} returnFocus={false}>
-          {/* Le séparateur se saisit comme une carte, à la fin de la
-              liste ; on le glisse ensuite là où il doit trancher. */}
-          {/* Cochée, la liste est suivie : toute modification de ses
-              cartes vaut notification. La coche est à droite comme dans
-              les menus du système, l'œil à gauche comme les autres icônes. */}
-          {/* En modification, la liste ne propose que ce qui touche au
-              tableau : la déplacer, la copier, la supprimer. Hors
-              modification, ce qui touche à son contenu. */}
+          {/* The separator is typed like a card, at the end of the
+              list; it is then dragged to where it should divide. */}
+          {/* When checked, the list is followed: any change to its
+              cards counts as a notification. The check is on the right as in
+              system menus, the eye on the left like the other icons. */}
+          {/* When editing, the list only offers what concerns the
+              board: moving it, copying it, deleting it. Outside
+              editing, what concerns its content. */}
           {isLocked && (
             <Menu.Item
               leftSection={<IconEye size={16} />}
@@ -1163,8 +1163,8 @@ function ListCard({
               Séparateur
             </Menu.Item>
           )}
-          {/* Vers un autre tableau, la liste quitterait celui-ci : un
-              tableau verrouillé la garde. */}
+          {/* To another board, the list would leave this one: a locked
+              board keeps it. */}
           {!isLocked && rights.updateStatement && (
             <Menu.Item
               leftSection={<IconFolderSymlink size={16} />}
@@ -1173,8 +1173,8 @@ function ListCard({
               Déplacer
             </Menu.Item>
           )}
-          {/* Copier suit déplacer : même question — vers quel tableau ? —
-              et la même boîte y répond, le tableau courant compris. */}
+          {/* Copy follows move: same question — to which board? —
+              and the same dialog answers it, the current board included. */}
           {!isLocked && rights.add && (
             <Menu.Item
               leftSection={<IconCopy size={16} />}
@@ -1187,8 +1187,8 @@ function ListCard({
           {isLocked && rights.updateStatement && (
             <>
               <Menu.Divider />
-              {/* Les pastilles se passent d'intitulé : une couleur se
-                  reconnaît. La section, elle, en porte un. */}
+              {/* The swatches do without a label: a color is
+                  recognized. The section, though, carries one. */}
               <Menu.Label>Couleur de la liste</Menu.Label>
               <div className={swatches.grid}>
                 {LIST_COLORS.map((color) => (
@@ -1217,8 +1217,8 @@ function ListCard({
                 Aucune
               </Menu.Item>
               <Menu.Divider />
-              {/* L'arrivée d'une carte se fête selon les marques du titre :
-                  chaque emoji pose la sienne au bout, ou la retire. */}
+              {/* A card's arrival is celebrated according to the title's marks:
+                  each emoji sets its own at the end, or removes it. */}
               <Menu.Label>Animation à l'arrivée</Menu.Label>
               <div className={swatches.animations}>
                 {MARKS.map((m) => (
@@ -1243,7 +1243,7 @@ function ListCard({
           {rights.canDelete && (
             <>
               <Menu.Divider />
-              {/* Vider la liste sans la supprimer : ses séparateurs restent. */}
+              {/* Empty the list without deleting it: its separators stay. */}
               {isLocked ? (
                 <Menu.Item
                   color={RED}
@@ -1272,7 +1272,7 @@ function ListCard({
 
 // --- Carte ----------------------------------------------------------------
 
-/** La saisie en cours sur une carte : celle qu'on modifie, et son texte. */
+/** Typing in progress on a card: the one being edited, and its text. */
 interface CardEditing {
   id: Id;
   text: string;
@@ -1286,9 +1286,9 @@ interface CardViewProps {
   onEditKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
   onEditBlur: () => void;
   onPointerDown: (event: ReactPointerEvent) => void;
-  /** Sans lui — en modification —, le clic droit revient au menu du widget. */
+  /** Without it — when editing —, right-click returns to the widget menu. */
   onContextMenu?: (card: TaskCard, position: PointMenuPosition) => void;
-  /** Son menu est ouvert : elle garde le cadre du survol. */
+  /** Its menu is open: it keeps the hover frame. */
   active: boolean;
   palette: Palette;
   withNumber: boolean;
@@ -1321,8 +1321,8 @@ function CardView({
 }: CardViewProps) {
   const [hovered, setHovered] = useState(false);
 
-  // En édition, la carte garde son attribut : elle occupe toujours son
-  // emplacement dans le calcul des positions pendant un glisser.
+  // When editing, the card keeps its attribute: it still occupies its
+  // place in the position computation during a drag.
   if (editing) {
     return (
       <Textarea
@@ -1349,8 +1349,8 @@ function CardView({
       radius={CARD_RADIUS}
       p="xs"
       onPointerDown={onPointerDown}
-      // Une carte s'ouvre en fiche d'un simple clic ; seul le séparateur, qui
-      // n'a pas de fiche, se modifie encore sur le tableau.
+      // A card opens its details with a simple click; only the separator, which
+      // has no details, is still edited on the board.
       onDoubleClick={() => onStartEdit(card)}
       onContextMenu={(e) => onContextMenu?.(card, menuPosition(e))}
       onMouseEnter={() => setHovered(true)}
@@ -1376,9 +1376,9 @@ function CardView({
   );
 }
 
-// Une liste figée : son fond, son titre, ses cartes et son « ajouter une
-// carte », sans aucune interaction. C'est ce que montrent la copie qui suit le
-// pointeur et la liste laissée en place pendant le glisser.
+// A frozen list: its background, title, cards and its "add a
+// card", with no interaction. This is what the copy following the
+// pointer and the list left in place during the drag show.
 interface ListStillProps {
   list: TaskList;
   style?: CSSProperties;
@@ -1447,30 +1447,30 @@ export interface TaskBoardProps {
   onToggleFollow: (kind: FollowKind, id: Id) => void | Promise<void>;
   cardToOpen: Id | null;
   onCardOpened: (id: Id | null) => void;
-  /** Le widget « Tâches » qui la montre : ses listes, et celles qu'on y crée. */
+  /** The "Tâches" widget that shows it: its lists, and those created in it. */
   listKey?: string;
-  /** Montrer le numéro des cartes : une option du widget (task-indicators/liste.tsx). */
+  /** Show the card number: a widget option (task-indicators/list.tsx). */
   withNumber?: boolean;
 }
 
-/** La clé de l'option du widget « Tâches » qui montre le numéro des cartes. */
+/** The key of the "Tâches" widget option that shows the card number. */
 export const NUMBERS = "show_numbers";
 
-/** Le widget montre-t-il le numéro des cartes ? Sans réglage, non. */
+/** Does the widget show the card number? Without a setting, no. */
 export const withNumbers = (config: unknown): boolean =>
   (config as Record<string, unknown> | null)?.[NUMBERS] === true;
 
 /**
- * Le tableau ouvert, tel que la page le met en scène : le widget des listes
- * (task-indicators/liste.tsx) le lit ici, où qu'il soit posé dans les
+ * The open board, as the page stages it: the lists widget
+ * (task-indicators/list.tsx) reads it here, wherever it is placed in the
  * sections.
  */
 export const TaskBoardContext = createContext<TaskBoardProps | null>(null);
 
 /**
- * Les listes du tableau en widget — celles de ce widget seulement
- * (lib/listes.ts). Remonté à chaque tableau : une saisie ou un glisser en
- * cours ne traverse pas le changement d'onglet.
+ * The board's lists as a widget — only this widget's lists
+ * (lib/lists.ts). Remounted for each board: typing or a drag in
+ * progress does not survive the tab change.
  */
 export function TaskBoardWidget({ config }: { config: unknown }) {
   const board = useContext(TaskBoardContext);
@@ -1505,37 +1505,37 @@ export default function TaskBoard({
   withNumber = false,
 }: TaskBoardProps) {
   const [composing, setComposing] = useState(false);
-  // Le rang où la liste saisie prendra place : « null », au bout. Le « + »
-  // entre deux listes en donne un, et l'encart s'ouvre à cet endroit.
+  // The rank where the list being typed will land: "null", at the end. The "+"
+  // between two lists gives one, and the panel opens at that spot.
   const [newRank, setNewRank] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
 
   const [editingId, setEditingId] = useState<Id | null>(null);
   const [editingName, setEditingName] = useState("");
-  // Échap doit annuler sans que la perte de focus n'enregistre au passage.
+  // Escape must cancel without the loss of focus saving in passing.
   const cancelled = useRef(false);
 
   const [pendingDelete, setPendingDelete] = useState<TaskList | null>(null);
-  // La liste qu'on demande à vider de ses tâches.
+  // The list being asked to be emptied of its tasks.
   const [listToEmpty, setListToEmpty] = useState<TaskList | null>(null);
-  // Liste dont on choisit le tableau d'accueil.
-  // La liste qu'on s'apprête à déplacer ou à copier, et lequel des deux.
+  // List whose host board is being chosen.
+  // The list about to be moved or copied, and which of the two.
   const [targetList, setTargetList] = useState<{ list: TaskList; mode: ListAction } | null>(
     null,
   );
-  // Carte dont la fiche est ouverte.
+  // Card whose details are open.
   const [openCard, setOpenedCard] = useState<TaskCard | null>(null);
-  // Le menu contextuel d'une carte, et la carte dont on demande la
-  // suppression.
+  // A card's context menu, and the card whose deletion is
+  // requested.
   const [cardMenu, setCardMenu] = useState<
     { card: TaskCard; position: PointMenuPosition } | null
   >(null);
   const [cardToDelete, setCardToDelete] = useState<TaskCard | null>(null);
 
-  // Une carte désignée de l'extérieur — par l'adresse, ou par le lien d'une
-  // notification. L'application s'est déjà placée sur le bon tableau ; on
-  // attend simplement que ses listes soient lues pour y trouver la carte.
+  // A card designated from outside — by the address, or by a
+  // notification link. The app has already moved to the right board; we
+  // simply wait for its lists to be read to find the card there.
   useEffect(() => {
     if (cardToOpen === null) return;
     for (const column of lists) {
@@ -1547,8 +1547,8 @@ export default function TaskBoard({
     }
   }, [cardToOpen, lists]);
 
-  // La copie qu'on vient de dupliquer : sa fiche s'ouvre dès que les listes
-  // relues la portent, pour qu'on la reprenne comme base d'une autre.
+  // The copy just duplicated: its details open as soon as the reloaded lists
+  // carry it, so it can be taken up as the basis for another.
   const [copyToOpen, setCopyToOpen] = useState<Id | null>(null);
   useEffect(() => {
     if (copyToOpen === null) return;
@@ -1559,36 +1559,36 @@ export default function TaskBoard({
     }
   }, [copyToOpen, lists]);
 
-  // L'adresse suit la carte ouverte : c'est l'application qui l'écrit, le
-  // tableau lui dit seulement ce qu'il montre.
+  // The address follows the open card: it is the app that writes it, the
+  // board only tells it what it shows.
   useEffect(() => {
     onCardOpened(openCard?.id ?? null);
   }, [openCard, onCardOpened]);
-  // Les étiquettes se replient en barres, ou se déploient avec leur nom : le
-  // choix vaut pour tout le tableau, comme un réglage d'affichage.
+  // Labels collapse into bars, or expand with their name: the
+  // choice applies to the whole board, like a display setting.
   const [compactLabels, setCompactLabels] = useState(false);
-  // Cartes dont le panneau « ce qu'il reste à faire » est déplié. Chaque carte
-  // garde le sien : on peut en ouvrir plusieurs à la fois.
+  // Cards whose "what is left to do" panel is expanded. Each card
+  // keeps its own: several can be open at once.
   const [expandedChecklists, setExpandedChecklists] = useState<Set<Id>>(() => new Set());
 
-  // Saisie d'une nouvelle carte : la liste, le rang où elle prendra place et
-  // son genre (« card » ou « separator »). Modification d'une carte existante
-  // juste en dessous.
+  // Typing a new card: the list, the rank where it will land and
+  // its kind ("card" or "separator"). Editing an existing card
+  // just below.
   const [cardCompose, setCardComposition] = useState<Composition | null>(null);
   const [cardText, setCardText] = useState("");
   const composeCancelled = useRef(false);
   const [editingCardId, setEditingCardId] = useState<Id | null>(null);
-  // Ouverture de la fiche différée, le temps qu'un second clic puisse la
-  // devancer pour ouvrir la saisie du titre.
+  // Opening of the card details is deferred, long enough for a second click to
+  // beat it and open the title input.
   const openRecord = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(openRecord.current), []);
   const [editingCardText, setEditingCardText] = useState("");
   const editCancelled = useRef(false);
 
-  // Ordre affiché pendant l'enregistrement d'un déplacement. Sans lui, la
-  // relâche redessinerait à partir des props, encore porteuses de l'ancien
-  // ordre : on verrait l'élément revenir à sa place le temps de l'aller-retour
-  // serveur. Les props reprennent la main dès qu'elles arrivent.
+  // Order shown while a move is being saved. Without it, the
+  // release would redraw from the props, still carrying the old
+  // order: the item would be seen returning to its place during the server
+  // round trip. The props take over as soon as they arrive.
   const [localOrder, setLocalOrder] = useState<TaskList[] | null>(null);
   const columns = localOrder || lists;
   useEffect(() => setLocalOrder(null), [lists]);
@@ -1596,27 +1596,27 @@ export default function TaskBoard({
   const colors = useListColors();
 
   const board = (boards || []).find((b) => String(b.id) === String(boardId));
-  // Verrouillé, le tableau garde ses listes : ni ajout, ni déplacement, ni
-  // suppression. Les cartes, elles, se glissent toujours.
+  // Locked, the board keeps its lists: no adding, moving or
+  // deleting. Cards, however, can still be dragged.
   const isLocked = board?.is_locked === 1;
-  // Qui ne fait que lire ouvre les fiches, sans rien ajouter, glisser ni
-  // supprimer.
+  // Whoever only reads opens the card details, without adding, dragging or
+  // deleting anything.
   const can = useRights();
   const rights: BoardRights = {
     add: can("tasks", "create"),
     updateStatement: can("tasks", "update"),
     canDelete: can("tasks", "delete"),
   };
-  // Pas de liste ajoutée : verrouillé, ou sans le droit.
+  // No list added: locked, or without the right.
   const withoutListAdd = isLocked || !rights.add;
 
-  // Fêtes en cours : une par marque du titre de la liste d'accueil.
+  // Celebrations in progress: one per mark in the host list's title.
   const [celebrations, setCelebrations] = useState<Celebration[]>([]);
 
-  // Une carte qui arrive dans une liste marquée (✨, ❤️, 👍, 🚀, 🔥, ❄️, ⚡) se
-  // fête. La liste et la carte sont mesurées à l'écran : le tableau défile, leur
-  // position n'est connue qu'à cet instant. La carte vient d'être déplacée : on
-  // attend qu'elle soit peinte à sa nouvelle place avant de la mesurer.
+  // A card arriving in a marked list (✨, ❤️, 👍, 🚀, 🔥, ❄️, ⚡) is
+  // celebrated. The list and the card are measured on screen: the board scrolls, so their
+  // position is only known at that moment. The card has just been moved: we
+  // wait for it to be painted at its new place before measuring it.
   const arrivalCelebration = (list: TaskList, cardId: Id) => {
     const effects = titleEffects(list.name);
     if (effects.length === 0) return;
@@ -1639,7 +1639,7 @@ export default function TaskBoard({
     );
   };
 
-  // État du glisser en cours : une liste, ou une carte.
+  // State of the drag in progress: a list, or a card.
   const [drag, setDrag] = useState<ListDrag | null>(null);
   const dragRef = useRef<ListDragInProgress | null>(null);
   const rowRef = useRef<HTMLDivElement | null>(null);
@@ -1647,8 +1647,8 @@ export default function TaskBoard({
   const cardDragRef = useRef<CardDragInProgress | null>(null);
   const cardTargetRef = useRef<CardTarget | null>(null);
 
-  // La hauteur de chaque liste, suivie à l'écran : le « + » entre deux listes
-  // prend celle de la plus haute des deux, et non celle de toute la rangée.
+  // Each list's height, tracked on screen: the "+" between two lists
+  // takes that of the taller of the two, not that of the whole row.
   const [heights, setHeights] = useState<Map<string, number>>(() => new Map());
   useEffect(() => {
     const band = rowRef.current;
@@ -1669,7 +1669,7 @@ export default function TaskBoard({
     band.querySelectorAll("[data-list-id]").forEach((column) => observer.observe(column));
     return () => observer.disconnect();
   }, [columns]);
-  // Conteneur des cartes de chaque liste, par identifiant de liste.
+  // Container of each list's cards, by list id.
   const cardZones = useRef(new Map<Id, HTMLElement>());
 
   // --- Renommage en ligne ------------------------------------------------
@@ -1699,8 +1699,8 @@ export default function TaskBoard({
     }
   };
 
-  // --- Animation d'une liste ---------------------------------------------
-  // La marque se pose au bout du titre : c'est lui qui décide de la fête.
+  // --- List animation ----------------------------------------------------
+  // The mark is placed at the end of the title: it is what decides the celebration.
   const setListAnimation = async (list: TaskList, effect: Effect) => {
     const name = toggleMark(list.name, effect);
     if (!name || name === list.name) return;
@@ -1714,11 +1714,11 @@ export default function TaskBoard({
     }
   };
 
-  // --- Couleur d'une liste ------------------------------------------------
+  // --- List color ---------------------------------------------------------
   const setListColor = async (list: TaskList, color: string) => {
     if ((list.color || "") === color) return;
-    // La liste prend sa couleur tout de suite : l'aller-retour serveur ne doit
-    // pas laisser le menu se refermer sur l'ancien fond.
+    // The list takes its color right away: the server round trip must not
+    // let the menu close on the old background.
     setLocalOrder(
       columns.map((l) => (l.id === list.id ? { ...l, color } : l)),
     );
@@ -1731,7 +1731,7 @@ export default function TaskBoard({
     }
   };
 
-  // --- Suppression d'une liste -------------------------------------------
+  // --- List deletion ------------------------------------------------------
   const deleteList = async (list: TaskList) => {
     setPendingDelete(null);
     try {
@@ -1744,7 +1744,7 @@ export default function TaskBoard({
 
   const deleteTasks = async (list: TaskList) => {
     setListToEmpty(null);
-    // La fiche ouverte sur une tâche de cette liste n'aurait plus de carte.
+    // The card details open on a task of this list would no longer have a card.
     if (openCard && openCard.list_id === list.id && !isSeparator(openCard)) {
       setOpenedCard(null);
     }
@@ -1767,8 +1767,8 @@ export default function TaskBoard({
     }
   };
 
-  // --- Cartes : saisie et modification -----------------------------------
-  // Dans les deux cas, Échap annule et la perte de focus valide.
+  // --- Cards: typing and editing -----------------------------------------
+  // In both cases, Escape cancels and loss of focus submits.
   const startCompose = (list: TaskList, index: number, kind: "card" | "separator" = "card") => {
     if (!rights.add) return;
     composeCancelled.current = false;
@@ -1782,9 +1782,9 @@ export default function TaskBoard({
     setCardText("");
   };
 
-  // Entrée et la perte de focus mènent tous deux ici : le drapeau ferme la
-  // porte derrière le premier des deux, sans quoi la carte serait créée deux
-  // fois. startCompose le rouvre.
+  // Enter and loss of focus both lead here: the flag closes the
+  // door behind the first of the two, otherwise the card would be created twice.
+  // startCompose reopens it.
   const saveComposition = async (
     list: TaskList,
     rank: number | null,
@@ -1800,10 +1800,10 @@ export default function TaskBoard({
     const cards = list.cards || [];
     const index = Math.min(rank ?? cards.length, cards.length);
 
-    // La carte prend sa place tout de suite, au rang visé : sans cela le champ
-    // s'effacerait sur du vide, et la carte n'apparaîtrait qu'au retour du
-    // serveur. Sa référence, elle, attend le serveur : le compteur est commun
-    // à tous les modes, et rien ici ne dit la suivante.
+    // The card takes its place right away, at the targeted rank: without it the field
+    // would vanish into nothing, and the card would only appear when the
+    // server returns. Its reference waits for the server: the counter is shared
+    // across all modes, and nothing here knows the next one.
     const provisional: ProvisionalCard = {
       id: `new-${Date.now()}`,
       list_id: list.id,
@@ -1811,8 +1811,8 @@ export default function TaskBoard({
       number: 0,
       kind,
     };
-    // La carte provisoire n'a pas encore d'identifiant de ligne : elle tient
-    // la place d'une vraie le temps de l'aller-retour.
+    // The provisional card has no row id yet: it holds
+    // the place of a real one for the round trip.
     setLocalOrder(
       columns.map((l) =>
         l.id === list.id
@@ -1822,10 +1822,10 @@ export default function TaskBoard({
     );
 
     try {
-      // Le serveur ajoute toujours la carte à la fin : si elle s'insère plus
-      // haut, l'ordre de la liste suit dans la foulée.
-      // Elle naît dans le contexte qu'on regarde ; sous « Tous », dans le
-      // premier du tableau.
+      // The server always adds the card at the end: if it is inserted higher
+      // up, the list's order follows right after.
+      // It is born in the context being viewed; under "Tous", in the
+      // board's first one.
       const created = await api.createTaskCard(
         list.id,
         text,
@@ -1847,9 +1847,9 @@ export default function TaskBoard({
   };
 
   const startEditCard = (card: TaskCard) => {
-    // Le second clic arrive avant que la fiche ne s'ouvre : on retire
-    // l'ouverture en attente, sans quoi le tiroir viendrait par-dessus la
-    // saisie qu'on vient d'ouvrir.
+    // The second click arrives before the card details open: we cancel
+    // the pending opening, otherwise the drawer would come on top of the
+    // input just opened.
     if (!rights.updateStatement) return;
     clearTimeout(openRecord.current);
     editCancelled.current = false;
@@ -1857,15 +1857,15 @@ export default function TaskBoard({
     setEditingCardText(card.text);
   };
 
-  // « Modifier » ouvre la fiche ; un séparateur, qui n'en a pas, se modifie
-  // sur le tableau.
+  // "Modifier" opens the card details; a separator, which has none, is edited
+  // on the board.
   const editCard = (card: TaskCard) => {
     if (isSeparator(card)) startEditCard(card);
     else setOpenedCard(card);
   };
 
-  // Un séparateur dupliqué n'a pas de fiche : il se pose sous l'original,
-  // et l'on glisse ensuite celui des deux qui doit trancher ailleurs.
+  // A duplicated separator has no card details: it is placed under the original,
+  // and whichever of the two should divide elsewhere is dragged afterwards.
   const duplicateCard = async (card: TaskCard) => {
     try {
       const copy = await api.duplicateTaskCard(card.id);
@@ -1896,10 +1896,10 @@ export default function TaskBoard({
     }
   };
 
-  // --- Glisser-déposer des listes ----------------------------------------
+  // --- List drag and drop ------------------------------------------------
 
-  // Index visé d'après la position horizontale du pointeur : toutes les listes
-  // ont la même largeur, un simple calcul suffit.
+  // Target index from the pointer's horizontal position: all lists
+  // have the same width, a simple computation is enough.
   const targetFromPointer = useCallback(
     (clientX: number): number => {
       const row = rowRef.current;
@@ -1914,11 +1914,11 @@ export default function TaskBoard({
 
   const onListPointerDown =
     (list: TaskList, index: number) => (event: ReactPointerEvent) => {
-    // Bouton principal uniquement, jamais pendant un renommage ni sur un
-    // tableau verrouillé.
+    // Primary button only, never during a rename or on a locked
+    // board.
     if (event.button !== 0 || editingId === list.id || isLocked || !rights.updateStatement) return;
-    // Les cartes, le menu et les champs de saisie ont leur propre rôle : un
-    // appui sur eux ne déplace pas la liste.
+    // Cards, the menu and input fields have their own role: pressing
+    // on them does not move the list.
     if ((event.target as HTMLElement).closest("[data-no-list-drag]")) return;
 
     const element = event.currentTarget.getBoundingClientRect();
@@ -1927,7 +1927,7 @@ export default function TaskBoard({
       index,
       startX: event.clientX,
       startY: event.clientY,
-      // Décalage du pointeur dans la carte, pour que le clone suive sans saut.
+      // Pointer offset within the card, so the clone follows without jumping.
       offsetX: event.clientX - element.left,
       offsetY: event.clientY - element.top,
       started: false,
@@ -1970,7 +1970,7 @@ export default function TaskBoard({
       setDrag(null);
       if (!current || current.target === current.from) return;
 
-      // Nouvel ordre affiché aussitôt, puis enregistré.
+      // New order shown immediately, then saved.
       const order = columns.map((l) => l.id);
       const [moved] = order.splice(current.from, 1);
       if (moved === undefined) return;
@@ -1997,10 +1997,10 @@ export default function TaskBoard({
     };
   }, [drag, columns, onListsChanged, targetFromPointer, boardId]);
 
-  // --- Glisser-déposer des cartes ----------------------------------------
+  // --- Card drag and drop ------------------------------------------------
 
-  // Liste et rang visés. Les cartes n'ont pas toutes la même hauteur : il faut
-  // mesurer. « precedent » est l'emplacement d'accueil actuellement affiché.
+  // Target list and rank. Cards do not all have the same height: we need to
+  // measure. "precedent" is the drop placeholder currently shown.
   const cardTargetFromPointer = useCallback(
     (clientX: number, clientY: number, previous: CardTarget | null): CardTarget | null => {
       const column = columns[targetFromPointer(clientX)];
@@ -2008,12 +2008,12 @@ export default function TaskBoard({
       const zone = cardZones.current.get(column.id);
       if (!zone) return { listId: column.id, index: 0 };
 
-      // La carte déplacée ne s'affiche plus : ne restent que les autres.
+      // The moved card is no longer displayed: only the others remain.
       const cards = [...zone.querySelectorAll<HTMLElement>("[data-card-id]")];
 
-      // L'emplacement d'accueil occupe de la place et pousse vers le bas les
-      // cartes qui le suivent. On retire ce décalage : sinon le rang calculé
-      // dépendrait de l'emplacement affiché et oscillerait entre deux valeurs.
+      // The drop placeholder takes up space and pushes the cards after it
+      // down. We subtract that offset: otherwise the computed rank
+      // would depend on the displayed placeholder and oscillate between two values.
       const home = zone.querySelector("[data-card-placeholder]");
       const offset = home
         ? (home as HTMLElement).getBoundingClientRect().height + CARD_GAP
@@ -2045,8 +2045,8 @@ export default function TaskBoard({
       return next;
     });
 
-  // Cocher depuis la carte : l'élément quitte le panneau et la pastille
-  // avance. La fiche n'a pas besoin d'être ouverte pour cela.
+  // Checking from the card: the item leaves the panel and the badge
+  // advances. The card details need not be open for this.
   const checkChecklistItem = async (itemId: Id) => {
     if (!rights.updateStatement) return;
     try {
@@ -2060,8 +2060,8 @@ export default function TaskBoard({
   const onCardPointerDown =
     (card: TaskCard, list: TaskList) => (event: ReactPointerEvent) => {
     if (event.button !== 0 || editingCardId === card.id) return;
-    // Une étiquette répond elle-même au clic : elle ne déplace pas la carte et
-    // n'ouvre pas sa fiche.
+    // A label responds to the click itself: it does not move the card and
+    // does not open its details.
     if ((event.target as HTMLElement).closest("[data-no-card-drag]")) return;
 
     const element = event.currentTarget.getBoundingClientRect();
@@ -2073,7 +2073,7 @@ export default function TaskBoard({
       startY: event.clientY,
       offsetX: event.clientX - element.left,
       offsetY: event.clientY - element.top,
-      // Le clone et l'emplacement d'accueil reprennent la taille de la carte.
+      // The clone and the drop placeholder take the card's size.
       width: element.width,
       height: element.height,
       started: false,
@@ -2123,11 +2123,11 @@ export default function TaskBoard({
       document.body.style.cursor = "";
       if (!d) return;
 
-      // Un appui qui n'a pas glissé est un clic : il ouvre la fiche de la
-      // carte. Mais un double-clic, lui, ouvre la saisie du titre — et son
-      // premier clic passe d'abord par ici. La fiche attend donc le délai du
-      // double-clic ; si un second clic arrive, il annule l'attente
-      // (« startEditCard »). Un séparateur n'a pas de fiche : rien à retenir.
+      // A press that did not drag is a click: it opens the card's
+      // details. But a double-click opens the title input instead — and its
+      // first click goes through here first. The details therefore wait for the
+      // double-click delay; if a second click arrives, it cancels the wait
+      // ("startEditCard"). A separator has no details: nothing to hold.
       if (!d.started) {
         const card = columns.flatMap((l) => l.cards || []).find((c) => c.id === d.id);
         if (card && !isSeparator(card)) {
@@ -2146,16 +2146,16 @@ export default function TaskBoard({
       const home = columns.find((l) => l.id === target.listId);
       if (!home) return;
 
-      // Ordre complet de la liste d'accueil : ses cartes, la carte déplacée
-      // ôtée si elle en venait, puis réinsérée au rang visé.
+      // The host list's full order: its cards, the moved card
+      // removed if it came from there, then reinserted at the targeted rank.
       const before = (home.cards || []).map((c) => c.id);
       const order = before.filter((id) => id !== d.id);
       order.splice(target.index, 0, d.id);
       if (target.listId === d.listId && order.join() === before.join()) return;
 
-      // La carte rejoint sa destination sans attendre la réponse du serveur.
+      // The card reaches its destination without waiting for the server's response.
       setLocalOrder(withCardMoved(columns, d.id, home.id, target.index));
-      // Venue d'une autre liste : l'arrivée se fête, si la liste le demande.
+      // Coming from another list: the arrival is celebrated, if the list asks for it.
       if (target.listId !== d.listId) arrivalCelebration(home, d.id);
       try {
         await api.reorderTaskCards(home.id, order);
@@ -2174,7 +2174,7 @@ export default function TaskBoard({
     };
   }, [columns, onListsChanged, cardTargetFromPointer]);
 
-  // --- Création d'une liste ----------------------------------------------
+  // --- List creation -----------------------------------------------------
   const cancel = () => {
     setComposing(false);
     setNewRank(null);
@@ -2192,8 +2192,8 @@ export default function TaskBoard({
         listKey || undefined,
       );
       await onListsChanged();
-      // On enchaîne : le champ reste ouvert et vide pour la liste suivante,
-      // qui se range juste après celle qu'on vient de créer.
+      // We chain: the field stays open and empty for the next list,
+      // which lands right after the one just created.
       setName("");
       setNewRank((r) => (r === null ? null : r + 1));
     } catch (e) {
@@ -2203,25 +2203,25 @@ export default function TaskBoard({
     }
   };
 
-  // Ordre affiché pendant le glisser : la liste déplacée sort du flux et cède
-  // sa place à un emplacement d'accueil à l'index visé.
+  // Order shown during the drag: the moved list leaves the flow and gives
+  // up its place to a drop placeholder at the targeted index.
   const dragged = drag ? columns.find((l) => l.id === drag.id) : null;
   const visibleItems = drag ? columns.filter((l) => l.id !== drag.id) : columns;
 
   const draggedCard = cardDrag
     ? columns.flatMap((l) => l.cards || []).find((c) => c.id === cardDrag.id)
     : null;
-  // La liste d'où part une carte : un séparateur glissé garde le fond de sa
-  // liste d'origine jusqu'à ce qu'il se pose.
+  // The list a card starts from: a dragged separator keeps its origin
+  // list's background until it lands.
   const listOf = (card: TaskCard): TaskList | undefined =>
     columns.find((l) => l.id === card.list_id);
 
-  // Cartes d'une liste, avec l'emplacement d'accueil quand le glisser la vise
-  // et, entre deux cartes, le point d'insertion qui ouvre une saisie.
+  // A list's cards, with the drop placeholder when the drag targets it
+  // and, between two cards, the insertion point that opens an input.
   const renderCards = (list: TaskList) => {
     const cards = list.cards || [];
-    // Saisie en cours dans cette liste, et le champ qui la porte : il est
-    // écrit une fois, puis posé au rang visé.
+    // Typing in progress in this list, and the field that carries it: it is
+    // written once, then placed at the targeted rank.
     const input = cardCompose?.listId === list.id ? cardCompose : null;
     const separator = input?.kind === "separator";
     const palette = colors(list.color);
@@ -2249,8 +2249,8 @@ export default function TaskBoard({
         autoFocus
         radius={CARD_RADIUS}
         styles={
-          // Le séparateur s'écrit tel qu'il s'affichera : en gras, sur le fond
-          // de la liste assombri.
+          // The separator is written as it will display: in bold, on the
+          // list's darkened background.
           separator
             ? {
                 input: {
@@ -2258,9 +2258,9 @@ export default function TaskBoard({
                   backgroundColor: palette.separatorBackground,
                   color: palette.separatorText,
                   fontWeight: 700,
-                  // Le gris que Mantine donne au texte d'invite ne tient pas
-                  // sur un fond coloré : on reprend la couleur du texte, juste
-                  // assez estompée pour rester une invite.
+                  // The gray Mantine gives placeholder text does not hold up
+                  // on a colored background: we reuse the text color, just
+                  // faded enough to remain a prompt.
                   "--input-placeholder-color": alpha(palette.separatorText, 0.75),
                 },
               }
@@ -2293,9 +2293,9 @@ export default function TaskBoard({
           <Fragment key={card.id}>
             {rank === index && cardDrag && <CardPlaceholder height={cardDrag.height} />}
 
-            {/* Entre deux cartes : le trait pointillé qui ouvre une saisie à
-                ce rang. Ni pendant un glisser, ni au-dessus de la première
-                carte, ni là où la saisie est déjà ouverte. */}
+            {/* Between two cards: the dotted line that opens an input at
+                this rank. Not during a drag, nor above the first
+                card, nor where the input is already open. */}
             {index > 0 &&
               rights.add &&
               !cardDrag &&
@@ -2348,14 +2348,14 @@ export default function TaskBoard({
           <CardPlaceholder height={cardDrag.height} />
         )}
 
-        {/* La saisie ouverte par « Ajouter une carte » ferme la pile. */}
+        {/* The input opened by "Ajouter une carte" closes the stack. */}
         {input && input.index >= displayed.length && field}
       </Stack>
     );
   };
 
-  // L'encart de saisie d'une nouvelle liste : au bout de la rangée, ou au
-  // rang qu'a donné le « + » entre deux listes.
+  // The input panel for a new list: at the end of the row, or at the
+  // rank given by the "+" between two lists.
   const newInset = (
     <Paper
       w={LIST_WIDTH}
@@ -2387,8 +2387,8 @@ export default function TaskBoard({
             onClick={create}
             disabled={busy || !name.trim()}
           >
-            {/* Le même « + » que les autres actions « ajouter », et le
-                même écart à son libellé. */}
+            {/* The same "+" as the other "add" actions, and the
+                same gap to its label. */}
             <Group gap={PLUS_GAP} wrap="nowrap">
               <IconPlus size={PLUS_SIZE} />
               <span>Ajouter la liste</span>
@@ -2407,17 +2407,17 @@ export default function TaskBoard({
     </Paper>
   );
 
-  // Ce que la suppression de la liste visée emporterait.
+  // What deleting the targeted list would take with it.
   const deletedCards = pendingDelete?.cards?.length ?? 0;
-  // Ce que vider la liste visée emporterait.
+  // What emptying the targeted list would take with it.
   const deletedTasks = (listToEmpty?.cards || []).filter((c) => !isSeparator(c)).length;
 
   return (
     <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
 
-      {/* Un tableau sans liste : l'invite occupe toute la hauteur du
-          panneau, comme les autres écrans vides. Pendant une lecture, on
-          n'affiche rien : « aucune liste » serait une conclusion prématurée. */}
+      {/* A board with no list: the prompt fills the panel's whole
+          height, like the other empty screens. During a read, nothing is
+          shown: "no list" would be a premature conclusion. */}
       {columns.length === 0 && !composing ? (
         loading ? null : (
           <EmptyPanel
@@ -2425,17 +2425,17 @@ export default function TaskBoard({
             message="Aucune liste"
             actionLabel={withoutListAdd ? undefined : "Ajouter une liste"}
             onAction={withoutListAdd ? undefined : () => setComposing(true)}
-            // La taille des autres listes vides — projets, demandes.
+            // The size of the other empty lists — projects, requests.
             size="md"
           />
         )
       ) : (
         <ScrollArea
-          // La barre ne se montre que pendant le défilement, puis s'efface :
-          // au repos, le trait de l'entête reste entier.
+          // The bar only shows while scrolling, then fades:
+          // at rest, the header's line stays whole.
           type="scroll"
-          // Le glisser mesure l'élément qui défile : ce n'est plus la rangée,
-          // c'est le viewport de la zone.
+          // The drag measures the scrolling element: it is no longer the row,
+          // it is the area's viewport.
           viewportRef={rowRef}
           classNames={{ scrollbar: classes.scrollbar, thumb: classes.thumb }}
           style={{ flex: 1, minHeight: 0 }}
@@ -2445,9 +2445,9 @@ export default function TaskBoard({
               <Fragment key={list.id}>
                 {drag && drag.target === index && <Placeholder list={dragged ?? undefined} withNumber={withNumber} compactLabels={compactLabels} />}
                 {composing && newRank === index && newInset}
-                {/* Avant chaque liste : le trait qui en insère une à cet
-                    endroit. Il ne prend aucune largeur — la marge négative
-                    rend à la rangée l'écart que ce repère lui coûterait. */}
+                {/* Before each list: the line that inserts one at this
+                    spot. It takes no width — the negative margin
+                    gives the row back the gap this marker would cost it. */}
                 {!drag && !cardDrag && !composing && !withoutListAdd && (
                   <div
                     style={{
@@ -2463,9 +2463,9 @@ export default function TaskBoard({
                     <ColumnInsert
                       label="Insérer une liste ici"
                       style={{
-                        // Avant la première, la zone de défilement rognerait
-                        // tout ce qui déborde à gauche : elle chevauche donc
-                        // à moitié le bord de la liste.
+                        // Before the first, the scroll area would clip
+                        // everything that overflows on the left: it therefore overlaps
+                        // half of the list's edge.
                         left:
                           index === 0
                             ? -COLUMN_INSERT_ZONE / 2
@@ -2519,12 +2519,12 @@ export default function TaskBoard({
               </Fragment>
             ))}
 
-            {/* Emplacement en fin de rangée. */}
+            {/* Placeholder at the end of the row. */}
             {drag && drag.target >= visibleItems.length && (
               <Placeholder list={dragged ?? undefined} withNumber={withNumber} compactLabels={compactLabels} />
             )}
 
-            {/* Toujours à droite des listes : le bouton cède la place à l'encart. */}
+            {/* Always to the right of the lists: the button gives way to the panel. */}
             {!composing && !drag && !withoutListAdd && (
               <AddButton
                 label="Ajouter une liste"
@@ -2538,7 +2538,7 @@ export default function TaskBoard({
         </ScrollArea>
       )}
 
-      {/* Clone qui suit le curseur, légèrement incliné. */}
+      {/* Clone that follows the cursor, slightly tilted. */}
       {drag && dragged && (
         <ListStill
           list={dragged ?? undefined}
@@ -2609,16 +2609,16 @@ export default function TaskBoard({
         readOnly={!rights.updateStatement}
       />
 
-      {/* « Modifier » ouvre une saisie sur le séparateur : le focus ne doit
-          pas revenir à l'ancre, il la refermerait aussitôt. */}
+      {/* "Modifier" opens an input on the separator: focus must not
+          return to the anchor, it would close it right away. */}
       {cardMenu && (
         <PointMenu
           position={cardMenu.position}
           onClose={() => setCardMenu(null)}
           returnFocus={false}
         >
-          {/* Suivre vient en tête, comme dans la fiche. Un séparateur n'a pas
-              de fiche : il n'y a rien à y suivre. */}
+          {/* Follow comes first, as in the card details. A separator has no
+              details: there is nothing to follow in it. */}
           {!isSeparator(cardMenu.card) && (
             <>
               <Menu.Item
@@ -2634,8 +2634,8 @@ export default function TaskBoard({
               <Menu.Divider />
             </>
           )}
-          {/* Sans le droit de modifier, la fiche s'ouvre encore d'un clic sur
-              la carte, pour être lue. */}
+          {/* Without the right to edit, the card details still open on click on
+              the card, to be read. */}
           {rights.updateStatement && (
             <Menu.Item
               leftSection={<IconPencil size={16} />}
@@ -2731,9 +2731,9 @@ export default function TaskBoard({
   );
 }
 
-// Emplacement d'accueil : la liste déplacée, rappelée en entier à 50 %
-// d'opacité. On la voit derrière la copie qui suit le pointeur, à l'endroit où
-// elle se posera.
+// Drop placeholder: the moved list, recalled in full at 50%
+// opacity. It is seen behind the copy that follows the pointer, where
+// it will land.
 interface PlaceholderProps {
   list: TaskList | undefined;
   withNumber: boolean;
@@ -2741,8 +2741,8 @@ interface PlaceholderProps {
 }
 
 function Placeholder({ list, withNumber, compactLabels }: PlaceholderProps) {
-  // La liste glissée peut ne plus exister (relecture pendant le geste) :
-  // l'emplacement d'accueil n'a alors rien à montrer.
+  // The dragged list may no longer exist (reload during the gesture):
+  // the drop placeholder then has nothing to show.
   if (!list) return null;
   return (
     <ListStill
@@ -2755,8 +2755,8 @@ function Placeholder({ list, withNumber, compactLabels }: PlaceholderProps) {
   );
 }
 
-// Emplacement d'accueil d'une carte : même hauteur que la carte déplacée, pour
-// que la liste ne change pas de taille pendant le glisser.
+// Drop placeholder for a card: same height as the moved card, so
+// the list does not change size during the drag.
 function CardPlaceholder({ height }: { height: number }) {
   return (
     <Paper

@@ -1,5 +1,5 @@
-// Jeton opaque en base, envoyé par le client dans l'en-tête Authorization.
-// scrypt est fourni par Node : pas de dépendance native supplémentaire.
+// Opaque token in the database, sent by the client in the Authorization
+// header. scrypt is provided by Node: no extra native dependency.
 
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
@@ -15,16 +15,16 @@ export const verifyPassword = (password: string, stored: string): boolean => {
   if (!salt || !hash) return false;
   const expected = Buffer.from(hash, "hex");
   const candidate = scryptSync(password, salt, KEY_LENGTH);
-  // Comparaison à temps constant.
+  // Constant-time comparison.
   return expected.length === candidate.length && timingSafeEqual(expected, candidate);
 };
 
 export const createToken = (): string => randomBytes(32).toString("hex");
 
 /**
- * Gravatar : hachage SHA-256 de l'e-mail normalisé. `d=404` fait échouer la
- * requête quand la personne n'a pas d'image, ce qui laisse l'interface
- * retomber sur les initiales.
+ * Gravatar: SHA-256 hash of the normalized e-mail. `d=404` makes the request
+ * fail when the person has no image, which lets the interface fall back to
+ * initials.
  */
 export const gravatarUrl = (email: string): string =>
   `https://www.gravatar.com/avatar/${createHash("sha256")

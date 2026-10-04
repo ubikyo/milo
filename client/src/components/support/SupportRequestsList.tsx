@@ -38,32 +38,32 @@ import { inList } from "../../lib/lists";
 import type { CSSProperties, ReactNode } from "react";
 import type { Actor, SupportRequest, SupportStatus } from "@milo/shared";
 
-// La liste des demandes du mode Support : un widget des sections, comme les
-// indicateurs (indicators/liste.tsx). Ce qu'elle montre et ce qu'on y fait —
-// l'onglet ouvert, le tri, les filtres, les cases cochées, le menu du clic
-// droit — appartient à la page : le menu « Actions » de la rangée d'onglets
-// porte sur les demandes cochées ici. La page le donne par
-// « SupportListeContext » ; le widget ne choisit que ses colonnes.
+// The Support mode's request list: a section widget, like the
+// indicators (indicators/list.tsx). What it shows and what can be done in it —
+// the open tab, sorting, filters, checked boxes, the right-click
+// menu — belongs to the page: the "Actions" menu in the tab row
+// acts on the requests checked here. The page provides it through
+// "SupportListContext"; the widget only chooses its columns.
 
-/** L'onglet qui ne filtre rien : il montre les demandes de tous les statuts. */
+/** The tab that filters nothing: it shows the requests of all statuses. */
 export const ALL = "all";
 
-// Padding vertical des lignes, comme dans le tableau des projets : la hauteur
-// inclut le padding (box-sizing).
+// Rows' vertical padding, as in the projects table: the height
+// includes the padding (box-sizing).
 const ROW_PADDING_Y = 5;
 
-// Les étiquettes d'une demande, sur une seule ligne : au-delà de deux, le
-// compte des autres remplace la liste.
+// A request's labels, on a single line: beyond two, the
+// count of the others replaces the list.
 const LABELS_SHOWN = 2;
 const LABEL_HEIGHT = 20;
 
-// Le numéro de ticket le plus long qu'on attend : le tag en prend la largeur.
+// The longest ticket number expected: the tag takes its width.
 const REFERENCE_TEMPLATE = supportTicketRef(9999);
 
 /**
- * La couleur du tag de chaque statut, dessiné comme une étiquette : le
- * rouge de ce que personne n'a encore pris, l'orange de ce qui est en cours,
- * le vert de ce qui est réglé.
+ * The tag color of each status, drawn like a label: the
+ * red of what no one has taken yet, the orange of what is in progress,
+ * the green of what is settled.
  */
 const STATUS_COLOR: Record<SupportStatus, string> = {
   new: "red.6",
@@ -73,7 +73,7 @@ const STATUS_COLOR: Record<SupportStatus, string> = {
   closed: "green.6",
 };
 
-/** Une valeur absente se lit pareil partout : un tiret discret. */
+/** A missing value reads the same everywhere: a discreet dash. */
 function Empty() {
   return (
     <Text size="sm" c="dimmed">
@@ -85,14 +85,14 @@ function Empty() {
 function LabelsCell({ labels }: { labels: SupportRequest["labels"] }) {
   if (!labels.length) return <Empty />;
 
-  // Les plus lourdes devant : le serveur les range ainsi, la saisie du tiroir
-  // non.
+  // The heaviest first: the server sorts them that way, the drawer's input
+  // does not.
   const shown = [...labels].sort((a, b) => b.weight - a.weight).slice(0, LABELS_SHOWN);
   const remaining = labels.length - shown.length;
 
   return (
-    // Boîte de hauteur fixe : sans elle, la line-box ajoute un demi-pixel et la
-    // ligne devient plus haute que les autres.
+    // Fixed-height box: without it, the line-box adds half a pixel and the
+    // row becomes taller than the others.
     <div
       style={{
         height: ACTOR_AVATAR_SIZE,
@@ -115,7 +115,7 @@ function LabelsCell({ labels }: { labels: SupportRequest["labels"] }) {
   );
 }
 
-/** L'expéditeur d'une demande reçue par e-mail, en acteur à afficher. */
+/** The sender of a request received by e-mail, as an actor to display. */
 const senderOf = (request: SupportRequest): Actor | null =>
   request.sender_email
     ? {
@@ -127,15 +127,15 @@ const senderOf = (request: SupportRequest): Actor | null =>
     : null;
 
 /**
- * Les acteurs qu'on montre : l'expéditeur en tête — il est acteur d'office —,
- * puis les désignés. Celui qui a un compte y est déjà, il n'est pas redoublé.
+ * The actors shown: the sender first — they are an actor by default —,
+ * then the designated ones. Whoever has an account is already there, and is not duplicated.
  */
 const shownActors = (request: SupportRequest): Actor[] => {
   const sender = senderWithoutAccount(request);
   return sender ? [sender, ...request.actors] : request.actors;
 };
 
-/** L'expéditeur, s'il n'est pas déjà parmi les acteurs sous son compte. */
+/** The sender, if not already among the actors under their account. */
 const senderWithoutAccount = (request: SupportRequest): Actor | null => {
   const sender = senderOf(request);
   if (!sender) return null;
@@ -143,13 +143,13 @@ const senderWithoutAccount = (request: SupportRequest): Actor | null => {
   return request.actors.some((a) => a.email.toLowerCase() === address) ? null : sender;
 };
 
-/** La clé d'un acteur dans le filtre : un compte, ou une adresse sans compte. */
+/** An actor's key in the filter: an account, or an address without an account. */
 const actorKey = (a: Actor): string => (a.id ? `u:${a.id}` : `e:${a.email.toLowerCase()}`);
 
 function ActorsCell({ request }: { request: SupportRequest }) {
-  // L'expéditeur passe en tête, marqué de son enveloppe — qu'il ait un compte
-  // ou non. Avec un compte, il est déjà parmi les acteurs : il en sort pour
-  // n'être montré qu'une fois, mais avec sa marque, comme dans le tiroir.
+  // The sender comes first, marked with their envelope — whether or not they have an
+  // account. With an account, they are already among the actors: they are taken out of
+  // there to be shown only once, but with their mark, as in the drawer.
   const address = request.sender_email.toLowerCase();
   const withAccount = address
     ? request.actors.find((a) => a.email.toLowerCase() === address)
@@ -167,7 +167,7 @@ function ActorsCell({ request }: { request: SupportRequest }) {
   );
 }
 
-/** L'échéance, et la bulle qui dit où on en est — la même qu'une carte. */
+/** The due date, and the bubble that says where things stand — the same as a card's. */
 function DueCell({ due }: { due: string }) {
   const state = dueState(due);
   if (!due) {
@@ -180,8 +180,8 @@ function DueCell({ due }: { due: string }) {
 
   return (
     <Group gap="xs" wrap="nowrap">
-      {/* La date prend elle-même la couleur de l'état : orange à trois jours,
-          rouge une fois passée. */}
+      {/* The date itself takes the state's color: orange at three days,
+          red once past. */}
       <Text size="sm" c={DUE_COLOR[state]} fw={state === "none" ? undefined : 600}>
         {shortDate(due)}
       </Text>
@@ -194,20 +194,20 @@ function DueCell({ due }: { due: string }) {
   );
 }
 
-// --- Tri et filtres --------------------------------------------------------
-// Comme au tableau des projets : le libellé trie, l'entonnoir filtre, et les
-// deux sont des commandes distinctes.
+// --- Sorting and filters ---------------------------------------------------
+// As in the projects table: the label sorts, the funnel filters, and the
+// two are separate controls.
 
-// La colonne « Objet » a une largeur fixe : un objet trop long se coupe
-// d'une ellipse plutôt que d'élargir la colonne.
+// The "Objet" column has a fixed width: a subject that is too long is cut
+// with an ellipsis rather than widening the column.
 const SUBJECT_WIDTH = 600;
 /**
- * Le minimum de la colonne « Étiquettes », assez pour ses deux étiquettes et
- * le compte des autres. Les acteurs, eux, s'en tiennent à leurs avatars :
- * c'est aux étiquettes qu'ira l'air qui reste.
+ * The minimum of the "Étiquettes" column, enough for its two labels and
+ * the count of the others. The actors, for their part, stick to their avatars:
+ * it is the labels that get the remaining room.
  */
 const LABELS_MIN_WIDTH = 260;
-/** Largeur des colonnes de dates : « Reçu le » et « Échéance ». */
+/** Width of the date columns: "Reçu le" and "Échéance". */
 const DATE_WIDTH = 130;
 export type ColumnKey = "ticket" | "subject" | "actors" | "labels" | "due" | "status" | "received";
 
@@ -216,7 +216,7 @@ interface Sort {
   direction: "asc" | "desc";
 }
 
-/** Une option d'entonnoir : « all » vaut « pas de filtre ». */
+/** A funnel option: "all" means "no filter". */
 interface FilterOption {
   value: string;
   label: string;
@@ -229,7 +229,7 @@ const STATUS_ORDER = Object.fromEntries(SUPPORT_STATUSES.map((s, i) => [s.value,
   number
 >;
 
-/** La valeur sur laquelle chaque colonne se trie ; « null » passe en bas. */
+/** The value each column sorts on; "null" goes to the bottom. */
 const VALUES: Record<ColumnKey, (d: SupportRequest) => string | number | null> = {
   ticket: (d) => d.number,
   subject: (d) => d.subject || null,
@@ -237,7 +237,7 @@ const VALUES: Record<ColumnKey, (d: SupportRequest) => string | number | null> =
     const a = shownActors(d);
     return a.length ? a.map((x) => x.name).join(", ") : null;
   },
-  // Par la plus lourde des étiquettes : celle que la cellule montre en tête.
+  // By the heaviest of the labels: the one the cell shows first.
   labels: (d) => (d.labels.length ? Math.max(...d.labels.map((l) => l.weight)) : null),
   due: (d) => d.due_date || null,
   status: (d) => STATUS_ORDER[d.status],
@@ -300,7 +300,7 @@ const chosen = (f: Filters, d: SupportRequest): boolean => {
   return true;
 };
 
-/** L'entonnoir d'une liste de choix. Il se colore tant qu'il retient quelque chose. */
+/** The funnel of a choice list. It is colored as long as it retains something. */
 function ChoiceFilter({
   label,
   options,
@@ -342,7 +342,7 @@ function ChoiceFilter({
   );
 }
 
-/** L'entonnoir d'une colonne de texte : on tape ce qu'on cherche. */
+/** The funnel of a text column: you type what you are looking for. */
 function TextFilter({
   label,
   value,
@@ -418,10 +418,10 @@ function SortableTh({
   );
 }
 
-/** La clé des boîtes reçues, dans la configuration de la liste : chacune vers un contexte. */
+/** The key of the received inboxes, in the list's configuration: each to a context. */
 export const MAILBOXES = "mailboxes";
 
-/** Les colonnes que la liste sait montrer, dans l'ordre. */
+/** The columns the list can show, in order. */
 export const SUPPORT_COLUMNS: { key: ColumnKey; label: string }[] = [
   { key: "ticket", label: "Ticket" },
   { key: "subject", label: "Objet" },
@@ -433,15 +433,15 @@ export const SUPPORT_COLUMNS: { key: ColumnKey; label: string }[] = [
 ];
 
 /**
- * L'état de la liste, tenu par la page : ce qu'on voit dans l'onglet ouvert,
- * trié et filtré, et ce qu'on y a coché.
+ * The list's state, held by the page: what is seen in the open tab,
+ * sorted and filtered, and what has been checked in it.
  */
 export const useSupportList = (requests: SupportRequest[] | null, tab: string) => {
-  // Par défaut, les plus récentes en premier : c'est l'ordre du serveur.
+  // By default, the most recent first: it is the server's order.
   const [sort, setSort] = useState<Sort>({ key: "received", direction: "desc" });
   const [filters, setFilters] = useState<Filters>(NO_FILTER);
   const [checked, setChecked] = useState<Set<number>>(new Set());
-  /** La ligne dont le menu du clic droit est ouvert, et où il s'ouvre. */
+  /** The row whose right-click menu is open, and where it opens. */
   const [context, setContext] = useState<{
     request: SupportRequest;
     position: PointMenuPosition;
@@ -453,7 +453,7 @@ export const useSupportList = (requests: SupportRequest[] | null, tab: string) =
     [requests, tab],
   );
 
-  // Ce que les entonnoirs proposent : ce qui se trouve dans l'onglet, pas plus.
+  // What the funnels offer: what is in the tab, nothing more.
   const actorOptions = useMemo<FilterOption[]>(() => {
     const seen = new Map<string, string>();
     for (const d of inTab) for (const a of shownActors(d)) seen.set(actorKey(a), a.name);
@@ -489,8 +489,8 @@ export const useSupportList = (requests: SupportRequest[] | null, tab: string) =
       });
   }, [inTab, filters, sort]);
 
-  // Les cases cochées ne valent que pour ce qu'on voit : une demande filtrée
-  // ou passée dans un autre onglet ne subit pas une action à l'aveugle.
+  // Checked boxes only apply to what is seen: a request that is filtered out
+  // or moved to another tab does not blindly undergo an action.
   const selection = shown.filter((d) => checked.has(d.id));
 
   return {
@@ -515,19 +515,19 @@ export interface SupportList extends ReturnType<typeof useSupportList> {
   loading: boolean;
   onOpenRequest: (request: SupportRequest) => void;
   /**
-   * Sans lui — sans le droit d'ajouter une demande —, pas de ligne d'ajout.
-   * La clé de liste dit le widget d'où on l'ajoute.
+   * Without it — without the right to add a request —, no add row.
+   * The list key says which widget it is added from.
    */
   onAddRequest?: (listKey: string) => void;
 }
 
-/** L'état de la liste, donné par la page au widget. Hors du mode Support, il n'y en a pas. */
+/** The list's state, given by the page to the widget. Outside Support mode, there is none. */
 export const SupportListContext = createContext<SupportList | null>(null);
 
 export default function SupportRequestsList({ config }: { config: unknown }) {
   const list = useContext(SupportListContext);
-  // Hors du mode Support, rien à lister. Le reste vit dans un composant à
-  // part : ses hooks s'appellent ainsi à chaque rendu, dans le même ordre.
+  // Outside Support mode, nothing to list. The rest lives in a separate
+  // component: its hooks are thus called on each render, in the same order.
   if (!list) return null;
   return <RequestsList config={config} list={list} />;
 }
@@ -552,19 +552,19 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
     onAddRequest: addRequest,
   } = list;
 
-  // Les demandes du tableau, du contexte choisi, que la page a lues — celles
-  // de ce widget seulement (lib/listes.ts). Une demande ajoutée ici est la
-  // sienne.
+  // The board's requests, of the chosen context, that the page has read — those
+  // of this widget only (lib/lists.ts). A request added here is
+  // its own.
   const ofThisWidget = inList(config);
   const shown = allShown.filter(ofThisWidget);
   const inTab = allInTab.filter(ofThisWidget);
   const onAddRequest = addRequest && (() => addRequest(listKey(config)));
   const isEditing = useIsEditing();
 
-  // Les colonnes gardées, dans l'ordre choisi par la configuration.
-  // Une colonne peut revenir : « id » distingue chaque occurrence.
+  // The retained columns, in the order chosen by the configuration.
+  // A column may come back: "id" distinguishes each occurrence.
   const columns = keptColumns(SUPPORT_COLUMNS, config);
-  // La case à cocher en tête de chaque ligne, puis les colonnes.
+  // The checkbox at the start of each row, then the columns.
   const columnCount = columns.length + 1;
   const resize = useResizableColumns(
     "support",
@@ -615,8 +615,8 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
     />
   );
 
-  // L'entête de chaque colonne : les colonnes s'affichent dans l'ordre de la
-  // configuration, la case à cocher restant en tête.
+  // Each column's header: the columns are displayed in the order of the
+  // configuration, the checkbox staying first.
   const headers: Record<ColumnKey, (id: string) => ReactNode> = {
     ticket: (id) =>
       th(
@@ -665,7 +665,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
         id,
         "Statut",
         "status",
-        // Sous un onglet de statut, le filtre n'aurait rien à choisir.
+        // Under a status tab, the filter would have nothing to choose.
         tab === ALL ? (
           <ChoiceFilter
             label="statut"
@@ -703,7 +703,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
       ),
   };
 
-  // La cellule de chaque colonne, pour une demande.
+  // Each column's cell, for a request.
   const cells: Record<ColumnKey, (request: SupportRequest) => ReactNode> = {
     ticket: (request) => (
       <Table.Td key="ticket" style={{ whiteSpace: "nowrap" }}>
@@ -758,8 +758,8 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
     ),
   };
 
-  // Sans demande dans l'onglet, seul l'écran vide s'affiche. Une liste vidée
-  // par les filtres, elle, garde ses entêtes : c'est là qu'on les retire.
+  // Without requests in the tab, only the empty screen is shown. A list emptied
+  // by the filters, on the other hand, keeps its headers: that is where they are removed.
   if (inTab.length === 0 && !isFiltered) {
     return loading ? null : (
       <EmptyPanel
@@ -773,16 +773,16 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
   }
 
   return (
-    // Une section plus étroite que la liste la fait défiler de côté, plutôt
-    // que d'écraser ses colonnes.
+    // A section narrower than the list makes it scroll sideways, rather
+    // than squash its columns.
     <GridScroll>
       <Table
         {...resize.tableProps}
         highlightOnHover
         verticalSpacing={0}
         styles={{
-          // content-box : la hauteur décrit la zone de contenu, sans que le
-          // padding ni la bordure la rognent.
+          // content-box: the height describes the content area, without the
+          // padding or border clipping it.
           td: {
             boxSizing: "content-box",
             height: ACTOR_AVATAR_SIZE,
@@ -801,7 +801,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
         {resize.colgroup}
         <Table.Thead>
           <Table.Tr>
-            {/* Pas de « tout cocher » : on choisit les demandes une à une. */}
+            {/* No "check all": requests are chosen one by one. */}
             <Table.Th style={{ width: 1 }} />
             {columns.map((c) => headers[c.key](c.id))}
           </Table.Tr>
@@ -811,20 +811,20 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
             <Table.Tr
               key={request.id}
               onClick={() => onOpenRequest(request)}
-              // En modification, le clic droit revient au menu du widget.
+              // In edit mode, right-click goes back to the widget's menu.
               onContextMenu={(e) => {
                 if (isEditing) return;
                 setContext({ request, position: menuPosition(e) });
               }}
-              // La ligne dont le menu est ouvert garde le fond du survol : on
-              // voit sur quelle demande il porte.
+              // The row whose menu is open keeps the hover background: it
+              // shows which request it applies to.
               style={{
                 cursor: "pointer",
                 backgroundColor:
                   context?.request.id === request.id ? "var(--table-hover-color)" : undefined,
               }}
             >
-              {/* La case ne doit pas ouvrir la demande : le clic s'arrête là. */}
+              {/* The checkbox must not open the request: the click stops there. */}
               <Table.Td onClick={(e) => e.stopPropagation()}>
                 <Checkbox
                   size="xs"
@@ -840,7 +840,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
             </Table.Tr>
           ))}
 
-          {/* Filtrée jusqu'au vide, la liste le dit, et de quoi défaire. */}
+          {/* Filtered down to nothing, the list says so, along with how to undo it. */}
           {shown.length === 0 && (
             <Table.Tr style={{ backgroundColor: "transparent" }}>
               <Table.Td colSpan={columnCount}>
@@ -858,8 +858,8 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
             </Table.Tr>
           )}
 
-          {/* Dernière ligne : l'ajout se fait là où la liste se termine. Le fond
-              explicite neutralise le survol — cette ligne n'est pas une demande. */}
+          {/* Last row: adding happens where the list ends. The explicit background
+              neutralizes the hover — this row is not a request. */}
           {onAddRequest && (
             <Table.Tr style={{ backgroundColor: "transparent" }}>
               <Table.Td colSpan={columnCount}>

@@ -7,17 +7,16 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import type { CopyResult, Id, View } from "@milo/shared";
 import CloseButton from "./CloseButton";
 
-// Copier les étiquettes, les catégories ou les contextes d'un tableau vers un
-// autre.
+// Copy the labels, categories or contexts of a board to another one.
 //
-// La destination se choisit en deux temps : la vue, puis l'un de ses
-// tableaux. La vue du tableau d'origine est proposée d'abord.
+// The destination is chosen in two steps: the view, then one of its boards. The
+// source board's view is offered first.
 //
-// Ce qui existe déjà dans le tableau d'accueil, au même nom, n'est pas
-// redoublé. Le serveur le compte, et la notification qui suit la copie le dit
-// plutôt que de laisser croire que tout est passé. Les étiquettes et les
-// contextes peuvent aussi remplacer ceux de l'accueil : un interrupteur
-// les efface d'abord.
+// What already exists in the destination board, under the same name, is not
+// duplicated. The server counts it, and the notification that follows the copy
+// says so rather than let you think everything went through. Labels and
+// contexts can also replace those of the destination: a switch deletes them
+// first.
 
 /** Ce qu'on copie. */
 export type ItemToCopy = "labels" | "categories" | "contexts";
@@ -37,8 +36,8 @@ const WORDS: Record<
 };
 
 /**
- * Ce que la copie a donné, en une phrase. « ou » situe le tableau d'accueil :
- * « là-bas » depuis l'origine, « ici » quand on y colle.
+ * What the copy produced, in one sentence. "ou" locates the destination board:
+ * "là-bas" from the source, "ici" when pasting into it.
  */
 export const report = (
   item: ItemToCopy,
@@ -47,7 +46,7 @@ export const report = (
 ): string => {
   const words = WORDS[item];
   const name = (n: number) => (n > 1 ? words.plural : words.nounPhrase);
-  // Les accords suivent le genre de ce qu'on copie.
+  // Grammatical agreement follows the gender of what is copied.
   const none = words.feminine ? "aucune" : "aucun";
   const copy = words.feminine ? "copiée" : "copié";
 
@@ -58,12 +57,12 @@ export const report = (
       ? `${words.feminine ? "Aucune" : "Aucun"} ${words.nounPhrase} ${copy}`
       : `${copied} ${name(copied)} ${copy}${copied > 1 ? "s" : ""}`;
 
-  // Ce qui a été effacé avant, quand on l'a demandé.
+  // What was deleted beforehand, when it was requested.
   const cleared = removed
     ? ` ${removed} ${name(removed)} ${words.feminine ? "effacée" : "effacé"}${removed > 1 ? "s" : ""} avant.`
     : "";
 
-  // Ce que le remplacement a dû garder : des catégories qui rangent des projets.
+  // What the replacement had to keep: categories that hold projects.
   const keptCount = kept
     ? ` ${kept} ${name(kept)} ${words.feminine ? "gardée" : "gardé"}${kept > 1 ? "s" : ""} : ${
         kept > 1 ? "elles rangent" : "elle range"
@@ -80,8 +79,8 @@ export const report = (
 };
 
 /**
- * L'interrupteur qui efface d'abord ce que l'accueil porte — les contextes
- * avec tout ce qu'ils contiennent. Les catégories n'en ont pas.
+ * The switch that first deletes what the destination holds — contexts with
+ * everything they contain. Categories have none.
  */
 const REPLACEABLE: Partial<Record<ItemToCopy, string>> = {
   labels: "Effacer les étiquettes existantes",
@@ -89,8 +88,8 @@ const REPLACEABLE: Partial<Record<ItemToCopy, string>> = {
 };
 
 /**
- * Les contextes emportent aussi, par défaut, le libellé de « Tous les … » —
- * le sélecteur global — du tableau d'origine.
+ * Contexts also carry over, by default, the label of "Tous les …" — the global
+ * selector — of the source board.
  */
 const RENAME: Partial<Record<ItemToCopy, string>> = {
   contexts: "Renommer le sélecteur global",
@@ -100,14 +99,14 @@ interface CopyToBoardModalProps {
   opened: boolean;
   onClose: () => void;
   item: ItemToCopy;
-  /** Le tableau d'origine : il n'est pas une destination. */
+  /** The source board: it is not a destination. */
   sourceId: Id;
-  /** La vue du tableau d'origine : la destination s'y cherche d'abord. */
+  /** The source board's view: the destination is searched there first. */
   viewId: Id | string | null;
   /**
-   * La copie à faire, une fois la destination choisie. « remplacer » : effacer
-   * d'abord ce que la destination porte (REMPLACER) ; « renommer » : lui
-   * donner le libellé de « Tous les … » de l'origine (RENOMMER).
+   * The copy to make, once the destination is chosen. "replace": first delete
+   * what the destination holds (REMPLACER); "rename": give it the label of
+   * "Tous les …" from the source (RENOMMER).
    */
   onCopy: (boardId: Id, replaceExisting: boolean, rename: boolean) => Promise<CopyResult>;
 }
@@ -122,7 +121,7 @@ export default function CopyToBoardModal({
 }: CopyToBoardModalProps) {
   const [views, setViews] = useState<View[] | null>(null);
   const [view, setView] = useState<string | null>(null);
-  /** Les tableaux où l'on peut copier ; « null » tant qu'on les lit. */
+  /** The boards that can be copied into; "null" while they are being read. */
   const [boards, setBoards] = useState<{ id: Id; name: string }[] | null>(null);
   const [boardId, setBoardId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -133,7 +132,7 @@ export default function CopyToBoardModal({
   const replacement = REPLACEABLE[item];
   const renaming = RENAME[item];
 
-  // À l'ouverture : on repart à zéro, sur la vue du tableau d'origine.
+  // On open: start over, on the source board's view.
   useEffect(() => {
     if (!opened) return;
     setBoardId(null);
@@ -154,8 +153,8 @@ export default function CopyToBoardModal({
     };
   }, [opened, viewId]);
 
-  // Les tableaux de la vue retenue. Une réponse arrivée après un nouveau
-  // choix serait périmée : on l'abandonne.
+  // The boards of the selected view. A response arriving after a new choice
+  // would be stale: it is dropped.
   useEffect(() => {
     if (!opened || !view) {
       setBoards(null);
@@ -176,14 +175,14 @@ export default function CopyToBoardModal({
     };
   }, [opened, view]);
 
-  // Changer de vue, c'est repartir du choix du tableau : celui qu'on avait
-  // retenu n'appartient pas à la nouvelle.
+  // Changing view means starting over from the board choice: the one that was
+  // selected does not belong to the new view.
   const changeView = (value: string | null) => {
     setView(value);
     setBoardId(null);
   };
 
-  // Le tableau d'origine n'est pas une destination : s'y copier ne ferait rien.
+  // The source board is not a destination: copying into it would do nothing.
   const boardOptions = (boards ?? [])
     .filter((board) => board.id !== sourceId)
     .map((board) => ({ value: String(board.id), label: board.name }));
@@ -196,8 +195,8 @@ export default function CopyToBoardModal({
     if (!boardId) return;
     setSaving(true);
     try {
-      // Le tableau d'accueil n'est pas celui qu'on regarde : la notification
-      // est le seul endroit où dire ce que la copie a donné.
+      // The destination board is not the one being viewed: the notification is
+      // the only place to say what the copy produced.
       const done = await onCopy(
         Number(boardId),
         replacement ? replaceExisting : false,
@@ -224,8 +223,8 @@ export default function CopyToBoardModal({
     >
       <Stack gap="md">
 
-        {/* La vue précède le tableau : elle commande la liste des
-            destinations possibles. */}
+        {/* The view comes before the board: it drives the list of possible
+            destinations. */}
         <Select
           label="Vue"
           placeholder="Choisir une vue"

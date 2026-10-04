@@ -5,10 +5,10 @@ node_modules/
 dist/
 build/
 
-# Fichiers déposés sur les cartes (développement)
+# Files uploaded to cards (development)
 medias/
 
-# Images et pièces jointes des e-mails du support (développement)
+# Images and attachments of support emails (development)
 upload/
 
 # SQLite database

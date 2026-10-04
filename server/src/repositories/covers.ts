@@ -1,6 +1,5 @@
-// Les images de couverture d'une carte. Leur fichier vit dans le dossier des
-// médias, comme celui d'une pièce jointe ; il part avec la dernière ligne qui
-// le cite.
+// A card's cover images. Their file lives in the media folder, like an
+// attachment's; it goes away with the last row citing it.
 
 import type { CardCover, Id } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
@@ -31,18 +30,18 @@ export const covers = {
      VALUES (?, ?, ?, ?, ?, ?)`,
   ),
   remove: mutation("DELETE FROM card_covers WHERE id = ?"),
-  /** Tous les fichiers cités par une couverture, pour le ménage des médias. */
+  /** All files cited by a cover, for the media cleanup. */
   files: selection<{ file: string }>("SELECT DISTINCT file FROM card_covers"),
 };
 
 const store = mutation("UPDATE card_covers SET position = ? WHERE id = ? AND card_id = ?");
 
-/** L'ordre complet des couvertures d'une carte ; un identifiant d'une autre carte est ignoré. */
+/** The complete order of a card's covers; an identifier from another card is ignored. */
 export const reorderCovers = transaction((cardId: Id, ids: Id[]) => {
   ids.forEach((id, index) => store.run(index, id, cardId));
 });
 
-/** Retire la couverture, et son fichier si plus rien ne le cite. */
+/** Removes the cover, and its file if nothing cites it anymore. */
 export const removeCover = (row: CardCoverRow): void => {
   covers.remove.run(row.id);
   if (attachments.countOfFile({ file: row.file }).count === 0) deleteMedia(row.file);
@@ -50,7 +49,7 @@ export const removeCover = (row: CardCoverRow): void => {
 
 export const coverOf = (row: CardCoverRow): CardCover => ({ ...row, url: mediaUrl(row.file) });
 
-/** Les adresses des couvertures de toutes les cartes d'un tableau, dans leur ordre. */
+/** The addresses of the covers of all of a board's cards, in their order. */
 const coversOfBoard = selection<{ card_id: Id; file: string }>(
   `SELECT card_covers.card_id, card_covers.file
    FROM card_covers

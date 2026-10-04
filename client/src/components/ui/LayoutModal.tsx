@@ -29,16 +29,16 @@ import type {
 } from "@milo/shared";
 
 interface LayoutModalProps {
-  /** « export » montre le texte à transmettre, « import » attend celui qu'on a reçu. */
+  /** "export" shows the text to hand over, "import" waits for the one received. */
   mode: "export" | "import" | null;
   onClose: () => void;
-  /** La structure regardée : ce qui s'exporte, ce que l'import remplace. */
+  /** The structure being viewed: what is exported, what the import replaces. */
   sections: IndicatorSection[];
   widgets: BoardWidget[];
   onImport: (layout: ExportedLayout) => Promise<void>;
 }
 
-/** L'export et l'import de la disposition du tableau ouvert. */
+/** Export and import of the open board's layout. */
 export default function LayoutModal({
   mode,
   onClose,
@@ -110,8 +110,8 @@ function Export({
         <Textarea
           value={text}
           readOnly
-          // La même hauteur à l'export et à l'import : la fenêtre ne change pas
-          // de taille d'un geste à l'autre.
+          // The same height for export and import: the window does not change
+          // size from one action to the other.
           rows={10}
           styles={{
             input: {
@@ -122,7 +122,7 @@ function Export({
           onFocus={(e) => e.currentTarget.select()}
         />
       </Stack>
-      {/* Le même écart avant les boutons que dans les autres fenêtres. */}
+      {/* The same gap before the buttons as in the other windows. */}
       <Group justify="flex-end" mt={MODAL_PADDING}>
         <CloseButton onClick={onClose} />
         <Button
@@ -154,7 +154,8 @@ function Import({
   >(null);
   const [sending, setSending] = useState(false);
 
-  // Le texte collé se lit aussitôt : ce que l'import fera se dit avant.
+  // The pasted text is read right away: what the import will do is stated
+  // beforehand.
   useEffect(() => {
     if (!text.trim()) return setRead(null);
     let active = true;
@@ -175,7 +176,7 @@ function Import({
     return () => {
       active = false;
     };
-    // « acces » change à chaque rendu ; les droits, eux, ne bougent pas ici.
+    // "access" changes on every render; the rights, however, do not change here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, widgets]);
 
@@ -204,8 +205,8 @@ function Import({
         <Textarea
           value={text}
           onChange={(e) => setText(e.currentTarget.value)}
-          // La même hauteur à l'export et à l'import : la fenêtre ne change pas
-          // de taille d'un geste à l'autre.
+          // The same height for export and import: the window does not change
+          // size from one action to the other.
           rows={10}
           placeholder="Disposition exportée"
           data-autofocus
@@ -253,7 +254,7 @@ function Import({
           </Alert>
         )}
       </Stack>
-      {/* Le même écart avant les boutons que dans les autres fenêtres. */}
+      {/* The same gap before the buttons as in the other windows. */}
       <Group justify="flex-end" mt={MODAL_PADDING}>
         <CloseButton onClick={onClose}>Annuler</CloseButton>
         <Button

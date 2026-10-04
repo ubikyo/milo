@@ -17,17 +17,17 @@ import {
 import type { AssetIndicatorWidget } from "./types";
 import type { Asset } from "@milo/shared";
 
-// La part des postes en règle, en anneau : un poste l'est quand il ne manque
-// à aucune des règles cochées. À côté, ce qui manque, règle par règle — c'est
-// là qu'on voit par où commencer.
+// The share of compliant workstations, as a ring: a workstation is compliant
+// when it misses none of the ticked rules. Next to it, what is missing, rule
+// by rule — that is where to start.
 
 const LABEL = "Conformité";
 
 interface Rule {
   key: string;
-  /** Ce que la règle exige, dans le tiroir. */
+  /** What the rule requires, in the drawer. */
   label: string;
-  /** Ce qui y manque, à côté de l'anneau. */
+  /** What is missing, next to the ring. */
   missingLabel: string;
   inDefault: (a: Asset) => boolean;
 }
@@ -50,11 +50,11 @@ const RULES: Rule[] = [
   { key: "system", label: "Système encore maintenu", missingLabel: "sous Windows 10", inDefault: windows10 },
 ];
 
-/** Une règle compte tant qu'on ne l'a pas décochée : un indicateur neuf les prend toutes. */
+/** A rule counts until it is unticked: a new indicator takes them all. */
 const active = (config: unknown, rule: Rule): boolean =>
   (config as Record<string, unknown> | null)?.[rule.key] !== false;
 
-/** La couleur de l'anneau : vert à 90 % et plus, orange à 70 %, rouge en dessous. */
+/** The ring color: green at 90% and above, orange at 70%, red below. */
 const color = (part: number): string => (part >= 90 ? "teal" : part >= 70 ? "orange" : RED);
 
 export const complianceIndicator: AssetIndicatorWidget = {

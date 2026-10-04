@@ -7,8 +7,8 @@ import type { RowAction } from "./ListItems";
 import type { ComponentType, ReactNode } from "react";
 
 /**
- * Ce qu'une ligne doit porter. Le nombre de projets rattachés ne vaut que pour
- * les sociétés et les catégories : il dit ce que la suppression emporterait.
+ * What a row must carry. The number of attached projects only applies to
+ * companies and categories: it says what deletion would take along.
  */
 export interface LookupItem {
   id: number;
@@ -18,13 +18,13 @@ export interface LookupItem {
 import { errorMessage, notifyError } from "../../lib/errors";
 
 /**
- * Liste éditable pour les ressources qui n'ont qu'un nom : sociétés et
- * catégories. La présentation vient de ListItems ; ce composant n'apporte
- * que l'édition d'un libellé.
+ * Editable list for resources that only have a name: companies and categories.
+ * The presentation comes from ListItems; this component only adds the editing
+ * of a label.
  *
- * Tout se passe sur la ligne : cliquer le nom l'édite sur place (Entrée
- * enregistre, Échap annule, quitter le champ enregistre). La dernière ligne est
- * un champ d'ajout permanent qui garde le focus : on enchaîne les saisies.
+ * Everything happens on the row: clicking the name edits it in place (Enter
+ * saves, Escape cancels, leaving the field saves). The last row is a permanent
+ * add field that keeps focus: entries can be chained.
  */
 interface LookupManagerProps {
   items: LookupItem[];
@@ -38,36 +38,35 @@ interface LookupManagerProps {
   maxRows?: number;
   minRows?: number;
   /**
-   * Des gestes propres à une ressource, en tête du menu de la ligne, avant
-   * « Modifier » et « Supprimer » — les jalons d'un type de jalons, par
-   * exemple.
+   * Actions specific to a resource, at the top of the row menu, before
+   * "Modifier" and "Supprimer" — a milestone type's milestones, for example.
    */
   renderActions?: (item: LookupItem) => RowAction[];
   /**
-   * Des étiquettes toujours visibles, au bord droit de la ligne — ce qu'une
-   * société a de configuré, par exemple.
+   * Always-visible labels, at the right edge of the row — what a company has
+   * configured, for example.
    */
   renderTags?: (item: LookupItem) => ReactNode;
-  /** Sans elle, tout se supprime ; le rôle administrateur, lui, reste. */
+  /** Without it, everything can be deleted; the administrator role, however, stays. */
   canDelete?: (item: LookupItem) => boolean;
   /**
-   * Ce que la ligne d'ajout porte après le nom — l'évènement d'une réponse
-   * par défaut. C'est l'appelant qui en garde la valeur, et la lit à l'ajout.
+   * What the add row carries after the name — the event of a default answer.
+   * The caller keeps its value, and reads it on add.
    */
   addEnd?: ReactNode;
 }
 
 /**
- * Ce que la suppression va emporter. Sorti du corps de la liste : le pluriel
- * et un compte facultatif à l'intérieur d'un attribut JSX se lisaient mal, et
- * obligeaient à répéter la vérification du cas « rien à supprimer ».
+ * What deletion will take along. Moved out of the list body: the plural and an
+ * optional count inside a JSX attribute read poorly, and forced the "nothing to
+ * delete" check to be repeated.
  */
 function DeletionMessage({ item }: { item: LookupItem | null }) {
   if (!item) return null;
   const projects = item.project_count ?? 0;
 
-  // Un élément encore utilisé ne se supprime pas : le serveur refuse, et dit
-  // par combien de ressources. On le dit dès ici quand on le sait déjà.
+  // An item that is still in use cannot be deleted: the server refuses, and
+  // says by how many resources. We say so right here when we already know.
   return projects > 0 ? (
     <>
       « {item.name} » est utilisé dans{" "}
@@ -81,13 +80,13 @@ function DeletionMessage({ item }: { item: LookupItem | null }) {
   );
 }
 
-// Hauteur du champ qui renomme une ligne : celle du texte qu'il remplace,
-// comme dans la liste des étiquettes (LabelsManager).
+// Height of the field that renames a row: that of the text it replaces, as in
+// the labels list (LabelsManager).
 const FIELD_HEIGHT = 22;
 
-// Le retrait droit d'une ligne qui porte des étiquettes : serré, pour que
-// l'écart au bord se lise comme celui du haut. Réglé à l'œil — le calcul
-// ((ligne - étiquette) / 2 = 8 px) paraissait encore trop large.
+// The right inset of a row that carries labels: tight, so that the gap to the
+// edge reads like the top one. Tuned by eye — the calculation ((row - label) /
+// 2 = 8 px) still looked too wide.
 const TAG_PADDING = 5;
 
 export default function LookupManager({
@@ -136,14 +135,14 @@ export default function LookupManager({
   };
 
   const saveEdit = async () => {
-    // Un nom vidé ou inchangé : on referme sans rien demander au serveur.
+    // An emptied or unchanged name: close without asking the server anything.
     const name = editingName.trim();
     const item = items.find((i) => i.id === editingId);
     if (!name || name === item?.name || editingId === null) return cancelEdit();
     if (await run(() => onUpdate(editingId, name))) cancelEdit();
   };
 
-  // Le champ d'ajout garde le focus : la saisie suivante enchaîne.
+  // The add field keeps focus: the next entry chains on.
   const create = async () => {
     if (!newName.trim()) return;
     if (await run(() => onCreate(newName.trim()))) setNewName("");
@@ -204,16 +203,16 @@ export default function LookupManager({
                     if (e.key === "Escape") cancelEdit();
                   }}
                   onBlur={saveEdit}
-                  // Sans cadre : la ligne ne bouge pas quand elle passe en
-                  // édition, seul le curseur signale la saisie.
+                  // No frame: the row does not move when it goes into edit
+                  // mode, only the cursor signals the input.
                   variant="unstyled"
                   size="sm"
                   style={{ flex: 1, minWidth: 0 }}
-                  // Un champ « sm » fait 36 px, plus que la ligne (34) : il
-                  // débordait sous la dernière, la liste s'allongeait, et le
-                  // focus la faisait défiler pour le montrer en entier — tout
-                  // montait d'un cran. Ramené à la hauteur du texte, il tient
-                  // dans sa ligne.
+                  // An "sm" field is 36 px, more than the row (34): it
+                  // overflowed under the last one, the list grew, and focus
+                  // made it scroll to show it entirely — everything went up a
+                  // notch. Brought down to the text's height, it fits in its
+                  // row.
                   styles={{
                     input: {
                       height: FIELD_HEIGHT,

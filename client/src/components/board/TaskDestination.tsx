@@ -5,29 +5,29 @@ import type { Board, Id, LinkTargetKind, TaskList, View } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage } from "../../lib/errors";
 
-// « Créer une tâche », depuis le menu contextuel d'un projet, d'une demande de
-// support, d'un poste ou d'un élément du mode Accès. La fiche de la carte
-// s'ouvre vide (components/board/CardDrawer.tsx) : elle prend le nom de
-// l'élément — modifiable —, et sa description porte le lien qui y ramène. On
-// choisit où elle va, sur une ligne au-dessus du titre : la société (celle de
-// l'élément par défaut), puis le tableau, puis la liste.
+// "Créer une tâche", from the context menu of a project, a support request,
+// a workstation or an Access mode item. The card details
+// open empty (components/board/CardDrawer.tsx): they take the item's name
+// — editable —, and the description carries the link back to it. You
+// choose where it goes, on a row above the title: the company (the item's own
+// by default), then the board, then the list.
 
-/** L'élément d'où la tâche est créée. */
+/** The item the task is created from. */
 export interface SourceTask {
   kind: Exclude<LinkTargetKind, "card">;
-  /** Pour « access », la catégorie : c'est elle que le lien ouvre. */
+  /** For "access", the category: it is what the link opens. */
   id: Id;
   title: string;
-  /** Un lien du mode Accès : son adresse suit dans la description. */
+  /** An Access mode link: its address follows in the description. */
   url?: string;
   /**
-   * Le tableau de l'élément dans son mode — celui d'un projet, la catégorie
-   * d'un accès. Son nom sert à deviner la société et le tableau de tâches.
+   * The item's board in its mode — a project's, an access's
+   * category. Its name is used to guess the company and the task board.
    */
   boardName?: string;
 }
 
-/** Un nom tel qu'on le compare : sans casse, sans accents, sans ponctuation. */
+/** A name as compared: case-insensitive, accent-free, punctuation-free. */
 const normalizeValue = (name: string): string =>
   name
     .normalize("NFD")
@@ -37,9 +37,9 @@ const normalizeValue = (name: string): string =>
     .trim();
 
 /**
- * Ce qui porte le même nom que le tableau d'origine : le nom exact d'abord,
- * sinon celui qui contient l'autre — le plus long l'emporte, il en dit le
- * plus. Rien ne ressemble : « undefined », et le choix d'office reste.
+ * What bears the same name as the origin board: the exact name first,
+ * otherwise the one that contains the other — the longest wins, it says the
+ * most. Nothing matches: "undefined", and the default choice stays.
  */
 const findClosest = <T extends { name: string }>(name: string | undefined, items: T[]): T | undefined => {
   const target = normalizeValue(name ?? "");
@@ -68,8 +68,8 @@ const escape = (text: string): string =>
     .replace(/"/g, "&quot;");
 
 /**
- * La description de la carte : une ligne vide, où l'on écrit d'abord, un
- * tiret long, puis d'où elle vient : son nom, en lien vers lui.
+ * The card's description: an empty line, where you write first, an em
+ * dash, then where it comes from: its name, as a link back to it.
  */
 export const descriptionOf = (source: SourceTask): string => {
   const returnValue = `${window.location.origin}${window.location.pathname}${itemLink(source.kind, source.id)}`;
@@ -86,7 +86,7 @@ export const descriptionOf = (source: SourceTask): string => {
   return rows.join("");
 };
 
-/** Où la carte ira : « null » tant que rien n'est choisi. */
+/** Where the card will go: "null" while nothing is chosen. */
 export interface Destination {
   boardId: string | null;
   listId: string | null;
@@ -99,8 +99,8 @@ interface TaskDestinationProps {
 }
 
 /**
- * Vue, tableau, liste : trois choix en cascade, sur une même ligne. Chacun
- * retient d'office le premier de ce qu'il propose.
+ * View, board, list: three cascading choices, on a single row. Each
+ * picks the first of what it offers by default.
  */
 export default function TaskDestination({ source, onChange, onError }: TaskDestinationProps) {
   const [views, setViews] = useState<View[] | null>(null);
@@ -114,8 +114,8 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
     onChange({ boardId, listId });
   }, [boardId, listId]);
 
-  // Les vues : celle des tâches est retenue d'office — celle dont le nom le
-  // dit —, à défaut la première : il y a toujours un premier choix.
+  // The views: the tasks one is picked by default — the one whose name
+  // says so —, otherwise the first: there is always a first choice.
   useEffect(() => {
     let cancelled = false;
     api
@@ -133,8 +133,8 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
 
-  // Les tableaux suivent la vue : celui qui porte le nom du tableau
-  // d'origine est retenu d'office, à défaut le premier.
+  // The boards follow the view: the one bearing the origin board's
+  // name is picked by default, otherwise the first.
   useEffect(() => {
     setBoards(null);
     setBoardId(null);
@@ -155,7 +155,7 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
-  // Les listes suivent le tableau ; la première est retenue d'office.
+  // The lists follow the board; the first is picked by default.
   useEffect(() => {
     setLists(null);
     setListId(null);
@@ -179,8 +179,8 @@ export default function TaskDestination({ source, onChange, onError }: TaskDesti
   const boardOptions = (boards ?? []).map((b) => ({ value: String(b.id), label: b.name }));
   const listOptions = (lists ?? []).map((l) => ({ value: String(l.id), label: l.name }));
 
-  // Une vue sans tableau, un tableau sans liste : on le dit plutôt que de
-  // laisser une liste déroulante vide.
+  // A view with no board, a board with no list: we say so rather than
+  // leaving an empty dropdown.
   const withoutBoard = boards !== null && boards.length === 0;
   const withoutList = lists !== null && lists.length === 0;
 

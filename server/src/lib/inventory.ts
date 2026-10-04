@@ -1,19 +1,19 @@
-// Ce qu'un agent d'inventaire envoie, et comment le lire.
+// What an inventory agent sends, and how to read it.
 //
-// Le protocole est celui d'OCS, que FusionInventory et GLPI Agent parlent tous
-// les deux : l'agent envoie du XML en POST, le serveur répond du XML. Le corps
-// arrive souvent compressé — l'agent le comprime sans rien demander, et
-// annonce « application/x-compress ».
+// The protocol is OCS's, which FusionInventory and GLPI Agent both speak: the
+// agent sends XML by POST, the server answers with XML. The body often
+// arrives compressed — the agent compresses it without being asked, and
+// announces "application/x-compress".
 //
-// Le XML est lu ici plutôt que par une bibliothèque : celui d'un inventaire
-// n'a ni attribut, ni espace de noms, ni entité exotique. Une dépendance de
-// plus pour trois règles ne se justifiait pas, comme pour les fichiers déposés
+// The XML is read here rather than by a library: an inventory's has no
+// attributes, no namespaces, no exotic entities. One more dependency for
+// three rules was not justified, as with uploaded files
 // (routes/attachments.ts).
 
 import { gunzipSync, inflateSync } from "node:zlib";
 import type { AssetEntry, AssetSection } from "@milo/shared";
 
-/** Ce qu'un élément porte : du texte, un élément, ou plusieurs du même nom. */
+/** What an element carries: text, one element, or several of the same name. */
 type TreeNode = string | Tree | TreeNode[];
 export interface Tree {
   [name: string]: TreeNode;
@@ -27,7 +27,7 @@ const ENTITIES: Record<string, string> = {
   apos: "'",
 };
 
-/** Les entités du texte reçu, ramenées aux caractères qu'elles désignent. */
+/** The received text's entities, brought back to the characters they stand for. */
 const stripTags = (text: string): string =>
   text.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, code: string) => {
     if (code.startsWith("#x") || code.startsWith("#X")) {
@@ -38,13 +38,13 @@ const stripTags = (text: string): string =>
   });
 
 /**
- * Le corps de la requête, décompressé si besoin. L'agent choisit seul s'il
- * comprime : on reconnaît la compression à ses premiers octets plutôt qu'à
- * l'en-tête annoncé, qui varie d'une version à l'autre.
+ * The request body, decompressed if needed. The agent alone chooses whether
+ * to compress: compression is recognized by the first bytes rather than by
+ * the announced header, which varies from one version to another.
  */
 export const decompress = (body: Buffer): string => {
   if (body.length >= 2) {
-    // 1f 8b : gzip. 78 xx : zlib (« deflate »), ce qu'envoie l'agent Perl.
+    // 1f 8b: gzip. 78 xx: zlib ("deflate"), what the Perl agent sends.
     if (body[0] === 0x1f && body[1] === 0x8b) return gunzipSync(body).toString("utf8");
     if (body[0] === 0x78) return inflateSync(body).toString("utf8");
   }
@@ -52,13 +52,13 @@ export const decompress = (body: Buffer): string => {
 };
 
 /**
- * Le XML reçu, en arbre. Les éléments de même nom sous un même parent
- * deviennent une liste : c'est ainsi que se lisent les vingt barrettes, les
- * trois disques ou les six cents logiciels d'un poste.
+ * The received XML, as a tree. Elements of the same name under the same
+ * parent become a list: that is how the twenty memory modules, the three
+ * disks or the six hundred programs of a workstation are read.
  */
 export const readXml = (xml: string): Tree => {
-  // CDATA d'abord : son contenu peut porter « < » et « > », qui tromperaient
-  // la lecture des balises. Il devient du texte échappé comme un autre.
+  // CDATA first: its content may carry "<" and ">", which would fool the
+  // tag reading. It becomes escaped text like any other.
   const plainText = xml
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_whole, content: string) =>
       content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
@@ -88,7 +88,7 @@ export const readXml = (xml: string): Tree => {
 
     const [, closing, name, , selfClosing] = tag;
 
-    // <TAG/> : un élément sans contenu. Il existe, et ne porte rien.
+    // <TAG/>: an element with no content. It exists, and carries nothing.
     if (selfClosing) {
       setNode(current.children, name!, "");
       continue;
@@ -97,9 +97,9 @@ export const readXml = (xml: string): Tree => {
     if (closing) {
       const closed = stack.pop()!;
       const parent = stack[stack.length - 1];
-      // Un élément qui n'a pas d'enfant vaut son texte ; sinon ses enfants.
-      // Le texte qui traîne autour d'éléments (indentation, sauts de ligne) se
-      // perd, et c'est bien ce qu'on veut.
+      // An element with no children is worth its text; otherwise its
+      // children. Text lingering around elements (indentation, line breaks)
+      // is lost, and that is just what we want.
       const value: TreeNode =
         Object.keys(closed.children).length > 0 ? closed.children : stripTags(closed.text).trim();
       if (parent) setNode(parent.children, name!, value);
@@ -112,7 +112,7 @@ export const readXml = (xml: string): Tree => {
   return root;
 };
 
-/** Un chemin dans l'arbre, ou une chaîne vide : rien n'est jamais obligatoire. */
+/** A path in the tree, or an empty string: nothing is ever mandatory. */
 export const textOf = (tree: TreeNode | undefined, ...path: string[]): string => {
   let current: TreeNode | undefined = tree;
   for (const pas of path) {
@@ -125,9 +125,9 @@ export const textOf = (tree: TreeNode | undefined, ...path: string[]): string =>
 };
 
 /**
- * Une entrée, aplatie en champs. Un sous-élément devient « PARENT.ENFANT » :
- * l'affichage ne cherche pas à rendre la profondeur, il montre des couples.
- * Plusieurs valeurs de même nom se lisent à la suite, séparées par une virgule.
+ * An entry, flattened into fields. A sub-element becomes "PARENT.CHILD": the
+ * display does not try to render depth, it shows pairs. Several values of the
+ * same name are read one after another, separated by a comma.
  */
 const flatten = (treeNode: TreeNode, prefix = "", into: AssetEntry = {}): AssetEntry => {
   if (typeof treeNode === "string") {
@@ -146,12 +146,12 @@ const flatten = (treeNode: TreeNode, prefix = "", into: AssetEntry = {}): AssetE
 };
 
 /**
- * Le contenu d'un inventaire, rangé en sections affichables. Une section qui
- * ne décrit qu'une chose n'a qu'une entrée ; une valeur seule (la version de
- * l'agent, par exemple) devient une entrée d'un champ, nommé comme la section.
+ * The content of an inventory, stored as displayable sections. A section that
+ * describes only one thing has only one entry; a lone value (the agent's
+ * version, for example) becomes a one-field entry, named like the section.
  *
- * Les sections vides sont écartées : elles n'apprennent rien, et un agent en
- * envoie régulièrement.
+ * Empty sections are discarded: they teach nothing, and an agent sends them
+ * regularly.
  */
 export const sectionsOf = (content: TreeNode | undefined): AssetSection[] => {
   if (!content || typeof content === "string" || Array.isArray(content)) return [];

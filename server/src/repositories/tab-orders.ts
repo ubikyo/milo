@@ -1,7 +1,7 @@
-// L'ordre des onglets, propre à chaque compte (user_tab_orders) : les modes du
-// sélecteur, les tableaux, les catégories d'accès, les onglets fixes du
-// Support et des Assets. Sans ordre à lui, un compte voit l'ordre commun —
-// la colonne « position », ou le réglage des onglets fixes.
+// Tab order, specific to each account (user_tab_orders): the selector's
+// modes, boards, access categories, the fixed Support and Assets tabs.
+// Without an order of its own, an account sees the shared order — the
+// "position" column, or the fixed-tabs setting.
 
 import type { Id } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
@@ -15,7 +15,7 @@ const insertRow = mutation(
 );
 
 export const userTabOrders = {
-  /** L'ordre rangé par ce compte, ou « null » s'il n'en a pas. */
+  /** The order saved by this account, or "null" if it has none. */
   read: (userId: Id, scope: string): string[] | null => {
     const found = row.get(userId, scope);
     if (!found) return null;
@@ -32,9 +32,9 @@ export const userTabOrders = {
 };
 
 /**
- * Des lignes dans l'ordre que ce compte a rangé. Celles qu'il ne cite pas —
- * un onglet créé depuis — gardent l'ordre commun, à la suite : le tri est
- * stable, et les lignes arrivent déjà dans l'ordre commun.
+ * Rows in the order this account arranged. Those it doesn't mention —
+ * a tab created since — keep the shared order, at the end: the sort is
+ * stable, and rows already arrive in the shared order.
  */
 export const inOrderOf = <T extends { id: Id }>(userId: Id, scope: string, rows: T[]): T[] => {
   const order = userTabOrders.read(userId, scope);

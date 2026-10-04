@@ -4,24 +4,23 @@ import type { CSSProperties, ReactNode } from "react";
 import classes from "../../assets/styles/GridScroll.module.css";
 
 /**
- * La zone qui fait défiler une grille de côté, quand sa section est plus
- * étroite qu'elle : la barre fine de l'application plutôt que celle du
- * navigateur, couchée sur le filet sous l'entête plutôt qu'au bas de la
- * grille.
+ * The zone that scrolls a grid sideways, when its section is narrower than it:
+ * the application's thin bar rather than the browser's, laid on the rule under
+ * the header rather than at the bottom of the grid.
  *
- * Le contenu de la zone passe en bloc : en « table », comme le veut Mantine,
- * il épouserait la grille et ses « 100 % » ne vaudraient plus la largeur de
- * la section (useResizableColumns).
+ * The zone's content is rendered as a block: as a "table", as Mantine wants, it
+ * would hug the grid and its "100 %" would no longer equal the section's width
+ * (useResizableColumns).
  */
 export default function GridScroll({ children }: { children: ReactNode }) {
   const viewportRef = useRef<HTMLDivElement>(null);
-  // Le bas de la ligne d'entête, depuis le haut de la zone : le filet en
-  // occupe le dernier pixel.
+  // The bottom of the header row, from the top of the zone: the rule occupies
+  // its last pixel.
   const [rule, setDivider] = useState<number | null>(null);
 
-  // L'entête change de hauteur avec ses libellés, et la grille elle-même peut
-  // être remplacée : on la retrouve à chaque rendu, et on la suit tant
-  // qu'elle est là.
+  // The header changes height with its labels, and the grid itself can be
+  // replaced: it is found again on every render, and followed as long as it is
+  // there.
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     const header = viewport?.querySelector("thead");

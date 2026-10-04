@@ -42,13 +42,13 @@ import type {
   PublicUser,
 } from "@milo/shared";
 
-// Diamètre des bulles posées sur un élément : plus petites que celles de la
-// carte, la ligne est déjà bien remplie.
+// Diameter of the avatars placed on an item: smaller than those on the
+// card, since the row is already full.
 const ITEM_AVATAR_SIZE = 22;
 
-// La date se pose comme une étiquette de carte (CardLabel) : un rectangle à
-// peine arrondi, le texte gras et serré. Le vert est celui de la progression
-// d'une checklist et de la pastille d'une carte terminée.
+// The date is styled like a card label (CardLabel): a barely rounded
+// rectangle, with bold, tight text. The green is that of a checklist's
+// progress and of a completed card's badge.
 const DATE_TAG = {
   height: 20,
   borderRadius: 4,
@@ -61,42 +61,42 @@ const DATE_TAG = {
   color: "var(--mantine-color-white)",
 };
 
-// Hauteur de la barre de progression, et largeur qu'on lui réserve dans
-// l'entête : elle ne doit pas repousser le titre d'une checklist à l'autre.
+// Height of the progress bar, and the width reserved for it in the
+// header: it must not shift the title from one checklist to the next.
 const PROGRESS_HEIGHT = 6;
 const PROGRESS_WIDTH = 90;
 
-// Écart entre deux lignes d'une checklist — le fond du tiroir s'y montre,
-// comme entre les catégories et les étiquettes du tiroir d'un widget —, et
-// entre deux checklists.
+// Gap between two rows of a checklist — the drawer background shows
+// through, as between the categories and labels of a widget drawer —, and
+// between two checklists.
 const ITEM_GAP = 1;
 const CHECKLIST_GAP = 16;
 
-// Hauteur des saisies posées sur une ligne déjà écrite — le titre d'une
-// checklist, le libellé d'un élément. C'est celle des noms des catégories et
-// des étiquettes du tiroir d'un widget (« xs ») : les lignes ont la même
-// hauteur d'un tiroir à l'autre, et la même qu'on lise ou qu'on modifie.
+// Height of the inputs placed on an already written row — a checklist's
+// title, an item's label. It matches the names of the categories and
+// labels in a widget drawer ("xs"): rows have the same height from one
+// drawer to the next, whether read or edited.
 const INLINE_HEIGHT = 30;
 
-// La hauteur d'une ligne : la saisie, et l'air que la ligne garde au-dessus
-// et au-dessous d'elle.
+// The height of a row: the input, plus the space the row keeps above
+// and below it.
 const ROW_HEIGHT = INLINE_HEIGHT + 2 * ROW_INSET;
 
-// Une ligne de checklist : celle du tiroir d'un widget, mais avec autant d'air
-// à droite qu'à gauche — elle finit sur une date ou un pourcentage, pas sur
-// un champ calé au bord.
+// A checklist row: that of a widget drawer, but with as much space on the
+// right as on the left — it ends with a date or a percentage, not a
+// field flush against the edge.
 const checklistRowStyle = (rank: number, total: number, held: boolean): CSSProperties => ({
   ...rowStyle(rank, total, held),
   paddingRight: NAME_INSET,
 });
 
-// L'entête d'une checklist se détache de ses éléments : un gris neutre plus
-// foncé sur le clair ; sur le sombre, un cran plus loin du fond du tiroir.
+// A checklist header stands out from its items: a darker neutral gray on
+// light; on dark, one step further from the drawer background.
 const HEADER_BACKGROUND = "light-dark(#dcdcdc, var(--mantine-color-dark-5))";
 
-// Ces saisies ne portent aucun cadre, pas même le bleu que Mantine pose au
-// focus : on ne fait que continuer à lire la même ligne, elle ne doit pas
-// s'encadrer au clic. C'est le parti pris des cartes et des listes du tableau.
+// These inputs have no frame, not even the blue Mantine adds on focus:
+// we are only continuing to read the same row, it must not get framed
+// on click. This is the convention for board cards and lists.
 const inlineInput = (extra?: CSSProperties) => ({
   input: {
     borderRadius: `var(--mantine-radius-${ROUNDING})`,
@@ -108,24 +108,24 @@ const inlineInput = (extra?: CSSProperties) => ({
   },
 });
 
-// Le clic droit dans une saisie garde le menu du navigateur : copier, coller.
+// Right-click in an input keeps the browser menu: copy, paste.
 const inInput = (event: ReactMouseEvent): boolean =>
   event.target instanceof HTMLElement && event.target.closest("input, textarea") !== null;
 
-// Une date se garde en « AAAA-MM-JJ » et se montre à la française.
+// A date is stored as "YYYY-MM-DD" and displayed in French format.
 const showDate = (value: string | null | undefined): string | null =>
   value ? dayjs(value).format("DD/MM/YYYY") : null;
 
-// Où en est une checklist, en pourcentage. Vide, elle est à zéro : aucune case
-// cochée n'est pas un travail achevé.
+// How far along a checklist is, as a percentage. When empty, it is at
+// zero: no checked box is not a finished piece of work.
 const progress = (items: Element[]): number => {
   if (!items || items.length === 0) return 0;
   return Math.round((items.filter((i) => i.done).length / items.length) * 100);
 };
 
-// La date d'échéance d'un élément : une pastille qui ouvre un calendrier.
-// Sans date, il ne reste que l'icône, discrète ; avec, le jour prend la place
-// de l'icône dans une étiquette verte, qu'on repère sans lire.
+// An item's due date: a badge that opens a calendar. Without a date,
+// only the icon remains, discreet; with one, the day replaces the icon
+// in a green label, easy to spot without reading.
 interface ItemDateProps {
   value: string;
   onChange: (value: string) => void;
@@ -140,8 +140,8 @@ function ItemDate({ value, onChange }: ItemDateProps) {
       opened={opened}
       onChange={setOpened}
       position="bottom-end"
-      // Comme les autres listes du tiroir : restée sur place, elle échappe au
-      // piège à focus du tiroir ; « fixed » la tient hors du défilement.
+      // Like the other lists in the drawer: left in place, it escapes the
+      // drawer's focus trap; "fixed" keeps it out of the scrolling.
       withinPortal={false}
       floatingStrategy="fixed"
       shadow="md"
@@ -170,7 +170,7 @@ function ItemDate({ value, onChange }: ItemDateProps) {
               onChange(date || "");
               setOpened(false);
             }}
-            // Recliquer la date retenue l'enlève : c'est le geste inverse.
+            // Clicking the selected date again removes it: it is the inverse gesture.
             allowDeselect
           />
           {value && (
@@ -191,10 +191,10 @@ function ItemDate({ value, onChange }: ItemDateProps) {
   );
 }
 
-// Les membres d'un élément : leurs bulles, et le choix d'acteurs de toute
-// l'application — favoris, recherche dans Milo et dans l'annuaire — qui s'ouvre
-// au clic. On ajoute et on retire au même endroit, comme pour les membres
-// d'une carte.
+// An item's members: their avatars, and the application-wide actor
+// picker — favorites, search in Milo and in the directory — which opens
+// on click. Adding and removing happen in the same place, as for a card's
+// members.
 interface ItemMembersProps {
   members: Element["members"];
   users: PublicUser[];
@@ -230,19 +230,19 @@ function ItemMembers({ members, users, onChange }: ItemMembersProps) {
   );
 }
 
-// Une ligne de checklist : la poignée pour la glisser, la case, le libellé qui
-// se modifie au clic, les membres et la date. « Supprimer » est dans son menu
-// contextuel, au clic droit, comme pour les cartes du tableau.
+// A checklist row: the handle to drag it, the checkbox, the label that
+// is edited on click, the members and the date. "Supprimer" is in its
+// context menu, on right-click, as for board cards.
 interface ChecklistItemProps {
   item: Element;
   users: PublicUser[];
-  /** Le style de la ligne dans la pile : son fond, ses bouts arrondis. */
+  /** The row's style in the stack: its background, its rounded ends. */
   row: CSSProperties;
-  /** Les acteurs retirés de la carte, pas encore sauvegardés : ils ne se montrent plus. */
+  /** Actors removed from the card, not yet saved: they are no longer shown. */
   hidden: string[];
   /**
-   * Vrai pour l'élément qu'on vient d'ajouter : il s'ouvre en saisie, le
-   * curseur dedans.
+   * True for the item just added: it opens in edit mode, with the cursor
+   * inside.
    */
   autoEdit: boolean;
   onEditDone?: () => void;
@@ -259,9 +259,9 @@ function ChecklistItem({
   users,
   row,
   hidden,
-  // Vrai pour l'élément qu'on vient d'ajouter : il s'ouvre en saisie, le
-  // curseur dedans. Sans cela, ajouter une ligne donnerait un « Sans
-  // libellé » qu'il faudrait encore cliquer pour l'écrire.
+  // True for the item just added: it opens in edit mode, with the cursor
+  // inside. Without this, adding a row would give an "Sans libellé" that
+  // would still have to be clicked to be written.
   autoEdit,
   onEditDone,
   onPointerDown,
@@ -275,7 +275,7 @@ function ChecklistItem({
 
   useEffect(() => {
     if (autoEdit) setEdited(item.text);
-    // Ne dépend que du signal : le texte suivra la saisie, pas l'inverse.
+    // Depends only on the signal: the text follows the input, not the reverse.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoEdit]);
 
@@ -299,8 +299,8 @@ function ChecklistItem({
       onContextMenu={(e) => !inInput(e) && onContextMenu(menuPosition(e))}
       style={{ ...row, minHeight: ROW_HEIGHT }}
     >
-      {/* Seule la poignée déplace la ligne : tout le reste répond déjà au
-          clic, une ligne glissable de bout en bout les gênerait. */}
+      {/* Only the handle moves the row: everything else already responds to
+          click, a row draggable from end to end would get in the way. */}
       <DragHandle onPointerDown={onPointerDown} label="Glisser pour réordonner" />
 
       <Checkbox
@@ -315,7 +315,7 @@ function ChecklistItem({
         <Text
           size="sm"
           onClick={() => setEdited(item.text)}
-          // Coché, le libellé se barre et s'efface : la ligne est faite.
+          // When checked, the label is struck through and faded: the row is done.
           td={item.done ? "line-through" : undefined}
           c={item.done ? "dimmed" : undefined}
           style={{ flex: 1, minWidth: 0, cursor: "pointer", wordBreak: "break-word" }}
@@ -353,9 +353,9 @@ function ChecklistItem({
   );
 }
 
-// Une checklist : son entête — titre modifiable, progression —, ses éléments
-// et le lien qui en ajoute un. Elle est toujours dépliée. Elle se supprime par
-// le menu contextuel de son entête.
+// A checklist: its header — editable title, progress —, its items
+// and the link that adds one. It is always expanded. It is deleted from
+// its header's context menu.
 interface ChecklistProps {
   checklist: ChecklistType;
   users: PublicUser[];
@@ -377,25 +377,25 @@ function Checklist({
   onMembers,
   hidden,
 }: ChecklistProps) {
-  /** Le titre en cours de saisie ; « null » tant qu'on ne le modifie pas. */
+  /** The title being edited; "null" while it is not being modified. */
   const [title, setTitle] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<ChecklistType | null>(null);
   const [itemToDelete, setItemToDelete] = useState<Element | null>(null);
-  // L'élément qu'on vient d'ajouter : il s'ouvre en saisie.
+  // The item just added: it opens in edit mode.
   const [newItem, setNewItem] = useState<Id | null>(null);
-  // Le menu contextuel ouvert : celui de l'entête (sans élément) ou d'un
-  // élément.
+  // The open context menu: that of the header (no item) or of an
+  // item.
   const [menu, setMenu] = useState<{ item: Element | null; position: PointMenuPosition } | null>(
     null,
   );
 
   const items = checklist.items || [];
-  // L'entête ouvre la pile, les éléments la suivent.
+  // The header opens the stack, the items follow it.
   const rows = items.length + 1;
   const percentage = progress(items);
 
-  // Tout ce qui part au serveur passe par ici : une panne se dit à l'écran,
-  // au lieu de laisser le geste sans effet apparent.
+  // Everything sent to the server goes through here: a failure is shown on
+  // screen, instead of leaving the gesture with no apparent effect.
   const act = async (action: () => Promise<unknown>) => {
     try {
       await action();
@@ -404,7 +404,7 @@ function Checklist({
     }
   };
 
-  // Les éléments se glissent entre eux, à l'intérieur de leur checklist.
+  // Items are dragged among themselves, within their checklist.
   const { zoneRef, drag, onPointerDown } = useDraggableStack({
     ids: items.map((i) => i.id),
     selector: "[data-checklist-item]",
@@ -425,8 +425,8 @@ function Checklist({
     });
   };
 
-  // La ligne naît sans libellé et s'ouvre aussitôt en saisie : on l'écrit dans
-  // la foulée du clic, sans avoir à la rouvrir.
+  // The row is born without a label and opens at once in edit mode: it is
+  // written right after the click, without having to reopen it.
   const addItem = () =>
     act(async () => {
       const created = await api.createChecklistItem(checklist.id);
@@ -451,12 +451,12 @@ function Checklist({
   };
 
   return (
-    // Une pile de lignes sur le fond gris du tiroir, comme les catégories et
-    // les étiquettes dans les réglages d'un widget : l'entête en tête, les
-    // éléments dessous, « Ajouter » au bout.
+    // A stack of rows on the drawer's gray background, like the categories and
+    // labels in a widget's settings: the header first, the items below,
+    // "Ajouter" at the end.
     <Box data-checklist={checklist.id} style={{ opacity: dragged ? 0.4 : 1 }}>
       <Stack gap={ITEM_GAP} ref={zoneRef}>
-        {/* Entête : la poignée, le titre, la progression. */}
+        {/* Header: the handle, the title, the progress. */}
         <Group
           gap="xs"
           wrap="nowrap"
@@ -466,8 +466,8 @@ function Checklist({
           }
           style={{ ...checklistRowStyle(0, rows, false), backgroundColor: HEADER_BACKGROUND }}
         >
-          {/* La poignée ouvre l'entête : c'est par elle qu'on range les
-              checklists entre elles. */}
+          {/* The handle opens the header: it is what reorders the
+              checklists among themselves. */}
           <DragHandle
             onPointerDown={onHandlePointerDown}
             label="Glisser pour réordonner la checklist"
@@ -482,8 +482,8 @@ function Checklist({
                 minWidth: 0,
                 cursor: "pointer",
                 wordBreak: "break-word",
-                // La même hauteur que la saisie qui le remplace : l'entête ne
-                // sursaute pas au clic.
+                // The same height as the input that replaces it: the header does not
+                // jump on click.
                 lineHeight: `${INLINE_HEIGHT}px`,
               }}
             >
@@ -503,16 +503,16 @@ function Checklist({
               }}
               size="sm"
               autoFocus
-              // Le titre garde sa graisse en saisie : rien ne change à l'œil
-              // que le curseur qui s'y pose.
+              // The title keeps its weight in edit mode: nothing changes to the eye
+              // except the cursor that lands in it.
               styles={inlineInput({ fontWeight: 600 })}
               style={{ flex: 1, minWidth: 0 }}
               aria-label="Renommer la checklist"
             />
           )}
 
-          {/* La progression se lit d'un coup d'œil, sans parcourir les
-              lignes. */}
+          {/* Progress is readable at a glance, without scanning the
+              rows. */}
           <Group gap={6} wrap="nowrap" style={{ flexShrink: 0 }}>
             <Progress
               value={percentage}
@@ -520,7 +520,7 @@ function Checklist({
               size={PROGRESS_HEIGHT}
               radius="xl"
               w={PROGRESS_WIDTH}
-              // Le fond de la barre est celui des éléments de la checklist.
+              // The bar's background is that of the checklist's items.
               styles={{ root: { backgroundColor: ROW_BACKGROUND } }}
             />
             <Text size="xs" c="dimmed" w={34} ta="right">
@@ -554,7 +554,7 @@ function Checklist({
         {drag && drag.target >= items.length && <InsertLine gap={ITEM_GAP} />}
       </Stack>
 
-      {/* Au plus près de la pile qu'il allonge. */}
+      {/* As close as possible to the stack it extends. */}
       <AddButton label="Ajouter un élément" onClick={addItem} mt={4} />
 
       {menu && (
@@ -614,10 +614,10 @@ function Checklist({
 }
 
 /**
- * Les checklists d'une carte, à la fin de sa fiche. Elles s'ajoutent par le
- * menu « Actions » du tiroir, et tout s'y enregistre au fil des gestes : une
- * case cochée, un libellé validé ou une ligne déplacée partent aussitôt au
- * serveur, sans attendre « Enregistrer ».
+ * A card's checklists, at the end of its details. They are added from the
+ * drawer's "Actions" menu, and everything is saved as you go: a checked
+ * box, a validated label or a moved row is sent to the server at once,
+ * without waiting for "Enregistrer".
  */
 interface CardChecklistsProps {
   cardId: Id;
@@ -626,15 +626,15 @@ interface CardChecklistsProps {
   onChanged: () => void | Promise<void>;
   onError?: (message: string) => void;
   /**
-   * Les personnes posées sur un élément : la fiche ajoute à ses acteurs
-   * celles qui n'y sont pas encore — on ne confie pas une part d'une tâche à
-   * qui n'y prend pas part.
+   * The people placed on an item: the card details add to its actors
+   * those not yet in it — a part of a task is not entrusted to someone
+   * who has no part in it.
    */
   onMembers?: (ids: number[]) => void;
   /**
-   * Les acteurs qu'on vient de retirer de la carte. Le serveur les retire des
-   * éléments à « Sauvegarder » ; d'ici là, les éléments ne les montrent déjà
-   * plus.
+   * Actors just removed from the card. The server removes them from the
+   * items on "Sauvegarder"; until then, the items already no longer show
+   * them.
    */
   hidden?: string[];
 }
@@ -650,7 +650,7 @@ export default function CardChecklists({
 }: CardChecklistsProps) {
   const currentChecklists = checklists || [];
 
-  // Les checklists se glissent entre elles, par la poignée de leur entête.
+  // Checklists are dragged among themselves, by their header's handle.
   const { zoneRef, drag, onPointerDown } = useDraggableStack({
     ids: currentChecklists.map((c) => c.id),
     selector: "[data-checklist]",
@@ -667,9 +667,9 @@ export default function CardChecklists({
   if (currentChecklists.length === 0) return null;
 
   return (
-    // Le bloc porte son intitulé comme les autres champs de la fiche — le
-    // titre, la description, le numéro —, et disparaît avec eux quand la carte
-    // n'a aucune checklist.
+    // The block carries its label like the other card fields — the title,
+    // the description, the number —, and disappears with them when the card
+    // has no checklist.
     <Input.Wrapper label="Checklist">
       <Stack gap={CHECKLIST_GAP} ref={zoneRef}>
         {currentChecklists.map((checklist, index) => (

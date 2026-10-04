@@ -1,12 +1,12 @@
-// Les permissions d'un utilisateur ou d'un groupe Entra : dans chaque
-// workspace, une permission par type de widget — Aucun, Lire, Modifier
-// (widget-kinds.ts) ; pour toute l'application, le Paramétrage (Voir ou
-// Modifier) et la gestion des workspaces.
+// Permissions of an Entra user or group: in each
+// workspace, one permission per widget type — Aucun, Lire, Modifier
+// (widget-kinds.ts); for the whole application, the Settings (Voir or
+// Modifier) and workspace management.
 //
-// Les droits de chaque mode — Voir, Ajouter, Modifier, Supprimer — que les
-// routes et l'interface vérifient s'en déduisent : un mode suit le type de
-// ses widgets. Le client s'en sert pour taire ce qui serait refusé, le
-// serveur pour refuser.
+// The rights of each mode — Voir, Ajouter, Modifier, Supprimer — that the
+// routes and the interface check are derived from them: a mode follows the type of
+// its widgets. The client uses them to hide what would be refused, the
+// server to refuse.
 
 import type { Id } from "./domain.js";
 import { MODES } from "./modes.js";
@@ -23,29 +23,29 @@ export const RIGHTS = [
 
 export type Right = (typeof RIGHTS)[number]["value"];
 
-/** Ce sur quoi portent les droits : les modes. */
+/** What the rights apply to: the modes. */
 export const AREAS = MODES;
 
 export type Area = Mode;
 
-/** Des droits, domaine par domaine. Un domaine absent n'accorde rien. */
+/** Rights, area by area. A missing area grants nothing. */
 export type Permissions = Partial<Record<Area, Right[]>>;
 
 /**
- * Les droits qu'un domaine propose. Les assets ne se lisent que : ils viennent
- * des agents d'inventaire, personne ne les ajoute ni ne les modifie à la main.
+ * The rights an area offers. Assets are read-only: they come
+ * from the inventory agents, nobody adds or edits them by hand.
  */
 export const rightsFor = (area: Area): readonly Right[] =>
   area === "assets" ? ["view"] : RIGHTS.map((r) => r.value);
 
-/** Tous les droits de tous les domaines : ceux du compte « admin ». */
+/** All the rights of all the areas: those of the "admin" account. */
 export const allPermissions = (): Permissions =>
   Object.fromEntries(AREAS.map((a) => [a.value, [...rightsFor(a.value)]]));
 
 /**
- * Des droits reçus de l'extérieur, ramenés à ce qui existe : les domaines
- * inconnus et les droits qu'un domaine ne propose pas sont écartés, et
- * l'ordre est celui de RIGHTS.
+ * Rights received from outside, reduced to what exists: unknown
+ * areas and rights an area does not offer are dropped, and
+ * the order is that of RIGHTS.
  */
 export const validPermissions = (value: unknown): Permissions => {
   const source = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
@@ -58,7 +58,7 @@ export const validPermissions = (value: unknown): Permissions => {
   return result;
 };
 
-/** L'accès au Paramétrage : aucun, Voir, ou Modifier (qui comprend Voir). */
+/** Access to the Settings: none, Voir, or Modifier (which includes Voir). */
 export const SETTINGS_ACCESS = [
   { value: "", label: "Aucun" },
   { value: "view", label: "Voir" },
@@ -68,8 +68,8 @@ export const SETTINGS_ACCESS = [
 export type SettingsAccess = (typeof SETTINGS_ACCESS)[number]["value"];
 
 /**
- * La gestion des workspaces : les créer, les renommer, les supprimer, et
- * régler les accès de chacun. Le compte « admin » l'a toujours.
+ * Workspace management: creating, renaming, deleting them, and
+ * setting the access of each. The "admin" account always has it.
  */
 export const WORKSPACES_ACCESS = [
   { value: "", label: "Aucun" },
@@ -79,20 +79,20 @@ export const WORKSPACES_ACCESS = [
 export type WorkspacesAccess = (typeof WORKSPACES_ACCESS)[number]["value"];
 
 /**
- * L'administration d'un utilisateur ou d'un groupe, pour toute
- * l'application : le Paramétrage, et la gestion des workspaces. Elle ne
- * dépend d'aucun workspace — leurs accès, eux, ne portent que sur les types
- * de widgets.
+ * The administration of a user or a group, for the whole
+ * application: the Settings, and workspace management. It does not
+ * depend on any workspace — their access, for its part, only covers widget
+ * types.
  */
 export interface AdminPermissions {
   settings: SettingsAccess;
   workspaces: WorkspacesAccess;
 }
 
-/** Celle d'un utilisateur ou d'un groupe qui n'en a pas encore : aucune. */
+/** That of a user or a group that has none yet: none. */
 export const defaultAdminPermissions = (): AdminPermissions => ({ settings: "", workspaces: "" });
 
-/** Une administration reçue de l'extérieur, ramenée à ce qui existe. */
+/** An administration received from outside, reduced to what exists. */
 export const validAdminPermissions = (value: unknown): AdminPermissions => {
   const source = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   return {
@@ -106,9 +106,9 @@ export const validAdminPermissions = (value: unknown): AdminPermissions => {
 };
 
 /**
- * Les droits de chaque mode, déduits des permissions par type : un mode suit
- * le plus large des types de ses widgets. « Lire » ouvre le mode en lecture ;
- * « Modifier » y donne tout ce que le domaine propose.
+ * The rights of each mode, derived from the per-type permissions: a mode follows
+ * the widest of its widgets' types. "Lire" opens the mode read-only;
+ * "Modifier" gives it everything the area offers.
  */
 export const widgetPermissions = (widgets: WidgetRights): Permissions => {
   const result: Permissions = {};
@@ -124,21 +124,21 @@ export const widgetPermissions = (widgets: WidgetRights): Permissions => {
 };
 
 /**
- * Les droits d'un compte, société par société : la clé est l'identifiant de
- * la société. Une société absente n'accorde rien. La clé « * » vaut pour
- * toutes les sociétés, y compris celles créées depuis : c'est ainsi que les
- * permissions par type de widget, communes à toutes, se lisent.
+ * An account's rights, company by company: the key is the company
+ * id. A missing company grants nothing. The "*" key applies to
+ * all companies, including those created since: that is how the
+ * per-widget-type permissions, common to all, are read.
  */
 export type CompanyRights = Record<string, Permissions>;
 
-/** La clé des droits qui valent pour toutes les sociétés. */
+/** The key of the rights that apply to all companies. */
 export const ALL_COMPANIES = "*";
 
 /**
- * Le compte a-t-il ce droit dans cette société ? Ce qui n'appartient à aucune
- * société (un projet sans société, un poste dont le tag ne désigne personne,
- * le mode Accès) suit les droits de toutes ses sociétés réunies : il suffit
- * que l'une d'elles l'accorde.
+ * Does the account have this right in this company? What belongs to no
+ * company (a project without a company, a machine whose tag designates no one,
+ * the Access mode) follows the rights of all its companies combined: it is enough
+ * that one of them grants it.
  */
 export const can = (
   rights: CompanyRights,
@@ -151,7 +151,7 @@ export const can = (
     ? Object.values(rights).some((p) => p[area]?.includes(right) ?? false)
     : (rights[String(companyId)]?.[area]?.includes(right) ?? false));
 
-/** Les sociétés où le compte a ce droit. */
+/** The companies where the account has this right. */
 export const companiesWith = (rights: CompanyRights, area: Area, right: Right = "view"): Id[] =>
   Object.entries(rights)
     .filter(([id, p]) => id !== ALL_COMPANIES && p[area]?.includes(right))

@@ -5,11 +5,11 @@ import classes from "../assets/styles/AccessNumber.module.css";
 import { withField } from "./types";
 import type { AccessWidget, WidgetConfigProps, WidgetDisplayProps } from "./types";
 
-// Une liste de choses à faire : des éléments qu'on coche, à même la colonne.
-// On y ajoute un élément par le champ du bas, on le coche d'un clic, on le
-// renomme d'un double-clic et on le retire par sa croix. Tout se range dans la
-// configuration du widget : la liste est celle du tableau, la même pour qui le
-// regarde. Catégorie verrouillée, elle se lit sans se modifier.
+// A to-do list: items you check off, right in the column. An item is added
+// through the bottom field, checked with a click, renamed with a double click
+// and removed with its cross. Everything is stored in the widget's
+// configuration: the list is the board's, the same for whoever views it.
+// Locked category, it can be read but not modified.
 
 const ITEMS = "items";
 const HIDE_DONE = "hideDone";
@@ -28,7 +28,7 @@ const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean
   return value === undefined ? defaultValue : Boolean(value);
 };
 
-/** Les éléments rangés, sans ce qui n'en a pas la forme. */
+/** The stored items, without whatever does not have the right shape. */
 const itemsOf = (config: unknown): Element[] => {
   const value = (config as Record<string, unknown> | null)?.[ITEMS];
   if (!Array.isArray(value)) return [];
@@ -103,8 +103,8 @@ function Row({
           style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere", cursor: locked ? undefined : "pointer" }}
           td={element.done ? "line-through" : undefined}
           c={element.done ? "dimmed" : undefined}
-          // Un clic sur le texte coche, comme le ferait une étiquette ; le
-          // double-clic renomme.
+          // A click on the text checks it, as a label would; a double click
+          // renames.
           onClick={() => !locked && onToggle()}
           onDoubleClick={() => {
             if (locked) return;
@@ -132,8 +132,8 @@ function Row({
 }
 
 function TodoList({ config, onChange, locked }: WidgetDisplayProps) {
-  // Les éléments se changent aussitôt à l'écran, sans attendre que le serveur
-  // ait rangé la configuration ; ce qu'il renvoie les remplace ensuite.
+  // Items change on screen immediately, without waiting for the server to
+  // have stored the configuration; what it returns then replaces them.
   const [items, setItems] = useState(() => itemsOf(config));
   const [input, setInput] = useState("");
   const serialized = JSON.stringify((config as Record<string, unknown> | null)?.[ITEMS] ?? []);
@@ -159,7 +159,7 @@ function TodoList({ config, onChange, locked }: WidgetDisplayProps) {
     .filter((e) => !(hide && e.done))
     .sort((a, b) => (atBottom ? Number(a.done) - Number(b.done) : 0));
 
-  // Cocher, saisir ou sélectionner un mot ne fait pas glisser le widget.
+  // Checking, typing or selecting a word does not drag the widget.
   const content = (
     <Stack gap={6} data-no-widget-drag>
       {isChecked(config, PROGRESS, false) && items.length > 0 && (
@@ -257,14 +257,14 @@ export const todoWidget: AccessWidget = {
   label: "À faire",
   icon: IconListCheck,
   defaultConfig: { [ITEMS]: [], [DONE_AT_BOTTOM]: true, [HIDE_DONE]: false, [PROGRESS]: false },
-  // On coche, renomme et retire à même la colonne.
+  // Items are checked, renamed and removed right in the column.
   ownClicks: true,
 
   Display: TodoList,
 
   margins: () => ({ top: 0, bottom: 15 }),
 
-  // Il dessine lui-même son cadre, réglé dans le bloc « Apparence » du tiroir.
+  // It draws its own frame, set in the drawer's "Apparence" block.
   ownFrame: true,
 
   Config: Fields,

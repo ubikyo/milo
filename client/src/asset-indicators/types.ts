@@ -1,29 +1,29 @@
-// Le contrat d'un widget du panneau des statistiques du mode Assets.
+// The contract of a widget of the Assets mode statistics panel.
 //
-// Le même que celui du Support (indicators/types.ts), sur les postes au lieu
-// des demandes. Ajouter une sorte d'indicateur, c'est ajouter un fichier dans
-// ce dossier, l'inscrire dans « index.ts » et dans « ASSET_INDICATOR_TYPES »
+// The same as the Support one (indicators/types.ts), on workstations instead
+// of requests. Adding a kind of indicator means adding a file in
+// this folder, registering it in "index.ts" and in "ASSET_INDICATOR_TYPES"
 // (shared/domain.ts).
 
 import type { ComponentType } from "react";
 import type { IndicatorWidgetBase } from "../components/ui/IndicatorsPanel";
 import type { Asset, AssetIndicatorType } from "@milo/shared";
 
-/** Ce que le panneau passe à l'affichage d'un widget. */
+/** What the panel passes to a widget's display. */
 export interface AssetIndicatorDisplayProps {
   config: unknown;
-  /** Les postes de la société regardée — tous, « toutes les sociétés » comprise. */
+  /** The workstations of the company being viewed — all of them, "toutes les sociétés" included. */
   assets: Asset[];
   /**
-   * Enregistre une configuration modifiée depuis l'affichage lui-même — un
-   * titre qui se renomme au double-clic. Sans effet une fois verrouillé.
+   * Saves a configuration modified from the display itself — a
+   * title renamed on double-click. No effect once locked.
    */
   onChange?: (config: Record<string, unknown>) => void | Promise<void>;
-  /** Les sections verrouillées : le widget ne propose plus rien qui modifie. */
+  /** The locked sections: the widget no longer offers anything that modifies. */
   locked?: boolean;
 }
 
 export interface AssetIndicatorWidget extends IndicatorWidgetBase<AssetIndicatorType> {
-  /** Ce que le panneau montre. */
+  /** What the panel shows. */
   Display: ComponentType<AssetIndicatorDisplayProps>;
 }

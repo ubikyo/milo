@@ -1,6 +1,6 @@
-// Le registre des widgets des sections du mode Tâche. Un seul endroit les
-// connaît : le tiroir des widgets, le panneau et celui des réglages y prennent
-// ce qu'il leur faut.
+// The registry of the Task mode sections' widgets. Only one place
+// knows them: the widgets drawer, the panel and the settings one take from it
+// what they need.
 
 import { cardsIndicator } from "./cards";
 import { taskDuesIndicator } from "./dueDates";
@@ -12,7 +12,7 @@ import { accessWidgets } from "../widgets/in-section";
 import type { TaskIndicatorDisplayProps, TaskIndicatorWidget } from "./types";
 import type { TaskIndicatorType } from "@milo/shared";
 
-/** Dans l'ordre où le tiroir des widgets les présente. */
+/** In the order in which the widgets drawer presents them. */
 export const TASK_INDICATORS: TaskIndicatorWidget[] = [
   taskListIndicator,
   ...accessWidgets<TaskIndicatorType, TaskIndicatorDisplayProps>(),
@@ -28,8 +28,8 @@ const BY_TYPE = new Map<TaskIndicatorType, TaskIndicatorWidget>(
 );
 
 /**
- * Le widget qui sait lire cet indicateur, ou « undefined » : un type rangé
- * par une version qui en connaissait un de plus n'a pas à faire tomber la page.
+ * The widget that can read this indicator, or "undefined": a type stored
+ * by a version that knew one more must not bring the page down.
  */
 export const taskIndicatorOf = (type: TaskIndicatorType): TaskIndicatorWidget | undefined =>
   BY_TYPE.get(type);

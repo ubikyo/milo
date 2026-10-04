@@ -5,8 +5,8 @@ import type { Bar } from "./common";
 import type { TaskIndicatorWidget } from "./types";
 import type { Id } from "@milo/shared";
 
-// Les étiquettes les plus portées par les cartes du tableau ouvert, chacune
-// dans sa couleur.
+// The labels most carried by the open board's cards, each
+// in its color.
 
 const LABEL = "Étiquettes";
 

@@ -3,17 +3,17 @@ import { IconCloud, IconServer2 } from "@tabler/icons-react";
 interface DirectoryOriginProps {
   synced?: boolean;
   /**
-   * La largeur de la case où l'icône se centre. Dans la liste des acteurs,
-   * celle du bouton des favoris (ActionIcon « sm ») : l'icône tombe sous
-   * l'étoile des lignes du dessus.
+   * The width of the box where the icon is centered. In the actors list, that
+   * of the favorites button (ActionIcon "sm"): the icon falls under the star of
+   * the rows above.
    */
   width?: number | string;
 }
 
 /**
- * L'origine d'un utilisateur ou d'un groupe de l'annuaire, posée au bout de
- * sa ligne : synchronisé depuis l'Active Directory local, ou créé dans le
- * cloud. Deux comptes de même nom et de même adresse se distinguent ainsi.
+ * The origin of a directory user or group, placed at the end of its row:
+ * synchronized from the local Active Directory, or created in the cloud. Two
+ * accounts with the same name and address can thus be told apart.
  */
 export default function DirectoryOrigin({ synced, width }: DirectoryOriginProps) {
   const Icon = synced ? IconServer2 : IconCloud;

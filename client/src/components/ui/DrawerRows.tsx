@@ -5,37 +5,36 @@ import type { ComponentType, CSSProperties, DragEvent } from "react";
 import EmptyPanel from "./EmptyPanel";
 import { GREEN } from "../../themes/colors";
 
-// L'allure commune des listes du tiroir d'un widget — ses colonnes
-// (ChampsColonnes), les catégories et les étiquettes du tableau
-// (ChampsListeDuTableau) : des lignes serrées sur un fond gris, une poignée à
-// gauche, des champs qui ne se montrent qu'au focus.
+// The common look of a widget drawer's lists — its columns (ColumnFields), the
+// board's categories and labels (BoardListFields): tight rows on a gray
+// background, a handle on the left, fields that only show up on focus.
 
 /**
- * Le fond d'une ligne, posé à même le tiroir : un gris neutre sur le blanc,
- * et sur le sombre un gris plus clair que lui.
+ * A row's background, laid directly on the drawer: a neutral gray on white, and
+ * on dark a gray lighter than the drawer.
  */
 export const ROW_BACKGROUND = "light-dark(#ededed, var(--mantine-color-dark-6))";
 
-/** L'air autour du contenu d'une ligne, et à gauche de sa poignée. */
+/** The padding around a row's content, and to the left of its handle. */
 export const ROW_INSET = 4;
 export const NAME_INSET = 10;
 
 /**
- * Le fond d'un champ qu'on est en train de saisir — une largeur au focus, une
- * colonne en liste : celui du tiroir.
+ * The background of a field being edited — a width with focus, a column in a
+ * list: that of the drawer.
  */
 export const INPUT_BACKGROUND = "var(--mantine-color-body)";
 
-/** L'arrondi des champs d'une ligne. */
+/** The rounding of a row's fields. */
 export const ROUNDING = "xs";
 
-/** L'arrondi des bouts de la pile des lignes. */
+/** The rounding of the ends of the row stack. */
 const RADIUS = 8;
 
 /**
- * Le style d'une ligne : seuls les bouts de la pile s'arrondissent, celles du
- * milieu restent droites ; la ligne qu'on glisse pâlit. À droite, le dernier
- * champ se cale au bord, à l'écart du haut et du bas.
+ * A row's style: only the ends of the stack are rounded, the middle ones stay
+ * square; the row being dragged fades. On the right, the last field sits flush
+ * with the edge, away from the top and bottom.
  */
 export const rowStyle = (rank: number, total: number, held: boolean): CSSProperties => ({
   padding: `${ROW_INSET}px ${ROW_INSET}px ${ROW_INSET}px ${NAME_INSET}px`,
@@ -47,13 +46,13 @@ export const rowStyle = (rank: number, total: number, held: boolean): CSSPropert
   opacity: held ? 0.5 : 1,
 });
 
-/** Le champ qu'on saisit : le fond du tiroir, sans trait. */
+/** The field being edited: the drawer's background, no border. */
 export const INPUT_STYLE: CSSProperties = { backgroundColor: INPUT_BACKGROUND };
 
 /**
- * Le champ du nom d'une ligne, saisi sur place : sans bordure, à la hauteur
- * d'un champ « xs », transparent sur le gris de la ligne — le fond du tiroir
- * quand il a le focus (« saisi »).
+ * A row's name field, edited in place: no border, the height of an "xs" field,
+ * transparent over the row's gray — the drawer's background when it has focus
+ * ("entered").
  */
 export const nameFieldStyle = (entered: boolean): CSSProperties => ({
   height: "var(--input-height-xs)",
@@ -64,15 +63,15 @@ export const nameFieldStyle = (entered: boolean): CSSProperties => ({
 });
 
 interface HandleProps {
-  /** Ce que la poignée déplace, pour les lecteurs d'écran. */
+  /** What the handle moves, for screen readers. */
   label: string;
-  /** Faux tant que la ligne ne se glisse pas — une ligne pas encore remplie. */
+  /** False while the row cannot be dragged — a row not yet filled in. */
   active?: boolean;
   onDragStart: (e: DragEvent<HTMLElement>) => void;
   onDragEnd: () => void;
 }
 
-/** La poignée d'une ligne : seule elle se prend, les champs restent des saisies. */
+/** A row's handle: only it can be grabbed, the fields remain inputs. */
 export function Handle({ label, active = true, onDragStart, onDragEnd }: HandleProps) {
   return (
     <Box
@@ -94,8 +93,8 @@ export function Handle({ label, active = true, onDragStart, onDragEnd }: HandleP
 }
 
 /**
- * Le nouvel ordre quand la ligne tenue survole celle de rang « vers » : elle
- * en prend la place. « null » quand rien ne bouge.
+ * The new order when the held row hovers the one at rank "to": it takes its
+ * place. "null" when nothing moves.
  */
 export const move = <T,>(list: T[], held: number, to: number): T[] | null => {
   if (held === to || to < 0 || to >= list.length) return null;
@@ -106,9 +105,9 @@ export const move = <T,>(list: T[], held: number, to: number): T[] | null => {
 };
 
 /**
- * Ce qu'une liste du tiroir montre quand elle n'a encore rien — ni catégorie,
- * ni étiquette, ni adresse, ni tag : l'invite des écrans vides, sur le fond
- * des lignes, à la place de la pile. Le bouton « Ajouter » reste dessous.
+ * What a drawer list shows when it has nothing yet — no category, no label, no
+ * address, no tag: the empty-screen prompt, on the rows' background, in place
+ * of the stack. The "Ajouter" button stays below.
  */
 export function EmptyList({
   icon,
@@ -125,9 +124,9 @@ export function EmptyList({
 }
 
 /**
- * Le bouton au bout d'une ligne qui ouvre ce qu'elle porte — les jalons d'un
- * type, les accès d'un workspace — en en disant le nombre : « 3 jalons ». Le
- * vert de l'application.
+ * The button at the end of a row that opens what it holds — a type's
+ * milestones, a workspace's accesses — stating the count: "3 jalons". The
+ * application's green.
  */
 export function RowButton({
   icon: Icon,
@@ -138,7 +137,7 @@ export function RowButton({
   icon: ComponentType<{ size?: number }>;
   children: string;
   onClick: () => void;
-  /** L'écart au bout de la ligne, en plus de son retrait (RETRAIT_LIGNE). */
+  /** The gap at the end of the row, on top of its inset (ROW_INSET). */
   rightMargin?: number;
 }) {
   return (
@@ -153,8 +152,8 @@ export function RowButton({
           backgroundColor: GREEN,
           color: "#ffffff",
           fontWeight: 500,
-          // Le bout de la ligne n'est qu'à RETRAIT_LIGNE : le bouton s'en
-          // écarte jusqu'à RETRAIT_NOM, l'air qu'a le texte à gauche.
+          // The end of the row is only ROW_INSET away: the button moves away
+          // from it up to NAME_INSET, the room the text has on the left.
           marginRight: rightMargin,
         },
       }}
@@ -168,9 +167,9 @@ export function RowButton({
 export const pluralize = (n: number, word: string) => `${n} ${word}${n > 1 ? "s" : ""}`;
 
 /**
- * Le nom d'une ligne, saisi sur place (styleChampNom). Il part quand on
- * quitte le champ ou qu'on valide (« onValider », le nom sans ses espaces) ;
- * Échap revient au nom d'avant.
+ * A row's name, edited in place (nameFieldStyle). It is sent when the field is
+ * left or on validate ("onValidate", the name without its spaces); Escape goes
+ * back to the previous name.
  */
 export function RowField({
   name,
@@ -187,7 +186,8 @@ export function RowField({
 }) {
   const [input, setInput] = useState(name);
   const [focus, setFocus] = useState(false);
-  // Échap quitte le champ sans rien envoyer : la sortie qui suit le sait.
+  // Escape leaves the field without sending anything: the exit that follows
+  // knows it.
   const cancelled = useRef(false);
   return (
     <TextInput
@@ -213,7 +213,7 @@ export function RowField({
         if (cancelled.current) {
           cancelled.current = false;
           setInput(name);
-          // Une ligne neuve abandonnée s'efface : elle n'a pas de nom.
+          // A new row that is abandoned disappears: it has no name.
           if (!name) onValidate("");
           return;
         }

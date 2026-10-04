@@ -4,17 +4,17 @@ import { withField, text } from "../widgets/types";
 import type { IndicatorConfigProps } from "./types";
 import type { SupportRequest } from "@milo/shared";
 
-// Ce que les widgets du panneau partagent : le nom qu'on leur donne, et la
-// façon de reconnaître une demande encore en cours.
+// What the panel's widgets share: the name given to them, and the
+// way to recognize a request still open.
 
 export { NAME };
 export { default as IndicatorTitle, IndicatorValue } from "../components/ui/IndicatorTitle";
 
-/** Une demande résolue ou fermée n'attend plus rien. */
+/** A resolved or closed request is waiting for nothing anymore. */
 export const ongoing = (d: SupportRequest): boolean =>
   d.status !== "resolved" && d.status !== "closed";
 
-/** Le champ « Nom » du tiroir ; vide, l'indicateur prend le nom de son type. */
+/** The drawer's "Nom" field; when empty, the indicator takes the name of its type. */
 export function NameField({ config, onChange, defaultValue }: IndicatorConfigProps & { defaultValue: string }) {
   return (
     <TextInput
@@ -27,7 +27,7 @@ export function NameField({ config, onChange, defaultValue }: IndicatorConfigPro
   );
 }
 
-/** Ce qu'un indicateur montre quand il n'a rien à compter. */
+/** What an indicator shows when it has nothing to count. */
 export function Nothing({ children }: { children: string }) {
   return (
     <Text size="sm" c="dimmed">

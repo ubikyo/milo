@@ -1,13 +1,12 @@
-// Ce que le serveur pousse aux clients après chaque écriture.
+// What the server pushes to clients after each write.
 //
-// Avant, un compteur unique : n'importe quelle écriture faisait recharger aux
-// huit jeux de données de tous les clients connectés. Renommer une étiquette
-// relisait les projets, les sociétés, les comptes et les tableaux — huit
-// requêtes par client, pour une couleur.
+// Previously, a single counter: any write made all connected clients reload
+// all eight data sets. Renaming a label re-read projects, companies, accounts
+// and boards — eight requests per client, for one color.
 //
-// Chaque route nomme désormais ce qu'elle touche, et le client ne relit que
-// cela. Les compteurs restent en mémoire : un redémarrage les remet à zéro, ce
-// qui provoque au pire un rechargement complet chez les clients connectés.
+// Each route now names what it touches, and the client re-reads only that.
+// Counters stay in memory: a restart resets them to zero, which at worst
+// causes a full reload on connected clients.
 
 import type { NextFunction, Request, Response } from "express";
 import type { Id, Notification, Resource, ResourceVersions, VersionPayload } from "@milo/shared";
@@ -15,16 +14,15 @@ import { emptyVersions } from "@milo/shared";
 
 const versions: ResourceVersions = emptyVersions();
 
-/** Somme des compteurs : une écriture, où qu'elle soit, la fait monter. */
+/** Sum of the counters: a write, wherever it is, makes it go up. */
 const total = (): number => Object.values(versions).reduce((a, b) => a + b, 0);
 
 export const payload = (): VersionPayload => ({ version: total(), versions: { ...versions } });
 
 /**
- * Les clients connectés, et le compte auquel chacun appartient. C'était un
- * simple ensemble de réponses : les compteurs de version s'adressent à tout le
- * monde. Les notifications de suivi, elles, s'adressent à une personne, et il
- * faut donc savoir qui est au bout de chaque flux.
+ * Connected clients, and the account each belongs to. It used to be a simple
+ * set of responses: version counters address everyone. Follow notifications,
+ * however, address a person, so we must know who is at the end of each stream.
  */
 const clients = new Map<Response, Id>();
 
@@ -42,9 +40,9 @@ const broadcast = (): void => {
 };
 
 /**
- * Une notification poussée à une personne, sur tous ses onglets ouverts. Si
- * elle n'en a aucun, elle ne verra rien : ce qui se perd ici est repris par
- * l'e-mail, qui lui arrive de toute façon.
+ * A notification pushed to a person, on all their open tabs. If they have
+ * none, they will see nothing: what is lost here is covered by the e-mail,
+ * which reaches them anyway.
  */
 export const pushNotification = (userId: Id, notification: Notification): void => {
   const data = `data: ${JSON.stringify({ notification })}\n\n`;
@@ -63,10 +61,9 @@ declare global {
 }
 
 /**
- * Déclare ce que cette écriture modifie. Appelé par un routeur pour poser ce
- * qu'il touche d'ordinaire, et par une route pour ajouter ce qu'elle seule
- * emporte — la suppression d'une société, par exemple, emporte aussi ses
- * tableaux et leurs projets.
+ * Declares what this write modifies. Called by a router to set what it
+ * usually touches, and by a route to add what it alone carries — deleting a
+ * company, for example, also carries away its boards and their projects.
  */
 export const touch =
   (...resources: Resource[]) =>
@@ -77,7 +74,7 @@ export const touch =
     next();
   };
 
-/** La même chose, depuis le corps d'une route. */
+/** The same thing, from inside a route's body. */
 export const touchNow = (res: Response, ...resources: Resource[]): void => {
   const already = res.locals.touched ?? new Set<Resource>();
   for (const resource of resources) already.add(resource);
@@ -85,8 +82,8 @@ export const touchNow = (res: Response, ...resources: Resource[]): void => {
 };
 
 /**
- * Incrémente les compteurs des ressources touchées, une fois la réponse
- * partie et seulement si elle a réussi. Une lecture ne touche rien.
+ * Increments the counters of the touched resources, once the response has
+ * been sent and only if it succeeded. A read touches nothing.
  */
 export const countWrites = (req: Request, res: Response, next: NextFunction): void => {
   if (req.method === "GET") return next();
@@ -100,9 +97,8 @@ export const countWrites = (req: Request, res: Response, next: NextFunction): vo
 };
 
 /**
- * Une écriture faite hors d'une requête — la relève des boîtes de support,
- * par exemple : les compteurs montent et les clients relisent, comme après
- * une route.
+ * A write made outside a request — the polling of support inboxes, for
+ * example: the counters go up and clients re-read, as after a route.
  */
 export const signalWrite = (...resources: Resource[]): void => {
   if (!resources.length) return;
@@ -111,22 +107,21 @@ export const signalWrite = (...resources: Resource[]): void => {
 };
 
 /**
- * Le flux d'événements (SSE). Le client le consomme avec `fetch` et non
- * `EventSource`, qui n'accepte pas d'en-tête d'authentification.
+ * The event stream (SSE). The client consumes it with `fetch` and not
+ * `EventSource`, which does not accept an authentication header.
  */
 export const feed = (req: Request, res: Response): void => {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
     Connection: "keep-alive",
-    // Demande à nginx de ne pas mettre la réponse en tampon.
+    // Ask nginx not to buffer the response.
     "X-Accel-Buffering": "no",
   });
   res.write(`data: ${JSON.stringify(payload())}\n\n`);
   clients.set(res, req.user.id);
 
-  // Commentaire périodique : maintient la connexion ouverte à travers les
-  // proxys.
+  // Periodic comment: keeps the connection open through proxies.
   const heartbeat = setInterval(() => write(res, ": ping\n\n"), 25_000);
 
   req.on("close", () => {

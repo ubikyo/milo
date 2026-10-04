@@ -1,21 +1,21 @@
-// Entra ID : l'inscription d'application sur laquelle tout repose.
+// Entra ID: the app registration everything rests on.
 //
-//   - La connexion des utilisateurs, par OpenID Connect (code d'autorisation).
-//   - L'annuaire — utilisateurs, groupes, appartenances —, par Microsoft Graph
-//     avec les permissions de l'application : User.Read.All, Group.Read.All,
+//   - User sign-in, through OpenID Connect (authorization code).
+//   - The directory — users, groups, memberships —, through Microsoft Graph
+//     with the app's permissions: User.Read.All, Group.Read.All,
 //     GroupMember.Read.All.
-//   - Le courrier des boîtes de support et des notifications, par Graph
-//     encore : Mail.Read pour lire, Mail.Send pour envoyer en leur nom.
-//   - L'agenda de chacun, pour le widget Calendrier : Calendars.Read ; sa
-//     boîte de réception, pour le widget Mail : Mail.Read encore.
+//   - Mail of the support mailboxes and of notifications, through Graph
+//     again: Mail.Read to read, Mail.Send to send on their behalf.
+//   - Everyone's calendar, for the Calendar widget: Calendars.Read; their
+//     inbox, for the Mail widget: Mail.Read again.
 //
-// Les permissions de l'application demandent le consentement d'un
-// administrateur du locataire, donné une fois dans le portail Azure. Voir la
-// section « Entra » du README.
+// The app's permissions require the consent of a tenant administrator, given
+// once in the Azure portal. See the "Entra" section of the README.
 //
-// Le secret est rangé en base avec le reste des réglages et ne ressort jamais
-// par l'API. Ce n'est pas du chiffrement : qui peut lire la base peut le
-// lire. C'est la base qu'il faut protéger — elle porte déjà les sessions.
+// The secret is stored in the database with the rest of the settings and
+// never comes back out through the API. This is not encryption: whoever can
+// read the database can read it. The database is what needs protecting — it
+// already holds the sessions.
 
 import type {
   AccessCalendarEvent,
@@ -34,19 +34,20 @@ import { readSetting, writeSetting } from "../repositories/settings.js";
 
 const KEY = "entra";
 
-/** Les réglages tels qu'ils sont rangés : secret compris. */
+/** The settings as stored: secret included. */
 interface Stored {
   client_id: string;
   tenant: string;
   secret: string;
   /**
-   * Milo a été déconnecté d'Entra depuis le Paramétrage : plus rien ne passe
-   * par Microsoft — connexions, annuaire, courrier — jusqu'à la reconnexion.
+   * Milo has been disconnected from Entra via Settings: nothing goes through
+   * Microsoft — sign-ins, directory, mail — until it is reconnected.
    */
   disconnected: boolean;
   /**
-   * L'adresse d'où partent les e-mails de Milo — avis, assignations, réponses
-   * aux demandes saisies. Une demande reçue répond de sa propre boîte.
+   * The address Milo's e-mails are sent from — notices, assignments, replies
+   * to manually entered requests. A received request is answered from its own
+   * mailbox.
    */
   mail_sender: string;
 }
@@ -59,14 +60,14 @@ const EMPTY_VALUES: Stored = {
   mail_sender: "",
 };
 
-/** L'inscription que la messagerie OAuth rangeait, avant qu'Entra la reprenne. */
+/** The registration the OAuth mailer used to store, before Entra took it over. */
 interface LegacyMessaging {
   oauth?: { client_id?: string; tenant?: string; secret?: string };
 }
 
 /**
- * Les réglages en base. Une base d'avant Entra n'en a pas : on reprend
- * l'inscription que la messagerie connaissait.
+ * The settings in the database. A database from before Entra has none: we
+ * take over the registration the mailer knew.
  */
 export const entraSettings = (): Stored => {
   const readItems = readSetting<Partial<Stored> | null>(KEY, null);
@@ -104,7 +105,7 @@ const text = (value: unknown, max = 255): string =>
     .trim()
     .slice(0, max);
 
-/** Ce qui n'est pas dit ne change pas ; pour le secret, la chaîne vide efface. */
+/** What is not stated does not change; for the secret, the empty string clears it. */
 export const updateEntra = (entry: EntraSettingsInput): void => {
   const nextItems = { ...entraSettings() };
 
@@ -121,14 +122,14 @@ export const updateEntra = (entry: EntraSettingsInput): void => {
   cachedToken = null;
 };
 
-/** L'adresse d'envoi commune ; vide tant qu'on ne l'a pas réglée. */
+/** The shared sending address; empty until it has been set. */
 export const sendingAddress = (): string => entraSettings().mail_sender;
 
 const registrationComplete = (r: Stored): boolean => Boolean(r.client_id && r.tenant && r.secret);
 
 /**
- * L'inscription est-elle complète, et Milo connecté ? Sans elles, rien ne
- * passe par Microsoft.
+ * Is the registration complete, and Milo connected? Without them, nothing
+ * goes through Microsoft.
  */
 export const entraConfigured = (): boolean => {
   const r = entraSettings();
@@ -144,7 +145,7 @@ const requireRegistration = (): Stored => {
   return r;
 };
 
-// --- Jetons ----------------------------------------------------------------
+// --- Tokens -----------------------------------------------------------------
 
 const AUTHORITY = "https://login.microsoftonline.com";
 const GRAPH = "https://graph.microsoft.com/v1.0";
@@ -168,17 +169,17 @@ const requestToken = async (tenant: string, body: URLSearchParams): Promise<Toke
   });
   const token = (await response.json().catch(() => ({}))) as TokenResponse;
   if (!response.ok || !token.access_token) {
-    // Microsoft décrit précisément ce qui manque (redirection non inscrite,
-    // secret expiré, consentement absent) : ce message vaut mieux qu'un autre.
+    // Microsoft describes precisely what is missing (unregistered redirect,
+    // expired secret, missing consent): this message beats any other.
     fail(400, token.error_description?.split("\n")[0] || token.error || "Microsoft a refusé la demande");
   }
   return token;
 };
 
 /**
- * Le jeton de l'application pour Graph, gardé jusqu'à une minute avant son
- * expiration : chaque connexion et chaque envoi en demandent un, Microsoft
- * n'a pas à en délivrer un par appel.
+ * The app's token for Graph, kept until a minute before it expires: every
+ * sign-in and every send asks for one, and Microsoft need not issue one per
+ * call.
  */
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
@@ -203,8 +204,8 @@ const appToken = async (): Promise<string> => {
 };
 
 /**
- * L'état de la connexion de Milo à Entra : un jeton d'application obtenu
- * suffit à le dire — l'identifiant, l'annuaire et le secret sont acceptés.
+ * The state of Milo's connection to Entra: an app token obtained is enough
+ * to say it — the id, the tenant and the secret are accepted.
  */
 export const entraState = async (): Promise<EntraStatus> => {
   const r = entraSettings();
@@ -222,8 +223,8 @@ export const entraState = async (): Promise<EntraStatus> => {
 };
 
 /**
- * Connecte ou déconnecte Milo. Dans les deux cas le jeton en cache tombe :
- * la reconnexion en redemande un, et rend donc l'état réel.
+ * Connects or disconnects Milo. In both cases the cached token is dropped:
+ * reconnecting asks for a new one, and thus returns the real state.
  */
 export const connectEntra = (connected: boolean): void => {
   writeSetting(KEY, { ...entraSettings(), disconnected: !connected });
@@ -234,7 +235,7 @@ interface GraphError {
   error?: { code?: string; message?: string };
 }
 
-/** Un appel à Graph au nom de l'application. Lève ce que Graph a répondu. */
+/** A call to Graph on behalf of the app. Throws what Graph answered. */
 const graph = async <T>(
   path: string,
   init: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
@@ -252,9 +253,9 @@ const graph = async <T>(
   if (response.status === 202 || response.status === 204) return undefined as T;
   const body = (await response.json().catch(() => ({}))) as T & GraphError;
   if (!response.ok) {
-    // Les permissions de l'application sont inscrites dans le jeton à sa
-    // délivrance : un jeton gardé en cache ignore celles accordées depuis. Un
-    // refus l'oublie, et l'essai suivant en demande un neuf.
+    // The app's permissions are written into the token when it is issued: a
+    // cached token knows nothing of those granted since. A refusal forgets it,
+    // and the next attempt asks for a fresh one.
     if (response.status === 401 || response.status === 403) cachedToken = null;
     fail(400, body.error?.message || `Microsoft Graph a répondu ${response.status}`);
   }
@@ -266,7 +267,7 @@ interface Page<T> {
   "@odata.nextLink"?: string;
 }
 
-/** Toutes les pages d'une liste Graph. */
+/** All the pages of a Graph list. */
 const allPages = async <T>(path: string): Promise<T[]> => {
   const result: T[] = [];
   let nextPage: string | undefined = path;
@@ -278,7 +279,7 @@ const allPages = async <T>(path: string): Promise<T[]> => {
   return result;
 };
 
-// --- Annuaire --------------------------------------------------------------
+// --- Directory --------------------------------------------------------------
 
 interface GraphUser {
   id: string;
@@ -313,10 +314,10 @@ const toGroup = (g: GraphGroup): EntraPrincipal => ({
   synced: g.onPremisesSyncEnabled === true,
 });
 
-/** Au plus, par recherche et par sorte : de quoi voir toute une famille de groupes. */
+/** At most, per search and per kind: enough to see a whole family of groups. */
 const RESULTS = 50;
 
-/** Les éléments de plusieurs listes, sans doublon, dans l'ordre alphabétique. */
+/** The items of several lists, without duplicates, in alphabetical order. */
 const merge = <T extends { id: string; displayName?: string }>(...lists: T[][]): T[] => {
   const byId = new Map<string, T>();
   for (const list of lists) for (const e of list) byId.set(e.id, e);
@@ -326,16 +327,15 @@ const merge = <T extends { id: string; displayName?: string }>(...lists: T[][]):
 };
 
 /**
- * Les utilisateurs et les groupes qui répondent à ce qu'on tape, deux
- * caractères au moins. Deux recherches se complètent :
+ * The users and groups matching what is typed, two characters at least. Two
+ * searches complement each other:
  *
- *   - `startswith` : le nom — ou l'adresse, pour un utilisateur — commence
- *     par la saisie, telle quelle. C'est ce qu'on attend d'un nom comme
- *     « ARM_T2 », que la recherche plein texte découperait.
- *   - `$search` : un mot du nom commence par la saisie (« dupont » trouve
- *     « Jean Dupont »). Graph y découpe les noms aux espaces, aux « _ », aux
- *     tirets et aux changements de casse ; elle exige l'en-tête
- *     ConsistencyLevel.
+ *   - `startswith`: the name — or the address, for a user — begins with the
+ *     input, as is. That is what one expects for a name like "ARM_T2", which
+ *     full-text search would split.
+ *   - `$search`: a word of the name begins with the input ("dupont" finds
+ *     "Jean Dupont"). Graph splits names there at spaces, at "_", at hyphens
+ *     and at case changes; it requires the ConsistencyLevel header.
  */
 export const searchInDirectory = async (
   input: string,
@@ -344,7 +344,7 @@ export const searchInDirectory = async (
   const term = input.replace(/["\\]/g, "").trim();
   if (term.length < 2) return [];
 
-  // Une apostrophe se double dans une chaîne OData.
+  // An apostrophe is doubled in an OData string.
   const odata = term.replace(/'/g, "''");
   const headers = { ConsistencyLevel: "eventual" };
   const empty = Promise.resolve({ value: [] });
@@ -379,13 +379,13 @@ export const searchInDirectory = async (
   ];
 };
 
-/** Le profil d'un utilisateur : son nom, son adresse. */
+/** A user's profile: their name, their address. */
 export const entraProfile = async (oid: string): Promise<GraphUser> =>
   graph<GraphUser>(
     `/users/${encodeURIComponent(oid)}?$select=id,displayName,givenName,surname,mail,userPrincipalName`,
   );
 
-/** La fiche d'un utilisateur telle qu'Entra la tient : ce que citent les modèles. */
+/** A user's record as Entra holds it: what the templates cite. */
 export interface EntraRecord {
   givenName?: string | null;
   surname?: string | null;
@@ -408,13 +408,13 @@ const RECORD_FIELDS =
   "givenName,surname,displayName,mail,userPrincipalName,businessPhones,mobilePhone," +
   "jobTitle,department,companyName,streetAddress,city,state,postalCode,country";
 
-/** La fiche d'un utilisateur, par son identifiant. */
+/** A user's record, by their id. */
 export const entraRecord = (oid: string): Promise<EntraRecord> =>
   graph<EntraRecord>(`/users/${encodeURIComponent(oid)}?$select=${RECORD_FIELDS}`);
 
 /**
- * La fiche de qui porte cette adresse dans l'annuaire — son adresse
- * principale ou son identifiant de connexion ; « null » : personne.
+ * The record of whoever holds this address in the directory — their primary
+ * address or their sign-in id; "null": nobody.
  */
 export const entraRecordByAddress = async (address: string): Promise<EntraRecord | null> => {
   const value = address.trim().replace(/'/g, "''");
@@ -427,8 +427,8 @@ export const entraRecordByAddress = async (address: string): Promise<EntraRecord
 };
 
 /**
- * Les groupes de l'utilisateur, y compris ceux dont il est membre par un autre
- * groupe : ses droits suivent ses groupes, quelle que soit la profondeur.
+ * The user's groups, including those they belong to through another group:
+ * their rights follow their groups, whatever the depth.
  */
 export const entraGroups = async (oid: string): Promise<string[]> => {
   const groups = await allPages<{ id: string }>(
@@ -437,7 +437,7 @@ export const entraGroups = async (oid: string): Promise<string[]> => {
   return groups.map((g) => g.id);
 };
 
-// --- Agenda ----------------------------------------------------------------
+// --- Calendar ---------------------------------------------------------------
 
 interface GraphAppointment {
   id: string;
@@ -451,19 +451,19 @@ interface GraphAppointment {
   webLink?: string | null;
 }
 
-/** Une date que Graph rend en UTC sans le dire : on la lui fait dire. */
+/** A date that Graph returns in UTC without saying so: we make it say so. */
 const toUtc = (value: string | undefined): string => {
   if (!value) return "";
   return /(Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value.replace(/\.\d+$/, "")}Z`;
 };
 
-/** Au plus, sur une période : de quoi couvrir un mois chargé. */
+/** At most, over a period: enough to cover a busy month. */
 const APPOINTMENTS_MAX = 500;
 
 /**
- * Les rendez-vous de l'agenda principal de l'utilisateur entre deux instants,
- * occurrences des séries comprises (calendarView). Demande la permission
- * d'application Calendars.Read ; les rendez-vous annulés n'y sont pas.
+ * The appointments in the user's main calendar between two instants,
+ * occurrences of series included (calendarView). Requires the Calendars.Read
+ * application permission; cancelled appointments are not there.
  */
 export const entraAgenda = async (
   oid: string,
@@ -501,12 +501,12 @@ export const entraAgenda = async (
     }));
 };
 
-// --- Boîte personnelle -----------------------------------------------------
+// --- Personal mailbox -------------------------------------------------------
 //
-// Ce que le widget Mail montre : la boîte de réception de qui regarde, lue
-// par l'application (Mail.Read). Rien n'y est modifié — un e-mail ouvert dans
-// Milo n'est pas marqué lu : cela demanderait Mail.ReadWrite sur toutes les
-// boîtes.
+// What the Mail widget shows: the inbox of whoever is looking, read by the
+// application (Mail.Read). Nothing is modified there — an e-mail opened in
+// Milo is not marked as read: that would require Mail.ReadWrite on all
+// mailboxes.
 
 interface GraphAddress {
   emailAddress?: { name?: string; address?: string };
@@ -542,9 +542,9 @@ const toHeader = (m: GraphHeader): AccessMail => ({
 });
 
 /**
- * Une page de la boîte de réception, des plus récents aux plus anciens.
- * « nonLus » ne garde que les non lus : Graph veut alors que le tri porte
- * aussi sur le filtre, et dans le même ordre — d'où la date en tête du filtre.
+ * A page of the inbox, from most recent to oldest. "unreadOnly" keeps only
+ * unread ones: Graph then wants the sort to cover the filter too, in the same
+ * order — hence the date at the head of the filter.
  */
 export const mailboxPage = async (
   oid: string,
@@ -573,13 +573,13 @@ export const mailboxPage = async (
   };
 };
 
-/** Au-delà, une image intégrée n'est pas rapatriée : elle ferait un corps trop lourd. */
+/** Beyond this, an embedded image is not fetched: it would make the body too heavy. */
 const EMBEDDED_IMAGE_MAX = 2 * 1024 * 1024;
 
 /**
- * Un e-mail de la boîte, corps compris tel que l'expéditeur l'a écrit, et ses
- * pièces jointes. Les images intégrées (« cid: ») reviennent en adresses
- * « data: », prêtes à remplacer leur citation.
+ * An e-mail from the mailbox, body included as the sender wrote it, and its
+ * attachments. Embedded images ("cid:") come back as "data:" addresses, ready
+ * to replace their citation.
  */
 export const mailOfMailbox = async (
   oid: string,
@@ -639,7 +639,7 @@ export const mailOfMailbox = async (
   };
 };
 
-/** Une pièce jointe d'un e-mail de la boîte, contenu compris. */
+/** An attachment of a mailbox e-mail, content included. */
 export const mailboxAttachment = async (
   oid: string,
   id: string,
@@ -658,12 +658,12 @@ export const mailboxAttachment = async (
   };
 };
 
-// --- Connexion des utilisateurs --------------------------------------------
+// --- User sign-in -----------------------------------------------------------
 
-/** Ce que la connexion demande : qui est la personne, rien de plus. */
+/** What sign-in requests: who the person is, nothing more. */
 const SIGN_IN_SCOPE = "openid profile email";
 
-/** L'adresse de la page de connexion Microsoft. */
+/** The address of the Microsoft sign-in page. */
 export const loginUrl = (redirectUri: string, state: string): string => {
   const r = requireRegistration();
   const searchParams = new URLSearchParams({
@@ -678,7 +678,7 @@ export const loginUrl = (redirectUri: string, state: string): string => {
   return `${endpoint(r.tenant, "authorize")}?${searchParams.toString()}`;
 };
 
-/** Les revendications du jeton d'identité dont on se sert. */
+/** The claims of the identity token that we use. */
 interface Claims {
   oid?: string;
   tid?: string;
@@ -689,11 +689,11 @@ interface Claims {
 }
 
 /**
- * Le code de retour échangé contre un jeton d'identité, dont on tire la
- * personne. Le jeton arrive directement de Microsoft, par une connexion TLS
- * que nous avons ouverte et authentifiée par le secret : sa signature n'a pas
- * à être revérifiée (OpenID Connect, § 3.1.3.7). On contrôle en revanche
- * qu'il vient bien de notre locataire et qu'il nous est destiné.
+ * The return code exchanged for an identity token, from which the person is
+ * taken. The token arrives directly from Microsoft, over a TLS connection we
+ * opened and authenticated with the secret: its signature need not be
+ * re-verified (OpenID Connect, § 3.1.3.7). We do check, however, that it
+ * comes from our tenant and that it is meant for us.
  */
 export const completeLogin = async (
   code: string,
@@ -721,8 +721,8 @@ export const completeLogin = async (
   }
 
   if (claims.aud !== r.client_id) fail(400, "Jeton d'identité destiné à une autre application");
-  // Un locataire saisi par son nom de domaine ne se compare pas à l'identifiant
-  // du jeton : seul un identifiant est contrôlé.
+  // A tenant entered as a domain name is not compared with the token's id:
+  // only an id is checked.
   if (/^[0-9a-f-]{36}$/i.test(r.tenant) && claims.tid?.toLowerCase() !== r.tenant.toLowerCase()) {
     fail(403, "Ce compte n'appartient pas à l'annuaire de l'entreprise");
   }
@@ -735,10 +735,10 @@ export const completeLogin = async (
   };
 };
 
-// --- Courrier --------------------------------------------------------------
+// --- Mail -------------------------------------------------------------------
 
 export interface Sending {
-  /** La boîte qui expédie : celle du support d'une société. */
+  /** The sending mailbox: that of a company's support. */
   from: string;
   to: string;
   subject: string;
@@ -748,9 +748,8 @@ export interface Sending {
 }
 
 /**
- * Un envoi au nom d'une boîte, par Graph (Mail.Send). Le message n'est pas
- * gardé dans ses éléments envoyés : ce sont des notifications, pas une
- * correspondance.
+ * A send on behalf of a mailbox, through Graph (Mail.Send). The message is
+ * not kept in its sent items: these are notifications, not correspondence.
  */
 export const sendViaGraph = async ({ from, to, subject, text, html, attachments }: Sending) => {
   await graph(`/users/${encodeURIComponent(from)}/sendMail`, {
@@ -790,7 +789,7 @@ interface MessageGraph {
   from?: { emailAddress?: { address?: string } };
 }
 
-/** Les derniers messages de la boîte de réception d'une boîte (Mail.Read). */
+/** The latest messages in a mailbox's inbox (Mail.Read). */
 export const readMessages = async (mailbox: string, howMany = 25): Promise<ReceivedMessage[]> => {
   const page = await graph<Page<MessageGraph>>(
     `/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages?$top=${howMany}&$select=id,subject,receivedDateTime,bodyPreview,from&$orderby=receivedDateTime desc`,
@@ -805,17 +804,17 @@ export const readMessages = async (mailbox: string, howMany = 25): Promise<Recei
 };
 
 export interface ReceivedMail {
-  /** L'identifiant de Graph, pour aller chercher le reste du message. */
+  /** The Graph id, to fetch the rest of the message. */
   graph_id: string;
-  /** L'identifiant Internet (Message-ID) : il ne change pas si le message change de dossier. */
+  /** The Internet id (Message-ID): it does not change if the message changes folder. */
   mail_id: string;
-  /** La conversation de Graph : une réponse arrive dans la même. */
+  /** The Graph conversation: a reply arrives in the same one. */
   conversation_id: string;
   subject: string;
   from_name: string;
   from_email: string;
   received_at: string;
-  /** Le corps tel que l'expéditeur l'a écrit : du HTML le plus souvent. */
+  /** The body as the sender wrote it: HTML most often. */
   body: string;
   body_type: "html" | "text";
   has_attachments: boolean;
@@ -832,7 +831,7 @@ interface GraphMail {
   hasAttachments?: boolean;
 }
 
-/** Un message de Graph tel que la relève le lit, corps compris. */
+/** A Graph message as the poll reads it, body included. */
 const MAIL_FIELDS =
   "id,internetMessageId,conversationId,subject,receivedDateTime,from,body,hasAttachments";
 
@@ -854,13 +853,13 @@ interface PageDelta<T> extends Page<T> {
 }
 
 /**
- * La delta query de la boîte de réception : ce qui y est arrivé depuis la
- * dernière fois, et le lien qui servira la prochaine. Sans lien — la première
- * fois —, Graph rend toute la boîte, puis le lien. Ce qui a été retiré de la
- * boîte (« @removed ») est écarté : Milo ne retire rien de son côté.
+ * The delta query of the inbox: what has arrived there since last time, and
+ * the link that will serve the next. Without a link — the first time —, Graph
+ * returns the whole mailbox, then the link. What was removed from the
+ * mailbox ("@removed") is discarded: Milo removes nothing on its side.
  *
- * Le corps arrive tel qu'il a été écrit, en HTML : converti en texte par
- * Graph, il perdait ses images, sa mise en page et gagnait des sauts de ligne.
+ * The body arrives as it was written, in HTML: converted to text by Graph, it
+ * lost its images and layout and gained line breaks.
  */
 export const mailboxDelta = async (
   mailbox: string,
@@ -883,9 +882,9 @@ export const mailboxDelta = async (
 };
 
 /**
- * Retire un e-mail relevé de la boîte (Mail.ReadWrite). Graph le range dans
- * les éléments supprimés plutôt que de l'effacer : il y reste retrouvable,
- * et la réponse à sa demande (repondreParGraph) le cite toujours.
+ * Removes a polled e-mail from the mailbox (Mail.ReadWrite). Graph puts it in
+ * deleted items rather than erasing it: it can still be found there, and the
+ * reply to its request (replyByGraph) still cites it.
  */
 export const deleteMail = async (mailbox: string, graphId: string): Promise<void> => {
   await graph(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(graphId)}`, {
@@ -893,24 +892,25 @@ export const deleteMail = async (mailbox: string, graphId: string): Promise<void
   });
 };
 
-/** Ce que la delta query ne dit pas — ou plus — d'un e-mail. */
+/** What the delta query does not say — or no longer — about an e-mail. */
 export interface MailDetails {
-  /** Ce qu'il cite de ceux qui le précèdent : In-Reply-To et References. */
+  /** What it cites of those preceding it: In-Reply-To and References. */
   cited: string[];
   conversation_id: string;
   has_attachments: boolean;
   /**
-   * Ce que l'e-mail apporte de neuf : son corps sans l'historique qu'il cite,
-   * tel qu'Exchange le détache de la conversation. Vide si Graph ne le donne pas.
+   * What the e-mail brings that is new: its body without the history it
+   * cites, as Exchange detaches it from the conversation. Empty if Graph does
+   * not give it.
    */
   unique_body: string;
   unique_body_type: "html" | "text";
 }
 
 /**
- * Relu message par message plutôt que dans la delta query : le lien delta
- * garde les champs demandés à sa création, et un lien créé avant qu'on les
- * demande ne les rendrait jamais.
+ * Re-read message by message rather than in the delta query: the delta link
+ * keeps the fields requested when it was created, and a link created before
+ * they were requested would never return them.
  */
 export const mailDetails = async (
   mailbox: string,
@@ -936,13 +936,13 @@ export const mailDetails = async (
   };
 };
 
-/** Un fichier joint à un e-mail : une image intégrée au corps, ou une pièce jointe. */
+/** A file attached to an e-mail: an image embedded in the body, or an attachment. */
 export interface ReceivedFile {
   name: string;
   mime: string;
   size: number;
   inline: boolean;
-  /** Ce que le corps cite (« cid:… ») pour une image intégrée. */
+  /** What the body cites ("cid:…") for an embedded image. */
   content_id: string;
   content: Buffer;
 }
@@ -958,10 +958,9 @@ interface GraphAttachment {
 }
 
 /**
- * Les fichiers d'un e-mail, contenu compris. Seuls les fichiers passent : un
- * e-mail joint à un autre, ou un lien vers un document partagé, n'a pas de
- * contenu à rapatrier. Au-delà de « tailleMax », un fichier est laissé dans la
- * boîte.
+ * The files of an e-mail, content included. Only files get through: an e-mail
+ * attached to another, or a link to a shared document, has no content to
+ * fetch. Beyond "maxSize", a file is left in the mailbox.
  */
 export const mailFiles = async (
   mailbox: string,
@@ -976,8 +975,8 @@ export const mailFiles = async (
   for (const attachment of graphAttachments) {
     if (attachment["@odata.type"] !== "#microsoft.graph.fileAttachment") continue;
     if ((attachment.size ?? 0) > maxSize) continue;
-    // Le contenu à part, en brut : dans la liste, il ferait voyager tous les
-    // fichiers en base64 d'un coup.
+    // The content apart, raw: in the list, it would carry all the files as
+    // base64 at once.
     const detail = await graph<GraphAttachment & { contentBytes?: string }>(
       `${base}/${encodeURIComponent(attachment.id)}`,
     );
@@ -995,18 +994,18 @@ export const mailFiles = async (
 };
 
 /**
- * Répond à un e-mail reçu, depuis la boîte qui l'a reçu (Mail.Send) : la
- * réponse part dans la même conversation, le message d'origine cité dessous.
- * Le message est retrouvé par son identifiant Internet — celui que Milo garde
- * —, l'identifiant de Graph changeant quand un message change de dossier.
+ * Replies to a received e-mail, from the mailbox that received it (Mail.Send):
+ * the reply goes in the same conversation, the original message quoted below.
+ * The message is found by its Internet id — the one Milo keeps —, Graph's id
+ * changing when a message changes folder.
  *
- * Elle porte le numéro du ticket, dans son objet et dans l'en-tête
- * X-Milo-Ticket : une réponse de l'expéditeur retrouve ainsi sa demande, même
- * si son logiciel a perdu le fil de la conversation. Sa propre réponse citera
- * de toute façon l'e-mail d'origine dans ses en-têtes (References).
+ * It carries the ticket number, in its subject and in the X-Milo-Ticket
+ * header: a reply from the sender thus finds its request, even if their
+ * software has lost the thread of the conversation. Its own reply will in any
+ * case cite the original e-mail in its headers (References).
  *
- * Tout passe par « reply », qui n'exige que Mail.Send : un brouillon
- * (« createReply ») demanderait en plus Mail.ReadWrite sur la boîte.
+ * Everything goes through "reply", which only requires Mail.Send: a draft
+ * ("createReply") would additionally require Mail.ReadWrite on the mailbox.
  */
 export const replyByGraph = async (
   mailbox: string,
@@ -1023,8 +1022,8 @@ export const replyByGraph = async (
   const message = found.value[0];
   if (!message) fail(400, "L'e-mail d'origine est introuvable dans la boîte de support");
 
-  // « Imprimante » devient « RE: [HLP-12] Imprimante » ; un objet qui porte
-  // déjà le numéro le garde tel quel.
+  // "Imprimante" becomes "RE: [HLP-12] Imprimante"; a subject that already
+  // carries the number keeps it as is.
   const origin = (message!.subject ?? "").replace(/^((?:re|tr|fw|fwd)\s*:\s*)+/i, "");
   const subject = origin.includes(`[${ticket}]`) ? `RE: ${origin}` : `RE: [${ticket}] ${origin}`;
 
@@ -1048,7 +1047,7 @@ export const replyByGraph = async (
   });
 };
 
-// --- Notifications de changement -------------------------------------------
+// --- Change notifications ---------------------------------------------------
 
 export interface Subscription {
   id: string;
@@ -1056,9 +1055,9 @@ export interface Subscription {
 }
 
 /**
- * Demande à Graph de prévenir Milo de chaque e-mail qui arrive dans la boîte
- * de réception. Graph vérifie l'adresse avant d'accepter : Milo doit déjà
- * écouter, et répondre à sa validation.
+ * Asks Graph to notify Milo of every e-mail that arrives in the inbox.
+ * Graph checks the address before accepting: Milo must already be listening,
+ * and answer its validation.
  */
 export const createSubscription = (
   mailbox: string,

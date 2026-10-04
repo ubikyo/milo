@@ -1,5 +1,5 @@
-// La section « Assets » du Paramétrage : la table des modèles (voir
-// lib/asset-models.ts) et celle des VLAN (lib/asset-vlans.ts).
+// The "Assets" section of "Paramétrage": the models table (see
+// lib/asset-models.ts) and the VLAN table (lib/asset-vlans.ts).
 
 import { Router } from "express";
 import {
@@ -19,7 +19,7 @@ const assetSettings = (): AssetSettings => ({
   vlans: vlans(),
 });
 
-/** Un sous-réseau IPv4 en notation CIDR : « 10.1.106.0/24 ». */
+/** An IPv4 subnet in CIDR notation: "10.1.106.0/24". */
 const CIDR = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/;
 
 const isSubnet = (text: string): boolean => {
@@ -36,9 +36,8 @@ assetSettingsRoutes.get("/", (_req, res) => {
 });
 
 /**
- * La table des modèles. Les lignes sans identifiant ni nom — une ligne qu'on
- * vient d'ajouter et qu'on n'a pas remplie — sont laissées de côté ; un
- * identifiant ne figure qu'une fois.
+ * The models table. Rows with neither id nor name — a row just added and
+ * not filled in — are left out; an id appears only once.
  */
 const readTemplates = (received: unknown): AssetModel[] => {
   if (!Array.isArray(received)) badRequest("La table des modèles est une liste");
@@ -68,9 +67,8 @@ const readTemplates = (received: unknown): AssetModel[] => {
 };
 
 /**
- * La table des VLAN. Les lignes vides sont laissées de côté ; un sous-réseau
- * ne figure qu'une fois, un même VLAN peut en porter plusieurs. Le nom est
- * facultatif.
+ * The VLAN table. Empty rows are left out; a subnet appears only once, a
+ * single VLAN can carry several. The name is optional.
  */
 const readVlans = (received: unknown): AssetVlan[] => {
   if (!Array.isArray(received)) badRequest("La table des VLAN est une liste");
@@ -104,16 +102,16 @@ const readVlans = (received: unknown): AssetVlan[] => {
 };
 
 /**
- * Chaque table reçue est remplacée entière, d'un coup ; celle qui n'est pas
- * envoyée reste telle quelle.
+ * Each received table is replaced entirely, in one go; a table that is not
+ * sent stays as it is.
  */
 assetSettingsRoutes.put("/", (req, res) => {
   const body = req.body ?? {};
   if (body.models === undefined && body.vlans === undefined) {
     badRequest("Rien à enregistrer");
   }
-  // Tout est vérifié avant d'écrire : une table refusée n'en laisse pas
-  // l'autre à moitié enregistrée.
+  // Everything is checked before writing: a rejected table does not leave
+  // the other one half saved.
   const newTemplates =
     body.models === undefined ? null : readTemplates(body.models);
   const newVlans =
@@ -121,7 +119,7 @@ assetSettingsRoutes.put("/", (req, res) => {
   if (newTemplates) saveTemplates(newTemplates);
   if (newVlans) saveVlans(newVlans);
 
-  // Les fiches ouvertes affichent le nom : qu'elles se relisent.
+  // Open detail views display the name: let them re-read.
   touchNow(res, "assets");
   res.json(assetSettings());
 });

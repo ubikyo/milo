@@ -2,14 +2,14 @@ import { useEffect, useMemo, useRef } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import Confetti from "./Confetti";
 
-// Les fêtes qu'une liste peut réserver à la carte qui la rejoint : chacune a
-// sa marque, à poser n'importe où dans le titre de la liste. Une liste peut en
-// porter plusieurs : toutes se jouent ensemble.
+// The celebrations a list can reserve for the card that joins it: each has
+// its mark, to be placed anywhere in the list title. A list can
+// carry several: they all play together.
 export type Effect = "confetti" | "hearts" | "thumbs" | "rocket" | "flames" | "snow" | "lightning";
 
-// Les marques sont cherchées sans leur sélecteur de variante (« ❤ » plutôt que
-// « ❤️ ») : qu'elles soient saisies en texte ou en emoji, elles se reconnaissent.
-// L'emoji, lui, est ce que le menu de la liste pose au bout du titre.
+// The marks are looked up without their variation selector ("❤" rather than
+// "❤️"): whether typed as text or as emoji, they are recognized.
+// The emoji, for its part, is what the list menu places at the end of the title.
 export const MARKS: { mark: string; emoji: string; effect: Effect; label: string }[] = [
   { mark: "✨", emoji: "✨", effect: "confetti", label: "Confettis" },
   { mark: "❤", emoji: "❤️", effect: "hearts", label: "Pluie de cœurs" },
@@ -20,27 +20,27 @@ export const MARKS: { mark: string; emoji: string; effect: Effect; label: string
   { mark: "⚡", emoji: "⚡", effect: "lightning", label: "Foudre" },
 ];
 
-/** Les fêtes que réclame un titre de liste, dans l'ordre des marques. */
+/** The celebrations a list title calls for, in the order of the marks. */
 export const titleEffects = (title: string): Effect[] =>
   MARKS.filter((m) => title.includes(m.mark)).map((m) => m.effect);
 
 /**
- * Pose la marque d'une fête au bout du titre, ou l'en retire si elle y est
- * déjà — où qu'elle soit, avec son sélecteur de variante et l'espace qui la
- * précède.
+ * Places a celebration's mark at the end of the title, or removes it if it is
+ * already there — wherever it is, with its variation selector and the space
+ * preceding it.
  */
 export const toggleMark = (title: string, effect: Effect): string => {
   const m = MARKS.find((x) => x.effect === effect);
   if (!m) return title;
   if (!title.includes(m.mark)) return `${title.trimEnd()} ${m.emoji}`;
   const withoutMark = title.split(m.mark).map((chunk, i) =>
-    // Le sélecteur de variante suit la marque : il part avec elle.
+    // The variation selector follows the mark: it goes with it.
     i > 0 ? chunk.replace(/^\uFE0F/, "") : chunk,
   );
   return withoutMark.join("").replace(/\s{2,}/g, " ").trim();
 };
 
-/** Un rectangle à l'écran : celui de la liste, ou celui de la carte. */
+/** A rectangle on screen: the list's, or the card's. */
 export interface Zone {
   x: number;
   y: number;
@@ -53,13 +53,13 @@ const pickFrom = <T,>(values: readonly T[]): T =>
   values[Math.floor(Math.random() * values.length)] as T;
 const color = (c: string) => `var(--mantine-color-${c}-filled)`;
 
-// Les propriétés personnalisées (« --dx ») ne figurent pas dans CSSProperties :
-// React les accepte, TypeScript ne les connaît pas.
+// Custom properties ("--dx") are not in CSSProperties:
+// React accepts them, TypeScript does not know them.
 type StyleWithVariables = CSSProperties & Record<`--${string}`, string | number>;
 
 /**
- * Retire l'effet au bout de sa durée. Le rappel est gardé dans une référence :
- * il change à chaque rendu du tableau, et remettrait le compte à zéro.
+ * Removes the effect at the end of its duration. The callback is kept in a ref:
+ * it changes on every render of the board, and would reset the count.
  */
 function useFinish(onDone: () => void, duration: number) {
   const finished = useRef(onDone);
@@ -72,7 +72,7 @@ function useFinish(onDone: () => void, duration: number) {
   }, [duration]);
 }
 
-/** Le calque d'un effet : posé sur l'écran, il ne retient aucun clic. */
+/** An effect's layer: laid over the screen, it captures no click. */
 function Layer({ style, animations, children }: {
   style: CSSProperties;
   animations: string;
@@ -94,7 +94,7 @@ interface EffectProps {
   onDone: () => void;
 }
 
-// --- ❤️ Pluie de cœurs ----------------------------------------------------
+// --- ❤️ Rain of hearts ----------------------------------------------------
 const HEARTS_DURATION = 3400;
 const HEARTS_ANIMATIONS = `
 @keyframes milo-heart-fall {
@@ -164,7 +164,7 @@ function Hearts({ zone, onDone }: EffectProps) {
   );
 }
 
-// --- 👍 Pouces qui apparaissent et disparaissent ------------------------
+// --- 👍 Thumbs that appear and disappear ------------------------
 const THUMBS_UP_DURATION = 2600;
 const THUMBS_UP_ANIMATIONS = `
 @keyframes milo-thumb {
@@ -216,7 +216,7 @@ function ThumbsUp({ zone, onDone }: EffectProps) {
   );
 }
 
-// --- 🚀 Fusée qui traverse l'écran ---------------------------------------
+// --- 🚀 Rocket crossing the screen ---------------------------------------
 const ROCKET_CROSSING = 1600;
 const ROCKET_SMOKE = 900;
 const ROCKET_DURATION = ROCKET_CROSSING + ROCKET_SMOKE;
@@ -231,14 +231,14 @@ const ROCKET_ANIMATIONS = `
 }
 `;
 
-// Gris neutre : les gris de la palette tirent sur le bleu.
+// Neutral gray: the palette's grays lean blue.
 const SMOKE = "light-dark(#cfcfcf, #8a8a8a)";
 
 function Rocket({ onDone }: { onDone: () => void }) {
   useFinish(onDone, ROCKET_DURATION);
-  // La fusée part du bas à gauche et sort en haut à droite, en ligne droite
-  // et à vitesse constante : les bouffées de fumée, semées à intervalles
-  // réguliers sur le trajet, tombent ainsi juste derrière elle.
+  // The rocket starts at the bottom left and exits at the top right, in a straight line
+  // and at constant speed: the puffs of smoke, sown at regular intervals
+  // along the path, thus land right behind it.
   const path = useMemo(() => {
     const width = window.innerWidth;
     const height = window.innerHeight;
@@ -258,7 +258,7 @@ function Rocket({ onDone }: { onDone: () => void }) {
         size: random(14, 24),
       };
     });
-    // L'emoji pointe déjà vers le haut à droite, à 45° : on ne tourne que l'écart.
+    // The emoji already points to the top right, at 45°: only the difference is rotated.
     return { x0, y0, x1, y1, rotation: angle + 45, smoke };
   }, []);
 
@@ -308,7 +308,7 @@ function Rocket({ onDone }: { onDone: () => void }) {
   );
 }
 
-// --- 🔥 Flammes en bas de la carte ---------------------------------------
+// --- 🔥 Flames at the bottom of the card ---------------------------------------
 const FLAMES_DURATION = 2600;
 const FLAMES_ANIMATIONS = `
 @keyframes milo-flame-life {
@@ -327,7 +327,7 @@ const FLAMES_ANIMATIONS = `
 }
 `;
 
-// Une langue de feu : une goutte pointe en haut, chaude au cœur.
+// A tongue of fire: a drop pointing up, hot at the core.
 const OUTER_FLAME =
   "radial-gradient(circle at 35% 65%, #ffd23f 0%, #ff8a1f 45%, #e8401c 80%, #b8200c 100%)";
 const INNER_FLAME =
@@ -359,7 +359,7 @@ function Flames({ zone, onDone }: EffectProps) {
     return { tongues, sparks };
   }, [zone.width]);
 
-  // Les flammes prennent racine juste sous la carte et lèchent son bas.
+  // The flames take root just under the card and lick its bottom.
   return (
     <Layer
       style={{ left: zone.x, top: zone.y + zone.height + 4, width: zone.width, height: 0 }}
@@ -434,7 +434,7 @@ function Flames({ zone, onDone }: EffectProps) {
   );
 }
 
-// --- ❄️ Neige qui tombe ---------------------------------------------------
+// --- ❄️ Falling snow ---------------------------------------------------
 const SNOW_DURATION = 6200;
 const SNOW_ANIMATIONS = `
 @keyframes milo-snow-fall {
@@ -449,7 +449,7 @@ const SNOW_ANIMATIONS = `
 }
 `;
 
-// Blanc bleuté, cerné d'une ombre : la neige reste visible sur un fond clair.
+// Bluish white, ringed with a shadow: the snow stays visible on a light background.
 const SNOWFLAKE = "light-dark(#f4f9ff, #ffffff)";
 const SNOWFLAKE_SHADOW = "0 0 3px rgba(60, 100, 160, 0.45)";
 
@@ -513,7 +513,7 @@ function Snow({ zone, onDone }: EffectProps) {
                   }),
             }}
           >
-            {/* U+FE0E : le flocon en texte, que la couleur peut peindre. */}
+            {/* U+FE0E: the snowflake as text, which color can paint. */}
             {f.star ? "❄︎" : null}
           </span>
         </span>
@@ -522,7 +522,7 @@ function Snow({ zone, onDone }: EffectProps) {
   );
 }
 
-// --- ⚡ Foudre qui tombe ---------------------------------------------------
+// --- ⚡ Lightning strike ---------------------------------------------------
 const FLASHES = 3;
 const FLASHES_GAP = 450;
 const FLASH_DURATION = 650;
@@ -545,14 +545,14 @@ const LIGHTNING_ANIMATIONS = `
 }
 `;
 
-/** Un éclair en zigzag, du haut de l'écran jusqu'au point d'impact, avec une fourche. */
+/** A zigzag lightning bolt, from the top of the screen to the point of impact, with a fork. */
 function zigzag(xImpact: number, yImpact: number) {
   const pas = 12;
   let x = xImpact + random(-60, 60);
   const points: [number, number][] = [[x, 0]];
   for (let i = 1; i < pas; i++) {
     const f = i / pas;
-    // Le zigzag se resserre à l'approche du point d'impact.
+    // The zigzag tightens as it nears the point of impact.
     x += random(-38, 38) * (1 - f * 0.5) + (xImpact - x) * f * 0.5;
     points.push([x, yImpact * f]);
   }
@@ -619,12 +619,12 @@ function Lightning({ zone, onDone }: EffectProps) {
   );
 }
 
-// --- Aiguillage -------------------------------------------------------------
+// --- Dispatch -------------------------------------------------------------
 interface CelebrationEffectProps {
   effect: Effect;
-  /** La liste qui accueille la carte. */
+  /** The list that hosts the card. */
   column: Zone;
-  /** La carte arrivée, quand elle est à l'écran : les flammes s'y attachent. */
+  /** The card that has arrived, when it is on screen: the flames attach to it. */
   card: Zone | null;
   onDone: () => void;
 }
@@ -640,7 +640,7 @@ export default function CelebrationEffect({ effect, column, card, onDone }: Cele
     case "rocket":
       return <Rocket onDone={onDone} />;
     case "flames":
-      // Sans carte mesurée, les flammes prennent le haut de la liste.
+      // Without a measured card, the flames take the top of the list.
       return (
         <Flames zone={card ?? { ...column, height: Math.min(column.height, 80) }} onDone={onDone} />
       );

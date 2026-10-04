@@ -6,12 +6,12 @@ import BoardListFields from "../components/ui/BoardListFields";
 import { withField } from "../widgets/types";
 import type { TaskIndicatorWidget } from "./types";
 
-// Les listes du tableau ouvert et leurs cartes, en widget : elles se posent
-// dans une section comme un indicateur. Ce qu'elles montrent, et ce qu'on en
-// fait, vient de la page (TableauDesTachesContext). Le numéro des cartes est
-// une option du widget, éteinte par défaut ; le verrou des listes reste un
-// réglage du tableau. Le menu « Actions » de son tiroir copie et colle les
-// étiquettes du tableau.
+// The open board's lists and their cards, as a widget: they sit
+// in a section like an indicator. What they show, and what is done with them,
+// comes from the page (TaskBoardContext). The cards' number is
+// a widget option, off by default; the lists' lock remains a
+// board setting. The "Actions" menu of its drawer copies and pastes the
+// board's labels.
 
 export const taskListIndicator: TaskIndicatorWidget = {
   type: "list",
@@ -29,7 +29,7 @@ export const taskListIndicator: TaskIndicatorWidget = {
           checked={withNumbers(config)}
           onChange={(e) => onChange(withField(config, NUMBERS, e.currentTarget.checked))}
         />
-        {/* Les étiquettes du tableau : elles partent à la sauvegarde. */}
+        {/* The board's labels: they go to saving. */}
         <BoardListFields kind="task-labels" />
       </Stack>
     </>

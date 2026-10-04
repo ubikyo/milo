@@ -1,5 +1,5 @@
-// Le fil d'un projet. Écrire dedans redate le projet : c'est ce qui le fait
-// remonter en tête de liste.
+// A project's thread. Writing in it re-dates the project: that is what moves
+// it to the top of the list.
 
 import { Router } from "express";
 import { forbidden, orNotFound, requireText } from "../lib/http.js";
@@ -13,7 +13,7 @@ import { projectFor } from "./projects.js";
 
 const COMMENT_NOT_FOUND = "Commentaire introuvable";
 
-/** Monté sous `/api/projects/:id/comments`. */
+/** Mounted under `/api/projects/:id/comments`. */
 export const projectCommentRoutes = Router({ mergeParams: true });
 
 projectCommentRoutes.use(touch("projects"));
@@ -21,7 +21,7 @@ projectCommentRoutes.use(touch("projects"));
 projectCommentRoutes.post("/", (req, res) => {
   const text = requireText(req.body.text, "text est requis");
   const { id } = req.params as { id?: string };
-  // Écrire dans le fil d'un projet, c'est le modifier.
+  // Writing in a project's thread means editing it.
   const project = projectFor(req, id, "update");
 
   const timestamp = now();
@@ -35,7 +35,7 @@ projectCommentRoutes.post("/", (req, res) => {
 
   projects.touch.run(timestamp, project.id);
 
-  // `exists` ne rend que l'identifiant : le nom se relit pour la notification.
+  // `exists` only returns the id: the name is re-read for the notification.
   notify({
     kind: "project",
     targetId: project.id,
@@ -48,7 +48,7 @@ projectCommentRoutes.post("/", (req, res) => {
   res.status(201).json(withAuthor(comments.byId.get(lastInsertRowid)!));
 });
 
-/** Monté sous `/api/comments`. */
+/** Mounted under `/api/comments`. */
 export const commentRoutes = Router();
 
 commentRoutes.use(touch("projects"));
@@ -59,8 +59,8 @@ commentRoutes.put("/:id", (req, res) => {
   projectFor(req, comment.project_id, "update");
   const text = requireText(req.body.text, "text est requis");
 
-  // Un texte identique n'est pas une modification : ni la date du commentaire
-  // ni celle du projet ne bougent.
+  // An identical text is not a modification: neither the comment's date nor
+  // the project's moves.
   if (text === comment.text) {
     res.json(withAuthor(comments.byId.get(comment.id)!));
     return;

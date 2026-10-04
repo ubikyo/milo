@@ -12,14 +12,14 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import NewMessageLabels from "./NewMessageLabels";
 import SupportTemplates from "./SupportTemplates";
 
-// La section « Support » du Paramétrage : ce que reçoit d'office une demande
-// qui arrive par e-mail — une échéance, en jours ouvrés, et des étiquettes.
-// Comme à l'onglet Développeur, les valeurs partent au serveur aussitôt :
-// l'échéance en quittant le champ, les étiquettes à chaque coche.
+// The "Support" section of Settings ("Paramétrage"): what a request arriving
+// by e-mail receives automatically — a due date, in business days, and labels.
+// As in the Developer tab, values are sent to the server right away:
+// the due date on leaving the field, the labels on each checkbox.
 //
-// Suivent les notifications automatiques — les réponses qu'un évènement
-// envoie d'office à l'expéditeur —, puis les contenus par défaut, qui se
-// posent dans l'éditeur d'une réponse de l'équipe : une signature…
+// Next come the automatic notifications — the replies an event
+// sends automatically to the sender —, then the default contents, which are
+// dropped into the editor of a team reply: a signature…
 interface SupportTabProps {
   canEdit: boolean;
 }
@@ -27,7 +27,7 @@ interface SupportTabProps {
 export default function SupportTab({ canEdit }: SupportTabProps) {
   const [days, setDays] = useState<number | null>(null);
   const [saved, setSaved] = useState<number | null>(null);
-  // Les étiquettes du Support, et celles qu'un e-mail reçoit d'office.
+  // The Support labels, and those an e-mail receives automatically.
   const [labels, setLabels] = useState<SupportLabel[]>([]);
   const [labelIds, setLabelIds] = useState<string[]>([]);
 
@@ -80,13 +80,13 @@ export default function SupportTab({ canEdit }: SupportTabProps) {
 
   return (
     <Stack gap="xl">
-      {/* Les réglages d'une valeur côte à côte, chacun à sa largeur ; les
-          notifications, plus bas, prennent toute celle du panneau. */}
+      {/* The settings of a value side by side, each at its own width; the
+          notifications, further down, take the panel's full width. */}
       <Group gap="xl" align="flex-start" wrap="nowrap">
-        {/* Le libellé au-dessus du champ, comme dans les fiches. */}
+        {/* The label above the field, as in the forms. */}
         <NumberInput
           label="Échéance par défaut"
-          // La largeur porte sur la saisie seule : le libellé garde la sienne.
+          // The width applies to the input alone: the label keeps its own.
           styles={{ wrapper: { width: 120 } }}
           suffix=" j"
           min={0}
@@ -105,8 +105,8 @@ export default function SupportTab({ canEdit }: SupportTabProps) {
           disabled={!canEdit || days === null}
         />
       </Group>
-      {/* Les étiquettes qu'un ticket arrivé par e-mail reçoit d'office, à la
-          ligne et sur toute la largeur, comme les listes qui suivent. */}
+      {/* The labels a ticket received by e-mail gets automatically, on its
+          own row and full width, like the lists that follow. */}
       <NewMessageLabels
         labels={labels}
         value={labelIds}
@@ -126,7 +126,7 @@ export default function SupportTab({ canEdit }: SupportTabProps) {
         emptyText="Aucune réponse pour le moment"
         canEdit={canEdit}
         onError={notifyError}
-        // Partie d'office, une notification n'a personne qui l'écrit.
+        // Sent automatically, a notification has no one who writes it.
         variableGroups={["Expéditeur", "Demande"]}
       />
       <SupportTemplates

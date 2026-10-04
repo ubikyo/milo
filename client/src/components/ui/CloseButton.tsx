@@ -3,13 +3,13 @@ import type { ButtonProps } from "@mantine/core";
 import type { CSSProperties, ReactNode } from "react";
 import { NEUTRAL_HOVER, NEUTRAL_TEXT } from "../../themes/colors";
 
-// Le bouton « Fermer » de tous les tiroirs et de toutes les fenêtres : sans
-// fond, d'un gris neutre au repos comme au survol. Le gris de Mantine tire sur
-// le bleu ; celui-ci non, et il est le même partout.
+// The "Fermer" button of every drawer and window: no background, a neutral gray
+// at rest and on hover. Mantine's gray leans blue; this one does not, and it is
+// the same everywhere.
 
 interface CloseButtonProps extends Omit<ButtonProps, "variant" | "color"> {
   onClick?: () => void;
-  /** « Fermer » par défaut. */
+  /** "Fermer" by default. */
   children?: ReactNode;
 }
 

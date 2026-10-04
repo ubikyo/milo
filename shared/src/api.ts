@@ -1,5 +1,5 @@
-// Ce que le client envoie au serveur. Les réponses, elles, sont décrites par
-// les types du domaine (domain.ts).
+// What the client sends to the server. The responses are described by
+// the domain types (domain.ts).
 
 import type { DueShape, Reminder, Recurrence } from "./due.js";
 import type {
@@ -11,7 +11,7 @@ import type {
   SupportStatus,
 } from "./domain.js";
 
-/** Toute erreur de l'API a cette forme. */
+/** Every API error has this shape. */
 export interface ApiError {
   error: string;
 }
@@ -22,34 +22,34 @@ export interface AuthResult {
 }
 
 export interface SetupState {
-  /** Le compte « admin » n'existe pas encore : il faut le créer. */
+  /** The "admin" account does not exist yet: it must be created. */
   needs_setup: boolean;
-  /** L'application Entra est renseignée : la connexion par Microsoft est possible. */
+  /** The Entra application is configured: Microsoft sign-in is possible. */
   entra: boolean;
 }
 
 /**
- * La toute première ouverture : le mot de passe du compte « admin », et le
- * nom du premier workspace.
+ * The very first opening: the password of the "admin" account, and the
+ * name of the first workspace.
  */
 export interface SetupInput {
   password: string;
-  /** Le nom du premier workspace. */
+  /** The name of the first workspace. */
   workspace: string;
 }
 
-/** La connexion du compte « admin », le seul qui ait un mot de passe. */
+/** The sign-in of the "admin" account, the only one with a password. */
 export interface AdminLoginInput {
   username: string;
   password: string;
 }
 
 /**
- * Ce qu'un compte règle lui-même. Son identité vient d'Entra et se relit à
- * chaque connexion : elle ne se modifie pas ici.
+ * What an account sets itself. Its identity comes from Entra and is reread at
+ * each sign-in: it is not edited here.
  */
 export interface UpdateMeInput {
-  /** La vue d'ouverture : son identifiant, en chaîne. */
+  /** The opening view: its id, as a string. */
   default_view?: string;
 }
 
@@ -58,12 +58,12 @@ export interface ViewInput {
   is_private?: boolean;
 }
 
-/** Un contexte : son nom. */
+/** A context: its name. */
 export interface ContextInput {
   name?: string;
 }
 
-/** Un tableau : son nom, ses réglages, le libellé de « Tous les contextes ». */
+/** A board: its name, its settings, the label of "Tous les contextes". */
 export interface BoardInput {
   view_id?: Id;
   name?: string;
@@ -73,26 +73,26 @@ export interface BoardInput {
 }
 
 /**
- * Une section d'un tableau, telle que son pied la règle. « width_value » n'a
- * de sens qu'avec une unité qui en demande une : il est ignoré pour une
- * largeur automatique.
+ * A section of a board, as its footer sets it. "width_value" only
+ * makes sense with a unit that requires one: it is ignored for an
+ * automatic width.
  */
 export interface BoardSectionInput {
   width_unit?: SectionWidthUnit;
   width_value?: number | null;
-  /** L'écart qui la sépare de la section suivante, en pixels. */
+  /** The gap separating it from the next section, in pixels. */
   gap?: number;
-  /** À la création : le rang où la section prend place. Sans lui, au bout. */
+  /** On creation: the rank where the section is placed. Without it, at the end. */
   index?: number;
 }
 
 /**
- * La disposition d'un tableau, telle qu'elle s'exporte et s'importe : ses
- * sections, dans l'ordre, et ce que chacune porte. Rien n'y désigne une ligne
- * de la base — l'import pose des sections et des widgets neufs.
+ * The layout of a board, as it is exported and imported: its
+ * sections, in order, and what each carries. Nothing in it designates a row
+ * of the database — the import creates new sections and widgets.
  */
 export interface ExportedLayout {
-  /** La forme de l'export : un import refuse ce qu'il ne sait pas lire. */
+  /** The export format: an import rejects what it cannot read. */
   version: 1;
   sections: {
     width_unit: SectionWidthUnit;
@@ -102,17 +102,17 @@ export interface ExportedLayout {
   }[];
 }
 
-/** Ce que l'import a fait de la disposition reçue. */
+/** What the import did with the received layout. */
 export interface ImportResult {
-  /** Les widgets posés. */
+  /** The widgets placed. */
   placed: number;
-  /** Ceux de l'export qui n'ont pas été posés : un type inconnu, ou que le compte ne modifie pas. */
+  /** Those of the export that were not placed: an unknown type, or one the account cannot edit. */
   discarded: number;
-  /** Ceux qu'il fallait garder, faute de pouvoir les enlever : posés dans la première section. */
+  /** Those that had to be kept, for lack of being able to remove them: placed in the first section. */
   keptCount: number;
 }
 
-/** Un widget : sa configuration est celle du widget, le serveur la range sans la relire. */
+/** A widget: its configuration is that of the widget, the server stores it without rereading it. */
 export interface BoardWidgetInput {
   section_id?: Id;
   type?: string;
@@ -121,7 +121,7 @@ export interface BoardWidgetInput {
 
 export interface TaskListInput {
   board_id?: Id;
-  /** À la création : le widget « Tâches » qui la montre. */
+  /** On creation: the "Tâches" widget that shows it. */
   list_key?: string;
   name?: string;
   position?: number;
@@ -129,8 +129,8 @@ export interface TaskListInput {
 }
 
 /**
- * Copie d'une liste. Sans `board_id`, la copie reste dans le tableau de la
- * liste d'origine ; sans `name`, elle reprend le sien.
+ * Copy of a list. Without `board_id`, the copy stays in the board of the
+ * original list; without `name`, it reuses its own.
  */
 export interface TaskListCopyInput {
   board_id?: Id;
@@ -143,14 +143,14 @@ export interface TaskCardInput {
   kind?: CardKind;
   context_id?: Id;
   description?: string;
-  /** ISO 8601 avec l'heure, ou vide pour retirer l'échéance. */
+  /** ISO 8601 with the time, or empty to remove the due date. */
   due_date?: string;
-  /** « AAAA-MM-JJ », ou vide : l'échéance sans début. */
+  /** "AAAA-MM-JJ", or empty: a due date without a start. */
   start_date?: string;
   due_form?: DueShape;
   recurrence?: Recurrence;
   reminder?: Reminder;
-  /** Voir `TaskCard.cover_interval`. */
+  /** See `TaskCard.cover_interval`. */
   cover_interval?: number;
   member_ids?: Id[];
   label_ids?: Id[];
@@ -175,7 +175,7 @@ export interface ProjectInput {
   board_id?: Id;
   category_id?: Id;
   context_id?: Id;
-  /** À la création : le widget « Projets » qui le montre. */
+  /** On creation: the "Projets" widget that shows it. */
   list_key?: string;
   milestone_type_id?: Id | null;
   status?: number;
@@ -184,9 +184,9 @@ export interface ProjectInput {
 }
 
 /**
- * Copie d'un projet. Sans `board_id`, la copie reste dans le tableau du projet
- * d'origine ; sans `name`, elle reprend le sien. La catégorie, elle, est
- * toujours dite dès qu'on change de tableau : elles appartiennent au tableau.
+ * Copy of a project. Without `board_id`, the copy stays in the board of the
+ * original project; without `name`, it reuses its own. The category, for its part, is
+ * always specified when the board changes: categories belong to the board.
  */
 export interface ProjectCopyInput {
   board_id?: Id;
@@ -194,7 +194,7 @@ export interface ProjectCopyInput {
   name?: string;
 }
 
-/** « all » veut dire « pas de filtre » ; c'est la valeur des listes déroulantes. */
+/** "all" means "no filter"; it is the value of the dropdowns. */
 export type FilterValue = string | "all" | null | undefined;
 
 export interface ProjectFilters {
@@ -205,62 +205,62 @@ export interface ProjectFilters {
   actor?: FilterValue;
 }
 
-/** Ce que renvoie une suppression en cascade : de quoi le dire à l'utilisateur. */
+/** What a cascade deletion returns: enough to tell the user. */
 export interface CascadeResult {
   deleted_projects: number;
 }
 
-/** La copie des étiquettes ou des catégories d'un tableau vers un autre. */
+/** The copy of the labels or categories of one board to another. */
 export interface CopyToBoardInput {
   from_board: Id;
   to_board: Id;
 }
 
 /**
- * Ce qu'elle a donné. Ce qui portait déjà le même nom dans le tableau
- * d'accueil n'est pas redoublé : le compte rendu le dit plutôt que de le taire.
+ * What it produced. What already had the same name in the destination
+ * board is not duplicated: the report says so rather than keeping quiet.
  */
 export interface CopyResult {
   copied: number;
   skipped: number;
-  /** Ce que la copie a d'abord effacé du tableau d'accueil, quand on l'a demandé. */
+  /** What the copy first erased from the destination board, when requested. */
   removed?: number;
   /**
-   * Ce que le remplacement a dû garder : les catégories qui rangent encore
-   * des projets.
+   * What the replacement had to keep: the categories that still hold
+   * projects.
    */
   kept?: number;
 }
 
 /**
- * Le tiroir d'un ticket : son contexte, qu'on peut changer pour
- * un autre du même tableau.
+ * The drawer of a ticket: its context, which can be changed to
+ * another of the same board.
  */
 export interface SupportRequestInput {
   context_id?: Id;
-  /** À la création sans contexte : le tableau, dont elle prend le premier. */
+  /** On creation without a context: the board, whose first one it takes. */
   board_id?: Id;
-  /** À la création : le widget « Tickets » qui la montre. */
+  /** On creation: the "Tickets" widget that shows it. */
   list_key?: string;
   subject?: string;
   status?: SupportStatus;
   actor_ids?: Id[];
-  /** ISO 8601 avec l'heure, ou vide pour retirer l'échéance. */
+  /** ISO 8601 with the time, or empty to remove the due date. */
   due_date?: string;
   label_ids?: Id[];
 }
 
-/** Les demandes cochées dans la liste, et ce qu'on en fait. */
+/** The requests checked in the list, and what is done with them. */
 export interface SupportBulkInput {
   ids: Id[];
 }
 
-/** « Assigner à » : les comptes ajoutés aux acteurs des demandes cochées. */
+/** "Assigner à": the accounts added to the actors of the checked requests. */
 export interface SupportAssignInput extends SupportBulkInput {
   actor_ids: Id[];
 }
 
-/** Les sections des widgets : celles d'un tableau. */
+/** The widgets' sections: those of a board. */
 export type IndicatorSectionInput = BoardSectionInput;
 
 export interface SupportLabelInput {
@@ -270,8 +270,8 @@ export interface SupportLabelInput {
 }
 
 /**
- * La confirmation d'une boîte de support : tant qu'elle attend, rien n'en est
- * relevé. « sent_at » est le dernier envoi du lien, vide s'il n'est pas parti.
+ * The confirmation of a support mailbox: while it is pending, nothing is
+ * fetched from it. "sent_at" is the last time the link was sent, empty if it has not gone out.
  */
 export interface MailboxOptinState {
   email: string;

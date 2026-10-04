@@ -9,41 +9,41 @@ import AdjustedInput from "./AdjustedInput";
 import PointMenu, { menuAnchor, type PointMenuPosition } from "./PointMenu";
 import { useTabReorder } from "./useTabReorder";
 
-// Les vues, en bas à gauche : le pendant du « ? » des raccourcis, même
-// retrait, dans le coin opposé. Un « + » au bout en crée une, qui passe
-// aussitôt en saisie de son nom ; le clic droit sur l'une la renomme — sur
-// place, comme un onglet —, la ferme aux autres ou la supprime ; un glisser
-// la range — pour soi seul.
+// The views, at the bottom left: the counterpart of the shortcuts "?", same
+// inset, in the opposite corner. A "+" at the end creates one, which goes
+// straight into name entry; right-clicking one renames it — in
+// place, like a tab —, closes it for others or deletes it; dragging
+// reorders it — for oneself only.
 
 interface ViewSwitchProps {
-  /** Les vues que le compte voit, dans l'ordre qu'il a rangé. */
+  /** The views the account sees, in the order it arranged them. */
   views: View[];
-  /** La vue ouverte, en chaîne. */
+  /** The open view, as a string. */
   value: string | null;
   onChange: (id: string) => void;
   /**
-   * Le nouvel ordre, une fois une vue glissée et déposée. Sans lui — tableau
-   * ouvert verrouillé —, les vues ne se glissent pas.
+   * The new order, once a view is dragged and dropped. Without it — open
+   * board locked —, views cannot be dragged.
    */
   onReorder?: (ids: number[]) => void | Promise<void>;
-  /** Sans lui — sans le droit d'organiser les vues —, ni « + » ni menu. */
+  /** Without it — without the right to organize views —, no "+" nor menu. */
   onCreate?: () => void | Promise<void>;
   onRename?: (id: number, name: string) => void | Promise<void>;
   onTogglePrivate?: (id: number) => void | Promise<void>;
   onDelete?: (id: number) => void | Promise<void>;
   /**
-   * La vue à passer en saisie de son nom dès qu'elle paraît — celle qu'on
-   * vient de créer. « onRenommageOuvert » dit que c'est fait.
+   * The view to switch to name entry as soon as it appears — the one just
+   * created. "onRenameOpened" says that it is done.
    */
   toRename?: number | null;
   onRenameOpened?: () => void;
 }
 
 /**
- * Le trait d'insertion, posé dans la case visée : rien ne s'insère entre les
- * cases. Il se place contre la case elle-même (positionnée par Mantine), et
- * non contre son libellé, qui porte une marge intérieure : il tombe ainsi sur
- * le filet qui sépare deux vues.
+ * The insertion line, placed in the targeted cell: nothing is inserted between
+ * cells. It is placed against the cell itself (positioned by Mantine), and
+ * not against its label, which has an inner margin: it thus falls on
+ * the rule that separates two views.
  */
 function Line({ side }: { side: "left" | "right" }) {
   return (
@@ -59,12 +59,12 @@ function Line({ side }: { side: "left" | "right" }) {
   );
 }
 
-// Le sélecteur entier : c'est lui que le glisser parcourt pour trouver le
-// rang visé.
+// The whole selector: it is what the drag traverses to find the
+// target rank.
 const sonSelecteur = (element: HTMLElement) =>
   element.closest<HTMLElement>(".mantine-SegmentedControl-root");
 
-/** Le rayon du cadre, que la pastille et les cases reprennent tel quel. */
+/** The frame's radius, which the indicator and the cells take over as is. */
 const RADIUS = "var(--sc-radius, var(--mantine-radius-default))";
 
 export default function ViewSwitch({
@@ -79,34 +79,34 @@ export default function ViewSwitch({
   toRename,
   onRenameOpened,
 }: ViewSwitchProps) {
-  // Les vues se glissent comme les onglets d'une rangée (useTabReorder).
+  // Views are dragged like the tabs of a row (useTabReorder).
   const { ordered, tabProps, guardChange, insertAt } = useTabReorder(
     views,
     (v) => v.id,
     onReorder,
     sonSelecteur,
   );
-  // Mantine place la pastille de la vue ouverte d'après la position de sa
-  // case, et ne la recalcule pas quand les cases changent d'ordre : le
-  // sélecteur est reconstruit à chaque nouvel ordre.
+  // Mantine positions the open view's indicator from the position of its
+  // cell, and does not recompute it when cells change order: the
+  // selector is rebuilt at each new order.
   const order = ordered.map((v) => v.id).join(",");
 
   const [plusHovered, setMoreHovered] = useState(false);
   const [menu, setMenu] = useState<{ view: View; position: PointMenuPosition } | null>(null);
-  // La vue en cours de renommage et le nom qu'on y tape.
+  // The view being renamed and the name typed into it.
   const [renamed, setRenamed] = useState<{ id: number; name: string } | null>(null);
-  // Le nom validé, montré le temps que le serveur réponde et que les vues
-  // reviennent relues : sans lui, l'ancien nom reparaîtrait un instant.
+  // The validated name, shown while the server responds and the views
+  // come back re-read: without it, the old name would reappear for a moment.
   const [provisional, setProvisional] = useState<{ id: number; name: string } | null>(null);
-  // Vrai dès que la saisie est conclue : Entrée suivie de la perte du focus ne
-  // doit pas enregistrer deux fois.
+  // True once the entry is concluded: Enter followed by loss of focus must not
+  // save twice.
   const finished = useRef(false);
   const [toDelete, setToDelete] = useState<View | null>(null);
   const [toOpen, setToOpen] = useState<View | null>(null);
 
-  // Le contenu de la page s'arrête juste au-dessus : il a besoin de savoir où
-  // commence cette commande, et seul le sélecteur le sait. Suivi, car sa
-  // hauteur change avec la taille du texte comme avec le nombre de vues.
+  // The page content stops just above: it needs to know where
+  // this control begins, and only the selector knows. Tracked, because its
+  // height changes with the text size as with the number of views.
   const command = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const element = command.current;
@@ -134,7 +134,7 @@ export default function ViewSwitch({
     setRenamed({ id: view.id, name: view.name });
   };
 
-  // La vue qu'on vient de créer passe en saisie de son nom dès qu'elle paraît.
+  // The view just created switches to name entry as soon as it appears.
   useEffect(() => {
     if (toRename == null) return;
     const view = views.find((v) => v.id === toRename);
@@ -166,7 +166,7 @@ export default function ViewSwitch({
         ref={command}
         gap={4}
         wrap="nowrap"
-        // Aligné sur le retrait du contenu, comme le « ? » du coin opposé.
+        // Aligned with the content's inset, like the "?" of the opposite corner.
         style={{ position: "fixed", left: PAGE_GUTTER, bottom: PAGE_GUTTER, zIndex: 200 }}
       >
         {ordered.length > 0 && (
@@ -178,13 +178,13 @@ export default function ViewSwitch({
               value: String(view.id),
               label: (
                 <span
-                  // Sans position propre : le trait se pose contre la case.
+                  // No own position: the line sits against the cell.
                   {...tabProps(view.id, index, { display: "inline-block" })}
-                  // Un double-clic renomme, comme sur un onglet.
+                  // A double-click renames, as on a tab.
                   onDoubleClick={() => openRename(view)}
                   onContextMenu={(e) => {
                     if (!withMenu) return;
-                    // Le menu de la vue se pose au-dessus de son segment.
+                    // The view's menu sits above its segment.
                     const segment =
                       e.currentTarget.closest(".mantine-SegmentedControl-control") ??
                       e.currentTarget;
@@ -202,8 +202,8 @@ export default function ViewSwitch({
                         const name = e.currentTarget.value;
                         setRenamed((r) => (r ? { ...r, name } : r));
                       }}
-                      // Les touches restent au champ : sans cela, Tab
-                      // changerait de vue et Entrée enregistrerait deux fois.
+                      // Keys stay with the field: otherwise, Tab
+                      // would switch view and Enter would save twice.
                       onKeyDown={(e) => {
                         e.stopPropagation();
                         if (e.key === "Enter") {
@@ -216,8 +216,8 @@ export default function ViewSwitch({
                         }
                       }}
                       onBlur={() => void finishRename(true)}
-                      // L'appui dans le champ place le curseur : il ne
-                      // commence pas à glisser la vue, et ne la rouvre pas.
+                      // Pressing in the field places the cursor: it does not
+                      // start dragging the view, and does not reopen it.
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -236,28 +236,28 @@ export default function ViewSwitch({
               ),
             }))}
             size="sm"
-            // Sans traits de séparation entre les vues, sans fond et sans marge
-            // intérieure : seule la pastille de la vue ouverte se voit, posée à
-            // même la page.
+            // Without separator lines between views, without background and without inner
+            // margin: only the open view's indicator shows, laid directly
+            // on the page.
             withItemsBorders={false}
             styles={{
               root: { backgroundColor: "transparent", padding: 0 },
-              // Mantine rogne de 4px le rayon de la pastille et des cases, pour
-              // qu'elles se logent dans la marge intérieure du cadre, retirée
-              // ici : tous reprennent celui du cadre.
+              // Mantine trims 4px off the radius of the indicator and cells, so
+              // they fit in the frame's inner margin, removed
+              // here: all take the frame's radius.
               indicator: { borderRadius: RADIUS },
               label: { borderRadius: RADIUS },
               control: { borderRadius: RADIUS },
-              // Mantine positionne l'enveloppe du libellé : le trait
-              // d'insertion s'y collerait. Sans elle, il se pose contre la
-              // case, entre deux vues ; la case garde le libellé au-dessus de
-              // la pastille.
+              // Mantine positions the label's wrapper: the insertion
+              // line would stick to it. Without it, it sits against the
+              // cell, between two views; the cell keeps the label above
+              // the indicator.
               innerLabel: { position: "static" },
             }}
           />
         )}
-        {/* Au bout de la dernière vue : en créer une. Le vert des autres
-            gestes « ajouter », un ton plus foncé au survol. */}
+        {/* At the end of the last view: create one. The green of the other
+            "add" gestures, a shade darker on hover. */}
         {onCreate && (
           <ActionIcon
             variant="transparent"
@@ -287,7 +287,7 @@ export default function ViewSwitch({
             <Menu.Item
               leftSection={<IconEyeOff size={16} />}
               rightSection={menu.view.is_private ? <IconCheck size={14} /> : null}
-              // La rendre privée se fait aussitôt ; l'ouvrir à tous se confirme.
+              // Making it private happens at once; opening it to everyone is confirmed.
               onClick={() =>
                 menu.view.is_private ? setToOpen(menu.view) : onTogglePrivate(menu.view.id)
               }

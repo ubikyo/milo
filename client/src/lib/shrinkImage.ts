@@ -1,29 +1,29 @@
-// Une image de couverture n'a pas besoin de ses 50 mégapixels : elle se montre
-// en vignette dans la fiche et en bandeau sur la carte, de la largeur d'une
-// liste. Une photo prise telle
-// quelle se décode pourtant en entier à chaque affichage, et la fiche met des
-// secondes à s'ouvrir. Elle est donc réduite dans le navigateur, avant l'envoi.
+// A cover image does not need its 50 megapixels: it is shown
+// as a thumbnail in the record and as a banner on the card, the width of a
+// list. A photo taken as is
+// nonetheless decodes in full at every display, and the record takes
+// seconds to open. It is therefore shrunk in the browser, before sending.
 
 /**
- * Le cadre à couvrir : la couverture d'une carte (270 × 120 px sur le
- * tableau), doublé pour les écrans haute densité et arrondi. L'image est
- * réduite juste assez pour le remplir, comme l'affiche « object-fit: cover » :
- * une photo large garde sa hauteur, une photo haute sa largeur.
+ * The frame to cover: a card's cover (270 × 120 px on the
+ * board), doubled for high-density screens and rounded. The image is
+ * shrunk just enough to fill it, like the "object-fit: cover" poster:
+ * a wide photo keeps its height, a tall photo its width.
  */
 const FRAME_W = 600;
 const FRAME_H = 240;
 
-/** La qualité des formats qui en ont une (JPEG, WebP). */
+/** The quality of the formats that have one (JPEG, WebP). */
 const QUALITY = 0.85;
 
-// Les formats que le canevas sait réécrire. Un GIF animé perdrait son
-// animation, un SVG n'a pas de pixels : ils passent tels quels.
+// The formats the canvas can rewrite. An animated GIF would lose its
+// animation, an SVG has no pixels: they pass through as is.
 const REENCODED = ["image/jpeg", "image/png", "image/webp"];
 
 /**
- * L'image réduite au plus petit format qui couvre encore le cadre, dans son
- * format. Celle qui est déjà assez petite, ou qu'on ne sait pas lire, revient
- * telle quelle.
+ * The image shrunk to the smallest size that still covers the frame, in its own
+ * format. One that is already small enough, or that cannot be read, comes back
+ * as is.
  */
 export const shrinkImage = async (file: File): Promise<File> => {
   if (!REENCODED.includes(file.type)) return file;

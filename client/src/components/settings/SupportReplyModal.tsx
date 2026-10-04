@@ -23,50 +23,50 @@ import type { SupportVariableGroup } from "@milo/shared";
 
 interface SupportReplyModalProps {
   /**
-   * Ce dont on règle le modèle — une réponse par défaut, un contenu par
-   * défaut ; « null » ferme la fenêtre.
+   * What the template is being set for — a default reply, a default
+   * content; "null" closes the modal.
    */
   reply: { name: string; html: string } | null;
   onClose: () => void;
   onSave: (template: { html: string }) => Promise<unknown>;
   canEdit: boolean;
-  /** Les provenances de variables proposées : toutes, par défaut. */
+  /** The variable sources offered: all, by default. */
   groups?: readonly SupportVariableGroup[];
 }
 
-// Les lignes que montre l'éditeur, qu'il soit vide ou plein : un modèle se
-// relit en entier plus souvent qu'un commentaire.
+// The lines the editor shows, whether empty or full: a template is
+// re-read in full more often than a comment.
 const ROWS = 20;
 
-// L'éditeur et, à sa droite, les variables : de quoi loger sa barre d'outils
-// sur une ligne, et chaque variable — libellé et clé — sur la sienne.
+// The editor and, to its right, the variables: enough room for its toolbar
+// on one line, and each variable — label and key — on its own.
 const WINDOW_WIDTH = 1180;
 const VARIABLES_WIDTH = 450;
 
-// L'écart entre le message et les variables.
+// The gap between the message and the variables.
 const COLUMNS_GAP = 30;
 
-// Le retrait des variables dans leur cadre, de chaque côté.
+// The variables' padding inside their frame, on each side.
 const FRAME_INSET = 20;
 
-// Comme dans la fiche d'un poste : l'air sous le titre d'une provenance
-// dépliée, et sous la provenance avant le titre de la suivante.
+// As in an asset's form: the air under the title of an expanded
+// source, and under the source before the next one's title.
 const SPACE_BELOW_TITLE = 10;
 const SPACE_BELOW_SECTION = 30;
 
-// La colonne des libellés, la même dans chaque accordéon : les variables s'y
-// alignent d'un groupe à l'autre. De quoi lire « Téléphone professionnel ».
+// The label column, the same in each accordion: the variables line up
+// from one group to the next. Wide enough to read "Téléphone professionnel".
 const LABEL_WIDTH = 175;
 
 /**
- * Le modèle d'une réponse ou d'un contenu par défaut, ouvert depuis le menu
- * de sa ligne (« Modèle ») : du HTML, saisi dans l'éditeur de l'application.
- * L'évènement qui s'en sert se choisit sur sa ligne.
+ * The template of a default reply or content, opened from its row's
+ * menu ("Modèle"): HTML, entered in the application's editor.
+ * The event that uses it is chosen on its row.
  *
- * Un modèle cite des variables : « {{demande.numero}} » devient « HLP-12 »
- * dans le message. Le tableau à droite les liste par provenance — qui écrit,
- * l'expéditeur, la demande — et défile dans la hauteur de l'éditeur ; un clic
- * sur l'une d'elles la glisse dans le modèle, là où était le curseur.
+ * A template cites variables: "{{demande.numero}}" becomes "HLP-12"
+ * in the message. The table on the right lists them by source — who writes,
+ * the sender, the request — and scrolls within the editor's height; a click
+ * on one drops it into the template, where the cursor was.
  */
 export default function SupportReplyModal({
   reply,
@@ -75,16 +75,16 @@ export default function SupportReplyModal({
   canEdit,
   groups = SUPPORT_VARIABLE_GROUPS,
 }: SupportReplyModalProps) {
-  // Dans l'ordre du Paramétrage, quel que soit celui qu'on reçoit.
+  // In Settings order, whatever the order received.
   const displayedGroups = SUPPORT_VARIABLE_GROUPS.filter((g) =>
     groups.includes(g),
   );
   const editor = useRichEditor({ placeholder: "Le modèle de la réponse" });
   const [saving, setSaving] = useState(false);
-  // Les provenances dépliées : aucune à l'ouverture.
+  // The expanded sources: none on opening.
   const [openItems, setOpenedItems] = useState<string[]>([]);
 
-  // Chaque ouverture repart du modèle enregistré.
+  // Each opening starts again from the saved template.
   useEffect(() => {
     if (!reply) return;
     editor?.commands.setContent(reply.html || "");
@@ -123,9 +123,9 @@ export default function SupportReplyModal({
     >
       <Stack gap="md">
 
-        {/* Les variables ne pèsent pas sur la hauteur : posées en absolu dans
-            leur colonne, elles prennent celle de l'éditeur et défilent
-            au-delà. Une provenance par accordéon, tous fermés. */}
+        {/* The variables do not weigh on the height: absolutely positioned in
+            their column, they take the editor's height and scroll
+            beyond it. One source per accordion, all closed. */}
         <Group align="stretch" gap={COLUMNS_GAP} wrap="nowrap">
           <Box style={{ flex: 1, minWidth: 0 }}>
             <RichTextField
@@ -138,7 +138,7 @@ export default function SupportReplyModal({
 
           <Stack w={VARIABLES_WIDTH} gap={4} style={{ flexShrink: 0 }}>
             <Input.Label>Variables</Input.Label>
-            {/* Le fond de l'éditeur, sur toute sa hauteur, sans son filet. */}
+            {/* The editor's background, over its full height, without its border line. */}
             <Box
               style={{
                 flex: 1,
@@ -148,9 +148,9 @@ export default function SupportReplyModal({
                 overflow: "hidden",
               }}
             >
-              {/* Le retrait vit dans la zone qui défile, pas sur son cadre :
-                  posé sur le cadre, il s'ajoutait à une zone haute de 100 %,
-                  qui débordait d'autant en bas. */}
+              {/* The padding lives in the scrolling area, not on its frame:
+                  placed on the frame, it added to a 100% high area,
+                  which overflowed by that much at the bottom. */}
               <ScrollArea
                 pos="absolute"
                 inset={0}
@@ -158,10 +158,10 @@ export default function SupportReplyModal({
                 scrollbarSize={4}
               >
                 <Box p={FRAME_INSET}>
-                  {/* Comme les sections de la fiche d'un poste (AssetDrawer) :
-                    sans filet ni survol, le titre gris tant que la section
-                    est repliée, et une section ouverte s'écarte de la
-                    suivante. */}
+                  {/* As the sections of an asset's form (AssetDrawer):
+                    no border or hover, the title gray while the section
+                    is collapsed, and an open section is spaced from the
+                    next. */}
                   <Accordion
                     multiple
                     value={openItems}
@@ -204,10 +204,10 @@ export default function SupportReplyModal({
                           <Table
                             verticalSpacing={1}
                             fz="sm"
-                            // Largeurs fixes : sans elles, chaque tableau
-                            // répartit la place qui reste à sa façon, et les
-                            // variables d'un groupe ne tombent pas sous celles
-                            // du suivant.
+                            // Fixed widths: without them, each table
+                            // distributes the remaining space its own way, and a
+                            // group's variables do not line up with those
+                            // of the next.
                             layout="fixed"
                           >
                             <Table.Tbody>
@@ -224,9 +224,9 @@ export default function SupportReplyModal({
                                   </Table.Td>
                                   <Table.Td style={{ border: 0 }}>
                                     <UnstyledButton
-                                      // Le clic ne retire pas le focus de
-                                      // l'éditeur : la variable se pose là où
-                                      // était le curseur.
+                                      // The click does not take focus away from
+                                      // the editor: the variable is dropped where
+                                      // the cursor was.
                                       onMouseDown={(e) => e.preventDefault()}
                                       onClick={() => insert(v.key)}
                                       disabled={!canEdit}

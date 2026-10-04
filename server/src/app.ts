@@ -1,6 +1,6 @@
-// L'assemblage : ce qui passe avant les routes, les routes, ce qui passe
-// après. Chaque ressource a son fichier dans `routes/` ; celui-ci dit
-// seulement où chacune est montée et ce qu'elle exige.
+// The assembly: what runs before the routes, the routes, what runs after.
+// Each resource has its file in `routes/`; this one only says where each is
+// mounted and what it requires.
 
 import cors from "cors";
 import express from "express";
@@ -66,50 +66,50 @@ import { optinRoutes } from "./routes/optins.js";
 export const createApp = (): express.Express => {
   const app = express();
 
-  // L'API et le client sont servis par le même hôte en production : aucune
-  // origine tierce n'a de raison d'appeler l'API depuis un navigateur, et la
-  // liste reste vide. `cors()` sans argument, lui, répondait « oui » à
-  // n'importe laquelle.
+  // The API and the client are served by the same host in production: no
+  // third-party origin has any reason to call the API from a browser, and the
+  // list stays empty. `cors()` with no argument, on the other hand, answered
+  // "yes" to any of them.
   if (env.corsOrigins.length > 0) {
     app.use(cors({ origin: env.corsOrigins, credentials: true }));
   }
 
-  // Une adresse IP juste est nécessaire à la limitation des tentatives :
-  // derrière nginx, c'est l'en-tête X-Forwarded-For qui la porte.
+  // A correct IP address is needed to rate-limit attempts: behind nginx, it
+  // is carried by the X-Forwarded-For header.
   app.set("trust proxy", true);
 
-  // Un corps en JSON n'a aucune raison de dépasser cette taille : les
-  // descriptions sont du texte. Les fichiers, eux, ne passent pas par là :
-  // leurs routes prennent le corps brut, avec leur propre limite
-  // (routes/attachments.ts).
+  // A JSON body has no reason to exceed this size: descriptions are text.
+  // Files do not go through here: their routes take the raw body, with their
+  // own limit (routes/attachments.ts).
   app.use(express.json({ limit: "1mb" }));
 
-  // Les compteurs de version montent après chaque écriture réussie, et le flux
-  // les pousse aux clients. Posé avant les routes : chacune déclare ce qu'elle
-  // touche, ce middleware en tire les conséquences une fois la réponse partie.
+  // The version counters go up after every successful write, and the stream
+  // pushes them to the clients. Placed before the routes: each declares what
+  // it touches, and this middleware draws the consequences once the response
+  // has gone out.
   app.use("/api", countWrites);
 
-  // --- Sans authentification ------------------------------------------------
+  // --- Without authentication -----------------------------------------------
   app.use("/api/auth", publicAuthRoutes);
 
-  // Les fichiers se lisent sans jeton : une balise « img » n'en porte pas. Le
-  // nom du fichier tient lieu de clé (routes/attachments.ts). L'ancienne
-  // adresse, « /api/medias », reste servie : des e-mails déjà partis la citent.
+  // Files are read without a token: an "img" tag does not carry one. The
+  // file name serves as the key (routes/attachments.ts). The old address,
+  // "/api/medias", is still served: emails already sent cite it.
   app.use("/api/media", mediaRoutes);
   app.use("/api/medias", mediaRoutes);
   app.use("/api/ticket-files", ticketFileRoutes);
 
-  // Les agents d'inventaire déposent ici. Ils n'ont pas de session : ce sont
-  // des services qui tournent sur les postes, et le protocole qu'ils parlent
-  // (celui d'OCS) ne prévoit qu'une authentification HTTP basique, réglée s'il
-  // le faut par le serveur qui nous précède (nginx).
+  // Inventory agents drop their data here. They have no session: they are
+  // services running on workstations, and the protocol they speak (OCS's)
+  // provides only for basic HTTP authentication, set if needed by the server
+  // in front of us (nginx).
   app.use("/api/inventory", inventoryRoutes);
 
-  // Microsoft y prévient Milo de l'arrivée d'un e-mail dans une boîte de
-  // support. Le secret de l'abonnement tient lieu d'authentification.
+  // Microsoft notifies Milo here of an email arriving in a support mailbox.
+  // The subscription's secret serves as authentication.
   app.use("/api/support-mail", supportMailRoutes);
 
-  // --- Tout le reste exige une session --------------------------------------
+  // --- Everything else requires a session -----------------------------------
   app.use("/api/auth", authRoutes);
   app.use("/api", requireAuth);
 
@@ -117,13 +117,13 @@ export const createApp = (): express.Express => {
   app.get("/api/events", feed);
 
   app.use("/api/users", userRoutes);
-  // Ce que règle le Paramétrage demande ses droits (Voir, Modifier). Les
-  // sociétés et les types de jalons se lisent partout dans l'application :
-  // seules leurs écritures les demandent.
+  // What Settings controls requires its rights (View, Edit). Companies and
+  // milestone types are read everywhere in the application: only writing them
+  // requires them.
   app.use("/api/milestone-types", requireSettingsToWrite, milestoneTypeRoutes);
-  // Les accès d'un workspace, réglés par qui gère les workspaces ;
-  // l'administration — Paramétrage, gestion des workspaces —, par le
-  // Paramétrage (routes/assignments.ts).
+  // A workspace's access, set by whoever manages the workspaces;
+  // administration — Settings, workspace management — by Settings
+  // (routes/assignments.ts).
   app.use("/api/assignments", assignmentRoutes);
   app.use("/api/administration", administrationRoutes);
   app.use("/api/workspaces", requireWorkspaces, workspaceRoutes);
@@ -132,9 +132,9 @@ export const createApp = (): express.Express => {
   app.use("/api/follows", followRoutes);
   app.use("/api/notifications", notificationRoutes);
 
-  // Les vues et leurs tableaux : chacun les voit, sauf privés ; les organiser
-  // demande de pouvoir modifier au moins un type de widget (lib/droits.ts).
-  // Ce qu'un tableau porte suit les permissions de chaque type de widget.
+  // Views and their boards: everyone sees them, unless private; organizing
+  // them requires being able to edit at least one widget type (lib/rights.ts).
+  // What a board carries follows the permissions of each widget type.
   app.use("/api/views", viewRoutes);
   app.use("/api/boards/:id/contexts", boardContextRoutes);
   app.use("/api/contexts", contextRoutes);
@@ -164,22 +164,22 @@ export const createApp = (): express.Express => {
   app.use("/api/labels", labelRoutes);
 
   app.use("/api/assets", assetRoutes);
-  // La table des modèles : lue partout, écrite depuis le Paramétrage.
+  // The templates table: read everywhere, written from Settings.
   app.use("/api/asset-settings", requireSettingsToWrite, assetSettingsRoutes);
 
   app.use("/api/support-requests", supportRequestRoutes);
   app.use("/api/mailbox-optins", optinRoutes);
   app.use("/api/support-comments", supportCommentRoutes);
   app.use("/api/support-labels", supportLabelRoutes);
-  // L'échéance par défaut : lue partout, écrite depuis le Paramétrage.
+  // The default due date: read everywhere, written from Settings.
   app.use("/api/support-settings", requireSettingsToWrite, supportSettingsRoutes);
   app.use("/api/support-replies", requireSettingsToWrite, supportReplyRoutes);
-  // Lus par la fiche d'une demande, qui les pose dans sa réponse.
+  // Read by a request's page, which puts them in its reply.
   app.use("/api/support-contents", requireSettingsToWrite, supportContentRoutes);
 
   app.use("/api/search", searchRoutes);
-  // Lus par tous — ils règlent l'interface de chacun —, écrits depuis le
-  // Paramétrage seulement.
+  // Read by everyone — they set everyone's interface —, written from
+  // Settings only.
   app.use("/api/developer", requireSettingsToWrite, developerRoutes);
   app.use("/api/notification-settings", requireSettingsToWrite, notificationSettingsRoutes);
 

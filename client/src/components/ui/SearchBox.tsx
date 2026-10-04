@@ -16,14 +16,15 @@ import { api } from "../../api";
 import classes from "../../assets/styles/SearchBox.module.css";
 import { ROW_CONTROL_HEIGHT, ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
 
-// La recherche, dans la rangée d'onglets : de la fin des onglets jusqu'aux
-// menus et au compte, dans tous les modes (ModeBar). Un champ nu — ni bordure ni fond, son invite seule — qui fouille tout ce que
-// l'application porte et ouvre l'élément choisi, où qu'il soit.
+// The search, in the tab row: from the end of the tabs to the menus and the
+// account, in all modes (ModeBar). A bare field — no border or background, only
+// its prompt — that searches everything the application holds and opens the
+// chosen item, wherever it is.
 
-/** Le temps qu'on laisse à la frappe avant d'interroger le serveur. */
+/** The time given to typing before querying the server. */
 const WAITING = 200;
 
-/** Les sortes, dans l'ordre où la liste les présente — celui des modes. */
+/** The kinds, in the order the list presents them — that of the modes. */
 const KINDS: { kind: SearchKind; label: string; icon: ComponentType<{ size?: number }> }[] = [
   { kind: "access", label: "Accès", icon: IconKey },
   { kind: "project", label: "Projets", icon: IconFolder },
@@ -34,10 +35,10 @@ const KINDS: { kind: SearchKind; label: string; icon: ComponentType<{ size?: num
 
 const key = (r: SearchResult) => `${r.kind}:${r.id}`;
 
-/** Les angles bas de la liste, plus vifs que ceux des menus. */
+/** The list's bottom corners, sharper than those of menus. */
 const RADIUS = 2;
 
-/** L'option qui, faute de résultat, envoie la saisie à Google. */
+/** The option that, lacking results, sends the input to Google. */
 const GOOGLE = "google";
 
 export interface SearchBoxProps {
@@ -50,8 +51,8 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
   });
   const [input, setInput] = useState("");
   const [results, setResults] = useState<SearchResult[] | null>(null);
-  // La dernière recherche partie : une réponse plus lente qu'une frappe
-  // suivante n'écrase pas ce que celle-ci a rendu.
+  // The last search sent: a response slower than a following keystroke does not
+  // overwrite what that one returned.
   const last = useRef(0);
 
   useEffect(() => {
@@ -72,8 +73,8 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
     return () => window.clearTimeout(timeout);
   }, [input]);
 
-  // La première ligne est prête pour Entrée — le premier résultat, ou Google
-  // faute de mieux. Après le rendu : avant, les options n'existent pas encore.
+  // The first row is ready for Enter — the first result, or Google for lack of
+  // better. After rendering: before, the options do not exist yet.
   useEffect(() => {
     if (results) combobox.selectFirstOption();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -105,8 +106,7 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
     return (
       <Combobox.Group key={kind} label={label}>
         {own.map((r) => {
-          // Un lien du mode Accès s'ouvre tel quel, dans un nouvel onglet :
-          // son icône le dit.
+          // An Access mode link opens as is, in a new tab: its icon says so.
           const IconRow = r.url ? IconExternalLink : Icon;
           return (
             <Combobox.Option key={key(r)} value={key(r)}>
@@ -159,8 +159,7 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
             input: {
               height: ROW_CONTROL_HEIGHT,
               minHeight: ROW_CONTROL_HEIGHT,
-              // Un gris plus sombre que celui des autres champs, dans les deux
-              // thèmes.
+              // A gray darker than that of the other fields, in both themes.
               "--input-placeholder-color":
                 "light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-4))",
             } as CSSProperties,
@@ -172,7 +171,7 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
           onFocus={() => combobox.openDropdown()}
           onBlur={() => combobox.closeDropdown()}
           onKeyDown={(event) => {
-            // Échap vide le champ ; une seconde fois, il le quitte.
+            // Escape clears the field; a second time, it leaves it.
             if (event.key !== "Escape") return;
             if (input) setInput("");
             else event.currentTarget.blur();
@@ -182,11 +181,10 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
 
       <Combobox.Dropdown hidden={results === null}>
         <Combobox.Options>
-          {/* La barre de Mantine, comme partout ailleurs, et non celle du
-              navigateur. */}
+          {/* Mantine's bar, as everywhere else, and not the browser's. */}
           <ScrollArea.Autosize mah={420} type="scroll" scrollbarSize={6}>
             {results && results.length === 0 ? (
-              // Rien dans Milo : la saisie part sur Google, Entrée suffit.
+              // Nothing in Milo: the input goes to Google, Enter is enough.
               <Combobox.Option value={GOOGLE}>
                 <Group gap="xs" wrap="nowrap">
                   <IconBrandGoogle size={16} />

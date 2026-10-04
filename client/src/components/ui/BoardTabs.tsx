@@ -21,84 +21,84 @@ import { tabStyle } from "../../themes/tabs";
 import type { AccountSlot } from "./AccountControls";
 import type { ReactNode, SyntheticEvent } from "react";
 
-/** Ce qui se passe dans la liste des contextes ne remonte pas à l'onglet. */
+/** What happens in the contexts list does not bubble up to the tab. */
 const keep = (e: SyntheticEvent) => e.stopPropagation();
 
-/** Un onglet : les tableaux des modes n'ont en commun qu'un identifiant et un nom. */
+/** A tab: a mode's boards only share an identifier and a name. */
 interface Tab {
   id: number;
   name: string;
-  /** Les modes dont les onglets se ferment aux autres : Accès, Projet et Tâche. */
+  /** The modes whose tabs are closed to others: Accès, Projet and Tâche. */
   is_private?: number;
-  /** Le mode Accès, dont chaque catégorie a sa structure : « Hérité » pour le compte. */
+  /** The Accès mode, whose every category has its own structure: "Hérité" for the account. */
   inherited?: boolean;
-  /** Ses contextes : sans eux, rien à copier. */
+  /** Its contexts: without them, nothing to copy. */
   contexts?: readonly unknown[];
 }
 
-// Les tableaux d'un mode, en onglets. Sert au mode Tâche, au mode Projet et au
-// mode Accès : seul « deleteWarning » change, il décrit ce que la suppression
-// en cascade emporte.
+// A mode's boards, as tabs. Used for the Task mode, the Project mode and the
+// Accès mode: only "deleteWarning" changes, it describes what the cascading
+// deletion takes with it.
 //
-// Chaque onglet se modifie et se supprime depuis son menu contextuel, au clic
-// droit ; un double clic sur son nom le renomme sur place ; le « + » au bout de
-// la rangée en ajoute un.
+// Each tab is edited and deleted from its context menu, on
+// right-click; a double click on its name renames it in place; the "+" at the end of
+// the row adds one.
 //
-// La rangée elle-même — le logo à gauche, la société et le compte à droite —
-// appartient à ModeBar : elle est la même dans tous les modes, y compris ceux
-// qui n'ont pas de tableaux.
+// The row itself — the logo on the left, the company and the account on the right —
+// belongs to ModeBar: it is the same in all modes, including those
+// that have no boards.
 interface BoardTabsProps {
   boards: Tab[];
   value: string | null;
   onChange: (value: string | null) => void;
-  /** Ajouter un onglet. Sans lui — sans le droit d'ajouter —, pas de « + ». */
+  /** Add a tab. Without it — without the right to add —, no "+". */
   onAdd?: () => void;
   /**
-   * L'onglet visé par le clic droit, qui n'est pas forcément l'onglet ouvert.
-   * Sans lui, « Renommer » renomme l'onglet sur place.
+   * The tab targeted by the right-click, which is not necessarily the open tab.
+   * Without it, "Renommer" renames the tab in place.
    */
   onEdit?: (id: number) => void;
   /**
-   * Renommer l'onglet sur place, au double clic. Sans lui, le double clic ne
-   * fait rien de plus qu'un clic.
+   * Rename the tab in place, on double click. Without it, the double click does
+   * nothing more than a click.
    */
   onRename?: (id: number, name: string) => void | Promise<void>;
-  /** Sans lui — sans le droit de supprimer —, le menu n'en propose pas. */
+  /** Without it — without the right to delete —, the menu does not offer it. */
   onDelete?: (id: number) => void | Promise<void>;
   /**
-   * Rendre l'onglet visé privé ou de nouveau visible de tous. Sans lui, le
-   * menu n'en propose pas.
+   * Make the targeted tab private or visible to all again. Without it, the
+   * menu does not offer it.
    */
   onTogglePrivate?: (id: number) => void | Promise<void>;
-  /** Copier les contextes de l'onglet vers un autre. Sans lui, le menu n'en propose pas. */
+  /** Copy the tab's contexts to another. Without it, the menu does not offer it. */
   onCopyContexts?: (id: number) => void;
   /**
-   * L'ordre des onglets, une fois l'onglet déposé. Il vaut pour tout le monde
-   * et non pour le seul navigateur qui l'a changé : c'est le mode qui est
-   * rangé, pas la vue qu'on en a. Sans lui, les onglets ne se glissent pas.
+   * The tabs' order, once the tab is dropped. It applies to everyone
+   * and not only to the browser that changed it: it is the mode that is
+   * ordered, not one's view of it. Without it, the tabs cannot be dragged.
    */
   onReorder?: (ids: number[]) => void | Promise<void>;
-  /** Ce que la suppression en cascade emporte, dit à l'utilisateur. */
+  /** What the cascading deletion takes with it, told to the user. */
   deleteWarning?: ReactNode;
-  /** Le titre de la confirmation : tous les onglets ne sont pas des tableaux. */
+  /** The confirmation's title: not all tabs are boards. */
   deleteTitle?: string;
   /**
-   * « Hérité » : l'onglet visé montre la structure partagée — sections et
-   * widgets —, ou la copie propre au compte. « of » le dit pour un onglet
-   * (en Projet et Tâche, le même pour tous : les sections y sont communes).
-   * Le décocher se confirme. Sans lui, le menu n'en propose pas.
+   * "Hérité": the targeted tab shows the shared structure — sections and
+   * widgets —, or the account's own copy. "of" says so for a tab
+   * (in Projet and Tâche, the same for all: the sections are shared there).
+   * Unchecking it is confirmed. Without it, the menu does not offer it.
    */
   inheritance?: {
     of: (tab: Tab) => boolean;
     onToggle: (id: number) => void | Promise<void>;
   };
-  /** La société et le compte, que ModeBar pose au bout de la rangée. */
+  /** The company and the account, which ModeBar places at the end of the row. */
   account: AccountSlot;
-  /** Le menu « Actions » du tableau ouvert, posé entre la société et le compte. */
+  /** The open board's "Actions" menu, placed between the company and the account. */
   actions?: ReactNode;
   /**
-   * L'onglet à passer en saisie de son nom dès qu'il paraît — celui qu'on
-   * vient de créer. « onRenommageOuvert » dit que c'est fait.
+   * The tab to switch to name entry as soon as it appears — the one just
+   * created. "onRenameOpened" says it is done.
    */
   toRename?: number | null;
   onRenameOpened?: () => void;
@@ -124,31 +124,31 @@ export default function BoardTabs({
   onRenameOpened,
 }: BoardTabsProps) {
   const { contexts } = account;
-  // Le menu contextuel ouvert, et l'onglet qu'il vise.
+  // The open context menu, and the tab it targets.
   const [menu, setMenu] = useState<{ tab: Tab; position: PointMenuPosition } | null>(null);
-  // L'onglet dont on confirme la suppression.
+  // The tab whose deletion is being confirmed.
   const [toDelete, setToDelete] = useState<Tab | null>(null);
-  // L'onglet privé qu'on s'apprête à ouvrir à tous : ce geste se confirme.
+  // The private tab about to be opened to all: this action is confirmed.
   const [toOpen, setToOpen] = useState<Tab | null>(null);
-  // L'onglet dont on s'apprête à basculer « Hérité », et l'état qu'on quitte :
-  // ce geste se confirme dans les deux sens. L'état reste posé à la
-  // fermeture : le message ne change pas pendant que la fenêtre s'efface.
+  // The tab whose "Hérité" is about to be toggled, and the state being left:
+  // this action is confirmed both ways. The state stays set on
+  // close: the message does not change while the modal fades out.
   const [toToggle, setToSwitch] = useState<{
     tab: Tab | null;
     inherits: boolean;
   }>({ tab: null, inherits: true });
   const closeToggle = () => setToSwitch((b) => ({ ...b, tab: null }));
   const [plusHovered, setMoreHovered] = useState(false);
-  // L'onglet en cours de renommage et le nom qu'on y tape.
+  // The tab being renamed and the name typed into it.
   const [renamed, setRenamed] = useState<{ id: number; name: string } | null>(null);
-  // Le nom validé, montré le temps que le serveur réponde et que la rangée
-  // revienne relue : sans lui, l'ancien nom reparaîtrait un instant.
+  // The validated name, shown while the server responds and the row
+  // comes back re-read: without it, the old name would briefly reappear.
   const [provisional, setProvisional] = useState<{ id: number; name: string } | null>(null);
-  // Vrai dès que la saisie est conclue : Entrée suivie de la perte du focus ne
-  // doit pas enregistrer deux fois.
+  // True once the input is concluded: Enter followed by loss of focus must not
+  // save twice.
   const finished = useRef(false);
 
-  // Le glisser-déposer des onglets : voir useTabReorder.
+  // Tab drag and drop: see useTabReorder.
   const {
     ordered: tabs,
     tabProps,
@@ -163,8 +163,8 @@ export default function BoardTabs({
     setRenamed({ id: tab.id, name: tab.name });
   };
 
-  // L'onglet qu'on vient de créer passe en saisie de son nom dès qu'il paraît
-  // dans la rangée relue.
+  // The tab just created switches to name entry as soon as it appears
+  // in the re-read row.
   useEffect(() => {
     if (toRename == null) return;
     const tab = boards.find((b) => b.id === toRename);
@@ -196,11 +196,11 @@ export default function BoardTabs({
     if (tab && onDelete) await onDelete(tab.id);
   };
 
-  // « Renommer » ne vaut que si l'on peut modifier l'onglet : sans tiroir ni
-  // renommage, il ne ferait rien.
+  // "Renommer" only applies if the tab can be edited: without a drawer or
+  // renaming, it would do nothing.
   const editable = Boolean(onEdit || onRename);
-  // Un menu sans rien dedans ne s'ouvre pas : c'est le cas de qui ne fait que
-  // lire.
+  // A menu with nothing in it does not open: this is the case for someone who only
+  // reads.
   const usefulMenu =
     editable ||
     Boolean(
@@ -210,7 +210,7 @@ export default function BoardTabs({
         inheritance,
     );
 
-  // Copier les contextes de l'onglet visé : seulement s'il en a au moins un.
+  // Copy the targeted tab's contexts: only if it has at least one.
   const copyContexts = Boolean(onCopyContexts) && (menu?.tab.contexts?.length ?? 0) > 0;
 
   return (
@@ -223,15 +223,15 @@ export default function BoardTabs({
               value={String(board.id)}
               {...tabProps(board.id, index, tabStyle(value === String(board.id)))}
               onContextMenu={(e) => {
-                // Le menu de l'onglet pend sous lui, comme celui d'une rangée.
+                // The tab's menu hangs under it, like a row's.
                 if (usefulMenu) setMenu({ tab: board, position: menuAnchor(e) });
               }}
               onDoubleClick={() => openRename(board)}
             >
-              {/* Le nom — ou son champ — et les contextes, alignés sur la
-                  ligne de base du texte : le libellé des contextes est plus
-                  petit, et le champ s'aligne en haut de sa ligne
-                  (SaisieAjustee). */}
+              {/* The name — or its field — and the contexts, aligned on the
+                  text baseline: the contexts' label is smaller,
+                  and the field aligns to the top of its line
+                  (AdjustedInput). */}
               <span style={{ display: "inline-flex", alignItems: "baseline" }}>
                 {renamed?.id === board.id ? (
                   <AdjustedInput
@@ -240,8 +240,8 @@ export default function BoardTabs({
                       const name = e.currentTarget.value;
                       setRenamed((r) => (r ? { ...r, name } : r));
                     }}
-                    // Les touches restent au champ : sans cela, les flèches
-                    // changeraient d'onglet et Entrée enregistrerait deux fois.
+                    // Keys stay with the field: otherwise, the arrows
+                    // would switch tabs and Enter would save twice.
                     onKeyDown={(e) => {
                       e.stopPropagation();
                       if (e.key === "Enter") {
@@ -254,8 +254,8 @@ export default function BoardTabs({
                       }
                     }}
                     onBlur={() => finishRename(true)}
-                    // L'appui dans le champ place le curseur : il ne commence pas
-                    // à glisser l'onglet, et le clic ne le rouvre pas.
+                    // Pressing in the field places the cursor: it does not start
+                    // dragging the tab, and the click does not reopen it.
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => e.stopPropagation()}
                     onDoubleClick={(e) => e.stopPropagation()}
@@ -268,18 +268,18 @@ export default function BoardTabs({
                 ) : (
                   board.name
                 )}
-                {/* Les contextes du tableau ouvert, à droite de son nom — sans
-                    contexte et sans pouvoir en ajouter, la liste n'a rien à
-                    offrir. Ce qui s'y passe reste à la liste : sans cela,
-                    l'onglet glisserait, se renommerait au double clic, ou
-                    ouvrirait son menu. */}
+                {/* The open board's contexts, to the right of its name — without
+                    contexts and without the ability to add any, the list has nothing to
+                    offer. What happens in it stays with the list: otherwise,
+                    the tab would drag, rename on double click, or
+                    open its menu. */}
                 {value === String(board.id) &&
                   contexts &&
                   (contexts.items.length > 0 || contexts.management) && (
                     <span
                       style={{ display: "inline-flex", marginLeft: 12 }}
-                      // Arrêté ici, l'appui n'atteint pas non plus ce qui
-                      // referme le menu de l'onglet : on le referme soi-même.
+                      // Stopped here, the press does not reach what closes
+                      // the tab's menu either: we close it ourselves.
                       onPointerDown={(e) => {
                         setMenu(null);
                         keep(e);
@@ -287,9 +287,9 @@ export default function BoardTabs({
                       onMouseDown={keep}
                       onClick={keep}
                       onDoubleClick={keep}
-                      // Arrêté ici, le clic droit n'atteint plus ce qui tait le
-                    // menu du navigateur (App) : il le tait lui-même — sauf en
-                    // Debug, où ce menu revient.
+                      // Stopped here, the right-click no longer reaches what silences the
+                    // browser menu (App): it silences it itself — except in
+                    // Debug, where that menu comes back.
                     onContextMenu={(e) => {
                       if (!document.documentElement.hasAttribute("data-milo-debug")) {
                         e.preventDefault();
@@ -310,8 +310,8 @@ export default function BoardTabs({
         ))}
         {insertAt(tabs.length) && <InsertLine />}
 
-        {/* Au bout du dernier onglet : en ajouter un. Le vert des autres
-            gestes « ajouter », un ton plus foncé au survol (AddButton). */}
+        {/* At the end of the last tab: add one. The green of the other
+            "add" actions, a darker tone on hover (AddButton). */}
         {onAdd && (
           <ActionIcon
             variant="transparent"
@@ -343,9 +343,9 @@ export default function BoardTabs({
               Renommer
             </Menu.Item>
           )}
-          {/* Ce que l'onglet porte, reporté sur un autre : à part du reste. */}
+          {/* What the tab carries, carried over to another: apart from the rest. */}
           {copyContexts && <Menu.Divider />}
-          {/* Un tableau sans contexte n'en a aucun à copier. */}
+          {/* A board without contexts has none to copy. */}
           {copyContexts && onCopyContexts && (
             <Menu.Item
               leftSection={<IconCategory size={16} />}
@@ -355,7 +355,7 @@ export default function BoardTabs({
             </Menu.Item>
           )}
 
-          {/* Les réglages de l'onglet, chacun coché quand il est actif. */}
+          {/* The tab's settings, each checked when active. */}
           {(onTogglePrivate || inheritance) && (
             <>
               <Menu.Divider />
@@ -366,7 +366,7 @@ export default function BoardTabs({
             <Menu.Item
               leftSection={<IconEyeOff size={16} />}
               rightSection={menu.tab.is_private ? <IconCheck size={14} /> : null}
-              // Le rendre privé se fait aussitôt ; l'ouvrir à tous se confirme.
+              // Making it private is immediate; opening it to all is confirmed.
               onClick={() =>
                 menu.tab.is_private
                   ? setToOpen(menu.tab)
@@ -378,8 +378,8 @@ export default function BoardTabs({
           )}
           {inheritance &&
             (() => {
-              // Un onglet privé n'est qu'à son auteur : il n'y a rien à
-              // partager, ni donc à hériter.
+              // A private tab belongs only to its author: there is nothing to
+              // share, nor therefore to inherit.
               const isPrivate = Boolean(menu.tab.is_private);
               const inherits = !isPrivate && inheritance.of(menu.tab);
               return (

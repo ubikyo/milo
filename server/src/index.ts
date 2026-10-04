@@ -1,6 +1,6 @@
-// Le démarrage : rien d'autre que mettre l'application à l'écoute, le ménage
-// périodique — les sessions expirées, les fichiers que plus rien ne cite — et
-// la relève des boîtes de support et celle des flux RSS.
+// Startup: nothing more than putting the app on listen, the periodic cleanup
+// — expired sessions, files nothing cites any more — and polling of the
+// support mailboxes and of the RSS feeds.
 
 import { createApp } from "./app.js";
 import { env } from "./env.js";
@@ -13,73 +13,72 @@ import { sessions } from "./repositories/users.js";
 
 const app = createApp();
 
-// Les sessions expirées ne servent plus à rien, et les fichiers que plus
-// aucune pièce jointe ni aucune description ne cite non plus : les deux
-// partent au démarrage, puis une fois par jour. `unref` laisse le processus se
-// terminer.
+// Expired sessions are no use any more, nor are files that no attachment or
+// description cites any more: both go at startup, then once a day. `unref`
+// lets the process terminate.
 const purge = () => {
   sessions.purgeExpired.run(new Date().toISOString());
-  // Le ménage lit le disque : une panne de ce côté ne doit pas empêcher le
-  // serveur de démarrer.
+  // Cleanup reads the disk: a failure on that side must not stop the
+  // server from starting.
   try {
     mediaCleanup();
   } catch (error) {
-    console.error("Ménage des médias :", error);
+    console.error("Media cleanup:", error);
   }
 };
 purge();
 setInterval(purge, 24 * 60 * 60 * 1000).unref();
 
-// Les boîtes de support des sociétés sont relevées au démarrage, puis toutes
-// les cinq minutes : chaque e-mail reçu y devient une demande.
+// Companies' support mailboxes are polled at startup, then every five
+// minutes: each e-mail received there becomes a request.
 const poll = () => {
-  pollMailboxes().catch((error) => console.error("Relève des boîtes de support :", error));
+  pollMailboxes().catch((error) => console.error("Support mailbox polling:", error));
 };
 poll();
 setInterval(poll, POLL_INTERVAL).unref();
 
-// Les flux des éléments RSS sont relevés par le serveur, chacun à l'intervalle
-// que ses éléments règlent (30 minutes par défaut) : la relève de fond regarde
-// chaque minute lesquels sont arrivés à échéance.
+// RSS item feeds are polled by the server, each at the interval its items
+// set (30 minutes by default): the background poll checks every minute which
+// ones have come due.
 const pollFeeds = () => {
-  pollAllFeeds().catch((error) => console.error("Relève des flux RSS :", error));
+  pollAllFeeds().catch((error) => console.error("RSS feed polling:", error));
 };
 pollFeeds();
 setInterval(pollFeeds, FEED_POLL_INTERVAL).unref();
 
-// Les rappels des échéances partent à la minute près.
+// Due-date reminders go out to the minute.
 const remind = () => {
   try {
     sendReminders();
   } catch (error) {
-    console.error("Rappels des échéances :", error);
+    console.error("Due-date reminders:", error);
   }
 };
 remind();
 setInterval(remind, REMINDERS_INTERVAL).unref();
 
 const server = app.listen(env.port, () => {
-  console.log(`API Milo disponible sur http://localhost:${env.port}`);
-  // Les abonnements aux boîtes de support se demandent une fois Milo à
-  // l'écoute : Graph vérifie l'adresse avant d'accepter.
+  console.log(`Milo API available at http://localhost:${env.port}`);
+  // Subscriptions to the support mailboxes are requested once Milo is
+  // listening: Graph checks the address before accepting.
   maintain();
 });
 
 const maintain = () => {
   maintainSubscriptions().catch((error) =>
-    console.error("Abonnements aux boîtes de support :", error),
+    console.error("Support mailbox subscriptions:", error),
   );
 };
 setInterval(maintain, MAINTENANCE_INTERVAL).unref();
 
-// Une extinction propre ferme les connexions en cours plutôt que de les
-// couper net : c'est ce que systemd demande avant de tuer le processus.
+// A clean shutdown closes ongoing connections rather than cutting them off
+// abruptly: this is what systemd asks for before killing the process.
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => {
     server.close(() => process.exit(0));
-    // Les flux d'événements ne se terminent jamais d'eux-mêmes : sans cela,
-    // « close » les attendrait sans fin, et le processus ne s'arrêterait pas
-    // (ni la relance de « node --watch »).
+    // Event streams never end on their own: without this, "close" would wait
+    // for them forever, and the process would not stop (nor would the restart
+    // of "node --watch").
     server.closeIdleConnections();
     setTimeout(() => server.closeAllConnections(), 2000).unref();
   });

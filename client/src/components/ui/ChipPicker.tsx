@@ -15,38 +15,38 @@ import { PLUS_SIZE } from "../../themes/plus";
 import type { FloatingPosition } from "@mantine/core";
 import type { ReactNode } from "react";
 
-// Le temps laissé au second clic d'un double clic avant que le premier ne
-// coche l'option.
+// The time left for the second click of a double click before the first one
+// checks the option.
 const DOUBLE_CLICK_DELAY = 250;
 
-/** Le minimum qu'une option doit porter : de quoi l'identifier et la nommer. */
+/** The minimum an option must carry: enough to identify and name it. */
 export interface ChipOption {
   id: number | string;
   name: string;
 }
 
-// Au-delà de ce nombre de lignes, la liste défile plutôt que de courir jusqu'en
-// bas de l'écran. Les lignes n'ont pas toutes la même hauteur — un nom seul, un
-// nom et son adresse : la hauteur se mesure sur la dixième, marquée comme les
-// autres de « data-row ».
+// Beyond this number of rows, the list scrolls rather than running to the
+// bottom of the screen. Rows do not all have the same height — a name alone, a
+// name and its address: the height is measured on the tenth, marked like the
+// others with "data-row".
 const VISIBLE_ROWS = 10;
 
 /**
- * Choix multiple montré en vignettes : un titre, sous lui ce qui est retenu,
- * puis un « + ». Le « + » comme n'importe quelle vignette déjà posée ouvrent la
- * même liste, où l'on coche et décoche. La liste s'aligne sur le bord gauche du
- * titre, et non sur le bouton qui l'ouvre : elle part toujours du même point,
- * quel que soit le nombre de vignettes.
+ * Multiple choice shown as chips: a title, under it what is retained,
+ * then a "+". The "+" and any chip already placed open the
+ * same list, where you check and uncheck. The list aligns with the left edge of the
+ * title, not the button that opens it: it always starts from the same point,
+ * whatever the number of chips.
  *
- * `options` : [{ id, ... }], `value` : les identifiants retenus, en chaînes.
- * `render` dessine une option dans la liste. `renderChip` la dessine une fois
- * retenue, lorsqu'elle s'y montre autrement : un membre n'y garde que sa
- * bulle, quand la liste, elle, doit nommer les personnes.
+ * `options`: [{ id, ... }], `value`: the retained identifiers, as strings.
+ * `render` draws an option in the list. `renderChip` draws it once
+ * retained, when it shows differently there: a member only keeps its
+ * bubble there, whereas the list must name the people.
  */
 interface ChipPickerProps<T extends ChipOption> {
   label: string;
   options: T[];
-  /** Les identifiants retenus, en chaînes. */
+  /** The retained identifiers, as strings. */
   value: string[];
   onChange: (value: string[]) => void;
   render: (option: T) => ReactNode;
@@ -56,8 +56,8 @@ interface ChipPickerProps<T extends ChipOption> {
   chipGap?: number;
   footer?: ReactNode;
   /**
-   * Des lignes ajoutées sous les options, dans leur défilement : les personnes
-   * trouvées dans l'annuaire. Chacune porte « data-row » pour compter.
+   * Rows added under the options, within their scroll: the people
+   * found in the directory. Each carries "data-row" to be counted.
    */
   listFooter?: ReactNode;
   onOptionClick?: (option: T) => void;
@@ -66,30 +66,30 @@ interface ChipPickerProps<T extends ChipOption> {
   onClose?: () => void;
   closeBlocked?: boolean;
   /**
-   * Des vignettes posées devant les autres, qui ne se choisissent pas : un
-   * fait plutôt qu'un choix — l'expéditeur d'une demande reçue par e-mail.
+   * Chips placed in front of the others, which cannot be chosen: a
+   * fact rather than a choice — the sender of a request received by e-mail.
    */
   leadingChips?: ReactNode;
   /**
-   * Ce que la liste montre, quand ce n'est pas toutes les options : une liste
-   * filtrée par une recherche, ou réordonnée. Les vignettes, elles, se lisent
-   * toujours dans `options` — une option retenue ne disparaît pas parce que la
-   * recherche l'écarte.
+   * What the list shows, when it is not all the options: a list
+   * filtered by a search, or reordered. The chips, for their part, are always read
+   * from `options` — a retained option does not disappear because the
+   * search rules it out.
    */
   listOptions?: T[];
-  /** Posé au-dessus de la liste, hors de son défilement : un champ de recherche. */
+  /** Placed above the list, outside its scroll: a search field. */
   header?: ReactNode;
-  /** La largeur de la liste, en pixels. */
+  /** The list's width, in pixels. */
   dropdownWidth?: number;
-  /** Un filet sous chaque option : des lignes sur deux niveaux s'y lisent mieux. */
+  /** A border under each option: two-level rows read better with it. */
   separated?: boolean;
   /**
-   * Remplace le titre, les vignettes et le « + » : un déclencheur compact, pour
-   * une ligne déjà remplie — les membres d'un élément de checklist. Le titre
-   * ne sert plus alors qu'à le nommer.
+   * Replaces the title, chips and "+": a compact trigger, for
+   * an already full row — the members of a checklist item. The title
+   * then only serves to name it.
    */
   target?: ReactNode;
-  /** Où s'ouvre la liste ; sous le bord gauche du titre par défaut. */
+  /** Where the list opens; under the title's left edge by default. */
   position?: FloatingPosition;
 }
 
@@ -101,32 +101,32 @@ export default function ChipPicker<T extends ChipOption>({
   render,
   renderChip = render,
   emptyText,
-  // Hauteur des vignettes : le « + » s'y aligne, pour que la ligne soit d'un
-  // seul tenant.
+  // Height of the chips: the "+" aligns with it, so the row is of
+  // a piece.
   chipHeight = 22,
-  // Écart entre deux vignettes voisines, en pixels. Les bulles des membres se
-  // serrent ; les étiquettes, qui portent du texte, respirent davantage.
+  // Gap between two neighboring chips, in pixels. Member bubbles
+  // are tight; labels, which carry text, breathe more.
   chipGap = 6,
-  // Posé sous la liste, en dehors de son défilement : les étiquettes y mettent
-  // de quoi en ajouter une.
+  // Placed under the list, outside its scroll: labels put
+  // what is needed to add one there.
   footer,
   listFooter,
-  // Si fourni, cliquer une option fait ceci au lieu de la cocher ; la case,
-  // elle, continue de sélectionner. Les étiquettes s'y modifient.
+  // If provided, clicking an option does this instead of checking it; the checkbox
+  // keeps selecting. Labels are edited this way.
   onOptionClick,
-  // L'option occupe alors toute la largeur de la liste.
+  // The option then takes the whole width of the list.
   fullWidthOptions = false,
-  // Le « + » prend la forme de ce qu'il ajoute : rond pour des bulles, aux
-  // angles à peine cassés pour des étiquettes.
+  // The "+" takes the shape of what it adds: round for bubbles, with barely
+  // broken corners for labels.
   plusRadius = "xl",
-  // Appelé quand la liste se referme. Ce qu'elle contenait disparaît avec
-  // elle : une saisie en cours n'a plus d'occasion de se conclure, c'est ici
-  // qu'elle se valide.
+  // Called when the list closes. What it contained disappears with
+  // it: an input in progress no longer has a chance to conclude, so it is
+  // validated here.
   onClose,
-  // Tant que ceci est vrai, la liste refuse de se refermer. Une fenêtre de
-  // confirmation ouverte par-dessus est un clic « au dehors » : sans cela, la
-  // liste s'en irait, et l'on reviendrait à la carte une fois la fenêtre
-  // fermée.
+  // As long as this is true, the list refuses to close. A confirmation
+  // modal opened on top is an "outside" click: without this, the
+  // list would go away, and you would return to the card once the modal
+  // is closed.
   closeBlocked = false,
   leadingChips,
   listOptions = options,
@@ -136,8 +136,8 @@ export default function ChipPicker<T extends ChipOption>({
   target,
   position = "bottom-start",
 }: ChipPickerProps<T>) {
-  // Séparées, les options courent d'un bord à l'autre de la liste, et leur
-  // filet aussi ; la dernière n'en a pas — il n'y a rien à séparer dessous.
+  // When separated, the options run from edge to edge of the list, and their
+  // border too; the last one has none — there is nothing to separate below.
   const rule = (rank: number) =>
     separated && rank < listOptions.length - 1
       ? { borderBottom: "1px solid var(--mantine-color-default-border)" }
@@ -147,11 +147,11 @@ export default function ChipPicker<T extends ChipOption>({
   const contentRef = useRef<HTMLDivElement>(null);
   const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
 
-  // Mesurée à chaque rendu, la liste ouverte : une recherche, une réponse de
-  // l'annuaire changent ses lignes. Avant d'être peinte, pour qu'elle ne
-  // paraisse jamais toute déroulée. Sans dépendances, à dessein : la mesure ne
-  // bouge pas avec la hauteur posée, la comparaison arrête donc la boucle au
-  // second passage.
+  // The open list is measured on every render: a search, a response from the
+  // directory changes its rows. Before being painted, so that it never
+  // appears fully unrolled. With no dependencies, on purpose: the measurement does not
+  // move with the height set, so the comparison stops the loop on the
+  // second pass.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const content = contentRef.current;
@@ -177,8 +177,8 @@ export default function ChipPicker<T extends ChipOption>({
     .map((id) => options.find((o) => String(o.id) === String(id)))
     .filter((o): o is T => Boolean(o));
 
-  // Le clic sur une option à rôle propre attend de savoir s'il est le premier
-  // d'un double clic : sinon, ouvrir l'option la cocherait au passage.
+  // A click on an option with its own role waits to know whether it is the first
+  // of a double click: otherwise, opening the option would check it in passing.
   const pendingClick = useRef<ReturnType<typeof setTimeout> | null>(null);
   const forgetClick = () => {
     if (pendingClick.current) clearTimeout(pendingClick.current);
@@ -198,15 +198,15 @@ export default function ChipPicker<T extends ChipOption>({
       opened={opened}
       onChange={toggleOpen}
       position={position}
-      // Pas de portail : ce choix s'ouvre dans un tiroir, dont le piège à focus
-      // ne laisse pas la main à ce qui est sorti hors de lui — un champ de
-      // saisie posé dans la liste n'aurait jamais pu être rempli. Resté sur
-      // place, il est bien dans le tiroir ; « fixed » le tient hors d'atteinte
-      // du défilement qui l'entoure.
+      // No portal: this choice opens inside a drawer, whose focus trap
+      // does not yield control to what has moved outside of it — an input
+      // field placed in the list could never have been filled. Left in
+      // place, it is properly inside the drawer; "fixed" keeps it out of reach
+      // of the surrounding scroll.
       withinPortal={false}
       floatingStrategy="fixed"
       shadow="md"
-      // L'ancre est le bloc entier : la liste tombe donc sous le titre.
+      // The anchor is the whole block: the list thus drops under the title.
       width={dropdownWidth}
     >
       <Popover.Target>
@@ -223,11 +223,11 @@ export default function ChipPicker<T extends ChipOption>({
             {target}
           </UnstyledButton>
         ) : (
-          // La colonne borne la largeur : les vignettes s'y rangent, et
-          // reprennent à la ligne quand la place manque. Elle ne s'étend pas
-          // au-delà d'elles : un clic sur le vide à leur droite est un clic au
-          // dehors, qui referme la liste — l'ancre, elle, n'en est jamais un.
-          // Le titre et l'espace entre les vignettes la referment aussi.
+          // The column bounds the width: the chips line up in it, and
+          // wrap when room runs out. It does not extend
+          // beyond them: a click on the empty space to their right is an outside
+          // click, which closes the list — the anchor never is one.
+          // The title and the space between chips close it too.
           <div
             style={{ minWidth: 0, width: "fit-content", maxWidth: "100%" }}
             onClick={(e) => {
@@ -239,13 +239,13 @@ export default function ChipPicker<T extends ChipOption>({
             <Group gap={chipGap} align="center" wrap="wrap">
               {leadingChips}
               {chosen.map((option) => (
-                // Cliquer une vignette rouvre la même liste : on ajoute et on
-                // retire au même endroit.
+                // Clicking a chip reopens the same list: you add and
+                // remove in the same place.
                 <UnstyledButton
                   key={option.id}
                   onClick={() => toggleOpen(!opened)}
-                  // Jamais comprimée : trop à l'étroit, la vignette descend à la
-                  // ligne suivante plutôt que de s'écraser.
+                  // Never compressed: too cramped, the chip drops to the
+                  // next line rather than being squashed.
                   style={{
                     display: "inline-flex",
                     maxWidth: "100%",
@@ -271,8 +271,8 @@ export default function ChipPicker<T extends ChipOption>({
       </Popover.Target>
 
       <Popover.Dropdown p={separated ? 0 : 6}>
-        {/* Séparées, les lignes le sont aussi de la recherche : un filet d'un
-            bord à l'autre sous l'en-tête. */}
+        {/* When separated, the rows are also separated from the search: a border
+            from edge to edge under the header. */}
         {separated
           ? header && (
               <div
@@ -285,34 +285,34 @@ export default function ChipPicker<T extends ChipOption>({
               </div>
             )
           : header}
-        {/* Un texte vide ne dit rien : la place reste à ce qui suit la liste. */}
+        {/* An empty text says nothing: the room goes to what follows the list. */}
         {listOptions.length === 0 && emptyText && (
           <Text size="sm" c="dimmed" p="xs">
             {emptyText}
           </Text>
         )}
-        {/* La barre fine des autres listes de l'application (ListItems). */}
+        {/* The thin bar of the application's other lists (ListItems). */}
         <ScrollArea.Autosize
           mah={maxHeight}
           type="auto"
           scrollbars="y"
           scrollbarSize={2}
-          // Le contenu d'une zone de défilement s'élargit d'ordinaire à son
-          // texte (« min-width: min-content ») : une adresse longue repoussait
-          // le bout de la ligne — l'origine de l'annuaire — hors de la liste.
-          // Tenu à sa largeur, il tronque.
+          // A scroll area's content usually widens to its
+          // text ("min-width: min-content"): a long address pushed
+          // the end of the row — the directory origin — out of the list.
+          // Held to its width, it truncates.
           styles={{ content: { display: "block", minWidth: 0 } }}
         >
           <div ref={contentRef}>
             {listOptions.length > 0 && (
               <Stack gap={separated ? 0 : 2}>
                 {listOptions.map((option, rank) =>
-                  // Deux mises en page. Sans rôle propre au clic, l'élément est
-                  // le libellé de la case : cliquer l'un ou l'autre coche. Avec
-                  // un rôle propre (les étiquettes se modifient), l'élément vit à
-                  // côté de la case et garde ses propres clics — un champ de
-                  // saisie logé dans un libellé de case ne se laisserait ni
-                  // remplir ni sélectionner.
+                  // Two layouts. Without its own click role, the element is
+                  // the checkbox's label: clicking either checks. With
+                  // its own role (labels are edited), the element lives
+                  // beside the checkbox and keeps its own clicks — an input
+                  // field housed in a checkbox label could be neither
+                  // filled nor selected.
                   onOptionClick ? (
                     <Group
                       key={option.id}
@@ -331,8 +331,8 @@ export default function ChipPicker<T extends ChipOption>({
                         styles={{ input: { cursor: "pointer" } }}
                         aria-label={option.name}
                       />
-                      {/* Un clic coche, comme sur la case ; un double clic
-                          ouvre le rôle propre sans rien cocher. */}
+                      {/* A click checks, as on the checkbox; a double click
+                          opens the own role without checking anything. */}
                       <div
                         onClick={(e) => {
                           forgetClick();
@@ -377,8 +377,8 @@ export default function ChipPicker<T extends ChipOption>({
                       px={separated ? SEPARATED_INSET : 4}
                       py={separated ? 8 : 4}
                       style={rule(rank)}
-                      // Le reste des attributs va à la case elle-même : la
-                      // marque de ligne se pose sur son conteneur.
+                      // The rest of the attributes goes to the checkbox itself: the
+                      // row mark is placed on its container.
                       wrapperProps={{ "data-row": true }}
                     />
                   ),

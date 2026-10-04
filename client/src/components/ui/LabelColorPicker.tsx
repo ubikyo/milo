@@ -3,15 +3,15 @@ import { useState } from "react";
 import { LABEL_COLORS, LABEL_HUES } from "@milo/shared";
 import { useLabelColors } from "./LabelChip";
 
-// La pastille qui ouvre le choix des couleurs d'une étiquette. Les couleurs se
-// passent d'intitulé : une couleur se reconnaît.
-// « withinPortal » est à couper lorsque la pastille vit déjà dans un autre
-// panneau flottant : sorti en portail, son choix de couleurs compterait comme
-// un clic au dehors et refermerait le panneau qui la porte.
+// The swatch that opens the color choice of a label. Colors need no caption: a
+// color is recognized on sight. "withinPortal" must be turned off when the
+// swatch already lives in another floating panel: rendered in a portal, its
+// color choice would count as a click outside and close the panel that carries
+// it.
 /**
- * La couleur en place se reconnaît à sa bordure blanche. Elle se pose en
- * enfant de la pastille : Mantine place les enfants au-dessus de ses calques
- * de couleur, qui recouvriraient un contour posé sur la pastille elle-même.
+ * The current color is recognized by its white border. It is placed as a child
+ * of the swatch: Mantine places children above its color layers, which would
+ * cover an outline set on the swatch itself.
  */
 export function SelectionBorder() {
   return (
@@ -48,9 +48,9 @@ export default function LabelColorPicker({
       onChange={setOpened}
       position="bottom-start"
       withinPortal={withinPortal}
-      // Restée sur place, la palette se ferait rogner par le défilement de la
-      // liste qui la porte : « fixed » la sort de ce découpage sans la sortir
-      // du panneau, dont elle doit rester un morceau.
+      // Left in place, the palette would be clipped by the scrolling of the
+      // list that carries it: "fixed" takes it out of that clipping without
+      // taking it out of the panel, of which it must remain a part.
       floatingStrategy={withinPortal ? undefined : "fixed"}
       shadow="md"
     >
@@ -60,8 +60,8 @@ export default function LabelColorPicker({
           type="button"
           color={colors(color).backgroundColor}
           size={18}
-          // Le clic ouvre la palette et rien d'autre : la ligne qui porte la
-          // pastille a son propre rôle au clic.
+          // The click opens the palette and nothing else: the row that carries
+          // the swatch has its own click role.
           onClick={(e) => {
             e.stopPropagation();
             setOpened((o) => !o);
@@ -71,7 +71,7 @@ export default function LabelColorPicker({
         />
       </Popover.Target>
       <Popover.Dropdown p="xs">
-        {/* Une matrice : chaque colonne une teinte, chaque ligne une nuance. */}
+        {/* A matrix: each column a hue, each row a shade. */}
         <SimpleGrid cols={LABEL_HUES.length} spacing={4}>
           {LABEL_COLORS.map((c) => (
             <ColorSwatch

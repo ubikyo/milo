@@ -4,19 +4,19 @@ import { api } from "../../api";
 import { FIELD_BG } from "../ui/RichText";
 import type { DirectoryUser } from "@milo/shared";
 
-// Une ligne « CC » ou « CCI » d'une réponse : les adresses retenues en tags,
-// chacun avec sa croix, et un champ qui cherche dans l'annuaire Entra. Une
-// adresse externe se tape telle quelle, et Entrée, la virgule ou le
-// point-virgule la posent.
+// A "CC" or "CCI" row of a reply: the retained addresses as tags,
+// each with its cross, and a field that searches the Entra directory. An
+// external address is typed as is, and Enter, comma or
+// semicolon commits it.
 
 const SEARCH_DELAY = 300;
 const SEARCH_MIN = 2;
 
-/** Une adresse e-mail, à peu près : de quoi écarter une faute de frappe. */
+/** An e-mail address, roughly: enough to rule out a typo. */
 export const isAddress = (text: string): boolean =>
   /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(text.trim());
 
-/** La largeur du libellé : « CC » et « CCI » alignent leur champ. */
+/** The label's width: "CC" and "CCI" align their field. */
 const LABEL_WIDTH = 36;
 
 interface RecipientsInputProps {
@@ -48,10 +48,10 @@ export default function RecipientsInput({ label, value, onChange }: RecipientsIn
     };
   }, [search]);
 
-  // Les personnes de l'annuaire, par leur adresse : c'est elle que le tag
-  // porte, et elle qui part dans l'e-mail. Une adresse n'y figure qu'une
-  // fois : l'annuaire peut rendre deux fiches pour la même, et la liste de
-  // Mantine refuse — en faisant tomber la page — deux options de même valeur.
+  // The people in the directory, by address: it is what the tag
+  // carries, and what goes into the e-mail. An address appears only once
+  // there: the directory may return two records for the same one, and Mantine's
+  // list refuses — crashing the page — two options with the same value.
   const suggestions = [
     ...new Map(
       directory
@@ -67,7 +67,7 @@ export default function RecipientsInput({ label, value, onChange }: RecipientsIn
       wrap="nowrap"
       px="xs"
       py={4}
-      // Le fond du reste de l'éditeur : la ligne en fait partie.
+      // The background of the rest of the editor: the row is part of it.
       style={{
         backgroundColor: FIELD_BG,
         borderBottom: "1px solid light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-4))",
@@ -83,15 +83,15 @@ export default function RecipientsInput({ label, value, onChange }: RecipientsIn
         aria-label={label}
         placeholder={value.length ? undefined : "Nom ou adresse e-mail"}
         value={value}
-        // Seules les adresses bien formées deviennent des tags : un nom tapé
-        // sans choisir la personne dans la liste ne part nulle part.
+        // Only well-formed addresses become tags: a name typed
+        // without choosing the person in the list goes nowhere.
         onChange={(tags) =>
           onChange([...new Set(tags.map((t) => t.trim().toLowerCase()).filter(isAddress))])
         }
         searchValue={search}
         onSearchChange={setSearch}
         data={suggestions}
-        // L'annuaire a déjà cherché : la liste ne se refiltre pas sur ce qu'on tape.
+        // The directory has already searched: the list is not re-filtered on what is typed.
         filter={({ options }) => options}
         splitChars={[",", ";", " "]}
         clearable={false}

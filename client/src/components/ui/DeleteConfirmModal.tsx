@@ -11,12 +11,12 @@ interface DeleteConfirmModalProps {
   title: ReactNode;
   message: ReactNode;
   confirmLabel?: string;
-  /** « Fermer » par défaut ; à changer quand l'action elle-même s'appelle ainsi. */
+  /** "Fermer" by default; change it when the action itself is named so. */
   cancelLabel?: string;
   confirmColor?: string;
   /**
-   * Ouverte depuis une liste déroulante restée ouverte (un Popover, au-dessus
-   * des fenêtres par défaut) : il lui faut passer devant.
+   * Opened from a dropdown list that stays open (a Popover, above the default
+   * windows): it needs to go in front.
    */
   zIndex?: number;
 }
@@ -43,7 +43,7 @@ export default function DeleteConfirmModal({
       withCloseButton={false}
       styles={modalHeaderStyles(MODAL_PADDING)}
     >
-      {/* Espace sous le texte égal au padding haut de la fenêtre. */}
+      {/* Space under the text equal to the window's top padding. */}
       <Text size="sm" mb={MODAL_PADDING}>
         {message}
       </Text>

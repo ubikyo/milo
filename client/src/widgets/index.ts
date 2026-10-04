@@ -1,10 +1,10 @@
-// Le registre des widgets du mode Accès.
+// The registry of the Access mode's widgets.
 //
-// Un seul endroit les connaît : le tiroir des widgets y prend sa liste, la colonne
-// y prend l'affichage d'un élément, le tiroir y prend ses champs. Ajouter une
-// sorte d'élément se fait donc en deux gestes — un fichier à côté, une ligne
-// ici — et une valeur de plus dans « ACCESS_BLOCK_TYPES » (shared/domain.ts),
-// qui est ce que la base range.
+// Only one place knows them: the widget drawer takes its list from it, the
+// column takes the display of an element from it, the drawer takes its fields
+// from it. Adding a kind of element is therefore done in two steps — a file
+// next to it, a line here — and one more value in "ACCESS_BLOCK_TYPES"
+// (shared/domain.ts), which is what the database stores.
 
 import { calendarWidget } from "./calendar";
 import { categoryWidget } from "./category";
@@ -20,7 +20,7 @@ import { todoWidget } from "./todo";
 import type { AccessWidget } from "./types";
 import type { AccessBlockType } from "@milo/shared";
 
-/** Dans l'ordre où le tiroir des widgets les présente. */
+/** In the order in which the widget drawer presents them. */
 export const WIDGETS: AccessWidget[] = [
   categoryWidget,
   subcategoryWidget,
@@ -38,8 +38,8 @@ export const WIDGETS: AccessWidget[] = [
 const BY_TYPE = new Map<AccessBlockType, AccessWidget>(WIDGETS.map((p) => [p.type, p]));
 
 /**
- * Le widget qui sait lire cet élément, ou « undefined » : un type rangé par
- * une version qui en connaissait un de plus n'a pas à faire tomber la page.
+ * The widget that can read this element, or "undefined": a type stored by a
+ * version that knew one more must not bring the page down.
  */
 export const widgetFor = (type: AccessBlockType): AccessWidget | undefined => BY_TYPE.get(type);
 

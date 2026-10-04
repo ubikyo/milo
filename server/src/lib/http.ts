@@ -1,11 +1,11 @@
-// Les erreurs de l'API.
+// API errors.
 //
-// Chaque route répondait elle-même son code et son message, ligne après ligne
-// (« return res.status(404).json({ error: "…" }) »), ce qui mêlait le contrôle
-// des données au rendu de la réponse et faisait retourner des valeurs à des
-// fonctions qui n'en ont pas. Une route lève désormais, et un seul endroit
-// écrit la réponse (middleware/errors.ts). better-sqlite3 étant synchrone,
-// Express récupère la levée sans rien de particulier.
+// Each route used to answer with its own code and message, line after line
+// ("return res.status(404).json({ error: "…" })"), which mixed data checking
+// with response rendering and made functions return values when they have
+// none to return. A route now throws, and a single place writes the response
+// (middleware/errors.ts). Since better-sqlite3 is synchronous, Express
+// catches the throw with nothing special.
 
 export class HttpError extends Error {
   constructor(
@@ -21,7 +21,7 @@ export const fail = (status: number, message: string): never => {
   throw new HttpError(status, message);
 };
 
-/** La valeur, ou une erreur 404 si elle manque. Le cas le plus fréquent. */
+/** The value, or a 404 error if it is missing. The most frequent case. */
 export function orNotFound<T>(value: T | undefined | null, message: string): T {
   if (value === undefined || value === null) throw new HttpError(404, message);
   return value;
@@ -33,9 +33,9 @@ export const forbidden = (message: string): never => fail(403, message);
 export const notFound = (message: string): never => fail(404, message);
 
 /**
- * Un élément de référence — étiquette, catégorie, société, type de jalons,
- * rôle — ne se supprime pas tant que quelque chose le porte : la suppression
- * est refusée, et le message dit combien de ressources l'utilisent.
+ * A reference item — label, category, company, milestone type, role — cannot
+ * be deleted as long as something carries it: the deletion is refused, and
+ * the message says how many resources use it.
  */
 export const refuseIfUsed = (name: string, uses: number): void => {
   if (uses <= 0) return;
@@ -46,13 +46,13 @@ export const refuseIfUsed = (name: string, uses: number): void => {
   );
 };
 
-/** Un texte obligatoire, débarrassé de ses espaces. */
+/** A required text, stripped of its spaces. */
 export const requireText = (value: unknown, message: string): string => {
   const text = String(value ?? "").trim();
   if (!text) badRequest(message);
   return text;
 };
 
-/** Une liste d'identifiants reçue du client, quel que soit le type des valeurs. */
+/** A list of ids received from the client, whatever the type of the values. */
 export const toIds = (value: unknown): number[] =>
   Array.isArray(value) ? value.map(Number).filter(Number.isFinite) : [];

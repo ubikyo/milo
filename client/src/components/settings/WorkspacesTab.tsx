@@ -28,35 +28,35 @@ import type { Workspace } from "@milo/shared";
 
 interface WorkspacesTabProps {
   workspaces: Workspace[];
-  /** Relit la liste — et le compte, dont le sélecteur la propose. */
+  /** Re-reads the list — and the account, whose selector offers it. */
   onChanged: () => Promise<void>;
-  /** Relit le compte, après un changement des accès : le sélecteur en dépend. */
+  /** Re-reads the account, after an access change: the selector depends on it. */
   onAccessChanged: () => void;
 }
 
 /**
- * Les workspaces : une équipe chacun, avec ses vues, ses tableaux et ses
- * contextes, isolés de ceux des autres. Ils se présentent comme les listes
- * des tiroirs (ChampsColonnes) : une ligne par workspace, son nom à même la
- * ligne. Le clic droit ouvre ses accès ou le supprime — le dernier ne se
- * supprime pas ; « Ajouter » pose une ligne vide au bout, créée dès qu'elle a
- * un nom.
+ * The workspaces: one team each, with its views, boards and
+ * contexts, isolated from the others'. They look like the drawer
+ * lists (ColumnFields): one row per workspace, its name inline in the
+ * row. Right-click opens its access or deletes it — the last one cannot be
+ * deleted; "Ajouter" adds an empty row at the end, created as soon as it has
+ * a name.
  */
 export default function WorkspacesTab({
   workspaces,
   onChanged,
   onAccessChanged,
 }: WorkspacesTabProps) {
-  // Le workspace dont la fenêtre des accès est ouverte.
+  // The workspace whose access modal is open.
   const [accessOf, setAccessOf] = useState<Workspace | null>(null);
   const [toDelete, setToDelete] = useState<Workspace | null>(null);
   const [menu, setMenu] = useState<{ workspace: Workspace; position: PointMenuPosition } | null>(
     null,
   );
-  // La ligne ajoutée, en attente de son nom.
+  // The added row, waiting for its name.
   const [adding, setAdding] = useState(false);
-  // Le nombre d'accès de chaque workspace : les utilisateurs et les groupes
-  // qui y ont un droit. Relus à la fermeture de leur fenêtre.
+  // The number of accesses of each workspace: the users and groups
+  // that have a right there. Re-read when their modal closes.
   const [access, setAccess] = useState<Record<number, number>>({});
 
   const readAccess = useCallback(async () => {
@@ -87,7 +87,7 @@ export default function WorkspacesTab({
 
   return (
     <Stack gap="sm">
-      {/* 15 px de plus que l'écart de la pile avant la liste. */}
+      {/* 15 px more than the stack gap before the list. */}
       <Text size="sm" c="dimmed" mb={15}>
         Un workspace naît avec une vue et son tableau, sans aucun accès :
         chacun a les siens, à régler par un clic droit sur sa ligne.
@@ -115,15 +115,15 @@ export default function WorkspacesTab({
                     if (name && name !== w.name) void write(() => api.updateWorkspace(w.id, name));
                   }}
                 />
-                {/* Ses accès : leur nombre, et leur fenêtre au clic. */}
+                {/* Its accesses: their number, and their modal on click. */}
                 {access[w.id] !== undefined && (
                   <RowButton
                     icon={IconUsers}
                     onClick={() => setAccessOf(w)}
-                    // À 5 px du bout de la ligne, retrait compris.
+                    // 5 px from the end of the row, padding included.
                     rightMargin={5 - ROW_INSET}
                   >
-                    {/* « accès » est invariable. */}
+                    {/* "accès" is invariable (same singular and plural in French). */}
                     {`${access[w.id]} accès`}
                   </RowButton>
                 )}
@@ -140,7 +140,7 @@ export default function WorkspacesTab({
                   placeholder="Nom du workspace"
                   label="Nom du nouveau workspace"
                   autoFocus
-                  // Quittée sans nom, la ligne s'efface ; nommée, elle est créée.
+                  // Left without a name, the row disappears; named, it is created.
                   onValidate={(name) => {
                     setAdding(false);
                     if (name) void write(() => api.createWorkspace(name));
@@ -150,7 +150,7 @@ export default function WorkspacesTab({
             )}
           </Stack>
         )}
-        {/* Au plus près de la liste qu'il allonge. */}
+        {/* As close as possible to the list it extends. */}
         <AddButton label="Ajouter un workspace" onClick={() => setAdding(true)} mt={4} />
       </div>
 
@@ -208,13 +208,13 @@ export default function WorkspacesTab({
         }}
         title={`Accès — ${accessOf?.name ?? ""}`}
         centered
-        // Un fondu sur place, sans glisser : de la taille du Paramétrage et
-        // au même endroit, elle paraît par-dessus lui. Sans voile non plus :
-        // celui du Paramétrage est déjà derrière.
+        // A fade in place, without sliding: the size of Settings and
+        // in the same spot, it appears on top of it. No overlay either:
+        // Settings' is already behind.
         transitionProps={{ transition: "fade" }}
         withOverlay={false}
-        // La taille du Paramétrage, d'où elle s'ouvre : la liste défile dans
-        // sa hauteur, « Fermer » reste en bas.
+        // The size of Settings, from where it opens: the list scrolls within
+        // its height, "Fermer" stays at the bottom.
         size={SETTINGS_WIDTH}
         padding={SETTINGS_PADDING}
         withCloseButton={false}

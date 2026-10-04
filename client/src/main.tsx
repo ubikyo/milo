@@ -1,20 +1,20 @@
 import "@mantine/core/styles.css";
-// Feuille de l'éditeur de texte enrichi, posée après celle du cœur.
+// Stylesheet of the rich text editor, placed after the core one.
 import "@mantine/tiptap/styles.css";
-// Feuille des sélecteurs de date (échéance d'un élément de checklist).
+// Stylesheet of the date pickers (due date of a checklist item).
 import "@mantine/dates/styles.css";
-// Feuille des notifications de suivi, en bas à droite.
+// Stylesheet of the follow notifications, at bottom right.
 import "@mantine/notifications/styles.css";
-// Feuille des graphiques : ceux des indicateurs.
+// Stylesheet of the charts: those of the indicators.
 import "@mantine/charts/styles.css";
-// Posée après celles de Mantine : elle en reprend l'anneau de focus.
-// Le curseur gris de toutes les barres de défilement.
+// Placed after Mantine's: it takes over its focus ring.
+// The gray thumb of all scrollbars.
 import "./assets/styles/scrollbars.css";
-// Le survol des lignes des grilles, un cran plus sombre.
+// The hover of grid rows, a notch darker.
 import "./assets/styles/tables.css";
-// Ni sélection ni menu du navigateur, hors Debug.
+// Neither selection nor browser menu, outside Debug.
 import "./assets/styles/no-select.css";
-import "./assets/styles/no-borders.css"; // ESSAI TEMPORAIRE : champs sans bordure
+import "./assets/styles/no-borders.css"; // TEMPORARY TEST: borderless fields
 
 import { ColorSchemeScript, MantineProvider, createTheme } from "@mantine/core";
 import type { MantineColorsTuple } from "@mantine/core";
@@ -27,12 +27,12 @@ import App from "./App";
 import { BLUE, FOCUS_BORDER, ORANGE, PALETTE_RED, PALETTE_GREEN } from "./themes/colors";
 import Favicon from "./components/ui/Favicon";
 
-// Tous les champs de saisie de Mantine : chacun lit « --input-bd-focus » pour
-// la bordure qu'il prend au focus, et chacun la tire de la couleur primaire —
-// donc du bleu. On la remplace par notre gris, composant par composant, parce
-// que c'est là que Mantine la pose. Passer par le thème plutôt que par une
-// feuille de style évite de viser des classes compilées, dont le nom change
-// d'une version à l'autre.
+// All of Mantine's input fields: each reads "--input-bd-focus" for the
+// border it takes on focus, and each draws it from the primary color —
+// hence blue. We replace it with our gray, component by component, because
+// that is where Mantine sets it. Going through the theme rather than a
+// stylesheet avoids targeting compiled classes, whose name changes
+// from one version to the next.
 const FIELDS = [
   "Input",
   "InputBase",
@@ -51,11 +51,11 @@ const FIELDS = [
   "TimeInput",
 ];
 
-// Sauf pour une saisie sur place — renommer une catégorie, une étiquette, une
-// carte. Ces champs n'ont pas de cadre (« variant unstyled ») et Mantine met
-// leur « --input-bd-focus » à transparent : ils ne doivent pas s'encadrer au
-// clic, sans quoi la ligne changerait d'aspect à la moindre saisie. Notre gris
-// le rétablissait pour tout le monde.
+// Except for in-place input — renaming a category, a label, a
+// card. These fields have no frame ("variant unstyled") and Mantine sets
+// their "--input-bd-focus" to transparent: they must not get framed on
+// click, otherwise the row would change appearance on the slightest input. Our gray
+// was restoring it for everyone.
 const fieldsWithoutBlue = Object.fromEntries(
   FIELDS.map((name) => [
     name,
@@ -68,15 +68,15 @@ const fieldsWithoutBlue = Object.fromEntries(
   ]),
 );
 
-/** Une palette Mantine dont les dix nuances sont la même couleur. */
+/** A Mantine palette whose ten shades are the same color. */
 const singleShade = (color: string): MantineColorsTuple =>
   Array.from({ length: 10 }, () => color) as unknown as MantineColorsTuple;
 
 const theme = createTheme({
   primaryColor: "blue",
-  // Un seul rouge, un seul orange, un seul vert, un seul bleu
-  // (themes/colors.ts). Le teal, qui est le vert des actions et des liens,
-  // prend le même que « green ».
+  // A single red, a single orange, a single green, a single blue
+  // (themes/colors.ts). Teal, which is the green of actions and links,
+  // takes the same as "green".
   colors: {
     blue: singleShade(BLUE),
     red: singleShade(PALETTE_RED),
@@ -84,22 +84,22 @@ const theme = createTheme({
     green: singleShade(PALETTE_GREEN),
     teal: singleShade(PALETTE_GREEN),
   },
-  // Seuil à partir duquel Mantine juge un fond « clair » et pose du texte
-  // noir dessus (« autoContrast »). Le sien, 0.3, bascule au noir dès le vert
-  // et l'orange, alors qu'on les veut en blanc ; à 0.45, seuls le jaune, le
-  // gris clair et le blanc restent assez lumineux pour l'exiger.
+  // Threshold from which Mantine deems a background "light" and puts black
+  // text on it ("autoContrast"). Its own, 0.3, flips to black as early as green
+  // and orange, whereas we want them in white; at 0.45, only yellow, light
+  // gray and white remain luminous enough to require it.
   luminanceThreshold: 0.45,
-  // Aucun anneau de focus sur les boutons, les onglets ni les tuiles : un
-  // tiroir ou une boîte qui s'ouvre donne le focus à son premier bouton, et
-  // l'entourait de bleu sans que personne n'ait navigué au clavier.
+  // No focus ring on buttons, tabs or tiles: a
+  // drawer or dialog that opens gives focus to its first button, and
+  // surrounded it with blue without anyone having navigated by keyboard.
   focusRing: "never",
   components: {
     ...fieldsWithoutBlue,
-    // Tous les liens en vert.
+    // All links in green.
     Anchor: { defaultProps: { c: "teal" } },
-    // Les lignes entre les rangées de toutes les grilles, deux tons plus foncés
-    // que ceux de Mantine (gray-3 / dark-4) : elles séparaient à peine les
-    // lignes. Les grilles sans filets (withRowBorders={false}) n'en ont pas.
+    // The lines between the rows of all grids, two tones darker
+    // than Mantine's (gray-3 / dark-4): they barely separated the
+    // rows. Grids without rules (withRowBorders={false}) have none.
     Table: {
       vars: () => ({
         table: {
@@ -107,8 +107,8 @@ const theme = createTheme({
             "light-dark(var(--mantine-color-gray-5), var(--mantine-color-dark-6))",
         },
       }),
-      // Le filet sous les entêtes garde la couleur de Mantine : il sépare les
-      // libellés des données, pas une ligne de la suivante.
+      // The rule under the headers keeps Mantine's color: it separates the
+      // labels from the data, not one row from the next.
       styles: {
         thead: {
           "--table-border-color":
@@ -116,40 +116,40 @@ const theme = createTheme({
         } as React.CSSProperties,
       },
     },
-    // Une case cochée prend le vert des actions de l'application, comme les
-    // interrupteurs et les boutons « Ajouter ».
+    // A checked box takes the green of the application's actions, like the
+    // switches and the "Ajouter" buttons.
     Checkbox: { defaultProps: { color: "teal" } },
-    // Des menus aux angles plus vifs que le reste (« xs » au lieu du « sm »
-    // par défaut) : le rayon vaut pour le menu et pour ses lignes au survol.
+    // Menus with sharper corners than the rest ("xs" instead of the default
+    // "sm"): the radius applies to the menu and to its rows on hover.
     Menu: { defaultProps: { radius: "xs" } },
-    // Onglets encadrés type dossier partout ; l'accent de l'onglet actif est
-    // posé par tabStyle (tabs.js).
+    // Framed folder-style tabs everywhere; the active tab's accent is
+    // set by tabStyle (tabs.js).
     Tabs: {
       defaultProps: { variant: "outline" },
-      // Mantine centre le libellé dans l'onglet (« flex: 1 » et
-      // « text-align: center » sur le libellé) : on le remet à gauche, contre
-      // son icône. Les onglets sont taillés sur leur texte, sauf les onglets
-      // verticaux des réglages, où le centrage se voyait.
+      // Mantine centers the label in the tab ("flex: 1" and
+      // "text-align: center" on the label): we put it back on the left, against
+      // its icon. Tabs are cut to fit their text, except the vertical
+      // settings tabs, where the centering showed.
       styles: { tabLabel: { textAlign: "left" } },
     },
   },
 });
 
-// La racine est dans index.html : sans elle, rien à monter.
+// The root is in index.html: without it, nothing to mount.
 const root = document.getElementById("root");
 if (!root) throw new Error("Élément #root introuvable");
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <ColorSchemeScript defaultColorScheme="auto" />
-    {/* "auto" suit le thème du système ; le choix de l'utilisateur est mémorisé
-        par Mantine dans le localStorage du navigateur. */}
+    {/* "auto" follows the system theme; the user's choice is remembered
+        by Mantine in the browser's localStorage. */}
     <MantineProvider theme={theme} defaultColorScheme="auto">
-      {/* Les calendriers parlent français et ouvrent la semaine le lundi. */}
+      {/* Calendars speak French and start the week on Monday. */}
       <DatesProvider settings={{ locale: "fr", firstDayOfWeek: 1 }}>
         <Favicon />
-        {/* Les notifications de suivi s'empilent en bas à droite, hors du
-            chemin de la barre de modes qui occupe le bas à gauche. */}
+        {/* Follow notifications stack at bottom right, out of the
+            way of the mode bar that occupies the bottom left. */}
         <Notifications position="bottom-right" limit={4} />
         <App />
       </DatesProvider>

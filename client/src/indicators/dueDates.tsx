@@ -5,9 +5,9 @@ import { dueState } from "../lib/due";
 import { ongoing, NAME, Nothing, IndicatorTitle } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 
-// Où en sont les échéances des demandes en cours : celles qui sont passées,
-// celles qui approchent, celles qui ont le temps, et celles qui n'en ont pas.
-// La règle de « bientôt » est celle des cartes (lib/echeance).
+// Where the due dates of open requests stand: those that are past,
+// those approaching, those with time, and those without any.
+// The "soon" rule is that of cards (lib/due).
 
 const LABEL = "Échéances";
 

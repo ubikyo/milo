@@ -1,22 +1,22 @@
-// La relève des boîtes de support : chaque e-mail reçu dans une boîte qu'une
-// liste de demandes reçoit (repositories/receptions.ts) devient une demande du
-// contexte que la liste lui associe.
+// Polling of the support inboxes: every e-mail received in an inbox that a
+// request list receives (repositories/inboxes.ts) becomes a request in the
+// context the list associates with it.
 //
-// Rien n'est retiré des boîtes : les messages y restent tels quels, ni
-// supprimés, ni déplacés, ni marqués comme lus. C'est l'identifiant Internet
-// de chaque message, gardé sur la demande, qui empêche de l'importer deux fois.
+// Nothing is removed from the inboxes: messages stay there as they are, neither
+// deleted, nor moved, nor marked as read. It is the Internet identifier of
+// each message, kept on the request, that prevents importing it twice.
 //
-// Un e-mail qui répond à une demande — il cite l'un de ses messages dans ses
-// en-têtes, porte son numéro dans l'objet, ou arrive dans sa conversation —
-// rejoint son fil au lieu d'ouvrir un nouveau ticket.
+// An e-mail that replies to a request — it cites one of its messages in its
+// headers, carries its number in the subject, or arrives in its conversation —
+// joins its thread instead of opening a new ticket.
 //
-// L'e-mail est gardé tel qu'il a été écrit : son HTML, ses images intégrées et
-// ses pièces jointes, rangées dans le dossier des tickets (lib/ticket-files.ts).
+// The e-mail is kept as it was written: its HTML, its embedded images and its
+// attachments, stored in the tickets folder (lib/ticket-files.ts).
 //
-// La relève passe par la delta query de Graph : chaque boîte garde le lien
-// que Graph lui a rendu la dernière fois, et n'apprend que ce qui est arrivé
-// depuis. Elle a lieu à intervalle régulier, et aussitôt qu'une notification
-// de changement de Graph annonce un e-mail (lib/support-webhooks.ts).
+// Polling goes through Graph's delta query: each inbox keeps the link Graph
+// returned last time, and learns only what has arrived since. It runs at
+// regular intervals, and as soon as a Graph change notification announces an
+// e-mail (lib/support-webhooks.ts).
 
 import {
   DEFAULT_SUPPORT_STATUS,
@@ -72,10 +72,10 @@ const PARIS_DAY = new Intl.DateTimeFormat("en-CA", {
 });
 
 /**
- * L'échéance d'une demande reçue à cet instant : autant de jours ouvrés après
- * le jour de réception, à Paris, que le Paramétrage en demande (Support). Sans
- * heure — minuit, qui se lit « la journée entière ». Vide si le réglage est à
- * zéro.
+ * The due date of a request received at this instant: as many working days
+ * after the day of receipt, in Paris, as the Settings ask for (Support).
+ * Without a time — midnight, which reads as "la journée entière". Empty if
+ * the setting is zero.
  */
 const defaultDue = (received: string): string => {
   const { default_due_days: days } = supportSettings();
@@ -87,29 +87,29 @@ const defaultDue = (received: string): string => {
 };
 
 /**
- * La première relève d'une boîte — sans lien delta — voit toute la boîte de
- * réception. Le temps de la mise au point, seuls les quinze derniers messages
- * en sont importés ; les suivantes importent tout ce qui arrive.
+ * An inbox's first poll — without a delta link — sees the whole inbox. While
+ * debugging, only the last fifteen messages are imported; later polls import
+ * everything that arrives.
  */
 const FIRST_POLL_LIMIT = 15;
 
-/** Le lien delta de chaque boîte, par adresse en minuscules. */
+/** Each inbox's delta link, by lowercase address. */
 const DELTA_KEY = "support_mail_delta";
 type LinksDelta = Record<string, string>;
 
-/** Le temps entre deux relèves. */
+/** The time between two polls. */
 export const POLL_INTERVAL = 5 * 60 * 1000;
 
 
-/** La date de réception, ramenée à l'ISO de la base ; l'instant présent à défaut. */
+/** The received date, converted to the database's ISO; the present moment by default. */
 const dateOf = (iso: string): string => {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? now() : date.toISOString();
 };
 
 /**
- * Un e-mail déjà là dans cette liste : l'origine d'une demande, ou un message
- * d'un fil. Une autre liste qui reçoit la même boîte a le sien.
+ * An e-mail already present in this list: a request's origin, or a message
+ * of a thread. Another list that receives the same inbox has its own.
  */
 const alreadyImported = (inbox: Inbox, mailId: string): boolean =>
   Boolean(
@@ -117,38 +117,38 @@ const alreadyImported = (inbox: Inbox, mailId: string): boolean =>
       supportRequests.mailAlreadyFiled.get(inbox.value, inbox.list, mailId),
   );
 
-/** L'e-mail du code de confirmation (lib/optin.ts) : Milo l'a envoyé, ce n'est pas une demande. */
+/** The confirmation code e-mail (lib/optin.ts): Milo sent it, it is not a request. */
 const isConfirmation = (mail: ReceivedMail): boolean =>
   mail.subject.trim() === CONFIRMATION_SUBJECT &&
   mail.from_email.toLowerCase() === sendingAddress().toLowerCase();
 
-/** Ce qu'un e-mail apporte, une fois ses fichiers rangés. */
+/** What an e-mail brings, once its files are stored. */
 interface Prepared {
   html: string;
   /**
-   * Le même, sans l'historique cité : ce que garde une réponse, pour que le
-   * fil ne répète pas à chaque message tous ceux qui le précèdent. Vide quand
-   * on ne sait pas le détacher.
+   * The same, without the quoted history: what a reply keeps, so that the
+   * thread does not repeat all the preceding messages at each message. Empty
+   * when it cannot be detached.
    */
   htmlWithoutHistory: string;
   files: TicketFileRow[];
-  /** Les identifiants Internet qu'il cite : In-Reply-To, References. */
+  /** The Internet identifiers it cites: In-Reply-To, References. */
   cited: string[];
 }
 
 /**
- * Va chercher ce que la delta query ne donne pas — les en-têtes qui citent les
- * e-mails précédents, les fichiers — et range les fichiers. Asynchrone, donc
- * hors de la transaction qui importe : ce qui est rangé ici et ne sert pas
- * finalement est effacé par l'appelant.
+ * Fetches what the delta query does not give — the headers citing previous
+ * e-mails, the files — and stores the files. Asynchronous, hence outside the
+ * importing transaction: what is stored here and ends up unused is deleted by
+ * the caller.
  */
 const prepareMail = async (mailbox: string, mail: ReceivedMail): Promise<Prepared> => {
   const details = await mailDetails(mailbox, mail.graph_id).catch(() => null);
   const cited = details?.cited ?? [];
   if (details?.conversation_id) mail.conversation_id = details.conversation_id;
 
-  // Une image intégrée ne compte pas comme pièce jointe pour Graph : le corps
-  // qui en cite une suffit à aller voir.
+  // An embedded image does not count as an attachment for Graph: a body that
+  // cites one is enough to go and look.
   const hasFiles =
     mail.has_attachments || Boolean(details?.has_attachments) || /cid:/i.test(mail.body);
   const received = hasFiles
@@ -158,7 +158,7 @@ const prepareMail = async (mailbox: string, mail: ReceivedMail): Promise<Prepare
   const images = new Map<string, string>();
   const files: TicketFileRow[] = received.map((received) => {
     const file = writeTicket(received.content, received.name);
-    // Une image que le corps cite est intégrée, quoi qu'en dise Graph.
+    // An image the body cites is embedded, whatever Graph says.
     const cited = Boolean(received.content_id) && mail.body.includes(`cid:${received.content_id}`);
     if (received.content_id) images.set(received.content_id, ticketUrl(file));
     return { file, name: received.name, mime: received.mime, size: received.size, inline: cited || (received.inline && Boolean(received.content_id)) };
@@ -166,8 +166,8 @@ const prepareMail = async (mailbox: string, mail: ReceivedMail): Promise<Prepare
 
   return {
     html: cleanEmail(mail.body, mail.body_type, images),
-    // Ce qu'Exchange détache de la conversation, recoupé aux repères des
-    // logiciels : son « uniqueBody » garde parfois le dernier message cité.
+    // What Exchange detaches from the conversation, cross-checked against the
+    // markers of mail clients: its "uniqueBody" sometimes keeps the last quoted message.
     htmlWithoutHistory: withoutHistoryOf(mail, details, images),
     files,
     cited,
@@ -175,9 +175,10 @@ const prepareMail = async (mailbox: string, mail: ReceivedMail): Promise<Prepare
 };
 
 /**
- * Le corps d'une réponse sans l'historique qu'elle cite : ce qu'Exchange en
- * détache (« uniqueBody »), recoupé aux repères des logiciels — Exchange garde
- * parfois le dernier message cité. Vide quand il n'y a rien à détacher.
+ * The body of a reply without the history it quotes: what Exchange detaches
+ * from it ("uniqueBody"), cross-checked against mail clients' markers —
+ * Exchange sometimes keeps the last quoted message. Empty when there is
+ * nothing to detach.
  */
 const withoutHistoryOf = (
   mail: ReceivedMail,
@@ -192,8 +193,8 @@ const withoutHistoryOf = (
 };
 
 /**
- * « [HLP-12] » dans un objet : le numéro d'un ticket auquel on répond. L'ancien
- * préfixe (« [LMA-12] ») reste reconnu, pour les fils ouverts avant.
+ * "[HLP-12]" in a subject: the number of a ticket being replied to. The old
+ * prefix ("[LMA-12]") is still recognized, for threads opened before.
  */
 const REFERENCE = new RegExp(
   `\\[(?:${[SUPPORT_TICKET_PREFIX, LEGACY_REFERENCE_PREFIX]
@@ -203,8 +204,8 @@ const REFERENCE = new RegExp(
 );
 
 /**
- * L'objet réduit à son sujet : sans « RE: », « TR: », « Fwd: » ni numéro de
- * ticket, sans casse ni espaces en trop.
+ * The subject reduced to its topic: without "RE:", "TR:", "Fwd:" or ticket
+ * number, without case or extra spaces.
  */
 const bareSubject = (subject: string): string =>
   subject
@@ -215,13 +216,13 @@ const bareSubject = (subject: string): string =>
     .toLowerCase();
 
 /**
- * La demande à laquelle un e-mail répond, s'il y en a une.
+ * The request an e-mail replies to, if there is one.
  *
- * Son numéro dans l'objet suffit : on l'y a mis exprès. Sinon, il faut qu'il
- * cite l'un de ses messages dans ses en-têtes, ou arrive dans sa
- * conversation — et qu'il parle encore du même sujet. Un e-mail parti d'un
- * ancien message dont on a changé l'objet ouvre un nouveau ticket : ses
- * en-têtes citent l'ancien, mais ce n'est plus la même demande.
+ * Its number in the subject is enough: it was put there on purpose. Otherwise,
+ * the e-mail must cite one of its messages in its headers, or arrive in its
+ * conversation — and still be about the same subject. An e-mail sent from an
+ * old message whose subject was changed opens a new ticket: its headers cite
+ * the old one, but it is no longer the same request.
  */
 const targetedRequest = (
   inbox: Inbox,
@@ -238,8 +239,8 @@ const targetedRequest = (
   const sameSubject = (request: SupportRequestRow | undefined) =>
     request && bareSubject(request.subject) === bareSubject(mail.subject) ? request : undefined;
 
-  // Le plus récent d'abord : References les range du plus ancien au plus
-  // récent, et In-Reply-To vient en premier.
+  // Most recent first: References lists them from oldest to most recent,
+  // and In-Reply-To comes first.
   for (const id of [...cited].reverse()) {
     const foundItem = sameSubject(supportRequests.citedByMail.get(mailbox, list, id, id));
     if (foundItem) return foundItem;
@@ -249,7 +250,7 @@ const targetedRequest = (
     : undefined;
 };
 
-/** Ce qu'une importation a fait, pour ce qui suit la transaction. */
+/** What an import did, for what follows the transaction. */
 interface FollowUp {
   replied?: SupportRequestRow;
   reopened?: boolean;
@@ -257,10 +258,10 @@ interface FollowUp {
 }
 
 /**
- * Un e-mail rejoint le fil de la demande à laquelle il répond, ou devient une
- * demande du contexte qui reçoit la boîte : son objet, son expéditeur pour acteur — le compte qui porte son
- * adresse, s'il y en a un —, et son contenu pour premier message. Rien si le
- * message était déjà là.
+ * An e-mail joins the thread of the request it replies to, or becomes a
+ * request of the context that receives the inbox: its subject, its sender as
+ * actor — the account carrying its address, if there is one —, and its
+ * content as first message. Nothing if the message was already there.
  */
 const importSections = transaction(
   (
@@ -268,21 +269,21 @@ const importSections = transaction(
     mail: ReceivedMail,
     prepare: Prepared,
     /**
-     * Reçoit la demande à laquelle l'e-mail répond, quand il en rejoint une —
-     * et si elle s'est rouverte —, ou celle qu'il a ouverte.
+     * Receives the request the e-mail replies to, when it joins one — and
+     * whether it was reopened —, or the one it opened.
      */
     followUp: FollowUp,
   ): boolean => {
     const received = dateOf(mail.received_at);
     const account = mail.from_email ? users.byEmail.get(mail.from_email) : undefined;
 
-    // Déjà importé — une autre relève l'a pris entre-temps : rien à faire, et
-    // surtout pas de numéro consommé pour rien.
+    // Already imported — another poll took it in the meantime: nothing to do,
+    // and above all no number consumed for nothing.
     if (alreadyImported(inbox, mail.mail_id)) return false;
 
-    // Une réponse ne garde que ce qu'elle apporte : l'historique qu'elle
-    // cite est déjà dans le fil. L'e-mail qui ouvre une demande, lui, se garde
-    // entier — ce qu'il cite, souvent un échange transféré, en fait partie.
+    // A reply keeps only what it brings: the history it cites is already in
+    // the thread. The e-mail that opens a request, on the other hand, is kept
+    // whole — what it cites, often a forwarded exchange, is part of it.
     const message = (requestId: Id, response: boolean) => {
       const html =
         response && hasContent(prepare.htmlWithoutHistory)
@@ -303,13 +304,13 @@ const importSections = transaction(
     };
 
     const targeted = targetedRequest(inbox, mail, prepare.cited);
-    // Une demande saisie à la main (sans boîte) se retrouve par son numéro
-    // depuis chaque liste : son fil ne prend l'e-mail qu'une fois.
+    // A request entered by hand (without an inbox) is found by its number
+    // from each list: its thread takes the e-mail only once.
     if (targeted && supportRequests.mailInThread.get(targeted.id, mail.mail_id)) return false;
     if (targeted) {
       message(targeted.id, true);
-      // L'expéditeur revient sur une demande qu'on croyait close : elle se
-      // rouvre, sinon sa réponse passerait inaperçue.
+      // The sender comes back on a request thought closed: it reopens,
+      // otherwise their reply would go unnoticed.
       const { changes: reopened } = supportRequests.reopen.run(
         REOPENED_SUPPORT_STATUS,
         received,
@@ -340,8 +341,8 @@ const importSections = transaction(
     if (!changes) return false;
 
     if (account) replaceSupportActors(lastInsertRowid as Id, [account.id]);
-    // Tout e-mail arrive avec les étiquettes du Paramétrage (Support) : c'est
-    // à qui le lit d'en juger autrement.
+    // Every e-mail arrives with the Settings labels (Support): it is up to
+    // whoever reads it to judge otherwise.
     replaceSupportLabels(lastInsertRowid as Id, supportSettings().default_label_ids);
     message(lastInsertRowid as Id, false);
     followUp.created = lastInsertRowid as Id;
@@ -350,9 +351,9 @@ const importSections = transaction(
 );
 
 /**
- * Ce qui est arrivé dans une boîte depuis la dernière relève, du plus ancien au
- * plus récent, et le lien delta à garder une fois tout importé. Un lien que
- * Graph ne reconnaît plus — trop ancien — fait repartir de zéro.
+ * What has arrived in an inbox since the last poll, from oldest to most
+ * recent, and the delta link to keep once everything is imported. A link
+ * Graph no longer recognizes — too old — restarts from zero.
  */
 const updates = async (
   mailbox: string,
@@ -366,7 +367,7 @@ const updates = async (
     result = await mailboxDelta(mailbox, link);
   } catch (error) {
     if (!link) throw error;
-    console.warn(`Relève de ${mailbox} : le lien delta ne vaut plus, la relève repart de zéro.`);
+    console.warn(`Poll of ${mailbox}: the delta link is no longer valid, restarting the poll from zero.`);
     result = await mailboxDelta(mailbox, null);
     first = true;
   }
@@ -385,11 +386,11 @@ const keepLink = (mailbox: string, link: string): void => {
   writeSetting(DELTA_KEY, { ...readSetting<LinksDelta>(DELTA_KEY, {}), [mailbox.toLowerCase()]: link });
 };
 
-/** Une relève à la fois : une demande pendant qu'elle tourne en relance une après. */
+/** One poll at a time: a request made while it runs triggers another one after it. */
 /**
- * Ceux qui suivent une demande apprennent que son expéditeur y a répondu. Pas
- * de requête ici pour dire l'adresse de Milo : c'est MILO_PUBLIC_URL qui la
- * donne, et sans elle la notification reste à l'écran, sans e-mail.
+ * Those following a request learn that its sender replied to it. No query
+ * here to get Milo's address: MILO_PUBLIC_URL provides it, and without it the
+ * notification stays on screen, without e-mail.
  */
 const repliedByEmail = (request: SupportRequestRow, mail: ReceivedMail): void => {
   const account = mail.from_email ? users.byEmail.get(mail.from_email) : undefined;
@@ -404,15 +405,15 @@ const repliedByEmail = (request: SupportRequestRow, mail: ReceivedMail): void =>
 };
 
 /**
- * Retire un e-mail importé de sa boîte, quand la liste le demande. Un échec —
- * la permission Mail.ReadWrite manque — n'arrête pas la relève : l'e-mail
- * reste, et la demande est là.
+ * Removes an imported e-mail from its inbox, when the list asks for it. A
+ * failure — the Mail.ReadWrite permission is missing — does not stop the poll:
+ * the e-mail stays, and the request is there.
  */
 const remove = async (mailbox: string, mail: ReceivedMail): Promise<void> => {
   try {
     await deleteMail(mailbox, mail.graph_id);
   } catch (error) {
-    console.error(`Suppression d'un e-mail de ${mailbox} :`, error);
+    console.error(`Deleting an e-mail from ${mailbox}:`, error);
   }
 };
 
@@ -420,37 +421,36 @@ let ongoing: Promise<number> | null = null;
 let toRedo = false;
 
 /**
- * Ce que devient un e-mail d'une boîte dans une liste qui la reçoit. Rend ce
- * qui s'est passé, pour la suite de la relève.
+ * What becomes of an inbox's e-mail in a list that receives it. Returns what
+ * happened, for the rest of the poll.
  */
 const receive = async (
   inbox: Inbox & { confirmed_at: string },
   mail: ReceivedMail,
-  /** Faux pour les listes qui suivent la première : le mot automatique ne part qu'une fois. */
+  /** False for the lists after the first: the automatic reply is sent only once. */
   respond: boolean,
 ): Promise<{ imported: boolean; alreadyThere: boolean; replied: boolean }> => {
-  // Ce qui est arrivé avant la confirmation de la liste (lib/optin.ts) ne
-  // s'y relève pas.
+  // What arrived before the list's confirmation (lib/optin.ts) is not polled
+  // there.
   if (Date.parse(mail.received_at) < Date.parse(inbox.confirmed_at)) {
     return { imported: false, alreadyThere: false, replied: false };
   }
   if (alreadyImported(inbox, mail.mail_id)) return { imported: false, alreadyThere: true, replied: false };
-  // Les fichiers se rangent pour chaque demande : chacune a les siens.
+  // Files are stored for each request: each has its own.
   const prepare = await prepareMail(inbox.value, mail);
   let imported = false;
   const followUp: FollowUp = {};
   try {
     imported = importSections(inbox, mail, prepare, followUp);
   } finally {
-    // Rien n'a été écrit en base : ses fichiers ne servent à personne.
+    // Nothing was written to the database: its files are of no use to anyone.
     if (!imported) prepare.files.forEach((f) => deleteTicket(f.file));
   }
   if (!imported) return { imported, alreadyThere: false, replied: false };
   if (followUp.replied) repliedByEmail(followUp.replied, mail);
-  // Les réponses par défaut du Paramétrage : l'accusé de réception d'une
-  // nouvelle demande, ou le mot qui dit qu'une demande close est rouverte.
-  // L'expéditeur ne les reçoit qu'une fois, même si plusieurs listes ont la
-  // boîte.
+  // The Settings' default replies: the acknowledgement of receipt of a new
+  // request, or the note saying a closed request is reopened. The sender
+  // receives them only once, even if several lists have the inbox.
   let replied = false;
   if (respond && followUp.created) {
     await sendAutoReply(followUp.created, "new");
@@ -464,9 +464,9 @@ const receive = async (
 };
 
 /**
- * Les demandes nées d'un e-mail de code (lib/optin.ts), importées avant que
- * la relève ne le reconnaisse : elles s'en vont, avec leurs fichiers. Rend
- * vrai quand il y en avait.
+ * Requests born from a code e-mail (lib/optin.ts), imported before the poll
+ * recognized it: they go away, with their files. Returns true when there were
+ * any.
  */
 const purgeConfirmations = (): boolean => {
   const sender = sendingAddress();
@@ -478,7 +478,7 @@ const purgeConfirmations = (): boolean => {
       .all(d.id)
       .flatMap(({ attachments }) => filesOf(attachments).map((f) => f.file)),
   );
-  // Leurs étiquettes et leur fil partent avec elles, par clé étrangère.
+  // Their labels and thread go with them, through the foreign key.
   transaction(() => requests.forEach((d) => supportRequests.remove.run(d.id)))();
   forgetFiles(files);
   return true;
@@ -487,8 +487,8 @@ const purgeConfirmations = (): boolean => {
 const poll = async (): Promise<number> => {
   let created = 0;
   const purged = purgeConfirmations();
-  // Une boîte se relève une fois, et chaque e-mail va dans chaque liste qui
-  // l'a confirmée.
+  // An inbox is polled once, and each e-mail goes into every list that has
+  // confirmed it.
   const byMailbox = new Map<string, (Inbox & { confirmed_at: string })[]>();
   for (const inbox of receivedMailboxes()) {
     const key = inbox.value.toLowerCase();
@@ -500,10 +500,10 @@ const poll = async (): Promise<number> => {
     try {
       const { mails, link } = await updates(mailbox);
       for (const mail of mails) {
-        // Ce que la boîte s'envoie à elle-même n'est pas une demande.
+        // What the inbox sends to itself is not a request.
         if (mail.from_email.toLowerCase() === mailbox.toLowerCase()) continue;
-        // L'e-mail du code de confirmation ne sert plus une fois lu : il
-        // quitte la boîte, sans devenir une demande.
+        // The confirmation code e-mail is of no use once read: it leaves the
+        // inbox, without becoming a request.
         if (isConfirmation(mail)) {
           await remove(mailbox, mail);
           continue;
@@ -514,17 +514,17 @@ const poll = async (): Promise<number> => {
           const done = await receive(inbox, mail, !replied);
           if (done.imported) created += 1;
           replied ||= done.replied;
-          // Une liste qui ne garde pas de copie : l'e-mail quitte la boîte,
-          // une fois que toutes l'ont reçu.
+          // A list that keeps no copy: the e-mail leaves the inbox, once all
+          // of them have received it.
           if ((done.imported || done.alreadyThere) && inbox.remove) toRemove = true;
         }
         if (toRemove) await remove(mailbox, mail);
       }
-      // Gardé une fois tout importé : une relève interrompue reprend là où
-      // elle en était, pas après.
+      // Kept once everything is imported: an interrupted poll resumes where it
+      // left off, not after.
       keepLink(mailbox, link);
     } catch (error) {
-      console.error(`Relève de ${mailbox} (${usage}) :`, error);
+      console.error(`Poll of ${mailbox} (${usage}):`, error);
     }
   }
   if (created || purged) signalWrite("support-requests");
@@ -532,13 +532,13 @@ const poll = async (): Promise<number> => {
 };
 
 /**
- * Relève la boîte de support de chaque société et importe ce qui est nouveau.
- * Une boîte inaccessible n'empêche pas de relever les autres. Rend le nombre
- * de demandes créées.
+ * Polls each company's support inbox and imports what is new. An inaccessible
+ * inbox does not prevent polling the others. Returns the number of requests
+ * created.
  *
- * Demandée pendant qu'une relève tourne — une notification de Graph qui tombe
- * au milieu —, elle en relance une dès la fin : l'e-mail annoncé a pu arriver
- * après que la relève en cours a lu sa boîte.
+ * Requested while a poll is running — a Graph notification that lands in the
+ * middle —, it triggers another one as soon as it ends: the announced e-mail
+ * may have arrived after the current poll read its inbox.
  */
 export const pollMailboxes = (): Promise<number> => {
   if (!entraConfigured()) return Promise.resolve(0);

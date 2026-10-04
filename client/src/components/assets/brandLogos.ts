@@ -1,17 +1,17 @@
-// Les logos que Tabler n'a pas : ceux des éditeurs d'antivirus, et les
-// systèmes Linux sans icône (Tux, Fedora). Tracés repris de Simple Icons
-// (https://simpleicons.org, licence CC0), avec la couleur de chaque marque.
-// Recopiés ici plutôt que d'ajouter la bibliothèque entière pour onze
-// tracés.
+// The logos Tabler doesn't have: those of antivirus vendors, and the
+// Linux systems without an icon (Tux, Fedora). Paths taken from Simple Icons
+// (https://simpleicons.org, CC0 license), with each brand's color.
+// Copied here rather than adding the whole library for eleven
+// paths.
 //
-// Les marques de ces logos appartiennent à leurs propriétaires ; ils ne
-// servent qu'à reconnaître d'un coup d'œil ce qui est installé.
+// The brands of these logos belong to their owners; they only serve
+// to recognize at a glance what is installed.
 
 export interface BrandLogo {
   title: string;
-  /** La couleur de la marque, sans « # ». */
+  /** The brand color, without "#". */
   hex: string;
-  /** Un tracé unique, dans une boîte de 24 × 24. */
+  /** A single path, in a 24 × 24 box. */
   path: string;
 }
 

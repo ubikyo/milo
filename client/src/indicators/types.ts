@@ -1,73 +1,73 @@
-// Le contrat d'un widget du panneau des statistiques du mode Support.
+// The contract of a Support mode statistics panel widget.
 //
-// Comme les widgets du mode Accès (widgets/types.ts) : le panneau ne sait pas
-// ce qu'il montre. Chaque indicateur est désigné par un type (« tickets »,
-// …), et c'est le widget qui sait le calculer, l'afficher et le configurer.
-// Ajouter une sorte d'indicateur, c'est ajouter un fichier dans ce dossier,
-// l'inscrire dans « index.ts » et dans « SUPPORT_INDICATOR_TYPES »
+// Like Access mode's widgets (widgets/types.ts): the panel does not know
+// what it shows. Each indicator is designated by a type ("tickets",
+// …), and it is the widget that knows how to compute, display and configure it.
+// Adding a kind of indicator means adding a file to this folder,
+// registering it in "index.ts" and in "SUPPORT_INDICATOR_TYPES"
 // (shared/domain.ts).
 //
-// La configuration circule en « unknown » : sa forme appartient au widget,
-// qui la relit avec les aides du mode Accès (texte, avec) — elles comblent ce
-// qui manque.
+// The configuration flows as "unknown": its shape belongs to the widget,
+// which re-reads it with Access mode's helpers (text, withField) — they fill in
+// what is missing.
 
 import type { WidgetKind } from "../widgets/kinds";
 import type { ComponentType } from "react";
 import type { IndicatorWidgetBase } from "../components/ui/IndicatorsPanel";
 import type { Id, SupportIndicatorType, SupportRequest } from "@milo/shared";
 
-/** Ce que le tiroir passe aux champs d'un widget. */
+/** What the drawer passes to a widget's fields. */
 export interface IndicatorConfigProps {
   config: unknown;
   onChange: (config: Record<string, unknown>) => void;
 }
 
-/** Ce que le panneau passe à l'affichage d'un widget. */
+/** What the panel passes to a widget's display. */
 export interface IndicatorDisplayProps {
   config: unknown;
-  /** Les demandes de la société regardée, tous statuts confondus. */
+  /** The requests of the company being viewed, all statuses combined. */
   requests: SupportRequest[];
-  /** Le compte connecté : ce qui « me » revient se compte par lui. */
+  /** The signed-in account: what is "mine" is counted through it. */
   userId: Id;
   /**
-   * Enregistre une configuration modifiée depuis l'affichage lui-même — un
-   * titre qui se renomme au double-clic. Sans effet une fois verrouillé.
+   * Saves a configuration changed from the display itself — a
+   * title renamed on double-click. No effect once locked.
    */
   onChange?: (config: Record<string, unknown>) => void | Promise<void>;
-  /** Les sections verrouillées : le widget ne propose plus rien qui modifie. */
+  /** The locked sections: the widget no longer offers anything that modifies. */
   locked?: boolean;
 }
 
 export interface SupportIndicatorWidget {
-  /** Ce que la base range : il ne change jamais. */
+  /** What the database stores: it never changes. */
   type: SupportIndicatorType;
-  /** Son type : le groupe où le tiroir des widgets le range (widgets/genres.ts). */
+  /** Its kind: the group in which the widgets drawer arranges it (widgets/kinds.ts). */
   kind: WidgetKind;
-  /** Son nom dans le tiroir des widgets, et en titre de son tiroir. */
+  /** Its name in the widgets drawer, and as the title of its drawer. */
   label: string;
   icon: ComponentType<{ size?: number }>;
-  /** La configuration d'un indicateur neuf. */
+  /** The configuration of a new indicator. */
   defaultConfig: Record<string, unknown>;
-  /** Ce que le panneau montre. */
+  /** What the panel shows. */
   Display: ComponentType<IndicatorDisplayProps>;
   /**
-   * Les champs de son tiroir. Le tiroir lui-même est commun à tous. Sans
-   * champs, le widget n'a que son nom à régler : choisi, il s'ajoute
-   * aussitôt, et son tiroir ne porte que le nom.
+   * The fields of its drawer. The drawer itself is common to all. Without
+   * fields, the widget only has its name to set: once chosen, it is added
+   * at once, and its drawer only holds the name.
    */
   Config?: ComponentType<IndicatorConfigProps>;
-  /** Vrai quand le widget prend ses clics en charge : voir IndicatorWidgetBase. */
+  /** True when the widget handles its own clicks: see IndicatorWidgetBase. */
   ownClicks?: boolean;
-  /** Vrai quand il montre une valeur : voir IndicatorWidgetBase. */
+  /** True when it shows a value: see IndicatorWidgetBase. */
   withValue?: boolean;
-  /** Vrai quand il occupe toute la hauteur de sa section : voir IndicatorWidgetBase. */
+  /** True when it fills the whole height of its section: see IndicatorWidgetBase. */
   fill?: boolean;
-  /** Vrai quand il se nomme sur place : voir IndicatorWidgetBase. */
+  /** True when it is named in place: see IndicatorWidgetBase. */
   inlineEdit?: boolean;
-  /** La largeur de son tiroir : voir IndicatorWidgetBase. */
+  /** The width of its drawer: see IndicatorWidgetBase. */
   drawerSize?: number;
-  /** L'air qu'il laisse autour de lui : voir IndicatorWidgetBase. */
+  /** The space it leaves around itself: see IndicatorWidgetBase. */
   margins?: IndicatorWidgetBase<SupportIndicatorType>["margins"];
-  /** Vrai quand il ne doit pas paraître : voir IndicatorWidgetBase. */
+  /** True when it must not appear: see IndicatorWidgetBase. */
   hidden?: IndicatorWidgetBase<SupportIndicatorType>["hidden"];
 }

@@ -1,39 +1,39 @@
-// Ce que le serveur pousse aux clients connectés après chaque écriture.
+// What the server pushes to connected clients after each write.
 //
-// Avant, il n'y avait qu'un compteur : n'importe quelle écriture, par
-// n'importe qui, faisait recharger aux huit jeux de données de tous les
-// clients. Renommer une étiquette rechargeait les projets, les sociétés, les
-// utilisateurs et les tableaux. Chaque écriture nomme désormais ce qu'elle a
-// touché, et le client ne relit que cela.
+// Before, there was only one counter: any write, by
+// anyone, made all clients reload the eight data sets. Renaming a
+// label reloaded the projects, companies, users and
+// boards. Each write now names what it touched, and the client
+// rereads only that.
 
 export const RESOURCES = [
-  /** Sociétés et comptes : les listes de référence. */
+  /** Companies and accounts: the reference lists. */
   "lookups",
-  /** Les vues du sélecteur du bas. */
+  /** The views of the bottom selector. */
   "views",
-  /** Les tableaux des vues : leurs onglets. */
+  /** The views' boards: their tabs. */
   "boards",
-  /** Les sections des tableaux, et les widgets qu'elles portent. */
+  /** The boards' sections, and the widgets they carry. */
   "board-widgets",
   "categories",
   "projects",
   "task-lists",
   "labels",
   "project-labels",
-  /** Les tickets, et les étiquettes qu'elles portent. */
+  /** Tickets, and the labels they carry. */
   "support-requests",
   "support-labels",
-  /** Les postes : ce que les agents d'inventaire remontent. */
+  /** Machines: what the inventory agents report. */
   "assets",
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];
 
-/** Le compteur de chaque ressource. Il ne recule jamais. */
+/** The counter of each resource. It never goes backwards. */
 export type ResourceVersions = Record<Resource, number>;
 
 export interface VersionPayload {
-  /** Somme de tous les compteurs : une écriture, où qu'elle soit, la fait monter. */
+  /** Sum of all counters: a write, wherever it is, makes it rise. */
   version: number;
   versions: ResourceVersions;
 }

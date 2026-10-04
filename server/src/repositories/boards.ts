@@ -1,9 +1,9 @@
-// Les tableaux des vues, et la règle de visibilité qui les protège. Elle est
-// lue par tout ce qui pend à un tableau : ses projets, ses catégories, ses
-// listes, ses cartes, ses étiquettes, ses sections et ses widgets.
+// The views' boards, and the visibility rule that protects them. It is read by
+// everything hanging off a board: its projects, categories, lists, cards,
+// labels, sections and widgets.
 //
-// Un tableau se voit si sa vue se voit — dans son workspace —, et s'il n'est
-// pas privé — ou qu'on en est l'auteur.
+// A board is visible if its view is visible — within its workspace —, and if
+// it is not private — or the person is its author.
 
 import type { Request } from "express";
 import type { Id, Right } from "@milo/shared";
@@ -17,7 +17,7 @@ export const BOARD_NOT_FOUND = "Tableau introuvable";
 
 export const boards = {
   byId: selection<BoardRow>("SELECT * FROM boards WHERE id = ?"),
-  /** Ceux d'une vue que ce compte voit, dans l'ordre commun. */
+  /** Those of a view that this account sees, in the common order. */
   visibleIn: selection<BoardRow>(
     `SELECT * FROM boards
      WHERE view_id = ? AND (is_private = 0 OR owner_id = ?)
@@ -38,8 +38,8 @@ export const boards = {
 };
 
 /**
- * Un tableau se voit si sa vue se voit et qu'il n'est pas privé — ou que
- * cette personne en est l'auteur.
+ * A board is visible if its view is visible and it is not private — or that
+ * person is its author.
  */
 export const readableBoard = (board: BoardRow | undefined, user: UserRow): boolean =>
   Boolean(board) &&
@@ -47,9 +47,9 @@ export const readableBoard = (board: BoardRow | undefined, user: UserRow): boole
   isViewVisible(views.byId.get(board!.view_id), user);
 
 /**
- * Le tableau demandé, s'il existe et que cette personne peut le voir. Sinon
- * « introuvable », car un tableau privé ne se laisse pas même deviner — dire
- * « interdit » reviendrait à confirmer qu'il existe.
+ * The requested board, if it exists and that person can see it. Otherwise
+ * "not found", because a private board must not even be guessed at — saying
+ * "forbidden" would confirm it exists.
  */
 export const openBoard = (id: unknown, user: UserRow): BoardRow => {
   const board = boards.byId.get(id);
@@ -58,8 +58,9 @@ export const openBoard = (id: unknown, user: UserRow): BoardRow => {
 };
 
 /**
- * Le tableau demandé, pour ses tâches : il faut aussi le droit de voir les
- * tâches, et `droit` en plus quand on y écrit. Tout ce qui pend aux listes — cartes, étiquettes — passe par ici.
+ * The requested board, for its tasks: the right to see tasks is also needed,
+ * and `right` in addition when writing to it. Everything hanging off lists —
+ * cards, labels — goes through here.
  */
 export const openTaskBoard = (id: unknown, req: Request, right: Right = "view"): BoardRow => {
   const board = openBoard(id, req.user);
@@ -69,8 +70,8 @@ export const openTaskBoard = (id: unknown, req: Request, right: Right = "view"):
 };
 
 /**
- * La clause qui, dans une requête, ne garde que les tableaux que « @me » voit,
- * dans son workspace (requireAuth l'a enregistré).
+ * The clause that, in a query, keeps only the boards "@me" sees, within their
+ * workspace (requireAuth recorded it).
  */
 export const VISIBLE_BOARDS_CLAUSE = (column: string): string =>
   `${column} IN (
@@ -79,5 +80,5 @@ export const VISIBLE_BOARDS_CLAUSE = (column: string): string =>
        AND v.workspace_id = (SELECT workspace_id FROM users WHERE id = @me)
    )`;
 
-/** Les identifiants des tableaux d'une vue. */
+/** The identifiers of a view's boards. */
 export const viewBoards = selection<{ id: Id }>("SELECT id FROM boards WHERE view_id = ?");

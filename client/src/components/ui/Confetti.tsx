@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { CSSProperties } from "react";
 
-// Une salve de confettis, lâchée au-dessus d'un point de l'écran. Les pièces
-// descendent en tournoyant, dérivent de part et d'autre, puis s'effacent.
+// A burst of confetti, released above a point on the screen. The pieces fall
+// while spinning, drift to either side, then fade away.
 const COUNT = 90;
-// Durée de la plus longue chute, retard de départ compris : au-delà, la salve
-// n'a plus rien à montrer et se retire.
+// Duration of the longest fall, start delay included: beyond that, the burst
+// has nothing left to show and removes itself.
 const DURATION_MAX = 2600;
 
-// Les confettis empruntent les couleurs pleines de la palette : de tout, et
-// rien qui jure avec le reste de l'application.
+// The confetti borrow the palette's solid colors: a bit of everything, and
+// nothing that clashes with the rest of the application.
 const COLORS = [
   "red",
   "orange",
@@ -41,8 +41,8 @@ const random = (min: number, max: number): number => min + Math.random() * (max 
 const pickFrom = <T,>(values: readonly T[]): T =>
   values[Math.floor(Math.random() * values.length)] as T;
 
-// Les propriétés personnalisées (« --dx ») ne figurent pas dans CSSProperties :
-// React les accepte, TypeScript ne les connaît pas.
+// Custom properties ("--dx") are not part of CSSProperties: React accepts them,
+// TypeScript does not know them.
 type StyleWithVariables = CSSProperties & Record<`--${string}`, string | number>;
 
 interface ConfettiProps {
@@ -53,10 +53,10 @@ interface ConfettiProps {
 }
 
 export default function Confetti({ x, y, width, onDone }: ConfettiProps) {
-  // Chaque pièce a son départ, sa cible, sa taille et son tournoiement : tirés
-  // une fois pour toutes, sinon ils changeraient à chaque rendu. Le hasard est
-  // ici le propos — une salve identique à chaque fois ne serait pas une salve —
-  // et il est enfermé dans un « useMemo » qui ne se rejoue qu'à la largeur.
+  // Each piece has its own start, target, size and spin: drawn once and for
+  // all, otherwise they would change on every render. Randomness is the whole
+  // point here — an identical burst every time would not be a burst — and it is
+  // enclosed in a "useMemo" that only replays on width change.
   const pieces = useMemo(
     () =>
       Array.from({ length: COUNT }, (_, i) => {
@@ -68,8 +68,8 @@ export default function Confetti({ x, y, width, onDone }: ConfettiProps) {
           pieceWidth,
           height: pieceWidth * random(0.4, 1),
           circle: Math.random() < 0.25,
-          // La pièce part au-dessus de la liste et descend, en dérivant vers
-          // la gauche ou vers la droite.
+          // The piece starts above the list and falls, drifting to the left or
+          // to the right.
           dx: random(-width * 0.6, width * 0.6),
           top: random(-210, -80),
           fall: random(140, 400),
@@ -83,10 +83,9 @@ export default function Confetti({ x, y, width, onDone }: ConfettiProps) {
     [width],
   );
 
-  // La salve se retire d'elle-même. Le rappel est gardé dans une référence :
-  // il change à chaque rendu du tableau, et remettrait le compte à zéro. La
-  // référence se met à jour par effet et non pendant le rendu, qui doit rester
-  // sans effet de bord.
+  // The burst removes itself. The callback is kept in a ref: it changes on
+  // every render of the board, and would reset the count. The ref is updated in
+  // an effect and not during render, which must stay free of side effects.
   const finished = useRef(onDone);
   useEffect(() => {
     finished.current = onDone;

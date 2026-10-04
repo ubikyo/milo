@@ -1,12 +1,12 @@
-// Le presse-papiers des widgets : le widget copié par « Copier » (menu d'un
-// widget), en attente d'être collé dans une section — de la même vue ou d'une
-// autre, d'un autre tableau. Il ne garde que de quoi le recréer : son type et
-// sa configuration ; coller, c'est l'ajouter là, comme depuis le tiroir des
-// widgets.
+// The widgets clipboard: the widget copied by "Copier" (a widget's
+// menu), waiting to be pasted into a section — of the same view or of
+// another, of another board. It keeps only what is needed to recreate it: its type and
+// its configuration; pasting means adding it there, as from the widgets
+// drawer.
 //
-// Il vit dans le navigateur (localStorage) : il survit au changement de vue
-// et au rechargement, et passe d'un onglet à l'autre. Un stockage refusé — une
-// fenêtre privée — le laisse en mémoire seulement.
+// It lives in the browser (localStorage): it survives view changes
+// and reloads, and passes from one tab to another. Refused storage — a
+// private window — leaves it in memory only.
 
 import { migrateWidgetConfig } from "@milo/shared";
 import { useSyncExternalStore } from "react";
@@ -14,17 +14,17 @@ import { useSyncExternalStore } from "react";
 export interface CopiedWidget {
   type: string;
   config: Record<string, unknown>;
-  /** Son nom, pour « Coller … » dans le menu des sections. */
+  /** Its name, for "Coller …" in the sections menu. */
   label: string;
 }
 
 const KEY = "milo.clipboard.widget";
-/** Sa clé d'avant : un widget copié alors se colle encore. */
+/** Its previous key: a widget copied back then can still be pasted. */
 const LEGACY_KEY = "milo.presse-papiers.widget";
 
 /**
- * Le widget rangé, sa configuration aux clés d'aujourd'hui — il a pu être
- * copié avant leur traduction, ou par un onglet resté sur l'ancienne version.
+ * The stored widget, its configuration with today's keys — it may have been
+ * copied before they were translated, or by a tab left on the old version.
  */
 const read = (): CopiedWidget | null => {
   try {
@@ -47,19 +47,19 @@ let current: CopiedWidget | null = read();
 const subscribers = new Set<() => void>();
 const notify = () => subscribers.forEach((f) => f());
 
-/** Copier un widget : il remplace le précédent. */
+/** Copy a widget: it replaces the previous one. */
 export const copyWidget = (copy: CopiedWidget): void => {
   current = copy;
   try {
     localStorage.setItem(KEY, JSON.stringify(copy));
     localStorage.removeItem(LEGACY_KEY);
   } catch {
-    // Stockage refusé : la copie reste en mémoire, le temps de la page.
+    // Storage refused: the copy stays in memory, for the life of the page.
   }
   notify();
 };
 
-// Une copie faite dans un autre onglet arrive ici aussi.
+// A copy made in another tab arrives here too.
 window.addEventListener("storage", (e) => {
   if (e.key !== KEY) return;
   current = read();
@@ -71,6 +71,6 @@ const subscribe = (f: () => void) => {
   return () => subscribers.delete(f);
 };
 
-/** Le widget copié, ou « null ». */
+/** The copied widget, or "null". */
 export const useCopiedWidget = (): CopiedWidget | null =>
   useSyncExternalStore(subscribe, () => current);

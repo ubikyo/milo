@@ -47,45 +47,44 @@ const TABS: {
   icon: ComponentType<{ size?: number }>;
 }[] = [
   { value: "workspaces", label: "Workspaces", icon: IconStack2 },
-  // Le Paramétrage et la gestion des workspaces : pour toute l'application.
+  // Settings ("Paramétrage") and workspace management: for the whole application.
   { value: "administration", label: "Administration", icon: IconShieldLock },
   { value: "entra", label: "Entra", icon: IconBrandWindows },
   { value: "notifications", label: "Notifications", icon: IconBell },
   { value: "developer", label: "Développeur", icon: IconCode },
-  // Les réglages propres à un mode : le Support, les Assets.
+  // Settings specific to a mode: Support, Assets.
   { value: "support", label: "Support", icon: IconHeadset },
   { value: "assets", label: "Assets", icon: IconDeviceLaptop },
-  // La sauvegarde tout en bas : elle porte toute la base, pas un réglage.
+  // The backup at the very bottom: it covers the whole database, not a setting.
   { value: "backup", label: "Sauvegarde", icon: IconDatabaseExport },
 ];
 
 /**
- * Les onglets qui supposent Entra : les accès des workspaces et
- * l'administration se donnent à des utilisateurs et des groupes de
- * l'annuaire.
+ * The tabs that require Entra: workspace access and the administration are
+ * granted to directory users and groups.
  */
 const WITH_ENTRA = new Set(["workspaces", "administration"]);
 
-/** Les onglets que le compte « admin » ne voit pas. */
+/** The tabs that the "admin" account does not see. */
 const WITHOUT_ADMIN = new Set(["developer", "support", "assets"]);
 
 
-/** Entra est configuré : l'application renseignée (identifiant, annuaire, secret). */
+/** Entra is configured: the application is registered (ID, directory, secret). */
 const entraConfigured = (r: EntraSettings) =>
   Boolean(r.client_id && r.tenant && r.has_secret);
 
 const MODAL_HEADER = modalHeaderStyles(40);
 
 /**
- * La barre de défilement d'un panneau, déportée sur la bordure droite de la
- * fenêtre et sur toute sa hauteur. Même principe que la liste des projets
- * (ProjectsPage), à ceci près qu'elle se cale sur la fenêtre et non sur
- * l'écran : c'est « content » qui porte le repère (position: relative).
+ * A panel's scrollbar, moved to the modal's right border and spanning its
+ * full height. Same principle as the projects list (ProjectTable), except
+ * that it anchors to the modal and not to the screen: it is "content" that
+ * carries the reference (position: relative).
  *
- * Laissée à sa place, elle serait à cheval sur le retrait de 40 px du panneau
- * et sauterait d'un onglet à l'autre selon ce que chacun contient. Le panneau
- * garde donc toute sa largeur — la barre est hors du flux — et le contenu ne
- * se décale pas quand elle apparaît.
+ * Left in place, it would straddle the panel's 40 px padding and jump from
+ * one tab to another depending on what each contains. The panel therefore
+ * keeps its full width — the bar is out of the flow — and the content does
+ * not shift when it appears.
  */
 const SCROLLBAR_STYLES = {
   root: { position: "static" as const },
@@ -104,24 +103,24 @@ interface SettingsModalProps {
   opened: boolean;
   onClose: () => void;
   /**
-   * Le compte « admin » ne voit que le Paramétrage : la fenêtre ne se ferme
-   * pas, son bouton déconnecte, et l'enregistrement la laisse ouverte.
+   * The "admin" account only sees Settings: the modal cannot be closed,
+   * its button signs out, and saving leaves it open.
    */
   standalone?: boolean;
   /**
-   * Le droit « Modifier » du Paramétrage. Sans lui, la fenêtre se consulte :
-   * pas d'enregistrement, pas de sauvegarde — l'archive porte toute la base.
+   * The "Modifier" right on Settings. Without it, the modal is read-only:
+   * no saving, no backup — the archive covers the whole database.
    */
   canEdit: boolean;
-  /** Debug (onglet Développeur) : la sélection et le menu du navigateur reviennent. */
+  /** Debug (Developer tab): the browser's selection and menu come back. */
   debug: boolean;
   onDebugChange: (debug: boolean) => void;
   /**
-   * Le compte : son Paramétrage (« Voir »), son workspace, et la gestion des
-   * workspaces, qui ouvre leur onglet et les accès de chacun.
+   * The account: its Settings ("Voir"), its workspace, and workspace
+   * management, which opens their tab and each one's access.
    */
   user: PublicUser;
-  /** Le compte relu, après un changement des workspaces : le sélecteur les propose. */
+  /** The account re-read, after a workspace change: the selector offers them. */
   onUserChange?: (user: PublicUser) => void;
 }
 
@@ -136,14 +135,14 @@ export default function SettingsModal({
   onUserChange,
 }: SettingsModalProps) {
   const management = user.manage_workspaces;
-  // Sans la gestion des workspaces, leur onglet n'est pas là : on ouvre sur
+  // Without workspace management, their tab is not there: open on
   // Entra.
   const [activeTab, setActiveTab] = useState<string | null>(management ? "workspaces" : "entra");
-  // Tous les workspaces, pour qui les gère : leur onglet, et le choix de
-  // celui dont on règle les accès.
+  // All workspaces, for whoever manages them: their tab, and the choice of
+  // the one whose access is being set.
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  // Le compte relu : ses workspaces — ceux du sélecteur — et ses droits
-  // suivent les workspaces, leurs accès et l'administration.
+  // The account re-read: its workspaces — those of the selector — and its
+  // rights follow the workspaces, their access and the administration.
   const reloadAccount = useCallback(async () => {
     try {
       if (onUserChange) onUserChange(await api.me());
@@ -162,15 +161,15 @@ export default function SettingsModal({
   useEffect(() => {
     if (opened && management) void api.getWorkspaces().then(setWorkspaces, () => undefined);
   }, [opened, management]);
-  // Tant qu'Entra n'est pas configuré, seuls ses réglages et la sauvegarde
-  // se montrent. L'onglet Entra en informe la fenêtre à chaque lecture et à
-  // chaque enregistrement ; « null » tant qu'il n'a rien dit.
+  // As long as Entra is not configured, only its settings and the backup
+  // are shown. The Entra tab informs the modal on each read and each
+  // save; "null" as long as it has not said anything.
   const [entraReady, setEntraReady] = useState<boolean | null>(null);
-  // Le Support et les Assets touchent au travail des modes, et l'onglet
-  // Développeur à celui des personnes : pas au paramétrage de l'application.
-  // Le compte « admin » ne les voit pas (SANS_ADMIN).
-  // Qui gère les workspaces sans voir le Paramétrage n'a que leur onglet ;
-  // il se connecte par Microsoft : Entra est forcément configuré.
+  // Support and Assets concern the modes' work, and the Developer tab
+  // that of people: not the application's setup.
+  // The "admin" account does not see them (WITHOUT_ADMIN).
+  // Whoever manages workspaces without seeing Settings only gets their tab;
+  // they sign in through Microsoft: Entra is necessarily configured.
   const visible = (tab: string) =>
     (tab === "workspaces" ? management : true) &&
     (user.settings.view || tab === "workspaces") &&
@@ -178,23 +177,23 @@ export default function SettingsModal({
     !(!canEdit && tab === "backup") &&
     (entraReady === true || !WITH_ENTRA.has(tab) || !user.settings.view);
 
-  // Stable : l'onglet Entra s'en sert dans sa lecture des réglages.
+  // Stable: the Entra tab uses it when reading the settings.
   const followEntra = useCallback((settings: EntraSettings) => {
     const ready = entraConfigured(settings);
     setEntraReady(ready);
-    // L'onglet ouvert vient de disparaître : on passe sur Entra.
+    // The open tab just disappeared: switch to Entra.
     if (!ready) setActiveTab((t) => (t && WITH_ENTRA.has(t) ? "entra" : t));
   }, []);
   /**
-   * Seul l'onglet Entra a des réglages en attente : les autres onglets
-   * enregistrent chaque geste. « Enregistrer » appelle la fonction que
-   * l'onglet dépose ici ; « Fermer » n'enregistre rien.
+   * Only the Entra tab has pending settings: the other tabs save each
+   * action. "Enregistrer" calls the function the tab deposits here;
+   * "Fermer" saves nothing.
    */
   const saveEntra = useRef<(() => Promise<boolean>) | null>(null);
   const [registration, setSaving] = useState(false);
 
-  // Enregistre puis referme ; un refus du serveur garde la fenêtre ouverte,
-  // avec son message dans l'onglet concerné.
+  // Saves then closes; a server refusal keeps the modal open, with its
+  // message in the relevant tab.
   const save = async () => {
     setSaving(true);
     try {
@@ -208,8 +207,8 @@ export default function SettingsModal({
     if (!standalone) onClose();
   };
 
-  // L'entête du panneau Entra porte son menu « Actions », à droite du
-  // titre : l'onglet l'y rend par un portail.
+  // The Entra panel's header carries its "Actions" menu, to the right of
+  // the title: the tab renders it there through a portal.
   const [entraActions, setEntraActions] = useState<HTMLDivElement | null>(null);
 
   const panel = (
@@ -233,9 +232,9 @@ export default function SettingsModal({
             <Title order={4}>
               {TABS.find((t) => t.value === value)?.label}
             </Title>
-            {/* Sans hauteur, le menu centré sur la ligne : plus haut que le
-              titre, il agrandirait l'entête et décalerait le panneau par
-              rapport aux autres onglets. */}
+            {/* Without a height, the menu centered on the row: taller than the
+              title, it would enlarge the header and shift the panel relative
+              to the other tabs. */}
             {actionsRef && (
               <div
                 ref={actionsRef}
@@ -243,7 +242,7 @@ export default function SettingsModal({
               />
             )}
           </Group>
-          {/* « auto » : la barre ne paraît que si l'onglet déborde. */}
+          {/* "auto": the bar only appears if the tab overflows. */}
           <ScrollArea
             type="auto"
             scrollbarSize={2}
@@ -259,14 +258,14 @@ export default function SettingsModal({
   return (
     <Modal
       opened={opened}
-      // Échap et l'arrière-plan passent par là : comme « Fermer », sans
-      // enregistrer. Pour le compte « admin », la fenêtre est tout l'écran :
-      // elle ne se ferme que par la déconnexion.
+      // Escape and the backdrop go through here: like "Fermer", without
+      // saving. For the "admin" account, the modal is the whole screen:
+      // it can only be closed by signing out.
       onClose={onClose}
       closeOnEscape={!standalone}
       closeOnClickOutside={!standalone}
       title="Paramétrage"
-      // Au milieu de l'écran, comme les autres fenêtres.
+      // In the middle of the screen, like the other modals.
       centered
       size={SETTINGS_WIDTH}
       padding={SETTINGS_PADDING}
@@ -278,10 +277,10 @@ export default function SettingsModal({
           maxHeight: SETTINGS_HEIGHT_MAX,
           display: "flex",
           flexDirection: "column",
-          // Repère pour la barre de défilement déportée (voir ListItems)
+          // Anchor for the moved scrollbar (see ListItems)
           position: "relative",
         },
-        // Le retrait haut de l'entête commun, plus la mise en page du corps.
+        // The common header's top padding, plus the body's layout.
         body: {
           ...MODAL_HEADER.body,
           flex: 1,
@@ -295,9 +294,9 @@ export default function SettingsModal({
         value={activeTab}
         onChange={setActiveTab}
         orientation="vertical"
-        // Les onglets masqués restent montés et actifs : en mode « activity »
-        // (celui par défaut), leurs effets s'arrêtent, et la messagerie ne
-        // pourrait plus déposer sa fonction d'enregistrement.
+        // Hidden tabs stay mounted and active: in "activity" mode
+        // (the default), their effects stop, and the messaging tab could
+        // no longer deposit its save function.
         keepMountedMode="display-none"
         style={{ flex: 1, minHeight: 0 }}
       >

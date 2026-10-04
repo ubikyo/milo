@@ -1,14 +1,14 @@
 import { Title } from "@mantine/core";
 import type { ReactNode } from "react";
 
-/** L'air entre un titre de la fiche et ce qu'il annonce : cartes ou grille. */
+/** The gap between a record title and what it introduces: cards or grid. */
 export const SPACE_BELOW_TITLE = 10;
 
 /**
- * Un titre de la fiche d'un poste — celui du Résumé, ceux des sections des
- * autres onglets —, comme une catégorie du mode Accès : blanc, en 18. Une
- * section repliée l'a comme le reste du texte : en gris, à sa taille et à sa
- * graisse.
+ * A workstation record title — the Summary one, those of the sections of the
+ * other tabs —, like a category of the Access mode: white, size 18. A
+ * collapsed section has it like the rest of the text: gray, at its size and
+ * weight.
  */
 export default function RecordTitle({
   children,

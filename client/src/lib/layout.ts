@@ -1,15 +1,15 @@
-// La disposition d'un tableau — ses sections et leurs widgets —, exportée
-// pour qu'un autre compte la reprenne, puis importée par lui.
+// A board's layout — its sections and their widgets —, exported
+// so another account can take it over, then imported by it.
 //
-// Le texte échangé est le JSON lui-même, ou ce JSON compressé (deflate) puis
-// écrit en base64 quand c'est plus court : un JSON commence par « { », le
-// base64 jamais.
+// The exchanged text is the JSON itself, or that JSON compressed (deflate) then
+// written in base64 when that is shorter: a JSON begins with "{", base64
+// never does.
 //
-// L'import ne fait confiance à rien : la disposition vient peut-être d'une
-// version qui connaissait un widget de plus, ou dont un widget rangeait sa
-// configuration autrement. Un type inconnu est écarté, une configuration
-// reprend d'abord celle d'un widget neuf avant d'y poser ce qu'elle apporte.
-// Le serveur refait les mêmes vérifications, droits compris.
+// The import trusts nothing: the layout may come from a version that
+// knew one more widget, or in which a widget stored its
+// configuration differently. An unknown type is discarded, a configuration
+// first takes that of a new widget before laying what it brings on top.
+// The server redoes the same checks, rights included.
 
 import { listKey, isListWidgetType, migrateWidgetConfig } from "@milo/shared";
 import type { BoardWidget, ExportedLayout, IndicatorSection } from "@milo/shared";
@@ -17,7 +17,7 @@ import type { BoardWidgetDefinition } from "../board-widgets";
 
 const FORMAT = "deflate-raw";
 
-/** La disposition de ce qu'on regarde : les sections dans l'ordre, et ce que chacune porte. */
+/** The layout of what is being viewed: the sections in order, and what each holds. */
 export const layoutOf = (
   sections: IndicatorSection[],
   widgets: BoardWidget[],
@@ -35,7 +35,7 @@ export const layoutOf = (
 
 const toBase64 = (bytes: Uint8Array): string => {
   let binary = "";
-  // Par tranches : String.fromCharCode n'accepte pas un tableau sans fin.
+  // In chunks: String.fromCharCode does not accept an endless array.
   for (let i = 0; i < bytes.length; i += 0x8000) {
     binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   }
@@ -48,7 +48,7 @@ const fromBase64 = (text: string): Uint8Array<ArrayBuffer> =>
 const transformer = async (bytes: Uint8Array<ArrayBuffer>, feed: CompressionStream | DecompressionStream) =>
   new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(feed)).arrayBuffer());
 
-/** Le texte à transmettre : le plus court du JSON et de sa forme compressée. */
+/** The text to transmit: the shorter of the JSON and its compressed form. */
 export const encoder = async (layout: ExportedLayout): Promise<string> => {
   const json = JSON.stringify(layout);
   if (typeof CompressionStream === "undefined") return json;
@@ -64,7 +64,7 @@ export const encoder = async (layout: ExportedLayout): Promise<string> => {
 
 const UNREADABLE = "Ce texte n'est pas une disposition exportée.";
 
-/** La disposition que porte un texte collé ; lève, avec un message lisible, sinon. */
+/** The layout carried by a pasted text; throws, with a readable message, otherwise. */
 export const decode = async (text: string): Promise<ExportedLayout> => {
   const raw = text.trim();
   let json = raw;
@@ -96,22 +96,22 @@ export const decode = async (text: string): Promise<ExportedLayout> => {
 const isObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
-/** Ce que l'import fera, dit avant qu'il ne se fasse. */
+/** What the import will do, said before it happens. */
 export interface ImportPreview {
-  /** La disposition à envoyer : nettoyée, chaque configuration complétée. */
+  /** The layout to send: cleaned, each configuration completed. */
   layout: ExportedLayout;
   sections: number;
   widgets: number;
-  /** Les widgets de l'export qui ne seront pas posés : type inconnu, ou que le compte ne modifie pas. */
+  /** The export's widgets that will not be placed: unknown type, or one the account cannot edit. */
   discarded: number;
-  /** Les widgets de liste de la structure actuelle qui disparaîtront, avec leurs éléments. */
+  /** The widgets of the current structure's lists that will disappear, with their items. */
   lostLists: BoardWidget[];
 }
 
 /**
- * La disposition reçue, prête à importer pour ce compte : seuls restent les
- * widgets qu'il connaît et peut poser, et chaque configuration part de celle
- * d'un widget neuf — un champ ajouté depuis l'export y a sa valeur par défaut.
+ * The layout received, ready to import for this account: only the
+ * widgets it knows and can place remain, and each configuration starts from that
+ * of a new widget — a field added since the export has its default value there.
  */
 export const preview = (
   received: ExportedLayout,
@@ -130,13 +130,13 @@ export const preview = (
         discarded += 1;
         return [];
       }
-      // Une disposition exportée avant la traduction des clés se lit encore.
+      // A layout exported before the keys were translated still reads.
       const config = migrateWidgetConfig(widget.type, w.config);
       return [{ type: widget.type, config: { ...widget.defaultConfig, ...config } }];
     }),
   }));
-  // Une liste actuelle que l'import ne reprend pas — sa clé n'y est plus —
-  // perd ses éléments. Celles que le compte ne peut pas enlever restent.
+  // A current list that the import does not take over — its key is no longer there —
+  // loses its items. Those the account cannot remove stay.
   const reusedKeys = new Set(
     sections.flatMap((s) => s.widgets.map((w) => listKey(w.config)).filter(Boolean)),
   );

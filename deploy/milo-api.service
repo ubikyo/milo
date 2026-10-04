@@ -10,24 +10,24 @@ Group=milo
 WorkingDirectory=/opt/milo/server
 Environment=NODE_ENV=production
 Environment=PORT=3001
-# La base vit hors du dossier déployé : un déploiement ne l'écrase jamais.
+# The database lives outside the deployed folder: a deployment never
 Environment=MILO_DB_PATH=/var/lib/milo/data.db
-# Les fichiers déposés sur les cartes, pour la même raison : un déploiement
-# remplace le code, il ne doit pas emporter les pièces jointes.
+# Files uploaded to cards, for the same reason: a deployment replaces the
+# code, it must not wipe out the attachments.
 Environment=MILO_MEDIA_PATH=/var/lib/milo/medias
-# Les images et pièces jointes des e-mails reçus au support.
+# Images and attachments of emails received by support.
 Environment=MILO_TICKETS_PATH=/var/lib/milo/tickets
-# Durée au bout de laquelle une session inutilisée se ferme, en jours.
+# Idle time after which an unused session expires, in days.
 Environment=MILO_SESSION_DAYS=30
-# Aucune origine tierce : le client est servi par le même hôte que l'API, les
-# appels sont relatifs et ne passent pas par CORS. À ne remplir que si le
-# client venait à être servi ailleurs.
+# No third-party origin: the client is served by the same host as the API,
+# calls are relative and do not go through CORS. Only fill in if the client
+# were ever served elsewhere.
 # Environment=MILO_CORS_ORIGINS=https://milo.example.fr
 ExecStart=/usr/bin/node server.mjs
 Restart=on-failure
 RestartSec=2
 
-# Durcissement
+# Hardening
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

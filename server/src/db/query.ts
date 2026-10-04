@@ -1,12 +1,12 @@
-// Deux fabriques de requêtes préparées, typées sur la ligne qu'elles rendent.
+// Two prepared-statement factories, typed on the row they return.
 //
-// better-sqlite3 rend `unknown`, ce qui obligeait chaque appel à se conclure
-// par un `as`. Le transtypage est fait ici, une fois, et le reste du serveur
-// lit des lignes déjà nommées.
+// better-sqlite3 returns `unknown`, which forced every call site to finish
+// with an `as`. The cast is done here, once, and the rest of the server
+// reads rows that are already named.
 //
-// Une requête préparée l'est au chargement du module et non à chaque appel :
-// c'est là que se trouvait le gros du coût inutile, SQLite recompilant le même
-// SQL à chaque requête HTTP.
+// A statement is prepared when the module loads, not on every call: that is
+// where most of the needless cost lay, SQLite recompiling the same SQL on
+// every HTTP request.
 
 import type { RunResult } from "better-sqlite3";
 import db from "./index.js";
@@ -20,27 +20,27 @@ export interface Mutation {
   run(...params: unknown[]): RunResult;
 }
 
-/** Une lecture : `SELECT`. */
+/** A read: `SELECT`. */
 export const selection = <Row>(sql: string): Selection<Row> =>
   db.prepare(sql) as unknown as Selection<Row>;
 
-/** Une écriture : `INSERT`, `UPDATE`, `DELETE`. */
+/** A write: `INSERT`, `UPDATE`, `DELETE`. */
 export const mutation = (sql: string): Mutation => db.prepare(sql) as unknown as Mutation;
 
 /**
- * Un groupe d'écritures qui vont ensemble : elles passent toutes, ou aucune.
+ * A group of writes that belong together: they all go through, or none do.
  *
- * Enveloppe `db.transaction` pour en rendre une fonction ordinaire : le type
- * de better-sqlite3 porte des variantes (`deferred`, `immediate`) dont on ne
- * se sert pas, et qui empêchent TypeScript de nommer le type à l'export.
+ * Wraps `db.transaction` to turn it into an ordinary function: the
+ * better-sqlite3 type carries variants (`deferred`, `immediate`) that we do
+ * not use, and that stop TypeScript from naming the type on export.
  */
 export const transaction = <Args extends unknown[], Result>(
   action: (...args: Args) => Result,
 ): ((...args: Args) => Result) => db.transaction(action) as (...args: Args) => Result;
 
 /**
- * Une lecture dont on sait qu'elle rend exactement une ligne : un COUNT, un
- * MAX. Évite d'avoir à traiter un `undefined` qui ne viendra jamais.
+ * A read known to return exactly one row: a COUNT, a MAX. Saves having to
+ * handle an `undefined` that will never come.
  */
 export const scalar = <Row>(sql: string) => {
   const query = db.prepare(sql) as unknown as Selection<Row>;

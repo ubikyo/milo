@@ -1,49 +1,48 @@
-// Le gabarit des e-mails de Milo.
+// The template for Milo's e-mails.
 //
-// Ce n'est pas du HTML ordinaire. Les clients de messagerie ne partagent ni
-// les variables CSS, ni les feuilles de style externes, ni la mise en page en
-// flex ou en grille : on en revient aux tableaux et aux styles posés sur
-// chaque balise, comme on le faisait il y a vingt ans. Les couleurs sont donc
-// écrites en dur, alors que l'application les tire du thème — c'est le seul
-// endroit du code où ce doublon est justifié.
+// This is not ordinary HTML. Mail clients share neither CSS variables, nor
+// external style sheets, nor flex or grid layout: we are back to tables and
+// styles placed on every tag, as twenty years ago. Colors are therefore
+// written in hard-coded form, whereas the app draws them from the theme —
+// this is the only place in the code where this duplication is justified.
 //
-// L'allure est celle des fenêtres de l'application : un bandeau gris très
-// foncé, le nom en blanc et en graisse fine, puis le contenu sur fond clair.
-// Le logo n'y est pas : c'est un SVG, que la moitié des clients ne rendent
-// pas, et une image distante est bloquée par défaut chez la plupart des
-// autres. Le mot « Milo » dans le bandeau ne dépend, lui, de rien.
+// The look is that of the app's windows: a very dark gray banner, the name in
+// white and a thin weight, then the content on a light background. The logo
+// is not there: it is an SVG, which half of the clients do not render, and a
+// remote image is blocked by default in most of the others. The word "Milo"
+// in the banner, for its part, depends on nothing.
 
 import { LOGO_CID, LOGO_HEIGHT_PX, LOGO_WIDTH_PX, attachedLogo } from "./mail-logo.js";
 
-/** Les couleurs de Milo, figées : voir l'explication en tête de fichier. */
+/** Milo's colors, frozen: see the explanation at the top of the file. */
 const RULE = "#dee2e6";
 const TEXT = "#212529";
 const DIMMED = "#868e96";
 const GREEN = "#099268";
 
-/** Le retrait du message, le même sur les quatre côtés. */
+/** The message's inset, the same on all four sides. */
 const INSET = "30px";
 
-/** Tout ce qui vient des données passe par là avant d'entrer dans le HTML. */
+/** Everything coming from the data goes through here before entering the HTML. */
 const escape = (text: string): string =>
   text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-/** Un fait rapporté, et le nombre de fois qu'il s'est répété d'affilée. */
+/** A reported fact, and the number of times it repeated in a row. */
 export interface Row {
   text: string;
   repetitions: number;
 }
 
 export interface Message {
-  /** Ce qui s'affiche en gros sous le bandeau : le nom de l'élément. */
+  /** What is displayed large under the banner: the item's name. */
   title: string;
-  /** La phrase qui l'introduit. */
+  /** The sentence that introduces it. */
   intro: string;
-  /** Ce qui s'est passé, une ligne par fait. Facultatif. */
+  /** What happened, one line per fact. Optional. */
   rows?: Row[];
-  /** Le bouton, s'il y a quelque chose à ouvrir. */
+  /** The button, if there is something to open. */
   action?: { url: string; label: string };
-  /** La mention en petit, tout en bas. */
+  /** The fine print, at the very bottom. */
   footer: string;
 }
 
@@ -51,9 +50,9 @@ const withRepeats = (row: Row): string =>
   row.repetitions > 1 ? `${row.text} (${row.repetitions} fois)` : row.text;
 
 /**
- * La version texte. Elle n'est pas un pis-aller : c'est elle que lisent les
- * clients en mode texte et les lecteurs d'écran qui la préfèrent, et c'est
- * elle qui reste lisible quand le HTML est bloqué.
+ * The text version. It is not a stopgap: it is what text-mode clients and
+ * screen readers that prefer it read, and it is what stays readable when the
+ * HTML is blocked.
  */
 const toText = (m: Message): string =>
   [
@@ -80,8 +79,8 @@ const toHtml = (m: Message): string => {
     )
     .join("");
 
-  // Le bouton est un tableau et non un « a » stylé : c'est la seule forme que
-  // rendent correctement les clients d'Outlook.
+  // The button is a table and not a styled "a": it is the only form that
+  // Outlook clients render correctly.
   const action = m.action
     ? `
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 0 0">
@@ -121,8 +120,8 @@ const toHtml = (m: Message): string => {
           ${action}
         </td>
       </tr>
-      <!-- Le pied : un trait, puis le logo et la mention sur la même ligne.
-           C'est la seule signature du message — il n'y a plus d'entête. -->
+      <!-- The footer: a rule, then the logo and the note on the same line.
+           It is the message's only signature — there is no header any more. -->
       <tr>
         <td style="padding:0 ${INSET} ${INSET} ${INSET}">
           <div style="border-top:1px solid ${RULE};padding-top:16px">
@@ -146,18 +145,19 @@ const toHtml = (m: Message): string => {
 </html>`;
 };
 
-/** Une pièce jointe, jointe en ligne au message (Graph, « fileAttachment »). */
+/** An attachment, inlined in the message (Graph, "fileAttachment"). */
 export interface MailAttachment {
   filename: string;
   content: Buffer;
   contentType: string;
-  /** Cité par le HTML en « cid: » : l'image s'affiche sans rien charger. */
+  /** Cited by the HTML as "cid:": the image displays without loading anything. */
   cid: string;
 }
 
 /**
- * Les deux versions d'un même message — HTML et texte —, et le logo qui les
- * accompagne. L'appelant n'a rien à assembler : il passe le tout à l'envoi.
+ * The two versions of the same message — HTML and text —, and the logo that
+ * goes with them. The caller has nothing to assemble: it passes the whole
+ * thing to the send.
  */
 export const template = (
   m: Message,

@@ -51,15 +51,15 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import { GREEN } from "../../themes/colors";
 import type { EntraPrincipal, PrincipalPermissions } from "@milo/shared";
 
-/** Le fond de l'icône d'une ligne : un gris neutre, plus foncé que la ligne. */
+/** The background of a row's icon: a neutral gray, darker than the row. */
 const AVATAR_BACKGROUND = "light-dark(#d4d4d4, var(--mantine-color-dark-4))";
 
-/** L'air ajouté en haut et en bas d'une ligne : 10 px de hauteur en plus. */
+/** The air added above and below a row: 10 px more height. */
 const EXTRA_PADDING = 5;
 
 /**
- * La hauteur d'une ligne : celle d'un utilisateur, son nom (« sm ») sur son
- * adresse (« xs »), avec l'air de la ligne en haut et en bas.
+ * A row's height: that of a user, its name ("sm") over its address ("xs"),
+ * with the row's air above and below.
  */
 const ROW_HEIGHT = `calc(${2 * (ROW_INSET + EXTRA_PADDING)}px + (var(--mantine-font-size-sm) + var(--mantine-font-size-xs)) * var(--mantine-line-height))`;
 
@@ -67,37 +67,37 @@ const key = (p: EntraPrincipal) => `${p.type}:${p.id}`;
 
 interface PrincipalsPermissionsProps<T> {
   load: () => Promise<PrincipalPermissions<T>[]>;
-  /** Enregistre les permissions d'un principal ; rend la liste à jour. */
+  /** Saves a principal's permissions; returns the updated list. */
   save: (
     principal: EntraPrincipal,
     permissions: T,
   ) => Promise<PrincipalPermissions<T>[]>;
-  /** Lui retire tout ; rend la liste à jour. */
+  /** Removes everything from it; returns the updated list. */
   remove: (principal: EntraPrincipal) => Promise<PrincipalPermissions<T>[]>;
-  /** Celles de qui arrive de l'annuaire : aucune. */
+  /** Those of someone coming from the directory: none. */
   empty: () => T;
-  /** Ce qu'il a, d'un coup d'œil, au bout de sa ligne. */
+  /** What it has, at a glance, at the end of its row. */
   summary: (permissions: T) => string;
   /**
-   * La fenêtre des permissions (PrincipalPermissionsModal). Sans elle, les
-   * permissions se règlent sur la ligne (enLigne) : ni fenêtre, ni
-   * « Permissions » au clic droit.
+   * The permissions modal (PrincipalPermissionsModal). Without it, the
+   * permissions are set on the row (inline): no modal, no
+   * "Permissions" on right-click.
    */
   sections?: (
     permissions: T,
     change: (permissions: T) => void,
   ) => SectionPermissions[];
   /**
-   * Des permissions peu nombreuses, réglées à même la ligne plutôt que dans
-   * la fenêtre : celles de l'administration — Workspaces, Paramétrage. La
-   * ligne d'ajout les porte aussi, à droite de la recherche : on choisit qui,
-   * puis ce qu'il a, en une fois.
+   * A few permissions, set inline in the row rather than in the
+   * modal: those of the administration — Workspaces, Paramétrage. The add
+   * row carries them too, to the right of the search: you pick who, then
+   * what they have, in one go.
    */
   /**
-   * Avec « enLigne » : des permissions qui peuvent être nombreuses — un type
-   * de widget chacune —, en colonnes sous un en-tête qui les nomme, plutôt
-   * que nommées dans chaque choix. Au-delà de la largeur, la liste défile de
-   * côté.
+   * With "inline": permissions that may be numerous — one per widget
+   * type —, in columns under a header that names them, rather than
+   * named in each choice. Beyond the width, the list scrolls
+   * sideways.
    */
   inColumns?: boolean;
   inline?: (
@@ -105,31 +105,31 @@ interface PrincipalsPermissionsProps<T> {
     change: (permissions: T) => void,
   ) => PermissionRow[];
   emptyText: string;
-  /** Le geste qui lui retire tout, et sa confirmation. */
+  /** The action that removes everything from it, and its confirmation. */
   removeDialog: { label: string; message: (name: string) => ReactNode };
   /**
-   * Après un enregistrement ou un retrait : ses propres droits ont pu changer
-   * — un workspace de plus dans son sélecteur, par exemple.
+   * After a save or a removal: its own rights may have changed
+   * — one more workspace in its selector, for example.
    */
   onChange?: () => void;
 }
 
-/** La largeur d'un choix de permission sur la ligne : de quoi lire « Modifier ». */
+/** Width of a permission choice on the row: wide enough to read "Modifier". */
 const CHOICE_WIDTH = 130;
 
 /**
- * En colonnes : la largeur d'une colonne — de quoi lire « Support » en
- * en-tête —, et l'écart entre deux.
+ * In columns: the width of a column — wide enough to read "Support" in the
+ * header —, and the gap between two.
  */
 const COLUMN_WIDTH = 52;
 const COLUMNS_GAP = 4;
-/** L'écart des éléments d'une ligne (« sm »), que l'en-tête reprend. */
+/** The gap between a row's elements ("sm"), which the header reuses. */
 const GAP = 12;
 
-/** Le fond d'une permission en lecture : le gris neutre des boutons de ligne. */
+/** The background of a read permission: the neutral gray of the row buttons. */
 const READ_BACKGROUND = "light-dark(#d4d4d4, var(--mantine-color-dark-4))";
 
-/** L'icône d'un niveau : rien, lire, modifier ; à défaut, son initiale. */
+/** A level's icon: none, read, edit; otherwise, its initial. */
 const LEVEL_ICONS: Record<string, typeof IconMinus> = {
   "": IconMinus,
   view: IconEye,
@@ -137,10 +137,10 @@ const LEVEL_ICONS: Record<string, typeof IconMinus> = {
 };
 
 /**
- * Le niveau d'une permission, en colonne : un petit bouton qui passe au
- * suivant à chaque clic — Aucun, Lire, Modifier, puis Aucun. Rien : un tiret
- * estompé ; lire : un œil sur le gris neutre ; modifier : un crayon sur le
- * vert de l'application. L'infobulle dit lequel.
+ * A permission's level, in a column: a small button that moves to the
+ * next on each click — Aucun, Lire, Modifier, then Aucun. None: a faded
+ * dash; read: an eye on the neutral gray; edit: a pencil on the
+ * application's green. The tooltip says which.
  */
 function LevelButton({
   name,
@@ -155,7 +155,7 @@ function LevelButton({
   );
   const current = options[rank];
   const next = options[(rank + 1) % options.length];
-  // Un oui se coche ; les niveaux d'un type de widget ont leur icône.
+  // A yes is a checkbox; a widget type's levels have their own icon.
   const Icon = current?.label === "Oui" ? IconCheck : LEVEL_ICONS[value];
   const background =
     value === "update" ? GREEN : value ? READ_BACKGROUND : "transparent";
@@ -187,7 +187,7 @@ function LevelButton({
   );
 }
 
-/** Les niveaux d'une ligne en colonnes, chacun centré sous son en-tête. */
+/** The levels of a row in columns, each centered under its header. */
 function LevelsInColumns({ rows }: { rows: PermissionRow[] }) {
   return (
     <Group gap={COLUMNS_GAP} wrap="nowrap" style={{ flexShrink: 0 }}>
@@ -204,19 +204,19 @@ function LevelsInColumns({ rows }: { rows: PermissionRow[] }) {
   );
 }
 
-// « Aucun » ne peut pas être la valeur vide d'un Select : il lui faut la sienne.
+// "Aucun" cannot be a Select's empty value: it needs its own.
 const NONE = "none";
 
 /**
- * Les permissions réglées à même la ligne (enLigne) : un choix chacune, son
- * nom en invite — « Workspaces », « Paramétrage » —, au bout de la ligne.
+ * The permissions set inline in the row (inline): one choice each, its
+ * name as a prompt — "Workspaces", "Paramétrage" —, at the end of the row.
  */
 function InlineChoice({
   rows,
   inColumns,
 }: {
   rows: PermissionRow[];
-  /** En colonnes : le nom est dans l'en-tête, pas dans le choix. */
+  /** In columns: the name is in the header, not in the choice. */
   inColumns?: boolean;
 }) {
   const [entered, setEntered] = useState<string | null>(null);
@@ -227,7 +227,7 @@ function InlineChoice({
         <Select
           key={name}
           aria-label={name}
-          // Son nom devant la valeur : « Workspaces : Modifier ».
+          // Its name in front of the value: "Workspaces : Modifier".
           leftSection={
             <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
               {name}
@@ -257,13 +257,13 @@ function InlineChoice({
 }
 
 /**
- * Des utilisateurs et des groupes Entra et leurs permissions : les accès
- * d'un workspace (WorkspaceAccess), l'administration de l'application
- * (AdministrationTab). Ils se présentent comme les listes des tiroirs
- * (ChampsColonnes) : une ligne chacun, son nom, son adresse s'il en a une, et au bout le
- * bouton qui résume ses permissions et ouvre leur fenêtre. Le clic droit les
- * ouvre aussi, ou lui retire tout ; « Ajouter » pose une ligne qui cherche
- * dans l'annuaire, et choisir ouvre aussitôt la fenêtre des permissions.
+ * Entra users and groups and their permissions: the access of a workspace
+ * (WorkspaceAccess), the application's administration (AdministrationTab).
+ * They look like the drawer lists (ColumnFields): one row each, its name, its
+ * address if it has one, and at the end the button that summarizes its
+ * permissions and opens their modal. Right-click opens it too, or removes
+ * everything from it; "Ajouter" adds a row that searches the directory, and
+ * choosing immediately opens the permissions modal.
  */
 export default function PrincipalsPermissions<T>({
   load,
@@ -279,28 +279,28 @@ export default function PrincipalsPermissions<T>({
   onChange,
 }: PrincipalsPermissionsProps<T>) {
   const [access, setAccess] = useState<PrincipalPermissions<T>[]>([]);
-  // Celui dont la fenêtre des permissions est ouverte : un principal de la
-  // liste, ou celui qu'on vient de choisir dans l'annuaire.
+  // The one whose permissions modal is open: a principal from the list,
+  // or the one just chosen from the directory.
   const [permissionsOf, setPermissionsOf] = useState<EntraPrincipal | null>(
     null,
   );
   const [pendingDelete, setPendingDelete] = useState<EntraPrincipal | null>(
     null,
   );
-  // La ligne ajoutée, où l'on cherche dans l'annuaire — et, réglées à même
-  // la ligne, les permissions qu'on lui donne.
+  // The added row, where the directory is searched — and, set inline in
+  // the row, the permissions given to it.
   const [adding, setAdding] = useState(false);
   const [newValue, setNewEntry] = useState<EntraPrincipal | null>(null);
   const [newItems, setNewValues] = useState<T>(empty);
   const addRow = useRef<HTMLDivElement | null>(null);
 
-  // La ligne dont on change l'utilisateur ou le groupe, d'un clic sur son nom.
+  // The row whose user or group is being changed, by clicking its name.
   const [toReplace, setToReplace] = useState<string | null>(null);
 
   /**
-   * Un autre à la place : il reçoit les mêmes permissions, puis l'ancien
-   * perd les siennes. S'il avait déjà une ligne, ses permissions sont
-   * remplacées par celles-ci.
+   * Another one in its place: it receives the same permissions, then the
+   * old one loses theirs. If it already had a row, its permissions are
+   * replaced by these.
    */
   const replaceExisting = async (
     old: EntraPrincipal,
@@ -323,7 +323,7 @@ export default function PrincipalsPermissions<T>({
     setNewValues(empty());
   };
 
-  /** Enregistre aussitôt des permissions réglées sur la ligne. */
+  /** Immediately saves permissions set on the row. */
   const handleSave = async (principal: EntraPrincipal, permissions: T) => {
     try {
       setAccess(await save(principal, permissions));
@@ -336,8 +336,8 @@ export default function PrincipalsPermissions<T>({
   };
 
   /**
-   * La ligne d'ajout part dès qu'elle a qui et au moins une permission :
-   * l'ordre importe peu, la recherche d'abord ou les permissions.
+   * The add row is submitted as soon as it has a who and at least one
+   * permission: the order matters little, search first or permissions.
    */
   const tryAdd = async (
     principal: EntraPrincipal | null,
@@ -367,11 +367,11 @@ export default function PrincipalsPermissions<T>({
   const current = permissionsOf
     ? access.find((a) => key(a.principal) === key(permissionsOf))
     : undefined;
-  // Qui arrive de l'annuaire n'en a pas encore : aucune.
+  // Someone coming from the directory has none yet: none.
   const initials = current?.permissions ?? empty();
 
   const total = access.length + (adding ? 1 : 0);
-  // Le nom d'une ligne prend ce que lui laissent les permissions, au bout.
+  // A row's name takes what the permissions leave it, at the end.
   const nameStyle = { flex: 1, minWidth: 0 };
 
   return (
@@ -389,8 +389,8 @@ export default function PrincipalsPermissions<T>({
             }}
           >
             {inColumns && inline && (
-              // L'en-tête des colonnes : le nom de chaque permission, au-dessus
-              // de ses choix.
+              // The columns header: the name of each permission, above
+              // its choices.
               <Group
                 gap={GAP}
                 wrap="nowrap"
@@ -400,8 +400,8 @@ export default function PrincipalsPermissions<T>({
                   paddingRight: ROW_INSET,
                 }}
               >
-                {/* La place de l'icône et du nom : les colonnes se calent au
-                    bout, comme les niveaux des lignes. */}
+                {/* The space of the icon and the name: the columns line up at the
+                    end, like the rows' levels. */}
                 <Box style={{ flex: 1 }} />
                 <Group
                   gap={COLUMNS_GAP}
@@ -436,15 +436,15 @@ export default function PrincipalsPermissions<T>({
                   style={{
                     ...rowStyle(rank, total, false),
                     paddingLeft: NAME_INSET,
-                    // Sur deux lignes, nom et adresse : un peu plus d'air.
+                    // On two lines, name and address: a bit more air.
                     paddingBlock: ROW_INSET + EXTRA_PADDING,
-                    // Un groupe, sans adresse, garde la hauteur d'un
-                    // utilisateur : toutes les lignes se valent.
+                    // A group, with no address, keeps the height of a
+                    // user: all rows are equal.
                     minHeight: ROW_HEIGHT,
                   }}
                 >
-                  {/* Un gris neutre derrière l'icône : ceux de Mantine tirent sur
-                    le bleu. */}
+                  {/* A neutral gray behind the icon: Mantine's grays lean
+                    blue. */}
                   <Avatar
                     size={28}
                     radius="xl"
@@ -463,8 +463,8 @@ export default function PrincipalsPermissions<T>({
                     )}
                   </Avatar>
                   {toReplace === key(principal) ? (
-                    // Un autre de l'annuaire à sa place, avec ses permissions.
-                    // Quittée sans choix, la recherche rend la ligne telle quelle.
+                    // Another one from the directory in its place, with its permissions.
+                    // Left without a choice, the search returns the row as it was.
                     <DirectoryPicker
                       aria-label={`Remplacer ${principal.name}`}
                       placeholder="Chercher un utilisateur ou un groupe Entra"
@@ -492,8 +492,8 @@ export default function PrincipalsPermissions<T>({
                       <Text size="sm" truncate>
                         {principal.name || principal.email}
                       </Text>
-                      {/* L'adresse d'un utilisateur sous son nom ; un groupe n'a que
-                      le sien — son icône dit ce qu'il est. */}
+                      {/* A user's address under their name; a group only has
+                      its name — its icon says what it is. */}
                       {principal.type !== "group" && principal.email && (
                         <Text size="xs" c="dimmed" truncate>
                           {principal.email}
@@ -503,7 +503,7 @@ export default function PrincipalsPermissions<T>({
                   )}
 
                   {inline ? (
-                    // Ses permissions à même la ligne : elles partent au choix.
+                    // Its permissions inline in the row: they are sent on choice.
                     <InlineChoice
                       inColumns={inColumns}
                       rows={inline(
@@ -512,7 +512,7 @@ export default function PrincipalsPermissions<T>({
                       )}
                     />
                   ) : (
-                    // Ce qu'il a, d'un coup d'œil, et sa fenêtre au clic.
+                    // What it has, at a glance, and its modal on click.
                     <RowButton
                       icon={IconShieldLock}
                       onClick={() => setPermissionsOf(principal)}
@@ -527,8 +527,8 @@ export default function PrincipalsPermissions<T>({
                   ref={addRow}
                   gap="sm"
                   wrap="nowrap"
-                  // Quittée sans rien choisir, la ligne s'efface. Aller de la
-                  // recherche aux permissions ne la quitte pas.
+                  // Left without choosing anything, the row disappears. Going from
+                  // the search to the permissions does not leave it.
                   onBlur={(e) => {
                     if (
                       addRow.current?.contains(
@@ -549,10 +549,10 @@ export default function PrincipalsPermissions<T>({
                     placeholder="Chercher un utilisateur ou un groupe Entra"
                     value={inline ? newValue : null}
                     resetOnSelect={!inline}
-                    // Avec des permissions en ligne, le choix reste dans le champ
-                    // le temps de les régler à droite. Sinon, choisir ouvre la
-                    // fenêtre des permissions : il n'entre dans la liste qu'une
-                    // fois enregistré.
+                    // With inline permissions, the choice stays in the field
+                    // while they are set on the right. Otherwise, choosing opens
+                    // the permissions modal: it only enters the list once
+                    // saved.
                     onChange={(principal) => {
                       if (inline) {
                         setNewEntry(principal);
@@ -584,7 +584,7 @@ export default function PrincipalsPermissions<T>({
             </Stack>
           </ScrollArea>
         )}
-        {/* Au plus près de la liste qu'il allonge. */}
+        {/* As close as possible to the list it extends. */}
         <AddButton
           label="Ajouter un utilisateur ou un groupe"
           onClick={() => setAdding(true)}

@@ -6,13 +6,13 @@ import { NameField, NAME, IndicatorTitle, IndicatorValue, isFinished } from "./c
 import type { ProjectIndicatorWidget } from "./types";
 import type { Id, Project } from "@milo/shared";
 
-// Un nombre de projets : ceux du tableau ouvert qui répondent au type choisi
-// — tous, ceux en cours, ceux qui n'ont personne pour les porter, ceux qu'on
-// ne touche plus.
+// A number of projects: those of the open board that match the chosen type
+// — all, those in progress, those that nobody carries, those that are
+// no longer touched.
 
 const TYPE = "type";
 
-/** Au-delà, un projet en cours qu'on ne modifie plus est à l'arrêt ; en deçà, un projet est récent. */
+/** Beyond this, a project in progress that is no longer edited is at a standstill; below, a project is recent. */
 const DAYS = 30;
 
 const since = (date: string): number => dayjs().diff(dayjs(date), "day", true);
@@ -56,7 +56,7 @@ const TYPES: ProjectType[] = [
   { value: "total", label: "Projets au total", account: () => true },
 ];
 
-/** Le type rangé, ou le premier : une valeur inconnue ne fait rien tomber. */
+/** The stored type, or the first: an unknown value does not bring anything down. */
 const typeOf = (config: unknown) =>
   TYPES.find((t) => t.value === text(config, TYPE)) ?? DEFAULT_TYPE;
 
@@ -71,7 +71,7 @@ export const projectsIndicator: ProjectIndicatorWidget = {
   Display: ({ config, projects, userId }) => {
     const type = typeOf(config);
     return (
-      // Le nom en haut, la quantité en bas à gauche, comme les tickets.
+      // The name at the top, the quantity at bottom left, like tickets.
       <Stack gap={4} justify="space-between" style={{ flex: 1 }}>
         <IndicatorTitle config={config} defaultValue={type.label} />
         <IndicatorValue config={config}>

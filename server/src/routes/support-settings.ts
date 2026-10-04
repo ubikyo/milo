@@ -1,5 +1,5 @@
-// La section « Support » du Paramétrage : des réglages qui valent pour toute
-// l'application (voir shared/support-settings.ts).
+// The "Support" section of "Paramétrage": settings that apply to the whole
+// application (see shared/support-settings.ts).
 
 import { Router } from "express";
 import { SUPPORT_DUE_DAYS_MAX } from "@milo/shared";
@@ -12,9 +12,9 @@ const DUE_KEY = "support_default_due_days";
 const LABELS_KEY = "support_default_label_ids";
 
 /**
- * Les étiquettes d'office d'un e-mail entrant. Jamais réglées : la priorité
- * la plus légère, comme avant que le Paramétrage les propose. Une étiquette
- * supprimée depuis disparaît d'elle-même du réglage.
+ * The automatic labels of an incoming e-mail. Never set: the lightest
+ * priority, as before "Paramétrage" offered them. A label deleted since
+ * disappears from the setting on its own.
  */
 const defaultLabels = (): number[] => {
   const ids = readSetting<number[] | null>(LABELS_KEY, null);

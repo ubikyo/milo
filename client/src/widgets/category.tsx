@@ -1,9 +1,9 @@
 import { IconFolder } from "@tabler/icons-react";
 import { createWidgetTitle } from "./title";
 
-// Une catégorie : le titre qui ouvre un groupe dans la colonne. Blanc, et le
-// plus gros des deux niveaux. Précédée d'un élément, elle s'en écarte
-// nettement : c'est un nouveau groupe qui commence.
+// A category: the title that opens a group in the column. White, and the
+// larger of the two levels. Preceded by an element, it stands well apart from
+// it: a new group begins.
 export const categoryWidget = createWidgetTitle({
   type: "category",
   label: "Catégorie",

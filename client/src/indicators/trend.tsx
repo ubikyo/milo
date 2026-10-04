@@ -6,15 +6,15 @@ import { withField, count } from "../widgets/types";
 import { NameField, NAME, IndicatorTitle } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 
-// Les demandes reçues jour après jour, sur la période choisie : de quoi voir
-// venir un afflux, ou le calme d'une semaine de vacances.
+// Requests received day after day, over the chosen period: enough to see
+// an influx coming, or the calm of a vacation week.
 
 const LABEL = "Évolution";
 const PERIOD = "days";
 const PERIODS = [7, 14, 30];
 const PERIOD_DEFAULT = 14;
 
-/** La période rangée, ou celle par défaut : une valeur inconnue ne fait rien tomber. */
+/** The stored period, or the default one: an unknown value does not bring anything down. */
 const periodOf = (config: unknown) => {
   const days = count(config, PERIOD, PERIOD_DEFAULT);
   return PERIODS.includes(days) ? days : PERIOD_DEFAULT;

@@ -1,14 +1,14 @@
-// Les dépendances entre cartes : une liaison se lit des deux côtés. Elle
-// s'enregistre une fois, de sa carte « source » vers sa carte « cible » ; la
-// cible la lit à l'envers — ce qui bloque l'une est bloqué par l'autre.
+// Dependencies between cards: a link is read from both sides. It
+// is recorded once, from its "source" card to its "target" card; the
+// target reads it in reverse — what blocks one is blocked by the other.
 
 import type { Id } from "./domain.js";
 
-/** Ce qu'une liaison enregistre, lu depuis sa carte source. */
+/** What a link records, read from its source card. */
 export const LINK_KINDS = ["blocks", "parent_of", "related", "duplicate"] as const;
 export type LinkKind = (typeof LINK_KINDS)[number];
 
-/** Ce qu'une carte dit d'une autre, telle que sa fiche la montre. */
+/** What a card says about another, as its record shows it. */
 export const RELATIONS = [
   { value: "blocked_by", label: "est bloqué par" },
   { value: "blocks", label: "bloque" },
@@ -23,9 +23,9 @@ export const isRelation = (value: unknown): value is Relation =>
   RELATIONS.some((r) => r.value === value);
 
 /**
- * Comment s'enregistre une relation posée sur une carte : sa sorte, et si la
- * carte en est la source. « est bloqué par Y » s'écrit « Y bloque X ». Le lien
- * et le doublon se lisent pareil des deux côtés.
+ * How a relation set on a card is recorded: its kind, and whether the
+ * card is the source. "is blocked by Y" is written "Y blocks X". The link
+ * and the duplicate read the same from both sides.
  */
 export const registration = (
   relation: Relation,
@@ -40,7 +40,7 @@ export const registration = (
   }
 };
 
-/** La relation qu'une carte lit d'une liaison, selon qu'elle en est la source ou la cible. */
+/** The relation a card reads from a link, depending on whether it is the source or the target. */
 export const relationFromSide = (kind: LinkKind, source: boolean): Relation => {
   if (source) return kind;
   if (kind === "blocks") return "blocked_by";
@@ -48,7 +48,7 @@ export const relationFromSide = (kind: LinkKind, source: boolean): Relation => {
   return kind;
 };
 
-/** L'autre carte d'une dépendance : elle peut vivre sur un autre tableau. */
+/** The other card of a dependency: it may live on another board. */
 export interface LinkedCard {
   id: Id;
   text: string;
@@ -57,28 +57,28 @@ export interface LinkedCard {
   board_name: string;
 }
 
-/** Une dépendance, depuis la carte dont la fiche est ouverte. */
+/** A dependency, from the card whose record is open. */
 export interface CardLink {
   id: Id;
   relation: Relation;
-  /** L'autre carte. */
+  /** The other card. */
   card: LinkedCard;
 }
 
 /**
- * Une page des cartes qu'une dépendance peut relier : celles du tableau de la
- * carte d'abord, puis celles des autres tableaux visibles.
+ * A page of the cards a dependency can link: those of the card's
+ * board first, then those of the other visible boards.
  */
 export interface LinkCandidates {
   items: (LinkedCard & { same_board: boolean })[];
-  /** Vrai s'il reste des cartes après cette page. */
+  /** True if there are cards left after this page. */
   more: boolean;
 }
 
-/** Combien de cartes une page de la recherche rend. */
+/** How many cards one page of the search returns. */
 export const LINKS_PAGE_SIZE = 10;
 
-/** Ce qu'on envoie pour poser ou changer une dépendance d'une carte. */
+/** What is sent to set or change a card's dependency. */
 export interface CardLinkInput {
   relation: Relation;
   target_id: Id;

@@ -1,12 +1,11 @@
-// La confirmation des boîtes de support. Une adresse posée dans une liste de
-// demandes ne se relève pas tant que sa boîte n'a pas prouvé qu'elle est à
-// qui la pose : Milo lui envoie un code à quatre chiffres, qu'on saisit dans
-// Milo (Actions → Confirmer une adresse). Jusque-là, aucun e-mail n'en est
-// importé ; après, seuls ceux arrivés depuis la confirmation le sont
-// (repositories/receptions.ts).
+// Confirmation of support inboxes. An address set in a request list is not
+// polled until its inbox has proven it belongs to whoever set it: Milo sends it
+// a four-digit code, which is entered in Milo (Actions → Confirmer une
+// adresse). Until then, no e-mail is imported from it; afterwards, only those
+// that arrived since the confirmation are (repositories/inboxes.ts).
 //
-// Le code est tiré au hasard ; une relance en tire un neuf, et l'ancien ne
-// vaut plus. Il n'y a pas de lien : rien ne s'ouvre hors de Milo.
+// The code is drawn at random; a resend draws a new one, and the old one is no
+// longer valid. There is no link: nothing opens outside Milo.
 
 import { randomInt } from "node:crypto";
 import { optins, pair } from "../repositories/optins.js";
@@ -17,19 +16,19 @@ import { sendMail } from "./mail.js";
 import { template } from "./mail-template.js";
 
 /**
- * L'objet de l'e-mail du code. La relève le reconnaît, parti de l'adresse
- * d'envoi, et ne l'importe jamais (lib/support-mail.ts).
+ * Subject of the code e-mail. The poll recognizes it, sent from the sending
+ * address, and never imports it (lib/support-mail.ts).
  */
 export const CONFIRMATION_SUBJECT = "Milo — Confirmez la réception des tickets";
 
 const newCode = (): string => String(randomInt(0, 10_000)).padStart(4, "0");
 
-/** Au-delà, le code ne vaut plus : quatre chiffres se devineraient. */
+/** Beyond this, the code is no longer valid: four digits could be guessed. */
 const ATTEMPTS_MAX = 5;
 
 /**
- * Ce qui manque pour envoyer le code, dit à qui relance ; vide quand tout y
- * est.
+ * What is missing to send the code, reported to whoever resends; empty when
+ * everything is there.
  */
 const missingLabel = (): string => {
   if (!entraConfigured()) return "La messagerie n'est pas configurée (Paramétrage → Entra)";
@@ -38,8 +37,8 @@ const missingLabel = (): string => {
 };
 
 /**
- * Envoie un code neuf à la boîte, pour la liste « liste » ;
- * « usage » dit où ses demandes iront. Lève ce qui a empêché l'envoi.
+ * Sends a new code to the inbox, for the list "list";
+ * "usage" says where its requests will go. Throws whatever prevented sending.
  */
 const send = async (list: string, email: string, usage = ""): Promise<void> => {
   const reason = missingLabel();
@@ -56,32 +55,32 @@ const send = async (list: string, email: string, usage = ""): Promise<void> => {
       footer: "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.",
     }),
   });
-  // Rangé une fois parti : un envoi manqué ne remplace pas le code précédent.
+  // Stored once sent: a failed send does not replace the previous code.
   optins.sent(list, email, code);
 };
 
 /**
- * Les adresses que les listes de demandes viennent de recevoir : chacune
- * attend désormais sa confirmation, et sa boîte reçoit le code. Un envoi
- * manqué se rattrape par la relance.
+ * The addresses that the request lists have just received: each one now
+ * awaits confirmation, and its inbox receives the code. A failed send is made
+ * up for by the resend.
  */
 export const askForConfirmations = (): void => {
-  // Chaque liste confirme ses adresses, même celles qu'une autre a déjà
-  // confirmées. Une adresse qu'une liste ne dit plus y est oubliée :
-  // rajoutée, elle se confirme de nouveau.
+  // Each list confirms its addresses, even those another list has already
+  // confirmed. An address a list no longer mentions is forgotten there:
+  // added again, it must be confirmed again.
   const mailboxes = listMailboxes().filter((b) => b.list);
   optins.forgetExcept(new Set(mailboxes.map((b) => pair(b.list, b.value))));
   for (const mailbox of mailboxes) {
     if (!optins.create(mailbox.list, mailbox.value)) continue;
     send(mailbox.list, mailbox.value, mailbox.usage).catch((error: unknown) =>
-      console.error(`Confirmation de ${mailbox.value} :`, error),
+      console.error(`Confirmation of ${mailbox.value}:`, error),
     );
   }
 };
 
 /**
- * Renvoie un code neuf aux adresses dites qui attendent encore. Rend le nombre
- * d'e-mails partis ; lève quand aucun n'a pu partir.
+ * Sends a new code to the listed addresses that are still pending. Returns the
+ * number of e-mails sent; throws when none could be sent.
  */
 export const retry = async (list: string, emails: string[]): Promise<number> => {
   const pending = [...new Set(emails.map((e) => e.trim().toLowerCase()))].filter(
@@ -102,7 +101,7 @@ export const retry = async (list: string, emails: string[]): Promise<number> => 
       sent += 1;
     } catch (error) {
       last = error instanceof Error ? error.message : String(error);
-      console.error(`Relance de ${email} :`, error);
+      console.error(`Resend to ${email}:`, error);
     }
   }
   if (pending.length && !sent) fail(400, last || "L'envoi a échoué");
@@ -110,8 +109,8 @@ export const retry = async (list: string, emails: string[]): Promise<number> => 
 };
 
 /**
- * Confirme une boîte par le code de son e-mail. Lève quand le code est faux ;
- * au bout de ESSAIS_MAX essais, il ne vaut plus et il faut relancer.
+ * Confirms an inbox with the code from its e-mail. Throws when the code is
+ * wrong; after ATTEMPTS_MAX attempts, it is no longer valid and a resend is needed.
  */
 export const confirmByCode = (list: string, email: string, code: string): void => {
   const row = optins.de(list, email);

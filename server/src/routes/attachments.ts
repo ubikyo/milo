@@ -1,10 +1,9 @@
-// Les fichiers : les pièces jointes d'une carte, les images collées dans une
-// description, et la lecture des uns comme des autres.
+// Files: a card's attachments, images pasted into a description, and reading
+// both.
 //
-// Le corps de la requête est le fichier lui-même, brut, et non un formulaire
-// en plusieurs parties : le nom et le type voyagent en paramètres d'adresse.
-// C'est tout ce dont on a besoin — un dépôt, un fichier — et cela évite une
-// dépendance de plus pour analyser du multipart.
+// The request body is the file itself, raw, not a multipart form: the name
+// and type travel as URL parameters. That is all we need — one upload, one
+// file — and it saves one more dependency for parsing multipart.
 
 import { ticketPathFor, quotedFile } from "../lib/ticket-files.js";
 import express, { Router } from "express";
@@ -35,13 +34,13 @@ const CARD_NOT_FOUND = "Carte introuvable";
 const ATTACHMENT_NOT_FOUND = "Pièce jointe introuvable";
 const FILE_NOT_FOUND = "Fichier introuvable";
 
-/** Le corps est un fichier : on le prend tel quel, quel que soit son type annoncé. */
+/** The body is a file: we take it as is, whatever its declared type. */
 const fileBody = express.raw({ type: () => true, limit: SIZE_MAX });
 
 /**
- * La carte visée, si son tableau est ouvert à cette personne et qu'elle peut
- * modifier les tâches de sa société : tout ce qui passe par ici écrit sur la
- * carte.
+ * The targeted card, if its board is open to this person and they can edit
+ * the tasks of its company: everything that goes through here writes to the
+ * card.
  */
 const openCard = (id: unknown, req: Request) => {
   const card = orNotFound(taskCards.byId.get(id), CARD_NOT_FOUND);
@@ -49,7 +48,7 @@ const openCard = (id: unknown, req: Request) => {
   return card;
 };
 
-/** Un nom de fichier reçu, ramené à un intitulé : jamais à un chemin. */
+/** A received file name, reduced to a label: never to a path. */
 const receivedName = (value: unknown): string => {
   const name = String(value ?? "")
     .split(/[/\\]/)
@@ -60,15 +59,15 @@ const receivedName = (value: unknown): string => {
 };
 
 /**
- * Le type annoncé par le client. Il n'est gardé que pour mémoire : ce que le
- * serveur rend est déduit de l'extension (lib/media.ts), jamais de ceci.
+ * The type declared by the client. It is only kept for the record: what the
+ * server returns is deduced from the extension (lib/media.ts), never from this.
  */
 const receivedType = (value: unknown): string => {
   const mime = String(value ?? "").trim().slice(0, 100);
   return /^[\w.+-]+\/[\w.+-]+$/.test(mime) ? mime : "application/octet-stream";
 };
 
-/** Le fichier déposé : son contenu, son nom, son type. */
+/** The uploaded file: its content, name, type. */
 const receivedFile = (req: Request) => {
   const content: unknown = req.body;
   if (!Buffer.isBuffer(content) || content.length === 0) badRequest("Fichier vide");
@@ -81,11 +80,11 @@ const receivedFile = (req: Request) => {
 };
 
 /**
- * Monté sous `/api/task-cards/:id` : ce qui se dépose sur une carte.
+ * Mounted under `/api/task-cards/:id`: what gets uploaded onto a card.
  *
- * Rien n'y touche les compteurs d'événements : le tableau ne montre ni les
- * pièces jointes ni les images d'une description, et faire relire ses listes à
- * tous les clients connectés pour un fichier déposé ne leur apprendrait rien.
+ * Nothing in it touches the event counters: the board shows neither the
+ * attachments nor a description's images, and making every connected client
+ * re-read its lists for an uploaded file would tell them nothing.
  */
 export const cardMediaRoutes = Router({ mergeParams: true });
 
@@ -116,17 +115,17 @@ cardMediaRoutes.post("/attachments", fileBody, (req, res) => {
   res.status(201).json(attachmentOf(attachments.byId.get(lastInsertRowid)!));
 });
 
-// Une image collée dans une description. Elle ne laisse pas de ligne en base :
-// c'est la description qui la cite, et le ménage des médias s'appuie sur cette
-// citation pour savoir que le fichier sert encore.
+// An image pasted into a description. It leaves no row in the database: the
+// description cites it, and the media cleanup relies on that citation to know
+// the file is still in use.
 cardMediaRoutes.post("/images", fileBody, (req, res) => {
   const { id } = req.params as { id?: string };
   openCard(id, req);
   const { content, name } = receivedFile(req);
 
-  // Une image que le serveur ne rendrait pas telle quelle n'a rien à faire
-  // dans une description : elle s'y afficherait comme un cadre vide. Le tri se
-  // fait avant d'écrire, pour ne pas laisser un fichier que rien ne citera.
+  // An image the server would not return as is has no business in a
+  // description: it would show up as an empty frame. Filtering happens
+  // before writing, so as not to leave a file that nothing will cite.
   if (!(inlineType(name) ?? "").startsWith("image/")) {
     badRequest("Ce format d'image ne peut pas être collé dans une description");
   }
@@ -134,9 +133,9 @@ cardMediaRoutes.post("/images", fileBody, (req, res) => {
   res.status(201).json({ url: mediaUrl(writeMedia(content, name)) });
 });
 
-// Une image de couverture. Seules les images que le serveur rend telles
-// quelles passent : une couverture se montre, elle ne se télécharge pas. La
-// carte la montre sur le tableau : les listes se relisent.
+// A cover image. Only images the server returns as is get through: a cover
+// is displayed, not downloaded. The card shows it on the board: the lists
+// are re-read.
 cardMediaRoutes.post("/covers", touch("task-lists"), fileBody, (req, res) => {
   const { id } = req.params as { id?: string };
   const card = openCard(id, req);
@@ -156,7 +155,7 @@ cardMediaRoutes.post("/covers", touch("task-lists"), fileBody, (req, res) => {
   res.status(201).json(coverOf(covers.byId.get(lastInsertRowid)!));
 });
 
-// L'ordre des pièces jointes, tel que la fiche le montre.
+// The attachments' order, as the detail view shows it.
 cardMediaRoutes.put("/attachments/order", (req, res) => {
   const { id } = req.params as { id?: string };
   const card = openCard(id, req);
@@ -164,7 +163,7 @@ cardMediaRoutes.put("/attachments/order", (req, res) => {
   res.json(attachmentsOf(card.id));
 });
 
-// L'ordre des couvertures : la première est celle du tableau.
+// The covers' order: the first one is the board's.
 cardMediaRoutes.put("/covers/order", touch("task-lists"), (req, res) => {
   const { id } = req.params as { id?: string };
   const card = openCard(id, req);
@@ -172,7 +171,7 @@ cardMediaRoutes.put("/covers/order", touch("task-lists"), (req, res) => {
   res.json(coversOf(card.id));
 });
 
-/** Monté sous `/api/covers`. */
+/** Mounted under `/api/covers`. */
 export const coverRoutes = Router();
 
 coverRoutes.delete("/:id", touch("task-lists"), (req, res) => {
@@ -182,7 +181,7 @@ coverRoutes.delete("/:id", touch("task-lists"), (req, res) => {
   res.status(204).end();
 });
 
-/** Monté sous `/api/attachments`. */
+/** Mounted under `/api/attachments`. */
 export const attachmentRoutes = Router();
 
 attachmentRoutes.delete("/:id", (req, res) => {
@@ -203,11 +202,11 @@ attachmentRoutes.delete("/:id", (req, res) => {
 });
 
 /**
- * Monté sous `/api/media` (et l'ancienne `/api/medias`), et — seule route dans ce cas — avant l'exigence
- * d'une session : un navigateur qui va chercher l'image d'une description avec
- * une balise « img » n'y met pas d'en-tête d'authentification. Ce qui tient
- * lieu de clé, c'est le nom du fichier : seize octets tirés au sort, qui ne se
- * devinent pas et ne se listent pas.
+ * Mounted under `/api/media` (and the old `/api/medias`), and — the only
+ * route in this case — before the session requirement: a browser fetching a
+ * description's image with an "img" tag puts no authentication header on it.
+ * What stands in for a key is the file name: sixteen random bytes, which
+ * cannot be guessed or listed.
  */
 export const mediaRoutes = Router();
 
@@ -216,37 +215,37 @@ mediaRoutes.get("/:file", (req, res, next) => {
   const path = orNotFound(mediaPath(file), FILE_NOT_FOUND);
   const type = inlineType(file);
 
-  // Le nom d'origine, s'il s'agit d'une pièce jointe : c'est sous celui-là
-  // qu'on veut l'enregistrer, pas sous les seize octets tirés au sort. Une
-  // image collée dans une description n'a pas de ligne en base et garde donc
-  // le sien, ce qui ne se voit pas : on ne l'enregistre pas.
+  // The original name, for an attachment: it is the one it should be saved
+  // under, not the sixteen random bytes. An image pasted into a description
+  // has no row in the database and so keeps its own, which is not visible:
+  // we don't save it.
   const name = attachments.byFile.get(file)?.name ?? file;
 
-  // Ce qui n'est pas de la liste des types rendus tels quels s'en va en
-  // téléchargement, sans type deviné : un fichier déposé sur une carte ne doit
-  // jamais s'exécuter sur notre propre origine.
+  // Whatever is not on the list of types returned as is goes out as a
+  // download, with no guessed type: a file uploaded onto a card must never
+  // run on our own origin.
   res.type(type ?? "application/octet-stream");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader(
     "Content-Disposition",
     `${type ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(name)}`,
   );
-  // Le nom ne se réemploie jamais : ce qui est derrière une adresse ne change
-  // pas, le navigateur peut le garder.
+  // The name is never reused: what sits behind an address does not change,
+  // the browser can keep it.
   res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
 
-  // Le fichier a disparu du disque alors que sa ligne est restée : l'erreur
-  // passe par « next », le rappel de sendFile étant hors de la pile d'Express.
+  // The file has vanished from disk while its row remained: the error goes
+  // through "next", sendFile's callback being outside Express's stack.
   res.sendFile(path, (error) => {
     if (error && !res.headersSent) next(new HttpError(404, FILE_NOT_FOUND));
   });
 });
 
 /**
- * Monté sous `/api/ticket-files`, comme les médias avant l'exigence d'une
- * session : les images d'un e-mail reçu s'affichent dans un cadre qui ne porte
- * pas d'en-tête d'authentification. Même clé : un nom de seize octets tirés au
- * sort (lib/ticket-files.ts).
+ * Mounted under `/api/ticket-files`, like media before the session
+ * requirement: the images of a received e-mail are shown in a frame that
+ * carries no authentication header. Same key: a name of sixteen random bytes
+ * (lib/ticket-files.ts).
  */
 export const ticketFileRoutes = Router();
 

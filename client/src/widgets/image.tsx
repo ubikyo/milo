@@ -21,35 +21,34 @@ import { api } from "../api";
 import { withField, count, text } from "./types";
 import type { AccessWidget, WidgetConfigProps } from "./types";
 
-// Une image, ou plusieurs qui se relaient : un logo, un plan d'étage, les
-// visuels d'une campagne. Seule, l'image est posée telle quelle ; à plusieurs,
-// elles défilent d'elles-mêmes, en fondu, à l'intervalle que l'élément règle —
-// le survol suspend le défilement, et les points sous l'image mènent à l'une
-// ou l'autre.
+// An image, or several that take turns: a logo, a floor plan, a campaign's
+// visuals. Alone, the image is placed as is; with several, they scroll by
+// themselves, with a fade, at the interval the element sets — hovering pauses
+// the scrolling, and the dots below the image lead to one or another.
 //
-// Les images se déposent dans le tiroir et vivent avec les autres médias
-// (server/src/lib/media.ts) : c'est la configuration qui cite leur adresse,
-// et le ménage des médias ne touche pas à ce qu'elle cite. Une adresse
-// d'ailleurs se colle aussi.
+// Images are dropped into the drawer and live with the other media
+// (server/src/lib/media.ts): it is the configuration that cites their address,
+// and the media cleanup does not touch what it cites. An external address can
+// also be pasted.
 
 const IMAGES = "images";
 const INTERVAL = "interval";
 const HEIGHT = "height";
 const ADJUSTMENT = "fit";
 
-/** Le temps passé sur chaque image, en secondes. */
+/** The time spent on each image, in seconds. */
 const DEFAULT_INTERVAL = 8;
 const INTERVAL_MIN = 2;
 const INTERVAL_MAX = 3600;
 
-/** La hauteur de l'image, en pixels ; « 0 » : celle que sa largeur lui donne. */
+/** The image's height, in pixels; "0": the one its width gives it. */
 const DEFAULT_HEIGHT = 0;
 const HEIGHT_MAX = 1200;
 
-/** La durée du fondu entre deux images. */
+/** The duration of the fade between two images. */
 const FADE = 600;
 
-/** Le côté d'une vignette du tiroir. */
+/** The side of a drawer thumbnail. */
 const THUMBNAIL = 72;
 
 const ADJUSTMENTS = [
@@ -57,7 +56,7 @@ const ADJUSTMENTS = [
   { value: "contain", label: "Contenir (entière)" },
 ];
 
-/** Les adresses rangées, sans ce qui n'en est pas une. */
+/** The stored addresses, without whatever is not one. */
 const imagesOf = (config: unknown): string[] => {
   const value = (config as Record<string, unknown> | null)?.[IMAGES];
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v !== "") : [];
@@ -77,7 +76,7 @@ function Slideshow({ config }: { config: unknown }) {
   const [rank, setRank] = useState(0);
   const [pause, setPaused] = useState(false);
 
-  // Une image retirée dans le tiroir ne laisse pas le rang pointer dans le vide.
+  // An image removed in the drawer does not leave the index pointing at nothing.
   const current = images.length ? rank % images.length : 0;
 
   useEffect(() => {
@@ -95,7 +94,7 @@ function Slideshow({ config }: { config: unknown }) {
     );
   }
 
-  // Seule, l'image prend sa place naturelle quand aucune hauteur n'est dite.
+  // Alone, the image takes its natural place when no height is given.
   if (images.length === 1) {
     return (
       <Image
@@ -108,8 +107,8 @@ function Slideshow({ config }: { config: unknown }) {
     );
   }
 
-  // À plusieurs, elles se superposent : la première tient la hauteur du
-  // cadre quand aucune n'est dite, les autres se posent dessus en fondu.
+  // With several, they overlap: the first one holds the frame's height when
+  // none is given, the others are laid on top of it with a fade.
   return (
     <Stack gap={6} onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
       <Box pos="relative" style={{ borderRadius: "var(--mantine-radius-md)", overflow: "hidden" }}>
@@ -281,8 +280,8 @@ function Fields({ config, onChange }: WidgetConfigProps) {
           w={180}
         />
       </Group>
-      {/* Un champ vidé le temps d'une saisie range l'intervalle par défaut
-          plutôt qu'un zéro, qui ferait tourner les images sans repos. */}
+      {/* A field emptied while typing stores the default interval rather
+          than a zero, which would make the images spin without rest. */}
       <NumberInput
         label="Intervalle de rotation"
         placeholder={String(DEFAULT_INTERVAL)}
@@ -313,7 +312,7 @@ export const imageWidget: AccessWidget = {
     [HEIGHT]: DEFAULT_HEIGHT,
     [ADJUSTMENT]: "cover",
   },
-  // Les points qui mènent d'une image à l'autre prennent leurs clics.
+  // The dots leading from one image to another receive their clicks.
   ownClicks: true,
   drawerSize: 480,
 

@@ -1,10 +1,10 @@
-// Palette des étiquettes : huit teintes rangées sur le cercle chromatique, du
-// neutre au pourpre, déclinées en huit nuances. Une couleur s'écrit
-// « teinte.nuance », comme partout chez Mantine.
+// Label palette: eight hues arranged on the color wheel, from
+// neutral to purple, in eight shades. A color is written
+// "hue.shade", as everywhere in Mantine.
 //
-// Le client dessinait la matrice et le serveur validait la même liste de
-// teintes, chacun de son côté. Les deux la lisent désormais ici : ajouter une
-// teinte ne demande plus de penser à l'autre fichier.
+// The client drew the matrix and the server validated the same list of
+// hues, each on its own. Both now read it from here: adding a
+// hue no longer requires remembering the other file.
 
 export const LABEL_HUES = [
   "gray",
@@ -21,17 +21,17 @@ export type LabelHue = (typeof LABEL_HUES)[number];
 
 export const LABEL_SHADES = [2, 3, 4, 5, 6, 7, 8, 9] as const;
 
-/** La matrice à plat, ligne par ligne : une nuance, ses huit teintes. */
+/** The flattened matrix, row by row: one shade, its eight hues. */
 export const LABEL_COLORS: string[] = LABEL_SHADES.flatMap((shade) =>
   LABEL_HUES.map((hue) => `${hue}.${shade}`),
 );
 
-/** Couleur par défaut d'une étiquette : le bleu de la nuance médiane. */
+/** Default color of a label: the blue of the middle shade. */
 export const DEFAULT_LABEL_COLOR = "blue.6";
 
 /**
- * Une couleur d'étiquette recevable. La teinte seule reste acceptée : c'est ce
- * que portent les étiquettes créées avant la matrice.
+ * A valid label color. The hue alone is still accepted: that is what
+ * labels created before the matrix carry.
  */
 export const isLabelColor = (color: unknown): boolean => {
   const parts = String(color).split(".");

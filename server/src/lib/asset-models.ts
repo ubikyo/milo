@@ -1,17 +1,17 @@
-// La table des modèles de la section « Assets » du Paramétrage : l'identifiant
-// qu'un poste déclare (« Mac14,6 ») et le nom sous lequel on le connaît.
+// The model table of the "Assets" section of Settings: the identifier a
+// workstation declares ("Mac14,6") and the name it is known by.
 //
-// Apple ne remonte que cet identifiant, et l'agent ne le traduit pas. Tant
-// que le Paramétrage n'a rien enregistré, la table part des Mac à puce Apple
-// les plus courants ; une fois enregistrée, elle est celle du Paramétrage, et
-// rien ne s'y ajoute plus de lui-même.
+// Apple only reports that identifier, and the agent does not translate it.
+// As long as Settings has recorded nothing, the table starts from the most
+// common Apple-silicon Macs; once recorded, it is the one from Settings, and
+// nothing is added to it by itself any more.
 
 import type { AssetModel } from "@milo/shared";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 
 const KEY = "asset_models";
 
-/** La table de départ : les Mac à puce Apple, de 2020 à 2024. */
+/** The starting table: Apple-silicon Macs, from 2020 to 2024. */
 const STARTER_TEMPLATES: AssetModel[] = [
   { identifier: "MacBookAir10,1", name: 'MacBook Air 13" (M1, 2020)' },
   { identifier: "MacBookPro17,1", name: 'MacBook Pro 13" (M1, 2020)' },
@@ -43,7 +43,7 @@ const STARTER_TEMPLATES: AssetModel[] = [
   { identifier: "Mac15,13", name: 'MacBook Air 15" (M3, 2024)' },
 ];
 
-/** La table des modèles : celle du Paramétrage, ou celle de départ. */
+/** The model table: the one from Settings, or the starting one. */
 export const templates = (): AssetModel[] => {
   const saved = readSetting<AssetModel[] | null>(KEY, null);
   return Array.isArray(saved) ? saved : STARTER_TEMPLATES;
@@ -52,8 +52,8 @@ export const templates = (): AssetModel[] => {
 export const saveTemplates = (list: AssetModel[]): void => writeSetting(KEY, list);
 
 /**
- * Le nom d'un modèle d'après son identifiant, sans égard à la casse ni aux
- * espaces ; vide quand la table ne le connaît pas.
+ * The name of a model from its identifier, ignoring case and spaces; empty
+ * when the table does not know it.
  */
 export const templateName = (identifier: string): string => {
   const search = identifier.trim().toLowerCase();

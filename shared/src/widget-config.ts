@@ -1,22 +1,22 @@
-// La configuration d'un widget, ramenée à ses clés d'aujourd'hui.
+// A widget's configuration, brought to today's keys.
 //
-// Les configurations rangées avant le passage du code en anglais portaient
-// des clés françaises (« encadre », « liste », « libelle »…) et quelques
-// valeurs françaises (« numerique », « pluie »…). La base est convertie une
-// fois (server, db/migrations.ts) ; ce qui arrive encore d'avant — une
-// disposition exportée, le presse-papiers du navigateur, un onglet resté
-// ouvert sur l'ancienne version — passe par la même fonction.
+// Configurations stored before the code moved to English carried
+// French keys ("encadre", "liste", "libelle"…) and a few French
+// values ("numerique", "pluie"…). The database is converted once
+// (server, db/migrations.ts); what still arrives from before — an
+// exported layout, the browser clipboard, a tab left
+// open on the old version — goes through the same function.
 //
-// Elle est pure, et ne touche qu'à ce qu'elle reconnaît : appliquée à une
-// configuration déjà convertie, elle la rend telle quelle. Quand l'ancienne
-// et la nouvelle clé sont toutes deux là, la nouvelle l'emporte.
+// It is pure, and only touches what it recognizes: applied to an
+// already converted configuration, it returns it as is. When both the old
+// and the new key are present, the new one wins.
 
 type Config = Record<string, unknown>;
 
 const isObject = (value: unknown): value is Config =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
-/** Les clés communes à tous les widgets : le cadre, les marges, le titre d'un indicateur. */
+/** Keys common to all widgets: the frame, the margins, the title of an indicator. */
 const COMMON_KEYS: Record<string, string> = {
   encadre: "framed",
   margeHaute: "marginTop",
@@ -27,8 +27,8 @@ const COMMON_KEYS: Record<string, string> = {
   couleur_titre: "title_color",
   taille_valeur: "value_size",
   couleur_valeur: "value_color",
-  // Rangées par une version qui les réglait ; plus rien ne les lit, mais
-  // elles se gardent.
+  // Stored by a version that set them; nothing reads them anymore, but
+  // they are kept.
   alignement_titre: "title_align",
   alignement_valeur: "value_align",
   couleur_texte: "text_color",
@@ -44,7 +44,7 @@ const LIST_KEYS = {
   largeurs_colonnes: "column_widths",
 };
 
-/** Les clés propres à chaque type de widget. */
+/** The keys specific to each widget type. */
 const TYPE_KEYS: Record<string, Record<string, string>> = {
   category: TITLE_KEYS,
   subcategory: TITLE_KEYS,
@@ -86,7 +86,7 @@ const TYPE_KEYS: Record<string, Record<string, string>> = {
   },
 };
 
-/** Les valeurs françaises d'un champ à choix, par type puis par clé (la nouvelle). */
+/** The French values of a choice field, by type then by key (the new one). */
 const TYPE_VALUES: Record<string, Record<string, Record<string, string>>> = {
   clock: { mode: { numerique: "digital", analogique: "analog" } },
   weather: { forecast: { aucune: "none", pluie: "rain", semaine: "week" } },
@@ -99,7 +99,7 @@ const MAIL_COLUMNS: Record<string, string> = {
   pieces: "attachments",
 };
 
-/** Un objet aux clés renommées ; la nouvelle clé, si elle est déjà là, l'emporte. */
+/** An object with renamed keys; the new key, if already there, wins. */
 const renameKeys = (source: Config, keys: Record<string, string>): Config => {
   const result: Config = {};
   for (const [key, value] of Object.entries(source)) {
@@ -110,16 +110,16 @@ const renameKeys = (source: Config, keys: Record<string, string>): Config => {
   return result;
 };
 
-/** Chaque objet d'une liste, ses clés renommées ; le reste tel quel. */
+/** Each object of a list, its keys renamed; the rest as is. */
 const renameInItems = (value: unknown, keys: Record<string, string>): unknown =>
   Array.isArray(value) ? value.map((v) => (isObject(v) ? renameKeys(v, keys) : v)) : value;
 
-/** Une réception (boîte, tag) : son contexte s'appelait « contexte », puis « context ». */
+/** A reception (mailbox, tag): its context was called "contexte", then "context". */
 const RECEPTION_KEYS = { contexte: "context_id", context: "context_id" };
 
 /**
- * La configuration d'un widget de ce type, aux clés et aux valeurs
- * d'aujourd'hui. Ce qui n'est pas un objet devient un objet vide.
+ * The configuration of a widget of this type, with today's keys and values.
+ * What is not an object becomes an empty object.
  */
 export const migrateWidgetConfig = (type: string, config: unknown): Config => {
   if (!isObject(config)) return {};
@@ -133,8 +133,8 @@ export const migrateWidgetConfig = (type: string, config: unknown): Config => {
   switch (type) {
     case "number": {
       result.lines = renameInItems(result.lines, { libelle: "label", numero: "number" });
-      // Un élément d'avant les lignes multiples : son numéro unique devient
-      // la première ligne.
+      // An item from before multiple lines: its single number becomes
+      // the first line.
       const label = typeof result.label === "string" ? result.label : "";
       const number = typeof result.value === "string" ? result.value : "";
       if (!Array.isArray(result.lines)) {
@@ -166,7 +166,7 @@ export const migrateWidgetConfig = (type: string, config: unknown): Config => {
       break;
   }
 
-  // Les colonnes d'un widget de liste : la largeur de chacune.
+  // The columns of a list widget: the width of each.
   if (type.endsWith(".list") && result.columns !== undefined) {
     result.columns = renameInItems(result.columns, { largeur: "width" });
   }

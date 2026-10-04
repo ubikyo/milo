@@ -9,10 +9,10 @@ import SuccessAlert from "../ui/SuccessAlert";
 import { errorMessage, notifyError } from "../../lib/errors";
 import type { BackupInfo, RestoreResult } from "@milo/shared";
 
-// Même colonne de libellés que les autres onglets des réglages.
+// Same column of labels as the other settings tabs.
 const LABEL_WIDTH = 170;
 
-/** Une taille en octets, dite comme on la lit : « 14,6 Mo ». */
+/** A size in bytes, as it is read: "14,6 Mo". */
 const weight = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} o`;
   const kb = bytes / 1024;
@@ -30,19 +30,19 @@ const row = (label: string, value: string) => (
 );
 
 /**
- * La sauvegarde : une archive unique qui emporte la base et les fichiers
- * déposés sur les cartes.
+ * Backup: a single archive that carries the database and the files
+ * dropped on the cards.
  *
- * La restauration remplace tout, jusqu'aux comptes et aux sessions ouvertes :
- * elle passe donc par une confirmation, et la session en cours peut ne plus
- * valoir ensuite — c'est ce que dit le compte rendu.
+ * Restoring replaces everything, down to the accounts and open sessions:
+ * it therefore goes through a confirmation, and the current session may no longer
+ * be valid afterwards — this is what the report says.
  */
 export default function BackupTab() {
   const [info, setInfo] = useState<BackupInfo | null>(null);
   const [toRestore, setToRestore] = useState<File | null>(null);
   const [result, setResult] = useState<RestoreResult | null>(null);
-  // Laquelle des deux opérations est en cours : chacune a son bouton, et
-  // aucune des deux ne doit laisser croire que l'autre travaille.
+  // Which of the two operations is in progress: each has its button, and
+  // neither must suggest that the other is working.
   const [ongoing, setInProgress] = useState<
     "download" | "restore" | null
   >(null);
@@ -63,8 +63,8 @@ export default function BackupTab() {
     setInProgress("download");
     try {
       const archive = await api.downloadBackup();
-      // Le navigateur n'enregistre un fichier que si un lien est cliqué : on
-      // en fabrique un le temps du clic, et l'adresse est rendue ensuite.
+      // The browser only saves a file if a link is clicked: we
+      // build one for the duration of the click, and the address is released afterwards.
       const url = URL.createObjectURL(archive);
       const link = document.createElement("a");
       link.href = url;
@@ -128,8 +128,8 @@ export default function BackupTab() {
       </Stack>
 
       <Stack gap="xs">
-        {/* Même titre que celui du panneau (« Sauvegarde », SettingsModal) :
-            la restauration est une section à part entière. */}
+        {/* Same title as the panel's ("Sauvegarde", SettingsModal):
+            restoring is a section in its own right. */}
         <Title order={4} pt={30}>
           Restaurer
         </Title>

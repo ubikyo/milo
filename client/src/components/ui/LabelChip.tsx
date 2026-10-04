@@ -8,20 +8,19 @@ import {
 import { useCallback } from "react";
 import type { Label, ProjectLabel } from "@milo/shared";
 
-/** Les étiquettes des deux modes se dessinent pareil : seul le nom et la couleur comptent ici. */
+/** Labels of both modes are drawn the same way: only the name and the color matter here. */
 type ChipLabel = Pick<Label | ProjectLabel, "name" | "color">;
 
-/** Le fond d'une étiquette et la couleur du texte qui va dessus. */
+/** A label's background and the color of the text on it. */
 export interface LabelColors {
   backgroundColor: string;
   color: string;
 }
 
-// Couleurs proposées pour une étiquette : huit teintes rangées sur le cercle
-// chromatique, du neutre au pourpre, déclinées en huit nuances de la plus
-// claire à la plus sombre. La matrice se lit en colonnes de teintes et en
-// lignes de nuances. Une couleur s'écrit « teinte.nuance », comme partout chez
-// Mantine ; le serveur vérifie la même chose (server/index.js).
+// Colors offered for a label: eight hues arranged around the color wheel, from
+// neutral to purple, in eight shades from lightest to darkest. The matrix reads
+// as columns of hues and rows of shades. A color is written "hue.shade", as
+// everywhere in Mantine; the server checks the same thing (server/src).
 export const LABEL_HUES = [
   "gray",
   "red",
@@ -35,26 +34,26 @@ export const LABEL_HUES = [
 
 export const LABEL_SHADES = [2, 3, 4, 5, 6, 7, 8, 9];
 
-// La matrice à plat, ligne par ligne : une nuance, ses huit teintes.
+// The flattened matrix, row by row: one shade, its eight hues.
 export const LABEL_COLORS = LABEL_SHADES.flatMap((shade) =>
   LABEL_HUES.map((hue) => `${hue}.${shade}`),
 );
 
-// Couleur par défaut d'une étiquette : le bleu de la nuance médiane.
+// A label's default color: the blue of the middle shade.
 export const DEFAULT_LABEL_COLOR = "blue.6";
 
-// Le fond d'une étiquette et le texte qui va dessus. Comme pour les listes du
-// tableau, la couleur du texte n'est pas choisie à la main : « getContrastColor »
-// de Mantine tranche entre le noir et le blanc d'après la luminosité du fond,
-// au seuil réglé pour l'application (main.jsx).
+// A label's background and the text on it. As for the board's lists, the text
+// color is not chosen by hand: Mantine's "getContrastColor" decides between
+// black and white based on the background's luminance, at the threshold set for
+// the application (main.tsx).
 export function useLabelColors() {
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme("light");
 
   return useCallback(
     (color: string | null | undefined): LabelColors => {
-      // « teinte.nuance », ou la seule teinte pour les étiquettes d'avant la
-      // matrice : elles prennent alors la nuance courante du thème.
+      // "hue.shade", or just the hue for labels from before the matrix: they
+      // then take the theme's current shade.
       const [name, shade] = String(color || "").split(".");
       const hue = name && theme.colors[name] ? name : "blue";
       const rank =
@@ -70,10 +69,9 @@ export function useLabelColors() {
   );
 }
 
-// Une étiquette : un rectangle de sa couleur, son nom au milieu. Sert partout
-// où elle se montre — dans son choix, dans la fiche d'une carte, dans la liste
-// qui les gère. « height » lui impose une hauteur fixe, pour qu'elle s'aligne
-// sur les bulles des membres.
+// A label: a rectangle of its color, its name in the middle. Used everywhere it
+// is shown — in its picker, in a card's detail, in the list that manages them.
+// "height" imposes a fixed height, so that it lines up with the member bubbles.
 interface LabelChipProps {
   label: ChipLabel;
   size?: "xs" | "sm";
@@ -115,10 +113,10 @@ export default function LabelChip({
   );
 }
 
-// L'étiquette telle qu'elle se pose sur une carte du tableau. Elle a deux
-// états : déployée, elle montre son nom ; réduite, il ne reste qu'une barre de
-// sa couleur. Le passage de l'un à l'autre s'anime — d'où des mesures chiffrées
-// plutôt qu'un « auto », qui ne se laisse pas animer.
+// The label as it sits on a board card. It has two states: expanded, it shows
+// its name; collapsed, only a bar of its color remains. The transition between
+// the two is animated — hence numeric measurements rather than an "auto", which
+// cannot be animated.
 const CARD_LABEL_HEIGHT = 20;
 const CARD_LABEL_MAX_WIDTH = 200;
 const CARD_LABEL_COMPACT_WIDTH = 40;
@@ -138,8 +136,8 @@ export function CardLabel({ label, compact, onClick }: CardLabelProps) {
     <Box
       component="button"
       type="button"
-      // Le tableau déplace ses cartes au pointeur : cet attribut tient
-      // l'étiquette hors du glisser, le sien comme celui de sa liste.
+      // The board moves its cards with the pointer: this attribute keeps the
+      // label out of the drag, its own as well as that of its list.
       data-no-list-drag="true"
       data-no-card-drag="true"
       onClick={onClick}

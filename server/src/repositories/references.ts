@@ -1,13 +1,13 @@
-// Les références « HLP-12 ». Un seul compteur les donne aux demandes du
-// support, aux projets et aux cartes : une référence désigne une seule chose,
-// quel que soit le mode, et se cite sans dire d'où elle vient.
+// "HLP-12" references. A single counter gives them to support requests,
+// projects and cards: a reference designates a single thing, whatever the
+// mode, and can be cited without saying where it comes from.
 
 import { scalar } from "../db/query.js";
 import { readSetting, writeSetting } from "./settings.js";
 
 /**
- * Le dernier numéro donné. La clé est celle d'avant le compteur commun,
- * quand seuls les tickets en portaient : elle continue d'en tenir le compte.
+ * The last number given. The key predates the shared counter, when only
+ * tickets carried them: it keeps counting them.
  */
 export const REFERENCE_COUNTER = "support_ticket_counter";
 
@@ -20,12 +20,12 @@ const largestReference = scalar<{ max: number }>(
 );
 
 /**
- * La prochaine référence, et le compteur avancé d'autant. La plus grande en
- * base compte aussi : une sauvegarde restaurée, ou un compteur perdu, ne fait
- * jamais donner deux fois la même.
+ * The next reference, with the counter advanced accordingly. The largest in
+ * the database counts too: a restored backup, or a lost counter, never causes
+ * the same one to be given twice.
  *
- * À appeler dans la transaction qui crée l'élément : si elle échoue, le
- * numéro n'est pas consommé.
+ * To be called in the transaction that creates the item: if it fails, the
+ * number is not consumed.
  */
 export const nextReference = (): number => {
   const phoneNumber = Math.max(readSetting(REFERENCE_COUNTER, 0), largestReference().max) + 1;

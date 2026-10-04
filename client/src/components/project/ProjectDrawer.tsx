@@ -68,28 +68,28 @@ import type {
 import type { ThreadItem } from "./CommentThread";
 import CloseButton from "../ui/CloseButton";
 
-/** La fiche en cours de saisie. Tout y est en chaînes : ce sont des champs. */
+/** The form being edited. Everything is strings: they are fields. */
 
 interface Form {
   name: string;
   category_id: string;
   context_id: string;
-  /** Le type de jalons du curseur ; vide, le curseur reste nu. */
+  /** The slider's milestone type; empty, the slider stays bare. */
   milestone_type_id: string;
   status: number;
   actor_ids: string[];
   label_ids: string[];
 }
 
-// Les deux volets du tiroir : la fiche du projet, puis ses échanges.
+// The drawer's two panes: the project's details, then its discussion.
 const TABS = [
   { value: "settings", label: "Paramètres", icon: IconSettings },
   { value: "comments", label: "Commentaires", icon: IconMessage },
 ] as const;
 
-// Hauteur des bulles d'acteurs et des étiquettes : la même pour les deux, et
-// pour le « + » qui les suit, afin que les deux colonnes s'alignent. La même
-// mesure que sur la fiche d'une carte : les deux tiroirs se lisent pareil.
+// Height of the actor avatars and labels: the same for both, and
+// for the "+" that follows them, so the two columns line up. The same
+// measure as on a card's details: the two drawers read the same.
 const CHIP_HEIGHT = 30;
 
 const emptyForm: Form = {
@@ -105,21 +105,21 @@ const emptyForm: Form = {
 interface ProjectDrawerProps {
   opened: boolean;
   onClose: () => void;
-  /** « null » pour un nouveau projet. */
+  /** "null" for a new project. */
   projectId: number | null;
   boardId: string | null;
   categories: Category[];
-  /** Les contextes du tableau : le projet appartient à l'un d'eux. */
+  /** The board's contexts: the project belongs to one of them. */
   contexts: Context[];
-  /** Le contexte proposé à la création : celui qu'on regarde, ou le premier. */
+  /** The context offered on creation: the one being viewed, or the first. */
   contextId: string;
-  /** À la création : le widget « Projets » d'où on l'ajoute. */
+  /** On creation: the "Projets" widget it is added from. */
   listKey?: string;
-  /** Les types de jalons des réglages : le curseur en choisit un. */
+  /** The milestone types from the settings: the slider picks one. */
   milestoneTypes: MilestoneType[];
   users: PublicUser[];
   labels: ProjectLabel[];
-  /** Les tableaux où le projet peut être déplacé, par le menu « Actions ». */
+  /** The boards the project can be moved to, via the "Actions" menu. */
   boards: ProjectBoard[];
   currentUser: PublicUser | null;
   onCategoriesChanged: () => void | Promise<void>;
@@ -129,7 +129,7 @@ interface ProjectDrawerProps {
   }) => void | Promise<void>;
   onSaved: () => void;
   onDeleted: () => void;
-  /** Suivi : on est prévenu de chaque modification de ce projet. */
+  /** Followed: you are notified of every change to this project. */
   following: boolean;
   onToggleFollow: () => void | Promise<void>;
 }
@@ -160,9 +160,9 @@ export default function ProjectDrawer({
   const [confirmDeleteOpened, setConfirmDeleteOpened] = useState(false);
   const [saving, setSaving] = useState(false);
   /**
-   * Le geste en cours dans la boîte de destination — déplacer ou copier —, ou
-   * « null » quand elle est fermée. Les deux posent la même question, et une
-   * seule boîte y répond.
+   * The gesture in progress in the destination dialog — move or copy —, or
+   * "null" when it is closed. Both ask the same question, and a
+   * single dialog answers it.
    */
   const [movement, setMove] = useState<ProjectAction | null>(null);
   const [newCategoryOpened, setNewCategoryOpened] = useState(false);
@@ -172,26 +172,26 @@ export default function ProjectDrawer({
 
   const isEditing = Boolean(projectId);
 
-  // Sans le droit de modifier les projets, la fiche se lit seulement.
+  // Without the right to edit projects, the details are read-only.
   const can = useRights();
   const readOnly = isEditing && !can("projects", "update");
 
-  // Les jalons sous le curseur de progression sont ceux du type choisi : ils
-  // changent avec lui, et manquent s'il n'y en a aucun.
+  // The milestones under the progress slider are those of the chosen type: they
+  // change with it, and are missing if there are none.
   const milestones =
     milestoneTypes.find((t) => String(t.id) === form.milestone_type_id)
       ?.milestones ?? [];
 
-  // L'éditeur de la description, comme dans la fiche d'une carte : il vit tant
-  // que le tiroir vit, son contenu est remplacé à chaque projet ouvert.
+  // The description editor, as in a card's details: it lives as long
+  // as the drawer, its content is replaced each time a project is opened.
   const editor = useRichEditor({ placeholder: "Description du projet" });
   useEffect(() => {
     editor?.setEditable(!readOnly);
   }, [editor, readOnly]);
 
-  // Les listes servent seulement à calculer les valeurs par défaut : on les lit
-  // via une ref pour que leur rechargement (création d'une catégorie depuis ce
-  // tiroir, par exemple) ne réinitialise pas la saisie en cours.
+  // The lists only serve to compute default values: they are read
+  // via a ref so that their reload (creating a category from this
+  // drawer, for example) does not reset the input in progress.
   const lookupsRef = useRef({ categories, contextId, milestoneTypes });
   useEffect(() => {
     lookupsRef.current = { categories, contextId, milestoneTypes };
@@ -199,7 +199,7 @@ export default function ProjectDrawer({
 
   useEffect(() => {
     if (!opened) return;
-    // Un tiroir rouvert repart des paramètres, quel que soit l'onglet quitté.
+    // A reopened drawer restarts from the settings, whichever tab was left.
     setActiveTab("settings");
     setMove(null);
 
@@ -209,7 +209,7 @@ export default function ProjectDrawer({
         contextId: proposed,
         milestoneTypes: types,
       } = lookupsRef.current;
-      // Un nouveau projet prend le type « Défaut », posé avec le widget.
+      // A new project takes the "Défaut" type, set with the widget.
       const defaultValue = types.find((t) => t.name === DEFAULT_MILESTONE_TYPE);
       setForm({
         ...emptyForm,
@@ -245,8 +245,8 @@ export default function ProjectDrawer({
     setComments(project.comments);
   };
 
-  // « Sauvegarder » : le seul geste qui écrit. Un projet sans nom ni catégorie
-  // n'est pas créé — le tiroir reste ouvert, la saisie n'est jamais perdue.
+  // "Sauvegarder": the only gesture that writes. A project without a name or category
+  // is not created — the drawer stays open, input is never lost.
   const persist = async () => {
     if (!form.name.trim() || !form.category_id) return;
     setSaving(true);
@@ -278,7 +278,7 @@ export default function ProjectDrawer({
     onSaved();
   };
 
-  // La nouvelle catégorie est sélectionnée aussitôt créée.
+  // The new category is selected as soon as it is created.
   const createCategory = async () => {
     const name = newCategoryName.trim();
     if (!name) return;
@@ -302,11 +302,11 @@ export default function ProjectDrawer({
   };
 
   /**
-   * Le geste est fait. Déplacé, le projet n'est plus là où la fiche le croit :
-   * le tiroir se referme sans enregistrer, sans quoi le refermer comme
-   * d'habitude le ramènerait aussitôt dans son tableau d'origine. Copié, le
-   * projet n'a pas bougé : le tiroir reste ouvert, et la copie paraît d'elle-
-   * même dans la liste — le serveur signale l'écriture à tous les clients.
+   * The gesture is done. Moved, the project is no longer where the form thinks:
+   * the drawer closes without saving, otherwise closing it as
+   * usual would immediately bring it back to its original board. Copied, the
+   * project has not moved: the drawer stays open, and the copy appears by itself
+   * in the list — the server signals the write to all clients.
    */
   const handleMoved = (action: ProjectAction) => () => {
     setMove(null);
@@ -320,8 +320,8 @@ export default function ProjectDrawer({
     onDeleted();
   };
 
-  // Avant création, les commentaires vivent en local et sont envoyés au
-  // serveur une fois le projet enregistré.
+  // Before creation, comments live locally and are sent to the
+  // server once the project is saved.
   const handleAddComment = async (text: string) => {
     if (!projectId) {
       const now = new Date().toISOString();
@@ -386,8 +386,8 @@ export default function ProjectDrawer({
         size={560}
         padding={DRAWER_PADDING}
         withCloseButton={false}
-        // Seul le panneau de l'onglet défile : les onglets et les boutons du
-        // bas restent en place (components/ui/DrawerScroll.tsx).
+        // Only the open tab's panel scrolls: the tabs and the bottom buttons
+        // stay in place (components/ui/DrawerScroll.tsx).
         styles={DRAWER_STYLES}
       >
         <Tabs
@@ -408,10 +408,10 @@ export default function ProjectDrawer({
               </Tabs.Tab>
             ))}
 
-            {/* Ce qu'on fait du projet lui-même, et non de sa fiche, se range
-                au bout de la rangée d'onglets — comme dans le tiroir d'une
-                carte ou d'un tableau. Un projet pas encore créé n'a rien à
-                déplacer. */}
+            {/* What is done with the project itself, rather than its form, goes
+                at the end of the row of tabs — as in a card's or a board's
+                drawer. A project not yet created has nothing to
+                move. */}
             {isEditing && (
               <Menu
                 position="bottom-end"
@@ -438,9 +438,9 @@ export default function ProjectDrawer({
                   </Button>
                 </Menu.Target>
                 <Menu.Dropdown>
-                  {/* Suivre vient en tête : c'est ce qui porte sur le projet
-                      entier, là où le reste le déplace. Le menu ne se referme
-                      pas, pour qu'on voie la coche changer. */}
+                  {/* Follow comes first: it applies to the whole project, where the rest
+                      moves it. The menu does not close,
+                      so the checkmark can be seen changing. */}
                   <Menu.Item
                     leftSection={<IconEye size={16} />}
                     rightSection={following ? <IconCheck size={14} /> : null}
@@ -477,23 +477,23 @@ export default function ProjectDrawer({
 
           <Tabs.Panel value="settings" style={DRAWER_PANEL_STYLE}>
             <DrawerScrollArea>
-              {/* En lecture seule, tous les champs de la fiche sont éteints
-                  d'un coup : c'est ce que fait un « fieldset » désactivé. */}
+              {/* In read-only mode, all the form's fields are disabled
+                  at once: that is what a disabled "fieldset" does. */}
               <fieldset disabled={readOnly} style={BARE_FIELDSET}>
                 <Stack gap="xl">
-                  {/* Comme sur une carte, ce qui range le projet vient avant ce
-                    qui le nomme : acteurs et étiquettes ouvrent la fiche, chaque
-                    colonne sur sa propre liste. Les bulles des acteurs tiennent
-                    en peu de place, les étiquettes portent du texte : la largeur
-                    se partage en 30 / 70. Ce partage se dit en proportions et non
-                    en pourcentages — « 30% + 70% » aurait ignoré l'écart entre
-                    les deux colonnes, et la seconde aurait débordé d'autant. */}
+                  {/* As on a card, what categorizes the project comes before what
+                      names it: actors and labels open the form, each
+                      column on its own list. The actors' avatars take
+                      little room, labels carry text: the width
+                      is split 30 / 70. The split is expressed in proportions, not
+                      percentages — "30% + 70%" would have ignored the gap between
+                      the two columns, and the second would have overflowed by that much. */}
                   <Group align="flex-start" gap="md" wrap="nowrap">
                     <div style={{ flex: "3 1 0", minWidth: 0 }}>
                       <ActorPicker
                         chipHeight={CHIP_HEIGHT}
-                        // Les bulles se suivent avec le même filet d'air que sur
-                        // une carte ou dans le tableau des projets.
+                        // The avatars follow one another with the same thin gap as on
+                        // a card or in the projects board.
                         chipGap={ACTOR_GAP}
                         label="Acteurs"
                         users={users}
@@ -528,7 +528,7 @@ export default function ProjectDrawer({
                     required
                   />
                   <RichTextField editor={editor} label="Description" />
-                  {/* Un tableau sans contexte n'a rien à proposer. */}
+                  {/* A board with no context has nothing to offer. */}
                   {contextOptions.length > 0 && (
                     <Select
                       label="Contexte"
@@ -565,8 +565,8 @@ export default function ProjectDrawer({
                     </ActionIcon>
                   </Group>
 
-                  {/* Les noms des jalons s'écrivent sous le slider, dans le
-                    flux (MilestoneLabels) : ils comptent dans ce qui défile. */}
+                  {/* The milestone names are written under the slider, in the
+                      flow (MilestoneLabels): they count in what scrolls. */}
                   <div>
                     <Group
                       justify="space-between"
@@ -574,12 +574,12 @@ export default function ProjectDrawer({
                       wrap="nowrap"
                     >
                       <Input.Label>Progression</Input.Label>
-                      {/* Discrets comme la largeur d'une section : sans cadre
-                        tant qu'on ne les survole pas, à sa hauteur. */}
+                      {/* Discreet like a section's width: frameless
+                          until hovered, at its height. */}
                       <Group gap={4} wrap="nowrap">
-                        {/* Le type de jalons pose les marques du curseur et les
-                          couleurs de ses tranches ; ils se règlent dans les
-                          réglages. */}
+                        {/* The milestone type sets the slider's marks and the
+                            colors of its slices; they are set in the
+                            settings. */}
                         <Select
                           data={milestoneTypes.map((t) => ({
                             value: String(t.id),
@@ -595,7 +595,7 @@ export default function ProjectDrawer({
                           placeholder="Jalons"
                           allowDeselect={false}
                           size="xs"
-                          // À la taille du nom choisi, chevron compris.
+                          // At the size of the chosen name, chevron included.
                           w={
                             fieldWidth(
                               milestoneTypes.find(
@@ -614,7 +614,7 @@ export default function ProjectDrawer({
                         <NumberInput
                           value={form.status}
                           onChange={(value) => {
-                            // Le champ peut être vidé pendant la frappe.
+                            // The field can be emptied while typing.
                             const n =
                               typeof value === "number" ? value : Number(value);
                             setForm((f) => ({
@@ -629,7 +629,7 @@ export default function ProjectDrawer({
                           clampBehavior="strict"
                           suffix="%"
                           hideControls
-                          // De quoi écrire le plus long : « 100% ».
+                          // Enough to write the longest: "100%".
                           w={fieldWidth("100%")}
                           size="xs"
                           aria-label="Progression"
@@ -656,7 +656,7 @@ export default function ProjectDrawer({
             </DrawerScrollArea>
           </Tabs.Panel>
 
-          {/* Le panneau prend toute la hauteur libre : le fil vide s'y étale. */}
+          {/* The panel takes all the free height: the empty thread spreads out in it. */}
           <Tabs.Panel value="comments" style={DRAWER_PANEL_STYLE}>
             <DrawerScrollArea fill>
               <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
@@ -698,10 +698,10 @@ export default function ProjectDrawer({
         />
       </Drawer>
 
-      {/* Les catégories appartiennent au tableau : changer de tableau, c'est
-          aussi choisir celle qui accueille le projet là-bas — pour une copie
-          comme pour un déplacement. La même boîte qu'au menu d'une ligne de la
-          liste. */}
+      {/* Categories belong to the board: changing board also means
+          choosing the one that hosts the project there — for a copy
+          as for a move. The same dialog as in a list row's
+          menu. */}
       <MoveOrCopyProjectModal
         opened={movement !== null}
         onClose={() => setMove(null)}
@@ -743,8 +743,8 @@ export default function ProjectDrawer({
             required
             autoFocus
           />
-          {/* Espace au-dessus des actions égal au retrait de la fenêtre, comme
-              dans la confirmation de suppression. */}
+          {/* Space above the actions equal to the window's inset, as in
+              the deletion confirmation. */}
           <Group justify="flex-end" mt={MODAL_PADDING - 16}>
             <CloseButton onClick={closeNewCategory} />
             <Button

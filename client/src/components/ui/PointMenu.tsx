@@ -2,13 +2,13 @@ import { Menu } from "@mantine/core";
 import { createPortal } from "react-dom";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 
-// Un menu contextuel : ouvert au clic droit, posé au point cliqué — sur un
-// widget, une liste, une carte — ou sous l'onglet visé (ancreDuMenu), qui le
-// porte comme son menu.
+// A context menu: opened on right click, placed at the clicked point — on a
+// widget, a list, a card — or under the targeted tab (menuAnchor), which
+// carries it as its menu.
 
 /**
- * Là où s'ouvre un menu contextuel : le point du clic droit, ou l'élément
- * entier quand il a une largeur et une hauteur.
+ * Where a context menu opens: the right-click point, or the whole element when
+ * it has a width and a height.
  */
 export interface PointMenuPosition {
   x: number;
@@ -18,12 +18,12 @@ export interface PointMenuPosition {
 }
 
 /**
- * Le menu d'un onglet : il s'ouvre contre lui, et non au point cliqué — sous
- * un onglet de tableau, au-dessus d'une vue.
+ * A tab's menu: it opens against it, not at the clicked point — under a board
+ * tab, above a view.
  */
 export const menuAnchor = (
   event: ReactMouseEvent<HTMLElement>,
-  /** L'élément contre lequel le poser, s'il n'est pas celui qui a reçu le clic. */
+  /** The element to place it against, if it is not the one that received the click. */
   element: Element = event.currentTarget,
 ): PointMenuPosition => {
   event.preventDefault();
@@ -32,8 +32,8 @@ export const menuAnchor = (
   return { x: r.left, y: r.top, width: r.width, height: r.height };
 };
 
-// Le clic droit ouvre notre menu, pas celui du navigateur. Depuis le clavier,
-// l'événement n'a pas de position : le menu se pose sous l'élément.
+// The right click opens our menu, not the browser's. From the keyboard, the
+// event has no position: the menu is placed under the element.
 export const menuPosition = (event: ReactMouseEvent<HTMLElement>): PointMenuPosition => {
   event.preventDefault();
   event.stopPropagation();
@@ -46,17 +46,17 @@ export const menuPosition = (event: ReactMouseEvent<HTMLElement>): PointMenuPosi
 
 interface PointMenuProps {
   position: PointMenuPosition;
-  /** Où le menu se pose contre l'ancre : dessous par défaut. */
+  /** Where the menu sits against the anchor: below by default. */
   placement?: "bottom-start" | "top-start";
-  /** L'écart à l'ancre. */
+  /** The gap to the anchor. */
   offset?: number;
   onClose: () => void;
   returnFocus?: boolean;
   children: ReactNode;
 }
 
-// L'ancre est un point invisible posé au clic, portée hors de la page : une
-// transformation d'un parent fausserait la position « fixed ».
+// The anchor is an invisible point placed at the click, carried outside the
+// page: a parent's transform would skew the "fixed" position.
 export default function PointMenu({
   position,
   placement = "bottom-start",
@@ -87,9 +87,9 @@ export default function PointMenu({
           }}
         />
       </Menu.Target>
-      {/* Les événements React remontent à travers le portail : sans ce
-          barrage, un appui dans le menu d'une liste la prendrait pour la
-          glisser, et un clic droit rouvrirait le menu ailleurs. */}
+      {/* React events bubble up through the portal: without this barrier, a
+          press in a list's menu would mistake it for a drag, and a right click
+          would reopen the menu elsewhere. */}
       <Menu.Dropdown
         onPointerDown={(e) => e.stopPropagation()}
         onContextMenu={(e) => {

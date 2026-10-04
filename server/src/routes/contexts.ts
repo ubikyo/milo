@@ -1,11 +1,11 @@
-// Les contextes d'un tableau : les ajouter, les renommer, les ranger, les
-// supprimer — ce qui emporte leurs projets, leurs cartes, leurs demandes et
-// leurs postes —, et choisir celui qu'on regarde. Chaque route rend le
-// tableau tel que ce compte le voit, ses contextes à jour.
+// A board's contexts: adding, renaming, arranging, deleting them — which
+// takes their projects, cards, requests and workstations with them — and
+// choosing the one being looked at. Each route returns the board as this
+// account sees it, with its contexts up to date.
 //
-// Les contextes sont la structure commune du tableau : les changer demande de
-// pouvoir organiser les tableaux (lib/droits.ts). Choisir celui qu'on regarde
-// ne regarde que soi : voir le tableau suffit.
+// Contexts are the board's shared structure: changing them requires being
+// able to organize boards (lib/rights.ts). Choosing the one being looked at
+// only concerns oneself: seeing the board is enough.
 
 import { Router } from "express";
 import type { Request } from "express";
@@ -27,14 +27,14 @@ import { boardForAccount } from "./boards.js";
 
 const CONTEXT_NOT_FOUND = "Contexte introuvable";
 
-/** Le libellé de « Tous les contextes » d'un tableau. */
+/** The label of a board's "Tous les contextes". */
 const renameAll = mutation("UPDATE boards SET all_contexts_label = ? WHERE id = ?");
 
-/** Le tableau de la route, tel que ce compte le voit. */
+/** The route's board, as this account sees it. */
 const render = (req: Request, boardId: number) =>
   boardForAccount(boards.byId.get(boardId)!, req.user.id);
 
-/** Un contexte d'un tableau que ce compte voit. */
+/** A context of a board that this account sees. */
 const openContext = (id: unknown, req: Request): ContextRow => {
   const context = contexts.byId.get(id);
   if (!context || !readableBoard(boards.byId.get(context.board_id), req.user)) {
@@ -43,11 +43,11 @@ const openContext = (id: unknown, req: Request): ContextRow => {
   return context;
 };
 
-/** Monté sous /api/boards/:id/contexts. */
+/** Mounted under /api/boards/:id/contexts. */
 export const boardContextRoutes = Router({ mergeParams: true });
 
-// Choisir le contexte qu'on regarde : nul pour tous. Déclaré avant le reste,
-// qui touche la structure commune.
+// Choosing the context being looked at: null for all. Declared before the
+// rest, which touches the shared structure.
 boardContextRoutes.put("/selected", (req, res) => {
   const board = openBoard((req.params as { id: string }).id, req.user);
   const value = req.body.context_id;
@@ -69,12 +69,12 @@ boardContextRoutes.post("/", (req, res) => {
   res.status(201).json(render(req, board.id));
 });
 
-// Copier les contextes du tableau vers un autre, à la suite des siens. Ceux
-// qui y portent déjà le même nom ne sont pas redoublés : ils sont comptés.
-// Seuls les noms passent — pas ce que les contextes contiennent. « replace » :
-// ceux de l'accueil s'en vont d'abord, avec ce qu'ils contiennent.
-// « rename_all » : l'accueil reprend aussi le libellé de « Tous les
-// contextes », le sélecteur global.
+// Copy the board's contexts to another, after its own. Those already bearing
+// the same name there are not duplicated: they are counted. Only the names
+// are carried over — not what the contexts contain. "replace": the
+// destination's are removed first, with what they contain. "rename_all": the
+// destination also takes the label of "Tous les contextes", the global
+// selector.
 boardContextRoutes.post("/copy", (req, res) => {
   requireOrganize(req);
   const source = openBoard((req.params as { id: string }).id, req.user);
@@ -100,7 +100,7 @@ boardContextRoutes.put("/reorder", (req, res) => {
   res.json(render(req, board.id));
 });
 
-/** Monté sous /api/contexts. */
+/** Mounted under /api/contexts. */
 export const contextRoutes = Router();
 
 contextRoutes.use(followLists);
@@ -112,8 +112,8 @@ contextRoutes.put("/:id", touch("boards"), (req, res) => {
   res.json(render(req, context.board_id));
 });
 
-// Supprimer un contexte emporte, par clé étrangère, ses projets, ses cartes,
-// ses demandes et ses postes — et ce qui pend à chacun.
+// Deleting a context takes, through the foreign key, its projects, cards,
+// requests and workstations — and whatever hangs off each of them.
 contextRoutes.delete(
   "/:id",
   touch("boards", "projects", "task-lists", "support-requests", "assets"),

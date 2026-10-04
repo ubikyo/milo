@@ -6,8 +6,8 @@ import type { Bar } from "./common";
 import type { ProjectIndicatorWidget } from "./types";
 import type { Id } from "@milo/shared";
 
-// Les étiquettes les plus portées par les projets du tableau ouvert, chacune
-// dans sa couleur. Les projets terminés n'y comptent que si on le demande.
+// The labels most carried by the open board's projects, each
+// in its color. Finished projects only count if asked.
 
 const LABEL = "Étiquettes";
 const ALL = "include_all";

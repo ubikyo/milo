@@ -3,8 +3,8 @@ import { useState } from "react";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 
-// La section « Développeur » du Paramétrage. Comme les autres onglets, chaque
-// geste part aussitôt au serveur.
+// The "Développeur" section of "Paramétrage". Like the other tabs, each
+// gesture is sent to the server right away.
 interface DeveloperTabProps {
   debug: boolean;
   onDebugChange: (debug: boolean) => void;

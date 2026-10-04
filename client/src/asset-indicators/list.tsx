@@ -9,8 +9,8 @@ import type { IndicatorConfigProps } from "../indicators/types";
 import type { AssetIndicatorWidget } from "./types";
 
 /**
- * Les réglages de la liste : les tags d'agent GLPI dont elle reçoit les
- * postes, chacun vers un contexte du tableau, puis ses colonnes.
+ * The list settings: the GLPI agent tags whose workstations it receives,
+ * each mapped to a board context, then its columns.
  */
 function ListFields(props: IndicatorConfigProps) {
   const { assetTags } = useReferences();
@@ -32,7 +32,7 @@ function ListFields(props: IndicatorConfigProps) {
   );
 }
 
-/** La liste, ou l'invite à revoir ses réglages quand ses tags ne tiennent pas. */
+/** The list, or the prompt to review its settings when its tags don't fit. */
 function ListIndicator({ config }: { config: unknown }) {
   const { contexts } = useReferences();
   if (inboxesWithProblem(config, TAGS, "tag", contexts.map((c) => c.id))) {
@@ -41,9 +41,9 @@ function ListIndicator({ config }: { config: unknown }) {
   return <AssetsList config={config} />;
 }
 
-// La liste des postes, en widget : elle se pose dans une section comme un
-// indicateur, et sa configuration ne dit que les colonnes qu'elle montre. Les
-// postes viennent de la page (AssetsListeContext).
+// The workstation list, as a widget: it sits in a section like an
+// indicator, and its configuration only names the columns it shows. The
+// workstations come from the page (AssetsListContext).
 
 export const assetListIndicator: AssetIndicatorWidget = {
   type: "list",

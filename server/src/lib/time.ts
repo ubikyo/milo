@@ -3,8 +3,8 @@ import { badRequest } from "./http.js";
 export const now = (): string => new Date().toISOString();
 
 /**
- * « 22/09/2026 à 20:15 ». Le fuseau est celui de Paris : l'application est
- * française, et la base, elle, garde ses dates en temps universel.
+ * "22/09/2026 à 20:15". The time zone is Paris: the application is French,
+ * and the database keeps its dates in universal time.
  */
 export const timestamp = (iso: string): string => {
   const date = new Date(iso);
@@ -18,11 +18,11 @@ export const timestamp = (iso: string): string => {
 };
 
 /**
- * Une échéance reçue du client, ramenée à une forme unique. Le client envoie
- * l'heure de son fuseau ; la base garde de l'ISO 8601 en UTC, comme toutes les
- * autres dates. Une chaîne vide retire l'échéance ; une date incompréhensible
- * est refusée plutôt que rangée telle quelle. Les cartes et les demandes de
- * support la lisent de la même façon.
+ * A due date received from the client, normalized to a single form. The
+ * client sends the time of its time zone; the database keeps ISO 8601 in UTC,
+ * like all other dates. An empty string removes the due date; an
+ * unintelligible date is rejected rather than stored as is. Cards and support
+ * requests read it the same way.
  */
 export const due = (value: unknown, current: string): string => {
   if (value === undefined) return current;
@@ -34,13 +34,13 @@ export const due = (value: unknown, current: string): string => {
 };
 
 /**
- * Une heure de Paris sans fuseau — « 2026-09-28 14:22:31 », comme la donne un
- * agent d'inventaire —, ramenée en ISO 8601 UTC comme les autres dates de la
- * base. Rien si le texte ne se lit pas comme une date.
+ * A Paris time without time zone — "2026-09-28 14:22:31", as an inventory
+ * agent gives it —, converted to ISO 8601 UTC like the database's other dates.
+ * Nothing if the text does not read as a date.
  *
- * Le décalage de Paris se mesure à l'instant même : il vaut une heure l'hiver,
- * deux l'été, et c'est l'heure d'hiver ou d'été du jour de l'inventaire qui
- * compte, pas celle d'aujourd'hui.
+ * Paris's offset is measured at that very instant: it is one hour in winter,
+ * two in summer, and it is the winter or summer time of the inventory day that
+ * counts, not today's.
  */
 export const parisTime = (text: string): string | null => {
   const chunks = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(text.trim());
@@ -49,8 +49,8 @@ export const parisTime = (text: string): string | null => {
   const asUtc = Date.UTC(+year!, +months! - 1, +day!, +hour!, +minute!, +secondValue);
   if (Number.isNaN(asUtc)) return null;
 
-  // Ce qu'affichent les horloges de Paris à cet instant, relu comme de l'UTC :
-  // l'écart avec l'instant lui-même est le décalage.
+  // What Paris clocks display at this instant, re-read as UTC: the gap with
+  // the instant itself is the offset.
   const inParis = new Date(asUtc).toLocaleString("sv-SE", { timeZone: "Europe/Paris" });
   const offset = Date.parse(`${inParis.replace(" ", "T")}Z`) - asUtc;
   return new Date(asUtc - offset).toISOString();

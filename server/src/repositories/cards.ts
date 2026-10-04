@@ -1,5 +1,5 @@
-// La fiche d'une carte : sa description, ses membres, ses étiquettes, ses
-// checklists, ses pièces jointes et son fil de commentaires.
+// A card's sheet: its description, members, labels, checklists, attachments
+// and comment thread.
 
 import type { Actor, Checklist, ChecklistItem, Id, Label, TaskCardDetail } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
@@ -18,7 +18,7 @@ import { linksOf } from "./links.js";
 import { withAuthor } from "./comments.js";
 import { actorOf } from "./users.js";
 
-// --- Membres et étiquettes d'une carte -------------------------------------
+// --- A card's members and labels -------------------------------------------
 
 const cardMembers = selection<{ id: Id; name: string; email: string }>(
   `SELECT users.id, users.name, users.email
@@ -40,10 +40,10 @@ const memberIds = selection<{ user_id: Id }>(
   "SELECT user_id FROM card_members WHERE card_id = ?",
 );
 
-// Un acteur retiré de la carte l'est aussi des éléments de ses checklists : on
-// ne garde pas une part d'une tâche à qui n'y prend plus part. Seuls ceux qu'on
-// retire ici sont touchés — une personne posée sur un élément sans être acteur
-// de la carte y reste.
+// An actor removed from the card is also removed from its checklist items: we
+// do not keep a share of a task for someone who no longer takes part in it.
+// Only those removed here are affected — a person put on an item without being
+// an actor of the card stays there.
 const removeFromChecklistItems = mutation(
   `DELETE FROM checklist_item_members
    WHERE user_id = ?
@@ -82,8 +82,8 @@ const addLabel = mutation(
 );
 
 /**
- * Une carte ne porte que les étiquettes de son propre tableau : celles d'un
- * autre sont ignorées plutôt que refusées, comme pour les membres.
+ * A card carries only its own board's labels: those of another are ignored
+ * rather than refused, as for members.
  */
 export const replaceCardLabels = transaction((cardId: Id, labelIds: Id[], boardId: Id) => {
   deleteLabels.run(cardId);
@@ -153,9 +153,9 @@ export const replaceChecklistItemMembers = transaction((itemId: Id, userIds: Id[
   for (const userId of userIds) addMemberItem.run(itemId, userId);
 });
 
-// Les éléments d'une checklist et leurs membres : deux requêtes pour toute la
-// checklist, au lieu d'une par élément — c'est ce que faisait la lecture d'une
-// fiche, une requête par ligne de chaque checklist.
+// A checklist's items and their members: two queries for the whole
+// checklist, instead of one per item — which is what reading a sheet used to
+// do, one query per row of each checklist.
 
 const selectItemsOfChecklist = selection<ChecklistItemRow>(
   "SELECT * FROM checklist_items WHERE checklist_id = ? ORDER BY position, id",
@@ -190,20 +190,20 @@ export const checklistsOfCard = (cardId: Id): Checklist[] =>
     items: itemsOfChecklist(checklist.id),
   }));
 
-/** La checklist qui porte un élément. */
+/** The checklist that carries an item. */
 export const checklistOfItem = (item: ChecklistItemRow): ChecklistRow => {
   const checklist = checklists.byId.get(item.checklist_id);
   if (!checklist) throw new Error(`Élément ${item.id} sans checklist`);
   return checklist;
 };
 
-/** Une checklist telle qu'elle revient au client : avec ses éléments. */
+/** A checklist as it returns to the client: with its items. */
 export const checklistWithItems = (checklist: ChecklistRow): Checklist => ({
   ...checklist,
   items: itemsOfChecklist(checklist.id),
 });
 
-// --- Fil de commentaires d'une carte ---------------------------------------
+// --- A card's comment thread -----------------------------------------------
 
 const CARD_COMMENT_SELECT = `
   SELECT card_comments.*, users.name AS author_name, users.email AS author_email
@@ -230,7 +230,7 @@ export const cardComments = {
   remove: mutation("DELETE FROM card_comments WHERE id = ?"),
 };
 
-/** La carte et tout ce qui l'accompagne, pour son tiroir. */
+/** The card and everything that comes with it, for its drawer. */
 export const cardDetail = (card: TaskCardRow, userId: Id): TaskCardDetail => ({
   ...card,
   members: membersOf(card.id),

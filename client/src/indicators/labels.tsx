@@ -5,39 +5,39 @@ import { NameField, ongoing, NAME, Nothing, IndicatorTitle } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 import type { Id } from "@milo/shared";
 
-// Les étiquettes les plus portées, chacune dans sa couleur : ce qui occupe le
-// support. Les demandes réglées n'y comptent que si on le demande.
+// The most carried labels, each in its color: what occupies
+// support. Settled requests only count if asked.
 
 const LABEL = "Étiquettes";
 const ALL = "include_all";
 
-/** La hauteur d'une barre. */
+/** The height of a bar. */
 const BAR_HEIGHT = 24;
 
 export interface Bar {
   name: string;
   value: number;
   /**
-   * Lue seulement avec « couleursPropres » ; sinon la barre prend sa couleur
-   * de sa valeur (couleurDeValeur).
+   * Read only with "ownColors"; otherwise the bar takes its color
+   * from its value (colorOfValue).
    */
   color: string;
 }
 
-/** Du plus bas au meilleur : rouge, orange, jaune, citron vert, vert. */
+/** From lowest to best: red, orange, yellow, lime, green. */
 const GRADIENT = ["red.6", "orange.6", "yellow.6", "lime.6", "green.6"];
 
 /**
- * La couleur d'une barre selon sa place entre la plus basse et la plus haute
- * du graphique : la plus haute en vert, la plus basse en rouge, les autres
- * entre les deux. Toutes égales — ou une seule —, elles sont vertes.
+ * A bar's color according to its place between the lowest and the highest
+ * of the chart: the highest in green, the lowest in red, the others
+ * in between. All equal — or only one —, they are green.
  */
 const colorOfValue = (value: number, min: number, max: number): string => {
   const t = max > min ? (value - min) / (max - min) : 1;
   return GRADIENT[Math.round(t * (GRADIENT.length - 1))] as string;
 };
 
-/** Le libellé d'une barre, posé à son bord gauche et jamais renvoyé à la ligne. */
+/** A bar's label, placed at its left edge and never wrapped. */
 function LabelText({ children, color }: { children: string; color: string }) {
   return (
     <Text
@@ -58,18 +58,18 @@ function LabelText({ children, color }: { children: string; color: string }) {
   );
 }
 
-// Les barres des étiquettes, à la façon du BarsList de Mantine, colorées de
-// rouge — la plus basse — à vert — la plus haute —, mais dont le
-// libellé déborde de la barre plutôt que de passer à la ligne quand elle est
-// trop courte pour lui. Il est posé deux fois au même endroit : dessous, dans
-// la couleur du texte ; dans la barre, dans la couleur qui se lit sur elle —
-// la barre le rogne à sa longueur. Ce qui dépasse se lit donc sur le fond, ce
-// qui est dedans sur la couleur de l'étiquette.
+// The labels' bars, like Mantine's BarsList, colored from
+// red — the lowest — to green — the highest —, but whose
+// label overflows the bar rather than wrapping when it is
+// too short for it. It is placed twice at the same spot: below, in
+// the text color; in the bar, in the color that reads on it —
+// the bar clips it to its length. What sticks out is thus read on the background, what
+// is inside on the label's color.
 //
-// Les modes Projet et Tâche s'en servent aussi, pour leurs étiquettes, leurs
-// catégories et leurs listes. Avec « libelleDedans », une barre est au moins
-// aussi large que son libellé : une liste vide garde ainsi sa couleur au lieu
-// de disparaître.
+// Project and Task modes use it too, for their labels, categories
+// and lists. With "insideLabel", a bar is at least as wide as its
+// label: an empty list thus keeps its color instead of
+// disappearing.
 export function LabelBars({
   data,
   insideLabel = false,
@@ -77,7 +77,7 @@ export function LabelBars({
 }: {
   data: Bar[];
   insideLabel?: boolean;
-  /** Chaque barre garde sa couleur — celle d'une liste — au lieu du dégradé. */
+  /** Each bar keeps its color — a list's — instead of the gradient. */
   ownColors?: boolean;
 }) {
   const theme = useMantineTheme();
@@ -86,8 +86,8 @@ export function LabelBars({
   return (
     <Stack gap="xs">
       {data.map((bar) => {
-        // Pleine comme l'étiquette elle-même (LabelChip) : le texte passe au
-        // noir sur une couleur claire, au blanc sinon.
+        // Full like the label itself (LabelChip): the text turns
+        // black on a light color, white otherwise.
         const colors = theme.variantColorResolver({
           color: ownColors ? bar.color : colorOfValue(bar.value, min, max),
           theme,
@@ -147,8 +147,8 @@ export function LabelBars({
                   backgroundColor: colors.background,
                 }}
               >
-                {/* Le libellé de la barre court sur toute la rangée : il
-                    tombe pile sur celui du dessous. */}
+                {/* The bar's label runs across the whole row: it
+                    falls exactly on the one below. */}
                 <Box
                   style={{
                     position: "absolute",

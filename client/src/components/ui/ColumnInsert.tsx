@@ -4,23 +4,23 @@ import { INSERT_LINE } from "../../themes/colors";
 import { PLUS_SIZE } from "../../themes/plus";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 
-// Insérer une colonne entre deux autres : un trait pointillé vertical avec un
-// « + » au milieu, qui n'apparaît qu'au survol — celui qui insère une carte
-// entre deux cartes, debout. Sert aux sections du mode Accès et aux listes du
-// mode Tâche. Posé en absolu dans l'écart entre deux colonnes, il ne prend
-// aucune place : « style » dit où.
+// Insert a column between two others: a vertical dotted line with a "+" in the
+// middle, which only appears on hover — the one that inserts a card between two
+// cards, upright. Used by the sections of Access mode and the lists of Task
+// mode. Placed absolutely in the gap between two columns, it takes up no space:
+// "style" says where.
 //
-// « onResizeStart » fait aussi de l'écart une poignée : glissé, il
-// redimensionne une colonne voisine ; cliqué sans bouger, il insère toujours.
+// "onResizeStart" also turns the gap into a handle: dragged, it resizes a
+// neighboring column; clicked without moving, it still inserts.
 
-/** La largeur visée : plus large que le trait, pour qu'il soit facile à viser. */
+/** The target width: wider than the line, so it is easy to aim at. */
 export const COLUMN_INSERT_ZONE = 12;
 
 interface ColumnInsertProps {
   style: CSSProperties;
   onClick: () => void;
   label: string;
-  /** L'appui qui peut devenir un redimensionnement d'une colonne voisine. */
+  /** The press that can become a resize of a neighboring column. */
   onResizeStart?: (event: ReactPointerEvent<HTMLDivElement>) => void;
 }
 
@@ -29,8 +29,8 @@ export default function ColumnInsert({ style, onClick, label, onResizeStart }: C
   const line = { flex: 1, borderLeft: `1px dashed ${INSERT_LINE}` };
   return (
     <div
-      // Ni la liste voisine ni la rangée ne doivent prendre cet appui pour
-      // un glisser.
+      // Neither the neighboring list nor the row must take this press for a
+      // drag.
       data-no-list-drag="true"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}

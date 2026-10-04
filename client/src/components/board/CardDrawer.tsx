@@ -68,58 +68,57 @@ import type {
   TaskCard,
 } from "@milo/shared";
 
-// Les deux volets du tiroir, comme pour un projet : la fiche de la carte, puis
-// ses échanges.
+// The drawer's two panes, as for a project: the card details, then its
+// discussion.
 const TABS = [
   { value: "settings", label: "Paramètres", icon: IconSettings },
   { value: "comments", label: "Commentaires", icon: IconMessage },
 ];
 
-// Retrait du tiroir. Il sert à trois choses : le retrait lui-même, l'entête
-// commun, et le décalage de la barre de défilement vers la bordure gauche.
+// Drawer inset. It serves three purposes: the inset itself, the shared
+// header, and shifting the scrollbar to the left edge.
 const DRAWER_PADDING = 40;
 
-// Hauteur des bulles de membres et des étiquettes : la même pour les deux, et
-// pour le « + » qui les suit, afin que les deux colonnes s'alignent.
+// Height of the member avatars and labels: the same for both, and for
+// the "+" that follows them, so the two columns line up.
 const CHIP_HEIGHT = 30;
 
 /**
- * La fiche d'une carte. Elle s'ouvre au clic sur la carte et se referme en
- * enregistrant. Un séparateur n'en a pas : il n'a qu'un texte, qui se modifie
- * sur le tableau.
+ * A card's details. It opens on click on the card and closes while
+ * saving. A separator has none: it only has a text, edited on the board.
  *
- * Sans carte mais avec une « source », la fiche crée la tâche : « Créer une
- * tâche » depuis un autre mode. La société, le tableau et la liste se
- * choisissent alors au-dessus du titre ; ce qui demande une carte déjà écrite
- * — commentaires, checklists, pièces jointes, suivi — attend qu'elle le soit.
+ * Without a card but with a "source", the form creates the task: "Créer une
+ * tâche" from another mode. The company, board and list are then chosen
+ * above the title; whatever needs an existing card — comments, checklists,
+ * attachments, follow — waits until it is written.
  */
 interface CardDrawerProps {
   opened: boolean;
   onClose: () => void;
-  /** La carte du tableau ; sa fiche complète est lue à l'ouverture. */
+  /** The board card; its full details are read on open. */
   card: TaskCard | null;
   labels: Label[];
   users: PublicUser[];
   boardId: string | null;
-  /** Les contextes du tableau : la carte appartient à l'un d'eux. */
+  /** The board's contexts: the card belongs to one of them. */
   contexts?: Context[];
   onLabelsChanged: (patch?: {
     id: number;
     data: Partial<Label>;
   }) => void | Promise<void>;
   onSaved: () => void | Promise<void>;
-  /** Suivie : on est prévenu de chaque modification de cette carte. */
+  /** Followed: you are notified of every change to this card. */
   followed: boolean;
   onToggleFollow: () => void;
-  /** L'élément d'où la tâche est créée, quand la fiche la crée. */
+  /** The item the task is created from, when the form creates it. */
   source?: SourceTask | null;
-  /** La carte vient d'être créée. */
+  /** The card has just been created. */
   onCreated?: (cardId: Id) => void;
-  /** Qui crée la tâche : il en est membre d'office. */
+  /** Who creates the task: they are a member by default. */
   currentUserId?: Id;
   /**
-   * Sans le droit de modifier les tâches de la société, la fiche se lit
-   * seulement : ni saisie, ni ajout, ni enregistrement.
+   * Without the right to edit the company's tasks, the form is
+   * read-only: no input, no adding, no saving.
    */
   readOnly?: boolean;
 }
@@ -142,50 +141,50 @@ export default function CardDrawer({
   readOnly = false,
 }: CardDrawerProps) {
   const creation = !card && source !== null;
-  /** Où la tâche créée ira. */
+  /** Where the created task will go. */
   const [destination, setDestination] = useState<Destination>({
     boardId: null,
     listId: null,
   });
-  /** Les étiquettes du tableau choisi : elles ne sont propres qu'à lui. */
+  /** The chosen board's labels: they belong only to it. */
   const [labelsDestination, setDestinationLabels] = useState<Label[]>([]);
   const [text, setText] = useState("");
   const [memberIds, setMemberIds] = useState<string[]>([]);
   /**
-   * Les acteurs retirés depuis l'ouverture : le serveur les retirera des
-   * checklists à « Sauvegarder », la fiche les y cache déjà.
+   * Actors removed since opening: the server will remove them from the
+   * checklists on "Sauvegarder", the form already hides them there.
    */
   const [removedActors, setRemovedActors] = useState<string[]>([]);
   const [labelIds, setLabelIds] = useState<string[]>([]);
-  /** Le contexte de la carte ; vide tant qu'elle n'est pas lue. */
+  /** The card's context; empty until it is read. */
   const [context, setContext] = useState("");
   const [comments, setComments] = useState<CardComment[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [covers, setCovers] = useState<CardCover[]>([]);
   const [links, setLinks] = useState<CardLink[]>([]);
-  /** Les dépendances ajoutées dont l'autre carte n'est pas encore choisie. */
+  /** Added dependencies whose other card is not yet chosen. */
   const [drafts, setDrafts] = useState<DraftDependency[]>([]);
-  /** Les secondes entre deux couvertures sur le tableau ; s'enregistre avec la fiche. */
+  /** Seconds between two covers on the board; saved with the form. */
   const [rotation, setRotation] = useState(0);
-  /** Vrai tant que les fichiers survolent le bloc des couvertures : ils en deviendront. */
+  /** True while files hover over the covers block: they will become covers. */
   const [overCovers, setOverCovers] = useState(false);
-  /** Vrai tant que des fichiers survolent le tiroir : l'invite de dépôt se montre. */
+  /** True while files hover over the drawer: the drop prompt is shown. */
   const [fileHover, setFileHover] = useState(false);
   const [phoneNumber, setNumber] = useState<number | null>(null);
-  /** L'échéance de la carte : son début, sa fin, sa récurrence, son rappel. */
+  /** The card's due date: its start, end, recurrence, reminder. */
   const [due, setDue] = useState<Due>(EMPTY_DUE);
-  /** Vrai quand le bloc se montre : la carte a une échéance, ou on l'ajoute. */
+  /** True when the block is shown: the card has a due date, or one is being added. */
   const [withDue, setWithDueDate] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<string | null>("settings");
 
   /**
-   * Le bloc qu'on vient d'ajouter à la fiche, à amener sous les yeux : son
-   * sélecteur, dont on vise la dernière occurrence — une checklist ou une
-   * dépendance s'ajoute au bout des autres. Il attend que le bloc paraisse :
-   * une checklist ne s'affiche qu'au retour du serveur.
+   * The block just added to the form, to bring into view: its
+   * selector, targeting the last occurrence — a checklist or a
+   * dependency is added after the others. It waits for the block to appear:
+   * a checklist only shows once the server responds.
    */
   const [toShow, setToShow] = useState<string | null>(null);
   const recordZone = useRef<HTMLDivElement>(null);
@@ -196,24 +195,24 @@ export default function CardDrawer({
     if (!target) return;
     target.scrollIntoView({ behavior: "smooth", block: "nearest" });
     setToShow(null);
-    // Se relance quand un bloc peut paraître.
+    // Reruns when a block may appear.
   }, [toShow, withDue, checklists, drafts, attachments, covers]);
 
-  /** Le sélecteur de fichiers, ouvert par le menu « Actions » et par l'encart. */
+  /** The file picker, opened by the "Actions" menu and by the panel. */
   const fileField = useRef<HTMLInputElement>(null);
-  /** Le sélecteur des images de couverture : des images seules, une ou plusieurs. */
+  /** The cover image picker: images only, one or several. */
   const coverField = useRef<HTMLInputElement>(null);
   /**
-   * Combien d'éléments du tiroir le glisser a franchis. Un simple booléen
-   * clignoterait : passer d'un enfant à l'autre déclenche une sortie avant
-   * l'entrée suivante, et l'invite s'éteindrait entre les deux.
+   * How many drawer elements the drag has crossed. A simple boolean
+   * would flicker: moving from one child to the next triggers a leave
+   * before the next enter, and the prompt would go out in between.
    */
   const depth = useRef(0);
 
   /**
-   * Une image collée dans la description : elle part au serveur, et c'est son
-   * adresse qui entre dans le texte. Un refus se dit dans le bandeau d'erreur
-   * et ne laisse rien derrière lui.
+   * An image pasted into the description: it is sent to the server, and
+   * its address is what goes into the text. A refusal is reported in the
+   * error banner and leaves nothing behind.
    */
   const pasteImage = async (file: File): Promise<string> => {
     if (!card) return "";
@@ -226,8 +225,8 @@ export default function CardDrawer({
     }
   };
 
-  // L'éditeur de la description : il vit tant que le tiroir vit, son contenu
-  // est remplacé à chaque carte ouverte.
+  // The description editor: it lives as long as the drawer, its content
+  // is replaced each time a card is opened.
   const editor = useRichEditor({
     placeholder: "Description de la carte",
     onPasteImage: pasteImage,
@@ -238,7 +237,7 @@ export default function CardDrawer({
 
   useEffect(() => {
     if (!opened || !card) return;
-    // Un tiroir rouvert repart des paramètres, quel que soit l'onglet quitté.
+    // A reopened drawer restarts from the settings, whichever tab was left.
     setActiveTab("settings");
     setToShow(null);
     setLoading(true);
@@ -272,8 +271,8 @@ export default function CardDrawer({
       .finally(() => setLoading(false));
   }, [opened, card, editor]);
 
-  // Une fiche qui crée part de l'élément d'origine : son nom, et le lien qui y
-  // ramène.
+  // A form that creates starts from the source item: its name, and the
+  // link that leads back to it.
   useEffect(() => {
     if (!opened || !source || card) return;
     setActiveTab("settings");
@@ -299,8 +298,8 @@ export default function CardDrawer({
     setDestinationLabels(await api.getLabels(destination.boardId));
   };
 
-  // Changer de tableau retire les étiquettes choisies : elles étaient celles
-  // de l'autre.
+  // Changing board removes the chosen labels: they belonged to the
+  // other one.
   useEffect(() => {
     if (!creation) return;
     setLabelIds([]);
@@ -309,8 +308,8 @@ export default function CardDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [creation, destination.boardId]);
 
-  // Une checklist vient de changer : on relit la fiche pour ne montrer que ce
-  // que le serveur a retenu. Le tableau, lui, se relira à la fermeture.
+  // A checklist has just changed: the form is reread to show only what
+  // the server kept. The board will reread on close.
   const refreshChecklists = async () => {
     if (!card) return;
     const record = await api.getTaskCard(card.id);
@@ -329,12 +328,13 @@ export default function CardDrawer({
   };
 
   /**
-   * Les fichiers déposés — glissés sur le tiroir, ou choisis dans le
-   * sélecteur. Ils partent l'un après l'autre, et chacun paraît dans l'encart
-   * dès que le serveur l'a pris : c'est la pièce qu'il renvoie qu'on ajoute,
-   * sans relire la fiche. Un fichier refusé laisse les précédents en place.
+   * The dropped files — dragged onto the drawer, or chosen in the
+   * picker. They are sent one after the other, and each appears in the
+   * panel as soon as the server has taken it: the attachment it returns is
+   * the one added, without rereading the form. A refused file leaves the
+   * previous ones in place.
    *
-   * La plus récente se range en tête, comme le serveur les donne.
+   * The most recent goes first, as the server returns them.
    */
   const dropFiles = async (files: File[]) => {
     if (!card || readOnly || files.length === 0) return;
@@ -350,9 +350,9 @@ export default function CardDrawer({
   };
 
   /**
-   * Les images de couverture déposées — glissées sur leur bloc, ou choisies.
-   * Elles partent l'une après l'autre et se rangent au bout, comme le serveur
-   * les place. Ce qui n'est pas une image est refusé par le serveur, et le dit.
+   * The dropped cover images — dragged onto their block, or chosen.
+   * They are sent one after the other and placed at the end, as the server
+   * places them. What is not an image is refused by the server, which says so.
    */
   const dropCovers = async (files: File[]) => {
     if (!card || readOnly || files.length === 0) return;
@@ -369,7 +369,7 @@ export default function CardDrawer({
 
   const arrangeCovers = async (ids: Id[]) => {
     if (!card) return;
-    // L'ordre se montre tout de suite ; le serveur rend celui qu'il a retenu.
+    // The order shows immediately; the server returns the one it kept.
     setCovers((already) => ids.map((id) => already.find((c) => c.id === id)!).filter(Boolean));
     try {
       setCovers(await api.reorderCovers(card.id, ids));
@@ -389,7 +389,7 @@ export default function CardDrawer({
 
   const arrangeAttachments = async (ids: Id[]) => {
     if (!card) return;
-    // L'ordre se montre tout de suite ; le serveur rend celui qu'il a retenu.
+    // The order shows immediately; the server returns the one it kept.
     setAttachments((already) => ids.map((id) => already.find((p) => p.id === id)!).filter(Boolean));
     try {
       setAttachments(await api.reorderAttachments(card.id, ids));
@@ -407,9 +407,9 @@ export default function CardDrawer({
     }
   };
 
-  // --- Glisser-déposer sur le tiroir ----------------------------------------
-  // Seuls les fichiers venus du dehors comptent : glisser une checklist ou du
-  // texte à l'intérieur du tiroir ne doit rien déclencher.
+  // --- Drag and drop on the drawer ------------------------------------------
+  // Only files from outside count: dragging a checklist or text inside
+  // the drawer must trigger nothing.
   const hasFiles = (e: ReactDragEvent) =>
     e.dataTransfer.types.includes("Files");
 
@@ -419,7 +419,7 @@ export default function CardDrawer({
     setOverCovers(false);
   };
 
-  /** Vrai quand le glisser passe sur le bloc des couvertures (CardCovers). */
+  /** True when the drag passes over the covers block (CardCovers). */
   const toCovers = (e: ReactDragEvent) =>
     e.target instanceof Element && e.target.closest("[data-covers]") !== null;
 
@@ -436,7 +436,7 @@ export default function CardDrawer({
     },
     onDragOver: (e: ReactDragEvent) => {
       if (!hasFiles(e)) return;
-      // Sans cela, le navigateur ouvrirait le fichier à la place de la page.
+      // Without this, the browser would open the file in place of the page.
       e.preventDefault();
       e.dataTransfer.dropEffect = "copy";
       setOverCovers(toCovers(e));
@@ -446,17 +446,17 @@ export default function CardDrawer({
       e.preventDefault();
       hoverEnd();
       const files = Array.from(e.dataTransfer.files);
-      // Lâchés sur le bloc des couvertures, les fichiers en deviennent ;
-      // partout ailleurs, ce sont des pièces jointes.
+      // Dropped on the covers block, files become covers;
+      // anywhere else, they are attachments.
       if (toCovers(e)) void dropCovers(files);
       else void dropFiles(files);
     },
-    // Un glisser abandonné en chemin laisserait l'invite allumée.
+    // A drag abandoned midway would leave the prompt on.
     onDragEnd: hoverEnd,
   };
 
-  // L'échéance telle que le serveur la reçoit. Sans fin, rien ne tient : ni
-  // début, ni récurrence, ni rappel.
+  // The due date as the server receives it. Without an end, nothing holds: no
+  // start, no recurrence, no reminder.
   const dueFields = {
     due_date: due.end,
     due_form: due.end ? due.shape : "date",
@@ -465,16 +465,16 @@ export default function CardDrawer({
     reminder: due.end ? due.reminder : "",
   } as const;
 
-  // « Sauvegarder » : le seul geste qui écrit. Si le serveur refuse, le
-  // tiroir reste ouvert avec le message : la saisie n'est jamais perdue.
+  // "Sauvegarder": the only gesture that writes. If the server refuses, the
+  // drawer stays open with the message: input is never lost.
   const persist = async () => {
     if (creation) return create();
     if (!card || loading) return onClose();
     setSaving(true);
     try {
       await api.updateTaskCardDetails(card.id, {
-        // Un titre vidé par mégarde ne s'enregistre pas : la carte garde le
-        // sien, le serveur le refuserait de toute façon.
+        // A title emptied by mistake is not saved: the card keeps its
+        // own, the server would refuse it anyway.
         text: text.trim() || card.text,
         description: editor?.getHTML() ?? "",
         member_ids: memberIds.map(Number),
@@ -492,8 +492,8 @@ export default function CardDrawer({
     }
   };
 
-  // La création écrit en deux temps : la carte, avec son titre et sa
-  // description, dans la liste choisie ; puis ce que la fiche y ajoute.
+  // Creation writes in two steps: the card, with its title and
+  // description, in the chosen list; then what the form adds to it.
   const create = async () => {
     const content = text.trim();
     if (!destination.listId)
@@ -538,8 +538,8 @@ export default function CardDrawer({
     await refreshComments();
   };
 
-  // Le fil d'une carte n'a pas de brouillon : la carte existe déjà quand sa
-  // fiche s'ouvre, l'identifiant est toujours celui d'une ligne.
+  // A card's thread has no draft: the card already exists when its
+  // form opens, the identifier is always that of a row.
   const updateComment = async (id: number | string, content: string) => {
     if (typeof id !== "number") return;
     await api.updateTaskCardComment(id, content);
@@ -564,12 +564,12 @@ export default function CardDrawer({
         content: {
           display: "flex",
           flexDirection: "column",
-          // Lue par la barre de défilement des panneaux (assets/styles/CardDrawer.module.css).
+          // Read by the panels' scrollbar (assets/styles/CardDrawer.module.css).
           "--milo-drawer-padding": `${DRAWER_PADDING}px`,
         } as CSSProperties,
-        // Le corps ne défile plus : seul le panneau de l'onglet ouvert le
-        // fait, par sa propre zone de défilement. Le titre, les onglets et les
-        // actions du bas restent en place.
+        // The body no longer scrolls: only the open tab's panel does,
+        // through its own scroll area. The title, tabs and bottom actions
+        // stay in place.
         body: {
           flex: 1,
           display: "flex",
@@ -578,10 +578,10 @@ export default function CardDrawer({
         },
       }}
     >
-      {/* Tout le tiroir est une zone de dépôt : un fichier lâché n'importe où
-          sur la fiche s'y attache. L'invite se pose par-dessus, sans prendre
-          le pointeur — ce sont les éléments en dessous qui continuent de voir
-          passer le glisser. */}
+      {/* The whole drawer is a drop zone: a file dropped anywhere on the
+          form is attached to it. The prompt sits on top, without taking
+          the pointer — the elements below keep seeing the drag
+          go by. */}
       <div
         {...(creation ? {} : hover)}
         style={{
@@ -615,7 +615,7 @@ export default function CardDrawer({
           styles={{ panel: { paddingTop: 20 } }}
         >
           <Tabs.List mb="md">
-            {/* Une tâche encore à créer n'a pas de fil : il attendra qu'elle existe. */}
+            {/* A task yet to be created has no thread: it will wait until it exists. */}
             {TABS.filter(({ value }) => !creation || value === "settings").map(
               ({ value, label, icon: Icon }) => (
                 <Tabs.Tab
@@ -629,10 +629,10 @@ export default function CardDrawer({
               ),
             )}
 
-            {/* Ce qui s'ajoute à la fiche se choisit ici, au bout de la rangée
-                d'onglets : ce ne sont pas des volets à ouvrir, mais des blocs à
-                poser sur la carte. Poussé à droite, le menu ne se confond pas
-                avec les onglets. */}
+            {/* What is added to the form is chosen here, at the end of the row
+                of tabs: these are not panes to open, but blocks to
+                place on the card. Pushed right, the menu is not confused
+                with the tabs. */}
             <Menu
               position="bottom-end"
               withinPortal
@@ -652,9 +652,9 @@ export default function CardDrawer({
                 </Button>
               </Menu.Target>
               <Menu.Dropdown>
-                {/* Suivre vient en tête : c'est ce qui porte sur la carte
-                    entière, là où le reste y ajoute un bloc. Le menu ne se
-                    referme pas, pour qu'on voie la coche changer. */}
+                {/* Follow comes first: it applies to the whole card, where the rest
+                    adds a block to it. The menu does not
+                    close, so the checkmark can be seen changing. */}
                 {!creation && (
                   <>
                     <Menu.Item
@@ -676,8 +676,8 @@ export default function CardDrawer({
                         >
                           Ajouter checklist
                         </Menu.Item>
-                        {/* La ligne s'ouvre vide : elle s'enregistre quand
-                            l'autre carte est choisie. */}
+                        {/* The row opens empty: it is saved once
+                            the other card is chosen. */}
                         <Menu.Item
                           leftSection={<IconLink size={16} />}
                           onClick={() => {
@@ -691,9 +691,9 @@ export default function CardDrawer({
                     )}
                   </>
                 )}
-                {/* L'échéance se pose comme une checklist : par le même menu,
-                    puisque c'est un bloc de plus sur la carte. Le sélecteur
-                    s'ouvre au-dessus du titre, là où la date se lira. */}
+                {/* The due date is placed like a checklist: through the same menu,
+                    since it is one more block on the card. The selector
+                    opens above the title, where the date will be read. */}
                 {!readOnly && (
                   <Menu.Item
                     leftSection={<IconCalendarEvent size={16} />}
@@ -705,8 +705,8 @@ export default function CardDrawer({
                     Ajouter échéance
                   </Menu.Item>
                 )}
-                {/* Les fichiers se glissent sur le tiroir ; ceci est l'autre
-                    chemin, pour qui préfère les choisir. */}
+                {/* Files are dragged onto the drawer; this is the other
+                    path, for those who prefer to choose them. */}
                 {!creation && !readOnly && (
                   <Menu.Item
                     leftSection={<IconPaperclip size={16} />}
@@ -736,8 +736,8 @@ export default function CardDrawer({
               flexDirection: "column",
             }}
           >
-            {/* La barre ne se montre que pendant le défilement, comme sur le
-                tableau ; le style la déporte sur la bordure gauche du tiroir. */}
+            {/* The bar only shows while scrolling, as on the
+                board; the style moves it to the drawer's left edge. */}
             <ScrollArea
               type="scroll"
               scrollbars="y"
@@ -747,23 +747,23 @@ export default function CardDrawer({
               }}
               style={{ flex: 1, minHeight: 0 }}
             >
-              {/* En lecture seule, tous les champs de la fiche sont éteints
-                  d'un coup : c'est ce que fait un « fieldset » désactivé. */}
+              {/* In read-only mode, all the form's fields are disabled
+                  at once: that is what a disabled "fieldset" does. */}
               <fieldset disabled={readOnly} style={BARE_FIELDSET}>
                 <Stack gap="xl" ref={recordZone}>
-                  {/* Ce qui range la carte vient avant ce qui la nomme : les deux
-                    colonnes s'ouvrent chacune sur leur propre liste. Les bulles
-                    des membres tiennent en peu de place, les étiquettes portent du
-                    texte : la largeur se partage en 30 / 70. Ce partage se dit en
-                    proportions et non en pourcentages : « 30% + 70% » aurait
-                    ignoré l'écart entre les deux colonnes, et la seconde aurait
-                    débordé d'autant. */}
+                  {/* What categorizes the card comes before what names it: the two
+                      columns each open on their own list. Member avatars
+                      take little room, labels carry
+                      text: the width is split 30 / 70. The split is expressed in
+                      proportions and not percentages: "30% + 70%" would have
+                      ignored the gap between the two columns, and the second would have
+                      overflowed by that much. */}
                   <Group align="flex-start" gap="md" wrap="nowrap">
                     <div style={{ flex: "3 1 0", minWidth: 0 }}>
                       <ActorPicker
                         chipHeight={CHIP_HEIGHT}
-                        // Les bulles se suivent avec le même filet d'air que sur une
-                        // carte du tableau ou dans celui des projets.
+                        // The avatars follow one another with the same thin gap as on a
+                        // board card or in the projects one.
                         chipGap={ACTOR_GAP}
                         label="Acteurs"
                         users={users}
@@ -796,20 +796,20 @@ export default function CardDrawer({
                         }
                       />
                     </div>
-                    {/* La référence suit les étiquettes, au bout de la ligne :
-                        elle est attribuée à la création et ne bouge plus, elle
-                        se montre sans se modifier. Le tag se lit seul : son
-                        libellé est tu, mais garde sa place pour que le tag
-                        s'aligne sur le haut des étiquettes, sous leur libellé.
-                        Le même tag que dans la liste des projets. */}
+                    {/* The reference follows the labels, at the end of the row:
+                        it is assigned on creation and no longer changes, it is
+                        shown without being edited. The tag reads on its own: its
+                        label is silent, but keeps its place so that the tag
+                        lines up with the top of the labels, under their label.
+                        The same tag as in the project list. */}
                     {!creation && (
                       <Input.Wrapper
                         label="Référence"
                         style={{ flexShrink: 0 }}
                         styles={{ label: { visibility: "hidden" } }}
                       >
-                        {/* Remonté de quatre pixels : sans quoi le tag tombe juste
-                            sous le haut des étiquettes. */}
+                        {/* Raised by four pixels: otherwise the tag falls right
+                            under the top of the labels. */}
                         <div style={{ marginTop: -4 }}>
                           {phoneNumber ? (
                             <ReferenceTag
@@ -826,8 +826,8 @@ export default function CardDrawer({
                     )}
                   </Group>
 
-                  {/* Où la tâche ira, avant ce qui la nomme. Une carte ouverte
-                      depuis son tableau sait déjà où elle est. */}
+                  {/* Where the task will go, before what names it. A card opened
+                      from its board already knows where it is. */}
                   {creation && source && (
                     <TaskDestination
                       key={`${source.kind}-${source.id}`}
@@ -837,8 +837,8 @@ export default function CardDrawer({
                     />
                   )}
 
-                  {/* Le titre, et le contexte de la carte à côté : deux parts
-                      pour le titre, une pour le contexte. */}
+                  {/* The title, and the card's context beside it: two parts
+                      for the title, one for the context. */}
                   <Group align="flex-start" gap="md" wrap="nowrap">
                     <TextInput
                       label="Titre"
@@ -863,9 +863,9 @@ export default function CardDrawer({
                     )}
                   </Group>
 
-                  {/* L'échéance suit ce qui nomme la carte. Tant qu'il n'y en a
-                      pas, rien ne s'affiche — la fiche ne porte pas un champ
-                      vide de plus. */}
+                  {/* The due date follows what names the card. As long as there is none,
+                      nothing is shown — the form does not carry one more empty
+                      field. */}
                   {withDue && (
                     <div data-zone="due-date">
                       <CardDueDate
@@ -880,7 +880,7 @@ export default function CardDrawer({
                     </div>
                   )}
 
-                  {/* Les couvertures suivent l'échéance. */}
+                  {/* The covers follow the due date. */}
                   {card && (
                     <CardCovers
                       covers={covers}
@@ -895,8 +895,8 @@ export default function CardDrawer({
 
                   <RichTextField editor={editor} label="Description" />
 
-                  {/* Les checklists ferment la fiche : elles s'ajoutent par le menu
-                    « Actions » et s'enregistrent d'elles-mêmes. */}
+                  {/* The checklists close the form: they are added from the "Actions"
+                      menu and save themselves. */}
                   {card && (
                     <CardChecklists
                       cardId={card.id}
@@ -904,9 +904,9 @@ export default function CardDrawer({
                       users={users}
                       onChanged={refreshChecklists}
                       onError={notifyError}
-                      // Qui reçoit un élément devient acteur de la carte. Il
-                      // rejoint les acteurs de la fiche, et s'enregistre avec
-                      // eux à « Sauvegarder ».
+                      // Whoever receives an item becomes an actor of the card. They
+                      // join the form's actors, and are saved with
+                      // them on "Sauvegarder".
                       onMembers={(ids) => {
                         const placed = ids.map(String);
                         setMemberIds((already) => [
@@ -919,9 +919,9 @@ export default function CardDrawer({
                     />
                   )}
 
-                  {/* Les dépendances suivent les checklists : elles aussi
-                      s'ajoutent par le menu « Actions » et s'enregistrent
-                      d'elles-mêmes. */}
+                  {/* The dependencies follow the checklists: they too
+                      are added from the "Actions" menu and save
+                      themselves. */}
                   {card && (
                     <CardDependencies
                       cardId={card.id}
@@ -935,8 +935,8 @@ export default function CardDrawer({
                     />
                   )}
 
-                  {/* Les pièces jointes ferment la fiche. Comme les checklists,
-                      l'encart ne paraît que lorsqu'il y a quelque chose dedans. */}
+                  {/* The attachments close the form. Like the checklists,
+                      the panel only appears when there is something in it. */}
                   <div data-zone="attachments">
                     <CardAttachments
                       attachments={attachments}
@@ -983,18 +983,18 @@ export default function CardDrawer({
         </Tabs>
       </div>
 
-      {/* La carte se supprime depuis son menu « Actions », pas d'ici : le pied
-          ne porte donc que les deux gestes communs à tous les tiroirs. */}
+      {/* The card is deleted from its "Actions" menu, not from here: the footer
+          therefore only carries the two gestures common to all drawers. */}
       <DrawerFooter
         onSave={readOnly ? undefined : persist}
         onClose={onClose}
         saving={saving}
       />
 
-      {/* Le sélecteur de fichiers, ouvert par le menu « Actions » comme par le
-          bouton de l'encart. Il est remis à zéro après coup : sans cela,
-          redéposer le même fichier ne déclencherait rien — le navigateur ne
-          signale que les changements. */}
+      {/* The file picker, opened by the "Actions" menu as by the
+          panel's button. It is reset afterwards: without that,
+          dropping the same file again would trigger nothing — the browser only
+          signals changes. */}
       <input
         ref={fileField}
         type="file"

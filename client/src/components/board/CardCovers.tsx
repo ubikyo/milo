@@ -11,20 +11,19 @@ import { FileRow, useOrderedFiles } from "./CardAttachments";
 import { SmallChoice } from "./CardDueDate";
 
 const ROTATIONS = COVER_ROTATIONS.map((r) => ({ value: String(r.value), label: r.label }));
-
 /**
- * Les images de couverture d'une carte, en tête de sa fiche, sous la même
- * allure que ses pièces jointes : une ligne par image, qui l'ouvre au clic, et
- * « Supprimer » au clic droit. Une poignée devant chaque ligne les range — la
- * première est celle que la carte montre sur le tableau —, et l'intervalle de
- * rotation, à droite de l'intitulé, les fait se relayer.
+ * A card's cover images, at the top of its details, in the same style as
+ * its attachments: one row per image, which opens it on click, and
+ * "Supprimer" on right-click. A handle in front of each row reorders
+ * them — the first is the one the card shows on the board —, and the
+ * rotation interval, to the right of the label, makes them take turns.
  *
- * Le bloc porte « data-covers » : un fichier lâché dessus devient une
- * couverture plutôt qu'une pièce jointe (CardDrawer).
+ * The block carries "data-covers": a file dropped on it becomes a
+ * cover rather than an attachment (CardDrawer).
  */
 interface CardCoversProps {
   covers: CardCover[];
-  /** Les secondes entre deux images sur le tableau ; zéro, la première reste. */
+  /** Seconds between two images on the board; zero, the first one stays. */
   interval: number;
   onInterval: (seconds: number) => void;
   onPick: () => void;

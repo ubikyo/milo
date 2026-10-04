@@ -1,7 +1,7 @@
-// La sauvegarde : le téléchargement de l'archive, et sa restauration.
+// Backup: downloading the archive, and restoring it.
 //
-// Comme pour les pièces jointes, le corps d'une restauration est le fichier
-// lui-même, brut : le serveur n'attend qu'une archive, il la lit telle quelle.
+// As for attachments, a restore's body is the file itself, raw: the server
+// only expects an archive, and reads it as is.
 
 import express, { Router } from "express";
 import { RESOURCES, backupFileName } from "@milo/shared";
@@ -10,9 +10,9 @@ import { buildBackup, backupInfo, restoreFromBackup } from "../lib/backup.js";
 import { touchNow } from "../middleware/events.js";
 
 /**
- * Une archive tient la base et tous les fichiers déposés : elle n'a rien de
- * commun avec les 25 Mo d'une pièce jointe. La limite reste là pour qu'un
- * corps démesuré soit refusé avant d'être gardé en mémoire.
+ * An archive holds the database and all uploaded files: it has nothing in
+ * common with the 25 MB of an attachment. The limit stays so that an
+ * oversized body is rejected before being held in memory.
  */
 const SIZE_MAX = 512 * 1024 * 1024;
 
@@ -29,8 +29,8 @@ backupRoutes.get("/archive", (_req, res) => {
 
   res.type("application/gzip");
   res.setHeader("Content-Disposition", `attachment; filename="${backupFileName()}"`);
-  // Une sauvegarde est datée de l'instant où elle est demandée : rien ne doit
-  // en servir une plus ancienne.
+  // A backup is dated from the moment it is requested: nothing should serve
+  // an older one.
   res.setHeader("Cache-Control", "no-store");
   res.send(archive);
 });
@@ -41,7 +41,8 @@ backupRoutes.post("/restore", archiveBody, (req, res) => {
 
   const result = restoreFromBackup(content as Buffer);
 
-  // Tout a changé, jusqu'aux sessions : les clients connectés relisent tout.
+  // Everything has changed, down to the sessions: connected clients re-read
+  // everything.
   touchNow(res, ...RESOURCES);
   res.json(result);
 });

@@ -1,6 +1,6 @@
-// Le registre des widgets du panneau des statistiques du mode Support. Un seul
-// endroit les connaît : le tiroir des widgets, le panneau et celui des réglages
-// y prennent ce qu'il leur faut.
+// The registry of Support mode's statistics panel widgets. Only one
+// place knows them: the widgets drawer, the panel and the settings one
+// take from it what they need.
 
 import { actorsIndicator } from "./actors";
 import { ageIndicator } from "./age";
@@ -15,7 +15,7 @@ import { accessWidgets } from "../widgets/in-section";
 import type { IndicatorDisplayProps, SupportIndicatorWidget } from "./types";
 import type { SupportIndicatorType } from "@milo/shared";
 
-/** Dans l'ordre où le tiroir des widgets les présente. */
+/** In the order in which the widgets drawer presents them. */
 export const INDICATORS: SupportIndicatorWidget[] = [
   listIndicator,
   ...accessWidgets<SupportIndicatorType, IndicatorDisplayProps>(),
@@ -34,8 +34,8 @@ const BY_TYPE = new Map<SupportIndicatorType, SupportIndicatorWidget>(
 );
 
 /**
- * Le widget qui sait lire cet indicateur, ou « undefined » : un type rangé
- * par une version qui en connaissait un de plus n'a pas à faire tomber la page.
+ * The widget that can read this indicator, or "undefined": a type stored
+ * by a version that knew one more must not bring the page down.
  */
 export const indicatorOf = (type: SupportIndicatorType): SupportIndicatorWidget | undefined =>
   BY_TYPE.get(type);

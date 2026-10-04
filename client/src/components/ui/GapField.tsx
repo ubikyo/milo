@@ -4,27 +4,26 @@ import type { CSSProperties } from "react";
 import { SECTIONS_GAP_MAX } from "@milo/shared";
 import classes from "../../assets/styles/GapField.module.css";
 
-// L'écart entre deux sections, saisi au-dessus de lui : un petit champ posé en
-// absolu dans la bande des poignées, centré sur l'écart. Discret tant qu'on ne
-// le survole pas. La valeur part à la validation — Entrée ou perte du focus —,
-// pas à chaque chiffre tapé : « 3 » en route vers « 30 » ne doit pas disloquer
-// la rangée.
+// The gap between two sections, entered above it: a small field placed
+// absolutely in the handle strip, centered on the gap. Discreet until hovered.
+// The value is sent on validation — Enter or loss of focus —, not on every
+// digit typed: "3" on the way to "30" must not wreck the row.
 
-/** La largeur du champ : trois chiffres et leur air. */
+/** The field's width: three digits and some breathing room. */
 export const GAP_FIELD_WIDTH = 36;
 
-/** Sa hauteur, celle que la feuille de style lui donne : il tient dans la bande des poignées. */
+/** Its height, the one the stylesheet gives it: it fits in the handle strip. */
 export const GAP_FIELD_HEIGHT = 18;
 
 interface GapFieldProps {
-  /** L'écart en vigueur, en pixels. */
+  /** The gap currently in effect, in pixels. */
   value: number;
   onChange: (gap: number) => void | Promise<void>;
   style: CSSProperties;
 }
 
 export default function GapField({ value, onChange, style }: GapFieldProps) {
-  /** Ce qui est tapé ; « null » tant qu'on n'y a pas touché. */
+  /** What is typed; "null" as long as it has not been touched. */
   const [input, setInput] = useState<number | string | null>(null);
 
   const validate = () => {
@@ -59,8 +58,8 @@ export default function GapField({ value, onChange, style }: GapFieldProps) {
           e.currentTarget.blur();
         }
       }}
-      // Ni la poignée voisine ni la rangée ne doivent prendre cet appui pour
-      // un glisser.
+      // Neither the neighboring handle nor the row must take this press for a
+      // drag.
       onPointerDown={(e) => e.stopPropagation()}
       aria-label="Écart avec la section suivante, en pixels"
       title="Écart avec la section suivante (px)"

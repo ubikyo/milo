@@ -1,7 +1,7 @@
-// Les workspaces : une équipe chacun, avec ses vues — et tout ce qu'elles
-// portent — et ses accès. Qui en a plusieurs passe de l'un à l'autre par le
-// sélecteur ; ce qu'il voit et ce qu'il peut y faire suivent celui qu'il a
-// choisi (repositories/users.ts, workspaceCourant).
+// Workspaces: one team each, with its views — and everything they carry —
+// and its access rights. Whoever has several switches between them via the
+// selector; what they see and what they can do there follows the one they
+// chose (repositories/users.ts, currentWorkspace).
 
 import { mutation, scalar, selection } from "../db/query.js";
 import type { NextRow, WorkspaceRow } from "../db/rows.js";
@@ -18,7 +18,7 @@ export const workspaces = {
   remove: mutation("DELETE FROM workspaces WHERE id = ?"),
 };
 
-/** Les vues d'un workspace, toutes : privées comprises. */
+/** All the views of a workspace, private ones included. */
 export const workspaceViews = selection<{ id: number }>(
   "SELECT id FROM views WHERE workspace_id = ?",
 );

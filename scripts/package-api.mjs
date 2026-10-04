@@ -1,13 +1,13 @@
-// Prépare l'unité de déploiement de l'API.
+// Prepares the API deployment unit.
 //
-// Le serveur est regroupé en un seul fichier par esbuild : son code, et le
-// paquet partagé avec le client. Ne restent dehors que les quatre dépendances
-// réelles — dont better-sqlite3, module natif qui doit être compilé sur la
-// machine cible.
+// The server is bundled into a single file by esbuild: its code, and the
+// package shared with the client. Only the four real dependencies stay
+// outside — including better-sqlite3, a native module that must be compiled on
+// the target machine.
 //
-// Le manifeste écrit ici fige les versions exactes résolues au build, ce que
-// « npm ci » apportait avant que le serveur ne fasse partie d'un espace de
-// travail : le déploiement installe donc exactement ce qui a été testé.
+// The manifest written here pins the exact versions resolved at build time,
+// which "npm ci" provided before the server became part of a
+// workspace: the deployment thus installs exactly what was tested.
 
 import { build } from "esbuild";
 import fs from "node:fs/promises";
@@ -25,7 +25,7 @@ const manifesteServeur = JSON.parse(
   await fs.readFile(path.join(racine, "server", "package.json"), "utf8"),
 );
 
-// Tout sauf le paquet partagé, qui est regroupé dans le fichier.
+// Everything except the shared package, which is bundled into the file.
 const externes = Object.keys(manifesteServeur.dependencies).filter(
   (nom) => nom !== "@milo/shared",
 );
@@ -41,14 +41,14 @@ await build({
   outfile: path.join(sortie, "server.mjs"),
   external: externes,
   sourcemap: true,
-  // Les messages sont en français : le fichier doit rester en UTF-8.
+  // Messages are in French: the file must remain UTF-8.
   charset: "utf8",
 });
 
 /**
- * La version réellement installée d'une dépendance. npm remonte la plupart des
- * paquets à la racine de l'espace de travail, mais garde les modules natifs
- * dans celui qui les déclare : on regarde les deux.
+ * The version actually installed for a dependency. npm hoists most
+ * packages to the workspace root, but keeps native modules
+ * in the one that declares them: we check both.
  */
 const versionInstallee = async (nom) => {
   const candidats = [
@@ -59,7 +59,7 @@ const versionInstallee = async (nom) => {
     try {
       return JSON.parse(await fs.readFile(chemin, "utf8")).version;
     } catch {
-      /* pas là : on essaie l'emplacement suivant */
+      /* not there: try the next location */
     }
   }
   throw new Error(`Dépendance introuvable : ${nom}`);

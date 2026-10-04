@@ -1,15 +1,15 @@
-// Le mode Assets : les postes, et la porte par laquelle les agents
-// d'inventaire les déposent.
+// The Assets mode: the workstations, and the door through which inventory
+// agents drop them off.
 //
-// Deux routeurs, parce que deux publics : « inventoryRoutes » est ouverte, car
-// un agent n'a pas de session — c'est un service qui tourne sur un poste, pas
-// quelqu'un qui se connecte ; « assetRoutes » est derrière la session, comme
-// tout le reste de l'API.
+// Two routers, because two audiences: "inventoryRoutes" is open, since an
+// agent has no session — it is a service running on a workstation, not
+// someone signing in; "assetRoutes" sits behind the session, like the rest of
+// the API.
 //
-// Le dialogue est celui d'OCS, que FusionInventory et GLPI Agent parlent tous
-// les deux : l'agent annonce sa venue (PROLOG), le serveur lui dit d'envoyer,
-// l'agent envoie son inventaire (INVENTORY), le serveur accuse réception. Rien
-// d'autre n'est attendu de lui.
+// The dialogue is OCS's, which FusionInventory and GLPI Agent both speak: the
+// agent announces itself (PROLOG), the server tells it to send, the agent
+// sends its inventory (INVENTORY), the server acknowledges. Nothing else is
+// expected of it.
 
 import express, { Router } from "express";
 import type { Request } from "express";
@@ -31,26 +31,26 @@ import { boardContext } from "../repositories/contexts.js";
 import { tagInbox } from "../repositories/inboxes.js";
 
 /**
- * Un inventaire de poste pèse quelques centaines de kilo-octets — six cents
- * logiciels, chacun avec sa version et sa date. Compressé il en fait le
- * dixième, mais l'agent ne comprime pas toujours : la limite vaut pour le
- * corps tel qu'il arrive.
+ * A workstation inventory weighs a few hundred kilobytes — six hundred
+ * software entries, each with its version and date. Compressed it is a tenth
+ * of that, but the agent doesn't always compress: the limit applies to the
+ * body as it arrives.
  */
 const SIZE_MAX = "20mb";
 
-/** Le corps est du XML, parfois compressé : on le prend brut, quoi qu'il annonce. */
+/** The body is XML, sometimes compressed: we take it raw, whatever it claims. */
 const agentBody = express.raw({ type: () => true, limit: SIZE_MAX });
 
 const header = '<?xml version="1.0" encoding="UTF-8"?>';
 
 /**
- * La réponse au PROLOG : « envoie ». « PROLOG_FREQ » dit au bout de combien
- * d'heures l'agent doit se représenter — il s'y tient de lui-même, sans que
- * rien ne le rappelle.
+ * The reply to PROLOG: "send". "PROLOG_FREQ" says after how many hours the
+ * agent must show up again — it keeps to that on its own, with nothing
+ * calling it back.
  */
 const RESPONSE_PROLOG = `${header}\n<REPLY>\n  <PROLOG_FREQ>24</PROLOG_FREQ>\n  <RESPONSE>SEND</RESPONSE>\n</REPLY>`;
 
-/** La réponse à un inventaire reçu : rien à redire. */
+/** The reply to a received inventory: nothing to add. */
 const EMPTY_RESPONSE = `${header}\n<REPLY></REPLY>`;
 
 const respond = (res: express.Response, xml: string) =>
@@ -61,10 +61,9 @@ export const inventoryRoutes = Router();
 inventoryRoutes.use(touch("assets"));
 
 /**
- * Le dépôt d'un inventaire. Un agent qui se présente pour la première fois
- * crée le poste ; les envois suivants le remplacent — c'est un état, pas un
- * journal : on veut savoir ce qu'est la machine aujourd'hui, pas ce qu'elle
- * était.
+ * Dropping off an inventory. An agent showing up for the first time creates
+ * the workstation; later submissions replace it — it is a state, not a log:
+ * we want to know what the machine is today, not what it used to be.
  */
 inventoryRoutes.post("/", agentBody, (req: Request, res) => {
   const body: unknown = req.body;
@@ -82,8 +81,8 @@ inventoryRoutes.post("/", agentBody, (req: Request, res) => {
   const deviceid = textOf(query, "DEVICEID");
   if (!deviceid) badRequest("DEVICEID manquant");
 
-  // Premier temps du dialogue : l'agent s'annonce et demande s'il doit
-  // envoyer. Rien n'est encore arrivé, rien n'est donc enregistré.
+  // First step of the dialogue: the agent announces itself and asks whether
+  // it should send. Nothing has arrived yet, so nothing is recorded.
   if (textOf(query, "QUERY") === "PROLOG") {
     respond(res, RESPONSE_PROLOG);
     return;
@@ -98,26 +97,26 @@ inventoryRoutes.post("/", agentBody, (req: Request, res) => {
     return;
   }
 
-  // Le nom que la machine se donne. À défaut, son identifiant d'agent : une
-  // ligne sans rien dans la seule colonne de la liste ne se cliquerait pas.
+  // The name the machine gives itself. Failing that, its agent id: a row
+  // with nothing in the list's only column could not be clicked.
   const name = textOf(content, "HARDWARE", "NAME") || deviceid;
 
-  // Le tag passé à l'agent (option « tag ») voyage dans ACCOUNTINFO, sous la
-  // clé « TAG ». C'est le seul endroit où l'agent peut porter quelque chose de
-  // Milo : c'est donc lui qui dit la société.
+  // The tag passed to the agent ("tag" option) travels in ACCOUNTINFO, under
+  // the "TAG" key. It is the only place where the agent can carry something
+  // from Milo: so it is what names the company.
   const infoItems = content.ACCOUNTINFO;
   const rows = Array.isArray(infoItems) ? infoItems : infoItems ? [infoItems] : [];
   const tag = rows
     .map((row) => (textOf(row, "KEYNAME") === "TAG" ? textOf(row, "KEYVALUE") : ""))
     .find((value) => value !== "") ?? "";
 
-  // L'heure où l'agent a fait son tour de machine (ACCESSLOG/LOGDATE), plutôt
-  // que celle où l'envoi est arrivé : un agent qui n'a pas pu joindre le
-  // serveur renvoie plus tard un inventaire qui a déjà quelques heures. Elle
-  // est à l'heure du poste, qu'on suppose être celle de Paris.
+  // The time the agent made its round of the machine (ACCESSLOG/LOGDATE),
+  // rather than the time the submission arrived: an agent that could not
+  // reach the server later sends an inventory that is already a few hours
+  // old. It is in the workstation's local time, assumed to be Paris time.
   const timestamp = parisTime(textOf(content, "ACCESSLOG", "LOGDATE")) ?? now();
   const existing = assets.byDeviceId.get(deviceid);
-  // La liste de postes qui reçoit son tag, et le contexte qu'elle lui donne.
+  // The workstation list that receives its tag, and the context it gives it.
   const inbox = tagInbox(tag);
   const json = JSON.stringify(content);
   const user = contentUser(content);
@@ -152,13 +151,13 @@ inventoryRoutes.post("/", agentBody, (req: Request, res) => {
   respond(res, EMPTY_RESPONSE);
 });
 
-// --- Ce que le client lit ---------------------------------------------------
+// --- What the client reads ---------------------------------------------------
 
 export const assetRoutes = Router();
 
 assetRoutes.use(touch("assets"));
 
-/** Le poste, si l'on voit les assets et le tableau de son contexte. */
+/** The workstation, if the user sees the assets and the board of its context. */
 const visibleWorkstation = (req: Request, id: unknown) => {
   const workstation = orNotFound(assets.byId.get(id), WORKSTATION_NOT_FOUND);
   require(req, "assets", "view", WORKSTATION_NOT_FOUND);
@@ -167,8 +166,8 @@ const visibleWorkstation = (req: Request, id: unknown) => {
 };
 
 /**
- * Les postes d'un tableau : de l'un de ses contextes, ou de tous. Un poste
- * dont le tag n'est reçu par aucune liste ne se montre nulle part.
+ * The workstations of a board: of one of its contexts, or of all. A
+ * workstation whose tag is received by no list shows up nowhere.
  */
 assetRoutes.get("/", (req, res) => {
   if (!requestCan(req, "assets", "view")) return void res.json([]);
@@ -185,10 +184,10 @@ assetRoutes.get("/", (req, res) => {
 });
 
 /**
- * Un poste ouvert, avec la fin de support de son système. Elle vient
- * d'endoflife.date, d'où l'attente — et « next », qu'Express 4 demande pour
- * une fonction asynchrone. Elle ne fait jamais échouer la fiche : sans elle,
- * le poste s'ouvre quand même.
+ * An opened workstation, with the end of support of its system. It comes
+ * from endoflife.date, hence the wait — and "next", which Express 4 requires
+ * for an async function. It never makes the detail view fail: without it,
+ * the workstation still opens.
  */
 assetRoutes.get("/:id", (req, res, next) => {
   const detail = assetDetail(visibleWorkstation(req, req.params.id));
@@ -198,20 +197,20 @@ assetRoutes.get("/:id", (req, res, next) => {
 });
 
 /**
- * Le serveur embarqué de l'agent, et le temps qu'on lui laisse pour répondre.
- * Le port est celui que l'agent écoute par défaut (option « httpd-port ») ;
- * cinq secondes suffisent — l'agent accuse réception tout de suite, l'
- * inventaire, lui, repart derrière et arrivera par la porte habituelle.
+ * The agent's embedded server, and the time we give it to answer. The port
+ * is the one the agent listens on by default ("httpd-port" option); five
+ * seconds are enough — the agent acknowledges right away, while the
+ * inventory goes off behind and will arrive through the usual door.
  */
 const PORT_AGENT = 62354;
 const AGENT_TIMEOUT = 5_000;
 
 /**
- * « Inventorie-toi maintenant. » L'agent avance simplement son prochain
- * rendez-vous : il recommence son tour de machine et renvoie le résultat à
- * « /api/inventory », comme il l'aurait fait de lui-même quelques heures plus
- * tard. Rien ne revient par ici — d'où les trois refus, qui disent chacun quoi
- * corriger.
+ * "Inventory yourself now." The agent simply brings its next appointment
+ * forward: it redoes its round of the machine and sends the result back to
+ * "/api/inventory", as it would have done on its own a few hours later.
+ * Nothing comes back through here — hence the three refusals, each saying
+ * what to fix.
  */
 const requestInventory = async (address: string): Promise<void> => {
   const url = `http://${address}:${PORT_AGENT}/now`;
@@ -227,7 +226,7 @@ const requestInventory = async (address: string): Promise<void> => {
     );
   }
 
-  // L'agent ne répond « maintenant » qu'aux adresses qu'on lui a désignées.
+  // The agent only answers "now" to the addresses it was designated.
   if (response.status === 403) {
     throw new HttpError(
       403,
@@ -241,11 +240,12 @@ const requestInventory = async (address: string): Promise<void> => {
 };
 
 /**
- * Redemander l'inventaire d'un poste, sans attendre son prochain passage.
+ * Ask again for a workstation's inventory, without waiting for its next
+ * visit.
  *
- * La partie synchrone lève comme partout ailleurs ; ce qui suit l'attente
- * passe par « next », car Express 4 ne rattrape pas les rejets d'une fonction
- * asynchrone — le reste du serveur, lui, est synchrone et n'a pas ce souci.
+ * The synchronous part throws as everywhere else; what follows the wait goes
+ * through "next", because Express 4 does not catch rejections from an async
+ * function — the rest of the server is synchronous and has no such issue.
  */
 assetRoutes.post("/:id/refresh", (req, res, next) => {
   const workstation = visibleWorkstation(req, req.params.id);
@@ -259,7 +259,7 @@ assetRoutes.post("/:id/refresh", (req, res, next) => {
     .catch(next);
 });
 
-/** Un poste qui n'existe plus : c'est le seul geste qu'on ait sur lui. */
+/** A workstation that no longer exists: the only action we have on it. */
 assetRoutes.delete("/:id", (req, res) => {
   assets.remove.run(visibleWorkstation(req, req.params.id).id);
   res.status(204).end();

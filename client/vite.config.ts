@@ -4,8 +4,8 @@ import { version } from "../package.json";
 
 export default defineConfig({
   plugins: [react()],
-  // Le numéro de version de Milo, celui du package.json racine, gravé dans le
-  // code au build : le logo de l'entête l'affiche au survol.
+  // Milo's version number, from the root package.json, baked into the
+  // code at build time: the header logo shows it on hover.
   define: {
     __APP_VERSION__: JSON.stringify(version),
   },
@@ -16,8 +16,8 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: "http://localhost:3001",
-        // Le flux d'événements ne doit pas être mis en tampon par le proxy :
-        // sans cela, le client ne voit rien arriver.
+        // The event stream must not be buffered by the proxy:
+        // otherwise the client sees nothing arrive.
         configure: (proxy) => {
           proxy.on("proxyRes", (proxyRes) => {
             if (proxyRes.headers["content-type"]?.includes("text/event-stream")) {
@@ -29,14 +29,14 @@ export default defineConfig({
     },
   },
   build: {
-    // Les trois gros morceaux sont séparés du code de l'application : ils ne
-    // changent qu'aux montées de version, le navigateur les garde en cache
-    // d'un déploiement à l'autre.
+    // The three big chunks are split from the application code: they only
+    // change on version bumps, so the browser keeps them cached
+    // from one deployment to the next.
     rollupOptions: {
       output: {
-        // La forme fonction plutôt que la forme objet : elle ne voit que les
-        // modules réellement présents dans le graphe, et ne se fâche donc pas
-        // sur un build SSR, où React et Mantine sont externes.
+        // The function form rather than the object form: it only sees
+        // modules actually present in the graph, and so does not complain
+        // on an SSR build, where React and Mantine are external.
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
           if (id.includes("/@tiptap/") || id.includes("/@mantine/tiptap/")) return "editeur";

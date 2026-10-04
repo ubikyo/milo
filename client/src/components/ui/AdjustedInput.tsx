@@ -1,10 +1,10 @@
 import type { InputHTMLAttributes } from "react";
 
-// Le champ d'un nom qu'on tape sur place — un onglet de tableau, une vue —,
-// exactement à la largeur du texte. Une largeur en « ch » laissait un blanc à
-// droite : un « ch » vaut la chasse du zéro, plus large que la plupart des
-// lettres. Ici, un double invisible du texte, posé dans la même case de
-// grille, donne sa largeur au champ.
+// The field for a name typed in place — a board tab, a view —,
+// exactly at the width of the text. A width in "ch" left a blank on the
+// right: a "ch" is the width of the zero, wider than most
+// letters. Here, an invisible duplicate of the text, placed in the same grid
+// cell, gives the field its width.
 
 type AdjustedInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value"> & {
   value: string;
@@ -17,8 +17,8 @@ export default function AdjustedInput({ value, style, ...props }: AdjustedInputP
       <span aria-hidden style={{ ...common, visibility: "hidden", whiteSpace: "pre" }}>
         {value || " "}
       </span>
-      {/* « size » à 1 : sans lui, le champ réclame d'office la place de
-          vingt caractères, et la case s'élargit d'autant. */}
+      {/* "size" at 1: without it, the field claims room for
+          twenty characters by default, and the cell widens accordingly. */}
       <input
         {...props}
         size={1}

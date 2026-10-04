@@ -1,4 +1,4 @@
-// Le suivi : qui veut être prévenu de quoi.
+// Follows: who wants to be notified of what.
 
 import { mutation, selection } from "../db/query.js";
 import type { FollowRow, UserRow } from "../db/rows.js";
@@ -15,10 +15,10 @@ const add = mutation(
 const remove = mutation("DELETE FROM follows WHERE user_id = ? AND kind = ? AND target_id = ?");
 
 /**
- * Les comptes qui suivent cet élément, sauf celui qui vient d'agir : on ne se
- * notifie pas de ses propres gestes. Les comptes sans e-mail utilisable ne
- * sont pas écartés ici — c'est l'envoi qui s'en aperçoit, la notification à
- * l'écran, elle, n'en a pas besoin.
+ * The accounts following this item, except the one that just acted: we do not
+ * notify ourselves of our own actions. Accounts without a usable e-mail are
+ * not excluded here — it is the sending that notices, the on-screen
+ * notification does not need one.
  */
 const followers = selection<UserRow>(
   `SELECT users.* FROM follows
@@ -27,7 +27,7 @@ const followers = selection<UserRow>(
 );
 
 export const follows = {
-  /** Ce qu'une personne suit, rangé par sorte : ce que le client tient à jour. */
+  /** What a person follows, grouped by kind: what the client keeps up to date. */
   of: (userId: Id): Follows => {
     const grouped = emptyFollows();
     for (const row of forUser.all(userId)) {

@@ -1,35 +1,34 @@
-// Une archive : plusieurs fichiers en un seul, compressé.
+// An archive: several files in one, compressed.
 //
-// Le format est celui de tar (ustar), écrit et relu ici en une centaine de
-// lignes plutôt qu'avec une dépendance de plus. C'est un format simple — des
-// entêtes de 512 octets suivis du contenu, complété jusqu'au bloc suivant — et
-// il a l'avantage d'être ouvrable ailleurs : `tar tzf sauvegarde.milo.gz`
-// montre ce qu'une sauvegarde contient, sans Milo.
+// The format is tar's (ustar), written and read back here in about a hundred
+// lines rather than with one more dependency. It is a simple format — 512-byte
+// headers followed by the content, padded to the next block — and it has the
+// advantage of being openable elsewhere: `tar tzf sauvegarde.milo.gz` shows
+// what a backup contains, without Milo.
 //
-// La compression est celle de gzip (node:zlib). Une base SQLite se comprime
-// très bien ; les images déjà compressées, non, mais elles ne coûtent rien à
-// traverser.
+// Compression is gzip's (node:zlib). A SQLite database compresses very well;
+// already-compressed images do not, but they cost nothing to run through.
 
 import { gunzipSync, gzipSync } from "node:zlib";
 
 const BLOCK = 512;
 
 export interface Entry {
-  /** Le chemin dans l'archive, en barres obliques : « media/abc.png ». */
+  /** The path in the archive, with forward slashes: "media/abc.png". */
   name: string;
   content: Buffer;
 }
 
-/** Un nombre en octal, complété de zéros à gauche et suivi d'un octet nul. */
+/** A number in octal, left-padded with zeros and followed by a null byte. */
 const octal = (value: number, width: number): string =>
   `${value.toString(8).padStart(width - 1, "0")}\0`;
 
 const header = (entry: Entry, mtime: number): Buffer => {
   const block = Buffer.alloc(BLOCK);
 
-  // Un nom de plus de 100 octets demanderait le champ « prefix » ; les nôtres
-  // — « milo.db », « media/ » et trente-deux caractères — n'en approchent
-  // pas, et on préfère refuser que produire une archive silencieusement fausse.
+  // A name over 100 bytes would need the "prefix" field; ours — "milo.db",
+  // "media/" and thirty-two characters — come nowhere near it, and we would
+  // rather refuse than produce a silently wrong archive.
   const name = Buffer.from(entry.name, "utf8");
   if (name.length > 100) throw new Error(`Nom trop long pour l'archive : ${entry.name}`);
   name.copy(block, 0);
@@ -39,14 +38,14 @@ const header = (entry: Entry, mtime: number): Buffer => {
   block.write(octal(0, 8), 116); // gid
   block.write(octal(entry.content.length, 12), 124);
   block.write(octal(Math.floor(mtime / 1000), 12), 136);
-  block.write("        ", 148); // somme de contrôle : des espaces le temps du calcul
-  block.write("0", 156); // fichier ordinaire
+  block.write("        ", 148); // checksum: spaces while it is computed
+  block.write("0", 156); // regular file
   block.write("ustar\0", 257);
   block.write("00", 263);
 
-  // La somme de contrôle se calcule sur l'entête entier, son propre champ
-  // compté comme huit espaces : d'où l'ordre ci-dessus. Six chiffres octaux,
-  // un octet nul, une espace — c'est la forme qu'attendent les lecteurs.
+  // The checksum is computed over the whole header, its own field counted as
+  // eight spaces: hence the order above. Six octal digits, a null byte, a
+  // space — the form readers expect.
   let sum = 0;
   for (const byte of block) sum += byte;
   block.write(`${sum.toString(8).padStart(6, "0")}\0 `, 148);
@@ -54,10 +53,10 @@ const header = (entry: Entry, mtime: number): Buffer => {
   return block;
 };
 
-/** Ce qu'il manque à un contenu pour terminer le dernier bloc entamé. */
+/** What a content lacks to finish the last block it started. */
 const rest = (length: number): number => (BLOCK - (length % BLOCK)) % BLOCK;
 
-/** Les entrées, en une archive compressée. */
+/** The entries, as a compressed archive. */
 export const pack = (entries: Entry[]): Buffer => {
   const currentTime = Date.now();
   const chunks: Buffer[] = [];
@@ -66,7 +65,7 @@ export const pack = (entries: Entry[]): Buffer => {
     chunks.push(header(entry, currentTime), entry.content);
     chunks.push(Buffer.alloc(rest(entry.content.length)));
   }
-  // Deux blocs nuls closent une archive tar.
+  // Two null blocks close a tar archive.
   chunks.push(Buffer.alloc(BLOCK * 2));
 
   return gzipSync(Buffer.concat(chunks));
@@ -84,9 +83,9 @@ const octalNumber = (block: Buffer, start: number, length: number): number => {
 };
 
 /**
- * L'archive relue, par nom de fichier. Lève si ce n'est pas une archive des
- * nôtres : c'est le premier tri de la restauration, avant même de regarder ce
- * qu'elle contient.
+ * The archive read back, by file name. Throws if it is not one of ours: this
+ * is the first screening of a restore, before even looking at what it
+ * contains.
  */
 export const unpack = (archive: Buffer): Map<string, Buffer> => {
   let tar: Buffer;
@@ -104,7 +103,7 @@ export const unpack = (archive: Buffer): Map<string, Buffer> => {
     position += BLOCK;
 
     const name = text(block, 0, 100);
-    // Bloc nul : fin de l'archive.
+    // Null block: end of the archive.
     if (!name) break;
 
     if (text(block, 257, 6) !== "ustar") {
@@ -116,9 +115,8 @@ export const unpack = (archive: Buffer): Map<string, Buffer> => {
       throw new Error("Sauvegarde incomplète ou abîmée");
     }
 
-    // Seuls les fichiers ordinaires nous intéressent : une sauvegarde n'en
-    // contient pas d'autres, et on ne veut pas suivre un lien qui sortirait
-    // du dossier des médias.
+    // Only regular files interest us: a backup contains no others, and we do
+    // not want to follow a link that would leave the media folder.
     const type = text(block, 156, 1);
     if (type === "" || type === "0") {
       files.set(name, Buffer.from(tar.subarray(position, position + size)));

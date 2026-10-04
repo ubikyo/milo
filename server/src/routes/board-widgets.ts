@@ -1,12 +1,12 @@
-// Les sections d'un tableau et les widgets qu'elles portent. Le serveur ne
-// vérifie que le widget visé et la forme de sa configuration — un objet —,
-// sans la relire : c'est le widget du client qui sait ce qu'elle veut dire.
+// A board's sections and the widgets they carry. The server only checks the
+// targeted widget and the shape of its configuration — an object —, without
+// reading it: it is the client's widget that knows what it means.
 //
-// Chacun voit et modifie la structure qu'il regarde : la publique, ou la
-// sienne (« Hérité » décoché). Une section ou un widget d'une autre structure
-// est introuvable. Poser la structure publique demande de pouvoir organiser
-// les tableaux (lib/droits.ts) ; sa propre structure n'est qu'à soi. Un widget,
-// lui, ne se pose, ne se règle et ne s'enlève qu'avec « Modifier » sur son
+// Everyone sees and edits the structure they are looking at: the public one,
+// or their own ("Hérité" unchecked). A section or widget of another structure
+// is not found. Setting the public structure requires being able to organize
+// boards (lib/rights.ts); one's own structure is only one's own. A widget, in
+// turn, can only be placed, configured and removed with "Modifier" on its
 // type.
 
 import express, { Router } from "express";
@@ -50,25 +50,25 @@ import { personalLayouts, boardScope } from "../repositories/layouts.js";
 const SECTION_NOT_FOUND = "Section introuvable";
 const WIDGET_NOT_FOUND = "Widget introuvable";
 
-/** Les conversions permises : la catégorie et la sous-catégorie partagent leur configuration. */
+/** Allowed conversions: category and subcategory share their configuration. */
 const CONVERSIONS: Record<string, string> = { category: "subcategory", subcategory: "category" };
 
 type Account = Request["user"];
 
 /**
- * La structure que ce compte regarde dans ce tableau : la publique (nul), ou
- * la sienne. Un tableau privé n'a que sa structure publique.
+ * The structure this account looks at in this board: the public one (null),
+ * or their own. A private board only has its public structure.
  */
 const owner = (board: BoardRow, user: Account): Id | null =>
   board.is_private ? null : personalLayouts.owner(user.id, boardScope(board.id));
 
-/** Le tableau ouvert, et la structure que ce compte y regarde. */
+/** The open board, and the structure this account looks at in it. */
 const openStructure = (boardId: unknown, user: Account) => {
   const board = openBoard(boardId, user);
   return { board, owner: owner(board, user) };
 };
 
-/** La section demandée, si elle est de la structure regardée ; et son tableau. */
+/** The requested section, if it belongs to the structure being looked at; and its board. */
 const openedSection = (id: unknown, user: Account) => {
   const section = orNotFound(boardSections.byId(id), SECTION_NOT_FOUND);
   const { board, owner } = openStructure(section.board_id, user);
@@ -77,8 +77,8 @@ const openedSection = (id: unknown, user: Account) => {
 };
 
 /**
- * Le widget demandé, et la section ouverte qui le porte. Il faut lire son
- * type — « Modifier » pour une écriture.
+ * The requested widget, and the open section that carries it. Its type must
+ * be readable — "Modifier" for a write.
  */
 const openWidget = (id: unknown, req: Request) => {
   const widget = orNotFound(boardWidgets.byId(id), WIDGET_NOT_FOUND);
@@ -86,19 +86,19 @@ const openWidget = (id: unknown, req: Request) => {
   return { widget, ...openedSection(widget.section_id, req.user) };
 };
 
-/** Poser la structure publique demande de pouvoir organiser ; la sienne, non. */
+/** Setting the public structure requires being able to organize; one's own does not. */
 const requireStructure = (req: Request, owner: Id | null): void => {
   if (owner === null) requireOrganize(req);
 };
 
-/** Les widgets dont le compte lit le type : les autres ne lui sont pas rendus. */
+/** The widgets whose type the account reads: the others are not returned to it. */
 const allReadable = (req: Request, widgets: BoardWidgetRow[]) =>
   widgets.filter((w) => widgetAccess(req, w.type) !== "").map(renderedWidget);
 
 /**
- * La configuration reçue, prête à ranger : un objet, rien d'autre — aux clés
- * d'aujourd'hui, si elle vient d'un presse-papiers ou d'une page d'avant
- * leur traduction (migrateWidgetConfig).
+ * The received configuration, ready to store: an object, nothing else — with
+ * today's keys, if it comes from a clipboard or a page from before their
+ * translation (migrateWidgetConfig).
  */
 const configuration = (type: string, value: unknown, defaultValue: string): string => {
   if (value === undefined) return defaultValue;
@@ -108,16 +108,15 @@ const configuration = (type: string, value: unknown, defaultValue: string): stri
   return JSON.stringify(migrateWidgetConfig(type, value));
 };
 
-// --- Ce qu'un tableau porte -------------------------------------------------
+// --- What a board carries ---------------------------------------------------
 
-/** Ses sections et ses widgets, lus par le tableau : « /api/boards/:id/… ». */
+/** Its sections and widgets, read by board: "/api/boards/:id/…". */
 /**
- * Les éléments suivent les widgets de liste (repositories/listes.ts) : une
- * écriture qui enlève le dernier widget d'une liste — seul, avec sa section,
- * sa structure personnelle ou son tableau — emporte ses éléments. Les postes
- * suivent en plus les tags que les listes de postes reçoivent
- * (repositories/receptions.ts) : un widget réglé, posé ou enlevé les range à
- * nouveau.
+ * Items follow list widgets (repositories/lists.ts): a write that removes a
+ * list's last widget — alone, with its section, its personal structure or
+ * its board — takes its items with it. Workstations also follow the tags
+ * that workstation lists receive (repositories/inboxes.ts): a widget
+ * configured, placed or removed files them again.
  */
 export const followLists = (req: Request, res: Response, next: NextFunction): void => {
   if (req.method === "GET") return next();
@@ -125,8 +124,8 @@ export const followLists = (req: Request, res: Response, next: NextFunction): vo
   res.on("finish", () => {
     if (res.statusCode >= 400) return;
     const touchedResources: Resource[] = cleanLists();
-    // Une adresse de réception neuve attend sa confirmation : sa boîte reçoit
-    // le lien (lib/optin.ts).
+    // A new receiving address awaits its confirmation: its inbox receives
+    // the link (lib/optin.ts).
     askForConfirmations();
     if (JSON.stringify(receivedTags()) !== before) {
       reassignWorkstationContexts();
@@ -177,16 +176,16 @@ boardContentRoutes.put("/sections/reorder", (req, res) => {
   res.json(boardSections.all(board.id, owner));
 });
 
-/** Un objet simple, ou rien : ce qu'une disposition reçue peut porter. */
+/** A plain object, or nothing: what a received layout can carry. */
 const subject = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 
 /**
- * La largeur et l'écart d'une section importée. Une disposition vient d'une
- * autre version, peut-être : ce qui ne se lit pas reprend la valeur par
- * défaut au lieu de refuser tout l'import.
+ * The width and gap of an imported section. A layout may come from another
+ * version: whatever cannot be read takes the default value instead of
+ * rejecting the whole import.
  */
 const importedSection = (received: Record<string, unknown>) => {
   const unit = isSectionWidthUnit(received.width_unit) ? received.width_unit : "auto";
@@ -205,13 +204,12 @@ const importedSection = (received: Record<string, unknown>) => {
 };
 
 /**
- * Importer une disposition (DispositionExportee) : elle remplace la structure
- * que le compte regarde. Les droits sont ceux de qui importe, pas de qui a
- * exporté : un widget d'un type inconnu ou que le compte ne modifie pas est
- * écarté, et un widget de l'ancienne structure qu'il ne peut pas enlever est
- * gardé. Un widget de liste reprend sa clé — ses éléments — si un widget de
- * ce tableau la tient déjà ; sinon il en reçoit une neuve : la clé d'un autre
- * tableau ne désigne rien ici.
+ * Import a layout (ExportedLayout): it replaces the structure the account
+ * is looking at. Rights are those of the importer, not the exporter: a widget
+ * of an unknown type or one the account cannot edit is dropped, and a widget
+ * of the old structure it cannot remove is kept. A list widget keeps its key
+ * — its items — if a widget of this board already holds it; otherwise it
+ * gets a new one: another board's key designates nothing here.
  */
 boardContentRoutes.post("/import", (req, res) => {
   const { board, owner } = openStructure((req.params as { id: string }).id, req.user);
@@ -231,7 +229,7 @@ boardContentRoutes.post("/import", (req, res) => {
         discarded += 1;
         return [];
       }
-      // Une disposition exportée avant la traduction des clés se lit encore.
+      // A layout exported before the keys were translated can still be read.
       const config = migrateWidgetConfig(type, widget!.config);
       if (!isListWidgetType(type)) return [{ type, config: JSON.stringify(config) }];
       const key = listKey(config);
@@ -245,7 +243,7 @@ boardContentRoutes.post("/import", (req, res) => {
     });
     return { ...importedSection(received), widgets };
   });
-  // Ce que le compte ne peut pas enlever reste — même ce qu'il ne voit pas.
+  // What the account cannot remove stays — even what it does not see.
   const keptCount = boardWidgets
     .all(board.id, owner)
     .filter((w) => widgetAccess(req, w.type) !== "update")
@@ -264,7 +262,7 @@ boardContentRoutes.get("/widgets", (req, res) => {
   res.json(allReadable(req, boardWidgets.all(board.id, owner)));
 });
 
-// --- Une section -------------------------------------------------------------
+// --- A section ---------------------------------------------------------------
 
 export const boardSectionRoutes = Router();
 
@@ -274,8 +272,8 @@ boardSectionRoutes.put("/:id", (req, res) => {
   const { section: existing, owner } = openedSection(req.params.id, req.user);
   requireStructure(req, owner);
   const unit = widthUnit(req.body.width_unit, existing.width_unit);
-  // Changer d'unité sans redire la valeur garderait l'ancienne, qui ne veut
-  // plus rien dire : « 30 % » ne devient pas « 30 px ».
+  // Changing unit without restating the value would keep the old one, which
+  // no longer means anything: "30 %" does not become "30 px".
   const value = widthValue(
     unit,
     req.body.width_value ?? (unit === existing.width_unit ? existing.width_value : undefined),
@@ -293,28 +291,28 @@ boardSectionRoutes.post("/:id/duplicate", (req, res) => {
 boardSectionRoutes.delete("/:id", (req, res) => {
   const { section: existing, owner } = openedSection(req.params.id, req.user);
   requireStructure(req, owner);
-  // Ce qu'elle portait part avec elle, par clé étrangère.
+  // What it carried goes with it, through the foreign key.
   boardSections.remove.run(existing.id);
   res.status(204).end();
 });
 
-// --- Un widget ---------------------------------------------------------------
+// --- A widget ---------------------------------------------------------------
 
 export const boardWidgetRoutes = Router();
 
 boardWidgetRoutes.use(touch("board-widgets"), followLists);
 
 /**
- * Ranger les widgets d'une section. Le corps donne la section et, dans
- * l'ordre, tout ce qu'elle porte désormais : un widget venu d'une autre
- * section de la même structure y est admis, c'est ainsi qu'on le déplace.
- * Déclaré avant « /:id », sinon « reorder » serait pris pour un identifiant.
+ * Arrange a section's widgets. The body gives the section and, in order,
+ * everything it now carries: a widget coming from another section of the
+ * same structure is admitted, which is how it gets moved. Declared before
+ * "/:id", otherwise "reorder" would be taken for an id.
  */
 boardWidgetRoutes.put("/reorder", (req, res) => {
   const { section, board, owner } = openedSection(req.body.section_id, req.user);
   requireStructure(req, owner);
   const ids = toIds(req.body.ids);
-  // Seuls se rangent les widgets que le compte voit, de la même structure.
+  // Only the widgets the account sees, of the same structure, are arranged.
   const known = new Set(allReadable(req, boardWidgets.all(board.id, owner)).map((w) => w.id));
   if (ids.length !== new Set(ids).size || ids.some((id) => !known.has(id))) {
     badRequest("La liste des identifiants ne correspond pas aux widgets");
@@ -328,24 +326,24 @@ boardWidgetRoutes.post("/", (req, res) => {
   const type: unknown = req.body.type;
   if (!isBoardWidgetType(type)) badRequest("Widget inconnu");
   requireWidget(req, type as string, "update");
-  // Un widget de liste reçoit sa clé ici, neuve : celle d'une configuration
-  // recopiée d'ailleurs ne vaut pas (repositories/listes.ts).
+  // A list widget gets its key here, new: that of a configuration copied from
+  // elsewhere is not valid (repositories/lists.ts).
   const id = boardWidgets.create(
     section.id,
     type as string,
     configuration(type as string, req.body.config, "{}"),
   );
-  // Un widget de projets pose le type de jalons « Défaut », que ses projets
-  // reçoivent à leur création.
+  // A projects widget sets the "Défaut" milestone type, which its projects
+  // receive on creation.
   if ((type as string).startsWith("project.") && ensureDefaultType()) {
     touchNow(res, "lookups", "projects");
   }
   res.status(201).json(renderedWidget(boardWidgets.byId(id)!));
 });
 
-// Le type d'un widget ne se change pas : ce serait un autre widget. Seule sa
-// configuration bouge — sauf entre la catégorie et la sous-catégorie, qui
-// partagent la leur.
+// A widget's type cannot be changed: that would be another widget. Only its
+// configuration moves — except between category and subcategory, which
+// share theirs.
 boardWidgetRoutes.put("/:id", (req, res) => {
   const { widget } = openWidget(req.params.id, req);
   if (req.body.type !== undefined && req.body.type !== widget.type) {
@@ -363,7 +361,7 @@ boardWidgetRoutes.put("/:id", (req, res) => {
 
 boardWidgetRoutes.post("/:id/duplicate", (req, res) => {
   const { widget } = openWidget(req.params.id, req);
-  // Un widget de liste possède ses éléments : il ne se duplique pas.
+  // A list widget owns its items: it is not duplicated.
   if (isListWidgetType(widget.type)) badRequest("Ce widget ne se duplique pas");
   res.status(201).json(renderedWidget(boardWidgets.byId(boardWidgets.duplicate(widget))!));
 });
@@ -375,9 +373,9 @@ boardWidgetRoutes.delete("/:id", (req, res) => {
 });
 
 /**
- * Ce que donne une adresse de flux, pour le tiroir d'un widget RSS : la
- * source est-elle joignable, et dans quel format répond-elle ? Déclaré comme
- * « /weather/places » : « feed » n'est pas un identifiant.
+ * What a feed address gives, for an RSS widget's drawer: is the source
+ * reachable, and in what format does it answer? Declared like
+ * "/weather/places": "feed" is not an id.
  */
 boardWidgetRoutes.get("/feed/probe", (req, res, next) => {
   requireWidget(req, "rss", "update");
@@ -387,12 +385,12 @@ boardWidgetRoutes.get("/feed/probe", (req, res, next) => {
 });
 
 /**
- * Le flux d'un widget RSS, tel que la base le garde (lib/feed.ts). La source
- * est relevée par le serveur, à l'intervalle que le widget règle : la page ne
- * l'attend pas, sauf quand la base n'a encore rien à montrer.
+ * An RSS widget's feed, as the database keeps it (lib/feed.ts). The source
+ * is polled by the server, at the interval the widget sets: the page does not
+ * wait for it, except when the database has nothing to show yet.
  *
- * Express 4 ne rattrape pas le rejet d'une fonction asynchrone : il passe par
- * « next ».
+ * Express 4 does not catch the rejection of an async function: it goes
+ * through "next".
  */
 boardWidgetRoutes.get("/:id/feed", (req, res, next) => {
   const { widget } = openWidget(req.params.id, req);
@@ -403,9 +401,9 @@ boardWidgetRoutes.get("/:id/feed", (req, res, next) => {
 });
 
 /**
- * Les lieux qui répondent à ce qu'on tape, pour régler un widget Météo.
- * Déclaré comme « /:id/… » le serait : « weather » n'est pas un identifiant,
- * mais aucune route « GET /:id/places » ne vient le lui disputer.
+ * The places matching what is typed, to configure a Weather widget.
+ * Declared as "/:id/…" would be: "weather" is not an id, but no
+ * "GET /:id/places" route comes to contest it.
  */
 boardWidgetRoutes.get("/weather/places", (req, res, next) => {
   requireWidget(req, "weather", "update");
@@ -414,7 +412,7 @@ boardWidgetRoutes.get("/weather/places", (req, res, next) => {
     .catch(next);
 });
 
-/** La météo du lieu d'un widget Météo (lib/meteo.ts), gardée un quart d'heure par le serveur. */
+/** The weather of a Weather widget's place (lib/weather.ts), kept by the server for a quarter hour. */
 boardWidgetRoutes.get("/:id/weather", (req, res, next) => {
   const { widget } = openWidget(req.params.id, req);
   if (widget.type !== "weather") badRequest("Ce widget n'est pas un widget Météo");
@@ -425,13 +423,13 @@ boardWidgetRoutes.get("/:id/weather", (req, res, next) => {
     .catch(next);
 });
 
-/** La période la plus longue qu'un calendrier demande : six semaines, et de la marge. */
+/** The longest period a calendar requests: six weeks, and some margin. */
 const PERIOD_MAX = 62 * 24 * 60 * 60 * 1000;
 
 /**
- * Les rendez-vous de qui regarde, entre « start » et « end » : chacun voit
- * les siens, quel que soit le tableau. Ils viennent de son agenda Outlook,
- * par Graph (lib/entra.ts) ; un compte local n'en a pas.
+ * The viewer's appointments, between "start" and "end": everyone sees their
+ * own, whatever the board. They come from their Outlook calendar, through
+ * Graph (lib/entra.ts); a local account has none.
  */
 boardWidgetRoutes.get("/:id/calendar", (req, res, next) => {
   const { widget } = openWidget(req.params.id, req);
@@ -448,8 +446,8 @@ boardWidgetRoutes.get("/:id/calendar", (req, res, next) => {
 });
 
 /**
- * Le compte Entra de qui regarde : le widget Mail et le Calendrier ne
- * montrent que ce qui est à lui.
+ * The viewer's Entra account: the Mail widget and the Calendar only show
+ * what is theirs.
  */
 const entraAccount = (req: Request): string => {
   if (!entraConfigured()) badRequest("Milo n'est pas connecté à Entra");
@@ -457,20 +455,20 @@ const entraAccount = (req: Request): string => {
   return req.user.entra_id;
 };
 
-/** Le widget Mail visé, et le compte dont il lit la boîte. */
+/** The targeted Mail widget, and the account whose inbox it reads. */
 const openMailbox = (req: Request) => {
   const { widget } = openWidget(req.params.id, req);
   if (widget.type !== "mail") badRequest("Ce widget n'est pas un widget Mail");
   return entraAccount(req);
 };
 
-/** Au plus, les e-mails d'une page : Graph n'en rend pas davantage d'un coup. */
+/** At most, one page of e-mails: Graph does not return more at once. */
 const PAGE_MAX = 100;
 
 /**
- * Une page de la boîte de réception de qui regarde (lib/entra.ts) : chacun
- * voit la sienne, quel que soit le tableau. « skip » dit où elle commence —
- * la grille demande la suivante quand on arrive au bas de la liste.
+ * A page of the viewer's inbox (lib/entra.ts): everyone sees their own,
+ * whatever the board. "skip" says where it starts — the grid asks for the
+ * next one when reaching the bottom of the list.
  */
 boardWidgetRoutes.get("/:id/mails", (req, res, next) => {
   const oid = openMailbox(req);
@@ -481,7 +479,7 @@ boardWidgetRoutes.get("/:id/mails", (req, res, next) => {
     .catch(next);
 });
 
-/** Un e-mail de la boîte, son corps nettoyé comme celui d'une demande reçue (lib/html.ts). */
+/** An e-mail from the inbox, its body cleaned like that of a received request (lib/html.ts). */
 boardWidgetRoutes.get("/:id/mails/:mail", (req, res, next) => {
   const oid = openMailbox(req);
   mailOfMailbox(oid, String(req.params.mail))
@@ -500,8 +498,8 @@ boardWidgetRoutes.get("/:id/mails/:mail", (req, res, next) => {
 });
 
 /**
- * Une pièce jointe d'un e-mail de la boîte, toujours en téléchargement : un
- * fichier reçu ne s'exécute jamais sur l'origine de Milo.
+ * An attachment of an e-mail from the inbox, always as a download: a
+ * received file never runs on Milo's origin.
  */
 boardWidgetRoutes.get("/:id/mails/:mail/attachments/:attachment", (req, res, next) => {
   const oid = openMailbox(req);
@@ -516,12 +514,12 @@ boardWidgetRoutes.get("/:id/mails/:mail/attachments/:attachment", (req, res, nex
 });
 
 /**
- * Une image déposée pour un widget Image. Comme celle d'une description, elle
- * ne laisse pas de ligne en base : c'est la configuration du widget qui la
- * cite, et le ménage des médias s'y fie (repositories/attachments.ts).
+ * An image uploaded for an Image widget. Like a description's, it leaves no
+ * row in the database: the widget's configuration cites it, and the media
+ * cleanup relies on that (repositories/attachments.ts).
  *
- * Monté sous « /api/widget-images », hors des routes des widgets : un dépôt
- * ne change aucun tableau, il n'a pas à faire relire les leurs aux pages.
+ * Mounted under "/api/widget-images", outside the widgets' routes: an upload
+ * changes no board, so it need not make pages re-read theirs.
  */
 export const widgetImageRoutes = Router();
 

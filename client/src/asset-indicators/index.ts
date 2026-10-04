@@ -1,6 +1,6 @@
-// Le registre des widgets du panneau des statistiques du mode Assets. Un seul
-// endroit les connaît : le tiroir des widgets, le panneau et celui des réglages
-// y prennent ce qu'il leur faut.
+// The registry of the Assets mode statistics panel widgets. Only one place
+// knows them: the widgets drawer, the panel and the settings one
+// pick what they need from it.
 
 import { complianceIndicator } from "./compliance";
 import { disksIndicator } from "./disks";
@@ -11,7 +11,7 @@ import { accessWidgets } from "../widgets/in-section";
 import type { AssetIndicatorDisplayProps, AssetIndicatorWidget } from "./types";
 import type { AssetIndicatorType } from "@milo/shared";
 
-/** Dans l'ordre où le tiroir des widgets les présente. */
+/** In the order the widgets drawer presents them. */
 export const ASSET_INDICATORS: AssetIndicatorWidget[] = [
   assetListIndicator,
   ...accessWidgets<AssetIndicatorType, AssetIndicatorDisplayProps>(),
@@ -26,8 +26,8 @@ const BY_TYPE = new Map<AssetIndicatorType, AssetIndicatorWidget>(
 );
 
 /**
- * Le widget qui sait lire cet indicateur, ou « undefined » : un type rangé
- * par une version qui en connaissait un de plus n'a pas à faire tomber la page.
+ * The widget that can read this indicator, or "undefined": a type stored
+ * by a version that knew one more must not crash the page.
  */
 export const assetIndicatorOf = (type: AssetIndicatorType): AssetIndicatorWidget | undefined =>
   BY_TYPE.get(type);

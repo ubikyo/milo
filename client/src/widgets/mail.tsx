@@ -26,14 +26,14 @@ import { withField, count } from "./types";
 import type { AccessWidget } from "./types";
 import type { AccessMail, AccessMailDetail, Id, MailAddress } from "@milo/shared";
 
-// Le courrier : la boîte de réception de qui regarde, en grille — chacun voit
-// la sienne, quel que soit le tableau. Elle est lue dans Entra par le serveur
-// (server/src/lib/entra.ts, permission d'application Mail.Read), page par
-// page : la suivante arrive quand on descend au bas de la grille. Un clic sur
-// une ligne ouvre l'e-mail dans un tiroir, tel que l'expéditeur l'a écrit
-// (EmailFrame, celui du Support), avec ses pièces jointes.
+// Mail: the viewer's inbox, as a grid — everyone sees their own, whatever the
+// board. It is read from Entra by the server (server/src/lib/entra.ts, Mail.Read
+// application permission), page by page: the next one arrives when scrolling
+// down to the bottom of the grid. A click on a row opens the email in a
+// drawer, as the sender wrote it (EmailFrame, the Support one), with its
+// attachments.
 //
-// Rien n'est modifié dans la boîte : un e-mail ouvert ici n'y est pas marqué lu.
+// Nothing is modified in the mailbox: an email opened here is not marked read there.
 
 const QUANTITY = "count";
 const HEIGHT = "height";
@@ -42,17 +42,17 @@ const UNREAD = "unreadOnly";
 const HEADER = "header";
 const FRAMED = "framed";
 
-/** Les e-mails d'une page : ceux que la grille demande d'un coup. */
+/** The emails of a page: those the grid requests at once. */
 const QUANTITY_DEFAULT = 15;
 const QUANTITY_MIN = 5;
 const QUANTITY_MAX = 100;
 
-/** La hauteur de la grille, au-delà de laquelle elle défile. */
+/** The grid's height, beyond which it scrolls. */
 const DEFAULT_HEIGHT = 360;
 const HEIGHT_MIN = 120;
 const HEIGHT_MAX = 1600;
 
-/** La page relit la boîte à ce rythme : les nouveaux e-mails se posent en tête. */
+/** The page rereads the mailbox at this rate: new emails are placed at the top. */
 const RELOAD_INTERVAL = 2 * 60_000;
 
 const PROPOSED_COLUMNS = [
@@ -70,7 +70,7 @@ const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean
   return value === undefined ? defaultValue : Boolean(value);
 };
 
-/** Les colonnes rangées, dans l'ordre de la grille, sans ce qui n'en est pas une. */
+/** The stored columns, in the grid's order, without whatever is not one. */
 const columnsOf = (config: unknown): string[] => {
   const value = (config as Record<string, unknown> | null)?.[COLUMNS];
   if (!Array.isArray(value)) return DEFAULT_COLUMNS;
@@ -79,7 +79,7 @@ const columnsOf = (config: unknown): string[] => {
 
 const bound = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-/** Aujourd'hui, l'heure ; cette année, le jour ; avant, la date entière. */
+/** Today, the time; this year, the day; before that, the full date. */
 const whenLabel = (iso: string): string => {
   const date = dayjs(iso);
   if (date.isSame(dayjs(), "day")) return date.format("HH:mm");
@@ -95,7 +95,7 @@ const size = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 };
 
-/** Les e-mails ouverts, pour la durée de la page : les rouvrir ne redemande rien. */
+/** The emails opened, for the duration of the page: reopening them requests nothing. */
 const alreadyOpened = new Map<string, AccessMailDetail>();
 
 function Reader({
@@ -153,7 +153,7 @@ function Reader({
       onClose={onClose}
       position="right"
       size={760}
-      // Dans un portail, mais sous le widget pour React : rien n'y fait glisser le widget.
+      // In a portal, but under the widget for React: nothing in it makes the widget drag.
       data-no-widget-drag
       title={
         <Title order={4} lineClamp={2}>
@@ -161,8 +161,8 @@ function Reader({
         </Title>
       }
     >
-      {/* Le tiroir vit dans un portail, mais ses événements remontent par
-          React jusqu'au widget : le clic droit n'y ouvre pas son réglage. */}
+      {/* The drawer lives in a portal, but its events bubble up through
+          React to the widget: right click does not open its settings there. */}
       <Stack
         gap="md"
         data-no-widget-drag
@@ -257,12 +257,12 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
   const [state, setState] = useState<State>({ phase: "loading" });
   const [more, setMore] = useState(false);
   const [isOpen, setOpened] = useState<AccessMail | null>(null);
-  // La page suivante ne se demande qu'une fois à la fois, même si le bas de la
-  // grille est atteint plusieurs fois pendant qu'elle arrive.
+  // The next page is requested only one at a time, even if the bottom of the
+  // grid is reached several times while it arrives.
   const ongoing = useRef(false);
 
-  // La première page, relue à intervalle : ce qui est arrivé depuis se pose en
-  // tête, et les e-mails déjà là reprennent leur état — lu ailleurs, par exemple.
+  // The first page, reread at an interval: what has arrived since is placed at
+  // the top, and the emails already there resume their state — read elsewhere, for example.
   useEffect(() => {
     if (!blockId) return;
     let active = true;
@@ -433,8 +433,8 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
                 ))}
               </Table.Tbody>
             </Table>
-            {/* Le bas de la grille demande la page suivante ; quand la grille
-                ne défile pas encore, le bouton fait de même. */}
+            {/* The bottom of the grid requests the next page; when the grid
+                does not scroll yet, the button does the same. */}
             {state.more && (
               <Group justify="center" py={6}>
                 {more ? (
@@ -474,14 +474,14 @@ export const mailWidget: AccessWidget = {
     [HEADER]: true,
     [FRAMED]: false,
   },
-  // Chaque ligne ouvre son e-mail.
+  // Each row opens its email.
   ownClicks: true,
 
   Display: Mail,
 
   margins: () => ({ top: 0, bottom: 15 }),
 
-  // Il dessine lui-même son cadre, réglé dans le bloc « Apparence » du tiroir.
+  // It draws its own frame, set in the drawer's "Apparence" block.
   ownFrame: true,
 
   Config: ({ config, onChange }) => (
@@ -490,7 +490,7 @@ export const mailWidget: AccessWidget = {
         Chacun voit sa propre boîte de réception, lue dans Entra (permission Mail.Read).
       </Text>
       <Group align="flex-start">
-        {/* Un champ vidé le temps d'une saisie range la valeur par défaut. */}
+        {/* A field emptied while typing stores the default value. */}
         <NumberInput
           label="E-mails par chargement"
           value={count(config, QUANTITY, QUANTITY_DEFAULT)}

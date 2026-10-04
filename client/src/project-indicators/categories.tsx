@@ -5,8 +5,8 @@ import { LabelBars, NameField, NAME, Nothing, IndicatorTitle, isFinished } from 
 import type { Bar } from "./common";
 import type { ProjectIndicatorWidget } from "./types";
 
-// Les catégories du tableau ouvert, par nombre de projets : où se porte le
-// travail. Les projets terminés n'y comptent que si on le demande.
+// The open board's categories, by number of projects: where the work
+// goes. Finished projects only count if asked.
 
 const LABEL = "Catégories";
 const ALL = "include_all";

@@ -1,13 +1,12 @@
-// Le mode Support : ses demandes, leur fil, et les étiquettes qu'elles
-// portent.
+// The Support mode: its requests, their thread, and the labels they carry.
 //
-// Une demande pend à une société — celle de la liste déroulante de l'entête —
-// et non à un tableau : il n'y a donc rien de privé ici, chacun voit les
-// demandes des sociétés qu'il consulte.
+// A request hangs off a company — the one in the header's dropdown — and
+// not off a board: so nothing is private here, everyone sees the requests of
+// the companies they consult.
 //
-// Les étiquettes ne passent pas par la fabrique de « routes/labels.ts » :
-// celle-ci ne parle que de tableaux, et sait les copier de l'un à l'autre.
-// Celles du support sont communes à toutes les sociétés et ne se copient pas.
+// Labels do not go through the "routes/labels.ts" factory: it only deals with
+// boards, and knows how to copy them from one to another. Support's labels
+// are shared across all companies and are not copied.
 
 import {
   SEND_SIZE_MAX,
@@ -95,7 +94,7 @@ import { users } from "../repositories/users.js";
 const COMMENT_NOT_FOUND = "Commentaire introuvable";
 
 
-/** Le statut reçu. Une valeur inconnue est refusée plutôt que corrigée. */
+/** The received status. An unknown value is rejected rather than corrected. */
 const requestedStatus = (value: unknown, defaultValue: SupportStatus): SupportStatus => {
   if (value === undefined) return defaultValue;
   if (!isSupportStatus(value)) badRequest("Statut inconnu");
@@ -106,13 +105,13 @@ export const supportRequestRoutes = Router();
 
 supportRequestRoutes.use(touch("support-requests"));
 
-/** La demande visée, si elle existe. */
+/** The targeted request, if it exists. */
 const request = (id: unknown) => orNotFound(supportRequests.byId.get(id), REQUEST_NOT_FOUND);
 
 /**
- * La demande, si l'on voit le support et le tableau de son contexte — et
- * qu'on y a `droit` quand on y écrit. Répondre, commenter, assigner, fermer : c'est la
- * modifier.
+ * The request, if one sees the support and the board of its context — and
+ * has `right` there when writing to it. Replying, commenting, assigning,
+ * closing: that is editing it.
  */
 const requestFor = (req: Request, id: unknown, right: Right = "view"): SupportRequestRow => {
   const d = request(id);
@@ -125,8 +124,8 @@ const requestFor = (req: Request, id: unknown, right: Right = "view"): SupportRe
 };
 
 /**
- * Une demande a changé : ceux qui la suivent et ses acteurs en sont prévenus
- * — sauf `sauf`, que l'assignation vient de prévenir.
+ * A request has changed: those following it and its actors are notified —
+ * except `except`, whom the assignment has just notified.
  */
 const updatedRequest = (req: Request, requestId: Id, message: string, except: Id[] = []): void => {
   const d = supportRequests.byId.get(requestId);
@@ -145,7 +144,7 @@ const updatedRequest = (req: Request, requestId: Id, message: string, except: Id
 const statusLabel = (value: string): string =>
   SUPPORT_STATUSES.find((s) => s.value === value)?.label ?? value;
 
-/** Ce que le fil note d'une demande quand elle change (lib/historique.ts). */
+/** What the thread notes about a request when it changes (lib/history.ts). */
 const photo = (requestId: Id): Field[] => {
   const d = oneWithRelations(request(requestId));
   return [
@@ -162,8 +161,8 @@ const photo = (requestId: Id): Field[] => {
 };
 
 /**
- * Des demandes vont être supprimées : leurs acteurs et ceux qui les suivent,
- * lus tant qu'ils sont là, sont prévenus une fois la suppression faite.
+ * Requests are about to be deleted: their actors and those following them,
+ * read while they are still there, are notified once the deletion is done.
  */
 const announceDeletions = (req: Request, requests: SupportRequestRow[]): (() => void) => {
   const announcements = requests.map((d) => ({ d, recipients: concerned.request(d.id) }));
@@ -182,8 +181,8 @@ const announceDeletions = (req: Request, requests: SupportRequestRow[]): (() => 
   };
 };
 
-// Les demandes d'un tableau — de l'un de ses contextes, ou de tous —, quel que
-// soit leur statut.
+// The requests of a board — of one of its contexts, or of all —, whatever
+// their status.
 supportRequestRoutes.get("/", (req, res) => {
   if (!requestCan(req, "support", "view")) return void res.json([]);
   const board = openBoard(req.query.board, req.user);
@@ -198,9 +197,9 @@ supportRequestRoutes.get("/", (req, res) => {
   );
 });
 
-// La relève des boîtes de support, à la demande : le mode s'ouvre dessus, sans
-// attendre la prochaine relève périodique. Elle signale elle-même les demandes
-// créées ; une relève qui n'apporte rien ne fait rien relire aux clients.
+// Polling the support inboxes, on demand: the mode opens on it, without
+// waiting for the next periodic poll. It signals the created requests
+// itself; a poll that brings nothing makes clients re-read nothing.
 supportRequestRoutes.post("/sync", (req, res, next) => {
   require(req, "support", "view");
   res.locals.touched?.clear();
@@ -209,14 +208,14 @@ supportRequestRoutes.post("/sync", (req, res, next) => {
     .catch(next);
 });
 
-// --- Actions sur les demandes cochées --------------------------------------
-// Toutes prennent la liste des demandes cochées. Une demande qui n'existe plus
-// — supprimée par quelqu'un d'autre entre-temps — fait refuser le tout : on
-// n'agit pas sur une sélection qui n'est plus celle qu'on a vue.
+// --- Actions on the checked requests ---------------------------------------
+// All take the list of checked requests. A request that no longer exists
+// — deleted by someone else in the meantime — makes the whole thing be
+// rejected: we don't act on a selection that is no longer the one we saw.
 
 /**
- * Les demandes cochées, toutes existantes, sans doublon — et toutes où l'on
- * a ce droit.
+ * The checked requests, all existing, without duplicates — and all where
+ * one has this right.
  */
 const checked = (req: Request, value: unknown, right: Right): SupportRequestRow[] => {
   const ids = [...new Set(toIds(value))];
@@ -224,9 +223,9 @@ const checked = (req: Request, value: unknown, right: Right): SupportRequestRow[
   return ids.map((id) => requestFor(req, id, right));
 };
 
-// Fusionner : la plus récente reste et reçoit les échanges des autres, qui
-// sont fermées. Elles doivent appartenir au même contexte — une demande ne
-// change pas de contexte en cachette.
+// Merge: the most recent stays and receives the exchanges of the others,
+// which are closed. They must belong to the same context — a request does
+// not change context behind the scenes.
 supportRequestRoutes.post("/merge", (req, res) => {
   const requests = checked(req, req.body.ids, "update");
   if (requests.length < 2) badRequest("Sélectionnez au moins deux demandes à fusionner");
@@ -240,9 +239,9 @@ supportRequestRoutes.post("/merge", (req, res) => {
   const before = new Map(requests.map((d) => [d.id, photo(d.id)]));
   mergeRequests(keptRequest, others, req.user.id, timestamp(now()));
 
-  // Chaque fil note la fusion, signé Milo : celle qui reste, ce qu'elle a
-  // reçu — les tickets absorbés, et l'objet, les acteurs, les étiquettes
-  // qu'ils lui apportent ; les autres, où elles sont parties.
+  // Each thread notes the merge, signed Milo: the remaining one, what it
+  // received — the absorbed tickets, and the subject, actors, labels they
+  // bring it; the others, where they went.
   const refs = others.map((a) => supportTicketRef(a.number));
   logAction("support", keptRequest.id, req.user, [
     eventLine("Fusion", `${refs.join(", ")} ${refs.length > 1 ? "fusionnées" : "fusionnée"} ici`),
@@ -275,15 +274,15 @@ supportRequestRoutes.post("/close", (req, res) => {
     for (const d of requests) closeRequest(d, req.user.id, note);
   })();
   for (const d of requests) updatedRequest(req, d.id, "a fermé la demande");
-  // L'expéditeur de chaque demande qui vient d'être fermée en est prévenu,
-  // si le Paramétrage lui a donné une réponse (« Demande fermée »).
+  // The sender of each request that has just been closed is notified, if
+  // "Paramétrage" gave them a reply ("Demande fermée").
   for (const d of requests) {
     if (d.status !== "closed") void sendAutoReply(d.id, "closed");
   }
   res.status(204).end();
 });
 
-/** Les fichiers rangés pour les e-mails d'une demande. */
+/** The files stored for a request's e-mails. */
 const requestFiles = (requestId: Id): string[] =>
   supportComments.attachmentsOfRequest
     .all(requestId)
@@ -293,7 +292,7 @@ supportRequestRoutes.post("/delete", (req, res) => {
   const requests = checked(req, req.body.ids, "delete");
   const files = requests.flatMap((d) => requestFiles(d.id));
   const announce = announceDeletions(req, requests);
-  // Leurs étiquettes et leur fil partent avec elles, par clé étrangère.
+  // Their labels and thread go with them, through the foreign key.
   transaction(() => {
     for (const d of requests) supportRequests.remove.run(d.id);
   })();
@@ -302,8 +301,8 @@ supportRequestRoutes.post("/delete", (req, res) => {
   res.status(204).end();
 });
 
-// Assigner : les comptes choisis s'ajoutent aux acteurs, et ceux qui arrivent
-// sur une demande en sont prévenus, à l'écran et par e-mail.
+// Assign: the chosen accounts are added to the actors, and those who arrive
+// on a request are notified, on screen and by e-mail.
 supportRequestRoutes.post("/assign", (req, res) => {
   const requests = checked(req, req.body.ids, "update");
   const accounts = [...new Set(toIds(req.body.actor_ids))]
@@ -335,12 +334,12 @@ supportRequestRoutes.post("/assign", (req, res) => {
 
 supportRequestRoutes.post("/", (req, res) => {
   require(req, "support", "create");
-  // Le contexte dit, ou le premier du tableau dit.
+  // The given context, or the given board's first.
   const received = req.body.context_id ? contexts.byId.get(req.body.context_id) : undefined;
   const board = openBoard(received?.board_id ?? req.body.board_id, req.user);
   const context = boardContext(board.id, received?.id);
 
-  // Lus avant de prendre un numéro : une saisie refusée n'en consomme pas.
+  // Read before taking a number: a rejected entry does not consume one.
   const status = requestedStatus(req.body.status, DEFAULT_SUPPORT_STATUS);
   const dueDate = due(req.body.due_date, "");
 
@@ -349,8 +348,8 @@ supportRequestRoutes.post("/", (req, res) => {
     nextTicketNumber(),
     board.id,
     context,
-    // Le widget « Tickets » d'où elle est saisie, à défaut le
-    // premier du tableau.
+    // The "Tickets" widget it is entered from, failing that the board's
+    // first.
     keyInBoard(board.id, "support.list", req.body.list_key),
     String(req.body.subject ?? "").trim(),
     status,
@@ -359,7 +358,7 @@ supportRequestRoutes.post("/", (req, res) => {
     timestamp,
   );
 
-  // Le fil d'une demande s'ouvre sur sa création, comme celui d'une carte.
+  // A request's thread opens on its creation, like a card's.
   supportComments.createSystem.run(
     lastInsertRowid,
     null,
@@ -380,9 +379,9 @@ supportRequestRoutes.post("/", (req, res) => {
   res.status(201).json(supportRequestDetail(created));
 });
 
-// Les personnes que citent les modèles — le compte connecté, et l'expéditeur
-// de la demande s'il y en a une : leurs fiches Entra. La fiche d'une réponse
-// s'en sert pour poser ses contenus par défaut ; la demande, elle les connaît.
+// The people the templates cite — the signed-in account, and the request's
+// sender if there is one: their Entra records. A reply's detail view uses
+// them to place its default contents; the request already knows them.
 supportRequestRoutes.get("/variables", (req, res, next) => {
   const id = req.query["request"];
   const existing = id ? requestFor(req, id) : null;
@@ -395,8 +394,8 @@ supportRequestRoutes.get("/:id", (req, res) => {
   res.json(supportRequestDetail(requestFor(req, req.params.id)));
 });
 
-// Chaque champ absent du corps reste tel quel. Le contexte est modifiable,
-// pour un autre du même tableau.
+// Each field absent from the body stays as is. The context can be changed,
+// to another one of the same board.
 supportRequestRoutes.put("/:id", (req, res, next) => {
   const existing = requestFor(req, req.params.id, "update");
   const before = currentActors(existing.id);
@@ -420,22 +419,21 @@ supportRequestRoutes.put("/:id", (req, res, next) => {
     replaceSupportActors(existing.id, toIds(req.body.actor_ids));
     assigned = notifyNewActors(req, existing.id, before);
   }
-  // Les étiquettes sont communes : une demande qui change de contexte les
-  // garde.
+  // Labels are shared: a request that changes context keeps them.
   if (Array.isArray(req.body.label_ids)) {
     replaceSupportLabels(existing.id, toIds(req.body.label_ids));
   }
 
-  // Ce qui a bougé se note dans les commentaires de l'équipe, signé Milo.
-  // Rien n'a bougé : rien ne part.
+  // What moved is noted in the team comments, signed Milo. Nothing moved:
+  // nothing goes out.
   const rows = changes(photoBefore, photo(existing.id));
   if (rows.length) {
     logAction("support", existing.id, req.user, rows);
     updatedRequest(req, existing.id, editMessage(rows), assigned);
   }
 
-  // Un nouveau statut envoie à l'expéditeur la réponse par défaut qui lui
-  // correspond, s'il y en a une : la fiche se relit une fois partie.
+  // A new status sends the sender the default reply that matches it, if
+  // there is one: the detail view is re-read once it has gone.
   const after = request(existing.id);
   const event = after.status !== existing.status ? statusEvent(after.status) : null;
   if (!event) {
@@ -448,8 +446,8 @@ supportRequestRoutes.put("/:id", (req, res, next) => {
 });
 
 supportRequestRoutes.delete("/:id", (req, res) => {
-  // Ses étiquettes et son fil partent avec elle, par clé étrangère ; les
-  // fichiers de ses e-mails, eux, sont effacés du disque.
+  // Its labels and thread go with it, through the foreign key; the files of
+  // its e-mails, however, are erased from disk.
   const existing = requestFor(req, req.params.id, "delete");
   const files = requestFiles(existing.id);
   const announce = announceDeletions(req, [existing]);
@@ -459,16 +457,16 @@ supportRequestRoutes.delete("/:id", (req, res) => {
   res.status(204).end();
 });
 
-// --- Fil d'une demande -----------------------------------------------------
+// --- A request's thread ----------------------------------------------------
 
 /**
- * Le texte d'un message : du HTML venu de l'éditeur, nettoyé de ce qu'il ne
- * sait pas produire. Un message vide est refusé.
+ * A message's text: HTML from the editor, cleaned of whatever it cannot
+ * produce. An empty message is rejected.
  */
-/** Une adresse e-mail, à peu près : de quoi refuser une faute de frappe. */
+/** An e-mail address, roughly: enough to reject a typo. */
 const ADDRESS = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
 
-/** Les adresses en copie d'une réponse : sans doublon, et bien formées. */
+/** The cc addresses of a reply: without duplicates, and well formed. */
 const receivedAddresses = (value: unknown): string[] => {
   if (value === undefined) return [];
   if (!Array.isArray(value)) badRequest("Les adresses en copie doivent être une liste");
@@ -485,9 +483,9 @@ const receivedMessage = (value: unknown): string => {
 };
 
 /**
- * Prévient ceux qui viennent d'arriver parmi les acteurs d'une demande, par le
- * geste de quelqu'un d'autre. S'ajouter soi-même ne prévient personne. Rend
- * les comptes prévenus.
+ * Notifies those who have just joined a request's actors, through someone
+ * else's action. Adding oneself notifies no one. Returns the accounts
+ * notified.
  */
 const notifyNewActors = (
   req: Request,
@@ -510,9 +508,9 @@ const currentActors = (requestId: Id): Set<Id> =>
   new Set(oneWithRelations(request(requestId)).actors.map((a) => a.id));
 
 /**
- * Déposer une pièce jointe de réponse, avant d'envoyer la réponse : le fichier
- * arrive seul, en brut, et la réponse ne porte ensuite que son nom de
- * rangement. Un fichier déposé puis jamais envoyé reste sans message.
+ * Upload a reply attachment, before sending the reply: the file arrives
+ * alone, raw, and the reply then only carries its storage name. A file
+ * uploaded and then never sent stays without a message.
  */
 const fileBody = express.raw({ type: () => true, limit: TICKET_SIZE_MAX });
 
@@ -529,8 +527,8 @@ supportRequestRoutes.post("/:id/files", fileBody, (req, res) => {
 supportRequestRoutes.post("/:id/comments", (req, res, next) => {
   const existing = requestFor(req, req.params.id, "update");
 
-  // Un commentaire interne : du texte simple, entre membres de l'équipe,
-  // comme ceux des cartes et des projets. Il ne part pas par e-mail.
+  // An internal comment: plain text, between team members, like those of
+  // cards and projects. It does not go out by e-mail.
   if (req.body.internal) {
     const text = requireText(req.body.text, "Le commentaire est vide");
     const instant = now();
@@ -548,11 +546,11 @@ supportRequestRoutes.post("/:id/comments", (req, res, next) => {
 
   const text = receivedMessage(req.body.text);
   const copies = { cc: receivedAddresses(req.body.cc), bcc: receivedAddresses(req.body.bcc) };
-  // Le bouton d'envoi dit aussi où en est la demande : en attente, résolue
-  // ou fermée.
+  // The send button also says where the request stands: pending, resolved
+  // or closed.
   const requestedStatus = req.body.status;
   if (requestedStatus !== undefined && !isSupportStatus(requestedStatus)) badRequest("Statut inconnu");
-  // Les pièces jointes, déposées d'abord (POST /:id/files).
+  // The attachments, uploaded first (POST /:id/files).
   const files = uploadedFiles(req.body.files);
   if (!files) badRequest("Pièce jointe introuvable");
   if (
@@ -562,7 +560,7 @@ supportRequestRoutes.post("/:id/comments", (req, res, next) => {
     badRequest(`Les pièces jointes d'une réponse ne dépassent pas ${SEND_SIZE_MAX_MB} Mo au total`);
   }
 
-  // Qui écrit sur une demande s'en occupe : il en devient acteur.
+  // Whoever writes on a request takes care of it: they become an actor.
   if (!req.user.system) addActors(existing.id, [req.user.id]);
 
   const timestamp = now();
@@ -574,9 +572,9 @@ supportRequestRoutes.post("/:id/comments", (req, res, next) => {
     timestamp,
   );
 
-  // Sur une demande reçue par e-mail, le message part aussi à l'expéditeur —
-  // ou fait semblant, tant que les envois sont simulés. Il est enregistré
-  // quoi qu'il arrive : son état dit si l'e-mail est parti.
+  // On a request received by e-mail, the message also goes to the sender —
+  // or pretends to, as long as sends are simulated. It is recorded no matter
+  // what: its state says whether the e-mail went out.
   if (requestedStatus && requestedStatus !== existing.status) {
     supportRequests.setStatus.run(requestedStatus, timestamp, existing.id);
   }
@@ -589,8 +587,8 @@ supportRequestRoutes.post("/:id/comments", (req, res, next) => {
     existing.sender_email ? "a répondu par e-mail" : "a ajouté un message",
   );
 
-  // La réponse de l'équipe d'abord, puis celle que le nouveau statut appelle :
-  // l'expéditeur les reçoit dans cet ordre.
+  // The team's reply first, then the one the new status calls for: the sender
+  // receives them in that order.
   const event = requestedStatus && requestedStatus !== existing.status ? statusEvent(requestedStatus) : null;
   replyByEmail(existing, lastInsertRowid as Id, text, copies, files!)
     .then(() => (event ? sendAutoReply(existing.id, event) : undefined))
@@ -600,7 +598,7 @@ supportRequestRoutes.post("/:id/comments", (req, res, next) => {
     .catch(next);
 });
 
-/** Monté sous `/api/support-comments`. */
+/** Mounted under `/api/support-comments`. */
 export const supportCommentRoutes = Router();
 
 supportCommentRoutes.use(touch("support-requests"));
@@ -609,14 +607,14 @@ supportCommentRoutes.put("/:id", (req, res) => {
   const comment = orNotFound(supportComments.byId.get(req.params.id), COMMENT_NOT_FOUND);
   if (comment.system) forbidden(SYSTEM_COMMENT);
   requestFor(req, comment.request_id, "update");
-  // Chaque fil garde sa forme : texte simple pour un commentaire interne,
-  // HTML nettoyé pour un échange.
+  // Each thread keeps its form: plain text for an internal comment, cleaned
+  // HTML for an exchange.
   const text = comment.internal
     ? requireText(req.body.text, "Le commentaire est vide")
     : receivedMessage(req.body.text);
 
-  // Un texte identique n'est pas une modification : la date ne bouge pas, et
-  // le commentaire ne se met pas à porter « (modifié) ».
+  // An identical text is not a modification: the date does not move, and the
+  // comment does not start carrying "(modifié)".
   if (text === comment.text) {
     res.json(supportCommentOf(comment));
     return;
@@ -652,12 +650,11 @@ supportCommentRoutes.delete("/:id", (req, res) => {
   res.status(204).end();
 });
 
-// --- Étiquettes ------------------------------------------------------------
-// Elles sont communes à tout le support, quelle que soit la société : les
-// renommer, les recolorer ou les supprimer touche toutes les demandes qui les
-// portent.
+// --- Labels ----------------------------------------------------------------
+// They are shared across all of support, whatever the company: renaming,
+// recoloring or deleting them touches every request that carries them.
 
-/** Le poids reçu : un entier, positif ou non. */
+/** The received weight: an integer, positive or not. */
 const labelWeight = (value: unknown): number => {
   const weight = Number(value);
   if (!Number.isInteger(weight)) badRequest("Le poids doit être un nombre entier");
@@ -668,8 +665,8 @@ export const supportLabelRoutes = Router();
 
 supportLabelRoutes.use(touch("support-labels", "support-requests"));
 
-// Communes à toutes les sociétés, elles suivent les droits du support dans
-// n'importe laquelle.
+// Shared across all companies, they follow the support rights in any of
+// them.
 
 supportLabelRoutes.get("/", (req, res) => {
   if (!requestCan(req, "support", "view")) return void res.json([]);
@@ -679,8 +676,8 @@ supportLabelRoutes.get("/", (req, res) => {
 supportLabelRoutes.post("/", (req, res) => {
   require(req, "support", "create");
   const name = requireText(req.body.name, "Le nom de l'étiquette est requis");
-  // Communes à toutes les sociétés : deux du même nom ne se distingueraient
-  // plus dans une liste.
+  // Shared across all companies: two with the same name could no longer be
+  // told apart in a list.
   if (supportLabels.byName.get(name)) conflict("Cette étiquette existe déjà");
   const color = req.body.color || DEFAULT_LABEL_COLOR;
   if (!isLabelColor(color)) badRequest("Couleur inconnue");
@@ -691,9 +688,9 @@ supportLabelRoutes.post("/", (req, res) => {
   res.status(201).json(supportLabels.byId.get(lastInsertRowid));
 });
 
-// Ranger les étiquettes : l'ordre où les listes les présentent. Déclaré avant
-// « /:id », sinon « reorder » serait pris pour un identifiant. Toutes se
-// voient de tous : l'ordre reçu les nomme toutes, chacune une fois.
+// Arrange the labels: the order in which lists present them. Declared before
+// "/:id", otherwise "reorder" would be taken for an id. All are visible to
+// everyone: the received order names them all, each once.
 supportLabelRoutes.put("/reorder", (req, res) => {
   require(req, "support", "update");
   const order = receivedOrder(

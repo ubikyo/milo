@@ -1,11 +1,11 @@
-// Les types de widgets, et les permissions qui s'y attachent.
+// The widget types, and the permissions attached to them.
 //
-// Un widget appartient à un type : ceux du mode Accès sont communs à tous les
-// modes (« common »), sauf ceux qui lisent Microsoft 365 — le courrier et
-// l'agenda de qui regarde (« m365 ») ; ceux d'un mode ne servent qu'à lui. La permission d'un utilisateur ou d'un
-// groupe se règle type par type — Aucun, Lire, Modifier — et vaut pour le
-// widget comme pour ses données : « Support » en Modifier, c'est poser ses
-// widgets et traiter des demandes.
+// A widget belongs to a type: those of the Access mode are shared by all
+// modes ("common"), except those that read Microsoft 365 — the mail and
+// calendar of whoever is looking ("m365"); those of a mode serve only that mode. The permission of a user or
+// group is set type by type — Aucun, Lire, Modifier — and applies to the
+// widget as to its data: "Support" at Modifier means placing its
+// widgets and handling requests.
 
 import type { Mode } from "./modes.js";
 
@@ -20,11 +20,11 @@ export const WIDGET_KINDS = [
 
 export type WidgetKind = (typeof WIDGET_KINDS)[number]["value"];
 
-/** Le libellé d'un type, tel que l'interface le montre. */
+/** The label of a type, as the interface shows it. */
 export const kindLabel = (kind: WidgetKind): string =>
   WIDGET_KINDS.find((k) => k.value === kind)?.label ?? kind;
 
-/** La permission sur un type : aucune, la lecture, ou la modification (qui comprend la lecture). */
+/** The permission on a type: none, read, or edit (which includes read). */
 export const WIDGET_ACCESS = [
   { value: "", label: "Aucun" },
   { value: "view", label: "Lire" },
@@ -33,14 +33,14 @@ export const WIDGET_ACCESS = [
 
 export type WidgetAccess = (typeof WIDGET_ACCESS)[number]["value"];
 
-/** La permission de chaque type. */
+/** The permission of each type. */
 export type WidgetRights = Record<WidgetKind, WidgetAccess>;
 
-/** Les mêmes permissions pour tous les types. */
+/** The same permissions for all types. */
 export const widgetRightsEverywhere = (access: WidgetAccess): WidgetRights =>
   Object.fromEntries(WIDGET_KINDS.map((k) => [k.value, access])) as WidgetRights;
 
-/** Des permissions reçues de l'extérieur, ramenées à ce qui existe : un type absent n'a rien. */
+/** Permissions received from outside, reduced to what exists: a missing type has nothing. */
 export const validWidgetRights = (value: unknown): WidgetRights => {
   const source = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   return Object.fromEntries(
@@ -55,11 +55,11 @@ export const validWidgetRights = (value: unknown): WidgetRights => {
 
 const RANK: Record<WidgetAccess, number> = { "": 0, view: 1, update: 2 };
 
-/** La plus large de deux permissions. */
+/** The widest of two permissions. */
 export const widestAccess = (a: WidgetAccess, b: WidgetAccess): WidgetAccess =>
   RANK[a] >= RANK[b] ? a : b;
 
-/** Plusieurs jeux de permissions réunis — les siennes et celles de ses groupes : le plus large l'emporte. */
+/** Several sets of permissions combined — one's own and those of one's groups: the widest wins. */
 export const mergeWidgetRights = (rightSets: WidgetRights[]): WidgetRights =>
   Object.fromEntries(
     WIDGET_KINDS.map((k) => [
@@ -68,10 +68,10 @@ export const mergeWidgetRights = (rightSets: WidgetRights[]): WidgetRights =>
     ]),
   ) as WidgetRights;
 
-/** « Lire » ou mieux. */
+/** "Lire" or better. */
 export const canRead = (access: WidgetAccess): boolean => access !== "";
 
-/** Les types de chaque mode : ses données suivent le plus large d'entre eux. */
+/** The types of each mode: its data follows the widest of them. */
 export const MODE_KINDS: Record<Mode, readonly WidgetKind[]> = {
   access: ["common", "m365"],
   projects: ["project"],
@@ -81,10 +81,10 @@ export const MODE_KINDS: Record<Mode, readonly WidgetKind[]> = {
 };
 
 /**
- * Les widgets communs à toutes les vues, sans préfixe : les titres, le lien,
- * les attributs, l'horloge, le flux RSS, les images, la météo, la liste de
- * choses à faire — et ceux de Microsoft 365 (WIDGETS_365), le calendrier et
- * le courrier.
+ * The widgets common to all views, without a prefix: the titles, the link,
+ * the attributes, the clock, the RSS feed, the images, the weather, the
+ * to-do list — and those of Microsoft 365 (WIDGETS_365), the calendar and
+ * the mail.
  */
 export const COMMON_WIDGET_TYPES = [
   "category",
@@ -101,9 +101,9 @@ export const COMMON_WIDGET_TYPES = [
 ] as const;
 
 /**
- * Les widgets propres à un type de données, sous leur préfixe : ceux du
- * Support (« support. »), des Assets (« asset. »), des projets
- * (« project. ») et des tâches (« task. »).
+ * The widgets specific to a data type, under their prefix: those of
+ * Support ("support."), Assets ("asset."), projects
+ * ("project.") and tasks ("task.").
  */
 const OWN = {
   support: ["list", "tickets", "status", "actors", "trend", "age", "due", "labels", "senders"],
@@ -112,7 +112,7 @@ const OWN = {
   task: ["list", "cards", "lists", "due", "members", "labels"],
 } as const;
 
-/** Le préfixe des widgets de chaque type de données, et le type de widget qui va avec. */
+/** The prefix of the widgets of each data type, and the widget type that goes with it. */
 const PREFIXES: Record<keyof typeof OWN, WidgetKind> = {
   support: "helpdesk",
   asset: "asset",
@@ -121,9 +121,9 @@ const PREFIXES: Record<keyof typeof OWN, WidgetKind> = {
 };
 
 /**
- * Tout ce qu'une section peut porter : la chaîne rangée en base, qui ne
- * change jamais. C'est le widget du client qui sait l'afficher et le
- * configurer ; le serveur ne vérifie que son existence.
+ * Everything a section can carry: the string stored in the database, which
+ * never changes. It is the client widget that knows how to display and
+ * configure it; the server only checks that it exists.
  */
 export const BOARD_WIDGET_TYPES: readonly string[] = [
   ...COMMON_WIDGET_TYPES,
@@ -136,10 +136,10 @@ export const isBoardWidgetType = (value: unknown): value is string =>
   typeof value === "string" && BOARD_WIDGET_TYPES.includes(value);
 
 /**
- * Les widgets qui possèdent leurs éléments : deux « Projets » d'un même
- * tableau ne montrent pas les mêmes projets. Chacun porte, dans sa
- * configuration, la clé de sa liste (LIST_KEY) ; ses éléments la
- * portent aussi, et partent avec le dernier widget qui la tient.
+ * The widgets that own their items: two "Projets" of the same
+ * board do not show the same projects. Each carries, in its
+ * configuration, the key of its list (LIST_KEY); its items also
+ * carry it, and leave with the last widget that holds it.
  */
 export const LIST_WIDGET_TYPES: readonly string[] = [
   "project.list",
@@ -150,22 +150,22 @@ export const LIST_WIDGET_TYPES: readonly string[] = [
 
 export const isListWidgetType = (type: string): boolean => LIST_WIDGET_TYPES.includes(type);
 
-/** La clé de la configuration d'un widget de liste qui désigne ses éléments. */
+/** The configuration key of a list widget that designates its items. */
 export const LIST_KEY = "list_key";
 
-/** La clé de liste d'une configuration ; vide si elle n'en porte pas. */
+/** The list key of a configuration; empty if it carries none. */
 export const listKey = (config: unknown): string => {
   const value = (config as Record<string, unknown> | null)?.[LIST_KEY];
   return typeof value === "string" ? value : "";
 };
 
 /**
- * Les widgets qui lisent Microsoft 365, par Entra : le calendrier (l'agenda
- * Outlook) et le courrier (la boîte de réception). Leur type est « m365 ».
+ * The widgets that read Microsoft 365, through Entra: the calendar (the
+ * Outlook agenda) and the mail (the inbox). Their type is "m365".
  */
 export const WIDGETS_365: readonly string[] = ["calendar", "mail"];
 
-/** Le type de widget d'un widget, d'après ce que la base range de lui. */
+/** The widget type of a widget, from what the database stores about it. */
 export const widgetKind = (type: string): WidgetKind => {
   if (WIDGETS_365.includes(type)) return "m365";
   const prefix = type.split(".")[0] as keyof typeof PREFIXES;
@@ -173,8 +173,8 @@ export const widgetKind = (type: string): WidgetKind => {
 };
 
 /**
- * Le type rangé d'un widget des anciens panneaux — Support, Assets, Projet,
- * Tâche —, sous son préfixe. Les widgets communs gardent le leur.
+ * The stored type of a widget of the old panels — Support, Assets, Project,
+ * Task —, under its prefix. Common widgets keep theirs.
  */
 export const panelType = (
   panel: "support" | "assets" | "projects" | "tasks",

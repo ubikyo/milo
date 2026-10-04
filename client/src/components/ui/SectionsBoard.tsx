@@ -24,154 +24,155 @@ import WidgetDrawer, { type WidgetChoice } from "./WidgetDrawer";
 import { InsertionLine, type WidgetDrag } from "./WidgetDrop";
 import type { Id, SectionWidthUnit } from "@milo/shared";
 
-// Des sections en colonnes, et les widgets qu'elles portent. C'est la rangée
-// du mode Accès — les sections d'une catégorie — et celle des modes Support
-// et Assets, où la liste est un widget parmi les indicateurs.
+// Sections as columns, and the widgets they hold. This is the row of Access
+// mode — the sections of a category — and of Support and Assets modes, where
+// the list is one widget among the indicators.
 //
-// Une section a une largeur — laissée à la rangée, ou fixée en pour-cent ou
-// en pixels — et l'écart qui la sépare de la suivante, saisis tous deux au
-// pied de la colonne. Elle se glisse par sa poignée du haut pour changer de
-// rang, s'insère entre deux autres par le « + » qui paraît au survol de
-// l'écart — glissé, cet écart redimensionne celle de ses deux voisines qui est
-// en pixels, la gauche d'abord —, et son clic droit la duplique ou la
-// supprime. Vide, elle montre une zone d'ajout.
+// A section has a width — left to the row, or fixed in percent or in
+// pixels — and the gap that separates it from the next one, both entered at
+// the foot of the column. It is dragged by its top handle to change rank,
+// inserted between two others by the "+" that appears when hovering the
+// gap — dragged, that gap resizes whichever of its two neighbors is in
+// pixels, the left one first —, and its right click duplicates or
+// deletes it. When empty, it shows an add zone.
 //
-// Un widget s'ajoute depuis le tiroir de gauche (WidgetDrawer), qu'ouvrent la
-// zone d'une colonne vide et « Ajouter un widget », en bas à droite de la
-// page : on le glisse là où il doit se poser, comme un widget déjà rangé.
+// A widget is added from the left drawer (WidgetDrawer), opened by the
+// zone of an empty column and by "Ajouter un widget", at the bottom right of
+// the page: it is dragged to where it should land, like a widget already placed.
 //
-// Ce que la section porte n'appartient pas à cette rangée : « renderWidgets »
-// le dessine, et reçoit le glisser des widgets, que la rangée tient parce
-// qu'un widget se prend dans une section et se pose dans une autre.
-// Verrouillée, la rangée se lit : plus de cadre, de poignée ni d'ajout.
+// What the section holds does not belong to this row: "renderWidgets"
+// draws it, and receives the widgets' drag, which the row owns because
+// a widget is picked up in one section and dropped in another.
+// When locked, the row is read-only: no frame, no handle, no add.
 
-/** Ce que la rangée lit d'une section. */
+/** What the row reads from a section. */
 export interface BoardSection {
   id: Id;
   width_unit: SectionWidthUnit;
   width_value: number | null;
-  /** L'écart qui la sépare de la section suivante, en pixels. */
+  /** The gap separating it from the next section, in pixels. */
   gap: number;
 }
 
 interface SectionsBoardProps<S extends BoardSection> {
-  /** « null » tant que les sections ne sont pas lues ; rien ne s'affiche alors. */
+  /** "null" until the sections are read; nothing is displayed meanwhile. */
   sections: S[] | null;
   locked: boolean;
   /**
-   * Déverrouiller la rangée. Avec lui, une rangée vide et verrouillée propose
-   * tout de même d'ajouter une section : le geste la déverrouille d'abord.
-   * Sans lui — figée faute de droit —, elle ne propose rien.
+   * Unlock the row. With it, an empty locked row still offers to add a
+   * section: the gesture unlocks it first. Without it — frozen for lack of
+   * permission —, it offers nothing.
    */
   onUnlock?: () => void | Promise<void>;
-  /** Les widgets d'une section, dans l'ordre : le dépôt se calcule sur eux. */
+  /** The widgets of a section, in order: the drop is computed on them. */
   widgetIds: (section: S) => Id[];
-  /** Ce que la section porte. « drag » est inerte pour les copies qui suivent le pointeur. */
+  /** What the section holds. "drag" is inert for the copies that follow the pointer. */
   renderWidgets: (section: S, drag: WidgetDrag) => ReactNode;
-  /** Ce que le tiroir de gauche propose, dans l'ordre. */
+  /** What the left drawer offers, in order. */
   widgets: WidgetChoice[];
-  /** Un widget du tiroir posé dans cette section, à cette place. */
+  /** A drawer widget dropped in this section, at this position. */
   onCreateWidget: (section: S, type: string, index: number) => void | Promise<void>;
-  /** Ce que la section porte désormais, dans l'ordre : le rangement part au serveur. */
+  /** What the section now holds, in order: the arrangement goes to the server. */
   onReorderWidgets: (sectionId: Id, ids: Id[]) => void | Promise<void>;
-  /** Sans rang, la section va au bout ; le « + » entre deux colonnes en donne un. */
+  /** Without a rank, the section goes to the end; the "+" between two columns gives one. */
   onAddSection: (index?: number) => void;
-  /** La copie, avec ses widgets, se pose à droite de l'original. */
+  /** The copy, with its widgets, lands to the right of the original. */
   onDuplicateSection: (section: S) => void | Promise<void>;
   /**
-   * Le widget copié (lib/presse-papiers.ts), à coller au bout d'une section :
-   * son nom, et de quoi le poser. Sans lui, le menu ne propose pas de coller.
+   * The copied widget (lib/clipboard.ts), to paste at the end of a section:
+   * its name, and what is needed to place it. Without it, the menu does not
+   * offer pasting.
    */
   paste?: { label: string; onPaste: (section: S) => void | Promise<void> };
   /**
-   * Un widget lâché sur la corbeille, qui paraît à gauche d'« Ajouter un
-   * widget » le temps du glisser. Sans lui, pas de corbeille.
+   * A widget dropped on the trash, which appears to the left of "Ajouter un
+   * widget" while dragging. Without it, no trash.
    */
   onDeleteWidget?: (id: Id) => void;
-  /** Supprimée depuis le clic droit : la rangée a déjà posé la question. */
+  /** Deleted from the right click: the row has already asked the question. */
   onDeleteSection: (section: S) => void | Promise<void>;
-  /** Le nouvel ordre des colonnes, posé par leur poignée. */
+  /** The new order of the columns, set by their handle. */
   onReorderSections: (ids: Id[]) => void | Promise<void>;
-  /** Ce qui se règle au pied de la colonne : sa largeur, l'écart qui la suit. */
+  /** What is set at the foot of the column: its width, the gap that follows it. */
   onChangeSection: (section: S, change: EditSection) => void | Promise<void>;
 }
 
-/** Ce que le pied d'une colonne change : sa largeur, ou l'écart qui la suit. */
+/** What the foot of a column changes: its width, or the gap that follows it. */
 export type EditSection = Partial<Pick<BoardSection, "width_unit" | "width_value" | "gap">>;
 
-// Largeur en deçà de laquelle une colonne automatique ne se resserre plus.
-// Faute de cette place, elle disparaît plutôt que de renvoyer ses voisines à
-// la ligne.
+// Width below which an automatic column no longer shrinks. Lacking that
+// room, it disappears rather than sending its neighbors to the next
+// line.
 const SECTION_MIN_WIDTH = 20;
 
-// Tolérance des calculs de largeur : le navigateur place les colonnes au
-// demi-pixel près.
+// Tolerance of the width calculations: the browser places columns to the
+// half pixel.
 const ROUNDING = 0.5;
 
-// « Ajouter un widget », posé à gauche du « ? » des raccourcis
-// (ShortcutsHelp) : à sa hauteur — celle d'un ActionIcon « lg » —, et l'air
-// qui l'en sépare.
+// "Ajouter un widget", placed to the left of the shortcuts "?"
+// (ShortcutsHelp): at its height — that of a "lg" ActionIcon — and the
+// space separating them.
 const HELP_SIZE = 34;
 const HELP_OFFSET = 10;
 
-// Ce que la rangée tient quand le widget vient du tiroir : il n'a pas encore
-// d'identifiant, et aucun widget rangé n'a celui-ci.
+// What the row holds when the widget comes from the drawer: it has no id
+// yet, and no placed widget has this one.
 const NEW_VALUE: Id = -1;
 
-// Course en deçà de laquelle l'appui sur la poignée reste un clic.
+// Travel below which pressing the handle remains a click.
 const DRAG_THRESHOLD = 5;
 
-// La taille de l'icône des poignées.
+// The size of the handle icons.
 const GRIP_SIZE = 16;
 
-// L'écart minimal entre le trait du cadre et ce qui le côtoie : le « + » de
-// l'écart, l'icône d'une poignée.
+// The minimum gap between the frame line and what sits next to it: the
+// gap's "+", a handle's icon.
 const LINE_GAP = 2;
 
-// La bande que la poignée occupe en haut de chaque colonne, hors du cadre —
-// l'icône, à son écart du trait —, et celle du pied, à la même hauteur, où se
-// règlent la largeur et l'écart. Elle est tenue même
-// verrouillée, pour que le contenu ne bouge pas quand on passe de l'édition à
-// la lecture.
+// The band the handle occupies at the top of each column, outside the frame —
+// the icon, at its distance from the line —, and that of the foot, at the same
+// height, where the width and gap are set. It is kept even
+// when locked, so the content does not move when switching from editing to
+// reading.
 const GRIP_ZONE = GRIP_SIZE + 2 * LINE_GAP;
 
-// L'air entre le trait du cadre et le contenu, en haut et en bas.
+// The space between the frame line and the content, at top and bottom.
 const FRAME_PADDING = 8;
 
-// Ce qui coiffe le contenu d'une colonne : la bande de la poignée et l'air
-// sous le trait. Il ne prend pas de place au-dessus des widgets : la colonne
-// le porte en débord, et la zone de défilement remonte d'autant pour le
-// montrer — les sections commencent ainsi juste sous la marge de la rangée.
+// What tops the content of a column: the handle band and the space
+// under the line. It takes no room above the widgets: the column
+// carries it as overflow, and the scroll zone moves up by as much to
+// show it — sections thus start just under the row's margin.
 const TOP_BAND = GRIP_ZONE + FRAME_PADDING;
 
-/** Ce dont le cadre d'une colonne déborde dans l'écart, de chaque côté. */
+/** How far a column's frame overflows into the gap, on each side. */
 interface Overflows {
   left: number;
   rightHand: number;
 }
 
-/** Le glisser d'une colonne, tel que le rendu le voit. */
+/** A column's drag, as the render sees it. */
 interface SectionDrag {
   id: Id;
-  /** Le coin haut gauche de la copie qui suit le pointeur. */
+  /** The top left corner of the copy following the pointer. */
   x: number;
   y: number;
-  /** Sa taille à l'écran : la copie montre la colonne entière. */
+  /** Its size on screen: the copy shows the whole column. */
   width: number;
   height: number;
-  /** Le rang où elle se posera, parmi les autres colonnes. */
+  /** The rank where it will land, among the other columns. */
   target: number;
 }
 
-/** Le redimensionnement d'une colonne en pixels, par l'écart qui la suit. */
+/** Resizing a column in pixels, by the gap that follows it. */
 interface Resizing {
   id: Id;
   startX: number;
-  /** Sa largeur au premier appui. */
+  /** Its width at the first press. */
   width: number;
   /**
-   * 1 quand la colonne est à gauche de l'écart, -1 à droite : tirer vers la
-   * gauche élargit alors celle-ci.
+   * 1 when the column is left of the gap, -1 when right: dragging left
+   * then widens it.
    */
   direction: 1 | -1;
   started: boolean;
@@ -184,13 +185,13 @@ interface SectionDragInProgress extends SectionDrag {
   offsetY: number;
   started: boolean;
   /**
-   * La place des autres colonnes, relevée au premier appui : le rang visé se
-   * lit sur elles.
+   * The position of the other columns, read at the first press: the target
+   * rank is read from them.
    */
   places: DOMRect[];
 }
 
-/** Le glisser des copies : elles se montrent sans répondre. */
+/** The drag of copies: they show without responding. */
 const INERT: WidgetDrag = {
   dragged: null,
   onDragStart: () => {},
@@ -199,8 +200,8 @@ const INERT: WidgetDrag = {
 };
 
 /**
- * Le rang visé : la première colonne dont on n'a pas dépassé le milieu, ligne
- * par ligne — les colonnes qui ne tiennent plus passent à la ligne suivante.
+ * The target rank: the first column whose middle has not been passed, line
+ * by line — columns that no longer fit wrap to the next line.
  */
 const rankFrom = (places: DOMRect[], x: number, y: number): number => {
   const rank = places.findIndex((r) => y < r.top || (y <= r.bottom && x < r.left + r.width / 2));
@@ -208,17 +209,17 @@ const rankFrom = (places: DOMRect[], x: number, y: number): number => {
 };
 
 /**
- * La largeur que la section dit. « Automatique » laisse la rangée lui répartir
- * à parts égales ce que les autres laissent : elle ne compte pour rien dans le
- * passage à la ligne, et « masquees » la retire quand ce reste ne lui donne
- * pas sa largeur minimale. Les deux autres la fixent, et la colonne ne se
- * resserre ni ne s'étire — celles qui ne tiennent plus passent à la ligne
- * suivante.
+ * The width the section states. "Automatique" lets the row split evenly
+ * what the others leave: it counts for nothing in the
+ * wrapping, and "hidden" removes it when that remainder does not give it
+ * its minimum width. The other two fix it, and the column neither
+ * shrinks nor stretches — those that no longer fit wrap to the next
+ * line.
  *
- * Un pourcentage se lit sur ce qui reste de la rangée une fois les écarts
- * retirés, et non sur la rangée entière : sans cela, trois sections à 25, 50
- * et 25 % réclameraient 100 % plus deux écarts, et la dernière retournerait à
- * la ligne. D'où « ecarts », la somme de ceux qui séparent les colonnes.
+ * A percentage is read on what remains of the row once the gaps are
+ * removed, not on the whole row: otherwise, three sections at 25, 50
+ * and 25% would claim 100% plus two gaps, and the last would wrap to
+ * the next line. Hence "gaps", the sum of those separating the columns.
  */
 const widthOf = (section: BoardSection, gaps: number): CSSProperties => {
   if (section.width_unit === "auto") {
@@ -235,13 +236,13 @@ const widthOf = (section: BoardSection, gaps: number): CSSProperties => {
 };
 
 /**
- * Les colonnes automatiques qui n'ont pas la place d'être montrées. La rangée
- * est refaite ligne par ligne comme le navigateur la fera : chaque colonne
- * compte pour sa largeur plus l'écart qui la suit — sa marge droite —, les
- * colonnes fixes passent à la ligne quand elles ne tiennent plus, les
- * automatiques restent sur la ligne où elles tombent. Sur chaque ligne, elles
- * se gardent dans l'ordre tant que le reste leur donne à chacune sa largeur
- * minimale ; les suivantes disparaissent.
+ * The automatic columns that have no room to be shown. The row
+ * is rebuilt line by line as the browser will do it: each column
+ * counts for its width plus the gap that follows it — its right margin —,
+ * fixed columns wrap when they no longer fit, automatic
+ * ones stay on the line where they fall. On each line, they are
+ * kept in order as long as the remainder gives each its minimum
+ * width; the following ones disappear.
  */
 const hiddenItems = (
   followUp: BoardSection[],
@@ -299,48 +300,48 @@ export default function SectionsBoard<S extends BoardSection>({
   onReorderSections,
   onChangeSection,
 }: SectionsBoardProps<S>) {
-  // La permission du compte sur chaque type de widget : le tiroir s'y règle.
+  // The account's permission on each widget type: the drawer is set from it.
   const access = useWidgetAccess();
 
-  // Le widget que l'on tient, ou « null ». Il vit ici et non dans une
-  // colonne : on le prend dans l'une et on le pose dans une autre.
+  // The widget being held, or "null". It lives here and not in a
+  // column: it is picked up in one and dropped in another.
   const [draggedWidget, setDraggedWidget] = useState<Id | null>(null);
-  /** Le tiroir des widgets, ouvert par une colonne. */
+  /** The widgets drawer, opened by a column. */
   const [drawerOpen, setDrawerOpened] = useState(false);
-  // Sortir de la modification referme le tiroir : on n'y pose plus rien.
+  // Leaving edit mode closes the drawer: nothing is placed there anymore.
   useEffect(() => {
     if (locked) setDrawerOpened(false);
   }, [locked]);
-  /** Le type du widget pris dans le tiroir, le temps du glisser. */
+  /** The type of the widget taken from the drawer, during the drag. */
   const [newType, setNewType] = useState<string | null>(null);
   /**
-   * La corbeille survolée par le widget tenu : elle se colore, et un widget
-   * lâché au-dessus d'elle s'y jette à la fin du glisser, même si le
-   * navigateur n'a pas livré le dépôt.
+   * The trash hovered by the held widget: it colors, and a widget
+   * dropped over it is thrown away at the end of the drag, even if the
+   * browser did not deliver the drop.
    */
   const [overTrash, setOverTrash] = useState(false);
-  /** La colonne survolée pendant le glisser : c'est elle qui reçoit. */
+  /** The column hovered during the drag: it is the one that receives. */
   const [hoveredColumn, setHoveredColumn] = useState<Id | null>(null);
-  /** La colonne tenue par sa poignée : voir « Colonnes : glisser ». */
+  /** The column held by its handle: see "Columns: drag by the handle". */
   const [dragging, setDragged] = useState<SectionDrag | null>(null);
   const draggingRef = useRef<SectionDragInProgress | null>(null);
   /**
-   * L'ordre posé, montré sans attendre le serveur : sans lui, la colonne
-   * reviendrait à sa place le temps de l'aller-retour. Les sections relues
-   * reprennent la main.
+   * The order set, shown without waiting for the server: without it, the column
+   * would return to its place during the round trip. Re-read sections
+   * take over again.
    */
   const [localOrder, setLocalOrder] = useState<Id[] | null>(null);
   useEffect(() => setLocalOrder(null), [sections]);
-  /** Le menu du clic droit dans le vide d'une colonne. */
+  /** The right-click menu in the empty area of a column. */
   const [sectionMenu, setSectionMenu] = useState<{
     section: S;
     position: PointMenuPosition;
   } | null>(null);
   const [sectionToDelete, setSectionToDelete] = useState<S | null>(null);
   /**
-   * Les largeurs et les écarts saisis, montrés sans attendre le serveur, comme
-   * l'ordre posé : sans eux, la colonne reviendrait à l'ancien réglage le
-   * temps de l'aller-retour.
+   * The widths and gaps entered, shown without waiting for the server, like
+   * the order set: without them, the column would revert to the old setting
+   * during the round trip.
    */
   const [localEdits, setLocalEdits] = useState<ReadonlyMap<Id, EditSection>>(new Map());
   useEffect(() => setLocalEdits(new Map()), [sections]);
@@ -351,9 +352,9 @@ export default function SectionsBoard<S extends BoardSection>({
   };
 
   /**
-   * Poser le widget tenu dans cette colonne, à cette place. La liste envoyée
-   * est celle de la colonne d'accueil telle qu'elle sera : c'est elle qui dit
-   * l'ordre, et le serveur y admet un widget venu d'ailleurs.
+   * Drop the held widget in this column, at this position. The list sent
+   * is that of the host column as it will be: it states
+   * the order, and the server admits a widget coming from elsewhere there.
    */
   const drop = async (sectionId: Id, index: number) => {
     const id = draggedWidget;
@@ -371,13 +372,13 @@ export default function SectionsBoard<S extends BoardSection>({
     const arrival = currentIds.filter((other) => other !== id);
     const place = Math.min(index, arrival.length);
     const next = [...arrival.slice(0, place), id, ...arrival.slice(place)];
-    // Poser un widget là où il est déjà ne change rien.
+    // Dropping a widget where it already is changes nothing.
     if (currentIds.length === next.length && currentIds.every((v, i) => v === next[i])) return;
 
     await onReorderWidgets(sectionId, next);
   };
 
-  /** Le widget tenu, lâché sur la corbeille : une seule fois, par le dépôt ou la fin du glisser. */
+  /** The held widget, dropped on the trash: only once, by the drop or the end of the drag. */
   const moveToTrash = () => {
     const id = draggedWidget;
     setOverTrash(false);
@@ -397,10 +398,10 @@ export default function SectionsBoard<S extends BoardSection>({
     onDrop: drop,
   };
 
-  // --- Colonnes : glisser par la poignée ---------------------------------
-  // Une copie suit le pointeur ; la colonne reste à sa place, à demi effacée,
-  // et un trait dans l'écart montre où elle se posera. Au pointeur et non au glisser natif : celui-ci
-  // ne laisse voir qu'une image figée.
+  // --- Columns: drag by the handle ---------------------------------------
+  // A copy follows the pointer; the column stays in place, half faded,
+  // and a line in the gap shows where it will land. Pointer-based rather than native drag: the latter
+  // only shows a frozen image.
   const bands = !sections
     ? null
     : localOrder
@@ -414,23 +415,23 @@ export default function SectionsBoard<S extends BoardSection>({
       return change ? { ...s, ...change } : s;
     }) ?? null;
 
-  /** La colonne qu'on élargit par l'écart qui la suit, ou « null ». */
+  /** The column being widened by the gap that follows it, or "null". */
   const resizeRef = useRef<Resizing | null>(null);
   /**
-   * Vrai le temps du clic qui suit un redimensionnement : ce clic tombe sur le
-   * « + » de l'écart, et ne doit pas insérer de colonne.
+   * True during the click that follows a resize: that click lands on the
+   * gap's "+", and must not insert a column.
    */
   const justResized = useRef(false);
 
-  // Les écouteurs sont posés une fois : ils lisent l'état courant par une ref.
+  // The listeners are set once: they read the current state through a ref.
   const state = useRef({ ordered, onReorderSections, changeSection });
   useLayoutEffect(() => {
     state.current = { ordered, onReorderSections, changeSection };
   });
 
-  // --- Colonnes : redimensionner par l'écart ------------------------------
-  // La largeur suit le pointeur sans attendre le serveur ; elle part au
-  // relâcher. En deçà du seuil, l'appui reste le clic qui insère.
+  // --- Columns: resize by the gap ------------------------------------------
+  // The width follows the pointer without waiting for the server; it goes at
+  // release. Below the threshold, the press remains the click that inserts.
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
       const r = resizeRef.current;
@@ -469,10 +470,10 @@ export default function SectionsBoard<S extends BoardSection>({
     };
   }, []);
 
-  /** L'appui sur l'écart voisin d'une colonne en pixels. */
+  /** A press on the gap next to a pixel column. */
   const grabWidth = (event: ReactPointerEvent<HTMLElement>, section: S, direction: 1 | -1) => {
     if (event.button !== 0 || locked) return;
-    // Pas de sélection du texte voisin pendant qu'on tire.
+    // No selection of neighboring text while dragging.
     event.preventDefault();
     resizeRef.current = {
       id: section.id,
@@ -483,7 +484,7 @@ export default function SectionsBoard<S extends BoardSection>({
     };
   };
 
-  /** Un « + » d'écart : il n'insère pas au clic qui termine un redimensionnement. */
+  /** A gap "+": it does not insert on the click that ends a resize. */
   const insert = (rank: number) => () => {
     if (!justResized.current) onAddSection(rank);
   };
@@ -559,9 +560,9 @@ export default function SectionsBoard<S extends BoardSection>({
   const held = dragging && ordered ? ordered.find((s) => s.id === dragging.id) : undefined;
 
   /**
-   * La poignée de la colonne : c'est par elle, et par elle seule, que la
-   * colonne se déplace — le reste appartient à ses widgets, qui ont leur
-   * propre glisser.
+   * The column's handle: it is by it, and by it alone, that the
+   * column moves — the rest belongs to its widgets, which have their
+   * own drag.
    */
   const handle = (section: S) => (
     <Center
@@ -583,9 +584,9 @@ export default function SectionsBoard<S extends BoardSection>({
   );
 
   /**
-   * La largeur que la colonne a à l'écran, dans l'unité choisie : passer de
-   * « auto » à « px » ou « % » la garde telle qu'elle est. Les pour-cent se
-   * lisent, comme dans « largeurDe », sur la rangée moins ses écarts.
+   * The width the column has on screen, in the chosen unit: switching from
+   * "auto" to "px" or "%" keeps it as it is. Percentages are
+   * read, as in "widthOf", on the row minus its gaps.
    */
   const measure = (section: S, unit: "px" | "percent"): number => {
     const column = bandEl?.querySelector<HTMLElement>(`[data-section-id="${section.id}"]`);
@@ -596,22 +597,22 @@ export default function SectionsBoard<S extends BoardSection>({
   };
 
   /**
-   * Le cadre d'une colonne et ce qu'il porte. « inerte » : la copie qui suit
-   * le pointeur et la colonne tenue, restée à sa place, qui se montrent sans
-   * répondre.
+   * A column's frame and what it holds. "inert": the copy following
+   * the pointer and the held column, left in place, which show without
+   * responding.
    */
   const frame = (section: S, overflows: Overflows, inert = false) => {
     const count = widgetIds(section).length;
     return (
       <Box
-        // Le clic droit dans le vide de la colonne. Sur un widget, c'est le
-        // menu du widget qui s'ouvre : il a déjà pris l'événement.
+        // The right click in the empty area of the column. On a widget, the
+        // widget's menu opens: it has already taken the event.
         onContextMenu={(e) => {
           if (inert || locked || e.defaultPrevented) return;
           setSectionMenu({ section, position: menuPosition(e) });
         }}
-        // Lâché dans le vide de la colonne, sous ses widgets, le widget tenu
-        // va au bout. Sur un widget, c'est lui qui a reçu le dépôt.
+        // Dropped in the empty area of the column, under its widgets, the held
+        // widget goes to the end. On a widget, it is the one that received the drop.
         onDragOver={(e) => {
           if (inert || locked || draggedWidget === null) return;
           e.preventDefault();
@@ -626,16 +627,16 @@ export default function SectionsBoard<S extends BoardSection>({
           display: "flex",
           flexDirection: "column",
           position: "relative",
-          // La bande du pied, et l'air au-dessus du trait, tenus verrouillé ou
-          // non : le contenu ne bouge pas d'un mode à l'autre. Celle de la
-          // poignée déborde au-dessus (BANDE_HAUT).
+          // The foot band, and the space above the line, kept locked or
+          // not: the content does not move from one mode to the other. The
+          // handle's overflows above (TOP_BAND).
           paddingBottom: GRIP_ZONE + FRAME_PADDING,
         }}
       >
-        {/* Le cadre en pointillé, posé par-dessus et non autour : il déborde
-            dans l'écart entre les colonnes, à distance du « + », sans rien
-            pousser. La poignée est hors de lui, dans la bande du haut, et la
-            largeur dans celle du pied, centrée sous la colonne. */}
+        {/* The dotted frame, laid over and not around: it overflows
+            into the gap between columns, at a distance from the "+", without
+            pushing anything. The handle is outside it, in the top band, and the
+            width in the foot one, centered under the column. */}
         {!locked && (
           <>
             <Box
@@ -668,9 +669,9 @@ export default function SectionsBoard<S extends BoardSection>({
 
         {renderWidgets(section, inert ? INERT : drag)}
 
-        {/* L'invite ne paraît que pour une colonne vide. Verrouillée, la zone
-            garde sa place sans se montrer ; sinon elle ne double pas le cadre
-            de la colonne. */}
+        {/* The prompt appears only for an empty column. When locked, the zone
+            keeps its place without showing; otherwise it does not duplicate the
+            column's frame. */}
         {count === 0 && (
           <SectionDropZone
             onClick={() => setDrawerOpened(true)}
@@ -695,9 +696,9 @@ export default function SectionsBoard<S extends BoardSection>({
     );
   };
 
-  // La largeur de la rangée, relevée avant l'affichage et à chaque
-  // redimensionnement : c'est sur elle que se décident les colonnes
-  // automatiques masquées.
+  // The row's width, read before display and at each
+  // resize: it is on it that hidden automatic columns
+  // are decided.
   const [bandEl, setBandEl] = useState<HTMLDivElement | null>(null);
   const [bandWidth, setBandWidth] = useState<number | null>(null);
   useLayoutEffect(() => {
@@ -710,8 +711,8 @@ export default function SectionsBoard<S extends BoardSection>({
     return () => observer.disconnect();
   }, [bandEl]);
 
-  // L'écart qui suit chaque colonne, sa marge droite : la dernière n'en a
-  // pas. Les pour-cent se lisent sur la rangée moins leur somme.
+  // The gap following each column, its right margin: the last has none.
+  // Percentages are read on the row minus their sum.
   const last = ordered?.[ordered.length - 1];
   const gapAfter = (section: BoardSection) => (section.id === last?.id ? 0 : section.gap);
   const gaps = (ordered ?? []).reduce((a, s) => a + gapAfter(s), 0);
@@ -722,25 +723,25 @@ export default function SectionsBoard<S extends BoardSection>({
       : new Set<Id>();
   const shown = (ordered ?? []).filter((s) => !hidden.has(s.id));
 
-  // Les écarts de part et d'autre de chaque colonne montrée : celui qui la
-  // précède est l'écart de la voisine de gauche, celui qui la suit le sien.
-  // Aux bords de la rangée, il n'y a pas d'écart : on reprend celui de l'autre
-  // côté, pour que le cadre et le « + » s'y posent comme dans un écart.
+  // The gaps on either side of each shown column: the one preceding it
+  // is its left neighbor's gap, the one following it its own.
+  // At the row's edges, there is no gap: the one from the other side is reused,
+  // so the frame and the "+" sit there as in a gap.
   const gapsAround = (section: BoardSection): Overflows & { before: number; after: number } => {
     const rank = shown.findIndex((s) => s.id === section.id);
     const previous = shown[rank - 1];
     const afterActual = rank >= 0 && rank < shown.length - 1 ? section.gap : null;
     const before = previous ? previous.gap : (afterActual ?? section.gap);
     const after = afterActual ?? before;
-    // Ce dont le cadre déborde de chaque côté de la colonne, dans l'écart : il
-    // s'écarte de ce qu'elle porte sans le pousser, ni rien changer à l'écart.
-    // Au plus loin, avec deux pixels de jour entre les traits de deux voisines.
+    // How far the frame overflows on each side of the column, into the gap: it
+    // moves away from what it holds without pushing it, or changing the gap.
+    // At most, with two pixels of clearance between the lines of two neighbors.
     const overflow = (gap: number) => Math.max(0, Math.floor(gap / 2) - 1);
     return { before, after, left: overflow(before), rightHand: overflow(after) };
   };
 
-  // La marge laissée hors des colonnes du bord : le « + » s'y centre comme
-  // dans un écart, et la zone de défilement ne le rogne pas.
+  // The margin left outside the edge columns: the "+" centers there as
+  // in a gap, and the scroll zone does not clip it.
   const edges = shown.length > 0
     ? Math.max(
         gapsAround(shown[0]!).before,
@@ -748,14 +749,14 @@ export default function SectionsBoard<S extends BoardSection>({
       )
     : 0;
   const margin = Math.ceil((edges + PLUS_SIZE) / 2);
-  // L'air entre deux lignes, quand des colonnes fixes passent à la ligne : le
-  // plus large des écarts de la rangée.
+  // The space between two lines, when fixed columns wrap: the
+  // widest of the row's gaps.
   const rowsGap = Math.max(0, ...shown.map((s) => s.gap));
 
-  // Où la colonne tenue se posera. Rien ne bouge pendant le glisser : elle
-  // reste à sa place, à demi effacée, et un trait dans l'écart montre où elle
-  // ira — au bord gauche de la colonne visée parmi les autres, ou à droite de
-  // la dernière. Reposée à sa place, elle ne change rien : pas de trait.
+  // Where the held column will land. Nothing moves during the drag: it
+  // stays in place, half faded, and a line in the gap shows where it
+  // will go — at the left edge of the target column among the others, or to the right of
+  // the last. Put back in its place, it changes nothing: no line.
   const others = dragging && ordered ? ordered.filter((s) => s.id !== dragging.id) : [];
   const heldRank = dragging && ordered ? ordered.findIndex((s) => s.id === dragging.id) : -1;
   const targeted =
@@ -771,19 +772,19 @@ export default function SectionsBoard<S extends BoardSection>({
       align="stretch"
       gap={0}
       wrap="wrap"
-      // Les colonnes occupent la hauteur restante : c'est elle que la zone en
-      // pointillé remplit, sous ce que la section porte déjà.
+      // The columns take the remaining height: it is what the dotted zone
+      // fills, under what the section already holds.
       style={{ flexGrow: 1, rowGap: rowsGap }}
     >
       {(ordered ?? []).map((section, rank) => {
         const isHidden = hidden.has(section.id);
-        // Le « + » du bout se pose sur la dernière colonne montrée.
+        // The end "+" lands on the last shown column.
         const last = section.id === shown[shown.length - 1]?.id;
         const isHeld = section.id === dragging?.id;
         const surrounding = gapsAround(section);
-        // L'écart entre la colonne montrée à gauche et celle-ci — celui de son
-        // « + » de gauche — redimensionne celle des deux qui est en pixels, la
-        // gauche d'abord. Aux bords de la rangée, il n'y a pas d'écart à tirer.
+        // The gap between the column shown on the left and this one — that of its
+        // left "+" — resizes whichever of the two is in pixels, the
+        // left one first. At the row's edges, there is no gap to drag.
         const previous = shown[shown.findIndex((s) => s.id === section.id) - 1];
         const startResize = !previous
           ? undefined
@@ -795,11 +796,11 @@ export default function SectionsBoard<S extends BoardSection>({
         const inEditing = !locked && !dragging && draggedWidget === null && !isHidden;
         return (
           <Fragment key={section.id}>
-            {/* La place de la colonne dans la rangée, et l'écart qui la suit
-                en marge droite. Hors verrou, elle porte un cadre en pointillé
-                — celui de la zone d'ajout —, sa poignée en haut, sa largeur
-                au pied, les « + » qui insèrent une colonne à côté, et le
-                champ de l'écart qui la suit. */}
+            {/* The column's place in the row, and the gap that follows it
+                as right margin. When unlocked, it carries a dotted frame
+                — that of the add zone —, its handle at the top, its width
+                at the foot, the "+" that insert a column beside it, and the
+                field of the gap that follows it. */}
             <Box
               data-section-id={section.id}
               style={{
@@ -822,9 +823,9 @@ export default function SectionsBoard<S extends BoardSection>({
                 <>
                   <ColumnInsert
                     label="Insérer une section ici"
-                    // Centré dans l'écart qui la précède ; avant la première,
-                    // à la même distance, comme dans un écart. Entre la bande
-                    // de la poignée et celle du pied, à la hauteur du cadre.
+                    // Centered in the gap preceding it; before the first,
+                    // at the same distance, as in a gap. Between the handle
+                    // band and the foot one, at the frame's height.
                     style={{
                       top: -FRAME_PADDING,
                       bottom: GRIP_ZONE,
@@ -844,8 +845,8 @@ export default function SectionsBoard<S extends BoardSection>({
                       onClick={insert(sections.length)}
                     />
                   ) : (
-                    // L'écart qui suit la colonne se saisit sous lui, centré
-                    // dans la bande du pied, à côté de la largeur.
+                    // The gap following the column is entered under it, centered
+                    // in the foot band, next to the width.
                     <GapField
                       value={section.gap}
                       onChange={(gap) => changeSection(section, { gap })}
@@ -865,14 +866,14 @@ export default function SectionsBoard<S extends BoardSection>({
     </Group>
   );
 
-  // Tant que les sections ne sont pas lues, on n'affiche rien : « aucune
-  // section » serait une conclusion prématurée. Verrouillée, la rangée vide
-  // propose d'en ajouter si elle peut se déverrouiller : le geste la
-  // déverrouille d'abord, puis pose la section.
+  // While the sections are not read, nothing is displayed: "no
+  // section" would be a premature conclusion. When locked, the empty row
+  // offers to add one if it can unlock: the gesture
+  // unlocks it first, then places the section.
   const canAdd = !locked || Boolean(onUnlock);
-  // Verrouillée, une rangée dont aucune section ne porte rien n'a rien à
-  // montrer : l'écran vide revient, comme sans section. Le geste la
-  // déverrouille alors sans en ajouter une de plus — les siennes attendent.
+  // When locked, a row where no section holds anything has nothing to
+  // show: the empty screen returns, as without sections. The gesture then
+  // unlocks it without adding one more — its own wait.
   const empty =
     sections !== null &&
     (sections.length === 0 || (locked && sections.every((s) => widgetIds(s).length === 0)));
@@ -896,8 +897,8 @@ export default function SectionsBoard<S extends BoardSection>({
       type="always"
       scrollbarSize={2}
       styles={{
-        // La barre pilote les colonnes mais se cale sur le bord droit de la
-        // fenêtre, sur toute sa hauteur — comme aux modes Projet et Support.
+        // The bar drives the columns but sits against the right edge of the
+        // window, over its whole height — as in Project and Support modes.
         root: { position: "static" },
         scrollbar: {
           position: "fixed",
@@ -908,13 +909,13 @@ export default function SectionsBoard<S extends BoardSection>({
           height: "auto",
           width: "var(--scrollarea-scrollbar-size)",
         },
-        // Le contenu couvre au moins la hauteur visible : les colonnes s'y
-        // étirent, et la zone en pointillé garde de quoi se remplir.
+        // The content covers at least the visible height: the columns
+        // stretch in it, and the dotted zone keeps room to fill.
         //
-        // Les « + » des bords débordent de la première et de la dernière
-        // colonne, et la zone de défilement rogne ce qui dépasse : elle
-        // s'élargit d'autant dans la marge de la page, et le contenu s'en
-        // retire, pour que les colonnes restent à leur place.
+        // The edge "+" overflow the first and last
+        // column, and the scroll zone clips what sticks out: it
+        // widens by as much into the page margin, and the content withdraws from it,
+        // so the columns stay in place.
         viewport: { paddingInline: margin, paddingTop: TOP_BAND },
         content: { display: "flex", flexDirection: "column", minHeight: "100%" },
       }}
@@ -927,9 +928,9 @@ export default function SectionsBoard<S extends BoardSection>({
     <>
       {content}
 
-      {/* Le tiroir des widgets s'ouvre d'ici, pour toutes les colonnes : on
-          choisit la place en y glissant le widget. Verrouillée, ou sans
-          section où le poser, la rangée ne le propose pas. */}
+      {/* The widgets drawer opens from here, for all columns: the
+          position is chosen by dragging the widget into it. When locked, or without a
+          section to put it in, the row does not offer it. */}
       {!locked && sections && sections.length > 0 && (
         <Box
           style={{
@@ -942,9 +943,9 @@ export default function SectionsBoard<S extends BoardSection>({
             gap: HELP_OFFSET,
           }}
         >
-          {/* Le temps qu'on tient un widget posé — pas celui qu'on tire du
-              tiroir —, une corbeille à gauche : y lâcher le widget le
-              supprime, après la question habituelle. */}
+          {/* While a placed widget is held — not one dragged from the
+              drawer —, a trash on the left: dropping the widget there
+              deletes it, after the usual question. */}
           {onDeleteWidget && draggedWidget !== null && draggedWidget !== NEW_VALUE && (
             <Box
               aria-label="Supprimer le widget"
@@ -957,8 +958,8 @@ export default function SectionsBoard<S extends BoardSection>({
                 e.dataTransfer.dropEffect = "move";
                 setOverTrash(true);
               }}
-              // Passer sur l'icône n'est pas sortir : seul compte ce qui mène
-              // hors de la corbeille.
+              // Passing over the icon is not leaving: only what leads
+              // out of the trash counts.
               onDragLeave={(e) => {
                 if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
                   setOverTrash(false);
@@ -975,8 +976,8 @@ export default function SectionsBoard<S extends BoardSection>({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                // Le rouge du projet, l'icône en blanc ; survolée par le
-                // widget tenu, elle fonce d'un cran.
+                // The project's red, the icon in white; hovered by the
+                // held widget, it darkens a notch.
                 color: "var(--mantine-color-white)",
                 backgroundColor: RED,
                 filter: overTrash ? "brightness(0.85)" : undefined,
@@ -994,8 +995,8 @@ export default function SectionsBoard<S extends BoardSection>({
         </Box>
       )}
 
-      {/* La copie qui suit le pointeur : la colonne entière, à sa taille,
-          sans inclinaison. */}
+      {/* The copy following the pointer: the whole column, at its size,
+          without tilt. */}
       {dragging && held && (
         <Box
           style={{
@@ -1020,7 +1021,7 @@ export default function SectionsBoard<S extends BoardSection>({
       <WidgetDrawer
         opened={drawerOpen}
         onClose={() => setDrawerOpened(false)}
-        // Le tiroir ne propose que les types que le compte peut modifier.
+        // The drawer only offers the types the account can edit.
         widgets={widgets.filter((w) => access(w.kind) === "update")}
         onDragStart={(widget) => {
           setNewType(widget.type);

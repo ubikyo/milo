@@ -5,9 +5,9 @@ import { NameField, NAME, Nothing, IndicatorTitle } from "./common";
 import { LabelBars, type Bar } from "./labels";
 import type { SupportIndicatorWidget } from "./types";
 
-// Qui écrit le plus au support : les expéditeurs des demandes reçues par
-// e-mail, du plus fréquent au moins fréquent. Une demande saisie à la main n'a
-// pas d'expéditeur, elle ne compte pas.
+// Who writes to support the most: the senders of requests received by
+// e-mail, from most to least frequent. A request entered by hand has
+// no sender, it does not count.
 
 const LABEL = "Top demandeurs";
 const QUANTITY = "count";
@@ -27,8 +27,8 @@ export const requestersIndicator: SupportIndicatorWidget = {
   defaultConfig: { [NAME]: "", [QUANTITY]: QUANTITY_DEFAULT },
 
   Display: ({ config, requests }) => {
-    // Un expéditeur se reconnaît à son adresse : son nom peut changer d'un
-    // e-mail à l'autre, on garde le premier lu.
+    // A sender is recognized by their address: their name may change from one
+    // e-mail to the next, the first one read is kept.
     const byAddress = new Map<string, Bar>();
     for (const request of requests) {
       const address = request.sender_email.trim().toLowerCase();

@@ -3,24 +3,23 @@ import { IconTrash } from "@tabler/icons-react";
 import { RED } from "../../themes/colors";
 import CloseButton from "./CloseButton";
 
-// Le pied de tous les tiroirs. Il porte les trois gestes, toujours au même
-// endroit : la suppression à gauche, « Fermer » et « Sauvegarder » à droite.
+// The footer of all drawers. It carries the three actions, always in the same
+// place: delete on the left, "Fermer" and "Sauvegarder" on the right.
 //
-// Les tiroirs enregistraient jusqu'ici en se refermant — un clic au dehors
-// suffisait. Rien ne distinguait donc « j'ai fini » de « je voulais juste
-// regarder », et il n'y avait aucun moyen de renoncer à une saisie. Un tiroir
-// n'enregistre plus que sur « Sauvegarder » — pas même sur Entrée, qui valide
-// un champ sans dire qu'on a fini.
+// Drawers used to save when closing — a click outside was enough. Nothing
+// distinguished "I'm done" from "I just wanted to look", and there was no way
+// to give up an edit. A drawer now saves only on "Sauvegarder" — not even on
+// Enter, which validates a field without saying you are done.
 interface DrawerFooterProps {
   /**
-   * Sans lui — sans le droit d'enregistrer —, le tiroir ne fait que montrer :
-   * seul « Fermer » reste.
+   * Without it — without the right to save —, the drawer only shows: only
+   * "Fermer" remains.
    */
   onSave?: () => void | Promise<void>;
   onClose: () => void;
-  /** La suppression : seulement quand l'objet existe déjà. */
+  /** Deletion: only when the object already exists. */
   onDelete?: () => void;
-  /** Vrai pendant l'aller-retour au serveur, pour ne pas enregistrer deux fois. */
+  /** True during the round trip to the server, to avoid saving twice. */
   saving?: boolean;
 }
 
@@ -31,11 +30,11 @@ export default function DrawerFooter({
   saving = false,
 }: DrawerFooterProps) {
   return (
-    // « mt: auto » colle le pied au bas du tiroir, quelle que soit la hauteur
-    // de ce qui précède.
+    // "mt: auto" pins the footer to the bottom of the drawer, whatever the
+    // height of what precedes.
     <Group justify="space-between" wrap="nowrap" mt="auto" pt={40}>
-      {/* Toujours un élément à gauche, même sans suppression : sans lui, les
-          deux autres boutons se recentreraient. */}
+      {/* Always an element on the left, even without delete: without it, the
+          other two buttons would recenter. */}
       {onDelete ? (
         <Button
           color={RED}

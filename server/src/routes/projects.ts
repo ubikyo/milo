@@ -1,4 +1,4 @@
-// Les projets : la liste filtrée, la fiche, et les écritures.
+// Projects: the filtered list, the detail view, and the writes.
 
 import { Router } from "express";
 import type { Request } from "express";
@@ -22,7 +22,7 @@ import {
   openBoard as projectBoardOpen,
 } from "../repositories/boards.js";
 
-/** Les projets des tableaux que « @me » voit. */
+/** The projects of the boards that "@me" sees. */
 const VISIBLE_BOARDS_CLAUSE = visibleBoardsClause("projects.board_id");
 import {
   PROJECT_SELECT,
@@ -42,7 +42,7 @@ import { creationNote, withAuthor } from "../repositories/comments.js";
 
 const PROJECT_NOT_FOUND = "Projet introuvable";
 
-/** Ce que le fil note d'un projet quand il change (lib/historique.ts). */
+/** What the thread notes about a project when it changes (lib/history.ts). */
 const photo = (p: Project): Field[] => [
   { label: "Nom", value: quote(p.name) },
   { label: "Description", value: p.description, opaque: true },
@@ -58,12 +58,12 @@ const photo = (p: Project): Field[] => [
   { label: "Étiquettes", value: list(p.labels.map((l) => l.name)) },
 ];
 
-/** Un projet vient d'être créé : ses acteurs en sont prévenus. */
+/** A project has just been created: its actors are notified. */
 const projectCreated = (req: Request, id: Id): void => {
   const created = projects.joined.get(id);
   if (!created) return;
-  // Ses acteurs y arrivent : chacun en est prévenu à l'écran et par e-mail,
-  // et la notification de création ne les prévient pas une seconde fois.
+  // Its actors arrive: each is notified on screen and by e-mail, and the
+  // creation notification does not notify them a second time.
   const attached = attachedActors(req, created.id, created.name, new Set());
   notify({
     kind: "project",
@@ -76,7 +76,7 @@ const projectCreated = (req: Request, id: Id): void => {
   });
 };
 
-/** Prévient ceux qui viennent d'arriver parmi les acteurs du projet ; rend les prévenus. */
+/** Notifies those who have just joined the project's actors; returns those notified. */
 const attachedActors = (req: Request, id: Id, name: string, before: Set<Id>): Id[] =>
   notifyLinked({
     kind: "project",
@@ -89,9 +89,9 @@ const attachedActors = (req: Request, id: Id, name: string, before: Set<Id>): Id
   });
 
 /**
- * Un projet d'un tableau fermé aux autres est, pour eux, introuvable : ni dans
- * la liste, ni par son identifiant, ni en écriture. De même sans le droit de
- * voir les projets.
+ * A project of a board closed to others is, for them, not found: neither in
+ * the list, nor by its id, nor for writing. Likewise without the right to
+ * see projects.
  */
 const openProject = (req: Request, id: unknown): ProjectRow => {
   const project = orNotFound(projects.raw.get(id), PROJECT_NOT_FOUND);
@@ -100,7 +100,7 @@ const openProject = (req: Request, id: unknown): ProjectRow => {
   return project;
 };
 
-/** Le projet, si l'on a en plus ce droit. */
+/** The project, if one also has this right. */
 export const projectFor = (req: Request, id: unknown, right: "update" | "delete"): ProjectRow => {
   const project = openProject(req, id);
   require(req, "projects", right);
@@ -111,9 +111,9 @@ export const projectRoutes = Router();
 
 projectRoutes.use(touch("projects"));
 
-// Les filtres de la liste. Chacun est facultatif ; « all » vaut « pas de
-// filtre ». Le SQL est assemblé, mais les valeurs passent toujours en
-// paramètres nommés — jamais par interpolation.
+// The list's filters. Each is optional; "all" means "no filter". The SQL is
+// assembled, but values always go through named parameters — never through
+// interpolation.
 const CLAUSES: Record<string, string> = {
   board: "projects.board_id = @board",
   category: "projects.category_id = @category",
@@ -121,8 +121,8 @@ const CLAUSES: Record<string, string> = {
   actor: "projects.id IN (SELECT project_id FROM project_actors WHERE user_id = @actor)",
 };
 
-// Les requêtes assemblées sont gardées : une combinaison de filtres revient
-// souvent, et SQLite n'a plus à recompiler le même SQL.
+// Assembled queries are kept: a combination of filters comes back often,
+// and SQLite no longer has to recompile the same SQL.
 const filteredQueries = new Map<string, ReturnType<typeof selection<ProjectJoinedRow>>>();
 
 const queryFor = (clauses: string[]) => {
@@ -137,8 +137,8 @@ const queryFor = (clauses: string[]) => {
 };
 
 projectRoutes.get("/", (req, res) => {
-  // Les tableaux fermés aux autres sont écartés d'office : la clause précède
-  // les filtres du client et ne dépend pas d'eux.
+  // Boards closed to others are dropped outright: the clause precedes the
+  // client's filters and does not depend on them.
   if (!requestCan(req, "projects", "view")) return void res.json([]);
   const clauses: string[] = [VISIBLE_BOARDS_CLAUSE];
   const params: Record<string, unknown> = { me: req.user.id };
@@ -151,8 +151,8 @@ projectRoutes.get("/", (req, res) => {
     }
   }
 
-  // L'avancement n'est pas une valeur mais un intervalle : il ne passe pas par
-  // un paramètre.
+  // Progress is not a value but a range: it does not go through a
+  // parameter.
   const { status } = req.query;
   if (status === "in_progress") clauses.push("projects.status < 100");
   else if (status === "done") clauses.push("projects.status = 100");
@@ -160,10 +160,10 @@ projectRoutes.get("/", (req, res) => {
   res.json(withRelations(queryFor(clauses).all(params)));
 });
 
-// Les acteurs proposés par le filtre « Acteurs » : ceux qui le sont d'au moins
-// un projet du tableau — et du contexte, quand il est choisi. Les autres
-// filtres n'y comptent pas : filtrer par acteur ne doit pas faire disparaître
-// les autres acteurs de la liste.
+// The actors offered by the "Acteurs" filter: those who are one on at least
+// one project of the board — and of the context, when chosen. The other
+// filters do not count there: filtering by actor must not make the other
+// actors disappear from the list.
 const projectActors = selection<{ user_id: Id }>(
   `SELECT DISTINCT project_actors.user_id FROM project_actors
      JOIN projects ON projects.id = project_actors.project_id
@@ -196,8 +196,8 @@ projectRoutes.get("/:id", (req, res) => {
 });
 
 /**
- * La catégorie retenue doit appartenir au tableau du projet : sinon le projet
- * porterait une catégorie absente de son onglet.
+ * The chosen category must belong to the project's board: otherwise the
+ * project would carry a category absent from its tab.
  */
 const verifyCategory = (categoryId: unknown, boardId: unknown): void => {
   const category = categories.byId.get(categoryId);
@@ -207,8 +207,8 @@ const verifyCategory = (categoryId: unknown, boardId: unknown): void => {
 };
 
 /**
- * Le type de jalons retenu : un identifiant qui existe, ou aucun. Un type
- * inconnu est refusé plutôt que rangé tel quel.
+ * The chosen milestone type: an id that exists, or none. An unknown type is
+ * rejected rather than stored as is.
  */
 const milestoneTypeFrom = (received: unknown): number | null => {
   if (received === null || received === undefined || received === "") return null;
@@ -239,9 +239,9 @@ projectRoutes.post("/", (req, res) => {
 
   const timestamp = now();
 
-  // Le projet, ses acteurs, ses étiquettes et l'ouverture de son fil : un tout
-  // ou rien. Sans transaction, une erreur en cours de route laissait un projet
-  // à moitié posé.
+  // The project, its actors, its labels and the opening of its thread: all or
+  // nothing. Without a transaction, an error along the way left a half-made
+  // project.
   const id = transaction((): Id => {
     const { lastInsertRowid } = projects.create.run({
       number: nextReference(),
@@ -250,7 +250,7 @@ projectRoutes.post("/", (req, res) => {
       board_id,
       category_id,
       context_id: context,
-      // Le widget « Projets » d'où il est créé, à défaut le premier.
+      // The "Projets" widget it is created from, failing that the first.
       list_key: keyInBoard(board.id, "project.list", req.body.list_key),
       milestone_type_id: milestoneType,
       status,
@@ -262,8 +262,8 @@ projectRoutes.post("/", (req, res) => {
     replaceActors(projectId, toIds(actor_ids));
     replaceProjectLabels(projectId, toIds(label_ids), Number(board_id));
 
-    // Le fil s'ouvre sur la création, datée et signée Milo. Les commentaires
-    // écrits ensuite viennent à la suite.
+    // The thread opens on the creation, dated and signed Milo. Comments
+    // written afterwards follow.
     comments.createSystem.run(
       projectId,
       null,
@@ -279,13 +279,13 @@ projectRoutes.post("/", (req, res) => {
 });
 
 /**
- * Copie d'un projet : sa fiche, ses acteurs, ses étiquettes. Sans tableau
- * d'accueil, la copie reste dans celui du projet d'origine.
+ * Copy of a project: its record, actors, labels. Without a destination
+ * board, the copy stays in the original project's.
  *
- * Ce qui ne se copie pas : le fil. Un commentaire porte un auteur et une date ;
- * le recopier fabriquerait une conversation qui n'a pas eu lieu. La copie
- * s'ouvre sur son propre mot de création, comme un projet neuf — c'est la même
- * règle que pour la copie d'une liste.
+ * What is not copied: the thread. A comment carries an author and a date;
+ * copying it would fabricate a conversation that did not take place. The
+ * copy opens on its own creation note, like a new project — the same rule
+ * as for copying a list.
  */
 projectRoutes.post("/:id/copy", (req, res) => {
   const source = openProject(req, req.params.id);
@@ -293,8 +293,8 @@ projectRoutes.post("/:id/copy", (req, res) => {
   const board = projectBoardOpen(req.body.board_id ?? source.board_id, req.user);
   const name = requireText(req.body.name ?? source.name, "Le nom de la copie est requis");
 
-  // Les catégories appartiennent au tableau : la copie garde la sienne chez
-  // elle, et en reçoit une autre ailleurs.
+  // Categories belong to the board: the copy keeps its own at home, and gets
+  // another elsewhere.
   const categoryId =
     req.body.category_id ?? (board.id === source.board_id ? source.category_id : null);
   if (!categoryId) badRequest("La catégorie est requise");
@@ -309,8 +309,8 @@ projectRoutes.post("/:id/copy", (req, res) => {
       description: source.description,
       board_id: board.id,
       category_id: Number(categoryId),
-      // Un autre tableau a d'autres contextes : la copie prend celui qu'on
-      // dit, ou le premier.
+      // Another board has other contexts: the copy takes the one specified,
+      // or the first.
       context_id: boardContext(
         board.id,
         req.body.context_id,
@@ -346,9 +346,9 @@ projectRoutes.post("/:id/copy", (req, res) => {
 });
 
 /**
- * Deux valeurs qui désignent la même chose, quel que soit leur type : le
- * client envoie ses identifiants tantôt en nombre, tantôt en chaîne, et
- * « aucun » s'écrit aussi bien null qu'une chaîne vide.
+ * Two values designating the same thing, whatever their type: the client
+ * sends its ids sometimes as numbers, sometimes as strings, and "none" is
+ * written as null just as well as an empty string.
  */
 const sameValue = (a: unknown, b: unknown): boolean => {
   const normalized = (v: unknown) => (v === null || v === undefined || v === "" ? null : Number(v));
@@ -356,8 +356,8 @@ const sameValue = (a: unknown, b: unknown): boolean => {
 };
 
 /**
- * Deux listes d'identifiants qui désignent le même ensemble, sans égard à
- * l'ordre ni aux doublons. Une liste absente du corps ne change rien.
+ * Two lists of ids designating the same set, regardless of order or
+ * duplicates. A list absent from the body changes nothing.
  */
 const sameIds = (received: unknown, current: Id[]): boolean => {
   if (!Array.isArray(received)) return true;
@@ -382,10 +382,10 @@ projectRoutes.put("/:id", (req, res) => {
     label_ids,
   } = req.body;
 
-  // Un projet ne sort pas d'un tableau privé et n'y entre pas.
+  // A project does not leave a private board and does not enter one.
   const board = projectBoardOpen(board_id, req.user);
-  // Le contexte doit être du tableau du projet : changé de tableau, le projet
-  // prend celui qu'on dit, ou le premier du nouveau.
+  // The context must belong to the project's board: moved to another board,
+  // the project takes the one specified, or the new board's first.
   const context = boardContext(
     board.id,
     context_id,
@@ -398,10 +398,9 @@ projectRoutes.put("/:id", (req, res) => {
   const before = photo(oneWithRelations(projects.joined.get(existing.id)!));
   const previousActors = new Set(actorsOf(existing.id));
 
-  // La date de modification ne bouge que si quelque chose a bougé. Le tiroir
-  // enregistre en se refermant : sans cette comparaison, ouvrir une fiche pour
-  // la relire suffirait à la dater de maintenant, et le tableau se
-  // réordonnerait pour rien.
+  // The modification date only moves if something moved. The drawer saves as
+  // it closes: without this comparison, opening a record to re-read it would
+  // be enough to date it now, and the board would reorder for nothing.
   const unchanged =
     name === existing.name &&
     sameDescription(clean, existing.description) &&
@@ -421,7 +420,7 @@ projectRoutes.put("/:id", (req, res) => {
       board_id,
       category_id,
       context_id: context,
-      // Changé de tableau, il va au premier widget « Projets » du nouveau.
+      // Moved to another board, it goes to the new board's first "Projets" widget.
       list_key:
         board.id === existing.board_id
           ? existing.list_key
@@ -438,8 +437,8 @@ projectRoutes.put("/:id", (req, res) => {
   })();
 
   const next = oneWithRelations(projects.joined.get(existing.id)!);
-  // Ce qui a bougé se note dans le fil, signé Milo, et prévient ceux qui
-  // suivent le projet ou en sont acteurs. Rien n'a bougé : rien ne part.
+  // What moved is noted in the thread, signed Milo, and notifies those who
+  // follow the project or are its actors. Nothing moved: nothing goes out.
   const rows = unchanged ? [] : changes(before, photo(next));
   const attached = attachedActors(req, next.id, next.name, previousActors);
   if (rows.length) {

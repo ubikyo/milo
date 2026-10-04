@@ -1,38 +1,38 @@
-// La fin de support des systèmes, lue sur endoflife.date.
+// The end of support of operating systems, read from endoflife.date.
 //
-// L'agent dit quel système tourne sur le poste — « Windows 11 Entreprise »
-// en « 25H2 », « macOS » en « 27.0 (26A428) » —, pas jusqu'à quand son
-// éditeur le maintient. endoflife.date tient ces dates à jour pour chaque
-// produit, sous forme d'une liste de versions (« cycles ») ; on y cherche
-// celle du poste.
+// The agent says which system runs on the workstation — "Windows 11
+// Entreprise" at "25H2", "macOS" at "27.0 (26A428)" —, not until when its
+// vendor maintains it. endoflife.date keeps these dates up to date for each
+// product, as a list of versions ("cycles"); we look there for the
+// workstation's.
 //
-// Chaque produit est relu au plus une fois par jour, et gardé en mémoire : ouvrir
-// une fiche ne sollicite pas le service. Quand il ne répond pas, la dernière
-// liste lue sert encore ; sans elle, la fiche s'ouvre sans fin de support
-// plutôt que d'attendre.
+// Each product is re-read at most once a day, and kept in memory: opening a
+// record does not hit the service. When it does not answer, the last list
+// read is still used; without one, the record opens with no end of support
+// rather than waiting.
 
 import type { Asset, AssetSupport } from "@milo/shared";
 
 const API = "https://endoflife.date/api";
 
-/** La liste d'un produit reste bonne un jour : les dates ne bougent guère. */
+/** A product's list stays good for a day: the dates hardly move. */
 const CACHE_DURATION = 24 * 60 * 60 * 1000;
 
-/** Au-delà, le service est trop lent : la fiche attend. */
+/** Beyond that, the service is too slow: the record waits. */
 const TIMEOUT = 5_000;
 
-/** Une version d'un produit, telle qu'endoflife.date la décrit. */
+/** A version of a product, as endoflife.date describes it. */
 interface Cycle {
   cycle: string;
   releaseLabel?: string;
-  /** La fin des correctifs de sécurité : une date, ou un booléen sans date. */
+  /** The end of security fixes: a date, or a boolean with no date. */
   eol: string | boolean;
 }
 
 const caches = new Map<string, { readValue: number; cycles: Cycle[] }>();
 const ongoing = new Map<string, Promise<Cycle[] | null>>();
 
-/** La liste des versions d'un produit, en cache ; « null » si on ne l'a jamais eue. */
+/** A product's version list, cached; "null" if we never had it. */
 const cyclesDe = (product: string): Promise<Cycle[] | null> => {
   const cache = caches.get(product);
   if (cache && Date.now() - cache.readValue < CACHE_DURATION) return Promise.resolve(cache.cycles);
@@ -51,7 +51,7 @@ const cyclesDe = (product: string): Promise<Cycle[] | null> => {
       caches.set(product, { readValue: Date.now(), cycles });
       return cycles;
     } catch {
-      // La liste d'hier vaut mieux que rien.
+      // Yesterday's list is better than nothing.
       return cache?.cycles ?? null;
     } finally {
       ongoing.delete(product);
@@ -62,9 +62,9 @@ const cyclesDe = (product: string): Promise<Cycle[] | null> => {
 };
 
 /**
- * Le produit et les versions à chercher, de la plus précise à la plus large.
- * Windows a une liste par édition : « e » pour Entreprise et Éducation, « w »
- * pour Famille et Professionnel, et des branches LTSC à part.
+ * The product and the versions to look for, from the most precise to the
+ * broadest. Windows has a list per edition: "e" for Enterprise and Education,
+ * "w" for Home and Pro, and LTSC branches apart.
  */
 const search = (os: NonNullable<Asset["os"]>): { product: string; cycles: string[] } | null => {
   const name = os.name;
@@ -89,7 +89,7 @@ const search = (os: NonNullable<Asset["os"]>): { product: string; cycles: string
       return { product: "windows", cycles: [`${base}-${editMode}`, base] };
     }
     case "macos":
-      // Avant la 11, macOS se numérotait en 10.x : la version est « 10.15 ».
+      // Before 11, macOS was numbered 10.x: the version is "10.15".
       if (major === "10") {
         return { product: "macos", cycles: [version.split(".").slice(0, 2).join(".")] };
       }
@@ -110,7 +110,7 @@ const search = (os: NonNullable<Asset["os"]>): { product: string; cycles: string
   }
 };
 
-/** La fin de support du système d'un poste ; « null » quand on ne sait pas la dire. */
+/** The end of support of a workstation's system; "null" when we cannot tell. */
 export const endOfSupport = async (os: Asset["os"]): Promise<AssetSupport | null> => {
   if (!os) return null;
   const lookup = search(os);

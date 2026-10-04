@@ -1,7 +1,7 @@
-// La recherche globale : le champ de la rangée d'onglets. Elle fouille les
-// projets, les cartes, les tickets, les postes et les éléments du
-// mode Accès, et n'en rend que ce que la personne voit ailleurs — un tableau
-// ou une catégorie privés restent fermés aux autres ici aussi.
+// Global search: the field in the tab row. It searches projects, cards,
+// tickets, workstations and the Access mode's items, and only returns what
+// the person sees elsewhere — a private board or category stays closed to
+// others here too.
 
 import { Router } from "express";
 import type { Request } from "express";
@@ -21,13 +21,13 @@ import { selection } from "../db/query.js";
 import { VISIBLE_BOARDS_CLAUSE } from "../repositories/boards.js";
 import { widgetAccess, requestCan } from "../lib/rights.js";
 
-/** Ce que chaque sorte rend au plus : la liste reste lisible d'un coup d'œil. */
+/** The most each kind returns: the list stays readable at a glance. */
 const PER_KIND = 6;
 
 /**
- * Le texte tel qu'on le compare : sans balises (les descriptions sont en
- * HTML), sans accents, en minuscules. « Réseau » se trouve en tapant
- * « reseau », et « div » ne ramène pas toutes les descriptions.
+ * The text as it is compared: without tags (descriptions are HTML), without
+ * accents, in lowercase. "Réseau" is found by typing "reseau", and "div"
+ * does not bring back every description.
  */
 const fold = (value: unknown): string =>
   String(value ?? "")
@@ -36,15 +36,15 @@ const fold = (value: unknown): string =>
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase();
 
-// Déclarée avant les requêtes qui s'en servent : SQLite la cherche à la
-// préparation.
+// Declared before the queries that use it: SQLite looks it up at
+// preparation.
 db.function("milo_fold", { deterministic: true }, (value: unknown) => fold(value));
 
-/** La référence « HLP-12 » (ou « PRJ-12 ») d'une ligne, quand elle en porte une. */
+/** The "HLP-12" (or "PRJ-12") reference of a row, when it carries one. */
 const matchesReference = (column: string, prefix = REFERENCE_PREFIX) =>
   `(${column} > 0 AND ${contains(`'${prefix}' || ${column}`)})`;
 
-/** Le motif LIKE : les jokers tapés par la personne se cherchent tels quels. */
+/** The LIKE pattern: wildcards typed by the person are searched for as is. */
 const pattern = (text: string): string => `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
 const contains = (column: string) => `milo_fold(${column}) LIKE @q ESCAPE '\\'`;
@@ -138,9 +138,9 @@ interface VisibleBlock {
   board: string;
 }
 
-// Les widgets communs portent leur texte dans un JSON dont la forme dépend du
-// widget : ils sont peu nombreux, on les lit tous et on les fouille ici
-// plutôt qu'en SQL.
+// Shared widgets carry their text in JSON whose shape depends on the
+// widget: there are few of them, we read them all and search them here
+// rather than in SQL.
 const visibleBlocks = selection<VisibleBlock>(
   `SELECT w.id, w.type, w.config, b.id AS board_id, b.name AS board
      FROM board_widgets w
@@ -159,7 +159,7 @@ const visibleBlocks = selection<VisibleBlock>(
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
-/** Ce qu'un élément du mode Accès montre, et donc ce qu'on y cherche. */
+/** What an Access mode item shows, and therefore what is searched in it. */
 const readBlock = (
   type: string,
   config: Record<string, unknown>,
@@ -193,7 +193,7 @@ const foundAccesses = (req: Request, folded: string): SearchResult[] => {
   const userId = req.user.id;
   const matches: SearchResult[] = [];
   for (const block of visibleBlocks.all({ me: userId })) {
-    // Un élément dont le compte ne lit pas le type de widget ne se trouve pas.
+    // An item whose widget type the account does not read is not found.
     if (widgetAccess(req, block.type) === "") continue;
     let config: Record<string, unknown>;
     try {
@@ -225,7 +225,7 @@ searchRoutes.get("/", (req, res) => {
   const folded = fold(req.query.q).trim();
   if (folded.length < SEARCH_MIN_LENGTH) return void res.json([]);
 
-  // Chaque sorte ne cherche que si l'on en voit le type de widget.
+  // Each kind only searches if its widget type is visible.
   const params = { q: pattern(folded), me: req.user.id };
   const ifAllowed = <T>(area: Area, find: () => T[]): T[] => (requestCan(req, area, "view") ? find() : []);
 

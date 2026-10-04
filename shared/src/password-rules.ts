@@ -1,6 +1,6 @@
-// Complexité exigée d'un mot de passe. Ces règles étaient dupliquées : le
-// serveur les appliquait, le client les affichait en direct sous le champ, et
-// rien ne garantissait qu'elles restent alignées. Elles n'existent plus qu'ici.
+// Required password complexity. These rules used to be duplicated: the
+// server applied them, the client displayed them live under the field, and
+// nothing guaranteed they stayed aligned. They now exist only here.
 
 export interface PasswordRule {
   readonly id: string;
@@ -16,10 +16,10 @@ export const PASSWORD_RULES: readonly PasswordRule[] = [
   { id: "symbol", label: "un symbole", test: (p) => /[^A-Za-z0-9]/.test(p) },
 ];
 
-/** Les règles satisfaites par ce mot de passe, pour l'affichage en direct. */
+/** The rules satisfied by this password, for the live display. */
 export const passwordChecks = (password: string): { rule: PasswordRule; ok: boolean }[] =>
   PASSWORD_RULES.map((rule) => ({ rule, ok: rule.test(password) }));
 
-/** Les libellés des règles non satisfaites. Vide = mot de passe accepté. */
+/** The labels of the unsatisfied rules. Empty = password accepted. */
 export const passwordIssues = (password: unknown): string[] =>
   PASSWORD_RULES.filter((rule) => !rule.test(String(password ?? ""))).map((rule) => rule.label);

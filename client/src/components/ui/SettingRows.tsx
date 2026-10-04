@@ -21,26 +21,26 @@ import {
   rowStyle,
 } from "./DrawerRows";
 
-// Des réglages d'allure en lignes, comme les colonnes d'une liste
-// (ChampsColonnes) : l'apparence d'un indicateur, d'un titre ou d'un lien, les
-// marges d'un élément du mode Accès. Chaque ligne porte à gauche le bouton qui
-// la ramène à l'ordinaire — vert quand il y a de quoi —, son nom, puis sa
-// couleur et sa taille, ou son interrupteur, calés à droite.
+// Appearance settings as rows, like the columns of a list
+// (ColumnFields): the look of an indicator, a title or a link, the
+// margins of an Access mode element. Each row carries on the left the button
+// that resets it to the default — green when there is something to reset —, its name, then its
+// color and size, or its switch, aligned right.
 
-/** La place du nom de la ligne : les champs des lignes s'alignent dessous. */
+/** The width of the row's name: the rows' fields line up beneath it. */
 const NAME_WIDTH = 41;
 
-/** L'air entre le bouton et le nom, plus serré que celui des champs. */
+/** The space between the button and the name, tighter than that of the fields. */
 const NAME_GAP = 6;
 const SIZE_WIDTH = 80;
 const COLOR_WIDTH = 120;
 
-/** Le fond du bouton, plus foncé que celui de la ligne (FOND_LIGNE). */
+/** The button's background, darker than the row's (ROW_BACKGROUND). */
 const BUTTON_BACKGROUND = "light-dark(#d4d4d4, var(--mantine-color-dark-4))";
 
 type Config = Record<string, unknown>;
 
-/** La configuration où les réglages prennent leur valeur ; vides, ils en sont retirés. */
+/** The configuration where the settings take their value; when empty, they are removed from it. */
 export const insertRow = (
   config: unknown,
   settings: Record<string, unknown>,
@@ -55,7 +55,7 @@ export const insertRow = (
 
 export interface SettingRow {
   name: string;
-  /** « du titre », « de la marge haute » : ce que disent les libellés des champs. */
+  /** "du titre", "de la marge haute": what the field labels say. */
   what: string;
   color?: { value: string; onChange: (value: string) => void };
   size?: {
@@ -63,17 +63,17 @@ export interface SettingRow {
     defaultValue: number;
     min: number;
     max: number;
-    /** Vide quand le champ l'est. */
+    /** Empty when the field is. */
     onChange: (value: number | "") => void;
   };
-  /** Un réglage qui s'allume ou s'éteint — l'encadré d'un widget —, calé à droite. */
+  /** A setting that turns on or off — a widget's frame —, aligned right. */
   toggle?: { value: boolean; onChange: (value: boolean) => void };
-  /** Vrai quand un réglage de la ligne s'écarte de l'ordinaire. */
+  /** True when one of the row's settings differs from the default. */
   modified: boolean;
   reset: () => void;
 }
 
-/** Le bouton de la ligne, à gauche : il ramène tous ses réglages à l'ordinaire. */
+/** The row's button, on the left: it resets all its settings to the default. */
 function Reset({
   active,
   onClick,
@@ -86,9 +86,9 @@ function Reset({
   const label = `Revenir à la valeur par défaut ${what}`;
   return (
     <Tooltip label={label} disabled={!active}>
-      {/* Vert dès qu'un réglage s'écarte de l'ordinaire : il y a de quoi
-          revenir. Sinon, un fond un cran plus foncé que la ligne, d'un gris
-          neutre — ceux de Mantine tirent sur le bleu —, estompé. */}
+      {/* Green as soon as a setting differs from the default: there is something to
+          revert. Otherwise, a background one notch darker than the row, in a neutral
+          gray — Mantine's lean blue —, faded. */}
       <ActionIcon
         variant="filled"
         radius={3}
@@ -107,7 +107,7 @@ function Reset({
   );
 }
 
-/** La couleur d'une ligne, avec les nuances habituelles (champs-style). */
+/** A row's color, with the usual shades (field styles). */
 function Color({
   value,
   onChange,
@@ -139,7 +139,7 @@ function Color({
   );
 }
 
-/** La taille d'une ligne, en pixels, calée à droite. */
+/** A row's size, in pixels, aligned right. */
 function Size({
   size,
   label,
@@ -185,8 +185,8 @@ export default function SettingRows({
             key={l.name}
             gap="sm"
             wrap="nowrap"
-            // Le bouton, au début, se cale contre le bord gauche comme le
-            // dernier champ contre le droit.
+            // The button, at the start, sits against the left edge like the
+            // last field against the right one.
             style={{
               ...rowStyle(rank, rows.length, false),
               paddingLeft: ROW_INSET,
@@ -223,8 +223,8 @@ export default function SettingRows({
                 onChange={(e) => l.toggle?.onChange(e.currentTarget.checked)}
                 color="teal"
                 aria-label={l.name}
-                // Calé à droite, à RETRAIT_NOM du bout comme les boutons des
-                // lignes (BoutonDeLigne).
+                // Aligned right, at NAME_INSET from the end like the buttons of
+                // the rows (Reset).
                 style={{ marginLeft: "auto", marginRight: NAME_INSET - ROW_INSET }}
               />
             )}
@@ -236,8 +236,8 @@ export default function SettingRows({
 }
 
 /**
- * La ligne « Cadre », commune à tous les widgets : « valeur » est le cadre en
- * vigueur, « defaut » celui du widget tant que rien n'est réglé.
+ * The "Cadre" row, common to all widgets: "value" is the frame currently
+ * in effect, "defaultValue" the widget's own while nothing is set.
  */
 export const frameRow = (
   config: unknown,

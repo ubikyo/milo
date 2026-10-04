@@ -16,8 +16,8 @@ import {
 import type { AssetIndicatorWidget } from "./types";
 import type { Asset } from "@milo/shared";
 
-// Un nombre de postes : ceux de la société regardée qui répondent au type
-// choisi — tous, ou ceux qui demandent qu'on s'en occupe.
+// A workstation count: those of the company being viewed that match the
+// chosen type — all of them, or those that need attention.
 
 const TYPE = "type";
 
@@ -42,7 +42,7 @@ const TYPES: WorkstationType[] = [
   { value: "windows10", label: "Postes sous Windows 10", account: windows10 },
 ];
 
-/** Le type rangé, ou le premier : une valeur inconnue ne fait rien tomber. */
+/** The stored type, or the first one: an unknown value must not break anything. */
 const typeOf = (config: unknown) =>
   TYPES.find((t) => t.value === text(config, TYPE)) ?? DEFAULT_TYPE;
 
@@ -57,7 +57,7 @@ export const workstationsIndicator: AssetIndicatorWidget = {
   Display: ({ config, assets }) => {
     const type = typeOf(config);
     return (
-      // Le nom en haut, la quantité en bas à gauche, comme les tickets.
+      // The name on top, the quantity bottom left, like tickets.
       <Stack gap={4} justify="space-between" style={{ flex: 1 }}>
         <IndicatorTitle config={config} defaultValue={type.label} />
         <IndicatorValue config={config}>

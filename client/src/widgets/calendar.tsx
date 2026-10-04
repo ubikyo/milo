@@ -9,20 +9,20 @@ import { withField } from "./types";
 import type { AccessWidget } from "./types";
 import type { AccessCalendarEvent, Id } from "@milo/shared";
 
-// Un calendrier : le mois en cours, celui de Mantine. En option, il marque
-// d'un point les jours où la personne qui regarde a des rendez-vous dans son
-// agenda Outlook, lu dans Entra par le serveur (server/src/lib/entra.ts,
-// permission d'application Calendars.Read) : chacun voit les siens, quel que
-// soit le tableau. Un jour choisi montre ses rendez-vous sous le mois.
+// A calendar: the current month, Mantine's. Optionally, it marks with a dot
+// the days on which the viewer has appointments in their Outlook calendar,
+// read from Entra by the server (server/src/lib/entra.ts, Calendars.Read
+// application permission): everyone sees their own, whatever the board. A
+// chosen day shows its appointments below the month.
 
 const APPOINTMENTS = "showEvents";
 const LIST = "showList";
 const FRAMED = "framed";
 
-/** La page relit l'agenda à ce rythme : un rendez-vous pris ailleurs finit par paraître. */
+/** The page rereads the calendar at this rate: an appointment made elsewhere eventually shows up. */
 const RELOAD_INTERVAL = 5 * 60_000;
 
-/** Au plus, les rendez-vous listés sous le mois. */
+/** At most, the appointments listed below the month. */
 const LIST_MAX = 6;
 
 const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean => {
@@ -30,10 +30,10 @@ const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean
   return value === undefined ? defaultValue : Boolean(value);
 };
 
-/** Les jours qu'un rendez-vous couvre, au format des jours du calendrier. */
+/** The days an appointment covers, in the calendar's day format. */
 const daysOf = (r: AccessCalendarEvent): string[] => {
-  // Un rendez-vous d'une journée entière finit à minuit le lendemain, en UTC :
-  // on le lit à la date, sans fuseau, pour ne pas déborder d'un jour.
+  // An all-day appointment ends at midnight the next day, in UTC: we read it
+  // by date, without a time zone, so as not to overflow by a day.
   const start = r.all_day ? dayjs(r.start.slice(0, 10)) : dayjs(r.start);
   const end = r.all_day ? dayjs(r.end.slice(0, 10)).subtract(1, "day") : dayjs(r.end).subtract(1, "minute");
   const days: string[] = [];
@@ -57,7 +57,7 @@ function CalendarWidget({ blockId, config }: { blockId: Id; config: unknown }) {
   const [selected, setChosen] = useState(() => dayjs().format("YYYY-MM-DD"));
   const [state, setState] = useState<State>({ phase: "loading" });
 
-  // La grille montre quelques jours des mois voisins : la période les couvre.
+  // The grid shows a few days of the neighboring months: the period covers them.
   useEffect(() => {
     if (!withAppointments || !blockId) return;
     let active = true;
@@ -93,8 +93,8 @@ function CalendarWidget({ blockId, config }: { blockId: Id; config: unknown }) {
         fullWidth
         date={months}
         onDateChange={setMonth}
-        // Le calendrier ne descend pas au-delà du mois : les niveaux « année »
-        // et « décennie » n'ont rien à montrer ici.
+        // The calendar does not go below the month: the "year" and "decade"
+        // levels have nothing to show here.
         maxLevel="year"
         highlightToday
         getDayProps={(date) => ({
@@ -176,14 +176,14 @@ export const calendarWidget: AccessWidget = {
   label: "Calendrier",
   icon: IconCalendar,
   defaultConfig: { [APPOINTMENTS]: false, [LIST]: true, [FRAMED]: false },
-  // Les jours et les flèches du mois prennent leurs clics.
+  // The days and the month arrows receive their clicks.
   ownClicks: true,
 
   Display: CalendarWidget,
 
   margins: () => ({ top: 0, bottom: 15 }),
 
-  // Il dessine lui-même son cadre, réglé dans le bloc « Apparence » du tiroir.
+  // It draws its own frame, set in the drawer's "Apparence" block.
   ownFrame: true,
 
   Config: ({ config, onChange }) => (

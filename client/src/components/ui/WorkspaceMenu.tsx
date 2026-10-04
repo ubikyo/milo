@@ -8,10 +8,10 @@ import { ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
 import { errorMessage, notifyError } from "../../lib/errors";
 import type { PublicUser } from "@milo/shared";
 
-// Le workspace où l'on travaille, à gauche du compte : ne paraît qu'à qui en a
-// plusieurs. En choisir un autre recharge l'application — ses vues, ses
-// tableaux, ses contextes et ses droits sont tous ceux de l'autre workspace ;
-// rien de ce qui est à l'écran ne vaut plus.
+// The workspace one works in, left of the account: only shown to those who have
+// several. Choosing another reloads the application — its views, its
+// boards, its contexts and its rights are all those of the other workspace;
+// nothing on screen is valid anymore.
 
 export default function WorkspaceMenu({ user }: { user: PublicUser }) {
   const [switching, setSwitching] = useState(false);
@@ -38,7 +38,7 @@ export default function WorkspaceMenu({ user }: { user: PublicUser }) {
       styles={TAB_MENU_STYLES}
     >
       <Menu.Target>
-        {/* Le même bouton que la liste des contextes. */}
+        {/* The same button as the contexts list. */}
         <Button
           variant="subtle"
           color="gray"
@@ -56,8 +56,8 @@ export default function WorkspaceMenu({ user }: { user: PublicUser }) {
           <Menu.Item
             key={w.id}
             onClick={() => void select(w.id)}
-            // La coche du workspace courant ; les autres gardent sa place,
-            // pour que les noms restent alignés.
+            // The tick of the current workspace; the others keep its place,
+            // so that names stay aligned.
             leftSection={
               <IconCheck size={16} style={{ opacity: w.id === user.workspace ? 1 : 0 }} />
             }

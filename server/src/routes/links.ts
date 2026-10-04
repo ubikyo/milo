@@ -1,6 +1,6 @@
-// Les dépendances entre cartes. Elles s'enregistrent au fil des gestes, comme
-// les checklists, et se lisent des deux côtés : poser « bloque » sur une carte
-// montre « est bloqué par » sur l'autre.
+// Dependencies between cards. They are saved as gestures happen, like
+// checklists, and read from both sides: setting "bloque" on one card shows
+// "est bloqué par" on the other.
 
 import { Router } from "express";
 import type { Request } from "express";
@@ -18,7 +18,7 @@ import { boardOfCard, taskCards } from "../repositories/tasks.js";
 const CARD_NOT_FOUND = "Carte introuvable";
 const LINK_NOT_FOUND = "Dépendance introuvable";
 
-/** La carte visée, si l'on peut modifier les tâches de son tableau. */
+/** The targeted card, if the tasks of its board can be edited. */
 const openCard = (id: unknown, req: Request): TaskCardRow => {
   const card = orNotFound(taskCards.byId.get(id), CARD_NOT_FOUND);
   openTaskBoard(boardOfCard(card), req, "update");
@@ -26,8 +26,8 @@ const openCard = (id: unknown, req: Request): TaskCardRow => {
 };
 
 /**
- * L'autre carte d'une dépendance : une carte, pas un séparateur, sur un
- * tableau que cette personne voit — le sien ou un autre.
+ * The other card of a dependency: a card, not a separator, on a board this
+ * person sees — their own or another.
  */
 const validTarget = (card: TaskCardRow, targetId: unknown, req: Request): TaskCardRow => {
   const target = orNotFound(taskCards.byId.get(targetId), CARD_NOT_FOUND);
@@ -42,7 +42,7 @@ const receivedRelation = (value: unknown): Relation => {
   return value;
 };
 
-/** La liaison telle qu'elle s'écrit, depuis la carte qui la pose. */
+/** The link as it is written, from the card that sets it. */
 const writing = (card: TaskCardRow, target: TaskCardRow, relation: Relation, except: Id = 0) => {
   const { kind, source } = registration(relation);
   const [sourceId, targetId] = source ? [card.id, target.id] : [target.id, card.id];
@@ -58,7 +58,7 @@ const label = (relation: Relation): string =>
 const nameOf = (card: TaskCardRow): string =>
   card.number > 0 ? `${taskReference(card.number)} « ${card.text} »` : `« ${card.text} »`;
 
-/** Ceux qui suivent l'une ou l'autre carte apprennent le changement. */
+/** Those following either card learn of the change. */
 const notifyCards = (req: Request, cards: TaskCardRow[], message: (c: TaskCardRow) => string) => {
   for (const card of cards) {
     notify({
@@ -72,14 +72,14 @@ const notifyCards = (req: Request, cards: TaskCardRow[], message: (c: TaskCardRo
   }
 };
 
-/** Monté sous `/api/task-cards/:id/links`. */
+/** Mounted under `/api/task-cards/:id/links`. */
 export const cardLinkRoutes = Router({ mergeParams: true });
 
-// Le picto des cartes reliées se montre sur le tableau : les listes se relisent.
+// The linked-cards icon shows on the board: the lists are re-read.
 cardLinkRoutes.use(touch("task-lists"));
 
-// Les cartes qu'on peut relier, page par page : celles du tableau d'abord,
-// puis celles des autres tableaux. « q » filtre, « offset » avance.
+// The cards that can be linked, page by page: those of the board first,
+// then those of the other boards. "q" filters, "offset" advances.
 cardLinkRoutes.get("/candidates", (req, res) => {
   const { id } = req.params as { id?: string };
   const card = orNotFound(taskCards.byId.get(id), CARD_NOT_FOUND);
@@ -102,12 +102,12 @@ cardLinkRoutes.post("/", (req, res) => {
   res.status(201).json(linkOf(cardLinks.byId.get(lastInsertRowid)!, card.id, req.user.id));
 });
 
-/** Monté sous `/api/card-links`. */
+/** Mounted under `/api/card-links`. */
 export const linkRoutes = Router();
 
 linkRoutes.use(touch("task-lists"));
 
-/** La liaison visée, et la carte depuis laquelle on la lit : l'une de ses deux cartes. */
+/** The targeted link, and the card it is read from: one of its two cards. */
 const openLinkRecord = (id: unknown, cardId: unknown, req: Request) => {
   const linkRecord = orNotFound(cardLinks.byId.get(id), LINK_NOT_FOUND);
   const since = Number(cardId);
@@ -117,7 +117,7 @@ const openLinkRecord = (id: unknown, cardId: unknown, req: Request) => {
   return { linkRecord, card: openCard(since, req) };
 };
 
-// Changer la relation ou l'autre carte d'une dépendance, depuis l'une de ses cartes.
+// Change the relation or the other card of a dependency, from one of its cards.
 linkRoutes.put("/:id", (req, res) => {
   const { linkRecord, card } = openLinkRecord(req.params.id, req.body.card_id, req);
   const relation = receivedRelation(req.body.relation);
@@ -129,8 +129,8 @@ linkRoutes.put("/:id", (req, res) => {
   res.json(linkOf(cardLinks.byId.get(linkRecord.id)!, card.id, req.user.id));
 });
 
-// Supprimée depuis l'une de ses cartes (« ?card= ») : l'autre peut être sur
-// un tableau où l'on n'écrit pas.
+// Deleted from one of its cards ("?card="): the other may be on a board we
+// don't write to.
 linkRoutes.delete("/:id", (req, res) => {
   const { linkRecord, card } = openLinkRecord(req.params.id, req.query.card, req);
   const other = taskCards.byId.get(

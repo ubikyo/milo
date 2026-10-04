@@ -30,14 +30,14 @@ import { useResizableColumns } from "../ui/useResizableColumns";
 import type { ComponentType, CSSProperties, ReactNode } from "react";
 import type { AssetEntry, AssetSection } from "@milo/shared";
 
-// Les sections de l'inventaire que la fiche d'un poste montre en tableau,
-// plutôt qu'en fiches à la suite : celles qui ont assez de lignes pour qu'on
-// veuille les comparer, les trier, y chercher la bonne.
+// The inventory sections that a workstation's record shows as a table,
+// rather than as records one after another: those with enough rows that one
+// wants to compare them, sort them, search them for the right one.
 
-/** Une valeur absente se lit pareil partout : un tiret discret. */
+/** A missing value reads the same everywhere: a discreet dash. */
 export const EMPTY = "—";
 
-// --- Le tableau triable -----------------------------------------------------
+// --- The sortable table -----------------------------------------------------
 
 type Direction = "asc" | "desc";
 
@@ -45,13 +45,13 @@ interface Column {
   key: string;
   label: string;
   /**
-   * Ce sur quoi la colonne se trie. Rien — ou une chaîne vide — quand la
-   * ligne n'en dit rien : elle passe alors en bas, dans un sens comme dans
-   * l'autre.
+   * What the column sorts on. Nothing — or an empty string — when the
+   * row says nothing about it: it then goes to the bottom, in either
+   * direction.
    */
   value: (entry: AssetEntry) => string | number | null;
   render: (entry: AssetEntry) => ReactNode;
-  /** Le sens du premier clic : décroissant pour ce qu'on cherche en haut. */
+  /** The direction of the first click: descending for what one wants at the top. */
   firstDirection?: Direction;
   onRight?: boolean;
   width?: CSSProperties["width"];
@@ -62,7 +62,7 @@ interface Sorting {
   direction: Direction;
 }
 
-/** L'en-tête d'une colonne : un clic trie, un second inverse. */
+/** A column header: a click sorts, a second reverses. */
 function Header({
   column,
   sorting,
@@ -110,35 +110,35 @@ function SortableTable({
   initialSorting: Sorting;
   spacing?: number;
   /**
-   * Les largeurs de départ, en pixels, des colonnes qui en ont une ; les
-   * autres se partagent le reste. Sans elles, la mise en page naturelle.
+   * The starting widths, in pixels, of the columns that have one; the
+   * others share the rest. Without them, the natural layout.
    */
   widths?: Record<string, number>;
   /**
-   * La hauteur de la grille, en lignes : au-delà, elle défile dans sa propre
-   * zone, l'entête restant en haut. C'est aussi le nombre de lignes montrées
-   * d'abord, et ajoutées chaque fois qu'on arrive au bas de la zone. Sans
-   * lui, toutes d'un coup, sur toute leur hauteur.
+   * The grid height, in rows: beyond it, it scrolls in its own
+   * area, the header staying at the top. It is also the number of rows shown
+   * first, and added each time the bottom of the area is reached. Without
+   * it, all at once, over their full height.
    */
   perPage?: number;
 }) {
   const [sorting, setSort] = useState<Sorting>(initialSorting);
-  // Une tranche d'avance sur la hauteur de la zone : sans elle, la zone ne
-  // contiendrait que ce qu'elle montre, n'aurait rien à faire défiler, et la
-  // suite ne viendrait jamais.
+  // A slice ahead of the area's height: without it, the area would
+  // only contain what it shows, would have nothing to scroll, and the
+  // rest would never come.
   const firstItems = perPage ? 2 * perPage : Infinity;
   const [shown, setShown] = useState(firstItems);
-  // Le repère sous la dernière ligne : quand il paraît, la suite vient.
+  // The marker under the last row: when it appears, the rest comes.
   const marker = useRef<HTMLDivElement>(null);
-  // La grille, pour mesurer la hauteur de ses « parPage » premières lignes.
+  // The grid, to measure the height of its first "perPage" rows.
   const frame = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState<number | undefined>(undefined);
-  // Chaque tableau de l'inventaire se reconnaît à ses colonnes.
+  // Each inventory table is recognized by its columns.
   const keys = columns.map((c) => c.key);
   const resize = useResizableColumns(`inventory.${keys.join("-")}`, keys, widths);
 
   const sortBy = (column: Column) => {
-    // Un autre ordre repart du haut de la grille.
+    // Another order starts again from the top of the grid.
     setShown(firstItems);
     setSort((current) =>
       current.key === column.key
@@ -160,8 +160,8 @@ function SortableTable({
       if (typeof left === "number" && typeof rightHand === "number") {
         return (left - rightHand) * factor;
       }
-      // « numeric » range « 10.2 » après « 9.1 », et « sensitivity » met
-      // « adobe » et « Adobe » ensemble.
+      // "numeric" sorts "10.2" after "9.1", and "sensitivity" puts
+      // "adobe" and "Adobe" together.
       return (
         String(left).localeCompare(String(rightHand), "fr", {
           numeric: true,
@@ -175,9 +175,9 @@ function SortableTable({
   useEffect(() => {
     const target = marker.current;
     if (!target || !rest || !perPage) return;
-    // Une part réellement visible du repère, et non « isIntersecting » : dans
-    // une section repliée, de hauteur nulle, le navigateur le dit visible par
-    // une intersection d'aire nulle, et tout se chargerait d'un coup.
+    // A genuinely visible part of the marker, not "isIntersecting": in
+    // a collapsed section, of zero height, the browser reports it visible through
+    // a zero-area intersection, and everything would load at once.
     const observer = new IntersectionObserver((seen) => {
       if (seen.some((v) => v.intersectionRatio > 0)) setShown((n) => n + perPage);
     });
@@ -185,9 +185,9 @@ function SortableTable({
     return () => observer.disconnect();
   }, [rest, perPage, shown]);
 
-  // La hauteur de la zone : l'entête et les « parPage » premières lignes. Elle
-  // se mesure de nouveau quand la grille change de taille — une section
-  // repliée n'en a pas, et se déplie plus tard.
+  // The area's height: the header and the first "perPage" rows. It
+  // is measured again when the grid changes size — a collapsed
+  // section has none, and expands later.
   useLayoutEffect(() => {
     const grid = frame.current;
     if (!grid || !perPage) return;
@@ -195,7 +195,7 @@ function SortableTable({
       const rows = grid.querySelectorAll("tbody tr");
       const last = rows[perPage - 1];
       if (rows.length <= perPage || !last) return setHeight(undefined);
-      // Du haut du cadre au bas de la dernière ligne, plus la marge du bas.
+      // From the top of the frame to the bottom of the last row, plus the bottom margin.
       const margin = parseFloat(getComputedStyle(grid).paddingBottom) || 0;
       const h =
         last.getBoundingClientRect().bottom - grid.getBoundingClientRect().top + margin;
@@ -240,15 +240,15 @@ function SortableTable({
     </Table>
   );
 
-  // Limitée en hauteur, la grille défile dans les deux sens dans une même
-  // zone, où son entête reste collé en haut. La zone recouvre tout le cadre
-  // gris de la section (sa marge « md » reprise en négatif, puis rendue à
-  // l'intérieur) : la barre longe ainsi la section sur toute sa hauteur,
-  // comme celle du tiroir longe la fenêtre. Sinon, élargie à la main
-  // au-delà de la section, elle n'y défile que de côté.
+  // Limited in height, the grid scrolls both ways in a single
+  // area, where its header stays stuck at the top. The area covers the whole gray
+  // frame of the section (its "md" margin taken back as negative, then given back
+  // inside): the bar thus runs along the section over its full height,
+  // like the drawer's runs along the window. Otherwise, widened by hand
+  // beyond the section, it only scrolls sideways there.
   if (perPage) {
     return (
-      // La barre fine du tiroir de la fiche : 2 px, toujours visible.
+      // The record drawer's thin bar: 2 px, always visible.
       <ScrollArea.Autosize
         mah={height}
         type="always"
@@ -268,9 +268,9 @@ function SortableTable({
 }
 
 /**
- * L'entête d'une grille limitée en hauteur : il reste en haut quand elle
- * défile, à la marge du cadre, et l'ombre pleine au-dessus de lui cache les
- * lignes qui passent dans cette marge.
+ * The header of a height-limited grid: it stays at the top when it
+ * scrolls, at the frame's margin, and the solid shadow above it hides the
+ * rows passing through that margin.
  */
 const STICKY_HEADER: CSSProperties = {
   position: "sticky",
@@ -280,14 +280,14 @@ const STICKY_HEADER: CSSProperties = {
   boxShadow: `0 calc(-1 * var(--mantine-spacing-md)) 0 ${CARD_BACKGROUND}`,
 };
 
-/** Une cellule de texte ordinaire, ou le tiret quand elle est vide. */
+/** An ordinary text cell, or the dash when it is empty. */
 const text = (value: string | undefined) => (
   <Text size="sm" style={{ wordBreak: "break-word" }}>
     {value || EMPTY}
   </Text>
 );
 
-/** Un champ tel quel : la colonne la plus simple, triée sur sa valeur. */
+/** A field as is: the simplest column, sorted on its value. */
 const field = (key: string, label: string): Column => ({
   key,
   label,
@@ -298,8 +298,8 @@ const field = (key: string, label: string): Column => ({
 // --- Volumes ----------------------------------------------------------------
 
 /**
- * Une taille donnée en Mo par l'agent, lisible : « 3,63 To », « 476 Go »,
- * « 512 Mo ». Au-delà de 1 000 Go, elle passe en To.
+ * A size given in MB by the agent, made readable: "3,63 To", "476 Go",
+ * "512 Mo". Beyond 1,000 GB, it switches to TB.
  */
 export const size = (mo: number): string => {
   const go = mo / 1024;
@@ -311,7 +311,7 @@ export const size = (mo: number): string => {
     : `${Math.round(mo).toLocaleString("fr-FR")} Mo`;
 };
 
-/** « Yes » et « No » de l'agent, en français ; le reste tel quel. */
+/** The agent's "Yes" and "No", in French; anything else as is. */
 const yesNo = (value: string | undefined): string => {
   const v = (value ?? "").toLowerCase();
   if (v === "yes" || v === "1" || v === "true") return "Oui";
@@ -320,20 +320,20 @@ const yesNo = (value: string | undefined): string => {
 };
 
 /**
- * Un GUID de type de partition GPT, que l'agent donne parfois à la place du
- * système de fichiers — sous macOS surtout, où les volumes APFS sortent en
- * « 41504653-0000-11AA-AA11-00306543ECAC » (41504653, c'est « APFS » en
+ * A GPT partition type GUID, which the agent sometimes gives in place of the
+ * file system — mostly on macOS, where APFS volumes come out as
+ * "41504653-0000-11AA-AA11-00306543ECAC" (41504653 is "APFS" in
  * ASCII).
  */
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Le système de fichiers, ou rien quand l'agent n'a donné qu'un GUID. */
+/** The file system, or nothing when the agent only gave a GUID. */
 const fileSystem = (value: string | undefined): string =>
   value && !GUID.test(value.trim()) ? value : "";
 
 /**
- * La part occupée d'un volume, de 0 à 100, ou rien : un lecteur optique vide
- * ou un partage injoignable ne donne pas de taille.
+ * A volume's used share, from 0 to 100, or nothing: an empty optical drive
+ * or an unreachable share gives no size.
  */
 const usage = (entry: AssetEntry): number | null => {
   const total = Number(entry["TOTAL"]);
@@ -342,7 +342,7 @@ const usage = (entry: AssetEntry): number | null => {
   return Math.min(100, Math.max(0, ((total - free) / total) * 100));
 };
 
-/** La jauge d'un volume : l'occupé en barre, le libre et le total en clair. */
+/** A volume's gauge: the used part as a bar, the free and the total in plain text. */
 function Usage({ entry }: { entry: AssetEntry }) {
   const used = usage(entry);
   if (used === null) {
@@ -352,8 +352,8 @@ function Usage({ entry }: { entry: AssetEntry }) {
       </Text>
     );
   }
-  // La couleur ne dit rien tant qu'il reste de la place, et alerte quand il
-  // n'en reste plus.
+  // The color says nothing while there is room left, and alerts when
+  // there is none left.
   const color = used >= 90 ? "red" : used >= 75 ? "orange" : "blue";
   return (
     <Stack gap={2}>
@@ -365,15 +365,15 @@ function Usage({ entry }: { entry: AssetEntry }) {
   );
 }
 
-/** Le volume système : « C: » sous Windows, « / » ailleurs. */
+/** The system volume: "C:" on Windows, "/" elsewhere. */
 const isSystemDisk = (entry: AssetEntry): boolean =>
   (entry["LETTER"] ?? "").toUpperCase() === "C:" || entry["TYPE"] === "/";
 
 /**
- * Les volumes du poste, présentés comme les cartes réseau : une ligne
- * numérotée chacun. Le volume système en tête, puis les plus pleins d'abord ;
- * ceux sans taille à la fin. La lettre ne vient que de Windows ; elle n'est
- * montrée que si l'agent en donne une.
+ * The workstation's volumes, presented like the network cards: one numbered
+ * row each. The system volume first, then the fullest first;
+ * those without a size at the end. The letter only comes from Windows; it is
+ * only shown if the agent gives one.
  */
 function Volumes({ section }: { section: AssetSection }) {
   const letters = section.entries.some((entry) => entry["LETTER"]);
@@ -382,7 +382,7 @@ function Volumes({ section }: { section: AssetSection }) {
       Number(isSystemDisk(b)) - Number(isSystemDisk(a)) ||
       (usage(b) ?? -1) - (usage(a) ?? -1),
   );
-  // Le système de fichiers et le chiffrement à droite, à largeur fixe.
+  // The file system and encryption on the right, at fixed width.
   const columns = [
     ...(letters ? [`${FIRST_WIDTH}px`] : []),
     "1fr",
@@ -397,7 +397,7 @@ function Volumes({ section }: { section: AssetSection }) {
       columns={columns}
       values={(entry) => (
         <>
-          {/* 1re ligne : ce qu'est le volume. */}
+          {/* 1st row: what the volume is. */}
           {letters && <Value label="Lettre" value={entry["LETTER"]} />}
           <Value label="Type" value={entry["TYPE"]} />
           <Value
@@ -406,7 +406,7 @@ function Volumes({ section }: { section: AssetSection }) {
             onRight
           />
           <Value label="Chiffré" value={yesNo(entry["ENCRYPT_STATUS"])} onRight />
-          {/* 2e ligne : l'espace, sur toute la largeur. */}
+          {/* 2nd row: the space, over the full width. */}
           <Box style={{ gridColumn: "1 / -1" }}>
             <Value label="Espace" value={<Usage entry={entry} />} />
           </Box>
@@ -419,8 +419,8 @@ function Volumes({ section }: { section: AssetSection }) {
 // --- EPP / EDR --------------------------------------------------------------
 
 /**
- * Oui ou non, d'après ce que l'agent écrit — « yes », « 1 », « on »… —, ou
- * rien quand il ne dit rien de lisible.
+ * Yes or no, from what the agent writes — "yes", "1", "on"… —, or
+ * nothing when it says nothing readable.
  */
 const active = (value: string | undefined): boolean | null => {
   const v = (value ?? "").trim().toLowerCase();
@@ -429,20 +429,20 @@ const active = (value: string | undefined): boolean | null => {
   return null;
 };
 
-/** Le tag d'un état lisible, ou rien : la valeur garde alors son tiret. */
+/** The tag of a readable state, or nothing: the value then keeps its dash. */
 const statusTag = (value: string | undefined) => {
   const state = active(value);
   return state === null ? value : <State active={state} />;
 };
 
-/** La largeur de la colonne d'un tag d'état, à droite. */
+/** The width of a state tag's column, on the right. */
 const STATE_WIDTH = 100;
 
 /**
- * Les protections du poste — antivirus, EPP, EDR —, telles que Windows les
- * déclare au centre de sécurité, présentées comme les volumes. Il y en a
- * souvent deux, Defender resté en retrait à côté de celle qu'on a
- * installée : les actives d'abord.
+ * The workstation's protections — antivirus, EPP, EDR —, as Windows
+ * declares them in the security center, presented like the volumes. There are
+ * often two, Defender left in the background next to the one that was
+ * installed: the active ones first.
  */
 function Protections({ section }: { section: AssetSection }) {
   const entries = [...section.entries].sort(
@@ -453,7 +453,7 @@ function Protections({ section }: { section: AssetSection }) {
       entries={entries}
       texts={0}
       numbers={0}
-      // La version et l'état à droite, à largeur fixe.
+      // The version and state on the right, at fixed width.
       columns={`1fr 1fr ${COUNT_WIDTH}px ${COUNT_WIDTH}px`}
       values={(entry) => (
         <>
@@ -467,9 +467,9 @@ function Protections({ section }: { section: AssetSection }) {
   );
 }
 
-// --- Pare-feu ---------------------------------------------------------------
+// --- Firewall ---------------------------------------------------------------
 
-/** Les profils du pare-feu de Windows, sous leur nom français. */
+/** The Windows firewall profiles, under their French name. */
 const FIREWALL_PROFILES: Record<string, string> = {
   DomainProfile: "Domaine",
   StandardProfile: "Privé",
@@ -477,8 +477,8 @@ const FIREWALL_PROFILES: Record<string, string> = {
 };
 
 /**
- * Le pare-feu du poste, présenté comme les volumes : une entrée par profil
- * sous Windows, une seule ailleurs. Les profils actifs d'abord.
+ * The workstation's firewall, presented like the volumes: one entry per profile
+ * on Windows, a single one elsewhere. The active profiles first.
  */
 function Firewall({ section }: { section: AssetSection }) {
   const entries = [...section.entries].sort(
@@ -489,7 +489,7 @@ function Firewall({ section }: { section: AssetSection }) {
       entries={entries}
       texts={0}
       numbers={0}
-      // L'état à droite, à largeur fixe.
+      // The state on the right, at fixed width.
       columns={`1fr ${STATE_WIDTH}px`}
       values={(entry) => (
         <>
@@ -504,18 +504,18 @@ function Firewall({ section }: { section: AssetSection }) {
   );
 }
 
-// --- Processus --------------------------------------------------------------
+// --- Processes --------------------------------------------------------------
 
 /**
- * L'application qu'une ligne de commande lance, sans chemin ni paramètre :
- * « svchost.exe » pour « C:\Windows\System32\svchost.exe -k netsvcs ».
+ * The application a command line launches, without path or parameter:
+ * "svchost.exe" for "C:\Windows\System32\svchost.exe -k netsvcs".
  *
- * Un chemin peut porter des espaces sans guillemets — « C:\Program Files\… »,
- * « /Applications/Google Chrome.app/… » —, d'où les cas qui précèdent le
- * simple « premier mot » : sous macOS on prend le nom de l'application, sous
- * Windows on coupe après « .exe ». Les fils du noyau Linux, entre crochets
- * (« [kworker/0:1] »), et les processus de Windows sans chemin ni option
- * (« System Idle Process ») restent tels quels.
+ * A path may contain spaces without quotes — "C:\Program Files\…",
+ * "/Applications/Google Chrome.app/…" —, hence the cases preceding the
+ * simple "first word": on macOS we take the application name, on
+ * Windows we cut after ".exe". Linux kernel threads, in brackets
+ * ("[kworker/0:1]"), and Windows processes with no path or option
+ * ("System Idle Process") stay as is.
  */
 const application = (command: string): string => {
   const text = command.trim();
@@ -532,26 +532,26 @@ const application = (command: string): string => {
   } else if (exe) {
     program = exe[0];
   } else if (!/[\\/]/.test(text) && !/\s-/.test(text)) {
-    // Ni chemin ni option : un nom que Windows donne à ses processus à lui,
-    // espaces compris (« System Idle Process », « Memory Compression »).
+    // No path or option: a name Windows gives to its own processes,
+    // spaces included ("System Idle Process", "Memory Compression").
     return text;
   } else {
     program = text.split(/\s/)[0]!;
   }
 
-  // « sshd: jquintard@pts/0 » : le nom que le processus s'est donné.
+  // "sshd: jquintard@pts/0": the name the process gave itself.
   return program.split(/[\\/]/).pop()!.replace(/:$/, "") || text;
 };
 
-/** La part de processeur, en nombre ; rien quand l'agent ne l'a pas lue. */
+/** The CPU share, as a number; nothing when the agent didn't read it. */
 const cpu = (entry: AssetEntry): number | null => {
   const value = Number(entry["CPUUSAGE"]);
   return entry["CPUUSAGE"] && !Number.isNaN(value) ? value : null;
 };
 
 /**
- * Les processus du poste au moment de l'inventaire, les plus gourmands en
- * tête : c'est eux qu'on vient chercher quand un poste rame.
+ * The workstation's processes at the time of the inventory, the hungriest
+ * first: they are what one comes looking for when a workstation lags.
  */
 function Processes({ section }: { section: AssetSection }) {
   const columns: Column[] = [
@@ -559,7 +559,7 @@ function Processes({ section }: { section: AssetSection }) {
       key: "CMD",
       label: "Commande",
       value: (entry) => application(entry["CMD"] ?? ""),
-      // L'application seule, sans chemin ni options.
+      // The application alone, without path or options.
       render: (entry) => (
         <Text size="sm" style={{ wordBreak: "break-word" }}>
           {application(entry["CMD"] ?? "") || EMPTY}
@@ -587,12 +587,12 @@ function Processes({ section }: { section: AssetSection }) {
   );
 }
 
-// --- Logiciels --------------------------------------------------------------
+// --- Software ---------------------------------------------------------------
 
 /**
- * Une date d'installation, rangeable : « 15/03/2024 », comme la donne l'agent
- * sous Windows, devient « 2024-03-15 ». Les autres formats — macOS, Linux —
- * sont déjà dans l'ordre, ou restent tels quels.
+ * An installation date, sortable: "15/03/2024", as the agent gives it
+ * on Windows, becomes "2024-03-15". Other formats — macOS, Linux —
+ * are already in order, or stay as is.
  */
 const sortableDate = (value: string | undefined): string => {
   const text = (value ?? "").trim();
@@ -603,11 +603,11 @@ const sortableDate = (value: string | undefined): string => {
 };
 
 /**
- * Les logiciels du poste, par ordre alphabétique : il y en a des centaines,
- * dans l'ordre où l'agent les a trouvés, et une fiche par logiciel faisait
- * défiler longtemps pour trouver le bon. La date s'affiche telle que l'agent
- * la donne — son format change d'un système à l'autre — et ne se relit que
- * pour le tri, le plus récent en tête au premier clic.
+ * The workstation's software, in alphabetical order: there are hundreds,
+ * in the order the agent found them, and one record per piece of software made
+ * one scroll for a long time to find the right one. The date is displayed as the agent
+ * gives it — its format changes from one system to another — and is only re-read
+ * for sorting, the most recent first on the first click.
  */
 function Software({ section }: { section: AssetSection }) {
   const columns: Column[] = [
@@ -633,11 +633,11 @@ function Software({ section }: { section: AssetSection }) {
   );
 }
 
-// --- Comptes et groupes -----------------------------------------------------
+// --- Accounts and groups ----------------------------------------------------
 
 /**
- * Les groupes locaux du poste, par nom, présentés comme les processus : 15
- * lignes de haut, la suite au fil du défilement.
+ * The workstation's local groups, by name, presented like the processes: 15
+ * rows high, the rest as one scrolls.
  */
 function Groups({ section }: { section: AssetSection }) {
   return (
@@ -651,10 +651,10 @@ function Groups({ section }: { section: AssetSection }) {
 }
 
 /**
- * Les comptes locaux du poste, par nom, un tag vert après le nom des
- * administrateurs (le serveur les marque d'« ADMIN »). Le dossier personnel ne
- * vient que de Linux et de macOS : la colonne n'existe que si l'agent en
- * donne un.
+ * The workstation's local accounts, by name, a green tag after the name of
+ * administrators (the server marks them "ADMIN"). The home folder only
+ * comes from Linux and macOS: the column only exists if the agent gives
+ * one.
  */
 function Accounts({ section }: { section: AssetSection }) {
   const folders = section.entries.some((entry) => entry["HOME"]);
@@ -681,12 +681,12 @@ function Accounts({ section }: { section: AssetSection }) {
   );
 }
 
-// --- Machines virtuelles ----------------------------------------------------
+// --- Virtual machines -------------------------------------------------------
 
 /**
- * La mémoire d'une machine virtuelle, en Mo. L'agent la donne tantôt seule,
- * tantôt sous la forme « size=2048 » (Parallels) ; les conteneurs Docker n'en
- * déclarent pas.
+ * A virtual machine's memory, in MB. The agent gives it sometimes alone,
+ * sometimes as "size=2048" (Parallels); Docker containers declare
+ * none.
  */
 const memorySize = (entry: AssetEntry): number | null => {
   const digits = /\d+(?:[.,]\d+)?/.exec(entry["MEMORY"] ?? "");
@@ -694,9 +694,9 @@ const memorySize = (entry: AssetEntry): number | null => {
 };
 
 /**
- * L'état d'une machine virtuelle : son rang (les démarrées d'abord), son
- * libellé et la couleur de son tag. Ce que l'agent écrit d'autre reste tel
- * quel, en dernier.
+ * A virtual machine's state: its rank (the started ones first), its
+ * label and its tag color. What else the agent writes stays as is,
+ * last.
  */
 const vmState = (
   status: string | undefined,
@@ -715,9 +715,9 @@ const vmState = (
 };
 
 /**
- * Les machines virtuelles et les conteneurs du poste, un tableau par type
- * (« Docker », « Parallels »…), les démarrées d'abord, présenté comme les
- * processus : 15 lignes de haut, la suite au fil du défilement.
+ * The workstation's virtual machines and containers, one table per type
+ * ("Docker", "Parallels"…), the started ones first, presented like the
+ * processes: 15 rows high, the rest as one scrolls.
  */
 function VirtualMachines({ section }: { section: AssetSection }) {
   const memoryColumn: Column = {
@@ -731,8 +731,8 @@ function VirtualMachines({ section }: { section: AssetSection }) {
     firstDirection: "desc",
     onRight: true,
   };
-  // La mémoire n'a sa colonne que si une machine du type en déclare une : les
-  // conteneurs Docker n'en disent rien.
+  // Memory only has its column if a machine of the type declares one:
+  // Docker containers say nothing about it.
   const columnsOf = (entries: AssetEntry[]): Column[] => [
     field("NAME", "Nom"),
     ...(entries.some((entry) => memorySize(entry) !== null) ? [memoryColumn] : []),
@@ -753,7 +753,7 @@ function VirtualMachines({ section }: { section: AssetSection }) {
     },
   ];
   const byType = new Map<string, AssetEntry[]>();
-  // Par nom d'abord : à état égal, le tri par statut les garde dans cet ordre.
+  // By name first: at equal state, sorting by status keeps them in that order.
   const byName = [...section.entries].sort((a, b) =>
     (a["NAME"] ?? "").localeCompare(b["NAME"] ?? "", "fr", { numeric: true, sensitivity: "base" }),
   );
@@ -764,8 +764,8 @@ function VirtualMachines({ section }: { section: AssetSection }) {
   const types = [...byType.keys()].sort((a, b) =>
     a.localeCompare(b, "fr", { sensitivity: "base" }),
   );
-  // Chaque type sous son titre, au style des sous-catégories des widgets, et
-  // dans son propre cadre gris : la section n'en pose pas (SANS_CADRE).
+  // Each type under its title, in the style of the widgets' sub-categories, and
+  // in its own gray frame: the section doesn't provide one (WITHOUT_FRAME).
   return (
     <>
       {types.map((type, rank) => (
@@ -788,9 +788,9 @@ function VirtualMachines({ section }: { section: AssetSection }) {
   );
 }
 
-// --- Batterie ---------------------------------------------------------------
+// --- Battery ----------------------------------------------------------------
 
-/** Un libellé discret, et la valeur en dessous. */
+/** A discreet label, and the value below it. */
 function Value({
   label,
   value,
@@ -798,7 +798,7 @@ function Value({
 }: {
   label: string;
   value?: ReactNode;
-  /** Vrai pour un nombre, qu'on aligne à droite. */
+  /** True for a number, which is right-aligned. */
   onRight?: boolean;
 }) {
   return (
@@ -806,7 +806,7 @@ function Value({
       <Text size="xs" c="dimmed">
         {label}
       </Text>
-      {/* Un bloc et non un paragraphe : la valeur peut porter un badge. */}
+      {/* A block and not a paragraph: the value may carry a badge. */}
       <Text component="div" size="sm" style={{ wordBreak: "break-word" }}>
         {value || EMPTY}
       </Text>
@@ -815,9 +815,9 @@ function Value({
 }
 
 /**
- * Les batteries du poste, numérotées : nom et numéro de série. Le
- * reste de ce que l'agent remonte (capacité, chimie, fabricant) n'est pas
- * montré.
+ * The workstation's batteries, numbered: name and serial number. The
+ * rest of what the agent reports (capacity, chemistry, manufacturer) is not
+ * shown.
  */
 function Battery({ section }: { section: AssetSection }) {
   return (
@@ -838,7 +838,7 @@ function Battery({ section }: { section: AssetSection }) {
   );
 }
 
-/** L'état de charge d'une alimentation, tel que l'agent le donne, en français. */
+/** A power supply's charge state, as the agent gives it, in French. */
 const POWER_STATES: Record<string, string> = {
   charging: "En charge",
   charged: "Chargée",
@@ -849,12 +849,12 @@ const POWER_STATES: Record<string, string> = {
   ok: "OK",
 };
 
-/** Les états qui disent qu'une alimentation ne fait pas son travail. */
+/** The states saying a power supply isn't doing its job. */
 const FAULTY_STATES = new Set(["not charging", "discharging", "error", "failed"]);
 
 /**
- * Les alimentations du poste : nom, fabricant, puissance maximale et état,
- * en tag ; puis le numéro de série et si elle est branchée.
+ * The workstation's power supplies: name, manufacturer, maximum power and state,
+ * as a tag; then the serial number and whether it is plugged in.
  */
 function PowerSupply({ section }: { section: AssetSection }) {
   return (
@@ -862,7 +862,7 @@ function PowerSupply({ section }: { section: AssetSection }) {
       entries={section.entries}
       texts={0}
       numbers={0}
-      // La puissance et l'état à droite, à largeur fixe.
+      // The power and state on the right, at fixed width.
       columns={`1fr 1fr ${COUNT_WIDTH + 20}px ${STATE_WIDTH}px`}
       values={(entry) => {
         const status = (entry["STATUS"] ?? "").trim();
@@ -892,7 +892,7 @@ function PowerSupply({ section }: { section: AssetSection }) {
               }
               onRight
             />
-            {/* Sur deux colonnes : le numéro et son bouton tiennent sur une ligne. */}
+            {/* On two columns: the number and its button fit on one line. */}
             <Box style={{ gridColumn: "1 / 3" }}>
               <Value
                 label="Numéro de série"
@@ -907,26 +907,26 @@ function PowerSupply({ section }: { section: AssetSection }) {
   );
 }
 
-// --- Processeurs, mémoire, contrôleurs -------------------------------------
+// --- Processors, memory, controllers ---------------------------------------
 
-/** Le fond du numéro de chaque ligne : un gris neutre, foncé. */
+/** The background of each row's number: a dark, neutral gray. */
 const NUMBER_BACKGROUND = "#4a4a4a";
 
-/** La largeur minimale du rectangle du numéro. */
+/** The minimum width of the number's rectangle. */
 const NUMBER_WIDTH = 32;
 
-/** La largeur des colonnes de nombres, alignés à droite. */
+/** The width of the number columns, right-aligned. */
 const COUNT_WIDTH = 80;
 
-/** La largeur de la première colonne, un mot court : fabricant, type. */
+/** The width of the first column, a short word: manufacturer, type. */
 const FIRST_WIDTH = 120;
 
 /**
- * Les entrées d'une section, une par ligne : son numéro dans un rectangle
- * foncé — son rang, ou ce que dit `numero` —, puis ses valeurs. La première
- * colonne a sa largeur fixe, les autres colonnes de texte se partagent le
- * reste, les nombres viennent à droite, dans une colonne étroite chacun.
- * Plus de valeurs que de colonnes passent à la ligne.
+ * A section's entries, one per row: its number in a dark
+ * rectangle — its rank, or what `phoneNumber` says —, then its values. The first
+ * column has its fixed width, the other text columns share the
+ * rest, numbers come on the right, in a narrow column each.
+ * More values than columns wrap onto the next line.
  */
 function NumberedLines({
   entries,
@@ -944,13 +944,13 @@ function NumberedLines({
   numbers: number;
   values: (entry: AssetEntry) => ReactNode;
   phoneNumber?: (entry: AssetEntry) => string | undefined;
-  /** La largeur de la première colonne, en pixels. */
+  /** The width of the first column, in pixels. */
   first?: number;
-  /** Ce qui vient à droite des valeurs, sur toute la hauteur de la ligne. */
+  /** What comes to the right of the values, over the row's full height. */
   beside?: (entry: AssetEntry) => ReactNode;
-  /** Les colonnes de la grille, quand l'ordre par défaut ne convient pas. */
+  /** The grid columns, when the default order doesn't fit. */
   columns?: string;
-  /** Une largeur fixe pour le rectangle du numéro, au lieu de celle de son contenu. */
+  /** A fixed width for the number's rectangle, instead of that of its content. */
   numberWidth?: number;
 }) {
   const columns = template ?? [
@@ -959,10 +959,10 @@ function NumberedLines({
     ...Array<string>(numbers).fill(`${COUNT_WIDTH}px`),
   ].join(" ");
   return (
-    // Chaque entrée sur son bloc gris, 20 px de marge intérieure, séparée de
-    // la suivante par 2 px du fond de l'interface. La pile recouvre le cadre
-    // gris de la section (sa marge « md » reprise en négatif) et en garde
-    // l'arrondi.
+    // Each entry on its gray block, 20 px of inner margin, separated from
+    // the next by 2 px of the interface background. The stack covers the section's
+    // gray frame (its "md" margin taken back as negative) and keeps
+    // its rounding.
     <Stack
       gap={2}
       m="calc(-1 * var(--mantine-spacing-md))"
@@ -998,7 +998,7 @@ function NumberedLines({
               gridTemplateColumns: columns,
               columnGap: "var(--mantine-spacing-lg)",
               rowGap: 4,
-              // Plus haut que le texte, ce qui est à côté n'étire pas ses lignes.
+              // Taller than the text, what is next to it doesn't stretch its rows.
               alignContent: "start",
             }}
           >
@@ -1011,7 +1011,7 @@ function NumberedLines({
   );
 }
 
-/** Les processeurs du poste : fabricant, modèle, cœurs et threads. */
+/** The workstation's processors: manufacturer, model, cores and threads. */
 function Processors({ section }: { section: AssetSection }) {
   return (
     <NumberedLines
@@ -1030,17 +1030,17 @@ function Processors({ section }: { section: AssetSection }) {
   );
 }
 
-/** Le rang d'une carte selon son type : le Wi-Fi d'abord, puis l'Ethernet. */
+/** A card's rank by type: Wi-Fi first, then Ethernet. */
 const typeRank = (type: string | undefined): number => {
   const t = (type ?? "").toLowerCase();
   return t === "wifi" ? 0 : t === "ethernet" ? 1 : 2;
 };
 
-/** Un type de carte, une majuscule en tête : « wifi » devient « Wifi ». */
+/** A card type, capitalized: "wifi" becomes "Wifi". */
 const cardType = (type: string | undefined): string =>
   type ? type.charAt(0).toUpperCase() + type.slice(1) : "";
 
-/** Un débit en Mb/s, comme l'agent le donne, dit en Gb/s dès le gigabit. */
+/** A speed in Mb/s, as the agent gives it, expressed in Gb/s from one gigabit. */
 const throughput = (value: string | undefined): string => {
   const mb = Number(value);
   if (!value || Number.isNaN(mb) || mb <= 0) return value ?? "";
@@ -1049,7 +1049,7 @@ const throughput = (value: string | undefined): string => {
     : `${mb.toLocaleString("fr-FR")} Mb/s`;
 };
 
-/** Un état en tag : vert « Activé », rouge « Désactivé ». */
+/** A state as a tag: green "Activé", red "Désactivé". */
 function State({ active }: { active: boolean }) {
   return (
     <Badge color={active ? "green" : "red"} variant="filled" size="sm" radius="sm">
@@ -1059,11 +1059,11 @@ function State({ active }: { active: boolean }) {
 }
 
 /**
- * Les cartes réseau du poste, les connectées en tête ; parmi elles comme
- * parmi les autres, le Wi-Fi d'abord, puis l'Ethernet, puis le reste. VIRTUALDEV n'est pas montré.
+ * The workstation's network cards, the connected ones first; among them as
+ * among the others, Wi-Fi first, then Ethernet, then the rest. VIRTUALDEV is not shown.
  */
 function Networks({ section }: { section: AssetSection }) {
-  // Les cartes connectées d'abord ; dans chaque groupe, le type départage.
+  // Connected cards first; within each group, the type breaks ties.
   const disconnected = (entry: AssetEntry) =>
     (entry["STATUS"] ?? "").toLowerCase() === "up" ? 0 : 1;
   const entries = [...section.entries].sort(
@@ -1076,7 +1076,7 @@ function Networks({ section }: { section: AssetSection }) {
       numbers={0}
       values={(entry) => (
         <>
-          {/* 1re ligne : ce qu'est la carte et son état. */}
+          {/* 1st row: what the card is and its state. */}
           <Value label="Type" value={cardType(entry["TYPE"])} />
           <Value label="Nom" value={entry["DESCRIPTION"]} />
           <Value label="MAC" value={entry["MACADDR"]} />
@@ -1086,8 +1086,8 @@ function Networks({ section }: { section: AssetSection }) {
               entry["STATUS"] && <State active={entry["STATUS"].toLowerCase() === "up"} />
             }
           />
-          {/* 2e ligne : l'adressage IPv4, la quatrième colonne laissée vide.
-              Sans adresse IPv4, la ligne n'est pas montrée. */}
+          {/* 2nd row: the IPv4 addressing, the fourth column left empty.
+              Without an IPv4 address, the row isn't shown. */}
           {entry["IPADDRESS"] && (
             <>
               <Value label="IPv4" value={entry["IPADDRESS"]} />
@@ -1096,16 +1096,16 @@ function Networks({ section }: { section: AssetSection }) {
               <Box />
             </>
           )}
-          {/* 3e ligne : l'IPv6, souvent longue, sur toute la largeur ; cachée
-              sans adresse IPv6. */}
+          {/* 3rd row: the IPv6, often long, over the full width; hidden
+              without an IPv6 address. */}
           {entry["IPADDRESS6"] && (
             <Box style={{ gridColumn: "1 / -1" }}>
               <Value label="IPv6" value={entry["IPADDRESS6"]} />
             </Box>
           )}
-          {/* 4e ligne : le VLAN du Paramétrage qui porte la carte, son nom
-              puis son numéro en tag vert, comme au Résumé ; cachée sans VLAN.
-              VLAN et VLAN_NAME viennent du serveur, pas de l'agent. */}
+          {/* 4th row: the Paramétrage VLAN that carries the card, its name
+              then its number in a green tag, as in the Summary; hidden without a VLAN.
+              VLAN and VLAN_NAME come from the server, not the agent. */}
           {entry["VLAN"] && (
             <Box style={{ gridColumn: "1 / -1" }}>
               <Value
@@ -1121,7 +1121,7 @@ function Networks({ section }: { section: AssetSection }) {
               />
             </Box>
           )}
-          {/* 5e ligne : MTU et vitesse. */}
+          {/* 5th row: MTU and speed. */}
           <Value label="MTU" value={entry["MTU"]} />
           <Value label="Vitesse" value={throughput(entry["SPEED"])} />
         </>
@@ -1130,7 +1130,7 @@ function Networks({ section }: { section: AssetSection }) {
   );
 }
 
-/** Une capacité en Mo, comme l'agent la donne, dite en Go. */
+/** A capacity in MB, as the agent gives it, expressed in GB. */
 const toGb = (value: string | undefined): string => {
   const mo = Number(value);
   return value && !Number.isNaN(mo)
@@ -1139,8 +1139,8 @@ const toGb = (value: string | undefined): string => {
 };
 
 /**
- * Les barrettes du poste : capacité, type et description. Le numéro de slot
- * de l'agent n'est pas montré : celui de la ligne en tient lieu.
+ * The workstation's memory modules: capacity, type and description. The agent's
+ * slot number is not shown: the row's own number stands in for it.
  */
 function Memory({ section }: { section: AssetSection }) {
   return (
@@ -1148,7 +1148,7 @@ function Memory({ section }: { section: AssetSection }) {
       entries={section.entries}
       texts={2}
       numbers={1}
-      // La capacité d'abord, puis le type et la description.
+      // The capacity first, then the type and the description.
       columns={`${FIRST_WIDTH}px ${FIRST_WIDTH}px 1fr`}
       values={(entry) => (
         <>
@@ -1162,26 +1162,26 @@ function Memory({ section }: { section: AssetSection }) {
 }
 
 /**
- * Le rectangle des contrôleurs porte leur emplacement PCI (« 00:1f.3 ») : il
- * a sa largeur à lui, fixe, pour que tous s'alignent.
+ * The controllers' rectangle carries their PCI location ("00:1f.3"): it
+ * has its own fixed width, so that all of them line up.
  */
 const SLOT_WIDTH = 80;
 
 /**
- * La largeur des libellés des contrôleurs : ce qu'il faut pour que leurs
- * valeurs commencent là où commence la seconde colonne des autres lignes
- * numérotées — le numéro de série d'une batterie —, le rectangle étant plus
- * large.
+ * The width of the controllers' labels: what it takes for their
+ * values to start where the second column of the other numbered rows starts
+ * — a battery's serial number —, the rectangle being
+ * wider.
  */
 const LABEL_WIDTH = NUMBER_WIDTH + FIRST_WIDTH - SLOT_WIDTH;
 
-/** Les champs qu'on copie d'un clic : les numéros de série. */
+/** The fields copied with one click: the serial numbers. */
 const COPYABLE_FIELDS = new Set(["SERIAL", "SERIALNUMBER", "ALTSERIAL", "SSN"]);
 
 /**
- * Une valeur suivie d'un bouton qui la copie : un numéro de série se recopie
- * dans un ticket, chez le fabricant, rarement à la main sans erreur. Sans
- * valeur, rien à copier : ni bouton ni contenu, la ligne affiche son tiret.
+ * A value followed by a button that copies it: a serial number gets copied
+ * into a ticket, to the manufacturer, rarely by hand without error. Without a
+ * value, nothing to copy: neither button nor content, the row shows its dash.
  */
 function WithCopy({ value, children }: { value?: string; children?: ReactNode }) {
   if (!value) return children ?? EMPTY;
@@ -1207,16 +1207,16 @@ function WithCopy({ value, children }: { value?: string; children?: ReactNode })
 }
 
 /**
- * Le gabarit des étiquettes d'identifiants — VENDORID, PRODUCTID : quatre
- * chiffres hexadécimaux le plus souvent, davantage parfois. « D » est le plus
- * large d'entre eux une fois en capitales : un gabarit qui n'en a que, aussi
- * long que le plus long identifiant, donne la même largeur à toutes les
- * étiquettes, quels que soient leurs chiffres.
+ * The template for identifier labels — VENDORID, PRODUCTID: four
+ * hexadecimal digits most often, sometimes more. "D" is the widest
+ * of them once capitalized: a template made only of it, as
+ * long as the longest identifier, gives the same width to all
+ * labels, whatever their digits.
  */
 const idTemplate = (identifiers: (string | undefined)[]): string =>
   "D".repeat(Math.max(4, ...identifiers.map((id) => id?.length ?? 0)));
 
-/** Un libellé discret à gauche, la valeur à droite, sur une même ligne. */
+/** A discreet label on the left, the value on the right, on a single line. */
 function Row({ label, value }: { label: string; value?: ReactNode }) {
   return (
     <>
@@ -1231,9 +1231,9 @@ function Row({ label, value }: { label: string; value?: ReactNode }) {
 }
 
 /**
- * Les contrôleurs du poste, repérés par leur emplacement PCI : nom, fabricant
- * — avec l'identifiant du fabricant au bord droit, dans l'étiquette verte
- * des références — et type, l'un sous l'autre.
+ * The workstation's controllers, identified by their PCI location: name, manufacturer
+ * — with the manufacturer ID at the right edge, in the green tag
+ * of references — and type, one under the other.
  */
 function Controllers({ section }: { section: AssetSection }) {
   const template = idTemplate(section.entries.map((entry) => entry["VENDORID"]));
@@ -1252,8 +1252,8 @@ function Controllers({ section }: { section: AssetSection }) {
             label="Fabricant"
             value={
               (entry["VENDORID"] || entry["MANUFACTURER"]) && (
-                // L'étiquette au bord droit de la ligne : d'un contrôleur à
-                // l'autre, elles s'alignent en colonne.
+                // The tag at the row's right edge: from one controller to
+                // the next, they line up in a column.
                 <Group gap={8} wrap="nowrap" justify="space-between">
                   <span>{entry["MANUFACTURER"] || EMPTY}</span>
                   {entry["VENDORID"] && (
@@ -1270,17 +1270,17 @@ function Controllers({ section }: { section: AssetSection }) {
   );
 }
 
-/** La couleur de l'écran dessiné : le gris foncé des numéros. */
+/** The drawn screen's color: the dark gray of the numbers. */
 const SCREEN_EDGE = NUMBER_BACKGROUND;
 
-/** « 1920x1080 », comme l'agent la donne, se lit « 1920 x 1080 ». */
+/** "1920x1080", as the agent gives it, reads "1920 x 1080". */
 const spaceResolution = (resolution: string): string =>
   resolution.replace(/\s*[x×]\s*/i, " x ");
 
 /**
- * Un écran dessiné, la résolution au milieu de sa dalle. Pied compris, il
- * tient dans la hauteur des trois lignes de texte d'une carte vidéo (moins de
- * 72 px) : plus haut, il étirait la ligne et écartait le texte.
+ * A drawn screen, the resolution in the middle of its panel. Stand included, it
+ * fits within the height of the three text lines of a video card (under
+ * 72 px): taller, it stretched the row and spread the text apart.
  */
 function Screen({ resolution }: { resolution?: string }) {
   return (
@@ -1290,7 +1290,7 @@ function Screen({ resolution }: { resolution?: string }) {
           {resolution ? spaceResolution(resolution) : EMPTY}
         </Text>
       </Center>
-      {/* Le pied : une tige, puis la base. */}
+      {/* The stand: a stem, then the base. */}
       <Box w={8} h={6} style={{ backgroundColor: SCREEN_EDGE }} />
       <Box w={36} h={3} style={{ backgroundColor: SCREEN_EDGE, borderRadius: 2 }} />
     </Stack>
@@ -1298,8 +1298,8 @@ function Screen({ resolution }: { resolution?: string }) {
 }
 
 /**
- * Les cartes vidéo du poste : puce, nom et emplacement PCI l'un sous l'autre,
- * et à côté un écran qui porte la résolution.
+ * The workstation's video cards: chip, name and PCI location one under the other,
+ * and next to them a screen carrying the resolution.
  */
 function Video({ section }: { section: AssetSection }) {
   return (
@@ -1320,9 +1320,9 @@ function Video({ section }: { section: AssetSection }) {
 }
 
 /**
- * Les périphériques audio du poste : nom, fabricant et description l'un sous
- * l'autre. La légende de l'agent (CAPTION) n'est pas montrée : elle répète
- * le nom.
+ * The workstation's audio devices: name, manufacturer and description one under
+ * the other. The agent's caption (CAPTION) is not shown: it repeats
+ * the name.
  */
 function Audio({ section }: { section: AssetSection }) {
   return (
@@ -1341,16 +1341,16 @@ function Audio({ section }: { section: AssetSection }) {
   );
 }
 
-/** Les champs d'une section, dans l'ordre où ils s'affichent, sous leur nom français. */
+/** A section's fields, in the order they are displayed, under their French name. */
 type Fields = [string, string][];
 
 /**
- * Les lignes d'une entrée : ses champs connus en français, puis ceux qu'on ne
- * sait pas nommer, sous le nom de l'agent — sauf les écartés. Une valeur déjà
- * dite plus haut ne se répète pas : l'agent donne souvent le même texte comme
- * nom, légende et description, ou le numéro de série deux fois. Les nombres
- * et les « Oui » / « Non » se répètent, eux : deux champs à 0 ou à « Oui » ne
- * disent pas la même chose.
+ * An entry's rows: its known fields in French, then those that can't be
+ * named, under the agent's name — except the excluded ones. A value already
+ * said above isn't repeated: the agent often gives the same text as
+ * name, caption and description, or the serial number twice. Numbers
+ * and "Oui" / "Non" are repeated, though: two fields at 0 or at "Oui" don't
+ * say the same thing.
  */
 const rowsOf = (
   entry: AssetEntry,
@@ -1367,8 +1367,8 @@ const rowsOf = (
     ...Object.values(labels),
   ]);
   const displayed: Fields = [
-    // Un champ qui porte une étiquette a sa ligne dès que l'étiquette a une
-    // valeur, même s'il n'en a pas lui-même.
+    // A field carrying a label gets its row as soon as the label has a
+    // value, even if it has none itself.
     ...fields.filter(([field]) => field in entry || (labels[field] && entry[labels[field]])),
     ...Object.keys(entry)
       .filter((field) => !known.has(field))
@@ -1387,10 +1387,10 @@ const rowsOf = (
 };
 
 /**
- * Une section en lignes numérotées : pour chaque entrée, ce que l'agent en
- * dit, l'un sous l'autre, en français. `etiquettes` associe à un champ un
- * autre champ — un identifiant —, montré dans l'étiquette verte des
- * références au bord droit de la ligne plutôt que sur une ligne à lui.
+ * A section as numbered rows: for each entry, what the agent says about it,
+ * one under the other, in French. `labels` maps a field to another
+ * field — an identifier —, shown in the green tag of
+ * references at the row's right edge rather than on a row of its own.
  */
 function NumberedRecords({
   section,
@@ -1407,7 +1407,7 @@ function NumberedRecords({
   labels?: Record<string, string>;
   beside?: (entry: AssetEntry) => ReactNode;
 }) {
-  // Une seule largeur pour toutes les étiquettes de la section.
+  // A single width for all of the section's labels.
   const template = idTemplate(
     section.entries.flatMap((entry) => Object.values(labels).map((e) => entry[e])),
   );
@@ -1422,8 +1422,8 @@ function NumberedRecords({
             const labelField = labels[field];
             const id = labelField ? entry[labelField] : undefined;
             const content = id ? (
-              // L'étiquette au bord droit de la ligne : d'une entrée à
-              // l'autre, elles s'alignent en colonne.
+              // The tag at the row's right edge: from one entry to
+              // the next, they line up in a column.
               <Group gap={8} wrap="nowrap" justify="space-between">
                 <span>{value || EMPTY}</span>
                 <ReferenceTag reference={id} template={template} copyable />
@@ -1464,13 +1464,13 @@ const STORAGE_FIELDS: Fields = [
   ["SCSI_LUN", "LUN SCSI"],
 ];
 
-/** La part libre de l'anneau : un gris neutre et clair, pas celui de Mantine qui tire sur le bleu. */
+/** The ring's free part: a light neutral gray, not Mantine's, which leans blue. */
 const RING_BACKGROUND = "light-dark(#e0e0e0, var(--mantine-color-dark-4))";
 
 /**
- * La capacité d'un disque dans un anneau : sa part de la capacité totale du
- * poste, sa taille au milieu. Un disque dont l'agent ne donne pas la taille
- * garde un anneau vide et le tiret.
+ * A disk's capacity in a ring: its share of the workstation's total
+ * capacity, its size in the middle. A disk whose size the agent doesn't give
+ * keeps an empty ring and the dash.
  */
 function DiskShare({ capacity, total }: { capacity: number; total: number }) {
   const known = capacity > 0;
@@ -1492,8 +1492,8 @@ function DiskShare({ capacity, total }: { capacity: number; total: number }) {
 }
 
 /**
- * Les supports de stockage du poste. La capacité ne s'écrit pas en ligne :
- * l'anneau à droite la porte, avec la part qu'elle fait du total du poste.
+ * The workstation's storage media. The capacity isn't written inline:
+ * the ring on the right carries it, with the share it makes of the workstation's total.
  */
 function Storage({ section }: { section: AssetSection }) {
   const capacity = (entry: AssetEntry) => Number(entry["DISKSIZE"]) || 0;
@@ -1519,7 +1519,7 @@ const INPUT_FIELDS: Fields = [
   ["LAYOUT", "Disposition"],
 ];
 
-/** Les claviers, souris et autres périphériques d'entrée du poste. */
+/** The workstation's keyboards, mice and other input devices. */
 function Inputs({ section }: { section: AssetSection }) {
   return <NumberedRecords section={section} fields={INPUT_FIELDS} />;
 }
@@ -1536,8 +1536,8 @@ const MONITOR_FIELDS: Fields = [
 ];
 
 /**
- * Les moniteurs du poste. BASE64 et UUENCODE portent l'EDID brut de l'écran :
- * illisible, on ne le montre pas.
+ * The workstation's monitors. BASE64 and UUENCODE carry the screen's raw EDID:
+ * unreadable, so it isn't shown.
  */
 function Monitors({ section }: { section: AssetSection }) {
   return (
@@ -1560,8 +1560,8 @@ const PRINTER_FIELDS: Fields = [
 ];
 
 /**
- * Les imprimantes installées sur le poste. Le processeur d'impression, le
- * statut et la résolution ne sont pas montrés.
+ * The printers installed on the workstation. The print processor, the
+ * status and the resolution are not shown.
  */
 function Printers({ section }: { section: AssetSection }) {
   return (
@@ -1584,9 +1584,9 @@ const USB_FIELDS: Fields = [
 ];
 
 /**
- * Les périphériques USB branchés au poste. L'identifiant du fabricant suit
- * son nom, celui du produit le nom du périphérique, chacun en étiquette au
- * bord droit.
+ * The USB devices plugged into the workstation. The manufacturer ID follows
+ * its name, the product ID the device name, each as a tag at the
+ * right edge.
  */
 function Usb({ section }: { section: AssetSection }) {
   return (
@@ -1598,7 +1598,7 @@ function Usb({ section }: { section: AssetSection }) {
   );
 }
 
-/** Les champs du BIOS qu'on sait nommer ; les autres gardent le nom de l'agent. */
+/** The BIOS fields we can name; the others keep the agent's name. */
 const BIOS_LABELS: Record<string, string> = {
   SMANUFACTURER: "Fabricant",
   SMODEL: "Modèle",
@@ -1606,10 +1606,10 @@ const BIOS_LABELS: Record<string, string> = {
 };
 
 /**
- * Le BIOS du poste, un champ par ligne. Il n'a pas de numéro, mais ses valeurs
- * commencent là où commencent celles des lignes numérotées après la première
- * colonne — le modèle d'un processeur, par exemple : le libellé occupe le
- * rectangle, la première colonne et les deux écarts.
+ * The workstation's BIOS, one field per row. It has no number, but its values
+ * start where those of the numbered rows start after the first
+ * column — a processor's model, for example: the label takes up the
+ * rectangle, the first column and the two gaps.
  */
 function Bios({ section }: { section: AssetSection }) {
   return (
@@ -1640,12 +1640,12 @@ function Bios({ section }: { section: AssetSection }) {
 }
 
 /**
- * Les sections qui posent elles-mêmes leurs cadres gris, au lieu d'être
- * rangées dans celui de la section : leurs titres viennent hors des cadres.
+ * The sections that lay out their own gray frames, instead of being
+ * placed in the section's one: their titles come outside the frames.
  */
 export const WITHOUT_FRAME = new Set(["OPERATINGSYSTEM", "VIRTUALMACHINES"]);
 
-/** Les sections qui ont leur tableau ; les autres restent en fiches. */
+/** The sections that have their table; the others stay as records. */
 export const SECTION_TABLES: Record<string, ComponentType<{ section: AssetSection }>> = {
   ANTIVIRUS: Protections,
   BATTERIES: Battery,

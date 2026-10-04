@@ -11,12 +11,12 @@ import { BRAND_LOGOS, type BrandLogo } from "./brandLogos";
 import type { ComponentType } from "react";
 import type { Asset, AssetOsFamily, AssetProtection } from "@milo/shared";
 
-// Les logos de la liste des postes : le système après le nom, l'éditeur de la
-// protection dans sa colonne.
+// The workstation list logos: the system after the name, the protection
+// vendor in its column.
 
 const SIZE = 16;
 
-/** Un logo de marque (brandLogos.ts), à la taille des icônes Tabler. */
+/** A brand logo (brandLogos.ts), at the size of Tabler icons. */
 function Mark({
   logo,
   color,
@@ -43,7 +43,7 @@ function Mark({
 
 type TablerIcon = ComponentType<{ size?: number; style?: React.CSSProperties }>;
 
-/** Chaque famille et son logo : Tabler quand il l'a, Simple Icons sinon. */
+/** Each family and its logo: Tabler when it has it, Simple Icons otherwise. */
 const LOGOS_OS: Record<AssetOsFamily, TablerIcon | BrandLogo> = {
   windows: IconBrandWindows,
   macos: IconBrandApple,
@@ -63,8 +63,8 @@ function OsIcon({ icon: Icon, size }: { icon: TablerIcon; size: number }) {
 }
 
 /**
- * Le logo du système, gris comme le texte secondaire. À la taille des icônes
- * de la liste, sauf quand la fiche le veut plus grand.
+ * The system logo, gray like secondary text. At the size of the list
+ * icons, except when the record wants it bigger.
  */
 export function OsLogo({ os, size = SIZE }: { os: Asset["os"]; size?: number }) {
   if (!os) return null;
@@ -87,9 +87,9 @@ export function OsLogo({ os, size = SIZE }: { os: Asset["os"]; size?: number }) 
 }
 
 /**
- * Les éditeurs reconnus, lus dans le nom de la protection et dans celui de son
- * éditeur. Defender n'a pas de logo libre : il prend celui de Windows, dont il
- * fait partie.
+ * The recognized vendors, read from the protection name and from that of its
+ * vendor. Defender has no free logo: it takes Windows', which it is
+ * part of.
  */
 const PUBLISHERS: { pattern: RegExp; logo: BrandLogo | "defender" }[] = [
   { pattern: /defender|microsoft/i, logo: "defender" },
@@ -104,13 +104,13 @@ const PUBLISHERS: { pattern: RegExp; logo: BrandLogo | "defender" }[] = [
   { pattern: /trend ?micro/i, logo: BRAND_LOGOS.trendmicro },
 ];
 
-/** Le bleu de Windows, pour Defender. */
+/** Windows blue, for Defender. */
 const WINDOWS_BLUE = "#0078D4";
 
-/** Le logo de l'éditeur de la protection ; un bouclier quand on ne le connaît pas. */
+/** The protection vendor logo; a shield when it is unknown. */
 export function ProtectionLogo({ protection }: { protection: AssetProtection }) {
   const text = `${protection.name} ${protection.company}`;
-  // Bitdefender contient « defender » : les marques précises passent avant.
+  // Bitdefender contains "defender": specific brands come first.
   const found =
     PUBLISHERS.slice(1).find((e) => e.pattern.test(text)) ??
     (PUBLISHERS[0]!.pattern.test(text) ? PUBLISHERS[0] : undefined);

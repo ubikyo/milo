@@ -32,12 +32,12 @@ const SCHEME_OPTIONS: SchemeOption[] = [
   { value: "dark", label: "Sombre", icon: IconMoon },
 ];
 
-// Les options d'un Select ne portent que du texte : l'icône est retrouvée par
-// la valeur, pour la liste déroulante comme pour le champ fermé.
+// The options of a Select only carry text: the icon is looked up by the
+// value, for the dropdown as well as for the closed field.
 /**
- * L'icône d'un thème. Déclarée au niveau du module : affectée à une variable
- * dans le corps d'un composant, React y verrait un nouveau type de composant à
- * chaque rendu et remonterait son sous-arbre à chaque fois.
+ * A theme's icon. Declared at module level: assigned to a variable inside a
+ * component body, React would see a new component type on every render and
+ * remount its subtree each time.
  */
 function SchemeIcon({ value, size = 16 }: { value: string; size?: number }) {
   const Icon =
@@ -45,21 +45,21 @@ function SchemeIcon({ value, size = 16 }: { value: string; size?: number }) {
   return <Icon size={size} />;
 }
 
-// Largeur du libellé : les champs s'alignent sur la même colonne.
+// Label width: the fields align on the same column.
 const LABEL_WIDTH = 120;
 
-// Largeur des champs : celle d'un nom de mode ou de thème, et de son icône.
+// Field width: that of a mode or theme name, and its icon.
 const FIELD_WIDTH = 200;
 
-// Le retrait de la fenêtre, tout autour.
+// The modal's padding, all around.
 const PADDING = 40;
 
-// L'écart entre un libellé et son champ : l'espacement « md » de Mantine.
+// The gap between a label and its field: Mantine's "md" spacing.
 const GAP = 16;
 
 /**
- * La fenêtre se règle sur ses champs : un libellé, l'écart, le champ, et ses
- * retraits. Plus large, elle laisserait un vide à droite des champs.
+ * The modal is sized to its fields: a label, the gap, the field, and its
+ * padding. Any wider, it would leave a void to the right of the fields.
  */
 const MODAL_WIDTH = LABEL_WIDTH + GAP + FIELD_WIDTH + 2 * PADDING;
 
@@ -67,17 +67,16 @@ interface PreferencesModalProps {
   opened: boolean;
   onClose: () => void;
   user: PublicUser | null;
-  /** Les vues que le compte voit : celle d'ouverture se choisit parmi elles. */
+  /** The views the account sees: the opening view is chosen among them. */
   views: View[];
   onUpdated: (user: PublicUser) => void;
 }
 
 /**
- * Le profil. L'identité vient d'Entra et s'y modifie : elle se lit ici, et se
- * relit à chaque connexion. Le mot de passe est celui de Microsoft. Restent ce
- * que chacun règle pour lui-même — la vue d'ouverture, le thème —, qui ne
- * s'appliquent qu'à l'enregistrement : « Fermer » les laisse tels qu'ils
- * étaient.
+ * The profile. Identity comes from Entra and is edited there: it is read here,
+ * and re-read at each sign-in. The password is the Microsoft one. What remains
+ * is what each person sets for themselves — the opening view, the theme —,
+ * which only apply on save: "Fermer" leaves them as they were.
  */
 export default function PreferencesModal({
   opened,
@@ -87,26 +86,26 @@ export default function PreferencesModal({
   onUpdated,
 }: PreferencesModalProps) {
   const { colorScheme, setColorScheme } = useMantineColorScheme();
-  // La vue d'ouverture ; vide, la première.
+  // The opening view; empty, the first one.
   const [view, setView] = useState("");
   const [theme, setTheme] = useState<Scheme>("auto");
   const [busy, setBusy] = useState(false);
 
-  // Chaque ouverture repart de ce qui est en place.
+  // Each opening starts again from what is in place.
   useEffect(() => {
     if (!opened) return;
     setView(user?.default_view ?? "");
     setTheme((colorScheme ?? "auto") as Scheme);
-    // Le thème n'est relu qu'à l'ouverture : le relire pendant qu'on choisit
-    // effacerait le choix en cours.
+    // The theme is only re-read on opening: re-reading it while choosing
+    // would wipe the choice in progress.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, user]);
 
   const save = async () => {
     setBusy(true);
     try {
-      // La vue appartient au compte, et part au serveur ; le thème est celui
-      // du navigateur, que Mantine mémorise.
+      // The view belongs to the account, and goes to the server; the theme is
+      // the browser's, which Mantine remembers.
       if (view !== (user?.default_view ?? "")) onUpdated(await api.updateMe({ default_view: view }));
       setColorScheme(theme);
       onClose();
@@ -150,9 +149,9 @@ export default function PreferencesModal({
         </Group>
 
 
-        {/* Le libellé est posé à gauche du champ, et non au-dessus comme les
-            libellés de Mantine : les deux réglages s'alignent sur la même
-            colonne. */}
+        {/* The label sits to the left of the field, not above it like
+            Mantine's labels: both settings align on the same
+            column. */}
         <Stack gap="md">
           <Group gap={GAP} wrap="nowrap" align="center">
             <Text size="sm" fw={500} w={LABEL_WIDTH}>
@@ -160,8 +159,8 @@ export default function PreferencesModal({
             </Text>
             <Select
               aria-label="Vue par défaut"
-              // « La première » : celle qui ouvre le sélecteur, dans l'ordre
-              // que chacun a rangé. Une vue disparue y ramène aussi.
+              // "La première": the one that opens the selector, in the order
+              // each person arranged. A vanished view falls back to it too.
               data={[
                 { value: "first", label: "La première" },
                 ...views.map((v) => ({ value: String(v.id), label: v.name })),
@@ -190,9 +189,9 @@ export default function PreferencesModal({
                   <span>{option.label}</span>
                 </Group>
               )}
-              // « System » suit le thème du système : c'est la valeur par
-              // défaut, posée dans le thème (main.tsx) et mémorisée par
-              // Mantine ensuite.
+              // "System" follows the system theme: it is the default value,
+              // set in the theme (main.tsx) and remembered by Mantine
+              // afterwards.
               value={theme}
               onChange={(value) => value && setTheme(value as Scheme)}
               allowDeselect={false}

@@ -1,18 +1,16 @@
-// La copie d'une liste, avec tout ce qu'elle porte.
+// Copying a list, with everything it carries.
 //
-// Copier une liste ne se résume pas à recopier une ligne : la liste tient ses
-// cartes, qui tiennent leurs membres, leurs étiquettes et leurs checklists,
-// qui tiennent à leur tour leurs éléments et les membres de chacun. Sept
-// tables, donc, parcourues une fois pour toutes ici plutôt qu'une requête par
-// carte depuis la route.
+// Copying a list is more than copying a row: the list holds its cards, which
+// hold their members, labels and checklists, which in turn hold their items
+// and each one's members. Seven tables, then, walked once and for all here
+// rather than one query per card from the route.
 //
-// Ce qui ne se copie pas : le fil des cartes. Un commentaire porte un auteur
-// et une date ; le recopier fabriquerait une conversation qui n'a pas eu lieu.
-// La copie s'ouvre sur son propre mot de création, comme une carte neuve.
+// What is not copied: the cards' thread. A comment carries an author and a
+// date; copying it would fabricate a conversation that did not take place.
+// The copy opens with its own creation note, like a new card.
 //
-// Les pièces jointes, elles, suivent : ce sont des pièces au dossier, pas une
-// conversation. Seules les lignes sont recopiées — les deux cartes citent le
-// même fichier.
+// Attachments, however, follow: they are documents on file, not a
+// conversation. Only the rows are copied — both cards cite the same file.
 
 import type { Id } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
@@ -31,7 +29,7 @@ import { boardContext, contexts } from "./contexts.js";
 import { keyInBoard } from "./lists.js";
 import { reorderTaskCards, taskCards, taskLists } from "./tasks.js";
 
-// --- Lectures de la source -------------------------------------------------
+// --- Reads from the source ------------------------------------------------
 
 const cardsOfList = selection<TaskCardRow>(
   "SELECT * FROM task_cards WHERE list_id = ? ORDER BY position, id",
@@ -59,14 +57,14 @@ const cardAttachments = selection<AttachmentRow>(
   "SELECT * FROM card_attachments WHERE card_id = ? ORDER BY position, id",
 );
 
-// --- Écritures de la copie -------------------------------------------------
+// --- Writes of the copy ----------------------------------------------------
 
 const createList = mutation(
   `INSERT INTO task_lists (board_id, name, position, color, list_key, created_at)
    VALUES (?, ?, ?, ?, ?, ?)`,
 );
-// Ni l'une ni l'autre ne passe par `taskCards.create`, qui ne les prend pas :
-// elles se posent juste après l'insertion.
+// Neither goes through `taskCards.create`, which does not take them: they are
+// set right after the insertion.
 const setDescription = mutation("UPDATE task_cards SET description = ? WHERE id = ?");
 const setDue = mutation(
   `UPDATE task_cards SET due_date = ?, start_date = ?, due_form = ?, recurrence = ?, reminder = ?
@@ -86,10 +84,10 @@ const createItem = mutation(
 const linkItemMember = mutation(
   "INSERT OR IGNORE INTO checklist_item_members (item_id, user_id) VALUES (?, ?)",
 );
-// La copie cite le même fichier que l'original : rien n'est recopié sur le
-// disque, et le fichier ne s'en va qu'avec la dernière ligne qui le cite
+// The copy cites the same file as the original: nothing is copied on disk,
+// and the file goes away only with the last row citing it
 // (repositories/attachments.ts).
-// Les couvertures se recopient de même, dans leur ordre.
+// Covers are copied the same way, in their order.
 const setRotation = mutation("UPDATE task_cards SET cover_interval = ? WHERE id = ?");
 const carryCovers = mutation(
   `INSERT INTO card_covers (card_id, file, name, size, position, created_at)
@@ -100,11 +98,11 @@ const carryAttachment = mutation(
    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 );
 
-// --- Étiquettes d'un tableau à l'autre --------------------------------------
-// Une étiquette appartient à son tableau. Copier vers un autre tableau ne peut
-// donc pas reprendre le lien tel quel : on cherche là-bas la même étiquette,
-// au nom et à la couleur, et on la crée si elle manque. Sans cela, les cartes
-// arriveraient nues et on ne saurait plus ce qu'elles portaient.
+// --- Labels from one board to another ---------------------------------------
+// A label belongs to its board. Copying to another board therefore cannot take
+// the link as is: we look there for the same label, by name and color, and
+// create it if it is missing. Without this, cards would arrive bare and we
+// would no longer know what they carried.
 
 const twinLabel = selection<LabelRow>(
   `SELECT * FROM labels
@@ -119,8 +117,8 @@ const createLabel = mutation(
 );
 
 /**
- * L'étiquette du tableau d'accueil qui correspond à celle-ci. Dans le tableau
- * d'origine, c'est elle-même ; ailleurs, sa jumelle, créée au besoin.
+ * The destination board's label that matches this one. In the source board,
+ * it is itself; elsewhere, its twin, created if needed.
  */
 const matchingLabel = (
   label: LabelRow,
@@ -150,28 +148,28 @@ const matchingLabel = (
   return id;
 };
 
-// --- Une carte --------------------------------------------------------------
+// --- A card -----------------------------------------------------------------
 
-/** Où va la copie d'une carte, et ce qui l'accompagne. */
+/** Where a card's copy goes, and what accompanies it. */
 interface CardCopy {
   listId: Id;
   rank: number;
-  /** Le tableau de la liste d'accueil : il tient les étiquettes. */
+  /** The destination list's board: it holds the labels. */
   boardId: Id;
   text: string;
   userId: Id;
   timestamp: string;
-  /** Les étiquettes déjà appariées d'un tableau à l'autre. */
+  /** Labels already matched from one board to another. */
   labels: Map<Id, Id>;
 }
 
-/** Recopie une carte et tout ce qu'elle porte ; rend l'identifiant de la copie. */
+/** Copies a card and everything it carries; returns the copy's identifier. */
 const copyCard = (card: TaskCardRow, copy: CardCopy): Id => {
   const { listId, rank, boardId, text, userId, timestamp, labels } = copy;
   const separator = card.kind === "separator";
 
-  // La référence n'est pas celle de l'original : deux cartes ne peuvent pas
-  // porter le même repère. Un séparateur n'en a pas.
+  // The reference is not the original's: two cards cannot carry the same
+  // marker. A separator has none.
   const phoneNumber = separator ? 0 : nextReference();
   const cardId = Number(
     taskCards.create
@@ -181,8 +179,8 @@ const copyCard = (card: TaskCardRow, copy: CardCopy): Id => {
         rank,
         phoneNumber,
         card.kind,
-        // Dans son tableau, la copie garde le contexte de l'original ; ailleurs,
-        // elle prend le premier du tableau d'accueil.
+        // Within its board, the copy keeps the original's context; elsewhere,
+        // it takes the destination board's first.
         boardContext(
           boardId,
           undefined,
@@ -193,7 +191,7 @@ const copyCard = (card: TaskCardRow, copy: CardCopy): Id => {
   );
 
   if (card.description) setDescription.run(card.description, cardId);
-  // L'échéance suit la carte : une copie a la même date à tenir.
+  // The due date follows the card: a copy has the same date to meet.
   if (card.due_date) {
     setDue.run(
       card.due_date,
@@ -223,8 +221,8 @@ const copyCard = (card: TaskCardRow, copy: CardCopy): Id => {
       attachment.name,
       attachment.mime,
       attachment.size,
-      // La copie est déposée par celui qui copie, maintenant : c'est lui qui
-      // l'apporte dans cette liste-ci.
+      // The copy is dropped by whoever copies, now: they are the one bringing
+      // it into this list.
       userId,
       timestamp,
       attachment.position,
@@ -254,9 +252,8 @@ const copyCard = (card: TaskCardRow, copy: CardCopy): Id => {
     }
   }
 
-  // Le fil s'ouvre comme celui de n'importe quelle carte neuve : la copie a
-  // bien été créée maintenant. Un séparateur n'a pas de fiche, donc pas de
-  // fil.
+  // The thread opens like that of any new card: the copy was indeed created
+  // now. A separator has no sheet, hence no thread.
   if (!separator) {
     cardComments.createSystem.run(
       cardId,
@@ -270,34 +267,34 @@ const copyCard = (card: TaskCardRow, copy: CardCopy): Id => {
   return cardId;
 };
 
-// --- La copie ---------------------------------------------------------------
+// --- The copy ---------------------------------------------------------------
 
 export interface ListCopy {
-  /** La liste d'origine. */
+  /** The source list. */
   sourceId: Id;
-  /** Le tableau d'accueil ; ce peut être celui de la liste d'origine. */
+  /** The destination board; it may be the source list's board. */
   boardId: Id;
-  /** Le nom de la copie. */
+  /** The copy's name. */
   name: string;
-  /** La couleur de la liste d'origine, que la copie reprend. */
+  /** The source list's color, which the copy takes over. */
   color: string;
-  /** Qui copie : c'est l'auteur du mot qui ouvre le fil de chaque carte. */
+  /** Who copies: they are the author of the note that opens each card's thread. */
   userId: Id;
 }
 
 /**
- * Copie la liste et rend l'identifiant de la copie. Tout passe ou rien : une
- * erreur au milieu ne doit pas laisser une liste à moitié garnie.
+ * Copies the list and returns the copy's identifier. Everything passes or
+ * nothing: an error in the middle must not leave a half-filled list.
  */
 export const copyTaskList = transaction((copy: ListCopy): Id => {
   const { sourceId, boardId, name, color, userId } = copy;
   const timestamp = now();
 
-  // La copie se range à la fin du tableau d'accueil, comme une liste qu'on
-  // viendrait d'y créer — y compris quand c'est le tableau d'origine.
+  // The copy is placed at the end of the destination board, like a list just
+  // created there — including when it is the source board.
   const { next } = taskLists.nextPosition(boardId);
-  // Dans son tableau, la copie reste dans le widget de l'original ; ailleurs,
-  // elle va au premier widget « Tâches » du tableau d'accueil.
+  // Within its board, the copy stays in the original's widget; elsewhere,
+  // it goes to the destination board's first "Tâches" widget.
   const source = taskLists.byId.get(sourceId);
   const key = keyInBoard(
     boardId,
@@ -308,8 +305,8 @@ export const copyTaskList = transaction((copy: ListCopy): Id => {
     createList.run(boardId, name, next, color, key, timestamp).lastInsertRowid,
   );
 
-  // Les étiquettes déjà appariées d'un tableau à l'autre, pour ne les chercher
-  // — et ne les créer — qu'une fois par liste copiée.
+  // Labels already matched from one board to another, so as to look them up
+  // — and create them — only once per copied list.
   const labels = new Map<Id, Id>();
 
   for (const [rank, card] of cardsOfList.all(sourceId).entries()) {
@@ -320,8 +317,8 @@ export const copyTaskList = transaction((copy: ListCopy): Id => {
 });
 
 /**
- * Duplique une carte dans sa propre liste, juste après l'original, et rend
- * l'identifiant de la copie : une base pour une carte voisine.
+ * Duplicates a card in its own list, right after the original, and returns
+ * the copy's identifier: a basis for a neighboring card.
  */
 export const duplicateTaskCard = transaction((cardId: Id, userId: Id): Id => {
   const card = taskCards.byId.get(cardId);
@@ -334,14 +331,14 @@ export const duplicateTaskCard = transaction((cardId: Id, userId: Id): Id => {
     listId: list.id,
     rank: taskCards.nextPosition(list.id).next,
     boardId: list.board_id,
-    // Un séparateur tranche toujours au même endroit : son libellé reste.
+    // A separator always splits in the same place: its label stays.
     text: separator ? card.text : `${card.text} (copie)`,
     userId,
     timestamp: now(),
     labels: new Map(),
   });
 
-  // La copie se range juste sous l'original, pas au bout de la liste.
+  // The copy is placed right under the original, not at the end of the list.
   const order = cardsOfList
     .all(list.id)
     .map((c) => c.id)

@@ -1,6 +1,6 @@
-// Les notifications de la personne connectée : le tiroir « Notifications »
-// les lit, les supprime une à une ou toutes d'un coup. Chacun ne voit et ne
-// supprime que les siennes.
+// The signed-in person's notifications: the "Notifications" drawer reads
+// them, deletes them one by one or all at once. Everyone only sees and
+// deletes their own.
 
 import { Router } from "express";
 import { notifications } from "../repositories/notifications.js";

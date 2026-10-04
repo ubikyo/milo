@@ -1,6 +1,6 @@
-// Les tableaux d'une vue : ses onglets. Un tableau contient ses projets et ses
-// listes de tâches, et ses sections de widgets (routes/board-widgets.ts). Tout
-// ce qu'il montre appartient à l'un de ses contextes (routes/contexts.ts).
+// The boards of a view: its tabs. A board contains its projects and task
+// lists, and its widget sections (routes/board-widgets.ts). Everything it
+// shows belongs to one of its contexts (routes/contexts.ts).
 
 import { Router } from "express";
 import type { Request } from "express";
@@ -25,16 +25,16 @@ import { receivedOrder } from "../repositories/reorder.js";
 import { inOrderOf, userTabOrders } from "../repositories/tab-orders.js";
 import { openView } from "../repositories/views.js";
 
-/** Un réglage arrive en booléen ; la base le range en 0 ou 1. */
+/** A setting arrives as a boolean; the database stores it as 0 or 1. */
 const flag = (value: unknown, defaultValue: 0 | 1): 0 | 1 =>
   value === undefined ? defaultValue : (Number(Boolean(value)) as 0 | 1);
 
-/** Les tableaux d'une vue se rangent ensemble, compte par compte. */
+/** A view's boards are arranged together, account by account. */
 const viewScope = (viewId: Id) => `boards:${viewId}`;
 
 /**
- * Un tableau tel que ce compte le voit : son « Hérité » et le contexte qu'il
- * regarde sont les siens. Un tableau privé n'a que sa structure publique
+ * A board as this account sees it: its "Hérité" and the context it looks at
+ * are its own. A private board only has its public structure
  * (repositories/layouts.ts).
  */
 export const boardForAccount = (board: BoardRow, userId: Id): Board => ({
@@ -46,7 +46,7 @@ export const boardForAccount = (board: BoardRow, userId: Id): Board => ({
     Boolean(board.is_private) || !personalLayouts.personal(userId, boardScope(board.id)),
 });
 
-/** Les tableaux d'une vue que ce compte voit, dans son ordre à lui. */
+/** The boards of a view that this account sees, in their own order. */
 const visibleBoards = (viewId: Id, userId: Id): Board[] =>
   inOrderOf(userId, viewScope(viewId), boards.visibleIn.all(viewId, userId)).map((b) =>
     boardForAccount(b, userId),
@@ -59,10 +59,10 @@ const deleteBoardProjects = mutation("DELETE FROM projects WHERE board_id = ?");
 const deleteBoardCategories = mutation("DELETE FROM categories WHERE board_id = ?");
 
 /**
- * Suppression en cascade : les projets du tableau partent d'abord (leurs
- * commentaires et leurs acteurs suivent par clé étrangère), puis ses
- * catégories — un projet référence sa catégorie —, puis le tableau, qui
- * emporte ses listes, ses étiquettes, ses sections et ses widgets.
+ * Cascade deletion: the board's projects go first (their comments and actors
+ * follow through the foreign key), then its categories — a project
+ * references its category —, then the board, which takes its lists, labels,
+ * sections and widgets with it.
  */
 const deleteCascade = transaction((id: Id): void => {
   deleteBoardProjects.run(id);
@@ -72,9 +72,9 @@ const deleteCascade = transaction((id: Id): void => {
 });
 
 /**
- * Un tableau supprimé, et l'annonce de ce qu'il emporte : à ceux qui
- * suivaient ses listes ou ses cartes, et aux acteurs de chacun de ses
- * projets. Les destinataires se lisent avant la suppression.
+ * A deleted board, and the announcement of what it takes with it: to those
+ * who followed its lists or cards, and to the actors of each of its
+ * projects. Recipients are read before the deletion.
  */
 export const deleteBoard = (board: BoardRow, req: Request): void => {
   const recipients = concerned.board(board.id);
@@ -105,9 +105,9 @@ export const deleteBoard = (board: BoardRow, req: Request): void => {
 };
 
 /**
- * Un tableau neuf dans une vue, à la suite des autres, sans contexte : on en
- * ajoute depuis sa liste. Sans premier widget, il naît sans section : son
- * écran vide propose d'en créer une.
+ * A new board in a view, after the others, with no context: they are added
+ * from its list. With no first widget, it is born with no section: its empty
+ * screen offers to create one.
  */
 export const createBoard = transaction(
   (viewId: Id, name: string, firstWidget: string | null): Id => {
@@ -120,8 +120,8 @@ export const createBoard = transaction(
 
 export const boardRoutes = Router();
 
-// Supprimer un tableau emporte ses listes, ses cartes, ses étiquettes, ses
-// projets, ses catégories et ses widgets.
+// Deleting a board takes its lists, cards, labels, projects, categories and
+// widgets with it.
 boardRoutes.use(followLists);
 boardRoutes.use(
   touch("boards", "board-widgets", "task-lists", "labels", "projects", "categories", "project-labels"),
@@ -142,9 +142,9 @@ boardRoutes.post("/", (req, res) => {
   res.status(201).json(boardForAccount(boards.byId.get(id)!, req.user.id));
 });
 
-// Ranger les onglets. Déclaré avant « /:id », sinon « reorder » serait pris
-// pour un identifiant. L'ordre est celui de ce compte seulement
-// (repositories/tab-orders.ts) : le voir suffit pour le ranger.
+// Arrange the tabs. Declared before "/:id", otherwise "reorder" would be
+// taken for an id. The order is this account's only
+// (repositories/tab-orders.ts): seeing it is enough to arrange it.
 boardRoutes.put("/reorder", (req, res) => {
   const openedView = openView(req.body.view_id, req.user);
   const order = receivedOrder(
@@ -156,9 +156,9 @@ boardRoutes.put("/reorder", (req, res) => {
   res.json(visibleBoards(openedView.id, req.user.id));
 });
 
-// Un tableau seul : sa vue surtout, où l'application doit se placer pour
-// ouvrir ce qu'il contient — un projet, une carte, un widget trouvé par la
-// recherche.
+// A single board: its view above all, where the application must position
+// itself to open what it contains — a project, a card, a widget found by
+// search.
 boardRoutes.get("/:id", (req, res) => {
   res.json(boardForAccount(openBoard(req.params.id, req.user), req.user.id));
 });
@@ -168,9 +168,9 @@ boardRoutes.put("/:id", (req, res) => {
   const existing = openBoard(req.params.id, req.user);
   const name = requireText(req.body.name ?? existing.name, "Le nom du tableau est requis");
   const isPrivate = flag(req.body.is_private, existing.is_private);
-  // Un tableau n'a de propriétaire que privé : le fermer, c'est se le
-  // réserver ; le rouvrir le rend à tous, sans propriétaire. Seul celui qui
-  // l'a fermé le voit encore, et peut donc le rouvrir.
+  // A board only has an owner when private: closing it means reserving it
+  // for oneself; reopening it gives it back to everyone, with no owner. Only
+  // whoever closed it still sees it, and so can reopen it.
   const owner = isPrivate ? (existing.is_private ? existing.owner_id : req.user.id) : null;
   const all = requireText(
     req.body.all_contexts_label ?? existing.all_contexts_label,
@@ -193,10 +193,10 @@ boardRoutes.delete("/:id", (req, res) => {
   res.status(204).end();
 });
 
-// « Hérité » d'un tableau : sa structure publique, ou sa propre copie. Le
-// décocher part d'une copie de la publique — sections et widgets — ; le
-// recocher efface la sienne. Le voir suffit : on ne règle que pour soi. Un
-// tableau privé n'a que sa structure publique.
+// A board's "Hérité": its public structure, or its own copy. Unchecking it
+// starts from a copy of the public one — sections and widgets —; checking it
+// again erases one's own. Seeing it is enough: it is only set for oneself. A
+// private board only has its public structure.
 boardRoutes.get("/:id/layout", (req, res) => {
   const board = openBoard(req.params.id, req.user);
   res.json({ inherited: boardForAccount(board, req.user.id).inherited } as LayoutState);

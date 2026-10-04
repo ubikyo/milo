@@ -1,7 +1,7 @@
-// Les vues : ce que le sélecteur du bas propose. Chacune porte ses tableaux
-// (repositories/boards.ts). Une vue privée ne se montre qu'à son auteur ; ses
-// tableaux, avec elle. Une vue ne se voit que depuis son workspace : c'est ce
-// qui les isole, tout ce qu'un tableau porte suivant sa vue.
+// Views: what the bottom selector offers. Each carries its boards
+// (repositories/boards.ts). A private view is only shown to its author, and
+// so are its boards. A view is only visible from its workspace: that is what
+// isolates them, since everything a board carries follows its view.
 
 import type { Id } from "@milo/shared";
 import { mutation, scalar, selection } from "../db/query.js";
@@ -12,7 +12,7 @@ export const VIEW_NOT_FOUND = "Vue introuvable";
 
 export const views = {
   byId: selection<ViewRow>("SELECT * FROM views WHERE id = ?"),
-  /** Celles d'un workspace que ce compte voit : (workspace, compte). */
+  /** Those of a workspace that this account sees: (workspace, account). */
   visibleTo: selection<ViewRow>(
     `SELECT * FROM views WHERE workspace_id = ? AND (is_private = 0 OR owner_id = ?)
      ORDER BY position, id`,
@@ -29,8 +29,8 @@ export const views = {
 };
 
 /**
- * Une vue se voit depuis son workspace seulement. Privée, elle n'est qu'à son
- * auteur ; sans auteur, elle est ouverte à tous.
+ * A view is only visible from its workspace. When private, it belongs to
+ * its author alone; with no author, it is open to everyone.
  */
 export const isViewVisible = (view: ViewRow | undefined, user: UserRow): boolean =>
   Boolean(view) &&
@@ -38,8 +38,8 @@ export const isViewVisible = (view: ViewRow | undefined, user: UserRow): boolean
   (!view?.is_private || view.owner_id === user.id);
 
 /**
- * La vue demandée, si elle existe et que cette personne peut la voir. Sinon
- * « introuvable » : dire « interdit » reviendrait à confirmer son existence.
+ * The requested view, if it exists and this person may see it. Otherwise
+ * "not found": saying "forbidden" would confirm that it exists.
  */
 export const openView = (id: unknown, user: UserRow): ViewRow => {
   const view = views.byId.get(id);
@@ -47,5 +47,5 @@ export const openView = (id: unknown, user: UserRow): ViewRow => {
   return view;
 };
 
-/** L'identifiant d'une vue que ce compte voit, ou « null ». */
+/** The id of a view this account sees, or "null". */
 export const visibleView = (id: Id, user: UserRow): boolean => isViewVisible(views.byId.get(id), user);

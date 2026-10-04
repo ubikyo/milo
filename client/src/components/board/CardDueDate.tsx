@@ -24,13 +24,13 @@ import {
 import { fieldWidth, textWidth } from "../../lib/fieldWidth";
 import { GREEN, RED, STRONG_TEXT } from "../../themes/colors";
 
-/** L'échéance d'une carte, telle que la fiche la saisit. */
+/** A card's due date, as the form captures it. */
 export interface Due {
-  /** Une date seule, ou une période : elle s'enregistre avec la carte. */
+  /** A single date, or a period: it is saved with the card. */
   shape: DueShape;
-  /** Le début de la période, « AAAA-MM-JJ » ; vide pour une date seule. */
+  /** The period's start, "YYYY-MM-DD"; empty for a single date. */
   start: string;
-  /** La fin, en ISO ; minuit à l'heure locale vaut « sans heure » (lib/echeance.ts). */
+  /** The end, in ISO; midnight local time means "no time" (lib/due.ts). */
   end: string;
   recurrence: Recurrence;
   reminder: Reminder;
@@ -44,16 +44,16 @@ export const EMPTY_DUE: Due = {
   reminder: "",
 };
 
-/** La largeur du statut : tous les badges la prennent, « Bientôt » comme « En retard ». */
+/** The status width: all badges take it, "Bientôt" as well as "En retard". */
 const STATUS_WIDTH = 98;
 
-// Les champs de date et d'heure ne prennent que leur largeur : le texte le plus
-// long qu'ils montrent, à la taille des champs « xs » (12 px), et RETRAIT_CHAMP
-// de part et d'autre. Ni bordure (CardDueDate.module.css) ni icône : Mantine
-// masque l'horloge du champ d'heure.
+// The date and time fields only take their own width: the longest text
+// they show, at the size of the "xs" fields (12 px), plus FIELD_INSET
+// on each side. No border (CardDueDate.module.css) and no icon: Mantine
+// hides the clock of the time field.
 const FIELD_SIZE = 12;
 
-/** L'air de part et d'autre de la valeur, dans le champ. */
+/** The room on either side of the value, inside the field. */
 const FIELD_INSET = 5;
 
 const widthOf = (...texts: string[]): number =>
@@ -61,16 +61,16 @@ const widthOf = (...texts: string[]): number =>
   2 * FIELD_INSET;
 
 /**
- * Un petit choix discret, comme le type de jalons à droite de la progression
- * d'un projet : sans cadre tant qu'on ne le survole pas, à la largeur de ce
- * qu'il montre.
+ * A small discreet picker, like the milestone type to the right of a
+ * project's progress: frameless until hovered, as wide as what
+ * it shows.
  */
 interface SmallChoiceProps<T extends string> {
   data: readonly { value: T; label: string }[];
   value: T;
   onChange: (value: T) => void;
   label: string;
-  /** Le nom écrit à gauche du choix ; à défaut, son libellé. */
+  /** The name written to the left of the picker; by default, its label. */
   name?: string;
   disabled?: boolean;
 }
@@ -83,12 +83,12 @@ export function SmallChoice<T extends string>({
   name = label,
   disabled,
 }: SmallChoiceProps<T>) {
-  // Mantine refuse une valeur vide : « Jamais » et « Aucun » passent par une clé.
+  // Mantine refuses an empty value: "Jamais" and "Aucun" go through a key.
   const EMPTY = "-";
   const selected = data.find((d) => d.value === value)?.label ?? "";
   return (
-    // Le nom à gauche, au contraste plein — blanc sur le sombre — : il se lit
-    // d'abord, la valeur grise ensuite.
+    // The name on the left, in full contrast — white on dark —: it is read
+    // first, the gray value after.
     <Group gap={4} wrap="nowrap" align="center">
       <Text span c={STRONG_TEXT} style={{ whiteSpace: "nowrap", fontSize: 11 }}>
         {name}
@@ -118,9 +118,9 @@ export function SmallChoice<T extends string>({
 }
 
 /**
- * Un mot entre deux champs — « du 05/10 au 12/10 à 17:00 » : la ligne se lit
- * comme une phrase. Collé à ses voisins, l'écart de la ligne ne s'y applique
- * pas ; l'air vient du retrait des champs eux-mêmes.
+ * A word between two fields — "du 05/10 au 12/10 à 17:00": the row reads
+ * like a sentence. Stuck to its neighbors, the row's gap does not apply
+ * to it; the spacing comes from the fields' own inset.
  */
 function LinkRecord({ word }: { word: string }) {
   return (
@@ -137,7 +137,7 @@ function LinkRecord({ word }: { word: string }) {
   );
 }
 
-/** La date (« AAAA-MM-JJ ») et l'heure (« HH:mm », vide à minuit) d'une fin ISO. */
+/** The date ("YYYY-MM-DD") and time ("HH:mm", empty at midnight) of an ISO end. */
 const split = (end: string): { day: string; hour: string } => {
   const d = dayjs(end);
   if (!end || !d.isValid()) return { day: "", hour: "" };
@@ -151,10 +151,10 @@ const assemble = (day: string, hour: string): string =>
   day ? dayjs(`${day} ${hour || "00:00"}`).toISOString() : "";
 
 /**
- * L'échéance d'une carte, au-dessus de son titre. À droite de l'intitulé, sur
- * une ligne : la forme — « À partir du, jusqu'à » ou « Jusqu'à » seul —, la
- * récurrence et le rappel. Dessous, les dates : le début s'il y en a un, puis
- * le jour et l'heure de la fin. L'heure est facultative.
+ * A card's due date, above its title. To the right of the label, on one
+ * row: the form — "À partir du, jusqu'à" or "Jusqu'à" alone —, the
+ * recurrence and the reminder. Below, the dates: the start if there is
+ * one, then the day and time of the end. The time is optional.
  */
 interface CardDueDateProps {
   value: Due;
@@ -162,8 +162,8 @@ interface CardDueDateProps {
   onRemove: () => void;
   readOnly?: boolean;
   /**
-   * Une date et son heure seulement, sans forme, récurrence ni rappel : celle
-   * d'un ticket. La corbeille n'y paraît qu'une date posée.
+   * A date and its time only, with no form, recurrence or reminder: that
+   * of a ticket. The trash only appears on a set date.
    */
   simple?: boolean;
 }
@@ -186,9 +186,9 @@ export default function CardDueDate({
     <div>
       <Group justify="space-between" align="flex-end" wrap="nowrap">
         {simple ? (
-          // Dans un bloc, comme Mantine pose le libellé d'un champ : sa ligne
-          // prend alors la hauteur de celle du texte, et la ligne d'échéance
-          // tombe au niveau du champ voisin — le statut d'une demande.
+          // In a block, as Mantine places a field's label: its row
+          // then takes the height of the text row, and the due date row
+          // lands level with the neighboring field — a request's status.
           <div>
             <Input.Label>Échéance</Input.Label>
           </div>
@@ -200,9 +200,9 @@ export default function CardDueDate({
             <SmallChoice
               data={DUE_SHAPES}
               value={mode}
-              // Une date seule n'a pas de début. Passée en période, sa date en
-              // devient le début ; la fin la garde aussi, le temps d'en choisir
-              // une autre — sans fin, l'échéance ne s'enregistrerait pas.
+              // A single date has no start. Switched to a period, its date
+              // becomes the start; the end keeps it too, while another is being
+              // chosen — without an end, the due date would not be saved.
               onChange={(shape) =>
                 change(
                   shape === "date"
@@ -232,10 +232,10 @@ export default function CardDueDate({
         )}
       </Group>
 
-      {/* Une ligne, comme celle d'une catégorie dans le tiroir d'un widget :
-          le début, la fin et son heure, l'état, et de quoi la retirer. */}
-      {/* Les champs n'ont pas de retrait : c'est la ligne qui pose le
-          premier à RETRAIT_NOM de son bord. */}
+      {/* A row, like that of a category in a widget drawer:
+          the start, the end and its time, the state, and a way to remove it. */}
+      {/* The fields have no inset: the row places the
+          first one at NAME_INSET from its edge. */}
       <Group
         gap="xs"
         wrap="nowrap"
@@ -243,11 +243,11 @@ export default function CardDueDate({
         style={{
           ...rowStyle(0, 1, false),
           paddingLeft: NAME_INSET,
-          // Seule, à côté d'un champ ordinaire — le statut d'une demande —,
-          // la ligne en prend la hauteur pour tomber à son niveau.
+          // Alone, next to an ordinary field — a request's status —,
+          // the row takes its height to land level with it.
           ...(simple && {
-            // La hauteur d'un champ « sm » : sa variable, Mantine ne la pose que
-            // sur ses champs.
+            // The height of an "sm" field: its variable, which Mantine only sets
+            // on its fields.
             height: "calc(2.25rem * var(--mantine-scale))",
             paddingBlock: 0,
           }),
@@ -308,16 +308,16 @@ export default function CardDueDate({
           }}
           w={widthOf("00:00")}
         />
-        {/* L'état et le bouton se calent au bout de la ligne. */}
+        {/* The state and the button sit at the end of the row. */}
         <div style={{ flex: 1 }} />
-        {/* L'état : en retard, bientôt, ou à venir. */}
+        {/* The state: late, soon, or upcoming. */}
         <Box
           w={STATUS_WIDTH}
           style={{ flexShrink: 0, display: "flex", justifyContent: "center" }}
         >
           {state === "none" ? (
-            // Loin encore : le vert de ce qui va bien, comme une carte
-            // terminée.
+            // Still far off: the green of what is going well, like a completed
+            // card.
             day && (
               <Badge color={GREEN} variant="filled" radius="sm" fullWidth>
                 À venir

@@ -3,22 +3,22 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
-  // Les ports sont publiés par Docker (« docker run -p ») et non redirigés par
-  // VS Code : sa redirection se lie à 127.0.0.1 de la machine hôte, et rien
-  // venant du réseau local ne peut l'atteindre — ce dont un agent
-  // d'inventaire, qui tourne sur un autre poste, a justement besoin. Le
-  // réglage « remote.localPortHost » qui devrait lever cette limite n'est pas
-  // respecté pour les conteneurs de développement
+  // Ports are published by Docker ("docker run -p") and not forwarded by
+  // VS Code: its forwarding binds to 127.0.0.1 of the host machine, and
+  // nothing from the local network can reach it — which an inventory agent,
+  // running on another machine, precisely needs. The
+  // "remote.localPortHost" setting that should lift this limit is not
+  // honored for dev containers
   // (microsoft/vscode-remote-release#11131).
   //
-  // Les deux processus écoutent déjà sur toutes les interfaces à l'intérieur
-  // du conteneur : Vite par « host: true » (client/vite.config.ts), Express
-  // parce que « listen » sans hôte le fait par défaut.
+  // Both processes already listen on all interfaces inside the
+  // container: Vite through "host: true" (client/vite.config.ts), Express
+  // because "listen" without a host does so by default.
   "appPort": ["5273:5273", "3001:3001"],
   "portsAttributes": {
-    // « ignore » empêche VS Code de rouvrir par-dessus une redirection à lui :
-    // le port de l'hôte étant déjà pris par Docker, il se rabattrait en
-    // silence sur le port suivant.
+    // "ignore" prevents VS Code from reopening a forward of its own on top:
+    // since the host port is already taken by Docker, it would silently
+    // fall back to the next port.
     "5273": { "label": "Frontend (Vite)", "onAutoForward": "ignore" },
     "3001": { "label": "API (Express)", "onAutoForward": "ignore" }
   },

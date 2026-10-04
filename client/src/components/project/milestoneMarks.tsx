@@ -1,33 +1,33 @@
 import type { Milestone } from "@milo/shared";
 
-// Le retrait du rail dans le curseur de Mantine (« padding-inline » de sa
-// racine, qui vaut la taille « md » du curseur) : les libellés s'alignent sur
-// le rail, pas sur la boîte.
+// The rail's inset in Mantine's slider ("padding-inline" of its
+// root, equal to the slider's "md" size): labels align with the
+// rail, not with the box.
 const RAIL_INSET = 8;
 
-// Hauteur de la rangée des libellés, et leur taille.
+// Height of the labels row, and their size.
 const LABELS_HEIGHT = 16;
 const LABEL_SIZE = 10;
 
 /**
- * Les marques d'un curseur d'avancement, tirées des jalons : les points
- * seulement. Les libellés s'écrivent à part (MilestoneLabels), Mantine ne
- * sachant que les centrer sur leur marque.
+ * The marks of a progress slider, drawn from the milestones: the dots
+ * only. The labels are written separately (MilestoneLabels), Mantine
+ * only knowing how to center them on their mark.
  */
 export const milestoneMarks = (milestones: Milestone[]) =>
   milestones.filter((j) => j.label).map((j) => ({ value: j.value }));
 
 /**
- * Les libellés des jalons, sous le curseur. Chacun part de sa marque vers la
- * droite ; quand le texte est trop long pour tenir avant le bout du rail, il
- * recule juste assez pour s'y arrêter.
+ * The milestone labels, under the slider. Each starts from its mark toward the
+ * right; when the text is too long to fit before the end of the rail, it
+ * moves back just enough to stop there.
  *
- * Rien ne se mesure : chaque libellé vit dans une boîte qui va de sa marque au
- * bout du rail, rangée de droite à gauche (« row-reverse ») et tassée vers sa
- * fin (« flex-end », soit la gauche). Tant que le texte tient, il se cale donc
- * à gauche, sur la marque. Dès qu'il déborde, « safe » renonce à cet
- * alignement pour celui du début de la rangée — la droite : le texte finit au
- * bout du rail et dépasse vers la gauche.
+ * Nothing is measured: each label lives in a box that goes from its mark to the
+ * end of the rail, laid out right to left ("row-reverse") and packed toward its
+ * end ("flex-end", i.e. the left). As long as the text fits, it therefore sits
+ * on the left, on the mark. As soon as it overflows, "safe" gives up that
+ * alignment for that of the row's start — the right: the text ends at the
+ * end of the rail and extends toward the left.
  */
 export function MilestoneLabels({ milestones }: { milestones: Milestone[] }) {
   const written = milestones.filter((j) => j.label);

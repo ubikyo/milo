@@ -1,5 +1,5 @@
-// Les dépendances entre cartes. Une liaison s'écrit une fois, de sa source
-// vers sa cible ; chaque carte la lit depuis son côté (shared, dependances.ts).
+// Dependencies between cards. A link is written once, from its source to its
+// target; each card reads it from its own side (shared, dependencies.ts).
 
 import { LINKS_PAGE_SIZE, TASK_REFERENCE_PREFIX, relationFromSide } from "@milo/shared";
 import type { CardLink, Id, LinkCandidates, LinkKind } from "@milo/shared";
@@ -18,8 +18,8 @@ export interface CardLinkRow {
 export const cardLinks = {
   byId: selection<CardLinkRow>("SELECT * FROM card_links WHERE id = ?"),
   /**
-   * La même liaison, dans un sens ou dans l'autre : « X est lié à Y » et « Y
-   * est lié à X » ne font qu'une.
+   * The same link, in one direction or the other: "X is linked to Y" and "Y
+   * is linked to X" are one and the same.
    */
   existing: selection<{ id: Id }>(
     `SELECT id FROM card_links
@@ -34,8 +34,8 @@ export const cardLinks = {
   remove: mutation("DELETE FROM card_links WHERE id = ?"),
 };
 
-// L'autre carte n'est montrée que si son tableau l'est à cette personne : une
-// dépendance vers un tableau privé ne le laisse pas deviner.
+// The other card is shown only if its board is visible to that person: a
+// dependency toward a private board does not let it be guessed.
 const cardLinkRecords = selection<
   CardLinkRow & {
     other_id: Id;
@@ -58,7 +58,7 @@ const cardLinkRecords = selection<
    ORDER BY card_links.created_at, card_links.id`,
 );
 
-/** Les dépendances d'une carte, telles qu'elle les lit et que `userId` les voit. */
+/** A card's dependencies, as it reads them and as `userId` sees them. */
 export const linksOf = (cardId: Id, userId: Id): CardLink[] =>
   cardLinkRecords.all({ card: cardId, me: userId }).map((row) => ({
     id: row.id,
@@ -72,16 +72,15 @@ export const linksOf = (cardId: Id, userId: Id): CardLink[] =>
     },
   }));
 
-/** Une liaison lue depuis l'une de ses deux cartes. */
+/** A link read from one of its two cards. */
 export const linkOf = (row: CardLinkRow, cardId: Id, userId: Id): CardLink =>
   linksOf(cardId, userId).find((l) => l.id === row.id)!;
 
-// Les cartes qu'une dépendance peut relier : celles du tableau de la carte en
-// tête, dans l'ordre des listes, puis celles des autres tableaux visibles,
-// par nom de tableau. On y cherche comme dans la recherche globale — sans
-// accents, par titre ou par référence. La requête se prépare au premier appel :
-// « milo_fold » est déclarée par la recherche (routes/search.ts), chargée avec
-// l'application.
+// The cards a dependency can link: those of the leading card's board, in list
+// order, then those of the other visible boards, by board name. They are
+// searched like in the global search — accent-insensitive, by title or
+// reference. The query is prepared on first call: "milo_fold" is declared by
+// the search (routes/search.ts), loaded with the application.
 let preparedCandidates: Selection<LinkCandidates["items"][number]> | null = null;
 
 export const linkCandidates = (
@@ -114,7 +113,7 @@ export const linkCandidates = (
     board: card.board_id,
     me: userId,
     q: `%${folded}%`,
-    // Une ligne de plus que la page : elle dit s'il en reste.
+    // One more row than the page: it says whether any remain.
     limit: LINKS_PAGE_SIZE + 1,
     offset,
   });
@@ -126,8 +125,8 @@ export const linkCandidates = (
   };
 };
 
-// Le nombre de liaisons de chaque carte d'un tableau, des deux côtés : c'est
-// ce qui allume le picto de la carte.
+// The number of links of each card of a board, on both sides: it is what
+// lights the card's pictogram.
 const countsOfBoard = selection<{ card_id: Id; total: number }>(
   `SELECT card_id, COUNT(*) AS total FROM (
      SELECT card_links.source_id AS card_id FROM card_links

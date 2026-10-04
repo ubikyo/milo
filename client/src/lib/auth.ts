@@ -1,6 +1,6 @@
 const KEY = "milo-token";
 
-// Le jeton vit dans le localStorage du navigateur.
+// The token lives in the browser's localStorage.
 export const getToken = (): string | null => {
   try {
     return localStorage.getItem(KEY);
@@ -14,6 +14,6 @@ export const setToken = (token: string | null): void => {
     if (token) localStorage.setItem(KEY, token);
     else localStorage.removeItem(KEY);
   } catch {
-    /* navigation privée, stockage bloqué : la session reste en mémoire */
+    /* private browsing, blocked storage: the session stays in memory */
   }
 };

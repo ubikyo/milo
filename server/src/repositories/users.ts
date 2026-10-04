@@ -1,9 +1,9 @@
-// Les comptes et leurs sessions.
+// Accounts and their sessions.
 //
-// Un compte naît de la première connexion d'une personne par Microsoft, ou
-// existait avant Entra et s'y rattache par son e-mail. Le compte « admin »
-// (system) est à part : il n'a qu'un mot de passe, ne sert qu'au paramétrage,
-// et ne se montre dans aucune liste.
+// An account is born from a person's first Microsoft sign-in, or existed
+// before Entra and attaches to it through its e-mail. The "admin" account
+// (system) is separate: it only has a password, is only used for settings,
+// and appears in no list.
 
 import type {
   AdminPermissions,
@@ -27,14 +27,14 @@ import type { SessionRow, UserRow } from "../db/rows.js";
 import { fullName, gravatarUrl } from "../lib/auth.js";
 import { workspaces } from "./workspaces.js";
 
-/** L'identifiant du compte « admin ». */
+/** The id of the "admin" account. */
 export const ADMIN_USERNAME = "admin";
 
 export const users = {
   byId: selection<UserRow>("SELECT * FROM users WHERE id = ?"),
   byEmail: selection<UserRow>("SELECT * FROM users WHERE email = ? COLLATE NOCASE AND system = 0"),
   byEntraId: selection<UserRow>("SELECT * FROM users WHERE entra_id = ? AND system = 0"),
-  /** Les personnes : jamais le compte « admin ». */
+  /** People: never the "admin" account. */
   all: selection<UserRow>("SELECT * FROM users WHERE system = 0 ORDER BY name"),
   admin: selection<UserRow>("SELECT * FROM users WHERE system = 1"),
 
@@ -46,7 +46,7 @@ export const users = {
     `INSERT INTO users (first_name, last_name, name, email, password_hash, created_at, entra_id)
      VALUES (?, ?, ?, ?, '', ?, ?)`,
   ),
-  /** À chaque connexion : l'identité et les groupes, tels qu'Entra les donne. */
+  /** On every sign-in: the identity and groups, as Entra provides them. */
   syncEntra: mutation(
     `UPDATE users SET first_name = ?, last_name = ?, name = ?, email = ?, entra_id = ?, entra_groups = ?
      WHERE id = ?`,
@@ -54,7 +54,7 @@ export const users = {
   setPassword: mutation("UPDATE users SET password_hash = ? WHERE id = ?"),
   setDefaultView: mutation("UPDATE users SET default_view = ? WHERE id = ?"),
   setWorkspace: mutation("UPDATE users SET workspace_id = ? WHERE id = ?"),
-  /** Vrai si cet identifiant désigne une personne. Sert à filtrer les rattachements. */
+  /** True if this id designates a person. Used to filter the attachments. */
   exists: selection<{ id: number }>("SELECT id FROM users WHERE id = ? AND system = 0"),
 };
 
@@ -66,44 +66,44 @@ export const sessions = {
   ),
   touch: mutation("UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE token = ?"),
   close: mutation("DELETE FROM sessions WHERE token = ?"),
-  /** Après un changement de mot de passe : les autres sessions tombent. */
+  /** After a password change: the other sessions are dropped. */
   closeOthers: mutation("DELETE FROM sessions WHERE user_id = ? AND token != ?"),
   purgeExpired: mutation("DELETE FROM sessions WHERE expires_at != '' AND expires_at < ?"),
 };
 
-/** Qui il est pour les permissions : lui, ou l'un de ses groupes. */
+/** Who they are for permissions: themselves, or one of their groups. */
 const ACCOUNT_PRINCIPAL = `(principal_type = 'user' AND principal_id = ?)
       OR (principal_type = 'group' AND principal_id IN (SELECT value FROM json_each(?)))`;
 
 /**
- * Ses accès, workspace par workspace : les siens et ceux de ses groupes, une
- * ligne par principal et par workspace.
+ * Their access, workspace by workspace: their own and their groups', one
+ * row per principal and per workspace.
  */
 const accountAccess = selection<{ workspace_id: number; widgets: string }>(
   `SELECT workspace_id, widgets FROM principal_permissions WHERE ${ACCOUNT_PRINCIPAL}`,
 );
 
-/** Son administration : la sienne et celle de ses groupes. */
+/** Their administration: their own and their groups'. */
 const accountAdministration = selection<{ settings: string; workspaces: string }>(
   `SELECT settings, workspaces FROM principal_admin WHERE ${ACCOUNT_PRINCIPAL}`,
 );
 
-/** Ses accès, relus : un JSON illisible n'accorde rien. */
+/** Their access, re-read: unreadable JSON grants nothing. */
 const userRows = (user: UserRow): { workspace: Id; widgets: WidgetRights }[] =>
   accountAccess.all(user.entra_id, JSON.stringify(groupsOf(user))).map((l) => {
     let widgets: unknown = {};
     try {
       widgets = JSON.parse(l.widgets);
     } catch {
-      // Un JSON illisible n'accorde rien.
+      // Unreadable JSON grants nothing.
     }
     return { workspace: l.workspace_id, widgets: validWidgetRights(widgets) };
   });
 
 /**
- * Son administration, réunie — la sienne et celle de ses groupes : le
- * Paramétrage le plus large, la gestion des workspaces si l'une l'accorde.
- * Le compte « admin » a tout.
+ * Their administration, merged — their own and their groups': the widest
+ * "Paramétrage" setting, workspace management if any of them grants it.
+ * The "admin" account has everything.
  */
 const administrationOf = (user: UserRow): AdminPermissions => {
   if (user.system) return { settings: "update", workspaces: "update" };
@@ -121,8 +121,8 @@ const administrationOf = (user: UserRow): AdminPermissions => {
 };
 
 /**
- * Les workspaces auxquels il a accès — où il lit au moins un type de widget —,
- * dans leur ordre : tous pour le compte « admin ».
+ * The workspaces they can access — where they read at least one widget type —,
+ * in their order: all of them for the "admin" account.
  */
 export const workspacesOf = (user: UserRow): WorkspaceRef[] => {
   const all = workspaces.all.all().map(({ id, name }) => ({ id, name }));
@@ -136,23 +136,23 @@ export const workspacesOf = (user: UserRow): WorkspaceRef[] => {
 };
 
 /**
- * Le workspace où il travaille : celui qu'il a choisi s'il y a encore accès,
- * sinon le premier des siens — « null » s'il n'en a aucun.
+ * The workspace they work in: the one they chose if they still have access to
+ * it, otherwise the first of theirs — "null" if they have none.
  */
 export const currentWorkspace = (user: UserRow): Id | null => {
   const own = workspacesOf(user);
   return (own.find((w) => w.id === user.workspace_id) ?? own[0])?.id ?? null;
 };
 
-/** Peut-il gérer les workspaces ? Le compte « admin », ou à qui l'administration l'accorde. */
+/** Can they manage workspaces? The "admin" account, or whoever administration grants it to. */
 export const canManageWorkspaces = (user: UserRow): boolean =>
   administrationOf(user).workspaces === "update";
 
 /**
- * Ses permissions par type de widget dans le workspace où il travaille
- * (« workspace_id », que requireAuth tient à jour), réunies — les siennes et
- * celles de ses groupes, la plus large pour chaque type. Le compte « admin »
- * a tout.
+ * Their permissions per widget type in the workspace they work in
+ * ("workspace_id", which requireAuth keeps up to date), merged — their own and
+ * their groups', the widest for each type. The "admin" account has
+ * everything.
  */
 const workspaceWidgets = (user: UserRow): WidgetRights =>
   user.system
@@ -163,19 +163,19 @@ const workspaceWidgets = (user: UserRow): WidgetRights =>
           .map((l) => l.widgets),
       );
 
-/** Ses permissions par type de widget. */
+/** Their permissions per widget type. */
 export const widgetRights = (user: UserRow): WidgetRights => workspaceWidgets(user);
 
 /**
- * Ses droits dans les modes, déduits de ses permissions par type de widget
- * (shared, permissionsDesWidgets). Ils valent pour toutes les sociétés : la
- * clé « * » le dit.
+ * Their rights in the modes, derived from their permissions per widget type
+ * (shared, widgetPermissions). They apply to all companies: the "*" key says
+ * so.
  */
 export const companyRights = (user: UserRow): CompanyRights => ({
   [ALL_COMPANIES]: widgetPermissions(widgetRights(user)),
 });
 
-/** Les groupes Entra du compte, tels que relus à sa dernière connexion. */
+/** The account's Entra groups, as re-read at their last sign-in. */
 export const groupsOf = (user: UserRow): string[] => {
   try {
     const groups = JSON.parse(user.entra_groups) as unknown;
@@ -191,9 +191,9 @@ export interface SettingsRights {
 }
 
 /**
- * Ses droits sur le Paramétrage, tenus de son administration — la sienne ou
- * celle d'un de ses groupes. Le compte « admin » les a tous. « Modifier »
- * comprend « Voir ».
+ * Their rights on "Paramétrage", held through their administration — their own
+ * or one of their groups'. The "admin" account has them all. "Modifier"
+ * includes "Voir".
  */
 export const settingsRights = (user: UserRow): SettingsRights => {
   const { settings } = administrationOf(user);
@@ -201,9 +201,9 @@ export const settingsRights = (user: UserRow): SettingsRights => {
 };
 
 /**
- * Le compte a-t-il accès à Milo ? Le compte « admin », quelqu'un qui a accès
- * à au moins un workspace — directement, ou par l'un de ses groupes —, qui
- * voit le Paramétrage ou qui gère les workspaces.
+ * Does the account have access to Milo? The "admin" account, someone with
+ * access to at least one workspace — directly, or through one of their
+ * groups —, who sees "Paramétrage" or who manages workspaces.
  */
 export const hasAccess = (user: UserRow): boolean =>
   Boolean(user.system) ||
@@ -212,9 +212,9 @@ export const hasAccess = (user: UserRow): boolean =>
   canManageWorkspaces(user);
 
 /**
- * Le compte, son workspace remis d'aplomb : celui qu'il a choisi s'il y a
- * encore accès, sinon le premier des siens. Le changement s'enregistre, pour
- * que les requêtes qui le relisent en SQL (« @me ») trouvent le même.
+ * The account, with its workspace straightened out: the one they chose if
+ * they still have access to it, otherwise the first of theirs. The change is
+ * saved, so that queries re-reading it in SQL ("@me") find the same one.
  */
 export const inOwnWorkspace = (user: UserRow): UserRow => {
   const current = currentWorkspace(user);
@@ -223,15 +223,15 @@ export const inOwnWorkspace = (user: UserRow): UserRow => {
   return { ...user, workspace_id: current };
 };
 
-/** Un compte tel qu'il se montre : jamais son empreinte de mot de passe. */
+/** An account as it is shown: never its password hash. */
 export const publicUser = (account: UserRow): PublicUser => {
-  // Rien ne s'enregistre ici : la liste des comptes passe aussi par là.
+  // Nothing is saved here: the account list goes through here too.
   const user = { ...account, workspace_id: currentWorkspace(account) };
   return {
     id: user.id,
     first_name: user.first_name,
     last_name: user.last_name,
-    // `name` reste exposé : il alimente les initiales et les listes d'acteurs.
+    // `name` stays exposed: it feeds the initials and the actor lists.
     name: fullName(user.first_name, user.last_name) || user.email,
     email: user.email,
     gravatar_url: gravatarUrl(user.email),
@@ -248,8 +248,8 @@ export const publicUser = (account: UserRow): PublicUser => {
 };
 
 /**
- * Une personne telle qu'elle accompagne autre chose : acteur, membre, auteur.
- * L'e-mail tient lieu de nom quand il manque.
+ * A person as they accompany something else: actor, member, author.
+ * The e-mail stands in for the name when it is missing.
  */
 export const actorOf = (row: { id: number; name: string; email: string }) => ({
   id: row.id,

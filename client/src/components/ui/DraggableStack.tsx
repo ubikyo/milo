@@ -4,32 +4,32 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { Id } from "@milo/shared";
 
-// Le glisser-déposer d'une pile verticale : les checklists et leurs éléments
-// (CardChecklists), les lignes d'attributs du mode Accès (widgets/numero).
+// Drag and drop of a vertical stack: checklists and their items
+// (CardChecklists), the attribute rows of Access mode (widgets/number).
 
-/** Le glisser en cours : ce qu'on déplace, et le rang où il se posera. */
+/** The drag in progress: what is being moved, and the rank where it will land. */
 interface Drag {
   id: Id;
   target: number;
 }
 
-/** Le même geste, suivi hors du rendu : il change à chaque mouvement. */
+/** The same gesture, tracked outside of rendering: it changes on every movement. */
 interface DragInProgress extends Drag {
   index: number;
   startY: number;
-  /** Faux tant que le pointeur n'a pas franchi le seuil de déclenchement. */
+  /** False until the pointer has crossed the trigger threshold. */
   started: boolean;
 }
 
-// Déplacement du pointeur à partir duquel on considère qu'il s'agit d'un
-// glisser. Le même seuil que sur le tableau.
+// Pointer movement from which it is considered a drag. The same threshold as on
+// the board.
 const DRAG_THRESHOLD = 4;
 
-// Le trait d'insertion pendant un glisser : posé entre deux voisins, il ne
-// prend aucune hauteur dans la pile — rien ne bouge, et les mesures prises au
-// départ restent justes. En tête de pile (« auBord »), il n'a pas de voisin
-// au-dessus : il se pose sur le bord haut du premier, sans déborder sur ce qui
-// précède la pile — l'intitulé d'un champ.
+// The insertion line during a drag: placed between two neighbors, it takes no
+// height in the stack — nothing moves, and the measurements taken at the start
+// stay accurate. At the top of the stack ("atEdge"), it has no neighbor above:
+// it sits on the top edge of the first one, without overflowing onto what
+// precedes the stack — a field's label.
 export function InsertLine({ gap = 0, atEdge = false }: { gap?: number; atEdge?: boolean }) {
   return (
     <div style={{ position: "relative", height: 0 }}>
@@ -47,17 +47,17 @@ export function InsertLine({ gap = 0, atEdge = false }: { gap?: number; atEdge?:
 }
 
 /**
- * Le glisser-déposer d'une pile, pour les checklists comme pour leurs
- * éléments. Rien ne bouge pendant le geste : ce qu'on déplace reste à sa
- * place, en transparence, et le trait d'insertion montre où il se posera. Les
- * positions mesurées valent donc du début à la fin.
+ * Drag and drop of a stack, for checklists as well as their items. Nothing
+ * moves during the gesture: what is being dragged stays in place, made
+ * transparent, and the insertion line shows where it will land. The measured
+ * positions are therefore valid from start to finish.
  *
- * `selector` désigne, dans la zone, ce qui se glisse ; `onReorder` reçoit
- * l'ordre complet, une fois la main relâchée.
+ * `selector` designates, within the zone, what can be dragged; `onReorder`
+ * receives the full order, once the hand is released.
  */
 export interface DraggableStack {
   ids: Id[];
-  /** Ce qui, dans la zone, se glisse. */
+  /** What, within the zone, can be dragged. */
   selector: string;
   onReorder: (order: Id[]) => void | Promise<void>;
 }
@@ -66,9 +66,8 @@ export function useDraggableStack({ ids, selector, onReorder }: DraggableStack) 
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<DragInProgress | null>(null);
   const zoneRef = useRef<HTMLDivElement | null>(null);
-  // Le geste se joue sur des écouteurs posés une fois pour toutes : ils
-  // lisent l'état courant par une ref, plutôt que de se réabonner à chaque
-  // rendu.
+  // The gesture runs on listeners set up once and for all: they read the
+  // current state through a ref, rather than resubscribing on every render.
   const state = useRef({ ids, onReorder });
   state.current = { ids, onReorder };
 
@@ -115,8 +114,8 @@ export function useDraggableStack({ ids, selector, onReorder }: DraggableStack) 
       setDrag(null);
       if (!d || !d.started) return;
 
-      // Le rang visé se lit sur la pile complète ; une fois l'élément ôté,
-      // tout ce qui le suivait remonte d'un cran.
+      // The target rank is read on the complete stack; once the item is
+      // removed, everything that followed it moves up one slot.
       const target = d.target > d.index ? d.target - 1 : d.target;
       if (target === d.index) return;
       const order = state.current.ids.filter((id) => id !== d.id);
@@ -135,8 +134,8 @@ export function useDraggableStack({ ids, selector, onReorder }: DraggableStack) 
   return { zoneRef, drag, onPointerDown };
 }
 
-// La poignée par laquelle on glisse : seule elle déplace, tout le reste garde
-// ses propres clics.
+// The handle you drag by: only it moves things, everything else keeps its own
+// clicks.
 interface DragHandleProps {
   onPointerDown: (event: ReactPointerEvent) => void;
   visible?: boolean;
@@ -149,8 +148,8 @@ export function DragHandle({ onPointerDown, visible = true, label }: DragHandleP
       span
       c="dimmed"
       role="button"
-      // Aucune infobulle : l'intitulé ne sert qu'au clavier et aux lecteurs
-      // d'écran. La forme de la poignée dit déjà ce qu'elle fait.
+      // No tooltip: the label is only for the keyboard and screen readers. The
+      // handle's shape already says what it does.
       aria-label={label}
       onPointerDown={onPointerDown}
       style={{

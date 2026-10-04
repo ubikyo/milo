@@ -1,7 +1,6 @@
-// Les lignes brutes, telles que SQLite les rend. Elles ne sortent pas du
-// serveur : ce que l'API renvoie est décrit par @milo/shared. La différence
-// compte — une ligne « users » porte l'empreinte du mot de passe, un
-// `PublicUser` non.
+// Raw rows, as SQLite returns them. They never leave the server: what the
+// API returns is described by @milo/shared. The difference matters — a
+// "users" row carries the password hash, a `PublicUser` does not.
 
 import type {
   SupportCommentFormat,
@@ -24,14 +23,14 @@ export interface UserRow {
   email: string;
   password_hash: string;
   default_mode: string;
-  /** La vue d'ouverture : son identifiant, ou vide. */
+  /** The opening view: its id, or empty. */
   default_view: string;
   created_at: string;
   entra_id: string;
-  /** JSON : les identifiants des groupes Entra du compte. */
+  /** JSON: the ids of the account's Entra groups. */
   entra_groups: string;
   system: SqliteBool;
-  /** Le workspace choisi : nul, ou peut-être un qu'il n'a plus (users.ts, workspaceCourant). */
+  /** The chosen workspace: null, or perhaps one it no longer has (users.ts, currentWorkspace). */
   workspace_id: Id | null;
 }
 
@@ -43,7 +42,7 @@ export interface SessionRow {
   expires_at: string;
 }
 
-/** Un contexte d'un tableau. */
+/** A context of a board. */
 export interface ContextRow {
   id: Id;
   board_id: Id;
@@ -53,7 +52,7 @@ export interface ContextRow {
 }
 
 
-/** Une vue du sélecteur du bas. */
+/** A view of the bottom selector. */
 export interface WorkspaceRow {
   id: Id;
   name: string;
@@ -72,29 +71,29 @@ export interface ViewRow {
 }
 
 
-/** Un type de jalons : ses jalons y sont du texte JSON. */
+/** A milestone type: its milestones are JSON text here. */
 export interface MilestoneTypeRow {
   id: Id;
   name: string;
-  /** JSON : un tableau de { value, label, color }. */
+  /** JSON: an array of { value, label, color }. */
   milestones: string;
 }
 
-/** Une réponse par défaut du Support. */
+/** A default Support reply. */
 export interface SupportReplyRow {
   id: Id;
   name: string;
   html: string;
-  /** Un SupportReplyEvent, ou vide. */
+  /** A SupportReplyEvent, or empty. */
   event: string;
 }
 
-/** Un contenu par défaut du Support. */
+/** A default Support content. */
 export interface SupportContentRow {
   id: Id;
   name: string;
   html: string;
-  /** Un SupportContentEvent, ou vide. */
+  /** A SupportContentEvent, or empty. */
   event: string;
 }
 
@@ -102,30 +101,30 @@ export interface CategoryRow {
   id: Id;
   board_id: Id;
   name: string;
-  /** JSON : un tableau de { value, label }. */
+  /** JSON: an array of { value, label }. */
   milestones: string;
   position: number;
 }
 
 
-/** Une section d'un tableau : une colonne de widgets. */
+/** A section of a board: a column of widgets. */
 export interface BoardSectionRow {
   id: Id;
   board_id: Id;
   width_unit: SectionWidthUnit;
   width_value: number | null;
-  /** L'écart qui la sépare de la colonne suivante, en pixels. */
+  /** The gap separating it from the next column, in pixels. */
   gap: number;
   position: number;
-  /** Nul : la structure publique ; sinon, celle de ce compte. */
+  /** Null: the public structure; otherwise, that of this account. */
   owner_id: Id | null;
   created_at: string;
 }
 
 
 /**
- * Un widget d'une section, tel que la base le range : sa configuration y est
- * du texte JSON. L'API, elle, rend un objet (`BoardWidget`).
+ * A widget of a section, as the database stores it: its configuration is
+ * JSON text there. The API, for its part, returns an object (`BoardWidget`).
  */
 export interface BoardWidgetRow {
   id: Id;
@@ -139,7 +138,7 @@ export interface BoardWidgetRow {
 
 export interface AccessFeedRow {
   url: string;
-  /** La liste des articles, en JSON. */
+  /** The list of items, as JSON. */
   articles: string;
   quantity: number;
   fetched_at: string | null;
@@ -162,13 +161,13 @@ export interface ProjectRow {
   updated_at: string;
 }
 
-/** Une ligne de projet jointe à ses tables de référence. */
+/** A project row joined to its reference tables. */
 export interface ProjectJoinedRow extends ProjectRow {
   category_name: string;
   context_name: string | null;
 }
 
-/** Un tableau d'une vue. */
+/** A board of a view. */
 export interface BoardRow {
   id: Id;
   view_id: Id;
@@ -182,7 +181,7 @@ export interface BoardRow {
   created_at: string;
 }
 
-/** Les tableaux de projets sont des tableaux comme les autres. */
+/** Project boards are boards like any other. */
 export type ProjectBoardRow = BoardRow;
 
 
@@ -221,7 +220,7 @@ export interface LabelRow {
   board_id: Id;
   name: string;
   color: string;
-  /** Le poids : celles des projets seules en portent un. */
+  /** The weight: only those of projects carry one. */
   weight?: number;
   position: number;
   created_at: string;
@@ -279,36 +278,36 @@ export interface CardCommentRow {
 }
 
 /**
- * Un commentaire joint à son auteur. Les deux fils (projets et cartes) ont la
- * même forme, d'où le type générique.
+ * A comment joined to its author. Both threads (projects and cards) have the
+ * same shape, hence the generic type.
  */
 export type WithAuthorColumns<T> = T & {
   author_name: string | null;
   author_email: string | null;
 };
 
-/** Un ticket : il pend à un contexte. */
+/** A ticket: it hangs off a context. */
 export interface SupportRequestRow {
   id: Id;
   number: number;
   board_id: Id;
   context_id: Id | null;
   list_key: string;
-  /** La boîte où elle est arrivée ; vide pour une demande saisie. */
+  /** The mailbox it arrived in; empty for a request entered by hand. */
   mailbox: string;
   subject: string;
   status: SupportStatus;
   due_date: string;
   sender_name: string;
   sender_email: string;
-  /** L'identifiant Internet de l'e-mail d'origine ; vide pour une demande saisie. */
+  /** The Internet id of the original e-mail; empty for a request entered by hand. */
   mail_id: string;
   conversation_id: string;
   created_at: string;
   updated_at: string;
 }
 
-/** Une étiquette du mode Support : jumelle de « LabelRow », commune à tout le support. */
+/** A Support-mode label: twin of "LabelRow", shared by the whole support. */
 export interface SupportLabelRow {
   id: Id;
   name: string;
@@ -326,7 +325,7 @@ export interface SupportCommentRow {
   user_id: Id | null;
   text: string;
   system: SqliteBool;
-  /** L'expéditeur d'un e-mail reçu, quand aucun compte ne lui correspond. */
+  /** The sender of a received e-mail, when no account matches it. */
   sender_name: string;
   sender_email: string;
   mail_status: SupportMailStatus;
@@ -336,22 +335,22 @@ export interface SupportCommentRow {
   internal: SqliteBool;
   mail_id: string;
   format: SupportCommentFormat;
-  /** Les fichiers de l'e-mail, en JSON : TicketFileRow[]. */
+  /** The e-mail's files, as JSON: TicketFileRow[]. */
   attachments: string;
-  /** L'évènement d'une réponse par défaut partie d'office ; vide sinon. */
+  /** The event of a default reply sent automatically; empty otherwise. */
   auto_event: string;
   created_at: string;
   updated_at: string;
 }
 
-/** Un fichier d'e-mail tel que la base le garde. */
+/** An e-mail file as the database keeps it. */
 export interface TicketFileRow {
-  /** Le nom de rangement, dans le dossier des tickets. */
+  /** The storage name, in the tickets folder. */
   file: string;
   name: string;
   mime: string;
   size: number;
-  /** Une image intégrée au corps (« cid: ») plutôt qu'une pièce jointe. */
+  /** An image embedded in the body ("cid:") rather than an attachment. */
   inline: boolean;
 }
 
@@ -359,7 +358,7 @@ export interface CountRow {
   count: number;
 }
 
-/** « COALESCE(MAX(position), -1) + 1 » : le rang d'un nouvel élément. */
+/** "COALESCE(MAX(position), -1) + 1": the rank of a new item. */
 export interface NextRow {
   next: number;
 }
@@ -381,8 +380,8 @@ export interface FollowRow {
 }
 
 /**
- * Un poste du mode Assets. « content » est l'inventaire entier en JSON, tel
- * que l'agent l'a envoyé : il n'est relu qu'à l'ouverture du tiroir.
+ * A workstation of Assets mode. "content" is the whole inventory as JSON,
+ * exactly as the agent sent it: it is only read back when the drawer opens.
  */
 export interface AssetRow {
   id: Id;

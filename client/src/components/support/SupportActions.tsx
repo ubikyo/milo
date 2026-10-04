@@ -31,33 +31,33 @@ import { supportTicketRef } from "@milo/shared";
 import type { PublicUser, SupportLabel, SupportRequest } from "@milo/shared";
 import CloseButton from "../ui/CloseButton";
 
-/** L'action qui attend sa confirmation. */
+/** The action awaiting its confirmation. */
 type ToConfirm = "merge" | "close" | "delete" | null;
 
 interface SupportActionsProps {
-  /** Les demandes cochées, dans l'ordre de la liste. */
+  /** The checked requests, in list order. */
   selected: SupportRequest[];
   users: PublicUser[];
-  /** « Modifier » : la demande cochée s'ouvre dans son tiroir. */
+  /** "Modifier": the checked request opens in its drawer. */
   onEdit: (request: SupportRequest) => void;
-  /** « Créer une tâche », au clic droit sur une demande. */
+  /** "Créer une tâche", on right-click of a request. */
   onCreateTask?: (request: SupportRequest) => void;
-  /** Une action a abouti : la liste se relit, les cases se décochent. */
+  /** An action succeeded: the list is re-read, the checkboxes are unchecked. */
   onDone: () => void | Promise<void>;
-  /** La liste se relit, les cases restent cochées. */
+  /** The list is re-read, the checkboxes stay checked. */
   onRefresh: () => void | Promise<void>;
   /**
-   * Le clic droit sur une ligne : son menu s'ouvre au point cliqué, et ses
-   * gestes ne portent que sur cette demande, cochée ou non.
+   * Right-click on a row: its menu opens at the clicked point, and its
+   * actions apply only to that request, checked or not.
    */
   context?: { request: SupportRequest; position: PointMenuPosition } | null;
   onContextClose?: () => void;
-  /** Les demandes que la personne suit, pour la coche de « Suivre ». */
+  /** The requests the person follows, for the "Suivre" checkmark. */
   followedIds?: number[];
   onToggleFollow?: (request: SupportRequest) => void;
 }
 
-/** « HLP-3, HLP-5 et HLP-8 » : les tickets visés, tels qu'on les cite. */
+/** "HLP-3, HLP-5 et HLP-8": the targeted tickets, as they are cited. */
 const quote = (requests: SupportRequest[]): string => {
   const refs = requests.map((d) => supportTicketRef(d.number));
   return refs.length < 2
@@ -66,10 +66,10 @@ const quote = (requests: SupportRequest[]): string => {
 };
 
 /**
- * Le menu « Actions » du mode Support, posé à gauche de la liste des
- * sociétés. Il ne paraît qu'une fois une demande cochée, et porte sur elles : fusionner, fermer et supprimer
- * demandent confirmation ; « Assigner à » ouvre le choix des acteurs, qui
- * sont prévenus à l'écran et par e-mail.
+ * The Support mode's "Actions" menu, placed to the left of the companies
+ * list. It only appears once a request is checked, and applies to them:
+ * merge, close and delete ask for confirmation; "Assigner à" opens the
+ * actor choice, and those actors are notified on screen and by e-mail.
  */
 export default function SupportActions({
   selected,
@@ -84,7 +84,7 @@ export default function SupportActions({
   onToggleFollow,
 }: SupportActionsProps) {
   const [toConfirm, setToConfirm] = useState<ToConfirm>(null);
-  /** La gestion des étiquettes : communes à tout le support. */
+  /** Label management: shared by all of support. */
   const [managesLabels, setManagingLabels] = useState(false);
   const [labels, setLabels] = useState<SupportLabel[]>([]);
   const openLabels = () => setManagingLabels(true);
@@ -103,14 +103,14 @@ export default function SupportActions({
   const [ongoing, setInProgress] = useState(false);
 
   /**
-   * La demande visée par le clic droit, le temps que sa confirmation ou son
-   * assignation aboutisse : elle remplace alors les demandes cochées.
+   * The request targeted by the right-click, while its confirmation or its
+   * assignment completes: it then replaces the checked requests.
    */
   const [targets, setTargets] = useState<SupportRequest[] | null>(null);
   const targetedItems = targets ?? selected;
   const ids = targetedItems.map((d) => d.id);
   const n = targetedItems.length;
-  // La fusion garde la plus récente : c'est elle qu'on annonce.
+  // The merge keeps the most recent one: it is the one announced.
   const keptByKey = [...targetedItems].sort((a, b) =>
     a.created_at === b.created_at
       ? b.id - a.id
@@ -120,7 +120,7 @@ export default function SupportActions({
   )[0];
   const others = targetedItems.filter((d) => d !== keptByKey);
 
-  // Les gestes suivent les droits du compte sur le support.
+  // The actions follow the account's rights on support.
   const can = useRights();
   const canForRequests = (requests: SupportRequest[], right: "update" | "delete") =>
     requests.length > 0 && can("support", right);
@@ -209,9 +209,9 @@ export default function SupportActions({
 
   return (
     <>
-      {/* Seul le menu s'efface : les confirmations et les boîtes restent
-          montées, elles se referment encore après que les cases se sont
-          décochées. */}
+      {/* Only the menu disappears: the confirmations and the inboxes stay
+          mounted, they still close after the checkboxes have been
+          unchecked. */}
       {selected.length > 0 && (
         <Menu
           position="bottom-end"
@@ -231,8 +231,8 @@ export default function SupportActions({
             </Button>
           </Menu.Target>
           <Menu.Dropdown>
-            {/* Modifier ne vaut que pour une demande à la fois : c'est son tiroir
-              qui s'ouvre. */}
+            {/* Edit only applies to one request at a time: it is its drawer
+              that opens. */}
             <Menu.Item
               leftSection={<IconPencil size={16} />}
               disabled={n !== 1 || !editChecked}
@@ -265,8 +265,8 @@ export default function SupportActions({
               Fermer
             </Menu.Item>
             <Menu.Divider />
-            {/* Les étiquettes sont communes à tout le support, pas propres aux
-              demandes cochées : ce geste n'en demande aucune. */}
+            {/* Labels are shared by all of support, not specific to the
+              checked requests: this action requires none. */}
             <Menu.Item
               leftSection={<IconTags size={16} />}
               disabled={!can("support", "update")}
@@ -287,14 +287,14 @@ export default function SupportActions({
         </Menu>
       )}
 
-      {/* Le clic droit sur une ligne : ses gestes, pour elle seule. */}
+      {/* Right-click on a row: its actions, for it alone. */}
       {context && (
         <PointMenu
           position={context.position}
           onClose={() => onContextClose?.()}
         >
-          {/* Suivre vient en tête, comme dans le tiroir de la demande. Le
-              menu ne se referme pas, pour qu'on voie la coche changer. */}
+          {/* Follow comes first, as in the request's drawer. The
+              menu does not close, so the checkmark can be seen changing. */}
           {onToggleFollow && (
             <>
               <Menu.Item
@@ -312,8 +312,8 @@ export default function SupportActions({
               <Menu.Divider />
             </>
           )}
-          {/* Sans le droit de modifier, la demande s'ouvre encore d'un clic
-              sur sa ligne, pour être lue. */}
+          {/* Without the right to edit, the request still opens on a click
+              on its row, to be read. */}
           {targetEdit && (
             <>
               <Menu.Item
@@ -408,10 +408,10 @@ export default function SupportActions({
               await reloadLabels();
             }}
           />
-          {/* Chaque geste sur une étiquette part aussitôt au serveur :
-              « Enregistrer » referme et fait relire la liste, pour que les
-              demandes montrent les étiquettes telles qu'on vient de les
-              laisser. « Fermer » referme simplement. */}
+          {/* Each action on a label is sent to the server right away:
+              "Enregistrer" closes and has the list re-read, so that the
+              requests show the labels as they were just
+              left. "Fermer" simply closes. */}
           <Group justify="flex-end" mt={MODAL_PADDING - 16}>
             <CloseButton onClick={() => setManagingLabels(false)} />
             <Button
@@ -438,8 +438,8 @@ export default function SupportActions({
         centered
         padding={MODAL_PADDING}
         withCloseButton={false}
-        // La liste des acteurs sort de la fenêtre, comme tout menu : le contenu
-        // ne la rogne pas. L'en-tête garde alors seul les coins arrondis.
+        // The actor list comes out of the modal, like any menu: the content
+        // does not clip it. The header alone then keeps the rounded corners.
         styles={(() => {
           const base = modalHeaderStyles(MODAL_PADDING);
           return {

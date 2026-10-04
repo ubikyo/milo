@@ -1,17 +1,17 @@
 let measureContext: CanvasRenderingContext2D | null = null;
 
 /**
- * La largeur d'un petit champ discret (GapField.module.css) qui montre ce
- * texte : texte, air et bordure.
+ * The width of a small discreet field (GapField.module.css) showing this
+ * text: text, padding and border.
  */
 export const fieldWidth = (text: string): number =>
-  // La taille des petits champs discrets, la police de la page.
+  // The size of the small discreet fields, the page's font.
   textWidth(text, 11) + 6;
 
-/** Les largeurs déjà mesurées : un champ se rend souvent, son texte change peu. */
+/** The widths already measured: a field renders often, its text changes little. */
 const measures = new Map<string, number>();
 
-/** La largeur d'un texte, à cette taille de police et dans celle de la page. */
+/** A text's width, at this font size and in the page's one. */
 export const textWidth = (text: string, size: number): number => {
   const key = `${size}|${text}`;
   const known = measures.get(key);

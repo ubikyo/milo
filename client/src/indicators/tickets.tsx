@@ -6,12 +6,12 @@ import { NameField, NAME, IndicatorTitle, IndicatorValue } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 import type { Id, SupportRequest } from "@milo/shared";
 
-// Un nombre de demandes : celles de la société regardée qui répondent au type
-// choisi — un statut, l'absence d'acteur, une échéance dépassée.
+// A number of requests: those of the company being viewed that match the chosen
+// type — a status, no actor, an overdue due date.
 
 const TYPE = "type";
 
-/** Une demande résolue ou fermée n'attend plus rien : ni acteur, ni échéance. */
+/** A resolved or closed request is waiting for nothing: neither actor nor due date. */
 const ongoing = (d: SupportRequest) => d.status !== "resolved" && d.status !== "closed";
 
 interface TicketType {
@@ -49,7 +49,7 @@ const TYPES: TicketType[] = [
   { value: "total", label: "Tickets au total", account: () => true },
 ];
 
-/** Le type rangé, ou le premier : une valeur inconnue ne fait rien tomber. */
+/** The stored type, or the first: an unknown value does not bring anything down. */
 const typeOf = (config: unknown) =>
   TYPES.find((t) => t.value === text(config, TYPE)) ?? DEFAULT_TYPE;
 
@@ -64,9 +64,9 @@ export const ticketsIndicator: SupportIndicatorWidget = {
   Display: ({ config, requests, userId }) => {
     const type = typeOf(config);
     return (
-      // Le nom en haut, la quantité en bas à gauche : la carte donne la hauteur.
+      // The name at the top, the quantity at bottom left: the card gives the height.
       <Stack gap={4} justify="space-between" style={{ flex: 1 }}>
-        {/* Sans nom, l'indicateur se présente par son type. */}
+        {/* Without a name, the indicator presents itself by its type. */}
         <IndicatorTitle config={config} defaultValue={type.label} />
         <IndicatorValue config={config}>
           {requests.filter((d) => type.account(d, userId)).length}

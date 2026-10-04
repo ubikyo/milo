@@ -6,21 +6,21 @@ import type { ComponentType, DragEvent } from "react";
 import { kindLabel, type WidgetKind } from "../../widgets/kinds";
 import { SUBCATEGORY_GAP } from "../../widgets/subcategory";
 
-// Ce qu'une section peut recevoir, un widget par ligne : sa poignée, son
-// icône, son nom, dans l'encart des widgets. Le tiroir s'ouvre à gauche, et
-// chaque ligne se glisse là où le widget doit se poser — entre deux widgets,
-// ou dans une colonne vide. Dès que le pointeur quitte le tiroir pour
-// l'interface, le tiroir se referme, et laisse voir où l'on pose.
+// What a section can receive, one widget per row: its handle, its
+// icon, its name, in the widgets inset. The drawer opens on the left, and
+// each row is dragged to where the widget should land — between two widgets,
+// or into an empty column. As soon as the pointer leaves the drawer for
+// the interface, the drawer closes, revealing where one drops.
 //
-// La liste vient du registre du mode : le tiroir ne connaît aucun widget en
-// particulier. Il la range par type (widgets/genres.ts), dans l'ordre où le
-// registre présente le premier widget de chacun, sous un titre de
-// sous-catégorie.
+// The list comes from the mode's registry: the drawer knows no widget in
+// particular. It arranges it by kind (widgets/kinds.ts), in the order in which the
+// registry presents the first widget of each, under a
+// subcategory title.
 
-/** Ce que le tiroir montre d'un widget. */
+/** What the drawer shows of a widget. */
 export interface WidgetChoice {
   type: string;
-  /** Le groupe où il se range dans le tiroir. */
+  /** The group it belongs to in the drawer. */
   kind: WidgetKind;
   label: string;
   icon: ComponentType<{ size?: number }>;
@@ -30,15 +30,15 @@ interface WidgetDrawerProps<P extends WidgetChoice> {
   opened: boolean;
   onClose: () => void;
   widgets: P[];
-  /** Une ligne prise : la rangée des sections tient désormais ce widget. */
+  /** A row picked up: the sections row now holds this widget. */
   onDragStart: (widget: P) => void;
-  /** Le glisser fini, posé ou non. */
+  /** The drag finished, dropped or not. */
   onDragEnd: () => void;
 }
 
 const WIDTH = 320;
 
-/** L'air au-dessus du titre d'un type, quand d'autres widgets le précèdent. */
+/** The space above a kind's title, when other widgets precede it. */
 const GROUPS_GAP = 40;
 
 export default function WidgetDrawer<P extends WidgetChoice>({
@@ -48,11 +48,11 @@ export default function WidgetDrawer<P extends WidgetChoice>({
   onDragStart,
   onDragEnd,
 }: WidgetDrawerProps<P>) {
-  /** Vrai pendant qu'un widget est tenu. */
+  /** True while a widget is held. */
   const [held, setHeld] = useState(false);
 
-  // Le pointeur sorti du tiroir, au-dessus de l'interface, le referme. Lu sur
-  // toute la page : c'est le voile du tiroir qui reçoit d'abord le survol.
+  // The pointer leaving the drawer, over the interface, closes it. Read on
+  // the whole page: it is the drawer's overlay that receives the hover first.
   useEffect(() => {
     if (!held || !opened) return;
     const dragHover = (e: globalThis.DragEvent) => {
@@ -63,7 +63,7 @@ export default function WidgetDrawer<P extends WidgetChoice>({
   }, [held, opened, onClose]);
 
   const grab = (e: DragEvent<HTMLElement>, widget: P) => {
-    // Certains navigateurs n'amorcent pas le glisser sans charge.
+    // Some browsers do not start the drag without a payload.
     e.dataTransfer.setData("text/plain", widget.type);
     e.dataTransfer.effectAllowed = "copy";
     setHeld(true);
@@ -75,7 +75,7 @@ export default function WidgetDrawer<P extends WidgetChoice>({
     onDragEnd();
   };
 
-  // Les widgets par type, chaque groupe à la place de son premier widget.
+  // Widgets by kind, each group at the place of its first widget.
   const groups: { kind: WidgetKind; widgets: P[] }[] = [];
   for (const widget of widgets) {
     const group = groups.find((g) => g.kind === widget.kind);
@@ -91,23 +91,23 @@ export default function WidgetDrawer<P extends WidgetChoice>({
       size={WIDTH}
       padding={30}
       withCloseButton={false}
-      // Refermé en plein glisser, le tiroir reste dans la page, caché : la
-      // ligne prise doit encore recevoir la fin du glisser, sans quoi la
-      // rangée croirait tenir le widget.
+      // Closed mid-drag, the drawer stays in the page, hidden: the
+      // picked row must still receive the end of the drag, otherwise the
+      // row would think it still holds the widget.
       keepMounted
-      // La barre de défilement de Mantine, le long du bord droit du tiroir.
+      // Mantine's scrollbar, along the drawer's right edge.
       scrollAreaComponent={ScrollArea.Autosize}
     >
-      {/* Le titre d'une catégorie (widgets/categorie.tsx) : sa taille, sa
-          couleur, et 20 px d'air avant la liste. */}
+      {/* A category title (widgets/category.tsx): its size, its
+          color, and 20 px of space before the list. */}
       <Title order={1} size={18} c="var(--mantine-color-white)" mb={20}>
         Widgets
       </Title>
       {groups.map((group, rank) => (
         <div key={group.kind}>
-          {/* Le titre d'une sous-catégorie (widgets/sous-categorie.tsx) : sa
-              taille, sa graisse, l'air sous lui ; 40 px au-dessus quand
-              d'autres widgets le précèdent. */}
+          {/* A subcategory title (widgets/subcategory.tsx): its
+              size, its weight, the space under it; 40 px above when
+              other widgets precede it. */}
           <Title
             order={2}
             size={16}
@@ -120,8 +120,8 @@ export default function WidgetDrawer<P extends WidgetChoice>({
           </Title>
           <Stack gap={4}>
             {group.widgets.map((widget) => (
-              // L'encart des widgets, sans son trait : le fond suffit à détacher
-              // chaque ligne.
+              // The widgets inset, without its line: the background is enough to set off
+              // each row.
               <Group
                 key={widget.type}
                 draggable

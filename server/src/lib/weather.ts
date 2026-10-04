@@ -1,10 +1,10 @@
-// La météo des widgets Météo, par Open-Meteo : un service ouvert, sans clé,
-// qui donne l'instant, les heures et les jours à venir d'un point du globe, et
-// cherche un lieu par son nom.
+// Weather for the Météo widgets, via Open-Meteo: an open service, keyless,
+// that gives the current moment, the coming hours and days for a point on the
+// globe, and looks up a place by name.
 //
-// C'est le serveur qui l'interroge, comme il relève les flux RSS : la page ne
-// sort pas de l'application, et deux widgets du même lieu — ou cent
-// personnes devant le même tableau — ne coûtent qu'un appel par quart d'heure.
+// The server is the one that queries it, as it polls RSS feeds: the page does
+// not leave the application, and two widgets for the same place — or a hundred
+// people in front of the same board — cost only one call per quarter hour.
 
 import type { AccessWeather, WeatherPlace, WeatherPoint } from "@milo/shared";
 import { fail } from "./http.js";
@@ -12,16 +12,16 @@ import { fail } from "./http.js";
 const FORECASTS = "https://api.open-meteo.com/v1/forecast";
 const GEOCODING = "https://geocoding-api.open-meteo.com/v1/search";
 
-/** Au-delà, la source est tenue pour muette. */
+/** Beyond this, the source is considered silent. */
 const TIMEOUT = 10_000;
 
-/** La météo ne change pas d'une minute à l'autre : un quart d'heure suffit. */
+/** The weather does not change from one minute to the next: a quarter hour is enough. */
 const FRESHNESS = 15 * 60_000;
 
-/** Les heures montrées en courbe : la journée qui vient. */
+/** The hours shown as a curve: the coming day. */
 const HOURS = 24;
 
-/** Les jours montrés : la semaine. */
+/** The days shown: the week. */
 const DAYS = 7;
 
 const call = async <T>(url: string): Promise<T> => {
@@ -36,7 +36,7 @@ const call = async <T>(url: string): Promise<T> => {
   return body;
 };
 
-// --- Lieux -----------------------------------------------------------------
+// --- Places ----------------------------------------------------------------
 
 interface OpenMeteoPlace {
   name: string;
@@ -46,7 +46,7 @@ interface OpenMeteoPlace {
   country?: string;
 }
 
-/** Les lieux qui répondent à ce qu'on tape, deux caractères au moins. */
+/** The places matching what is typed, two characters at least. */
 export const searchPlace = async (input: string): Promise<WeatherPlace[]> => {
   const name = input.trim().slice(0, 100);
   if (name.length < 2) return [];
@@ -62,7 +62,7 @@ export const searchPlace = async (input: string): Promise<WeatherPlace[]> => {
   }));
 };
 
-// --- Prévisions ------------------------------------------------------------
+// --- Forecasts -------------------------------------------------------------
 
 interface OpenMeteoForecasts {
   current: {
@@ -89,7 +89,7 @@ interface OpenMeteoForecasts {
   };
 }
 
-/** Les coordonnées que la configuration d'un widget Météo porte, ou « null ». */
+/** The coordinates a Météo widget's configuration carries, or "null". */
 export const weatherCoordinates = (config: unknown): { latitude: number; longitude: number } | null => {
   const c = (config as Record<string, unknown> | null) ?? {};
   const latitude = Number(c.latitude);
@@ -100,11 +100,11 @@ export const weatherCoordinates = (config: unknown): { latitude: number; longitu
   return { latitude, longitude };
 };
 
-/** Les dernières prévisions de chaque lieu, au centième de degré près. */
+/** The latest forecasts for each place, to the hundredth of a degree. */
 const cached = new Map<string, { value: AccessWeather; readValue: number }>();
 
 const toWeather = (p: OpenMeteoForecasts): AccessWeather => {
-  // Les heures commencent à minuit : on garde celles qui suivent l'instant.
+  // The hours start at midnight: we keep those following the present moment.
   const start = Math.max(
     0,
     p.hourly.time.findIndex((t) => t >= p.current.time.slice(0, 13)),
@@ -137,7 +137,7 @@ const toWeather = (p: OpenMeteoForecasts): AccessWeather => {
   };
 };
 
-/** La météo d'un lieu : celle du cache tant qu'elle est fraîche. */
+/** A place's weather: the cache's as long as it is fresh. */
 export const weatherOf = async (latitude: number, longitude: number): Promise<AccessWeather> => {
   const key = `${latitude.toFixed(2)}|${longitude.toFixed(2)}`;
   const known = cached.get(key);

@@ -10,15 +10,15 @@ import type { Editor } from "@tiptap/react";
 import type { CSSProperties, ReactNode } from "react";
 import classes from "../../assets/styles/RichText.module.css";
 
-// La zone de saisie se peint sur « --mantine-color-body », un cran plus sombre
-// que les champs sur le thème sombre. On lui rend le fond des autres champs :
-// celui d'un « input » de variante « default ». La barre d'outils prend le
-// même, et un trait la sépare de la zone de saisie.
+// The input area is painted on "--mantine-color-body", a notch darker than
+// fields on the dark theme. We give it back the other fields' background: that
+// of an "input" of "default" variant. The toolbar takes the same, and a line
+// separates it from the input area.
 export const FIELD_BG = "light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))";
 
-// La corbeille du bouton qui retire une image : l'icône de Tabler, recopiée
-// telle quelle. La vue ci-dessous est en DOM et non en React (voir pourquoi
-// juste en dessous) : elle ne peut donc pas monter un composant d'icône.
+// The trash icon of the button that removes an image: Tabler's icon, copied as
+// is. The view below is in DOM and not in React (see why just below): it
+// therefore cannot mount an icon component.
 const TRASH_ICON = `
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
        fill="none" stroke="currentColor" stroke-width="2"
@@ -31,16 +31,15 @@ const TRASH_ICON = `
   </svg>`;
 
 /**
- * L'image de tiptap, rendue avec le bouton qui la retire. Le bouton ne se
- * montre qu'au survol — une description se lit d'abord.
+ * The tiptap image, rendered with the button that removes it. The button only
+ * shows on hover — a description is read first.
  *
- * La vue est écrite en DOM et non avec `ReactNodeViewRenderer`, bien que le
- * reste de l'application soit en React : une vue React n'est montée que si
- * l'éditeur porte au même instant son point d'ancrage React
- * (`editor.contentComponent`). Quand il ne l'a pas, tiptap rend un élément
- * vide à la place, sans rien dire — l'image était bien dans le texte, mais
- * invisible jusqu'à ce qu'on referme et rouvre la fiche. Le DOM, lui,
- * s'affiche toujours.
+ * The view is written in DOM and not with `ReactNodeViewRenderer`, although the
+ * rest of the application is in React: a React view is only mounted if the
+ * editor carries its React anchor point (`editor.contentComponent`) at the same
+ * moment. When it does not have it, tiptap renders an empty element in its
+ * place, silently — the image was in the text, but invisible until the card was
+ * closed and reopened. The DOM, for its part, always displays.
  */
 const ImageWithRemoval = Image.extend({
   addNodeView() {
@@ -60,8 +59,8 @@ const ImageWithRemoval = Image.extend({
       button.style.backgroundColor = RED;
       button.innerHTML = TRASH_ICON;
 
-      // Sans cela, appuyer sur le bouton déplace d'abord le curseur dans la
-      // description : le clic partirait sur une sélection qui a bougé.
+      // Without this, pressing the button first moves the cursor in the
+      // description: the click would land on a selection that has moved.
       button.addEventListener("mousedown", (e) => e.preventDefault());
       button.addEventListener("click", () => {
         const position = getPos();
@@ -77,15 +76,15 @@ const ImageWithRemoval = Image.extend({
 
       return {
         dom: wrapper,
-        // L'adresse d'une image peut changer sans que la vue soit refaite.
+        // An image's address can change without the view being rebuilt.
         update: (newValue) => {
           if (newValue.type.name !== node.type.name) return false;
           image.src = String(newValue.attrs["src"] ?? "");
           image.alt = String(newValue.attrs["alt"] ?? "");
           return true;
         },
-        // Le bouton est à nous : l'éditeur n'a pas à interpréter ce qui s'y
-        // passe, ni à s'inquiéter de ce que nous changeons dans cette enveloppe.
+        // The button is ours: the editor need not interpret what happens in it,
+        // nor worry about what we change in this wrapper.
         stopEvent: (event) => event.target instanceof Node && button.contains(event.target),
         ignoreMutation: () => true,
       };
@@ -93,34 +92,33 @@ const ImageWithRemoval = Image.extend({
   },
 });
 
-/** Le fichier de chaque image trouvée dans un presse-papiers. */
+/** The file of each image found in a clipboard. */
 const pastedImages = (data: DataTransfer | null): File[] =>
   Array.from(data?.files ?? []).filter((f) => f.type.startsWith("image/"));
 
 interface RichEditorOptions {
   placeholder?: string;
   /**
-   * Que faire d'une image collée : la déposer, et rendre son adresse. Une
-   * chaîne vide — un dépôt refusé, dont l'appelant a déjà dit un mot — ne
-   * laisse rien dans la description.
+   * What to do with a pasted image: upload it, and return its address. An empty
+   * string — a refused upload, about which the caller already said something —
+   * leaves nothing in the description.
    *
-   * Sans cette fonction, coller une image ne fait rien : c'est le cas des
-   * descriptions qui ne s'accompagnent pas d'un endroit où déposer.
+   * Without this function, pasting an image does nothing: this is the case for
+   * descriptions that come without a place to upload to.
    */
   onPasteImage?: (file: File) => Promise<string>;
 }
 
 /**
- * L'éditeur de texte enrichi de l'application, posé sur tiptap. Un seul jeu
- * d'extensions pour tout ce qui s'écrit ainsi — la description d'une fiche, un
- * commentaire — pour que les deux acceptent exactement la même mise en forme.
- * « StarterKit » porte déjà le souligné et les liens : les ajouter à la main
- * ferait doublon.
+ * The application's rich text editor, built on tiptap. A single set of
+ * extensions for everything written this way — a card's description, a comment
+ * — so that both accept exactly the same formatting. "StarterKit" already
+ * carries underline and links: adding them by hand would duplicate them.
  */
 export function useRichEditor({ placeholder = "", onPasteImage }: RichEditorOptions = {}) {
-  // L'éditeur n'est construit qu'une fois : ce que le collage doit appeler
-  // passe donc par des références, sans quoi il appellerait toujours la
-  // première version de la fonction reçue.
+  // The editor is only built once: what the paste must call therefore goes
+  // through refs, otherwise it would always call the first version of the
+  // function received.
   const drop = useRef(onPasteImage);
   const current = useRef<Editor | null>(null);
 
@@ -128,9 +126,9 @@ export function useRichEditor({ placeholder = "", onPasteImage }: RichEditorOpti
     extensions: [StarterKit, Placeholder.configure({ placeholder }), ImageWithRemoval],
     content: "",
     editorProps: {
-      // Une image collée ne se colle pas telle quelle : elle part au serveur,
-      // et c'est son adresse qui entre dans la description. Le presse-papiers
-      // peut en porter plusieurs — elles s'insèrent l'une après l'autre.
+      // A pasted image is not pasted as is: it goes to the server, and it is
+      // its address that enters the description. The clipboard can carry
+      // several — they are inserted one after the other.
       handlePaste: (_view, event) => {
         const images = pastedImages(event.clipboardData);
         if (images.length === 0 || !drop.current) return false;
@@ -142,7 +140,8 @@ export function useRichEditor({ placeholder = "", onPasteImage }: RichEditorOpti
               const url = await drop.current?.(image);
               if (url) current.current?.chain().focus().setImage({ src: url }).run();
             } catch {
-              // Le dépôt a déjà dit ce qui n'allait pas : rien à ajouter ici.
+              // The upload has already said what went wrong: nothing to add
+              // here.
             }
           }
         })();
@@ -151,8 +150,8 @@ export function useRichEditor({ placeholder = "", onPasteImage }: RichEditorOpti
     },
   });
 
-  // Les deux références suivent ce que le rendu vient de produire, et c'est le
-  // collage — bien plus tard — qui les lit.
+  // Both refs follow what the render just produced, and it is the paste — much
+  // later — that reads them.
   useEffect(() => {
     drop.current = onPasteImage;
     current.current = editor;
@@ -162,30 +161,30 @@ export function useRichEditor({ placeholder = "", onPasteImage }: RichEditorOpti
 }
 
 /**
- * Le champ qui va avec : sa barre d'outils et sa zone de saisie. Il tient sur
- * une ligne tant qu'on n'a rien écrit, grandit à mesure qu'on va à la ligne, et
- * se met à défiler passé cinq lignes (assets/styles/RichText.module.css).
+ * The field that goes with it: its toolbar and its input area. It fits on one
+ * line as long as nothing has been written, grows as lines are added, and
+ * starts scrolling past five lines (assets/styles/RichText.module.css).
  *
- * `label` est facultatif : sans lui, le champ se passe d'intitulé — un
- * commentaire en cours d'écriture n'en a pas besoin.
+ * `label` is optional: without it, the field goes without a caption — a comment
+ * being written does not need one.
  */
 interface RichTextFieldProps {
   editor: Editor | null;
   label?: string;
   /**
-   * Ce qui se pose sous la zone de saisie, sur toute la largeur, sans marge,
-   * collé aux bordures de l'éditeur : le bouton « Envoyer » d'une réponse.
+   * What goes under the input area, across the full width, without margin,
+   * flush with the editor's borders: a reply's "Envoyer" button.
    */
   bottomBar?: ReactNode;
-  /** Des commandes de plus, au bout de la barre d'outils — « CC » et « CCI » d'une réponse. */
+  /** Extra commands, at the end of the toolbar — a reply's "CC" and "CCI". */
   toolbarControls?: ReactNode;
-  /** Ce qui se pose entre la barre d'outils et la zone de saisie : les lignes « CC » d'une réponse. */
+  /** What goes between the toolbar and the input area: a reply's "CC" lines. */
   topSection?: ReactNode;
-  /** Ce qui se pose sous la zone de saisie, avant « bottomBar » : les pièces jointes d'une réponse. */
+  /** What goes under the input area, before "bottomBar": a reply's attachments. */
   contentEnd?: ReactNode;
-  /** Les lignes que la zone montre avant de défiler : cinq par défaut. */
+  /** The lines the area shows before scrolling: five by default. */
   maxLines?: number;
-  /** Les lignes que la zone montre même vide : une seule par défaut. */
+  /** The lines the area shows even when empty: just one by default. */
   minLines?: number;
 }
 
@@ -199,10 +198,9 @@ export default function RichTextField({
   maxLines,
   minLines,
 }: RichTextFieldProps) {
-  // Aucune infobulle : les boutons de la barre d'outils reçoivent de Mantine un
-  // « title » (leur libellé) qu'aucune propriété ne retire pour tous — celui du
-  // lien s'impose même par-dessus. On l'efface du DOM à chaque fois qu'il revient ;
-  // l'« aria-label » reste.
+  // No tooltip: Mantine gives the toolbar buttons a "title" (their label) that
+  // no prop removes for all of them — the link's one even takes precedence. It
+  // is erased from the DOM each time it comes back; the "aria-label" stays.
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const treeNode = root.current;
@@ -225,9 +223,9 @@ export default function RichTextField({
         control: classes.control,
         controlsGroup: classes.controlsGroup,
       }}
-      // La zone s'emboîte en deux : une enveloppe qui porte la hauteur, et le
-      // contenu qui ne fait que celle du texte. Les deux prennent le fond,
-      // sinon il s'arrêterait à la dernière ligne écrite.
+      // The area nests in two: a wrapper that carries the height, and the
+      // content that is only as tall as the text. Both take the background,
+      // otherwise it would stop at the last line written.
       styles={{
         content: { backgroundColor: FIELD_BG },
         toolbar: {

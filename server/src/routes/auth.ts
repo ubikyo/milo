@@ -1,10 +1,10 @@
-// La connexion : par Microsoft pour tout le monde, par mot de passe pour le
-// seul compte « admin », qui sert au paramétrage — et d'abord à renseigner
-// l'application Entra sans laquelle personne d'autre ne peut se connecter.
+// Sign-in: through Microsoft for everyone, by password for the "admin"
+// account alone, which is used for settings — and first of all to fill in the
+// Entra application without which nobody else can sign in.
 //
-// Ce routeur est monté avant `requireAuth` pour ses routes publiques, et
-// `/me` y est protégé à part : c'est la seule partie de l'API où la frontière
-// passe à l'intérieur d'un routeur.
+// This router is mounted before `requireAuth` for its public routes, and
+// `/me` is protected separately inside it: it is the only part of the API
+// where the boundary runs inside a router.
 
 import { Router } from "express";
 import type { Request } from "express";
@@ -35,7 +35,7 @@ import { workspaces } from "../repositories/workspaces.js";
 import { now } from "../lib/time.js";
 import { visibleView } from "../repositories/views.js";
 
-/** Ouvre une session et rend son jeton. */
+/** Opens a session and returns its token. */
 const openSession = (userId: number | bigint): string => {
   const token = createToken();
   const currentTime = Date.now();
@@ -57,25 +57,25 @@ const verifyPasswordRules = (password: unknown): void => {
 };
 
 /**
- * Les routes d'authentification sont les seules où un inconnu peut insister :
- * dix essais par quart d'heure et par adresse suffisent largement à un usage
- * normal, et coupent court à un forçage.
+ * Authentication routes are the only ones where a stranger can insist: ten
+ * attempts per quarter hour and per address are plenty for normal use, and
+ * cut short any brute forcing.
  */
 const attemptLimit = rateLimit({ max: 10, windowMs: 15 * 60 * 1000 });
 
 export const publicAuthRoutes = Router();
 
-// Première utilisation : tant que le compte « admin » n'existe pas, on
-// autorise sa création sans être authentifié. `entra` dit si la connexion par
-// Microsoft est possible : sans application renseignée, l'écran de connexion
-// ne propose que le compte « admin ».
+// First use: as long as the "admin" account does not exist, its creation is
+// allowed without being authenticated. `entra` says whether Microsoft
+// sign-in is possible: with no application filled in, the sign-in screen
+// only offers the "admin" account.
 publicAuthRoutes.get("/setup", (_req, res) => {
   res.json({ needs_setup: !users.admin.get(), entra: entraConfigured() });
 });
 
-// Le premier workspace existe déjà — la base en reçoit un (migrations.ts) :
-// il prend le nom choisi. Ses accès se règlent ensuite, une fois Entra
-// renseigné.
+// The first workspace already exists — the database gets one (migrations.ts):
+// it takes the chosen name. Its access is set afterwards, once Entra is
+// filled in.
 publicAuthRoutes.post("/setup", attemptLimit, (req, res) => {
   if (users.admin.get()) conflict("Le compte admin existe déjà");
 
@@ -98,7 +98,7 @@ publicAuthRoutes.post("/login", attemptLimit, (req, res) => {
   const password = String(req.body.password ?? "");
   const admin = username === ADMIN_USERNAME ? users.admin.get() : undefined;
 
-  // Même message dans les deux cas : on n'indique pas ce qui est faux.
+  // Same message in both cases: we don't say which one is wrong.
   if (!admin?.password_hash || !password || !verifyPassword(password, admin.password_hash)) {
     res.status(401).json({ error: "Identifiant ou mot de passe incorrect" });
     return;
@@ -106,22 +106,22 @@ publicAuthRoutes.post("/login", attemptLimit, (req, res) => {
   res.json({ token: openSession(admin.id), user: publicUser(admin) });
 });
 
-// --- Connexion par Microsoft -------------------------------------------------
+// --- Microsoft sign-in -------------------------------------------------------
 
 /**
- * L'adresse de retour de Microsoft. Elle se déduit de celle par laquelle on
- * nous appelle : c'est elle qu'il faut inscrire dans Azure, et l'onglet Entra
- * la montre telle quelle.
+ * Microsoft's return address. It is deduced from the one we are called
+ * through: it is the one to register in Azure, and the Entra tab shows it
+ * as is.
  */
 const returnAddress = (req: Request): string =>
   `${req.protocol}://${req.get("host")}/api/auth/entra/callback`;
 
 /**
- * Les connexions en cours. En mémoire, comme la limitation des tentatives : un
- * redémarrage les oublie, ce qui oblige au pire à recliquer.
+ * Sign-ins in progress. In memory, like attempt limiting: a restart forgets
+ * them, which at worst forces a re-click.
  *
- * `state` lie le retour de Microsoft à la demande qui l'a ouvert : sans lui,
- * n'importe qui pourrait appeler l'adresse de retour avec un code à lui.
+ * `state` ties Microsoft's return to the request that opened it: without it,
+ * anyone could call the return address with a code of their own.
  */
 const DURATION = 10 * 60 * 1000;
 const requests = new Map<string, { redirectUri: string; expiresAt: number }>();
@@ -134,14 +134,14 @@ const forgetExpired = (): void => {
 };
 
 /**
- * Le retour à l'application, jeton ou erreur dans le fragment : il ne part
- * jamais vers un serveur, ni le nôtre ni celui d'un tiers, et le client
- * l'efface de la barre d'adresse dès qu'il l'a lu.
+ * The return to the application, token or error in the fragment: it never
+ * goes to a server, neither ours nor a third party's, and the client erases
+ * it from the address bar as soon as it has read it.
  */
 const returnUrl = (fragment: Record<string, string>): string =>
   `/#${new URLSearchParams(fragment).toString()}`;
 
-/** Ouvre une connexion : le navigateur part vers Microsoft. */
+/** Opens a sign-in: the browser heads off to Microsoft. */
 publicAuthRoutes.get("/entra/start", attemptLimit, (req, res) => {
   forgetExpired();
   const state = randomBytes(32).toString("hex");
@@ -158,10 +158,10 @@ publicAuthRoutes.get("/entra/start", attemptLimit, (req, res) => {
 });
 
 /**
- * Le retour de Microsoft. La personne est retrouvée par son identifiant Entra,
- * ou par son e-mail pour un compte d'avant Entra, ou créée. Son identité et
- * ses groupes sont relus à chaque connexion ; elle n'entre que si elle est
- * administratrice ou a un rôle dans au moins une société.
+ * Microsoft's return. The person is found by their Entra id, or by their
+ * e-mail for a pre-Entra account, or created. Their identity and groups are
+ * re-read at every sign-in; they only get in if they are an administrator or
+ * have a role in at least one company.
  */
 publicAuthRoutes.get("/entra/callback", touch("lookups"), (req, res, next) => {
   void (async () => {
@@ -217,7 +217,7 @@ publicAuthRoutes.get("/entra/callback", touch("lookups"), (req, res, next) => {
   })().catch(next);
 });
 
-// --- Ce qui suit exige une session -----------------------------------------
+// --- What follows requires a session ---------------------------------------
 
 export const authRoutes = Router();
 authRoutes.use(requireAuth);
@@ -226,8 +226,8 @@ authRoutes.get("/me", (req, res) => {
   res.json(publicUser(req.user));
 });
 
-// Ce que la personne règle elle-même : sa vue d'ouverture — une vue qu'elle
-// voit, ou rien pour la première. Son identité vient d'Entra.
+// What the person sets themselves: their opening view — a view they can
+// see, or none for the first one. Their identity comes from Entra.
 authRoutes.put("/me", (req, res) => {
   const received = String(req.body.default_view ?? req.user.default_view ?? "");
   if (received !== "" && !visibleView(Number(received), req.user)) badRequest("Vue introuvable");
@@ -235,8 +235,8 @@ authRoutes.put("/me", (req, res) => {
   res.json(publicUser(users.byId.get(req.user.id)!));
 });
 
-// Passer dans un autre de ses workspaces : ses vues, ses tableaux et ses
-// droits deviennent ceux de celui-là.
+// Switching to another of their workspaces: their views, boards and rights
+// become those of that one.
 authRoutes.put("/me/workspace", touch("lookups"), (req, res) => {
   const id = Number(req.body.workspace);
   if (!workspacesOf(req.user).some((w) => w.id === id)) badRequest("Workspace introuvable");

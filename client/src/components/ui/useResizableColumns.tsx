@@ -2,43 +2,43 @@ import { useRef, useState } from "react";
 import type { CSSProperties, MouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import classes from "../../assets/styles/Grid.module.css";
 
-// Des colonnes de grille qu'on élargit ou rétrécit en tirant le bord droit de
-// leur en-tête.
+// Grid columns that can be widened or narrowed by dragging the right edge of
+// their header.
 //
-// Tant que personne n'y a touché, la grille garde sa mise en page naturelle :
-// chaque colonne prend la largeur de son contenu, sur toute la largeur de la
-// section. Au premier glissement, les largeurs affichées sont relevées et
-// figées (table-layout: fixed) : la colonne tirée suit la souris, les autres
-// ne bougent plus, et une seule prend ce qui reste de la section. Un double-clic
-// sur une poignée rend à la grille sa mise en page naturelle.
+// As long as nobody has touched it, the grid keeps its natural layout:
+// each column takes the width of its content, across the whole width of the
+// section. On the first drag, the displayed widths are read and
+// frozen (table-layout: fixed): the dragged column follows the mouse, the others
+// no longer move, and a single one takes what remains of the section. A double-click
+// on a handle restores the grid's natural layout.
 //
-// Les largeurs restent dans le navigateur, par grille : c'est un confort de
-// lecture, pas un réglage partagé.
+// Widths stay in the browser, per grid: it is a reading
+// comfort, not a shared setting.
 
-/** En deçà, la colonne ne montrerait plus qu'une ellipse. */
+/** Below this, the column would show nothing but an ellipsis. */
 const WIDTH_MIN = 40;
-/** Pour une colonne montrée après coup, dont on n'a pas encore la largeur. */
+/** For a column shown later, whose width is not known yet. */
 const DEFAULT_WIDTH = 150;
 
-/** La classe posée sur le body pendant un glissement. */
+/** The class set on the body during a drag. */
 const DRAGGING = classes.dragging ?? "";
 
 type Widths = Record<string, number>;
 
 const storageKey = (name: string) => `milo.columns.${name}`;
 
-/** Où les largeurs de cette grille se rangeaient avant la traduction des noms. */
+/** Where this grid's widths were stored before the names were translated. */
 const legacyKey = (name: string) =>
   `milo.colonnes.${name === "projects" ? "projets" : name.replace(/^inventory\./, "inventaire.")}`;
 
-/** Les colonnes renommées : la case à cocher du support s'appelait « case ». */
+/** Renamed columns: the support checkbox used to be called "case". */
 const LEGACY_COLUMNS: Record<string, string> = { case: "checkbox" };
 
 function read(name: string): Widths | null {
   try {
     const raw = localStorage.getItem(storageKey(name));
     if (raw) return JSON.parse(raw) as Widths;
-    // Les largeurs d'avant : reprises sous leur nouveau nom, une fois.
+    // The old widths: carried over under their new name, once.
     const legacy = localStorage.getItem(legacyKey(name));
     if (!legacy) return null;
     const widths = Object.fromEntries(
@@ -57,21 +57,21 @@ function write(name: string, widths: Widths | null) {
     if (widths) localStorage.setItem(storageKey(name), JSON.stringify(widths));
     else localStorage.removeItem(storageKey(name));
   } catch {
-    // Stockage refusé (navigation privée…) : les largeurs valent pour la page.
+    // Storage refused (private browsing...): the widths hold for the page.
   }
 }
 
 const stop = (e: MouseEvent) => e.stopPropagation();
 
 /**
- * « nom » distingue la grille dans le stockage ; « cles » liste ses colonnes
- * montrées, dans l'ordre de leurs en-têtes — y compris celles sans poignée,
- * comme la case à cocher du support.
+ * "name" tells the grid apart in storage; "keys" lists its shown
+ * columns, in the order of their headers — including those without a handle,
+ * like the support checkbox.
  *
- * « initiales » donne à la grille, tant que personne n'y a touché, des
- * largeurs de départ au lieu de sa mise en page naturelle : les colonnes
- * qu'elle nomme les prennent, celles qu'elle tait se partagent le reste de la
- * section. Le double-clic y ramène.
+ * "initials" gives the grid, as long as nobody has touched it, starting
+ * widths instead of its natural layout: the columns it names take them,
+ * those it leaves out share the rest of the
+ * section. Double-clicking brings it back to them.
  */
 export function useResizableColumns(
   name: string,
@@ -83,8 +83,8 @@ export function useResizableColumns(
 
   const widthOf = (key: string) => widths?.[key] ?? DEFAULT_WIDTH;
 
-  // Les largeurs telles qu'affichées. Celles des colonnes masquées sont
-  // gardées, pour le jour où elles reviennent.
+  // The widths as displayed. Those of hidden columns are
+  // kept, for the day they return.
   const measure = (): Widths => {
     const measures: Widths = { ...widths };
     const cells = tableRef.current?.tHead?.rows[0]?.cells;
@@ -136,11 +136,11 @@ export function useResizableColumns(
     write(name, null);
   };
 
-  // La grille fait toute la largeur de sa section, et au moins la somme des
-  // colonnes : au-delà, la section la fait défiler de côté. L'air qui reste
-  // va à une seule colonne, seule à ne pas dire sa largeur : rétrécir une
-  // autre ne regonfle pas ses voisines. C'est la dernière, ou, quand la
-  // grille a des largeurs de départ, la première à ne pas en avoir.
+  // The grid spans the full width of its section, and at least the sum of the
+  // columns: beyond that, the section scrolls it sideways. The remaining space
+  // goes to a single column, the only one not stating its width: shrinking
+  // another does not re-inflate its neighbors. It is the last one, or, when the
+  // grid has starting widths, the first without one.
   const flexible = keys.find((key) => initials && !initials[key]) ?? keys[keys.length - 1];
   const style: CSSProperties | undefined = widths
     ? {
@@ -157,9 +157,9 @@ export function useResizableColumns(
       : undefined;
 
   return {
-    /** À étaler sur la « Table ». */
+    /** To spread on the "Table". */
     tableProps: { ref: tableRef, className: classes.grid, style },
-    /** À poser en tête de la « Table », avant « Table.Thead ». */
+    /** To put at the head of the "Table", before "Table.Thead". */
     colgroup: widths ? (
       <colgroup>
         {keys.map((key) => (
@@ -173,7 +173,7 @@ export function useResizableColumns(
         ))}
       </colgroup>
     ) : null,
-    /** La poignée d'une colonne, à poser dans son en-tête. */
+    /** A column's handle, to put in its header. */
     handle: (key: string): ReactNode => (
       <div
         className={classes.handle}

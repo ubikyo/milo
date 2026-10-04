@@ -1,15 +1,14 @@
-// La largeur d'une section — une colonne d'une catégorie d'accès comme d'un
-// panneau des statistiques. Elle se reçoit et se vérifie de la même façon
-// partout.
+// The width of a section — a column of an access category as well as a
+// statistics panel. It is received and validated the same way everywhere.
 
 import { SECTIONS_GAP_MAX, isSectionWidthUnit } from "@milo/shared";
 import type { SectionWidthUnit } from "@milo/shared";
 import { badRequest } from "./http.js";
 
 /**
- * L'unité de largeur reçue du client. Une valeur inconnue n'est pas corrigée
- * en silence : elle serait rangée telle quelle et la colonne n'aurait plus de
- * largeur lisible.
+ * The width unit received from the client. An unknown value is not silently
+ * corrected: it would be stored as is and the column would no longer have a
+ * readable width.
  */
 export const widthUnit = (value: unknown, defaultValue: SectionWidthUnit): SectionWidthUnit => {
   if (value === undefined) return defaultValue;
@@ -18,9 +17,9 @@ export const widthUnit = (value: unknown, defaultValue: SectionWidthUnit): Secti
 };
 
 /**
- * La valeur qui accompagne l'unité : nulle pour une largeur automatique, un
- * nombre positif sinon. Les pour-cent s'arrêtent à 100 — au-delà, la colonne
- * déborderait de la rangée.
+ * The value that goes with the unit: null for an automatic width, a positive
+ * number otherwise. Percentages stop at 100 — beyond that, the column would
+ * overflow the row.
  */
 export const widthValue = (unit: SectionWidthUnit, value: unknown): number | null => {
   if (unit === "auto") return null;
@@ -30,16 +29,16 @@ export const widthValue = (unit: SectionWidthUnit, value: unknown): number | nul
   return count;
 };
 
-/** Le rang demandé à la création d'une section, s'il est lisible. */
+/** The position requested when creating a section, if it is readable. */
 export const requestedRank = (value: unknown): number | null => {
   const rank = Number(value);
   return value !== undefined && Number.isInteger(rank) && rank >= 0 ? rank : null;
 };
 
 /**
- * L'écart qui suit une colonne, tel que son champ l'envoie. Absent, celui d'avant
- * reste. Un nombre hors des bornes est refusé plutôt que ramené en silence :
- * ramené, le champ afficherait autre chose que ce qui vient d'être saisi.
+ * The gap following a column, as its field sends it. When absent, the previous
+ * one is kept. A number out of bounds is rejected rather than silently clamped:
+ * clamped, the field would display something other than what was just entered.
  */
 export const columnsGap = (value: unknown, defaultValue: number): number => {
   if (value === undefined || value === null || value === "") return defaultValue;

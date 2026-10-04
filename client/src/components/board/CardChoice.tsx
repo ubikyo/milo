@@ -7,34 +7,34 @@ import { errorMessage } from "../../lib/errors";
 
 type Candidate = LinkCandidates["items"][number];
 
-/** Le nom d'une carte : sa référence, puis son titre. */
+/** A card's name: its reference, then its title. */
 export const cardName = (card: { number: number; text: string }): string =>
   card.number > 0 ? `${taskReference(card.number)} · ${card.text}` : card.text;
 
-// Le temps qu'on laisse à la frappe avant de chercher : chaque lettre ne
-// relance pas la recherche.
+// The time allowed for typing before searching: each letter does not
+// relaunch the search.
 const TYPING_DELAY = 250;
 
-// La hauteur de la liste : moins que dix lignes, pour que la première page
-// déborde déjà et que descendre charge la suivante.
+// The list's height: less than ten rows, so that the first page
+// already overflows and scrolling down loads the next.
 const LIST_HEIGHT = 260;
 
 /**
- * Le choix de l'autre carte d'une dépendance. Les cartes arrivent du serveur
- * dix par dix : celles du tableau d'abord, puis celles des autres tableaux,
- * regroupées sous leur nom. Descendre au bas de la liste charge la page
- * suivante ; taper filtre, par titre ou par référence.
+ * The choice of the other card of a dependency. Cards arrive from the
+ * server ten at a time: those of the board first, then those of the other
+ * boards, grouped under their name. Scrolling to the bottom of the list
+ * loads the next page; typing filters, by title or by reference.
  */
 interface CardChoiceProps {
   cardId: Id;
-  /** Le tableau de la carte : une carte d'ailleurs porte le nom du sien. */
+  /** The card's board: a card from elsewhere carries the name of its own. */
   boardId: Id | string | null;
   value: LinkedCard | null;
   onChange: (card: LinkedCard) => void;
   onError: (message: string) => void;
   readOnly?: boolean;
   className?: string;
-  /** Le retrait du texte dans le champ, aligné sur les autres champs de la ligne. */
+  /** The text's inset in the field, aligned with the other fields of the row. */
   inset: number;
 }
 
@@ -52,8 +52,8 @@ export default function CardChoice({
   const [cards, setCards] = useState<Candidate[]>([]);
   const [still, setHasMore] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  // Seule la dernière demande compte : une réponse lente à une frappe
-  // ancienne n'écrase pas la liste d'une frappe plus récente.
+  // Only the last request counts: a slow response to an old keystroke
+  // does not overwrite the list from a more recent one.
   const request = useRef(0);
 
   const combobox = useCombobox({
@@ -79,7 +79,7 @@ export default function CardChoice({
     }
   };
 
-  // À l'ouverture et à chaque frappe, la liste repart de la première page.
+  // On open and on each keystroke, the list restarts from the first page.
   useEffect(() => {
     if (!isOpen) return;
     const timeout = window.setTimeout(() => void load(search.trim(), 0), TYPING_DELAY);
@@ -98,8 +98,8 @@ export default function CardChoice({
       : cardName(value)
     : "";
 
-  // Les cartes se regroupent par tableau, dans l'ordre où elles arrivent :
-  // « Ce tableau » en tête, puis chacun des autres sous son nom.
+  // Cards are grouped by board, in the order they arrive:
+  // "Ce tableau" first, then each of the others under its name.
   const groups: { key: string; title: string; cards: Candidate[] }[] = [];
   for (const card of cards) {
     const key = card.same_board ? "ici" : String(card.board_id);
@@ -125,7 +125,7 @@ export default function CardChoice({
           className={className}
           style={{ flex: 1, minWidth: 0 }}
           styles={{ input: { paddingInlineStart: inset } }}
-          // Fermé, le champ montre la carte choisie ; ouvert, ce qu'on tape.
+          // Closed, the field shows the chosen card; open, what is typed.
           value={isOpen ? search : shown}
           placeholder={isOpen && value ? shown : "Chercher une carte"}
           onChange={(e) => {

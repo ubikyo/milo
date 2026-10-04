@@ -67,30 +67,30 @@ import type {
   SupportStatus,
 } from "@milo/shared";
 
-// Deux volets : le ticket et ses échanges avec l'expéditeur, puis les
-// commentaires internes de l'équipe — comme sur une carte ou un projet.
+// Two panes: the ticket and its exchanges with the sender, then the
+// team's internal comments — as on a card or a project.
 const TABS = [
   { value: "settings", label: "Ticket", icon: IconSettings },
   { value: "comments", label: "Commentaires", icon: IconMessage },
 ];
 
-// Le panneau des messages ne descend pas sous cette hauteur, même quand la
-// fiche au-dessus prend de la place : on y lit toujours au moins un message.
+// The messages panel does not shrink below this height, even when the
+// form above takes up space: at least one message is always readable.
 const MESSAGES_MIN_HEIGHT = 200;
 
-// Le statut et l'échéance, sur la ligne sous l'objet.
+// The status and due date, on the row under the subject.
 const STATUS_WIDTH = 120;
 const DUE_WIDTH = 320;
 
 const DRAWER_PADDING = 40;
 
-/** Une réponse de l'équipe : ni un e-mail reçu, ni un mot de Milo. */
+/** A team reply: neither a received e-mail, nor a Milo word. */
 const fromTeam = (m: SupportMessage): boolean =>
   m.format !== "email" && !m.system && m.author?.id !== MILO_ACTOR_ID;
 
 /**
- * L'évènement que vit la prochaine réponse de l'équipe, d'après le fil : vide,
- * l'expéditeur seul y a écrit, ou l'équipe a déjà répondu.
+ * The event that the team's next reply amounts to, based on the thread: empty,
+ * only the sender has written there, or the team has already replied.
  */
 const threadEvent = (exchanges: SupportMessage[]): SupportContentEvent =>
   exchanges.some(fromTeam)
@@ -99,60 +99,60 @@ const threadEvent = (exchanges: SupportMessage[]): SupportContentEvent =>
       ? "first_reply"
       : "new";
 
-// Bien plus large que les autres tiroirs (560) : une demande tient ses
-// acteurs, ses étiquettes et ses échanges côte à côte, et son fil se lit sans
-// que chaque commentaire retombe à la ligne.
+// Much wider than the other drawers (560): a request holds its
+// actors, its labels and its exchanges side by side, and its thread reads
+// without each comment wrapping.
 const DRAWER_WIDTH = 820;
 
-// À la création, 200 px de plus que pour une demande ouverte.
+// On creation, 200 px more than for an open request.
 const DRAWER_WIDTH_CREATION = DRAWER_WIDTH + 200;
 
-// La colonne des acteurs, dans l'onglet « Ticket » : de quoi tenir quelques
-// bulles et le « + », sans prendre la place des étiquettes.
+// The actors column, in the "Ticket" tab: enough to hold a few
+// bubbles and the "+", without taking the labels' space.
 const ACTORS_WIDTH = 140;
 
-// Hauteur des étiquettes et du « + » qui les suit, comme sur la fiche d'une
-// carte.
+// Height of the labels and of the "+" following them, as on a card's
+// form.
 const CHIP_HEIGHT = 30;
 
 /**
- * La fiche d'un ticket. Elle s'ouvre au clic sur une ligne, ou
- * vide depuis « Nouveau ticket », et se referme en enregistrant.
+ * A ticket's form. It opens on a click on a row, or
+ * empty from "Nouveau ticket", and closes on save.
  *
- * Ses acteurs et ses étiquettes se posent comme les membres et les étiquettes
- * d'une carte : on en choisit autant qu'il faut, dans la même liste à cocher.
+ * Its actors and labels work like a card's members and labels:
+ * you pick as many as needed, in the same checkbox list.
  */
 interface SupportRequestDrawerProps {
   opened: boolean;
   onClose: () => void;
-  /** « null » à la création, la demande visée sinon. */
+  /** "null" on creation, the targeted request otherwise. */
   request: SupportRequest | null;
   /**
-   * Le contexte proposé à la création : celui qu'on regarde, ou le premier du
-   * tableau sous « Tous les contextes ». Une demande déjà ouverte garde le
-   * sien, quelle que soit cette valeur.
+   * The context proposed on creation: the one being viewed, or the first of the
+   * board under "Tous les contextes". An already open request keeps its
+   * own, whatever this value.
    */
   contextId: string;
-  /** Les contextes du tableau : une demande peut passer de l'un à l'autre. */
+  /** The board's contexts: a request can move from one to another. */
   contexts: Context[];
-  /** Le tableau ouvert : une demande saisie sans contexte y prend le premier. */
+  /** The open board: a request entered without a context takes its first one. */
   boardId: Id | null;
-  /** À la création : le widget « Tickets » d'où on la saisit. */
+  /** On creation: the "Tickets" widget it is entered from. */
   listKey?: string;
-  /** Le statut de l'onglet ouvert : celui que prend une demande créée là. */
+  /** The status of the open tab: the one a request created there takes. */
   defaultStatus: SupportStatus;
-  /** L'objet proposé à la création : celui de l'élément d'où on la crée. */
+  /** The subject proposed on creation: that of the item it is created from. */
   defaultSubject?: string;
   /**
-   * Qui crée la demande en est l'acteur d'office — sauf depuis le mode Accès,
-   * où l'on signale un problème sans s'en charger.
+   * Whoever creates the request is its actor by default — except from the Accès
+   * mode, where a problem is reported without taking charge of it.
    */
   assignCurrentUser?: boolean;
   users: PublicUser[];
   currentUser: PublicUser;
   onSaved: () => void | Promise<void>;
   onDeleted: () => void | Promise<void>;
-  /** La personne suit cette demande : elle est prévenue de chaque modification. */
+  /** The person follows this request: they are notified of each change. */
   following: boolean;
   onToggleFollow: () => void | Promise<void>;
 }
@@ -178,22 +178,22 @@ export default function SupportRequestDrawer({
   const [subject, setSubject] = useState("");
   const [status, setStatus] = useState<SupportStatus>(DEFAULT_SUPPORT_STATUS);
   /**
-   * Le contexte de la demande. À la création il est proposé — celui qu'on
-   * regarde, ou le premier —, et reste modifiable : c'est ainsi qu'on
-   * rattrape une demande ouverte au mauvais endroit.
+   * The request's context. On creation it is proposed — the one being
+   * viewed, or the first —, and remains editable: this is how a request
+   * opened in the wrong place is fixed.
    */
   const [activeContextId, setActiveContextId] = useState(contextId);
-  /** Les étiquettes du support, communes à tous les contextes. */
+  /** The support labels, shared by all contexts. */
   const [labels, setLabels] = useState<SupportLabel[]>([]);
-  /** Les acteurs retenus, en chaînes : ceux qui s'occupent de la demande. */
+  /** The retained actors, as strings: those who handle the request. */
   const [actorIds, setActorIds] = useState<string[]>([]);
   const [labelIds, setLabelIds] = useState<string[]>([]);
-  /** L'échéance, en ISO ; vide quand la demande n'en a pas. */
+  /** The due date, in ISO; empty when the request has none. */
   const [due, setDue] = useState("");
   const [comments, setComments] = useState<SupportMessage[]>([]);
-  /** Les contenus par défaut, que la réponse pose dans son éditeur. */
+  /** The default contents, which the reply drops into its editor. */
   const [contents, setContents] = useState<SupportContent[]>([]);
-  /** Les fiches Entra que leurs variables citent : qui écrit, et l'expéditeur. */
+  /** The Entra records their variables cite: who writes, and the sender. */
   const [people, setPeople] = useState<{
     user: SupportPerson | null;
     sender: SupportPerson | null;
@@ -202,21 +202,21 @@ export default function SupportRequestDrawer({
   const [confirmDeleteOpened, setConfirmDeleteOpened] = useState(false);
   const [registration, setSaving] = useState(false);
 
-  // Sans le droit de modifier les demandes, la fiche se lit seulement.
+  // Without the right to edit requests, the form is read-only.
   const can = useRights();
   const readOnly = Boolean(request) && !can("support", "update");
   const canDelete = Boolean(request) && can("support", "delete");
 
   useEffect(() => {
     if (!opened) return;
-    // Un tiroir rouvert repart des paramètres, quel que soit l'onglet quitté.
+    // A reopened drawer starts from the parameters, whatever tab was left.
     setActiveTab("settings");
 
     if (!request) {
       setActiveContextId(contextId);
       setSubject(defaultSubject);
       setStatus(defaultStatus);
-      // Qui crée la demande s'en occupe, jusqu'à ce qu'on en décide autrement.
+      // Whoever creates the request handles it, until decided otherwise.
       setActorIds(assignCurrentUser ? [String(currentUser.id)] : []);
       setLabelIds([]);
       setDue("");
@@ -244,7 +244,7 @@ export default function SupportRequestDrawer({
     currentUser.id,
   ]);
 
-  /** Les étiquettes du support : communes à toutes les sociétés. */
+  /** The support labels: shared by all companies. */
   const reloadLabels = useCallback(async () => {
     try {
       setLabels(await api.getSupportLabels());
@@ -275,17 +275,17 @@ export default function SupportRequestDrawer({
       .catch((e) => notifyError(errorMessage(e)));
   }, [opened, requestId]);
 
-  // Un seul fil côté serveur, deux côté fiche : les échanges avec
-  // l'expéditeur, et les commentaires internes.
+  // A single thread server-side, two on the form side: the exchanges with
+  // the sender, and the internal comments.
   const exchanges = comments.filter((c) => !c.internal);
   const notes = comments.filter((c) => c.internal);
 
-  // Ce que la réponse porte d'office : le contenu du moment du fil, puis celui
-  // de tout message — une signature — après une ligne vide ; leurs variables
-  // remplies avec la fiche Entra de qui écrit, celle de l'expéditeur, et la
-  // demande. Avant création, elle n'a ni numéro ni expéditeur : ces
-  // variables restent vides. Le rendu attend les fiches, pour ne pas poser
-  // une signature sans téléphone qui se corrigerait sous les yeux.
+  // What the reply carries by default: the content for the moment in the thread, then that
+  // of any message — a signature — after a blank line; their variables
+  // filled in with the Entra record of whoever writes, that of the sender, and the
+  // request. Before creation, it has neither a number nor a sender: these
+  // variables stay empty. Rendering waits for the records, so as not to place
+  // a signature without a phone number that would fix itself before one's eyes.
   const contentFor = (event: SupportContentEvent) =>
     contents.find((c) => c.event === event)?.html ?? "";
   const replyTemplate = (() => {
@@ -307,8 +307,8 @@ export default function SupportRequestDrawer({
   };
 
   /**
-   * Ce que la demande porte. Rien de tout cela n'est obligatoire : une demande
-   * sans objet se lit par son fil.
+   * What the request carries. None of it is mandatory: a request
+   * without a subject is read through its thread.
    */
   const input = (): SupportRequestInput => ({
     context_id: activeContextId ? Number(activeContextId) : undefined,
@@ -319,12 +319,12 @@ export default function SupportRequestDrawer({
     label_ids: labelIds.map(Number),
   });
 
-  /** Cette adresse est-elle celle de qui a écrit à la boîte de support ? */
+  /** Is this address that of whoever wrote to the support inbox? */
   const isSender = (email: string): boolean =>
     Boolean(request?.sender_email) &&
     email.toLowerCase() === request!.sender_email.toLowerCase();
 
-  /** L'expéditeur, quand aucun compte choisi ne porte déjà son adresse. */
+  /** The sender, when no chosen account already carries their address. */
   const sender =
     request?.sender_email &&
     !users.some(
@@ -340,8 +340,8 @@ export default function SupportRequestDrawer({
         }
       : null;
 
-  /** Vrai dès que la demande dit quelque chose : de quoi valoir d'être créée. */
-  // L'acteur posé d'office — qui crée la demande — ne suffit pas à la remplir.
+  /** True as soon as the request says something: enough to be worth creating. */
+  // The default actor — who creates the request — is not enough to fill it.
   const isFilled = Boolean(
     subject.trim() ||
     actorIds.some((id) => id !== String(currentUser.id)) ||
@@ -350,9 +350,9 @@ export default function SupportRequestDrawer({
     comments.length,
   );
 
-  // « Sauvegarder » : le seul geste qui écrit. Une demande neuve dont rien
-  // n'a été dit n'est pas créée. Si le serveur refuse, le tiroir reste ouvert
-  // avec le message plutôt que d'emporter la saisie.
+  // "Sauvegarder": the only action that writes. A new request with nothing
+  // said is not created. If the server refuses, the drawer stays open
+  // with the message rather than discarding the input.
   const persist = async () => {
     if (!request && !isFilled) return onClose();
     setSaving(true);
@@ -365,7 +365,7 @@ export default function SupportRequestDrawer({
           board_id: boardId ?? undefined,
           list_key: listKey || undefined,
         });
-        // Les échanges tenus avant la création partent à sa suite.
+        // The exchanges held before creation follow it.
         for (const comment of comments) {
           await api.addSupportComment(
             created.id,
@@ -375,8 +375,8 @@ export default function SupportRequestDrawer({
         }
       }
       await onSaved();
-      // « Mettre à jour » laisse la demande ouverte ; une création, elle,
-      // referme le tiroir.
+      // "Mettre à jour" leaves the request open; a creation, on the other hand,
+      // closes the drawer.
       if (!request) onClose();
     } catch (e) {
       notifyError(errorMessage(e));
@@ -396,10 +396,10 @@ export default function SupportRequestDrawer({
     }
   };
 
-  // Avant création, les commentaires vivent en local et partent au serveur une
-  // fois la demande enregistrée — comme ceux d'un projet qu'on ouvre.
+  // Before creation, comments live locally and go to the server once
+  // the request is saved — like those of a project being opened.
   const addComment = async (text: string, sending?: ReplySending) => {
-    // Le bouton d'envoi dit où en est la demande : la fiche le montre aussitôt.
+    // The send button says where the request stands: the form shows it right away.
     if (sending) setStatus(sending.status);
     if (!request) {
       const instant = new Date().toISOString();
@@ -417,8 +417,8 @@ export default function SupportRequestDrawer({
       ]);
       return;
     }
-    // Les pièces jointes partent d'abord, une à une : la réponse ne porte
-    // ensuite que leurs noms de rangement.
+    // Attachments go first, one by one: the reply then carries
+    // only their storage names.
     const { files = [], ...rest } = sending ?? {};
     const uploaded = [];
     for (const file of files)
@@ -427,15 +427,15 @@ export default function SupportRequestDrawer({
       ...rest,
       files: uploaded,
     });
-    // Qui écrit devient acteur : le serveur l'a posé, la fiche le montre — et
-    // l'enregistrement de la fiche ne l'en retirera pas.
+    // Whoever writes becomes an actor: the server set it, the form shows it — and
+    // saving the form will not remove them.
     const me = String(currentUser.id);
     setActorIds((already) => (already.includes(me) ? already : [...already, me]));
     await refreshComments();
   };
 
-  // Les commentaires internes : même geste que sur une carte ou un projet.
-  // Avant création, ils attendent en local, comme les échanges.
+  // Internal comments: same action as on a card or a project.
+  // Before creation, they wait locally, like the exchanges.
   const addNote = async (text: string) => {
     if (!request) {
       const instant = new Date().toISOString();
@@ -489,9 +489,9 @@ export default function SupportRequestDrawer({
         size={request ? DRAWER_WIDTH : DRAWER_WIDTH_CREATION}
         padding={DRAWER_PADDING}
         withCloseButton={false}
-        // Comme les autres tiroirs : seul le panneau de l'onglet défile, les
-        // onglets et les boutons du bas restent en place, et la barre court
-        // le long du bord droit (components/ui/DrawerScroll.tsx).
+        // Like the other drawers: only the tab's panel scrolls, the
+        // tabs and the bottom buttons stay in place, and the bar runs
+        // along the right edge (components/ui/DrawerScroll.tsx).
         styles={DRAWER_STYLES}
       >
         <Tabs
@@ -512,9 +512,9 @@ export default function SupportRequestDrawer({
               </Tabs.Tab>
             ))}
 
-            {/* Au bout de la rangée d'onglets, comme sur une carte. Une
-                demande en cours de création n'a encore rien à suivre : le
-                menu n'y paraît pas. */}
+            {/* At the end of the tab row, as on a card. A request being
+                created has nothing to follow yet: the menu does not
+                appear. */}
             {request && (
               <Menu
                 position="bottom-end"
@@ -541,7 +541,7 @@ export default function SupportRequestDrawer({
                   </Button>
                 </Menu.Target>
                 <Menu.Dropdown>
-                  {/* Le menu ne se referme pas, pour qu'on voie la coche changer. */}
+                  {/* The menu does not close, so the checkmark can be seen changing. */}
                   <Menu.Item
                     leftSection={<IconEye size={16} />}
                     rightSection={following ? <IconCheck size={14} /> : null}
@@ -556,21 +556,21 @@ export default function SupportRequestDrawer({
           </Tabs.List>
 
           <Tabs.Panel value="settings" style={DRAWER_PANEL_STYLE}>
-            {/* Tout le panneau défile quand la fenêtre est trop basse ; sinon
-                le fil des messages prend la hauteur qui reste. */}
+            {/* The whole panel scrolls when the window is too short; otherwise
+                the message thread takes the remaining height. */}
             <DrawerScrollArea fill>
-              {/* La fiche en haut, les messages dans leur propre panneau qui
-                défile, et la réponse tout en bas : seul le fil défile, la
-                fiche et l'éditeur restent en place. */}
+              {/* The form at the top, the messages in their own scrolling
+                panel, and the reply at the very bottom: only the thread scrolls, the
+                form and the editor stay in place. */}
               <Stack gap="xl" style={{ flex: 1, minHeight: 0 }}>
-                {/* En lecture seule, les champs de la fiche sont éteints d'un
-                    coup : c'est ce que fait un « fieldset » désactivé. */}
+                {/* In read-only mode, the form's fields are all disabled at
+                    once: this is what a disabled "fieldset" does. */}
                 <fieldset disabled={readOnly} style={BARE_FIELDSET}>
                   <Stack gap="xl">
-                    {/* Comme sur la fiche d'une carte : les deux colonnes s'ouvrent
-                      chacune sur leur propre liste à cocher. Les bulles des
-                      acteurs tiennent en peu de place : leur colonne a une
-                      largeur fixe, les étiquettes prennent le reste. */}
+                    {/* As on a card's form: the two columns each open
+                      on their own checkbox list. The actors' bubbles
+                      take little space: their column has a fixed
+                      width, the labels take the rest. */}
                     <Group align="flex-start" gap="md" wrap="nowrap">
                       <div
                         style={{ flex: `0 0 ${ACTORS_WIDTH}px`, minWidth: 0 }}
@@ -594,9 +594,9 @@ export default function SupportRequestDrawer({
                               )}
                             </span>
                           )}
-                          // L'expéditeur de l'e-mail est acteur d'office : il est
-                          // montré en tête, sans se retirer. Celui qui a un compte
-                          // est déjà parmi les acteurs, il n'est pas redoublé.
+                          // The e-mail's sender is an actor by default: they are
+                          // shown first, and cannot be removed. Whoever has an account
+                          // is already among the actors, and is not duplicated.
                           leadingChips={
                             sender && (
                               <span style={{ display: "inline-flex" }}>
@@ -610,8 +610,8 @@ export default function SupportRequestDrawer({
                         />
                       </div>
                       <div style={{ flex: "7 1 0", minWidth: 0 }}>
-                        {/* Les étiquettes sont communes à tous les contextes : les
-                          renommer ou les recolorer touche toutes les demandes. */}
+                        {/* Labels are shared by all contexts: renaming
+                          or recoloring them affects all requests. */}
                         <LabelPicker
                           chipHeight={CHIP_HEIGHT}
                           labels={labels}
@@ -623,8 +623,8 @@ export default function SupportRequestDrawer({
                           emptyText="Aucune étiquette"
                         />
                       </div>
-                      {/* Le numéro du ticket, au bout de la ligne, comme dans la
-                        liste : c'est lui qu'on cite à l'expéditeur. */}
+                      {/* The ticket number, at the end of the row, as in the
+                        list: it is what is cited to the sender. */}
                       {request && (
                         <Badge
                           color="green"
@@ -638,8 +638,8 @@ export default function SupportRequestDrawer({
                       )}
                     </Group>
 
-                    {/* L'objet et le contexte, côte à côte. L'objet finit au droit
-                      de l'échéance, dessous ; le contexte prend le reste. */}
+                    {/* The subject and the context, side by side. The subject ends flush with
+                      the due date below; the context takes the rest. */}
                     <Group align="flex-start" gap="md" wrap="nowrap">
                       <div
                         style={{
@@ -647,19 +647,19 @@ export default function SupportRequestDrawer({
                           flexShrink: 0,
                         }}
                       >
-                        {/* Celui de l'e-mail pour une demande reçue, et qui reste
-                          retouchable. */}
+                        {/* The e-mail's for a received request, and which stays
+                          editable. */}
                         <TextInput
                           label="Objet"
                           value={subject}
                           onChange={(e) => setSubject(e.currentTarget.value)}
                         />
                       </div>
-                      {/* Le contexte auquel appartient la demande. Sous « Tous les
-                        contextes », une demande neuve part dans le premier : c'est
-                        ici qu'on la remet où il faut. Ses étiquettes, communes à
-                        tous les contextes, la suivent. Un tableau sans contexte
-                        n'a rien à proposer. */}
+                      {/* The context the request belongs to. Under "Tous les
+                        contextes", a new request goes into the first one: this is
+                        where it is put back where it belongs. Its labels, shared by
+                        all contexts, follow it. A board without contexts
+                        has nothing to offer. */}
                       {contexts.length > 0 && (
                         <div style={{ flex: "1 1 0", minWidth: 0 }}>
                           <Select
@@ -679,11 +679,11 @@ export default function SupportRequestDrawer({
                       )}
                     </Group>
 
-                    {/* Le statut et l'échéance, à la ligne. */}
+                    {/* The status and due date, on their own row. */}
                     <Group align="flex-start" gap="md" wrap="nowrap">
                       <div style={{ width: STATUS_WIDTH, flexShrink: 0 }}>
-                        {/* Le statut est ce que disent les onglets : le changer ici
-                          fait passer la demande de l'un à l'autre. */}
+                        {/* The status is what the tabs say: changing it here
+                          moves the request from one to the other. */}
                         <Select
                           label="Statut"
                           data={SUPPORT_STATUSES.map((s) => ({
@@ -697,7 +697,7 @@ export default function SupportRequestDrawer({
                           allowDeselect={false}
                         />
                       </div>
-                      {/* Comme celle d'une tâche : la date, l'heure et l'état. */}
+                      {/* Like a task's: the date, time and state. */}
                       <div style={{ width: DUE_WIDTH, flexShrink: 0 }}>
                         <CardDueDate
                           simple
@@ -706,10 +706,10 @@ export default function SupportRequestDrawer({
                           onRemove={() => setDue("")}
                         />
                       </div>
-                      {/* Une demande ouverte s'enregistre ici, calé à droite de
-                        la ligne, plutôt qu'au pied du tiroir : les échanges, dessous,
-                        ont leur propre envoi. La création garde « Sauvegarder »
-                        en bas. */}
+                      {/* An open request is saved here, flush right on
+                        the row, rather than at the drawer's foot: the exchanges, below,
+                        have their own send. Creation keeps "Sauvegarder"
+                        at the bottom. */}
                       {request && !readOnly && (
                         <Button
                           color="teal"
@@ -728,8 +728,8 @@ export default function SupportRequestDrawer({
                   </Stack>
                 </fieldset>
 
-                {/* Le libellé « Échanges » au-dessus du panneau, comme celui
-                  des autres champs de la fiche. */}
+                {/* The "Échanges" label above the panel, like that
+                  of the form's other fields. */}
                 <div
                   style={{
                     flex: 1,
@@ -739,8 +739,8 @@ export default function SupportRequestDrawer({
                   }}
                 >
                   <Input.Label>Échanges</Input.Label>
-                  {/* Le fond des champs de Mantine (variante « default ») :
-                    le panneau se lit comme un champ de la fiche. */}
+                  {/* The background of Mantine's fields ("default" variant):
+                    the panel reads like a form field. */}
                   <Paper
                     bg="light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))"
                     style={{
@@ -751,10 +751,10 @@ export default function SupportRequestDrawer({
                       overflow: "hidden",
                     }}
                   >
-                    {/* Sans échange, l'invite se centre dans le cadre, comme
-                      celle des commentaires. Sinon, le fil défile dans son
-                      cadre, sa barre fine contre le bord droit du cadre :
-                      celle du tiroir, elle, fait défiler tout le panneau. */}
+                    {/* Without exchanges, the prompt is centered in the frame, like
+                      that of the comments. Otherwise, the thread scrolls in its
+                      frame, its thin bar against the frame's right edge:
+                      the drawer's own bar scrolls the whole panel. */}
                     {exchanges.length === 0 ? (
                       <EmptyPanel
                         icon={IconMessage}
@@ -784,9 +784,9 @@ export default function SupportRequestDrawer({
                                   }
                             }
                           />
-                          {/* Avant création, le fil ne part au serveur qu'avec la
-                          demande : on le dit plutôt que de le laisser croire
-                          enregistré. */}
+                          {/* Before creation, the thread only goes to the server with the
+                          request: say so rather than let it look
+                          saved. */}
                           {!request && exchanges.length > 0 && (
                             <Text size="xs" c="dimmed">
                               {exchanges.length > 1
@@ -806,8 +806,8 @@ export default function SupportRequestDrawer({
                     template={replyTemplate}
                     byEmail={Boolean(request?.sender_email)}
                     withFiles={Boolean(request)}
-                    // À la création, une réponse n'a de sens que si quelqu'un
-                    // s'occupe de la demande.
+                    // On creation, a reply only makes sense if someone
+                    // handles the request.
                     blockedReason={
                       !request && !actorIds.length
                         ? "Choisir au moins un acteur avant d'envoyer"
@@ -818,7 +818,7 @@ export default function SupportRequestDrawer({
                         await addComment(html, sending);
                       } catch (e) {
                         notifyError(errorMessage(e));
-                        // Relancée : l'éditeur garde ainsi le texte refusé.
+                        // Retried: the editor thus keeps the refused text.
                         throw e;
                       }
                     }}
@@ -830,8 +830,8 @@ export default function SupportRequestDrawer({
           <Tabs.Panel value="comments" style={DRAWER_PANEL_STYLE}>
             <DrawerScrollArea fill>
               <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
-                {/* Entre membres de l'équipe : rien de ce qui s'écrit ici ne
-                    part à l'expéditeur. */}
+                {/* Among team members: nothing written here
+                    goes to the sender. */}
                 <CommentThread
                   comments={notes}
                   onAdd={(text) =>

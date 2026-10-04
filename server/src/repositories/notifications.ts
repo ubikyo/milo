@@ -1,12 +1,12 @@
-// Les notifications reçues : ce que le tiroir « Notifications » relit. Chaque
-// notification poussée à l'écran y est aussi rangée, et y reste jusqu'à ce que
-// la personne la supprime — ou qu'elle soit trop ancienne pour être gardée.
+// Received notifications: what the "Notifications" drawer re-reads. Each
+// notification pushed to the screen is also stored here, and stays until the
+// person deletes it — or it is too old to be kept.
 
 import type { Id, Notification } from "@milo/shared";
 import { mutation, selection, transaction } from "../db/query.js";
 import { pushNotification } from "../middleware/events.js";
 
-/** Ce qu'on garde par personne : au-delà, les plus anciennes s'en vont. */
+/** What is kept per person: beyond this, the oldest go away. */
 const KEPT_COUNT = 200;
 
 const insert = mutation(
@@ -41,15 +41,15 @@ const store = transaction((userId: Id, notification: Notification) => {
 
 export const notifications = {
   /**
-   * Une notification pour une personne : rangée, puis poussée à ses onglets
-   * ouverts. Rangée d'abord — un onglet qui la reçoit et ouvre aussitôt le
-   * tiroir doit l'y trouver.
+   * A notification for a person: stored, then pushed to their open tabs.
+   * Stored first — a tab that receives it and immediately opens the drawer
+   * must find it there.
    */
   emit: (userId: Id, notification: Notification): void => {
     store(userId, notification);
     pushNotification(userId, notification);
   },
-  /** Les notifications d'une personne, de la plus récente à la plus ancienne. */
+  /** A person's notifications, from most recent to oldest. */
   forUser: (userId: Id): Notification[] =>
     forUser.all(userId).map((row) => ({ ...row, deleted: row.deleted === 1 })),
   remove: (id: string, userId: Id): void => void remove.run(id, userId),

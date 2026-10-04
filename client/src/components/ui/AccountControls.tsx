@@ -12,42 +12,42 @@ import type { PublicUser, SearchResult } from "@milo/shared";
 import type { ContextsMenuProps } from "./ContextsMenu";
 import WorkspaceMenu from "./WorkspaceMenu";
 
-// Les contextes du tableau ouvert et le compte, au bout de la rangée d'onglets
-// de chaque vue. C'était le contenu de l'entête, qui n'existe plus : la
-// rangée d'onglets est désormais la première ligne de l'écran, et porte ce qui
-// s'y trouvait.
+// The open board's contexts and the account, at the end of each view's tab
+// row. This used to be the header's content, which no longer exists: the
+// tab row is now the first line of the screen, and carries what was
+// there.
 export interface AccountControlsProps {
   /**
-   * Les contextes du tableau ouvert ; absents sans tableau. Ils ne se posent
-   * plus ici mais dans l'onglet actif (BoardTabs), à l'essai.
+   * The open board's contexts; absent without a board. They are no
+   * longer placed here but in the active tab (BoardTabs), on trial.
    */
   contexts?: Omit<ContextsMenuProps, "visibleFrom">;
   user: PublicUser;
   onLogout: () => void;
   onOpenSettings: () => void;
   onOpenPreferences: () => void;
-  /** Le tiroir des dernières notifications reçues. */
+  /** The drawer of the latest notifications received. */
   onOpenNotifications: () => void;
   /**
-   * Le menu « Actions » du mode, à gauche des contextes : le compte reste
-   * au bout, toujours au même endroit.
+   * The mode's "Actions" menu, to the left of the contexts: the account stays
+   * at the end, always in the same place.
    */
   actions?: ReactNode;
 }
 
-// RESPONSIVE — les contextes sont ce qui tient le plus de place ici. En
-// dessous de ce point d'arrêt, ils ont vocation à disparaître de la rangée
-// pour rejoindre le menu du compte, qui lui reste toujours visible.
+// RESPONSIVE — the contexts take up the most room here. Below
+// this breakpoint, they are meant to disappear from the row
+// and join the account menu, which always stays visible.
 export const CONTEXT_SELECT_VISIBLE_FROM = "sm";
 
 /**
- * Ce qu'une page transporte sans y toucher, de l'application jusqu'à la
- * rangée : le menu du mode, lui, est ajouté par ModeBar.
+ * What a page carries untouched, from the application down to the
+ * row: the mode's menu, for its part, is added by ModeBar.
  */
 export type AccountSlot = Omit<AccountControlsProps, "actions"> & {
   /**
-   * Ouvre l'élément choisi dans la recherche, où qu'il se trouve. La recherche
-   * est posée par ModeBar, devant ce bout de rangée.
+   * Opens the item chosen in the search, wherever it is. The search
+   * is placed by ModeBar, in front of this end of the row.
    */
   onSearchOpen: (result: SearchResult) => void;
 };
@@ -64,10 +64,10 @@ export default function AccountControls({
     <Group gap="xs" wrap="nowrap">
       {actions}
 
-      {/* Les contextes sont posés dans l'onglet actif, à droite de son nom
-          (BoardTabs) : à l'essai. */}
+      {/* The contexts are placed in the active tab, to the right of its name
+          (BoardTabs): on trial. */}
 
-      {/* Le workspace, contre le compte : seulement s'il y en a plusieurs. */}
+      {/* The workspace, next to the account: only if there are several. */}
       <WorkspaceMenu user={user} />
 
       <Menu
@@ -77,18 +77,18 @@ export default function AccountControls({
         styles={TAB_MENU_STYLES}
       >
         <Menu.Target>
-          {/* Ni bulle d'aide, ni fond au survol, ni anneau de focus : le menu
-              qui s'ouvre porte déjà le nom et l'adresse. */}
-          {/* La même hauteur que les deux boutons de la rangée : sans quoi
-              son menu ne tomberait pas sur le même filet. */}
+          {/* No tooltip, no hover background, no focus ring: the menu
+              that opens already carries the name and address. */}
+          {/* The same height as the row's two buttons: otherwise
+              its menu would not land on the same line. */}
           <ActionIcon
             variant="transparent"
             size={ROW_CONTROL_HEIGHT}
             aria-label="Compte"
             style={{ outline: "none" }}
           >
-            {/* Un carré aux angles adoucis, et non un rond : il se pose
-                comme les autres commandes de la rangée. */}
+            {/* A square with softened corners, not a circle: it sits
+                like the row's other controls. */}
             <Avatar
               size={26}
               radius="sm"
@@ -113,8 +113,8 @@ export default function AccountControls({
           >
             Notifications
           </Menu.Item>
-          {/* Le Paramétrage s'ouvre avec le droit « Voir », ou pour gérer
-              les workspaces. */}
+          {/* Settings opens with the "Voir" right, or to manage
+              workspaces. */}
           {(user.settings.view || user.manage_workspaces) && (
             <Menu.Item
               leftSection={<IconSettings size={16} />}

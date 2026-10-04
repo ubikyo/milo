@@ -1,35 +1,35 @@
-// L'échéance d'une carte : où elle en est, et comment elle s'écrit.
+// A card's due date: where it stands, and how it is written.
 //
-// La règle vit ici et non dans les deux écrans qui la montrent — le tiroir
-// d'une carte et la carte sur le tableau. Sans cela, « bientôt » aurait fini
-// par ne pas vouloir dire la même chose de part et d'autre.
+// The rule lives here and not in the two screens that show it — a card's
+// drawer and the card on the board. Otherwise, "soon" would end up
+// not meaning the same thing in both.
 
 import dayjs from "dayjs";
 
 /**
- * Trois états, et trois seulement :
+ * Three states, and only three:
  *
- * - `retard` : l'heure est passée. C'est le seul qui soit un fait, pas une
- *   prévision — d'où le rouge.
- * - `bientot` : elle tombe dans les trois jours. Un avertissement.
- * - `aucun` : elle est assez loin pour ne rien signaler.
+ * - `late`: the time has passed. It is the only one that is a fact, not a
+ *   forecast — hence the red.
+ * - `soon`: it falls within three days. A warning.
+ * - `none`: it is far enough away to signal nothing.
  */
 export type DueState = "late" | "soon" | "none";
 
-/** Le délai en deçà duquel une échéance est « bientôt ». */
+/** The delay within which a due date is "soon". */
 export const DAYS_BEFORE_DUE = 3;
 
 /**
- * Où en est cette échéance. `maintenant` se passe pour pouvoir éprouver la
- * règle sans dépendre de l'heure qu'il est.
+ * Where this due date stands. `currentTime` is passed in so the
+ * rule can be tested without depending on the time of day.
  *
- * La comparaison porte sur les jours et non sur les instants : une carte à
- * rendre aujourd'hui n'est pas « en retard » à midi parce que son heure a été
- * laissée à minuit. C'est bien « la date du jour » qui tranche, et le retard
- * ne commence que le lendemain.
+ * The comparison is on days and not on instants: a card due
+ * today is not "late" at noon because its time was
+ * left at midnight. It is indeed "today's date" that decides, and lateness
+ * only starts the next day.
  *
- * Une échéance dépassée est « en retard », pas « bientôt » : le retard est un
- * constat, il prime sur l'avertissement.
+ * A past due date is "late", not "soon": lateness is a
+ * finding, it takes precedence over the warning.
  */
 export const dueState = (
   due: string | null | undefined,
@@ -44,7 +44,7 @@ export const dueState = (
   return days <= DAYS_BEFORE_DUE ? "soon" : "none";
 };
 
-/** Ce que dit la bulle : « En retard », « Bientôt », ou rien. */
+/** What the bubble says: "En retard", "Bientôt", or nothing. */
 export const DUE_WORD: Record<DueState, string> = {
   late: "En retard",
   soon: "Bientôt",
@@ -52,9 +52,9 @@ export const DUE_WORD: Record<DueState, string> = {
 };
 
 /**
- * La couleur de la bulle. Le rouge du retard est celui des suppressions et des
- * erreurs — c'est le même signal ; l'orange de « bientôt » est celui de
- * l'avancement à mi-chemin (themes/colors.ts).
+ * The bubble's color. The red of lateness is that of deletions and
+ * errors — it is the same signal; the orange of "soon" is that of
+ * halfway progress (themes/colors.ts).
  */
 export const DUE_COLOR: Record<DueState, string | undefined> = {
   late: "red",
@@ -62,23 +62,23 @@ export const DUE_COLOR: Record<DueState, string | undefined> = {
   none: undefined,
 };
 
-// Le serveur refuse une date qu'il ne comprend pas ; une valeur illisible ne
-// devrait donc jamais arriver ici. Si l'une passait tout de même, mieux vaut
-// n'afficher rien qu'un « Invalid Date » au milieu d'une carte.
+// The server refuses a date it does not understand; an unreadable value
+// should therefore never arrive here. If one did slip through, better to
+// show nothing than an "Invalid Date" in the middle of a card.
 const formatDue = (due: string | null | undefined, pattern: string): string => {
   const date = dayjs(due ?? "");
   return due && date.isValid() ? date.locale("fr").format(pattern) : "";
 };
 
-/** Court, pour une carte du tableau : « 5 oct. ». */
+/** Short, for a board card: "5 oct.". */
 export const shortDate = (due: string | null | undefined): string => formatDue(due, "D MMM");
 
 /**
- * Une échéance sans heure. L'heure est facultative : laissée vide, le
- * calendrier pose la date à minuit, et c'est minuit — à l'heure locale — qui
- * vaut « pas d'heure ». Une échéance réellement à minuit se lit donc comme la
- * journée entière, ce qui revient au même : la règle des états compare les
- * jours, pas les heures.
+ * A due date without a time. The time is optional: left empty, the
+ * calendar sets the date at midnight, and it is midnight — in local time — that
+ * means "no time". A due date really at midnight thus reads as the
+ * whole day, which comes to the same thing: the states rule compares
+ * days, not hours.
  */
 export const withoutTime = (due: string | null | undefined): boolean => {
   const date = dayjs(due ?? "");

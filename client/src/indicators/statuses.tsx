@@ -5,12 +5,12 @@ import { SUPPORT_STATUSES } from "@milo/shared";
 import { NAME, IndicatorTitle } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 
-// La répartition des demandes de la société regardée par statut, en radar :
-// une branche par statut, et sa longueur dit combien de demandes il porte.
+// The breakdown of the requests of the company being viewed by status, as a radar:
+// one branch per status, and its length says how many requests it holds.
 
 const LABEL = "Statuts";
 
-/** La hauteur du radar : assez pour que les cinq libellés ne se chevauchent pas. */
+/** The radar's height: enough so the five labels do not overlap. */
 const RADAR_HEIGHT = 220;
 
 export const statusesIndicator: SupportIndicatorWidget = {

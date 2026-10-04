@@ -1,13 +1,13 @@
-// Les sections d'un tableau et les widgets qu'elles portent. Un widget est
-// désigné par son type (shared, BOARD_WIDGET_TYPES) ; le serveur range sa
-// configuration en JSON sans la relire — c'est le widget du client qui sait
-// ce qu'elle veut dire.
+// A board's sections and the widgets they carry. A widget is designated by its
+// type (shared, BOARD_WIDGET_TYPES); the server stores its configuration as
+// JSON without re-reading it — the client's widget is what knows what it
+// means.
 //
-// Un tableau a sa structure publique (owner_id nul), partagée par tous ceux
-// qui l'héritent, et celle de chaque compte qui ne l'hérite plus
-// (repositories/layouts.ts). « IS » plutôt que « = » dans les requêtes : nul
-// y vaut nul, la structure publique se lit par la même requête que celle d'un
-// compte.
+// A board has its public structure (null owner_id), shared by all who inherit
+// it, and that of each account that no longer inherits it
+// (repositories/layouts.ts). "IS" rather than "=" in queries: null there
+// equals null, so the public structure is read by the same query as an
+// account's.
 
 import type { BoardWidget, Id } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
@@ -17,7 +17,7 @@ import { now } from "../lib/time.js";
 
 type Owner = Id | null;
 
-/** Le widget tel que l'API le rend : sa configuration relue en objet. */
+/** The widget as the API returns it: its configuration re-read as an object. */
 export const renderedWidget = (row: BoardWidgetRow): BoardWidget => {
   let config: Record<string, unknown> = {};
   try {
@@ -26,7 +26,7 @@ export const renderedWidget = (row: BoardWidgetRow): BoardWidget => {
       config = readValue as Record<string, unknown>;
     }
   } catch {
-    /* configuration illisible : le widget reprendra la sienne */
+    /* unreadable configuration: the widget will fall back to its own */
   }
   return { ...row, config };
 };
@@ -67,16 +67,15 @@ const createWidget = mutation(
 );
 const placeWidget = mutation("UPDATE board_widgets SET section_id = ?, position = ? WHERE id = ?");
 
-/** Les sections, dans l'ordre donné. */
+/** The sections, in the given order. */
 const arrangeSections = transaction((ids: Id[]) => {
   ids.forEach((id, place) => placeSection.run(place, id));
 });
 
 /**
- * Une section et ce qu'elle porte, recopiées pour « owner » dans le tableau
- * « boardId ». La copie personnelle garde les clés des widgets de liste, pour
- * en montrer les éléments ; une section dupliquée porte des listes neuves,
- * vides (repositories/listes.ts).
+ * A section and what it carries, copied for "owner" into board "boardId". The
+ * personal copy keeps the list widgets' keys, to show their items; a
+ * duplicated section carries new, empty lists (repositories/lists.ts).
  */
 const copySection = (
   original: BoardSectionRow,
@@ -112,7 +111,7 @@ const copySection = (
 export const boardSections = {
   all: (boardId: Id, owner: Owner) => sectionsOf.all(boardId, owner),
   byId: (id: unknown) => sectionById.get(id),
-  /** Ajoutée au bout, ou au rang demandé. */
+  /** Added at the end, or at the requested position. */
   create: transaction(
     (
       boardId: Id,
@@ -140,7 +139,7 @@ export const boardSections = {
     "UPDATE board_sections SET width_unit = ?, width_value = ?, gap = ? WHERE id = ?",
   ),
   store: arrangeSections,
-  /** La copie, avec ses widgets, se pose juste à droite de l'original. */
+  /** The copy, with its widgets, is placed just right of the original. */
   duplicate: transaction((original: BoardSectionRow): Id => {
     const { next } = nextSection(original.board_id, original.owner_id);
     const id = copySection(original, original.board_id, original.owner_id, next);
@@ -152,13 +151,13 @@ export const boardSections = {
     arrangeSections(order);
     return id;
   }),
-  /** Ce qu'elle portait part avec elle, par clé étrangère. */
+  /** What it carried goes with it, through the foreign key. */
   remove: mutation("DELETE FROM board_sections WHERE id = ?"),
 
   /**
-   * « Hérité » décoché : ce compte part d'une copie de la structure publique
-   * du tableau — sections et widgets —, qu'il modifie sans toucher celle des
-   * autres. Une copie déjà là est d'abord retirée.
+   * "Hérité" unchecked: this account starts from a copy of the board's public
+   * structure — sections and widgets —, which it modifies without touching
+   * others'. A copy already there is removed first.
    */
   customize: transaction((boardId: Id, userId: Id): void => {
     removeSectionsOf.run(boardId, userId);
@@ -166,16 +165,16 @@ export const boardSections = {
       copySection(section, boardId, userId, place, true);
     });
   }),
-  /** « Hérité » recoché : sa structure s'en va, il revient à la publique. */
+  /** "Hérité" checked again: its structure goes away, it returns to the public one. */
   inherit: (boardId: Id, userId: Id): void => {
     removeSectionsOf.run(boardId, userId);
   },
   /**
-   * Une disposition importée remplace la structure « owner » du tableau :
-   * ses sections neuves, et leurs widgets, dont la configuration arrive prête
-   * à ranger — clé de liste comprise. Les widgets « gardes » de l'ancienne,
-   * que le compte ne peut pas enlever, passent au bout de la première ; le
-   * reste de l'ancienne part, par clé étrangère. Tout passe, ou rien.
+   * An imported layout replaces the board's "owner" structure: its new
+   * sections, and their widgets, whose configuration arrives ready to store —
+   * list key included. The old structure's "guard" widgets, which the account
+   * cannot remove, move to the end of the first section; the rest of the old
+   * structure goes away, through the foreign key. Everything passes, or nothing.
    */
   importSections: transaction(
     (
@@ -220,7 +219,7 @@ export const boardSections = {
       old.forEach((id) => removeSection.run(id));
     },
   ),
-  /** Un tableau neuf : une section, vide ou portant un premier widget. */
+  /** A new board: one section, empty or carrying a first widget. */
   setFirst: transaction((boardId: Id, type: string | null): void => {
     const timestamp = now();
     const id = Number(
@@ -232,7 +231,7 @@ export const boardSections = {
 
 export const boardWidgets = {
   byId: (id: unknown) => widgetById.get(id),
-  /** Ceux de toutes les sections d'une structure, dans l'ordre des colonnes puis de chacune. */
+  /** Those of all of a structure's sections, in column order then each one's order. */
   all: (boardId: Id, owner: Owner) => widgetsOf.all(boardId, owner),
   bySection: (sectionId: Id) => sectionWidgets.all(sectionId),
   create: (sectionId: Id, type: string, config: string): Id => {
@@ -245,13 +244,13 @@ export const boardWidgets = {
   convert: mutation("UPDATE board_widgets SET type = ? WHERE id = ?"),
   remove: mutation("DELETE FROM board_widgets WHERE id = ?"),
   /**
-   * Ce qu'une section porte désormais, dans l'ordre. Un widget venu d'une
-   * autre section y est admis : c'est ainsi qu'on le déplace.
+   * What a section now carries, in order. A widget coming from another
+   * section is admitted: that is how it is moved.
    */
   store: transaction((sectionId: Id, ids: Id[]) => {
     ids.forEach((id, place) => placeWidget.run(sectionId, place, id));
   }),
-  /** La copie, de même type et de même configuration, se pose juste sous l'original. */
+  /** The copy, of the same type and configuration, is placed just under the original. */
   duplicate: transaction((original: BoardWidgetRow): Id => {
     const { next } = nextWidget(original.section_id);
     const id = Number(

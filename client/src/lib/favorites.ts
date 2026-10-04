@@ -1,9 +1,9 @@
-// Les acteurs favoris de la personne connectée, tenus en un seul endroit :
-// chaque liste d'acteurs de l'application les lit, et une étoile cochée dans
-// l'une se voit aussitôt dans toutes les autres.
+// The signed-in person's favorite actors, held in a single place:
+// every list of actors in the application reads them, and a star checked in
+// one shows at once in all the others.
 //
-// Lus une fois, au premier sélecteur monté ; ensuite, c'est la réponse du
-// serveur à chaque geste qui fait foi.
+// Read once, when the first selector mounts; after that, it is the server's
+// response to each gesture that is authoritative.
 
 import { useEffect, useSyncExternalStore } from "react";
 import { api } from "../api";
@@ -30,7 +30,7 @@ const read = () => {
     .getFavorites()
     .then(publish)
     .catch(() => {
-      // Sans favoris, les listes restent simplement dans l'ordre alphabétique.
+      // Without favorites, the lists simply stay in alphabetical order.
       readItems = false;
     });
 };

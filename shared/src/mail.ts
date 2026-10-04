@@ -1,7 +1,7 @@
-// Le message d'essai de la messagerie. Les réglages, eux, sont ceux d'Entra
-// (entra.ts) : l'envoi passe par Microsoft Graph, au nom de l'application.
+// The mail test message. The settings are those of Entra
+// (entra.ts): sending goes through Microsoft Graph, on behalf of the application.
 
-/** Le message d'essai : son destinataire. Il part de l'adresse d'envoi. */
+/** The test message: its recipient. It is sent from the sending address. */
 export interface MailTestInput {
   to: string;
 }

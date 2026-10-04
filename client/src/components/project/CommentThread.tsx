@@ -20,14 +20,14 @@ import { MILO_ACTOR_ID } from "@milo/shared";
 import type { Actor, SqliteBool } from "@milo/shared";
 
 /**
- * Un commentaire tel que le fil l'affiche. Les deux fils du serveur — projets
- * et cartes — s'y rangent, ainsi que les brouillons d'un projet pas encore
- * créé, dont l'identifiant n'est pas encore un numéro de ligne.
+ * A comment as the thread displays it. The server's two threads — projects
+ * and cards — fit into it, as do the drafts of a project not yet
+ * created, whose identifier is not yet a row number.
  */
 export interface ThreadItem {
   id: number | string;
   text: string;
-  /** Les mots que l'application écrit elle-même : ni retouchés, ni effacés. */
+  /** Words the application writes itself: neither edited nor deleted. */
   system?: SqliteBool;
   created_at: string;
   updated_at: string;
@@ -36,17 +36,17 @@ export interface ThreadItem {
 
 const formatTimestamp = (value: string): string => dayjs(value).format("DD/MM/YYYY HH:mm");
 
-// Filet en pointillé entre l'entête du commentaire — auteur et date —
-// et son texte.
+// Dotted rule between the comment's header — author and date —
+// and its text.
 const HEADER_LINE = "1px dotted var(--mantine-color-default-border)";
 
-// Retrait du texte dans sa bulle. Le champ qui le remplace en saisie prend le
-// même : le texte ne bouge pas d'un pixel quand on passe de l'un à l'autre.
+// Text inset within its bubble. The field that replaces it when typing takes the
+// same: the text does not move a pixel when switching from one to the other.
 const COMMENT_PADDING = 30;
 
-// Un mot de Milo : l'entête, une ligne d'air, puis une puce par champ. Le
-// texte garde sa flèche « A → B » — le serveur s'en sert pour regrouper les
-// retouches — mais elle s'affiche en chevron.
+// A Milo entry: the header, a line of space, then a bullet per field. The
+// text keeps its "A → B" arrow — the server uses it to group
+// edits — but it is displayed as a chevron.
 const ARROW = " → ";
 
 function systemText(text: string): ReactNode {
@@ -79,7 +79,7 @@ interface CommentBubbleProps {
   comment: ThreadItem;
   onUpdate: (id: number | string, text: string) => void;
   onDelete: (id: number | string) => void;
-  /** Le fil se lit sans s'écrire : la bulle ne se modifie ni ne se supprime. */
+  /** The thread is read-only: the bubble can be neither edited nor deleted. */
   readOnly?: boolean;
 }
 
@@ -100,13 +100,13 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
     setEditing(false);
   };
 
-  // Un mot écrit par l'application — la création de la carte ou du projet,
-  // signée Milo — note un fait : il ne se retouche ni ne s'efface.
+  // A word written by the application — the creation of the card or project,
+  // signed Milo — records a fact: it is neither edited nor deleted.
   const frozen = readOnly || Boolean(comment.system) || comment.author?.id === MILO_ACTOR_ID;
 
-  // Un mot de Milo — la création, les modifications — se montre plié : la
-  // bulle se réduit à son bandeau, Milo et la date, sur fond bleu. Le bouton
-  // à droite de la bulle le déplie, avec l'animation d'un accordéon.
+  // A Milo entry — the creation, the edits — shows collapsed: the
+  // bubble shrinks to its banner, Milo and the date, on a blue background. The button
+  // to the right of the bubble expands it, with an accordion animation.
   const isSystemDisk = Boolean(comment.system) || comment.author?.id === MILO_ACTOR_ID;
   const [expanded, setExpanded] = useState(false);
   const folded = isSystemDisk && !expanded;
@@ -119,7 +119,7 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
   return (
     <>
       <Paper
-        // Replié, la bulle est un bandeau bleu plein, sans bordure.
+        // Collapsed, the bubble is a solid blue banner, with no border.
         withBorder={!folded}
         bg={
           folded
@@ -130,29 +130,29 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
           borderRadius: "var(--mantine-radius-default)",
           transition: "background-color 200ms ease",
         }}
-        // Les actions passent par le clic droit, et le double-clic modifie —
-        // qui que soit l'auteur. Un mot figé n'a ni menu ni double-clic.
+        // Actions go through right-click, and double-click edits —
+        // whoever the author. A frozen entry has neither menu nor double-click.
         onContextMenu={frozen || editing ? undefined : (e) => setMenu(menuPosition(e))}
         onDoubleClick={frozen || editing ? undefined : startEdit}
       >
-        {/* Modifier un commentaire ne le sort pas de sa bulle : l'entête reste
-            en place, seul le texte passe en saisie. Entrée valide, Maj+Entrée
-            passe à la ligne, Échap annule. */}
+        {/* Editing a comment does not take it out of its bubble: the header stays
+            in place, only the text turns into an input. Enter submits, Shift+Enter
+            inserts a line break, Escape cancels. */}
         <Stack gap={0}>
           <Group
             justify="space-between"
             align="center"
             wrap="nowrap"
             px="sm"
-            // Autant d'air au-dessus qu'en dessous : sans quoi l'auteur
-            // et la date se posent trop haut dans leur bandeau.
+            // As much space above as below: otherwise the author
+            // and the date sit too high in their banner.
             py={8}
-            // Plié, le bandeau est toute la bulle : il n'a rien à séparer.
+            // Collapsed, the banner is the whole bubble: it has nothing to separate.
             style={folded ? undefined : { borderBottom: HEADER_LINE }}
           >
-            {/* L'auteur à gauche, la date à droite. Un commentaire écrit avant
-                qu'on retienne l'auteur, ou dont le compte a été supprimé, n'en
-                a pas : sa pastille reste, sans nom. */}
+            {/* The author on the left, the date on the right. A comment written before
+                the author was recorded, or whose account was deleted, has
+                none: its badge stays, without a name. */}
             <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
               <PersonAvatar person={comment.author} size={22} />
               {comment.author && (
@@ -163,8 +163,8 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
             </Group>
 
             <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
-              {/* Un mot de Milo complété par une retouche voisine n'est pas
-                  « modifié » : il raconte la suite. */}
+              {/* A Milo entry completed by a neighboring edit is not
+                  "modified": it tells what followed. */}
               <Text size="xs" c={folded ? "white" : "dimmed"}>
                 {formatTimestamp(comment.updated_at)}
                 {!isSystemDisk && comment.updated_at !== comment.created_at ? " (modifié)" : ""}
@@ -178,9 +178,9 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
                   onClick={() => setExpanded((d) => !d)}
                   aria-label={expanded ? "Replier le commentaire" : "Déplier le commentaire"}
                   aria-expanded={expanded}
-                  // Déplié, le survol est un gris neutre : celui de Mantine
-                  // tire sur le bleu. En sombre, dark-4 plutôt que
-                  // NEUTRAL_HOVER, qui se confond avec le fond de la bulle.
+                  // Expanded, hover is a neutral gray: Mantine's
+                  // leans blue. In dark mode, dark-4 rather than
+                  // NEUTRAL_HOVER, which blends in with the bubble's background.
                   style={
                     folded
                       ? undefined
@@ -189,8 +189,8 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
                         } as CSSProperties)
                   }
                 >
-                  {/* Vers la gauche plié, vers le bas déplié : le chevron
-                    tourne comme celui d'un accordéon. */}
+                  {/* Left when collapsed, down when expanded: the chevron
+                      turns like an accordion's. */}
                   <IconChevronLeft
                     size={16}
                     style={{
@@ -203,10 +203,10 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
             </Group>
           </Group>
 
-          {/* Le commentaire est du texte simple : ses retours à la ligne
-              comptent, et rien d'autre ne se met en forme. En saisie, le champ
-              prend exactement la place du texte — même retrait, même taille,
-              ni cadre ni fond : on écrit là où on lisait. */}
+          {/* The comment is plain text: its line breaks
+              count, and nothing else gets formatted. When typing, the field
+              takes exactly the text's place — same inset, same size,
+              no frame or background: you write where you were reading. */}
           <Collapse expanded={!folded}>
             {editing ? (
               <Textarea
@@ -277,8 +277,8 @@ interface CommentThreadProps {
   onUpdate: (id: number | string, text: string) => void;
   onDelete: (id: number | string) => void;
   /**
-   * Sans le droit de modifier l'élément, son fil se lit seulement : ni saisie,
-   * ni modification, ni suppression.
+   * Without the right to edit the item, its thread is read-only: no typing,
+   * no editing, no deletion.
    */
   readOnly?: boolean;
 }
@@ -300,8 +300,8 @@ export default function CommentThread({
 
   return (
     <Stack gap={0} style={{ flex: 1, minHeight: 0 }}>
-      {/* La saisie garde ses 30 px sous elle ; l'écart de la pile est à zéro,
-          sinon il s'ajouterait à ce retrait. */}
+      {/* The input keeps its 30 px below it; the stack's gap is zero,
+          otherwise it would add to that inset. */}
       {!readOnly && (
         <Group align="flex-end" gap="xs" pb={30}>
           <Textarea
@@ -332,8 +332,8 @@ export default function CommentThread({
       )}
 
       {comments.length === 0 ? (
-        // Le fil vide occupe toute la hauteur restante ; la saisie au-dessus
-        // tient déjà lieu d'action, l'invite n'a donc pas de bouton.
+        // The empty thread takes all the remaining height; the input above
+        // already serves as the action, so the prompt has no button.
         <EmptyPanel icon={IconMessage} message="Aucun commentaire pour le moment." />
       ) : (
         <Stack gap="xs">

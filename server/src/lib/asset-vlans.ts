@@ -1,6 +1,6 @@
-// La table des VLAN de la section « Assets » du Paramétrage : un sous-réseau
-// (« 10.1.106.0/24 »), le VLAN qui le porte (106) et son nom. Vide tant que
-// le Paramétrage n'a rien enregistré.
+// The VLAN table of the "Assets" section of Settings: a subnet
+// ("10.1.106.0/24"), the VLAN that carries it (106) and its name. Empty as
+// long as Settings has recorded nothing.
 
 import type { AssetVlan } from "@milo/shared";
 import { readSetting, writeSetting } from "../repositories/settings.js";
@@ -9,7 +9,7 @@ const KEY = "asset_vlans";
 
 export const vlans = (): AssetVlan[] => {
   const saved = readSetting<AssetVlan[] | null>(KEY, null);
-  // Les VLAN enregistrés avant qu'ils aient un nom en reçoivent un vide.
+  // VLANs recorded before they had a name get an empty one.
   return Array.isArray(saved)
     ? saved.map((v) => ({ ...v, name: v.name ?? "" }))
     : [];
@@ -18,7 +18,7 @@ export const vlans = (): AssetVlan[] => {
 export const saveVlans = (list: AssetVlan[]): void =>
   writeSetting(KEY, list);
 
-/** Une adresse IPv4 en nombre sur 32 bits, ou null si ce n'en est pas une. */
+/** An IPv4 address as a 32-bit number, or null if it is not one. */
 const toNumber = (address: string): number | null => {
   const bytes = address.trim().split(".");
   if (bytes.length !== 4 || !bytes.every((o) => /^\d{1,3}$/.test(o) && Number(o) <= 255)) {
@@ -28,8 +28,8 @@ const toNumber = (address: string): number | null => {
 };
 
 /**
- * Le VLAN dont le sous-réseau contient l'adresse, ou null. Si plusieurs la
- * contiennent (« 10.1.0.0/16 » et « 10.1.106.0/24 »), le plus précis gagne.
+ * The VLAN whose subnet contains the address, or null. If several contain it
+ * ("10.1.0.0/16" and "10.1.106.0/24"), the most specific wins.
  */
 export const vlanOf = (address: string, list: AssetVlan[]): AssetVlan | null => {
   const ip = toNumber(address);
@@ -41,8 +41,8 @@ export const vlanOf = (address: string, list: AssetVlan[]): AssetVlan | null => 
     const start = toNumber(network);
     const length = Number(bits);
     if (start === null || !(length >= 0 && length <= 32)) continue;
-    // Les nombres de JavaScript sont des flottants : la division évite les
-    // décalages de bits, signés sur 32 bits.
+    // JavaScript numbers are floats: division avoids the bit shifts, which
+    // are signed on 32 bits.
     const size = 2 ** (32 - length);
     if (Math.floor(ip / size) === Math.floor(start / size) && length > precision) {
       found = v;

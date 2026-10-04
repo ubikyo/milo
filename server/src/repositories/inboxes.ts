@@ -1,12 +1,12 @@
-// Ce que les widgets reçoivent du dehors : les boîtes de support d'une liste
-// de demandes, les tags d'agent d'une liste de postes. Chaque widget associe
-// ce qu'il reçoit à l'un des contextes de son tableau, dans sa configuration :
+// What widgets receive from outside: the support inboxes of a request list,
+// the agent tags of a workstation list. Each widget associates what it
+// receives with one of its board's contexts, in its configuration:
 //
 //   support.list : { "mailboxes": [{ "email": "support@…", "context_id": 12 }] }
 //   asset.list   : { "tags":      [{ "tag": "Arco Marketing", "context_id": 12 }] }
 //
-// Une même boîte reçue par deux widgets va au premier : celui de la structure
-// publique d'abord, le plus ancien ensuite.
+// An inbox received by two widgets goes to the first: the public structure's
+// first, the oldest next.
 
 import { listKey } from "@milo/shared";
 import type { Id } from "@milo/shared";
@@ -26,42 +26,42 @@ const receivers = selection<ReceiverWidget>(
    ORDER BY s.owner_id IS NOT NULL, w.id`,
 );
 
-/** Ce qu'un widget reçoit, et le contexte où il le range. */
+/** What a widget receives, and the context where it files it. */
 export interface Inbox {
-  /** L'adresse ou le tag, tel que le widget le dit. */
+  /** The address or tag, as the widget states it. */
   value: string;
-  /** Le tableau du widget qui la reçoit. */
+  /** The board of the widget that receives it. */
   board_id: Id;
-  /** Le contexte qu'il lui donne ; nul s'il ne lui en donne pas. */
+  /** The context it gives it; null if it gives none. */
   context_id: Id | null;
-  /** La clé de liste du widget qui la reçoit : ses éléments la portent. */
+  /** The list key of the widget that receives it: its items carry it. */
   list: string;
-  /** Le nom du contexte, et celui de son tableau : où la réception se montre. */
+  /** The context's name, and its board's: where the inbox shows up. */
   usage: string;
   /**
-   * Vrai quand le widget veut que les e-mails relevés quittent la boîte (une
-   * boîte de support) ; faux, elle en garde une copie.
+   * True when the widget wants the polled e-mails to leave the inbox (a
+   * support inbox); false, it keeps a copy.
    */
   remove: boolean;
 }
 
-/** La clé de la configuration d'une liste de demandes : supprimer ce qu'elle relève. */
+/** The configuration key of a request list: delete what it polls. */
 export const DELETION = "delete_after_import";
 
 const boardOf = selection<{ name: string }>("SELECT name FROM boards WHERE id = ?");
 
 /**
- * Les réceptions de tous les widgets d'un type, une par valeur — la casse n'y
- * compte pas. Sans contexte — le tableau n'en a pas, ou celui qu'on avait
- * dit n'est plus —, ce qui arrive n'en a pas non plus.
+ * The inboxes of all widgets of a type, one per value — case does not matter.
+ * Without a context — the board has none, or the one named no longer exists —,
+ * what arrives has none either.
  */
 const inboxes = (
   type: string,
   field: string,
   key: string,
-  /** Ce qui compte : sans lui, tout. Écarté, une réception laisse sa valeur au widget suivant. */
+  /** What counts: without it, everything. Discarded, an inbox leaves its value to the next widget. */
   keep: (r: Inbox) => boolean = () => true,
-  /** Faux : chaque widget garde ses réceptions, même une valeur qu'un autre reçoit déjà. */
+  /** False: each widget keeps its inboxes, even a value another already receives. */
   uniquePerValue = true,
 ): Inbox[] => {
   const views = new Map<string, Inbox>();
@@ -96,24 +96,24 @@ const inboxes = (
   return uniquePerValue ? [...views.values()] : all;
 };
 
-/** Les boîtes de support que les listes de demandes disent, confirmées ou non. */
+/** The support inboxes that request lists state, confirmed or not. */
 export const configuredMailboxes = (): Inbox[] => inboxes("support.list", "mailboxes", "email");
 
-/** Chaque boîte de chaque liste, sans regarder si une autre la reçoit déjà : ce qui se confirme. */
+/** Each inbox of each list, without checking whether another already receives it: what gets confirmed. */
 export const listMailboxes = (): Inbox[] =>
   inboxes("support.list", "mailboxes", "email", () => true, false);
 
 /**
- * Les boîtes de support qui se relèvent, une par liste qui l'a confirmée
- * (lib/optin.ts) : une boîte reçue par plusieurs listes fait une demande
- * dans chacune. Chaque liste porte le moment de sa confirmation — rien de ce
- * qui est arrivé avant n'y est importé.
+ * The support inboxes to poll, one per list that has confirmed it
+ * (lib/optin.ts): an inbox received by several lists makes a request in each.
+ * Each list carries the moment of its confirmation — nothing that arrived
+ * before is imported into it.
  */
 export const receivedMailboxes = (): (Inbox & { confirmed_at: string })[] => {
   const confirmed = optins.confirmed();
   const le = (b: Inbox) => confirmed.get(pair(b.list, b.value)) ?? "";
-  // Une liste ne reçoit qu'une fois une boîte, même dite par sa copie
-  // personnelle — qui garde sa clé de liste.
+  // A list receives an inbox only once, even if stated by its personal copy —
+  // which keeps its list key.
   const views = new Set<string>();
   return inboxes("support.list", "mailboxes", "email", (b) => Boolean(le(b)), false).flatMap(
     (b) => {
@@ -125,9 +125,9 @@ export const receivedMailboxes = (): (Inbox & { confirmed_at: string })[] => {
   );
 };
 
-/** Les tags d'agent que les listes de postes reçoivent. */
+/** The agent tags that workstation lists receive. */
 export const receivedTags = (): Inbox[] => inboxes("asset.list", "tags", "tag");
 
-/** La liste et le contexte où va un poste de ce tag ; nul si aucune liste ne le reçoit. */
+/** The list and the context where a workstation of this tag goes; null if no list receives it. */
 export const tagInbox = (tag: string): Inbox | null =>
   receivedTags().find((t) => t.value.toLowerCase() === tag.trim().toLowerCase()) ?? null;

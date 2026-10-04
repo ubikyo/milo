@@ -25,37 +25,36 @@ import CloseButton from "./CloseButton";
 import { report } from "./CopyToBoardModal";
 import { DrawerActionsContext } from "./IndicatorDrawer";
 
-// Le menu « Actions » du tiroir d'un widget « Projets » ou « Tâches » :
-// copier les étiquettes ou les catégories du tableau ouvert, puis les coller
-// dans un autre tableau, depuis le tiroir de son propre widget.
+// The "Actions" menu of a "Projets" or "Tâches" widget drawer: copy the labels
+// or categories of the open board, then paste them into another board, from the
+// drawer of its own widget.
 //
-// La copie ne fait que retenir le tableau d'origine : le presse-papiers est
-// tenu par l'application (CopierCollerContext), il survit au changement
-// d'onglet et de vue. Coller se confirme — on y choisit de remplacer ce que
-// le tableau porte déjà, ou de s'y ajouter —, et la notification dit ensuite
-// ce que le collage a donné.
+// Copying only remembers the source board: the clipboard is held by the
+// application (CopyPasteContext), and it survives tab and view changes. Pasting
+// is confirmed — you choose to replace what the board already has, or to add to
+// it —, and the notification then says what the paste produced.
 
-/** Les étiquettes des cartes et celles des projets ne sont pas les mêmes. */
+/** Card labels and project labels are not the same. */
 export type Scope = "tasks" | "projects";
 export type CopiedItem = "labels" | "categories";
 
-/** Un tableau copié, en attente d'être collé. */
+/** A copied board, waiting to be pasted. */
 export interface Copy {
   boardId: Id;
   boardName: string;
 }
 
-/** Ce qui est copié, chaque sorte de son côté : « projects.labels », … */
+/** What is copied, each kind on its own: "projects.labels", … */
 export type Clipboard = Partial<Record<`${Scope}.${CopiedItem}`, Copy>>;
 
 export interface CopyPasteValue {
-  /** Le tableau ouvert : celui qu'on copie, ou celui où l'on colle. */
+  /** The open board: the one being copied, or the one being pasted into. */
   board: { id: Id; name: string } | null;
   clipboard: Clipboard;
   onCopy: (key: keyof Clipboard, copy: Copy) => void;
   /**
-   * Le nombre de collages faits : les listes du tableau ouvert dans le tiroir
-   * (ChampsListeDuTableau) se relisent quand il change.
+   * The number of pastes made: the lists of the board open in the drawer
+   * (BoardListFields) are re-read when it changes.
    */
   pastes: number;
   onPasted: () => void;
@@ -93,7 +92,7 @@ const WORDS: Record<
   },
 };
 
-/** Le collage lui-même, du tableau copié vers celui-ci. */
+/** The paste itself, from the copied board to this one. */
 const paste = (
   scope: Scope,
   item: CopiedItem,
@@ -109,7 +108,7 @@ const paste = (
 
 interface CopyPasteActionsProps {
   scope: Scope;
-  /** Ce que le widget propose de copier, dans l'ordre du menu. */
+  /** What the widget offers to copy, in menu order. */
   items: CopiedItem[];
 }
 
@@ -125,11 +124,12 @@ export default function CopyPasteActions({
   const [saving, setSaving] = useState(false);
 
   const board = context?.board ?? null;
-  // Copier comme coller demandent de pouvoir créer ; remplacer, de supprimer.
+  // Copying and pasting both require the right to create; replacing, the right
+  // to delete.
   if (!context || !board || !can(scope, "create")) return null;
   const canReplace = can(scope, "delete");
 
-  // Coller ne vaut que depuis un autre tableau.
+  // Pasting only makes sense from another board.
   const copyOf = (item: CopiedItem) => {
     const copy = context.clipboard[`${scope}.${item}`];
     return copy && copy.boardId !== board.id ? copy : null;
@@ -176,7 +176,7 @@ export default function CopyPasteActions({
 
   return (
     <>
-      {/* Le menu se pose au bout de la rangée d'onglets du tiroir. */}
+      {/* The menu sits at the end of the drawer's tab row. */}
       {target &&
         createPortal(
           <Menu
@@ -206,7 +206,7 @@ export default function CopyPasteActions({
                   {WORDS[item].copy}
                 </Menu.Item>
               ))}
-              {/* Coller ne paraît qu'une copie faite, depuis un autre tableau. */}
+              {/* Paste only appears once a copy has been made, from another board. */}
               {pastable.length > 0 && <Menu.Divider />}
               {pastable.map((item) => (
                 <Menu.Item

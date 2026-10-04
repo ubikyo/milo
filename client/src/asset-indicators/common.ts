@@ -1,15 +1,15 @@
-// Ce que les widgets des Assets partagent : les règles qui disent qu'un poste
-// demande de l'attention. Le titre et le champ « Nom » sont ceux du Support.
+// What the Assets widgets share: the rules saying a workstation needs
+// attention. The title and the "Nom" field are the Support ones.
 
 import { DISK_FULL, diskUsage, daysSinceInventory, DAYS_WITHOUT_INVENTORY } from "../lib/workstation";
 import type { Asset } from "@milo/shared";
 
 export { NameField, NAME, Nothing, IndicatorTitle, IndicatorValue } from "../indicators/common";
 
-/** Un volume système dont on sait qu'il n'est pas chiffré. */
+/** A system volume known not to be encrypted. */
 export const notEncrypted = (a: Asset): boolean => a.system_disk_encrypted === false;
 
-/** Un poste Windows sans protection, ou dont la protection est désactivée. */
+/** A Windows workstation with no protection, or with protection disabled. */
 export const unprotected = (a: Asset): boolean =>
   a.protection.state === "none" || a.protection.state === "inactive";
 
@@ -18,9 +18,9 @@ export const diskFull = (a: Asset): boolean => (diskUsage(a.system_disk) ?? 0) >
 export const silent = (a: Asset): boolean => daysSinceInventory(a) > DAYS_WITHOUT_INVENTORY;
 
 /**
- * Windows 10 n'a plus de mises à jour de sécurité depuis le 14 octobre 2025 :
- * ses postes sont à migrer. Le noyau dit « 10.0 » pour les deux, c'est le nom
- * qui les distingue.
+ * Windows 10 has had no security updates since October 14, 2025: its
+ * workstations need migrating. The kernel reports "10.0" for both, so only
+ * the name tells them apart.
  */
 export const windows10 = (a: Asset): boolean =>
   a.os?.family === "windows" && /windows\s*10\b/i.test(a.os.name);

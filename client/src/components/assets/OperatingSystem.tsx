@@ -27,16 +27,16 @@ import {
 import type { ReactNode } from "react";
 import type { AssetDetail, AssetEntry, AssetSection } from "@milo/shared";
 
-// La « Description » de l'onglet Système d'exploitation : la section
-// OPERATINGSYSTEM de l'agent, rangée en cartes comme le Résumé plutôt qu'en
-// liste de champs. Chaque carte porte à gauche le rond du Résumé, avec son
-// icône — le logo du système pour la première —, et pas de titre : le rond
-// dit de quoi elle parle.
+// The "Description" of the Système d'exploitation tab: the agent's
+// OPERATINGSYSTEM section, arranged in cards like the Summary rather than as
+// a field list. Each card carries the Summary circle on its left, with its
+// icon — the system logo for the first one —, and no title: the circle
+// says what it is about.
 
 /**
- * Les champs que les cartes montrent, ou qu'on écarte ; les autres vont dans
- * la dernière. SSH_KEY, la clé publique d'hôte du serveur SSH, n'est pas
- * montrée : elle ne sert guère à qui lit la fiche.
+ * The fields the cards show, or those that are dropped; the others go in
+ * the last one. SSH_KEY, the SSH server's public host key, is not
+ * shown: it is of little use to whoever reads the record.
  */
 const SHOWN_FIELDS = new Set([
   "FULL_NAME",
@@ -56,21 +56,21 @@ const SHOWN_FIELDS = new Set([
   "SSH_KEY",
 ]);
 
-/** « 2026-09-23 10:08:46 » de l'agent, en « 23/09/2026 10:08 ». */
+/** The agent's "2026-09-23 10:08:46", as "23/09/2026 10:08". */
 const date = (raw: string | undefined): string => {
   const d = dayjs(raw);
   return raw && d.isValid() ? d.format("DD/MM/YYYY HH:mm") : "";
 };
 
-/** Le nom de la machine, sans son domaine : « ARM-PC-LGE2AT » pour le FQDN. */
+/** The machine name, without its domain: "ARM-PC-LGE2AT" for the FQDN. */
 const shortName = (fqdn: string | undefined): string => (fqdn ?? "").split(".")[0] ?? "";
 
-/** La taille des icônes des champs, celle des lignes du Résumé. */
+/** The size of the field icons, that of the Summary rows. */
 const ICON = 16;
 
 /**
- * Un champ d'une carte : son icône à gauche, comme les lignes de la carte
- * « Système » du Résumé, puis le libellé, discret, et la valeur sous lui.
+ * A card field: its icon on the left, like the rows of the Summary
+ * "Système" card, then the label, discreet, and the value below it.
  */
 function Field({
   icon,
@@ -96,7 +96,7 @@ function Field({
   );
 }
 
-/** Une carte sans titre : le rond et son icône à gauche, les champs à droite. */
+/** A card without a title: the circle and its icon on the left, the fields on the right. */
 function RoundCard({
   circle,
   span = "half",
@@ -108,7 +108,7 @@ function RoundCard({
 }) {
   return (
     <Card span={span}>
-      {/* Le rond en haut de la carte, quelle que soit sa hauteur. */}
+      {/* The circle at the top of the card, whatever its height. */}
       <Group gap="md" wrap="nowrap" align="flex-start">
         <CircleIcon>{circle}</CircleIcon>
         <Stack gap="sm" style={{ minWidth: 0, flex: 1 }}>
@@ -172,7 +172,7 @@ function Description({ entry, os }: { entry: AssetEntry; os: AssetDetail["os"] }
         </Field>
       </RoundCard>
 
-      {/* Ce que l'agent donne d'autre, sous son nom à lui : rien ne se perd. */}
+      {/* What else the agent provides, under its own name: nothing is lost. */}
       {others.length > 0 && (
         <RoundCard circle={<IconListDetails size={ROUND_ICON} />} span="full">
           {others.map((field) => (
@@ -186,13 +186,13 @@ function Description({ entry, os }: { entry: AssetEntry; os: AssetDetail["os"] }
   );
 }
 
-/** La section OPERATINGSYSTEM : une seule entrée, à l'ordinaire. */
+/** The OPERATINGSYSTEM section: a single entry, as usual. */
 export default function OperatingSystem({
   section,
   os,
 }: {
   section: AssetSection;
-  /** Le système du poste, tel que le serveur l'a reconnu : son logo. */
+  /** The workstation's system, as the server recognized it: its logo. */
   os: AssetDetail["os"];
 }) {
   return (

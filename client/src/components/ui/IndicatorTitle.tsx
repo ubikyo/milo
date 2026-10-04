@@ -2,33 +2,32 @@ import { Text } from "@mantine/core";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { count, text } from "../../widgets/types";
 
-// Le titre d'un indicateur : son nom, ou à défaut celui que le widget lui
-// donne. Un double clic le change sur place ; un simple clic ouvre le tiroir,
-// comme ailleurs sur la carte — attendu le temps de voir s'il en vient un
-// second. En gras et en blanc, comme les titres des colonnes.
+// An indicator's title: its name, or failing that the one the widget gives it.
+// A double click changes it in place; a single click opens the drawer, as
+// elsewhere on the card — delayed long enough to see whether a second one
+// follows. Bold and white, like the column titles.
 
-/** La clé du nom dans la configuration : la même pour tous les widgets. */
+/** The name's key in the configuration: the same for all widgets. */
 export const NAME = "name";
 
-// L'allure de la carte, la même pour tous les indicateurs : la couleur et la
-// taille de son titre et de sa valeur, et la couleur de
-// son fond (ChampsApparence). Absentes, la carte garde l'allure de l'encart
-// (IndicatorsPanel).
+// The card's look, the same for all indicators: the color and size of its title
+// and value, and the color of its background (AppearanceFields). When absent,
+// the card keeps the panel's default look (IndicatorsPanel).
 export const BACKGROUND = "background";
 
-/** Un texte de la carte — son titre, sa valeur — et ses réglages. */
+/** A card text — its title, its value — and its settings. */
 export interface CardText {
   sizeKey: string;
   colorKey: string;
   defaultSize: number;
-  /** Les bornes de la taille : lisible, sans déborder de la carte. */
+  /** The size bounds: readable, without overflowing the card. */
   minSize: number;
   maxSize: number;
-  /** Sa couleur sans réglage ; à défaut, celle du texte du thème. */
+  /** Its color with no setting; failing that, the theme's text color. */
   defaultColor?: string;
 }
 
-/** Le titre : en blanc, comme les titres des colonnes, à la taille « sm ». */
+/** The title: in white, like the column titles, at size "sm". */
 export const TITLE: CardText = {
   sizeKey: "title_size",
   colorKey: "title_color",
@@ -38,7 +37,7 @@ export const TITLE: CardText = {
   defaultColor: "#ffffff",
 };
 
-/** La valeur d'un indicateur qui compte — tickets, cartes, projets, postes. */
+/** The value of an indicator that counts — tickets, cards, projects, positions. */
 export const VALUE: CardText = {
   sizeKey: "value_size",
   colorKey: "value_color",
@@ -47,23 +46,23 @@ export const VALUE: CardText = {
   maxSize: 96,
 };
 
-/** L'allure qu'un texte de la carte prend de la configuration. */
+/** The look a card text takes from the configuration. */
 export const appearanceOf = (config: unknown, t: CardText) => ({
   fontSize: count(config, t.sizeKey, t.defaultSize),
   color: text(config, t.colorKey) || t.defaultColor,
 });
 
-/** Le temps laissé à un second clic avant d'ouvrir le tiroir. */
+/** The time left for a second click before opening the drawer. */
 const DOUBLE_CLICK_THRESHOLD = 250;
 
 interface IndicatorCard {
-  /** Ouvre le tiroir de l'indicateur. */
+  /** Opens the indicator's drawer. */
   openItem: () => void;
-  /** Range le nouveau nom ; vide, l'indicateur reprend celui de son type. */
+  /** Stores the new name; when empty, the indicator goes back to its type's name. */
   rename: (name: string) => Promise<void>;
 }
 
-/** Ce que la carte d'un panneau donne à son titre. Hors panneau, il n'est que lu. */
+/** What a panel's card gives its title. Outside a panel, it is only read. */
 export const IndicatorCardContext = createContext<IndicatorCard | null>(null);
 
 export default function IndicatorTitle({ config, defaultValue }: { config: unknown; defaultValue: string }) {
@@ -72,13 +71,13 @@ export default function IndicatorTitle({ config, defaultValue }: { config: unkno
   const appearance = appearanceOf(config, TITLE);
   const [input, setInput] = useState<string | null>(null);
   const waitTimer = useRef<number | undefined>(undefined);
-  // Échap referme la saisie sans rien ranger : le « blur » qui peut suivre ne
-  // doit pas l'enregistrer quand même.
+  // Escape closes the edit without storing anything: the "blur" that may follow
+  // must not save it anyway.
   const cancelled = useRef(false);
   useEffect(() => () => window.clearTimeout(waitTimer.current), []);
 
   if (input !== null && card) {
-    // Le nom du type n'est pas rangé : il reste celui par défaut.
+    // The type's name is not stored: it stays the default one.
     const validate = async () => {
       if (cancelled.current) return;
       const value = input.trim();
@@ -86,11 +85,11 @@ export default function IndicatorTitle({ config, defaultValue }: { config: unkno
       if (value === name) return;
       await card.rename(value === defaultValue ? "" : value);
     };
-    // La saisie vit dans la carte : ni ses appuis ni ses touches ne doivent
-    // la glisser ou l'ouvrir.
+    // The input lives inside the card: neither its presses nor its keys must
+    // drag or open it.
     return (
-      // Comme le renommage d'un onglet (BoardTabs) : un champ nu, qui prend
-      // la police du titre et ne déplace rien.
+      // Like renaming a tab (BoardTabs): a bare field, which takes the title's
+      // font and moves nothing.
       <Text fw={700} style={appearance}>
         <input
           value={input}
@@ -155,7 +154,7 @@ export default function IndicatorTitle({ config, defaultValue }: { config: unkno
   );
 }
 
-/** La valeur d'un indicateur qui compte, à l'allure choisie dans son tiroir. */
+/** The value of an indicator that counts, in the look chosen in its drawer. */
 export function IndicatorValue({ config, children }: { config: unknown; children: ReactNode }) {
   return (
     <Text fw={600} lh={1} style={appearanceOf(config, VALUE)}>

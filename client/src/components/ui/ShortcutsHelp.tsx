@@ -1,8 +1,8 @@
 import { ActionIcon, Group, HoverCard, Kbd, Stack, Text } from "@mantine/core";
 import { PAGE_GUTTER } from "../../themes/layout";
 
-// Action à gauche, raccourci à droite. « si » limite un raccourci au tableau
-// où il agit : pas de nouveau projet sans liste de projets.
+// Action on the left, shortcut on the right. "when" limits a shortcut to the board
+// where it acts: no new project without a projects list.
 type Condition = "projects" | "requests";
 
 const SHORTCUTS: { action: string; key: string; when?: Condition }[] = [
@@ -14,7 +14,7 @@ const SHORTCUTS: { action: string; key: string; when?: Condition }[] = [
   { action: "Modifier l’interface / terminer", key: "I" },
 ];
 
-/** Ce que le tableau ouvert porte : une liste de projets, une liste de demandes. */
+/** What the open board holds: a projects list, a requests list. */
 export default function ShortcutsHelp({ projects, requests }: { projects: boolean; requests: boolean }) {
   const holds: Record<Condition, boolean> = { projects, requests };
   return (

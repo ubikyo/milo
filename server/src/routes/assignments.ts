@@ -1,16 +1,14 @@
-// Les permissions des utilisateurs et des groupes Entra, en deux parts :
+// Permissions of users and Entra groups, in two parts:
 //
-// - les accès d'un workspace (`assignmentRoutes`) : une permission par type
-//   de widget. Ils se règlent depuis le workspace, par qui gère les
-//   workspaces ;
-// - l'administration de l'application (`administrationRoutes`) : le
-//   Paramétrage et la gestion des workspaces, qui ne dépendent d'aucun
-//   workspace. Elle se lit avec le Paramétrage, se change avec son droit
-//   « Modifier » ; seul qui gère les workspaces accorde ou retire leur
-//   gestion.
+// - a workspace's access (`assignmentRoutes`): one permission per widget
+//   type. It is set from the workspace, by whoever manages workspaces;
+// - the application's administration (`administrationRoutes`): "Paramétrage"
+//   and workspace management, which depend on no workspace. It is read with
+//   "Paramétrage", changed with its "Modifier" right; only whoever manages
+//   workspaces grants or removes their management.
 //
-// Un utilisateur ou un groupe n'existe ici que par ce qu'il a : il apparaît
-// avec sa première permission, et disparaît quand il n'en a plus aucune.
+// A user or group exists here only through what they have: they appear with
+// their first permission, and disappear when they have none left.
 
 import { Router } from "express";
 import type { NextFunction, Request, Response } from "express";
@@ -77,13 +75,13 @@ const setAdministration = mutation(
      settings = excluded.settings, workspaces = excluded.workspaces`,
 );
 
-/** Les types de widgets d'une ligne, relus : un JSON illisible n'accorde rien. */
+/** A row's widget types, re-read: unreadable JSON grants nothing. */
 const widgetsOf = (row: AccessRow): WidgetRights => {
   let widgets: unknown = {};
   try {
     widgets = JSON.parse(row.widgets);
   } catch {
-    // Rien à relire : aucun type n'est accordé.
+    // Nothing to re-read: no type is granted.
   }
   return validWidgetRights(widgets);
 };
@@ -95,7 +93,7 @@ const principalOf = (row: PrincipalRow): EntraPrincipal => ({
   email: row.principal_email,
 });
 
-/** Les utilisateurs puis les groupes, chacun par nom. */
+/** Users then groups, each by name. */
 const byName = <T extends { principal: EntraPrincipal }>(list: T[]): T[] =>
   list.sort(
     (a, b) =>
@@ -122,7 +120,7 @@ const typeOf = (value: unknown): "user" | "group" => {
   return value as "user" | "group";
 };
 
-/** Le principal désigné par l'adresse, avec le nom et l'e-mail reçus. */
+/** The principal designated by the address, with the received name and e-mail. */
 const receivedPrincipal = (req: Request): EntraPrincipal => ({
   type: typeOf(req.params.type),
   id: requireText(req.params.id, "Identifiant requis"),
@@ -130,16 +128,16 @@ const receivedPrincipal = (req: Request): EntraPrincipal => ({
   email: String(req.body.email ?? "").trim(),
 });
 
-/** Le workspace dont on règle les accès. */
+/** The workspace whose access is being set. */
 const workspaceOf = (req: Request): Id => {
   const id = Number(req.query["workspace"]);
   if (!workspaces.byId.get(id)) throw new HttpError(404, WORKSPACE_NOT_FOUND);
   return id;
 };
 
-// --- Les accès d'un workspace ------------------------------------------------
+// --- A workspace's access ----------------------------------------------------
 
-/** Réservés à qui gère les workspaces : c'est depuis eux qu'ils se règlent. */
+/** Reserved to whoever manages workspaces: that is where they are set from. */
 const requireManagement = (req: Request, _res: Response, next: NextFunction): void => {
   if (!canManageWorkspaces(req.user)) {
     throw new HttpError(403, "Réservé à qui peut gérer les workspaces");
@@ -152,9 +150,9 @@ export const assignmentRoutes = Router();
 assignmentRoutes.use(touch("lookups"));
 
 /**
- * Chercher un utilisateur ou un groupe dans l'annuaire, pour lui donner un
- * accès ou une administration : il suffit de voir le Paramétrage ou de gérer
- * les workspaces. Déclaré avant la garde des accès.
+ * Search for a user or group in the directory, to give them access or an
+ * administration: seeing "Paramétrage" or managing workspaces is enough.
+ * Declared before the access guard.
  */
 assignmentRoutes.get("/search", (req, res, next) => {
   if (!settingsRights(req.user).view && !canManageWorkspaces(req.user)) {
@@ -171,8 +169,8 @@ assignmentRoutes.get("/", (req, res) => {
   res.json(accessOf(workspaceOf(req)));
 });
 
-// Les types de widgets du principal dans le workspace : ils remplacent les
-// précédents. Aucun type lisible : il n'y a plus accès, sa ligne s'efface.
+// The principal's widget types in the workspace: they replace the previous
+// ones. No readable type: they no longer have access, their row is deleted.
 assignmentRoutes.put("/:type/:id", (req, res) => {
   const workspace = workspaceOf(req);
   const principal = receivedPrincipal(req);
@@ -198,11 +196,11 @@ assignmentRoutes.delete("/:type/:id", (req, res) => {
   res.json(accessOf(workspace));
 });
 
-// --- L'administration de l'application --------------------------------------
+// --- The application's administration ----------------------------------------
 
 /**
- * Le Paramétrage se lit avec « Voir », se change avec « Modifier ». Qui gère
- * les workspaces sans voir le Paramétrage ne vient pas ici.
+ * "Paramétrage" is read with "Voir", changed with "Modifier". Whoever manages
+ * workspaces without seeing "Paramétrage" does not come here.
  */
 const requireSettings = (req: Request, _res: Response, next: NextFunction): void => {
   const rights = settingsRights(req.user);
@@ -221,9 +219,9 @@ administrationRoutes.get("/", (_req, res) => {
   res.json(administrations());
 });
 
-// L'administration du principal remplace la précédente ; sans rien, sa ligne
-// s'efface. Seul qui gère les workspaces peut accorder ou retirer leur
-// gestion : pour les autres, elle reste ce qu'elle était.
+// The principal's administration replaces the previous one; with nothing,
+// their row is deleted. Only whoever manages workspaces can grant or remove
+// their management: for the others, it stays as it was.
 administrationRoutes.put("/:type/:id", (req, res) => {
   const principal = receivedPrincipal(req);
   const received: AdminPermissions = validAdminPermissions(req.body.permissions);
@@ -248,8 +246,8 @@ administrationRoutes.put("/:type/:id", (req, res) => {
 
 administrationRoutes.delete("/:type/:id", (req, res) => {
   const type = typeOf(req.params.type);
-  // Retirer l'administration de qui gère les workspaces, c'est lui retirer
-  // leur gestion : réservé à qui la détient.
+  // Removing the administration of whoever manages workspaces means removing
+  // their management: reserved to whoever holds it.
   const before = principalAdministration.get(type, req.params.id);
   if (before && validAdminPermissions(before).workspaces === "update" && !canManageWorkspaces(req.user)) {
     throw new HttpError(403, "Réservé à qui peut gérer les workspaces");

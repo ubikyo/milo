@@ -6,15 +6,15 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import type { EntraPrincipal } from "@milo/shared";
 import CloseButton from "../ui/CloseButton";
 
-// Le choix de la permission, au bout de la ligne : de quoi lire « Modifier ».
+// The permission choice, at the end of the row: wide enough to read "Modifier".
 const CHOICE_WIDTH = 200;
 
-// Hauteur du champ : celle du texte, comme le renommage d'une ligne
+// Field height: that of the text, like renaming a row
 // (LookupManager).
 const FIELD_HEIGHT = 22;
 
-// Le choix sans cadre, à la hauteur du texte, aligné à droite : il tient dans
-// sa ligne, comme le renommage d'une société.
+// The frameless choice, at text height, right-aligned: it fits in
+// its row, like renaming a company.
 const CHOICE_STYLES = {
   input: {
     height: FIELD_HEIGHT,
@@ -24,48 +24,48 @@ const CHOICE_STYLES = {
   },
 };
 
-// « Aucun » ne peut pas être la valeur vide d'un Select : il lui faut la sienne.
+// "Aucun" cannot be a Select's empty value: it needs its own.
 const NONE = "none";
 
-/** Les choix d'un Select, « Aucun » compris sous sa propre valeur. */
+/** A Select's choices, "Aucun" included under its own value. */
 const choice = (options: readonly { value: string; label: string }[]) =>
   options.map((o) => ({ value: o.value || NONE, label: o.label }));
 
-/** Une permission : son nom, et le choix de sa valeur au bout de la ligne. */
+/** A permission: its name, and the choice of its value at the end of the row. */
 export interface PermissionRow {
   name: string;
   options: readonly { value: string; label: string }[];
   value: string;
   onChange: (value: string) => void;
-  /** Elle se lit sans se changer. */
+  /** It can be read but not changed. */
   disabled?: boolean;
-  /** Sa largeur quand elle se règle à même la ligne (PrincipalsPermissions). */
+  /** Its width when set inline in the row (PrincipalsPermissions). */
   width?: number;
 }
 
-/** Des permissions qui vont ensemble, sous un libellé. */
+/** Permissions that go together, under a label. */
 export interface SectionPermissions {
   label: string;
   rows: PermissionRow[];
 }
 
 interface PrincipalPermissionsModalProps<T> {
-  /** L'utilisateur ou le groupe dont on règle les permissions ; « null » ferme la fenêtre. */
+  /** The user or group whose permissions are being set; "null" closes the modal. */
   principal: EntraPrincipal | null;
-  /** Ses permissions actuelles : aucune pour qui arrive de l'annuaire. */
+  /** Their current permissions: none for someone coming from the directory. */
   initial: T;
-  /** Les sections de la fenêtre, pour les permissions en cours de choix. */
+  /** The modal's sections, for the permissions being chosen. */
   sections: (permissions: T, change: (permissions: T) => void) => SectionPermissions[];
-  /** Enregistre ; un refus garde la fenêtre ouverte. */
+  /** Saves; a refusal keeps the modal open. */
   onSave: (permissions: T) => Promise<void>;
   onClose: () => void;
 }
 
 /**
- * Les permissions d'un utilisateur ou d'un groupe Entra : une liste par
- * section, une permission par ligne, son choix au bout. Ce qu'elles sont —
- * les types de widgets d'un workspace, l'administration de l'application —,
- * l'appelant le dit (`sections`).
+ * The permissions of an Entra user or group: one list per section, one
+ * permission per row, its choice at the end. What they are — the widget types
+ * of a workspace, the application's administration — is up to the caller
+ * (`sections`).
  */
 export default function PrincipalPermissionsModal<T>({
   principal,
@@ -77,8 +77,8 @@ export default function PrincipalPermissionsModal<T>({
   const [permissions, setPermissions] = useState<T>(initial);
   const [saving, setSaving] = useState(false);
 
-  // Les permissions actuelles ne se relisent qu'à l'ouverture : une relecture
-  // de la liste pendant qu'on choisit effacerait les choix en cours.
+  // The current permissions are only re-read on opening: re-reading the list
+  // while choosing would wipe the choices in progress.
   useEffect(() => {
     if (!principal) return;
     setPermissions(initial);
@@ -98,7 +98,7 @@ export default function PrincipalPermissionsModal<T>({
     }
   };
 
-  /** Une ligne de la liste : son nom, et le choix de sa permission au bout. */
+  /** A row of the list: its name, and the choice of its permission at the end. */
   const row = ({ name, options, value, onChange, disabled }: PermissionRow) => (
     <ListItems.Row key={name}>
       <Text size="sm" truncate style={{ flex: 1, minWidth: 0 }}>
@@ -130,8 +130,8 @@ export default function PrincipalPermissionsModal<T>({
       withCloseButton={false}
       styles={modalHeaderStyles(MODAL_PADDING)}
     >
-      {/* Le même espacement que les fiches des tiroirs : « xl » entre deux
-          champs, et le libellé de Mantine au-dessus de chacun. */}
+      {/* The same spacing as the drawer forms: "xl" between two
+          fields, and Mantine's label above each. */}
       <Stack gap="xl">
         {sections(permissions, setPermissions).map((section) => (
           <Input.Wrapper key={section.label} label={section.label}>
@@ -139,8 +139,8 @@ export default function PrincipalPermissionsModal<T>({
           </Input.Wrapper>
         ))}
 
-        {/* L'écart de la pile (« xl ») suffit : les boutons tombent à la même
-            distance que dans les autres fenêtres (MODAL_PADDING). */}
+        {/* The stack gap ("xl") is enough: the buttons land at the same
+            distance as in the other modals (MODAL_PADDING). */}
         <Group justify="flex-end">
           <CloseButton onClick={onClose} />
           <Button color="teal" onClick={save} loading={saving}>

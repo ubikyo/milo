@@ -5,15 +5,15 @@ import classes from "../assets/styles/AccessNumber.module.css";
 import { withField, count, text } from "./types";
 import type { AccessWidget } from "./types";
 
-// Une horloge : l'heure qu'il est ailleurs. Utile quand on appelle un site
-// dans un autre fuseau — on voit d'un coup d'œil s'il est ouvert.
+// A clock: the time it is elsewhere. Useful when calling a site in another
+// time zone — you see at a glance whether it is open.
 //
-// Elle ne montre que l'heure, centrée dans sa colonne : le fuseau se choisit
-// dans son tiroir, et l'élément ne répète pas ce choix — c'est un titre posé
-// au-dessus qui dit de quel lieu il s'agit, quand il faut le dire.
+// It shows only the time, centered in its column: the time zone is chosen in
+// its drawer, and the element does not repeat that choice — a title placed
+// above says which place it is, when that needs saying.
 //
-// Elle se lit en chiffres, ou sur un cadran à aiguilles (« analogique ») : la
-// taille dit alors le diamètre du cadran, et la trotteuse peut s'y ajouter.
+// It reads in digits, or on a dial with hands ("analogique"): the size then
+// gives the dial's diameter, and a second hand can be added.
 
 const TIMEZONE = "timezone";
 const SIZE = "size";
@@ -27,14 +27,14 @@ const MODES = [
   { value: "analog", label: "Analogique" },
 ];
 
-/** Le diamètre d'un cadran, en pixels, et ses bornes. */
+/** A dial's diameter, in pixels, and its bounds. */
 const DEFAULT_DIAMETER = 120;
 const DIAMETER_MIN = 40;
 const DIAMETER_MAX = 400;
 
-// Les fuseaux proposés. La liste complète en compte des centaines : celle-ci
-// couvre les lieux avec lesquels on travaille, et la saisie reste possible par
-// ailleurs si le besoin vient.
+// The time zones offered. The full list has hundreds: this one covers the
+// places we work with, and entry remains possible otherwise if the need
+// arises.
 const TIMEZONES = [
   { value: "Europe/Paris", label: "Paris" },
   { value: "Europe/London", label: "Londres" },
@@ -51,28 +51,28 @@ const TIMEZONES = [
 const DEFAULT_TIMEZONE = "Europe/Paris";
 
 /**
- * La taille de l'heure, en pixels. Plus grosse que le texte d'une colonne :
- * c'est tout ce que l'élément porte, et elle se lit de loin. Les bornes
- * tiennent la colonne — en deçà l'heure ne se lit plus, au-delà elle déborde.
+ * The size of the time, in pixels. Larger than a column's text: it is all the
+ * element carries, and it is read from afar. The bounds hold the column —
+ * below them the time is no longer legible, above them it overflows.
  */
 const DEFAULT_SIZE = 18;
 const SIZE_MIN = 8;
 const SIZE_MAX = 96;
 
-/** Le retrait que l'encadré laisse autour de l'heure. */
+/** The padding the frame leaves around the time. */
 const INSET = 5;
 
 /**
- * L'air que l'horloge laisse sous elle, que la colonne pose
- * (components/access/SectionBlocks.tsx) : sans cela l'heure toucherait le
- * lien qui la suit.
+ * The space the clock leaves below itself, which the column sets
+ * (components/ui/SectionsBoard.tsx): without it the time would touch the
+ * link that follows.
  */
 const LOW_MARGIN = 15;
 
 /**
- * L'heure dans ce fuseau, sans les secondes. Un fuseau que le navigateur ne
- * connaît pas ferait lever « Intl » : on retombe alors sur l'heure locale
- * plutôt que de faire tomber la colonne entière.
+ * The time in this time zone, without seconds. A time zone the browser does
+ * not know would make "Intl" throw: we then fall back to local time rather
+ * than bring down the whole column.
  */
 const timeIn = (timezone: string, currentTime: Date): string => {
   try {
@@ -88,7 +88,7 @@ const timeIn = (timezone: string, currentTime: Date): string => {
   }
 };
 
-/** Les heures, minutes et secondes qu'il est dans ce fuseau, pour placer les aiguilles. */
+/** The hours, minutes and seconds it is in this time zone, to place the hands. */
 const clockPartsIn = (timezone: string, currentTime: Date): { h: number; m: number; s: number } => {
   const read = (timeZone?: string) => {
     const dateParts = new Intl.DateTimeFormat("fr-FR", {
@@ -110,17 +110,17 @@ const clockPartsIn = (timezone: string, currentTime: Date): { h: number; m: numb
 
 const isAnalog = (config: unknown): boolean => text(config, MODE, "digital") === "analog";
 
-/** Une case cochée par défaut tant qu'elle n'a pas été réglée. */
+/** A box checked by default until it has been set. */
 const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean => {
   const value = (config as Record<string, unknown> | null)?.[key];
   return value === undefined ? defaultValue : Boolean(value);
 };
 
 /**
- * Le cadran : douze repères, les chiffres en option, les aiguilles des
- * heures et des minutes, et la trotteuse si on la demande. Dessiné sur une
- * grille de 100 de côté, il prend le diamètre réglé ; ses traits suivent la
- * couleur du texte, et la trotteuse prend la couleur de l'application.
+ * The dial: twelve marks, optional digits, the hour and minute hands, and the
+ * second hand if requested. Drawn on a grid 100 on a side, it takes the set
+ * diameter; its strokes follow the text color, and the second hand takes the
+ * application's color.
  */
 function Dial({
   diameter,
@@ -200,7 +200,7 @@ function Dial({
   );
 }
 
-/** Une horloge est nue par défaut : c'est l'encadré qu'on demande, pas l'inverse. */
+/** A clock is bare by default: the frame is what you ask for, not the reverse. */
 const isFramed = (config: unknown): boolean =>
   Boolean((config as Record<string, unknown> | null)?.[FRAMED]);
 
@@ -209,10 +209,10 @@ function Clock({ config }: { config: unknown }) {
   const analog = isAnalog(config);
   const seconds = analog && isChecked(config, SECONDS, true);
 
-  // L'affichage s'arrête à la minute : la rafraîchir chaque seconde ne
-  // changerait rien à l'écran, et ferait battre la page pour rien — sauf
-  // quand la trotteuse tourne. Sans elle, l'aiguille des minutes avance tout
-  // de même par petits pas.
+  // The display stops at the minute: refreshing it every second would change
+  // nothing on screen, and would make the page tick for nothing — except when
+  // the second hand turns. Without it, the minute hand still moves forward in
+  // small steps.
   useEffect(() => {
     const heartbeat = setInterval(() => setNow(new Date()), seconds ? 1_000 : analog ? 10_000 : 30_000);
     return () => clearInterval(heartbeat);
@@ -229,8 +229,8 @@ function Clock({ config }: { config: unknown }) {
       digits={isChecked(config, DIGITS, false)}
     />
   ) : (
-    // Centrée sur la colonne, quelle que soit sa largeur : l'heure est courte,
-    // et collée à gauche elle paraîtrait posée là par accident.
+    // Centered in the column, whatever its width: the time is short, and
+    // flush left it would look placed there by accident.
     <Text ta="center" fz={count(config, SIZE, DEFAULT_SIZE)} fw={600}>
       {timeIn(timezone, currentTime)}
     </Text>
@@ -238,9 +238,9 @@ function Clock({ config }: { config: unknown }) {
 
   if (!framed) return hour;
 
-  // Encadrée, l'horloge se détache du reste de la colonne : le fond et le
-  // trait de l'encart des attributs (widgets/numero), et l'air qu'il faut
-  // autour pour que l'heure n'en touche pas les bords.
+  // Framed, the clock stands out from the rest of the column: the background
+  // and stroke of the attributes inset (widgets/number), and the space needed
+  // around so that the time does not touch its edges.
   return (
     <Box className={classes.inset} style={{ padding: INSET, border: "none" }}>
       {hour}
@@ -264,13 +264,13 @@ export const clockWidget: AccessWidget = {
 
   margins: () => ({ top: 0, bottom: LOW_MARGIN }),
 
-  // Il dessine lui-même son cadre, réglé dans le bloc « Apparence » du tiroir.
+  // It draws its own frame, set in the drawer's "Apparence" block.
   ownFrame: true,
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
-      {/* Changer de mode ramène la taille à celle du mode : 18 px de texte ne
-          font pas un cadran, ni 120 px de cadran un texte. */}
+      {/* Changing mode brings the size back to the mode's: 18 px of text do
+          not make a dial, nor 120 px of dial a text. */}
       <Input.Wrapper label="Affichage">
         <SegmentedControl
           display="flex"
@@ -296,9 +296,9 @@ export const clockWidget: AccessWidget = {
         autoFocus
         styles={{ wrapper: { width: 200 } }}
       />
-      {/* La taille de l'heure. Un champ vidé le temps d'une saisie ne dit
-          rien : on range alors la taille par défaut plutôt qu'un zéro, qui
-          ferait disparaître l'heure. */}
+      {/* The size of the time. A field emptied while typing says nothing:
+          we then store the default size rather than a zero, which would make
+          the time disappear. */}
       {isAnalog(config) ? (
         <>
           <NumberInput

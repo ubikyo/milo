@@ -7,11 +7,11 @@ import type { EntraPrincipal, Id, WidgetAccess, WidgetRights } from "@milo/share
 const pluralize = (n: number, word: string) => `${n} ${word}${n > 1 ? "s" : ""}`;
 
 /**
- * Les accès d'un workspace, ouverts depuis sa ligne (WorkspacesTab) : les
- * utilisateurs et les groupes Entra qui y lisent au moins un type de widget,
- * et une permission par type — Aucun, Lire ou Modifier —, qui vaut pour le
- * widget comme pour ses données. Le Paramétrage et la gestion des workspaces
- * n'en font pas partie : ils valent pour toute l'application
+ * A workspace's access, opened from its row (WorkspacesTab): the Entra
+ * users and groups who read at least one widget type there, and one
+ * permission per type — Aucun, Lire or Modifier —, which applies to the
+ * widget as well as its data. Settings and workspace management are not
+ * part of it: they apply to the whole application
  * (AdministrationTab).
  */
 export default function WorkspaceAccess({
@@ -19,7 +19,7 @@ export default function WorkspaceAccess({
   onChange,
 }: {
   workspace: Id;
-  /** Après un changement : ses propres accès ont pu changer. */
+  /** After a change: its own access may have changed. */
   onChange?: () => void;
 }) {
   const load = useCallback(() => api.getAssignments(workspace), [workspace]);
@@ -33,8 +33,8 @@ export default function WorkspaceAccess({
       remove={(principal) => api.deleteAssignments(principal, workspace)}
       empty={() => widgetRightsEverywhere("")}
       summary={(widgets) => pluralize(Object.values(widgets).filter(canRead).length, "type")}
-      // Une permission par type de widget, réglée à même la ligne, en
-      // colonnes : un type de plus fait une colonne de plus.
+      // One permission per widget type, set inline in the row, in
+      // columns: one more type makes one more column.
       inColumns
       inline={(widgets, change) =>
         WIDGET_KINDS.map((k) => ({

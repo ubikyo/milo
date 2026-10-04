@@ -1,31 +1,31 @@
-// Le contrat d'un widget des sections du mode Tâche.
+// The contract of a Task mode section widget.
 //
-// Le même que celui du Support (indicators/types.ts), sur les listes du
-// tableau ouvert au lieu des demandes. Ajouter une sorte d'indicateur, c'est
-// ajouter un fichier dans ce dossier, l'inscrire dans « index.ts » et dans
-// « TASK_INDICATOR_TYPES » (shared/domain.ts).
+// The same as Support's (indicators/types.ts), on the open board's
+// lists instead of requests. Adding a kind of indicator means
+// adding a file to this folder, registering it in "index.ts" and in
+// "TASK_INDICATOR_TYPES" (shared/domain.ts).
 
 import type { ComponentType } from "react";
 import type { IndicatorWidgetBase } from "../components/ui/IndicatorsPanel";
 import type { Id, TaskIndicatorType, TaskList } from "@milo/shared";
 
-/** Ce que le panneau passe à l'affichage d'un widget. */
+/** What the panel passes to a widget's display. */
 export interface TaskIndicatorDisplayProps {
   config: unknown;
-  /** Les listes du tableau ouvert, et leurs cartes. */
+  /** The open board's lists, and their cards. */
   lists: TaskList[];
-  /** Le compte connecté : ce qui « me » revient se compte par lui. */
+  /** The signed-in account: what is "mine" is counted through it. */
   userId: Id;
   /**
-   * Enregistre une configuration modifiée depuis l'affichage lui-même — un
-   * titre qui se renomme au double-clic. Sans effet une fois verrouillé.
+   * Saves a configuration changed from the display itself — a
+   * title renamed on double-click. No effect once locked.
    */
   onChange?: (config: Record<string, unknown>) => void | Promise<void>;
-  /** Les sections verrouillées : le widget ne propose plus rien qui modifie. */
+  /** The locked sections: the widget no longer offers anything that modifies. */
   locked?: boolean;
 }
 
 export interface TaskIndicatorWidget extends IndicatorWidgetBase<TaskIndicatorType> {
-  /** Ce que le panneau montre. */
+  /** What the panel shows. */
   Display: ComponentType<TaskIndicatorDisplayProps>;
 }

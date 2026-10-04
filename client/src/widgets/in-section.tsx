@@ -10,34 +10,35 @@ import type { AccessWidget, Margins } from "./types";
 import type { ComponentType } from "react";
 import type { AccessBlockType } from "@milo/shared";
 
-// Des widgets du mode Accès, prêts à se poser dans les sections des autres
-// modes — Support, Assets, Projet, Tâche : les titres, le lien, les attributs
-// et l'horloge. Ce sont les mêmes : même affichage, mêmes champs, et l'air
-// qu'ils laissent entre eux. Seul change ce que la section leur passe — ni
-// élément d'accès, ni tiroir à ouvrir d'eux-mêmes : le leur s'ouvre par le
-// clic droit, sans les marges réglables, qui n'appartiennent qu'au mode Accès.
+// Access mode widgets, ready to be placed in the sections of the other
+// modes — Support, Assets, Project, Task: the titles, the link, the attributes
+// and the clock. They are the same ones: same display, same fields, and the
+// space they leave between them. Only what the section passes them changes —
+// neither an access element, nor a drawer to open by themselves: theirs opens
+// on right click, without the adjustable margins, which belong only to the
+// Access mode.
 
-/** Ce que les sections des autres modes passent à un widget d'accès. */
+/** What the sections of the other modes pass to an access widget. */
 export interface AccessDisplay {
   config: unknown;
   onChange?: (config: Record<string, unknown>) => void | Promise<void>;
   locked?: boolean;
 }
 
-/** Un widget du mode Accès, en widget des sections d'un autre mode. */
+/** An Access mode widget, as a widget of another mode's sections. */
 export interface SectionWidget<Type extends string, P extends AccessDisplay> {
   type: Type;
   kind: AccessWidget["kind"];
   label: string;
   icon: AccessWidget["icon"];
   defaultConfig: Record<string, unknown>;
-  /** « P » : ce que la section du mode passe à ses widgets ; le widget n'en lit que sa part. */
+  /** "P": what the mode's section passes to its widgets; the widget reads only its part. */
   Display: ComponentType<P>;
   Config: ComponentType<IndicatorConfigProps>;
   /**
-   * Toujours vrai : chacun se pose sans la carte des indicateurs. Le lien
-   * garde son clic, les titres leur double-clic, et les attributs et
-   * l'horloge ont déjà leur encart.
+   * Always true: each one is placed without the indicators card. The link
+   * keeps its click, the titles their double-click, and the attributes and
+   * the clock already have their inset.
    */
   ownClicks: true;
   inlineEdit?: true;
@@ -45,7 +46,7 @@ export interface SectionWidget<Type extends string, P extends AccessDisplay> {
   hidden?: (config: unknown, locked: boolean) => boolean;
 }
 
-/** Les champs du tiroir d'accès, ceux du bas compris : l'interrupteur d'un lien. */
+/** The access drawer's fields, the bottom ones included: a link's switch. */
 const fieldsOf = (widget: AccessWidget): ComponentType<IndicatorConfigProps> => {
   const { Config, ConfigEnd } = widget;
   if (!ConfigEnd) return Config;
@@ -70,8 +71,8 @@ const inSection = <Type extends string, P extends AccessDisplay>(
   Config: fieldsOf(widget),
   ownClicks: true,
   ...(widget.inlineEdit ? { inlineEdit: true as const } : {}),
-  // Les types des autres modes ne sont pas ceux de l'accès, mais les titres
-  // et les attributs y portent le même nom : l'air se décide pareil.
+  // The types of the other modes are not those of access, but the titles
+  // and the attributes bear the same name there: the spacing is decided alike.
   margins: (config, previousType, nextType) =>
     marginsOf(widget, config, {
       previousType: previousType as AccessBlockType | null,
@@ -89,7 +90,7 @@ const inSection = <Type extends string, P extends AccessDisplay>(
   ),
 });
 
-/** Dans l'ordre du tiroir des widgets : les titres, le lien, les attributs, l'horloge. */
+/** In the widget drawer's order: the titles, the link, the attributes, the clock. */
 export const accessWidgets = <Type extends string, P extends AccessDisplay>(): SectionWidget<
   Type,
   P

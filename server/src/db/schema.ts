@@ -1,5 +1,5 @@
-// Le schéma. Il se crée à vide et ne se modifie jamais ici : une base
-// existante passe par les migrations (migrations.ts).
+// The schema. It is created empty and is never modified here: an existing
+// database goes through the migrations (migrations.ts).
 
 export const SCHEMA = `
   -- Les workspaces : une équipe chacun. Ses vues, et tout ce qu'elles
@@ -687,13 +687,13 @@ export const SCHEMA = `
   );
 `;
 
-// Index. La base n'en avait aucun : chaque lecture par clé étrangère — les
-// cartes d'une liste, les listes d'un tableau, les commentaires d'un projet,
-// la session qui porte un jeton — parcourait la table entière. SQLite n'indexe
-// d'office que les clés primaires et les colonnes UNIQUE.
+// Indexes. The database had none: every foreign-key read — a list's cards, a
+// board's lists, a project's comments, the session carrying a token — scanned
+// the whole table. SQLite only indexes primary keys and UNIQUE columns on its
+// own.
 //
-// Ils se créent après les migrations : une table reconstruite emporterait les
-// siens.
+// They are created after the migrations: a rebuilt table would take its own
+// indexes with it.
 export const INDEXES = `
   CREATE INDEX IF NOT EXISTS idx_views_workspace ON views(workspace_id);
   CREATE INDEX IF NOT EXISTS idx_categories_board ON categories(board_id);

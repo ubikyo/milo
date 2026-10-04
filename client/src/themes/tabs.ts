@@ -1,30 +1,30 @@
 import { STRONG_TEXT } from "./colors";
 
-// Style commun à tous les onglets de l'application (réglages, tiroir projet,
-// tableaux des modes Projet et Tâche). La variante « outline » est posée une
-// fois pour toutes dans le thème (main.jsx) : les onglets sont encadrés et
-// l'actif se raccorde au panneau.
+// Style shared by all the application's tabs (settings, project drawer,
+// boards of the Projects and Tasks modes). The "outline" variant is set once
+// and for all in the theme (main.jsx): the tabs are framed and the active one
+// joins the panel.
 //
-// Aucun accent coloré : le filet gris du cadre situe déjà l'onglet ouvert, qui
-// se distingue seulement par un texte plus contrasté et plus gras.
+// No colored accent: the gray rule of the frame already locates the open tab,
+// which stands out only through a more contrasted and bolder text.
 export const tabStyle = (isActive: boolean) => ({
-  // Pas d'anneau de focus. Les tiroirs et les modales donnent le focus au
-  // premier onglet dès leur ouverture, ce qui l'entourait de bleu sans que
-  // personne n'ait navigué au clavier. Le cadre et le texte plus gras
-  // suffisent à situer l'onglet ouvert, y compris au clavier : les flèches
-  // changent l'onglet actif, et donc son aspect.
+  // No focus ring. Drawers and modals give focus to the first tab as soon as
+  // they open, which surrounded it with blue although nobody had navigated by
+  // keyboard. The frame and the bolder text are enough to locate the open tab,
+  // including by keyboard: the arrows change the active tab, and so its
+  // appearance.
   outline: "none",
-  // Le gras de l'onglet actif est dessiné par un contour du texte, pas par la
-  // graisse de la police : une vraie graisse élargit le libellé et décale
-  // tous les onglets suivants à chaque changement d'onglet.
+  // The active tab's boldness is drawn with a text outline, not with the
+  // font weight: a real weight widens the label and shifts all the following
+  // tabs on every tab change.
   ...(isActive ? { color: STRONG_TEXT, WebkitTextStroke: "0.04em currentColor" } : {}),
 });
 
 /**
- * Hauteur d'une rangée d'onglets. Ailleurs, c'est le bouton « Actions » posé au
- * bout de la rangée qui la donne : 36 pixels de bouton et 4 de marge basse. Une
- * rangée qui n'en porte pas — les statuts du mode Support — se réglerait sur
- * ses seuls onglets, six pixels plus haut que les autres modes : elle reprend
- * donc la mesure ici.
+ * Height of a row of tabs. Elsewhere, it is the "Actions" button at the end of
+ * the row that sets it: a 36-pixel button and a 4-pixel bottom margin. A row
+ * that has none — the statuses of the Support mode — would size itself on its
+ * tabs alone, six pixels taller than the other modes: it therefore takes the
+ * measure from here.
  */
 export const TAB_ROW_HEIGHT = 40;

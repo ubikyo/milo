@@ -1,9 +1,9 @@
-// Le suivi : ce qu'une personne demande à être prévenue quand cela change.
+// Following: what a person asks to be notified about when it changes.
 //
-// Quatre sortes d'éléments se suivent. Un projet, une carte et une demande de
-// support se suivent pour eux-mêmes ; une liste se suit pour ses cartes — on
-// ne modifie pas une liste, on modifie ce qu'elle contient, et c'est de cela
-// qu'on veut être prévenu.
+// Four kinds of items can be followed. A project, a card and a support
+// request are followed for themselves; a list is followed for its cards —
+// a list is not modified, what it contains is, and that is what
+// one wants to be notified about.
 
 import type { Id } from "./domain.js";
 
@@ -15,27 +15,27 @@ export const isFollowKind = (value: unknown): value is FollowKind =>
   FOLLOW_KINDS.includes(value as FollowKind);
 
 /**
- * Ce que le client tient à jour : ce que la personne suit, par sorte. Une
- * seule lecture au démarrage, puis la liste suit les clics — il n'y a pas de
- * raison d'interroger le serveur à chaque ouverture d'un tiroir.
+ * What the client keeps up to date: what the person follows, by kind. A
+ * single read at startup, then the list tracks the clicks — there is no
+ * reason to query the server each time a drawer is opened.
  */
 export type Follows = Record<FollowKind, Id[]>;
 
 export const emptyFollows = (): Follows => ({ project: [], card: [], list: [], support: [] });
 
 /**
- * L'adresse qui ouvre un élément dans l'application. Une seule écriture, lue
- * par le client qui l'interprète au démarrage et par le serveur qui la met
- * dans ses e-mails.
+ * The address that opens an item in the application. A single definition, read
+ * by the client which interprets it at startup and by the server which puts it
+ * in its emails.
  *
- * Une liste n'en a pas : ce qu'on notifie pour une liste, c'est toujours l'une
- * de ses cartes, et c'est vers elle que le lien pointe.
+ * A list has none: what is notified for a list is always one of
+ * its cards, and the link points to that card.
  */
 export type LinkTargetKind = "project" | "card" | "support" | "asset" | "access";
 
 /**
- * Un poste s'ouvre par son identifiant ; un élément du mode Accès, par sa
- * catégorie — c'est elle qui s'ouvre, l'élément n'a pas de fiche.
+ * A machine opens by its id; an item of the Access mode, by its
+ * category — that is what opens, the item has no record.
  */
 export const QUERY_PARAMS: Record<LinkTargetKind, string> = {
   project: "project",
@@ -46,8 +46,8 @@ export const QUERY_PARAMS: Record<LinkTargetKind, string> = {
 };
 
 /**
- * Les noms d'avant, en français : des e-mails déjà partis et des descriptions
- * les citent encore (« ?carte=12 »). Ils s'ouvrent toujours.
+ * The former names, in French: emails already sent and descriptions
+ * still cite them ("?carte=12"). They still open.
  */
 export const LEGACY_QUERY_PARAMS: Record<LinkTargetKind, string> = {
   project: "projet",

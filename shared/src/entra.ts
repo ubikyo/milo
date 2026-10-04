@@ -1,60 +1,60 @@
-// Entra ID : l'annuaire Microsoft sur lequel reposent les comptes de Milo.
+// Entra ID: the Microsoft directory on which Milo accounts rely.
 //
-// Une seule inscription d'application sert à tout : la connexion des
-// utilisateurs (OpenID Connect), la lecture des utilisateurs et des groupes,
-// la lecture des boîtes de support que les widgets reçoivent et l'envoi en
-// leur nom
-// (Microsoft Graph, avec les permissions de l'application).
+// A single application registration serves everything: user sign-in
+// (OpenID Connect), reading users and groups,
+// reading the support mailboxes that widgets receive, and sending
+// on their behalf
+// (Microsoft Graph, with the application permissions).
 //
-// Le secret ne redescend jamais au client : l'interface n'en connaît que la
-// présence (`has_secret`).
+// The secret never goes back down to the client: the interface only knows
+// its presence (`has_secret`).
 
 import type { AdminPermissions } from "./roles.js";
 import type { WidgetRights } from "./widget-kinds.js";
 
-/** Un utilisateur ou un groupe de l'annuaire. */
-/** Une personne de l'annuaire, proposée comme acteur. */
+/** A user or a group of the directory. */
+/** A person of the directory, offered as an actor. */
 export interface DirectoryUser {
-  /** L'identifiant d'objet Entra. */
+  /** The Entra object id. */
   oid: string;
   name: string;
   email: string;
-  /** Son compte dans Milo, si elle en a déjà un. */
+  /** Their Milo account, if they already have one. */
   user_id: number | null;
-  /** Synchronisée depuis l'Active Directory local (AD DS), plutôt que créée dans le cloud. */
+  /** Synced from the on-premises Active Directory (AD DS), rather than created in the cloud. */
   synced?: boolean;
 }
 
 export interface EntraPrincipal {
   type: "user" | "group";
-  /** L'identifiant d'objet Entra (oid). */
+  /** The Entra object id (oid). */
   id: string;
   name: string;
-  /** L'adresse de l'utilisateur, ou celle du groupe s'il en a une. */
+  /** The address of the user, or that of the group if it has one. */
   email: string;
   /**
-   * Synchronisé depuis l'Active Directory local (AD DS), plutôt que créé dans
-   * le cloud. Seule la recherche dans l'annuaire le renseigne.
+   * Synced from the on-premises Active Directory (AD DS), rather than created in
+   * the cloud. Only the directory search fills it in.
    */
   synced?: boolean;
 }
 
 export interface EntraSettings {
-  /** L'ID d'application (client). */
+  /** The application (client) ID. */
   client_id: string;
-  /** L'ID de l'annuaire (locataire). */
+  /** The directory (tenant) ID. */
   tenant: string;
   has_secret: boolean;
   /**
-   * L'adresse d'où partent les e-mails de Milo — avis, assignations, demandes
-   * saisies. Les réponses à une demande reçue partent de sa boîte.
+   * The address Milo emails are sent from — notices, assignments, submitted
+   * requests. Replies to a received request are sent from its mailbox.
    */
   mail_sender: string;
 }
 
 /**
- * Ce que l'onglet envoie. Ce qui n'est pas dit ne change pas ; pour le
- * secret, la chaîne vide efface et l'absence laisse celui qui est en base.
+ * What the tab sends. What is not said does not change; for the
+ * secret, the empty string clears it and absence keeps the one in the database.
  */
 export interface EntraSettingsInput {
   client_id?: string;
@@ -63,31 +63,31 @@ export interface EntraSettingsInput {
   mail_sender?: string;
 }
 
-/** Des permissions d'un utilisateur ou d'un groupe, avec qui elles concernent. */
+/** Permissions of a user or a group, with who they concern. */
 export interface PrincipalPermissions<T> {
   principal: EntraPrincipal;
   permissions: T;
 }
 
-/** Ses accès à un workspace : une permission par type de widget. */
+/** Their access to a workspace: one permission per widget type. */
 export type PrincipalAssignments = PrincipalPermissions<WidgetRights>;
 
-/** Son administration de l'application : le Paramétrage et les workspaces. */
+/** Their administration of the application: the Settings and the workspaces. */
 export type PrincipalAdministration = PrincipalPermissions<AdminPermissions>;
 
-/** L'accès de Milo à une boîte : celle d'envoi, ou une que reçoit un widget. */
+/** Milo's access to a mailbox: the sending one, or one a widget receives. */
 export interface MailboxCheck {
   email: string;
-  /** Où elle sert : « Adresse d'envoi », ou les contextes qui la reçoivent. */
+  /** Where it is used: "Adresse d'envoi", or the contexts that receive it. */
   usage: string;
   ok: boolean;
-  /** Ce que Microsoft a répondu quand l'accès est refusé. */
+  /** What Microsoft replied when access is denied. */
   error: string;
 }
 
 /**
- * La connexion de Milo à Entra : l'inscription incomplète, déconnectée depuis
- * le Paramétrage, refusée par Microsoft (le message dans `error`), ou établie.
+ * Milo's connection to Entra: incomplete registration, disconnected from
+ * the Settings, refused by Microsoft (the message in `error`), or established.
  */
 export interface EntraStatus {
   state: "unconfigured" | "disconnected" | "error" | "connected";

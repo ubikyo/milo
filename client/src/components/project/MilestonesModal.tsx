@@ -31,35 +31,35 @@ import { DEFAULT_LABEL_COLOR } from "@milo/shared";
 import type { Milestone, MilestoneType } from "@milo/shared";
 import CloseButton from "../ui/CloseButton";
 
-/** Un jalon en cours de saisie : la valeur peut être vidée pendant la frappe. */
+/** A milestone being typed: the value can be emptied while typing. */
 interface InputEntry {
   key: number;
   value: number | "";
   label: string;
-  /** La couleur de la tranche que le jalon ferme. */
+  /** The color of the slice the milestone closes. */
   color: string;
-  /** Le jalon de fin, à 100 % : toujours là, ni déplaçable ni supprimable. */
+  /** The end milestone, at 100%: always there, neither movable nor deletable. */
   fixed?: boolean;
 }
 
-/** La valeur du jalon de fin. */
+/** The end milestone's value. */
 const END = 100;
 
 interface MilestonesModalProps {
-  /** Le type dont on règle les jalons ; « null » ferme la fenêtre. */
+  /** The type whose milestones are being set; "null" closes the window. */
   type: MilestoneType | null;
   onClose: () => void;
   onSave: (milestones: Milestone[]) => Promise<unknown>;
 }
 
-/** L'air ajouté à gauche de la pastille de couleur d'un jalon. */
+/** The space added to the left of a milestone's color swatch. */
 const COLOR_GAP = 3;
-/** L'air entre le pourcentage et le libellé. */
+/** The space between the percentage and the label. */
 const LABEL_GAP = 4;
-/** L'air entre la pastille et le pourcentage. */
+/** The space between the swatch and the percentage. */
 const PERCENT_GAP = 10;
 
-// Largeur du pourcentage : de quoi écrire « 100 % » dans un champ.
+// Width of the percentage: enough to write "100 %" in a field.
 const PERCENT_WIDTH = 54;
 
 interface PercentageFieldProps {
@@ -69,10 +69,10 @@ interface PercentageFieldProps {
   label: string;
 }
 
-// Les autres jalons s'arrêtent avant la fin : 100 % est déjà pris.
+// The other milestones stop before the end: 100% is already taken.
 const MAX_MILESTONE = END - 1;
 
-/** Le pourcentage d'un jalon : un champ « xs » de la ligne, comme une largeur de colonne. */
+/** A milestone's percentage: an "xs" field on the row, like a column width. */
 function PercentageField({
   value,
   onChange,
@@ -99,8 +99,8 @@ function PercentageField({
       radius={ROUNDING}
       w={PERCENT_WIDTH}
       style={{ flexShrink: 0 }}
-      // Le corps du libellé, à droite : un champ « xs » a la hauteur des
-      // autres, mais un texte plus petit.
+      // The label's font size, on the right: an "xs" field has the height of the
+      // others, but smaller text.
       styles={{
         input: { fontSize: "var(--mantine-font-size-sm)", ...(entered ? INPUT_STYLE : null) },
       }}
@@ -109,8 +109,8 @@ function PercentageField({
   );
 }
 
-// Le jalon ajouté se pose à mi-chemin entre le dernier jalon et la fin : son
-// pourcentage se règle ensuite sur sa ligne.
+// The added milestone is placed halfway between the last milestone and the end: its
+// percentage is then adjusted on its row.
 const halfway = (list: InputEntry[]) => {
   const last = list
     .filter((s) => !s.fixed)
@@ -127,8 +127,8 @@ const toInput = (m: Milestone): InputEntry => ({
 });
 
 /**
- * La liste reçue, avec son jalon de fin : repris s'il a été enregistré avec
- * un libellé, ajouté sans libellé sinon. Il ferme toujours la liste.
+ * The list received, with its end milestone: kept if it was saved with
+ * a label, added without a label otherwise. It always closes the list.
  */
 const withEnd = (milestones: Milestone[]): InputEntry[] => {
   const end = milestones.find((m) => m.value === END);
@@ -139,9 +139,9 @@ const withEnd = (milestones: Milestone[]): InputEntry[] => {
 };
 
 /**
- * Le fond de l'aperçu, par tranches : de 0 au premier jalon, puis de jalon
- * en jalon, chaque tranche prend la couleur du jalon qui la ferme — celle
- * qu'aura la barre d'un projet dont la progression y tombe.
+ * The preview background, in slices: from 0 to the first milestone, then from
+ * milestone to milestone, each slice takes the color of the milestone that closes it —
+ * the one a project's bar will have when its progress falls there.
  */
 const bands = (bounds: { value: number; color: string }[]): string => {
   let start = 0;
@@ -154,9 +154,9 @@ const bands = (bounds: { value: number; color: string }[]): string => {
 };
 
 /**
- * Les jalons d'un type : ceux que ses projets montrent sous leur curseur
- * de progression. On en ajoute, on en retire, ou on n'en garde aucun ; l'aperçu
- * montre le curseur tel que le verra un projet.
+ * A type's milestones: those its projects show under their progress
+ * slider. You add some, remove some, or keep none; the preview
+ * shows the slider as a project will see it.
  */
 export default function MilestonesModal({
   type,
@@ -165,9 +165,9 @@ export default function MilestonesModal({
 }: MilestonesModalProps) {
   const [inputs, setInputs] = useState<InputEntry[]>([]);
   const [saving, setSaving] = useState(false);
-  // Le champ qui a le focus : il prend le fond de la fenêtre.
+  // The focused field: it takes the window's background.
   const [input, setInput] = useState<number | null>(null);
-  // Le jalon qu'on vient d'ajouter : son libellé prend le focus.
+  // The milestone just added: its label takes focus.
   const [toName, setToName] = useState<number | null>(null);
   const [menu, setMenu] = useState<{ key: number; position: PointMenuPosition } | null>(null);
   const colors = useLabelColors();
@@ -185,9 +185,9 @@ export default function MilestonesModal({
       list.map((s) => (s.key === key ? { ...s, ...patch } : s)),
     );
 
-  // Les jalons se rangent dans l'ordre du curseur : après un ajout, et quand
-  // on quitte le pourcentage d'une ligne — pas pendant la frappe, où la ligne
-  // sauterait sous le curseur.
+  // Milestones are sorted in slider order: after an add, and when
+  // leaving a row's percentage — not while typing, when the row
+  // would jump under the cursor.
   const sortBy = () =>
     setInputs((list) =>
       [...list].sort(
@@ -195,8 +195,8 @@ export default function MilestonesModal({
       ),
     );
 
-  // Le libellé est facultatif : la couleur suffit. Le jalon se range à sa
-  // place, et son libellé prend le focus.
+  // The label is optional: the color is enough. The milestone is sorted into
+  // place, and its label takes focus.
   const add = () => {
     const newValue = toInput({
       value: halfway(inputs),
@@ -209,8 +209,8 @@ export default function MilestonesModal({
     setToName(newValue.key);
   };
 
-  // Le libellé est facultatif : un jalon sans libellé colore sa tranche mais
-  // ne s'écrit pas sous le curseur. Seule la valeur est demandée.
+  // The label is optional: a milestone without a label colors its slice but
+  // is not written under the slider. Only the value is required.
   const validEntries = inputs
     .filter((s) => s.value !== "")
     .map((s) => ({
@@ -253,10 +253,10 @@ export default function MilestonesModal({
     >
       <Stack gap="md">
 
-        {/* Les jalons se présentent comme les listes des tiroirs
-            (ChampsColonnes) : une ligne par jalon — sa couleur, son
-            pourcentage, son libellé à même la ligne. Le clic droit le retire
-            — la fin, à 100 %, reste ; « Ajouter » en pose un à mi-chemin. */}
+        {/* Milestones are presented like the drawers' lists
+            (ColumnFields): one row per milestone — its color, its
+            percentage, its label right on the row. Right-click removes it
+            — the end, at 100%, stays; "Ajouter" adds one halfway. */}
         <div>
           <Stack gap={1}>
             {inputs.map((s, rank) => (
@@ -270,12 +270,12 @@ export default function MilestonesModal({
                 }}
                 style={{
                   ...rowStyle(rank, inputs.length, false),
-                  // La pastille de couleur, en tête, s'écarte un peu plus du bord.
+                  // The color swatch, first, sits a bit further from the edge.
                   paddingLeft: ROW_INSET + COLOR_GAP,
                 }}
               >
-                {/* La pastille et le pourcentage se suivent de près : le champ
-                    du pourcentage porte déjà son propre retrait. */}
+                {/* The swatch and the percentage follow closely: the percentage
+                    field already carries its own inset. */}
                 <Group gap={PERCENT_GAP} wrap="nowrap" style={{ flexShrink: 0 }}>
                   <LabelColorPicker
                     color={s.color}
@@ -284,7 +284,7 @@ export default function MilestonesModal({
                   />
 
                   {s.fixed ? (
-                    // La fin ne se déplace pas : sa valeur se lit, sans champ.
+                    // The end does not move: its value is read, with no field.
                     <Text
                       size="sm"
                       w={PERCENT_WIDTH}
@@ -306,7 +306,7 @@ export default function MilestonesModal({
                 <TextInput
                   size="sm"
                   radius={ROUNDING}
-                  // Plus près du pourcentage que l'écart de la ligne.
+                  // Closer to the percentage than the row's gap.
                   style={{
                     flex: 1,
                     minWidth: 0,
@@ -330,7 +330,7 @@ export default function MilestonesModal({
               </Group>
             ))}
           </Stack>
-          {/* Au plus près de la liste qu'il allonge. */}
+          {/* As close as possible to the list it extends. */}
           <AddButton label="Ajouter un jalon" onClick={add} mt={4} />
         </div>
 
@@ -349,8 +349,8 @@ export default function MilestonesModal({
           </PointMenu>
         )}
 
-        {/* Le curseur tel qu'un projet le montrera, sans y toucher : rempli
-            jusqu'au bout, chaque tranche de la couleur de son jalon. */}
+        {/* The slider as a project will show it, without touching it: filled
+            to the end, each slice in its milestone's color. */}
         <div>
           <Slider
             value={END}
@@ -362,8 +362,8 @@ export default function MilestonesModal({
               bar: { background: bands(bounds) },
               thumb: { display: "none" },
             }}
-            // 30px entre la liste et l'aperçu : les 16 de l'écart de la pile
-            // (« md »), plus ces 14.
+            // 30px between the list and the preview: the stack's 16 gap
+            // ("md"), plus these 14.
             mt={14}
           />
           <MilestoneLabels milestones={validEntries} />

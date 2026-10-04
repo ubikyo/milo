@@ -3,18 +3,17 @@ import { count } from "./types";
 import type { AccessWidget, Margins } from "./types";
 import type { BoardWidget, AccessBlockType } from "@milo/shared";
 
-// L'air au-dessus et au-dessous d'un élément de colonne.
+// The space above and below a column element.
 //
-// Chaque widget dit celui qu'il laisse d'ordinaire, selon ce qui l'entoure
-// (« marges »). La configuration peut le remplacer, élément par élément : ses
-// deux champs ne sont rangés que lorsqu'ils s'écartent de cet ordinaire, si
-// bien qu'un élément laissé tel quel suit encore ses voisins quand on le
-// déplace.
+// Each widget says the one it usually leaves, depending on what surrounds it
+// ("margins"). The configuration can override it, element by element: its two
+// fields are stored only when they differ from that usual value, so that an
+// element left as is still follows its neighbors when it is moved.
 
 const HIGH_MARGIN = "marginTop";
 const LOW_MARGIN = "marginBottom";
 
-/** Au-delà, l'élément se perdrait loin de sa colonne. */
+/** Beyond that, the element would get lost far from its column. */
 const MARGIN_MAX = 200;
 
 interface Neighbors {
@@ -22,26 +21,26 @@ interface Neighbors {
   nextType: AccessBlockType | null;
 }
 
-/** Une marge rangée dans la configuration, ou « null » : l'ordinaire du widget vaut. */
+/** A margin stored in the configuration, or "null": the widget's usual one applies. */
 const configured = (config: unknown, key: string): number | null => {
   const readValue = count(config, key, Number.NaN);
   return Number.isNaN(readValue) ? null : readValue;
 };
 
-/** Les éléments qui ouvrent un groupe : l'air qui les précède est le leur. */
+/** The elements that open a group: the space before them is their own. */
 const TITLES: AccessBlockType[] = ["category", "subcategory"];
 
 /**
- * L'ordinaire du widget, sauf devant une catégorie ou une sous-catégorie :
- * l'élément n'y laisse rien sous lui, le titre posant seul l'écart qui
- * l'en sépare.
+ * The widget's usual space, except before a category or a subcategory: the
+ * element leaves nothing below itself there, the title alone setting the gap
+ * that separates it.
  */
 const regularOf = (widget: AccessWidget, { previousType, nextType }: Neighbors): Margins => {
   const regular = widget.margins(previousType, nextType);
   return nextType !== null && TITLES.includes(nextType) ? { ...regular, bottom: 0 } : regular;
 };
 
-/** L'air que l'élément laisse vraiment : le sien, ou celui de sa configuration. */
+/** The space the element really leaves: its own, or that of its configuration. */
 export const marginsOf = (
   widget: AccessWidget,
   config: unknown,
@@ -51,10 +50,10 @@ export const marginsOf = (
 };
 
 /**
- * Les types qui entourent l'élément dans sa colonne, tels que la colonne les
- * montre : un élément caché ou d'un type inconnu ne précède ni ne suit
- * personne (components/access/SectionBlocks.tsx). Les éléments arrivent déjà
- * dans leur ordre.
+ * The types surrounding the element in its column, as the column shows them:
+ * a hidden element or one of an unknown type neither precedes nor follows
+ * anyone (components/ui/SectionsBoard.tsx). The elements already arrive in
+ * their order.
  */
 export const neighborsOf = (
   blocks: BoardWidget[],
@@ -75,17 +74,17 @@ export const neighborsOf = (
   };
 };
 
-/** L'air que la configuration règle, l'ordinaire valant ailleurs. */
+/** The space the configuration sets, the usual one applying elsewhere. */
 export const configuredMargins = (config: unknown, regular: Margins): Margins => ({
   top: configured(config, HIGH_MARGIN) ?? regular.top,
   bottom: configured(config, LOW_MARGIN) ?? regular.bottom,
 });
 
 /**
- * Les deux lignes des marges, au bout du bloc « Apparence » du tiroir
- * (LignesReglages), pour tout widget : elles montrent la marge en vigueur —
- * « ordinaires » tant que rien n'est réglé. Ramener un champ à cet ordinaire,
- * le vider ou cliquer sur son bouton retire le réglage.
+ * The two margin rows, at the end of the drawer's "Apparence" block
+ * (SettingRows), for any widget: they show the margin in effect —
+ * "ordinaires" as long as nothing is set. Bringing a field back to the usual
+ * value, clearing it or clicking its button removes the setting.
  */
 export const marginRowsFor = (
   regular: Margins,
@@ -123,7 +122,7 @@ export const marginRowsFor = (
   ];
 };
 
-/** Les lignes des marges d'un widget du mode Accès, d'après son ordinaire. */
+/** The margin rows of an Access mode widget, based on its usual value. */
 export const marginRows = (
   widget: AccessWidget,
   config: Record<string, unknown>,

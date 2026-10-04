@@ -8,19 +8,19 @@ import { useSettingsMode } from "../lib/rights";
 import type { WidgetConfigProps } from "../widgets/types";
 import type { ProjectIndicatorWidget } from "./types";
 
-// La liste des projets, en widget : elle se pose dans une section comme un
-// indicateur, et sa configuration dit ce qu'elle affiche — ses colonnes. Les
-// projets du tableau ouvert, ses filtres et ce qu'on en ouvre viennent de la
-// page (ProjetsListeContext). Le menu « Actions » de son tiroir copie et
-// colle les étiquettes et les catégories du tableau.
+// The projects list, as a widget: it sits in a section like an
+// indicator, and its configuration says what it displays — its columns. The
+// open board's projects, its filters and what is opened from it come from the
+// page (ProjectsListContext). The "Actions" menu of its drawer copies and
+// pastes the board's labels and categories.
 
 export const projectsListIndicator: ProjectIndicatorWidget = {
   type: "list",
   kind: "project",
   label: "Projets",
   icon: IconList,
-  // Posé, le widget montre ces colonnes ; les autres s'ajoutent depuis son
-  // tiroir.
+  // Once placed, the widget shows these columns; the others are added from its
+  // drawer.
   defaultConfig: {
     [LIST_COLUMNS]: [
       "number",
@@ -39,15 +39,15 @@ export const projectsListIndicator: ProjectIndicatorWidget = {
 };
 
 function Settings(props: WidgetConfigProps) {
-  // Les types de jalons relèvent du Paramétrage.
+  // Milestone types fall under the Paramétrage.
   const canEditSettings = useSettingsMode();
   return (
     <>
       <CopyPasteActions scope="projects" items={["labels", "categories"]} />
       <Stack gap="xl">
         <ColumnFields columns={PROJECT_COLUMNS} {...props} />
-        {/* Les catégories, les étiquettes du tableau et les types de jalons,
-            sous ses colonnes : ils partent à la sauvegarde, avec la
+        {/* The categories, the board's labels and the milestone types,
+            under its columns: they go to saving, with the
             configuration. */}
         <BoardListFields kind="categories" />
         <BoardListFields kind="project-labels" />

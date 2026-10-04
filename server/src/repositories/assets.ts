@@ -1,10 +1,9 @@
-// Les postes du mode Assets : ce que les agents d'inventaire remontent.
+// Workstations of Assets mode: what the inventory agents report.
 //
-// Un poste n'appartient à aucun tableau : il se rattache à une société par le
-// « tag » que porte son agent, et à rien du tout quand ce tag ne désigne
-// aucune société connue. L'inventaire lui-même est gardé entier, en JSON :
-// c'est le tiroir qui le déroule, et personne n'a encore décidé de ce qu'on en
-// garderait.
+// A workstation belongs to no board: it is attached to a company by the "tag"
+// its agent carries, and to nothing at all when that tag designates no known
+// company. The inventory itself is kept whole, as JSON: the drawer is what
+// unrolls it, and nobody has yet decided what would be kept of it.
 
 import type {
   Asset,
@@ -30,11 +29,11 @@ export const WORKSTATION_NOT_FOUND = "Poste introuvable";
 export const assets = {
   byId: selection<AssetRow>("SELECT * FROM assets WHERE id = ?"),
   byDeviceId: selection<AssetRow>("SELECT * FROM assets WHERE deviceid = ?"),
-  // Le nom d'abord, puisque c'est tout ce que la liste montre. Les postes sans
-  // nom — un agent qui n'a pas su le dire — se rangent à la fin par leur
-  // identifiant.
+  // The name first, since it is all the list shows. Workstations without a
+  // name — an agent that could not tell it — go at the end, by their
+  // identifier.
   all: selection<AssetRow>("SELECT * FROM assets ORDER BY name = '', name, deviceid"),
-  /** Ceux d'un tableau : de l'un de ses contextes, ou de tous. */
+  /** Those of a board: from one of its contexts, or from all. */
   ofBoard: selection<AssetRow>(
     `SELECT * FROM assets
      WHERE board_id = @board AND (@context IS NULL OR context_id = @context)
@@ -61,9 +60,9 @@ const withoutReceipt = mutation(
 );
 
 /**
- * Les postes suivent les listes de postes : chacun va au contexte qui reçoit
- * son tag, ou nulle part. Refait quand une liste de postes change ce qu'elle
- * reçoit.
+ * Workstations follow the workstation lists: each goes to the context that
+ * receives its tag, or nowhere. Redone when a workstation list changes what it
+ * receives.
  */
 export const reassignWorkstationContexts = transaction((): void => {
   withoutReceipt.run();
@@ -77,7 +76,7 @@ export const reassignWorkstationContexts = transaction((): void => {
   }
 });
 
-/** Le contenu gardé en base, ou rien quand il est illisible. */
+/** The content kept in the database, or nothing when it is unreadable. */
 const contentOf = (row: AssetRow): Tree => {
   try {
     return JSON.parse(row.content) as Tree;
@@ -87,9 +86,9 @@ const contentOf = (row: AssetRow): Tree => {
 };
 
 /**
- * Le volume système : « C: » sous Windows, le point de montage « / » sous
- * Linux et macOS — l'agent le donne alors dans TYPE. Rien quand l'agent ne le
- * déclare pas, ou sans taille lisible.
+ * The system volume: "C:" on Windows, the "/" mount point on Linux and
+ * macOS — the agent then gives it in TYPE. Nothing when the agent does not
+ * declare it, or without a readable size.
  */
 const systemVolume = (content: Tree): AssetEntry | undefined =>
   entriesOf(sectionsOf(content), "DRIVES").find(
@@ -107,7 +106,7 @@ const systemDisk = (content: Tree): Asset["system_disk"] => {
   return { free, total };
 };
 
-/** Oui, non, ou rien : l'agent écrit « Yes », « 1 » ou « true » selon sa version. */
+/** Yes, no, or nothing: the agent writes "Yes", "1" or "true" depending on its version. */
 const yesNo = (value: string | undefined): boolean | null => {
   const v = (value ?? "").trim().toLowerCase();
   if (v === "yes" || v === "1" || v === "true") return true;
@@ -115,14 +114,14 @@ const yesNo = (value: string | undefined): boolean | null => {
   return null;
 };
 
-/** Le volume système chiffré (BitLocker, FileVault, LUKS), si l'agent le dit. */
+/** The encrypted system volume (BitLocker, FileVault, LUKS), if the agent says so. */
 const volumeEncrypted = (content: Tree): boolean | null =>
   yesNo(systemVolume(content)?.["ENCRYPT_STATUS"]);
 
 /**
- * L'architecture : celle que le système déclare (« arm64 », « x86_64 »,
- * « 64-bit »…), à défaut celle que dit la description du processeur
- * (« ARMv8 (64-bit) », « Intel64 Family 6 »).
+ * The architecture: the one the system declares ("arm64", "x86_64",
+ * "64-bit"…), failing that the one the processor description says
+ * ("ARMv8 (64-bit)", "Intel64 Family 6").
  */
 const architectureOf = (content: Tree, cpu: AssetEntry | undefined): AssetSummary["arch"] => {
   const indices = [
@@ -138,7 +137,7 @@ const architectureOf = (content: Tree, cpu: AssetEntry | undefined): AssetSummar
   return "";
 };
 
-/** Le nom du chiffrement du volume système et son algorithme ; « None » ne dit rien. */
+/** The system volume's encryption name and its algorithm; "None" says nothing. */
 const encryptionOf = (content: Tree): AssetSummary["encryption"] => {
   const volume = systemVolume(content);
   const algorithm = (volume?.["ENCRYPT_ALGO"] ?? "").trim();
@@ -148,7 +147,7 @@ const encryptionOf = (content: Tree): AssetSummary["encryption"] => {
   };
 };
 
-/** Les profils du pare-feu de Windows, sous leur nom français. */
+/** Windows firewall profiles, under their French name. */
 const FIREWALL_PROFILES: Record<string, string> = {
   DomainProfile: "Domaine",
   StandardProfile: "Privé",
@@ -156,8 +155,8 @@ const FIREWALL_PROFILES: Record<string, string> = {
 };
 
 /**
- * Le pare-feu, tel que l'agent le décrit : une entrée par profil sous Windows,
- * une seule ailleurs (macOS). Les entrées sans état lisible ne comptent pas.
+ * The firewall, as the agent describes it: one entry per profile on Windows,
+ * a single one elsewhere (macOS). Entries without a readable state do not count.
  */
 const firewallOf = (sections: AssetSection[]): AssetSummary["firewall"] => {
   const profiles = entriesOf(sections, "FIREWALL")
@@ -177,7 +176,7 @@ const firewallOf = (sections: AssetSection[]): AssetSummary["firewall"] => {
   };
 };
 
-/** Le système du poste : son nom, et la famille qui choisit son logo. */
+/** The workstation's system: its name, and the family that picks its logo. */
 const systemOf = (content: Tree): Asset["os"] => {
   const name =
     textOf(content, "OPERATINGSYSTEM", "FULL_NAME") ||
@@ -196,9 +195,9 @@ const systemOf = (content: Tree): Asset["os"] => {
   else if (kernel === "linux" || /linux/i.test(name)) family = "linux";
   return {
     family,
-    // « Microsoft » n'apprend rien devant « Windows ».
+    // "Microsoft" tells nothing in front of "Windows".
     name: name.replace(/^Microsoft\s+/i, ""),
-    // La version d'affichage de Windows (« 23H2 ») dit plus que son numéro.
+    // The Windows display version ("23H2") says more than its number.
     version:
       textOf(content, "OPERATINGSYSTEM", "DISPLAYVERSION") ||
       textOf(content, "OPERATINGSYSTEM", "VERSION"),
@@ -207,10 +206,9 @@ const systemOf = (content: Tree): Asset["os"] => {
 };
 
 /**
- * Les produits que l'agent nomme mal : son nom technique, remplacé par celui
- * sous lequel on le connaît. Seul le nom du produit change — l'inventaire
- * rangé en base reste tel que l'agent l'a envoyé, et les chemins des
- * processus gardent le leur.
+ * Products the agent names poorly: its technical name, replaced by the one it
+ * is known under. Only the product name changes — the inventory stored in the
+ * database stays as the agent sent it, and process paths keep theirs.
  */
 const PRODUCT_NAMES: Record<string, string> = {
   "Sentinel Agent": "SentinelOne EPP",
@@ -218,14 +216,14 @@ const PRODUCT_NAMES: Record<string, string> = {
 
 const productName = (name: string): string => PRODUCT_NAMES[name.trim()] ?? name;
 
-/** Les sections dont le champ NAME est un nom de produit. */
+/** Sections whose NAME field is a product name. */
 const PRODUCT_SECTIONS = new Set(["ANTIVIRUS", "SOFTWARES"]);
 
 /**
- * La protection du poste. Windows en déclare souvent deux — Defender resté en
- * retrait à côté de celle qu'on a installée : la première active l'emporte.
- * Hors de Windows, l'agent n'en recense aucune : rien ne permet de conclure
- * qu'il n'y en a pas.
+ * The workstation's protection. Windows often declares two — Defender left
+ * aside next to the one that was installed: the first active one wins.
+ * Outside Windows, the agent lists none: nothing allows concluding there is
+ * none.
  */
 const protectionOf = (content: Tree): AssetProtection => {
   const protections = entriesOf(sectionsOf(content), "ANTIVIRUS");
@@ -242,8 +240,8 @@ const protectionOf = (content: Tree): AssetProtection => {
 };
 
 /**
- * Ce que la liste montre : le nom et le système, qui s'y connecte, quand on
- * l'a vu, sa protection, et l'état de son disque système.
+ * What the list shows: the name and system, who logs in, when it was last
+ * seen, its protection, and the state of its system disk.
  */
 export const assetOf = (row: AssetRow, content: Tree = contentOf(row)): Asset => ({
   id: row.id,
@@ -261,13 +259,13 @@ export const assetOf = (row: AssetRow, content: Tree = contentOf(row)): Asset =>
 });
 
 /**
- * Qui se sert du poste. Trois sources, de la plus sûre à la plus lointaine :
- * les sessions ouvertes au moment de l'inventaire (USERS), la dernière
- * ouverture que Windows a retenue (HARDWARE/LASTLOGGEDUSER), et l'auteur du
- * dernier inventaire (ACCESSLOG/USERID).
+ * Who uses the workstation. Three sources, from the most reliable to the most
+ * distant: the sessions open at the time of the inventory (USERS), the last
+ * login Windows retained (HARDWARE/LASTLOGGEDUSER), and the author of the
+ * last inventory (ACCESSLOG/USERID).
  *
- * Le domaine est joint quand l'agent le donne : « ARCO\jquintard » se lit
- * mieux qu'un identifiant seul quand deux domaines se ressemblent.
+ * The domain is joined when the agent gives it: "ARCO\jquintard" reads better
+ * than a bare identifier when two domains look alike.
  */
 export const contentUser = (content: Tree): string => {
   const sessions = content["USERS"];
@@ -282,33 +280,32 @@ export const contentUser = (content: Tree): string => {
   return textOf(content, "HARDWARE", "LASTLOGGEDUSER") || textOf(content, "ACCESSLOG", "USERID");
 };
 
-/** Les entrées d'une section, ou rien : toutes sont facultatives. */
+/** A section's entries, or nothing: all are optional. */
 const entriesOf = (sections: AssetSection[], name: string) =>
   sections.find((section) => section.name === name)?.entries ?? [];
 
 /**
- * L'identifiant TeamViewer, tel que l'agent l'a lu dans la base de registres
- * (ou par « teamviewer --info »). Un poste peut porter plusieurs outils de
- * prise en main : on ne retient que celui-là, c'est le seul qu'on sache
- * ouvrir.
+ * The TeamViewer identifier, as the agent read it from the registry (or via
+ * "teamviewer --info"). A workstation may carry several remote-control tools:
+ * we keep only that one, it is the only one we know how to open.
  */
 const teamviewerDe = (sections: AssetSection[]): string =>
   entriesOf(sections, "REMOTE_MGMT").find(
     (entry) => (entry["TYPE"] ?? "").toLowerCase() === "teamviewer",
   )?.["ID"] ?? "";
 
-/** Une adresse qui ne mène nulle part : la machine elle-même, ou un lien mort. */
+/** An address that leads nowhere: the machine itself, or a dead link. */
 const unusable = (address: string): boolean =>
   !address || address.startsWith("127.") || address.startsWith("169.254.") || address === "0.0.0.0";
 
 /**
- * Par où joindre le poste. Les cartes réseau actives d'abord, les virtuelles
- * en dernier — une machine qui fait tourner des conteneurs en déclare
- * volontiers cinq, dont une seule mène quelque part.
+ * How to reach the workstation. Active network cards first, virtual ones
+ * last — a machine running containers readily declares five, only one of
+ * which leads anywhere.
  *
- * C'est l'adresse qu'avait le poste à son dernier inventaire : en DHCP elle a
- * pu changer depuis, et c'est pour ça que l'échec d'une demande d'inventaire
- * dit toujours quelle adresse a été appelée.
+ * It is the address the workstation had at its last inventory: with DHCP it
+ * may have changed since, which is why a failed inventory request always says
+ * which address was called.
  */
 const addressOf = (sections: AssetSection[]): string => {
   const cards = entriesOf(sections, "NETWORKS");
@@ -326,8 +323,8 @@ const addressOf = (sections: AssetSection[]): string => {
   const other = cards.find((entry) => !unusable(first(entry)));
   if (other) return first(other);
 
-  // Ce que la machine dit d'elle-même, à défaut : plusieurs adresses y sont
-  // parfois collées, séparées par une barre oblique.
+  // What the machine says about itself, failing that: several addresses are
+  // sometimes glued together there, separated by a slash.
   const hardware = entriesOf(sections, "HARDWARE")[0]?.["IPADDR"] ?? "";
   const declared = hardware
     .split(/[/,]/)
@@ -337,16 +334,16 @@ const addressOf = (sections: AssetSection[]): string => {
 };
 
 /**
- * Ce que la fiche ne montre pas, ou pas en entier. Les sections masquées
- * servent ailleurs : ACCESSLOG date la ligne de la liste, ACCOUNTINFO porte le
- * tag qui rattache le poste à sa société. Une section réduite ne garde que les
- * champs nommés, dans cet ordre ; une section élaguée perd les champs nommés
- * et garde le reste — y compris ce qu'une version future de l'agent ajoutera.
+ * What the sheet does not show, or not in full. Hidden sections are used
+ * elsewhere: ACCESSLOG dates the list row, ACCOUNTINFO carries the tag that
+ * attaches the workstation to its company. A reduced section keeps only the
+ * named fields, in that order; a pruned section loses the named fields and
+ * keeps the rest — including what a future version of the agent will add.
  */
-// ENVS, les variables d'environnement de l'agent, ne dit rien du poste qui
-// serve à qui le regarde ; VERSIONCLIENT et VERSIONPROVIDER parlent de
-// l'agent, pas de la machine ; LICENSEINFOS, les clés de licence, n'a pas à
-// s'afficher.
+// ENVS, the agent's environment variables, says nothing about the workstation
+// useful to whoever looks at it; VERSIONCLIENT and VERSIONPROVIDER speak of
+// the agent, not the machine; LICENSEINFOS, the license keys, must not be
+// displayed.
 const HIDDEN_SECTIONS = new Set([
   "ACCESSLOG",
   "ACCOUNTINFO",
@@ -356,43 +353,43 @@ const HIDDEN_SECTIONS = new Set([
   "VERSIONPROVIDER",
 ]);
 const KEPT_FIELDS: Record<string, string[]> = {
-  // Les colonnes du tableau « EPP / EDR » de la fiche.
+  // The columns of the sheet's "EPP / EDR" table.
   ANTIVIRUS: ["COMPANY", "NAME", "ENABLED", "VERSION"],
   BIOS: ["SMANUFACTURER", "SMODEL", "SSN"],
   CONTROLLERS: ["NAME", "MANUFACTURER", "TYPE", "PCISLOT", "VENDORID"],
-  // La fiche en fait un tableau : ce sont ses colonnes. LETTER n'existe que
-  // sous Windows ; FREE et TOTAL, en Mo, font la jauge d'occupation.
+  // The sheet makes a table of it: these are its columns. LETTER exists only
+  // on Windows; FREE and TOTAL, in MB, make the occupancy gauge.
   DRIVES: ["LETTER", "TYPE", "FILESYSTEM", "ENCRYPT_STATUS", "FREE", "TOTAL"],
-  // Ce qui tourne, qui le fait tourner, et ce que ça coûte en processeur :
-  // les colonnes du tableau de la fiche.
+  // What runs, who runs it, and what it costs in processor: the columns of
+  // the sheet's table.
   PROCESSES: ["CMD", "USER", "CPUUSAGE"],
-  // Ce qui est installé, en quelle version, par qui, et depuis quand : les
-  // colonnes du tableau de la fiche. Le reste — clés de registre, chaînes de
-  // désinstallation, liens d'aide — sert à l'agent, pas à qui lit la fiche.
+  // What is installed, in which version, by whom, and since when: the columns
+  // of the sheet's table. The rest — registry keys, uninstall strings, help
+  // links — is for the agent, not for whoever reads the sheet.
   SOFTWARES: ["NAME", "VERSION", "PUBLISHER", "INSTALLDATE"],
-  // Les comptes et les groupes du poste, en tableaux. HOME n'existe que sous
-  // Linux et macOS : la colonne n'apparaît que là.
+  // The workstation's accounts and groups, as tables. HOME exists only on
+  // Linux and macOS: the column appears only there.
   LOCAL_GROUPS: ["NAME"],
-  // ADMIN n'est pas de l'agent : la fiche le pose (administrateursDe).
+  // ADMIN is not from the agent: the sheet sets it (administratorsOf).
   LOCAL_USERS: ["NAME", "HOME", "ADMIN"],
-  // Machines virtuelles et conteneurs : les colonnes du tableau de la fiche.
+  // Virtual machines and containers: the columns of the sheet's table.
   VIRTUALMACHINES: ["NAME", "MEMORY", "STATUS", "VMTYPE"],
 };
 const REMOVED_FIELDS: Record<string, string[]> = {
   CPUS: ["FAMILYNUMBER", "ID", "MODEL", "SPEED", "STEPPING"],
-  // L'EDID brut de l'écran, encodé : illisible, et ce qu'il dit est déjà
-  // dans les autres champs.
+  // The screen's raw EDID, encoded: unreadable, and what it says is already
+  // in the other fields.
   MONITORS: ["BASE64"],
 };
 
-/** Une entrée telle que la fiche la montre, selon la règle de sa section. */
+/** An entry as the sheet shows it, according to its section's rule. */
 const displayedEntry = (section: string, raw: AssetEntry): AssetEntry => {
   let entry =
     PRODUCT_SECTIONS.has(section) && typeof raw["NAME"] === "string"
       ? { ...raw, NAME: productName(raw["NAME"]) }
       : raw;
-  // Le modèle sous son nom, l'identifiant à la suite : « MacBook Pro 16"
-  // (M2 Max, 2023) — Mac14,6 ».
+  // The model under its name, the identifier following: "MacBook Pro 16"
+  // (M2 Max, 2023) — Mac14,6".
   const template = section === "BIOS" ? templateName(entry["SMODEL"] ?? "") : "";
   if (template) entry = { ...entry, SMODEL: `${template} — ${entry["SMODEL"]}` };
   const keptCount = KEPT_FIELDS[section];
@@ -409,8 +406,9 @@ const displayedEntry = (section: string, raw: AssetEntry): AssetEntry => {
 };
 
 /**
- * Windows, d'après ce que le poste dit de son système. L'agent le nomme de
- * plusieurs façons selon sa version : on prend la première qui répond.
+ * Windows, based on what the workstation says about its system. The agent
+ * names it in several ways depending on its version: we take the first that
+ * answers.
  */
 const onWindows = (content: Tree): boolean =>
   textOf(content, "OPERATINGSYSTEM", "KERNEL_NAME").toLowerCase() === "mswin32" ||
@@ -418,10 +416,9 @@ const onWindows = (content: Tree): boolean =>
   /windows/i.test(textOf(content, "HARDWARE", "OSNAME"));
 
 /**
- * Les entrées qu'on écarte d'une section. Sous Linux et macOS, les comptes
- * dont le login commence par « _ » sont ceux des services (_www, _spotlight…),
- * et de même pour les groupes : macOS en déclare une centaine, et personne ne
- * s'y connecte.
+ * Entries discarded from a section. On Linux and macOS, accounts whose login
+ * starts with "_" are service ones (_www, _spotlight…), and likewise for
+ * groups: macOS declares around a hundred, and nobody logs into them.
  */
 const discardedEntry = (section: string, entry: AssetEntry, windows: boolean): boolean => {
   if (windows) return false;
@@ -430,14 +427,14 @@ const discardedEntry = (section: string, entry: AssetEntry, windows: boolean): b
   return false;
 };
 
-/** Les sections telles que la fiche les montre. */
+/** Sections as the sheet shows them. */
 /**
- * Les comptes locaux administrateurs, d'après ce que l'agent en dit : les
- * membres du groupe des administrateurs — « Administrateurs » (S-1-5-32-544)
- * sous Windows, « admin » sous macOS et Linux —, le compte Administrateur
- * intégré de Windows (son SID finit par -500) et root (uid 0). L'agent ne
- * donne pas toujours les membres : sous Windows, jamais ; sous macOS, ceux de
- * /etc/group seulement. Un administrateur peut donc échapper à la marque.
+ * Local administrator accounts, based on what the agent says: members of the
+ * administrators group — "Administrateurs" (S-1-5-32-544) on Windows, "admin"
+ * on macOS and Linux —, Windows's built-in Administrator account (its SID
+ * ends with -500) and root (uid 0). The agent does not always give the
+ * members: on Windows, never; on macOS, only those of /etc/group. An
+ * administrator may therefore escape the mark.
  */
 const administratorsOf = (sections: AssetSection[]): ((account: AssetEntry) => boolean) => {
   const members = new Set(
@@ -454,8 +451,8 @@ const administratorsOf = (sections: AssetSection[]): ((account: AssetEntry) => b
 };
 
 /**
- * Le VLAN du Paramétrage qui porte une carte réseau : celui de la première de
- * ses adresses IPv4 qui tombe dans un sous-réseau déclaré.
+ * The Paramétrage VLAN that carries a network card: the one of the first of
+ * its IPv4 addresses that falls within a declared subnet.
  */
 const cardVlan = (entry: AssetEntry, table: AssetVlan[]): AssetVlan | null =>
   (entry["IPADDRESS"] ?? "")
@@ -479,8 +476,8 @@ const displayedSections = (sections: AssetSection[], windows: boolean): AssetSec
             ? { ...entry, ADMIN: "1" }
             : entry,
         )
-        // VLAN et VLAN_NAME ne sont pas de l'agent non plus : le VLAN du
-        // Paramétrage qui porte la carte, quand il y en a un.
+        // VLAN and VLAN_NAME are not from the agent either: the Paramétrage
+        // VLAN that carries the card, when there is one.
         .map((entry) => {
           const vlan = section.name === "NETWORKS" ? cardVlan(entry, table) : null;
           return vlan ? { ...entry, VLAN: String(vlan.vlan), VLAN_NAME: vlan.name } : entry;
@@ -492,9 +489,9 @@ const displayedSections = (sections: AssetSection[], windows: boolean): AssetSec
 };
 
 /**
- * Le poste ouvert : l'inventaire, section par section. Un contenu
- * illisible — une base écrite à la main, un envoi tronqué — rend un poste sans
- * section plutôt que de faire tomber la requête.
+ * The open workstation: the inventory, section by section. Unreadable
+ * content — a hand-written database, a truncated upload — yields a
+ * workstation without sections rather than making the request fail.
  */
 export const assetDetail = (row: AssetRow): AssetDetail => {
   const content = contentOf(row);
@@ -505,34 +502,33 @@ export const assetDetail = (row: AssetRow): AssetDetail => {
     deviceid: row.deviceid,
     tag: row.tag,
     created_at: row.created_at,
-    // TeamViewer et l'adresse se lisent sur l'inventaire entier : ce que la
-    // fiche masque peut encore servir à les trouver.
+    // TeamViewer and the address are read from the whole inventory: what the
+    // sheet hides may still help find them.
     sections: displayedSections(sections, onWindows(content)),
     teamviewer_id: teamviewerDe(sections),
     address: addressOf(sections),
     summary: summaryOf(sections, content),
-    // Elle se lit sur endoflife.date : la route la pose (lib/endoflife.ts).
+    // It is read from endoflife.date: the route sets it (lib/endoflife.ts).
     support: null,
   };
 };
 
-/** Un nombre positif, ou rien. */
+/** A positive number, or nothing. */
 const count = (value: string | undefined): number | null => {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
 /**
- * La carte réseau du résumé, parmi les physiques qui ont une adresse —
- * Ethernet et Wi-Fi : une connectée, le Wi-Fi d'abord. L'agent donne le genre
- * dans TYPE ; les plus anciens ne le donnent pas, et le nom de la carte le dit
- * alors.
+ * The summary's network card, among the physical ones that have an address —
+ * Ethernet and Wi-Fi: a connected one, Wi-Fi first. The agent gives the kind
+ * in TYPE; the oldest ones do not, and the card's name then says it.
  */
-/** Une carte telle que lue, et si elle est connectée : de quoi choisir. */
+/** A card as read, and whether it is connected: enough to choose. */
 type ReadCard = AssetNetwork & { connected: boolean };
 
 const cardsOf = (sections: AssetSection[]): AssetNetwork[] => {
-  // La table des VLAN du Paramétrage, lue une fois pour toutes les cartes.
+  // The Paramétrage VLAN table, read once for all cards.
   const table = vlans();
   const cards = entriesOf(sections, "NETWORKS").flatMap((entry): ReadCard[] => {
     if (entry["VIRTUALDEV"] === "1") return [];
@@ -557,8 +553,8 @@ const cardsOf = (sections: AssetSection[]): AssetNetwork[] => {
       },
     ];
   });
-  // Une seule carte : une connectée, le Wi-Fi avant l'Ethernet ; à défaut de
-  // connectée, la première qui a une adresse.
+  // A single card: a connected one, Wi-Fi before Ethernet; failing a
+  // connected one, the first that has an address.
   const selected =
     cards.find((c) => c.connected && c.kind === "wifi") ??
     cards.find((c) => c.connected) ??
@@ -568,12 +564,12 @@ const cardsOf = (sections: AssetSection[]): AssetNetwork[] => {
   return [card];
 };
 
-/** L'onglet « Résumé » : ce qu'on cherche d'abord en ouvrant un poste. */
+/** The "Résumé" tab: what one looks for first when opening a workstation. */
 const summaryOf = (sections: AssetSection[], content: Tree): AssetSummary => {
   const bios = entriesOf(sections, "BIOS")[0] ?? {};
   const cpus = entriesOf(sections, "CPUS");
   const first = cpus[0];
-  // La mémoire que la machine déclare, à défaut la somme de ses barrettes.
+  // The memory the machine declares, failing that the sum of its modules.
   const ramModules = entriesOf(sections, "MEMORIES")
     .map((m) => count(m["CAPACITY"]) ?? 0)
     .reduce((a, b) => a + b, 0);
@@ -582,8 +578,8 @@ const summaryOf = (sections: AssetSection[], content: Tree): AssetSummary => {
   return {
     networks: cardsOf(sections),
     manufacturer: bios["SMANUFACTURER"] ?? bios["MMANUFACTURER"] ?? "",
-    // Le nom que le Paramétrage donne à l'identifiant (« Mac14,6 »), s'il
-    // en a un.
+    // The name the Paramétrage gives the identifier ("Mac14,6"), if it has
+    // one.
     model: templateName(bios["SMODEL"] ?? "") || (bios["SMODEL"] ?? ""),
     serial: bios["SSN"] ?? "",
     cpu: first?.["NAME"]

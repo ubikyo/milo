@@ -1,7 +1,6 @@
-// Le type d'un widget : ce qui range le tiroir des widgets (WidgetDrawer) en
-// groupes, et ce sur quoi portent les permissions. La liste vit dans le code
-// partagé (shared, widget-kinds.ts) : le serveur s'en sert pour vérifier les
-// droits.
+// A widget's kind: what sorts the widget drawer (WidgetDrawer) into groups,
+// and what permissions apply to. The list lives in the shared code (shared,
+// widget-kinds.ts): the server uses it to check rights.
 
 export { WIDGET_KINDS, kindLabel } from "@milo/shared";
 export type { WidgetKind } from "@milo/shared";

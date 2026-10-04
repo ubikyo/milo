@@ -41,11 +41,11 @@ import DrawerScrollArea, {
 import EmptyPanel from "../ui/EmptyPanel";
 import CloseButton from "../ui/CloseButton";
 
-// Les dernières notifications reçues, ouvertes depuis le menu du compte. À
-// l'écran, une notification passe et s'efface ; ici, elle reste jusqu'à ce
-// qu'on la supprime — une à une, par sa croix, ou toutes par le menu
-// « Actions ». Un clic sur une ligne ouvre l'élément dont elle parle ; celle
-// qui annonce une suppression n'ouvre rien, et porte une corbeille.
+// The latest notifications received, opened from the account menu. On
+// screen, a notification passes and fades; here, it stays until
+// it is deleted — one by one, by its cross, or all through the
+// "Actions" menu. A click on a row opens the item it is about; one
+// announcing a deletion opens nothing, and carries a trash can.
 
 const ICONS: Record<NotificationKind, ComponentType<{ size?: number }>> = {
   project: IconFolder,
@@ -68,7 +68,7 @@ const DAY_WITH_YEAR = new Intl.DateTimeFormat("fr-FR", {
   minute: "2-digit",
 });
 
-/** La date et l'heure, avec l'année si ce n'est pas la même. */
+/** The date and time, with the year if it is not the same. */
 const whenLabel = (iso: string): string => {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -79,11 +79,11 @@ const whenLabel = (iso: string): string => {
 interface NotificationsDrawerProps {
   opened: boolean;
   onClose: () => void;
-  /** Ouvre l'élément dont parle la notification. */
+  /** Opens the item the notification is about. */
   onOpen: (notification: Notification) => void;
   /**
-   * Change à chaque notification reçue : le tiroir ouvert se relit, et la
-   * nouvelle venue s'y ajoute sans qu'il faille le rouvrir.
+   * Changes with each notification received: the open drawer rereads, and the
+   * newcomer is added without having to reopen it.
    */
   revision: number;
 }
@@ -109,8 +109,8 @@ export default function NotificationsDrawer({
     };
   }, [opened, revision]);
 
-  // Chaque suppression part aussitôt ; la ligne s'en va sans attendre la
-  // réponse, et revient si le serveur refuse.
+  // Each deletion is sent at once; the row goes away without waiting for the
+  // response, and comes back if the server refuses.
   const remove = async (notification: Notification) => {
     const before = list;
     setList((l) => l?.filter((n) => n.id !== notification.id) ?? null);
@@ -143,8 +143,8 @@ export default function NotificationsDrawer({
         withCloseButton={false}
         styles={DRAWER_STYLES}
       >
-        {/* La même rangée d'onglets que les autres tiroirs : un seul volet,
-            et le menu « Actions » au bout, où on le cherche. */}
+        {/* The same row of tabs as the other drawers: a single pane,
+            and the "Actions" menu at the end, where it is expected. */}
         <Tabs
           defaultValue="notifications"
           style={{

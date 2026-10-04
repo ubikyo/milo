@@ -19,41 +19,41 @@ import {
 import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 import type { ClipboardEvent, ComponentType } from "react";
 
-// La section « Assets » du Paramétrage, et ses deux listes :
-// - « Modèles » : le nom commercial de l'identifiant qu'un poste déclare —
-//   Apple ne remonte que « Mac14,6 » ;
-// - « VLAN » : le VLAN qui porte chaque sous-réseau (« 10.1.106.0/24 » → 106).
-// Elles se présentent comme les listes des tiroirs (ChampsColonnes) : une
-// ligne par entrée, ses champs à même la ligne. Une ligne part au serveur
-// quand on la quitte, complète et changée ; Échap la ramène à ce qu'elle
-// était. Le clic droit la supprime ; « Ajouter » pose une ligne vide au bout.
-// Les VLAN se collent aussi par lots dans une ligne ajoutée : une ligne
-// « sous-réseau VLAN nom » chacun, le nom facultatif.
+// The "Assets" section of "Paramétrage", and its two lists:
+// - "Modèles": the commercial name of the identifier a workstation reports —
+//   Apple only reports "Mac14,6";
+// - "VLAN": the VLAN carrying each subnet ("10.1.106.0/24" → 106).
+// They are presented like the drawers' lists (ColumnFields): one
+// row per entry, its fields right on the row. A row is sent to the server
+// when you leave it, complete and changed; Escape returns it to what it
+// was. Right-click deletes it; "Ajouter" adds an empty row at the end.
+// VLANs can also be pasted in batches into an added row: one
+// "subnet VLAN name" line each, the name optional.
 
-/** La largeur de la première colonne : identifiant ou sous-réseau. */
+/** The width of the first column: identifier or subnet. */
 const FIRST_WIDTH = 200;
 
-/** Assez pour « 4094 ». */
+/** Enough for "4094". */
 const VLAN_LENGTH = 4;
 
-/** La largeur de la colonne des numéros de VLAN. */
+/** The width of the VLAN number column. */
 const VLAN_WIDTH = 60;
 
-/** Au-delà, la liste défile. */
+/** Beyond that, the list scrolls. */
 const VISIBLE_ROWS = 5;
 
 /**
- * La hauteur d'une ligne et de l'écart qui la suit : un champ « xs » (30 px),
- * le retrait de la ligne en haut et en bas (2 × 4 px), et le filet de 1 px.
+ * The height of a row and of the gap that follows it: an "xs" field (30 px),
+ * the row's inset above and below (2 × 4 px), and the 1 px rule.
  */
 const ROW_HEIGHT = 30 + 2 * 4 + 1;
 
-/** Une ligne d'une liste : ses champs, tels qu'on les saisit, dans l'ordre des colonnes. */
+/** A list row: its fields, as typed, in column order. */
 type Row = string[];
 
 /**
- * Une colonne : son libellé, sa longueur, et sa largeur — fixe, ou le reste
- * de la ligne. Une colonne « facultative » peut rester vide.
+ * A column: its label, its length, and its width — fixed, or the rest
+ * of the row. An "optional" column may stay empty.
  */
 interface Column {
   label: string;
@@ -75,17 +75,17 @@ interface EditableRowProps {
   value: Row;
   rank: number;
   total: number;
-  /** Vrai pour la ligne ajoutée, pas encore enregistrée. */
+  /** True for the added row, not yet saved. */
   newRow?: boolean;
-  /** La ligne complète et changée part : vrai quand le serveur l'a prise. */
+  /** The complete, changed row is sent: true when the server has taken it. */
   onValidate: (row: Row) => Promise<boolean>;
-  /** La ligne ajoutée, quittée vide ou abandonnée. */
+  /** The added row, left empty or abandoned. */
   onAbandon?: () => void;
   onContextMenu?: (e: React.MouseEvent<HTMLElement>) => void;
   onPaste?: (e: ClipboardEvent<HTMLInputElement>) => void;
 }
 
-/** Une ligne : ses champs à même la ligne, et son brouillon le temps de la saisie. */
+/** A row: its fields right on the row, and its draft while typing. */
 function EditableRow({
   columns,
   value,
@@ -100,12 +100,12 @@ function EditableRow({
   const [draft, setDraft] = useState<Row>(value);
   const [focus, setFocus] = useState<number | null>(null);
   const row = useRef<HTMLDivElement | null>(null);
-  // Échap quitte la ligne sans rien envoyer : la sortie qui suit le sait.
+  // Escape leaves the row without sending anything: the exit that follows knows it.
   const cancelled = useRef(false);
 
   const full = (l: Row) => columns.every((c, i) => c.optional || Boolean(l[i]));
 
-  // Quitter un champ pour un autre de la même ligne n'enregistre pas.
+  // Leaving a field for another on the same row does not save.
   const leave = async () => {
     const after = cleaned(draft);
     if (cancelled.current) {
@@ -115,11 +115,11 @@ function EditableRow({
     }
     if (newRow) {
       if (after.every((v) => !v)) return onAbandon?.();
-      // Incomplète, la ligne ajoutée attend la suite.
+      // Incomplete, the added row waits for the rest.
       if (full(after)) await onValidate(after);
       return;
     }
-    // Vidée ou inchangée : elle revient à ce qu'elle était.
+    // Emptied or unchanged: it returns to what it was.
     if (!full(after) || after.every((v, i) => v === value[i])) return setDraft(value);
     if (!(await onValidate(after))) setDraft(value);
   };
@@ -151,7 +151,7 @@ function EditableRow({
             );
           }}
           onKeyDown={(e) => {
-            // Consommée : la fenêtre qui porte ce champ n'enregistre pas en plus.
+            // Consumed: the window that holds this field does not also save.
             if (e.key === "Enter") {
               e.preventDefault();
               e.currentTarget.blur();
@@ -176,12 +176,12 @@ function EditableRow({
 }
 
 /**
- * Une liste à plusieurs champs par ligne. Elle part entière au serveur à chaque
- * changement (`enregistrer`), qui la vérifie et la renvoie telle qu'il la
- * garde.
+ * A list with several fields per row. It goes whole to the server on each
+ * change (`save`), which checks it and returns it as it
+ * keeps it.
  *
- * `decouper`, s'il est donné, permet de coller plusieurs lignes d'un coup dans
- * la ligne ajoutée : chaque ligne du presse-papiers devient une ligne.
+ * `split`, if given, allows pasting several lines at once into the
+ * added row: each clipboard line becomes a row.
  */
 function ListRows({
   title,
@@ -204,7 +204,7 @@ function ListRows({
   deleteTitle: string;
   split?: (row: string) => Row | null;
 }) {
-  // La ligne ajoutée, en attente de ses champs.
+  // The added row, waiting for its fields.
   const [adding, setAdding] = useState(false);
   const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
   const [toDelete, setToDelete] = useState<number | null>(null);
@@ -219,9 +219,9 @@ function ListRows({
   };
 
   /**
-   * Un collage de plusieurs lignes — ou d'une seule qui porte déjà ses
-   * champs — les ajoute toutes d'un coup. Une ligne illisible arrête tout :
-   * rien n'est ajouté, et on dit laquelle.
+   * Pasting several lines — or a single one that already carries its
+   * fields — adds them all at once. An unreadable line stops everything:
+   * nothing is added, and we say which one.
    */
   const paste = (e: ClipboardEvent<HTMLInputElement>) => {
     if (!split) return;
@@ -252,8 +252,8 @@ function ListRows({
       {total === 0 ? (
         <EmptyList icon={emptyIcon} message={emptyText} />
       ) : (
-        // Cinq lignes au plus à la fois : au-delà, la liste défile. Une ligne
-        // ajoutée, qui prend le focus, s'y montre d'elle-même.
+        // Five rows at most at a time: beyond that, the list scrolls. An added
+        // row, which takes focus, shows itself there.
         <ScrollArea.Autosize
           mah={VISIBLE_ROWS * ROW_HEIGHT}
           type="auto"
@@ -263,7 +263,7 @@ function ListRows({
           <Stack gap={1}>
             {rows.map((row, rank) => (
               <EditableRow
-                // Une ligne relue du serveur repart de sa nouvelle valeur.
+                // A row reread from the server restarts from its new value.
                 key={`${rank}-${row.join("|")}`}
                 columns={columns}
                 value={row}
@@ -292,7 +292,7 @@ function ListRows({
           </Stack>
         </ScrollArea.Autosize>
       )}
-      {/* Au plus près de la liste qu'il allonge. */}
+      {/* As close as possible to the list it extends. */}
       <AddButton label={addLabel} onClick={() => setAdding(true)} mt={4} />
 
       {menu && (
@@ -334,7 +334,7 @@ const MODEL_COLUMNS: Column[] = [
   {
     label: "Identifiant",
     maxLength: ASSET_MODEL_MAX,
-    // Plus court qu'un sous-réseau : « Mac14,6 ».
+    // Shorter than a subnet: "Mac14,6".
     width: FIRST_WIDTH - 40,
   },
   { label: "Nom commercial", maxLength: ASSET_MODEL_MAX },
@@ -352,8 +352,8 @@ const VLAN_COLUMNS: Column[] = [
 ];
 
 /**
- * « 10.1.106.0/24 106 Wi-Fi invités » : le sous-réseau, le VLAN, puis le nom
- * facultatif — séparés d'espaces, d'une tabulation, d'un « ; » ou d'une « , ».
+ * "10.1.106.0/24 106 Wi-Fi invités": the subnet, the VLAN, then the optional
+ * name — separated by spaces, a tab, a ";" or a ",".
  */
 const VLAN_ROW = /^(\S+\/\d+)[\s;,]+(\d+)(?:[\s;,]+(.*))?$/;
 
@@ -376,7 +376,7 @@ export default function AssetsTab() {
       .catch((e) => notifyError(errorMessage(e)));
   }, []);
 
-  /** Une table part entière : le serveur la remplace d'un coup. */
+  /** A table goes whole: the server replaces it in one go. */
   const save = async (
     data: Partial<AssetSettings>,
   ): Promise<boolean> => {

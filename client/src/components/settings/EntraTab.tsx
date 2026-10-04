@@ -38,7 +38,7 @@ import type {
 import type { CSSProperties } from "react";
 import CloseButton from "../ui/CloseButton";
 
-/** Ce que montre l'état de la connexion, selon ce que le serveur en dit. */
+/** What the connection status shows, depending on what the server says about it. */
 const STATES: Record<
   EntraStatus["state"],
   { label: string; color: string }
@@ -50,16 +50,16 @@ const STATES: Record<
 };
 
 /**
- * Ce que montre le champ d'un secret enregistré : le serveur ne le renvoie
- * jamais, on simule donc sa présence par des points.
+ * What a saved secret's field shows: the server never sends it back,
+ * so its presence is simulated with dots.
  */
 const MASK = "********";
 
 /**
- * La saisie dans un champ qui montre encore le masque : on n'en garde que ce
- * que la personne a tapé. Le champ sélectionne le masque au focus, la frappe
- * le remplace donc d'ordinaire ; si le curseur s'est posé dedans, on retire
- * les points du masque restés autour du texte tapé, et un effacement le vide.
+ * Input in a field that still shows the mask: only what the person
+ * typed is kept. The field selects the mask on focus, so typing
+ * usually replaces it; if the cursor landed inside it, the mask's
+ * dots left around the typed text are removed, and erasing empties it.
  */
 function unmasked(value: string): string {
   if (/^\**$/.test(value) && value.length < MASK.length) return "";
@@ -74,9 +74,9 @@ function unmasked(value: string): string {
 }
 
 /**
- * L'essai d'envoi. Il porte sur les réglages enregistrés : l'onglet les a
- * envoyés juste avant d'ouvrir cette fenêtre, sinon le test parlerait d'une
- * configuration que le serveur ne connaît pas encore.
+ * The send test. It applies to the saved settings: the tab
+ * sent them just before opening this window, otherwise the test would speak of a
+ * configuration the server does not know yet.
  */
 function MailTestModal({
   opened,
@@ -85,7 +85,7 @@ function MailTestModal({
 }: {
   opened: boolean;
   onClose: () => void;
-  /** L'adresse d'envoi enregistrée. */
+  /** The saved sender address. */
   sender: string;
 }) {
   const [address, setAddress] = useState("");
@@ -140,8 +140,8 @@ function MailTestModal({
 
         <Group justify="flex-end" mt="md">
           <CloseButton onClick={onClose} />
-          {/* Le vert des actions qui valident, celui de la coche des comptes
-              et du compte rendu d'un envoi réussi. */}
+          {/* The green of the actions that confirm, that of the accounts' checkmark
+              and of a successful send's report. */}
           <Button
             color="teal"
             leftSection={<IconSend size={16} />}
@@ -159,31 +159,31 @@ function MailTestModal({
 
 interface EntraTabProps {
   /**
-   * Là où l'onglet dépose sa fonction d'enregistrement, appelée par le bouton
-   * « Enregistrer » de la fenêtre (SettingsModal). Elle rend faux si le serveur
-   * a refusé : le message s'affiche alors dans l'onglet.
+   * Where the tab deposits its save function, called by the window's
+   * "Enregistrer" button (SettingsModal). It returns false if the server
+   * refused: the message is then shown in the tab.
    */
   saveRef?: { current: (() => Promise<boolean>) | null };
   /**
-   * L'emplacement réservé à droite du titre « Entra », dans l'entête du
-   * panneau (SettingsModal) : le menu « Actions » y est rendu.
+   * The slot reserved to the right of the "Entra" title, in the panel's
+   * header (SettingsModal): the "Actions" menu is rendered there.
    */
   actionsTarget?: HTMLElement | null;
   /**
-   * Les réglages tels que le serveur les a, à chaque lecture et à chaque
-   * enregistrement : la fenêtre ne montre les autres onglets qu'une fois
-   * Entra configuré.
+   * The settings as the server has them, on each read and each
+   * save: the window only shows the other tabs once
+   * Entra is configured.
    */
   onSettings?: (settings: EntraSettings) => void;
 }
 
 /**
- * L'application Entra sur laquelle Milo repose : la connexion de chacun, la
- * lecture de l'annuaire, le courrier.
+ * The Entra application Milo relies on: everyone's sign-in, directory
+ * reading, mail.
  *
- * Le secret ne redescend jamais du serveur : le champ montre un masque de
- * points quand il est enregistré. Il n'est envoyé que si l'on y touche, ce
- * que suit `secretTouche` : sans cela, enregistrer l'identifiant effacerait le
+ * The secret never comes back down from the server: the field shows a mask of
+ * dots when it is saved. It is only sent if it is touched, which
+ * `secretTouched` tracks: without it, saving the client ID would erase the
  * secret.
  */
 export default function EntraTab({
@@ -194,15 +194,15 @@ export default function EntraTab({
   const [settings, setSettings] = useState<EntraSettings>(emptyEntraSettings());
   const [secret, setSecret] = useState("");
   const [secretTouched, setSecretTouched] = useState(false);
-  // Rien n'a bougé : « Enregistrer » n'a alors rien à envoyer.
+  // Nothing has changed: "Enregistrer" then has nothing to send.
   const [modified, setModified] = useState(false);
-  // Tant que le serveur n'a pas répondu, l'onglet ne montre rien : affiché
-  // avec ses valeurs par défaut, il montrerait des champs vides qui se
-  // rempliraient d'un coup.
+  // Until the server has responded, the tab shows nothing: displayed
+  // with its default values, it would show empty fields that would
+  // fill in all at once.
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [testOpen, setTestOpened] = useState(false);
-  // L'état de la connexion de Milo à Entra : nul tant qu'il n'est pas connu.
+  // The state of Milo's connection to Entra: null until it is known.
   const [state, setState] = useState<EntraStatus | null>(null);
 
   const readState = useCallback(() => {
@@ -226,7 +226,7 @@ export default function EntraTab({
     } catch (e) {
       notifyError(errorMessage(e));
     } finally {
-      // Même si la lecture a échoué : le message vaut mieux qu'un onglet vide.
+      // Even if the read failed: the message is better than an empty tab.
       setLoaded(true);
     }
   }, [onSettings]);
@@ -240,7 +240,7 @@ export default function EntraTab({
     setModified(true);
   };
 
-  /** Ce qui part au serveur : les réglages, et le secret seulement si on y a touché. */
+  /** What goes to the server: the settings, and the secret only if it was touched. */
   const toSend = (): EntraSettingsInput => ({
     client_id: settings.client_id,
     tenant: settings.tenant,
@@ -248,7 +248,7 @@ export default function EntraTab({
     ...(secretTouched ? { secret } : {}),
   });
 
-  /** Enregistre et rend vrai si c'est passé : les actions qui suivent en dépendent. */
+  /** Saves and returns true if it went through: the actions that follow depend on it. */
   const save = async (): Promise<boolean> => {
     if (!modified) return true;
 
@@ -260,7 +260,7 @@ export default function EntraTab({
       setSecretTouched(false);
       setSecret("");
       setModified(false);
-      // De nouveaux identifiants changent la réponse de Microsoft.
+      // New credentials change Microsoft's response.
       readState();
       return true;
     } catch (e) {
@@ -271,9 +271,9 @@ export default function EntraTab({
     }
   };
 
-  // Sans tableau de dépendances : `enregistrer` se referme sur l'état du
-  // formulaire et change donc à chaque rendu. La fenêtre doit appeler la
-  // dernière, pas celle du premier affichage.
+  // Without a dependency array: `save` closes over the form's state and
+  // therefore changes on every render. The window must call the
+  // latest one, not that of the first display.
   useEffect(() => {
     if (!saveRef) return undefined;
     saveRef.current = save;
@@ -282,13 +282,13 @@ export default function EntraTab({
     };
   });
 
-  // Les vérifications portent sur ce que le serveur a en base : l'affichage
-  // part avec.
+  // The checks apply to what the server has in the database: the display
+  // goes with it.
   const runTest = async () => {
     if (await save()) setTestOpened(true);
   };
 
-  /** Se reconnecter avec ce qui est saisi, ou se déconnecter. */
+  /** Reconnect with what is typed, or disconnect. */
   const changeConnection = async (connect: boolean) => {
     if (connect && !(await save())) return;
     setBusy(true);
@@ -302,19 +302,19 @@ export default function EntraTab({
     }
   };
 
-  // Déconnecté, Milo ne passe plus par Microsoft : les vérifications
-  // échoueraient d'office.
+  // Disconnected, Milo no longer goes through Microsoft: the checks
+  // would fail outright.
   const disconnected = state?.state === "disconnected";
 
   /**
-   * L'adresse de retour de la connexion, à inscrire dans Azure : celle par
-   * laquelle on sert Milo, suivie du chemin que le serveur écoute.
+   * The sign-in redirect address, to register in Azure: the one
+   * Milo is served from, followed by the path the server listens on.
    */
   const redirection = `${window.location.origin}/api/auth/entra/callback`;
 
   /**
-   * Ce qu'on peut faire d'ici. Même menu que celui des onglets de tableau
-   * (BoardTabs) : rien ne justifie deux façons d'ouvrir un menu dans la même
+   * What can be done from here. Same menu as the board tabs'
+   * (BoardTabs): nothing justifies two ways of opening a menu in the same
    * application.
    */
   const menuActions = (
@@ -362,8 +362,8 @@ export default function EntraTab({
   );
 
   /**
-   * L'état de la connexion, à gauche du menu « Actions » : le refus de
-   * Microsoft se lit au survol.
+   * The connection status, to the left of the "Actions" menu: Microsoft's
+   * refusal can be read on hover.
    */
   const statusBadge = state ? (
     <Tooltip
@@ -391,9 +391,9 @@ export default function EntraTab({
   );
 
   /**
-   * Le champ du secret. Tant qu'on n'y a pas touché, il montre le masque si
-   * un secret est enregistré — sans l'œil, qui n'afficherait que des
-   * astérisques. Le focus sélectionne le masque : la frappe le remplace.
+   * The secret field. Until it is touched, it shows the mask if
+   * a secret is saved — without the eye, which would only show
+   * asterisks. Focus selects the mask: typing replaces it.
    */
   const masked = settings.has_secret && !secretTouched;
   const secretField = (
@@ -427,10 +427,10 @@ export default function EntraTab({
             les éléments ci-dessous.
           </Text>
 
-          {/* Les deux libellés du portail Azure, mot pour mot : c'est là
-              qu'on va chercher les valeurs, autant ne pas les renommer en
-              chemin. Les libellés au-dessus des champs, comme dans les
-              fiches, avec les mêmes écarts. */}
+          {/* The two Azure portal labels, word for word: that is where
+              the values are looked up, so better not rename them along
+              the way. The labels above the fields, as in the card
+              details, with the same gaps. */}
           <SimpleGrid cols={2} spacing="md" verticalSpacing="xl">
             <TextInput
               label="ID d'application"
@@ -442,12 +442,12 @@ export default function EntraTab({
               value={settings.tenant}
               onChange={(e) => updateStatement({ tenant: e.currentTarget.value })}
             />
-            {/* Le secret et la redirection dans la colonne de gauche, à la
-                largeur de l'ID d'application. */}
+            {/* The secret and the redirect in the left column, at the
+                width of the application ID. */}
             {secretField}
-            {/* D'où partent les e-mails de Milo : les avis, les assignations,
-                les réponses aux demandes saisies. Une demande reçue répond
-                de sa propre boîte. */}
+            {/* Where Milo's emails are sent from: notices, assignments,
+                replies to the requests entered. A received request replies
+                from its own mailbox. */}
             <TextInput
               label="Adresse d'envoi"
               type="email"
@@ -455,9 +455,9 @@ export default function EntraTab({
               value={settings.mail_sender}
               onChange={(e) => updateStatement({ mail_sender: e.currentTarget.value })}
             />
-            {/* L'adresse à reporter dans Azure, telle quelle : elle se lit,
-                et se copie d'un clic. Plus longue que les ID, elle déborde
-                d'un quart sur la colonne de droite, vide à cette hauteur. */}
+            {/* The address to copy into Azure, as is: it can be read,
+                and copied with a click. Longer than the IDs, it overflows
+                by a quarter onto the right column, empty at that height. */}
             <TextInput
               label="Redirection"
               style={{

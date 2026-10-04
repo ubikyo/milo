@@ -1,13 +1,12 @@
-// Les notifications de changement de Graph : Microsoft prévient Milo dès qu'un
-// e-mail arrive dans une boîte de support, et Milo relève aussitôt, sans
-// attendre la relève périodique — qui reste, au cas où une notification se
-// perdrait.
+// Graph change notifications: Microsoft notifies Milo as soon as an e-mail
+// arrives in a support inbox, and Milo polls right away, without waiting for
+// the periodic poll — which stays, in case a notification gets lost.
 //
-// Il y faut une adresse publique en https (MILO_PUBLIC_URL) : c'est Microsoft
-// qui l'appelle. Sans elle, rien n'est demandé à Graph.
+// This requires a public https address (MILO_PUBLIC_URL): Microsoft is the one
+// calling it. Without it, nothing is requested from Graph.
 //
-// Un abonnement à une boîte de réception vit au plus sept jours : ils sont
-// renouvelés régulièrement, et recréés s'ils ont disparu.
+// A subscription to an inbox lives at most seven days: they are renewed
+// regularly, and recreated if they have disappeared.
 
 import crypto from "node:crypto";
 import { env } from "../env.js";
@@ -20,28 +19,28 @@ import {
   deleteSubscription,
 } from "./entra.js";
 
-/** Le chemin que Microsoft appelle, sous l'adresse publique. */
+/** The path Microsoft calls, under the public address. */
 export const NOTIFICATIONS_PATH = "/api/support-mail/notifications";
 
-/** Le temps entre deux entretiens des abonnements. */
+/** The time between two subscription maintenance runs. */
 export const MAINTENANCE_INTERVAL = 6 * 60 * 60 * 1000;
 
-// Graph accepte un peu moins de sept jours pour un abonnement aux messages.
+// Graph accepts a little under seven days for a message subscription.
 const SUBSCRIPTION_DURATION = 6 * 24 * 60 * 60 * 1000;
-// Renouvelé dès qu'il lui reste moins de deux jours : un entretien manqué ne
-// le laisse pas expirer.
+// Renewed as soon as less than two days remain: a missed maintenance run does
+// not let it expire.
 const RENEWAL_MARGIN = 2 * 24 * 60 * 60 * 1000;
 
 const SUBSCRIPTIONS_KEY = "support_mail_subscriptions";
 const SECRET_KEY = "support_mail_webhook_secret";
 
-/** L'abonnement de chaque boîte, par adresse en minuscules. */
+/** Each inbox's subscription, by lowercase address. */
 type Subscriptions = Record<string, { id: string; expiresAt: string }>;
 
 
 /**
- * Le secret que Graph renvoie avec chaque notification (« clientState ») :
- * une notification qui ne le porte pas ne vient pas de nos abonnements.
+ * The secret Graph sends back with each notification ("clientState"): a
+ * notification that does not carry it does not come from our subscriptions.
  */
 export const notificationsSecret = (): string => {
   const already = readSetting<string>(SECRET_KEY, "");
@@ -57,16 +56,16 @@ export const activeNotifications = (): boolean =>
 let alreadyReported = false;
 
 /**
- * Chaque boîte de support a son abonnement, et il ne va pas expirer : ceux
- * qui approchent de leur fin sont prolongés, ceux qui manquent créés, ceux des
- * boîtes qui ne sont plus de support supprimés. Une boîte qui échoue
- * n'empêche pas les autres.
+ * Each support inbox has its subscription, and it will not expire: those
+ * nearing their end are extended, missing ones created, those of inboxes that
+ * are no longer support inboxes deleted. An inbox that fails does not prevent
+ * the others.
  */
 export const maintainSubscriptions = async (): Promise<void> => {
   if (!activeNotifications()) {
     if (!alreadyReported && entraConfigured()) {
       console.log(
-        "Notifications de Graph inactives : MILO_PUBLIC_URL (en https) n'est pas réglée. La relève périodique suffit.",
+        "Graph notifications inactive: MILO_PUBLIC_URL (in https) is not set. The periodic poll is enough.",
       );
       alreadyReported = true;
     }
@@ -93,17 +92,17 @@ export const maintainSubscriptions = async (): Promise<void> => {
           nextItems[mailbox] = { id: extended.id, expiresAt: extended.expirationDateTime };
           continue;
         } catch {
-          // Expiré ou supprimé chez Microsoft : il se recrée ci-dessous.
+          // Expired or deleted at Microsoft: it is recreated below.
         }
       }
       const created = await createSubscription(mailbox, url, secret, expiration());
       nextItems[mailbox] = { id: created.id, expiresAt: created.expirationDateTime };
     } catch (error) {
-      console.error(`Abonnement aux e-mails de ${mailbox} :`, error);
+      console.error(`Subscription to e-mails of ${mailbox}:`, error);
     }
   }
 
-  // Les boîtes qui ne sont plus celles d'une société n'ont plus à prévenir.
+  // Inboxes that no longer belong to a company no longer need to notify.
   for (const [mailbox, { id }] of Object.entries(subscriptions)) {
     if (mailboxes.has(mailbox)) continue;
     await deleteSubscription(id).catch(() => {});

@@ -40,48 +40,48 @@ import {
 } from "@milo/shared";
 import type { AccessFeed, AccessFeedProbe, Id } from "@milo/shared";
 
-// Un flux RSS : les derniers articles d'une ou de plusieurs sources, chacun en
-// lien vers sa page. On y suit une actualité — un éditeur, un fournisseur, un
-// service — sans quitter la colonne. Les sources peuvent mêler les formats
-// (RSS, Atom, JSON) : leurs articles se mêlent par date, ou se regroupent par
-// source, dans l'ordre où le tiroir les range.
+// An RSS feed: the latest articles from one or several sources, each linking
+// to its page. It is used to follow news — a publisher, a supplier, a service
+// — without leaving the column. Sources can mix formats (RSS, Atom, JSON):
+// their articles are merged by date, or grouped by source, in the order the
+// drawer sorts them.
 //
-// Le navigateur ne peut pas lire le flux d'un autre site : le serveur le relève
-// à sa place (server/src/lib/feed.ts), à l'intervalle que l'élément règle, et
-// en garde les derniers articles en base, déjà lus — RSS, Atom ou JSON. La
-// colonne les lit là : ouvrir la page ne sollicite pas la source.
+// The browser cannot read another site's feed: the server fetches it in its
+// place (server/src/lib/feed.ts), at the interval the element sets, and keeps
+// the latest articles in the database, already parsed — RSS, Atom or JSON. The
+// column reads them from there: opening the page does not hit the source.
 //
-// Chaque article se présente comme un lien de la colonne : le clic l'ouvre à
-// côté, le clic droit ouvre le tiroir — les sources et leur ordre, la
-// quantité d'articles et l'intervalle de relève s'y règlent.
+// Each article is presented as a column link: a click opens it alongside, a
+// right click opens the drawer — the sources and their order, the number of
+// articles and the fetch interval are set there.
 //
-// Les clés de la configuration sont lues aussi par le serveur (reglagesFlux) :
-// elles ne changent pas.
+// The configuration keys are also read by the server (feedSettings): they
+// do not change.
 
-/** Les sources, dans l'ordre : une entrée « { url } » par ligne du tiroir. */
+/** The sources, in order: one "{ url }" entry per drawer row. */
 const SOURCES = "sources";
-/** L'adresse unique d'avant la liste, relue tant que la liste n'a pas été enregistrée. */
+/** The single address from before the list, reread until the list has been saved. */
 const FEED_URL = "url";
-/** Vrai quand les articles se regroupent par source plutôt que de se mêler par date. */
+/** True when articles are grouped by source rather than merged by date. */
 const GROUP = "group";
 const QUANTITY = "count";
 const DATES = "dates";
 const INTERVAL = "interval";
 const FRAMED = "framed";
 
-/** Assez pour suivre une source, assez peu pour ne pas envahir la colonne. */
+/** Enough to follow a source, few enough not to overrun the column. */
 const QUANTITY_DEFAULT = 5;
 const QUANTITY_MIN = 1;
 const QUANTITY_MAX = ACCESS_FEED_QUANTITY_MAX;
 
 /**
- * La colonne relit ce que la base garde à ce rythme : c'est une lecture en
- * base, pas une relève de la source, et elle montre ainsi la dernière relève
- * du serveur sans attendre qu'on recharge la page.
+ * The column rereads what the database holds at this rate: it is a database
+ * read, not a fetch of the source, and it thus shows the server's latest fetch
+ * without waiting for the page to be reloaded.
  */
 const RELOAD_INTERVAL = 5 * 60_000;
 
-/** Même interligne qu'un lien de la colonne (lien.tsx). */
+/** Same line height as a column link (link.tsx). */
 const LINK_ROW = {
   lineHeight: 1.3,
   display: "-webkit-box" as const,
@@ -95,7 +95,7 @@ interface Article {
   date: Date | null;
 }
 
-/** Une source lue : ses articles, ou ce qui a empêché de les lire. */
+/** A source that has been read: its articles, or what prevented reading them. */
 interface Source {
   url: string;
   articles: Article[];
@@ -103,10 +103,10 @@ interface Source {
 }
 
 /**
- * Ce que certaines sources ajoutent à leurs titres et que la colonne dit déjà
- * ou n'a pas à dire : la mention « [MàJ] » d'un article mis à jour, et la date
- * entre parenthèses en fin de titre — « … (23 septembre 2026) », comme le fait
- * le CERT-FR — que la colonne montre déjà en tête de ligne.
+ * What some sources add to their titles and that the column already says or
+ * need not say: the "[MàJ]" mention of an updated article, and the date in
+ * parentheses at the end of the title — "… (23 septembre 2026)", as CERT-FR
+ * does — which the column already shows at the start of the line.
  */
 const UPDATED = /\[\s*m[aà]j\s*\]/giu;
 const TRAILING_DATE =
@@ -116,8 +116,8 @@ const clean = (title: string): string =>
   title.replace(UPDATED, " ").replace(TRAILING_DATE, "").replace(/\s+/g, " ").trim();
 
 /**
- * La date en tête de ligne prend toujours la même largeur, celle de la plus
- * longue (« 26 sept. ») : sans quoi chaque titre commencerait ailleurs.
+ * The date at the start of the line always takes the same width, that of the
+ * longest ("26 sept."): otherwise each title would start somewhere else.
  */
 const DATE_COLUMN = {
   display: "inline-block" as const,
@@ -137,10 +137,10 @@ const sourcesRead = (feed: AccessFeed): Source[] =>
   }));
 
 /**
- * Les articles que chaque source montre, « quantite » en tout : chacune
- * fournit le sien à tour de rôle, dans l'ordre de la liste — cinq articles
- * pour deux sources en prennent trois à la première, deux à la seconde. Une
- * source à court laisse sa part aux suivantes.
+ * The articles each source shows, "quantity" in all: each one supplies its
+ * own in turn, in the list's order — five articles for two sources take three
+ * from the first, two from the second. A source that runs short leaves its
+ * share to the following ones.
  */
 const distributed = (sources: Source[], quantity: number): Article[][] => {
   const parts: Article[][] = sources.map(() => []);
@@ -159,15 +159,15 @@ const distributed = (sources: Source[], quantity: number): Article[][] => {
 };
 
 /**
- * Les articles retenus de toutes les sources, du plus récent au plus ancien.
- * Ceux qui n'ont pas de date suivent, dans l'ordre des sources.
+ * The articles kept from all sources, from newest to oldest. Those without a
+ * date follow, in the sources' order.
  */
 const interleave = (parts: Article[][]): Article[] => {
   const articleTime = (a: Article) => a.date?.getTime() ?? -Infinity;
   return parts.flat().sort((a, b) => articleTime(b) - articleTime(a));
 };
 
-/** Le nom court d'une source : son hôte, sans « www. ». */
+/** A source's short name: its host, without "www.". */
 const nameOf = (url: string): string => {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -179,19 +179,19 @@ const nameOf = (url: string): string => {
 const formatDate = (date: Date): string =>
   new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short" }).format(date);
 
-/** Une source neuve montre ses dates : c'est ce qui dit si elle vit encore. */
+/** A new source shows its dates: that is what says whether it is still alive. */
 const withDates = (config: unknown): boolean => {
   const value = (config as Record<string, unknown> | null)?.[DATES];
   return value === undefined ? true : Boolean(value);
 };
 
-/** Les articles se mêlent par date tant qu'on ne demande pas de les regrouper. */
+/** Articles are merged by date unless grouping is requested. */
 const isGrouped = (config: unknown): boolean =>
   Boolean((config as Record<string, unknown> | null)?.[GROUP]);
 
 /**
- * Les adresses des lignes du tiroir, telles que saisies — vides comprises. Un
- * élément rangé avant la liste n'a que son « url ».
+ * The addresses of the drawer rows, as entered — empty ones included. An
+ * element stored before the list has only its "url".
  */
 const rowsOf = (config: unknown): string[] => {
   const list = (config as Record<string, unknown> | null)?.[SOURCES];
@@ -202,16 +202,16 @@ const rowsOf = (config: unknown): string[] => {
   return list.map((s) => text(s, "url"));
 };
 
-/** Les adresses à relever : sans blanc ni doublon, dans l'ordre — comme le serveur les lit. */
+/** The addresses to fetch: without blanks or duplicates, in order — as the server reads them. */
 const addressesOf = (config: unknown): string[] => [
   ...new Set(rowsOf(config).map((u) => u.trim()).filter(Boolean)),
 ];
 
-/** Un flux est nu par défaut : c'est l'encadré qu'on demande, pas l'inverse. */
+/** A feed is bare by default: the frame is what you ask for, not the reverse. */
 const isFramed = (config: unknown): boolean =>
   Boolean((config as Record<string, unknown> | null)?.[FRAMED]);
 
-/** La quantité, ramenée dans ses bornes quoi que la configuration porte. */
+/** The quantity, brought within its bounds whatever the configuration holds. */
 const quantityOf = (config: unknown): number =>
   Math.min(
     QUANTITY_MAX,
@@ -219,16 +219,16 @@ const quantityOf = (config: unknown): number =>
   );
 
 /**
- * Les derniers articles montrés par chaque élément, pour la durée de la page.
- * Revenu sur la catégorie, ou passé d'un mode à l'autre, l'élément se remonte :
- * il reprend aussitôt ce qu'il montrait, et la relecture le met à jour sans
- * rien faire sauter. La clé porte l'adresse : un flux changé ne montre pas les
- * articles de l'ancien.
+ * The latest articles shown by each element, for the duration of the page.
+ * Back on the category, or switched from one mode to another, the element
+ * remounts: it immediately resumes what it was showing, and the reread
+ * updates it without making anything jump. The key carries the address: a
+ * changed feed does not show the old one's articles.
  */
 const alreadyRead = new Map<string, Source[]>();
 const keyOf = (blockId: Id, urls: string[]) => `${blockId}|${urls.join("\n")}`;
 
-/** Une adresse de flux que le serveur peut relever : en http ou en https. */
+/** A feed address the server can fetch: over http or https. */
 const readableAddress = (url: string): boolean => {
   try {
     return ["http:", "https:"].includes(new URL(url).protocol);
@@ -264,12 +264,12 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
     return sources ? { phase: "ready", sources } : { phase: "loading" };
   });
 
-  // Les adresses et la quantité sont celles que le serveur lit dans l'élément
-  // enregistré : quand elles changent, ce qu'il garde change aussi.
+  // The addresses and the quantity are those the server reads in the stored
+  // element: when they change, what it keeps changes too.
   useEffect(() => {
     if (!allReadable) return;
-    // Une réponse arrivée après un changement d'adresse ne doit pas écraser
-    // celle de la nouvelle.
+    // A response arriving after an address change must not overwrite that of
+    // the new one.
     let active = true;
     const read = () =>
       api
@@ -280,7 +280,7 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
           if (active) setState({ phase: "ready", sources });
         })
         .catch((e: Error) => active && setState({ phase: "error", message: e.message }));
-    // Déjà lus, les articles restent à l'écran le temps de la relecture.
+    // Already read, the articles stay on screen during the reread.
     const known = alreadyRead.get(key);
     setState(known ? { phase: "ready", sources: known } : { phase: "loading" });
     read();
@@ -291,15 +291,15 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
     };
   }, [blockId, key, allReadable, quantity]);
 
-  // Sans adresse de flux lisible — aucune, ou une qui n'est pas en http(s) —,
-  // le widget est à revoir : le triangle jaune, comme une liste de demandes
-  // mal réglée.
+  // Without a readable feed address — none, or one that is not http(s) —,
+  // the widget needs review: the yellow triangle, like a misconfigured list
+  // of requests.
   if (!allReadable) return <ConfigurationProblem widget={rssWidget.label} />;
-  // Le chargement tient déjà la hauteur des articles attendus, ligne pour
-  // ligne : sans cela, chaque flux grandirait d'un coup à son arrivée et
-  // repousserait ce qui le suit, l'un après l'autre.
+  // Loading already holds the height of the expected articles, line for
+  // line: without it, each feed would grow all at once on arrival and push
+  // what follows, one after the other.
   if (state.phase === "loading") {
-    // Regroupés, chaque source qui a sa part ajoute la ligne de son nom.
+    // Grouped, each source that has its share adds its name line.
     const expected = grouped ? quantity + Math.min(urls.length, quantity) : quantity;
     return (
       <Stack gap={0}>
@@ -309,8 +309,8 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
             size="sm"
             c="dimmed"
             lineClamp={1}
-            // Le retrait d'un lien (AccessLink.module.css), sans son survol :
-            // il n'y a encore rien à ouvrir.
+            // A link's padding (AccessLink.module.css), without its hover:
+            // there is nothing to open yet.
             style={{ ...LINK_ROW, padding: 3, marginInline: -3 }}
           >
             {i === 0 ? "Chargement du flux…" : "\u00a0"}
@@ -319,9 +319,9 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
       </Stack>
     );
   }
-  // Aucune source ne répond, ou ce qu'elles rendent n'est pas un flux : les
-  // adresses sont à revoir aussi. Ce que le serveur a vu se lit au survol.
-  // Une source en échec parmi d'autres qui répondent se tait simplement.
+  // No source responds, or what they return is not a feed: the addresses
+  // need review too. What the server saw can be read on hover. A failing source
+  // among others that respond simply stays quiet.
   const failing = state.phase === "error" ? [] : state.sources.filter((s) => s.error);
   if (state.phase === "error" || failing.length === state.sources.length) {
     const message =
@@ -350,7 +350,7 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
         c="var(--mantine-color-text)"
         underline="never"
         className={classes.link}
-        // Mêlés, les articles de plusieurs sources disent la leur au survol.
+        // Merged, the articles of several sources state their own on hover.
         title={source ? `${title} — ${source}` : title}
       >
         {dates && a.date && (
@@ -363,9 +363,9 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
     );
   };
 
-  // Le titre se nettoie à l'affichage plutôt qu'à la lecture : les articles
-  // déjà lus profitent ainsi d'un nettoyage revu, sans attendre la prochaine
-  // relève.
+  // The title is cleaned at display time rather than at read time: articles
+  // already read thus benefit from a revised cleanup, without waiting for the
+  // next fetch.
   const parts = distributed(state.sources, quantity);
   if (grouped) {
     const groups = state.sources
@@ -414,18 +414,18 @@ function NoArticle() {
   );
 }
 
-/** Le temps de finir de taper l'adresse avant de la sonder. */
+/** The time to finish typing the address before probing it. */
 const PROBE_DELAY = 600;
 
-/** La place de l'étiquette dans le champ : celle de la plus longue, « Format invalide ». */
+/** The label's room in the field: that of the longest, "Format invalide". */
 const LABEL_WIDTH = 120;
 
-/** Les adresses déjà sondées, pour la durée de la page. */
+/** The addresses already probed, for the duration of the page. */
 const probed = new Map<string, AccessFeedProbe>();
 
 /**
- * Ce que donne l'adresse saisie, sondée par le serveur : injoignable, pas un
- * flux, ou le format du flux. Rien tant que l'adresse n'est pas lisible.
+ * What the entered address yields, probed by the server: unreachable, not a
+ * feed, or the feed's format. Nothing until the address is readable.
  */
 function useProbe(url: string): AccessFeedProbe | null {
   const [probe, setProbe] = useState<AccessFeedProbe | null>(() => probed.get(url) ?? null);
@@ -457,7 +457,7 @@ function useProbe(url: string): AccessFeedProbe | null {
 
 function Label({ probe }: { probe: AccessFeedProbe }) {
   const ok = probe.state === "ok";
-  // L'étiquette des états de l'application (EntraTab) : pleine, verte ou rouge.
+  // The label of the application's states (EntraTab): filled, green or red.
   return (
     <Badge
       color={ok ? "green" : RED}
@@ -489,9 +489,9 @@ interface SourceRowProps {
 }
 
 /**
- * Une source dans le tiroir, comme une boîte de réception d'une liste de
- * tickets : sa poignée, son adresse à même la ligne, et au bout le verdict de
- * la sonde — le format du flux, ou ce qui ne va pas.
+ * A source in the drawer, like an inbox in a list of tickets: its handle, its
+ * address right in the row, and at the end the probe's verdict — the feed's
+ * format, or what is wrong.
  */
 function SourceRow({
   url,
@@ -557,16 +557,16 @@ function SourceRow({
 }
 
 /**
- * Les sources du flux, en lignes : la poignée les range — c'est l'ordre des
- * groupes quand les articles se regroupent par source —, le clic droit en
- * retire une, « Ajouter » en pose une vide au bout, qui s'efface si on la
- * quitte sans rien y écrire.
+ * The feed's sources, as rows: the handle orders them — it is the order of the
+ * groups when articles are grouped by source —, a right click removes one,
+ * "Ajouter" puts an empty one at the end, which clears itself if left without
+ * anything written in it.
  */
 function SourcesField({ config, onChange }: WidgetConfigProps) {
   const rows = rowsOf(config);
-  /** Le rang de la ligne qu'on glisse. */
+  /** The rank of the row being dragged. */
   const [held, setHeld] = useState<number | null>(null);
-  /** La ligne qu'on vient d'ajouter : son adresse prend le focus. */
+  /** The row just added: its address takes focus. */
   const [toFill, setToFill] = useState<number | null>(null);
   const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
 
@@ -579,7 +579,7 @@ function SourcesField({ config, onChange }: WidgetConfigProps) {
     setToFill(rows.length);
   };
 
-  // La ligne tenue prend la place de celle qu'elle survole.
+  // The held row takes the place of the one it hovers.
   const dragHover = (e: DragEvent<HTMLElement>, rank: number) => {
     if (held === null) return;
     e.preventDefault();
@@ -606,7 +606,7 @@ function SourcesField({ config, onChange }: WidgetConfigProps) {
               onChange={(value) => insertRow(rows.map((u, i) => (i === rank ? value : u)))}
               onBlur={() => {
                 setToFill(null);
-                // Une ligne quittée sans adresse s'efface.
+                // A row left without an address clears itself.
                 if (!url.trim()) remove(rank);
               }}
               onDragStart={() => setHeld(rank)}
@@ -618,7 +618,7 @@ function SourcesField({ config, onChange }: WidgetConfigProps) {
         </Stack>
       )}
 
-      {/* Au plus près de la liste qu'il allonge. */}
+      {/* As close as possible to the list it lengthens. */}
       <AddButton label="Ajouter un flux" onClick={add} mt={4} />
 
       {menu && (
@@ -643,10 +643,10 @@ function Settings({ config, onChange }: WidgetConfigProps) {
   return (
     <Stack gap="xl">
       <SourcesField config={config} onChange={onChange} />
-      {/* Un champ vidé le temps d'une saisie range la valeur par défaut
-          plutôt qu'un zéro, qui viderait l'élément. Le serveur relève la
-          source au rythme de l'actualisation et garde ses articles : la page
-          lit ce qu'il garde. */}
+      {/* A field emptied while typing stores the default value rather than a
+          zero, which would empty the element. The server fetches the source at
+          the refresh rate and keeps its articles: the page reads what it
+          keeps. */}
       <Group align="flex-start">
         <NumberInput
           label="Articles affichés"
@@ -686,9 +686,9 @@ function Settings({ config, onChange }: WidgetConfigProps) {
             onChange={(e) => onChange(withField(config, DATES, e.currentTarget.checked))}
             color="teal"
           />
-          {/* Les articles affichés se partagent entre les sources, à tour
-              de rôle : mêlés, ils se rangent par date ; regroupés, chaque
-              source montre sa part, dans l'ordre de la liste. */}
+          {/* The displayed articles are shared among the sources, in turn:
+              merged, they are sorted by date; grouped, each source shows its
+              share, in the list's order. */}
           <Switch
             label="Regrouper les articles par source"
             checked={isGrouped(config)}
@@ -713,15 +713,15 @@ export const rssWidget: AccessWidget = {
     [GROUP]: false,
     [FRAMED]: false,
   },
-  // Le clic appartient aux articles : chacun ouvre sa page.
+  // The click belongs to the articles: each opens its page.
   ownClicks: true,
 
   Display: Feed,
 
-  // Une liste de liens : rien de plus que les liens eux-mêmes.
+  // A list of links: nothing more than the links themselves.
   margins: () => ({ top: 0, bottom: 0 }),
 
-  // Il dessine lui-même son cadre, réglé dans le bloc « Apparence » du tiroir.
+  // It draws its own frame, set in the drawer's "Apparence" block.
   ownFrame: true,
   Config: Settings,
 };

@@ -1,11 +1,11 @@
-// Les widgets de liste possèdent leurs éléments : deux « Projets » d'un même
-// tableau ne montrent pas les mêmes projets. Chacun porte dans sa
-// configuration une clé de liste (shared, CLE_DE_LISTE), que ses projets, ses
-// listes de tâches, ses demandes et ses postes portent aussi.
+// List widgets own their items: two "Projets" of the same board do not show
+// the same projects. Each carries in its configuration a list key (shared,
+// LIST_KEY), which its projects, task lists, requests and workstations carry
+// too.
 //
-// La clé naît avec le widget et ne change plus ; la copie personnelle d'un
-// tableau (« Hérité » décoché) la garde, pour montrer les mêmes éléments. Les
-// éléments partent avec le dernier widget qui tient leur clé.
+// The key is born with the widget and never changes; a board's personal copy
+// ("Hérité" unchecked) keeps it, to show the same items. Items go away with
+// the last widget holding their key.
 
 import { randomUUID } from "node:crypto";
 import { LIST_KEY, listKey, isListWidgetType } from "@milo/shared";
@@ -21,13 +21,13 @@ const read = (config: string): Record<string, unknown> => {
   }
 };
 
-/** La configuration d'un widget neuf : un widget de liste y reçoit sa clé. */
+/** A new widget's configuration: a list widget receives its key there. */
 export const withNewKey = (type: string, config: string): string =>
   isListWidgetType(type)
     ? JSON.stringify({ ...read(config), [LIST_KEY]: randomUUID() })
     : config;
 
-/** Une configuration modifiée garde la clé de l'ancienne : elle ne se change pas. */
+/** A modified configuration keeps the old one's key: it cannot be changed. */
 export const keepKey = (type: string, before: string, after: string): string => {
   if (!isListWidgetType(type)) return after;
   const key = listKey(read(before));
@@ -42,9 +42,9 @@ const boardKeys = selection<{ key: string | null }>(
 );
 
 /**
- * La clé de liste d'un élément créé dans ce tableau : celle qu'on dit, si un
- * widget de ce type la tient ; sinon celle du premier — public d'abord. Vide
- * quand le tableau n'en porte aucun.
+ * The list key of an item created in this board: the one given, if a widget
+ * of this type holds it; otherwise the first's — public first. Empty when the
+ * board carries none.
  */
 export const keyInBoard = (boardId: Id, type: string, received: unknown): string => {
   const keys = boardKeys
@@ -55,7 +55,7 @@ export const keyInBoard = (boardId: Id, type: string, received: unknown): string
   return keys[0] ?? "";
 };
 
-/** Un widget de ce type, dans ce tableau, tient-il cette clé ? */
+/** Does a widget of this type, in this board, hold this key? */
 const holdsKey = (type: string, board: string, key: string) =>
   `EXISTS (SELECT 1 FROM board_widgets w JOIN board_sections s ON s.id = w.section_id
            WHERE s.board_id = ${board} AND w.type = '${type}' AND json_valid(w.config)
@@ -89,9 +89,9 @@ const orphans = {
 } as const;
 
 /**
- * Ce qu'aucun widget ne tient plus s'en va : les éléments d'un widget
- * supprimé — seul, avec sa section, ou avec la copie personnelle qui le
- * portait. Rend les ressources touchées.
+ * What no widget holds anymore goes away: the items of a deleted widget —
+ * alone, with its section, or with the personal copy that carried it. Returns
+ * the affected resources.
  */
 export const cleanLists = (): (keyof typeof orphans)[] =>
   (Object.keys(orphans) as (keyof typeof orphans)[]).filter(

@@ -5,15 +5,15 @@ import { LabelBars } from "../indicators/labels";
 import { NAME, Nothing, IndicatorTitle } from "./common";
 import type { AssetIndicatorWidget } from "./types";
 
-// L'occupation des disques système, par tranche : vert, bleu, orange, puis
-// rouge. Une barre rouge qui s'allonge, ce sont des postes qui vont manquer de
-// place.
+// System disk usage, by bracket: green, blue, orange, then red. A red bar
+// that keeps growing means workstations about to run out of
+// space.
 
 const LABEL = "Disques";
 
 /**
- * Les tranches d'occupation, en pourcentage : la borne haute est exclue. Le
- * libellé de chaque barre dit la tranche qu'elle compte.
+ * The usage brackets, in percent: the upper bound is excluded. Each bar's
+ * label says which bracket it counts.
  */
 const BANDS = [
   { name: "0 à 49 %", upTo: 50, color: "green.6" },
@@ -39,7 +39,7 @@ export const disksIndicator: AssetIndicatorWidget = {
       const rank = BANDS.findIndex((t) => used < t.upTo);
       accounts[rank] = (accounts[rank] ?? 0) + 1;
     }
-    // Une tranche où ne tombe aucun poste n'a pas de barre à montrer.
+    // A bracket where no workstation falls has no bar to show.
     const data = BANDS.map(({ name, color }, i) => ({
       name,
       color,

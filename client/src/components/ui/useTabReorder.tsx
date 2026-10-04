@@ -1,22 +1,22 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 
-// Le glisser-déposer des onglets d'une rangée : les tableaux des modes Projet,
-// Tâche et Accès (BoardTabs), les statuts du mode Support, les familles du
-// mode Assets. La rangée, elle, reste celle de ModeBar.
+// Drag-and-drop of a row's tabs: the boards of Project,
+// Task and Access modes (BoardTabs), the statuses of Support mode, the families of
+// Assets mode. The row itself remains that of ModeBar.
 
-// Ce qui, dans la rangée, se glisse : le trait d'insertion et le bout de
-// rangée sont posés entre les onglets, et ne doivent pas se compter avec eux.
+// What, in the row, gets dragged: the insertion line and the row's end
+// are placed between tabs, and must not be counted with them.
 const TAB_ATTRIBUTE = "data-milo-tab";
 
-// Course en deçà de laquelle l'appui reste un clic : sans ce seuil, le moindre
-// tremblement de la main sur un onglet le déplacerait.
+// Travel below which the press remains a click: without this threshold, the slightest
+// hand tremor on a tab would move it.
 const DRAG_THRESHOLD = 5;
 
 /**
- * Le geste en cours : l'onglet tenu et le rang où il se posera. Rien ne bouge
- * tant que la main n'est pas relâchée — seul le trait d'insertion se déplace,
- * et les mesures prises pendant le geste restent donc justes.
+ * The gesture in progress: the held tab and the rank where it will land. Nothing moves
+ * until the hand is released — only the insertion line moves,
+ * so measurements taken during the gesture stay accurate.
  */
 interface Drag<K> {
   id: K;
@@ -29,8 +29,8 @@ interface DragInProgress<K> extends Drag<K> {
   started: boolean;
 }
 
-// Le trait d'insertion, posé entre deux onglets. Il ne prend aucune largeur
-// dans la rangée : les onglets ne s'écartent pas sur son passage.
+// The insertion line, placed between two tabs. It takes no width
+// in the row: tabs do not spread apart as it passes.
 export function InsertLine() {
   return (
     <div style={{ position: "relative", width: 0, alignSelf: "stretch" }}>
@@ -48,11 +48,11 @@ export function InsertLine() {
 }
 
 /**
- * Les onglets dans l'ordre montré, et de quoi les glisser. « items » est
- * l'ordre qui fait foi ; « onReorder » reçoit le nouveau une fois l'onglet
- * déposé — sans lui, les onglets ne se glissent pas. « zoneDe » retrouve la
- * rangée depuis l'élément touché, quand elle n'en est pas le parent direct
- * (le sélecteur de modes, ModeSwitch).
+ * The tabs in the shown order, and what is needed to drag them. "items" is
+ * the authoritative order; "onReorder" receives the new one once the tab is
+ * dropped — without it, tabs cannot be dragged. "zoneOf" finds the
+ * row from the touched element, when it is not its direct parent
+ * (the mode selector, ModeSwitch).
  */
 export function useTabReorder<T, K extends string | number>(
   items: T[],
@@ -62,18 +62,18 @@ export function useTabReorder<T, K extends string | number>(
 ) {
   const [drag, setDrag] = useState<Drag<K> | null>(null);
   const dragRef = useRef<DragInProgress<K> | null>(null);
-  // La rangée, retenue au premier appui : elle appartient à ModeBar, et c'est
-  // l'onglet touché qui la désigne — il en est un enfant direct.
+  // The row, retained at the first press: it belongs to ModeBar, and it is
+  // the touched tab that designates it — it is a direct child.
   const zoneRef = useRef<HTMLElement | null>(null);
   /**
-   * Le nouvel ordre est montré aussitôt, sans attendre la réponse du serveur.
-   * Il s'efface dès que la liste revient lue : c'est elle qui fait foi.
+   * The new order is shown at once, without waiting for the server's response.
+   * It clears as soon as the list comes back read: it is the authority.
    */
   const [localOrder, setLocalOrder] = useState<K[] | null>(null);
-  // Vrai entre un dépôt et le clic qu'il déclenche : glisser un onglet ne
-  // revient pas à l'ouvrir. Remis à faux au début de chaque geste, pour qu'un
-  // dépôt hors de la rangée — qui n'est suivi d'aucun clic — n'avale pas le
-  // clic suivant.
+  // True between a drop and the click it triggers: dragging a tab is not
+  // the same as opening it. Reset to false at the start of each gesture, so that a
+  // drop outside the row — followed by no click — does not swallow the
+  // next click.
   const justDragged = useRef(false);
 
   useEffect(() => {
@@ -86,16 +86,16 @@ export function useTabReorder<T, K extends string | number>(
         .filter((item): item is T => item !== undefined)
     : items;
 
-  // Les écouteurs du geste sont posés une fois pour toutes ; ils lisent l'état
-  // courant par une ref plutôt que de se réabonner à chaque rendu.
+  // The gesture's listeners are set once and for all; they read the current
+  // state through a ref rather than resubscribing on each render.
   const state = useRef({ ordered, keyOf, onReorder });
   useLayoutEffect(() => {
     state.current = { ordered, keyOf, onReorder };
   });
 
   useEffect(() => {
-    // Le rang visé : le premier onglet dont on n'a pas dépassé le milieu, ou
-    // la fin de la rangée.
+    // The target rank: the first tab whose middle has not been passed, or
+    // the end of the row.
     const targetRank = (clientX: number): number | null => {
       const zone = zoneRef.current;
       if (!zone) return null;
@@ -129,8 +129,8 @@ export function useTabReorder<T, K extends string | number>(
       if (!d || !d.started) return;
       justDragged.current = true;
 
-      // Le rang visé se lit sur la rangée complète ; une fois l'onglet ôté,
-      // tout ce qui le suivait remonte d'un cran.
+      // The target rank is read on the complete row; once the tab is removed,
+      // everything that followed it moves up a notch.
       const target = d.target > d.index ? d.target - 1 : d.target;
       if (target === d.index) return;
       const { ordered: currentItems, keyOf: keyOf } = state.current;
@@ -141,8 +141,8 @@ export function useTabReorder<T, K extends string | number>(
       try {
         await state.current.onReorder?.(order);
       } catch {
-        // Le rangement n'a pas pris : la liste relue par le mode fait foi, et
-        // l'ordre montré ici s'efface pour lui laisser la place.
+        // The reorder did not take: the list re-read by the mode is the authority, and
+        // the order shown here clears to make room for it.
         setLocalOrder(null);
       }
     };
@@ -155,10 +155,10 @@ export function useTabReorder<T, K extends string | number>(
     };
   }, []);
 
-  /** Ce qu'un onglet porte pour se glisser, à étaler sur son Tabs.Tab. */
+  /** What a tab carries to be dragged, to spread on its Tabs.Tab. */
   const tabProps = (key: K, index: number, style: CSSProperties) => ({
-    // Ce par quoi le geste retrouve les onglets dans la rangée : voir
-    // ATTRIBUT_ONGLET.
+    // What the gesture uses to find the tabs in the row: see
+    // TAB_ATTRIBUTE.
     [TAB_ATTRIBUTE]: "",
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
       justDragged.current = false;
@@ -168,18 +168,18 @@ export function useTabReorder<T, K extends string | number>(
     },
     style: {
       ...style,
-      // L'onglet tenu reste à sa place, en transparence : le trait
-      // d'insertion dit à lui seul où il se posera.
+      // The held tab stays in place, in transparency: the insertion
+      // line alone says where it will land.
       ...(drag?.id === key ? { opacity: 0.4 } : {}),
-      // Sur un écran tactile, le geste appartient à l'onglet : sans cela le
-      // navigateur y verrait un défilement.
+      // On a touch screen, the gesture belongs to the tab: otherwise the
+      // browser would see a scroll in it.
       ...(onReorder ? { touchAction: "none" } : {}),
     },
   });
 
   /**
-   * Le changement d'onglet, filtré : le clic qui suit un dépôt n'ouvre rien,
-   * la main a déplacé l'onglet, elle n'a pas demandé à l'ouvrir.
+   * The tab change, filtered: the click that follows a drop opens nothing,
+   * the hand moved the tab, it did not ask to open it.
    */
   const guardChange =
     <V,>(onChange: (value: V) => void) =>
@@ -191,7 +191,7 @@ export function useTabReorder<T, K extends string | number>(
       onChange(value);
     };
 
-  /** Vrai quand le trait d'insertion se pose avant le rang donné (ou en bout, au rang « ordered.length »). */
+  /** True when the insertion line sits before the given rank (or at the end, at rank "ordered.length"). */
   const insertAt = (index: number) => drag?.target === index;
 
   return { ordered, tabProps, guardChange, insertAt };

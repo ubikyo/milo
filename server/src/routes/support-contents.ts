@@ -1,7 +1,7 @@
-// Les contenus par défaut du Support, réglés au Paramétrage : une signature,
-// une formule d'accueil… Chacun porte un intitulé, son modèle HTML, saisi
-// dans l'éditeur, et l'évènement qui le pose dans l'éditeur d'une réponse de
-// l'équipe (SUPPORT_CONTENT_EVENTS). Un évènement ne pose qu'un contenu.
+// The Support's default contents, set in "Paramétrage": a signature, a
+// greeting… Each carries a title, its HTML template, entered in the editor,
+// and the event that places it in the editor of a team reply
+// (SUPPORT_CONTENT_EVENTS). An event only places one content.
 
 import { Router } from "express";
 import { isSupportContentEvent } from "@milo/shared";
@@ -36,8 +36,8 @@ const toContent = (row: SupportContentRow): SupportContent => ({
 });
 
 /**
- * L'évènement reçu, vérifié : connu, et libre — aucun autre contenu ne le
- * porte. Vide : aucun évènement.
+ * The received event, verified: known, and free — no other content carries
+ * it. Empty: no event.
  */
 const receivedEvent = (received: unknown, id: number): SupportContentEvent | "" => {
   if (received === null || received === "") return "";
@@ -63,8 +63,8 @@ supportContentRoutes.post("/", (req, res) => {
   res.status(201).json(toContent(byId.get(lastInsertRowid)!));
 });
 
-// Comme pour les réponses par défaut : ce qui n'est pas envoyé reste, et le
-// HTML ne garde que ce que l'éditeur sait produire.
+// As for default replies: what is not sent stays, and the HTML only keeps
+// what the editor can produce.
 supportContentRoutes.put("/:id", (req, res) => {
   const existing = orNotFound(byId.get(req.params.id), CONTENT_NOT_FOUND);
 

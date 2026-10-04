@@ -1,16 +1,15 @@
 import { useComputedColorScheme } from "@mantine/core";
 import classes from "../../assets/styles/Logo.module.css";
 
-// Variante 1 (435×490) pour l'écran de connexion, variante 2 (435×330) pour le
-// header.
+// Variant 1 (435×490) for the login screen, variant 2 (435×330) for the header.
 //
-// Les deux sont recopiées de Milo-1.svg et Milo-2.svg plutôt que chargées en
-// image : leur drapeau doit pouvoir s'animer, et une <img> ne laisse pas toucher
-// à ses formes. La toile y est détachée de la hampe pour flotter seule. Seule
-// la couleur de l'encre change avec le thème (les déclinaisons « Inv » la
-// passent en blanc).
+// Both are copied from Milo-1.svg and Milo-2.svg rather than loaded as an
+// image: their flag must be able to animate, and an <img> does not let you
+// touch its shapes. The canvas is detached from the pole there so it can float
+// on its own. Only the ink color changes with the theme (the "Inv" variants
+// turn it white).
 const INK = { light: "rgb(36,49,62)", dark: "white" } as const;
-// Les lettres de la variante 1 : noires en clair, blanches en sombre.
+// The letters of variant 1: black in light, white in dark.
 const LETTERS = { light: "black", dark: "white" } as const;
 const GREEN = "rgb(35,182,151)";
 
@@ -20,15 +19,15 @@ interface LogoProps {
 }
 
 export default function Logo({ variant = 2, h = 40 }: LogoProps) {
-  // `colorScheme` peut valoir "auto" : on lit le thème réellement appliqué.
-  // getInitialValueInEffect: false pour éviter d'afficher brièvement le
-  // mauvais logo au premier rendu.
+  // `colorScheme` can be "auto": we read the theme actually applied.
+  // getInitialValueInEffect: false to avoid briefly showing the wrong logo on
+  // first render.
   const scheme = useComputedColorScheme("light", {
     getInitialValueInEffect: false,
   });
 
-  // On impose la hauteur et on laisse la largeur suivre le ratio, sinon le
-  // logo occupe toute la largeur disponible.
+  // We impose the height and let the width follow the ratio, otherwise the logo
+  // takes all the available width.
   const ink = INK[scheme];
   const style = {
     height: h,
@@ -84,8 +83,8 @@ export default function Logo({ variant = 2, h = 40 }: LogoProps) {
   );
 }
 
-// La hampe, la toile et les deux traits d'encre, dans le repère commun aux deux
-// variantes.
+// The pole, the canvas and the two ink strokes, in the reference frame common
+// to both variants.
 function Flag({ ink }: { ink: string }) {
   return (
     <>
@@ -107,8 +106,8 @@ function Flag({ ink }: { ink: string }) {
           d="M1257,1584L1240.16,1584L1240.16,1463.89C1240.16,1458.98 1243.71,1455 1248.1,1455C1252.46,1455 1257,1455 1257,1455Z"
           fill={GREEN}
         />
-        {/* La toile : elle mord d'un point sur la hampe, pour qu'aucun
-          jour ne s'ouvre entre les deux quand elle flotte. */}
+        {/* The canvas: it overlaps the pole by a point, so that no gap opens
+            between the two when it floats. */}
         <path
           className={classes.flag}
           d="M1256,1455L1337.07,1459L1313.83,1492.92L1337.07,1526.84L1256,1526.84Z"

@@ -2,17 +2,17 @@ import { ScrollArea } from "@mantine/core";
 import type { CSSProperties, ReactNode } from "react";
 import classes from "../../assets/styles/CardDrawer.module.css";
 
-/** Le retrait des tiroirs, que la barre de défilement doit aussi connaître. */
+/** The drawers' inset, which the scrollbar must also know about. */
 export const DRAWER_PADDING = 40;
 
 /**
- * Les styles d'un tiroir dont seul le panneau de l'onglet ouvert défile : les
- * onglets et les boutons du bas restent en place, quelle que soit la hauteur
- * de la fenêtre, et le contenu s'arrête toujours au-dessus des boutons.
+ * The styles of a drawer where only the open tab's panel scrolls: the tabs and
+ * the bottom buttons stay in place, whatever the window height, and the content
+ * always stops above the buttons.
  *
- * Le tiroir est le repère de la barre de défilement, qui court sur toute sa
- * hauteur le long de son bord droit (assets/styles/CardDrawer.module.css) :
- * tout ce qui les sépare reste en « static ».
+ * The drawer is the scrollbar's reference, which runs its full height along its
+ * right edge (assets/styles/CardDrawer.module.css): everything between them
+ * stays "static".
  */
 export const DRAWER_STYLES = {
   content: {
@@ -31,15 +31,15 @@ export const DRAWER_STYLES = {
 };
 
 /**
- * Les styles des onglets du tiroir : le retrait sous la barre d'onglets, posé
- * une fois pour que les panneaux démarrent tous à la même hauteur, et les
- * panneaux en « static » pour laisser la barre se placer sur le tiroir.
+ * The styles of the drawer's tabs: the inset under the tab bar, set once so
+ * that all panels start at the same height, and the panels in "static" to let
+ * the bar position itself on the drawer.
  */
 export const DRAWER_TABS_STYLES = {
   panel: { paddingTop: 20, position: "static" as const },
 };
 
-/** Un panneau d'onglet qui prend toute la hauteur libre du tiroir. */
+/** A tab panel that takes the full free height of the drawer. */
 export const DRAWER_PANEL_STYLE: CSSProperties = {
   flex: 1,
   minHeight: 0,
@@ -50,15 +50,15 @@ export const DRAWER_PANEL_STYLE: CSSProperties = {
 interface DrawerScrollAreaProps {
   children: ReactNode;
   /**
-   * Le contenu occupe au moins toute la hauteur de la zone : un fil de
-   * commentaires vide y centre son invite.
+   * The content takes at least the whole height of the zone: an empty comment
+   * thread centers its prompt there.
    */
   fill?: boolean;
 }
 
 /**
- * La zone qui défile dans un panneau de tiroir. Sa barre se montre dès que le
- * contenu dépasse, couchée sur le bord droit du tiroir.
+ * The zone that scrolls inside a drawer panel. Its bar shows as soon as the
+ * content overflows, laid on the drawer's right edge.
  */
 export default function DrawerScrollArea({
   children,

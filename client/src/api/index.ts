@@ -1,5 +1,5 @@
-// Le client de l'API. Chaque appel dit ce qu'il rend : les types viennent de
-// @milo/shared, les mêmes que ceux que le serveur respecte.
+// The API client. Each call says what it returns: the types come from
+// @milo/shared, the same ones the server honors.
 
 import type {
   DirectoryUser,
@@ -98,7 +98,7 @@ import type {
 } from "@milo/shared";
 import { getToken, setToken } from "../lib/auth";
 
-/** Une pièce jointe de réponse déposée : ce que la réponse cite ensuite. */
+/** An uploaded reply attachment: what the reply then cites. */
 export interface SupportFileDeposit {
   file: string;
   name: string;
@@ -108,8 +108,8 @@ export interface SupportFileDeposit {
 
 const BASE_URL = "/api";
 
-// Prévient l'application quand le serveur refuse la session (jeton expiré,
-// déconnexion depuis un autre onglet).
+// Notifies the application when the server rejects the session (expired token,
+// sign-out from another tab).
 let onUnauthorized: () => void = () => {};
 export const setUnauthorizedHandler = (fn: () => void): void => {
   onUnauthorized = fn;
@@ -138,7 +138,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** Une réponse en erreur : son statut distingue un refus d'une panne. */
+/** An error response: its status distinguishes a refusal from an outage. */
 export class HttpError extends Error {
   constructor(
     readonly status: number,
@@ -148,7 +148,7 @@ export class HttpError extends Error {
   }
 }
 
-/** Les verbes, pour que chaque appel tienne sur une ligne. */
+/** The verbs, so each call fits on one line. */
 const get = <T>(path: string) => request<T>(path);
 const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: "POST", body: JSON.stringify(body ?? {}) });
@@ -157,9 +157,9 @@ const put = <T>(path: string, body?: unknown) =>
 const del = (path: string) => request<null>(path, { method: "DELETE" });
 
 /**
- * Le dépôt d'un fichier : le corps de la requête est le fichier lui-même, son
- * nom et son type voyagent dans l'adresse. Pas de formulaire en plusieurs
- * parties — le serveur n'attend qu'un fichier, et le lit tel quel.
+ * A file upload: the request body is the file itself, its name and type
+ * travel in the URL. No multipart form — the server expects only a file,
+ * and reads it as is.
  */
 const upload = <T>(path: string, file: File) =>
   request<T>(
@@ -167,16 +167,16 @@ const upload = <T>(path: string, file: File) =>
     {
       method: "POST",
       body: file,
-      // Le type réel est dit dans l'adresse : annoncer « octet-stream » tient
-      // le corps hors de l'analyseur JSON du serveur, y compris quand on
-      // dépose un fichier .json.
+      // The real type is stated in the URL: announcing "octet-stream" keeps
+      // the body away from the server's JSON parser, including when
+      // uploading a .json file.
       headers: { "Content-Type": "application/octet-stream" },
     },
   );
 
 /**
- * Un fichier envoyé tel quel : la sauvegarde à restaurer. Comme le dépôt d'une
- * pièce jointe, mais sans nom ni type à dire — le serveur n'attend qu'une
+ * A file sent as is: the backup to restore. Like uploading an
+ * attachment, but with no name or type to state — the server only expects an
  * archive.
  */
 const sendFile = <T>(path: string, file: File) =>
@@ -187,9 +187,9 @@ const sendFile = <T>(path: string, file: File) =>
   });
 
 /**
- * Une réponse qui est un fichier, et non du JSON : le téléchargement de la
- * sauvegarde. Elle ne passe pas par `request`, qui lit toujours du JSON, mais
- * porte le même jeton et lit les erreurs de la même façon.
+ * A response that is a file, not JSON: the backup
+ * download. It doesn't go through `request`, which always reads JSON, but
+ * carries the same token and reads errors the same way.
  */
 const download = async (path: string): Promise<Blob> => {
   const token = getToken();
@@ -204,7 +204,7 @@ const download = async (path: string): Promise<Blob> => {
   return res.blob();
 };
 
-/** « all » et les valeurs vides ne sont pas des filtres : elles ne partent pas. */
+/** "all" and empty values are not filters: they are not sent. */
 const queryString = (params: Record<string, unknown>): string => {
   const searchParams = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -215,9 +215,9 @@ const queryString = (params: Record<string, unknown>): string => {
 };
 
 /**
- * Les sections d'un tableau : ses colonnes, et ce qu'en fait « Hérité ». Les
- * sections se lisent et se créent par le tableau ; elles se modifient ensuite
- * par leur identifiant.
+ * A board's sections: its columns, and what "Hérité" does with them. Sections
+ * are read and created through the board; they are then modified
+ * by their identifier.
  */
 const boardSections = (boardId: Id | string) => ({
   all: () => get<IndicatorSection[]>(`/boards/${boardId}/sections`),
@@ -225,27 +225,27 @@ const boardSections = (boardId: Id | string) => ({
     post<IndicatorSection>(`/boards/${boardId}/sections`, data),
   update: (id: Id, data: IndicatorSectionInput) =>
     put<IndicatorSection>(`/board-sections/${id}`, data),
-  /** La copie, avec ses widgets, se pose juste à droite de l'original. */
+  /** The copy, with its widgets, is placed right after the original. */
   duplicate: (id: Id) => post<IndicatorSection>(`/board-sections/${id}/duplicate`, {}),
   remove: (id: Id) => del(`/board-sections/${id}`),
   reorder: (ids: Id[]) => put<IndicatorSection[]>(`/boards/${boardId}/sections/reorder`, { ids }),
-  /** « Hérité » : la structure publique, ou sa propre copie (décoché). */
+  /** "Hérité": the public structure, or its own copy (unticked). */
   getLayout: () => get<LayoutState>(`/boards/${boardId}/layout`),
   setLayout: (inherited: boolean) => put<LayoutState>(`/boards/${boardId}/layout`, { inherited }),
-  /** Une disposition exportée remplace la structure regardée. */
+  /** An exported layout replaces the viewed structure. */
   importSections: (layout: ExportedLayout) =>
     post<ImportResult>(`/boards/${boardId}/import`, layout),
 });
 
-/** Les écritures et lectures des sections d'un tableau. */
+/** Writes and reads of a board's sections. */
 export type PanelSections = ReturnType<typeof boardSections>;
 
 export const api = {
   // --- Session -------------------------------------------------------------
   getSetupState: () => get<SetupState>("/auth/setup"),
   setup: (data: SetupInput) => post<AuthResult>("/auth/setup", data),
-  // Le compte « admin » seul se connecte par mot de passe ; les autres
-  // passent par Microsoft (entraLoginUrl).
+  // Only the "admin" account signs in with a password; the others
+  // go through Microsoft (entraLoginUrl).
   login: (username: string, password: string) =>
     post<AuthResult>("/auth/login", { username, password }),
   logout: () => post<null>("/auth/logout"),
@@ -254,36 +254,36 @@ export const api = {
 
   getVersion: () => get<VersionPayload>("/version"),
 
-  // --- Comptes -------------------------------------------------------------
+  // --- Accounts ------------------------------------------------------------
   getUsers: () => get<PublicUser[]>("/users"),
-  // Les acteurs favoris de la personne connectée : ils passent en tête des
-  // listes d'acteurs.
+  // The signed-in person's favorite actors: they come first in
+  // the actor lists.
   getFavorites: () => get<Id[]>("/users/favorites"),
   addFavorite: (id: Id) => put<Id[]>(`/users/favorites/${id}`),
   removeFavorite: (id: Id) => request<Id[]>(`/users/favorites/${id}`, { method: "DELETE" }),
-  // Les personnes de l'annuaire Entra, et le compte d'une d'entre elles — créé
-  // s'il n'existe pas encore — pour en faire un acteur.
+  // The people of the Entra directory, and the account of one of them — created
+  // if it doesn't exist yet — to make them an actor.
   searchDirectoryUsers: (q: string) =>
     get<DirectoryUser[]>(`/users/directory?q=${encodeURIComponent(q)}`),
   addDirectoryUser: (oid: string) =>
     post<PublicUser>(`/users/directory/${encodeURIComponent(oid)}`),
-  // Les groupes de l'annuaire, pour les acteurs qui ne font que prévenir.
+  // The directory's groups, for actors who only notify.
   searchDirectoryGroups: (q: string) =>
     get<EntraPrincipal[]>(`/users/directory/groups?q=${encodeURIComponent(q)}`),
 
   // --- Workspaces ----------------------------------------------------------
-  // Passer dans un autre de ses workspaces.
+  // Switching to another of one's workspaces.
   switchWorkspace: (workspace: Id) => put<PublicUser>("/auth/me/workspace", { workspace }),
-  // Leur gestion : réservée à qui en a le droit.
+  // Their management: reserved to those entitled to it.
   getWorkspaces: () => get<Workspace[]>("/workspaces"),
   createWorkspace: (name: string) => post<Workspace>("/workspaces", { name }),
   updateWorkspace: (id: Id, name: string) => put<Workspace>(`/workspaces/${id}`, { name }),
   deleteWorkspace: (id: Id) => del(`/workspaces/${id}`),
 
-  // --- Accès d'un workspace (utilisateurs et groupes Entra) ---------------
+  // --- Workspace access (Entra users and groups) --------------------------
   getAssignments: (workspace: Id) =>
     get<PrincipalAssignments[]>(`/assignments?workspace=${workspace}`),
-  // Les types envoyés remplacent tout ; sans aucun, l'accès se retire.
+  // The types sent replace everything; with none, access is withdrawn.
   setAssignments: (principal: EntraPrincipal, permissions: WidgetRights, workspace: Id) =>
     put<PrincipalAssignments[]>(
       `/assignments/${principal.type}/${encodeURIComponent(principal.id)}?workspace=${workspace}`,
@@ -295,7 +295,7 @@ export const api = {
       { method: "DELETE" },
     ),
 
-  // --- Administration : Paramétrage et gestion des workspaces --------------
+  // --- Administration: Paramétrage and workspace management ----------------
   getAdministration: () => get<PrincipalAdministration[]>("/administration"),
   setAdministration: (principal: EntraPrincipal, permissions: AdminPermissions) =>
     put<PrincipalAdministration[]>(
@@ -312,51 +312,51 @@ export const api = {
       `/assignments/search?q=${encodeURIComponent(q)}${groupsOnly ? "&groups=1" : ""}`,
     ),
 
-  // --- Sauvegarde ----------------------------------------------------------
+  // --- Backup --------------------------------------------------------------
   getBackupInfo: () => get<BackupInfo>("/backup"),
-  // L'archive n'est pas ouverte par le client : elle passe du serveur au
-  // disque, et revient telle quelle le jour d'une restauration.
+  // The archive isn't opened by the client: it goes from the server to
+  // disk, and comes back as is on the day of a restore.
   downloadBackup: () => download("/backup/archive"),
   restoreBackup: (file: File) =>
     sendFile<RestoreResult>("/backup/restore", file),
 
-  // --- Entra --------------------------------------------------------------
+  // --- Entra ---------------------------------------------------------------
   getEntraSettings: () => get<EntraSettings>("/entra"),
   updateEntraSettings: (data: EntraSettingsInput) =>
     put<EntraSettings>("/entra", data),
-  // Le message d'essai part de la boîte de support de la société choisie.
+  // The test message is sent from the chosen company's support mailbox.
   testMail: (to: string) => post<MailTestResult>("/entra/test", { to }),
   checkMailboxes: () => get<MailboxCheck[]>("/entra/mailboxes"),
   getEntraStatus: () => get<EntraStatus>("/entra/status"),
   connectEntra: () => post<EntraStatus>("/entra/connect"),
   disconnectEntra: () => post<EntraStatus>("/entra/disconnect"),
 
-  // --- Suivi ---------------------------------------------------------------
-  // Le client garde la liste de ce qu'il suit : chaque écriture la rend
-  // entière, il n'y a donc jamais à la relire après un clic.
+  // --- Follows -------------------------------------------------------------
+  // The client keeps the list of what it follows: each write returns it
+  // in full, so there is never a need to re-read it after a click.
   getFollows: () => get<Follows>("/follows"),
   follow: (kind: FollowKind, id: Id) => put<Follows>(`/follows/${kind}/${id}`),
   unfollow: (kind: FollowKind, id: Id) =>
     request<Follows>(`/follows/${kind}/${id}`, { method: "DELETE" }),
 
-  // --- Vues et tableaux ---------------------------------------------------
-  // Les vues, dans l'ordre que le compte a rangé. Une vue naît avec son
-  // premier tableau.
+  // --- Views and boards ----------------------------------------------------
+  // The views, in the order the account arranged them. A view is born with its
+  // first board.
   getViews: () => get<View[]>("/views"),
   createView: (name: string) => post<{ view: View; board: Board }>("/views", { name }),
   updateView: (id: Id, data: ViewInput) => put<View>(`/views/${id}`, data),
   deleteView: (id: Id) => del(`/views/${id}`),
   reorderViews: (ids: Id[]) => put<View[]>("/views/reorder", { ids }),
 
-  // Les tableaux d'une vue, dans l'ordre que le compte a rangé.
+  // A view's boards, in the order the account arranged them.
   getBoards: (viewId: Id | string) => get<Board[]>(`/boards${queryString({ view: viewId })}`),
   createBoard: (view_id: Id | string, name: string) => post<Board>("/boards", { view_id, name }),
-  /** Un tableau seul : de quoi savoir dans quelle vue il se trouve. */
+  /** A single board: enough to know which view it is in. */
   getBoard: (id: Id | string) => get<Board>(`/boards/${id}`),
   updateBoard: (id: Id, data: BoardInput) => put<Board>(`/boards/${id}`, data),
   deleteBoard: (id: Id | string) => del(`/boards/${id}`),
 
-  // Les contextes d'un tableau : chaque écriture rend le tableau à jour.
+  // A board's contexts: each write returns the updated board.
   addContext: (boardId: Id, name: string) =>
     post<Board>(`/boards/${boardId}/contexts`, { name } satisfies ContextInput),
   renameContext: (id: Id, name: string) =>
@@ -364,53 +364,53 @@ export const api = {
   deleteContext: (id: Id) => request<Board>(`/contexts/${id}`, { method: "DELETE" }),
   reorderContexts: (boardId: Id, ids: Id[]) =>
     put<Board>(`/boards/${boardId}/contexts/reorder`, { ids }),
-  /** Le contexte que ce compte regarde dans ce tableau ; nul pour tous. */
+  /** The context this account views in this board; null for all. */
   selectContext: (boardId: Id, contextId: Id | null) =>
     put<Board>(`/boards/${boardId}/contexts/selected`, { context_id: contextId }),
   reorderBoards: (view_id: Id | string, ids: Id[]) =>
     put<Board[]>("/boards/reorder", { view_id, ids }),
 
-  // Ce qu'un tableau porte : ses sections et ses widgets.
+  // What a board carries: its sections and its widgets.
   boardSections: boardSections,
   getBoardWidgets: (boardId: Id | string) => get<BoardWidget[]>(`/boards/${boardId}/widgets`),
   createBoardWidget: (data: BoardWidgetInput) => post<BoardWidget>("/board-widgets", data),
-  // Seule la configuration bouge — sauf la catégorie et la sous-catégorie,
-  // qui se convertissent l'une en l'autre.
+  // Only the configuration moves — except the category and the sub-category,
+  // which convert into one another.
   updateBoardWidget: (id: Id, data: BoardWidgetInput) =>
     put<BoardWidget>(`/board-widgets/${id}`, data),
-  /** La copie se pose juste sous l'original. */
+  /** The copy is placed right below the original. */
   duplicateBoardWidget: (id: Id) => post<BoardWidget>(`/board-widgets/${id}/duplicate`, {}),
   deleteBoardWidget: (id: Id) => del(`/board-widgets/${id}`),
-  /** Ce que la section porte désormais : un widget venu d'une autre y passe. */
+  /** What the section now carries: a widget from another one moves into it. */
   reorderBoardWidgets: (sectionId: Id, ids: Id[]) =>
     put<BoardWidget[]>("/board-widgets/reorder", { section_id: sectionId, ids }),
-  // La confirmation des boîtes de support : leur état, et la relance du lien
-  // à celles qui attendent.
-  // Chaque liste — par sa clé de liste — confirme ses propres adresses.
+  // The confirmation of support mailboxes: their state, and re-sending the link
+  // to those that are waiting.
+  // Each list — by its list key — confirms its own addresses.
   getMailboxOptins: (list: string, emails: string[]) =>
     get<MailboxOptinState[]>(
       `/mailbox-optins?list_key=${encodeURIComponent(list)}&emails=${encodeURIComponent(emails.join(","))}`,
     ),
   resendMailboxOptins: (list: string, emails: string[]) =>
     post<{ sent: number }>("/mailbox-optins/resend", { list_key: list, emails }),
-  /** Le code à quatre chiffres de l'e-mail, à la place du lien. */
+  /** The four-digit code from the e-mail, in place of the link. */
   confirmMailboxOptin: (list: string, email: string, code: string) =>
     post<MailboxOptinState>("/mailbox-optins/confirm", { list_key: list, email, code }),
-  // Le flux d'un widget RSS, tel que la base le garde : le serveur relève
-  // la source lui-même, à l'intervalle que le widget règle.
+  // An RSS widget's feed, as the database keeps it: the server fetches
+  // the source itself, at the interval the widget sets.
   getAccessFeed: (widgetId: Id) => get<AccessFeed>(`/board-widgets/${widgetId}/feed`),
   probeAccessFeed: (url: string) =>
     get<AccessFeedProbe>(`/board-widgets/feed/probe?url=${encodeURIComponent(url)}`),
-  // La météo du lieu d'un widget Météo, et la recherche d'un lieu pour le régler.
+  // The weather of a Météo widget's location, and the location search to set it.
   getAccessWeather: (widgetId: Id) => get<AccessWeather>(`/board-widgets/${widgetId}/weather`),
   searchWeatherPlaces: (q: string) =>
     get<WeatherPlace[]>(`/board-widgets/weather/places?q=${encodeURIComponent(q)}`),
-  // Les rendez-vous Outlook de qui regarde, entre deux instants.
+  // The Outlook appointments of the viewer, between two instants.
   getAccessCalendar: (widgetId: Id, start: Date, end: Date) =>
     get<AccessCalendarEvent[]>(
       `/board-widgets/${widgetId}/calendar?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`,
     ),
-  // La boîte de réception de qui regarde, page par page, un e-mail ouvert et ses pièces jointes.
+  // The viewer's inbox, page by page, an opened e-mail and its attachments.
   getAccessMails: (widgetId: Id, skip: number, top: number, unread: boolean) =>
     get<AccessMailPage>(
       `/board-widgets/${widgetId}/mails?skip=${skip}&top=${top}${unread ? "&unread=1" : ""}`,
@@ -421,20 +421,20 @@ export const api = {
     download(
       `/board-widgets/${widgetId}/mails/${encodeURIComponent(mailId)}/attachments/${encodeURIComponent(attachmentId)}`,
     ),
-  // Une image déposée pour un widget Image : c'est son adresse que le widget range.
+  // An image uploaded for an Image widget: the widget stores its URL.
   uploadWidgetImage: (file: File) => upload<{ url: string }>("/widget-images", file),
 
-  // --- Projets -------------------------------------------------------------
-  // Les catégories appartiennent à un tableau.
+  // --- Projects ------------------------------------------------------------
+  // Categories belong to a board.
   getCategories: (boardId?: string | null) =>
     get<Category[]>(`/categories${queryString({ board: boardId })}`),
   createCategory: (board_id: Id | string, name: string) =>
     post<Category>("/categories", { board_id, name }),
-  // « replace » : celles du tableau d'accueil s'en vont d'abord, hormis
-  // celles qui rangent encore des projets.
+  // "replace": those of the destination board go first, except
+  // those that still hold projects.
   copyCategories: (from_board: Id, to_board: Id, replace = false) =>
     post<CopyResult>("/categories/copy", { from_board, to_board, replace }),
-  // Le nom et les jalons se modifient séparément : ce qui n'est pas envoyé reste.
+  // The name and the milestones are modified separately: what isn't sent stays.
   updateCategory: (
     id: Id,
     data: string | { name?: string; milestones?: Milestone[] },
@@ -445,7 +445,7 @@ export const api = {
     ),
   deleteCategory: (id: Id) =>
     request<CascadeResult>(`/categories/${id}`, { method: "DELETE" }),
-  // L'ordre complet des catégories d'un tableau.
+  // The full order of a board's categories.
   reorderCategories: (board_id: Id, ids: Id[]) =>
     put<Category[]>("/categories/reorder", { board_id, ids }),
 
@@ -453,9 +453,9 @@ export const api = {
     get<ProjectLabel[]>(`/project-labels${queryString({ board: boardId })}`),
   createProjectLabel: (board_id: Id | string, name: string, color: string, weight = 0) =>
     post<ProjectLabel>("/project-labels", { board_id, name, color, weight }),
-  // Les étiquettes d'un tableau posées dans un autre. Celles qui y portent
-  // déjà le même nom ne sont pas redoublées : le compte rendu les compte.
-  // « replace » : celles du tableau d'accueil s'en vont d'abord.
+  // A board's labels placed in another. Those that already carry
+  // the same name there are not duplicated: the report counts them.
+  // "replace": those of the destination board go first.
   copyProjectLabels: (from_board: Id, to_board: Id, replace = false) =>
     post<CopyResult>("/project-labels/copy", { from_board, to_board, replace }),
   updateProjectLabel: (id: Id, data: { name?: string; color?: string; weight?: number }) =>
@@ -468,7 +468,7 @@ export const api = {
     get<Project[]>(
       `/projects${queryString(filters as Record<string, unknown>)}`,
     ),
-  /** Les comptes acteurs d'au moins un projet du tableau (et de la société). */
+  /** The actor accounts of at least one project of the board (and of the company). */
   getProjectActorIds: (filters: Pick<ProjectFilters, "board" | "context">) =>
     get<Id[]>(`/projects/actors${queryString(filters as Record<string, unknown>)}`),
   getProject: (id: Id) => get<ProjectDetail>(`/projects/${id}`),
@@ -476,8 +476,8 @@ export const api = {
   updateProject: (id: Id, data: ProjectInput) =>
     put<Project>(`/projects/${id}`, data),
   deleteProject: (id: Id) => del(`/projects/${id}`),
-  // La copie emporte la fiche, les acteurs et les étiquettes, mais pas le
-  // fil ; sans « board_id », elle reste dans le tableau d'origine.
+  // The copy takes the record, the actors and the labels, but not the
+  // thread; without "board_id", it stays in the original board.
   copyProject: (id: Id, data: ProjectCopyInput = {}) =>
     post<Project>(`/projects/${id}/copy`, data),
 
@@ -487,8 +487,8 @@ export const api = {
     put<Comment>(`/comments/${id}`, { text }),
   deleteComment: (id: Id) => del(`/comments/${id}`),
 
-  // Les types de jalons, réglés dans les réglages. Le nom et les jalons se
-  // modifient séparément : ce qui n'est pas envoyé reste.
+  // The milestone types, set in the settings. The name and the milestones are
+  // modified separately: what isn't sent stays.
   getMilestoneTypes: () => get<MilestoneType[]>("/milestone-types"),
   createMilestoneType: (name: string) =>
     post<MilestoneType>("/milestone-types", { name }),
@@ -499,11 +499,11 @@ export const api = {
   deleteMilestoneType: (id: Id) => del(`/milestone-types/${id}`),
 
 
-  // --- Tâches --------------------------------------------------------------
+  // --- Tasks ---------------------------------------------------------------
   getTaskLists: (boardId: string | Id) =>
     get<TaskList[]>(`/task-lists${queryString({ board: boardId })}`),
-  // Sans « index », la liste va au bout du tableau.
-  /** « list_key » : le widget « Tâches » d'où elle est créée. */
+  // Without "index", the list goes to the end of the board.
+  /** "list_key": the "Tâches" widget it is created from. */
   createTaskList: (board_id: Id | string, name: string, index?: number, list_key?: string) =>
     post<TaskList>("/task-lists", { board_id, name, index, list_key }),
   updateTaskList: (
@@ -511,24 +511,24 @@ export const api = {
     data: { name?: string; color?: ListColor; board_id?: Id },
   ) => put<TaskList>(`/task-lists/${id}`, data),
   deleteTaskList: (id: Id) => del(`/task-lists/${id}`),
-  // Vide la liste de ses tâches ; ses séparateurs restent.
+  // Empties the list of its tasks; its separators stay.
   deleteTaskListCards: (id: Id) => del(`/task-lists/${id}/cards`),
-  // La copie emporte les cartes de la liste ; sans « board_id », elle reste
-  // dans le tableau d'origine.
+  // The copy takes the list's cards; without "board_id", it stays
+  // in the original board.
   copyTaskList: (id: Id, data: TaskListCopyInput = {}) =>
     post<TaskList>(`/task-lists/${id}/copy`, data),
   reorderTaskLists: (board_id: Id | string, ids: Id[]) =>
     put<TaskList[]>("/task-lists/reorder", { board_id, ids }),
 
-  // « kind » vaut « card » ou « separator » ; par défaut, une carte.
-  // Une description peut suivre dès la création : celle d'une tâche créée
-  // depuis un autre mode porte le lien vers l'élément d'où elle vient.
+  // "kind" is "card" or "separator"; a card by default.
+  // A description can follow at creation: that of a task created
+  // from another mode carries the link to the item it comes from.
   createTaskCard: (
     list_id: Id,
     text: string,
     kind: "card" | "separator" = "card",
     description?: string,
-    /** Le contexte de la carte ; à défaut, le premier du tableau. */
+    /** The card's context; by default, the board's first. */
     context_id?: Id | null,
   ) =>
     post<TaskCardRow>("/task-cards", {
@@ -540,17 +540,17 @@ export const api = {
     }),
   updateTaskCard: (id: Id, text: string) =>
     put<TaskCardDetail>(`/task-cards/${id}`, { text }),
-  /** La copie se pose juste sous l'original, avec tout ce qu'il porte. */
+  /** The copy is placed right below the original, with everything it carries. */
   duplicateTaskCard: (id: Id) => post<TaskCardRow>(`/task-cards/${id}/duplicate`),
   deleteTaskCard: (id: Id) => del(`/task-cards/${id}`),
   reorderTaskCards: (list_id: Id, ids: Id[]) =>
     put<TaskList[]>("/task-cards/reorder", { list_id, ids }),
 
-  // La fiche d'une carte : sa description, ses membres, ses étiquettes et son
-  // fil de commentaires.
+  // A card's record: its description, its members, its labels and its
+  // comment thread.
   getTaskCard: (id: Id) => get<TaskCardDetail>(`/task-cards/${id}`),
-  // Où vit cette carte : de quoi se placer dessus avant de l'ouvrir, quand on
-  // arrive par un lien plutôt que par le tableau.
+  // Where this card lives: enough to position oneself on it before opening it, when
+  // arriving by a link rather than through the board.
   getCardLocation: (id: Id) =>
     get<CardLocation>(`/task-cards/${id}/location`),
   updateTaskCardDetails: (id: Id, data: TaskCardInput) =>
@@ -561,8 +561,8 @@ export const api = {
     put<Comment>(`/card-comments/${id}`, { text }),
   deleteTaskCardComment: (id: Id) => del(`/card-comments/${id}`),
 
-  // Checklists d'une carte : chacune porte son titre et ses éléments. Tout
-  // s'enregistre au fil des gestes, sans attendre « Enregistrer ».
+  // A card's checklists: each carries its title and its items. Everything
+  // is saved as gestures happen, without waiting for "Enregistrer".
   createChecklist: (cardId: Id, title: string) =>
     post<Checklist>(`/task-cards/${cardId}/checklists`, { title }),
   updateChecklist: (id: Id, data: { title?: string }) =>
@@ -578,64 +578,64 @@ export const api = {
   reorderChecklistItems: (checklistId: Id, ids: Id[]) =>
     put<Checklist>(`/checklists/${checklistId}/items/reorder`, { ids }),
 
-  // Dépendances d'une carte : chacune se lit depuis la carte qui la regarde —
-  // « bloque » ici, « est bloqué par » sur l'autre. Enregistrées aussitôt.
+  // A card's dependencies: each is read from the card viewing it —
+  // "bloque" here, "est bloqué par" on the other. Saved immediately.
   createCardLink: (cardId: Id, data: CardLinkInput) =>
     post<CardLink>(`/task-cards/${cardId}/links`, data),
   updateCardLink: (id: Id, cardId: Id, data: CardLinkInput) =>
     put<CardLink>(`/card-links/${id}`, { ...data, card_id: cardId }),
   deleteCardLink: (id: Id, cardId: Id) =>
     del(`/card-links/${id}${queryString({ card: cardId })}`),
-  // Les cartes qu'une dépendance peut relier, page par page : celles du
-  // tableau d'abord, puis celles des autres tableaux.
+  // The cards a dependency can link, page by page: those of the
+  // board first, then those of the other boards.
   getLinkCandidates: (cardId: Id, q: string, offset: number) =>
     get<LinkCandidates>(`/task-cards/${cardId}/links/candidates${queryString({ q, offset })}`),
 
-  // Pièces jointes d'une carte : les fichiers déposés dessus. Le dépôt et le
-  // retrait partent aussitôt, sans attendre la fermeture du tiroir.
+  // A card's attachments: the files dropped on it. Upload and
+  // removal go out immediately, without waiting for the drawer to close.
   uploadAttachment: (cardId: Id, file: File) =>
     upload<Attachment>(`/task-cards/${cardId}/attachments`, file),
   deleteAttachment: (id: Id) => del(`/attachments/${id}`),
   reorderAttachments: (cardId: Id, ids: Id[]) =>
     put<Attachment[]>(`/task-cards/${cardId}/attachments/order`, { ids }),
 
-  // Images de couverture d'une carte : déposées, rangées et retirées aussitôt.
-  // La première est celle que la carte montre sur le tableau.
+  // A card's cover images: uploaded, arranged and removed immediately.
+  // The first is the one the card shows on the board.
   uploadCover: (cardId: Id, file: File) =>
     upload<CardCover>(`/task-cards/${cardId}/covers`, file),
   reorderCovers: (cardId: Id, ids: Id[]) =>
     put<CardCover[]>(`/task-cards/${cardId}/covers/order`, { ids }),
   deleteCover: (id: Id) => del(`/covers/${id}`),
 
-  // Une image collée dans la description d'une carte : elle est déposée tout
-  // de suite, et c'est son adresse que l'éditeur insère.
+  // An image pasted in a card's description: it is uploaded right
+  // away, and the editor inserts its URL.
   uploadCardImage: (cardId: Id, file: File) =>
     upload<{ url: string }>(`/task-cards/${cardId}/images`, file),
 
-  // --- Mode Assets ---------------------------------------------------------
-  // Les postes remontés par les agents d'inventaire. La liste ne porte que le
-  // nom : tout le reste attend l'ouverture du poste, et ne voyage donc que
-  // pour celui qu'on regarde.
-  /** Les postes d'un tableau : d'un contexte, ou de tous (« all »). */
+  // --- Assets mode ---------------------------------------------------------
+  // The workstations reported by the inventory agents. The list only carries the
+  // name: everything else waits until the workstation is opened, and so only travels
+  // for the one being viewed.
+  /** A board's workstations: of one context, or of all ("all"). */
   getAssets: (boardId: Id, context: string | Id) =>
     get<Asset[]>(`/assets${queryString({ board: boardId, context })}`),
   getAsset: (id: Id) => get<AssetDetail>(`/assets/${id}`),
 
-  // Les notifications reçues, pour le tiroir « Notifications ».
+  // The notifications received, for the "Notifications" drawer.
   getNotifications: () => get<Notification[]>("/notifications"),
   deleteNotification: (id: string) => del(`/notifications/${encodeURIComponent(id)}`),
   clearNotifications: () => del("/notifications"),
 
-  // La recherche de la rangée d'onglets, sur tout ce que la personne voit.
+  // The tab row search, over everything the person sees.
   search: (q: string) => get<SearchResult[]>(`/search${queryString({ q })}`),
 
 
-  // La section « Développeur » du Paramétrage, commune à tous.
-  // La section « Support » du Paramétrage : l'échéance par défaut.
+  // The "Développeur" section of the Paramétrage, common to all.
+  // The "Support" section of the Paramétrage: the default due date.
   getSupportSettings: () => get<SupportSettings>("/support-settings"),
   updateSupportSettings: (data: Partial<SupportSettings>) =>
     put<SupportSettings>("/support-settings", data),
-  // Les réponses par défaut : l'intitulé et le modèle se modifient séparément.
+  // The default replies: the title and the template are modified separately.
   getSupportReplies: () => get<SupportReply[]>("/support-replies"),
   createSupportReply: (name: string, event: SupportReplyEvent | null = null) =>
     post<SupportReply>("/support-replies", { name, event }),
@@ -644,13 +644,13 @@ export const api = {
     data: { name?: string; html?: string; event?: SupportReplyEvent | null },
   ) => put<SupportReply>(`/support-replies/${id}`, data),
   deleteSupportReply: (id: Id) => del(`/support-replies/${id}`),
-  // Les fiches Entra que citent les modèles : le compte connecté, et
-  // l'expéditeur de la demande quand on en donne une.
+  // The Entra profiles the templates cite: the signed-in account, and
+  // the request's sender when one is given.
   getSupportVariables: (requestId?: Id) =>
     get<{ user: SupportPerson; sender: SupportPerson | null }>(
       `/support-requests/variables${requestId ? `?request=${requestId}` : ""}`,
     ),
-  // Ce qui se pose d'office dans l'éditeur d'une réponse : une signature…
+  // What is placed by default in a reply's editor: a signature…
   getSupportContents: () => get<SupportContent[]>("/support-contents"),
   createSupportContent: (name: string, event: SupportContentEvent | null = null) =>
     post<SupportContent>("/support-contents", { name, event }),
@@ -659,7 +659,7 @@ export const api = {
     data: { name?: string; html?: string; event?: SupportContentEvent | null },
   ) => put<SupportContent>(`/support-contents/${id}`, data),
   deleteSupportContent: (id: Id) => del(`/support-contents/${id}`),
-  // La section « Assets » du Paramétrage : la table des modèles, celle des VLAN.
+  // The "Assets" section of the Paramétrage: the templates table, the VLAN one.
   getAssetSettings: () => get<AssetSettings>("/asset-settings"),
   updateAssetSettings: (data: Partial<AssetSettings>) =>
     put<AssetSettings>("/asset-settings", data),
@@ -669,14 +669,14 @@ export const api = {
   getNotificationSettings: () => get<NotificationSettings>("/notification-settings"),
   updateNotificationSettings: (data: Partial<NotificationSettings>) =>
     put<NotificationSettings>("/notification-settings", data),
-  // « Inventorie-toi maintenant » : le serveur appelle l'agent sur le poste.
-  // Rien n'en revient — l'inventaire arrive ensuite par la porte des agents,
-  // et c'est le flux d'événements qui prévient.
+  // "Inventorie-toi maintenant": the server calls the agent on the workstation.
+  // Nothing comes back — the inventory arrives later through the agents' door,
+  // and the event stream notifies.
   refreshAsset: (id: Id) => post<AssetRefresh>(`/assets/${id}/refresh`, {}),
   deleteAsset: (id: Id) => del(`/assets/${id}`),
-  // --- Mode Support --------------------------------------------------------
+  // --- Support mode --------------------------------------------------------
 
-  /** Les demandes d'un tableau : d'un contexte, ou de tous (« all »). */
+  /** A board's requests: of one context, or of all ("all"). */
   getSupportRequests: (boardId: Id, context: string | Id) =>
     get<SupportRequest[]>(`/support-requests${queryString({ board: boardId, context })}`),
   getSupportRequest: (id: Id) =>
@@ -686,10 +686,10 @@ export const api = {
   updateSupportRequest: (id: Id, data: SupportRequestInput) =>
     put<SupportRequestDetail>(`/support-requests/${id}`, data),
   deleteSupportRequest: (id: Id) => del(`/support-requests/${id}`),
-  // Relève les boîtes de support des sociétés : les e-mails nouveaux y
-  // deviennent des demandes, que le flux d'événements fait ensuite relire.
+  // Polls the companies' support mailboxes: new e-mails there
+  // become requests, which the event stream then has re-read.
   syncSupportMail: () => post<{ created: number }>("/support-requests/sync"),
-  // Les actions du menu « Actions », sur les demandes cochées.
+  // The "Actions" menu actions, on the ticked requests.
   mergeSupportRequests: (ids: Id[]) =>
     post<SupportRequestDetail>("/support-requests/merge", { ids }),
   closeSupportRequests: (ids: Id[]) => post<void>("/support-requests/close", { ids }),
@@ -697,9 +697,9 @@ export const api = {
   assignSupportRequests: (ids: Id[], actor_ids: Id[]) =>
     post<void>("/support-requests/assign", { ids, actor_ids }),
 
-  // « internal » : un commentaire de l'équipe (onglet « Commentaires »), pas
-  // un échange avec l'expéditeur.
-  // Une réponse peut dire aussi où en est la demande, et qui mettre en copie.
+  // "internal": a team comment ("Commentaires" tab), not
+  // an exchange with the sender.
+  // A reply can also say where the request stands, and who to copy.
   addSupportComment: (
     id: Id,
     text: string,
@@ -711,34 +711,34 @@ export const api = {
       files?: SupportFileDeposit[];
     } = {},
   ) => post<SupportComment>(`/support-requests/${id}/comments`, { text, internal, ...sending }),
-  // Une pièce jointe de réponse, déposée avant l'envoi de la réponse qui la porte.
+  // A reply attachment, uploaded before sending the reply that carries it.
   uploadSupportFile: (id: Id, file: File) =>
     upload<SupportFileDeposit>(`/support-requests/${id}/files`, file),
   updateSupportComment: (id: Id, text: string) =>
     put<SupportComment>(`/support-comments/${id}`, { text }),
   deleteSupportComment: (id: Id) => del(`/support-comments/${id}`),
 
-  // Étiquettes du mode Support : elles appartiennent à la société, comme
-  // celles d'un tableau lui appartiennent.
+  // Support mode labels: they belong to the company, just as
+  // those of a board belong to it.
   getSupportLabels: () => get<SupportLabel[]>("/support-labels"),
   createSupportLabel: (name: string, color: string, weight = 0) =>
     post<SupportLabel>("/support-labels", { name, color, weight }),
   updateSupportLabel: (id: Id, data: SupportLabelInput) =>
     put<SupportLabel>(`/support-labels/${id}`, data),
   deleteSupportLabel: (id: Id) => del(`/support-labels/${id}`),
-  // L'ordre complet, toutes les étiquettes nommées une fois.
+  // The full order, all labels named once.
   reorderSupportLabels: (ids: Id[]) =>
     put<SupportLabel[]>("/support-labels/reorder", { ids }),
 
-  // Étiquettes d'un tableau : un nom et une couleur, posés sur ses cartes.
+  // A board's labels: a name and a color, placed on its cards.
   getLabels: (boardId: string | Id) =>
     get<Label[]>(`/labels${queryString({ board: boardId })}`),
   createLabel: (board_id: Id | string, name: string, color: string) =>
     post<Label>("/labels", { board_id, name, color }),
-  // Les contextes d'un tableau, recopiés dans un autre : leurs noms seuls.
-  // « replace » : ceux du tableau d'accueil s'en vont d'abord, avec ce
-  // qu'ils contiennent.
-  // « rename_all » : le tableau reprend aussi le libellé de « Tous les … ».
+  // A board's contexts, copied into another: their names only.
+  // "replace": those of the destination board go first, with what
+  // they contain.
+  // "rename_all": the board also takes the label of "Tous les …".
   copyContexts: (from_board: Id, to_board: Id, replace = false, rename_all = false) =>
     post<CopyResult>(`/boards/${from_board}/contexts/copy`, { to_board, replace, rename_all }),
   copyLabels: (from_board: Id, to_board: Id, replace = false) =>
@@ -746,12 +746,12 @@ export const api = {
   updateLabel: (id: Id, data: { name?: string; color?: string }) =>
     put<Label>(`/labels/${id}`, data),
   deleteLabel: (id: Id) => del(`/labels/${id}`),
-  // L'ordre complet des étiquettes d'un tableau.
+  // The full order of a board's labels.
   reorderLabels: (board_id: Id, ids: Id[]) => put<Label[]>("/labels/reorder", { board_id, ids }),
 };
 
 /**
- * La connexion par Microsoft : le navigateur quitte l'application pour la
- * page de Microsoft, et revient avec son jeton dans le fragment de l'adresse.
+ * Sign-in through Microsoft: the browser leaves the application for the
+ * Microsoft page, and comes back with its token in the URL fragment.
  */
 export const entraLoginUrl = "/api/auth/entra/start";

@@ -25,26 +25,26 @@ import type { ReactNode } from "react";
 import type { DirectoryUser, EntraPrincipal, PublicUser } from "@milo/shared";
 import DirectoryOrigin from "./DirectoryOrigin";
 
-// Le choix d'acteurs, le même partout — membres d'une carte, acteurs d'un
-// projet ou d'une demande, « Assigner à » :
+// The actor picker, the same everywhere — a card's members, a project's or
+// request's actors, "Assigner à":
 //
-//   - les favoris en tête, marqués d'une étoile pleine ; l'étoile d'une ligne
-//     l'y ajoute ou l'en retire, pour toutes les listes de l'application ;
-//   - une recherche, qui filtre les comptes de Milo et interroge l'annuaire
-//     Entra : une personne qui n'est pas encore dans Milo s'y choisit aussi,
-//     et son compte est créé à ce moment-là ;
-//   - là où un acteur ne fait qu'être prévenu, des groupes Entra aussi
-//     (« onGroupsChange ») : la recherche
-//     les propose sous les personnes, et ils se posent en vignettes devant
-//     elles.
+//   - favorites first, marked with a filled star; a row's star
+//     adds it there or removes it, for all lists in the application;
+//   - a search, which filters Milo's accounts and queries the Entra
+//     directory: a person not yet in Milo can be picked there too,
+//     and their account is created at that moment;
+//   - where an actor is merely notified, Entra groups too
+//     ("onGroupsChange"): the search
+//     offers them under the people, and they are placed as chips in front of
+//     them.
 
-// L'annuaire n'est interrogé qu'une fois la saisie posée : pas une requête par
-// touche.
+// The directory is only queried once the input has settled: not one request per
+// keystroke.
 const SEARCH_DELAY = 300;
 const SEARCH_MIN = 2;
 
-// Plus large que les autres listes : le nom, l'étoile au bout, et l'adresse
-// des personnes de l'annuaire.
+// Wider than the other lists: the name, the star at the end, and the address
+// of directory people.
 const LIST_WIDTH = 320;
 
 const RULE = "1px solid var(--mantine-color-default-border)";
@@ -52,13 +52,13 @@ const RULE = "1px solid var(--mantine-color-default-border)";
 const normalizeValue = (text: string): string =>
   text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-/** Une personne dans la liste : son nom en gras, son adresse dessous. */
-// La largeur du bouton des favoris (ActionIcon « sm ») : l'origine d'une
-// personne de l'annuaire s'y centre, sous l'étoile des lignes du dessus.
+/** A person in the list: their name in bold, their address below. */
+// The favorites button's width (ActionIcon "sm"): the origin of a
+// directory person is centered on it, under the stars of the rows above.
 const FAVORITE_WIDTH = "var(--ai-size-sm, calc(1.375rem * var(--mantine-scale)))";
 
 function NameAndAddress({ name, email }: { name: string; email: string }) {
-  // Il prend la place libre : ce qui le suit se range au bout de la ligne.
+  // It takes the free space: what follows is lined up at the end of the row.
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
       <Text size="xs" fw={700} truncate>
@@ -76,25 +76,25 @@ function NameAndAddress({ name, email }: { name: string; email: string }) {
 interface ActorPickerProps {
   label: string;
   users: PublicUser[];
-  /** Les identifiants retenus, en chaînes. */
+  /** The retained identifiers, as strings. */
   value: string[];
   onChange: (value: string[]) => void;
   chipHeight?: number;
   chipGap?: number;
-  /** La vignette d'un acteur retenu ; sa bulle par défaut. */
+  /** A retained actor's chip; its default bubble. */
   renderChip?: (user: PublicUser) => ReactNode;
-  /** Voir ChipPicker : des vignettes qui ne se choisissent pas. */
+  /** See ChipPicker: chips that cannot be chosen. */
   leadingChips?: ReactNode;
-  /** Voir ChipPicker : un déclencheur compact à la place des vignettes. */
+  /** See ChipPicker: a compact trigger in place of the chips. */
   target?: ReactNode;
   position?: FloatingPosition;
-  /** Les groupes Entra retenus, quand le choix en admet (« onGroupsChange »). */
+  /** The retained Entra groups, when the choice allows them ("onGroupsChange"). */
   groups?: EntraPrincipal[];
-  /** Sans elle, la recherche ne propose que des personnes. */
+  /** Without it, the search only offers people. */
   onGroupsChange?: (groups: EntraPrincipal[]) => void;
 }
 
-/** La bulle d'un groupe : la même que celle d'une personne, un pictogramme à la place des initiales. */
+/** A group's bubble: the same as a person's, a pictogram in place of the initials. */
 function GroupAvatar({ group, size }: { group: EntraPrincipal; size: number }) {
   return (
     <Avatar
@@ -131,8 +131,8 @@ export default function ActorPicker({
   const [searchDirectory, setSearchingDirectory] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   /**
-   * Les comptes créés depuis l'annuaire, le temps que la liste des comptes de
-   * l'application les rapporte (elle se relit d'elle-même).
+   * Accounts created from the directory, until the application's account list
+   * brings them back (it re-reads itself).
    */
   const [created, setCreatedUsers] = useState<PublicUser[]>([]);
 
@@ -141,11 +141,11 @@ export default function ActorPicker({
     [users, created],
   );
 
-  // La liste ne garde que les favoris, et les acteurs retenus — le temps
-  // qu'ils le sont, pour pouvoir les décocher. Tous les autres, qu'ils aient
-  // déjà un compte dans Milo ou non, se trouvent par la recherche dans Entra.
-  // Une recherche filtre aussi cette liste, sur le nom et l'adresse, sans
-  // tenir compte des accents. Les favoris d'abord ; chaque groupe par nom.
+  // The list only keeps the favorites, and the retained actors — for as long
+  // as they are, so they can be unchecked. All the others, whether they
+  // already have an account in Milo or not, are found through the Entra search.
+  // A search also filters this list, on name and address, without
+  // regard to accents. Favorites first; each group by name.
   const list = useMemo(() => {
     const term = normalizeValue(search.trim());
     return options
@@ -189,8 +189,8 @@ export default function ActorPicker({
     };
   }, [search, withGroups]);
 
-  // Les groupes retenus restent dans la liste, cochés, pour pouvoir les
-  // retirer ; ceux que la recherche trouve en plus se cochent pour s'ajouter.
+  // The retained groups stay in the list, checked, so they can be
+  // removed; those the search finds in addition are checked to be added.
   const groupsTerm = normalizeValue(search.trim());
   const listGroups = [
     ...groups.filter(
@@ -205,8 +205,8 @@ export default function ActorPicker({
         : [...groups, { ...group, type: "group" }],
     );
 
-  // L'annuaire propose tous ceux que la liste ne montre pas déjà — y compris
-  // ceux qui ont un compte dans Milo : les choisir les pose simplement.
+  // The directory offers everyone the list does not already show — including
+  // those with an account in Milo: choosing them simply places them.
   const newItems = directory.filter(
     (p) =>
       !list.some(
@@ -292,8 +292,8 @@ export default function ActorPicker({
               <PersonAvatar person={u} size={chipHeight} />
               <NameAndAddress name={u.name} email={u.email} />
             </Group>
-            {/* L'étoile ne coche pas la ligne : elle vit dans le libellé de
-                la case, et arrête donc le clic avant lui. */}
+            {/* The star does not check the row: it lives in the checkbox's
+                label, and thus stops the click before it. */}
             <ActionIcon
               component="span"
               role="button"
@@ -310,8 +310,8 @@ export default function ActorPicker({
                 void toggle(u.id);
               }}
             >
-              {/* Un favori, c'est une étoile pleine et jaune ; les autres
-                  n'en montrent que le contour, discret. */}
+              {/* A favorite is a filled, yellow star; the others
+                  only show the outline, discreetly. */}
               {favorite ? (
                 <IconStarFilled
                   size={14}
@@ -335,9 +335,9 @@ export default function ActorPicker({
       listFooter={
         <>
           {newItems.length > 0 && (
-            // Séparés des favoris par un trait, quand il y en a au-dessus ; les
-            // lignes et leurs filets courent d'un bord à l'autre, comme celles
-            // des favoris. La dernière n'a pas de filet dessous.
+            // Separated from the favorites by a line, when there are some above; the
+            // rows and their borders run from edge to edge, like those
+            // of the favorites. The last one has no border below.
             <Stack
               gap={0}
               style={list.length ? { borderTop: RULE } : undefined}
@@ -357,9 +357,9 @@ export default function ActorPicker({
                   data-row
                 >
                   <Group gap={8} wrap="nowrap">
-                    {/* La bulle de la personne, avec ses initiales, comme celle
-                        des comptes au-dessus ; le temps de la création de son
-                        compte, une roue à sa place. */}
+                    {/* The person's bubble, with their initials, like that
+                        of the accounts above; while their account is being
+                        created, a spinner in its place. */}
                     {adding === p.oid ? (
                       <Loader
                         size={chipHeight - 8}
@@ -377,8 +377,8 @@ export default function ActorPicker({
                       />
                     )}
                     <NameAndAddress name={p.name} email={p.email} />
-                    {/* L'origine, au bout de la ligne, comme dans la
-                        recherche des accès. */}
+                    {/* The origin, at the end of the row, as in the
+                        access search. */}
                     <DirectoryOrigin synced={p.synced} width={FAVORITE_WIDTH} />
                   </Group>
                 </UnstyledButton>
@@ -386,8 +386,8 @@ export default function ActorPicker({
             </Stack>
           )}
           {listGroups.length > 0 && (
-            // Les groupes, sous les personnes : un filet les en sépare quand
-            // il y a quelque chose au-dessus.
+            // The groups, under the people: a line separates them when
+            // there is something above.
             <Stack
               gap={0}
               style={

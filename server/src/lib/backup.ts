@@ -1,22 +1,21 @@
-// La sauvegarde et la restauration : la base et les fichiers déposés, en une
-// archive unique.
+// Backup and restore: the database and the uploaded files, in a single
+// archive.
 //
-// Deux partis pris expliquent le reste du fichier.
+// Two design choices explain the rest of the file.
 //
-//   1. La base n'est pas recopiée octet à octet depuis le disque : elle est
-//      écrite par SQLite lui-même (VACUUM INTO), ce qui donne un instantané
-//      cohérent même pendant qu'on écrit, et sans le journal WAL à côté. Une
-//      copie de `data.db` prise à la main, elle, peut manquer les écritures
-//      restées dans le journal.
+//   1. The database is not copied byte for byte from disk: it is written by
+//      SQLite itself (VACUUM INTO), which gives a consistent snapshot even
+//      while writes are happening, and without the WAL journal alongside. A
+//      copy of `data.db` taken by hand, on the other hand, can miss writes
+//      still sitting in the journal.
 //
-//   2. La restauration ne remplace pas le fichier de la base. Le serveur tient
-//      une connexion ouverte et quelques centaines de requêtes préparées
-//      dessus : échanger le fichier sous leurs pieds demanderait de tout
-//      redémarrer. Les données sont donc recopiées table par table dans la
-//      base en place, qui garde son schéma — celui d'aujourd'hui, migrations
-//      comprises. Une sauvegarde plus ancienne est d'abord migrée dans son
-//      propre fichier (migrerLaSauvegarde) : elle arrive au schéma
-//      d'aujourd'hui, et ses données se recopient telles quelles.
+//   2. The restore does not replace the database file. The server holds an
+//      open connection and a few hundred prepared statements on it: swapping
+//      the file from under them would require restarting everything. The data
+//      is therefore copied table by table into the database in place, which
+//      keeps its schema — today's, migrations included. An older backup is
+//      first migrated in its own file (migrateBackup): it reaches today's
+//      schema, and its data is copied as is.
 
 import Database from "better-sqlite3";
 import fs from "node:fs";
@@ -35,20 +34,20 @@ import { ticketPathFor } from "./ticket-files.js";
 import { now } from "./time.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 
-/** Les deux noms que porte une archive de Milo. */
+/** The two names a Milo archive carries. */
 const DATABASE_FILE = "milo.db";
 const MEDIA_FOLDER = "media/";
-/** Le dossier des médias dans les archives d'avant : elles se restaurent encore. */
+/** The media folder in earlier archives: they can still be restored. */
 const LEGACY_MEDIA_FOLDER = "medias/";
-/** Les fichiers des e-mails du support, à part des médias (lib/ticket-files.ts). */
+/** Support e-mail files, apart from the media (lib/ticket-files.ts). */
 const TICKET_FOLDER = "tickets/";
 
 const RESTORE_KEY = "last_restore";
 
 /**
- * Sans ces tables, ce n'est pas une base de Milo. Trois suffisent à écarter
- * une base SQLite quelconque déposée par erreur ; la vérification d'intégrité,
- * elle, écarte un fichier tronqué.
+ * Without these tables, it is not a Milo database. Three are enough to rule
+ * out an arbitrary SQLite database dropped in by mistake; the integrity
+ * check, for its part, rules out a truncated file.
  */
 const EXPECTED_TABLES = ["users", "projects", "task_cards"];
 
@@ -56,7 +55,7 @@ interface NameRow {
   name: string;
 }
 
-/** Les fichiers du dossier des médias qui sont bien les nôtres. */
+/** The files in the media folder that really are ours. */
 const presentMedia = (): string[] =>
   fs.readdirSync(env.mediaPath).filter((file) => mediaPath(file) !== null);
 
@@ -68,7 +67,7 @@ const size = (relativePath: string): number => {
   }
 };
 
-/** Un dossier de travail, et son ménage quoi qu'il advienne. */
+/** A working folder, and its cleanup whatever happens. */
 const inTemporaryFolder = <T>(action: (folder: string) => T): T => {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), "milo-backup-"));
   try {
@@ -78,7 +77,7 @@ const inTemporaryFolder = <T>(action: (folder: string) => T): T => {
   }
 };
 
-/** Ce que la sauvegarde va peser, pour l'annoncer avant de la demander. */
+/** What the backup will weigh, to announce it before it is requested. */
 export const backupInfo = (): BackupInfo => {
   const media = presentMedia();
   return {
@@ -92,8 +91,8 @@ export const backupInfo = (): BackupInfo => {
 export const buildBackup = (): Buffer =>
   inTemporaryFolder((folder) => {
     const copy = path.join(folder, DATABASE_FILE);
-    // VACUUM INTO exige un fichier qui n'existe pas : le dossier vient d'être
-    // créé pour nous seuls.
+    // VACUUM INTO requires a file that does not exist: the folder has just
+    // been created for us alone.
     db.prepare("VACUUM INTO ?").run(copy);
 
     const entries: Entry[] = [{ name: DATABASE_FILE, content: fs.readFileSync(copy) }];
@@ -110,16 +109,16 @@ export const buildBackup = (): Buffer =>
     return pack(entries);
   });
 
-/** Les colonnes d'une table, dans l'une ou l'autre des deux bases ouvertes. */
+/** A table's columns, in either of the two open databases. */
 const columns = (base: string, table: string): string[] =>
   (db.pragma(`${base}.table_info("${table}")`) as NameRow[]).map((c) => c.name);
 
 const verifyDatabase = (relativePath: string): void => {
   let tables = new Set<string>();
 
-  // SQLite dit ce qui ne va pas — fichier tronqué, chiffré, ou qui n'est pas
-  // une base — en levant, et en anglais. Tout cela se ramène ici à une seule
-  // réponse : ce fichier ne se restaure pas.
+  // SQLite reports what is wrong — truncated or encrypted file, or not a
+  // database — by throwing, and in English. All of this boils down here to a
+  // single answer: this file cannot be restored.
   try {
     const base = new Database(relativePath, { readonly: true });
     try {
@@ -144,10 +143,10 @@ const verifyDatabase = (relativePath: string): void => {
 };
 
 /**
- * La sauvegarde, mise au schéma d'aujourd'hui dans son propre fichier : une
- * base d'avant les vues ne se recopie pas telle quelle — ses tableaux n'ont
- * pas de vue, ses catégories d'accès n'existent plus. Ses rattrapages et sa
- * conversion se font donc chez elle, avant d'en recopier quoi que ce soit.
+ * The backup, brought to today's schema in its own file: a database from
+ * before views cannot be copied as is — its boards have no view, its access
+ * categories no longer exist. Its catch-up steps and conversion therefore
+ * happen on its side, before anything is copied from it.
  */
 const migrateBackup = (relativePath: string): void => {
   const base = new Database(relativePath);
@@ -163,13 +162,13 @@ const migrateBackup = (relativePath: string): void => {
 };
 
 /**
- * Le contenu de nos tables, remplacé par celui de la sauvegarde. Tout ou rien :
- * une seule transaction, et la base d'avant si quoi que ce soit échoue.
+ * The content of our tables, replaced by that of the backup. All or nothing:
+ * a single transaction, and the previous database if anything fails.
  *
- * Les clés étrangères sont suspendues le temps de l'opération — les tables se
- * vident et se remplissent dans l'ordre de `sqlite_master`, qui n'est pas
- * celui des dépendances. Le pragma ne se change pas depuis l'intérieur d'une
- * transaction : il se pose avant, et se relève après.
+ * Foreign keys are suspended for the duration of the operation — tables are
+ * emptied and filled in `sqlite_master` order, which is not the dependency
+ * order. The pragma cannot be changed from inside a transaction: it is set
+ * before, and lifted after.
  */
 const replaceData = (relativePath: string): { tables: number; rows: number } => {
   db.pragma("foreign_keys = OFF");
@@ -199,14 +198,14 @@ const replaceData = (relativePath: string): { tables: number; rows: number } => 
       let rows = 0;
 
       for (const table of ourTables) {
-        // Une table que la sauvegarde ne connaît pas est vidée quand même :
-        // ses lignes parleraient d'un état que la sauvegarde ignore.
+        // A table the backup does not know is emptied all the same: its rows
+        // would describe a state the backup does not know about.
         db.prepare(`DELETE FROM main."${table}"`).run();
         if (!backupNames.has(table)) continue;
 
-        // L'intersection des colonnes : celles que la sauvegarde ignore
-        // prennent la valeur par défaut du schéma d'aujourd'hui, celles
-        // qu'elle a en trop sont laissées.
+        // The intersection of columns: those the backup does not know take
+        // the default value of today's schema, those it has in excess are
+        // left out.
         const common = columns("main", table).filter((c) =>
           columns("backup", table).includes(c),
         );
@@ -230,16 +229,16 @@ const replaceData = (relativePath: string): { tables: number; rows: number } => 
 };
 
 /**
- * Les fichiers déposés, remis en place. Ce qui était là et que la sauvegarde
- * ignore n'est pas effacé : plus rien ne le cite, et le ménage des orphelins
- * (lib/media.ts) s'en charge le moment venu.
+ * The uploaded files, put back in place. What was there and the backup does
+ * not know is not erased: nothing cites it any more, and the orphan cleanup
+ * (lib/media.ts) takes care of it in due course.
  */
 const restoreMedia = (files: Map<string, Buffer>): number => {
   let restored = 0;
 
   for (const [name, content] of files) {
-    // Les fichiers des tickets, sous la même garde : un nom des nôtres, dans
-    // leur seul dossier.
+    // Ticket files, under the same guard: one of our names, in their own
+    // folder only.
     if (name.startsWith(TICKET_FOLDER)) {
       const ticketPath = ticketPathFor(name.slice(TICKET_FOLDER.length));
       if (ticketPath) {
@@ -250,9 +249,8 @@ const restoreMedia = (files: Map<string, Buffer>): number => {
     }
     const folder = [MEDIA_FOLDER, LEGACY_MEDIA_FOLDER].find((f) => name.startsWith(f));
     if (!folder) continue;
-    // Le nom est recontrôlé, pas seulement raccourci : une archive fabriquée
-    // à la main ne doit pas pouvoir écrire ailleurs que dans le dossier des
-    // médias.
+    // The name is checked again, not just shortened: a hand-crafted archive
+    // must not be able to write anywhere but in the media folder.
     const relativePath = mediaPath(name.slice(folder.length));
     if (!relativePath) continue;
     fs.writeFileSync(relativePath, content);
@@ -282,8 +280,8 @@ export const restoreFromBackup = (archive: Buffer): RestoreResult => {
     const { tables, rows } = replaceData(relativePath);
     const media = restoreMedia(files);
 
-    // Écrit après coup : la restauration vient de remplacer la table des
-    // réglages, et cette trace-ci parle de maintenant, pas de la sauvegarde.
+    // Written afterwards: the restore has just replaced the settings table,
+    // and this trace speaks of now, not of the backup.
     writeSetting(RESTORE_KEY, now());
 
     return { tables, rows, media };

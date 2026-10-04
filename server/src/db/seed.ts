@@ -1,5 +1,5 @@
-// Jeu d'essai posé sur une base vide, pour que la première ouverture montre
-// quelque chose. Il ne s'exécute que si aucune catégorie n'existe.
+// Sample data placed on an empty database, so that the first launch shows
+// something. It only runs if no category exists.
 
 import type { Database } from "better-sqlite3";
 
@@ -9,8 +9,8 @@ export const seedIfEmpty = (db: Database): void => {
   };
   if (count > 0) return;
 
-  // Les catégories appartiennent à un tableau : celui de la vue Projets,
-  // posé avec les vues de départ (migrations.ts, vuesEtTableaux).
+  // Categories belong to a board: the one of the Projects view, created with
+  // the initial views (migrations.ts, viewsAndBoards).
   const board = db
     .prepare(
       `SELECT b.id FROM boards b JOIN views v ON v.id = b.view_id
@@ -26,7 +26,7 @@ export const seedIfEmpty = (db: Database): void => {
     categoryIds[name] = insertCategory.run(boardId, name).lastInsertRowid;
   }
 
-  // Les contextes du tableau remplacent son « Contexte par défaut ».
+  // The board's contexts replace its "Contexte par défaut".
   db.prepare("DELETE FROM contexts WHERE board_id = ?").run(boardId);
   const insertContext = db.prepare(
     "INSERT INTO contexts (board_id, name, position, created_at) VALUES (?, ?, ?, ?)",

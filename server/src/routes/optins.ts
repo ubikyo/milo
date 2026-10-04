@@ -1,5 +1,5 @@
-// La confirmation des boîtes de support (lib/optin.ts) : ce que le réglage
-// d'une liste de demandes en lit, la relance du code et sa saisie.
+// Confirmation of the support inboxes (lib/optin.ts): what a request list's
+// setting reads of it, resending the code and entering it.
 
 import { Router } from "express";
 import type { MailboxOptinState } from "@milo/shared";
@@ -9,20 +9,20 @@ import { pollMailboxes } from "../lib/support-mail.js";
 import { maintainSubscriptions } from "../lib/support-webhooks.js";
 import { optins } from "../repositories/optins.js";
 
-/** La boîte se relève dès sa confirmation, et Graph prévient de ce qui y arrive. */
+/** The inbox is polled as soon as it is confirmed, and Graph notifies of what arrives in it. */
 const afterConfirmation = (): void => {
-  void pollMailboxes().catch((e: unknown) => console.error("Relève après confirmation :", e));
+  void pollMailboxes().catch((e: unknown) => console.error("Poll after confirmation:", e));
   void maintainSubscriptions().catch((e: unknown) =>
-    console.error("Abonnements après confirmation :", e),
+    console.error("Subscriptions after confirmation:", e),
   );
 };
 
-/** « /api/mailbox-optins » : l'état des adresses, et leur relance. */
+/** "/api/mailbox-optins": the state of the addresses, and resending them. */
 export const optinRoutes = Router();
 
 /**
- * La liste visée : la clé de liste de son widget (LIST_KEY), dans
- * « list_key » — ou « liste », le nom qu'elle portait avant.
+ * The targeted list: its widget's list key (LIST_KEY), in "list_key" — or
+ * "liste", the name it had before.
  */
 const listOf = (source: unknown): string => {
   const fields = (source ?? {}) as { list_key?: unknown; liste?: unknown };
@@ -42,7 +42,7 @@ optinRoutes.get("/", (req, res) => {
     return {
       email,
       status: row?.confirmed_at ? "confirmed" : "pending",
-      // Un code n'est en cours que si l'e-mail est parti et qu'il vaut encore.
+      // A code is only pending if the e-mail was sent and it is still valid.
       sent_at: row?.code ? row.sent_at : "",
     };
   });
@@ -60,7 +60,7 @@ optinRoutes.post("/resend", (req, res, next) => {
     .catch(next);
 });
 
-/** Le code à quatre chiffres de l'e-mail, saisi dans Milo à la place du lien. */
+/** The e-mail's four-digit code, entered in Milo in place of the link. */
 optinRoutes.post("/confirm", (req, res) => {
   requireWidget(req, "support.list", "update");
   const email = typeof req.body?.email === "string" ? req.body.email : "";

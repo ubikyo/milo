@@ -1,5 +1,5 @@
-// Les checklists d'une carte et leurs éléments. Tout s'enregistre au fil des
-// gestes, sans attendre « Enregistrer », et tout part avec la carte
+// A card's checklists and their items. Everything is saved as gestures happen,
+// without waiting for "Enregistrer", and everything goes with the card
 // (ON DELETE CASCADE).
 
 import { Router } from "express";
@@ -29,17 +29,17 @@ const ITEM_NOT_FOUND = "Élément introuvable";
 const CARD_NOT_FOUND = "Carte introuvable";
 
 /**
- * Une date d'échéance s'écrit « AAAA-MM-JJ », comme les sélecteurs de Mantine
- * la produisent. Tout le reste vaut « pas de date » plutôt qu'une erreur : le
- * champ est facultatif.
+ * A due date is written "AAAA-MM-JJ", as Mantine's pickers produce it.
+ * Anything else means "no date" rather than an error: the field is
+ * optional.
  */
 const parseDueDate = (value: unknown): string =>
   /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? "")) ? String(value) : "";
 
 /**
- * La carte visée, si son tableau est ouvert à cette personne et qu'elle peut
- * modifier les tâches de sa société : tout ce qui passe par ici écrit sur la
- * carte.
+ * The targeted card, if its board is open to this person and they can edit
+ * the tasks of its company: everything that goes through here writes to the
+ * card.
  */
 const openCard = (id: unknown, req: Request) => {
   const card = orNotFound(taskCards.byId.get(id), CARD_NOT_FOUND);
@@ -54,9 +54,9 @@ const openChecklist = (id: unknown, req: Request) => {
 };
 
 /**
- * Une checklist a changé : c'est la carte qui la porte que l'on suit, et c'est
- * elle que la notification nomme. Les réordonnancements n'appellent pas cette
- * fonction — glisser un élément ne change pas ce que la checklist dit.
+ * A checklist has changed: it is the card carrying it that is followed, and
+ * that the notification names. Reorderings don't call this function —
+ * dragging an item doesn't change what the checklist says.
  */
 const editedCard = (cardId: unknown, req: Request, except: Id[] = []): void => {
   const card = taskCards.byId.get(cardId);
@@ -72,7 +72,7 @@ const editedCard = (cardId: unknown, req: Request, except: Id[] = []): void => {
   });
 };
 
-/** Une checklist ou l'un de ses éléments supprimé : ceux qui suivent la carte le savent. */
+/** A checklist or one of its items deleted: those following the card are told. */
 const deletionOnCard = (cardId: unknown, req: Request, message: string): void => {
   const card = taskCards.byId.get(cardId);
   if (!card) return;
@@ -87,7 +87,7 @@ const deletionOnCard = (cardId: unknown, req: Request, message: string): void =>
   });
 };
 
-/** Monté sous `/api/task-cards/:id/checklists`. */
+/** Mounted under `/api/task-cards/:id/checklists`. */
 export const cardChecklistRoutes = Router({ mergeParams: true });
 
 cardChecklistRoutes.use(touch("task-lists"));
@@ -104,7 +104,7 @@ cardChecklistRoutes.post("/", (req, res) => {
   res.status(201).json({ ...checklists.byId.get(lastInsertRowid), items: [] });
 });
 
-// L'ordre reçu est celui, complet, des checklists de la carte.
+// The received order is the complete one of the card's checklists.
 cardChecklistRoutes.put("/reorder", (req, res) => {
   const { id } = req.params as { id?: string };
   const card = openCard(id, req);
@@ -113,9 +113,9 @@ cardChecklistRoutes.put("/reorder", (req, res) => {
 
   const order = toIds(ids);
   const known = new Set(checklists.idsOfCard.all(card.id).map((c) => c.id));
-  // Une checklist ne se glisse qu'à l'intérieur de sa carte, et l'ordre reçu
-  // doit toutes les couvrir : sinon les omises garderaient une position
-  // devenue fausse.
+  // A checklist can only be dragged within its card, and the received order
+  // must cover them all: otherwise the omitted ones would keep a position
+  // that has become wrong.
   if (order.length !== known.size || order.some((id) => !known.has(id))) {
     badRequest("L'ordre reçu ne couvre pas les checklists de cette carte");
   }
@@ -125,7 +125,7 @@ cardChecklistRoutes.put("/reorder", (req, res) => {
   res.json(checklistsOfCard(card.id));
 });
 
-/** Monté sous `/api/checklists`. */
+/** Mounted under `/api/checklists`. */
 export const checklistRoutes = Router();
 
 checklistRoutes.use(touch("task-lists"));
@@ -155,8 +155,8 @@ checklistRoutes.delete("/:id", (req, res) => {
   res.status(204).end();
 });
 
-// Un élément naît en bas de sa checklist, sans libellé : on le saisit ensuite
-// sur place.
+// An item is born at the bottom of its checklist, with no label: it is then
+// typed in place.
 checklistRoutes.post("/:id/items", (req, res) => {
   const checklist = openChecklist(req.params.id, req);
   const text = String(req.body.text ?? "").trim();
@@ -168,7 +168,7 @@ checklistRoutes.post("/:id/items", (req, res) => {
   res.status(201).json({ ...checklistItems.byId.get(lastInsertRowid), members: [] });
 });
 
-// L'ordre reçu est celui, complet, des éléments de la checklist.
+// The received order is the complete one of the checklist's items.
 checklistRoutes.put("/:id/items/reorder", (req, res) => {
   const checklist = openChecklist(req.params.id, req);
   const { ids } = req.body;
@@ -176,9 +176,9 @@ checklistRoutes.put("/:id/items/reorder", (req, res) => {
 
   const order = toIds(ids);
   const known = new Set(checklistItems.idsOfChecklist.all(checklist.id).map((i) => i.id));
-  // Un élément ne se glisse qu'à l'intérieur de sa propre checklist, et
-  // l'ordre reçu doit tous les couvrir : sinon les omis garderaient une
-  // position devenue fausse.
+  // An item can only be dragged within its own checklist, and the received
+  // order must cover them all: otherwise the omitted ones would keep a
+  // position that has become wrong.
   if (order.length !== known.size || order.some((id) => !known.has(id))) {
     badRequest("L'ordre reçu ne couvre pas les éléments de cette checklist");
   }
@@ -188,13 +188,13 @@ checklistRoutes.put("/:id/items/reorder", (req, res) => {
   res.json({ ...checklist, items: itemsOfChecklist(checklist.id) });
 });
 
-/** Monté sous `/api/checklist-items`. */
+/** Mounted under `/api/checklist-items`. */
 export const checklistItemRoutes = Router();
 
 checklistItemRoutes.use(touch("task-lists"));
 
-// Chaque champ absent du corps reste tel quel : cocher une case n'efface ni le
-// libellé, ni la date, ni les membres.
+// Every field absent from the body stays as is: ticking a box erases neither
+// the label, nor the date, nor the members.
 checklistItemRoutes.put("/:id", (req, res) => {
   const existing = orNotFound(checklistItems.byId.get(req.params.id), ITEM_NOT_FOUND);
   const checklist = checklistOfItem(existing);
@@ -207,8 +207,8 @@ checklistItemRoutes.put("/:id", (req, res) => {
 
   checklistItems.update.run(text, done, dueDate, existing.id);
 
-  // Qui arrive sur l'élément en est prévenu, à l'écran et par e-mail ; la
-  // notification de modification de la checklist ne le prévient pas en plus.
+  // Whoever is assigned to the item is notified, on screen and by e-mail; the
+  // checklist-modification notification does not notify them on top of that.
   let attached: Id[] = [];
   if (Array.isArray(req.body.member_ids)) {
     const before = new Set(itemMemberIds(existing.id));
@@ -231,8 +231,8 @@ checklistItemRoutes.put("/:id", (req, res) => {
 
   editedCard(checklist.card_id, req, attached);
 
-  // La réponse renvoie la checklist entière, pour que le tiroir se remette à
-  // jour d'un bloc.
+  // The response returns the whole checklist, so that the drawer updates
+  // itself in one go.
   res.json(checklistWithItems(checklist));
 });
 

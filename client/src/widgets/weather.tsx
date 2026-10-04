@@ -23,18 +23,18 @@ import { withField, count, text } from "./types";
 import type { AccessWidget, WidgetConfigProps } from "./types";
 import type { AccessWeather, Id, WeatherPlace } from "@milo/shared";
 
-// La météo d'un lieu : la température, un pictogramme de l'état du ciel, et
-// au choix le ressenti, l'humidité et le vent, puis les prévisions — la
-// courbe des températures ou la pluie des prochaines heures (les graphiques
-// de Mantine), ou la semaine qui vient.
+// The weather of a place: the temperature, a pictogram of the sky's state,
+// and optionally the feels-like temperature, humidity and wind, then the
+// forecasts — the temperature curve or the rain of the coming hours (Mantine's
+// charts), or the week ahead.
 //
-// Les prévisions viennent d'Open-Meteo, par le serveur (server/src/lib/meteo.ts),
-// qui les garde un quart d'heure : la page ne sort pas de l'application. Le
-// lieu se cherche par son nom dans le tiroir ; seules ses coordonnées et son
-// nom sont rangés.
+// The forecasts come from Open-Meteo, through the server
+// (server/src/lib/weather.ts), which keeps them for a quarter of an hour: the
+// page does not leave the application. The place is searched by name in the
+// drawer; only its coordinates and name are stored.
 //
-// Les clés « latitude » et « longitude » sont lues aussi par le serveur
-// (coordonneesMeteo) : elles ne changent pas.
+// The "latitude" and "longitude" keys are also read by the server
+// (weatherCoordinates): they do not change.
 
 const PLACE = "place";
 const LATITUDE = "latitude";
@@ -49,10 +49,10 @@ const DEFAULT_SIZE = 32;
 const SIZE_MIN = 12;
 const SIZE_MAX = 96;
 
-/** La page relit le serveur à ce rythme : c'est lui qui interroge la source. */
+/** The page rereads the server at this rate: it is the server that queries the source. */
 const RELOAD_INTERVAL = 15 * 60_000;
 
-/** La hauteur d'un graphique de prévisions. */
+/** The height of a forecast chart. */
 const CHART_HEIGHT = 110;
 
 const SUGGESTED_FORECASTS = [
@@ -69,8 +69,8 @@ interface Sky {
 }
 
 /**
- * L'état du ciel d'après le code de l'OMM (WMO 4677) qu'Open-Meteo donne.
- * La nuit, un ciel clair montre la lune plutôt que le soleil.
+ * The sky's state from the WMO code (WMO 4677) that Open-Meteo provides.
+ * At night, a clear sky shows the moon rather than the sun.
  */
 const skyOf = (code: number, day = true): Sky => {
   if (code === 0) {
@@ -96,7 +96,7 @@ const skyOf = (code: number, day = true): Sky => {
 
 const degrees = (value: number) => `${Math.round(value)}°`;
 
-/** Une case est cochée par défaut quand elle n'a jamais été réglée. */
+/** A box is checked by default when it has never been set. */
 const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean => {
   const value = (config as Record<string, unknown> | null)?.[key];
   return value === undefined ? defaultValue : Boolean(value);
@@ -107,7 +107,7 @@ const hasLocation = (config: unknown): boolean => {
   return typeof c[LATITUDE] === "number" && typeof c[LONGITUDE] === "number";
 };
 
-/** Les dernières prévisions de chaque élément, pour la durée de la page. */
+/** The latest forecasts of each element, for the duration of the page. */
 const alreadyRead = new Map<string, AccessWeather>();
 
 type State =
@@ -207,7 +207,7 @@ function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
       active = false;
       clearInterval(heartbeat);
     };
-    // La clé porte l'élément et ses coordonnées : c'est ce qui change la météo.
+    // The key carries the element and its coordinates: that is what changes the weather.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
@@ -281,7 +281,7 @@ function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
   );
 }
 
-/** Un lieu en valeur de liste : ses coordonnées, assez pour le retrouver. */
+/** A place as a list value: its coordinates, enough to find it again. */
 const valueFor = (latitude: number, longitude: number) => `${latitude},${longitude}`;
 
 function PlaceField({ config, onChange }: WidgetConfigProps) {
@@ -296,7 +296,7 @@ function PlaceField({ config, onChange }: WidgetConfigProps) {
     : null;
 
   useEffect(() => {
-    // La saisie qui reprend le lieu choisi n'est pas une recherche.
+    // The input that takes the chosen place back is not a search.
     if (searched.trim().length < 2 || searched === name) return;
     let active = true;
     setSearching(true);
@@ -325,7 +325,7 @@ function PlaceField({ config, onChange }: WidgetConfigProps) {
       searchable
       searchValue={input}
       onSearchChange={setInput}
-      // Le serveur a déjà trié : la liste ne refiltre pas ce qu'il a trouvé.
+      // The server has already sorted: the list does not refilter what it found.
       filter={({ options: o }) => o}
       nothingFoundMessage={input.trim().length < 2 ? "Tapez au moins deux lettres" : "Aucun lieu"}
       rightSection={search ? <Loader size="xs" /> : undefined}
@@ -358,7 +358,7 @@ export const weatherWidget: AccessWidget = {
 
   margins: () => ({ top: 0, bottom: 15 }),
 
-  // Il dessine lui-même son cadre, réglé dans le bloc « Apparence » du tiroir.
+  // It draws its own frame, set in the drawer's "Apparence" block.
   ownFrame: true,
 
   Config: ({ config, onChange }) => (

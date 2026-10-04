@@ -1,13 +1,13 @@
-// L'ordre des vues dans le sélecteur du bas, propre à chaque compte. Celui
-// des tableaux d'une vue se range avec eux (routes/boards.ts).
+// The order of the views in the bottom selector, specific to each account.
+// That of a view's boards is stored with them (routes/boards.ts).
 
 export const TAB_ORDER_MODES = ["views"] as const;
 
 export type TabOrderMode = (typeof TAB_ORDER_MODES)[number];
 
 /**
- * L'ordre rangé de chaque rangée : les valeurs des onglets, dans l'ordre
- * voulu. Vide tant que le compte ne l'a pas changé.
+ * The stored order of each row: the tab values, in the
+ * wanted order. Empty until the account has changed it.
  */
 export type TabOrders = Record<TabOrderMode, string[]>;
 
@@ -18,9 +18,9 @@ export const emptyTabOrders = (): TabOrders =>
   Object.fromEntries(TAB_ORDER_MODES.map((m) => [m, []])) as unknown as TabOrders;
 
 /**
- * Les onglets dans l'ordre rangé. Ceux que l'ordre ne cite pas — un onglet
- * ajouté depuis — gardent leur rang par défaut, à la suite des autres ; ceux
- * qu'il cite et qui n'existent plus sont ignorés.
+ * The tabs in the stored order. Those the order does not mention — a tab
+ * added since — keep their default rank, after the others; those
+ * it mentions that no longer exist are ignored.
  */
 export const orderTabs = <T extends { value: string }>(tabs: T[], order: string[]): T[] => {
   const rank = new Map(order.map((v, i) => [v, i]));

@@ -15,9 +15,9 @@ import SupportRequestsList, {
 import type { IndicatorConfigProps, SupportIndicatorWidget } from "./types";
 
 /**
- * Les réglages de la liste : les adresses dont elle reçoit les demandes,
- * chacune vers un contexte du tableau et confirmée par sa boîte, ce qu'elle
- * fait des e-mails relevés, puis ses colonnes.
+ * The list's settings: the addresses it receives requests from,
+ * each to a board context and confirmed by its inbox, what it
+ * does with the retrieved e-mails, then its columns.
  */
 function ListFields(props: IndicatorConfigProps) {
   return (
@@ -28,7 +28,7 @@ function ListFields(props: IndicatorConfigProps) {
   );
 }
 
-/** La liste, ou l'invite à revoir ses réglages quand ses boîtes ne tiennent pas. */
+/** The list, or the prompt to review its settings when its inboxes do not hold. */
 function ListIndicator({ config }: { config: unknown }) {
   const { contexts } = useReferences();
   const ids = contexts.map((c) => c.id);
@@ -36,13 +36,13 @@ function ListIndicator({ config }: { config: unknown }) {
     typeof b.email === "string" ? b.email : "",
   );
   const { isRead, confirmed } = useConfirmations(listKey(config), emails);
-  // Chaque boîte doit avoir une adresse e-mail lisible, son contexte, et
-  // être confirmée.
+  // Each inbox must have a readable e-mail address, its context, and
+  // be confirmed.
   if (inboxesWithProblem(config, MAILBOXES, "email", ids, looksLikeAddress)) {
     return <ConfigurationProblem widget={listIndicator.label} />;
   }
-  // Tant que les confirmations ne sont pas lues, rien ne se montre : la liste
-  // ne paraît pas pour céder la place à l'avertissement un instant après.
+  // As long as the confirmations are not read, nothing shows: the list
+  // does not appear only to make way for the warning a moment later.
   if (!isRead) return null;
   if (emails.some((e) => !confirmed(e))) {
     return <ConfigurationProblem widget={listIndicator.label} />;
@@ -50,10 +50,10 @@ function ListIndicator({ config }: { config: unknown }) {
   return <SupportRequestsList config={config} />;
 }
 
-// La liste des demandes, en widget : elle se pose dans une section comme un
-// indicateur, et sa configuration ne dit que les colonnes qu'elle montre. Ce
-// qu'elle liste — l'onglet ouvert, trié, filtré — vient de la page
-// (SupportListeContext).
+// The requests list, as a widget: it sits in a section like an
+// indicator, and its configuration only says which columns it shows. What
+// it lists — the open tab, sorted, filtered — comes from the page
+// (SupportListContext).
 
 export const listIndicator: SupportIndicatorWidget = {
   type: "list",
@@ -64,7 +64,7 @@ export const listIndicator: SupportIndicatorWidget = {
   ownClicks: true,
   fill: true,
   Display: ({ config }) => <ListIndicator config={config} />,
-  // Les boîtes de réception portent leur contexte et leur état sur la ligne.
+  // Inboxes carry their context and state on the row.
   drawerSize: DRAWER_WIDTH + 100,
   Config: ListFields,
 };

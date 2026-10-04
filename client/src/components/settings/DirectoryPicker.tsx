@@ -7,10 +7,10 @@ import { errorMessage } from "../../lib/errors";
 import type { EntraPrincipal } from "@milo/shared";
 import type { SelectProps } from "@mantine/core";
 
-// Le temps de laisser finir la frappe avant d'interroger l'annuaire.
+// The time to let typing finish before querying the directory.
 const WAITING = 300;
 
-/** La clé d'un principal dans la liste : un utilisateur et un groupe peuvent partager un nom. */
+/** A principal's key in the list: a user and a group can share a name. */
 const key = (p: EntraPrincipal) => `${p.type}:${p.id}`;
 
 interface DirectoryPickerProps extends Omit<
@@ -19,19 +19,19 @@ interface DirectoryPickerProps extends Omit<
 > {
   value: EntraPrincipal | null;
   onChange: (principal: EntraPrincipal | null) => void;
-  /** Ne chercher que des groupes : celui des administrateurs. */
+  /** Search only for groups: that of the administrators. */
   groupsOnly?: boolean;
   /**
-   * Repartir d'un champ vide après chaque choix : la ligne d'ajout des accès,
-   * prête pour le suivant.
+   * Restart from an empty field after each choice: the access add row,
+   * ready for the next.
    */
   resetOnSelect?: boolean;
 }
 
 /**
- * Un utilisateur ou un groupe de l'annuaire Entra, cherché pendant la frappe
- * — deux caractères au moins. Ce que Microsoft répond en cas d'échec
- * (permission manquante, par exemple) s'affiche à la place des résultats.
+ * A user or group from the Entra directory, searched while typing
+ * — two characters at least. What Microsoft answers on failure
+ * (missing permission, for example) is displayed in place of the results.
  */
 export default function DirectoryPicker({
   value,
@@ -47,7 +47,7 @@ export default function DirectoryPicker({
 
   useEffect(() => {
     const term = search.trim();
-    // Le champ affiche le nom du principal choisi : ce n'est pas une recherche.
+    // The field shows the chosen principal's name: it is not a search.
     if (term.length < 2 || term === value?.name) {
       setFound([]);
       return undefined;
@@ -75,7 +75,7 @@ export default function DirectoryPicker({
     };
   }, [search, groupsOnly, value?.name]);
 
-  // Le principal choisi reste dans la liste, sans quoi le champ se viderait.
+  // The chosen principal stays in the list, otherwise the field would empty.
   const all =
     value && !matches.some((p) => key(p) === key(value))
       ? [value, ...matches]
@@ -89,13 +89,13 @@ export default function DirectoryPicker({
       value={value ? key(value) : null}
       onChange={(v) => {
         onChange(v ? (byKey.get(v) ?? null) : null);
-        // Mantine pose le nom choisi dans le champ juste après : on l'efface
-        // derrière lui.
+        // Mantine puts the chosen name in the field just afterwards: we clear it
+        // behind it.
         if (v && resetOnSelect) window.setTimeout(() => setSearch(""), 0);
       }}
       searchValue={search}
       onSearchChange={setSearch}
-      // L'annuaire a déjà filtré : la liste ne refiltre pas derrière lui.
+      // The directory has already filtered: the list does not filter again behind it.
       filter={({ options }) => options}
       nothingFoundMessage={
         error ??
@@ -121,8 +121,8 @@ export default function DirectoryPicker({
                 </Text>
               )}
             </div>
-            {/* L'origine du compte, à droite : deux comptes de même nom et
-                de même adresse se distinguent ainsi. */}
+            {/* The account's origin, on the right: two accounts with the same name and
+                the same address can thus be told apart. */}
             {p && <DirectoryOrigin synced={p.synced} />}
           </Group>
         );

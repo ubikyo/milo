@@ -12,8 +12,8 @@ import { ROUNDING, NAME_INSET, rowStyle } from "../ui/DrawerRows";
 import CardChoice from "./CardChoice";
 
 /**
- * Une dépendance pas encore enregistrée : sa relation est choisie, il lui
- * manque l'autre carte. Elle part au serveur dès qu'on la choisit.
+ * A dependency not yet saved: its relation is chosen, the other card is
+ * missing. It is sent to the server as soon as it is chosen.
  */
 export interface DraftDependency {
   key: number;
@@ -22,32 +22,32 @@ export interface DraftDependency {
 
 let nextKey = 1;
 
-/** Une ligne vide de plus, ouverte sur « Est bloqué par ». */
+/** One more empty row, opened on "Est bloqué par". */
 export const newDraft = (): DraftDependency => ({
   key: nextKey++,
   relation: "blocked_by",
 });
 
-// En tête de ligne, la relation prend sa majuscule : « Est bloqué par ».
+// At the start of the row, the relation is capitalized: "Est bloqué par".
 const OPTIONS_RELATION = RELATIONS.map((r) => ({
   value: r.value,
   label: r.label.charAt(0).toUpperCase() + r.label.slice(1),
 }));
 
-// Le texte des champs commence à cet écart de leur bord, comme les dates de
-// l'échéance (CardEcheance) : la ligne pose le premier à RETRAIT_NOM.
+// The text of the fields starts at this distance from their edge, like the
+// dates of the due date (CardDueDate): the row sets the first one at NAME_INSET.
 const FIELD_INSET = 5;
 
-// Le choix de la relation prend la largeur de la plus longue, à la taille des
-// champs « xs » (12 px), avec la place de son chevron : les lignes s'alignent.
+// The relation picker takes the width of the longest, at the size of the
+// "xs" fields (12 px), with room for its chevron: the rows line up.
 const relationWidth = () =>
   Math.max(...OPTIONS_RELATION.map((r) => textWidth(r.label, 12))) + FIELD_INSET + 28;
 
 /**
- * Les dépendances d'une carte, sous la même allure que son échéance : une
- * ligne grise par dépendance — la relation à gauche, l'autre carte à droite,
- * cherchée dans le tableau puis dans les autres. Tout s'enregistre au fil des
- * gestes ; la carte d'en face montre la relation inverse.
+ * A card's dependencies, in the same style as its due date: one gray
+ * row per dependency — the relation on the left, the other card on the
+ * right, searched in the board then in the others. Everything is saved
+ * as you go; the card on the other side shows the inverse relation.
  */
 interface CardDependenciesProps {
   cardId: Id;
@@ -106,7 +106,7 @@ export default function CardDependencies({
     }
   };
 
-  /** Une ligne : la relation, l'autre carte, et de quoi la retirer. */
+  /** A row: the relation, the other card, and a way to remove it. */
   const row = (
     rank: number,
     key: string,

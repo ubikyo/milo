@@ -5,17 +5,17 @@ import { NAME, IndicatorTitle } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 import type { Actor, Id } from "@milo/shared";
 
-// La part de chaque acteur dans les demandes de la société regardée, en barres
-// radiales. Un anneau « Total » porte toutes les demandes : c'est lui qui fixe
-// l'échelle, et chaque acteur se lit par rapport à lui. Une demande à deux
-// acteurs compte pour chacun.
+// Each actor's share in the requests of the company being viewed, as radial
+// bars. A "Total" ring holds all the requests: it sets
+// the scale, and each actor is read relative to it. A request with two
+// actors counts for each.
 
 const LABEL = "Acteurs";
 
-/** Toutes les demandes : l'anneau qui donne l'échelle. */
+/** All the requests: the ring that gives the scale. */
 const TOTAL = "Total";
 
-/** Le total en gris, puis une couleur par acteur ; la palette reboucle au-delà. */
+/** The total in gray, then one color per actor; the palette loops beyond that. */
 const TOTAL_COLOR = "gray.6";
 const COLORS = ["blue.6", "teal.6", "orange.6", "grape.6", "yellow.6", "red.6", "cyan.6", "pink.6", "lime.6", "indigo.6"];
 const color = (rank: number) =>
@@ -24,9 +24,9 @@ const color = (rank: number) =>
 const CHART_HEIGHT = 240;
 
 /**
- * Les anneaux des acteurs : « acteurs » donne, élément par élément — demande,
- * projet, carte —, ceux qui le portent. Les modes Projet et Tâche s'en
- * servent aussi. « unite » nomme ce qui se compte, dans la bulle du survol.
+ * The actors' rings: "actors" gives, item by item — request,
+ * project, card —, those who carry it. Project and Task modes use it
+ * too. "unit" names what is counted, in the hover bubble.
  */
 export function ActorRings({ actors, unit }: { actors: Actor[][]; unit: string }) {
   const byActor = new Map<Id, { name: string; value: number }>();
