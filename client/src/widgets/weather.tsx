@@ -36,14 +36,14 @@ import type { AccessWeather, Id, WeatherPlace } from "@milo/shared";
 // Les clés « latitude » et « longitude » sont lues aussi par le serveur
 // (coordonneesMeteo) : elles ne changent pas.
 
-const PLACE = "lieu";
+const PLACE = "place";
 const LATITUDE = "latitude";
 const LONGITUDE = "longitude";
-const SIZE = "taille";
-const SHOW_LOCATION = "afficherLieu";
+const SIZE = "size";
+const SHOW_LOCATION = "showPlace";
 const DETAILS = "details";
-const FORECASTS = "previsions";
-const FRAMED = "encadre";
+const FORECASTS = "forecast";
+const FRAMED = "framed";
 
 const DEFAULT_SIZE = 32;
 const SIZE_MIN = 12;
@@ -56,10 +56,10 @@ const RELOAD_INTERVAL = 15 * 60_000;
 const CHART_HEIGHT = 110;
 
 const SUGGESTED_FORECASTS = [
-  { value: "aucune", label: "Aucune" },
+  { value: "none", label: "Aucune" },
   { value: "temperature", label: "Températures sur 24 h" },
-  { value: "pluie", label: "Risque de pluie sur 24 h" },
-  { value: "semaine", label: "La semaine" },
+  { value: "rain", label: "Risque de pluie sur 24 h" },
+  { value: "week", label: "La semaine" },
 ];
 
 interface Sky {
@@ -111,9 +111,9 @@ const hasLocation = (config: unknown): boolean => {
 const alreadyRead = new Map<string, AccessWeather>();
 
 type State =
-  | { phase: "attente" }
-  | { phase: "pret"; weather: AccessWeather }
-  | { phase: "erreur"; message: string };
+  | { phase: "loading" }
+  | { phase: "ready"; weather: AccessWeather }
+  | { phase: "error"; message: string };
 
 function Forecasts({ weather, what }: { weather: AccessWeather; what: string }) {
   if (what === "temperature") {
@@ -122,7 +122,7 @@ function Forecasts({ weather, what }: { weather: AccessWeather; what: string }) 
       <AreaChart
         h={CHART_HEIGHT}
         data={data}
-        dataKey="heure"
+        dataKey="hour"
         series={[{ name: "temperature", label: "Température", color: "orange.6" }]}
         curveType="natural"
         gridAxis="none"
@@ -134,14 +134,14 @@ function Forecasts({ weather, what }: { weather: AccessWeather; what: string }) 
       />
     );
   }
-  if (what === "pluie") {
+  if (what === "rain") {
     const data = weather.hourly.map((h) => ({ hour: `${h.time.slice(11, 13)} h`, rain: h.precipitation }));
     return (
       <BarChart
         h={CHART_HEIGHT}
         data={data}
-        dataKey="heure"
-        series={[{ name: "pluie", label: "Risque de pluie", color: "blue.6" }]}
+        dataKey="hour"
+        series={[{ name: "rain", label: "Risque de pluie", color: "blue.6" }]}
         gridAxis="none"
         unit=" %"
         yAxisProps={{ width: 28, domain: [0, 100] }}
@@ -149,7 +149,7 @@ function Forecasts({ weather, what }: { weather: AccessWeather; what: string }) 
       />
     );
   }
-  if (what === "semaine") {
+  if (what === "week") {
     const day = new Intl.DateTimeFormat("fr-FR", { weekday: "short" });
     return (
       <SimpleGrid cols={weather.daily.length} spacing={4}>
@@ -182,10 +182,10 @@ function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
   const longitude = count(config, LONGITUDE, Number.NaN);
   const key = `${blockId}|${latitude}|${longitude}`;
   const size = count(config, SIZE, DEFAULT_SIZE);
-  const forecasts = text(config, FORECASTS, "aucune");
+  const forecasts = text(config, FORECASTS, "none");
   const [state, setState] = useState<State>(() => {
     const weather = alreadyRead.get(key);
-    return weather ? { phase: "pret", weather } : { phase: "attente" };
+    return weather ? { phase: "ready", weather } : { phase: "loading" };
   });
 
   useEffect(() => {
@@ -196,11 +196,11 @@ function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
         .getAccessWeather(blockId)
         .then((weather) => {
           alreadyRead.set(key, weather);
-          if (active) setState({ phase: "pret", weather });
+          if (active) setState({ phase: "ready", weather });
         })
-        .catch((e: Error) => active && setState({ phase: "erreur", message: e.message }));
+        .catch((e: Error) => active && setState({ phase: "error", message: e.message }));
     const known = alreadyRead.get(key);
-    setState(known ? { phase: "pret", weather: known } : { phase: "attente" });
+    setState(known ? { phase: "ready", weather: known } : { phase: "loading" });
     read();
     const heartbeat = setInterval(read, RELOAD_INTERVAL);
     return () => {
@@ -220,7 +220,7 @@ function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
         </Group>
       );
     }
-    if (state.phase === "attente") {
+    if (state.phase === "loading") {
       return (
         <Group gap="xs" c="dimmed" h={size * 1.4}>
           <Loader size="xs" color="gray" />
@@ -228,7 +228,7 @@ function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
         </Group>
       );
     }
-    if (state.phase === "erreur") {
+    if (state.phase === "error") {
       return (
         <Text size="sm" c="red" lineClamp={2}>
           {state.message}
@@ -275,7 +275,7 @@ function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
 
   if (!isChecked(config, FRAMED, false)) return content;
   return (
-    <Box className={classes.encart} style={{ border: "none" }}>
+    <Box className={classes.inset} style={{ border: "none" }}>
       {content}
     </Box>
   );
@@ -349,7 +349,7 @@ export const weatherWidget: AccessWidget = {
     [SIZE]: DEFAULT_SIZE,
     [SHOW_LOCATION]: true,
     [DETAILS]: false,
-    [FORECASTS]: "aucune",
+    [FORECASTS]: "none",
     [FRAMED]: false,
   },
   ownClicks: true,
@@ -379,7 +379,7 @@ export const weatherWidget: AccessWidget = {
       <Select
         label="Prévisions"
         data={SUGGESTED_FORECASTS}
-        value={text(config, FORECASTS, "aucune")}
+        value={text(config, FORECASTS, "none")}
         onChange={(v) => v && onChange(withField(config, FORECASTS, v))}
         allowDeselect={false}
         w={240}

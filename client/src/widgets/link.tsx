@@ -19,10 +19,10 @@ import type { AccessWidget, WidgetDisplayProps } from "./types";
 // clic attend de savoir s'il en vient un second. C'est ce que fait déjà une
 // carte du mode Tâche.
 
-const LABEL = "libelle";
+const LABEL = "label";
 const URL = "url";
-const ACTIVE = "actif";
-const COLOR = "couleur";
+const ACTIVE = "enabled";
+const COLOR = "color";
 
 /** La couleur d'un lien qui n'en a pas reçu : celle du texte, selon le thème. */
 const DEFAULT_COLOR = "var(--mantine-color-text)";
@@ -216,7 +216,7 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
       // d'équivalent en ligne (assets/styles/AccessLink.module.css).
       c={color}
       underline="never"
-      className={classes.lien}
+      className={classes.link}
       onClick={(e) => {
         e.preventDefault();
         click();

@@ -1,7 +1,7 @@
 let measureContext: CanvasRenderingContext2D | null = null;
 
 /**
- * La largeur d'un petit champ discret (EcartField.module.css) qui montre ce
+ * La largeur d'un petit champ discret (GapField.module.css) qui montre ce
  * texte : texte, air et bordure.
  */
 export const fieldWidth = (text: string): number =>
@@ -19,7 +19,7 @@ export const textWidth = (text: string, size: number): number => {
   measureContext ??= document.createElement("canvas").getContext("2d");
   if (!measureContext) return text.length * size * 0.6;
   measureContext.font = `${size}px ${getComputedStyle(document.body).fontFamily}`;
-  const largeur = Math.ceil(measureContext.measureText(text).width);
-  measures.set(key, largeur);
-  return largeur;
+  const width = Math.ceil(measureContext.measureText(text).width);
+  measures.set(key, width);
+  return width;
 };

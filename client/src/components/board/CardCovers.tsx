@@ -1,7 +1,7 @@
 import { Group, Input, Menu, Stack } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
-import { ROTATIONS_COUVERTURE } from "@milo/shared";
+import { COVER_ROTATIONS } from "@milo/shared";
 import type { CardCover } from "@milo/shared";
 import { RED } from "../../themes/colors";
 import AddButton from "../ui/AddButton";
@@ -10,7 +10,7 @@ import PointMenu, { type PointMenuPosition } from "../ui/PointMenu";
 import { FileRow, useOrderedFiles } from "./CardAttachments";
 import { SmallChoice } from "./CardDueDate";
 
-const ROTATIONS = ROTATIONS_COUVERTURE.map((r) => ({ value: String(r.value), label: r.label }));
+const ROTATIONS = COVER_ROTATIONS.map((r) => ({ value: String(r.value), label: r.label }));
 
 /**
  * Les images de couverture d'une carte, en tête de sa fiche, sous la même
@@ -19,7 +19,7 @@ const ROTATIONS = ROTATIONS_COUVERTURE.map((r) => ({ value: String(r.value), lab
  * première est celle que la carte montre sur le tableau —, et l'intervalle de
  * rotation, à droite de l'intitulé, les fait se relayer.
  *
- * Le bloc porte « data-couvertures » : un fichier lâché dessus devient une
+ * Le bloc porte « data-covers » : un fichier lâché dessus devient une
  * couverture plutôt qu'une pièce jointe (CardDrawer).
  */
 interface CardCoversProps {
@@ -51,7 +51,7 @@ export default function CardCovers({
   if (covers.length === 0) return null;
 
   return (
-    <div data-couvertures>
+    <div data-covers>
       <Group justify="space-between" align="flex-end" wrap="nowrap">
         <Input.Label>Images de couverture</Input.Label>
         <SmallChoice

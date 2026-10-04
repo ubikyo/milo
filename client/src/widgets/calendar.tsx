@@ -15,9 +15,9 @@ import type { AccessCalendarEvent, Id } from "@milo/shared";
 // permission d'application Calendars.Read) : chacun voit les siens, quel que
 // soit le tableau. Un jour choisi montre ses rendez-vous sous le mois.
 
-const APPOINTMENTS = "rendezVous";
-const LIST = "liste";
-const FRAMED = "encadre";
+const APPOINTMENTS = "showEvents";
+const LIST = "showList";
+const FRAMED = "framed";
 
 /** La page relit l'agenda à ce rythme : un rendez-vous pris ailleurs finit par paraître. */
 const RELOAD_INTERVAL = 5 * 60_000;
@@ -46,16 +46,16 @@ const daysOf = (r: AccessCalendarEvent): string[] => {
 const hour = (iso: string) => dayjs(iso).format("HH:mm");
 
 type State =
-  | { phase: "attente" }
-  | { phase: "pret"; appointments: AccessCalendarEvent[] }
-  | { phase: "erreur"; message: string };
+  | { phase: "loading" }
+  | { phase: "ready"; appointments: AccessCalendarEvent[] }
+  | { phase: "error"; message: string };
 
 function CalendarWidget({ blockId, config }: { blockId: Id; config: unknown }) {
   const withAppointments = isChecked(config, APPOINTMENTS, false);
   const withList = isChecked(config, LIST, true);
   const [months, setMonth] = useState(() => dayjs().startOf("month").format("YYYY-MM-DD"));
   const [selected, setChosen] = useState(() => dayjs().format("YYYY-MM-DD"));
-  const [state, setState] = useState<State>({ phase: "attente" });
+  const [state, setState] = useState<State>({ phase: "loading" });
 
   // La grille montre quelques jours des mois voisins : la période les couvre.
   useEffect(() => {
@@ -66,8 +66,8 @@ function CalendarWidget({ blockId, config }: { blockId: Id; config: unknown }) {
     const read = () =>
       api
         .getAccessCalendar(blockId, start, end)
-        .then((appointments) => active && setState({ phase: "pret", appointments }))
-        .catch((e: Error) => active && setState({ phase: "erreur", message: e.message }));
+        .then((appointments) => active && setState({ phase: "ready", appointments }))
+        .catch((e: Error) => active && setState({ phase: "error", message: e.message }));
     read();
     const heartbeat = setInterval(read, RELOAD_INTERVAL);
     return () => {
@@ -78,7 +78,7 @@ function CalendarWidget({ blockId, config }: { blockId: Id; config: unknown }) {
 
   const byDay = useMemo(() => {
     const card = new Map<string, AccessCalendarEvent[]>();
-    if (state.phase !== "pret") return card;
+    if (state.phase !== "ready") return card;
     for (const r of state.appointments) {
       for (const day of daysOf(r)) card.set(day, [...(card.get(day) ?? []), r]);
     }
@@ -110,12 +110,12 @@ function CalendarWidget({ blockId, config }: { blockId: Id; config: unknown }) {
           );
         }}
       />
-      {withAppointments && state.phase === "erreur" && (
+      {withAppointments && state.phase === "error" && (
         <Text size="xs" c="red" lineClamp={3}>
           {state.message}
         </Text>
       )}
-      {withAppointments && withList && state.phase === "pret" && (
+      {withAppointments && withList && state.phase === "ready" && (
         <Stack gap={4}>
           <Text size="xs" c="dimmed" tt="capitalize">
             {dayjs(selected).format("dddd D MMMM")}
@@ -164,7 +164,7 @@ function CalendarWidget({ blockId, config }: { blockId: Id; config: unknown }) {
 
   if (!isChecked(config, FRAMED, false)) return content;
   return (
-    <Box className={classes.encart} style={{ border: "none" }}>
+    <Box className={classes.inset} style={{ border: "none" }}>
       {content}
     </Box>
   );

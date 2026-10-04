@@ -16,7 +16,7 @@ import type { Request } from "express";
 import { HttpError, badRequest, notFound, orNotFound } from "../lib/http.js";
 import { require, requestCan } from "../lib/rights.js";
 import { endOfSupport } from "../lib/endoflife.js";
-import { decompresser, readXml, textOf } from "../lib/inventory.js";
+import { decompress, readXml, textOf } from "../lib/inventory.js";
 import { parisTime, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import {
@@ -72,7 +72,7 @@ inventoryRoutes.post("/", agentBody, (req: Request, res) => {
 
   let tree;
   try {
-    tree = readXml(decompresser(body as Buffer));
+    tree = readXml(decompress(body as Buffer));
   } catch {
     badRequest("Inventaire illisible");
     return;

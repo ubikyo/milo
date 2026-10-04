@@ -63,11 +63,11 @@ const SOURCES = "sources";
 /** L'adresse unique d'avant la liste, relue tant que la liste n'a pas été enregistrée. */
 const FEED_URL = "url";
 /** Vrai quand les articles se regroupent par source plutôt que de se mêler par date. */
-const GROUP = "regrouper";
-const QUANTITY = "quantite";
+const GROUP = "group";
+const QUANTITY = "count";
 const DATES = "dates";
-const INTERVAL = "intervalle";
-const FRAMED = "encadre";
+const INTERVAL = "interval";
+const FRAMED = "framed";
 
 /** Assez pour suivre une source, assez peu pour ne pas envahir la colonne. */
 const QUANTITY_DEFAULT = 5;
@@ -238,15 +238,15 @@ const readableAddress = (url: string): boolean => {
 };
 
 type State =
-  | { phase: "attente" }
-  | { phase: "pret"; sources: Source[] }
-  | { phase: "erreur"; message: string };
+  | { phase: "loading" }
+  | { phase: "ready"; sources: Source[] }
+  | { phase: "error"; message: string };
 
 function Feed({ blockId, config }: { blockId: Id; config: unknown }) {
   const content = <Articles blockId={blockId} config={config} />;
   if (!isFramed(config)) return content;
   return (
-    <Box className={inset.encart} style={{ border: "none" }}>
+    <Box className={inset.inset} style={{ border: "none" }}>
       {content}
     </Box>
   );
@@ -261,7 +261,7 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
   const allReadable = urls.length > 0 && urls.every(readableAddress);
   const [state, setState] = useState<State>(() => {
     const sources = alreadyRead.get(key);
-    return sources ? { phase: "pret", sources } : { phase: "attente" };
+    return sources ? { phase: "ready", sources } : { phase: "loading" };
   });
 
   // Les adresses et la quantité sont celles que le serveur lit dans l'élément
@@ -277,12 +277,12 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
         .then((feed) => {
           const sources = sourcesRead(feed);
           alreadyRead.set(key, sources);
-          if (active) setState({ phase: "pret", sources });
+          if (active) setState({ phase: "ready", sources });
         })
-        .catch((e: Error) => active && setState({ phase: "erreur", message: e.message }));
+        .catch((e: Error) => active && setState({ phase: "error", message: e.message }));
     // Déjà lus, les articles restent à l'écran le temps de la relecture.
     const known = alreadyRead.get(key);
-    setState(known ? { phase: "pret", sources: known } : { phase: "attente" });
+    setState(known ? { phase: "ready", sources: known } : { phase: "loading" });
     read();
     const heartbeat = setInterval(read, RELOAD_INTERVAL);
     return () => {
@@ -298,7 +298,7 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
   // Le chargement tient déjà la hauteur des articles attendus, ligne pour
   // ligne : sans cela, chaque flux grandirait d'un coup à son arrivée et
   // repousserait ce qui le suit, l'un après l'autre.
-  if (state.phase === "attente") {
+  if (state.phase === "loading") {
     // Regroupés, chaque source qui a sa part ajoute la ligne de son nom.
     const expected = grouped ? quantity + Math.min(urls.length, quantity) : quantity;
     return (
@@ -322,10 +322,10 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
   // Aucune source ne répond, ou ce qu'elles rendent n'est pas un flux : les
   // adresses sont à revoir aussi. Ce que le serveur a vu se lit au survol.
   // Une source en échec parmi d'autres qui répondent se tait simplement.
-  const failing = state.phase === "erreur" ? [] : state.sources.filter((s) => s.error);
-  if (state.phase === "erreur" || failing.length === state.sources.length) {
+  const failing = state.phase === "error" ? [] : state.sources.filter((s) => s.error);
+  if (state.phase === "error" || failing.length === state.sources.length) {
     const message =
-      state.phase === "erreur"
+      state.phase === "error"
         ? state.message
         : failing.map((s) => `${nameOf(s.url)} : ${s.error}`).join("\n");
     return (
@@ -349,7 +349,7 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
         lineClamp={1}
         c="var(--mantine-color-text)"
         underline="never"
-        className={classes.lien}
+        className={classes.link}
         // Mêlés, les articles de plusieurs sources disent la leur au survol.
         title={source ? `${title} — ${source}` : title}
       >
@@ -445,7 +445,7 @@ function useProbe(url: string): AccessFeedProbe | null {
           probed.set(url, s);
           if (active) setProbe(s);
         })
-        .catch((e: Error) => active && setProbe({ state: "injoignable", message: e.message }));
+        .catch((e: Error) => active && setProbe({ state: "unreachable", message: e.message }));
     }, PROBE_DELAY);
     return () => {
       active = false;
@@ -469,7 +469,7 @@ function Label({ probe }: { probe: AccessFeedProbe }) {
       title={ok ? undefined : probe.message}
       style={{ flexShrink: 0 }}
     >
-      {ok ? probe.format : probe.state === "injoignable" ? "Injoignable" : "Format invalide"}
+      {ok ? probe.format : probe.state === "unreachable" ? "Injoignable" : "Format invalide"}
     </Badge>
   );
 }

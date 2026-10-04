@@ -2,7 +2,7 @@ import { Stack } from "@mantine/core";
 import { IconDatabase } from "@tabler/icons-react";
 import { diskUsage } from "../lib/workstation";
 import { LabelBars } from "../indicators/labels";
-import { NAME, Nothing, TitreIndicateur } from "./common";
+import { NAME, Nothing, IndicatorTitle } from "./common";
 import type { AssetIndicatorWidget } from "./types";
 
 // L'occupation des disques système, par tranche : vert, bleu, orange, puis
@@ -33,10 +33,10 @@ export const disksIndicator: AssetIndicatorWidget = {
     const accounts = BANDS.map(() => 0);
     let measures = 0;
     for (const workstation of assets) {
-      const occupe = diskUsage(workstation.system_disk);
-      if (occupe == null) continue;
+      const used = diskUsage(workstation.system_disk);
+      if (used == null) continue;
       measures += 1;
-      const rank = BANDS.findIndex((t) => occupe < t.upTo);
+      const rank = BANDS.findIndex((t) => used < t.upTo);
       accounts[rank] = (accounts[rank] ?? 0) + 1;
     }
     // Une tranche où ne tombe aucun poste n'a pas de barre à montrer.
@@ -48,7 +48,7 @@ export const disksIndicator: AssetIndicatorWidget = {
 
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaultValue={`${LABEL} système`} />
+        <IndicatorTitle config={config} defaultValue={`${LABEL} système`} />
         {measures === 0 ? (
           <Nothing>Aucun disque mesuré</Nothing>
         ) : (

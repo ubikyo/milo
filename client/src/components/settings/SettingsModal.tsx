@@ -180,10 +180,10 @@ export default function SettingsModal({
 
   // Stable : l'onglet Entra s'en sert dans sa lecture des réglages.
   const followEntra = useCallback((settings: EntraSettings) => {
-    const pret = entraConfigured(settings);
-    setEntraReady(pret);
+    const ready = entraConfigured(settings);
+    setEntraReady(ready);
     // L'onglet ouvert vient de disparaître : on passe sur Entra.
-    if (!pret) setActiveTab((t) => (t && WITH_ENTRA.has(t) ? "entra" : t));
+    if (!ready) setActiveTab((t) => (t && WITH_ENTRA.has(t) ? "entra" : t));
   }, []);
   /**
    * Seul l'onglet Entra a des réglages en attente : les autres onglets

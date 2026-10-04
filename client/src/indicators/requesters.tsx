@@ -1,7 +1,7 @@
 import { Select, Stack } from "@mantine/core";
 import { IconMailForward } from "@tabler/icons-react";
 import { withField, count } from "../widgets/types";
-import { NameField, NAME, Nothing, TitreIndicateur } from "./common";
+import { NameField, NAME, Nothing, IndicatorTitle } from "./common";
 import { LabelBars, type Bar } from "./labels";
 import type { SupportIndicatorWidget } from "./types";
 
@@ -10,7 +10,7 @@ import type { SupportIndicatorWidget } from "./types";
 // pas d'expéditeur, elle ne compte pas.
 
 const LABEL = "Top demandeurs";
-const QUANTITY = "quantite";
+const QUANTITY = "count";
 const QUANTITIES = [3, 5, 10];
 const QUANTITY_DEFAULT = 5;
 
@@ -48,7 +48,7 @@ export const requestersIndicator: SupportIndicatorWidget = {
 
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaultValue={LABEL} />
+        <IndicatorTitle config={config} defaultValue={LABEL} />
         {data.length === 0 ? (
           <Nothing>Aucun demandeur</Nothing>
         ) : (

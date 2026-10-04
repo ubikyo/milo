@@ -74,7 +74,7 @@ export function FileRow({ attachment, onContextMenu, handle, ...props }: RowProp
       href={attachment.url}
       target="_blank"
       rel="noreferrer"
-      className={classes.ligne}
+      className={classes.row}
       aria-label={`Ouvrir ${attachment.name}`}
       onContextMenu={(e) => onContextMenu(menuPosition(e))}
       {...props}
@@ -85,7 +85,7 @@ export function FileRow({ attachment, onContextMenu, handle, ...props }: RowProp
         <Box
           w={THUMBNAIL_W}
           h={THUMBNAIL_H}
-          className={classes.vignette}
+          className={classes.thumbnail}
           style={{
             flexShrink: 0,
             overflow: "hidden",

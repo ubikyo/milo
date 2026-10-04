@@ -32,11 +32,11 @@ const JEROME_COLORS = ["red", "orange", "yellow", "green", "teal", "blue", "viol
   (c) => `var(--mantine-color-${c}-filled)`,
 );
 const JEROME_ANIMATIONS = `
-@keyframes milo-jerome-chute {
-  0%   { transform: translate3d(0, -60px, 0) rotate(var(--de)); opacity: 0; }
+@keyframes milo-jerome-fall {
+  0%   { transform: translate3d(0, -60px, 0) rotate(var(--from)); opacity: 0; }
   8%   { opacity: 1; }
   90%  { opacity: 1; }
-  100% { transform: translate3d(var(--dx), var(--bas), 0) rotate(var(--vers)); opacity: 0; }
+  100% { transform: translate3d(var(--dx), var(--fall), 0) rotate(var(--to)); opacity: 0; }
 }
 `;
 
@@ -53,7 +53,7 @@ function JeromeRain({ onDone }: { onDone: () => void }) {
         x: random(0, 90),
         size: random(14, 34),
         color: JEROME_COLORS[Math.floor(random(0, JEROME_COLORS.length))],
-        de: random(-30, 30),
+        from: random(-30, 30),
         to: random(-200, 200),
         dx: random(-80, 80),
         fall: window.innerHeight + 60,
@@ -90,11 +90,11 @@ function JeromeRain({ onDone }: { onDone: () => void }) {
             color: g.color,
             whiteSpace: "nowrap",
             opacity: 0,
-            "--de": `${g.de}deg`,
-            "--vers": `${g.to}deg`,
+            "--from": `${g.from}deg`,
+            "--to": `${g.to}deg`,
             "--dx": `${g.dx}px`,
-            "--bas": `${g.fall}px`,
-            animation: `milo-jerome-chute ${g.duration}ms ease-in ${g.late}ms forwards`,
+            "--fall": `${g.fall}px`,
+            animation: `milo-jerome-fall ${g.duration}ms ease-in ${g.late}ms forwards`,
           } as StyleWithVariables}
         >
           {DROP}
@@ -115,16 +115,16 @@ const EXIT_DURATION = 350;
 
 interface KonamiCodeProps {
   /** L'interface est en cours de modification. */
-  enModification: boolean;
-  onQuitterModification: () => void;
+  isEditing: boolean;
+  onLeaveEditing: () => void;
 }
 
-export default function KonamiCode({ enModification, onQuitterModification }: KonamiCodeProps) {
+export default function KonamiCode({ isEditing, onLeaveEditing }: KonamiCodeProps) {
   // Lus depuis l'écoute du clavier, posée une fois pour toutes : par référence.
-  const modification = useRef({ enModification, onQuitterModification });
+  const modification = useRef({ isEditing, onLeaveEditing });
   useEffect(() => {
-    modification.current = { enModification, onQuitterModification };
-  }, [enModification, onQuitterModification]);
+    modification.current = { isEditing, onLeaveEditing };
+  }, [isEditing, onLeaveEditing]);
   // Les dernières touches, autant que le code en compte : le code est trouvé
   // quand elles le forment — même précédé d'une flèche de trop.
   const keys = useRef<string[]>([]);
@@ -146,7 +146,7 @@ export default function KonamiCode({ enModification, onQuitterModification }: Ko
 
       // En modification, on en sort d'abord, et l'on attend que l'écran
       // ordinaire soit revenu.
-      const { enModification: toLeave, onQuitterModification: leave } = modification.current;
+      const { isEditing: toLeave, onLeaveEditing: leave } = modification.current;
       if (toLeave) leave();
       timeouts.push(
         window.setTimeout(() => detach(), toLeave ? EXIT_DURATION : 0),
@@ -179,8 +179,8 @@ export default function KonamiCode({ enModification, onQuitterModification }: Ko
         timeouts.push(
           window.setTimeout(() => {
             // « x » est le bord gauche de la salve : on la centre sur son point.
-            const largeur = window.innerWidth / VOLLEYS.length;
-            const x = window.innerWidth * part - largeur / 2;
+            const width = window.innerWidth / VOLLEYS.length;
+            const x = window.innerWidth * part - width / 2;
             setVolleys((s) => [...s, { key: counter.current++, x }]);
           }, i * BURSTS_GAP),
         );

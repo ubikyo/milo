@@ -1,9 +1,8 @@
 /*
- * Hors Debug (Paramétrage › Développeur), l'interface ne se sélectionne pas :
- * elle se manipule comme une application, pas comme une page. Les champs de
- * saisie et l'éditeur de texte gardent leur sélection, sans quoi on ne
- * pourrait plus y reprendre ce qu'on a écrit. Le menu du navigateur au clic
- * droit, lui, est retiré par App.tsx.
+ * Outside Debug (Settings › Developer), the interface cannot be selected: it
+ * is handled like an application, not like a page. Input fields and the text
+ * editor keep their selection, otherwise you could no longer pick up what you
+ * wrote. The browser's right-click menu is removed by App.tsx.
  */
 html:not([data-milo-debug]) body {
   -webkit-user-select: none;

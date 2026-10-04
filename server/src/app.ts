@@ -93,7 +93,9 @@ export const createApp = (): express.Express => {
   app.use("/api/auth", publicAuthRoutes);
 
   // Les fichiers se lisent sans jeton : une balise « img » n'en porte pas. Le
-  // nom du fichier tient lieu de clé (routes/attachments.ts).
+  // nom du fichier tient lieu de clé (routes/attachments.ts). L'ancienne
+  // adresse, « /api/medias », reste servie : des e-mails déjà partis la citent.
+  app.use("/api/media", mediaRoutes);
   app.use("/api/medias", mediaRoutes);
   app.use("/api/ticket-files", ticketFileRoutes);
 

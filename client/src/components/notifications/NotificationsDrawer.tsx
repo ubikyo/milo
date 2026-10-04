@@ -111,7 +111,7 @@ export default function NotificationsDrawer({
 
   // Chaque suppression part aussitôt ; la ligne s'en va sans attendre la
   // réponse, et revient si le serveur refuse.
-  const supprimer = async (notification: Notification) => {
+  const remove = async (notification: Notification) => {
     const before = list;
     setList((l) => l?.filter((n) => n.id !== notification.id) ?? null);
     try {
@@ -216,8 +216,8 @@ export default function NotificationsDrawer({
                   return (
                     <div
                       key={notification.id}
-                      className={classes.ligne}
-                      data-ouvrable={openable || undefined}
+                      className={classes.row}
+                      data-openable={openable || undefined}
                       role={openable ? "button" : undefined}
                       tabIndex={openable ? 0 : undefined}
                       onClick={
@@ -231,7 +231,7 @@ export default function NotificationsDrawer({
                           : undefined
                       }
                     >
-                      <Group className={classes.entete} gap="sm" wrap="nowrap">
+                      <Group className={classes.header} gap="sm" wrap="nowrap">
                         <Icon size={16} />
                         <Text
                           size="sm"
@@ -245,16 +245,16 @@ export default function NotificationsDrawer({
                           <Text size="xs" className={classes.date}>
                             {whenLabel(notification.created_at)}
                           </Text>
-                          <div className={classes.croix}>
+                          <div className={classes.cross}>
                             <ActionIcon
-                              className={classes.supprimer}
+                              className={classes.remove}
                               variant="transparent"
                               size="sm"
                               style={{ "--ai-color": "#fff" } as CSSProperties}
                               aria-label="Supprimer la notification"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                void supprimer(notification);
+                                void remove(notification);
                               }}
                               onKeyDown={(event) => event.stopPropagation()}
                             >
@@ -263,7 +263,7 @@ export default function NotificationsDrawer({
                           </div>
                         </Group>
                       </Group>
-                      <Text className={classes.corps} size="sm">
+                      <Text className={classes.body} size="sm">
                         {notification.author} {notification.message}
                       </Text>
                     </div>

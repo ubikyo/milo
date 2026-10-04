@@ -1,6 +1,6 @@
 import { Stack } from "@mantine/core";
 import { IconTags } from "@tabler/icons-react";
-import { LabelBars, NAME, Nothing, TitreIndicateur, tasksOf } from "./common";
+import { LabelBars, NAME, Nothing, IndicatorTitle, tasksOf } from "./common";
 import type { Bar } from "./common";
 import type { TaskIndicatorWidget } from "./types";
 import type { Id } from "@milo/shared";
@@ -37,7 +37,7 @@ export const taskLabelsIndicator: TaskIndicatorWidget = {
 
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaultValue={LABEL} />
+        <IndicatorTitle config={config} defaultValue={LABEL} />
         {data.length === 0 ? <Nothing>Aucune étiquette</Nothing> : <LabelBars data={data} ownColors />}
       </Stack>
     );

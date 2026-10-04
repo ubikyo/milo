@@ -58,7 +58,7 @@ interface SupportActionsProps {
 }
 
 /** « HLP-3, HLP-5 et HLP-8 » : les tickets visés, tels qu'on les cite. */
-const cite = (requests: SupportRequest[]): string => {
+const quote = (requests: SupportRequest[]): string => {
   const refs = requests.map((d) => supportTicketRef(d.number));
   return refs.length < 2
     ? (refs[0] ?? "")
@@ -152,7 +152,7 @@ export default function SupportActions({
     if (toConfirm === "merge") {
       void execute(
         () => api.mergeSupportRequests(ids),
-        `${cite(others)} ${others.length > 1 ? "fusionnées" : "fusionnée"} dans ${cite(keptByKey ? [keptByKey] : [])}`,
+        `${quote(others)} ${others.length > 1 ? "fusionnées" : "fusionnée"} dans ${quote(keptByKey ? [keptByKey] : [])}`,
       );
     } else if (toConfirm === "close") {
       void execute(
@@ -182,7 +182,7 @@ export default function SupportActions({
   > = {
     merge: {
       title: "Fusionner les demandes",
-      message: `${cite(others)} ${others.length > 1 ? "seront fusionnées" : "sera fusionnée"} dans ${cite(
+      message: `${quote(others)} ${others.length > 1 ? "seront fusionnées" : "sera fusionnée"} dans ${quote(
         keptByKey ? [keptByKey] : [],
       )}, la plus récente : ses échanges, ses acteurs et ses étiquettes y seront repris, puis ${
         others.length > 1 ? "elles seront fermées" : "elle sera fermée"
@@ -192,13 +192,13 @@ export default function SupportActions({
     },
     close: {
       title: n > 1 ? "Fermer les demandes" : "Fermer la demande",
-      message: `${cite(targetedItems)} ${n > 1 ? "passeront" : "passera"} au statut « Fermé ».`,
+      message: `${quote(targetedItems)} ${n > 1 ? "passeront" : "passera"} au statut « Fermé ».`,
       button: "Fermer",
       color: "teal",
     },
     delete: {
       title: n > 1 ? "Supprimer les demandes" : "Supprimer la demande",
-      message: `${cite(targetedItems)} ${
+      message: `${quote(targetedItems)} ${
         n > 1 ? "seront supprimées" : "sera supprimée"
       }, avec leurs échanges. Cette action est irréversible.`,
       button: "Supprimer",
@@ -434,7 +434,7 @@ export default function SupportActions({
           setAssignment(false);
           setTargets(null);
         }}
-        title={n > 1 ? `Assigner ${n} demandes` : `Assigner ${cite(targetedItems)}`}
+        title={n > 1 ? `Assigner ${n} demandes` : `Assigner ${quote(targetedItems)}`}
         centered
         padding={MODAL_PADDING}
         withCloseButton={false}

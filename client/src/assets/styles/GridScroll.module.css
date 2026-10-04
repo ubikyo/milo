@@ -1,0 +1,28 @@
+/* The horizontal scrollbar of grids (components/ui/GridScroll).
+   Mantine puts it at the bottom of the area; here it moves up to lie on the
+   rule under the header, taking its thickness: its last pixel, at
+   "--grid-rule" from the top of the area. Without a measurement (no header),
+   it stays at the bottom. */
+.scrollbar[data-orientation="horizontal"] {
+  top: calc(var(--grid-rule, 100%) - 1px);
+  bottom: auto;
+  height: 1px;
+  padding: 0;
+  z-index: 1;
+}
+
+/* No background, not even on hover: only the thumb shows. */
+.scrollbar[data-orientation="horizontal"],
+.scrollbar[data-orientation="horizontal"]:hover,
+.scrollbar[data-orientation="horizontal"]:active {
+  background-color: transparent;
+}
+
+/* The gray of every scrollbar (scrollbars.css), and square: one pixel high,
+   rounding would only eat at both ends. */
+.scrollbar[data-orientation="horizontal"] > .thumb,
+.scrollbar[data-orientation="horizontal"]:hover > .thumb,
+.scrollbar[data-orientation="horizontal"]:active > .thumb {
+  background-color: var(--milo-scrollbar);
+  border-radius: 0;
+}

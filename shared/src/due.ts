@@ -3,7 +3,7 @@
 // les mêmes clés ici.
 
 /** L'intervalle de rotation des images de couverture, en secondes ; zéro pour « Jamais ». */
-export const ROTATIONS_COUVERTURE = [
+export const COVER_ROTATIONS = [
   { value: 0, label: "Jamais" },
   { value: 5, label: "5s" },
   { value: 10, label: "10s" },
@@ -12,7 +12,7 @@ export const ROTATIONS_COUVERTURE = [
 ] as const;
 
 export const isCoverRotation = (value: unknown): value is number =>
-  ROTATIONS_COUVERTURE.some((r) => r.value === value);
+  COVER_ROTATIONS.some((r) => r.value === value);
 
 /**
  * La forme d'une échéance : une date seule (« Du »), ou une période (« Du /
@@ -20,7 +20,7 @@ export const isCoverRotation = (value: unknown): value is number =>
  */
 export const DUE_SHAPES = [
   { value: "date", label: "Du" },
-  { value: "periode", label: "Du / au" },
+  { value: "period", label: "Du / au" },
 ] as const;
 
 export type DueShape = (typeof DUE_SHAPES)[number]["value"];

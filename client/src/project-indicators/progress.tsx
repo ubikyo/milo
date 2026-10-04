@@ -1,7 +1,7 @@
 import { DonutChart } from "@mantine/charts";
 import { Stack } from "@mantine/core";
 import { IconProgress } from "@tabler/icons-react";
-import { NAME, Nothing, TitreIndicateur } from "./common";
+import { NAME, Nothing, IndicatorTitle } from "./common";
 import type { ProjectIndicatorWidget } from "./types";
 
 // Où en sont les projets du tableau ouvert, en anneau : ceux qui n'ont pas
@@ -36,7 +36,7 @@ export const progressIndicator: ProjectIndicatorWidget = {
     return (
       <Stack gap={4} align="center" style={{ flex: 1 }}>
         <div style={{ alignSelf: "stretch" }}>
-          <TitreIndicateur config={config} defaultValue={LABEL} />
+          <IndicatorTitle config={config} defaultValue={LABEL} />
         </div>
         {data.length === 0 ? (
           <div style={{ alignSelf: "stretch" }}>

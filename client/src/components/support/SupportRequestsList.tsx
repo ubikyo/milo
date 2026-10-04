@@ -29,7 +29,7 @@ import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
 import { ReferenceTag } from "../ui/ReferenceTag";
 import { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
-import { useResizableColumns } from "../ui/useColonnesRedimensionnables";
+import { useResizableColumns } from "../ui/useResizableColumns";
 import { DUE_COLOR, DUE_WORD, shortDate, dueState } from "../../lib/due";
 import { STRONG_TEXT } from "../../themes/colors";
 import { SUPPORT_STATUSES, listKey, supportStatusLabel, supportTicketRef } from "@milo/shared";
@@ -87,8 +87,8 @@ function LabelsCell({ labels }: { labels: SupportRequest["labels"] }) {
 
   // Les plus lourdes devant : le serveur les range ainsi, la saisie du tiroir
   // non.
-  const montrees = [...labels].sort((a, b) => b.weight - a.weight).slice(0, LABELS_SHOWN);
-  const remaining = labels.length - montrees.length;
+  const shown = [...labels].sort((a, b) => b.weight - a.weight).slice(0, LABELS_SHOWN);
+  const remaining = labels.length - shown.length;
 
   return (
     // Boîte de hauteur fixe : sans elle, la line-box ajoute un demi-pixel et la
@@ -102,7 +102,7 @@ function LabelsCell({ labels }: { labels: SupportRequest["labels"] }) {
       }}
     >
       <Group gap={4} wrap="nowrap">
-        {montrees.map((label) => (
+        {shown.map((label) => (
           <LabelChip key={label.id} label={label} size="xs" height={LABEL_HEIGHT} />
         ))}
         {remaining > 0 && (
@@ -182,10 +182,10 @@ function DueCell({ due }: { due: string }) {
     <Group gap="xs" wrap="nowrap">
       {/* La date prend elle-même la couleur de l'état : orange à trois jours,
           rouge une fois passée. */}
-      <Text size="sm" c={DUE_COLOR[state]} fw={state === "aucun" ? undefined : 600}>
+      <Text size="sm" c={DUE_COLOR[state]} fw={state === "none" ? undefined : 600}>
         {shortDate(due)}
       </Text>
-      {state !== "aucun" && (
+      {state !== "none" && (
         <Badge color={DUE_COLOR[state]} variant="filled" radius="sm" size="sm">
           {DUE_WORD[state]}
         </Badge>
@@ -246,10 +246,10 @@ const VALUES: Record<ColumnKey, (d: SupportRequest) => string | number | null> =
 
 const DUES: FilterOption[] = [
   { value: ALL_OPTION, label: "Toutes" },
-  { value: "retard", label: DUE_WORD.retard },
-  { value: "bientot", label: DUE_WORD.bientot },
-  { value: "avec", label: "Avec échéance" },
-  { value: "sans", label: "Sans échéance" },
+  { value: "late", label: DUE_WORD.late },
+  { value: "soon", label: DUE_WORD.soon },
+  { value: "with", label: "Avec échéance" },
+  { value: "without", label: "Sans échéance" },
 ];
 
 const PERIODS: FilterOption[] = [
@@ -286,8 +286,8 @@ const chosen = (f: Filters, d: SupportRequest): boolean => {
   if (f.actor !== ALL_OPTION && !shownActors(d).some((a) => actorKey(a) === f.actor)) return false;
   if (f.label !== ALL_OPTION && !d.labels.some((l) => l.name === f.label)) return false;
   if (f.due !== ALL_OPTION) {
-    if (f.due === "sans" ? d.due_date : !d.due_date) return false;
-    if ((f.due === "retard" || f.due === "bientot") && dueState(d.due_date) !== f.due)
+    if (f.due === "without" ? d.due_date : !d.due_date) return false;
+    if ((f.due === "late" || f.due === "soon") && dueState(d.due_date) !== f.due)
       return false;
   }
   if (f.status !== ALL_OPTION && d.status !== f.status) return false;
@@ -419,7 +419,7 @@ function SortableTh({
 }
 
 /** La clé des boîtes reçues, dans la configuration de la liste : chacune vers un contexte. */
-export const MAILBOXES = "boites";
+export const MAILBOXES = "mailboxes";
 
 /** Les colonnes que la liste sait montrer, dans l'ordre. */
 export const SUPPORT_COLUMNS: { key: ColumnKey; label: string }[] = [
@@ -447,35 +447,35 @@ export const useSupportList = (requests: SupportRequest[] | null, tab: string) =
     position: PointMenuPosition;
   } | null>(null);
 
-  const dansLOnglet = useMemo(
+  const inTab = useMemo(
     () =>
       !requests ? [] : tab === ALL ? requests : requests.filter((r) => r.status === tab),
     [requests, tab],
   );
 
   // Ce que les entonnoirs proposent : ce qui se trouve dans l'onglet, pas plus.
-  const optionsActeurs = useMemo<FilterOption[]>(() => {
+  const actorOptions = useMemo<FilterOption[]>(() => {
     const seen = new Map<string, string>();
-    for (const d of dansLOnglet) for (const a of shownActors(d)) seen.set(actorKey(a), a.name);
+    for (const d of inTab) for (const a of shownActors(d)) seen.set(actorKey(a), a.name);
     return [
       { value: ALL_OPTION, label: "Tous" },
       ...[...seen]
         .sort((a, b) => a[1].localeCompare(b[1], "fr"))
         .map(([value, label]) => ({ value, label })),
     ];
-  }, [dansLOnglet]);
-  const optionsEtiquettes = useMemo<FilterOption[]>(() => {
-    const names = new Set(dansLOnglet.flatMap((d) => d.labels.map((l) => l.name)));
+  }, [inTab]);
+  const labelOptions = useMemo<FilterOption[]>(() => {
+    const names = new Set(inTab.flatMap((d) => d.labels.map((l) => l.name)));
     return [
       { value: ALL_OPTION, label: "Toutes" },
       ...[...names].sort((a, b) => a.localeCompare(b, "fr")).map((n) => ({ value: n, label: n })),
     ];
-  }, [dansLOnglet]);
+  }, [inTab]);
 
-  const montrees = useMemo(() => {
+  const shown = useMemo(() => {
     const value = VALUES[sort.key];
     const factor = sort.direction === "asc" ? 1 : -1;
-    return dansLOnglet
+    return inTab
       .filter((d) => chosen(filters, d))
       .sort((a, b) => {
         const left = value(a);
@@ -487,11 +487,11 @@ export const useSupportList = (requests: SupportRequest[] | null, tab: string) =
           return (left - rightHand) * factor;
         return String(left).localeCompare(String(rightHand), "fr", { numeric: true }) * factor;
       });
-  }, [dansLOnglet, filters, sort]);
+  }, [inTab, filters, sort]);
 
   // Les cases cochées ne valent que pour ce qu'on voit : une demande filtrée
   // ou passée dans un autre onglet ne subit pas une action à l'aveugle.
-  const selection = montrees.filter((d) => checked.has(d.id));
+  const selection = shown.filter((d) => checked.has(d.id));
 
   return {
     tab,
@@ -503,11 +503,11 @@ export const useSupportList = (requests: SupportRequest[] | null, tab: string) =
     setChecked,
     context,
     setContext,
-    dansLOnglet,
-    montrees,
+    inTab,
+    shown,
     selection,
-    optionsActeurs,
-    optionsEtiquettes,
+    actorOptions,
+    labelOptions,
   };
 };
 
@@ -543,10 +543,10 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
     setChecked,
     context,
     setContext,
-    montrees: allShown,
-    dansLOnglet: allInTab,
-    optionsActeurs,
-    optionsEtiquettes,
+    shown: allShown,
+    inTab: allInTab,
+    actorOptions,
+    labelOptions,
     loading,
     onOpenRequest,
     onAddRequest: addRequest,
@@ -556,8 +556,8 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
   // de ce widget seulement (lib/listes.ts). Une demande ajoutée ici est la
   // sienne.
   const ofThisWidget = inList(config);
-  const montrees = allShown.filter(ofThisWidget);
-  const dansLOnglet = allInTab.filter(ofThisWidget);
+  const shown = allShown.filter(ofThisWidget);
+  const inTab = allInTab.filter(ofThisWidget);
   const onAddRequest = addRequest && (() => addRequest(listKey(config)));
   const isEditing = useIsEditing();
 
@@ -568,7 +568,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
   const columnCount = columns.length + 1;
   const resize = useResizableColumns(
     "support",
-    ["case", ...columns.map((c) => c.id)],
+    ["checkbox", ...columns.map((c) => c.id)],
     defaultWidths(SUPPORT_COLUMNS, config),
   );
 
@@ -641,7 +641,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
         "actors",
         <ChoiceFilter
           label="acteur"
-          options={optionsActeurs}
+          options={actorOptions}
           value={filters.actor}
           onChange={filter("actor")}
         />,
@@ -654,7 +654,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
         "labels",
         <ChoiceFilter
           label="étiquette"
-          options={optionsEtiquettes}
+          options={labelOptions}
           value={filters.label}
           onChange={filter("label")}
         />,
@@ -760,7 +760,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
 
   // Sans demande dans l'onglet, seul l'écran vide s'affiche. Une liste vidée
   // par les filtres, elle, garde ses entêtes : c'est là qu'on les retire.
-  if (dansLOnglet.length === 0 && !isFiltered) {
+  if (inTab.length === 0 && !isFiltered) {
     return loading ? null : (
       <EmptyPanel
         icon={IconLifebuoy}
@@ -807,7 +807,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {montrees.map((request) => (
+          {shown.map((request) => (
             <Table.Tr
               key={request.id}
               onClick={() => onOpenRequest(request)}
@@ -841,7 +841,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
           ))}
 
           {/* Filtrée jusqu'au vide, la liste le dit, et de quoi défaire. */}
-          {montrees.length === 0 && (
+          {shown.length === 0 && (
             <Table.Tr style={{ backgroundColor: "transparent" }}>
               <Table.Td colSpan={columnCount}>
                 <Group gap="xs">

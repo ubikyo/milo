@@ -2,7 +2,7 @@ import { RadarChart } from "@mantine/charts";
 import { Stack } from "@mantine/core";
 import { IconChartRadar } from "@tabler/icons-react";
 import { SUPPORT_STATUSES } from "@milo/shared";
-import { NAME, TitreIndicateur } from "./common";
+import { NAME, IndicatorTitle } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 
 // La répartition des demandes de la société regardée par statut, en radar :
@@ -27,11 +27,11 @@ export const statusesIndicator: SupportIndicatorWidget = {
     }));
     return (
       <Stack gap={4} style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaultValue={LABEL} />
+        <IndicatorTitle config={config} defaultValue={LABEL} />
         <RadarChart
           h={RADAR_HEIGHT}
           data={data}
-          dataKey="statut"
+          dataKey="status"
           series={[{ name: "tickets", label: "Tickets", color: "teal.6", opacity: 0.2 }]}
           withPolarRadiusAxis={false}
           withTooltip

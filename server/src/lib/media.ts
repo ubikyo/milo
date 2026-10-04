@@ -44,18 +44,20 @@ const RANGE_NAME = /^[0-9a-f]{32}(\.[a-z0-9]{1,12})?$/;
 
 /**
  * Les adresses de médias citées dans un HTML — la source des images d'une
- * description. Sert au ménage des orphelins : ce qui est cité reste.
+ * description. Sert au ménage des orphelins : ce qui est cité reste. L'ancienne
+ * adresse, « /api/medias/ », compte aussi : elle sert encore (app.ts).
  */
 export const citedMedia = (html: string): string[] =>
-  [...html.matchAll(/\/api\/medias\/([0-9a-f]{32}(?:\.[a-z0-9]{1,12})?)/g)].map((m) => m[1]!);
+  [...html.matchAll(/\/api\/medias?\/([0-9a-f]{32}(?:\.[a-z0-9]{1,12})?)/g)].map((m) => m[1]!);
 
 /**
- * Vrai pour l'adresse d'un de nos médias, et elle seule. C'est à cette aune
- * que le nettoyage du HTML garde ou jette une image (lib/html.ts) : une image
- * d'ailleurs ferait sortir la description de l'application.
+ * Vrai pour l'adresse d'un de nos médias, et elle seule — « /api/media/ », ou
+ * l'ancienne « /api/medias/ ». C'est à cette aune que le nettoyage du HTML
+ * garde ou jette une image (lib/html.ts) : une image d'ailleurs ferait sortir
+ * la description de l'application.
  */
 export const isMediaAddress = (src: unknown): boolean =>
-  /^\/api\/medias\/[0-9a-f]{32}(\.[a-z0-9]{1,12})?$/.test(String(src ?? ""));
+  /^\/api\/medias?\/[0-9a-f]{32}(\.[a-z0-9]{1,12})?$/.test(String(src ?? ""));
 
 // Le dossier est créé au chargement, comme celui de la base : une écriture ne
 // doit pas avoir à se demander s'il existe.
@@ -84,7 +86,7 @@ export const deleteMedia = (file: string): void => {
 };
 
 /** L'adresse publique d'un média. Une seule écriture, lue de part et d'autre. */
-export const mediaUrl = (file: string): string => `/api/medias/${file}`;
+export const mediaUrl = (file: string): string => `/api/media/${file}`;
 
 /**
  * Comment rendre ce fichier : son type s'il est de ceux qu'on affiche, et rien

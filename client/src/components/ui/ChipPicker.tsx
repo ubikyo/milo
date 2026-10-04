@@ -28,7 +28,7 @@ export interface ChipOption {
 // Au-delà de ce nombre de lignes, la liste défile plutôt que de courir jusqu'en
 // bas de l'écran. Les lignes n'ont pas toutes la même hauteur — un nom seul, un
 // nom et son adresse : la hauteur se mesure sur la dixième, marquée comme les
-// autres de « data-ligne ».
+// autres de « data-row ».
 const VISIBLE_ROWS = 10;
 
 /**
@@ -57,7 +57,7 @@ interface ChipPickerProps<T extends ChipOption> {
   footer?: ReactNode;
   /**
    * Des lignes ajoutées sous les options, dans leur défilement : les personnes
-   * trouvées dans l'annuaire. Chacune porte « data-ligne » pour compter.
+   * trouvées dans l'annuaire. Chacune porte « data-row » pour compter.
    */
   listFooter?: ReactNode;
   onOptionClick?: (option: T) => void;
@@ -156,7 +156,7 @@ export default function ChipPicker<T extends ChipOption>({
   useLayoutEffect(() => {
     const content = contentRef.current;
     if (!content) return;
-    const rows = content.querySelectorAll("[data-ligne]");
+    const rows = content.querySelectorAll("[data-row]");
     const height =
       rows.length > VISIBLE_ROWS
         ? Math.ceil(
@@ -322,7 +322,7 @@ export default function ChipPicker<T extends ChipOption>({
                       px={separated ? SEPARATED_INSET : 4}
                       py={separated ? 8 : 4}
                       style={rule(rank)}
-                      data-ligne
+                      data-row
                     >
                       <Checkbox
                         checked={value.includes(String(option.id))}
@@ -379,7 +379,7 @@ export default function ChipPicker<T extends ChipOption>({
                       style={rule(rank)}
                       // Le reste des attributs va à la case elle-même : la
                       // marque de ligne se pose sur son conteneur.
-                      wrapperProps={{ "data-ligne": true }}
+                      wrapperProps={{ "data-row": true }}
                     />
                   ),
                 )}

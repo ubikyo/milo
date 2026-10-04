@@ -38,7 +38,7 @@ const fold = (value: unknown): string =>
 
 // Déclarée avant les requêtes qui s'en servent : SQLite la cherche à la
 // préparation.
-db.function("milo_plier", { deterministic: true }, (value: unknown) => fold(value));
+db.function("milo_fold", { deterministic: true }, (value: unknown) => fold(value));
 
 /** La référence « HLP-12 » (ou « PRJ-12 ») d'une ligne, quand elle en porte une. */
 const matchesReference = (column: string, prefix = REFERENCE_PREFIX) =>
@@ -47,7 +47,7 @@ const matchesReference = (column: string, prefix = REFERENCE_PREFIX) =>
 /** Le motif LIKE : les jokers tapés par la personne se cherchent tels quels. */
 const pattern = (text: string): string => `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
-const contains = (column: string) => `milo_plier(${column}) LIKE @q ESCAPE '\\'`;
+const contains = (column: string) => `milo_fold(${column}) LIKE @q ESCAPE '\\'`;
 
 interface FoundProject {
   id: Id;
@@ -167,20 +167,17 @@ const readBlock = (
   switch (type) {
     case "category":
     case "subcategory": {
-      const title = text(config.titre);
+      const title = text(config.title);
       return title ? { title: title, search: [title] } : null;
     }
     case "link": {
-      const label = text(config.libelle);
+      const label = text(config.label);
       const url = text(config.url);
       return { title: label || url, search: [label, url], url: url || undefined };
     }
     case "number": {
-      // Les anciens éléments portaient une seule ligne, hors de « lignes ».
-      const rows = Array.isArray(config.lignes)
-        ? (config.lignes as Record<string, unknown>[])
-        : [{ label: config.libelle, phoneNumber: config.numero }];
-      const chunks = rows.map((l) => [text(l?.libelle), text(l?.numero)]);
+      const rows = Array.isArray(config.lines) ? (config.lines as Record<string, unknown>[]) : [];
+      const chunks = rows.map((l) => [text(l?.label), text(l?.number)]);
       const title = chunks
         .map((m) => m.filter(Boolean).join(" "))
         .filter(Boolean)
@@ -230,22 +227,22 @@ searchRoutes.get("/", (req, res) => {
 
   // Chaque sorte ne cherche que si l'on en voit le type de widget.
   const params = { q: pattern(folded), me: req.user.id };
-  const dans = <T>(area: Area, find: () => T[]): T[] => (requestCan(req, area, "view") ? find() : []);
+  const ifAllowed = <T>(area: Area, find: () => T[]): T[] => (requestCan(req, area, "view") ? find() : []);
 
   const results: SearchResult[] = [
-    ...dans("projects", () => foundProjects.all(params)).map((p) => ({
+    ...ifAllowed("projects", () => foundProjects.all(params)).map((p) => ({
       kind: "project" as const,
       id: p.id,
       title: p.name,
       context: joinParts(p.number > 0 ? projectReference(p.number) : null, p.context, p.board),
     })),
-    ...dans("tasks", () => foundCards.all(params)).map((c) => ({
+    ...ifAllowed("tasks", () => foundCards.all(params)).map((c) => ({
       kind: "card" as const,
       id: c.id,
       title: c.text,
       context: joinParts(c.number > 0 ? taskReference(c.number) : null, c.context, c.board, c.list),
     })),
-    ...dans("support", () => foundRequests.all(params)).map((d) => ({
+    ...ifAllowed("support", () => foundRequests.all(params)).map((d) => ({
       kind: "support" as const,
       id: d.id,
       title: d.subject || "(sans objet)",
@@ -256,7 +253,7 @@ searchRoutes.get("/", (req, res) => {
         supportStatusLabel(d.status),
       ),
     })),
-    ...dans("assets", () => foundWorkstations.all(params)).map((a) => ({
+    ...ifAllowed("assets", () => foundWorkstations.all(params)).map((a) => ({
       kind: "asset" as const,
       id: a.id,
       title: a.name,

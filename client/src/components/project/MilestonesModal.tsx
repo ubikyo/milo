@@ -70,7 +70,7 @@ interface PercentageFieldProps {
 }
 
 // Les autres jalons s'arrêtent avant la fin : 100 % est déjà pris.
-const MAX_JALON = END - 1;
+const MAX_MILESTONE = END - 1;
 
 /** Le pourcentage d'un jalon : un champ « xs » de la ligne, comme une largeur de colonne. */
 function PercentageField({
@@ -90,7 +90,7 @@ function PercentageField({
         onBlur?.();
       }}
       min={0}
-      max={MAX_JALON}
+      max={MAX_MILESTONE}
       clampBehavior="strict"
       allowDecimal={false}
       suffix="%"
@@ -115,7 +115,7 @@ const halfway = (list: InputEntry[]) => {
   const last = list
     .filter((s) => !s.fixed)
     .reduce((max, s) => Math.max(max, Number(s.value) || 0), 0);
-  return Math.min(MAX_JALON, Math.round((last + END) / 2));
+  return Math.min(MAX_MILESTONE, Math.round((last + END) / 2));
 };
 
 let nextKey = 0;

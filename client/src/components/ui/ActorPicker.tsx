@@ -124,7 +124,7 @@ export default function ActorPicker({
   onGroupsChange,
 }: ActorPickerProps) {
   const withGroups = onGroupsChange !== undefined;
-  const { favoris, toggle } = useFavorites();
+  const { favorites, toggle } = useFavorites();
   const [search, setSearch] = useState("");
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
   const [foundGroups, setFoundGroups] = useState<EntraPrincipal[]>([]);
@@ -149,16 +149,16 @@ export default function ActorPicker({
   const list = useMemo(() => {
     const term = normalizeValue(search.trim());
     return options
-      .filter((u) => favoris.includes(u.id) || value.includes(String(u.id)))
+      .filter((u) => favorites.includes(u.id) || value.includes(String(u.id)))
       .filter(
         (u) => !term || normalizeValue(`${u.name} ${u.email}`).includes(term),
       )
       .sort((a, b) => {
-        const fa = favoris.includes(a.id) ? 0 : 1;
-        const fb = favoris.includes(b.id) ? 0 : 1;
+        const fa = favorites.includes(a.id) ? 0 : 1;
+        const fb = favorites.includes(b.id) ? 0 : 1;
         return fa - fb || a.name.localeCompare(b.name, "fr");
       });
-  }, [options, search, favoris, value]);
+  }, [options, search, favorites, value]);
 
   useEffect(() => {
     const term = search.trim();
@@ -280,7 +280,7 @@ export default function ActorPicker({
         />
       }
       render={(u) => {
-        const favori = favoris.includes(u.id);
+        const favorite = favorites.includes(u.id);
         return (
           <Group
             gap={6}
@@ -302,7 +302,7 @@ export default function ActorPicker({
               color="gray"
               size="sm"
               aria-label={
-                favori ? "Retirer des favoris" : "Ajouter aux favoris"
+                favorite ? "Retirer des favoris" : "Ajouter aux favoris"
               }
               onClick={(e: React.MouseEvent) => {
                 e.preventDefault();
@@ -312,7 +312,7 @@ export default function ActorPicker({
             >
               {/* Un favori, c'est une étoile pleine et jaune ; les autres
                   n'en montrent que le contour, discret. */}
-              {favori ? (
+              {favorite ? (
                 <IconStarFilled
                   size={14}
                   color="var(--mantine-color-yellow-5)"
@@ -354,7 +354,7 @@ export default function ActorPicker({
                       ? { borderBottom: RULE }
                       : undefined
                   }
-                  data-ligne
+                  data-row
                 >
                   <Group gap={8} wrap="nowrap">
                     {/* La bulle de la personne, avec ses initiales, comme celle
@@ -379,7 +379,7 @@ export default function ActorPicker({
                     <NameAndAddress name={p.name} email={p.email} />
                     {/* L'origine, au bout de la ligne, comme dans la
                         recherche des accès. */}
-                    <DirectoryOrigin synced={p.synced} largeur={FAVORITE_WIDTH} />
+                    <DirectoryOrigin synced={p.synced} width={FAVORITE_WIDTH} />
                   </Group>
                 </UnstyledButton>
               ))}
@@ -409,7 +409,7 @@ export default function ActorPicker({
                         ? { borderBottom: RULE }
                         : undefined
                     }
-                    data-ligne
+                    data-row
                   >
                     <Group gap={8} wrap="nowrap">
                       <Checkbox
@@ -422,7 +422,7 @@ export default function ActorPicker({
                       />
                       <GroupAvatar group={g} size={chipHeight} />
                       <NameAndAddress name={g.name} email={g.email} />
-                      <DirectoryOrigin synced={g.synced} largeur={FAVORITE_WIDTH} />
+                      <DirectoryOrigin synced={g.synced} width={FAVORITE_WIDTH} />
                     </Group>
                   </UnstyledButton>
                 );

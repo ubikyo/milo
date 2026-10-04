@@ -3,7 +3,7 @@
 
 import type { TaskCard, TaskList } from "@milo/shared";
 
-export { NameField, NAME, Nothing, TitreIndicateur, IndicatorValue } from "../indicators/common";
+export { NameField, NAME, Nothing, IndicatorTitle, IndicatorValue } from "../indicators/common";
 export { LabelBars, type Bar } from "../indicators/labels";
 
 /** Les cartes du tableau, sans ses séparateurs : eux ne sont pas des tâches. */

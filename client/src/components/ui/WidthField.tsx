@@ -3,8 +3,8 @@ import { IconChevronDown } from "@tabler/icons-react";
 import { useState } from "react";
 import type { CSSProperties } from "react";
 import type { SectionWidthUnit } from "@milo/shared";
-import classes from "../../assets/styles/EcartField.module.css";
-import { ECART_FIELD_HEIGHT } from "./GapField";
+import classes from "../../assets/styles/GapField.module.css";
+import { GAP_FIELD_HEIGHT } from "./GapField";
 
 // La largeur d'une section, réglée au pied de sa colonne : le nombre quand
 // l'unité en demande un, puis l'unité. Discrète comme le champ de l'écart, à sa
@@ -30,7 +30,7 @@ export interface SectionWidth {
 
 interface WidthFieldProps {
   value: SectionWidth;
-  onChange: (largeur: SectionWidth) => void | Promise<void>;
+  onChange: (width: SectionWidth) => void | Promise<void>;
   /** La largeur que la colonne a à l'écran, dans cette unité. */
   measure: (unit: Exclude<SectionWidthUnit, "auto">) => number;
   style?: CSSProperties;
@@ -54,9 +54,9 @@ export default function WidthField({ value, onChange, measure, style }: WidthFie
     const count = Number(input);
     setInput(null);
     if (input === "" || !Number.isFinite(count)) return;
-    const largeur = bound(value.width_unit, count);
-    if (largeur !== value.width_value) {
-      void onChange({ width_unit: value.width_unit, width_value: largeur });
+    const width = bound(value.width_unit, count);
+    if (width !== value.width_value) {
+      void onChange({ width_unit: value.width_unit, width_value: width });
     }
   };
 
@@ -66,7 +66,7 @@ export default function WidthField({ value, onChange, measure, style }: WidthFie
       wrap="nowrap"
       // Ni la poignée ni la rangée ne doivent prendre cet appui pour un glisser.
       onPointerDown={(e) => e.stopPropagation()}
-      style={{ position: "absolute", zIndex: 2, height: ECART_FIELD_HEIGHT, ...style }}
+      style={{ position: "absolute", zIndex: 2, height: GAP_FIELD_HEIGHT, ...style }}
     >
       {value.width_unit !== "auto" && (
         <NumberInput
@@ -94,7 +94,7 @@ export default function WidthField({ value, onChange, measure, style }: WidthFie
           aria-label={
             value.width_unit === "percent" ? "Largeur de la section en %" : "Largeur de la section en pixels"
           }
-          className={`${classes.champ} ${classes.nombre}`}
+          className={`${classes.field} ${classes.number}`}
         />
       )}
       <Select
@@ -112,7 +112,7 @@ export default function WidthField({ value, onChange, measure, style }: WidthFie
         ml={value.width_unit === "auto" ? 0 : -3}
         aria-label="Unité de la largeur de la section"
         title="Largeur de la section"
-        className={`${classes.champ} ${classes.unite}`}
+        className={`${classes.field} ${classes.unit}`}
       />
     </Group>
   );

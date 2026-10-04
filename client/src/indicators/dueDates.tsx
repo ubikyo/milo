@@ -2,7 +2,7 @@ import { DonutChart } from "@mantine/charts";
 import { Stack } from "@mantine/core";
 import { IconCalendarDue } from "@tabler/icons-react";
 import { dueState } from "../lib/due";
-import { ongoing, NAME, Nothing, TitreIndicateur } from "./common";
+import { ongoing, NAME, Nothing, IndicatorTitle } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 
 // Où en sont les échéances des demandes en cours : celles qui sont passées,
@@ -23,11 +23,11 @@ export const duesIndicator: SupportIndicatorWidget = {
     const account = (filter: (due: string) => boolean) =>
       ongoingRequests.filter((d) => filter(d.due_date)).length;
     const data = [
-      { name: "En retard", value: account((due) => dueState(due) === "retard"), color: "red.6" },
-      { name: "Bientôt", value: account((due) => dueState(due) === "bientot"), color: "orange.6" },
+      { name: "En retard", value: account((due) => dueState(due) === "late"), color: "red.6" },
+      { name: "Bientôt", value: account((due) => dueState(due) === "soon"), color: "orange.6" },
       {
         name: "À venir",
-        value: account((due) => Boolean(due) && dueState(due) === "aucun"),
+        value: account((due) => Boolean(due) && dueState(due) === "none"),
         color: "green.6",
       },
       { name: "Sans échéance", value: account((due) => !due), color: "gray.5" },
@@ -36,7 +36,7 @@ export const duesIndicator: SupportIndicatorWidget = {
     return (
       <Stack gap={4} align="center" style={{ flex: 1 }}>
         <div style={{ alignSelf: "stretch" }}>
-          <TitreIndicateur config={config} defaultValue={`${LABEL} des tickets en cours`} />
+          <IndicatorTitle config={config} defaultValue={`${LABEL} des tickets en cours`} />
         </div>
         {data.length === 0 ? (
           <div style={{ alignSelf: "stretch" }}>

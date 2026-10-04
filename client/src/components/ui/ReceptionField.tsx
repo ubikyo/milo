@@ -30,13 +30,13 @@ import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
 // listes vides (ListeVide).
 
 /** Une réception : la valeur reçue, et le contexte où elle se range. */
-type Inbox = Record<string, unknown> & { context?: number | null };
+type Inbox = Record<string, unknown> & { context_id?: number | null };
 
 /** La largeur du choix du contexte. */
 const CONTEXT_WIDTH = 170;
 
 interface ReceptionFieldProps extends IndicatorConfigProps {
-  /** La clé de la configuration qui garde la liste : « boites », « tags ». */
+  /** La clé de la configuration qui garde la liste : « mailboxes », « tags ». */
   key: string;
   /** Le champ de chaque entrée qui porte la valeur reçue : « email », « tag ». */
   field: string;
@@ -83,7 +83,7 @@ export const inboxesWithProblem = (
   return rows.some((l) => {
     const value = typeof l[field] === "string" ? (l[field] as string).trim() : "";
     if (!isValid(value)) return true;
-    return contextOptions.length > 0 && (!l.context || !contextOptions.includes(l.context as Id));
+    return contextOptions.length > 0 && (!l.context_id || !contextOptions.includes(l.context_id as Id));
   });
 };
 
@@ -130,7 +130,7 @@ export default function ReceptionField({
 
   // La ligne neuve va au premier contexte : on le change sur la ligne.
   const addRow = () => {
-    insertRow([...rows, { [field]: "", context: contexts[0]?.id ?? null }]);
+    insertRow([...rows, { [field]: "", context_id: contexts[0]?.id ?? null }]);
     setToFill(rows.length);
   };
 
@@ -201,8 +201,8 @@ export default function ReceptionField({
                   placeholder="Contexte"
                   aria-label="Contexte"
                   data={contextOptions}
-                  value={row.context ? String(row.context) : null}
-                  onChange={(value) => change(rank, { context: value ? Number(value) : null })}
+                  value={row.context_id ? String(row.context_id) : null}
+                  onChange={(value) => change(rank, { context_id: value ? Number(value) : null })}
                   allowDeselect={false}
                   comboboxProps={{ withinPortal: true }}
                   onFocus={() => setInput(`${rank}-contexte`)}

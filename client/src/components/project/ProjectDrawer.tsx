@@ -35,7 +35,7 @@ import {
   TAB_MENU_STYLES,
 } from "../../themes/menus";
 import { tabStyle } from "../../themes/tabs";
-import fields from "../../assets/styles/EcartField.module.css";
+import fields from "../../assets/styles/GapField.module.css";
 import { fieldWidth } from "../../lib/fieldWidth";
 import { DEFAULT_MILESTONE_TYPE } from "@milo/shared";
 import CommentThread from "./CommentThread";
@@ -609,7 +609,7 @@ export default function ProjectDrawer({
                           comboboxProps={{ width: 220, position: "bottom-end" }}
                           aria-label="Type de jalons"
                           title="Type de jalons"
-                          className={`${fields.champ} ${fields.unite}`}
+                          className={`${fields.field} ${fields.unit}`}
                         />
                         <NumberInput
                           value={form.status}
@@ -634,7 +634,7 @@ export default function ProjectDrawer({
                           size="xs"
                           aria-label="Progression"
                           title="Progression"
-                          className={`${fields.champ} ${fields.nombre}`}
+                          className={`${fields.field} ${fields.number}`}
                         />
                       </Group>
                     </Group>

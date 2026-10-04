@@ -37,7 +37,19 @@ export type LinkTargetKind = "project" | "card" | "support" | "asset" | "access"
  * Un poste s'ouvre par son identifiant ; un élément du mode Accès, par sa
  * catégorie — c'est elle qui s'ouvre, l'élément n'a pas de fiche.
  */
-const QUERY_PARAMS: Record<LinkTargetKind, string> = {
+export const QUERY_PARAMS: Record<LinkTargetKind, string> = {
+  project: "project",
+  card: "card",
+  support: "ticket",
+  asset: "asset",
+  access: "access",
+};
+
+/**
+ * Les noms d'avant, en français : des e-mails déjà partis et des descriptions
+ * les citent encore (« ?carte=12 »). Ils s'ouvrent toujours.
+ */
+export const LEGACY_QUERY_PARAMS: Record<LinkTargetKind, string> = {
   project: "projet",
   card: "carte",
   support: "demande",

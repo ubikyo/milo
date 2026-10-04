@@ -71,13 +71,13 @@ export default function AdministrationTab({
           options: settingsChoice(permissions.settings),
           value: permissions.settings,
           onChange: (value) => change({ ...permissions, settings: value as SettingsAccess }),
-          largeur: SETTINGS_WIDTH,
+          width: SETTINGS_WIDTH,
         },
         {
           name: "Workspaces",
           options: YES_NO,
           value: permissions.workspaces,
-          largeur: WORKSPACES_WIDTH,
+          width: WORKSPACES_WIDTH,
           onChange: (value) =>
             change({ ...permissions, workspaces: value as WorkspacesAccess }),
           disabled: !canManageWorkspaces,

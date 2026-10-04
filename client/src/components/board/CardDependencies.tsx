@@ -3,7 +3,7 @@ import { IconChevronDown, IconTrash } from "@tabler/icons-react";
 import { RELATIONS } from "@milo/shared";
 import type { CardLink, Id, LinkedCard, Relation } from "@milo/shared";
 import { api } from "../../api";
-import classes from "../../assets/styles/CardEcheance.module.css";
+import classes from "../../assets/styles/CardDueDate.module.css";
 import { textWidth } from "../../lib/fieldWidth";
 import { errorMessage } from "../../lib/errors";
 import { RED } from "../../themes/colors";
@@ -118,7 +118,7 @@ export default function CardDependencies({
   ) => (
     <Group
       key={key}
-      data-dependance
+      data-dependency
       gap="xs"
       wrap="nowrap"
       align="center"
@@ -134,7 +134,7 @@ export default function CardDependencies({
         withCheckIcon={false}
         rightSection={<IconChevronDown size={12} />}
         comboboxProps={{ withinPortal: true }}
-        className={classes.champ}
+        className={classes.field}
         styles={{ input: { paddingInlineStart: FIELD_INSET } }}
         w={relationWidth()}
         style={{ flexShrink: 0 }}
@@ -148,7 +148,7 @@ export default function CardDependencies({
         onChange={onTarget}
         onError={onError}
         readOnly={readOnly}
-        className={classes.champ}
+        className={classes.field}
         inset={FIELD_INSET}
       />
       {!readOnly && (
@@ -171,7 +171,7 @@ export default function CardDependencies({
         {links.map((link, rank) =>
           row(
             rank,
-            `lien-${link.id}`,
+            `link-${link.id}`,
             link.relation,
             link.card,
             (relation) => void updateStatement(link, relation, link.card.id),
@@ -182,7 +182,7 @@ export default function CardDependencies({
         {drafts.map((draft, rank) =>
           row(
             links.length + rank,
-            `brouillon-${draft.key}`,
+            `draft-${draft.key}`,
             draft.relation,
             null,
             (relation) =>

@@ -20,7 +20,7 @@ export const errorMessage = (e: unknown): string =>
  */
 export const notifyError = (message: string, title = "Erreur"): void => {
   notifications.show({
-    id: `erreur:${message}`,
+    id: `error:${message}`,
     color: RED,
     title: title,
     message,

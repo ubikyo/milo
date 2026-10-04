@@ -1,14 +1,14 @@
-/* La barre de défilement du panneau d'un onglet du tiroir. Mantine la pose au
-   bord droit de la zone qu'elle fait défiler ; ici elle la quitte pour venir
-   se coucher sur la bordure gauche du tiroir, où elle ne prend qu'un pixel.
+/* The scrollbar of a drawer tab's panel. Mantine puts it on the right edge
+   of the area it scrolls; here it leaves it to lie on the drawer's left
+   border, where it takes only one pixel.
 
-   Le contenu du panneau est en retrait du bord du tiroir de tout son padding :
-   la barre remonte donc d'autant vers la gauche. « --milo-drawer-padding » est
-   posée par le tiroir lui-même (components/board/CardDrawer.jsx), pour que les deux valeurs ne
-   se séparent jamais.
+   The panel content is inset from the drawer edge by the whole padding: the
+   bar therefore moves that much further left. "--milo-drawer-padding" is set
+   by the drawer itself (components/board/CardDrawer.tsx), so the two values
+   never drift apart.
 
-   « position » est écrit en style inline par Mantine (Scrollbar.mjs) : seul un
-   « !important » peut l'emporter. */
+   "position" is written as an inline style by Mantine (Scrollbar.mjs): only
+   "!important" can override it. */
 .scrollbar[data-orientation="vertical"] {
   position: absolute !important;
   top: 0;
@@ -19,15 +19,16 @@
   padding: 0;
 }
 
-/* Aucun fond, pas même au survol : seul le curseur se voit. */
+/* No background, not even on hover: only the thumb shows. */
 .scrollbar[data-orientation="vertical"],
 .scrollbar[data-orientation="vertical"]:hover,
 .scrollbar[data-orientation="vertical"]:active {
   background-color: transparent;
 }
 
-/* Le curseur prend le gris de toutes les barres (scrollbars.css), survol compris, et carré : sur un
-   pixel de large, un arrondi ne ferait que le ronger à ses deux bouts. */
+/* The thumb takes the gray of every scrollbar (scrollbars.css), hover
+   included, and is square: one pixel wide, rounding would only eat at both
+   ends. */
 .scrollbar[data-orientation="vertical"] > .thumb,
 .scrollbar[data-orientation="vertical"]:hover > .thumb,
 .scrollbar[data-orientation="vertical"]:active > .thumb {
@@ -35,26 +36,26 @@
   border-radius: 0;
 }
 
-/* Le fil des commentaires veut toute la hauteur du panneau : le vide y affiche
-   son invite au milieu. Mantine pose son contenu en « table » dans la zone de
-   défilement, ce qui ne se laisse pas étirer ; on lui rend une colonne
-   flexible, haute d'au moins toute la zone. */
+/* The comment thread wants the panel's full height: the empty state shows
+   its prompt in the middle. Mantine lays its content out as a "table" in the
+   scroll area, which cannot be stretched; we give it back a flexible column,
+   at least as tall as the whole area. */
 .viewport > div {
   display: flex !important;
   flex-direction: column;
   min-height: 100%;
 }
 
-/* L'invite de dépôt, posée sur la fiche pendant qu'un fichier la survole.
+/* The drop prompt, laid over the card while a file hovers over it.
 
-   Elle s'arrête exactement là où s'arrête la zone qui recueille le dépôt, et
-   non au bord du tiroir : le cadre en pointillé promet ce qu'il tient. Le
-   retrait du tiroir reste en dehors — un fichier lâché là retombe sur le
-   comportement du navigateur, comme partout ailleurs dans l'application.
+   It stops exactly where the area that receives the drop stops, not at the
+   drawer edge: the dashed frame promises what it delivers. The drawer's
+   padding stays outside — a file dropped there falls back to the browser's
+   behavior, like everywhere else in the application.
 
-   Elle ne prend pas le pointeur : ce sont les éléments en dessous qui
-   continuent de voir passer le glisser, et c'est leur parent commun qui
-   recueille le dépôt (components/board/CardDrawer.tsx). */
+   It does not take the pointer: the elements underneath keep seeing the drag
+   pass, and their common parent receives the drop
+   (components/board/CardDrawer.tsx). */
 .dropZone {
   position: absolute;
   inset: 0;
@@ -71,16 +72,15 @@
   border-radius: var(--mantine-radius-md);
 }
 
-/* La même barre, couchée cette fois sur le bord droit du tiroir — celui qui
-   touche le bord de la fenêtre — et sur toute sa hauteur, onglets et boutons
-   du bas compris, bien que seul le contenu de l'onglet défile. S'ajoute à
-   « .scrollbar ».
+/* The same bar, this time on the drawer's right edge — the one touching the
+   window edge — and over its full height, tabs and bottom buttons included,
+   although only the tab content scrolls. Added to ".scrollbar".
 
-   Elle se place donc sur le tiroir lui-même et non sur la zone qui défile :
-   le tiroir est le seul à se poser en repère (« position: relative »), et
-   tout ce qui les sépare reste en « static » — la racine de la zone (voir
-   « .root »), le panneau de l'onglet et le corps du tiroir. Mantine mesure la
-   barre pour tailler son curseur : plus haute, elle le reste en proportion. */
+   It is therefore positioned on the drawer itself and not on the scrolling
+   area: the drawer is the only positioned ancestor ("position: relative"),
+   and everything in between stays "static" — the area root (see ".root"),
+   the tab panel and the drawer body. Mantine measures the bar to size its
+   thumb: taller, it stays proportional. */
 .scrollbarRight[data-orientation="vertical"] {
   top: 0;
   bottom: 0;
@@ -88,10 +88,10 @@
   right: 0;
 }
 
-/* La racine de la zone de défilement : Mantine la pose en repère et lui fait
-   couper ce qui la dépasse. La barre ne pourrait ni en sortir ni s'y voir.
-   C'est la zone intérieure qui défile et qui rogne le contenu : la racine
-   n'a besoin ni de l'un ni de l'autre. */
+/* The root of the scroll area: Mantine makes it a positioned ancestor and
+   clips what overflows it. The bar could neither leave it nor be seen in it.
+   The inner viewport is what scrolls and clips the content: the root needs
+   neither. */
 .root {
   position: static;
   overflow: visible;

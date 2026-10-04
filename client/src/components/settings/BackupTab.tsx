@@ -44,7 +44,7 @@ export default function BackupTab() {
   // Laquelle des deux opérations est en cours : chacune a son bouton, et
   // aucune des deux ne doit laisser croire que l'autre travaille.
   const [ongoing, setInProgress] = useState<
-    "telechargement" | "restauration" | null
+    "download" | "restore" | null
   >(null);
 
   const reload = useCallback(async () => {
@@ -60,7 +60,7 @@ export default function BackupTab() {
   }, [reload]);
 
   const download = async () => {
-    setInProgress("telechargement");
+    setInProgress("download");
     try {
       const archive = await api.downloadBackup();
       // Le navigateur n'enregistre un fichier que si un lien est cliqué : on
@@ -83,7 +83,7 @@ export default function BackupTab() {
     const archive = toRestore;
     setToRestore(null);
     setResult(null);
-    setInProgress("restauration");
+    setInProgress("restore");
     try {
       setResult(await api.restoreBackup(archive));
       await reload();
@@ -119,8 +119,8 @@ export default function BackupTab() {
             color="teal"
             leftSection={<IconDownload size={16} />}
             onClick={download}
-            loading={ongoing === "telechargement"}
-            disabled={ongoing === "restauration"}
+            loading={ongoing === "download"}
+            disabled={ongoing === "restore"}
           >
             Télécharger la sauvegarde
           </Button>
@@ -141,10 +141,10 @@ export default function BackupTab() {
                 {...props}
                 variant="default"
                 leftSection={<IconUpload size={16} />}
-                loading={ongoing === "restauration"}
-                disabled={ongoing === "telechargement"}
+                loading={ongoing === "restore"}
+                disabled={ongoing === "download"}
               >
-                {ongoing === "restauration"
+                {ongoing === "restore"
                   ? "Restauration en cours…"
                   : "Choisir une sauvegarde…"}
               </Button>

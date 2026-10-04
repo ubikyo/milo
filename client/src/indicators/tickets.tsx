@@ -2,7 +2,7 @@ import { Select, Stack } from "@mantine/core";
 import { IconTicket } from "@tabler/icons-react";
 import { dueState } from "../lib/due";
 import { withField, text } from "../widgets/types";
-import { NameField, NAME, TitreIndicateur, IndicatorValue } from "./common";
+import { NameField, NAME, IndicatorTitle, IndicatorValue } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 import type { Id, SupportRequest } from "@milo/shared";
 
@@ -44,7 +44,7 @@ const TYPES: TicketType[] = [
   {
     value: "late",
     label: "Tickets en retard",
-    account: (d) => ongoing(d) && dueState(d.due_date) === "retard",
+    account: (d) => ongoing(d) && dueState(d.due_date) === "late",
   },
   { value: "total", label: "Tickets au total", account: () => true },
 ];
@@ -67,7 +67,7 @@ export const ticketsIndicator: SupportIndicatorWidget = {
       // Le nom en haut, la quantité en bas à gauche : la carte donne la hauteur.
       <Stack gap={4} justify="space-between" style={{ flex: 1 }}>
         {/* Sans nom, l'indicateur se présente par son type. */}
-        <TitreIndicateur config={config} defaultValue={type.label} />
+        <IndicatorTitle config={config} defaultValue={type.label} />
         <IndicatorValue config={config}>
           {requests.filter((d) => type.account(d, userId)).length}
         </IndicatorValue>

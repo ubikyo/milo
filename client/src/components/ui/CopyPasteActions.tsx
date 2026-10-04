@@ -71,7 +71,7 @@ const WORDS: Record<
     copy: string;
     paste: string;
     copied: string;
-    les: string;
+    definite: string;
     replaceExisting: string;
     keptRequest?: string;
   }
@@ -80,14 +80,14 @@ const WORDS: Record<
     copy: "Copier les étiquettes",
     paste: "Coller les étiquettes",
     copied: "Étiquettes copiées",
-    les: "Les étiquettes",
+    definite: "Les étiquettes",
     replaceExisting: "Remplacer les étiquettes existantes",
   },
   categories: {
     copy: "Copier les catégories",
     paste: "Coller les catégories",
     copied: "Catégories copiées",
-    les: "Les catégories",
+    definite: "Les catégories",
     replaceExisting: "Remplacer les catégories existantes",
     keptRequest: "Celles qui rangent encore des projets sont gardées.",
   },
@@ -199,7 +199,7 @@ export default function CopyPasteActions({
             <Menu.Dropdown>
               {items.map((item) => (
                 <Menu.Item
-                  key={`copier-${item}`}
+                  key={`copy-${item}`}
                   leftSection={<IconCopy size={16} />}
                   onClick={() => copy(item)}
                 >
@@ -210,7 +210,7 @@ export default function CopyPasteActions({
               {pastable.length > 0 && <Menu.Divider />}
               {pastable.map((item) => (
                 <Menu.Item
-                  key={`coller-${item}`}
+                  key={`paste-${item}`}
                   leftSection={<IconClipboard size={16} />}
                   onClick={() => {
                     setReplace(false);
@@ -238,7 +238,7 @@ export default function CopyPasteActions({
           <>
             <Stack gap="md">
               <Text size="sm">
-                {WORDS[toPaste].les} de « {source.boardName} » seront ajoutées à
+                {WORDS[toPaste].definite} de « {source.boardName} » seront ajoutées à
                 « {board.name} ». Celles qui y portent déjà le même nom ne sont
                 pas redoublées.
               </Text>

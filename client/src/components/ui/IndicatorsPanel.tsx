@@ -592,7 +592,7 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
                   w="100%"
                   // Sans cadre, la carte perd son fond et son retrait : il ne
                   // reste que son contenu.
-                  className={isFramed(indicator.config, true) ? inset.encart : undefined}
+                  className={isFramed(indicator.config, true) ? inset.inset : undefined}
                   onClick={() => !frozen && onOpen(indicator)}
                   onContextMenu={menuOf}
                   style={{

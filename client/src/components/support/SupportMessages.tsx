@@ -459,7 +459,7 @@ export default function SupportMessages({
                   style={{ fontSize: "var(--mantine-font-size-sm)" }}
                 >
                   <div
-                    className={classes.corps}
+                    className={classes.body}
                     dangerouslySetInnerHTML={{ __html: asHtml(m.text) }}
                   />
                 </Typography>

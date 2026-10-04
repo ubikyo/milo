@@ -61,7 +61,7 @@ const receivedName = (value: unknown): string => {
 
 /**
  * Le type annoncé par le client. Il n'est gardé que pour mémoire : ce que le
- * serveur rend est déduit de l'extension (lib/medias.ts), jamais de ceci.
+ * serveur rend est déduit de l'extension (lib/media.ts), jamais de ceci.
  */
 const receivedType = (value: unknown): string => {
   const mime = String(value ?? "").trim().slice(0, 100);
@@ -203,7 +203,7 @@ attachmentRoutes.delete("/:id", (req, res) => {
 });
 
 /**
- * Monté sous `/api/medias`, et — seule route dans ce cas — avant l'exigence
+ * Monté sous `/api/media` (et l'ancienne `/api/medias`), et — seule route dans ce cas — avant l'exigence
  * d'une session : un navigateur qui va chercher l'image d'une description avec
  * une balise « img » n'y met pas d'en-tête d'authentification. Ce qui tient
  * lieu de clé, c'est le nom du fichier : seize octets tirés au sort, qui ne se

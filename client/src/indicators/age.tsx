@@ -2,7 +2,7 @@ import { BarChart } from "@mantine/charts";
 import { Stack } from "@mantine/core";
 import { IconHourglass } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import { ongoing, NAME, TitreIndicateur } from "./common";
+import { ongoing, NAME, IndicatorTitle } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 
 // Depuis combien de temps les demandes en cours attendent : le reste à faire,
@@ -38,7 +38,7 @@ export const ageIndicator: SupportIndicatorWidget = {
 
     return (
       <Stack gap={4} style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaultValue={`${LABEL} des tickets en cours`} />
+        <IndicatorTitle config={config} defaultValue={`${LABEL} des tickets en cours`} />
         <BarChart
           h={160}
           data={data}

@@ -186,7 +186,7 @@ const postpone = mutation(
 
 /** Une heure de Paris, lue comme des chiffres : on compte au calendrier, pas en millisecondes. */
 interface Clock {
-  an: number;
+  year: number;
   months: number;
   day: number;
   hour: number;
@@ -208,7 +208,7 @@ const parisClock = (iso: string): Clock => {
       .map((p) => [p.type, Number(p.value)]),
   );
   return {
-    an: dateParts["year"]!,
+    year: dateParts["year"]!,
     months: dateParts["month"]!,
     day: dateParts["day"]!,
     hour: dateParts["hour"]!,
@@ -216,11 +216,11 @@ const parisClock = (iso: string): Clock => {
   };
 };
 
-const deux = (n: number) => String(n).padStart(2, "0");
+const pad2 = (n: number) => String(n).padStart(2, "0");
 
 /** Le jour d'une horloge, décalé au calendrier ; un 31 qui n'existe pas tombe au dernier du mois. */
 const shift = (h: Clock, days: number, months: number): Clock => {
-  const target = new Date(Date.UTC(h.an, h.months - 1 + months, 1));
+  const target = new Date(Date.UTC(h.year, h.months - 1 + months, 1));
   const last = new Date(
     Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
   ).getUTCDate();
@@ -233,7 +233,7 @@ const shift = (h: Clock, days: number, months: number): Clock => {
   );
   return {
     ...h,
-    an: d.getUTCFullYear(),
+    year: d.getUTCFullYear(),
     months: d.getUTCMonth() + 1,
     day: d.getUTCDate(),
   };
@@ -249,7 +249,7 @@ const pas = (
       return { days: 1, months: 0 };
     case "weekdays": {
       // Le vendredi mène au lundi, le samedi aussi.
-      const week = new Date(Date.UTC(h.an, h.months - 1, h.day)).getUTCDay();
+      const week = new Date(Date.UTC(h.year, h.months - 1, h.day)).getUTCDay();
       return { days: week === 5 ? 3 : week === 6 ? 2 : 1, months: 0 };
     }
     case "weekly":
@@ -265,7 +265,7 @@ const pas = (
 
 const toIso = (h: Clock): string | null =>
   parisTime(
-    `${h.an}-${deux(h.months)}-${deux(h.day)} ${deux(h.hour)}:${deux(h.minute)}`,
+    `${h.year}-${pad2(h.months)}-${pad2(h.day)} ${pad2(h.hour)}:${pad2(h.minute)}`,
   );
 
 /**
@@ -306,7 +306,7 @@ const advanceRecurrences = (currentTime: Date): void => {
     postpone.run(
       nextDueDate,
       newStart
-        ? `${newStart.an}-${deux(newStart.months)}-${deux(newStart.day)}`
+        ? `${newStart.year}-${pad2(newStart.months)}-${pad2(newStart.day)}`
         : "",
       card.id,
     );

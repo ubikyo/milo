@@ -157,7 +157,7 @@ export default function BoardTabs({
   } = useTabReorder(boards, (board) => board.id, onReorder);
   const changeTab = guardChange(onChange);
 
-  const ouvrirRenommage = (tab: Tab) => {
+  const openRename = (tab: Tab) => {
     if (!onRename) return;
     finished.current = false;
     setRenamed({ id: tab.id, name: tab.name });
@@ -169,7 +169,7 @@ export default function BoardTabs({
     if (toRename == null) return;
     const tab = boards.find((b) => b.id === toRename);
     if (!tab) return;
-    ouvrirRenommage(tab);
+    openRename(tab);
     onRenameOpened?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toRename, boards]);
@@ -226,7 +226,7 @@ export default function BoardTabs({
                 // Le menu de l'onglet pend sous lui, comme celui d'une rangée.
                 if (usefulMenu) setMenu({ tab: board, position: menuAnchor(e) });
               }}
-              onDoubleClick={() => ouvrirRenommage(board)}
+              onDoubleClick={() => openRename(board)}
             >
               {/* Le nom — ou son champ — et les contextes, alignés sur la
                   ligne de base du texte : le libellé des contextes est plus
@@ -337,7 +337,7 @@ export default function BoardTabs({
             <Menu.Item
               leftSection={<IconPencil size={16} />}
               onClick={() =>
-                onEdit ? onEdit(menu.tab.id) : ouvrirRenommage(menu.tab)
+                onEdit ? onEdit(menu.tab.id) : openRename(menu.tab)
               }
             >
               Renommer

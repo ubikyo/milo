@@ -15,16 +15,16 @@ import type { AccessWidget } from "./types";
 // Elle se lit en chiffres, ou sur un cadran à aiguilles (« analogique ») : la
 // taille dit alors le diamètre du cadran, et la trotteuse peut s'y ajouter.
 
-const TIMEZONE = "fuseau";
-const SIZE = "taille";
-const FRAMED = "encadre";
+const TIMEZONE = "timezone";
+const SIZE = "size";
+const FRAMED = "framed";
 const MODE = "mode";
-const SECONDS = "secondes";
-const DIGITS = "chiffres";
+const SECONDS = "seconds";
+const DIGITS = "numerals";
 
 const MODES = [
-  { value: "numerique", label: "Numérique" },
-  { value: "analogique", label: "Analogique" },
+  { value: "digital", label: "Numérique" },
+  { value: "analog", label: "Analogique" },
 ];
 
 /** Le diamètre d'un cadran, en pixels, et ses bornes. */
@@ -108,7 +108,7 @@ const clockPartsIn = (timezone: string, currentTime: Date): { h: number; m: numb
   }
 };
 
-const isAnalog = (config: unknown): boolean => text(config, MODE, "numerique") === "analogique";
+const isAnalog = (config: unknown): boolean => text(config, MODE, "digital") === "analog";
 
 /** Une case cochée par défaut tant qu'elle n'a pas été réglée. */
 const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean => {
@@ -242,7 +242,7 @@ function Clock({ config }: { config: unknown }) {
   // trait de l'encart des attributs (widgets/numero), et l'air qu'il faut
   // autour pour que l'heure n'en touche pas les bords.
   return (
-    <Box className={classes.encart} style={{ padding: INSET, border: "none" }}>
+    <Box className={classes.inset} style={{ padding: INSET, border: "none" }}>
       {hour}
     </Box>
   );
@@ -257,7 +257,7 @@ export const clockWidget: AccessWidget = {
     [TIMEZONE]: DEFAULT_TIMEZONE,
     [SIZE]: DEFAULT_SIZE,
     [FRAMED]: false,
-    [MODE]: "numerique",
+    [MODE]: "digital",
   },
 
   Display: Clock,
@@ -277,11 +277,11 @@ export const clockWidget: AccessWidget = {
           w="fit-content"
           mt={4}
           data={MODES}
-          value={isAnalog(config) ? "analogique" : "numerique"}
+          value={isAnalog(config) ? "analog" : "digital"}
           onChange={(mode) =>
             onChange({
               ...withField(config, MODE, mode),
-              [SIZE]: mode === "analogique" ? DEFAULT_DIAMETER : DEFAULT_SIZE,
+              [SIZE]: mode === "analog" ? DEFAULT_DIAMETER : DEFAULT_SIZE,
             })
           }
         />

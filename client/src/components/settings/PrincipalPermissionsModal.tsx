@@ -25,7 +25,7 @@ const CHOICE_STYLES = {
 };
 
 // « Aucun » ne peut pas être la valeur vide d'un Select : il lui faut la sienne.
-const NONE = "aucun";
+const NONE = "none";
 
 /** Les choix d'un Select, « Aucun » compris sous sa propre valeur. */
 const choice = (options: readonly { value: string; label: string }[]) =>
@@ -40,7 +40,7 @@ export interface PermissionRow {
   /** Elle se lit sans se changer. */
   disabled?: boolean;
   /** Sa largeur quand elle se règle à même la ligne (PrincipalsPermissions). */
-  largeur?: number;
+  width?: number;
 }
 
 /** Des permissions qui vont ensemble, sous un libellé. */

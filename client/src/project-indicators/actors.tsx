@@ -2,7 +2,7 @@ import { Checkbox, Stack } from "@mantine/core";
 import { IconUsers } from "@tabler/icons-react";
 import { ActorRings } from "../indicators/actors";
 import { withField } from "../widgets/types";
-import { NameField, NAME, TitreIndicateur, isFinished } from "./common";
+import { NameField, NAME, IndicatorTitle, isFinished } from "./common";
 import type { ProjectIndicatorWidget } from "./types";
 
 // La part de chaque acteur dans les projets du tableau ouvert, en barres
@@ -10,7 +10,7 @@ import type { ProjectIndicatorWidget } from "./types";
 // demande.
 
 const LABEL = "Acteurs";
-const ALL = "tous";
+const ALL = "include_all";
 
 const allProjects = (config: unknown) =>
   Boolean((config as Record<string, unknown> | null)?.[ALL]);
@@ -26,7 +26,7 @@ export const projectActorsIndicator: ProjectIndicatorWidget = {
     const accounts = allProjects(config) ? projects : projects.filter((p) => !isFinished(p));
     return (
       <Stack gap={4} style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaultValue={LABEL} />
+        <IndicatorTitle config={config} defaultValue={LABEL} />
         <ActorRings actors={accounts.map((p) => p.actors)} unit="projets" />
       </Stack>
     );

@@ -20,12 +20,19 @@ const afterConfirmation = (): void => {
 /** « /api/mailbox-optins » : l'état des adresses, et leur relance. */
 export const optinRoutes = Router();
 
-/** La liste visée : la clé de liste de son widget (CLE_DE_LISTE). */
-const listOf = (value: unknown): string => (typeof value === "string" ? value : "");
+/**
+ * La liste visée : la clé de liste de son widget (LIST_KEY), dans
+ * « list_key » — ou « liste », le nom qu'elle portait avant.
+ */
+const listOf = (source: unknown): string => {
+  const fields = (source ?? {}) as { list_key?: unknown; liste?: unknown };
+  const value = fields.list_key ?? fields.liste;
+  return typeof value === "string" ? value : "";
+};
 
 optinRoutes.get("/", (req, res) => {
   requireWidget(req, "support.list", "view");
-  const list = listOf(req.query.liste);
+  const list = listOf(req.query);
   const emails = String(req.query.emails ?? "")
     .split(",")
     .map((e) => e.trim())
@@ -46,7 +53,7 @@ optinRoutes.post("/resend", (req, res, next) => {
   requireWidget(req, "support.list", "update");
   const emails: unknown[] = Array.isArray(req.body?.emails) ? req.body.emails : [];
   retry(
-    listOf(req.body?.liste),
+    listOf(req.body),
     emails.filter((e): e is string => typeof e === "string"),
   )
     .then((sent) => res.json({ sent }))
@@ -58,7 +65,7 @@ optinRoutes.post("/confirm", (req, res) => {
   requireWidget(req, "support.list", "update");
   const email = typeof req.body?.email === "string" ? req.body.email : "";
   const code = typeof req.body?.code === "string" ? req.body.code : "";
-  confirmByCode(listOf(req.body?.liste), email, code);
+  confirmByCode(listOf(req.body), email, code);
   afterConfirmation();
   res.json({ email, status: "confirmed" });
 });

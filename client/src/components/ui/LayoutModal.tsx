@@ -150,7 +150,7 @@ function Import({
   const access = useWidgetAccess();
   const [text, setText] = useState("");
   const [readValue, setRead] = useState<
-    { apercu: ImportPreview } | { erreur: string } | null
+    { preview: ImportPreview } | { error: string } | null
   >(null);
   const [sending, setSending] = useState(false);
 
@@ -162,7 +162,7 @@ function Import({
       .then((d) => {
         if (active) {
           setRead({
-            apercu: preview(
+            preview: preview(
               d,
               widgets,
               boardWidget,
@@ -171,7 +171,7 @@ function Import({
           });
         }
       })
-      .catch((e: unknown) => active && setRead({ erreur: errorMessage(e) }));
+      .catch((e: unknown) => active && setRead({ error: errorMessage(e) }));
     return () => {
       active = false;
     };
@@ -179,7 +179,7 @@ function Import({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, widgets]);
 
-  const result = readValue && "apercu" in readValue ? readValue.apercu : null;
+  const result = readValue && "preview" in readValue ? readValue.preview : null;
 
   const importSections = async () => {
     if (!result) return;
@@ -215,7 +215,7 @@ function Import({
               fontSize: 12,
             },
           }}
-          error={readValue && "erreur" in readValue ? readValue.erreur : undefined}
+          error={readValue && "error" in readValue ? readValue.error : undefined}
         />
         {result && (
           <Text size="sm">

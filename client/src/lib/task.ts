@@ -39,11 +39,11 @@ export const workstationSource = (workstation: Asset): SourceTask => ({
  */
 export const accessSource = (block: BoardWidget, boardId: Id, boardName?: string): SourceTask => {
   const config = block.config ?? {};
-  const rows = Array.isArray(config.lignes) ? (config.lignes as Record<string, unknown>[]) : [];
+  const rows = Array.isArray(config.lines) ? (config.lines as Record<string, unknown>[]) : [];
   const title =
-    text(config.titre) ||
-    text(config.libelle) ||
-    text(rows[0]?.libelle) ||
+    text(config.title) ||
+    text(config.label) ||
+    text(rows[0]?.label) ||
     text(config.url) ||
     widgetFor(block.type as AccessBlockType)?.label ||
     "Accès";

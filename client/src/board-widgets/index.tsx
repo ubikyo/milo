@@ -118,7 +118,7 @@ const fromAccess = (widget: AccessWidget): BoardWidgetDefinition => ({
  */
 const frame = (content: ReactNode, framed: boolean): ReactNode =>
   framed ? (
-    <Box className={inset.encart} style={{ border: "none" }}>
+    <Box className={inset.inset} style={{ border: "none" }}>
       {content}
     </Box>
   ) : (

@@ -19,3 +19,4 @@ export * from "./search.js";
 export * from "./support-settings.js";
 export * from "./tab-orders.js";
 export * from "./widget-kinds.js";
+export * from "./widget-config.js";

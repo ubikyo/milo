@@ -3,14 +3,14 @@ import { Select, Stack } from "@mantine/core";
 import { IconChartHistogram } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { withField, count } from "../widgets/types";
-import { NameField, NAME, TitreIndicateur } from "./common";
+import { NameField, NAME, IndicatorTitle } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 
 // Les demandes reçues jour après jour, sur la période choisie : de quoi voir
 // venir un afflux, ou le calme d'une semaine de vacances.
 
 const LABEL = "Évolution";
-const PERIOD = "jours";
+const PERIOD = "days";
 const PERIODS = [7, 14, 30];
 const PERIOD_DEFAULT = 14;
 
@@ -44,11 +44,11 @@ export const evolutionIndicator: SupportIndicatorWidget = {
 
     return (
       <Stack gap={4} style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaultValue={`${LABEL} sur ${days} jours`} />
+        <IndicatorTitle config={config} defaultValue={`${LABEL} sur ${days} jours`} />
         <BarChart
           h={160}
           data={data}
-          dataKey="jour"
+          dataKey="day"
           series={[{ name: "tickets", label: "Tickets", color: "teal.6" }]}
           gridAxis="none"
           yAxisProps={{ allowDecimals: false, width: 24 }}

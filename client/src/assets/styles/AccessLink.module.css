@@ -1,26 +1,26 @@
-/* Un lien du mode Accès. Il ne porte ni le bleu ni le soulignement que le
-   navigateur et Mantine donnent aux liens : dans une colonne d'accès, tout est
-   lien ou presque, et les distinguer ainsi ferait une page bariolée. C'est le
-   contraste maximal du thème qui les pose, en style en ligne — blanc sur fond
-   sombre, quasi-noir sur fond clair (themes/colors.ts, STRONG_TEXT).
+/* A link in Access mode. It carries neither the blue nor the underline that
+   the browser and Mantine give links: in an access column, nearly everything
+   is a link, and telling them apart that way would make a garish page. The
+   theme's maximum contrast sets them, as an inline style — white on a dark
+   background, near-black on a light one (themes/colors.ts, STRONG_TEXT).
 
-   Le retrait de 3 pixels est là en permanence, et non au seul survol : posé au
-   survol, il pousserait le texte de trois pixels à chaque passage de souris.
-   Seul le fond apparaît. */
-.lien {
+   The 3-pixel padding is always there, not only on hover: set on hover, it
+   would push the text by three pixels on every mouse pass. Only the
+   background appears. */
+.link {
   display: inline-block;
   max-width: 100%;
   padding: 3px;
-  /* Le retrait latéral est repris en marge négative : sans cela, le texte d'un
-     lien commencerait trois pixels plus à droite que celui d'un titre ou d'une
-     catégorie posés dans la même colonne, et la colonne perdrait son aplomb.
-     Seul le fond du survol déborde, ce qui est bien ce qu'on lui demande. */
+  /* The side padding is taken back as a negative margin: without it, a
+     link's text would start three pixels further right than a title's or a
+     category's in the same column, and the column would lose its alignment.
+     Only the hover background overflows, which is exactly what we want. */
   margin-inline: -3px;
   border-radius: var(--mantine-radius-sm);
 }
 
-/* Le survol des lignes des grilles (assets/styles/tables.css) : gray-2 sur
-   le clair, dark-6 sur le sombre. */
-.lien:hover {
+/* The grid row hover (assets/styles/tables.css): gray-2 on light, dark-6 on
+   dark. */
+.link:hover {
   background-color: light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-6));
 }

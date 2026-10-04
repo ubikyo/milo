@@ -27,7 +27,7 @@ userRoutes.get("/", (_req, res) => {
 
 // --- Favoris ---------------------------------------------------------------
 
-const favorisDe = selection<{ favorite_id: Id }>(
+const favoritesOf = selection<{ favorite_id: Id }>(
   `SELECT f.favorite_id FROM user_favorites f
    JOIN users u ON u.id = f.favorite_id
    WHERE f.user_id = ? AND u.system = 0`,
@@ -40,7 +40,7 @@ const removeFavorite = mutation(
   "DELETE FROM user_favorites WHERE user_id = ? AND favorite_id = ?",
 );
 
-const myFavorites = (userId: Id): Id[] => favorisDe.all(userId).map((f) => f.favorite_id);
+const myFavorites = (userId: Id): Id[] => favoritesOf.all(userId).map((f) => f.favorite_id);
 
 /** Les favoris de la personne connectée, en identifiants. */
 userRoutes.get("/favorites", (req, res) => {

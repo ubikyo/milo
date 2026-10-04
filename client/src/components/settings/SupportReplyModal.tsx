@@ -169,7 +169,7 @@ export default function SupportReplyModal({
                     chevronPosition="right"
                     classNames={{
                       item: classes.section,
-                      control: classes.controle,
+                      control: classes.control,
                     }}
                     styles={{
                       item: { border: "none" },

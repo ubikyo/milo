@@ -2,8 +2,8 @@
 // de demandes, les tags d'agent d'une liste de postes. Chaque widget associe
 // ce qu'il reçoit à l'un des contextes de son tableau, dans sa configuration :
 //
-//   support.list : { "boites": [{ "email": "support@…", "contexte": 12 }] }
-//   asset.list   : { "tags":   [{ "tag": "Arco Marketing", "contexte": 12 }] }
+//   support.list : { "mailboxes": [{ "email": "support@…", "context_id": 12 }] }
+//   asset.list   : { "tags":      [{ "tag": "Arco Marketing", "context_id": 12 }] }
 //
 // Une même boîte reçue par deux widgets va au premier : celui de la structure
 // publique d'abord, le plus ancien ensuite.
@@ -46,7 +46,7 @@ export interface Inbox {
 }
 
 /** La clé de la configuration d'une liste de demandes : supprimer ce qu'elle relève. */
-export const DELETION = "suppression";
+export const DELETION = "delete_after_import";
 
 const boardOf = selection<{ name: string }>("SELECT name FROM boards WHERE id = ?");
 
@@ -77,7 +77,7 @@ const inboxes = (
     for (const entry of list) {
       const value = typeof entry?.[key] === "string" ? (entry[key] as string).trim() : "";
       if (!value || (uniquePerValue && views.has(value.toLowerCase()))) continue;
-      const found = entry.contexte ? contexts.byId.get(entry.contexte) : undefined;
+      const found = entry.context_id ? contexts.byId.get(entry.context_id) : undefined;
       const context = found?.board_id === widget.board_id ? found : undefined;
       const board = boardOf.get(widget.board_id)?.name ?? "";
       const inbox: Inbox = {
@@ -97,11 +97,11 @@ const inboxes = (
 };
 
 /** Les boîtes de support que les listes de demandes disent, confirmées ou non. */
-export const configuredMailboxes = (): Inbox[] => inboxes("support.list", "boites", "email");
+export const configuredMailboxes = (): Inbox[] => inboxes("support.list", "mailboxes", "email");
 
 /** Chaque boîte de chaque liste, sans regarder si une autre la reçoit déjà : ce qui se confirme. */
 export const listMailboxes = (): Inbox[] =>
-  inboxes("support.list", "boites", "email", () => true, false);
+  inboxes("support.list", "mailboxes", "email", () => true, false);
 
 /**
  * Les boîtes de support qui se relèvent, une par liste qui l'a confirmée
@@ -115,7 +115,7 @@ export const receivedMailboxes = (): (Inbox & { confirmed_at: string })[] => {
   // Une liste ne reçoit qu'une fois une boîte, même dite par sa copie
   // personnelle — qui garde sa clé de liste.
   const views = new Set<string>();
-  return inboxes("support.list", "boites", "email", (b) => Boolean(le(b)), false).flatMap(
+  return inboxes("support.list", "mailboxes", "email", (b) => Boolean(le(b)), false).flatMap(
     (b) => {
       const p = pair(b.list, b.value);
       if (views.has(p)) return [];

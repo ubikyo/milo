@@ -26,7 +26,7 @@ import { NEUTRAL_HOVER, STRONG_TEXT } from "../../themes/colors";
 import GridScroll from "../ui/GridScroll";
 import { ReferenceTag } from "../ui/ReferenceTag";
 import { CARD_BACKGROUND } from "./backgrounds";
-import { useResizableColumns } from "../ui/useColonnesRedimensionnables";
+import { useResizableColumns } from "../ui/useResizableColumns";
 import type { ComponentType, CSSProperties, ReactNode } from "react";
 import type { AssetEntry, AssetSection } from "@milo/shared";
 
@@ -54,7 +54,7 @@ interface Column {
   /** Le sens du premier clic : décroissant pour ce qu'on cherche en haut. */
   firstDirection?: Direction;
   onRight?: boolean;
-  largeur?: CSSProperties["width"];
+  width?: CSSProperties["width"];
 }
 
 interface Sorting {
@@ -77,7 +77,7 @@ function Header({
   const active = sorting.key === column.key;
   const Icon = !active ? IconSelector : sorting.direction === "asc" ? IconChevronUp : IconChevronDown;
   return (
-    <Table.Th style={{ width: column.largeur }}>
+    <Table.Th style={{ width: column.width }}>
       <UnstyledButton onClick={onSort} style={{ width: "100%" }}>
         <Group
           gap={4}
@@ -135,7 +135,7 @@ function SortableTable({
   const [height, setHeight] = useState<number | undefined>(undefined);
   // Chaque tableau de l'inventaire se reconnaît à ses colonnes.
   const keys = columns.map((c) => c.key);
-  const resize = useResizableColumns(`inventaire.${keys.join("-")}`, keys, widths);
+  const resize = useResizableColumns(`inventory.${keys.join("-")}`, keys, widths);
 
   const sortBy = (column: Column) => {
     // Un autre ordre repart du haut de la grille.
@@ -344,8 +344,8 @@ const usage = (entry: AssetEntry): number | null => {
 
 /** La jauge d'un volume : l'occupé en barre, le libre et le total en clair. */
 function Usage({ entry }: { entry: AssetEntry }) {
-  const occupe = usage(entry);
-  if (occupe === null) {
+  const used = usage(entry);
+  if (used === null) {
     return (
       <Text size="sm" c="dimmed">
         {EMPTY}
@@ -354,10 +354,10 @@ function Usage({ entry }: { entry: AssetEntry }) {
   }
   // La couleur ne dit rien tant qu'il reste de la place, et alerte quand il
   // n'en reste plus.
-  const color = occupe >= 90 ? "red" : occupe >= 75 ? "orange" : "blue";
+  const color = used >= 90 ? "red" : used >= 75 ? "orange" : "blue";
   return (
     <Stack gap={2}>
-      <Progress value={occupe} color={color} size="sm" />
+      <Progress value={used} color={color} size="sm" />
       <Text size="xs" c="dimmed">
         {size(Number(entry["FREE"]))} / {size(Number(entry["TOTAL"]))}
       </Text>
@@ -598,8 +598,8 @@ const sortableDate = (value: string | undefined): string => {
   const text = (value ?? "").trim();
   const frenchDate = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(text);
   if (!frenchDate) return text;
-  const [, day, months, an] = frenchDate;
-  return `${an}-${months!.padStart(2, "0")}-${day!.padStart(2, "0")}`;
+  const [, day, months, year] = frenchDate;
+  return `${year}-${months!.padStart(2, "0")}-${day!.padStart(2, "0")}`;
 };
 
 /**
@@ -1646,7 +1646,7 @@ function Bios({ section }: { section: AssetSection }) {
 export const WITHOUT_FRAME = new Set(["OPERATINGSYSTEM", "VIRTUALMACHINES"]);
 
 /** Les sections qui ont leur tableau ; les autres restent en fiches. */
-export const TABLEAUX: Record<string, ComponentType<{ section: AssetSection }>> = {
+export const SECTION_TABLES: Record<string, ComponentType<{ section: AssetSection }>> = {
   ANTIVIRUS: Protections,
   BATTERIES: Battery,
   BIOS: Bios,

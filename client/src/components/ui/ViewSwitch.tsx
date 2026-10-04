@@ -128,7 +128,7 @@ export default function ViewSwitch({
 
   const withMenu = Boolean(onRename || onTogglePrivate || onDelete);
 
-  const ouvrirRenommage = (view: View) => {
+  const openRename = (view: View) => {
     if (!onRename) return;
     finished.current = false;
     setRenamed({ id: view.id, name: view.name });
@@ -139,7 +139,7 @@ export default function ViewSwitch({
     if (toRename == null) return;
     const view = views.find((v) => v.id === toRename);
     if (!view) return;
-    ouvrirRenommage(view);
+    openRename(view);
     onRenameOpened?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toRename, views]);
@@ -181,7 +181,7 @@ export default function ViewSwitch({
                   // Sans position propre : le trait se pose contre la case.
                   {...tabProps(view.id, index, { display: "inline-block" })}
                   // Un double-clic renomme, comme sur un onglet.
-                  onDoubleClick={() => ouvrirRenommage(view)}
+                  onDoubleClick={() => openRename(view)}
                   onContextMenu={(e) => {
                     if (!withMenu) return;
                     // Le menu de la vue se pose au-dessus de son segment.
@@ -278,7 +278,7 @@ export default function ViewSwitch({
           {onRename && (
             <Menu.Item
               leftSection={<IconPencil size={16} />}
-              onClick={() => ouvrirRenommage(menu.view)}
+              onClick={() => openRename(menu.view)}
             >
               Renommer
             </Menu.Item>

@@ -410,7 +410,7 @@ export interface CardCover {
   size: number;
   position: number;
   created_at: string;
-  /** Où la lire : « /api/medias/<file> ». */
+  /** Où la lire : « /api/media/<file> ». */
   url: string;
 }
 
@@ -427,7 +427,7 @@ export interface Attachment {
   /** L'ordre dans la fiche : la plus petite en tête. */
   position: number;
   created_at: string;
-  /** Où le lire : « /api/medias/<file> ». */
+  /** Où le lire : « /api/media/<file> ». */
   url: string;
   /** Vrai pour les images que le serveur rend telles quelles : l'encart les montre. */
   is_image: boolean;
@@ -960,7 +960,7 @@ export interface AccessFeed {
  */
 export type AccessFeedProbe =
   | { state: "ok"; format: string }
-  | { state: "injoignable" | "invalide"; message: string };
+  | { state: "unreachable" | "invalid"; message: string };
 
 /** L'intervalle de relève d'un flux, en minutes : par défaut, et ses bornes. */
 export const ACCESS_FEED_INTERVAL_DEFAULT = 30;

@@ -2,7 +2,7 @@ import { Group, Input, Menu, NumberInput, Select, Stack } from "@mantine/core";
 import { IconChevronDown, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import type { DragEvent } from "react";
-import classes from "../../assets/styles/ChampsColonnes.module.css";
+import classes from "../../assets/styles/ColumnFields.module.css";
 import { RED } from "../../themes/colors";
 import { withField } from "../../widgets/types";
 import type { IndicatorConfigProps } from "../../indicators/types";
@@ -40,27 +40,27 @@ export interface ListColumn {
 }
 
 /** Une colonne montrée : « id » la distingue de ses doubles, dans la grille. */
-export type ShownColumn<C extends ListColumn> = C & { id: string; largeur?: number };
+export type ShownColumn<C extends ListColumn> = C & { id: string; width?: number };
 
 /** Les colonnes montrées, dans l'ordre : une entrée par ligne de la liste. */
-export const LIST_COLUMNS = "liste_colonnes";
+export const LIST_COLUMNS = "columns";
 
 // Les réglages d'avant la liste : un booléen par colonne, leur ordre, leurs
 // largeurs. Relus tant que la liste n'a pas été enregistrée.
-const COLUMNS = "colonnes";
-const COLUMNS_ORDER = "ordre_colonnes";
-const COLUMN_WIDTHS = "largeurs_colonnes";
+const COLUMNS = "column_visibility";
+const COLUMNS_ORDER = "column_order";
+const COLUMN_WIDTHS = "column_widths";
 
 interface Entry {
   key: string;
-  largeur?: number;
+  width?: number;
 }
 
 /**
  * La liste des colonnes ne montre que cinq options à la fois, puis défile :
  * une option de taille « sm » mesure 33,6875 px.
  */
-const OPTIONS_VISIBLES = 5;
+const VISIBLE_OPTIONS = 5;
 const OPTION_HEIGHT = 33.6875;
 
 /** En deçà, la colonne ne montrerait plus qu'une ellipse — comme dans la grille. */
@@ -92,7 +92,7 @@ const legacyEntries = (columns: ListColumn[], config: unknown): Entry[] => {
   return [...columns]
     .sort((a, b) => rank(a) - rank(b))
     .filter((c) => hiddenItems[c.key] !== false)
-    .map((c) => ({ key: c.key, largeur: readWidth(widths[c.key]) }));
+    .map((c) => ({ key: c.key, width: readWidth(widths[c.key]) }));
 };
 
 /**
@@ -107,7 +107,7 @@ const entries = (columns: ListColumn[], config: unknown): Entry[] => {
           (e): e is Entry =>
             Boolean(e) && typeof e === "object" && columns.some((c) => c.key === e.key),
         )
-        .map((e) => ({ key: e.key, largeur: readWidth(e.largeur) }))
+        .map((e) => ({ key: e.key, width: readWidth(e.width) }))
     : legacyEntries(columns, config);
   return readItems.length > 0 ? readItems : columns.map((c) => ({ key: c.key }));
 };
@@ -132,13 +132,13 @@ export const keptColumns = <C extends ListColumn>(
   return list.map((e, i) => ({
     ...columns.find((c) => c.key === e.key)!,
     id: ids[i]!,
-    largeur: e.largeur,
+    width: e.width,
   }));
 };
 
 /**
  * Les largeurs par défaut que la configuration donne, par identifiant, pour
- * la grille (useColonnesRedimensionnables) ; « undefined » quand elle n'en
+ * la grille (useResizableColumns) ; « undefined » quand elle n'en
  * donne aucune — la grille garde alors sa mise en page naturelle.
  */
 export const defaultWidths = (
@@ -147,8 +147,8 @@ export const defaultWidths = (
 ): Record<string, number> | undefined => {
   const widths = Object.fromEntries(
     keptColumns(columns, config)
-      .filter((c) => c.largeur !== undefined)
-      .map((c) => [c.id, c.largeur!]),
+      .filter((c) => c.width !== undefined)
+      .map((c) => [c.id, c.width!]),
   );
   return Object.keys(widths).length > 0 ? widths : undefined;
 };
@@ -198,7 +198,7 @@ export default function ColumnFields({
   };
 
   const changeWidth = (rank: number, value: string | number) =>
-    store(list.map((e, i) => (i === rank ? { key: e.key, largeur: readWidth(value) } : e)));
+    store(list.map((e, i) => (i === rank ? { key: e.key, width: readWidth(value) } : e)));
 
   // La ligne tenue prend la place de celle qu'elle survole : la liste se
   // range sous le pointeur, et la configuration suit.
@@ -223,7 +223,7 @@ export default function ColumnFields({
           const newRow = rank === list.length;
           return (
             <Group
-              key={newRow ? "nouvelle" : ids[rank]}
+              key={newRow ? "new" : ids[rank]}
               gap="sm"
               wrap="nowrap"
               onDragOver={(e) => dragHover(e, rank)}
@@ -267,7 +267,7 @@ export default function ColumnFields({
                 // La liste se présente comme la palette des couleurs d'une
                 // étiquette : un panneau flottant de Mantine, cerné et ombré.
                 comboboxProps={{ shadow: "md" }}
-                maxDropdownHeight={OPTIONS_VISIBLES * OPTION_HEIGHT}
+                maxDropdownHeight={VISIBLE_OPTIONS * OPTION_HEIGHT}
                 styles={{
                   // Le champ se présente comme celui de la largeur : son fond,
                   // et celui du tiroir tant que la liste est ouverte.
@@ -296,7 +296,7 @@ export default function ColumnFields({
                 allowDecimal={false}
                 allowNegative={false}
                 aria-label={`Largeur de la colonne ${column.label}`}
-                value={entry.largeur ?? ""}
+                value={entry.width ?? ""}
                 onChange={(value) => changeWidth(rank, value)}
                 onFocus={() => setInput(rank)}
                 onBlur={() => setInput(null)}

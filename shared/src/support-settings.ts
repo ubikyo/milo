@@ -64,72 +64,115 @@ export const SUPPORT_VARIABLE_GROUPS = ["Utilisateur", "Expéditeur", "Demande"]
 export type SupportVariableGroup = (typeof SUPPORT_VARIABLE_GROUPS)[number];
 
 /**
- * Ce qu'un modèle peut citer : « {{demande.numero}} » devient « HLP-12 » dans
- * le message. L'utilisateur est le compte connecté, l'expéditeur celui de la
- * demande : leurs fiches viennent d'Entra.
+ * Ce qu'un modèle peut citer : « {{ticket.number}} » devient « HLP-12 » dans
+ * le message. L'utilisateur (« user ») est le compte connecté, l'expéditeur
+ * (« sender ») celui de la demande : leurs fiches viennent d'Entra. Les
+ * modèles rangés avant citaient ces variables en français
+ * (« {{demande.numero}} ») : la migration les a réécrites
+ * (LEGACY_SUPPORT_VARIABLES).
  */
 export const SUPPORT_REPLY_VARIABLES = [
-  { group: "Utilisateur", key: "utilisateur.prenom", label: "Prénom" },
-  { group: "Utilisateur", key: "utilisateur.nom", label: "Nom" },
-  { group: "Utilisateur", key: "utilisateur.nom_complet", label: "Nom complet" },
-  { group: "Utilisateur", key: "utilisateur.email", label: "Adresse e-mail" },
-  { group: "Utilisateur", key: "utilisateur.telephone", label: "Téléphone professionnel" },
-  { group: "Utilisateur", key: "utilisateur.mobile", label: "Téléphone mobile" },
-  { group: "Utilisateur", key: "utilisateur.poste", label: "Poste" },
-  { group: "Utilisateur", key: "utilisateur.service", label: "Département" },
-  { group: "Utilisateur", key: "utilisateur.entreprise", label: "Nom de l'entreprise" },
-  { group: "Utilisateur", key: "utilisateur.adresse", label: "Adresse postale" },
-  { group: "Utilisateur", key: "utilisateur.ville", label: "Ville" },
-  { group: "Utilisateur", key: "utilisateur.departement", label: "Département (adresse)" },
-  { group: "Utilisateur", key: "utilisateur.code_postal", label: "Code postal" },
-  { group: "Utilisateur", key: "utilisateur.pays", label: "Pays" },
-  { group: "Expéditeur", key: "expediteur.prenom", label: "Prénom" },
-  { group: "Expéditeur", key: "expediteur.nom", label: "Nom" },
-  { group: "Expéditeur", key: "expediteur.nom_complet", label: "Nom complet" },
-  { group: "Expéditeur", key: "expediteur.email", label: "Adresse e-mail" },
-  { group: "Demande", key: "demande.numero", label: "Numéro" },
-  { group: "Demande", key: "demande.objet", label: "Objet" },
-  { group: "Demande", key: "demande.statut", label: "Statut" },
+  { group: "Utilisateur", key: "user.first_name", label: "Prénom" },
+  { group: "Utilisateur", key: "user.last_name", label: "Nom" },
+  { group: "Utilisateur", key: "user.full_name", label: "Nom complet" },
+  { group: "Utilisateur", key: "user.email", label: "Adresse e-mail" },
+  { group: "Utilisateur", key: "user.phone", label: "Téléphone professionnel" },
+  { group: "Utilisateur", key: "user.mobile", label: "Téléphone mobile" },
+  { group: "Utilisateur", key: "user.job_title", label: "Poste" },
+  { group: "Utilisateur", key: "user.department", label: "Département" },
+  { group: "Utilisateur", key: "user.company", label: "Nom de l'entreprise" },
+  { group: "Utilisateur", key: "user.street_address", label: "Adresse postale" },
+  { group: "Utilisateur", key: "user.city", label: "Ville" },
+  { group: "Utilisateur", key: "user.state", label: "Département (adresse)" },
+  { group: "Utilisateur", key: "user.postal_code", label: "Code postal" },
+  { group: "Utilisateur", key: "user.country", label: "Pays" },
+  { group: "Expéditeur", key: "sender.first_name", label: "Prénom" },
+  { group: "Expéditeur", key: "sender.last_name", label: "Nom" },
+  { group: "Expéditeur", key: "sender.full_name", label: "Nom complet" },
+  { group: "Expéditeur", key: "sender.email", label: "Adresse e-mail" },
+  { group: "Demande", key: "ticket.number", label: "Numéro" },
+  { group: "Demande", key: "ticket.subject", label: "Objet" },
+  { group: "Demande", key: "ticket.status", label: "Statut" },
 ] as const satisfies readonly {
   group: SupportVariableGroup;
   key: string;
   label: string;
 }[];
 
+/** Les groupes et les champs des variables d'avant, vers ceux d'aujourd'hui. */
+const LEGACY_VARIABLE_GROUPS: Record<string, string> = {
+  utilisateur: "user",
+  expediteur: "sender",
+  demande: "ticket",
+};
+const LEGACY_VARIABLE_FIELDS: Record<string, string> = {
+  prenom: "first_name",
+  nom: "last_name",
+  nom_complet: "full_name",
+  telephone: "phone",
+  poste: "job_title",
+  service: "department",
+  entreprise: "company",
+  adresse: "street_address",
+  ville: "city",
+  departement: "state",
+  code_postal: "postal_code",
+  pays: "country",
+  numero: "number",
+  objet: "subject",
+  statut: "status",
+};
+
+/**
+ * Un modèle HTML dont les variables françaises d'avant (« {{demande.numero}} »)
+ * sont réécrites comme aujourd'hui (« {{ticket.number}} ») ; le reste tel
+ * quel. Sert à la migration de la base.
+ */
+export const migrateSupportTemplate = (template: string): string =>
+  template.replace(/\{\{(\s*)([\w.]+)(\s*)\}\}/g, (match, before: string, key: string, after: string) => {
+    const [group, field, ...rest] = key.split(".");
+    if (rest.length > 0 || !group || !field || !Object.hasOwn(LEGACY_VARIABLE_GROUPS, group)) {
+      return match;
+    }
+    const renamed = Object.hasOwn(LEGACY_VARIABLE_FIELDS, field) ? LEGACY_VARIABLE_FIELDS[field] : field;
+    return `{{${before}${LEGACY_VARIABLE_GROUPS[group]}.${renamed}${after}}}`;
+  });
+
 /**
  * La fiche d'une personne, telle que les variables la citent : celle d'Entra,
- * ou, à défaut, ce qu'en sait Milo — son nom, son adresse.
+ * ou, à défaut, ce qu'en sait Milo — son nom, son adresse. Ses champs sont
+ * ceux des variables (« {{user.first_name}} »).
  */
 export interface SupportPerson {
-  firstName: string;
-  name: string;
+  first_name: string;
+  last_name: string;
   full_name: string;
   email: string;
-  telephone: string;
+  phone: string;
   mobile: string;
-  jobTitle: string;
-  service: string;
-  company: string;
-  address: string;
-  city: string;
+  job_title: string;
   department: string;
+  company: string;
+  street_address: string;
+  city: string;
+  state: string;
   postal_code: string;
   country: string;
 }
 
 export const emptySupportPerson = (): SupportPerson => ({
-  firstName: "",
-  name: "",
+  first_name: "",
+  last_name: "",
   full_name: "",
   email: "",
-  telephone: "",
+  phone: "",
   mobile: "",
-  jobTitle: "",
-  service: "",
-  company: "",
-  address: "",
-  city: "",
+  job_title: "",
   department: "",
+  company: "",
+  street_address: "",
+  city: "",
+  state: "",
   postal_code: "",
   country: "",
 });
@@ -139,17 +182,17 @@ export const emptySupportPerson = (): SupportPerson => ({
  * que porte son e-mail. Les mots tout en capitales sont le nom (« QUINTARD
  * Jérôme ») ; sinon, le premier mot est le prénom et la suite le nom.
  */
-export const splitPersonName = (full: string): { firstName: string; name: string } => {
+export const splitPersonName = (full: string): { first_name: string; last_name: string } => {
   const words = full.trim().split(/\s+/).filter(Boolean);
   const isUppercase = (word: string) =>
     /\p{L}{2}/u.test(word) && word === word.toLocaleUpperCase("fr");
   if (words.some(isUppercase) && !words.every(isUppercase)) {
     return {
-      firstName: words.filter((m) => !isUppercase(m)).join(" "),
-      name: words.filter(isUppercase).join(" "),
+      first_name: words.filter((m) => !isUppercase(m)).join(" "),
+      last_name: words.filter(isUppercase).join(" "),
     };
   }
-  return { firstName: words[0] ?? "", name: words.slice(1).join(" ") };
+  return { first_name: words[0] ?? "", last_name: words.slice(1).join(" ") };
 };
 
 /** Ce qu'il faut savoir d'une demande pour en remplir les variables. */
@@ -175,14 +218,14 @@ export const supportReplyValues = ({
   request: RequestWithVariables;
 }): Record<string, string> => {
   const values: Record<string, string> = {
-    "demande.numero": request.number ? supportTicketRef(request.number) : "",
-    "demande.objet": request.subject,
-    "demande.statut": supportStatusLabel(request.status),
+    "ticket.number": request.number ? supportTicketRef(request.number) : "",
+    "ticket.subject": request.subject,
+    "ticket.status": supportStatusLabel(request.status),
   };
   const people = { user, sender };
   for (const v of SUPPORT_REPLY_VARIABLES) {
     const [who, field] = v.key.split(".") as [string, keyof SupportPerson];
-    if (who === "demande") continue;
+    if (who === "ticket") continue;
     values[v.key] = people[who as keyof typeof people]?.[field] ?? "";
   }
   return values;
@@ -196,7 +239,7 @@ const escapeHtml = (text: string): string =>
     .replace(/"/g, "&quot;");
 
 /**
- * Un modèle HTML dont « {{demande.numero}} » est remplacé par sa valeur,
+ * Un modèle HTML dont « {{ticket.number}} » est remplacé par sa valeur,
  * échappée ; une variable inconnue reste telle quelle.
  */
 export const fillSupportTemplate = (template: string, values: Record<string, string>): string =>

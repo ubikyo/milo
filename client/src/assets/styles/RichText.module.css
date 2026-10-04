@@ -1,52 +1,52 @@
-/* La zone de saisie de texte enrichi — description d'une fiche, commentaire.
-   Elle part sur une seule ligne et grandit avec le texte — chaque Entrée en
-   ajoute une — jusqu'à cinq ; au-delà, elle défile.
+/* The rich text input — a card description, a comment. It starts on a
+   single line and grows with the text — each Enter adds one — up to five;
+   beyond that, it scrolls.
 
-   La hauteur n'est pas un chiffre posé à la main : c'est cinq interlignes plus
-   le retrait que Mantine donne au contenu tiptap, dit en variables pour qu'un
-   changement de thème l'emporte avec lui. La classe porte sur l'enveloppe
-   typographique — c'est là que Mantine range « className » — et le retrait,
-   lui, vit sur le contenu qu'elle enferme : le total est donc bien celui-ci.
+   The height is not a hand-set number: it is five line heights plus the
+   padding Mantine gives the tiptap content, expressed as variables so a
+   theme change carries it along. The class applies to the typography
+   wrapper — that is where Mantine puts "className" — and the padding lives
+   on the content it wraps: the total is indeed this one.
 
-   Le texte prend la taille des autres champs de saisie (« sm », celle d'un
-   input Mantine par défaut) plutôt que celle du corps de page. */
+   The text takes the size of the other input fields ("sm", a default Mantine
+   input's) rather than the page body's. */
 .content {
   --milo-rich-line: calc(var(--mantine-font-size-sm) * var(--mantine-line-height-md));
   --milo-rich-padding: var(--mantine-spacing-md);
 
   font-size: var(--mantine-font-size-sm);
 
-  /* Cinq lignes par défaut ; un champ peut en demander plus
-     (« --milo-rich-lines », posé par RichTextField). */
+  /* Five lines by default; a field may ask for more
+     ("--milo-rich-lines", set by RichTextField). */
   max-height: calc(var(--milo-rich-lines, 5) * var(--milo-rich-line) + 2 * var(--milo-rich-padding));
   overflow-y: auto;
 }
 
-/* Un champ qui montre d'emblée plusieurs lignes, même vide : le modèle d'une
-   réponse par défaut (« --milo-rich-min-lines », posé par RichTextField). */
+/* A field that shows several lines from the start, even empty: a default
+   reply template ("--milo-rich-min-lines", set by RichTextField). */
 .minLines {
   min-height: calc(var(--milo-rich-min-lines) * var(--milo-rich-line) + 2 * var(--milo-rich-padding));
 }
 
-/* Entrée ajoute une ligne, pas un paragraphe détaché : Mantine écarte les
-   paragraphes de 7px, ce qui ferait déborder la cinquième ligne du compte
-   ci-dessus. Le sélecteur passe par le contenu tiptap pour l'emporter sur le
-   sien, à égalité de rang dans la feuille. */
+/* Enter adds a line, not a detached paragraph: Mantine spaces paragraphs by
+   7px, which would make the fifth line overflow the count above. The
+   selector goes through the tiptap content to beat Mantine's, at equal rank
+   in the stylesheet. */
 .content :global(.ProseMirror) p {
   margin-bottom: 0;
 }
 
-/* Une description qui porte des images a besoin de plus d'air que cinq
-   lignes : la zone monte alors à quinze, toujours en interlignes pour suivre
-   le thème. En deçà, rien ne change — une description de texte garde la
-   hauteur d'un champ. Un champ qui en montre déjà plus les garde. */
+/* A description containing images needs more room than five lines: the
+   area then grows to fifteen, still in line heights to follow the theme.
+   Below that nothing changes — a text description keeps a field's height. A
+   field that already shows more keeps them. */
 .content:has(img) {
   max-height: calc(max(15, var(--milo-rich-lines, 5)) * var(--milo-rich-line) + 2 * var(--milo-rich-padding));
 }
 
-/* Une image de la description, et le bouton qui la retire. L'enveloppe est
-   posée par le rendu du nœud (components/ui/RichText.tsx) : c'est elle qui
-   sert de repère au bouton, d'où « relative ». */
+/* An image in the description, and the button that removes it. The wrapper
+   is set by the node's rendering (components/ui/RichText.tsx): it is the
+   button's positioning reference, hence "relative". */
 .image {
   position: relative;
   display: inline-block;
@@ -60,12 +60,12 @@
   border-radius: var(--mantine-radius-sm);
 }
 
-/* Le bouton qui retire une image. Il est posé en DOM par la vue du nœud
-   (components/ui/RichText.tsx) et non par Mantine : sa mise en forme tient
-   donc ici, sauf le rouge, qui vient de themes/colors.ts.
+/* The button that removes an image. It is added to the DOM by the node view
+   (components/ui/RichText.tsx), not by Mantine: its styling therefore lives
+   here, except the red, which comes from themes/colors.ts.
 
-   Il ne se montre qu'au survol, et reste là tant qu'il a le focus : au
-   clavier, il ne doit pas disparaître au moment de l'atteindre. */
+   It only shows on hover, and stays while it has focus: with the keyboard,
+   it must not disappear just as it is reached. */
 .imageRemove {
   position: absolute;
   top: 6px;
@@ -91,19 +91,19 @@
   opacity: 1;
 }
 
-/* L'image retenue par la sélection de l'éditeur — l'éditeur pose la classe
-   sur l'enveloppe de la vue. Le même trait que partout ailleurs, pour qu'on
-   voie ce que la touche Retour arrière emporterait. */
+/* The image held by the editor's selection — the editor sets the class on
+   the view's wrapper. The same outline as everywhere else, so you see what
+   Backspace would remove. */
 .image:global(.ProseMirror-selectednode) {
   outline: 2px solid var(--mantine-color-teal-6);
   outline-offset: 2px;
 }
 
-/* Les boutons de la barre d'outils, et les groupes qui les rangent : Mantine
-   les peint sur « --mantine-color-body » (dark-7 en sombre), un cran plus
-   sombre que la barre. Ils prennent le fond du champ (FIELD_BG, dans
-   components/ui/RichText.tsx). Le bouton actif garde sa teinte, et le survol
-   la sienne : la règle ne vise que le bouton au repos. */
+/* The toolbar buttons, and the groups holding them: Mantine paints them on
+   "--mantine-color-body" (dark-7 on dark), one step darker than the bar.
+   They take the field background (FIELD_BG, in components/ui/RichText.tsx).
+   The active button keeps its tint, and hover its own: the rule only targets
+   the button at rest. */
 .controlsGroup {
   background-color: transparent;
 }
@@ -118,10 +118,9 @@
   }
 }
 
-/* Un pixel d'écart entre chaque icône de la barre, groupes compris : un
-   vide de la couleur du fond, pas un trait, pour que deux boutons actifs
-   côte à côte ne fondent pas leurs fonds l'un dans l'autre. Les coins sont
-   à peine arrondis. */
+/* One pixel of gap between each toolbar icon, groups included: a gap of the
+   background color, not a line, so two adjacent active buttons don't merge
+   their backgrounds. The corners are barely rounded. */
 .toolbar,
 .controlsGroup {
   column-gap: 1px;
@@ -131,8 +130,8 @@
   border-radius: 2px;
 }
 
-/* Le bouton actif (gras, liste…) : un fond gris sombre, l'icône en blanc,
-   dans les deux thèmes. Le survol le garde. */
+/* The active button (bold, list…): a dark gray background, the icon in
+   white, in both themes. Hover keeps it. */
 .control[data-active],
 .control[data-active]:hover {
   background-color: light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-4));

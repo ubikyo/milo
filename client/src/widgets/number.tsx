@@ -16,18 +16,14 @@ import type { KeyboardEvent } from "react";
 // numéro, qui se détache à droite. Toutes tiennent dans un même encart, sur
 // deux colonnes.
 
-const ROWS = "lignes";
-
-// Les champs d'une version antérieure, qui ne rangeait qu'un seul numéro.
-const OLD_LABEL = "libelle";
-const OLD_VALUE = "valeur";
+const ROWS = "lines";
 
 interface Row {
-  libelle: string;
-  numero: string;
+  label: string;
+  number: string;
 }
 
-const EMPTY_ROW: Row = { libelle: "", numero: "" };
+const EMPTY_ROW: Row = { label: "", number: "" };
 
 // Au-delà de dix lignes, la liste défile.
 const VISIBLE_ROWS = 10;
@@ -40,20 +36,18 @@ const INLINE_FIELD = {
 };
 
 /**
- * Les lignes de l'élément. Un élément rangé avant les lignes multiples se
- * relit comme une ligne unique ; une ligne abîmée comble ce qui lui manque.
+ * Les lignes de l'élément ; une ligne abîmée comble ce qui lui manque. Un
+ * élément rangé avant les lignes multiples a reçu la sienne à la migration
+ * (migrateWidgetConfig).
  */
 const rows = (config: unknown): Row[] => {
   const raw = (config as Record<string, unknown> | null)?.[ROWS];
-  if (Array.isArray(raw)) {
-    return raw.map((l) => ({ libelle: text(l, "libelle"), numero: text(l, "numero") }));
-  }
-  const libelle = text(config, OLD_LABEL);
-  const numero = text(config, OLD_VALUE);
-  return libelle || numero ? [{ libelle, numero }] : [];
+  return Array.isArray(raw)
+    ? raw.map((l) => ({ label: text(l, "label"), number: text(l, "number") }))
+    : [];
 };
 
-/** Les lignes seules : les anciens champs, une fois repris, n'ont plus à suivre. */
+/** Les lignes seules. */
 const store = (list: Row[]): Record<string, unknown> => ({ [ROWS]: list });
 
 /** Les éléments qui portent déjà leur propre air, au-dessus et au-dessous d'eux. */
@@ -93,7 +87,7 @@ function Rows({ config, onChange }: WidgetConfigProps) {
   const handleReorder = (order: number[]) => onChange(store(order.flatMap((i) => list[i] ?? [])));
   const { zoneRef, drag, onPointerDown } = useDraggableStack({
     ids: list.map((_, i) => i),
-    selector: "[data-ligne-attribut]",
+    selector: "[data-attribute-row]",
     onReorder: handleReorder,
   });
 
@@ -106,8 +100,8 @@ function Rows({ config, onChange }: WidgetConfigProps) {
 
   // Le focus revient au libellé : la saisie suivante enchaîne.
   const add = () => {
-    const row = { libelle: newRow.libelle.trim(), numero: newRow.numero.trim() };
-    if (!row.libelle && !row.numero) return;
+    const row = { label: newRow.label.trim(), number: newRow.number.trim() };
+    if (!row.label && !row.number) return;
     onChange(store([...list, row]));
     setNewRow(EMPTY_ROW);
     firstField.current?.focus();
@@ -137,8 +131,8 @@ function Rows({ config, onChange }: WidgetConfigProps) {
               ref={firstField}
               placeholder="Libellé"
               aria-label="Libellé"
-              value={newRow.libelle}
-              onChange={(e) => setNewRow({ ...newRow, libelle: e.currentTarget.value })}
+              value={newRow.label}
+              onChange={(e) => setNewRow({ ...newRow, label: e.currentTarget.value })}
               onKeyDown={addKeyDown}
               variant="unstyled"
               size="sm"
@@ -149,15 +143,15 @@ function Rows({ config, onChange }: WidgetConfigProps) {
           // Du texte et non un nombre : un numéro se copie tel qu'il s'écrit,
           // avec ses espaces, ses points et son éventuel indicatif.
           placeholder: "Numéro",
-          value: newRow.numero,
-          onChange: (numero) => setNewRow({ ...newRow, numero }),
+          value: newRow.number,
+          onChange: (number) => setNewRow({ ...newRow, number }),
           onSubmit: add,
           onCancel: () => setNewRow(EMPTY_ROW),
         }}
       >
         <div ref={zoneRef}>
           {list.map((l, i) => (
-            <div key={i} data-ligne-attribut style={{ opacity: drag?.id === i ? 0.4 : 1 }}>
+            <div key={i} data-attribute-row style={{ opacity: drag?.id === i ? 0.4 : 1 }}>
               {drag?.target === i && <InsertLine />}
               <ListItems.Row
                 actions={[
@@ -186,8 +180,8 @@ function Rows({ config, onChange }: WidgetConfigProps) {
                     <TextInput
                       placeholder="Libellé"
                       aria-label="Libellé"
-                      value={l.libelle}
-                      onChange={(e) => change(i, "libelle", e.currentTarget.value)}
+                      value={l.label}
+                      onChange={(e) => change(i, "label", e.currentTarget.value)}
                       variant="unstyled"
                       size="sm"
                       style={{ flex: 1, minWidth: 0 }}
@@ -196,8 +190,8 @@ function Rows({ config, onChange }: WidgetConfigProps) {
                     <TextInput
                       placeholder="Numéro"
                       aria-label="Numéro"
-                      value={l.numero}
-                      onChange={(e) => change(i, "numero", e.currentTarget.value)}
+                      value={l.number}
+                      onChange={(e) => change(i, "number", e.currentTarget.value)}
                       variant="unstyled"
                       size="sm"
                       style={{ flex: 1, minWidth: 0 }}
@@ -231,7 +225,7 @@ export const numberWidget: AccessWidget = {
     const list = rows(config);
     return (
       <div
-        className={isFramed(config, true) ? classes.encart : undefined}
+        className={isFramed(config, true) ? classes.inset : undefined}
         style={{ border: "none" }}
       >
         {list.length === 0 ? (
@@ -239,16 +233,16 @@ export const numberWidget: AccessWidget = {
             Attributs
           </Text>
         ) : (
-          <div className={classes.grille}>
+          <div className={classes.grid}>
             {list.map((l, i) => (
               <Fragment key={i}>
                 <Text size="sm" c={SUBCATEGORY_COLOR} truncate>
-                  {l.libelle || "Numéro"}
+                  {l.label || "Numéro"}
                 </Text>
                 {/* Blanc sur le thème sombre ; sur le clair, dont l'encart est
                     gris pâle, le blanc ne se lirait pas : quasi-noir. */}
-                <Text size="sm" fw={600} c={STRONG_TEXT} className={classes.numero}>
-                  {l.numero || "—"}
+                <Text size="sm" fw={600} c={STRONG_TEXT} className={classes.number}>
+                  {l.number || "—"}
                 </Text>
               </Fragment>
             ))}

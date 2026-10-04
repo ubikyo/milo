@@ -1,8 +1,7 @@
-/* Une option de la liste des colonnes (ChampsColonnes) : la liste prend le
-   fond du tiroir, que le survol de Mantine reprend en sombre (dark-7) et
-   qu'il teinte de bleu en clair (gray-0). Le gris neutre de l'application à
-   la place, posé thème par thème comme celui des menus. La classe doublée
-   passe devant la règle de Mantine. */
+/* An option of the column list (ColumnFields): the list takes the drawer
+   background, which Mantine's hover repeats on dark (dark-7) and tints blue
+   on light (gray-0). The application's neutral gray instead, set per theme
+   like the menus'. The doubled class wins over Mantine's rule. */
 :where([data-mantine-color-scheme="light"])
   .option.option:hover:where(:not([data-combobox-selected], [data-combobox-disabled])) {
   background-color: #ececec;

@@ -21,7 +21,7 @@ import type { CSSProperties, DragEvent, MouseEvent } from "react";
 import { ADD_ACTION, NEUTRAL_HOVER, RED } from "../../themes/colors";
 import { ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
 import { PLUS_GAP, PLUS_SIZE } from "../../themes/plus";
-import classes from "../../assets/styles/ContextesMenu.module.css";
+import classes from "../../assets/styles/ContextsMenu.module.css";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import { NO_CONTEXT } from "@milo/shared";
 import type { Context, Id } from "@milo/shared";
@@ -131,15 +131,15 @@ export default function ContextsMenu({
     const following = new ResizeObserver(() => measure(target));
     following.observe(tab);
     // À l'essai : l'onglet prend le fond et la bordure de la liste ouverte
-    // (ContextesMenu.module.css, data-contextes-ouvert).
+    // (ContextsMenu.module.css, data-contexts-open).
     // La rangée aussi : son filet s'éclaircit avec.
     const band = tab.closest('[role="tablist"]');
-    tab.setAttribute("data-contextes-ouvert", "");
-    band?.setAttribute("data-contextes-ouvert", "");
+    tab.setAttribute("data-contexts-open", "");
+    band?.setAttribute("data-contexts-open", "");
     return () => {
       following.disconnect();
-      tab.removeAttribute("data-contextes-ouvert");
-      band?.removeAttribute("data-contextes-ouvert");
+      tab.removeAttribute("data-contexts-open");
+      band?.removeAttribute("data-contexts-open");
     };
   }, [inTab, isOpen]);
   const [renamed, setRenamed] = useState<Renamed | null>(null);
@@ -169,7 +169,7 @@ export default function ContextsMenu({
     if (addInProgress === null || items.length <= addInProgress) return;
     const last = items[items.length - 1];
     setAddInProgress(null);
-    if (last) ouvrirRenommage({ id: last.id, name: last.name });
+    if (last) openRename({ id: last.id, name: last.name });
   }, [items, addInProgress]);
 
   const ordered = localOrder
@@ -193,7 +193,7 @@ export default function ContextsMenu({
     click.current = setTimeout(() => setOpened(false), DOUBLE_CLICK_THRESHOLD);
   };
 
-  function ouvrirRenommage(target: Renamed) {
+  function openRename(target: Renamed) {
     if (!management) return;
     clearTimeout(click.current);
     finished.current = false;
@@ -258,10 +258,10 @@ export default function ContextsMenu({
       <Group
         gap={4}
         wrap="nowrap"
-        className={classes.ligne}
-        data-saisie={inInput || undefined}
+        className={classes.row}
+        data-editing={inInput || undefined}
         onClick={() => !inInput && select(key)}
-        onDoubleClick={() => ouvrirRenommage(target)}
+        onDoubleClick={() => openRename(target)}
         style={{
           padding: management ? "4px 8px 4px 4px" : "4px 8px",
           minHeight: 32,
@@ -273,7 +273,7 @@ export default function ContextsMenu({
             —, rien ne se glisse : les noms reprennent sa place. */}
         {management && (
           <div
-            className={extras.handle ? classes.revele : undefined}
+            className={extras.handle ? classes.reveal : undefined}
             style={{
               width: 16,
               flexShrink: 0,
@@ -337,7 +337,7 @@ export default function ContextsMenu({
             variant="subtle"
             color={RED}
             size="sm"
-            className={classes.revele}
+            className={classes.reveal}
             style={{ flexShrink: 0 }}
             onClick={(e) => {
               e.stopPropagation();
@@ -380,7 +380,7 @@ export default function ContextsMenu({
         offset={inTab ? tabGap : ROW_MENU_OFFSET}
         // Hors de l'onglet, la liste se raccorde au filet : ni bordure haute
         // ni angles hauts. Dans l'onglet, elle garde sa bordure haute — le
-        // trait qui la sépare de l'onglet (classes.listeOnglet) —, sans
+        // trait qui la sépare de l'onglet (classes.tabDropdown) —, sans
         // angles hauts.
         styles={
           inTab
@@ -414,7 +414,7 @@ export default function ContextsMenu({
             // À la hauteur du texte : les 30 px du bouton agrandiraient
             // l'onglet dès que la liste paraît — en modification, par exemple.
             h={inTab ? "auto" : undefined}
-            className={inTab ? classes.cibleOnglet : undefined}
+            className={inTab ? classes.tabTarget : undefined}
             rightSection={<IconChevronDown size={14} />}
             aria-label="Contexte"
             visibleFrom={visibleFrom}
@@ -428,7 +428,7 @@ export default function ContextsMenu({
         </Popover.Target>
         <Popover.Dropdown
           p={4}
-          className={inTab ? classes.listeOnglet : undefined}
+          className={inTab ? classes.tabDropdown : undefined}
           // Dans l'onglet, au moins sa largeur : la liste ne s'élargit que si
           // son contenu le demande — sans contexte, il tient toujours. Ailleurs,
           // ses propres bornes.

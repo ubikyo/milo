@@ -37,18 +37,18 @@ const record = async (
 const completeText = (base: SupportPerson, f: EntraRecord | null): SupportPerson => {
   if (!f) return base;
   const entra: Partial<SupportPerson> = {
-    firstName: f.givenName ?? "",
-    name: f.surname ?? "",
+    first_name: f.givenName ?? "",
+    last_name: f.surname ?? "",
     full_name: f.displayName ?? "",
     email: f.mail ?? "",
-    telephone: f.businessPhones?.[0] ?? "",
+    phone: f.businessPhones?.[0] ?? "",
     mobile: f.mobilePhone ?? "",
-    jobTitle: f.jobTitle ?? "",
-    service: f.department ?? "",
+    job_title: f.jobTitle ?? "",
+    department: f.department ?? "",
     company: f.companyName ?? "",
-    address: f.streetAddress ?? "",
+    street_address: f.streetAddress ?? "",
     city: f.city ?? "",
-    department: f.state ?? "",
+    state: f.state ?? "",
     postal_code: f.postalCode ?? "",
     country: f.country ?? "",
   };
@@ -63,8 +63,8 @@ const completeText = (base: SupportPerson, f: EntraRecord | null): SupportPerson
 export const accountPerson = async (user: UserRow): Promise<SupportPerson> => {
   const base: SupportPerson = {
     ...emptySupportPerson(),
-    firstName: user.first_name,
-    name: user.last_name,
+    first_name: user.first_name,
+    last_name: user.last_name,
     full_name: user.name,
     email: user.email,
   };

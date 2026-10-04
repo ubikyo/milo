@@ -85,7 +85,7 @@ export default function NewMessageLabels({
             const newRow = rank === selected.length;
             return (
               <Group
-                key={newRow ? "nouvelle" : id}
+                key={newRow ? "new" : id}
                 gap="sm"
                 wrap="nowrap"
                 onContextMenu={(e) => {

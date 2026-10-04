@@ -1,7 +1,7 @@
-/* ESSAI TEMPORAIRE : champs sans bordure. Retirer ce fichier et son import
-   dans main.tsx pour revenir aux bordures. La bordure est rendue transparente
-   plutôt que supprimée, pour que la taille des champs ne bouge pas. Le trait sous la barre d'outils
-   du texte enrichi reste : il sépare les outils de la zone de saisie. */
+/* TEMPORARY TRIAL: borderless fields. Remove this file and its import in
+   main.tsx to restore the borders. The border is made transparent rather
+   than removed, so the field size does not change. The line under the rich
+   text toolbar stays: it separates the tools from the input area. */
 .mantine-Input-input,
 .mantine-RichTextEditor-root {
   border-color: transparent !important;

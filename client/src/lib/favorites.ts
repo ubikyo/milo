@@ -9,12 +9,12 @@ import { useEffect, useSyncExternalStore } from "react";
 import { api } from "../api";
 import type { Id } from "@milo/shared";
 
-let favoris: Id[] = [];
+let favorites: Id[] = [];
 let readItems = false;
 const subscribers = new Set<() => void>();
 
 const publish = (nextItems: Id[]) => {
-  favoris = nextItems;
+  favorites = nextItems;
   for (const subscriber of subscribers) subscriber();
 };
 
@@ -36,12 +36,12 @@ const read = () => {
 };
 
 export function useFavorites() {
-  const current = useSyncExternalStore(subscribe, () => favoris);
+  const current = useSyncExternalStore(subscribe, () => favorites);
   useEffect(read, []);
 
   const toggle = async (id: Id) => {
     publish(await (current.includes(id) ? api.removeFavorite(id) : api.addFavorite(id)));
   };
 
-  return { favoris: current, toggle };
+  return { favorites: current, toggle };
 }

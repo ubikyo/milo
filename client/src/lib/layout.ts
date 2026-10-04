@@ -11,7 +11,7 @@
 // reprend d'abord celle d'un widget neuf avant d'y poser ce qu'elle apporte.
 // Le serveur refait les mêmes vérifications, droits compris.
 
-import { listKey, isListWidgetType } from "@milo/shared";
+import { listKey, isListWidgetType, migrateWidgetConfig } from "@milo/shared";
 import type { BoardWidget, ExportedLayout, IndicatorSection } from "@milo/shared";
 import type { BoardWidgetDefinition } from "../board-widgets";
 
@@ -130,7 +130,8 @@ export const preview = (
         discarded += 1;
         return [];
       }
-      const config = isObject(w.config) ? w.config : {};
+      // Une disposition exportée avant la traduction des clés se lit encore.
+      const config = migrateWidgetConfig(widget.type, w.config);
       return [{ type: widget.type, config: { ...widget.defaultConfig, ...config } }];
     }),
   }));

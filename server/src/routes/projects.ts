@@ -17,13 +17,13 @@ import { categories } from "../repositories/project-boards.js";
 import { boardContext } from "../repositories/contexts.js";
 import { keyInBoard } from "../repositories/lists.js";
 import {
-  VISIBLE_BOARDS_CLAUSE as clauseTableauxVisibles,
+  VISIBLE_BOARDS_CLAUSE as visibleBoardsClause,
   boards,
-  openBoard as projectBoardOuvert,
+  openBoard as projectBoardOpen,
 } from "../repositories/boards.js";
 
 /** Les projets des tableaux que « @me » voit. */
-const VISIBLE_BOARDS_CLAUSE = clauseTableauxVisibles("projects.board_id");
+const VISIBLE_BOARDS_CLAUSE = visibleBoardsClause("projects.board_id");
 import {
   PROJECT_SELECT,
   actorsOf,
@@ -95,7 +95,7 @@ const attachedActors = (req: Request, id: Id, name: string, before: Set<Id>): Id
  */
 const openProject = (req: Request, id: unknown): ProjectRow => {
   const project = orNotFound(projects.raw.get(id), PROJECT_NOT_FOUND);
-  projectBoardOuvert(project.board_id, req.user);
+  projectBoardOpen(project.board_id, req.user);
   require(req, "projects", "view", PROJECT_NOT_FOUND);
   return project;
 };
@@ -231,7 +231,7 @@ projectRoutes.post("/", (req, res) => {
   if (!name || !board_id || !category_id) {
     badRequest("name, board_id et category_id sont requis");
   }
-  const board = projectBoardOuvert(board_id, req.user);
+  const board = projectBoardOpen(board_id, req.user);
   require(req, "projects", "create");
   verifyCategory(category_id, board_id);
   const context = boardContext(board.id, context_id);
@@ -290,7 +290,7 @@ projectRoutes.post("/", (req, res) => {
 projectRoutes.post("/:id/copy", (req, res) => {
   const source = openProject(req, req.params.id);
   require(req, "projects", "create");
-  const board = projectBoardOuvert(req.body.board_id ?? source.board_id, req.user);
+  const board = projectBoardOpen(req.body.board_id ?? source.board_id, req.user);
   const name = requireText(req.body.name ?? source.name, "Le nom de la copie est requis");
 
   // Les catégories appartiennent au tableau : la copie garde la sienne chez
@@ -383,7 +383,7 @@ projectRoutes.put("/:id", (req, res) => {
   } = req.body;
 
   // Un projet ne sort pas d'un tableau privé et n'y entre pas.
-  const board = projectBoardOuvert(board_id, req.user);
+  const board = projectBoardOpen(board_id, req.user);
   // Le contexte doit être du tableau du projet : changé de tableau, le projet
   // prend celui qu'on dit, ou le premier du nouveau.
   const context = boardContext(
@@ -394,7 +394,7 @@ projectRoutes.put("/:id", (req, res) => {
   verifyCategory(category_id, board_id);
   const milestoneType = milestoneTypeFrom(milestone_type_id);
 
-  const propre = cleanDescription(description);
+  const clean = cleanDescription(description);
   const before = photo(oneWithRelations(projects.joined.get(existing.id)!));
   const previousActors = new Set(actorsOf(existing.id));
 
@@ -404,7 +404,7 @@ projectRoutes.put("/:id", (req, res) => {
   // réordonnerait pour rien.
   const unchanged =
     name === existing.name &&
-    sameDescription(propre, existing.description) &&
+    sameDescription(clean, existing.description) &&
     sameValue(board_id, existing.board_id) &&
     sameValue(category_id, existing.category_id) &&
     sameValue(context, existing.context_id) &&
@@ -417,7 +417,7 @@ projectRoutes.put("/:id", (req, res) => {
     projects.update.run({
       id: existing.id,
       name,
-      description: propre,
+      description: clean,
       board_id,
       category_id,
       context_id: context,

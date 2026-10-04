@@ -5,19 +5,19 @@ import Confetti from "./Confetti";
 // Les fêtes qu'une liste peut réserver à la carte qui la rejoint : chacune a
 // sa marque, à poser n'importe où dans le titre de la liste. Une liste peut en
 // porter plusieurs : toutes se jouent ensemble.
-export type Effect = "confettis" | "coeurs" | "pouces" | "fusee" | "flammes" | "neige" | "foudre";
+export type Effect = "confetti" | "hearts" | "thumbs" | "rocket" | "flames" | "snow" | "lightning";
 
 // Les marques sont cherchées sans leur sélecteur de variante (« ❤ » plutôt que
 // « ❤️ ») : qu'elles soient saisies en texte ou en emoji, elles se reconnaissent.
 // L'emoji, lui, est ce que le menu de la liste pose au bout du titre.
 export const MARKS: { mark: string; emoji: string; effect: Effect; label: string }[] = [
-  { mark: "✨", emoji: "✨", effect: "confettis", label: "Confettis" },
-  { mark: "❤", emoji: "❤️", effect: "coeurs", label: "Pluie de cœurs" },
-  { mark: "👍", emoji: "👍", effect: "pouces", label: "Pouces" },
-  { mark: "🚀", emoji: "🚀", effect: "fusee", label: "Fusée" },
-  { mark: "🔥", emoji: "🔥", effect: "flammes", label: "Flammes" },
-  { mark: "❄", emoji: "❄️", effect: "neige", label: "Neige" },
-  { mark: "⚡", emoji: "⚡", effect: "foudre", label: "Foudre" },
+  { mark: "✨", emoji: "✨", effect: "confetti", label: "Confettis" },
+  { mark: "❤", emoji: "❤️", effect: "hearts", label: "Pluie de cœurs" },
+  { mark: "👍", emoji: "👍", effect: "thumbs", label: "Pouces" },
+  { mark: "🚀", emoji: "🚀", effect: "rocket", label: "Fusée" },
+  { mark: "🔥", emoji: "🔥", effect: "flames", label: "Flammes" },
+  { mark: "❄", emoji: "❄️", effect: "snow", label: "Neige" },
+  { mark: "⚡", emoji: "⚡", effect: "lightning", label: "Foudre" },
 ];
 
 /** Les fêtes que réclame un titre de liste, dans l'ordre des marques. */
@@ -97,13 +97,13 @@ interface EffectProps {
 // --- ❤️ Pluie de cœurs ----------------------------------------------------
 const HEARTS_DURATION = 3400;
 const HEARTS_ANIMATIONS = `
-@keyframes milo-coeur-chute {
-  0%   { transform: translate3d(0, var(--haut), 0); opacity: 0; }
+@keyframes milo-heart-fall {
+  0%   { transform: translate3d(0, var(--top), 0); opacity: 0; }
   10%  { opacity: 1; }
   80%  { opacity: 1; }
-  100% { transform: translate3d(0, var(--bas), 0); opacity: 0; }
+  100% { transform: translate3d(0, var(--fall), 0); opacity: 0; }
 }
-@keyframes milo-coeur-balance {
+@keyframes milo-heart-sway {
   from { transform: translateX(calc(var(--balance) * -1)) rotate(-12deg); }
   to   { transform: translateX(var(--balance)) rotate(12deg); }
 }
@@ -116,7 +116,7 @@ function Hearts({ zone, onDone }: EffectProps) {
       Array.from({ length: 40 }, (_, i) => ({
         id: i,
         start: random(0, 96),
-        taille: random(12, 26),
+        size: random(12, 26),
         color: color(pickFrom(["red", "pink", "grape"])),
         top: random(-180, -40),
         fall: Math.min(zone.height, 520) * random(0.5, 1),
@@ -140,20 +140,20 @@ function Hearts({ zone, onDone }: EffectProps) {
             left: `${c.start}%`,
             top: 0,
             opacity: 0,
-            "--haut": `${c.top}px`,
-            "--bas": `${c.fall}px`,
-            animation: `milo-coeur-chute ${c.duration}ms ease-in ${c.late}ms forwards`,
+            "--top": `${c.top}px`,
+            "--fall": `${c.fall}px`,
+            animation: `milo-heart-fall ${c.duration}ms ease-in ${c.late}ms forwards`,
           } as StyleWithVariables}
         >
           <svg
             viewBox="0 0 24 24"
-            width={c.taille}
-            height={c.taille}
+            width={c.size}
+            height={c.size}
             style={{
               display: "block",
               fill: c.color,
               "--balance": `${c.balance}px`,
-              animation: `milo-coeur-balance ${c.tempo}ms ease-in-out infinite alternate`,
+              animation: `milo-heart-sway ${c.tempo}ms ease-in-out infinite alternate`,
             } as StyleWithVariables}
           >
             <path d="M12 21.6 10.6 20.3C5.4 15.6 2 12.5 2 8.7 2 5.6 4.4 3.2 7.5 3.2c1.7 0 3.4.8 4.5 2.1 1.1-1.3 2.8-2.1 4.5-2.1 3.1 0 5.5 2.4 5.5 5.5 0 3.8-3.4 6.9-8.6 11.6z" />
@@ -167,7 +167,7 @@ function Hearts({ zone, onDone }: EffectProps) {
 // --- 👍 Pouces qui apparaissent et disparaissent ------------------------
 const THUMBS_UP_DURATION = 2600;
 const THUMBS_UP_ANIMATIONS = `
-@keyframes milo-pouce {
+@keyframes milo-thumb {
   0%   { transform: scale(0) rotate(var(--angle)); opacity: 0; }
   25%  { transform: scale(1.3) rotate(var(--angle)); opacity: 1; }
   40%  { transform: scale(1) rotate(var(--angle)); opacity: 1; }
@@ -184,7 +184,7 @@ function ThumbsUp({ zone, onDone }: EffectProps) {
         id: i,
         x: random(4, 88),
         y: random(0, Math.max(60, Math.min(zone.height, 420) - 40)),
-        taille: random(22, 40),
+        size: random(22, 40),
         angle: random(-25, 25),
         late: random(0, 1300),
       })),
@@ -202,11 +202,11 @@ function ThumbsUp({ zone, onDone }: EffectProps) {
             position: "absolute",
             left: `${p.x}%`,
             top: p.y,
-            fontSize: p.taille,
+            fontSize: p.size,
             lineHeight: 1,
             opacity: 0,
             "--angle": `${p.angle}deg`,
-            animation: `milo-pouce 1100ms ease-out ${p.late}ms forwards`,
+            animation: `milo-thumb 1100ms ease-out ${p.late}ms forwards`,
           } as StyleWithVariables}
         >
           👍
@@ -221,11 +221,11 @@ const ROCKET_CROSSING = 1600;
 const ROCKET_SMOKE = 900;
 const ROCKET_DURATION = ROCKET_CROSSING + ROCKET_SMOKE;
 const ROCKET_ANIMATIONS = `
-@keyframes milo-fusee {
+@keyframes milo-rocket {
   from { transform: translate3d(var(--x0), var(--y0), 0); }
   to   { transform: translate3d(var(--x1), var(--y1), 0); }
 }
-@keyframes milo-fumee {
+@keyframes milo-smoke {
   0%   { transform: translate(-50%, -50%) scale(0.3); opacity: 0.8; }
   100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
 }
@@ -240,43 +240,43 @@ function Rocket({ onDone }: { onDone: () => void }) {
   // et à vitesse constante : les bouffées de fumée, semées à intervalles
   // réguliers sur le trajet, tombent ainsi juste derrière elle.
   const path = useMemo(() => {
-    const largeur = window.innerWidth;
+    const width = window.innerWidth;
     const height = window.innerHeight;
     const x0 = -80;
     const y0 = height * random(0.7, 0.95);
-    const x1 = largeur + 80;
+    const x1 = width + 80;
     const y1 = height * random(0.02, 0.25);
     const angle = (Math.atan2(y1 - y0, x1 - x0) * 180) / Math.PI;
     const n = 28;
-    const fumee = Array.from({ length: n }, (_, i) => {
+    const smoke = Array.from({ length: n }, (_, i) => {
       const f = i / n;
       return {
         id: i,
         x: x0 + (x1 - x0) * f,
         y: y0 + (y1 - y0) * f,
         late: ROCKET_CROSSING * f,
-        taille: random(14, 24),
+        size: random(14, 24),
       };
     });
     // L'emoji pointe déjà vers le haut à droite, à 45° : on ne tourne que l'écart.
-    return { x0, y0, x1, y1, rotation: angle + 45, fumee };
+    return { x0, y0, x1, y1, rotation: angle + 45, smoke };
   }, []);
 
   return (
     <Layer style={{ inset: 0 }} animations={ROCKET_ANIMATIONS}>
-      {path.fumee.map((b) => (
+      {path.smoke.map((b) => (
         <span
           key={b.id}
           style={{
             position: "absolute",
             left: b.x,
             top: b.y,
-            width: b.taille,
-            height: b.taille,
+            width: b.size,
+            height: b.size,
             borderRadius: "50%",
             backgroundColor: SMOKE,
             opacity: 0,
-            animation: `milo-fumee ${ROCKET_SMOKE}ms ease-out ${b.late}ms forwards`,
+            animation: `milo-smoke ${ROCKET_SMOKE}ms ease-out ${b.late}ms forwards`,
           }}
         />
       ))}
@@ -290,7 +290,7 @@ function Rocket({ onDone }: { onDone: () => void }) {
           "--x1": `${path.x1}px`,
           "--y1": `${path.y1}px`,
           transform: `translate3d(${path.x0}px, ${path.y0}px, 0)`,
-          animation: `milo-fusee ${ROCKET_CROSSING}ms linear forwards`,
+          animation: `milo-rocket ${ROCKET_CROSSING}ms linear forwards`,
         } as StyleWithVariables}
       >
         <span
@@ -311,19 +311,19 @@ function Rocket({ onDone }: { onDone: () => void }) {
 // --- 🔥 Flammes en bas de la carte ---------------------------------------
 const FLAMES_DURATION = 2600;
 const FLAMES_ANIMATIONS = `
-@keyframes milo-flamme-vie {
+@keyframes milo-flame-life {
   0%   { transform: scale(0); opacity: 0; }
   15%  { transform: scale(1); opacity: 1; }
   80%  { transform: scale(1); opacity: 1; }
   100% { transform: scale(0.2); opacity: 0; }
 }
-@keyframes milo-flamme-danse {
+@keyframes milo-flame-dance {
   from { transform: scale(0.95, 0.85); }
   to   { transform: scale(0.85, 1.15); }
 }
-@keyframes milo-etincelle {
+@keyframes milo-spark {
   0%   { transform: translate(0, 0); opacity: 1; }
-  100% { transform: translate(var(--dx), var(--monte)); opacity: 0; }
+  100% { transform: translate(var(--dx), var(--rise)); opacity: 0; }
 }
 `;
 
@@ -338,12 +338,12 @@ function Flames({ zone, onDone }: EffectProps) {
   const { tongues, sparks } = useMemo(() => {
     const n = Math.max(5, Math.round(zone.width / 16));
     const tongues = Array.from({ length: n }, (_, i) => {
-      const taille = random(16, 26);
+      const size = random(16, 26);
       return {
         id: i,
         x: ((i + 0.5) / n) * 100 + random(-3, 3),
-        taille,
-        inner: taille * random(0.45, 0.6),
+        size,
+        inner: size * random(0.45, 0.6),
         late: random(0, 250),
         dance: random(140, 280),
       };
@@ -352,7 +352,7 @@ function Flames({ zone, onDone }: EffectProps) {
       id: i,
       x: random(5, 95),
       dx: random(-14, 14),
-      mounted: random(-70, -35),
+      rise: random(-70, -35),
       late: random(200, 1800),
       duration: random(500, 900),
     }));
@@ -372,12 +372,12 @@ function Flames({ zone, onDone }: EffectProps) {
             position: "absolute",
             left: `${l.x}%`,
             bottom: 0,
-            width: l.taille,
-            height: l.taille * 1.6,
-            marginLeft: -l.taille / 2,
+            width: l.size,
+            height: l.size * 1.6,
+            marginLeft: -l.size / 2,
             transformOrigin: "50% 100%",
             opacity: 0,
-            animation: `milo-flamme-vie ${FLAMES_DURATION - l.late}ms ease-out ${l.late}ms forwards`,
+            animation: `milo-flame-life ${FLAMES_DURATION - l.late}ms ease-out ${l.late}ms forwards`,
           }}
         >
           <span
@@ -385,22 +385,22 @@ function Flames({ zone, onDone }: EffectProps) {
               position: "absolute",
               inset: 0,
               transformOrigin: "50% 100%",
-              animation: `milo-flamme-danse ${l.dance}ms ease-in-out infinite alternate`,
+              animation: `milo-flame-dance ${l.dance}ms ease-in-out infinite alternate`,
             }}
           >
             {[
-              { taille: l.taille, background: OUTER_FLAME },
-              { taille: l.inner, background: INNER_FLAME },
+              { size: l.size, background: OUTER_FLAME },
+              { size: l.inner, background: INNER_FLAME },
             ].map((drop, i) => (
               <span
                 key={i}
                 style={{
                   position: "absolute",
                   left: "50%",
-                  bottom: drop.taille * 0.2,
-                  width: drop.taille,
-                  height: drop.taille,
-                  marginLeft: -drop.taille / 2,
+                  bottom: drop.size * 0.2,
+                  width: drop.size,
+                  height: drop.size,
+                  marginLeft: -drop.size / 2,
                   background: drop.background,
                   borderRadius: "50% 0 50% 50%",
                   transform: "rotate(-45deg) scale(1, 1.1)",
@@ -425,8 +425,8 @@ function Flames({ zone, onDone }: EffectProps) {
             boxShadow: "0 0 4px #ff8a1f",
             opacity: 0,
             "--dx": `${e.dx}px`,
-            "--monte": `${e.mounted}px`,
-            animation: `milo-etincelle ${e.duration}ms ease-out ${e.late}ms forwards`,
+            "--rise": `${e.rise}px`,
+            animation: `milo-spark ${e.duration}ms ease-out ${e.late}ms forwards`,
           } as StyleWithVariables}
         />
       ))}
@@ -437,13 +437,13 @@ function Flames({ zone, onDone }: EffectProps) {
 // --- ❄️ Neige qui tombe ---------------------------------------------------
 const SNOW_DURATION = 6200;
 const SNOW_ANIMATIONS = `
-@keyframes milo-neige-chute {
-  0%   { transform: translate3d(0, var(--haut), 0); opacity: 0; }
+@keyframes milo-snow-fall {
+  0%   { transform: translate3d(0, var(--top), 0); opacity: 0; }
   10%  { opacity: 1; }
   85%  { opacity: 1; }
-  100% { transform: translate3d(var(--dx), var(--bas), 0); opacity: 0; }
+  100% { transform: translate3d(var(--dx), var(--fall), 0); opacity: 0; }
 }
-@keyframes milo-neige-balance {
+@keyframes milo-snow-sway {
   from { transform: translateX(-8px) rotate(0deg); }
   to   { transform: translateX(8px) rotate(90deg); }
 }
@@ -453,17 +453,17 @@ const SNOW_ANIMATIONS = `
 const SNOWFLAKE = "light-dark(#f4f9ff, #ffffff)";
 const SNOWFLAKE_SHADOW = "0 0 3px rgba(60, 100, 160, 0.45)";
 
-function Neige({ zone, onDone }: EffectProps) {
+function Snow({ zone, onDone }: EffectProps) {
   useFinish(onDone, SNOW_DURATION);
   const snowflakes = useMemo(
     () =>
       Array.from({ length: 60 }, (_, i) => {
-        const etoile = random(0, 1) < 0.35;
+        const star = random(0, 1) < 0.35;
         return {
           id: i,
           start: random(0, 98),
-          etoile,
-          taille: etoile ? random(12, 20) : random(4, 9),
+          star,
+          size: star ? random(12, 20) : random(4, 9),
           top: random(-160, -20),
           fall: Math.min(zone.height, 560) * random(0.6, 1.05),
           dx: random(-30, 30),
@@ -487,26 +487,26 @@ function Neige({ zone, onDone }: EffectProps) {
             left: `${f.start}%`,
             top: 0,
             opacity: 0,
-            "--haut": `${f.top}px`,
-            "--bas": `${f.fall}px`,
+            "--top": `${f.top}px`,
+            "--fall": `${f.fall}px`,
             "--dx": `${f.dx}px`,
-            animation: `milo-neige-chute ${f.duration}ms linear ${f.late}ms forwards`,
+            animation: `milo-snow-fall ${f.duration}ms linear ${f.late}ms forwards`,
           } as StyleWithVariables}
         >
           <span
             style={{
               display: "block",
-              animation: `milo-neige-balance ${f.balance}ms ease-in-out infinite alternate`,
-              ...(f.etoile
+              animation: `milo-snow-sway ${f.balance}ms ease-in-out infinite alternate`,
+              ...(f.star
                 ? {
-                    fontSize: f.taille,
+                    fontSize: f.size,
                     lineHeight: 1,
                     color: SNOWFLAKE,
                     textShadow: SNOWFLAKE_SHADOW,
                   }
                 : {
-                    width: f.taille,
-                    height: f.taille,
+                    width: f.size,
+                    height: f.size,
                     borderRadius: "50%",
                     backgroundColor: SNOWFLAKE,
                     boxShadow: SNOWFLAKE_SHADOW,
@@ -514,7 +514,7 @@ function Neige({ zone, onDone }: EffectProps) {
             }}
           >
             {/* U+FE0E : le flocon en texte, que la couleur peut peindre. */}
-            {f.etoile ? "❄︎" : null}
+            {f.star ? "❄︎" : null}
           </span>
         </span>
       ))}
@@ -528,7 +528,7 @@ const FLASHES_GAP = 450;
 const FLASH_DURATION = 650;
 const LIGHTNING_DURATION = (FLASHES - 1) * FLASHES_GAP + FLASH_DURATION + 100;
 const LIGHTNING_ANIMATIONS = `
-@keyframes milo-eclair {
+@keyframes milo-lightning {
   0%   { opacity: 0; }
   6%   { opacity: 1; }
   18%  { opacity: 0.25; }
@@ -603,7 +603,7 @@ function Lightning({ zone, onDone }: EffectProps) {
               opacity: 0,
               overflow: "visible",
               filter: "drop-shadow(0 0 6px #ffe066) drop-shadow(0 0 14px #fab005)",
-              animation: `milo-eclair ${FLASH_DURATION}ms linear ${e.late}ms forwards`,
+              animation: `milo-lightning ${FLASH_DURATION}ms linear ${e.late}ms forwards`,
             }}
           >
             {[e.trunk, e.fork].map((pts, i) => (
@@ -631,22 +631,22 @@ interface CelebrationEffectProps {
 
 export default function CelebrationEffect({ effect, column, card, onDone }: CelebrationEffectProps) {
   switch (effect) {
-    case "confettis":
+    case "confetti":
       return <Confetti x={column.x} y={column.y} width={column.width} onDone={onDone} />;
-    case "coeurs":
+    case "hearts":
       return <Hearts zone={column} onDone={onDone} />;
-    case "pouces":
+    case "thumbs":
       return <ThumbsUp zone={column} onDone={onDone} />;
-    case "fusee":
+    case "rocket":
       return <Rocket onDone={onDone} />;
-    case "flammes":
+    case "flames":
       // Sans carte mesurée, les flammes prennent le haut de la liste.
       return (
         <Flames zone={card ?? { ...column, height: Math.min(column.height, 80) }} onDone={onDone} />
       );
-    case "neige":
-      return <Neige zone={column} onDone={onDone} />;
-    case "foudre":
+    case "snow":
+      return <Snow zone={column} onDone={onDone} />;
+    case "lightning":
       return <Lightning zone={column} onDone={onDone} />;
   }
 }

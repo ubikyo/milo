@@ -11,8 +11,8 @@ import type { BoardWidget, AccessBlockType } from "@milo/shared";
 // bien qu'un élément laissé tel quel suit encore ses voisins quand on le
 // déplace.
 
-const HIGH_MARGIN = "margeHaute";
-const LOW_MARGIN = "margeBasse";
+const HIGH_MARGIN = "marginTop";
+const LOW_MARGIN = "marginBottom";
 
 /** Au-delà, l'élément se perdrait loin de sa colonne. */
 const MARGIN_MAX = 200;

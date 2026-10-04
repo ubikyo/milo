@@ -9,7 +9,7 @@ import {
   notEncrypted,
   unprotected,
   silent,
-  TitreIndicateur,
+  IndicatorTitle,
   IndicatorValue,
   windows10,
 } from "./common";
@@ -59,7 +59,7 @@ export const workstationsIndicator: AssetIndicatorWidget = {
     return (
       // Le nom en haut, la quantité en bas à gauche, comme les tickets.
       <Stack gap={4} justify="space-between" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaultValue={type.label} />
+        <IndicatorTitle config={config} defaultValue={type.label} />
         <IndicatorValue config={config}>
           {assets.filter(type.account).length}
         </IndicatorValue>

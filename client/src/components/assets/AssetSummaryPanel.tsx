@@ -83,7 +83,7 @@ export function Card({
 }) {
   // Sur douze colonnes : une seule carte par ligne dans un panneau étroit,
   // deux dans un moyen, trois dans un large.
-  const largeur =
+  const colSpan =
     span === "full"
       ? 12
       : span === "half"
@@ -92,10 +92,10 @@ export function Card({
           ? { base: 12, lg: 8 }
           : { base: 12, sm: 6, lg: 4 };
   return (
-    <Grid.Col span={largeur}>
+    <Grid.Col span={colSpan}>
       {/* L'arrondi des widgets, sans filet, sur un gris neutre. */}
       <Box
-        className={inset.encart}
+        className={inset.inset}
         p="md"
         h="100%"
         style={{ backgroundColor: CARD_BACKGROUND, border: "none" }}
@@ -417,29 +417,29 @@ function Firewall({ firewall }: { firewall: AssetSummary["firewall"] }) {
 }
 
 /** L'ordre des états de la carte Sécurité : ce qui manque d'abord. */
-const SEVERITY = { rouge: 0, orange: 1, gris: 2, vert: 3 } as const;
+const SEVERITY = { red: 0, orange: 1, gray: 2, green: 3 } as const;
 type Severity = keyof typeof SEVERITY;
 
 const protectionSeverity = ({ state }: AssetDetail["protection"]): Severity =>
   state === "none"
-    ? "rouge"
+    ? "red"
     : state === "inactive"
       ? "orange"
       : state === "unknown"
-        ? "gris"
-        : "vert";
+        ? "gray"
+        : "green";
 
 const encryptionSeverity = (encrypted: boolean | null): Severity =>
-  encrypted === false ? "rouge" : encrypted == null ? "gris" : "vert";
+  encrypted === false ? "red" : encrypted == null ? "gray" : "green";
 
 const firewallSeverity = ({ state }: AssetSummary["firewall"]): Severity =>
   state === "off"
-    ? "rouge"
+    ? "red"
     : state === "partial"
       ? "orange"
       : state === "unknown"
-        ? "gris"
-        : "vert";
+        ? "gray"
+        : "green";
 
 /**
  * Les trois états de la carte Sécurité, le rouge en tête, puis l'orange, le
@@ -453,7 +453,7 @@ const securityItems = (detail: AssetDetail) =>
       element: <Protection protection={detail.protection} />,
     },
     {
-      key: "chiffrement",
+      key: "encryption",
       severity: encryptionSeverity(detail.system_disk_encrypted),
       element: (
         <Encryption
@@ -463,7 +463,7 @@ const securityItems = (detail: AssetDetail) =>
       ),
     },
     {
-      key: "parefeu",
+      key: "firewall",
       severity: firewallSeverity(detail.summary.firewall),
       element: <Firewall firewall={detail.summary.firewall} />,
     },
@@ -568,7 +568,7 @@ export function CopyValueButton({
 
 export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
   const { summary, os, system_disk: disk } = detail;
-  const occupe = diskUsage(disk);
+  const used = diskUsage(disk);
   const old = daysSinceInventory(detail) > DAYS_WITHOUT_INVENTORY;
   // Une machine virtuelle Parallels se déclare « Parallels International
   // GmbH. Parallels ARM Virtual Machine » : son nom suffit.
@@ -700,16 +700,16 @@ export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
         <Card title="Stockage" icon={<IconDatabase size={16} />}>
           <Gauge
             circle={
-              occupe != null ? (
+              used != null ? (
                 <RingProgress
                   size={CIRCLE_SIZE}
                   thickness={RING}
                   rootColor={RING_BACKGROUND}
                   roundCaps
-                  sections={[{ value: occupe, color: diskColor(occupe) }]}
+                  sections={[{ value: used, color: diskColor(used) }]}
                   label={
                     <Text size="sm" fw={700} ta="center">
-                      {occupe} %
+                      {used} %
                     </Text>
                   }
                 />

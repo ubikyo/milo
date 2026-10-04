@@ -12,9 +12,9 @@ import type { AccessBlockType } from "@milo/shared";
 // l'air qu'ils laissent en dessous. Ils sont donc décrits une fois ici, et
 // chacun n'a plus qu'à dire ces trois-là.
 
-const TITLE = "titre";
-const COLOR = "couleur";
-const SIZE = "taille";
+const TITLE = "title";
+const COLOR = "color";
+const SIZE = "size";
 
 /**
  * Les bornes de la taille : en deçà le titre ne se lit plus, au-delà il

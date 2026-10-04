@@ -45,8 +45,8 @@ const cardLinkRecords = selection<
     board_name: string;
   }
 >(
-  `SELECT card_links.*, task_cards.id AS autre_id, task_cards.text AS autre_text,
-          task_cards.number AS autre_number, boards.id AS board_id, boards.name AS board_name
+  `SELECT card_links.*, task_cards.id AS other_id, task_cards.text AS other_text,
+          task_cards.number AS other_number, boards.id AS board_id, boards.name AS board_name
    FROM card_links
    JOIN task_cards ON task_cards.id = CASE WHEN card_links.source_id = @card
                                           THEN card_links.target_id
@@ -80,7 +80,7 @@ export const linkOf = (row: CardLinkRow, cardId: Id, userId: Id): CardLink =>
 // tête, dans l'ordre des listes, puis celles des autres tableaux visibles,
 // par nom de tableau. On y cherche comme dans la recherche globale — sans
 // accents, par titre ou par référence. La requête se prépare au premier appel :
-// « milo_plier » est déclarée par la recherche (routes/search.ts), chargée avec
+// « milo_fold » est déclarée par la recherche (routes/search.ts), chargée avec
 // l'application.
 let preparedCandidates: Selection<LinkCandidates["items"][number]> | null = null;
 
@@ -99,8 +99,8 @@ export const linkCandidates = (
      WHERE tc.kind = 'card' AND tc.id != @card
        AND ${VISIBLE_BOARDS_CLAUSE("b.id")}
        AND (@q = '%%'
-         OR milo_plier(tc.text) LIKE @q ESCAPE '\\'
-         OR (tc.number > 0 AND milo_plier('${TASK_REFERENCE_PREFIX}' || tc.number) LIKE @q ESCAPE '\\'))
+         OR milo_fold(tc.text) LIKE @q ESCAPE '\\'
+         OR (tc.number > 0 AND milo_fold('${TASK_REFERENCE_PREFIX}' || tc.number) LIKE @q ESCAPE '\\'))
      ORDER BY same_board DESC, b.name, b.id, tl.position, tl.id, tc.position, tc.id
      LIMIT @limit OFFSET @offset`,
   );

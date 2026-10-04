@@ -2,7 +2,7 @@ import { Select, Stack } from "@mantine/core";
 import { IconCards } from "@tabler/icons-react";
 import { dueState } from "../lib/due";
 import { withField, text } from "../widgets/types";
-import { NameField, NAME, TitreIndicateur, IndicatorValue, tasksOf } from "./common";
+import { NameField, NAME, IndicatorTitle, IndicatorValue, tasksOf } from "./common";
 import type { TaskIndicatorWidget } from "./types";
 import type { Id, TaskCard } from "@milo/shared";
 
@@ -21,11 +21,11 @@ const DEFAULT_TYPE: CardType = { value: "total", label: "Cartes au total", accou
 
 const TYPES: CardType[] = [
   DEFAULT_TYPE,
-  { value: "late", label: "Cartes en retard", account: (c) => dueState(c.due_date) === "retard" },
+  { value: "late", label: "Cartes en retard", account: (c) => dueState(c.due_date) === "late" },
   {
     value: "soon",
     label: "Cartes à échéance proche",
-    account: (c) => dueState(c.due_date) === "bientot",
+    account: (c) => dueState(c.due_date) === "soon",
   },
   { value: "unassigned", label: "Cartes sans membre", account: (c) => c.members.length === 0 },
   {
@@ -57,7 +57,7 @@ export const cardsIndicator: TaskIndicatorWidget = {
     return (
       // Le nom en haut, la quantité en bas à gauche, comme les tickets.
       <Stack gap={4} justify="space-between" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaultValue={type.label} />
+        <IndicatorTitle config={config} defaultValue={type.label} />
         <IndicatorValue config={config}>
           {tasksOf(lists).filter((c) => type.account(c, userId)).length}
         </IndicatorValue>

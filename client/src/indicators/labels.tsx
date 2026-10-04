@@ -1,7 +1,7 @@
 import { Box, Checkbox, Group, Stack, Text, useMantineTheme } from "@mantine/core";
 import { IconTags } from "@tabler/icons-react";
 import { withField } from "../widgets/types";
-import { NameField, ongoing, NAME, Nothing, TitreIndicateur } from "./common";
+import { NameField, ongoing, NAME, Nothing, IndicatorTitle } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 import type { Id } from "@milo/shared";
 
@@ -9,7 +9,7 @@ import type { Id } from "@milo/shared";
 // support. Les demandes réglées n'y comptent que si on le demande.
 
 const LABEL = "Étiquettes";
-const ALL = "toutes";
+const ALL = "include_all";
 
 /** La hauteur d'une barre. */
 const BAR_HEIGHT = 24;
@@ -201,7 +201,7 @@ export const labelsIndicator: SupportIndicatorWidget = {
 
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaultValue={LABEL} />
+        <IndicatorTitle config={config} defaultValue={LABEL} />
         {data.length === 0 ? <Nothing>Aucune étiquette</Nothing> : <LabelBars data={data} ownColors />}
       </Stack>
     );

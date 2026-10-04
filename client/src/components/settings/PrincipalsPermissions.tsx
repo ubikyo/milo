@@ -23,7 +23,7 @@ import {
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import defilement from "../../assets/styles/ListScroll.module.css";
+import scroll from "../../assets/styles/ListScroll.module.css";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import AddButton from "../ui/AddButton";
 import {
@@ -194,7 +194,7 @@ function LevelsInColumns({ rows }: { rows: PermissionRow[] }) {
       {rows.map((l) => (
         <Box
           key={l.name}
-          w={l.largeur ?? COLUMN_WIDTH}
+          w={l.width ?? COLUMN_WIDTH}
           style={{ display: "flex", justifyContent: "center" }}
         >
           <LevelButton {...l} />
@@ -205,7 +205,7 @@ function LevelsInColumns({ rows }: { rows: PermissionRow[] }) {
 }
 
 // « Aucun » ne peut pas être la valeur vide d'un Select : il lui faut la sienne.
-const NONE = "aucun";
+const NONE = "none";
 
 /**
  * Les permissions réglées à même la ligne (enLigne) : un choix chacune, son
@@ -223,7 +223,7 @@ function InlineChoice({
   if (inColumns) return <LevelsInColumns rows={rows} />;
   return (
     <>
-      {rows.map(({ name, options, value, onChange, disabled, largeur }) => (
+      {rows.map(({ name, options, value, onChange, disabled, width }) => (
         <Select
           key={name}
           aria-label={name}
@@ -244,7 +244,7 @@ function InlineChoice({
           disabled={disabled}
           size="xs"
           radius={ROUNDING}
-          w={largeur ?? CHOICE_WIDTH + name.length * 6.5}
+          w={width ?? CHOICE_WIDTH + name.length * 6.5}
           style={{ flexShrink: 0 }}
           comboboxProps={{ withinPortal: true }}
           onFocus={() => setEntered(name)}
@@ -384,8 +384,8 @@ export default function PrincipalsPermissions<T>({
             type="auto"
             scrollbars={inColumns ? "x" : false}
             classNames={{
-              scrollbar: defilement.scrollbar,
-              thumb: defilement.thumb,
+              scrollbar: scroll.scrollbar,
+              thumb: scroll.thumb,
             }}
           >
             {inColumns && inline && (
@@ -414,7 +414,7 @@ export default function PrincipalsPermissions<T>({
                       size="xs"
                       fw={500}
                       c="dimmed"
-                      w={l.largeur ?? COLUMN_WIDTH}
+                      w={l.width ?? COLUMN_WIDTH}
                       ta="center"
                       truncate
                     >

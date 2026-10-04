@@ -342,7 +342,7 @@ export default function CardDrawer({
       try {
         const attachment = await api.uploadAttachment(card.id, file);
         setAttachments((already) => [attachment, ...already]);
-        setToShow("[data-zone='pieces']");
+        setToShow("[data-zone='attachments']");
       } catch (e) {
         notifyError(errorMessage(e));
       }
@@ -360,7 +360,7 @@ export default function CardDrawer({
       try {
         const cover = await api.uploadCover(card.id, await shrinkImage(file));
         setCovers((already) => [...already, cover]);
-        setToShow("[data-couvertures]");
+        setToShow("[data-covers]");
       } catch (e) {
         notifyError(errorMessage(e));
       }
@@ -421,7 +421,7 @@ export default function CardDrawer({
 
   /** Vrai quand le glisser passe sur le bloc des couvertures (CardCovers). */
   const toCovers = (e: ReactDragEvent) =>
-    e.target instanceof Element && e.target.closest("[data-couvertures]") !== null;
+    e.target instanceof Element && e.target.closest("[data-covers]") !== null;
 
   const hover = {
     onDragEnter: (e: ReactDragEvent) => {
@@ -460,7 +460,7 @@ export default function CardDrawer({
   const dueFields = {
     due_date: due.end,
     due_form: due.end ? due.shape : "date",
-    start_date: due.end && due.shape === "periode" ? due.start : "",
+    start_date: due.end && due.shape === "period" ? due.start : "",
     recurrence: due.end ? due.recurrence : "",
     reminder: due.end ? due.reminder : "",
   } as const;
@@ -682,7 +682,7 @@ export default function CardDrawer({
                           leftSection={<IconLink size={16} />}
                           onClick={() => {
                             setDrafts((already) => [...already, newDraft()]);
-                            setToShow("[data-dependance]");
+                            setToShow("[data-dependency]");
                           }}
                         >
                           Ajouter une dépendance
@@ -699,7 +699,7 @@ export default function CardDrawer({
                     leftSection={<IconCalendarEvent size={16} />}
                     onClick={() => {
                       setWithDueDate(true);
-                      setToShow("[data-zone='echeance']");
+                      setToShow("[data-zone='due-date']");
                     }}
                   >
                     Ajouter échéance
@@ -867,7 +867,7 @@ export default function CardDrawer({
                       pas, rien ne s'affiche — la fiche ne porte pas un champ
                       vide de plus. */}
                   {withDue && (
-                    <div data-zone="echeance">
+                    <div data-zone="due-date">
                       <CardDueDate
                         value={due}
                         onChange={setDue}
@@ -937,7 +937,7 @@ export default function CardDrawer({
 
                   {/* Les pièces jointes ferment la fiche. Comme les checklists,
                       l'encart ne paraît que lorsqu'il y a quelque chose dedans. */}
-                  <div data-zone="pieces">
+                  <div data-zone="attachments">
                     <CardAttachments
                       attachments={attachments}
                       onPick={() => fileField.current?.click()}

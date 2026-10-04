@@ -1,6 +1,6 @@
-/* Le corps d'un message : son dernier bloc garde sa marge du bas, que la
-   typographie donne à chaque paragraphe, et elle s'ajoutait à celle du
-   message — une ligne vide avant les pièces jointes. */
-.corps > :last-child {
+/* A message body: its last block keeps its bottom margin, which the
+   typography gives every paragraph, and it added up with the message's — an
+   empty line before the attachments. */
+.body > :last-child {
   margin-bottom: 0;
 }

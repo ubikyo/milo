@@ -8,13 +8,13 @@ import { count, text } from "../../widgets/types";
 // second. En gras et en blanc, comme les titres des colonnes.
 
 /** La clé du nom dans la configuration : la même pour tous les widgets. */
-export const NAME = "nom";
+export const NAME = "name";
 
 // L'allure de la carte, la même pour tous les indicateurs : la couleur et la
 // taille de son titre et de sa valeur, et la couleur de
 // son fond (ChampsApparence). Absentes, la carte garde l'allure de l'encart
 // (IndicatorsPanel).
-export const BACKGROUND = "fond";
+export const BACKGROUND = "background";
 
 /** Un texte de la carte — son titre, sa valeur — et ses réglages. */
 export interface CardText {
@@ -30,8 +30,8 @@ export interface CardText {
 
 /** Le titre : en blanc, comme les titres des colonnes, à la taille « sm ». */
 export const TITLE: CardText = {
-  sizeKey: "taille_titre",
-  colorKey: "couleur_titre",
+  sizeKey: "title_size",
+  colorKey: "title_color",
   defaultSize: 14,
   minSize: 8,
   maxSize: 48,
@@ -40,8 +40,8 @@ export const TITLE: CardText = {
 
 /** La valeur d'un indicateur qui compte — tickets, cartes, projets, postes. */
 export const VALUE: CardText = {
-  sizeKey: "taille_valeur",
-  colorKey: "couleur_valeur",
+  sizeKey: "value_size",
+  colorKey: "value_color",
   defaultSize: 28,
   minSize: 12,
   maxSize: 96,

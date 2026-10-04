@@ -8,6 +8,7 @@
 // et au rechargement, et passe d'un onglet à l'autre. Un stockage refusé — une
 // fenêtre privée — le laisse en mémoire seulement.
 
+import { migrateWidgetConfig } from "@milo/shared";
 import { useSyncExternalStore } from "react";
 
 export interface CopiedWidget {
@@ -17,15 +18,25 @@ export interface CopiedWidget {
   label: string;
 }
 
-const KEY = "milo.presse-papiers.widget";
+const KEY = "milo.clipboard.widget";
+/** Sa clé d'avant : un widget copié alors se colle encore. */
+const LEGACY_KEY = "milo.presse-papiers.widget";
 
+/**
+ * Le widget rangé, sa configuration aux clés d'aujourd'hui — il a pu être
+ * copié avant leur traduction, ou par un onglet resté sur l'ancienne version.
+ */
 const read = (): CopiedWidget | null => {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(KEY) ?? localStorage.getItem(LEGACY_KEY);
     if (!raw) return null;
     const readValue = JSON.parse(raw) as Partial<CopiedWidget>;
     return typeof readValue.type === "string" && readValue.config && typeof readValue.config === "object"
-      ? { type: readValue.type, config: readValue.config, label: String(readValue.label ?? readValue.type) }
+      ? {
+          type: readValue.type,
+          config: migrateWidgetConfig(readValue.type, readValue.config),
+          label: String(readValue.label ?? readValue.type),
+        }
       : null;
   } catch {
     return null;
@@ -41,6 +52,7 @@ export const copyWidget = (copy: CopiedWidget): void => {
   current = copy;
   try {
     localStorage.setItem(KEY, JSON.stringify(copy));
+    localStorage.removeItem(LEGACY_KEY);
   } catch {
     // Stockage refusé : la copie reste en mémoire, le temps de la page.
   }

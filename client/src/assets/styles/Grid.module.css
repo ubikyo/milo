@@ -1,33 +1,32 @@
-/* Les grilles redimensionnables (Projets, Support, Assets, inventaire).
+/* Resizable grids (Projects, Support, Assets, inventory).
 
-   Une cellule ne passe jamais à la ligne : ce qui dépasse se coupe d'une
-   ellipse. Le texte rangé dans un « Text » de Mantine porte sa propre boîte :
-   l'ellipse doit y être posée aussi, et « min-width: 0 » le laisse rétrécir
-   quand il est dans un « Group ». */
-.grille th,
-.grille td {
+   A cell never wraps: what overflows is cut with an ellipsis. Text inside a
+   Mantine "Text" has its own box: the ellipsis must be set there too, and
+   "min-width: 0" lets it shrink inside a "Group". */
+.grid th,
+.grid td {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.grille :is(th, td) :global(.mantine-Text-root) {
+.grid :is(th, td) :global(.mantine-Text-root) {
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.grille td :global(.mantine-Badge-root) {
+.grid td :global(.mantine-Badge-root) {
   max-width: 100%;
 }
 
-/* La poignée se tient au bord droit de l'en-tête. */
-.grille th {
+/* The handle sits on the right edge of the header cell. */
+.grid th {
   position: relative;
 }
 
-.poignee {
+.handle {
   position: absolute;
   top: 0;
   right: 0;
@@ -38,9 +37,9 @@
   z-index: 1;
 }
 
-/* Un trait discret au survol de l'en-tête, coloré sous la souris et pendant
-   le glissement. */
-.poignee::after {
+/* A discreet line when hovering the header, colored under the mouse and
+   while dragging. */
+.handle::after {
   content: "";
   position: absolute;
   top: 25%;
@@ -51,19 +50,19 @@
   transition: background-color 120ms;
 }
 
-.grille th:hover .poignee::after {
+.grid th:hover .handle::after {
   background-color: var(--mantine-color-default-border);
 }
 
-.poignee:hover::after,
-.poignee[data-actif]::after {
+.handle:hover::after,
+.handle[data-active]::after {
   background-color: var(--mantine-color-teal-6);
 }
 
-/* Posée sur le body le temps du glissement : le curseur ne clignote pas en
-   passant sur d'autres éléments, et le texte ne se sélectionne pas. */
-.glisse,
-.glisse * {
+/* Set on the body for the duration of the drag: the cursor does not flicker
+   over other elements, and text does not get selected. */
+.dragging,
+.dragging * {
   cursor: col-resize !important;
   user-select: none;
 }

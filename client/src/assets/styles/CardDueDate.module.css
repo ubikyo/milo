@@ -1,0 +1,15 @@
+/* The fields of the due-date row: no border nor background on the row's
+   gray, like a category name in a widget's drawer (BoardListFields). They
+   take the drawer background while being edited. */
+.field :global(.mantine-Input-input) {
+  height: var(--input-height-xs);
+  min-height: var(--input-height-xs);
+  border-width: 0;
+  background-color: transparent;
+}
+
+.field :global(.mantine-Input-input):focus,
+.field :global(.mantine-Input-input):focus-within,
+.field :global(.mantine-Input-input)[data-expanded] {
+  background-color: var(--mantine-color-body);
+}

@@ -239,9 +239,9 @@ const stripTags = (text: string): string =>
 const MARKER = /\uE000(\d+)\uE000/;
 
 /** Les éléments de ce nom, quel que soit leur préfixe d'espace de noms. */
-const items = (dans: string, name: string): { attributes: string; content: string }[] =>
+const items = (into: string, name: string): { attributes: string; content: string }[] =>
   Array.from(
-    dans.matchAll(
+    into.matchAll(
       new RegExp(`<((?:[\\w.-]+:)?${name})(?=[\\s/>])([^>]*?)(?:/>|>([\\s\\S]*?)</\\1\\s*>)`, "g"),
     ),
     (m) => ({ attributes: m[2] ?? "", content: m[3] ?? "" }),
@@ -274,9 +274,9 @@ const readXml = (xml: string, source: string, quantity: number): AccessFeedArtic
       .replace(/\s+/g, " ")
       .trim();
 
-  const first = (dans: string, ...names: string[]): string => {
+  const first = (into: string, ...names: string[]): string => {
     for (const name of names) {
-      const found = items(dans, name).map((e) => text(e.content)).find(Boolean);
+      const found = items(into, name).map((e) => text(e.content)).find(Boolean);
       if (found) return found;
     }
     return "";
@@ -399,13 +399,13 @@ export const probeFeed = async (address: string): Promise<AccessFeedProbe> => {
   try {
     downloaded = await download(address);
   } catch (error) {
-    return { state: "injoignable", message: (error as Error).message };
+    return { state: "unreachable", message: (error as Error).message };
   }
   try {
     readDownloaded(downloaded, 1);
     return { state: "ok", format: formatDe(downloaded) };
   } catch (error) {
-    return { state: "invalide", message: (error as Error).message };
+    return { state: "invalid", message: (error as Error).message };
   }
 };
 
@@ -466,9 +466,9 @@ const addressesOf = (config: Record<string, unknown>): string[] => {
  */
 export const feedSettings = (config: Record<string, unknown>): FeedSettings => ({
   urls: addressesOf(config),
-  quantity: bound(config.quantite, 5, 1, ACCESS_FEED_QUANTITY_MAX),
+  quantity: bound(config.count, 5, 1, ACCESS_FEED_QUANTITY_MAX),
   interval: bound(
-    config.intervalle,
+    config.interval,
     ACCESS_FEED_INTERVAL_DEFAULT,
     ACCESS_FEED_INTERVAL_MIN,
     ACCESS_FEED_INTERVAL_MAX,

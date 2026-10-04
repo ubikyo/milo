@@ -15,20 +15,20 @@ import { gunzipSync, gzipSync } from "node:zlib";
 const BLOCK = 512;
 
 export interface Entry {
-  /** Le chemin dans l'archive, en barres obliques : « medias/abc.png ». */
+  /** Le chemin dans l'archive, en barres obliques : « media/abc.png ». */
   name: string;
   content: Buffer;
 }
 
 /** Un nombre en octal, complété de zéros à gauche et suivi d'un octet nul. */
-const octal = (value: number, largeur: number): string =>
-  `${value.toString(8).padStart(largeur - 1, "0")}\0`;
+const octal = (value: number, width: number): string =>
+  `${value.toString(8).padStart(width - 1, "0")}\0`;
 
 const header = (entry: Entry, mtime: number): Buffer => {
   const block = Buffer.alloc(BLOCK);
 
   // Un nom de plus de 100 octets demanderait le champ « prefix » ; les nôtres
-  // — « milo.db », « medias/ » et trente-deux caractères — n'en approchent
+  // — « milo.db », « media/ » et trente-deux caractères — n'en approchent
   // pas, et on préfère refuser que produire une archive silencieusement fausse.
   const name = Buffer.from(entry.name, "utf8");
   if (name.length > 100) throw new Error(`Nom trop long pour l'archive : ${entry.name}`);

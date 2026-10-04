@@ -1,8 +1,8 @@
-/* Une pièce jointe de la fiche : une ligne de la pile, sur le gris neutre des
-   lignes du tiroir (FOND_LIGNE, LignesDuTiroir) ; seuls les bouts de la pile
-   s'arrondissent. Toute la ligne ouvre la pièce au clic, et fonce d'un cran au
-   survol. */
-.ligne {
+/* An attachment of the card: a row of the stack, on the neutral gray of the
+   drawer rows (ROW_BACKGROUND, DrawerRows); only the ends of the stack are
+   rounded. The whole row opens the attachment on click, and darkens one step
+   on hover. */
+.row {
   display: block;
   padding: 10px;
   background-color: light-dark(#ededed, var(--mantine-color-dark-6));
@@ -11,27 +11,27 @@
   cursor: pointer;
 }
 
-.ligne:first-child {
+.row:first-child {
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
 }
 
-.ligne:last-child {
+.row:last-child {
   border-bottom-left-radius: 8px;
   border-bottom-right-radius: 8px;
 }
 
-.ligne:hover {
+.row:hover {
   background-color: light-dark(#e2e2e2, var(--mantine-color-dark-5));
 }
 
-/* L'encart de gauche : il se détache du gris de la ligne — blanc sur le
-   clair ; sur le sombre, un cran au-dessus de la ligne, puis en dessous quand
-   elle monte au survol. */
-.vignette {
+/* The left thumbnail: it stands out from the row's gray — white on light;
+   on dark, one step above the row, then below it when the row lightens on
+   hover. */
+.thumbnail {
   background-color: light-dark(var(--mantine-color-white), var(--mantine-color-dark-5));
 }
 
-.ligne:hover .vignette {
+.row:hover .thumbnail {
   background-color: light-dark(var(--mantine-color-white), var(--mantine-color-dark-6));
 }

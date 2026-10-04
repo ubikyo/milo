@@ -7,7 +7,7 @@ interface DirectoryOriginProps {
    * celle du bouton des favoris (ActionIcon « sm ») : l'icône tombe sous
    * l'étoile des lignes du dessus.
    */
-  largeur?: number | string;
+  width?: number | string;
 }
 
 /**
@@ -15,14 +15,14 @@ interface DirectoryOriginProps {
  * sa ligne : synchronisé depuis l'Active Directory local, ou créé dans le
  * cloud. Deux comptes de même nom et de même adresse se distinguent ainsi.
  */
-export default function DirectoryOrigin({ synced, largeur }: DirectoryOriginProps) {
+export default function DirectoryOrigin({ synced, width }: DirectoryOriginProps) {
   const Icon = synced ? IconServer2 : IconCloud;
   const label = synced ? "Active Directory (AD DS)" : "Cloud";
   return (
     <span
       title={label}
       aria-label={label}
-      style={{ display: "flex", justifyContent: "center", flexShrink: 0, width: largeur }}
+      style={{ display: "flex", justifyContent: "center", flexShrink: 0, width }}
     >
       <Icon size={16} color="var(--mantine-color-dimmed)" />
     </span>

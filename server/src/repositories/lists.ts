@@ -35,7 +35,7 @@ export const keepKey = (type: string, before: string, after: string): string => 
 };
 
 const boardKeys = selection<{ key: string | null }>(
-  `SELECT json_extract(w.config, '$.${LIST_KEY}') AS cle FROM board_widgets w
+  `SELECT json_extract(w.config, '$.${LIST_KEY}') AS key FROM board_widgets w
    JOIN board_sections s ON s.id = w.section_id
    WHERE s.board_id = ? AND w.type = ? AND json_valid(w.config)
    ORDER BY s.owner_id IS NOT NULL, s.position, s.id, w.position, w.id`,

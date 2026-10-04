@@ -7,10 +7,13 @@
 
 import type { Database } from "better-sqlite3";
 import {
+  QUERY_PARAMS,
   SUPPORT_CHANNEL_LABELS,
   SUPPORT_NEW_MESSAGE_DUE_DAYS,
   SUPPORT_NEW_MESSAGE_LABELS,
   SUPPORT_URGENCY_LABELS,
+  migrateSupportTemplate,
+  migrateWidgetConfig,
   panelType,
   validWidgetRights,
   widgetRightsEverywhere,
@@ -71,7 +74,7 @@ export const attachIndicators = (db: Database): void => {
 };
 
 /** Posé une fois les références des projets et des cartes données par le compteur commun. */
-const SHARED_REFERENCES = "references_communes";
+const SHARED_REFERENCES = "shared_references";
 /** Le compteur des références (repositories/references.ts). */
 const REFERENCE_COUNTER = "support_ticket_counter";
 
@@ -106,9 +109,9 @@ export const numberReferences = (db: Database): void => {
   const withoutReference = common ? "number = 0" : "1";
   const items = db
     .prepare(
-      `SELECT 'project' AS sorte, id, created_at FROM projects WHERE ${withoutReference}
+      `SELECT 'project' AS kind, id, created_at FROM projects WHERE ${withoutReference}
        UNION ALL
-       SELECT 'card' AS sorte, id, created_at FROM task_cards WHERE kind = 'card' AND ${withoutReference}
+       SELECT 'card' AS kind, id, created_at FROM task_cards WHERE kind = 'card' AND ${withoutReference}
        ORDER BY created_at, id`,
     )
     .all() as { kind: "project" | "card"; id: number }[];
@@ -153,7 +156,7 @@ export const setDefaultSections = (db: Database): void => {
     ["project_indicators", "projects"],
     ["task_indicators", "tasks"],
   ] as const) {
-    const key = `${panel}_sections_posees`;
+    const key = `${panel}_sections_seeded`;
     if (readSetting(db, key) === true) continue;
     db.transaction(() => {
       if (!db.prepare("SELECT 1 FROM indicator_sections WHERE panel = ?").get(panel)) {
@@ -177,7 +180,10 @@ export const setDefaultSections = (db: Database): void => {
  * rattrapages d'avant parlent de tables qu'elle n'a plus.
  */
 export const migrate = (db: Database): void => {
-  // D'abord : les accès qui suivent se posent dans le premier workspace.
+  // Avant tout : les marqueurs des rattrapages prennent leur nom anglais, que
+  // chacun d'eux cherche désormais.
+  renameSettingKeys(db);
+  // Puis les accès qui suivent se posent dans le premier workspace.
   workspaces(db);
   if (!columns(db, "boards").includes("view_id")) catchUpBeforeViews(db);
   // Comptes d'avant la vue d'ouverture : la conversion la tire de leur mode.
@@ -224,7 +230,7 @@ export const migrate = (db: Database): void => {
   if (!cardColumns.includes("due_form")) {
     db.exec("ALTER TABLE task_cards ADD COLUMN due_form TEXT NOT NULL DEFAULT 'date'");
     // Une échéance qui avait un début était une période.
-    db.exec("UPDATE task_cards SET due_form = 'periode' WHERE start_date != ''");
+    db.exec("UPDATE task_cards SET due_form = 'period' WHERE start_date != ''");
   }
   if (!cardColumns.includes("cover_interval")) {
     db.exec("ALTER TABLE task_cards ADD COLUMN cover_interval INTEGER NOT NULL DEFAULT 0");
@@ -240,6 +246,11 @@ export const migrate = (db: Database): void => {
   db.prepare("UPDATE views SET workspace_id = ? WHERE workspace_id IS NULL").run(
     firstWorkspace(db),
   );
+  // L'index des suivis, renommé (idx_follows_target, schema.ts).
+  db.exec("DROP INDEX IF EXISTS idx_follows_cible");
+  // En dernier : les valeurs rangées en français, traduites une fois que les
+  // rattrapages d'avant, qui les lisent, sont passés.
+  englishValues(db);
 };
 
 /**
@@ -252,10 +263,10 @@ const sortedCategories = (db: Database): void => {
     db.exec("ALTER TABLE categories ADD COLUMN position INTEGER NOT NULL DEFAULT 0");
     db.exec(`
       UPDATE categories SET position = (
-        SELECT COUNT(*) FROM categories AS avant
-        WHERE avant.board_id = categories.board_id
-          AND (avant.name < categories.name COLLATE NOCASE
-            OR (avant.name = categories.name COLLATE NOCASE AND avant.id < categories.id))
+        SELECT COUNT(*) FROM categories AS earlier
+        WHERE earlier.board_id = categories.board_id
+          AND (earlier.name < categories.name COLLATE NOCASE
+            OR (earlier.name = categories.name COLLATE NOCASE AND earlier.id < categories.id))
       )
     `);
   })();
@@ -278,7 +289,7 @@ export const firstWorkspace = (db: Database): number => {
 };
 
 /** Posé une fois la gestion des workspaces donnée à qui modifiait le Paramétrage. */
-const WORKSPACE_MANAGEMENT = "gestion_des_workspaces";
+const WORKSPACE_MANAGEMENT = "workspace_management";
 
 /**
  * Qui modifiait le Paramétrage avant les workspaces les gère d'emblée : sans
@@ -291,7 +302,7 @@ const workspaceManagement = (db: Database): void => {
 };
 
 /** Posé une fois l'administration sortie des accès des workspaces. */
-const GLOBAL_ADMINISTRATION = "administration_globale";
+const GLOBAL_ADMINISTRATION = "global_administration";
 
 /**
  * Le Paramétrage et la gestion des workspaces valent pour toute
@@ -334,7 +345,7 @@ const globalAdministration = (db: Database): void => {
 };
 
 /** Posé une fois Uptime retiré et le type « 365 » accordé. */
-const WITHOUT_UPTIME_WITH_365 = "sans_uptime_avec_365";
+const WITHOUT_UPTIME_WITH_365 = "uptime_removed_m365_added";
 
 /**
  * Le widget Uptime s'en va, avec les machines qu'il vérifiait — et le type
@@ -1232,7 +1243,7 @@ const catchUpBeforeViews = (db: Database): void => {
 };
 
 /** Posé une fois le Paramétrage sorti des rôles. */
-const SETTINGS_OUTSIDE_ROLES = "parametrage_hors_roles";
+const SETTINGS_OUTSIDE_ROLES = "settings_out_of_roles";
 
 /**
  * Le Paramétrage se réglait dans les rôles, société par société ; il se règle
@@ -1303,7 +1314,7 @@ export const splitSettings = (db: Database): void => {
 };
 
 /** Posé une fois les permissions passées aux types de widgets. */
-const PERMISSIONS_BY_TYPE = "permissions_par_type_de_widget";
+const PERMISSIONS_BY_TYPE = "permissions_by_widget_kind";
 
 /**
  * Les rôles, société par société, et les modes ouverts laissent la place à
@@ -1337,7 +1348,7 @@ export const permissionsByWidgetType = (db: Database): void => {
 };
 
 /** Posé une fois les modes devenus des vues. */
-const VIEWS_AND_BOARDS = "vues_et_tableaux";
+const VIEWS_AND_BOARDS = "views_and_boards";
 
 /** Les modes d'avant les vues, dans l'ordre de leur sélecteur, et le nom de leur vue. */
 const STARTING_VIEWS = [
@@ -1607,7 +1618,7 @@ const convertModes = (
     ["tasks", "task_indicators", taskBoards],
   ] as const;
   if (columns(db, "indicator_sections").length > 0) {
-    for (const [panel, table, tableaux] of panels) {
+    for (const [panel, table, boardIds] of panels) {
       const sections = db
         .prepare("SELECT * FROM indicator_sections WHERE panel = ? ORDER BY position, id")
         .all(panel) as Section[];
@@ -1615,7 +1626,7 @@ const convertModes = (
         columns(db, table).length > 0
           ? db.prepare(`SELECT * FROM ${table} WHERE section_id = ? ORDER BY position, id`)
           : null;
-      for (const board of tableaux) {
+      for (const board of boardIds) {
         for (const section of sections) {
           const newRow = insertSection(board, section);
           for (const w of (widgets?.all(section.id) ?? []) as Widget[]) {
@@ -1649,11 +1660,11 @@ const convertModes = (
   const setPersonal = db.prepare(
     "INSERT OR IGNORE INTO personal_layouts (user_id, scope, created_at) VALUES (?, ?, ?)",
   );
-  for (const [old, tableaux] of scopes) {
+  for (const [old, boardIds] of scopes) {
     for (const { user_id } of personal.all(old) as {
       user_id: number;
     }[]) {
-      for (const board of tableaux) setPersonal.run(user_id, `board:${board}`, currentTime);
+      for (const board of boardIds) setPersonal.run(user_id, `board:${board}`, currentTime);
     }
   }
   db.exec("DELETE FROM personal_layouts WHERE scope NOT LIKE 'board:%'");
@@ -1732,7 +1743,7 @@ const convertModes = (
   }
 };
 
-const CONTEXTS = "contextes";
+const CONTEXTS = "contexts";
 
 /** L'ordre des contextes nés des sociétés ; les autres suivent, par nom. */
 const CONTEXTS_ORDER = [
@@ -1794,10 +1805,10 @@ export const contexts = (db: Database): void => {
         "INSERT INTO contexts (board_id, name, position, created_at) VALUES (?, ?, ?, ?)",
       );
       const matches = db.prepare("INSERT INTO temp.correspondance VALUES (?, ?, ?)");
-      const tableaux = db.prepare("SELECT id FROM boards").all() as {
+      const boardRows = db.prepare("SELECT id FROM boards").all() as {
         id: number;
       }[];
-      for (const { id } of tableaux) {
+      for (const { id } of boardRows) {
         const alreadyThere = db.prepare("SELECT 1 FROM contexts WHERE board_id = ?").get(id);
         if (alreadyThere) continue;
         // Sans société, le tableau n'a pas de contexte : on en ajoute depuis
@@ -1960,9 +1971,9 @@ export const contexts = (db: Database): void => {
             .filter((s) => s.support_email && (single === null || s.id === single))
             .map((s) => ({
               email: s.support_email,
-              context: boardContext(s.id),
+              contexte: boardContext(s.id),
             }))
-            .filter((b) => b.context !== null);
+            .filter((b) => b.contexte !== null);
           delete config.boite;
         } else {
           const only = typeof config.tag === "string" && config.tag ? config.tag : null;
@@ -1970,9 +1981,9 @@ export const contexts = (db: Database): void => {
             .filter((t) => only === null || t.tag === only)
             .map((t) => ({
               tag: t.tag,
-              context: boardContext(t.company_id),
+              contexte: boardContext(t.company_id),
             }))
-            .filter((t) => t.context !== null);
+            .filter((t) => t.contexte !== null);
           delete config.tag;
         }
         writeConfig.run(JSON.stringify(config), widget.id);
@@ -2019,7 +2030,7 @@ export const contexts = (db: Database): void => {
   );
 };
 
-const LISTS_PER_WIDGET = "listes_par_widget";
+const LISTS_PER_WIDGET = "lists_by_widget";
 
 interface ListWidget {
   id: number;
@@ -2156,7 +2167,7 @@ export const listsPerWidget = (db: Database): void => {
   })();
 };
 
-const OPTIONAL_CONTEXTS = "contextes_facultatifs";
+const OPTIONAL_CONTEXTS = "optional_contexts";
 
 interface DetailedColumn {
   name: string;
@@ -2208,7 +2219,7 @@ export const optionalContexts = (db: Database): void => {
   );
 };
 
-const CONFIRMED_MAILBOXES = "boites_confirmees_par_liste";
+const CONFIRMED_MAILBOXES = "mailboxes_confirmed_by_list";
 
 /**
  * Les boîtes de support se confirment liste par liste (lib/optin.ts). Celles
@@ -2240,15 +2251,17 @@ export const confirmedMailboxes = (db: Database): void => {
     );
     const currentTime = new Date().toISOString();
     for (const { config } of configs) {
-      let readValue: { mailboxes?: { email?: unknown }[]; list?: unknown } = {};
+      // Les clés d'avant leur traduction (« liste », « boites ») : cette étape
+      // ne passe que sur une base qui ne l'est pas encore (englishValues).
+      let readValue: { boites?: { email?: unknown }[]; liste?: unknown } = {};
       try {
         readValue = JSON.parse(config) as typeof readValue;
       } catch {
         continue;
       }
-      const list = typeof readValue.list === "string" ? readValue.list : "";
+      const list = typeof readValue.liste === "string" ? readValue.liste : "";
       if (!list) continue;
-      for (const mailbox of Array.isArray(readValue.mailboxes) ? readValue.mailboxes : []) {
+      for (const mailbox of Array.isArray(readValue.boites) ? readValue.boites : []) {
         const email = typeof mailbox?.email === "string" ? mailbox.email.trim().toLowerCase() : "";
         if (!email) continue;
         // Par adresse, seules celles qui étaient confirmées le restent ; sans
@@ -2259,5 +2272,184 @@ export const confirmedMailboxes = (db: Database): void => {
     }
     if (byAddress) db.exec("DROP TABLE mailbox_optins");
     writeSetting(db, CONFIRMED_MAILBOXES, true);
+  })();
+};
+
+/**
+ * Les marqueurs des rattrapages, renommés en anglais avec le code. Passe en
+ * tout premier (migrer) : chaque rattrapage se reconnaît à son marqueur, et
+ * ne doit pas repasser sur une base qui le portait sous son ancien nom. Une
+ * base qui a déjà les deux garde le nouveau.
+ */
+const LEGACY_SETTING_KEYS: Record<string, string> = {
+  references_communes: SHARED_REFERENCES,
+  projects_sections_posees: "projects_sections_seeded",
+  tasks_sections_posees: "tasks_sections_seeded",
+  gestion_des_workspaces: WORKSPACE_MANAGEMENT,
+  administration_globale: GLOBAL_ADMINISTRATION,
+  sans_uptime_avec_365: WITHOUT_UPTIME_WITH_365,
+  parametrage_hors_roles: SETTINGS_OUTSIDE_ROLES,
+  permissions_par_type_de_widget: PERMISSIONS_BY_TYPE,
+  vues_et_tableaux: VIEWS_AND_BOARDS,
+  contextes: CONTEXTS,
+  listes_par_widget: LISTS_PER_WIDGET,
+  contextes_facultatifs: OPTIONAL_CONTEXTS,
+  boites_confirmees_par_liste: CONFIRMED_MAILBOXES,
+  // Le marqueur d'une étape d'avant la confirmation par liste, qui n'existe plus.
+  boites_confirmees: "mailboxes_confirmed",
+};
+
+const renameSettingKeys = (db: Database): void => {
+  const legacy = db
+    .prepare(
+      `SELECT key FROM settings WHERE key IN (${Object.keys(LEGACY_SETTING_KEYS)
+        .map(() => "?")
+        .join(", ")})`,
+    )
+    .all(...Object.keys(LEGACY_SETTING_KEYS)) as { key: string }[];
+  if (legacy.length === 0) return;
+  db.transaction(() => {
+    const rename = db.prepare(
+      "UPDATE settings SET key = ? WHERE key = ? AND NOT EXISTS (SELECT 1 FROM settings WHERE key = ?)",
+    );
+    const remove = db.prepare("DELETE FROM settings WHERE key = ?");
+    for (const { key } of legacy) {
+      const renamed = LEGACY_SETTING_KEYS[key]!;
+      rename.run(renamed, key, renamed);
+      remove.run(key);
+    }
+  })();
+};
+
+/** Posé une fois les valeurs rangées en français traduites (englishValues). */
+const ENGLISH_VALUES = "english_values";
+
+/** Les paramètres d'un lien vers un élément, avant et après (shared, follow.ts). */
+const LEGACY_LINK_PARAMS: Record<string, string> = {
+  projet: QUERY_PARAMS.project,
+  carte: QUERY_PARAMS.card,
+  demande: QUERY_PARAMS.support,
+  poste: QUERY_PARAMS.asset,
+  acces: QUERY_PARAMS.access,
+};
+
+/** Les liens « ?carte=12 » d'un HTML, réécrits « ?card=12 ». */
+const migrateLinks = (html: string): string =>
+  html.replace(
+    /\?(projet|carte|demande|poste|acces)=(\d+)/g,
+    (_match, param: string, id: string) => `?${LEGACY_LINK_PARAMS[param]}=${id}`,
+  );
+
+/**
+ * Le code est passé du français à l'anglais : ce qu'il rangeait en français
+ * se range désormais en anglais, et ce qui l'était déjà se traduit une fois.
+ *
+ *   - Les réglages : « deconnecte » d'Entra, « expire » des abonnements aux
+ *     boîtes du support.
+ *   - La configuration de chaque widget (migrateWidgetConfig, shared) : ses
+ *     clés et ses valeurs à choix.
+ *   - La forme « periode » d'une échéance, qui devient « period ».
+ *   - Les variables des modèles du Support, « {{demande.numero}} » devenant
+ *     « {{ticket.number}} » (migrateSupportTemplate, shared).
+ *   - Les liens vers un élément dans les descriptions (« ?carte=12 »), qui
+ *     s'ouvrent encore sous leur ancien nom, et les adresses des médias
+ *     (« /api/medias/… »), encore servies elles aussi : les e-mails déjà
+ *     partis les citent.
+ *
+ * Les rattrapages d'avant lisent et écrivent les anciennes clés : celui-ci
+ * passe après eux, en dernier.
+ */
+const englishValues = (db: Database): void => {
+  if (readSetting(db, ENGLISH_VALUES)) return;
+  db.transaction(() => {
+    const entra = readSetting(db, "entra");
+    if (entra && typeof entra === "object" && "deconnecte" in entra) {
+      const { deconnecte, ...rest } = entra as Record<string, unknown>;
+      writeSetting(db, "entra", { ...rest, disconnected: deconnecte === true });
+    }
+
+    const subscriptions = readSetting(db, "support_mail_subscriptions");
+    if (subscriptions && typeof subscriptions === "object") {
+      writeSetting(
+        db,
+        "support_mail_subscriptions",
+        Object.fromEntries(
+          Object.entries(subscriptions as Record<string, Record<string, unknown>>).map(
+            ([mailbox, s]) => {
+              if (!s || typeof s !== "object" || !("expire" in s)) return [mailbox, s];
+              const { expire, ...rest } = s;
+              return [mailbox, { ...rest, expiresAt: rest.expiresAt ?? expire }];
+            },
+          ),
+        ),
+      );
+    }
+
+    const widgets = db.prepare("SELECT id, type, config FROM board_widgets").all() as {
+      id: number;
+      type: string;
+      config: string;
+    }[];
+    const writeConfig = db.prepare("UPDATE board_widgets SET config = ? WHERE id = ?");
+    for (const widget of widgets) {
+      let config: unknown;
+      try {
+        config = JSON.parse(widget.config);
+      } catch {
+        // Une configuration illisible reste telle quelle : le widget la comble.
+        continue;
+      }
+      const migrated = JSON.stringify(migrateWidgetConfig(widget.type, config));
+      if (migrated !== widget.config) writeConfig.run(migrated, widget.id);
+    }
+
+    db.exec("UPDATE task_cards SET due_form = 'period' WHERE due_form = 'periode'");
+
+    for (const table of ["support_replies", "support_contents"]) {
+      const rows = db.prepare(`SELECT id, html FROM ${table} WHERE html LIKE '%{{%'`).all() as {
+        id: number;
+        html: string;
+      }[];
+      const write = db.prepare(`UPDATE ${table} SET html = ? WHERE id = ?`);
+      for (const { id, html } of rows) {
+        const migrated = migrateSupportTemplate(html);
+        if (migrated !== html) write.run(migrated, id);
+      }
+    }
+
+    for (const table of ["task_cards", "projects"]) {
+      if (!columns(db, table).includes("description")) continue;
+      const rows = db
+        .prepare(`SELECT id, description FROM ${table} WHERE description LIKE '%?%=%'`)
+        .all() as { id: number; description: string }[];
+      const write = db.prepare(`UPDATE ${table} SET description = ? WHERE id = ?`);
+      for (const { id, description } of rows) {
+        const migrated = migrateLinks(description);
+        if (migrated !== description) write.run(migrated, id);
+      }
+    }
+
+    // Les adresses des médias, où qu'elles soient citées : descriptions,
+    // commentaires, modèles, configurations des widgets Images…
+    const tables = (
+      db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+        .all() as { name: string }[]
+    ).map((t) => t.name);
+    for (const table of tables) {
+      const textColumns = (
+        db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string; type: string }[]
+      )
+        .filter((c) => c.type.toUpperCase() === "TEXT")
+        .map((c) => c.name);
+      for (const column of textColumns) {
+        db.prepare(
+          `UPDATE "${table}" SET "${column}" = REPLACE("${column}", '/api/medias/', '/api/media/')
+           WHERE "${column}" LIKE '%/api/medias/%'`,
+        ).run();
+      }
+    }
+
+    writeSetting(db, ENGLISH_VALUES, true);
   })();
 };

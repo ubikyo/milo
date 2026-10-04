@@ -1,0 +1,39 @@
+/* The field for the gap between two sections: at the height of the handle
+   strip, frameless until hovered, the digit gray like the handles. The frame
+   and the text color come back on hover and while editing. */
+.field :global(.mantine-Input-input) {
+  height: 18px;
+  min-height: 18px;
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  color: var(--mantine-color-dimmed);
+  background-color: transparent;
+  border-color: transparent;
+  transition: border-color 120ms, color 120ms;
+}
+
+.field:hover :global(.mantine-Input-input),
+.field :global(.mantine-Input-input):focus {
+  color: var(--mantine-color-text);
+  background-color: var(--mantine-color-body);
+  border-color: var(--mantine-color-default-border);
+}
+
+/* The width unit, at the foot of a section: the same field, with room for
+   its chevron, gray like the digit. */
+.unit :global(.mantine-Input-input) {
+  padding-right: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.unit :global(.mantine-Input-section) {
+  color: var(--mantine-color-dimmed);
+}
+
+/* The width number, right against its unit. */
+.number :global(.mantine-Input-input) {
+  text-align: right;
+}

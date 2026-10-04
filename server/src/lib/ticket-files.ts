@@ -3,7 +3,7 @@
 // tickets » à la racine en développement, MILO_TICKETS_PATH en production —,
 // à part des médias des cartes, dont le ménage ne les connaît pas.
 //
-// Mêmes partis pris que les médias (lib/medias.ts) : le fichier s'appelle
+// Mêmes partis pris que les médias (lib/media.ts) : le fichier s'appelle
 // seize octets tirés au sort, le nom d'origine n'est gardé qu'en base pour
 // l'afficher, et le type rendu se déduit de l'extension — un .html joint à un
 // e-mail part en téléchargement, il ne s'exécute pas sur notre origine.

@@ -12,8 +12,8 @@ import { IconChevronDown, IconTrash } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { DUE_SHAPES, REMINDERS, RECURRENCES } from "@milo/shared";
 import type { DueShape, Reminder, Recurrence } from "@milo/shared";
-import fields from "../../assets/styles/EcartField.module.css";
-import classes from "../../assets/styles/CardEcheance.module.css";
+import fields from "../../assets/styles/GapField.module.css";
+import classes from "../../assets/styles/CardDueDate.module.css";
 import { ROUNDING, NAME_INSET, rowStyle } from "../ui/DrawerRows";
 import {
   DUE_COLOR,
@@ -49,7 +49,7 @@ const STATUS_WIDTH = 98;
 
 // Les champs de date et d'heure ne prennent que leur largeur : le texte le plus
 // long qu'ils montrent, à la taille des champs « xs » (12 px), et RETRAIT_CHAMP
-// de part et d'autre. Ni bordure (CardEcheance.module.css) ni icône : Mantine
+// de part et d'autre. Ni bordure (CardDueDate.module.css) ni icône : Mantine
 // masque l'horloge du champ d'heure.
 const FIELD_SIZE = 12;
 
@@ -111,7 +111,7 @@ export function SmallChoice<T extends string>({
         aria-label={label}
         title={label}
         disabled={disabled}
-        className={`${fields.champ} ${fields.unite}`}
+        className={`${fields.field} ${fields.unit}`}
       />
     </Group>
   );
@@ -253,7 +253,7 @@ export default function CardDueDate({
           }),
         }}
       >
-        {mode === "periode" && (
+        {mode === "period" && (
           <DatePickerInput
             size="xs"
             radius={ROUNDING}
@@ -264,7 +264,7 @@ export default function CardDueDate({
             maxDate={day || undefined}
             valueFormat="DD/MM/YYYY"
             popoverProps={{ withinPortal: true }}
-            className={classes.champ}
+            className={classes.field}
             styles={{
               input: { paddingInline: FIELD_INSET, textAlign: "center" },
             }}
@@ -273,18 +273,18 @@ export default function CardDueDate({
             readOnly={readOnly}
           />
         )}
-        {mode === "periode" && <LinkRecord word="au" />}
+        {mode === "period" && <LinkRecord word="au" />}
         <DatePickerInput
           size="xs"
           radius={ROUNDING}
-          placeholder={mode === "periode" ? "Au" : "Jusqu'au"}
-          aria-label={mode === "periode" ? "Au" : "Jusqu'au"}
+          placeholder={mode === "period" ? "Au" : "Jusqu'au"}
+          aria-label={mode === "period" ? "Au" : "Jusqu'au"}
           value={day || null}
           onChange={(d) => change({ end: assemble(d ?? "", hour) })}
           minDate={value.start || undefined}
           valueFormat="DD/MM/YYYY"
           popoverProps={{ withinPortal: true }}
-          className={classes.champ}
+          className={classes.field}
           styles={{
             input: { paddingInline: FIELD_INSET, textAlign: "center" },
           }}
@@ -302,7 +302,7 @@ export default function CardDueDate({
             change({ end: assemble(day, e.currentTarget.value) })
           }
           disabled={!day || readOnly}
-          className={classes.champ}
+          className={classes.field}
           styles={{
             input: { paddingInline: FIELD_INSET, textAlign: "center" },
           }}
@@ -315,7 +315,7 @@ export default function CardDueDate({
           w={STATUS_WIDTH}
           style={{ flexShrink: 0, display: "flex", justifyContent: "center" }}
         >
-          {state === "aucun" ? (
+          {state === "none" ? (
             // Loin encore : le vert de ce qui va bien, comme une carte
             // terminée.
             day && (

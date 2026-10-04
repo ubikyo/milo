@@ -8,7 +8,7 @@ import type { ChildNode, Element } from "domhandler";
 import sanitizeHtml from "sanitize-html";
 import { isMediaAddress } from "./media.js";
 
-const BALISES_RICHES = [
+const RICH_TAGS = [
   "p", "br", "strong", "b", "em", "i", "u", "s", "del", "code", "pre",
   "blockquote", "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6", "a", "hr",
   "img",
@@ -16,7 +16,7 @@ const BALISES_RICHES = [
 
 const sanitize = (html: unknown): string =>
   sanitizeHtml(String(html ?? ""), {
-    allowedTags: BALISES_RICHES,
+    allowedTags: RICH_TAGS,
     // Un lien garde son adresse et s'ouvre ailleurs ; rien d'autre ne passe,
     // et surtout aucun attribut « on… ».
     allowedAttributes: { a: ["href", "target", "rel"], img: ["src", "alt"] },
@@ -66,8 +66,8 @@ export const hasContent = (html: unknown): boolean => {
  * sans texte compterait tout de même comme ayant une description.
  */
 export const cleanDescription = (html: unknown): string => {
-  const propre = sanitize(html);
-  return hasContent(propre) ? propre : "";
+  const clean = sanitize(html);
+  return hasContent(clean) ? clean : "";
 };
 
 /**
@@ -83,8 +83,8 @@ export const cleanDescription = (html: unknown): string => {
  * pour autant.
  */
 export const sameDescription = (received: string, existing: string): boolean => {
-  const propre = cleanDescription(existing);
-  return received === propre || (!/<[a-z/!]/i.test(propre) && received === `<p>${propre}</p>`);
+  const clean = cleanDescription(existing);
+  return received === clean || (!/<[a-z/!]/i.test(clean) && received === `<p>${clean}</p>`);
 };
 
 // --- E-mails reçus ---------------------------------------------------------
@@ -95,8 +95,8 @@ export const sameDescription = (received: string, existing: string): boolean => 
 // formulaires, cadres. Le client le montre de plus dans un cadre isolé, sans
 // script (SupportMessages).
 
-const BALISES_EMAIL = [
-  ...BALISES_RICHES,
+const EMAIL_TAGS = [
+  ...RICH_TAGS,
   "html", "head", "body", "style", "div", "span", "font", "center", "small", "big",
   "sub", "sup", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "caption",
   "colgroup", "col", "section", "article", "header", "footer", "main", "nav", "aside",
@@ -129,7 +129,7 @@ export const cleanEmail = (
     return `<pre style="white-space: pre-wrap; font-family: inherit; margin: 0">${escaped}</pre>`;
   }
   return sanitizeHtml(raw, {
-    allowedTags: BALISES_EMAIL,
+    allowedTags: EMAIL_TAGS,
     // Les feuilles de style de l'e-mail, qui le mettent en page.
     allowVulnerableTags: true,
     allowedAttributes: {

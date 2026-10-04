@@ -122,7 +122,7 @@ export default function LabelsManager({
 
   const { zoneRef, drag, onPointerDown } = useDraggableStack({
     ids: bands.map((l) => l.id),
-    selector: "[data-ligne-etiquette]",
+    selector: "[data-label-row]",
     onReorder: async (order) => {
       if (!onReorder) return;
       const ids = order.map(Number);
@@ -224,7 +224,7 @@ export default function LabelsManager({
           {bands.map((label, rank) => (
             <div
               key={label.id}
-              data-ligne-etiquette
+              data-label-row
               style={{ opacity: drag?.id === label.id ? 0.4 : 1 }}
             >
               {drag?.target === rank && <InsertLine />}

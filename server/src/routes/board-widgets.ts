@@ -19,6 +19,7 @@ import {
   isBoardWidgetType,
   isListWidgetType,
   isSectionWidthUnit,
+  migrateWidgetConfig,
 } from "@milo/shared";
 import type { AccessMailDetail, Id, Resource, ImportResult } from "@milo/shared";
 import type { BoardRow, BoardWidgetRow } from "../db/rows.js";
@@ -62,7 +63,7 @@ const owner = (board: BoardRow, user: Account): Id | null =>
   board.is_private ? null : personalLayouts.owner(user.id, boardScope(board.id));
 
 /** Le tableau ouvert, et la structure que ce compte y regarde. */
-const structureOuverte = (boardId: unknown, user: Account) => {
+const openStructure = (boardId: unknown, user: Account) => {
   const board = openBoard(boardId, user);
   return { board, owner: owner(board, user) };
 };
@@ -70,7 +71,7 @@ const structureOuverte = (boardId: unknown, user: Account) => {
 /** La section demandée, si elle est de la structure regardée ; et son tableau. */
 const openedSection = (id: unknown, user: Account) => {
   const section = orNotFound(boardSections.byId(id), SECTION_NOT_FOUND);
-  const { board, owner } = structureOuverte(section.board_id, user);
+  const { board, owner } = openStructure(section.board_id, user);
   if (section.owner_id !== owner) notFound(SECTION_NOT_FOUND);
   return { section, board, owner };
 };
@@ -94,13 +95,17 @@ const requireStructure = (req: Request, owner: Id | null): void => {
 const allReadable = (req: Request, widgets: BoardWidgetRow[]) =>
   widgets.filter((w) => widgetAccess(req, w.type) !== "").map(renderedWidget);
 
-/** La configuration reçue, prête à ranger : un objet, rien d'autre. */
-const configuration = (value: unknown, defaultValue: string): string => {
+/**
+ * La configuration reçue, prête à ranger : un objet, rien d'autre — aux clés
+ * d'aujourd'hui, si elle vient d'un presse-papiers ou d'une page d'avant
+ * leur traduction (migrateWidgetConfig).
+ */
+const configuration = (type: string, value: unknown, defaultValue: string): string => {
   if (value === undefined) return defaultValue;
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     badRequest("Configuration invalide");
   }
-  return JSON.stringify(value);
+  return JSON.stringify(migrateWidgetConfig(type, value));
 };
 
 // --- Ce qu'un tableau porte -------------------------------------------------
@@ -137,12 +142,12 @@ export const boardContentRoutes = Router({ mergeParams: true });
 boardContentRoutes.use(touch("board-widgets"), followLists);
 
 boardContentRoutes.get("/sections", (req, res) => {
-  const { board, owner } = structureOuverte((req.params as { id: string }).id, req.user);
+  const { board, owner } = openStructure((req.params as { id: string }).id, req.user);
   res.json(boardSections.all(board.id, owner));
 });
 
 boardContentRoutes.post("/sections", (req, res) => {
-  const { board, owner } = structureOuverte((req.params as { id: string }).id, req.user);
+  const { board, owner } = openStructure((req.params as { id: string }).id, req.user);
   requireStructure(req, owner);
   const unit = widthUnit(req.body.width_unit, "auto");
   const id = boardSections.create(
@@ -157,7 +162,7 @@ boardContentRoutes.post("/sections", (req, res) => {
 });
 
 boardContentRoutes.put("/sections/reorder", (req, res) => {
-  const { board, owner } = structureOuverte((req.params as { id: string }).id, req.user);
+  const { board, owner } = openStructure((req.params as { id: string }).id, req.user);
   requireStructure(req, owner);
   const ids = toIds(req.body.ids);
   const known = boardSections.all(board.id, owner).map((s) => s.id);
@@ -209,7 +214,7 @@ const importedSection = (received: Record<string, unknown>) => {
  * tableau ne désigne rien ici.
  */
 boardContentRoutes.post("/import", (req, res) => {
-  const { board, owner } = structureOuverte((req.params as { id: string }).id, req.user);
+  const { board, owner } = openStructure((req.params as { id: string }).id, req.user);
   requireStructure(req, owner);
   const body = subject(req.body);
   if (!body || body.version !== 1 || !Array.isArray(body.sections)) {
@@ -226,7 +231,8 @@ boardContentRoutes.post("/import", (req, res) => {
         discarded += 1;
         return [];
       }
-      const config = subject(widget!.config) ?? {};
+      // Une disposition exportée avant la traduction des clés se lit encore.
+      const config = migrateWidgetConfig(type, widget!.config);
       if (!isListWidgetType(type)) return [{ type, config: JSON.stringify(config) }];
       const key = listKey(config);
       const keyHeld = key !== "" && !takenKeys.has(key) && keyInBoard(board.id, type, key) === key;
@@ -254,7 +260,7 @@ boardContentRoutes.post("/import", (req, res) => {
 });
 
 boardContentRoutes.get("/widgets", (req, res) => {
-  const { board, owner } = structureOuverte((req.params as { id: string }).id, req.user);
+  const { board, owner } = openStructure((req.params as { id: string }).id, req.user);
   res.json(allReadable(req, boardWidgets.all(board.id, owner)));
 });
 
@@ -324,7 +330,11 @@ boardWidgetRoutes.post("/", (req, res) => {
   requireWidget(req, type as string, "update");
   // Un widget de liste reçoit sa clé ici, neuve : celle d'une configuration
   // recopiée d'ailleurs ne vaut pas (repositories/listes.ts).
-  const id = boardWidgets.create(section.id, type as string, configuration(req.body.config, "{}"));
+  const id = boardWidgets.create(
+    section.id,
+    type as string,
+    configuration(type as string, req.body.config, "{}"),
+  );
   // Un widget de projets pose le type de jalons « Défaut », que ses projets
   // reçoivent à leur création.
   if ((type as string).startsWith("project.") && ensureDefaultType()) {
@@ -345,7 +355,7 @@ boardWidgetRoutes.put("/:id", (req, res) => {
     boardWidgets.convert.run(req.body.type, widget.id);
   }
   boardWidgets.update.run(
-    keepKey(widget.type, widget.config, configuration(req.body.config, widget.config)),
+    keepKey(widget.type, widget.config, configuration(widget.type, req.body.config, widget.config)),
     widget.id,
   );
   res.json(renderedWidget(boardWidgets.byId(widget.id)!));
@@ -493,9 +503,9 @@ boardWidgetRoutes.get("/:id/mails/:mail", (req, res, next) => {
  * Une pièce jointe d'un e-mail de la boîte, toujours en téléchargement : un
  * fichier reçu ne s'exécute jamais sur l'origine de Milo.
  */
-boardWidgetRoutes.get("/:id/mails/:mail/attachments/:piece", (req, res, next) => {
+boardWidgetRoutes.get("/:id/mails/:mail/attachments/:attachment", (req, res, next) => {
   const oid = openMailbox(req);
-  mailboxAttachment(oid, String(req.params.mail), String(req.params.piece))
+  mailboxAttachment(oid, String(req.params.mail), String(req.params.attachment))
     .then(({ name, content }) => {
       res.type("application/octet-stream");
       res.setHeader("X-Content-Type-Options", "nosniff");

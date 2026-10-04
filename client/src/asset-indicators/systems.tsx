@@ -1,7 +1,7 @@
 import { DonutChart } from "@mantine/charts";
 import { Stack } from "@mantine/core";
 import { IconBrandWindows } from "@tabler/icons-react";
-import { NAME, Nothing, TitreIndicateur } from "./common";
+import { NAME, Nothing, IndicatorTitle } from "./common";
 import type { AssetIndicatorWidget } from "./types";
 import type { Asset } from "@milo/shared";
 
@@ -76,7 +76,7 @@ export const systemsIndicator: AssetIndicatorWidget = {
     return (
       <Stack gap={4} align="center" style={{ flex: 1 }}>
         <div style={{ alignSelf: "stretch" }}>
-          <TitreIndicateur config={config} defaultValue={LABEL} />
+          <IndicatorTitle config={config} defaultValue={LABEL} />
         </div>
         {data.length === 0 ? (
           <div style={{ alignSelf: "stretch" }}>

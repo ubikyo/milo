@@ -130,7 +130,7 @@ interface Prepared {
    * fil ne répète pas à chaque message tous ceux qui le précèdent. Vide quand
    * on ne sait pas le détacher.
    */
-  htmlSansHistorique: string;
+  htmlWithoutHistory: string;
   files: TicketFileRow[];
   /** Les identifiants Internet qu'il cite : In-Reply-To, References. */
   cited: string[];
@@ -168,7 +168,7 @@ const prepareMail = async (mailbox: string, mail: ReceivedMail): Promise<Prepare
     html: cleanEmail(mail.body, mail.body_type, images),
     // Ce qu'Exchange détache de la conversation, recoupé aux repères des
     // logiciels : son « uniqueBody » garde parfois le dernier message cité.
-    htmlSansHistorique: withoutHistoryOf(mail, details, images),
+    htmlWithoutHistory: withoutHistoryOf(mail, details, images),
     files,
     cited,
   };
@@ -285,8 +285,8 @@ const importSections = transaction(
     // entier — ce qu'il cite, souvent un échange transféré, en fait partie.
     const message = (requestId: Id, response: boolean) => {
       const html =
-        response && hasContent(prepare.htmlSansHistorique)
-          ? prepare.htmlSansHistorique
+        response && hasContent(prepare.htmlWithoutHistory)
+          ? prepare.htmlWithoutHistory
           : prepare.html;
       if (!hasContent(html) && prepare.files.length === 0) return;
       supportComments.createFromMail.run(

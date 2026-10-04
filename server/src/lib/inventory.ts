@@ -42,7 +42,7 @@ const stripTags = (text: string): string =>
  * comprime : on reconnaît la compression à ses premiers octets plutôt qu'à
  * l'en-tête annoncé, qui varie d'une version à l'autre.
  */
-export const decompresser = (body: Buffer): string => {
+export const decompress = (body: Buffer): string => {
   if (body.length >= 2) {
     // 1f 8b : gzip. 78 xx : zlib (« deflate »), ce qu'envoie l'agent Perl.
     if (body[0] === 0x1f && body[1] === 0x8b) return gunzipSync(body).toString("utf8");
@@ -70,9 +70,9 @@ export const readXml = (xml: string): Tree => {
   const root: Tree = {};
   const stack: { children: Tree; text: string }[] = [{ children: root, text: "" }];
 
-  const balises = /<\s*(\/?)\s*([^\s/>]+)([^>]*?)(\/?)\s*>/g;
+  const tagPattern = /<\s*(\/?)\s*([^\s/>]+)([^>]*?)(\/?)\s*>/g;
   let position = 0;
-  let balise: RegExpExecArray | null;
+  let tag: RegExpExecArray | null;
 
   const setNode = (parent: Tree, name: string, value: TreeNode) => {
     const already = parent[name];
@@ -81,12 +81,12 @@ export const readXml = (xml: string): Tree => {
     else parent[name] = [already, value];
   };
 
-  while ((balise = balises.exec(plainText)) !== null) {
+  while ((tag = tagPattern.exec(plainText)) !== null) {
     const current = stack[stack.length - 1]!;
-    current.text += plainText.slice(position, balise.index);
-    position = balises.lastIndex;
+    current.text += plainText.slice(position, tag.index);
+    position = tagPattern.lastIndex;
 
-    const [, closing, name, , selfClosing] = balise;
+    const [, closing, name, , selfClosing] = tag;
 
     // <TAG/> : un élément sans contenu. Il existe, et ne porte rien.
     if (selfClosing) {
@@ -129,20 +129,20 @@ export const textOf = (tree: TreeNode | undefined, ...path: string[]): string =>
  * l'affichage ne cherche pas à rendre la profondeur, il montre des couples.
  * Plusieurs valeurs de même nom se lisent à la suite, séparées par une virgule.
  */
-const aplatir = (treeNode: TreeNode, prefix = "", dans: AssetEntry = {}): AssetEntry => {
+const flatten = (treeNode: TreeNode, prefix = "", into: AssetEntry = {}): AssetEntry => {
   if (typeof treeNode === "string") {
-    if (treeNode) dans[prefix || "VALEUR"] = treeNode;
-    return dans;
+    if (treeNode) into[prefix || "VALEUR"] = treeNode;
+    return into;
   }
   if (Array.isArray(treeNode)) {
     const values = treeNode.filter((v): v is string => typeof v === "string" && v !== "");
-    if (values.length) dans[prefix || "VALEUR"] = values.join(", ");
-    return dans;
+    if (values.length) into[prefix || "VALEUR"] = values.join(", ");
+    return into;
   }
   for (const [name, value] of Object.entries(treeNode)) {
-    aplatir(value, prefix ? `${prefix}.${name}` : name, dans);
+    flatten(value, prefix ? `${prefix}.${name}` : name, into);
   }
-  return dans;
+  return into;
 };
 
 /**
@@ -160,7 +160,7 @@ export const sectionsOf = (content: TreeNode | undefined): AssetSection[] => {
     .map(([name, value]) => {
       const raw = Array.isArray(value) ? value : [value];
       const entries = raw
-        .map((entry) => (typeof entry === "string" ? { [name]: entry } : aplatir(entry)))
+        .map((entry) => (typeof entry === "string" ? { [name]: entry } : flatten(entry)))
         .filter((entry) => Object.keys(entry).length > 0);
       return { name: name, entries };
     })

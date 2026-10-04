@@ -33,7 +33,7 @@ import { keptColumns, defaultWidths } from "../ui/ColumnFields";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
-import { useResizableColumns } from "../ui/useColonnesRedimensionnables";
+import { useResizableColumns } from "../ui/useResizableColumns";
 import { useIsEditing } from "../../lib/editing";
 import { inList } from "../../lib/lists";
 import { DISK_FULL, diskUsage, osLabel } from "../../lib/workstation";
@@ -212,16 +212,16 @@ function EncryptionCell({ encrypted }: { encrypted: boolean | null }) {
  * La couleur de l'occupation : vert tant qu'il reste de la place, orange de
  * 70 à 85 %, rouge au-delà.
  */
-export const diskColor = (occupe: number): string => {
-  if (occupe > DISK_FULL) return RED;
-  if (occupe >= 70) return "orange";
+export const diskColor = (used: number): string => {
+  if (used > DISK_FULL) return RED;
+  if (used >= 70) return "orange";
   return "teal";
 };
 
 /** La part occupée du disque système, comme la progression d'un projet. */
 function DiskCell({ disk }: { disk: Asset["system_disk"] }) {
-  const occupe = diskUsage(disk);
-  if (occupe == null) {
+  const used = diskUsage(disk);
+  if (used == null) {
     return (
       <Text size="sm" c="dimmed">
         {EMPTY}
@@ -230,9 +230,9 @@ function DiskCell({ disk }: { disk: Asset["system_disk"] }) {
   }
   return (
     <Group gap={DISK_GAP} wrap="nowrap">
-      <Progress value={occupe} color={diskColor(occupe)} size="lg" radius="xl" w={DISK_BAR_WIDTH} />
+      <Progress value={used} color={diskColor(used)} size="lg" radius="xl" w={DISK_BAR_WIDTH} />
       <Text size="sm" w={DISK_PERCENT_WIDTH} ta="right">
-        {occupe}%
+        {used}%
       </Text>
     </Group>
   );

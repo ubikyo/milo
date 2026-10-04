@@ -11,7 +11,7 @@ import {
   SETTINGS_PADDING,
   modalHeaderStyles,
 } from "../../themes/modals";
-import defilement from "../../assets/styles/ListScroll.module.css";
+import scroll from "../../assets/styles/ListScroll.module.css";
 import AddButton from "../ui/AddButton";
 import CloseButton from "../ui/CloseButton";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
@@ -240,7 +240,7 @@ export default function WorkspacesTab({
             type="auto"
             scrollbars="y"
             style={{ flex: 1, minHeight: 0 }}
-            classNames={{ scrollbar: defilement.scrollbar, thumb: defilement.thumb }}
+            classNames={{ scrollbar: scroll.scrollbar, thumb: scroll.thumb }}
           >
             {accessOf && <WorkspaceAccess workspace={accessOf.id} onChange={onAccessChanged} />}
           </ScrollArea>

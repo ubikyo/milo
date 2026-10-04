@@ -389,13 +389,13 @@ export const api = {
   // Chaque liste — par sa clé de liste — confirme ses propres adresses.
   getMailboxOptins: (list: string, emails: string[]) =>
     get<MailboxOptinState[]>(
-      `/mailbox-optins?liste=${encodeURIComponent(list)}&emails=${encodeURIComponent(emails.join(","))}`,
+      `/mailbox-optins?list_key=${encodeURIComponent(list)}&emails=${encodeURIComponent(emails.join(","))}`,
     ),
   resendMailboxOptins: (list: string, emails: string[]) =>
-    post<{ sent: number }>("/mailbox-optins/resend", { list, emails }),
+    post<{ sent: number }>("/mailbox-optins/resend", { list_key: list, emails }),
   /** Le code à quatre chiffres de l'e-mail, à la place du lien. */
   confirmMailboxOptin: (list: string, email: string, code: string) =>
-    post<MailboxOptinState>("/mailbox-optins/confirm", { list, email, code }),
+    post<MailboxOptinState>("/mailbox-optins/confirm", { list_key: list, email, code }),
   // Le flux d'un widget RSS, tel que la base le garde : le serveur relève
   // la source lui-même, à l'intervalle que le widget règle.
   getAccessFeed: (widgetId: Id) => get<AccessFeed>(`/board-widgets/${widgetId}/feed`),
@@ -552,7 +552,7 @@ export const api = {
   // Où vit cette carte : de quoi se placer dessus avant de l'ouvrir, quand on
   // arrive par un lien plutôt que par le tableau.
   getCardLocation: (id: Id) =>
-    get<CardLocation>(`/task-cards/${id}/emplacement`),
+    get<CardLocation>(`/task-cards/${id}/location`),
   updateTaskCardDetails: (id: Id, data: TaskCardInput) =>
     put<TaskCardDetail>(`/task-cards/${id}`, data),
   addTaskCardComment: (id: Id, text: string) =>

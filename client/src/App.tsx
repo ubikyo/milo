@@ -62,7 +62,7 @@ import type {
   IndicatorSection,
   Label,
   MilestoneType,
-  Notification as NotificationSuivi,
+  Notification as FollowNotification,
   Project,
   ProjectLabel,
   PublicUser,
@@ -132,15 +132,15 @@ export default function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [readProjectLabels, setProjectLabelsRead] = useState<LoadedFor<ProjectLabel> | null>(null);
   const [loadedTaskLists, setTaskListsRead] = useState<LoadedFor<TaskList> | null>(null);
-  const [labelsLues, setLabelsRead] = useState<LoadedFor<Label> | null>(null);
+  const [labelsRead, setLabelsRead] = useState<LoadedFor<Label> | null>(null);
   const [supportRead, setSupportRead] = useState<LoadedFor<SupportRequest> | null>(null);
   const [assetsRead, setAssetsRead] = useState<LoadedFor<Asset> | null>(null);
 
   // « Modifier l'interface » vaut pour toute l'application : tous les
   // tableaux, toutes les vues. Il ne vit que dans cette fenêtre, qui s'ouvre
   // hors modification ; I ou le clic droit sur le fond le basculent.
-  const [enModification, setEnModification] = useState(false);
-  const toggleEdit = () => setEnModification((before) => !before);
+  const [isEditing, setIsEditing] = useState(false);
+  const toggleEdit = () => setIsEditing((before) => !before);
   // Le menu du clic droit sur le fond de l'application, et la fenêtre
   // d'export ou d'import de la disposition du tableau ouvert.
   const background = useRef<HTMLDivElement>(null);
@@ -204,7 +204,7 @@ export default function App() {
   const projects = readProjects?.key === boardId ? readProjects.items : null;
   const projectLabels = readProjectLabels?.key === boardId ? readProjectLabels.items : [];
   const taskLists = loadedTaskLists?.key === boardId ? loadedTaskLists.items : null;
-  const labels = labelsLues?.key === boardId ? labelsLues.items : [];
+  const labels = labelsRead?.key === boardId ? labelsRead.items : [];
   const supportRequests = supportRead?.key === boardId ? supportRead.items : null;
   const assets = assetsRead?.key === boardId ? assetsRead.items : null;
 
@@ -692,7 +692,7 @@ export default function App() {
 
   /** Ce qu'on voit quand un élément suivi change, chez quelqu'un d'autre. */
   const showNotification = useCallback(
-    (notice: NotificationSuivi) => {
+    (notice: FollowNotification) => {
       if (!toastsEnabled.current) return;
       notifications.show({
         id: notice.id,
@@ -803,7 +803,7 @@ export default function App() {
         // Ce qui a changé pendant la coupure est inconnu : le premier message
         // du flux repris servira de nouvelle référence.
         knownVersions.current = null;
-        if (!stopped) await new Promise((resoudre) => setTimeout(resoudre, 2000));
+        if (!stopped) await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     };
 
@@ -1149,7 +1149,7 @@ export default function App() {
           onChange: changeContext,
           // Hors modification, le tableau garde ses contextes : on les choisit
           // seulement, sans les ajouter, renommer, ranger ni supprimer.
-          management: enModification ? contextManagement : undefined,
+          management: isEditing ? contextManagement : undefined,
         }
       : undefined,
     onOpenSettings: () => setSettingsOpened(true),
@@ -1164,10 +1164,10 @@ export default function App() {
   // structure partagée — faute de pouvoir l'organiser. Sa propre structure
   // (« Hérité » décoché) n'est qu'à soi.
   const inherits = board?.inherited !== false;
-  const frozen = boardId ? !enModification || (inherits && !canArrange) : true;
+  const frozen = boardId ? !isEditing || (inherits && !canArrange) : true;
   // Hors modification, les onglets sont figés aussi : ni les tableaux ni les
   // vues ne se glissent, ni ne s'ajoutent.
-  const tabsLocked = !enModification;
+  const tabsLocked = !isEditing;
   // La structure du tableau ouvert se remplace par un import : il faut
   // pouvoir y toucher, comme pour la modifier.
   const editableLayout = Boolean(board) && !(inherits && !canArrange);
@@ -1175,18 +1175,18 @@ export default function App() {
   const displayedBoards =
     boards?.map((b) => ({
       ...b,
-      is_locked: enModification ? (0 as const) : (1 as const),
+      is_locked: isEditing ? (0 as const) : (1 as const),
     })) ?? null;
   const createTask = can("tasks", "create");
   // La demande naît dans le tableau ouvert : sans widget « Demandes de
   // support » pour la montrer, on ne la propose pas.
   const createRequest =
     can("support", "create") && widgets.some((w) => w.type === "support.list");
-  const nomDuTableau = (id: Id) => boards?.find((b) => b.id === id)?.name;
+  const boardNameOf = (id: Id) => boards?.find((b) => b.id === id)?.name;
 
   return (
     <RightsProvider rights={user.rights} widgets={user.widgets} canEditSettings={user.settings.update}>
-      <EditingContext.Provider value={enModification}>
+      <EditingContext.Provider value={isEditing}>
         <ReferencesContext.Provider
           value={{
             contexts: contexts,
@@ -1247,12 +1247,12 @@ export default function App() {
                     // Renommer, supprimer, rendre privé ou hérité : en
                     // modification seulement.
                     onRenameBoard={
-                      canArrange && enModification
+                      canArrange && isEditing
                         ? (id, name) => write(() => api.updateBoard(id, { name }), loadBoards)
                         : undefined
                     }
                     onDeleteBoard={
-                      canArrange && enModification
+                      canArrange && isEditing
                         ? (id) => write(() => api.deleteBoard(id), loadBoards)
                         : undefined
                     }
@@ -1262,7 +1262,7 @@ export default function App() {
                         : (ids) => write(() => api.reorderBoards(viewId, ids), loadBoards)
                     }
                     onTogglePrivateBoard={
-                      canArrange && enModification
+                      canArrange && isEditing
                         ? (id) =>
                             write(
                               () =>
@@ -1273,11 +1273,11 @@ export default function App() {
                             )
                         : undefined
                     }
-                    onToggleBoardInherited={enModification ? toggleInherited : undefined}
+                    onToggleBoardInherited={isEditing ? toggleInherited : undefined}
                     // Les contextes sont la structure commune du tableau : les
                     // copier demande de pouvoir organiser, et le mode édition —
                     // comme les ajouter ou les renommer.
-                    onCopyContexts={canArrange && enModification ? setCopiedContexts : undefined}
+                    onCopyContexts={canArrange && isEditing ? setCopiedContexts : undefined}
                     sections={sections}
                     widgets={widgets}
                     onWidgetsChanged={loadWidgets}
@@ -1286,7 +1286,7 @@ export default function App() {
                     // structure qu'il regarde : faute de droit, rien ne se propose.
                     onUnlock={
                       boardId && !(inherits && !canArrange)
-                        ? () => setEnModification(true)
+                        ? () => setIsEditing(true)
                         : undefined
                     }
                     data={{
@@ -1304,7 +1304,7 @@ export default function App() {
                       onDuplicateProject: (project) => void duplicateProject(project),
                       onDeleteProject: setDeletedProject,
                       onCreateTask: (project) =>
-                        setSourceTask(projectSource(project, nomDuTableau(project.board_id))),
+                        setSourceTask(projectSource(project, boardNameOf(project.board_id))),
                       onAddProject: can("projects", "create") ? handleOpenNewProject : undefined,
                       followedIds: follows.project,
                       onToggleFollow: (project) => toggleFollow("project", project.id),
@@ -1382,11 +1382,11 @@ export default function App() {
                 <PointMenu position={backgroundMenu} onClose={() => setBackgroundMenu(null)}>
                   <Menu.Item
                     leftSection={
-                      enModification ? <IconCheck size={16} /> : <IconLayoutDashboard size={16} />
+                      isEditing ? <IconCheck size={16} /> : <IconLayoutDashboard size={16} />
                     }
                     onClick={toggleEdit}
                   >
-                    {enModification ? "Terminer la modification" : "Modifier l’interface"}
+                    {isEditing ? "Terminer la modification" : "Modifier l’interface"}
                   </Menu.Item>
                   {board && (
                     <>
@@ -1556,12 +1556,12 @@ export default function App() {
                 onRenameOpened={() => setViewToRename(null)}
                 // Renommer, supprimer, rendre privée : en modification seulement.
                 onRename={
-                  canArrange && enModification
+                  canArrange && isEditing
                     ? (id, name) => write(() => api.updateView(id, { name }), loadViews)
                     : undefined
                 }
                 onTogglePrivate={
-                  canArrange && enModification
+                  canArrange && isEditing
                     ? (id) =>
                         write(
                           () =>
@@ -1573,18 +1573,18 @@ export default function App() {
                     : undefined
                 }
                 onDelete={
-                  canArrange && enModification
+                  canArrange && isEditing
                     ? (id) => write(() => api.deleteView(id), loadViews)
                     : undefined
                 }
               />
               <ShortcutsHelp
-                projets={widgets.some((w) => w.type === "project.list")}
-                demandes={widgets.some((w) => w.type === "support.list")}
+                projects={widgets.some((w) => w.type === "project.list")}
+                requests={widgets.some((w) => w.type === "support.list")}
               />
               <KonamiCode
-                enModification={enModification}
-                onQuitterModification={() => setEnModification(false)}
+                isEditing={isEditing}
+                onLeaveEditing={() => setIsEditing(false)}
               />
 
               {/* « Créer une tâche » : la fiche d'une carte, vide, qui choisit où

@@ -1,7 +1,7 @@
 import { ScrollArea } from "@mantine/core";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import classes from "../../assets/styles/GrilleScroll.module.css";
+import classes from "../../assets/styles/GridScroll.module.css";
 
 /**
  * La zone qui fait défiler une grille de côté, quand sa section est plus
@@ -11,7 +11,7 @@ import classes from "../../assets/styles/GrilleScroll.module.css";
  *
  * Le contenu de la zone passe en bloc : en « table », comme le veut Mantine,
  * il épouserait la grille et ses « 100 % » ne vaudraient plus la largeur de
- * la section (useColonnesRedimensionnables).
+ * la section (useResizableColumns).
  */
 export default function GridScroll({ children }: { children: ReactNode }) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -44,7 +44,7 @@ export default function GridScroll({ children }: { children: ReactNode }) {
       viewportRef={viewportRef}
       classNames={{ scrollbar: classes.scrollbar, thumb: classes.thumb }}
       styles={{ content: { display: "block" } }}
-      style={rule === null ? undefined : ({ "--grille-filet": `${rule}px` } as CSSProperties)}
+      style={rule === null ? undefined : ({ "--grid-rule": `${rule}px` } as CSSProperties)}
     >
       {children}
     </ScrollArea>

@@ -28,14 +28,14 @@ import type { AccessWidget, WidgetConfigProps } from "./types";
 // ou l'autre.
 //
 // Les images se déposent dans le tiroir et vivent avec les autres médias
-// (server/src/lib/medias.ts) : c'est la configuration qui cite leur adresse,
+// (server/src/lib/media.ts) : c'est la configuration qui cite leur adresse,
 // et le ménage des médias ne touche pas à ce qu'elle cite. Une adresse
 // d'ailleurs se colle aussi.
 
 const IMAGES = "images";
-const INTERVAL = "intervalle";
-const HEIGHT = "hauteur";
-const ADJUSTMENT = "ajustement";
+const INTERVAL = "interval";
+const HEIGHT = "height";
+const ADJUSTMENT = "fit";
 
 /** Le temps passé sur chaque image, en secondes. */
 const DEFAULT_INTERVAL = 8;
@@ -178,7 +178,7 @@ function Fields({ config, onChange }: WidgetConfigProps) {
 
   const addAddress = () => {
     const url = address.trim();
-    if (!/^(https?:\/\/|\/api\/medias\/)/.test(url)) return;
+    if (!/^(https?:\/\/|\/api\/medias?\/)/.test(url)) return;
     store([...images, url]);
     setAddress("");
   };

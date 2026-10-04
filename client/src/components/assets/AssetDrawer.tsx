@@ -17,7 +17,7 @@ import { api } from "../../api";
 import SuccessAlert from "../ui/SuccessAlert";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { tabStyle } from "../../themes/tabs";
-import { WITHOUT_FRAME, TABLEAUX, EMPTY } from "./InventoryTables";
+import { WITHOUT_FRAME, SECTION_TABLES, EMPTY } from "./InventoryTables";
 import AssetSummaryPanel, { CARD_BACKGROUND } from "./AssetSummaryPanel";
 import OperatingSystem from "./OperatingSystem";
 import RecordTitle, { SPACE_BELOW_TITLE } from "./RecordTitle";
@@ -135,7 +135,7 @@ interface Tab {
  */
 const TABS: Tab[] = [
   {
-    value: "utilisateurs",
+    value: "users",
     label: "Utilisateurs et groupes",
     groups: [
       { section: "LOCAL_USERS", label: "Utilisateurs locaux" },
@@ -143,7 +143,7 @@ const TABS: Tab[] = [
     ],
   },
   {
-    value: "materiel",
+    value: "hardware",
     label: "Matériel",
     groups: [
       { section: "BIOS", label: "BIOS" },
@@ -158,7 +158,7 @@ const TABS: Tab[] = [
     ],
   },
   {
-    value: "peripheriques",
+    value: "peripherals",
     label: "Périphériques",
     groups: [
       { section: "INPUTS", label: "Périphériques d'entrée" },
@@ -168,7 +168,7 @@ const TABS: Tab[] = [
     ],
   },
   {
-    value: "systeme",
+    value: "system",
     label: "Système d'exploitation",
     groups: [
       { section: "OPERATINGSYSTEM", label: "Description" },
@@ -190,7 +190,7 @@ const TABS: Tab[] = [
 const EXCLUDED_SECTIONS = new Set(["HARDWARE", "USERS"]);
 
 /** L'onglet « Résumé », toujours le premier : il ne se lit pas dans une section. */
-const SUMMARY = "resume";
+const SUMMARY = "summary";
 
 /** Les sections déjà rangées dans un onglet. */
 const PLACED_SECTIONS = new Set(TABS.flatMap((o) => o.groups.map((g) => g.section)));
@@ -220,7 +220,7 @@ const tabsOf = (sections: AssetSection[]) => {
   const others = sections
     .filter((s) => !PLACED_SECTIONS.has(s.name) && !EXCLUDED_SECTIONS.has(s.name))
     .map((section) => ({ label: section.name, section }));
-  tabs.push({ value: "autres", label: "Autres", groups: others });
+  tabs.push({ value: "others", label: "Autres", groups: others });
   return tabs.filter((o) => o.groups.length > 0);
 };
 
@@ -254,7 +254,7 @@ function SectionsTab({
       // l'en-tête n'a pas de marge à lui, l'écart entre deux en-têtes vient
       // de la feuille de style (AssetDrawer.module.css). Sous le titre, la
       // grille s'écarte comme les cartes du Résumé.
-      classNames={{ item: classes.section, control: classes.controle }}
+      classNames={{ item: classes.section, control: classes.control }}
       styles={{
         item: { border: "none" },
         control: { paddingInline: 0 },
@@ -299,7 +299,7 @@ function SectionsTab({
 function SectionContent({ section, os }: { section: AssetSection; os: AssetDetail["os"] }) {
   // La description du système, en cartes comme le Résumé.
   if (section.name === "OPERATINGSYSTEM") return <OperatingSystem section={section} os={os} />;
-  const SectionTable = TABLEAUX[section.name];
+  const SectionTable = SECTION_TABLES[section.name];
   if (SectionTable) return <SectionTable section={section} />;
   return (
     <Stack gap="md">

@@ -1,0 +1,80 @@
+/* A row of the contexts menu: the application's neutral gray on hover
+   (themes/colors.ts, NEUTRAL_HOVER), and the handle and trash, which only
+   appear then. */
+.row {
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Set per theme, like Mantine's menu hover: without light-dark(), which not
+   every browser reads. */
+:where([data-mantine-color-scheme="light"]) .row:hover:not([data-editing]) {
+  background-color: #ececec;
+}
+
+/* On dark, the application's neutral gray is the menu background itself
+   (dark-6): the hover takes Mantine's menu hover instead. */
+:where([data-mantine-color-scheme="dark"]) .row:hover:not([data-editing]) {
+  background-color: var(--mantine-color-dark-4);
+}
+
+.reveal {
+  opacity: 0;
+}
+
+.row:hover .reveal {
+  opacity: 1;
+}
+
+/* The list placed in the active tab: no background nor padding, to sit as
+   close as possible to the board name. A gray that darkens on hover. The
+   class is doubled: Mantine sets the button color through its own class,
+   which must be beaten whatever the stylesheet order. */
+.tabTarget.tabTarget {
+  color: var(--mantine-color-gray-6);
+  transition: color 120ms ease;
+}
+
+.tabTarget.tabTarget:hover {
+  color: var(--mantine-color-gray-9);
+}
+
+:where([data-mantine-color-scheme="dark"]) .tabTarget.tabTarget {
+  color: var(--mantine-color-dark-2);
+}
+
+:where([data-mantine-color-scheme="dark"]) .tabTarget.tabTarget:hover {
+  color: var(--mantine-color-dark-0);
+}
+
+/* Trial: with the list open, the tab holding it takes its background, and
+   the tab row, the tab and the list share one border, lighter than Mantine's
+   (dark-4 was barely visible): the row's rule, the tab's frame and the list's
+   follow on from each other. The attribute is set by ContextsMenu, on the tab
+   and on its row; doubled to win over Mantine's rules. The bottom of the tab
+   takes the background: it joins the list. */
+:where([data-mantine-color-scheme="light"]) {
+  --contexts-border: var(--mantine-color-gray-4);
+  --contexts-bg: var(--mantine-color-white);
+}
+
+:where([data-mantine-color-scheme="dark"]) {
+  --contexts-border: var(--mantine-color-dark-3);
+  --contexts-bg: var(--mantine-color-dark-6);
+}
+
+:global([role="tablist"][data-contexts-open][data-contexts-open]) {
+  --tab-border-color: var(--contexts-border);
+}
+
+:global([role="tab"][data-contexts-open][data-contexts-open]) {
+  background-color: var(--contexts-bg);
+  border-color: var(--contexts-border);
+  border-bottom-color: var(--contexts-bg);
+}
+
+/* The list placed in the tab keeps its top border, in the trial's light
+   gray: a line separates it from the tab, continuing the row's rule. */
+.tabDropdown.tabDropdown {
+  --popover-border-color: var(--contexts-border);
+}

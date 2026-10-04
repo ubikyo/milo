@@ -29,11 +29,11 @@ const followers = selection<UserRow>(
 export const follows = {
   /** Ce qu'une personne suit, rangé par sorte : ce que le client tient à jour. */
   of: (userId: Id): Follows => {
-    const rassembles = emptyFollows();
+    const grouped = emptyFollows();
     for (const row of forUser.all(userId)) {
-      if (isFollowKind(row.kind)) rassembles[row.kind].push(row.target_id);
+      if (isFollowKind(row.kind)) grouped[row.kind].push(row.target_id);
     }
-    return rassembles;
+    return grouped;
   },
 
   add: (userId: Id, kind: FollowKind, targetId: Id, whenLabel: string): void => {

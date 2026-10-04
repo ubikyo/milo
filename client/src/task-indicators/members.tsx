@@ -1,7 +1,7 @@
 import { Stack } from "@mantine/core";
 import { IconUsers } from "@tabler/icons-react";
 import { ActorRings } from "../indicators/actors";
-import { NAME, TitreIndicateur, tasksOf } from "./common";
+import { NAME, IndicatorTitle, tasksOf } from "./common";
 import type { TaskIndicatorWidget } from "./types";
 
 // La part de chaque membre dans les cartes du tableau ouvert, en barres
@@ -18,7 +18,7 @@ export const membersIndicator: TaskIndicatorWidget = {
 
   Display: ({ config, lists }) => (
     <Stack gap={4} style={{ flex: 1 }}>
-      <TitreIndicateur config={config} defaultValue={LABEL} />
+      <IndicatorTitle config={config} defaultValue={LABEL} />
       <ActorRings actors={tasksOf(lists).map((c) => c.members)} unit="cartes" />
     </Stack>
   ),

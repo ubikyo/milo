@@ -1,16 +1,16 @@
-/* L'encart des numéros du mode Accès : un fond un cran plus sombre que la
-   page, et un trait plus sombre encore pour le cerner. Sur le thème clair, la
-   page est blanche : les mêmes crans y descendent vers le gris. */
-.encart {
+/* The inset of Access mode numbers: a background one step darker than the
+   page, and a still darker line around it. On the light theme the page is
+   white: the same steps go down towards gray. */
+.inset {
   padding: 10px;
   border-radius: 10px;
   background-color: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8));
   border: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-9));
 }
 
-/* Deux colonnes : le libellé prend ce qui reste, le numéro se cale à droite
-   sur sa propre largeur — les numéros de l'encart s'alignent entre eux. */
-.grille {
+/* Two columns: the label takes the remaining space, the number sits on the
+   right at its own width — the inset's numbers line up with each other. */
+.grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   column-gap: var(--mantine-spacing-md);
@@ -18,7 +18,7 @@
   align-items: baseline;
 }
 
-.numero {
+.number {
   text-align: right;
   white-space: nowrap;
 }

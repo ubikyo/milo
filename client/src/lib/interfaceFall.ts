@@ -32,7 +32,7 @@ const BLOCK_ELEMENTS = [
 // fait passer en douceur. Elle coupe aussi le pointeur : sans quoi, sous la
 // souris, un survol s'allumerait sur ce qui reste en place.
 const FADE = 400;
-const NO_DIVIDERS_CLASS = "milo-sans-filets";
+const NO_DIVIDERS_CLASS = "milo-no-dividers";
 const WITHOUT_DIVIDERS = `
 .mantine-Tabs-list::before { transition: opacity ${FADE}ms; }
 table, thead, tbody, tr, th, td { transition: border-color ${FADE}ms; }
@@ -290,7 +290,7 @@ function placePieces(falls: Fall[], before: StyleBefore) {
 // À la connexion, l'interface se construit sous les yeux : la page part vierge
 // le temps que tout se charge, puis chaque morceau se pose comme au retour du
 // code Konami.
-const BLANK_PAGE_CLASS = "milo-page-vierge";
+const BLANK_PAGE_CLASS = "milo-blank-page";
 const BLANK_PAGE = `.${BLANK_PAGE_CLASS} body > * { opacity: 0 !important; }`;
 let blankPage: HTMLStyleElement | null = null;
 

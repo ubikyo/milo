@@ -15,7 +15,7 @@ import { PLUS_SIZE } from "../../themes/plus";
 import AddButton from "./AddButton";
 import ColumnInsert, { COLUMN_INSERT_ZONE as INSERT_ZONE } from "./ColumnInsert";
 import DeleteConfirmModal from "./DeleteConfirmModal";
-import GapField, { ECART_FIELD_HEIGHT, ECART_FIELD_WIDTH } from "./GapField";
+import GapField, { GAP_FIELD_HEIGHT, GAP_FIELD_WIDTH } from "./GapField";
 import EmptyPanel from "./EmptyPanel";
 import WidthField from "./WidthField";
 import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
@@ -168,7 +168,7 @@ interface Resizing {
   id: Id;
   startX: number;
   /** Sa largeur au premier appui. */
-  largeur: number;
+  width: number;
   /**
    * 1 quand la colonne est à gauche de l'écart, -1 à droite : tirer vers la
    * gauche élargit alors celle-ci.
@@ -245,7 +245,7 @@ const widthOf = (section: BoardSection, gaps: number): CSSProperties => {
  */
 const hiddenItems = (
   followUp: BoardSection[],
-  largeur: number,
+  width: number,
   gapAfter: (section: BoardSection) => number,
   gaps: number,
 ): Set<Id> => {
@@ -259,7 +259,7 @@ const hiddenItems = (
     for (const section of autoSections) {
       const need =
         fixed + sum(keptKeys) + gapAfter(section) + SECTION_MIN_WIDTH * (keptKeys.length + 1);
-      if (need <= largeur + ROUNDING) keptKeys = [...keptKeys, section];
+      if (need <= width + ROUNDING) keptKeys = [...keptKeys, section];
       else hidden.add(section.id);
     }
     fixed = 0;
@@ -272,10 +272,10 @@ const hiddenItems = (
       continue;
     }
     const part = section.width_value ?? 0;
-    const w = section.width_unit === "percent" ? ((largeur - gaps) * part) / 100 : part;
-    const occupe = fixed + sum(autoSections);
+    const w = section.width_unit === "percent" ? ((width - gaps) * part) / 100 : part;
+    const used = fixed + sum(autoSections);
     const place = w + gapAfter(section);
-    if ((fixed > 0 || autoSections.length > 0) && occupe + place > largeur + ROUNDING) finishRow();
+    if ((fixed > 0 || autoSections.length > 0) && used + place > width + ROUNDING) finishRow();
     fixed += place;
   }
   finishRow();
@@ -345,7 +345,7 @@ export default function SectionsBoard<S extends BoardSection>({
   const [localEdits, setLocalEdits] = useState<ReadonlyMap<Id, EditSection>>(new Map());
   useEffect(() => setLocalEdits(new Map()), [sections]);
 
-  const changerSection = async (section: S, change: EditSection) => {
+  const changeSection = async (section: S, change: EditSection) => {
     setLocalEdits((before) => new Map(before).set(section.id, { ...before.get(section.id), ...change }));
     await onChangeSection(section, change);
   };
@@ -408,7 +408,7 @@ export default function SectionsBoard<S extends BoardSection>({
           .map((id) => sections.find((s) => s.id === id))
           .filter((s): s is S => s !== undefined)
       : sections;
-  const ordonnees =
+  const ordered =
     bands?.map((s) => {
       const change = localEdits.get(s.id);
       return change ? { ...s, ...change } : s;
@@ -420,12 +420,12 @@ export default function SectionsBoard<S extends BoardSection>({
    * Vrai le temps du clic qui suit un redimensionnement : ce clic tombe sur le
    * « + » de l'écart, et ne doit pas insérer de colonne.
    */
-  const vientDeRedimensionner = useRef(false);
+  const justResized = useRef(false);
 
   // Les écouteurs sont posés une fois : ils lisent l'état courant par une ref.
-  const state = useRef({ ordonnees, onReorderSections, changerSection });
+  const state = useRef({ ordered, onReorderSections, changeSection });
   useLayoutEffect(() => {
-    state.current = { ordonnees, onReorderSections, changerSection };
+    state.current = { ordered, onReorderSections, changeSection };
   });
 
   // --- Colonnes : redimensionner par l'écart ------------------------------
@@ -441,9 +441,9 @@ export default function SectionsBoard<S extends BoardSection>({
         r.started = true;
         document.body.style.cursor = "col-resize";
       }
-      const largeur = Math.max(1, Math.round(r.largeur + r.direction * dx));
+      const width = Math.max(1, Math.round(r.width + r.direction * dx));
       setLocalEdits((before) =>
-        new Map(before).set(r.id, { ...before.get(r.id), width_value: largeur }),
+        new Map(before).set(r.id, { ...before.get(r.id), width_value: width }),
       );
     };
 
@@ -452,13 +452,13 @@ export default function SectionsBoard<S extends BoardSection>({
       resizeRef.current = null;
       if (!r?.started) return;
       document.body.style.cursor = "";
-      vientDeRedimensionner.current = true;
-      setTimeout(() => (vientDeRedimensionner.current = false));
-      const { ordonnees: current, changerSection: change } = state.current;
+      justResized.current = true;
+      setTimeout(() => (justResized.current = false));
+      const { ordered: current, changeSection: change } = state.current;
       const section = current?.find((s) => s.id === r.id);
       if (!section) return;
-      const largeur = Math.max(1, Math.round(r.largeur + r.direction * (event.clientX - r.startX)));
-      await change(section, { width_unit: "px", width_value: largeur });
+      const width = Math.max(1, Math.round(r.width + r.direction * (event.clientX - r.startX)));
+      await change(section, { width_unit: "px", width_value: width });
     };
 
     window.addEventListener("pointermove", onMove);
@@ -477,7 +477,7 @@ export default function SectionsBoard<S extends BoardSection>({
     resizeRef.current = {
       id: section.id,
       startX: event.clientX,
-      largeur: section.width_value ?? measure(section, "px"),
+      width: section.width_value ?? measure(section, "px"),
       direction,
       started: false,
     };
@@ -485,7 +485,7 @@ export default function SectionsBoard<S extends BoardSection>({
 
   /** Un « + » d'écart : il n'insère pas au clic qui termine un redimensionnement. */
   const insert = (rank: number) => () => {
-    if (!vientDeRedimensionner.current) onAddSection(rank);
+    if (!justResized.current) onAddSection(rank);
   };
 
   useEffect(() => {
@@ -513,7 +513,7 @@ export default function SectionsBoard<S extends BoardSection>({
       draggingRef.current = null;
       document.body.style.cursor = "";
       setDragged(null);
-      const { ordonnees: current, onReorderSections: store } = state.current;
+      const { ordered: current, onReorderSections: store } = state.current;
       if (!d?.started || !current) return;
 
       const currentIds = current.map((s) => s.id);
@@ -556,7 +556,7 @@ export default function SectionsBoard<S extends BoardSection>({
     };
   };
 
-  const held = dragging && ordonnees ? ordonnees.find((s) => s.id === dragging.id) : undefined;
+  const held = dragging && ordered ? ordered.find((s) => s.id === dragging.id) : undefined;
 
   /**
    * La poignée de la colonne : c'est par elle, et par elle seule, que la
@@ -589,10 +589,10 @@ export default function SectionsBoard<S extends BoardSection>({
    */
   const measure = (section: S, unit: "px" | "percent"): number => {
     const column = bandEl?.querySelector<HTMLElement>(`[data-section-id="${section.id}"]`);
-    const largeur = column?.getBoundingClientRect().width ?? 0;
-    if (unit === "px") return largeur;
+    const width = column?.getBoundingClientRect().width ?? 0;
+    if (unit === "px") return width;
     const available = (bandWidth ?? 0) - gaps;
-    return available > 0 ? (largeur / available) * 100 : 100;
+    return available > 0 ? (width / available) * 100 : 100;
   };
 
   /**
@@ -654,10 +654,10 @@ export default function SectionsBoard<S extends BoardSection>({
             {!inert && (
               <WidthField
                 value={section}
-                onChange={(largeur) => changerSection(section, largeur)}
+                onChange={(width) => changeSection(section, width)}
                 measure={(unit) => measure(section, unit)}
                 style={{
-                  bottom: (GRIP_ZONE - ECART_FIELD_HEIGHT) / 2,
+                  bottom: (GRIP_ZONE - GAP_FIELD_HEIGHT) / 2,
                   left: "50%",
                   transform: "translateX(-50%)",
                 }}
@@ -712,15 +712,15 @@ export default function SectionsBoard<S extends BoardSection>({
 
   // L'écart qui suit chaque colonne, sa marge droite : la dernière n'en a
   // pas. Les pour-cent se lisent sur la rangée moins leur somme.
-  const last = ordonnees?.[ordonnees.length - 1];
+  const last = ordered?.[ordered.length - 1];
   const gapAfter = (section: BoardSection) => (section.id === last?.id ? 0 : section.gap);
-  const gaps = (ordonnees ?? []).reduce((a, s) => a + gapAfter(s), 0);
+  const gaps = (ordered ?? []).reduce((a, s) => a + gapAfter(s), 0);
 
   const hidden =
-    ordonnees && bandWidth !== null
-      ? hiddenItems(ordonnees, bandWidth, gapAfter, gaps)
+    ordered && bandWidth !== null
+      ? hiddenItems(ordered, bandWidth, gapAfter, gaps)
       : new Set<Id>();
-  const shown = (ordonnees ?? []).filter((s) => !hidden.has(s.id));
+  const shown = (ordered ?? []).filter((s) => !hidden.has(s.id));
 
   // Les écarts de part et d'autre de chaque colonne montrée : celui qui la
   // précède est l'écart de la voisine de gauche, celui qui la suit le sien.
@@ -756,8 +756,8 @@ export default function SectionsBoard<S extends BoardSection>({
   // reste à sa place, à demi effacée, et un trait dans l'écart montre où elle
   // ira — au bord gauche de la colonne visée parmi les autres, ou à droite de
   // la dernière. Reposée à sa place, elle ne change rien : pas de trait.
-  const others = dragging && ordonnees ? ordonnees.filter((s) => s.id !== dragging.id) : [];
-  const heldRank = dragging && ordonnees ? ordonnees.findIndex((s) => s.id === dragging.id) : -1;
+  const others = dragging && ordered ? ordered.filter((s) => s.id !== dragging.id) : [];
+  const heldRank = dragging && ordered ? ordered.findIndex((s) => s.id === dragging.id) : -1;
   const targeted =
     dragging && dragging.target !== heldRank
       ? dragging.target < others.length
@@ -775,7 +775,7 @@ export default function SectionsBoard<S extends BoardSection>({
       // pointillé remplit, sous ce que la section porte déjà.
       style={{ flexGrow: 1, rowGap: rowsGap }}
     >
-      {(ordonnees ?? []).map((section, rank) => {
+      {(ordered ?? []).map((section, rank) => {
         const isHidden = hidden.has(section.id);
         // Le « + » du bout se pose sur la dernière colonne montrée.
         const last = section.id === shown[shown.length - 1]?.id;
@@ -848,10 +848,10 @@ export default function SectionsBoard<S extends BoardSection>({
                     // dans la bande du pied, à côté de la largeur.
                     <GapField
                       value={section.gap}
-                      onChange={(gap) => changerSection(section, { gap })}
+                      onChange={(gap) => changeSection(section, { gap })}
                       style={{
-                        bottom: (GRIP_ZONE - ECART_FIELD_HEIGHT) / 2,
-                        right: -(surrounding.after + ECART_FIELD_WIDTH) / 2,
+                        bottom: (GRIP_ZONE - GAP_FIELD_HEIGHT) / 2,
+                        right: -(surrounding.after + GAP_FIELD_WIDTH) / 2,
                       }}
                     />
                   )}

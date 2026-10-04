@@ -25,10 +25,10 @@ export const daysSinceInventory = (workstation: Asset): number =>
  * n'apprend rien à qui lit la liste : il est retiré.
  */
 export const osLabel = (os: NonNullable<Asset["os"]>): string => {
-  const propre = (text: string) =>
+  const clean = (text: string) =>
     os.family === "macos" ? text.replace(/\s*\([^)]*\)/g, "").trim() : text;
-  const name = propre(os.name);
-  const version = propre(os.version);
+  const name = clean(os.name);
+  const version = clean(os.version);
   const label = version && !name.includes(version) ? `${name} ${version}`.trim() : name;
   // L'édition « Entreprise » (ou « Enterprise ») va de soi sur un parc
   // d'entreprise : le nom tient mieux sans.

@@ -35,7 +35,7 @@ import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
 import { menuPosition } from "../ui/PointMenu";
 import { ReferenceTag } from "../ui/ReferenceTag";
-import { useResizableColumns } from "../ui/useColonnesRedimensionnables";
+import { useResizableColumns } from "../ui/useResizableColumns";
 import { listKey, projectReference } from "@milo/shared";
 import { inList } from "../../lib/lists";
 import type { ReactNode } from "react";
@@ -621,7 +621,7 @@ export default function ProjectTable({
   // Les largeurs par défaut du widget, tant que personne n'a tiré les
   // colonnes.
   const resize = useResizableColumns(
-    "projets",
+    "projects",
     columns.map((c) => c.id),
     defaultWidths(PROJECT_COLUMNS, config),
   );

@@ -11,11 +11,11 @@ import type { AccessWidget, WidgetConfigProps, WidgetDisplayProps } from "./type
 // configuration du widget : la liste est celle du tableau, la même pour qui le
 // regarde. Catégorie verrouillée, elle se lit sans se modifier.
 
-const ITEMS = "elements";
-const HIDE_DONE = "masquerFaits";
-const DONE_AT_BOTTOM = "faitsEnBas";
-const PROGRESS = "progression";
-const FRAMED = "encadre";
+const ITEMS = "items";
+const HIDE_DONE = "hideDone";
+const DONE_AT_BOTTOM = "doneAtBottom";
+const PROGRESS = "progress";
+const FRAMED = "framed";
 
 interface Element {
   id: string;
@@ -208,7 +208,7 @@ function TodoList({ config, onChange, locked }: WidgetDisplayProps) {
 
   if (!isChecked(config, FRAMED, false)) return content;
   return (
-    <Box className={classes.encart} style={{ border: "none" }}>
+    <Box className={classes.inset} style={{ border: "none" }}>
       {content}
     </Box>
   );

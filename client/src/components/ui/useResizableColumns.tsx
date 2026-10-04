@@ -21,16 +21,32 @@ const WIDTH_MIN = 40;
 const DEFAULT_WIDTH = 150;
 
 /** La classe posée sur le body pendant un glissement. */
-const DRAGGING = classes.glisse ?? "";
+const DRAGGING = classes.dragging ?? "";
 
 type Widths = Record<string, number>;
 
-const storageKey = (name: string) => `milo.colonnes.${name}`;
+const storageKey = (name: string) => `milo.columns.${name}`;
+
+/** Où les largeurs de cette grille se rangeaient avant la traduction des noms. */
+const legacyKey = (name: string) =>
+  `milo.colonnes.${name === "projects" ? "projets" : name.replace(/^inventory\./, "inventaire.")}`;
+
+/** Les colonnes renommées : la case à cocher du support s'appelait « case ». */
+const LEGACY_COLUMNS: Record<string, string> = { case: "checkbox" };
 
 function read(name: string): Widths | null {
   try {
     const raw = localStorage.getItem(storageKey(name));
-    return raw ? (JSON.parse(raw) as Widths) : null;
+    if (raw) return JSON.parse(raw) as Widths;
+    // Les largeurs d'avant : reprises sous leur nouveau nom, une fois.
+    const legacy = localStorage.getItem(legacyKey(name));
+    if (!legacy) return null;
+    const widths = Object.fromEntries(
+      Object.entries(JSON.parse(legacy) as Widths).map(([id, w]) => [LEGACY_COLUMNS[id] ?? id, w]),
+    );
+    localStorage.setItem(storageKey(name), JSON.stringify(widths));
+    localStorage.removeItem(legacyKey(name));
+    return widths;
   } catch {
     return null;
   }
@@ -91,7 +107,7 @@ export function useResizableColumns(
     setWidths(currentWidths);
 
     handle.setPointerCapture(e.pointerId);
-    handle.dataset.actif = "";
+    handle.dataset.active = "";
     document.body.classList.add(DRAGGING);
 
     const move = (ev: PointerEvent) => {
@@ -105,7 +121,7 @@ export function useResizableColumns(
       handle.removeEventListener("pointermove", move);
       handle.removeEventListener("pointerup", finish);
       handle.removeEventListener("pointercancel", finish);
-      delete handle.dataset.actif;
+      delete handle.dataset.active;
       document.body.classList.remove(DRAGGING);
       write(name, currentWidths);
     };
@@ -142,7 +158,7 @@ export function useResizableColumns(
 
   return {
     /** À étaler sur la « Table ». */
-    tableProps: { ref: tableRef, className: classes.grille, style },
+    tableProps: { ref: tableRef, className: classes.grid, style },
     /** À poser en tête de la « Table », avant « Table.Thead ». */
     colgroup: widths ? (
       <colgroup>
@@ -160,7 +176,7 @@ export function useResizableColumns(
     /** La poignée d'une colonne, à poser dans son en-tête. */
     handle: (key: string): ReactNode => (
       <div
-        className={classes.poignee}
+        className={classes.handle}
         role="separator"
         aria-orientation="vertical"
         aria-label="Redimensionner la colonne"

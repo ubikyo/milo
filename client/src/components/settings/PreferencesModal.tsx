@@ -163,11 +163,11 @@ export default function PreferencesModal({
               // « La première » : celle qui ouvre le sélecteur, dans l'ordre
               // que chacun a rangé. Une vue disparue y ramène aussi.
               data={[
-                { value: "premiere", label: "La première" },
+                { value: "first", label: "La première" },
                 ...views.map((v) => ({ value: String(v.id), label: v.name })),
               ]}
-              value={views.some((v) => String(v.id) === view) ? view : "premiere"}
-              onChange={(value) => value && setView(value === "premiere" ? "" : value)}
+              value={views.some((v) => String(v.id) === view) ? view : "first"}
+              onChange={(value) => value && setView(value === "first" ? "" : value)}
               allowDeselect={false}
               w={FIELD_WIDTH}
             />

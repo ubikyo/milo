@@ -2,7 +2,7 @@ import { NumberInput } from "@mantine/core";
 import { useState } from "react";
 import type { CSSProperties } from "react";
 import { SECTIONS_GAP_MAX } from "@milo/shared";
-import classes from "../../assets/styles/EcartField.module.css";
+import classes from "../../assets/styles/GapField.module.css";
 
 // L'écart entre deux sections, saisi au-dessus de lui : un petit champ posé en
 // absolu dans la bande des poignées, centré sur l'écart. Discret tant qu'on ne
@@ -11,10 +11,10 @@ import classes from "../../assets/styles/EcartField.module.css";
 // la rangée.
 
 /** La largeur du champ : trois chiffres et leur air. */
-export const ECART_FIELD_WIDTH = 36;
+export const GAP_FIELD_WIDTH = 36;
 
 /** Sa hauteur, celle que la feuille de style lui donne : il tient dans la bande des poignées. */
-export const ECART_FIELD_HEIGHT = 18;
+export const GAP_FIELD_HEIGHT = 18;
 
 interface GapFieldProps {
   /** L'écart en vigueur, en pixels. */
@@ -39,7 +39,7 @@ export default function GapField({ value, onChange, style }: GapFieldProps) {
   return (
     <NumberInput
       size="xs"
-      w={ECART_FIELD_WIDTH}
+      w={GAP_FIELD_WIDTH}
       min={0}
       max={SECTIONS_GAP_MAX}
       allowDecimal={false}
@@ -64,7 +64,7 @@ export default function GapField({ value, onChange, style }: GapFieldProps) {
       onPointerDown={(e) => e.stopPropagation()}
       aria-label="Écart avec la section suivante, en pixels"
       title="Écart avec la section suivante (px)"
-      className={classes.champ}
+      className={classes.field}
       style={{ position: "absolute", zIndex: 2, ...style }}
     />
   );

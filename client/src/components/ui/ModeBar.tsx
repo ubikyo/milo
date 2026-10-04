@@ -62,7 +62,7 @@ export default function ModeBar({
         <Box
           pl={LOGO_PADDING_LEFT}
           pr="md"
-          className={logoClasses.enseigne}
+          className={logoClasses.brand}
           style={{ alignSelf: "center", display: "flex", flexShrink: 0 }}
         >
           <Logo variant={2} h={LOGO_HEIGHT} />

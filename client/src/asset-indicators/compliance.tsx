@@ -11,7 +11,7 @@ import {
   Nothing,
   unprotected,
   silent,
-  TitreIndicateur,
+  IndicatorTitle,
   windows10,
 } from "./common";
 import type { AssetIndicatorWidget } from "./types";
@@ -33,21 +33,21 @@ interface Rule {
 }
 
 const RULES: Rule[] = [
-  { key: "chiffrement", label: "Disque système chiffré", missingLabel: "non chiffrés", inDefault: notEncrypted },
+  { key: "encryption", label: "Disque système chiffré", missingLabel: "non chiffrés", inDefault: notEncrypted },
   { key: "antivirus", label: "Antivirus actif", missingLabel: "sans antivirus", inDefault: unprotected },
   {
-    key: "disque",
+    key: "disk",
     label: `Disque système occupé à ${DISK_FULL} % au plus`,
     missingLabel: "disques pleins",
     inDefault: diskFull,
   },
   {
-    key: "inventaire",
+    key: "inventory",
     label: `Inventorié depuis moins de ${DAYS_WITHOUT_INVENTORY} jours`,
     missingLabel: "muets",
     inDefault: silent,
   },
-  { key: "systeme", label: "Système encore maintenu", missingLabel: "sous Windows 10", inDefault: windows10 },
+  { key: "system", label: "Système encore maintenu", missingLabel: "sous Windows 10", inDefault: windows10 },
 ];
 
 /** Une règle compte tant qu'on ne l'a pas décochée : un indicateur neuf les prend toutes. */
@@ -74,7 +74,7 @@ export const complianceIndicator: AssetIndicatorWidget = {
 
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaultValue={LABEL} />
+        <IndicatorTitle config={config} defaultValue={LABEL} />
         {assets.length === 0 ? (
           <Nothing>Aucun poste</Nothing>
         ) : (

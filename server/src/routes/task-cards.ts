@@ -273,7 +273,7 @@ taskCardRoutes.get("/:id", (req, res) => {
  * pouvoir montrer la fiche, et le client ne peut pas le deviner d'une carte
  * qu'il n'affiche pas encore.
  */
-taskCardRoutes.get("/:id/emplacement", (req, res) => {
+taskCardRoutes.get("/:id/location", (req, res) => {
   const card = openCard(req.params.id, req);
   const list = orNotFound(taskLists.byId.get(card.list_id), "Liste introuvable");
   const board = orNotFound(boards.byId.get(list.board_id), "Tableau introuvable");
@@ -293,7 +293,7 @@ taskCardRoutes.put("/:id", (req, res) => {
   const shape = dueDate ? choice(req.body.due_form, existing.due_form, isDueForm) : "date";
   // Une date seule n'a pas de début.
   const startDate =
-    dueDate && shape === "periode" ? start(req.body.start_date, existing.start_date) : "";
+    dueDate && shape === "period" ? start(req.body.start_date, existing.start_date) : "";
   const recurrence = dueDate ? choice(req.body.recurrence, existing.recurrence, isRecurrence) : "";
   const reminder = dueDate ? choice(req.body.reminder, existing.reminder, isReminder) : "";
   // Un séparateur n'a pas de fiche, donc pas de fil où noter ce qui change.

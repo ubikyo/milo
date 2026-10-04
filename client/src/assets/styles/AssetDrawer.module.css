@@ -1,16 +1,15 @@
 /*
- * L'en-tête d'une section de la fiche d'un poste : Mantine le grise au
- * survol, d'un gris qui tire sur le bleu. Il reste sur le fond du tiroir ; la
- * classe est doublée pour passer devant la règle de Mantine quel que soit
- * l'ordre des feuilles.
+ * The header of a section of an asset's sheet: Mantine grays it on hover,
+ * with a gray that leans towards blue. It stays on the drawer background; the
+ * class is doubled to win over Mantine's rule whatever the stylesheet order.
  */
-.controle.controle:hover {
+.control.control:hover {
   background-color: transparent;
 }
 
 /*
- * L'écart entre deux sections, posé au-dessus de la suivante : la première
- * n'en a pas, et son titre tombe à la hauteur de celui du Résumé.
+ * The gap between two sections, set above the next one: the first has none,
+ * and its title lines up with the Summary's.
  */
 .section + .section {
   padding-top: 12px;

@@ -41,10 +41,10 @@ export const shrinkImage = async (file: File): Promise<File> => {
     return file;
   }
 
-  const largeur = Math.round(image.width * scale);
+  const width = Math.round(image.width * scale);
   const height = Math.round(image.height * scale);
   const canvas = document.createElement("canvas");
-  canvas.width = largeur;
+  canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
   if (!context) {
@@ -52,7 +52,7 @@ export const shrinkImage = async (file: File): Promise<File> => {
     return file;
   }
   context.imageSmoothingQuality = "high";
-  context.drawImage(image, 0, 0, largeur, height);
+  context.drawImage(image, 0, 0, width, height);
   image.close();
 
   const blob = await new Promise<Blob | null>((ok) =>

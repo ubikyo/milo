@@ -45,8 +45,8 @@ export const due = (value: unknown, current: string): string => {
 export const parisTime = (text: string): string | null => {
   const chunks = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(text.trim());
   if (!chunks) return null;
-  const [, an, months, day, hour, minute, secondValue = "0"] = chunks;
-  const asUtc = Date.UTC(+an!, +months! - 1, +day!, +hour!, +minute!, +secondValue);
+  const [, year, months, day, hour, minute, secondValue = "0"] = chunks;
+  const asUtc = Date.UTC(+year!, +months! - 1, +day!, +hour!, +minute!, +secondValue);
   if (Number.isNaN(asUtc)) return null;
 
   // Ce qu'affichent les horloges de Paris à cet instant, relu comme de l'UTC :

@@ -26,13 +26,13 @@ const COLORS = [
 ].map((c) => `var(--mantine-color-${c}-filled)`);
 
 const ANIMATIONS = `
-@keyframes milo-confetti-chute {
-  0%   { transform: translate3d(0, var(--haut), 0); opacity: 0; }
+@keyframes milo-confetti-fall {
+  0%   { transform: translate3d(0, var(--top), 0); opacity: 0; }
   10%  { opacity: 1; }
   85%  { opacity: 1; }
-  100% { transform: translate3d(var(--dx), var(--bas), 0); opacity: 0; }
+  100% { transform: translate3d(var(--dx), var(--fall), 0); opacity: 0; }
 }
-@keyframes milo-confetti-pirouette {
+@keyframes milo-confetti-spin {
   to { transform: rotate3d(var(--ax), var(--ay), 0.4, 360deg); }
 }
 `;
@@ -57,16 +57,16 @@ export default function Confetti({ x, y, width, onDone }: ConfettiProps) {
   // une fois pour toutes, sinon ils changeraient à chaque rendu. Le hasard est
   // ici le propos — une salve identique à chaque fois ne serait pas une salve —
   // et il est enfermé dans un « useMemo » qui ne se rejoue qu'à la largeur.
-  const attachments = useMemo(
+  const pieces = useMemo(
     () =>
       Array.from({ length: COUNT }, (_, i) => {
-        const largeur = random(5, 11);
+        const pieceWidth = random(5, 11);
         return {
           id: i,
           start: random(10, 90),
           color: pickFrom(COLORS),
-          largeur,
-          height: largeur * random(0.4, 1),
+          pieceWidth,
+          height: pieceWidth * random(0.4, 1),
           circle: Math.random() < 0.25,
           // La pièce part au-dessus de la liste et descend, en dérivant vers
           // la gauche ou vers la droite.
@@ -111,7 +111,7 @@ export default function Confetti({ x, y, width, onDone }: ConfettiProps) {
       }}
     >
       <style>{ANIMATIONS}</style>
-      {attachments.map((p) => (
+      {pieces.map((p) => (
         <span
           key={p.id}
           style={{
@@ -120,21 +120,21 @@ export default function Confetti({ x, y, width, onDone }: ConfettiProps) {
             top: 0,
             opacity: 0,
             "--dx": `${p.dx}px`,
-            "--haut": `${p.top}px`,
-            "--bas": `${p.fall}px`,
-            animation: `milo-confetti-chute ${p.duration}ms linear ${p.late}ms forwards`,
+            "--top": `${p.top}px`,
+            "--fall": `${p.fall}px`,
+            animation: `milo-confetti-fall ${p.duration}ms linear ${p.late}ms forwards`,
           } as StyleWithVariables}
         >
           <span
             style={{
               display: "block",
-              width: p.largeur,
+              width: p.pieceWidth,
               height: p.height,
               backgroundColor: p.color,
               borderRadius: p.circle ? "50%" : 1,
               "--ax": p.ax,
               "--ay": p.ay,
-              animation: `milo-confetti-pirouette ${p.spin}ms linear infinite`,
+              animation: `milo-confetti-spin ${p.spin}ms linear infinite`,
             } as StyleWithVariables}
           />
         </span>

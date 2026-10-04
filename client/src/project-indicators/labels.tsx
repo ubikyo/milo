@@ -1,7 +1,7 @@
 import { Checkbox, Stack } from "@mantine/core";
 import { IconTags } from "@tabler/icons-react";
 import { withField } from "../widgets/types";
-import { LabelBars, NameField, NAME, Nothing, TitreIndicateur, isFinished } from "./common";
+import { LabelBars, NameField, NAME, Nothing, IndicatorTitle, isFinished } from "./common";
 import type { Bar } from "./common";
 import type { ProjectIndicatorWidget } from "./types";
 import type { Id } from "@milo/shared";
@@ -10,7 +10,7 @@ import type { Id } from "@milo/shared";
 // dans sa couleur. Les projets terminés n'y comptent que si on le demande.
 
 const LABEL = "Étiquettes";
-const ALL = "tous";
+const ALL = "include_all";
 
 const allProjects = (config: unknown) =>
   Boolean((config as Record<string, unknown> | null)?.[ALL]);
@@ -43,7 +43,7 @@ export const projectLabelsIndicator: ProjectIndicatorWidget = {
 
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaultValue={LABEL} />
+        <IndicatorTitle config={config} defaultValue={LABEL} />
         {data.length === 0 ? <Nothing>Aucune étiquette</Nothing> : <LabelBars data={data} ownColors />}
       </Stack>
     );

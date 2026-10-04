@@ -8,7 +8,7 @@ import type { SupportRequest } from "@milo/shared";
 // façon de reconnaître une demande encore en cours.
 
 export { NAME };
-export { default as TitreIndicateur, IndicatorValue } from "../components/ui/IndicatorTitle";
+export { default as IndicatorTitle, IndicatorValue } from "../components/ui/IndicatorTitle";
 
 /** Une demande résolue ou fermée n'attend plus rien. */
 export const ongoing = (d: SupportRequest): boolean =>

@@ -35,12 +35,12 @@ import type { AccessMail, AccessMailDetail, Id, MailAddress } from "@milo/shared
 //
 // Rien n'est modifié dans la boîte : un e-mail ouvert ici n'y est pas marqué lu.
 
-const QUANTITY = "quantite";
-const HEIGHT = "hauteur";
-const COLUMNS = "colonnes";
-const UNREAD = "nonLus";
-const HEADER = "entete";
-const FRAMED = "encadre";
+const QUANTITY = "count";
+const HEIGHT = "height";
+const COLUMNS = "columns";
+const UNREAD = "unreadOnly";
+const HEADER = "header";
+const FRAMED = "framed";
 
 /** Les e-mails d'une page : ceux que la grille demande d'un coup. */
 const QUANTITY_DEFAULT = 15;
@@ -56,14 +56,14 @@ const HEIGHT_MAX = 1600;
 const RELOAD_INTERVAL = 2 * 60_000;
 
 const PROPOSED_COLUMNS = [
-  { value: "expediteur", label: "Expéditeur" },
-  { value: "objet", label: "Objet" },
-  { value: "apercu", label: "Aperçu" },
+  { value: "sender", label: "Expéditeur" },
+  { value: "subject", label: "Objet" },
+  { value: "preview", label: "Aperçu" },
   { value: "date", label: "Reçu le" },
-  { value: "pieces", label: "Pièces jointes" },
+  { value: "attachments", label: "Pièces jointes" },
 ];
 
-const DEFAULT_COLUMNS = ["expediteur", "objet", "date"];
+const DEFAULT_COLUMNS = ["sender", "subject", "date"];
 
 const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean => {
   const value = (config as Record<string, unknown> | null)?.[key];
@@ -245,16 +245,16 @@ function Reader({
 }
 
 type State =
-  | { phase: "attente" }
-  | { phase: "pret"; messages: AccessMail[]; more: boolean; unread: number | null }
-  | { phase: "erreur"; message: string };
+  | { phase: "loading" }
+  | { phase: "ready"; messages: AccessMail[]; more: boolean; unread: number | null }
+  | { phase: "error"; message: string };
 
 function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
   const quantity = bound(count(config, QUANTITY, QUANTITY_DEFAULT), QUANTITY_MIN, QUANTITY_MAX);
   const height = bound(count(config, HEIGHT, DEFAULT_HEIGHT), HEIGHT_MIN, HEIGHT_MAX);
   const unreadOnly = isChecked(config, UNREAD, false);
   const columns = columnsOf(config);
-  const [state, setState] = useState<State>({ phase: "attente" });
+  const [state, setState] = useState<State>({ phase: "loading" });
   const [more, setMore] = useState(false);
   const [isOpen, setOpened] = useState<AccessMail | null>(null);
   // La page suivante ne se demande qu'une fois à la fois, même si le bas de la
@@ -266,15 +266,15 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
   useEffect(() => {
     if (!blockId) return;
     let active = true;
-    setState({ phase: "attente" });
+    setState({ phase: "loading" });
     const read = (first: boolean) =>
       api
         .getAccessMails(blockId, 0, quantity, unreadOnly)
         .then((page) => {
           if (!active) return;
           setState((before) => {
-            if (first || before.phase !== "pret") {
-              return { phase: "pret", messages: page.messages, more: page.more, unread: page.unread ?? null };
+            if (first || before.phase !== "ready") {
+              return { phase: "ready", messages: page.messages, more: page.more, unread: page.unread ?? null };
             }
             const fresh = new Map(page.messages.map((m) => [m.id, m]));
             const known = new Set(before.messages.map((m) => m.id));
@@ -288,7 +288,7 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
             };
           });
         })
-        .catch((e: Error) => active && first && setState({ phase: "erreur", message: e.message }));
+        .catch((e: Error) => active && first && setState({ phase: "error", message: e.message }));
     read(true);
     const heartbeat = setInterval(() => read(false), RELOAD_INTERVAL);
     return () => {
@@ -298,14 +298,14 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
   }, [blockId, quantity, unreadOnly]);
 
   const loadMore = useCallback(() => {
-    if (state.phase !== "pret" || !state.more || ongoing.current) return;
+    if (state.phase !== "ready" || !state.more || ongoing.current) return;
     ongoing.current = true;
     setMore(true);
     api
       .getAccessMails(blockId, state.messages.length, quantity, unreadOnly)
       .then((page) =>
         setState((before) => {
-          if (before.phase !== "pret") return before;
+          if (before.phase !== "ready") return before;
           const known = new Set(before.messages.map((m) => m.id));
           return {
             ...before,
@@ -322,7 +322,7 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
   }, [state, blockId, quantity, unreadOnly]);
 
   const content = (() => {
-    if (state.phase === "attente") {
+    if (state.phase === "loading") {
       return (
         <Group gap="xs" c="dimmed">
           <Loader size="xs" color="gray" />
@@ -330,7 +330,7 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
         </Group>
       );
     }
-    if (state.phase === "erreur") {
+    if (state.phase === "error") {
       return (
         <Group gap={6} wrap="nowrap" align="flex-start">
           <IconMail size={16} style={{ flexShrink: 0, marginTop: 2 }} />
@@ -374,10 +374,10 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
                       fz="xs"
                       c="dimmed"
                       fw={500}
-                      w={c === "date" ? 72 : c === "pieces" ? 28 : c === "expediteur" ? "30%" : undefined}
+                      w={c === "date" ? 72 : c === "attachments" ? 28 : c === "sender" ? "30%" : undefined}
                       ta={c === "date" ? "right" : undefined}
                     >
-                      {c === "pieces" ? <IconPaperclip size={12} /> : PROPOSED_COLUMNS.find((p) => p.value === c)?.label}
+                      {c === "attachments" ? <IconPaperclip size={12} /> : PROPOSED_COLUMNS.find((p) => p.value === c)?.label}
                     </Table.Th>
                   ))}
                 </Table.Tr>
@@ -387,7 +387,7 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
                   <Table.Tr key={m.id} onClick={() => setOpened(m)} style={{ cursor: "pointer" }}>
                     {columns.map((c) => {
                       const weight = m.is_read ? 400 : 600;
-                      if (c === "expediteur") {
+                      if (c === "sender") {
                         return (
                           <Table.Td key={c}>
                             <Text size="sm" fw={weight} truncate title={m.from.email}>
@@ -396,7 +396,7 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
                           </Table.Td>
                         );
                       }
-                      if (c === "objet") {
+                      if (c === "subject") {
                         return (
                           <Table.Td key={c}>
                             <Text size="sm" fw={weight} truncate c={m.importance === "high" ? "red" : undefined}>
@@ -405,7 +405,7 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
                           </Table.Td>
                         );
                       }
-                      if (c === "apercu") {
+                      if (c === "preview") {
                         return (
                           <Table.Td key={c}>
                             <Text size="sm" c="dimmed" truncate>
@@ -455,7 +455,7 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
 
   if (!isChecked(config, FRAMED, false)) return content;
   return (
-    <Box className={classes.encart} style={{ border: "none" }}>
+    <Box className={classes.inset} style={{ border: "none" }}>
       {content}
     </Box>
   );

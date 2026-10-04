@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ASSET_MODEL_MAX, VLAN_NAME_MAX } from "@milo/shared";
 import type { AssetSettings } from "@milo/shared";
 import { api } from "../../api";
-import defilement from "../../assets/styles/ListScroll.module.css";
+import scroll from "../../assets/styles/ListScroll.module.css";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { RED } from "../../themes/colors";
 import AddButton from "../ui/AddButton";
@@ -58,7 +58,7 @@ type Row = string[];
 interface Column {
   label: string;
   maxLength: number;
-  largeur?: number;
+  width?: number;
   digital?: boolean;
   optional?: boolean;
 }
@@ -66,7 +66,7 @@ interface Column {
 const empty = (columns: Column[]): Row => columns.map(() => "");
 
 const columnStyle = (column: Column) =>
-  column.largeur ? { width: column.largeur, flexShrink: 0 } : { flex: 1, minWidth: 0 };
+  column.width ? { width: column.width, flexShrink: 0 } : { flex: 1, minWidth: 0 };
 
 const cleaned = (l: Row): Row => l.map((v) => v.trim());
 
@@ -258,7 +258,7 @@ function ListRows({
           mah={VISIBLE_ROWS * ROW_HEIGHT}
           type="auto"
           scrollbars="y"
-          classNames={{ scrollbar: defilement.scrollbar, thumb: defilement.thumb }}
+          classNames={{ scrollbar: scroll.scrollbar, thumb: scroll.thumb }}
         >
           <Stack gap={1}>
             {rows.map((row, rank) => (
@@ -335,17 +335,17 @@ const MODEL_COLUMNS: Column[] = [
     label: "Identifiant",
     maxLength: ASSET_MODEL_MAX,
     // Plus court qu'un sous-réseau : « Mac14,6 ».
-    largeur: FIRST_WIDTH - 40,
+    width: FIRST_WIDTH - 40,
   },
   { label: "Nom commercial", maxLength: ASSET_MODEL_MAX },
 ];
 
 const VLAN_COLUMNS: Column[] = [
-  { label: "Sous-réseau", maxLength: 18, largeur: FIRST_WIDTH },
+  { label: "Sous-réseau", maxLength: 18, width: FIRST_WIDTH },
   {
     label: "VLAN",
     maxLength: VLAN_LENGTH,
-    largeur: VLAN_WIDTH,
+    width: VLAN_WIDTH,
     digital: true,
   },
   { label: "Nom", maxLength: VLAN_NAME_MAX, optional: true },

@@ -62,13 +62,13 @@ import ColumnInsert, { COLUMN_INSERT_ZONE } from "../ui/ColumnInsert";
 import AddButton from "../ui/AddButton";
 import { useRights } from "../../lib/rights";
 import { CardLabel } from "../ui/LabelChip";
-import CelebrationEffect, { toggleMark, titleEffects, MARKS } from "../ui/EffetsFete";
-import type { Effect, Zone } from "../ui/EffetsFete";
+import CelebrationEffect, { toggleMark, titleEffects, MARKS } from "../ui/CelebrationEffect";
+import type { Effect, Zone } from "../ui/CelebrationEffect";
 import CardDrawer from "./CardDrawer";
 import MoveOrCopyListModal, { type ListAction } from "./MoveOrCopyListModal";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import EmptyPanel from "../ui/EmptyPanel";
-import pastilles from "../../assets/styles/ListColors.module.css";
+import swatches from "../../assets/styles/ListColors.module.css";
 import classes from "../../assets/styles/TaskBoard.module.css";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { DUE_WORD, shortDate, dueState } from "../../lib/due";
@@ -415,10 +415,10 @@ const TAGS_GAP = 6;
 // fond neutre — la date se lit, mais rien ne presse. Elle précède la pastille
 // des checklists, comme l'échéance précède le titre dans la fiche.
 const DUE_BG: Record<DueState, string> = {
-  retard: "var(--mantine-color-red-filled)",
-  bientot: "var(--mantine-color-orange-filled)",
+  late: "var(--mantine-color-red-filled)",
+  soon: "var(--mantine-color-orange-filled)",
   // Loin encore : le vert de ce qui va bien, comme « À venir » dans la fiche.
-  aucun: "var(--mantine-color-green-filled)",
+  none: "var(--mantine-color-green-filled)",
 };
 
 // Les trois fonds sont pleins : le texte y est blanc.
@@ -820,7 +820,7 @@ function Cover({ urls, interval }: { urls: string[]; interval: number }) {
 interface CardContentProps {
   card: TaskCard;
   withNumber?: boolean;
-  labelsCompactes?: boolean;
+  compactLabels?: boolean;
   onLabelClick?: () => void;
   /** Les étiquettes du tableau : elles font foi sur celles que porte la carte. */
   labels?: Label[];
@@ -832,7 +832,7 @@ interface CardContentProps {
 function CardContent({
   card,
   withNumber = true,
-  labelsCompactes,
+  compactLabels,
   onLabelClick,
   labels,
   checklistOpen = false,
@@ -868,7 +868,7 @@ function CardContent({
             <CardLabel
               key={label.id}
               label={label}
-              compact={labelsCompactes}
+              compact={compactLabels}
               onClick={onLabelClick}
             />
           ))}
@@ -939,17 +939,17 @@ interface CardStillProps {
   card: TaskCard;
   palette: Palette;
   withNumber: boolean;
-  labelsCompactes: boolean;
+  compactLabels: boolean;
 }
 
-function CardStill({ card, palette, withNumber, labelsCompactes }: CardStillProps) {
+function CardStill({ card, palette, withNumber, compactLabels }: CardStillProps) {
   return (
     <Paper
       radius={CARD_RADIUS}
       p="xs"
       style={{ border: "2px solid transparent", ...separatorStyle(card, palette) }}
     >
-      <CardContent card={card} withNumber={withNumber} labelsCompactes={labelsCompactes} />
+      <CardContent card={card} withNumber={withNumber} compactLabels={compactLabels} />
     </Paper>
   );
 }
@@ -1190,7 +1190,7 @@ function ListCard({
               {/* Les pastilles se passent d'intitulé : une couleur se
                   reconnaît. La section, elle, en porte un. */}
               <Menu.Label>Couleur de la liste</Menu.Label>
-              <div className={pastilles.grille}>
+              <div className={swatches.grid}>
                 {LIST_COLORS.map((color) => (
                   <ColorSwatch
                     key={color.value}
@@ -1202,7 +1202,7 @@ function ListCard({
                       setMenu(null);
                       onColor(color.value);
                     }}
-                    className={pastilles.pastille}
+                    className={swatches.swatch}
                     aria-label={color.label}
                     aria-pressed={color.value === list.color}
                   >
@@ -1220,11 +1220,11 @@ function ListCard({
               {/* L'arrivée d'une carte se fête selon les marques du titre :
                   chaque emoji pose la sienne au bout, ou la retire. */}
               <Menu.Label>Animation à l'arrivée</Menu.Label>
-              <div className={pastilles.animations}>
+              <div className={swatches.animations}>
                 {MARKS.map((m) => (
                   <UnstyledButton
                     key={m.effect}
-                    className={pastilles.animation}
+                    className={swatches.animation}
                     onClick={() => {
                       setMenu(null);
                       onAnimation(m.effect);
@@ -1292,7 +1292,7 @@ interface CardViewProps {
   active: boolean;
   palette: Palette;
   withNumber: boolean;
-  labelsCompactes: boolean;
+  compactLabels: boolean;
   onLabelClick: () => void;
   labels: Label[];
   checklistOpen: boolean;
@@ -1312,7 +1312,7 @@ function CardView({
   active,
   palette,
   withNumber,
-  labelsCompactes,
+  compactLabels,
   onLabelClick,
   labels,
   checklistOpen,
@@ -1365,7 +1365,7 @@ function CardView({
       <CardContent
         card={card}
         withNumber={withNumber}
-        labelsCompactes={labelsCompactes}
+        compactLabels={compactLabels}
         onLabelClick={onLabelClick}
         labels={labels}
         checklistOpen={checklistOpen}
@@ -1384,7 +1384,7 @@ interface ListStillProps {
   style?: CSSProperties;
   shadow?: string;
   withNumber: boolean;
-  labelsCompactes: boolean;
+  compactLabels: boolean;
   [other: string]: unknown;
 }
 
@@ -1393,7 +1393,7 @@ function ListStill({
   style,
   shadow,
   withNumber,
-  labelsCompactes,
+  compactLabels,
   ...props
 }: ListStillProps) {
   const own = useListColors()(list?.color);
@@ -1424,7 +1424,7 @@ function ListStill({
               card={card}
               palette={own}
               withNumber={withNumber}
-              labelsCompactes={labelsCompactes}
+              compactLabels={compactLabels}
             />
           ))}
         </Stack>
@@ -1454,7 +1454,7 @@ export interface TaskBoardProps {
 }
 
 /** La clé de l'option du widget « Tâches » qui montre le numéro des cartes. */
-export const NUMBERS = "numeros";
+export const NUMBERS = "show_numbers";
 
 /** Le widget montre-t-il le numéro des cartes ? Sans réglage, non. */
 export const withNumbers = (config: unknown): boolean =>
@@ -1566,7 +1566,7 @@ export default function TaskBoard({
   }, [openCard, onCardOpened]);
   // Les étiquettes se replient en barres, ou se déploient avec leur nom : le
   // choix vaut pour tout le tableau, comme un réglage d'affichage.
-  const [labelsCompactes, setCompactLabels] = useState(false);
+  const [compactLabels, setCompactLabels] = useState(false);
   // Cartes dont le panneau « ce qu'il reste à faire » est déplié. Chaque carte
   // garde le sien : on peut en ouvrir plusieurs à la fois.
   const [expandedChecklists, setExpandedChecklists] = useState<Set<Id>>(() => new Set());
@@ -1805,7 +1805,7 @@ export default function TaskBoard({
     // serveur. Sa référence, elle, attend le serveur : le compteur est commun
     // à tous les modes, et rien ici ne dit la suivante.
     const provisional: ProvisionalCard = {
-      id: `nouvelle-${Date.now()}`,
+      id: `new-${Date.now()}`,
       list_id: list.id,
       text: text,
       number: 0,
@@ -2333,7 +2333,7 @@ export default function TaskBoard({
               active={cardMenu?.card.id === card.id}
               palette={palette}
               withNumber={withNumber}
-              labelsCompactes={labelsCompactes}
+              compactLabels={compactLabels}
               onLabelClick={() => setCompactLabels((c) => !c)}
               labels={labels}
               checklistOpen={expandedChecklists.has(card.id)}
@@ -2443,7 +2443,7 @@ export default function TaskBoard({
           <Group align="flex-start" gap={LIST_GAP} wrap="nowrap">
             {visibleItems.map((list, index) => (
               <Fragment key={list.id}>
-                {drag && drag.target === index && <Placeholder list={dragged ?? undefined} withNumber={withNumber} labelsCompactes={labelsCompactes} />}
+                {drag && drag.target === index && <Placeholder list={dragged ?? undefined} withNumber={withNumber} compactLabels={compactLabels} />}
                 {composing && newRank === index && newInset}
                 {/* Avant chaque liste : le trait qui en insère une à cet
                     endroit. Il ne prend aucune largeur — la marge négative
@@ -2521,7 +2521,7 @@ export default function TaskBoard({
 
             {/* Emplacement en fin de rangée. */}
             {drag && drag.target >= visibleItems.length && (
-              <Placeholder list={dragged ?? undefined} withNumber={withNumber} labelsCompactes={labelsCompactes} />
+              <Placeholder list={dragged ?? undefined} withNumber={withNumber} compactLabels={compactLabels} />
             )}
 
             {/* Toujours à droite des listes : le bouton cède la place à l'encart. */}
@@ -2544,7 +2544,7 @@ export default function TaskBoard({
           list={dragged ?? undefined}
           shadow="xl"
           withNumber={withNumber}
-          labelsCompactes={labelsCompactes}
+          compactLabels={compactLabels}
           data-drag-clone="true"
           style={{
             position: "fixed",
@@ -2576,7 +2576,7 @@ export default function TaskBoard({
           <CardContent
             card={draggedCard}
             withNumber={withNumber}
-            labelsCompactes={labelsCompactes}
+            compactLabels={compactLabels}
             labels={labels}
           />
         </Paper>
@@ -2737,10 +2737,10 @@ export default function TaskBoard({
 interface PlaceholderProps {
   list: TaskList | undefined;
   withNumber: boolean;
-  labelsCompactes: boolean;
+  compactLabels: boolean;
 }
 
-function Placeholder({ list, withNumber, labelsCompactes }: PlaceholderProps) {
+function Placeholder({ list, withNumber, compactLabels }: PlaceholderProps) {
   // La liste glissée peut ne plus exister (relecture pendant le geste) :
   // l'emplacement d'accueil n'a alors rien à montrer.
   if (!list) return null;
@@ -2748,7 +2748,7 @@ function Placeholder({ list, withNumber, labelsCompactes }: PlaceholderProps) {
     <ListStill
       list={list}
       withNumber={withNumber}
-      labelsCompactes={labelsCompactes}
+      compactLabels={compactLabels}
       data-drop-placeholder="true"
       style={{ opacity: 0.5 }}
     />

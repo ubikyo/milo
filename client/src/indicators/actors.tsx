@@ -1,7 +1,7 @@
 import { RadialBarChart } from "@mantine/charts";
 import { Stack, Text } from "@mantine/core";
 import { IconUsers } from "@tabler/icons-react";
-import { NAME, TitreIndicateur } from "./common";
+import { NAME, IndicatorTitle } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 import type { Actor, Id } from "@milo/shared";
 
@@ -73,7 +73,7 @@ export const actorsIndicator: SupportIndicatorWidget = {
 
   Display: ({ config, requests }) => (
     <Stack gap={4} style={{ flex: 1 }}>
-      <TitreIndicateur config={config} defaultValue={LABEL} />
+      <IndicatorTitle config={config} defaultValue={LABEL} />
       <ActorRings actors={requests.map((d) => d.actors)} unit="tickets" />
     </Stack>
   ),

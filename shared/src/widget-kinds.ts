@@ -138,7 +138,7 @@ export const isBoardWidgetType = (value: unknown): value is string =>
 /**
  * Les widgets qui possèdent leurs éléments : deux « Projets » d'un même
  * tableau ne montrent pas les mêmes projets. Chacun porte, dans sa
- * configuration, la clé de sa liste (CLE_DE_LISTE) ; ses éléments la
+ * configuration, la clé de sa liste (LIST_KEY) ; ses éléments la
  * portent aussi, et partent avec le dernier widget qui la tient.
  */
 export const LIST_WIDGET_TYPES: readonly string[] = [
@@ -151,7 +151,7 @@ export const LIST_WIDGET_TYPES: readonly string[] = [
 export const isListWidgetType = (type: string): boolean => LIST_WIDGET_TYPES.includes(type);
 
 /** La clé de la configuration d'un widget de liste qui désigne ses éléments. */
-export const LIST_KEY = "liste";
+export const LIST_KEY = "list_key";
 
 /** La clé de liste d'une configuration ; vide si elle n'en porte pas. */
 export const listKey = (config: unknown): string => {

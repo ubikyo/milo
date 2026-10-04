@@ -1,7 +1,7 @@
 import { Checkbox, Stack } from "@mantine/core";
 import { IconCategory } from "@tabler/icons-react";
 import { withField } from "../widgets/types";
-import { LabelBars, NameField, NAME, Nothing, TitreIndicateur, isFinished } from "./common";
+import { LabelBars, NameField, NAME, Nothing, IndicatorTitle, isFinished } from "./common";
 import type { Bar } from "./common";
 import type { ProjectIndicatorWidget } from "./types";
 
@@ -9,7 +9,7 @@ import type { ProjectIndicatorWidget } from "./types";
 // travail. Les projets terminés n'y comptent que si on le demande.
 
 const LABEL = "Catégories";
-const ALL = "tous";
+const ALL = "include_all";
 
 const allProjects = (config: unknown) =>
   Boolean((config as Record<string, unknown> | null)?.[ALL]);
@@ -35,7 +35,7 @@ export const categoriesIndicator: ProjectIndicatorWidget = {
 
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaultValue={LABEL} />
+        <IndicatorTitle config={config} defaultValue={LABEL} />
         {data.length === 0 ? <Nothing>Aucun projet</Nothing> : <LabelBars data={data} />}
       </Stack>
     );

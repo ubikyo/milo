@@ -2,7 +2,7 @@ import { Select, Stack } from "@mantine/core";
 import { IconFolders } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { withField, text } from "../widgets/types";
-import { NameField, NAME, TitreIndicateur, IndicatorValue, isFinished } from "./common";
+import { NameField, NAME, IndicatorTitle, IndicatorValue, isFinished } from "./common";
 import type { ProjectIndicatorWidget } from "./types";
 import type { Id, Project } from "@milo/shared";
 
@@ -73,7 +73,7 @@ export const projectsIndicator: ProjectIndicatorWidget = {
     return (
       // Le nom en haut, la quantité en bas à gauche, comme les tickets.
       <Stack gap={4} justify="space-between" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaultValue={type.label} />
+        <IndicatorTitle config={config} defaultValue={type.label} />
         <IndicatorValue config={config}>
           {projects.filter((p) => type.account(p, userId)).length}
         </IndicatorValue>

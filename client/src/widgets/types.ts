@@ -24,7 +24,7 @@ import type { AccessBlockType, Id } from "@milo/shared";
  * le registre (board-widgets) s'en chargeant pour ceux qui ne le font pas
  * eux-mêmes (cadrePropre).
  */
-export const FRAMED = "encadre";
+export const FRAMED = "framed";
 
 /** Vrai quand le widget est encadré ; sans réglage, « defaut » vaut. */
 export const isFramed = (config: unknown, defaultValue = false): boolean => {

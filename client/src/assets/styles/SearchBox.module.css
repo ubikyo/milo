@@ -1,10 +1,9 @@
-/* Les lignes de la recherche. Survolée ou choisie au clavier, une ligne prend
-   un gris neutre et non la couleur primaire de Mantine : le texte garde sa
-   couleur. Sur le thème clair, le gris des survols (themes/colors.ts,
-   NEUTRAL_HOVER) ; sur le sombre, celui-ci est exactement le fond de la liste
-   (dark-6), il faut donc un cran plus clair. Des angles à peine arrondis. La classe est
-   doublée pour passer devant le survol de Mantine, quel que soit l'ordre des
-   feuilles. */
+/* The search rows. Hovered or selected with the keyboard, a row takes a
+   neutral gray rather than Mantine's primary color: the text keeps its
+   color. On the light theme, the hover gray (themes/colors.ts,
+   NEUTRAL_HOVER); on dark, that one is exactly the list background (dark-6),
+   so it needs one step lighter. Barely rounded corners. The class is doubled
+   to beat Mantine's hover, whatever the stylesheet order. */
 .option {
   border-radius: 2px;
 }
@@ -15,7 +14,7 @@
   color: inherit;
 }
 
-/* Un séparateur invisible entre deux lignes : un peu d'air, sans trait. */
+/* An invisible separator between two rows: a little air, no line. */
 .option + .option {
   margin-top: 2px;
 }

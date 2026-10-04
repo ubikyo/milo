@@ -7,7 +7,7 @@
 // tenue à jour pour que la page rechargée retrouve ce qui était ouvert.
 
 import type { Id, LinkTargetKind } from "@milo/shared";
-import { itemLink } from "@milo/shared";
+import { LEGACY_QUERY_PARAMS, QUERY_PARAMS, itemLink } from "@milo/shared";
 
 export interface Target {
   /** Pour « access », l'identifiant est celui du tableau. */
@@ -15,13 +15,12 @@ export interface Target {
   id: Id;
 }
 
-const NAMES: Record<string, LinkTargetKind> = {
-  project: "project",
-  card: "card",
-  request: "support",
-  workstation: "asset",
-  access: "access",
-};
+/** Le nom de chaque paramètre, et l'élément qu'il désigne — les anciens noms compris. */
+const NAMES = Object.fromEntries(
+  [QUERY_PARAMS, LEGACY_QUERY_PARAMS].flatMap((params) =>
+    Object.entries(params).map(([kind, name]) => [name, kind as LinkTargetKind]),
+  ),
+);
 
 /** Ce que l'adresse courante désigne, s'il y a lieu. */
 export const addressTarget = (): Target | null => {

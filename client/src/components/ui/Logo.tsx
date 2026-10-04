@@ -42,7 +42,7 @@ export default function Logo({ variant = 2, h = 40 }: LogoProps) {
     const letters = LETTERS[scheme];
     return (
       <svg
-        className={classes.logoAnime}
+        className={classes.animatedLogo}
         viewBox="0 0 435 490"
         role="img"
         aria-label="Milo"
@@ -110,7 +110,7 @@ function Flag({ ink }: { ink: string }) {
         {/* La toile : elle mord d'un point sur la hampe, pour qu'aucun
           jour ne s'ouvre entre les deux quand elle flotte. */}
         <path
-          className={classes.toile}
+          className={classes.flag}
           d="M1256,1455L1337.07,1459L1313.83,1492.92L1337.07,1526.84L1256,1526.84Z"
           fill={GREEN}
         />

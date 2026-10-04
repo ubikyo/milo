@@ -330,7 +330,7 @@ export const SCHEMA = `
     -- Le début de la période (« AAAA-MM-JJ »), quand l'échéance va « du … au
     -- … » ; vide quand elle ne dit que « jusqu'à ».
     start_date TEXT NOT NULL DEFAULT '',
-    -- La forme de l'échéance : « date » seule, ou « periode » (début et fin).
+    -- La forme de l'échéance : « date » seule, ou « period » (début et fin).
     due_form TEXT NOT NULL DEFAULT 'date',
     -- La récurrence et le rappel de l'échéance (shared/echeance.ts) ; vides
     -- pour « Jamais » et « Aucun ».
@@ -410,7 +410,7 @@ export const SCHEMA = `
   );
 
   -- Pièces jointes d'une carte : les fichiers déposés dessus. Le fichier, lui,
-  -- vit dans le dossier des médias (lib/medias.ts) ; la ligne n'en garde que
+  -- vit dans le dossier des médias (lib/media.ts) ; la ligne n'en garde que
   -- le nom de rangement et de quoi l'afficher.
   CREATE TABLE IF NOT EXISTS card_attachments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -802,7 +802,7 @@ export const INDEXES = `
   -- sessions d'un compte, et le ménage des sessions expirées, qui balayaient.
   -- Qui suit cet élément ? C'est la question posée après chaque écriture ;
   -- sans index, elle balaierait toute la table.
-  CREATE INDEX IF NOT EXISTS idx_follows_cible ON follows(kind, target_id);
+  CREATE INDEX IF NOT EXISTS idx_follows_target ON follows(kind, target_id);
 
   CREATE INDEX IF NOT EXISTS idx_users_entra ON users(entra_id);
 

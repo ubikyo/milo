@@ -24,16 +24,16 @@ export type ItemToCopy = "labels" | "categories" | "contexts";
 
 const WORDS: Record<
   ItemToCopy,
-  { title: string; nounPhrase: string; plusieurs: string; feminine: boolean }
+  { title: string; nounPhrase: string; plural: string; feminine: boolean }
 > = {
-  labels: { title: "Copier les étiquettes", nounPhrase: "étiquette", plusieurs: "étiquettes", feminine: true },
+  labels: { title: "Copier les étiquettes", nounPhrase: "étiquette", plural: "étiquettes", feminine: true },
   categories: {
     title: "Copier les catégories",
     nounPhrase: "catégorie",
-    plusieurs: "catégories",
+    plural: "catégories",
     feminine: true,
   },
-  contexts: { title: "Copier les contextes", nounPhrase: "contexte", plusieurs: "contextes", feminine: false },
+  contexts: { title: "Copier les contextes", nounPhrase: "contexte", plural: "contextes", feminine: false },
 };
 
 /**
@@ -46,7 +46,7 @@ export const report = (
   or = "là-bas",
 ): string => {
   const words = WORDS[item];
-  const name = (n: number) => (n > 1 ? words.plusieurs : words.nounPhrase);
+  const name = (n: number) => (n > 1 ? words.plural : words.nounPhrase);
   // Les accords suivent le genre de ce qu'on copie.
   const none = words.feminine ? "aucune" : "aucun";
   const copy = words.feminine ? "copiée" : "copié";

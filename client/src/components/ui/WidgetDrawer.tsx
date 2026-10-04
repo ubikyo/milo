@@ -130,7 +130,7 @@ export default function WidgetDrawer<P extends WidgetChoice>({
                 aria-label={`Glisser le widget ${widget.label}`}
                 gap="sm"
                 wrap="nowrap"
-                className={inset.encart}
+                className={inset.inset}
                 style={{ padding: 10, border: "none", cursor: "grab" }}
               >
                 <Text c="dimmed" component="span" style={{ display: "flex" }}>

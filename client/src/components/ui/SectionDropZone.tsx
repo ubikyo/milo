@@ -55,7 +55,7 @@ export default function SectionDropZone({
   // qu'on mesure toujours sa largeur.
   const zone = useRef<HTMLButtonElement>(null);
   const label = useRef<HTMLParagraphElement>(null);
-  const [tient, setFits] = useState(true);
+  const [fits, setFits] = useState(true);
   useLayoutEffect(() => {
     const element = zone.current;
     if (!element) return;
@@ -109,7 +109,7 @@ export default function SectionDropZone({
           c={STRONG_TEXT}
           style={{
             whiteSpace: "nowrap",
-            ...(tient ? {} : { position: "absolute", left: 0, top: 0, visibility: "hidden" }),
+            ...(fits ? {} : { position: "absolute", left: 0, top: 0, visibility: "hidden" }),
           }}
         >
           Ajouter un widget

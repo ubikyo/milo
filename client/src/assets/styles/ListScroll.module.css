@@ -1,21 +1,21 @@
-/* La barre de défilement verticale d'une liste en lignes (components/ui,
-   LignesDuTiroir) quand elle dépasse sa hauteur : la barre fine de
-   l'application — celle des tiroirs et des grilles (CardDrawer.module.css,
-   GrilleScroll.module.css) —, d'un pixel, au bord droit de la liste. */
+/* The vertical scrollbar of a row list (components/ui, DrawerRows) when it
+   exceeds its height: the application's thin bar — the drawers' and grids'
+   (CardDrawer.module.css, GridScroll.module.css) —, one pixel wide, on the
+   list's right edge. */
 .scrollbar[data-orientation="vertical"] {
   width: 1px;
   padding: 0;
 }
 
-/* Aucun fond, pas même au survol : seul le curseur se voit. */
+/* No background, not even on hover: only the thumb shows. */
 .scrollbar[data-orientation="vertical"],
 .scrollbar[data-orientation="vertical"]:hover,
 .scrollbar[data-orientation="vertical"]:active {
   background-color: transparent;
 }
 
-/* Le gris de toutes les barres (scrollbars.css), et carré : sur un pixel de
-   large, un arrondi ne ferait que le ronger à ses deux bouts. */
+/* The gray of every scrollbar (scrollbars.css), and square: one pixel wide,
+   rounding would only eat at both ends. */
 .scrollbar[data-orientation="vertical"] > .thumb,
 .scrollbar[data-orientation="vertical"]:hover > .thumb,
 .scrollbar[data-orientation="vertical"]:active > .thumb {
@@ -23,8 +23,8 @@
   border-radius: 0;
 }
 
-/* La même, couchée sous la liste quand elle défile de côté — une liste en
-   colonnes plus large que sa fenêtre (PrincipalsPermissions). */
+/* The same, lying under the list when it scrolls sideways — a column list
+   wider than its window (PrincipalsPermissions). */
 .scrollbar[data-orientation="horizontal"] {
   height: 1px;
   padding: 0;

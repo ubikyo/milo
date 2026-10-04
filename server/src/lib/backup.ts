@@ -37,7 +37,9 @@ import { readSetting, writeSetting } from "../repositories/settings.js";
 
 /** Les deux noms que porte une archive de Milo. */
 const DATABASE_FILE = "milo.db";
-const MEDIA_FOLDER = "medias/";
+const MEDIA_FOLDER = "media/";
+/** Le dossier des médias dans les archives d'avant : elles se restaurent encore. */
+const LEGACY_MEDIA_FOLDER = "medias/";
 /** Les fichiers des e-mails du support, à part des médias (lib/ticket-files.ts). */
 const TICKET_FOLDER = "tickets/";
 
@@ -68,7 +70,7 @@ const size = (relativePath: string): number => {
 
 /** Un dossier de travail, et son ménage quoi qu'il advienne. */
 const inTemporaryFolder = <T>(action: (folder: string) => T): T => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "milo-sauvegarde-"));
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "milo-backup-"));
   try {
     return action(folder);
   } finally {
@@ -171,7 +173,7 @@ const migrateBackup = (relativePath: string): void => {
  */
 const replaceData = (relativePath: string): { tables: number; rows: number } => {
   db.pragma("foreign_keys = OFF");
-  db.prepare("ATTACH DATABASE ? AS sauvegarde").run(relativePath);
+  db.prepare("ATTACH DATABASE ? AS backup").run(relativePath);
 
   try {
     return transaction(() => {
@@ -179,7 +181,7 @@ const replaceData = (relativePath: string): { tables: number; rows: number } => 
         (
           db
             .prepare(
-              "SELECT name FROM sauvegarde.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+              "SELECT name FROM backup.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
             )
             .all() as NameRow[]
         ).map((t) => t.name),
@@ -206,13 +208,13 @@ const replaceData = (relativePath: string): { tables: number; rows: number } => 
         // prennent la valeur par défaut du schéma d'aujourd'hui, celles
         // qu'elle a en trop sont laissées.
         const common = columns("main", table).filter((c) =>
-          columns("sauvegarde", table).includes(c),
+          columns("backup", table).includes(c),
         );
         if (common.length === 0) continue;
 
         const list = common.map((c) => `"${c}"`).join(", ");
         const { changes } = db
-          .prepare(`INSERT INTO main."${table}" (${list}) SELECT ${list} FROM sauvegarde."${table}"`)
+          .prepare(`INSERT INTO main."${table}" (${list}) SELECT ${list} FROM backup."${table}"`)
           .run();
 
         tables += 1;
@@ -222,7 +224,7 @@ const replaceData = (relativePath: string): { tables: number; rows: number } => 
       return { tables, rows };
     })();
   } finally {
-    db.exec("DETACH DATABASE sauvegarde");
+    db.exec("DETACH DATABASE backup");
     db.pragma("foreign_keys = ON");
   }
 };
@@ -230,7 +232,7 @@ const replaceData = (relativePath: string): { tables: number; rows: number } => 
 /**
  * Les fichiers déposés, remis en place. Ce qui était là et que la sauvegarde
  * ignore n'est pas effacé : plus rien ne le cite, et le ménage des orphelins
- * (lib/medias.ts) s'en charge le moment venu.
+ * (lib/media.ts) s'en charge le moment venu.
  */
 const restoreMedia = (files: Map<string, Buffer>): number => {
   let restored = 0;
@@ -246,11 +248,12 @@ const restoreMedia = (files: Map<string, Buffer>): number => {
       }
       continue;
     }
-    if (!name.startsWith(MEDIA_FOLDER)) continue;
+    const folder = [MEDIA_FOLDER, LEGACY_MEDIA_FOLDER].find((f) => name.startsWith(f));
+    if (!folder) continue;
     // Le nom est recontrôlé, pas seulement raccourci : une archive fabriquée
     // à la main ne doit pas pouvoir écrire ailleurs que dans le dossier des
     // médias.
-    const relativePath = mediaPath(name.slice(MEDIA_FOLDER.length));
+    const relativePath = mediaPath(name.slice(folder.length));
     if (!relativePath) continue;
     fs.writeFileSync(relativePath, content);
     restored += 1;

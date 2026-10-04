@@ -14,7 +14,7 @@ import dayjs from "dayjs";
  * - `bientot` : elle tombe dans les trois jours. Un avertissement.
  * - `aucun` : elle est assez loin pour ne rien signaler.
  */
-export type DueState = "retard" | "bientot" | "aucun";
+export type DueState = "late" | "soon" | "none";
 
 /** Le délai en deçà duquel une échéance est « bientôt ». */
 export const DAYS_BEFORE_DUE = 3;
@@ -35,20 +35,20 @@ export const dueState = (
   due: string | null | undefined,
   currentTime: Date = new Date(),
 ): DueState => {
-  if (!due) return "aucun";
+  if (!due) return "none";
   const dueDay = dayjs(due);
-  if (!dueDay.isValid()) return "aucun";
+  if (!dueDay.isValid()) return "none";
 
   const days = dueDay.startOf("day").diff(dayjs(currentTime).startOf("day"), "day");
-  if (days < 0) return "retard";
-  return days <= DAYS_BEFORE_DUE ? "bientot" : "aucun";
+  if (days < 0) return "late";
+  return days <= DAYS_BEFORE_DUE ? "soon" : "none";
 };
 
 /** Ce que dit la bulle : « En retard », « Bientôt », ou rien. */
 export const DUE_WORD: Record<DueState, string> = {
-  retard: "En retard",
-  bientot: "Bientôt",
-  aucun: "",
+  late: "En retard",
+  soon: "Bientôt",
+  none: "",
 };
 
 /**
@@ -57,21 +57,21 @@ export const DUE_WORD: Record<DueState, string> = {
  * l'avancement à mi-chemin (themes/colors.ts).
  */
 export const DUE_COLOR: Record<DueState, string | undefined> = {
-  retard: "red",
-  bientot: "orange",
-  aucun: undefined,
+  late: "red",
+  soon: "orange",
+  none: undefined,
 };
 
 // Le serveur refuse une date qu'il ne comprend pas ; une valeur illisible ne
 // devrait donc jamais arriver ici. Si l'une passait tout de même, mieux vaut
 // n'afficher rien qu'un « Invalid Date » au milieu d'une carte.
-const formate = (due: string | null | undefined, pattern: string): string => {
+const formatDue = (due: string | null | undefined, pattern: string): string => {
   const date = dayjs(due ?? "");
   return due && date.isValid() ? date.locale("fr").format(pattern) : "";
 };
 
 /** Court, pour une carte du tableau : « 5 oct. ». */
-export const shortDate = (due: string | null | undefined): string => formate(due, "D MMM");
+export const shortDate = (due: string | null | undefined): string => formatDue(due, "D MMM");
 
 /**
  * Une échéance sans heure. L'heure est facultative : laissée vide, le

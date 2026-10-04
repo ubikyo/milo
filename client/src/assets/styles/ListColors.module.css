@@ -1,7 +1,7 @@
-/* Les pastilles de couleur du menu d'une liste : six teintes sur trois
-   nuances, réparties sur toute la largeur du menu. Au survol, la pastille grossit et se cerne,
-   pour qu'on voie laquelle on s'apprête à choisir. */
-.grille {
+/* The color swatches of a list's menu: six hues in three shades, spread
+   across the whole menu width. On hover, the swatch grows and gets a ring, so
+   you see which one you are about to pick. */
+.grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 8px;
@@ -9,20 +9,21 @@
   padding: var(--mantine-spacing-xs);
 }
 
-.pastille {
+.swatch {
   cursor: pointer;
   transition: transform 120ms, box-shadow 120ms;
 }
 
-.pastille:hover {
+.swatch:hover {
   transform: scale(1.15);
   box-shadow:
     0 0 0 2px var(--mantine-color-body),
     0 0 0 3px var(--mantine-color-dimmed);
 }
 
-/* Les animations d'une liste : un emoji par fête, posé au bout du titre. Celles
-   que le titre porte déjà sont marquées d'un fond, gris neutre. */
+/* A list's animations: one emoji per celebration, placed at the end of the
+   title. Those the title already carries are marked with a background,
+   neutral gray. */
 .animations {
   display: grid;
   grid-template-columns: repeat(7, 1fr);

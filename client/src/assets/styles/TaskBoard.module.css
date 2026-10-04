@@ -1,11 +1,11 @@
-/* La barre de défilement horizontale du tableau. Mantine la pose en absolu au
-   bas de la zone qu'elle fait défiler ; ici elle quitte cette zone pour se
-   coucher en travers de la fenêtre, tout en haut, sur son premier pixel.
+/* The board's horizontal scrollbar. Mantine positions it absolutely at the
+   bottom of the area it scrolls; here it leaves that area to lie across the
+   window, at the very top, on its first pixel.
 
-   « position » est écrit en style inline par Mantine (Scrollbar.mjs) : seul un
-   « !important » peut l'emporter. Les autres propriétés n'en ont pas besoin,
-   le sélecteur suffit à les couvrir. La barre verticale, elle, n'est pas
-   touchée : elle reste à droite de la zone, à son épaisseur habituelle. */
+   "position" is written as an inline style by Mantine (Scrollbar.mjs): only
+   "!important" can override it. The other properties don't need it, the
+   selector is enough. The vertical bar is left alone: it stays on the right
+   of the area, at its usual thickness. */
 .scrollbar[data-orientation="horizontal"] {
   position: fixed !important;
   top: 0;
@@ -14,19 +14,20 @@
   right: 0;
   height: 1px;
   padding: 0;
-  /* Sous les tiroirs et les modales de Mantine, qui montent à 200. */
+  /* Below Mantine's drawers and modals, which go up to 200. */
   z-index: 100;
 }
 
-/* Aucun fond, pas même au survol : seul le curseur se voit. */
+/* No background, not even on hover: only the thumb shows. */
 .scrollbar[data-orientation="horizontal"],
 .scrollbar[data-orientation="horizontal"]:hover,
 .scrollbar[data-orientation="horizontal"]:active {
   background-color: transparent;
 }
 
-/* Le curseur prend le gris de toutes les barres (scrollbars.css), survol compris, et carré : sur un
-   pixel de haut, un arrondi ne ferait que le ronger à ses deux bouts. */
+/* The thumb takes the gray of every scrollbar (scrollbars.css), hover
+   included, and is square: one pixel high, rounding would only eat at both
+   ends. */
 .scrollbar[data-orientation="horizontal"] > .thumb,
 .scrollbar[data-orientation="horizontal"]:hover > .thumb,
 .scrollbar[data-orientation="horizontal"]:active > .thumb {

@@ -155,7 +155,7 @@ const KINDS: Record<ListKind, ListKindInfo> = {
 };
 
 let counter = 0;
-const newKey = () => `nouvelle-${++counter}`;
+const newKey = () => `new-${++counter}`;
 
 const inline = (e: Element): Row => ({
   key: String(e.id),
@@ -181,8 +181,8 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
   const pastes = board?.pastes ?? 0;
 
   /** Ce que le serveur porte, et le brouillon qu'on en fait. */
-  const [originaux, setOriginals] = useState<Element[]>([]);
-  const [lignes, setLignes] = useState<Row[]>([]);
+  const [originals, setOriginals] = useState<Element[]>([]);
+  const [rows, setRows] = useState<Row[]>([]);
   const [held, setHeld] = useState<number | null>(null);
   /** La ligne dont un champ a le focus : il prend le fond du tiroir. */
   const [input, setInput] = useState<string | null>(null);
@@ -197,7 +197,7 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
     try {
       const readItems = await s.read(boardId);
       setOriginals(readItems);
-      setLignes(readItems.map(inline));
+      setRows(readItems.map(inline));
     } catch (e) {
       notifyError(errorMessage(e));
     }
@@ -209,12 +209,12 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
 
   // « Sauvegarder » : ce qui est parti, ce qui a changé, ce qui est nouveau,
   // puis l'ordre. Un nom vide arrête tout avant le premier envoi.
-  const state = useRef({ originaux, lignes });
-  state.current = { originaux, lignes };
+  const state = useRef({ originals, rows });
+  state.current = { originals, rows };
   useEffect(() => {
     if (!register || boardId === null) return;
     return register(async () => {
-      const { originaux: before, lignes: after } = state.current;
+      const { originals: before, rows: after } = state.current;
       const keptKeys = after.filter((l) => l.id !== undefined || l.name.trim());
       if (keptKeys.some((l) => !l.name.trim())) {
         throw new Error(`${s.title} : chaque ligne demande un nom.`);
@@ -252,31 +252,31 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
   }, [register, boardId, s, reload]);
 
   const change = (rank: number, change: Partial<Row>) =>
-    setLignes((before) => before.map((l, i) => (i === rank ? { ...l, ...change } : l)));
+    setRows((before) => before.map((l, i) => (i === rank ? { ...l, ...change } : l)));
 
   const add = () => {
     const key = newKey();
-    setLignes((before) => [...before, { key, name: "", color: DEFAULT_LABEL_COLOR, weight: 0 }]);
+    setRows((before) => [...before, { key, name: "", color: DEFAULT_LABEL_COLOR, weight: 0 }]);
     setToName(key);
   };
 
-  const remove = (rank: number) => setLignes((before) => before.filter((_, i) => i !== rank));
+  const remove = (rank: number) => setRows((before) => before.filter((_, i) => i !== rank));
 
   const dragHover = (e: DragEvent<HTMLElement>, rank: number) => {
     if (held === null) return;
     e.preventDefault();
-    const next = move(lignes, held, rank);
+    const next = move(rows, held, rank);
     if (!next) return;
     setHeld(rank);
-    setLignes(next);
+    setRows(next);
   };
 
   // Le type ouvert, gardé tant qu'il ne change pas : la fenêtre repart de lui
   // à chaque nouvel objet, et perdrait ce qu'on y saisit.
   const openType = useMemo<MilestoneType | null>(() => {
-    const original = originaux.find((o) => o.id === milestonesOf);
+    const original = originals.find((o) => o.id === milestonesOf);
     return original ? { id: original.id, name: original.name, milestones: original.milestones ?? [] } : null;
-  }, [originaux, milestonesOf]);
+  }, [originals, milestonesOf]);
 
   if (boardId === null) return null;
 
@@ -288,10 +288,10 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
       description={s.scope}
       styles={{ description: { paddingBottom: 20 } }}
     >
-      {lignes.length === 0 && <EmptyList icon={s.icon} message={s.empty} />}
-      {lignes.length > 0 && (
+      {rows.length === 0 && <EmptyList icon={s.icon} message={s.empty} />}
+      {rows.length > 0 && (
         <Stack gap={1}>
-          {lignes.map((row, rank) => (
+          {rows.map((row, rank) => (
             <Group
               key={row.key}
               gap="sm"
@@ -302,7 +302,7 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
               // Sans poignée, le champ se cale à gauche comme il se cale à
               // droite : à RETRAIT_LIGNE du bord de la ligne.
               style={{
-                ...rowStyle(rank, lignes.length, held === rank),
+                ...rowStyle(rank, rows.length, held === rank),
                 ...(s.orderable ? null : { paddingLeft: ROW_INSET }),
               }}
             >
@@ -341,7 +341,7 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
                   setToName(null);
                   // Une ligne ajoutée, quittée sans nom, s'efface.
                   if (row.id === undefined && !row.name.trim()) {
-                    setLignes((before) => before.filter((l) => l.key !== row.key));
+                    setRows((before) => before.filter((l) => l.key !== row.key));
                   }
                 }}
                 aria-label={`Nom de ${row.name || s.nounPhrase}`}
@@ -375,7 +375,7 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
                   « Sauvegarder ». */}
               {kind === "milestone-types" && row.id !== undefined && (
                 <RowButton icon={IconFlag} onClick={() => setMilestonesOf(row.id!)}>
-                  {pluralize(milestoneCount(originaux.find((o) => o.id === row.id)), "jalon")}
+                  {pluralize(milestoneCount(originals.find((o) => o.id === row.id)), "jalon")}
                 </RowButton>
               )}
             </Group>
@@ -390,10 +390,10 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
         <PointMenu position={menu.position} onClose={() => setMenu(null)}>
           {/* Les jalons d'un type déjà créé : ils s'enregistrent depuis leur
               fenêtre, sans attendre « Sauvegarder ». */}
-          {kind === "milestone-types" && lignes[menu.rank]?.id !== undefined && (
+          {kind === "milestone-types" && rows[menu.rank]?.id !== undefined && (
             <Menu.Item
               leftSection={<IconFlag size={16} />}
-              onClick={() => setMilestonesOf(lignes[menu.rank]!.id!)}
+              onClick={() => setMilestonesOf(rows[menu.rank]!.id!)}
             >
               Jalons
             </Menu.Item>
@@ -402,10 +402,10 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
             color={RED}
             leftSection={<IconTrash size={16} />}
             onClick={() => {
-              const row = lignes[menu.rank];
+              const row = rows[menu.rank];
               // Une catégorie qui range des projets ne se retire pas : le
               // serveur le refuserait à la sauvegarde.
-              const original = originaux.find((o) => o.id === row?.id) as
+              const original = originals.find((o) => o.id === row?.id) as
                 | (Element & { project_count?: number })
                 | undefined;
               if (original?.project_count) {

@@ -52,11 +52,11 @@ import { listKey } from "@milo/shared";
 /** Une boîte : son adresse, et le contexte de ses demandes. */
 interface Mailbox {
   email: string;
-  context: number | null;
+  context_id: number | null;
 }
 
 /** La clé de la configuration qui dit de supprimer les e-mails relevés (server, receptions.ts). */
-const DELETION = "suppression";
+const DELETION = "delete_after_import";
 
 /** La place de l'état, au bout de la ligne : les badges s'alignent. */
 const STATE_WIDTH = 76;
@@ -67,7 +67,7 @@ export const looksLikeAddress = (email: string) =>
 const mailboxesOf = (config: unknown): Mailbox[] =>
   inboxesOf(config, MAILBOXES).map((r) => ({
     email: typeof r.email === "string" ? r.email : "",
-    context: typeof r.context === "number" ? r.context : null,
+    context_id: typeof r.context_id === "number" ? r.context_id : null,
   }));
 
 /** L'état d'une adresse : confirmée, ou en attente — une adresse pas encore enregistrée aussi. */
