@@ -16,7 +16,6 @@ import {
   IconMailCheck,
   IconMailOff,
   IconPaperclip,
-  IconX,
   IconSend2,
   IconTrash,
 } from "@tabler/icons-react";
@@ -114,7 +113,7 @@ interface FileRow {
 /**
  * Files, one per row: the name on the left, and the sizes right-aligned
  * in a column. Used for a message's attachments as well as for those of a
- * reply being written, which are removed with a cross.
+ * reply being written, which are removed with a red trash can.
  */
 function FileList({
   rows,
@@ -183,12 +182,13 @@ function FileList({
             {removable && (
               <ActionIcon
                 variant="subtle"
-                color="gray"
+                color={RED}
                 size="sm"
                 onClick={row.onRemove}
                 aria-label={`Retirer ${row.name}`}
+                title={`Retirer ${row.name}`}
               >
-                <IconX size={14} />
+                <IconTrash size={14} />
               </ActionIcon>
             )}
           </Fragment>

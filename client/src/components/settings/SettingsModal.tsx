@@ -10,7 +10,6 @@ import {
 } from "@mantine/core";
 import {
   IconBell,
-  IconCode,
   IconDatabaseExport,
   IconDeviceLaptop,
   IconBrandWindows,
@@ -32,7 +31,6 @@ import {
 import { tabStyle } from "../../themes/tabs";
 import BackupTab from "./BackupTab";
 import EntraTab from "./EntraTab";
-import DeveloperTab from "./DeveloperTab";
 import NotificationsTab from "./NotificationsTab";
 import SupportTab from "./SupportTab";
 import AssetsTab from "./AssetsTab";
@@ -51,7 +49,6 @@ const TABS: {
   { value: "administration", label: "Administration", icon: IconShieldLock },
   { value: "entra", label: "Entra", icon: IconBrandWindows },
   { value: "notifications", label: "Notifications", icon: IconBell },
-  { value: "developer", label: "Développeur", icon: IconCode },
   // Settings specific to a mode: Support, Assets.
   { value: "support", label: "Support", icon: IconHeadset },
   { value: "assets", label: "Assets", icon: IconDeviceLaptop },
@@ -66,7 +63,7 @@ const TABS: {
 const WITH_ENTRA = new Set(["workspaces", "administration"]);
 
 /** The tabs that the "admin" account does not see. */
-const WITHOUT_ADMIN = new Set(["developer", "support", "assets"]);
+const WITHOUT_ADMIN = new Set(["support", "assets"]);
 
 
 /** Entra is configured: the application is registered (ID, directory, secret). */
@@ -112,9 +109,6 @@ interface SettingsModalProps {
    * no saving, no backup — the archive covers the whole database.
    */
   canEdit: boolean;
-  /** Debug (Developer tab): the browser's selection and menu come back. */
-  debug: boolean;
-  onDebugChange: (debug: boolean) => void;
   /**
    * The account: its Settings ("Voir"), its workspace, and workspace
    * management, which opens their tab and each one's access.
@@ -129,8 +123,6 @@ export default function SettingsModal({
   onClose,
   standalone = false,
   canEdit,
-  debug,
-  onDebugChange,
   user,
   onUserChange,
 }: SettingsModalProps) {
@@ -165,8 +157,7 @@ export default function SettingsModal({
   // are shown. The Entra tab informs the modal on each read and each
   // save; "null" as long as it has not said anything.
   const [entraReady, setEntraReady] = useState<boolean | null>(null);
-  // Support and Assets concern the modes' work, and the Developer tab
-  // that of people: not the application's setup.
+  // Support and Assets concern the modes' work: not the application's setup.
   // The "admin" account does not see them (WITHOUT_ADMIN).
   // Whoever manages workspaces without seeing Settings only gets their tab;
   // they sign in through Microsoft: Entra is necessarily configured.
@@ -349,11 +340,6 @@ export default function SettingsModal({
         {panel("backup", <BackupTab />)}
 
         {panel("notifications", <NotificationsTab canEdit={canEdit} />)}
-
-        {panel(
-          "developer",
-          <DeveloperTab debug={debug} onDebugChange={onDebugChange} canEdit={canEdit} />,
-        )}
       </Tabs>
 
       <Group justify="flex-end" mt={40}>

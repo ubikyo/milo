@@ -332,27 +332,13 @@ export default function App() {
     check();
   }, []);
 
-  // Debug (Paramétrage › Développeur): outside Debug, neither text selection nor
-  // the browser menu on right click. Our own context menus
+  // No browser menu on right click. Our own context menus
   // always open.
-  const [debug, setDebug] = useState(false);
   useEffect(() => {
-    if (!user) return;
-    api
-      .getDeveloperSettings()
-      .then((r) => setDebug(r.debug))
-      .catch(() => setDebug(false));
-  }, [user]);
-  useEffect(() => {
-    const root = document.documentElement;
-    if (debug) {
-      root.setAttribute("data-milo-debug", "");
-      return () => root.removeAttribute("data-milo-debug");
-    }
     const block = (e: MouseEvent) => e.preventDefault();
     document.addEventListener("contextmenu", block);
     return () => document.removeEventListener("contextmenu", block);
-  }, [debug]);
+  }, []);
 
   // Session refused by the server: back to the sign-in screen.
   useEffect(() => {
@@ -973,7 +959,7 @@ export default function App() {
   }, []);
 
   // Keyboard shortcuts: Tab cycles through the views, Option/Alt + Tab the
-  // view's boards, N creates a project or a request, S cycles through the
+  // view's boards, N creates a project or a request, C cycles through the
   // board's contexts, I enters or leaves interface
   // editing.
   useEffect(() => {
@@ -1020,7 +1006,7 @@ export default function App() {
         return;
       }
 
-      if (event.code === "KeyS" && board) {
+      if (event.code === "KeyC" && contexts.length > 0) {
         event.preventDefault();
         const values = ["all", ...contexts.map((c) => String(c.id))];
         changeContext(values[(values.indexOf(selectedContext) + 1) % values.length]!);
@@ -1132,8 +1118,6 @@ export default function App() {
         onClose={handleLogout}
         standalone
         canEdit
-        debug={debug}
-        onDebugChange={setDebug}
         user={user}
         onUserChange={setUser}
       />
@@ -1581,6 +1565,7 @@ export default function App() {
               <ShortcutsHelp
                 projects={widgets.some((w) => w.type === "project.list")}
                 requests={widgets.some((w) => w.type === "support.list")}
+                contexts={contexts.length > 0}
               />
               <KonamiCode
                 isEditing={isEditing}
@@ -1649,8 +1634,6 @@ export default function App() {
                 opened={settingsOpened}
                 onClose={() => setSettingsOpened(false)}
                 canEdit={user.settings.update}
-                debug={debug}
-                onDebugChange={setDebug}
                 user={user}
                 onUserChange={setUser}
               />

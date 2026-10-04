@@ -3,7 +3,7 @@ import { IconLink } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import classes from "../../assets/styles/AccessLink.module.css";
 import { insertRow } from "../../components/ui/SettingRows";
-import { withField, text } from "../types";
+import { withField, count, text } from "../types";
 import type { AccessWidget, WidgetDisplayProps } from "../types";
 
 // A link: a service's address, the word that designates it, and the means to
@@ -22,6 +22,15 @@ const LABEL = "label";
 const URL = "url";
 const ACTIVE = "enabled";
 const COLOR = "color";
+const SIZE = "size";
+
+/**
+ * The text size of a link that has been given none: Mantine's "sm", that of
+ * the rest of the column. The bounds are those of the titles.
+ */
+const DEFAULT_SIZE = 14;
+const SIZE_MIN = 8;
+const SIZE_MAX = 64;
 
 /** The color of a link that has been given none: the text's, depending on the theme. */
 const DEFAULT_COLOR = "var(--mantine-color-text)";
@@ -97,6 +106,7 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
   const label = title || url;
   const active = isActive(config);
   const color = text(config, COLOR) || DEFAULT_COLOR;
+  const size = count(config, SIZE, DEFAULT_SIZE);
 
   const click = () => {
     // The second click of a double click lands here: it triggers nothing, it
@@ -150,7 +160,7 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
         styles={{
           input: {
             ...LINE_SPACING,
-            fontSize: "var(--mantine-font-size-sm)",
+            fontSize: size,
             color: color,
             height: "auto",
             minHeight: 0,
@@ -167,8 +177,7 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
   if (!active) {
     return (
       <Text
-        size="sm"
-        style={LINE_SPACING}
+        style={{ ...LINE_SPACING, fontSize: size }}
         c="dimmed"
         td="line-through"
         onDoubleClick={doubleClick}
@@ -184,8 +193,7 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
   if (!url) {
     return (
       <Text
-        size="sm"
-        style={LINE_SPACING}
+        style={{ ...LINE_SPACING, fontSize: size }}
         c={color}
         onDoubleClick={doubleClick}
         lineClamp={1}
@@ -203,8 +211,7 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      size="sm"
-      style={LINK_ROW}
+      style={{ ...LINK_ROW, fontSize: size }}
       lineClamp={1}
       // Neither blue nor underlined: the link reads like the rest of the column.
       // The color is set here rather than in a stylesheet — it then wins for
@@ -245,18 +252,29 @@ export const linkWidget: AccessWidget = {
 
   // With no chosen color, the link follows the text's: white on the dark
   // theme, black on the light one.
-  appearance: (config, onChange) => [
-    {
-      name: "Texte",
-      what: "du lien",
-      color: {
-        value: text(config, COLOR),
-        onChange: (v) => onChange(insertRow(config, { [COLOR]: v })),
+  // Its size, brought back to the default, is no longer stored.
+  appearance: (config, onChange) => {
+    const size = count(config, SIZE, DEFAULT_SIZE);
+    return [
+      {
+        name: "Texte",
+        what: "du lien",
+        color: {
+          value: text(config, COLOR),
+          onChange: (v) => onChange(insertRow(config, { [COLOR]: v })),
+        },
+        size: {
+          value: size,
+          defaultValue: DEFAULT_SIZE,
+          min: SIZE_MIN,
+          max: SIZE_MAX,
+          onChange: (v) => onChange(insertRow(config, { [SIZE]: v === DEFAULT_SIZE ? "" : v })),
+        },
+        modified: text(config, COLOR) !== "" || size !== DEFAULT_SIZE,
+        reset: () => onChange(insertRow(config, { [COLOR]: "", [SIZE]: "" })),
       },
-      modified: text(config, COLOR) !== "",
-      reset: () => onChange(insertRow(config, { [COLOR]: "" })),
-    },
-  ],
+    ];
+  },
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">

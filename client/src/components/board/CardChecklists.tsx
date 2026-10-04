@@ -1,12 +1,11 @@
 import {
-  Checkbox,
   Group,
   Input,
   Box,
-  Menu,
   Popover,
   Progress,
   Stack,
+  Switch,
   Text,
   TextInput,
   UnstyledButton,
@@ -14,26 +13,28 @@ import {
 import { DatePicker } from "@mantine/dates";
 import {
   IconCalendar,
-  IconTrash,
   IconUserPlus,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
-import { FIELD_ICON, RED } from "../../themes/colors";
+import { FIELD_ICON } from "../../themes/colors";
 import { ACTOR_GAP, PersonAvatar } from "../ui/ActorAvatars";
 import ActorPicker from "../ui/ActorPicker";
-import AddButton from "../ui/AddButton";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
-import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 import { DragHandle, InsertLine, useDraggableStack } from "../ui/DraggableStack";
-import { ROUNDING, ROW_BACKGROUND, ROW_INSET, NAME_INSET, rowStyle } from "../ui/DrawerRows";
+import {
+  ROUNDING,
+  ROW_BACKGROUND,
+  ROW_INSET,
+  NAME_INSET,
+  ListFooter,
+  RowCheckbox,
+  rowStyle,
+  useRowSelection,
+} from "../ui/DrawerRows";
 import { errorMessage } from "../../lib/errors";
-import type {
-  CSSProperties,
-  MouseEvent as ReactMouseEvent,
-  PointerEvent as ReactPointerEvent,
-} from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import type {
   Checklist as ChecklistType,
   ChecklistItemInput,
@@ -107,10 +108,6 @@ const inlineInput = (extra?: CSSProperties) => ({
     ...extra,
   },
 });
-
-// Right-click in an input keeps the browser menu: copy, paste.
-const inInput = (event: ReactMouseEvent): boolean =>
-  event.target instanceof HTMLElement && event.target.closest("input, textarea") !== null;
 
 // A date is stored as "YYYY-MM-DD" and displayed in French format.
 const showDate = (value: string | null | undefined): string | null =>
@@ -230,9 +227,8 @@ function ItemMembers({ members, users, onChange }: ItemMembersProps) {
   );
 }
 
-// A checklist row: the handle to drag it, the checkbox, the label that
-// is edited on click, the members and the date. "Supprimer" is in its
-// context menu, on right-click, as for board cards.
+// A checklist row: the handle to drag it, the selection box, the switch that
+// marks it done, the label that is edited on click, the members and the date.
 interface ChecklistItemProps {
   item: Element;
   users: PublicUser[];
@@ -251,7 +247,10 @@ interface ChecklistItemProps {
   onRename: (text: string) => void;
   onDate: (date: string) => void;
   onMembers: (ids: number[]) => void;
-  onContextMenu: (position: PointMenuPosition) => void;
+  /** Checked for deletion — or its whole checklist is ("locked"). */
+  checked: boolean;
+  checkLocked: boolean;
+  onCheck: (checked: boolean) => void;
 }
 
 function ChecklistItem({
@@ -269,7 +268,9 @@ function ChecklistItem({
   onRename,
   onDate,
   onMembers,
-  onContextMenu,
+  checked,
+  checkLocked,
+  onCheck,
 }: ChecklistItemProps) {
   const [edited, setEdited] = useState<string | null>(autoEdit ? item.text : null);
 
@@ -296,19 +297,31 @@ function ChecklistItem({
       wrap="nowrap"
       align="center"
       data-checklist-item={item.id}
-      onContextMenu={(e) => !inInput(e) && onContextMenu(menuPosition(e))}
       style={{ ...row, minHeight: ROW_HEIGHT }}
     >
       {/* Only the handle moves the row: everything else already responds to
           click, a row draggable from end to end would get in the way. */}
       <DragHandle onPointerDown={onPointerDown} label="Glisser pour réordonner" />
 
-      <Checkbox
+      {/* Within a checked checklist, the item goes with it: its box shows it,
+          and cannot be unchecked on its own. */}
+      <RowCheckbox
+        label={`Sélectionner ${item.text || "l'élément"}`}
+        checked={checked || checkLocked}
+        onChange={onCheck}
+        disabled={checkLocked}
+        afterHandle
+        gap="xs"
+      />
+
+      {/* Done or not: a switch, so it is not mistaken for the selection box. */}
+      <Switch
         checked={Boolean(item.done)}
         onChange={(e) => onToggle(e.currentTarget.checked)}
         size="xs"
-        styles={{ input: { cursor: "pointer" } }}
-        aria-label={item.text || "Élément de checklist"}
+        color="teal"
+        styles={{ track: { cursor: "pointer" } }}
+        aria-label={`${item.text || "Élément de checklist"} : fait`}
       />
 
       {edited === null ? (
@@ -354,8 +367,9 @@ function ChecklistItem({
 }
 
 // A checklist: its header — editable title, progress —, its items
-// and the link that adds one. It is always expanded. It is deleted from
-// its header's context menu.
+// and the link that adds one. It is always expanded. The header's box selects
+// the whole checklist, the items' boxes the items: the button that replaces
+// "Ajouter" deletes them.
 interface ChecklistProps {
   checklist: ChecklistType;
   users: PublicUser[];
@@ -379,17 +393,16 @@ function Checklist({
 }: ChecklistProps) {
   /** The title being edited; "null" while it is not being modified. */
   const [title, setTitle] = useState<string | null>(null);
-  const [toDelete, setToDelete] = useState<ChecklistType | null>(null);
-  const [itemToDelete, setItemToDelete] = useState<Element | null>(null);
   // The item just added: it opens in edit mode.
   const [newItem, setNewItem] = useState<Id | null>(null);
-  // The open context menu: that of the header (no item) or of an
-  // item.
-  const [menu, setMenu] = useState<{ item: Element | null; position: PointMenuPosition } | null>(
-    null,
-  );
+  /** The whole checklist is checked for deletion. */
+  const [allChecked, setAllChecked] = useState(false);
+  /** The deletion awaiting confirmation: the checklist, or the checked items. */
+  const [confirming, setConfirming] = useState(false);
 
   const items = checklist.items || [];
+  const selection = useRowSelection(items.map((i) => i.id));
+  const checkedItems = items.filter((i) => selection.isChecked(i.id));
   // The header opens the stack, the items follow it.
   const rows = items.length + 1;
   const percentage = progress(items);
@@ -440,12 +453,16 @@ function Checklist({
       await onChanged();
     });
 
-  const deleteItem = async () => {
-    const item = itemToDelete;
-    setItemToDelete(null);
-    if (!item) return;
-    await act(async () => {
-      await api.deleteChecklistItem(item.id);
+  /** Deletes what is checked: the whole checklist, or its checked items. */
+  const deleteChecked = () => {
+    setConfirming(false);
+    return act(async () => {
+      if (allChecked) {
+        await api.deleteChecklist(checklist.id);
+      } else {
+        await Promise.all(checkedItems.map((i) => api.deleteChecklistItem(i.id)));
+        selection.reset();
+      }
       await onChanged();
     });
   };
@@ -461,9 +478,6 @@ function Checklist({
           gap="xs"
           wrap="nowrap"
           align="center"
-          onContextMenu={(e) =>
-            !inInput(e) && setMenu({ item: null, position: menuPosition(e) })
-          }
           style={{ ...checklistRowStyle(0, rows, false), backgroundColor: HEADER_BACKGROUND }}
         >
           {/* The handle opens the header: it is what reorders the
@@ -471,6 +485,13 @@ function Checklist({
           <DragHandle
             onPointerDown={onHandlePointerDown}
             label="Glisser pour réordonner la checklist"
+          />
+          <RowCheckbox
+            label={`Sélectionner la checklist ${checklist.title}`}
+            checked={allChecked}
+            onChange={setAllChecked}
+            afterHandle
+            gap="xs"
           />
           {title === null ? (
             <Text
@@ -547,7 +568,9 @@ function Checklist({
                 onMembers?.(member_ids);
                 return editItem(item, { member_ids });
               }}
-              onContextMenu={(position) => setMenu({ item, position })}
+              checked={selection.isChecked(item.id)}
+              checkLocked={allChecked}
+              onCheck={(on) => selection.toggle(item.id, on)}
             />
           </div>
         ))}
@@ -555,58 +578,43 @@ function Checklist({
       </Stack>
 
       {/* As close as possible to the stack it extends. */}
-      <AddButton label="Ajouter un élément" onClick={addItem} mt={4} />
-
-      {menu && (
-        <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          <Menu.Item
-            color={RED}
-            leftSection={<IconTrash size={16} />}
-            onClick={() =>
-              menu.item ? setItemToDelete(menu.item) : setToDelete(checklist)
-            }
-          >
-            {menu.item ? "Supprimer l'élément" : "Supprimer la checklist"}
-          </Menu.Item>
-        </PointMenu>
-      )}
-
-      <DeleteConfirmModal
-        opened={toDelete !== null}
-        onClose={() => setToDelete(null)}
-        onConfirm={() => {
-          setToDelete(null);
-          return act(async () => {
-            await api.deleteChecklist(checklist.id);
-            await onChanged();
-          });
-        }}
-        title="Supprimer la checklist"
-        message={
-          <>
-            Voulez-vous vraiment supprimer « {checklist.title} » ?
-            {items.length > 0 && (
-              <>
-                {" "}
-                <strong>
-                  {items.length} élément{items.length > 1 ? "s" : ""}
-                </strong>{" "}
-                {items.length > 1 ? "seront supprimés" : "sera supprimé"}.
-              </>
-            )}
-          </>
-        }
+      <ListFooter
+        addLabel="Ajouter un élément"
+        onAdd={addItem}
+        checkedCount={allChecked ? 1 : checkedItems.length}
+        onDeleteChecked={() => setConfirming(true)}
       />
 
       <DeleteConfirmModal
-        opened={itemToDelete !== null}
-        onClose={() => setItemToDelete(null)}
-        onConfirm={deleteItem}
-        title="Supprimer l'élément"
+        opened={confirming}
+        onClose={() => setConfirming(false)}
+        onConfirm={deleteChecked}
+        title={
+          allChecked
+            ? "Supprimer la checklist"
+            : checkedItems.length > 1
+              ? `Supprimer ${checkedItems.length} éléments`
+              : "Supprimer l'élément"
+        }
         message={
-          <>
-            Voulez-vous vraiment supprimer « {itemToDelete?.text || "cet élément"} » ?
-          </>
+          allChecked ? (
+            <>
+              Voulez-vous vraiment supprimer « {checklist.title} » ?
+              {items.length > 0 && (
+                <>
+                  {" "}
+                  <strong>
+                    {items.length} élément{items.length > 1 ? "s" : ""}
+                  </strong>{" "}
+                  {items.length > 1 ? "seront supprimés" : "sera supprimé"}.
+                </>
+              )}
+            </>
+          ) : checkedItems.length > 1 ? (
+            <>Voulez-vous vraiment supprimer ces {checkedItems.length} éléments ?</>
+          ) : (
+            <>Voulez-vous vraiment supprimer « {checkedItems[0]?.text || "cet élément"} » ?</>
+          )
         }
       />
     </Box>
@@ -615,8 +623,8 @@ function Checklist({
 
 /**
  * A card's checklists, at the end of its details. They are added from the
- * drawer's "Actions" menu, and everything is saved as you go: a checked
- * box, a validated label or a moved row is sent to the server at once,
+ * drawer's "Actions" menu, and everything is saved as you go: a switched
+ * item, a validated label or a moved row is sent to the server at once,
  * without waiting for "Enregistrer".
  */
 interface CardChecklistsProps {

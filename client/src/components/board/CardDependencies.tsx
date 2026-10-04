@@ -1,14 +1,19 @@
-import { ActionIcon, Group, Input, Select, Stack } from "@mantine/core";
-import { IconChevronDown, IconTrash } from "@tabler/icons-react";
+import { Group, Input, Select, Stack } from "@mantine/core";
+import { IconChevronDown } from "@tabler/icons-react";
 import { RELATIONS } from "@milo/shared";
 import type { CardLink, Id, LinkedCard, Relation } from "@milo/shared";
 import { api } from "../../api";
 import classes from "../../assets/styles/CardDueDate.module.css";
 import { textWidth } from "../../lib/fieldWidth";
 import { errorMessage } from "../../lib/errors";
-import { RED } from "../../themes/colors";
-import AddButton from "../ui/AddButton";
-import { ROUNDING, NAME_INSET, rowStyle } from "../ui/DrawerRows";
+import {
+  ROUNDING,
+  NAME_INSET,
+  ListFooter,
+  RowCheckbox,
+  rowStyle,
+  useRowSelection,
+} from "../ui/DrawerRows";
 import CardChoice from "./CardChoice";
 
 /**
@@ -47,7 +52,9 @@ const relationWidth = () =>
  * A card's dependencies, in the same style as its due date: one gray
  * row per dependency — the relation on the left, the other card on the
  * right, searched in the board then in the others. Everything is saved
- * as you go; the card on the other side shows the inverse relation.
+ * as you go; the card on the other side shows the inverse relation. The
+ * checked rows are deleted at once from the list's footer, without
+ * confirmation.
  */
 interface CardDependenciesProps {
   cardId: Id;
@@ -70,6 +77,10 @@ export default function CardDependencies({
   onError,
   readOnly,
 }: CardDependenciesProps) {
+  const selection = useRowSelection([
+    ...links.map((l) => `link-${l.id}`),
+    ...drafts.map((d) => `draft-${d.key}`),
+  ]);
   if (links.length === 0 && drafts.length === 0) return null;
 
   const total = links.length + drafts.length;
@@ -97,16 +108,27 @@ export default function CardDependencies({
     }
   };
 
-  const remove = async (link: CardLink) => {
-    try {
-      await api.deleteCardLink(link.id, cardId);
-      onLinks(links.filter((l) => l.id !== link.id));
-    } catch (e) {
-      onError(errorMessage(e));
-    }
+  /**
+   * Removes the checked rows: the drafts at once, the saved links on the
+   * server. A link the server refused stays, checked.
+   */
+  const removeChecked = async () => {
+    const checked = new Set(selection.checked);
+    onDrafts(drafts.filter((d) => !checked.has(`draft-${d.key}`)));
+    const chosen = links.filter((l) => checked.has(`link-${l.id}`));
+    const results = await Promise.allSettled(
+      chosen.map((link) => api.deleteCardLink(link.id, cardId)),
+    );
+    const deleted = new Set(
+      chosen.filter((_, i) => results[i]!.status === "fulfilled").map((l) => l.id),
+    );
+    if (deleted.size > 0) onLinks(links.filter((l) => !deleted.has(l.id)));
+    const failure = results.find((r) => r.status === "rejected");
+    if (failure) onError(errorMessage(failure.reason));
+    selection.reset(chosen.filter((l) => !deleted.has(l.id)).map((l) => `link-${l.id}`));
   };
 
-  /** A row: the relation, the other card, and a way to remove it. */
+  /** A row: its checkbox, the relation and the other card. */
   const row = (
     rank: number,
     key: string,
@@ -114,7 +136,6 @@ export default function CardDependencies({
     target: LinkedCard | null,
     onRelation: (relation: Relation) => void,
     onTarget: (target: LinkedCard) => void,
-    onRemove: () => void,
   ) => (
     <Group
       key={key}
@@ -124,6 +145,13 @@ export default function CardDependencies({
       align="center"
       style={{ ...rowStyle(rank, total, false), paddingLeft: NAME_INSET }}
     >
+      {!readOnly && (
+        <RowCheckbox
+          label={`Sélectionner la dépendance${target ? ` « ${target.text} »` : ""}`}
+          checked={selection.isChecked(key)}
+          onChange={(on) => selection.toggle(key, on)}
+        />
+      )}
       <Select
         size="xs"
         radius={ROUNDING}
@@ -151,17 +179,6 @@ export default function CardDependencies({
         className={classes.field}
         inset={FIELD_INSET}
       />
-      {!readOnly && (
-        <ActionIcon
-          variant="subtle"
-          color={RED}
-          onClick={onRemove}
-          aria-label="Supprimer la dépendance"
-          title="Supprimer la dépendance"
-        >
-          <IconTrash size={16} />
-        </ActionIcon>
-      )}
     </Group>
   );
 
@@ -176,7 +193,6 @@ export default function CardDependencies({
             link.card,
             (relation) => void updateStatement(link, relation, link.card.id),
             (target) => void updateStatement(link, link.relation, target.id),
-            () => void remove(link),
           ),
         )}
         {drafts.map((draft, rank) =>
@@ -190,18 +206,16 @@ export default function CardDependencies({
                 drafts.map((b) => (b.key === draft.key ? { ...b, relation } : b)),
               ),
             (target) => void create(draft, target),
-            () => onDrafts(drafts.filter((b) => b.key !== draft.key)),
           ),
         )}
       </Stack>
 
-      {!readOnly && (
-        <AddButton
-          label="Ajouter une dépendance"
-          onClick={() => onDrafts([...drafts, newDraft()])}
-          mt={4}
-        />
-      )}
+      <ListFooter
+        addLabel={readOnly ? undefined : "Ajouter une dépendance"}
+        onAdd={readOnly ? undefined : () => onDrafts([...drafts, newDraft()])}
+        checkedCount={readOnly ? 0 : selection.checked.length}
+        onDeleteChecked={() => void removeChecked()}
+      />
     </Input.Wrapper>
   );
 }

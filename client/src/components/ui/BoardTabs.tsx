@@ -288,12 +288,9 @@ export default function BoardTabs({
                       onClick={keep}
                       onDoubleClick={keep}
                       // Stopped here, the right-click no longer reaches what silences the
-                    // browser menu (App): it silences it itself — except in
-                    // Debug, where that menu comes back.
+                    // browser menu (App): it silences it itself.
                     onContextMenu={(e) => {
-                      if (!document.documentElement.hasAttribute("data-milo-debug")) {
-                        e.preventDefault();
-                      }
+                      e.preventDefault();
                       keep(e);
                     }}
                       onKeyDown={keep}

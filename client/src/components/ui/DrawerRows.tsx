@@ -1,9 +1,11 @@
-import { Box, Button, Text, TextInput } from "@mantine/core";
+import { Box, Button, Checkbox, Text, TextInput, type ButtonProps } from "@mantine/core";
 import { useRef, useState } from "react";
-import { IconGripVertical } from "@tabler/icons-react";
+import { IconGripVertical, IconTrash } from "@tabler/icons-react";
 import type { ComponentType, CSSProperties, DragEvent } from "react";
+import AddButton from "./AddButton";
 import EmptyPanel from "./EmptyPanel";
-import { GREEN } from "../../themes/colors";
+import { GREEN, RED } from "../../themes/colors";
+import { PLUS_SIZE } from "../../themes/plus";
 
 // The common look of a widget drawer's lists — its columns (ColumnFields), the
 // board's categories and labels (BoardListFields): tight rows on a gray
@@ -18,6 +20,8 @@ export const ROW_BACKGROUND = "light-dark(#ededed, var(--mantine-color-dark-6))"
 /** The padding around a row's content, and to the left of its handle. */
 export const ROW_INSET = 4;
 export const NAME_INSET = 10;
+/** The text's inset inside a row's input, a little tighter than NAME_INSET. */
+export const INPUT_INSET = NAME_INSET - 3;
 
 /**
  * The background of a field being edited — a width with focus, a column in a
@@ -57,7 +61,7 @@ export const INPUT_STYLE: CSSProperties = { backgroundColor: INPUT_BACKGROUND };
 export const nameFieldStyle = (entered: boolean): CSSProperties => ({
   height: "var(--input-height-xs)",
   minHeight: "var(--input-height-xs)",
-  paddingLeft: NAME_INSET,
+  paddingLeft: INPUT_INSET,
   borderWidth: 0,
   ...(entered ? INPUT_STYLE : { backgroundColor: "transparent" }),
 });
@@ -161,6 +165,141 @@ export function RowButton({
       {children}
     </Button>
   );
+}
+
+/** The width of an "xs" checkbox. */
+const CHECKBOX_SIZE = 16;
+
+/**
+ * A checkbox's place in its row: pulled closer to a handle, 2 px of air after
+ * it. The pull assumes the row's usual "sm" gap; a row spaced "xs" pulls 2 px
+ * less, so the box lands at the same place.
+ */
+const checkboxStyle = (afterHandle: boolean, gap: "sm" | "xs" = "sm"): CSSProperties => ({
+  flexShrink: 0,
+  marginLeft: afterHandle ? (gap === "xs" ? -3 : -5) : 0,
+  marginRight: 2,
+});
+
+/**
+ * A row's selection box, at its start — just after the handle when there is
+ * one ("afterHandle" pulls it closer). Checked rows are deleted together from
+ * the list's footer (ListFooter).
+ */
+export function RowCheckbox({
+  label,
+  checked,
+  onChange,
+  afterHandle = false,
+  disabled = false,
+  gap = "sm",
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  afterHandle?: boolean;
+  disabled?: boolean;
+  /** The row's gap, when it is not the usual "sm". */
+  gap?: "sm" | "xs";
+}) {
+  return (
+    <Checkbox
+      size="xs"
+      aria-label={label}
+      checked={checked}
+      disabled={disabled}
+      onChange={(e) => onChange(e.currentTarget.checked)}
+      // Pressing the box must not start dragging the row.
+      onMouseDown={(e) => e.stopPropagation()}
+      style={checkboxStyle(afterHandle, gap)}
+    />
+  );
+}
+
+/**
+ * The empty space of a row that cannot be deleted — a row being added, a
+ * fixed one —: the width and margins of a RowCheckbox, so names stay aligned.
+ */
+export function RowCheckboxSpace({ afterHandle = false }: { afterHandle?: boolean }) {
+  return <Box w={CHECKBOX_SIZE} style={checkboxStyle(afterHandle)} />;
+}
+
+/**
+ * The checked rows of a list, by key. Keys that left the list (a row removed
+ * another way, a list reloaded) no longer count.
+ */
+export function useRowSelection<K>(keys: readonly K[]) {
+  const [selected, setSelected] = useState<ReadonlySet<K>>(new Set());
+  const checked = keys.filter((k) => selected.has(k));
+  return {
+    /** The checked keys still in the list, in list order. */
+    checked,
+    isChecked: (key: K) => selected.has(key),
+    toggle: (key: K, on: boolean) =>
+      setSelected((before) => {
+        const next = new Set(before);
+        if (on) next.add(key);
+        else next.delete(key);
+        return next;
+      }),
+    /** Keeps only these keys checked — none by default. */
+    reset: (keep: Iterable<K> = []) => setSelected(new Set(keep)),
+  };
+}
+
+/**
+ * Deletes the checked rows: in place of the "Ajouter" button while rows are
+ * checked. The same discreet look as AddButton, in red.
+ */
+export function DeleteSelectedButton({
+  count,
+  onClick,
+  ...props
+}: {
+  /** How many rows are checked: one names "l'élément", several "les éléments". */
+  count: number;
+  onClick: () => void;
+} & Omit<ButtonProps, "onClick">) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <Button
+      variant="transparent"
+      size="xs"
+      justify="flex-start"
+      px={0}
+      c={hovered ? "var(--mantine-color-red-9)" : RED}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      leftSection={<IconTrash size={PLUS_SIZE} />}
+      onClick={onClick}
+      {...props}
+    >
+      {count > 1 ? "Supprimer les éléments sélectionnés" : "Supprimer l'élément sélectionné"}
+    </Button>
+  );
+}
+
+/**
+ * Under a list: "Ajouter …", or — while rows are checked — the button that
+ * deletes them. Without "addLabel" (a read-only list, nothing left to add),
+ * only the delete button can show.
+ */
+export function ListFooter({
+  addLabel,
+  onAdd,
+  checkedCount,
+  onDeleteChecked,
+  mt = 4,
+}: {
+  addLabel?: string;
+  onAdd?: () => void;
+  checkedCount: number;
+  onDeleteChecked: () => void;
+  mt?: number;
+}) {
+  if (checkedCount > 0) return <DeleteSelectedButton count={checkedCount} onClick={onDeleteChecked} mt={mt} />;
+  if (!addLabel || !onAdd) return null;
+  return <AddButton label={addLabel} onClick={onAdd} mt={mt} />;
 }
 
 /** « 1 jalon », « 3 jalons ». */

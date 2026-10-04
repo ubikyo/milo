@@ -1,8 +1,13 @@
 import { Input, Text, TextInput } from "@mantine/core";
-import { IconArrowDown, IconArrowUp, IconHash, IconTrash } from "@tabler/icons-react";
+import { IconHash } from "@tabler/icons-react";
 import { Fragment, useRef, useState } from "react";
 import classes from "../../assets/styles/AccessNumber.module.css";
-import ListItems from "../../components/ui/ListItems";
+import ListItems, { type AddRow } from "../../components/ui/ListItems";
+import {
+  DeleteSelectedButton,
+  RowCheckbox,
+  useRowSelection,
+} from "../../components/ui/DrawerRows";
 import { DragHandle, InsertLine, useDraggableStack } from "../../components/ui/DraggableStack";
 import { STRONG_TEXT } from "../../themes/colors";
 import { SUBCATEGORY_COLOR, SUBCATEGORY_GAP } from "./subcategory";
@@ -69,32 +74,36 @@ const lowMargin = (next: AccessBlockType | null): number =>
 
 /**
  * The rows, in the list of categories and labels (ListItems): each row is
- * edited in place, dragged by its handle or moved one step by right click,
- * which also deletes it; the last one adds another. Beyond ten, the list
+ * edited in place, dragged by its handle, and selected by its box; the last
+ * one adds another — or, while rows are checked, deletes them. Beyond ten, the list
  * scrolls. Everything stays in the drawer's draft until saved.
  */
 function Rows({ config, onChange }: WidgetConfigProps) {
   const list = rows(config);
   const [newRow, setNewRow] = useState<Row>(EMPTY_ROW);
   const firstField = useRef<HTMLInputElement | null>(null);
+  /** The checked rows, by rank. */
+  const selection = useRowSelection(list.map((_, i) => i));
 
   const change = (index: number, field: keyof Row, value: string) =>
     onChange(store(list.map((l, i) => (i === index ? { ...l, [field]: value } : l))));
 
   // Rows have no identifier: their rank stands in for it, for the duration
   // of the gesture. The order received is that of the old ranks.
-  const handleReorder = (order: number[]) => onChange(store(order.flatMap((i) => list[i] ?? [])));
+  // The checks follow their rows.
+  const handleReorder = (order: number[]) => {
+    onChange(store(order.flatMap((i) => list[i] ?? [])));
+    selection.reset(order.flatMap((old, i) => (selection.isChecked(old) ? [i] : [])));
+  };
   const { zoneRef, drag, onPointerDown } = useDraggableStack({
     ids: list.map((_, i) => i),
     selector: "[data-attribute-row]",
     onReorder: handleReorder,
   });
 
-  // One step up or down, from the row's menu.
-  const move = (index: number, to: number) => {
-    const order = list.map((_, i) => i).filter((i) => i !== index);
-    order.splice(to, 0, index);
-    handleReorder(order);
+  const removeChecked = () => {
+    onChange(store(list.filter((_, i) => !selection.isChecked(i))));
+    selection.reset();
   };
 
   // Focus returns to the label: the next entry follows on.
@@ -115,6 +124,33 @@ function Rows({ config, onChange }: WidgetConfigProps) {
     if (e.key === "Escape") setNewRow(EMPTY_ROW);
   };
 
+  // The add row, while no row is checked.
+  const addRow: AddRow = {
+    // The label slides in before the number field, which carries the
+    // list's Enter symbol at its end.
+    section: (
+      <TextInput
+        ref={firstField}
+        placeholder="Libellé"
+        aria-label="Libellé"
+        value={newRow.label}
+        onChange={(e) => setNewRow({ ...newRow, label: e.currentTarget.value })}
+        onKeyDown={addKeyDown}
+        variant="unstyled"
+        size="sm"
+        style={{ flex: 1, minWidth: 0 }}
+        autoFocus
+      />
+    ),
+    // Text and not a number: a number is copied as it is written, with
+    // its spaces, dots and any country code.
+    placeholder: "Numéro",
+    value: newRow.number,
+    onChange: (number) => setNewRow({ ...newRow, number }),
+    onSubmit: add,
+    onCancel: () => setNewRow(EMPTY_ROW),
+  };
+
   return (
     <Input.Wrapper label="Attributs">
       <ListItems
@@ -122,52 +158,26 @@ function Rows({ config, onChange }: WidgetConfigProps) {
         emptyIcon={IconHash}
         emptyText="Aucun attribut"
         maxRows={VISIBLE_ROWS}
-        add={{
-          // The label slides in before the number field, which carries the
-          // list's Enter symbol at its end.
-          section: (
-            <TextInput
-              ref={firstField}
-              placeholder="Libellé"
-              aria-label="Libellé"
-              value={newRow.label}
-              onChange={(e) => setNewRow({ ...newRow, label: e.currentTarget.value })}
-              onKeyDown={addKeyDown}
-              variant="unstyled"
-              size="sm"
-              style={{ flex: 1, minWidth: 0 }}
-              autoFocus
-            />
-          ),
-          // Text and not a number: a number is copied as it is written, with
-          // its spaces, dots and any country code.
-          placeholder: "Numéro",
-          value: newRow.number,
-          onChange: (number) => setNewRow({ ...newRow, number }),
-          onSubmit: add,
-          onCancel: () => setNewRow(EMPTY_ROW),
-        }}
+        // While rows are checked, the button that deletes them takes the place
+        // of the add row.
+        add={
+          selection.checked.length > 0
+            ? {
+                input: (
+                  <DeleteSelectedButton
+                    count={selection.checked.length}
+                    onClick={removeChecked}
+                  />
+                ),
+              }
+            : addRow
+        }
       >
         <div ref={zoneRef}>
           {list.map((l, i) => (
             <div key={i} data-attribute-row style={{ opacity: drag?.id === i ? 0.4 : 1 }}>
               {drag?.target === i && <InsertLine />}
-              <ListItems.Row
-                actions={[
-                  ...(i > 0
-                    ? [{ label: "Monter", icon: IconArrowUp, onClick: () => move(i, i - 1) }]
-                    : []),
-                  ...(i < list.length - 1
-                    ? [{ label: "Descendre", icon: IconArrowDown, onClick: () => move(i, i + 1) }]
-                    : []),
-                  {
-                    label: "Supprimer",
-                    icon: IconTrash,
-                    onClick: () => onChange(store(list.filter((_, j) => j !== i))),
-                    danger: true,
-                  },
-                ]}
-              >
+              <ListItems.Row>
                 {(active) => (
                   <>
                     {/* Only the handle moves the row: the fields keep their clicks. */}
@@ -175,6 +185,12 @@ function Rows({ config, onChange }: WidgetConfigProps) {
                       onPointerDown={onPointerDown(i, i)}
                       visible={active}
                       label="Glisser pour réordonner"
+                    />
+                    <RowCheckbox
+                      label={`Sélectionner ${l.label || l.number || "l'attribut"}`}
+                      checked={selection.isChecked(i)}
+                      onChange={(on) => selection.toggle(i, on)}
+                      afterHandle
                     />
                     <TextInput
                       placeholder="Libellé"

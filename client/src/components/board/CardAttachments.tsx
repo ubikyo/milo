@@ -1,17 +1,12 @@
-import { Box, Group, Input, Menu, Stack, Text } from "@mantine/core";
-import { IconExternalLink, IconTrash } from "@tabler/icons-react";
+import { Box, Group, Input, Stack, Text } from "@mantine/core";
+import { IconExternalLink } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useState } from "react";
 import type { ComponentPropsWithoutRef, DragEvent, ReactNode } from "react";
-import { FIELD_ICON, RED } from "../../themes/colors";
-import AddButton from "../ui/AddButton";
-import { Handle, move } from "../ui/DrawerRows";
+import { FIELD_ICON } from "../../themes/colors";
+import { Handle, ListFooter, RowCheckbox, move, useRowSelection } from "../ui/DrawerRows";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
-import PointMenu, {
-  menuPosition,
-  type PointMenuPosition,
-} from "../ui/PointMenu";
 import type { Attachment, Id } from "@milo/shared";
 import classes from "../../assets/styles/CardAttachments.module.css";
 
@@ -57,76 +52,82 @@ const size = (bytes: number): string => {
 /** What a row shows of a file: an attachment, a cover. */
 export type File = Pick<Attachment, "url" | "name" | "created_at" | "size" | "is_image">;
 
-// The whole row opens the file in a new tab; "Supprimer" is in its context
-// menu, on right click, like for checklists and board cards. Cover images
-// (CardCovers) show on the same row, with a handle in front to reorder them.
-interface RowProps extends Omit<ComponentPropsWithoutRef<"a">, "onContextMenu"> {
+// The whole row opens the file in a new tab: its link stretches over the
+// row (CardAttachments.module.css). The handle that reorders the files and the
+// checkbox that selects them for deletion sit in front, above the link and
+// outside it, so that a click on them opens nothing. Cover images (CardCovers)
+// show on the same row.
+interface RowProps extends ComponentPropsWithoutRef<"div"> {
   attachment: File;
-  onContextMenu: (position: PointMenuPosition) => void;
-  /** Placed before the thumbnail: the handle that reorders the covers. */
+  /** Placed before the thumbnail: the handle that reorders the files. */
   handle?: ReactNode;
+  /** After the handle: the checkbox that selects the file for deletion. */
+  checkbox?: ReactNode;
 }
 
-export function FileRow({ attachment, onContextMenu, handle, ...props }: RowProps) {
+export function FileRow({ attachment, handle, checkbox, ...props }: RowProps) {
   return (
-    <a
-      href={attachment.url}
-      target="_blank"
-      rel="noreferrer"
-      className={classes.row}
-      aria-label={`Ouvrir ${attachment.name}`}
-      onContextMenu={(e) => onContextMenu(menuPosition(e))}
-      {...props}
-    >
-      <Group gap="sm" wrap="nowrap" align="center">
-        {handle}
-        {/* The inset: the photo if it is one, otherwise its extension in the center. */}
-        <Box
-          w={THUMBNAIL_W}
-          h={THUMBNAIL_H}
-          className={classes.thumbnail}
-          style={{
-            flexShrink: 0,
-            overflow: "hidden",
-            borderRadius: "var(--mantine-radius-sm)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
+    <div className={classes.row} {...props}>
+      {/* The thumbnail sits 4 px closer to the checkbox than the row's usual gap. */}
+      <Group gap="calc(var(--mantine-spacing-sm) - 4px)" wrap="nowrap" align="center">
+        {(handle || checkbox) && (
+          <Group gap="sm" wrap="nowrap" className={classes.above}>
+            {handle}
+            {checkbox}
+          </Group>
+        )}
+        <a
+          href={attachment.url}
+          target="_blank"
+          rel="noreferrer"
+          className={classes.link}
+          aria-label={`Ouvrir ${attachment.name}`}
         >
-          {attachment.is_image ? (
-            <img
-              src={attachment.url}
-              alt={attachment.name}
-              // Decoded separately: a large photo doesn't freeze the card.
-              decoding="async"
-              loading="lazy"
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          ) : (
-            <Text size="sm" fw={700} c="dimmed">
-              {extension(attachment.name)}
+          {/* The inset: the photo if it is one, otherwise its extension in the center. */}
+          <Box
+            w={THUMBNAIL_W}
+            h={THUMBNAIL_H}
+            className={classes.thumbnail}
+            style={{
+              flexShrink: 0,
+              overflow: "hidden",
+              borderRadius: "var(--mantine-radius-sm)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {attachment.is_image ? (
+              <img
+                src={attachment.url}
+                alt={attachment.name}
+                // Decoded separately: a large photo doesn't freeze the card.
+                decoding="async"
+                loading="lazy"
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            ) : (
+              <Text size="sm" fw={700} c="dimmed">
+                {extension(attachment.name)}
+              </Text>
+            )}
+          </Box>
+
+          {/* The name, and below it the time of upload. */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Text size="sm" fw={500} truncate>
+              {attachment.name}
             </Text>
-          )}
-        </Box>
+            <Text size="xs" c="dimmed">
+              {since(attachment.created_at)} · {size(attachment.size)}
+            </Text>
+          </div>
 
-        {/* The name, and below it the time of upload. */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Text size="sm" fw={500} truncate>
-            {attachment.name}
-          </Text>
-          <Text size="xs" c="dimmed">
-            {since(attachment.created_at)} · {size(attachment.size)}
-          </Text>
-        </div>
-
-        {/* The reminder that the click opens a new tab. */}
-        <IconExternalLink
-          size={16}
-          style={{ flexShrink: 0, color: FIELD_ICON }}
-        />
+          {/* The reminder that the click opens a new tab. */}
+          <IconExternalLink size={16} style={{ flexShrink: 0, color: FIELD_ICON }} />
+        </a>
       </Group>
-    </a>
+    </div>
   );
 }
 
@@ -151,7 +152,7 @@ export function useOrderedFiles<T extends { id: Id; name: string }>(
   };
 
   const row = (file: T, rank: number) => ({
-    onDragOver: (e: DragEvent<HTMLAnchorElement>) => {
+    onDragOver: (e: DragEvent<HTMLDivElement>) => {
       if (held === null || !order) return;
       e.preventDefault();
       const next = move(order, held, rank);
@@ -159,20 +160,17 @@ export function useOrderedFiles<T extends { id: Id; name: string }>(
       setHeld(rank);
       setOrder(next);
     },
-    onDrop: (e: DragEvent<HTMLAnchorElement>) => e.preventDefault(),
+    onDrop: (e: DragEvent<HTMLDivElement>) => e.preventDefault(),
     style: { opacity: held === rank ? 0.5 : 1 },
     handle: active && (
-      // A click on the handle must not open the file.
-      <span onClick={(e) => e.preventDefault()} style={{ display: "flex" }}>
-        <Handle
-          label={`Déplacer ${file.name || "le fichier"}`}
-          onDragStart={() => {
-            setHeld(rank);
-            setOrder(files);
-          }}
-          onDragEnd={release}
-        />
-      </span>
+      <Handle
+        label={`Déplacer ${file.name || "le fichier"}`}
+        onDragStart={() => {
+          setHeld(rank);
+          setOrder(files);
+        }}
+        onDragEnd={release}
+      />
     ),
   });
 
@@ -203,15 +201,14 @@ export default function CardAttachments({
   onReorder,
   onDelete,
 }: CardAttachmentsProps) {
-  const [toDelete, setToDelete] = useState<Attachment | null>(null);
-  const [menu, setMenu] = useState<{
-    attachment: Attachment;
-    position: PointMenuPosition;
-  } | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   const attachmentList = attachments || [];
   const { displayed, row } = useOrderedFiles(attachmentList, onReorder, true);
+  const selection = useRowSelection(attachmentList.map((a) => a.id));
   if (attachmentList.length === 0) return null;
+
+  const toDelete = attachmentList.filter((a) => selection.isChecked(a.id));
 
   return (
     // The block carries its heading like the other fields of the card — the
@@ -226,37 +223,48 @@ export default function CardAttachments({
             <FileRow
               key={attachment.id}
               attachment={attachment}
-              onContextMenu={(position) => setMenu({ attachment, position })}
+              checkbox={
+                <RowCheckbox
+                  label={`Sélectionner ${attachment.name}`}
+                  checked={selection.isChecked(attachment.id)}
+                  onChange={(on) => selection.toggle(attachment.id, on)}
+                  afterHandle
+                />
+              }
               {...row(attachment, rank)}
             />
           ))}
         </Stack>
 
         {/* As close as possible to the stack it extends. */}
-        <AddButton label="Ajouter un fichier" onClick={onPick} mt={4} />
-
-        {menu && (
-          <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-            <Menu.Item
-              color={RED}
-              leftSection={<IconTrash size={16} />}
-              onClick={() => setToDelete(menu.attachment)}
-            >
-              Supprimer
-            </Menu.Item>
-          </PointMenu>
-        )}
+        <ListFooter
+          addLabel="Ajouter un fichier"
+          onAdd={onPick}
+          checkedCount={toDelete.length}
+          onDeleteChecked={() => setConfirming(true)}
+        />
 
         <DeleteConfirmModal
-          opened={toDelete !== null}
-          onClose={() => setToDelete(null)}
+          opened={confirming && toDelete.length > 0}
+          onClose={() => setConfirming(false)}
           onConfirm={() => {
-            const attachment = toDelete;
-            setToDelete(null);
-            if (attachment) void onDelete(attachment);
+            setConfirming(false);
+            // The deleted attachments leave the list, and their boxes with
+            // them; one the server refused stays checked (onDelete notifies).
+            void Promise.all(toDelete.map((attachment) => onDelete(attachment)));
           }}
-          title="Supprimer la pièce jointe"
-          message={<>Voulez-vous vraiment supprimer « {toDelete?.name} » ?</>}
+          title={
+            toDelete.length > 1
+              ? `Supprimer ${toDelete.length} pièces jointes`
+              : "Supprimer la pièce jointe"
+          }
+          message={
+            toDelete.length > 1 ? (
+              <>Voulez-vous vraiment supprimer ces {toDelete.length} pièces jointes ?</>
+            ) : (
+              <>Voulez-vous vraiment supprimer « {toDelete[0]?.name} » ?</>
+            )
+          }
         />
       </Box>
     </Input.Wrapper>

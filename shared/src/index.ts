@@ -2,7 +2,6 @@ export * from "./api.js";
 export * from "./asset-settings.js";
 export * from "./backup.js";
 export * from "./dependencies.js";
-export * from "./developer.js";
 export * from "./domain.js";
 export * from "./due.js";
 export * from "./entra.js";

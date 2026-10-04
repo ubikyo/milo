@@ -16,7 +16,6 @@ import { SHADES, SHADES_PER_ROW } from "../../widgets/style-fields";
 import {
   ROUNDING,
   ROW_INSET,
-  NAME_INSET,
   INPUT_STYLE,
   rowStyle,
 } from "./DrawerRows";
@@ -30,8 +29,8 @@ import {
 /** The width of the row's name: the rows' fields line up beneath it. */
 const NAME_WIDTH = 41;
 
-/** The space between the button and the name, tighter than that of the fields. */
-const NAME_GAP = 6;
+/** The space between the button and the name. */
+const NAME_GAP = 10;
 const SIZE_WIDTH = 80;
 const COLOR_WIDTH = 120;
 
@@ -223,9 +222,8 @@ export default function SettingRows({
                 onChange={(e) => l.toggle?.onChange(e.currentTarget.checked)}
                 color="teal"
                 aria-label={l.name}
-                // Aligned right, at NAME_INSET from the end like the buttons of
-                // the rows (Reset).
-                style={{ marginLeft: "auto", marginRight: NAME_INSET - ROW_INSET }}
+                // Aligned right, 3 px from the row's inset.
+                style={{ marginLeft: "auto", marginRight: 3 }}
               />
             )}
           </Group>

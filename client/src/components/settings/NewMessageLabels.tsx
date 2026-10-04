@@ -1,29 +1,29 @@
-import { ColorSwatch, Group, Input, Menu, Select, Stack } from "@mantine/core";
-import { IconChevronDown, IconTag, IconTrash } from "@tabler/icons-react";
+import { Group, Input, Select, Stack } from "@mantine/core";
+import { IconChevronDown, IconTag } from "@tabler/icons-react";
 import { useState } from "react";
 import type { SupportLabel } from "@milo/shared";
-import { RED } from "../../themes/colors";
-import AddButton from "../ui/AddButton";
-import { useLabelColors } from "../ui/LabelChip";
+import LabelChip from "../ui/LabelChip";
 import {
   ROUNDING,
   EmptyList,
+  ListFooter,
+  RowCheckbox,
+  RowCheckboxSpace,
+  useRowSelection,
   ROW_INSET,
   NAME_INSET,
+  INPUT_INSET,
   nameFieldStyle,
   rowStyle,
 } from "../ui/DrawerRows";
-import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 
 // The labels a ticket received by e-mail gets automatically, in Settings
 // ("Paramétrage"). They look like the columns of a list (ColumnFields): one
-// row per label, with its dot and name, which a click replaces with another.
-// Right-click removes it; "Ajouter" adds an empty row at the end, where you
-// pick which one — left without a choice, it disappears. A label never
-// appears twice.
-
-/** Size of the color dot, in the field. */
-const BADGE_SIZE = 12;
+// row per label, drawn as its tag, which a click replaces with another.
+// Its box, at the start, selects it: the checked rows are removed together,
+// from the button that takes the place of "Ajouter" meanwhile. "Ajouter" adds
+// an empty row at the end, where you pick which one — left without a choice,
+// it disappears. A label never appears twice.
 
 interface NewMessageLabelsProps {
   /** The Support labels. */
@@ -40,16 +40,21 @@ export default function NewMessageLabels({
   onChange,
   canEdit,
 }: NewMessageLabelsProps) {
-  const colors = useLabelColors();
   // The added row, waiting for its label.
   const [adding, setAdding] = useState(false);
   /** Index of the row whose list is open: its field takes the background. */
   const [isOpen, setOpened] = useState<number | null>(null);
-  const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
 
   // A label deleted since then is no longer shown.
   const selected = value.filter((id) => labels.some((e) => String(e.id) === id));
   const rows = adding ? [...selected, ""] : selected;
+  /** The checked labels, by identifier: a label never appears twice. */
+  const checks = useRowSelection(selected);
+
+  const removeChecked = () => {
+    onChange(selected.filter((id) => !checks.isChecked(id)));
+    checks.reset();
+  };
 
   /** The labels a row can take: its own, and those not already taken. */
   const options = (id: string) =>
@@ -64,15 +69,11 @@ export default function NewMessageLabels({
     onChange(selected.map((c, i) => (i === rank ? id : c)));
   };
 
-  const dot = (id: string) => {
-    const label = labels.find((e) => String(e.id) === id);
-    return label ? (
-      <ColorSwatch
-        color={colors(label.color).backgroundColor}
-        size={BADGE_SIZE}
-        withShadow={false}
-      />
-    ) : null;
+  const labelOf = (id: string) => labels.find((e) => String(e.id) === id);
+
+  const chip = (id: string) => {
+    const label = labelOf(id);
+    return label ? <LabelChip label={label} /> : null;
   };
 
   return (
@@ -88,16 +89,32 @@ export default function NewMessageLabels({
                 key={newRow ? "new" : id}
                 gap="sm"
                 wrap="nowrap"
-                onContextMenu={(e) => {
-                  if (!canEdit || newRow) return;
-                  setMenu({ rank, position: menuPosition(e) });
+                // Read-only, without boxes, the label sits to the left like
+                // the end of its field to the right: at ROW_INSET from the
+                // row's edge.
+                style={{
+                  ...rowStyle(rank, rows.length, false),
+                  ...(canEdit ? null : { paddingLeft: ROW_INSET }),
                 }}
-                style={{ ...rowStyle(rank, rows.length, false), paddingLeft: ROW_INSET }}
               >
+                {canEdit &&
+                  (newRow ? (
+                    // The added row cannot be selected yet: an empty space
+                    // keeps it aligned.
+                    <RowCheckboxSpace />
+                  ) : (
+                    <RowCheckbox
+                      label={`Sélectionner ${labelOf(id)?.name ?? "l'étiquette"}`}
+                      checked={checks.isChecked(id)}
+                      onChange={(on) => checks.toggle(id, on)}
+                    />
+                  ))}
                 <Select
                   size="sm"
                   radius={ROUNDING}
-                  style={{ flex: 1, minWidth: 0 }}
+                  // The label aligns with the checkbox, as a column's name
+                  // with its handle.
+                  style={{ flex: 1, minWidth: 0, marginLeft: canEdit ? -NAME_INSET : 0 }}
                   data={options(id)}
                   value={id || null}
                   placeholder="Choisir une étiquette"
@@ -109,18 +126,31 @@ export default function NewMessageLabels({
                   allowDeselect={false}
                   autoFocus={newRow}
                   disabled={!canEdit}
-                  // The label's dot, in front of its name.
-                  leftSection={dot(id)}
-                  leftSectionWidth={id ? NAME_INSET + BADGE_SIZE : undefined}
+                  // The label as a tag, over its name which stays hidden: a
+                  // click goes through it to the field.
+                  leftSection={chip(id)}
+                  leftSectionPointerEvents="none"
+                  leftSectionProps={{
+                    style: {
+                      width: "auto",
+                      maxWidth: "calc(100% - 40px)",
+                      paddingLeft: INPUT_INSET,
+                      justifyContent: "flex-start",
+                    },
+                  }}
+                  // The tags in the list too.
+                  renderOption={({ option }) => chip(option.value)}
                   rightSection={<IconChevronDown size={14} />}
                   rightSectionPointerEvents="none"
                   comboboxProps={{ shadow: "md", withinPortal: true }}
                   styles={{
                     section: { justifyContent: "flex-end" },
+                    // The tags 4 px closer to the edge than the "sm" option's padding.
+                    option: { paddingLeft: "calc(0.625rem * var(--mantine-scale) - 4px)" },
                     input: {
                       ...nameFieldStyle(isOpen === rank),
                       cursor: "pointer",
-                      ...(id ? { paddingLeft: NAME_INSET + BADGE_SIZE + 8 } : null),
+                      ...(id ? { color: "transparent" } : null),
                     },
                   }}
                   aria-label={newRow ? "Étiquette à ajouter" : "Étiquette"}
@@ -132,23 +162,14 @@ export default function NewMessageLabels({
       )}
 
       {/* As close as possible to the list it extends — as long as a label remains to add. */}
-      {canEdit && selected.length < labels.length && (
-        <AddButton label="Ajouter une étiquette" onClick={() => setAdding(true)} mt={4} />
-      )}
-
-      {menu && (
-        <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          <Menu.Item
-            color={RED}
-            leftSection={<IconTrash size={16} />}
-            onClick={() => {
-              onChange(selected.filter((_, i) => i !== menu.rank));
-              setMenu(null);
-            }}
-          >
-            Retirer
-          </Menu.Item>
-        </PointMenu>
+      {canEdit && (
+        <ListFooter
+          {...(selected.length < labels.length
+            ? { addLabel: "Ajouter une étiquette", onAdd: () => setAdding(true) }
+            : null)}
+          checkedCount={checks.checked.length}
+          onDeleteChecked={removeChecked}
+        />
       )}
     </Input.Wrapper>
   );

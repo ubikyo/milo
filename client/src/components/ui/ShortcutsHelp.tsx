@@ -2,21 +2,30 @@ import { ActionIcon, Group, HoverCard, Kbd, Stack, Text } from "@mantine/core";
 import { PAGE_GUTTER } from "../../themes/layout";
 
 // Action on the left, shortcut on the right. "when" limits a shortcut to the board
-// where it acts: no new project without a projects list.
-type Condition = "projects" | "requests";
+// where it acts: no new project without a projects list, no next context
+// without contexts.
+type Condition = "projects" | "requests" | "contexts";
 
 const SHORTCUTS: { action: string; key: string; when?: Condition }[] = [
   { action: "Nouveau projet", key: "N", when: "projects" },
   { action: "Nouvelle demande", key: "N", when: "requests" },
   { action: "Changer de vue", key: "Tab" },
   { action: "Tableau suivant", key: "⌥ Tab" },
-  { action: "Contexte suivant", key: "S" },
+  { action: "Contexte suivant", key: "C", when: "contexts" },
   { action: "Modifier l’interface / terminer", key: "I" },
 ];
 
-/** What the open board holds: a projects list, a requests list. */
-export default function ShortcutsHelp({ projects, requests }: { projects: boolean; requests: boolean }) {
-  const holds: Record<Condition, boolean> = { projects, requests };
+/** What the open board holds: a projects list, a requests list, contexts. */
+export default function ShortcutsHelp({
+  projects,
+  requests,
+  contexts,
+}: {
+  projects: boolean;
+  requests: boolean;
+  contexts: boolean;
+}) {
+  const holds: Record<Condition, boolean> = { projects, requests, contexts };
   return (
     <HoverCard position="top-end" withArrow shadow="md" openDelay={100}>
       <HoverCard.Target>

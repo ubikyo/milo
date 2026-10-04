@@ -486,8 +486,9 @@ const CHECKLIST_DONE_BG = "var(--mantine-color-teal-filled)";
 // list begins. The same space separates the rows from each other: two
 // stuck-together checkboxes read as a block, whereas they are checked one by one.
 const CHECKLIST_PANEL_RULE = "1px solid var(--mantine-color-default-border)";
-const CHECKLIST_PANEL_MARGIN = 6;
+const CHECKLIST_PANEL_MARGIN = 10;
 const CHECKLIST_PANEL_PAD = 10;
+const CHECKLIST_PANEL_BOTTOM = 15;
 const CHECKLIST_ITEM_GAP = 8;
 
 interface CardChecklistBadgeProps {
@@ -543,6 +544,7 @@ function CardChecklistPanel({ card, onCheck }: CardChecklistPanelProps) {
       gap={CHECKLIST_ITEM_GAP}
       data-no-card-drag="true"
       pt={CHECKLIST_PANEL_PAD}
+      pb={CHECKLIST_PANEL_BOTTOM}
       mt={CHECKLIST_PANEL_MARGIN}
       style={{ borderTop: CHECKLIST_PANEL_RULE }}
     >

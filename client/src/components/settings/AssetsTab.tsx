@@ -1,23 +1,25 @@
-import { Group, Input, Menu, ScrollArea, Stack, TextInput } from "@mantine/core";
-import { IconDeviceLaptop, IconNetwork, IconTrash } from "@tabler/icons-react";
+import { Group, Input, ScrollArea, Stack, TextInput } from "@mantine/core";
+import { IconDeviceLaptop, IconNetwork } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { ASSET_MODEL_MAX, VLAN_NAME_MAX } from "@milo/shared";
 import type { AssetSettings } from "@milo/shared";
 import { api } from "../../api";
 import scroll from "../../assets/styles/ListScroll.module.css";
 import { errorMessage, notifyError } from "../../lib/errors";
-import { RED } from "../../themes/colors";
-import AddButton from "../ui/AddButton";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import {
   ROUNDING,
   EmptyList,
-  ROW_INSET,
+  NAME_INSET,
+  ListFooter,
+  RowCheckbox,
+  RowCheckboxSpace,
   nameFieldStyle,
+  pluralize,
   rowStyle,
+  useRowSelection,
 } from "../ui/DrawerRows";
-import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
-import type { ClipboardEvent, ComponentType } from "react";
+import type { ClipboardEvent, ComponentType, ReactNode } from "react";
 
 // The "Assets" section of "Paramétrage", and its two lists:
 // - "Modèles": the commercial name of the identifier a workstation reports —
@@ -26,18 +28,23 @@ import type { ClipboardEvent, ComponentType } from "react";
 // They are presented like the drawers' lists (ColumnFields): one
 // row per entry, its fields right on the row. A row is sent to the server
 // when you leave it, complete and changed; Escape returns it to what it
-// was. Right-click deletes it; "Ajouter" adds an empty row at the end.
+// was. Checked rows are deleted together; "Ajouter" adds an empty row at
+// the end.
 // VLANs can also be pasted in batches into an added row: one
 // "subnet VLAN name" line each, the name optional.
 
-/** The width of the first column: identifier or subnet. */
-const FIRST_WIDTH = 200;
+
+/** The width of the identifier column. */
+const IDENTIFIER_WIDTH = 160;
+
+/** The width of the subnet column. */
+const SUBNET_WIDTH = 150;
 
 /** Enough for "4094". */
 const VLAN_LENGTH = 4;
 
 /** The width of the VLAN number column. */
-const VLAN_WIDTH = 60;
+const VLAN_WIDTH = 50;
 
 /** Beyond that, the list scrolls. */
 const VISIBLE_ROWS = 5;
@@ -81,7 +88,8 @@ interface EditableRowProps {
   onValidate: (row: Row) => Promise<boolean>;
   /** The added row, left empty or abandoned. */
   onAbandon?: () => void;
-  onContextMenu?: (e: React.MouseEvent<HTMLElement>) => void;
+  /** At the start of the row: its checkbox, or an empty space of its width. */
+  lead: ReactNode;
   onPaste?: (e: ClipboardEvent<HTMLInputElement>) => void;
 }
 
@@ -94,7 +102,7 @@ function EditableRow({
   newRow,
   onValidate,
   onAbandon,
-  onContextMenu,
+  lead,
   onPaste,
 }: EditableRowProps) {
   const [draft, setDraft] = useState<Row>(value);
@@ -129,13 +137,13 @@ function EditableRow({
       ref={row}
       gap="xs"
       wrap="nowrap"
-      onContextMenu={onContextMenu}
       onBlur={(e) => {
         if (row.current?.contains(e.relatedTarget as Node | null)) return;
         void leave();
       }}
-      style={{ ...rowStyle(rank, total, false), paddingLeft: ROW_INSET }}
+      style={rowStyle(rank, total, false)}
     >
+      {lead}
       {columns.map((column, i) => (
         <TextInput
           key={column.label}
@@ -167,7 +175,9 @@ function EditableRow({
           autoFocus={newRow && i === 0}
           onFocus={() => setFocus(i)}
           onBlurCapture={() => setFocus(null)}
-          style={columnStyle(column)}
+          // The first field aligns with the checkbox, as a drawer column's
+          // with its handle.
+          style={{ ...columnStyle(column), ...(i === 0 ? { marginLeft: -NAME_INSET } : null) }}
           styles={{ input: nameFieldStyle(focus === i) }}
         />
       ))}
@@ -192,6 +202,7 @@ function ListRows({
   emptyText,
   addLabel,
   deleteTitle,
+  several,
   split,
 }: {
   title: string;
@@ -202,12 +213,16 @@ function ListRows({
   emptyText: string;
   addLabel: string;
   deleteTitle: string;
+  /** Several rows, to delete: "3 modèles". */
+  several: (n: number) => string;
   split?: (row: string) => Row | null;
 }) {
   // The added row, waiting for its fields.
   const [adding, setAdding] = useState(false);
-  const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
-  const [toDelete, setToDelete] = useState<number | null>(null);
+  // The checked rows, by rank, and those awaiting confirmation of their
+  // deletion.
+  const selection = useRowSelection(rows.map((_, rank) => rank));
+  const [toDelete, setToDelete] = useState<number[]>([]);
 
   const send = async (list: Row[]): Promise<boolean> => {
     try {
@@ -270,7 +285,13 @@ function ListRows({
                 rank={rank}
                 total={total}
                 onValidate={(after) => send(rows.map((l, i) => (i === rank ? after : l)))}
-                onContextMenu={(e) => setMenu({ rank, position: menuPosition(e) })}
+                lead={
+                  <RowCheckbox
+                    label={`Sélectionner ${row[0] ?? ""}`}
+                    checked={selection.isChecked(rank)}
+                    onChange={(on) => selection.toggle(rank, on)}
+                  />
+                }
               />
             ))}
             {adding && (
@@ -286,6 +307,8 @@ function ListRows({
                   return ok;
                 }}
                 onAbandon={() => setAdding(false)}
+                // Not saved yet: nothing to delete.
+                lead={<RowCheckboxSpace />}
                 onPaste={split ? paste : undefined}
               />
             )}
@@ -293,37 +316,36 @@ function ListRows({
         </ScrollArea.Autosize>
       )}
       {/* As close as possible to the list it extends. */}
-      <AddButton label={addLabel} onClick={() => setAdding(true)} mt={4} />
+      <ListFooter
+        addLabel={addLabel}
+        onAdd={() => setAdding(true)}
+        checkedCount={selection.checked.length}
+        onDeleteChecked={() => setToDelete(selection.checked)}
+      />
 
-      {menu && (
-        <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          <Menu.Item
-            color={RED}
-            leftSection={<IconTrash size={16} />}
-            onClick={() => {
-              setToDelete(menu.rank);
-              setMenu(null);
-            }}
-          >
-            Supprimer
-          </Menu.Item>
-        </PointMenu>
-      )}
-
+      {/* The whole list goes to the server without the deleted rows, in one
+          call. */}
       <DeleteConfirmModal
-        opened={toDelete !== null}
-        onClose={() => setToDelete(null)}
+        opened={toDelete.length > 0}
+        onClose={() => setToDelete([])}
         onConfirm={async () => {
-          const rank = toDelete;
-          setToDelete(null);
-          if (rank !== null) await send(rows.filter((_, i) => i !== rank));
+          const ranks = new Set(toDelete);
+          setToDelete([]);
+          if (await send(rows.filter((_, i) => !ranks.has(i)))) selection.reset();
         }}
-        title={deleteTitle}
+        title={toDelete.length > 1 ? `Supprimer ${several(toDelete.length)}` : deleteTitle}
         message={
-          <>
-            Voulez-vous vraiment supprimer « {rows[toDelete ?? -1]?.[0]} » ? Cette action est
-            irréversible.
-          </>
+          toDelete.length > 1 ? (
+            <>
+              Voulez-vous vraiment supprimer ces {several(toDelete.length)} ? Cette action est
+              irréversible.
+            </>
+          ) : (
+            <>
+              Voulez-vous vraiment supprimer « {rows[toDelete[0] ?? -1]?.[0]} » ? Cette action
+              est irréversible.
+            </>
+          )
         }
       />
     </Input.Wrapper>
@@ -334,14 +356,13 @@ const MODEL_COLUMNS: Column[] = [
   {
     label: "Identifiant",
     maxLength: ASSET_MODEL_MAX,
-    // Shorter than a subnet: "Mac14,6".
-    width: FIRST_WIDTH - 40,
+    width: IDENTIFIER_WIDTH,
   },
   { label: "Nom commercial", maxLength: ASSET_MODEL_MAX },
 ];
 
+// The subnet on the right, after the name.
 const VLAN_COLUMNS: Column[] = [
-  { label: "Sous-réseau", maxLength: 18, width: FIRST_WIDTH },
   {
     label: "VLAN",
     maxLength: VLAN_LENGTH,
@@ -349,6 +370,7 @@ const VLAN_COLUMNS: Column[] = [
     digital: true,
   },
   { label: "Nom", maxLength: VLAN_NAME_MAX, optional: true },
+  { label: "Sous-réseau", maxLength: 18, width: SUBNET_WIDTH },
 ];
 
 /**
@@ -360,7 +382,7 @@ const VLAN_ROW = /^(\S+\/\d+)[\s;,]+(\d+)(?:[\s;,]+(.*))?$/;
 const splitVlan = (row: string): Row | null => {
   const m = VLAN_ROW.exec(row);
   if (!m) return null;
-  return [m[1] ?? "", m[2] ?? "", (m[3] ?? "").trim()];
+  return [m[2] ?? "", (m[3] ?? "").trim(), m[1] ?? ""];
 };
 
 export default function AssetsTab() {
@@ -402,14 +424,15 @@ export default function AssetsTab() {
         emptyText="Aucun modèle"
         addLabel="Ajouter un modèle"
         deleteTitle="Supprimer le modèle"
+        several={(n) => pluralize(n, "modèle")}
       />
       <ListRows
         title="VLAN"
         columns={VLAN_COLUMNS}
-        rows={settings.vlans.map((v) => [v.subnet, String(v.vlan), v.name])}
+        rows={settings.vlans.map((v) => [String(v.vlan), v.name, v.subnet])}
         save={(list) =>
           save({
-            vlans: list.map(([subnet = "", vlan = "", name = ""]) => ({
+            vlans: list.map(([vlan = "", name = "", subnet = ""]) => ({
               subnet,
               vlan: Number(vlan),
               name,
@@ -420,6 +443,8 @@ export default function AssetsTab() {
         emptyText="Aucun VLAN"
         addLabel="Ajouter un VLAN"
         deleteTitle="Supprimer le VLAN"
+        // "VLAN" does not take an "s".
+        several={(n) => `${n} VLAN`}
         split={splitVlan}
       />
     </Stack>

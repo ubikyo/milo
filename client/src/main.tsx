@@ -12,7 +12,7 @@ import "@mantine/charts/styles.css";
 import "./assets/styles/scrollbars.css";
 // The hover of grid rows, a notch darker.
 import "./assets/styles/tables.css";
-// Neither selection nor browser menu, outside Debug.
+// No selection of the interface.
 import "./assets/styles/no-select.css";
 import "./assets/styles/no-borders.css"; // TEMPORARY TEST: borderless fields
 

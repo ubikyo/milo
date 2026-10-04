@@ -1,22 +1,21 @@
-import { Autocomplete, Group, Input, Menu, Select, Stack } from "@mantine/core";
-import { IconTrash } from "@tabler/icons-react";
+import { Autocomplete, Group, Input, Select, Stack } from "@mantine/core";
 import { useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import { useReferences } from "../../lib/references";
-import { RED } from "../../themes/colors";
 import { withField } from "../../widgets/types";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
 import type { Id } from "@milo/shared";
-import AddButton from "./AddButton";
 import {
   ROUNDING,
   EmptyList,
-  ROW_INSET,
+  ListFooter,
+  RowCheckbox,
+  useRowSelection,
   NAME_INSET,
+  INPUT_INSET,
   INPUT_STYLE,
   rowStyle,
 } from "./DrawerRows";
-import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
 
 // What a list receives from outside: the e-mail addresses its tickets arrive
 // from, the GLPI agent tags its positions arrive from. Each goes to one of the
@@ -24,9 +23,10 @@ import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
 // repositories/inboxes.ts).
 //
 // They look like a list's columns (ColumnFields): one row per reception, its
-// value on the row itself, its context on the right. A right click removes it;
-// "Ajouter" adds an empty row at the end, which disappears if left without
-// anything written in it. With no reception, the empty-list prompt (EmptyList).
+// value on the row itself, its context on the right. Its box, at the start,
+// selects it: the checked rows are removed together, from the button that takes
+// the place of "Ajouter" meanwhile. "Ajouter" adds an empty row at the end,
+// which disappears if left without anything written in it. With no reception, the empty-list prompt (EmptyList).
 
 /** A reception: the received value, and the context where it is filed. */
 type Inbox = Record<string, unknown> & { context_id?: number | null };
@@ -118,13 +118,22 @@ export default function ReceptionField({
    * field: the added row takes focus without unfolding them.
    */
   const [suggested, setSuggested] = useState<number | null>(null);
-  const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
+  const selection = useRowSelection(rows.map((_, rank) => rank));
 
   const valueFor = (l: Inbox) => (typeof l[field] === "string" ? (l[field] as string) : "");
   const insertRow = (nextItems: Inbox[]) => onChange(withField(config, key, nextItems));
   const change = (rank: number, change: Partial<Inbox>) =>
     insertRow(rows.map((l, i) => (i === rank ? { ...l, ...change } : l)));
-  const remove = (rank: number) => insertRow(rows.filter((_, i) => i !== rank));
+  // Rows are known by their rank: those after the removed one move up, their
+  // checks with them.
+  const remove = (rank: number) => {
+    insertRow(rows.filter((_, i) => i !== rank));
+    selection.reset(selection.checked.filter((i) => i !== rank).map((i) => (i > rank ? i - 1 : i)));
+  };
+  const removeChecked = () => {
+    insertRow(rows.filter((_, i) => !selection.isChecked(i)));
+    selection.reset();
+  };
 
   // The new row goes to the first context: it is changed on the row.
   const addRow = () => {
@@ -147,20 +156,24 @@ export default function ReceptionField({
               key={rank}
               gap="sm"
               wrap="nowrap"
-              onContextMenu={(e) => setMenu({ rank, position: menuPosition(e) })}
-              // Without a handle, the value sits to the left like the context
-              // to the right: at ROW_INSET from the row's edge.
-              style={{ ...rowStyle(rank, rows.length, false), paddingLeft: ROW_INSET }}
+              style={rowStyle(rank, rows.length, false)}
             >
+              <RowCheckbox
+                label={`Sélectionner ${valueFor(row) || placeholder}`}
+                checked={selection.isChecked(rank)}
+                onChange={(on) => selection.toggle(rank, on)}
+              />
+              {/* The value aligns with the checkbox, as a column's name with
+                  its handle. */}
               <Autocomplete
                 size="sm"
                 radius={ROUNDING}
-                style={{ flex: 1, minWidth: 0 }}
+                style={{ flex: 1, minWidth: 0, marginLeft: -NAME_INSET }}
                 styles={{
                   input: {
                     height: "var(--input-height-xs)",
                     minHeight: "var(--input-height-xs)",
-                    paddingLeft: NAME_INSET,
+                    paddingLeft: INPUT_INSET,
                     borderWidth: 0,
                     ...(input === `${rank}-valeur`
                       ? INPUT_STYLE
@@ -215,22 +228,12 @@ export default function ReceptionField({
       )}
 
       {/* As close as possible to the list it extends. */}
-      <AddButton label={add} onClick={addRow} mt={4} />
-
-      {menu && (
-        <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          <Menu.Item
-            color={RED}
-            leftSection={<IconTrash size={16} />}
-            onClick={() => {
-              remove(menu.rank);
-              setMenu(null);
-            }}
-          >
-            Supprimer
-          </Menu.Item>
-        </PointMenu>
-      )}
+      <ListFooter
+        addLabel={add}
+        onAdd={addRow}
+        checkedCount={selection.checked.length}
+        onDeleteChecked={removeChecked}
+      />
     </Input.Wrapper>
   );
 }

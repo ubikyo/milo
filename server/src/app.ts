@@ -58,7 +58,6 @@ import {
 import { taskCardRoutes, cardCommentRoutes } from "./routes/task-cards.js";
 import { taskListRoutes } from "./routes/task-lists.js";
 import { userRoutes } from "./routes/users.js";
-import { developerRoutes } from "./routes/developer.js";
 import { notificationSettingsRoutes } from "./routes/notification-settings.js";
 import { supportMailRoutes } from "./routes/support-mail.js";
 import { optinRoutes } from "./routes/optins.js";
@@ -180,7 +179,6 @@ export const createApp = (): express.Express => {
   app.use("/api/search", searchRoutes);
   // Read by everyone — they set everyone's interface —, written from
   // Settings only.
-  app.use("/api/developer", requireSettingsToWrite, developerRoutes);
   app.use("/api/notification-settings", requireSettingsToWrite, notificationSettingsRoutes);
 
   app.use("/api", notFoundHandler);

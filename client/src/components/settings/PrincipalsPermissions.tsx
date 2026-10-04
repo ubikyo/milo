@@ -17,18 +17,20 @@ import {
   IconMinus,
   IconPencil,
   IconShieldLock,
-  IconTrash,
   IconUser,
   IconUsersGroup,
+  IconX,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import scroll from "../../assets/styles/ListScroll.module.css";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
-import AddButton from "../ui/AddButton";
 import {
   ROUNDING,
   RowButton,
+  RowCheckbox,
+  ListFooter,
+  useRowSelection,
   EmptyList,
   ROW_INSET,
   NAME_INSET,
@@ -40,7 +42,6 @@ import PointMenu, {
   menuPosition,
   type PointMenuPosition,
 } from "../ui/PointMenu";
-import { RED } from "../../themes/colors";
 import DirectoryPicker from "./DirectoryPicker";
 import PrincipalPermissionsModal from "./PrincipalPermissionsModal";
 import type {
@@ -80,8 +81,8 @@ interface PrincipalsPermissionsProps<T> {
   summary: (permissions: T) => string;
   /**
    * The permissions modal (PrincipalPermissionsModal). Without it, the
-   * permissions are set on the row (inline): no modal, no
-   * "Permissions" on right-click.
+   * permissions are set on the row (inline): no modal, no right-click
+   * menu ("Permissions").
    */
   sections?: (
     permissions: T,
@@ -105,7 +106,10 @@ interface PrincipalsPermissionsProps<T> {
     change: (permissions: T) => void,
   ) => PermissionRow[];
   emptyText: string;
-  /** The action that removes everything from it, and its confirmation. */
+  /**
+   * The action that removes everything from it, and its confirmation — for
+   * one principal; several are named in a message built from the label.
+   */
   removeDialog: { label: string; message: (name: string) => ReactNode };
   /**
    * After a save or a removal: its own rights may have changed
@@ -128,6 +132,10 @@ const GAP = 12;
 
 /** The background of a read permission: the neutral gray of the row buttons. */
 const READ_BACKGROUND = "light-dark(#d4d4d4, var(--mantine-color-dark-4))";
+
+/** The side of a yes/no box, smaller than a level's button, and its icon. */
+const CHECK_SIZE = 20;
+const CHECK_ICON_SIZE = 14;
 
 /** A level's icon: none, read, edit; otherwise, its initial. */
 const LEVEL_ICONS: Record<string, typeof IconMinus> = {
@@ -155,28 +163,44 @@ function LevelButton({
   );
   const current = options[rank];
   const next = options[(rank + 1) % options.length];
-  // A yes is a checkbox; a widget type's levels have their own icon.
-  const Icon = current?.label === "Oui" ? IconCheck : LEVEL_ICONS[value];
+  // A yes/no is a small checkbox: a check on green, or a cross on red when
+  // refused. A widget type's levels have their own icon.
+  const yesNo = options.some((o) => o.label === "Oui");
+  const refused = yesNo && !value;
+  const Icon =
+    current?.label === "Oui" ? IconCheck : refused ? IconX : LEVEL_ICONS[value];
   const background =
-    value === "update" ? GREEN : value ? READ_BACKGROUND : "transparent";
-  const color =
     value === "update"
+      ? GREEN
+      : refused
+        ? "var(--mantine-color-red-6)"
+        : value
+          ? READ_BACKGROUND
+          : "transparent";
+  const color =
+    value === "update" || refused
       ? "#ffffff"
       : value
         ? "var(--mantine-color-text)"
         : "var(--mantine-color-dimmed)";
   return (
-    <Tooltip label={`${name} : ${current?.label ?? ""}`} withinPortal>
+    // A yes/no box speaks for itself: no tooltip.
+    <Tooltip
+      label={`${name} : ${current?.label ?? ""}`}
+      disabled={yesNo}
+      withinPortal
+    >
       <ActionIcon
         variant="filled"
         radius={3}
+        size={yesNo ? CHECK_SIZE : undefined}
         onClick={() => next && onChange(next.value)}
         disabled={disabled}
         aria-label={`${name} : ${current?.label ?? ""}. Passer à ${next?.label ?? ""}`}
         style={{ backgroundColor: background, color: color }}
       >
         {Icon ? (
-          <Icon size={16} />
+          <Icon size={yesNo ? CHECK_ICON_SIZE : 16} />
         ) : (
           <Text size="xs" fw={600}>
             {current?.label.charAt(0)}
@@ -261,8 +285,8 @@ function InlineChoice({
  * (WorkspaceAccess), the application's administration (AdministrationTab).
  * They look like the drawer lists (ColumnFields): one row each, its name, its
  * address if it has one, and at the end the button that summarizes its
- * permissions and opens their modal. Right-click opens it too, or removes
- * everything from it; "Ajouter" adds a row that searches the directory, and
+ * permissions and opens their modal — right-click opens it too. Checked rows
+ * lose everything together; "Ajouter" adds a row that searches the directory, and
  * choosing immediately opens the permissions modal.
  */
 export default function PrincipalsPermissions<T>({
@@ -284,9 +308,8 @@ export default function PrincipalsPermissions<T>({
   const [permissionsOf, setPermissionsOf] = useState<EntraPrincipal | null>(
     null,
   );
-  const [pendingDelete, setPendingDelete] = useState<EntraPrincipal | null>(
-    null,
-  );
+  // Those awaiting confirmation of their removal.
+  const [pendingDelete, setPendingDelete] = useState<EntraPrincipal[]>([]);
   // The added row, where the directory is searched — and, set inline in
   // the row, the permissions given to it.
   const [adding, setAdding] = useState(false);
@@ -347,6 +370,7 @@ export default function PrincipalsPermissions<T>({
     if (inline(permissions, () => {}).every((l) => !l.value)) return;
     if (await handleSave(principal, permissions)) closeAdd();
   };
+  // Only with the permissions modal (sections): its "Permissions" entry.
   const [menu, setMenu] = useState<{
     principal: EntraPrincipal;
     position: PointMenuPosition;
@@ -371,6 +395,31 @@ export default function PrincipalsPermissions<T>({
   const initials = current?.permissions ?? empty();
 
   const total = access.length + (adding ? 1 : 0);
+  const selection = useRowSelection(access.map((a) => key(a.principal)));
+
+  /**
+   * Removes the checked principals, one call each: the last answer is the
+   * updated list. On error, the list is reread.
+   */
+  const removeAll = async (list: EntraPrincipal[]) => {
+    try {
+      for (const principal of list) setAccess(await remove(principal));
+    } catch (e) {
+      notifyError(errorMessage(e));
+      void reload();
+    }
+    onChange?.();
+  };
+
+  /** « A », « B » et « C ». */
+  const names = (list: EntraPrincipal[]) => {
+    const quoted = list.map((p) => `« ${p.name || p.email} »`);
+    return quoted.length > 1
+      ? `${quoted.slice(0, -1).join(", ")} et ${quoted[quoted.length - 1]}`
+      : (quoted[0] ?? "");
+  };
+  // "Retirer l'accès" → "retirer l'accès", in the middle of a sentence.
+  const action = removeDialog.label.charAt(0).toLowerCase() + removeDialog.label.slice(1);
   // A row's name takes what the permissions leave it, at the end.
   const nameStyle = { flex: 1, minWidth: 0 };
 
@@ -430,8 +479,10 @@ export default function PrincipalsPermissions<T>({
                   key={key(principal)}
                   gap="sm"
                   wrap="nowrap"
-                  onContextMenu={(e) =>
-                    setMenu({ principal, position: menuPosition(e) })
+                  onContextMenu={
+                    sections
+                      ? (e) => setMenu({ principal, position: menuPosition(e) })
+                      : undefined
                   }
                   style={{
                     ...rowStyle(rank, total, false),
@@ -443,6 +494,13 @@ export default function PrincipalsPermissions<T>({
                     minHeight: ROW_HEIGHT,
                   }}
                 >
+                  {/* First, before the icon: the columns line up at the end
+                      of the row, they do not move. */}
+                  <RowCheckbox
+                    label={`Sélectionner ${principal.name || principal.email}`}
+                    checked={selection.isChecked(key(principal))}
+                    onChange={(on) => selection.toggle(key(principal), on)}
+                  />
                   {/* A neutral gray behind the icon: Mantine's grays lean
                     blue. */}
                   <Avatar
@@ -585,38 +643,30 @@ export default function PrincipalsPermissions<T>({
           </ScrollArea>
         )}
         {/* As close as possible to the list it extends. */}
-        <AddButton
-          label="Ajouter un utilisateur ou un groupe"
-          onClick={() => setAdding(true)}
-          mt={4}
+        <ListFooter
+          addLabel="Ajouter un utilisateur ou un groupe"
+          onAdd={() => setAdding(true)}
+          checkedCount={selection.checked.length}
+          onDeleteChecked={() =>
+            setPendingDelete(
+              access
+                .map((a) => a.principal)
+                .filter((p) => selection.isChecked(key(p))),
+            )
+          }
         />
       </div>
 
-      {menu && (
+      {menu && sections && (
         <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          {sections && (
-            <>
-              <Menu.Item
-                leftSection={<IconShieldLock size={16} />}
-                onClick={() => {
-                  setPermissionsOf(menu.principal);
-                  setMenu(null);
-                }}
-              >
-                Permissions
-              </Menu.Item>
-              <Menu.Divider />
-            </>
-          )}
           <Menu.Item
-            color={RED}
-            leftSection={<IconTrash size={16} />}
+            leftSection={<IconShieldLock size={16} />}
             onClick={() => {
-              setPendingDelete(menu.principal);
+              setPermissionsOf(menu.principal);
               setMenu(null);
             }}
           >
-            {removeDialog.label}
+            Permissions
           </Menu.Item>
         </PointMenu>
       )}
@@ -636,21 +686,28 @@ export default function PrincipalsPermissions<T>({
       )}
 
       <DeleteConfirmModal
-        opened={pendingDelete !== null}
-        onClose={() => setPendingDelete(null)}
+        opened={pendingDelete.length > 0}
+        onClose={() => setPendingDelete([])}
         onConfirm={async () => {
-          if (pendingDelete) {
-            try {
-              setAccess(await remove(pendingDelete));
-              onChange?.();
-            } catch (e) {
-              notifyError(errorMessage(e));
-            }
-          }
-          setPendingDelete(null);
+          const list = pendingDelete;
+          setPendingDelete([]);
+          selection.reset();
+          await removeAll(list);
         }}
-        title={removeDialog.label}
-        message={removeDialog.message(pendingDelete?.name ?? "")}
+        title={
+          pendingDelete.length > 1
+            ? `${removeDialog.label} à ${pendingDelete.length} utilisateurs ou groupes`
+            : removeDialog.label
+        }
+        message={
+          pendingDelete.length > 1 ? (
+            <>
+              Voulez-vous vraiment {action} à {names(pendingDelete)} ?
+            </>
+          ) : (
+            removeDialog.message(pendingDelete[0]?.name ?? "")
+          )
+        }
       />
     </Stack>
   );

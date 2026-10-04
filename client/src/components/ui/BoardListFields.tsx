@@ -1,31 +1,31 @@
-import { Group, Input, Menu, NumberInput, Stack, TextInput } from "@mantine/core";
+import { Group, Input, NumberInput, Stack, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconCategory, IconFlag, IconTag, IconTrash } from "@tabler/icons-react";
+import { IconCategory, IconFlag, IconTag } from "@tabler/icons-react";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, DragEvent } from "react";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
-import { RED } from "../../themes/colors";
 import MilestonesModal from "../project/MilestonesModal";
 import { DEFAULT_LABEL_COLOR } from "@milo/shared";
 import type { Id, Milestone, MilestoneType } from "@milo/shared";
 import { CopyPasteContext } from "./CopyPasteActions";
-import AddButton from "./AddButton";
 import { DrawerRegistrationsContext } from "./IndicatorDrawer";
 import LabelColorPicker from "./LabelColorPicker";
 import {
   ROUNDING,
   RowButton,
+  RowCheckbox,
+  ListFooter,
+  useRowSelection,
   EmptyList,
   Handle,
-  ROW_INSET,
   NAME_INSET,
+  INPUT_INSET,
   INPUT_STYLE,
   move,
   pluralize,
   rowStyle,
 } from "./DrawerRows";
-import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
 
 // The categories or labels of the open board, in the drawer of a
 // "Projets" or "Tâches" widget, with the same look as its columns
@@ -188,7 +188,6 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
   const [input, setInput] = useState<string | null>(null);
   /** The row just added: its name takes focus. */
   const [toName, setToName] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
   /** The type whose milestones modal is open. */
   const [milestonesOf, setMilestonesOf] = useState<Id | null>(null);
 
@@ -260,7 +259,33 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
     setToName(key);
   };
 
-  const remove = (rank: number) => setRows((before) => before.filter((_, i) => i !== rank));
+  const selection = useRowSelection(rows.map((r) => r.key));
+
+  /**
+   * Removes the checked rows, except the categories that still file projects:
+   * the server would refuse them on save. Those stay checked.
+   */
+  const removeChecked = () => {
+    const checked = new Set(selection.checked);
+    const kept: string[] = [];
+    for (const row of rows) {
+      if (!checked.has(row.key)) continue;
+      const original = originals.find((o) => o.id === row.id) as
+        | (Element & { project_count?: number })
+        | undefined;
+      if (!original?.project_count) continue;
+      kept.push(row.key);
+      notifications.show({
+        color: "orange",
+        title: "Suppression impossible",
+        message: `« ${original.name} » range encore ${original.project_count} projet${
+          original.project_count > 1 ? "s" : ""
+        }.`,
+      });
+    }
+    setRows((before) => before.filter((r) => !checked.has(r.key) || kept.includes(r.key)));
+    selection.reset(kept);
+  };
 
   const dragHover = (e: DragEvent<HTMLElement>, rank: number) => {
     if (held === null) return;
@@ -298,13 +323,7 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
               wrap="nowrap"
               onDragOver={(e) => dragHover(e, rank)}
               onDrop={(e) => e.preventDefault()}
-              onContextMenu={(e) => setMenu({ rank, position: menuPosition(e) })}
-              // Without a handle, the field aligns left as it aligns
-              // right: at ROW_INSET from the row's edge.
-              style={{
-                ...rowStyle(rank, rows.length, held === rank),
-                ...(s.orderable ? null : { paddingLeft: ROW_INSET }),
-              }}
+              style={rowStyle(rank, rows.length, held === rank)}
             >
               {s.orderable && (
                 <Handle
@@ -313,16 +332,23 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
                   onDragEnd={() => setHeld(null)}
                 />
               )}
+              <RowCheckbox
+                label={`Sélectionner ${row.name || s.nounPhrase}`}
+                checked={selection.isChecked(row.key)}
+                onChange={(on) => selection.toggle(row.key, on)}
+                afterHandle={s.orderable}
+              />
               <TextInput
                 size="sm"
                 radius={ROUNDING}
-                // The name aligns with the handle, like a column's.
-                style={{ flex: 1, marginLeft: s.orderable ? -NAME_INSET : 0 }}
+                // The name aligns with the checkbox, as a column's with its
+                // handle.
+                style={{ flex: 1, marginLeft: -NAME_INSET }}
                 styles={{
                   input: {
                     height: "var(--input-height-xs)",
                     minHeight: "var(--input-height-xs)",
-                    paddingLeft: NAME_INSET,
+                    paddingLeft: INPUT_INSET,
                     // Without a border, the text lands under a column's name;
                     // the focus outline sits at the field's very edge.
                     borderWidth: 0,
@@ -351,13 +377,14 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
                   color={row.color}
                   onChange={(color) => change(rank, { color })}
                   label={row.name || s.nounPhrase}
+                  palettePadding={0}
                 />
               )}
               {s.withWeight && (
                 <NumberInput
                   size="xs"
                   radius={ROUNDING}
-                  w={100}
+                  w={80}
                   placeholder="Poids"
                   allowDecimal={false}
                   aria-label={`Poids de ${row.name || s.nounPhrase}`}
@@ -374,7 +401,7 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
                   on click. They are saved from it, without waiting for
                   "Sauvegarder". */}
               {kind === "milestone-types" && row.id !== undefined && (
-                <RowButton icon={IconFlag} onClick={() => setMilestonesOf(row.id!)}>
+                <RowButton icon={IconFlag} onClick={() => setMilestonesOf(row.id!)} rightMargin={2}>
                   {pluralize(milestoneCount(originals.find((o) => o.id === row.id)), "jalon")}
                 </RowButton>
               )}
@@ -384,47 +411,12 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
       )}
 
       {/* As close as possible to the list it extends. */}
-      <AddButton label={s.add} onClick={add} mt={4} />
-
-      {menu && (
-        <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          {/* The milestones of an already created type: they are saved from their
-              modal, without waiting for "Sauvegarder". */}
-          {kind === "milestone-types" && rows[menu.rank]?.id !== undefined && (
-            <Menu.Item
-              leftSection={<IconFlag size={16} />}
-              onClick={() => setMilestonesOf(rows[menu.rank]!.id!)}
-            >
-              Jalons
-            </Menu.Item>
-          )}
-          <Menu.Item
-            color={RED}
-            leftSection={<IconTrash size={16} />}
-            onClick={() => {
-              const row = rows[menu.rank];
-              // A category that files projects cannot be removed: the
-              // server would refuse it on save.
-              const original = originals.find((o) => o.id === row?.id) as
-                | (Element & { project_count?: number })
-                | undefined;
-              if (original?.project_count) {
-                notifications.show({
-                  color: "orange",
-                  title: "Suppression impossible",
-                  message: `« ${original.name} » range encore ${original.project_count} projet${
-                    original.project_count > 1 ? "s" : ""
-                  }.`,
-                });
-                return;
-              }
-              remove(menu.rank);
-            }}
-          >
-            Supprimer
-          </Menu.Item>
-        </PointMenu>
-      )}
+      <ListFooter
+        addLabel={s.add}
+        onAdd={add}
+        checkedCount={selection.checked.length}
+        onDeleteChecked={removeChecked}
+      />
 
       {kind === "milestone-types" && (
         <MilestonesModal

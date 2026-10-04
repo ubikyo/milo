@@ -4,30 +4,30 @@ import {
   Box,
   Group,
   Input,
-  Menu,
   NumberInput,
   Stack,
   Switch,
   Text,
   TextInput,
 } from "@mantine/core";
-import { IconRss, IconTrash } from "@tabler/icons-react";
+import { IconRss } from "@tabler/icons-react";
 import { Fragment, useEffect, useState } from "react";
 import type { DragEvent } from "react";
 import { api } from "../../api";
 import classes from "../../assets/styles/AccessLink.module.css";
 import inset from "../../assets/styles/AccessNumber.module.css";
-import AddButton from "../../components/ui/AddButton";
 import {
   ROUNDING,
   EmptyList,
   Handle,
+  ListFooter,
+  RowCheckbox,
+  useRowSelection,
   NAME_INSET,
   move,
   nameFieldStyle,
   rowStyle,
 } from "../../components/ui/DrawerRows";
-import PointMenu, { menuPosition, type PointMenuPosition } from "../../components/ui/PointMenu";
 import ConfigurationProblem from "../../components/ui/ConfigurationProblem";
 import { RED } from "../../themes/colors";
 import { withField, count, text } from "../types";
@@ -485,12 +485,13 @@ interface SourceRowProps {
   onDragStart: () => void;
   onDragEnd: () => void;
   onDragOver: (e: DragEvent<HTMLElement>) => void;
-  onContextMenu: (position: PointMenuPosition) => void;
+  checked: boolean;
+  onCheck: (checked: boolean) => void;
 }
 
 /**
  * A source in the drawer, like an inbox in a list of tickets: its handle, its
- * address right in the row, and at the end the probe's verdict — the feed's
+ * selection box, its address right in the row, and at the end the probe's verdict — the feed's
  * format, or what is wrong.
  */
 function SourceRow({
@@ -504,7 +505,8 @@ function SourceRow({
   onDragStart,
   onDragEnd,
   onDragOver,
-  onContextMenu,
+  checked,
+  onCheck,
 }: SourceRowProps) {
   const probe = useProbe(url.trim());
   const [input, setInput] = useState(false);
@@ -514,7 +516,6 @@ function SourceRow({
       wrap="nowrap"
       onDragOver={onDragOver}
       onDrop={(e) => e.preventDefault()}
-      onContextMenu={(e) => onContextMenu(menuPosition(e))}
       style={rowStyle(rank, total, held)}
     >
       <Handle
@@ -522,6 +523,12 @@ function SourceRow({
         active={Boolean(url.trim())}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
+      />
+      <RowCheckbox
+        label={`Sélectionner ${url || "la source"}`}
+        checked={checked}
+        onChange={onCheck}
+        afterHandle
       />
       <TextInput
         size="sm"
@@ -558,8 +565,8 @@ function SourceRow({
 
 /**
  * The feed's sources, as rows: the handle orders them — it is the order of the
- * groups when articles are grouped by source —, a right click removes one,
- * "Ajouter" puts an empty one at the end, which clears itself if left without
+ * groups when articles are grouped by source —, their boxes select those that
+ * the button in place of "Ajouter" removes together meanwhile, "Ajouter" puts an empty one at the end, which clears itself if left without
  * anything written in it.
  */
 function SourcesField({ config, onChange }: WidgetConfigProps) {
@@ -568,11 +575,21 @@ function SourcesField({ config, onChange }: WidgetConfigProps) {
   const [held, setHeld] = useState<number | null>(null);
   /** The row just added: its address takes focus. */
   const [toFill, setToFill] = useState<number | null>(null);
-  const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
+  /** The checked rows, by rank. */
+  const selection = useRowSelection(rows.map((_, rank) => rank));
 
   const insertRow = (nextItems: string[]) =>
     onChange(withField(config, SOURCES, nextItems.map((url) => ({ url }))));
-  const remove = (rank: number) => insertRow(rows.filter((_, i) => i !== rank));
+  // Rows are known by their rank: those after the removed one move up, their
+  // checks with them.
+  const remove = (rank: number) => {
+    insertRow(rows.filter((_, i) => i !== rank));
+    selection.reset(selection.checked.filter((i) => i !== rank).map((i) => (i > rank ? i - 1 : i)));
+  };
+  const removeChecked = () => {
+    insertRow(rows.filter((_, i) => !selection.isChecked(i)));
+    selection.reset();
+  };
 
   const add = () => {
     insertRow([...rows, ""]);
@@ -587,6 +604,13 @@ function SourcesField({ config, onChange }: WidgetConfigProps) {
     if (!next) return;
     setHeld(rank);
     insertRow(next);
+    // The checks follow their rows.
+    const checks = move(
+      rows.map((_, i) => selection.isChecked(i)),
+      held,
+      rank,
+    )!;
+    selection.reset(checks.flatMap((on, i) => (on ? [i] : [])));
   };
 
   return (
@@ -612,29 +636,20 @@ function SourcesField({ config, onChange }: WidgetConfigProps) {
               onDragStart={() => setHeld(rank)}
               onDragEnd={() => setHeld(null)}
               onDragOver={(e) => dragHover(e, rank)}
-              onContextMenu={(position) => setMenu({ rank, position })}
+              checked={selection.isChecked(rank)}
+              onCheck={(on) => selection.toggle(rank, on)}
             />
           ))}
         </Stack>
       )}
 
       {/* As close as possible to the list it lengthens. */}
-      <AddButton label="Ajouter un flux" onClick={add} mt={4} />
-
-      {menu && (
-        <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          <Menu.Item
-            color={RED}
-            leftSection={<IconTrash size={16} />}
-            onClick={() => {
-              remove(menu.rank);
-              setMenu(null);
-            }}
-          >
-            Supprimer
-          </Menu.Item>
-        </PointMenu>
-      )}
+      <ListFooter
+        addLabel="Ajouter un flux"
+        onAdd={add}
+        checkedCount={selection.checked.length}
+        onDeleteChecked={removeChecked}
+      />
     </Input.Wrapper>
   );
 }

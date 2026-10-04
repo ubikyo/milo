@@ -1,16 +1,14 @@
 /*
- * Outside Debug (Settings › Developer), the interface cannot be selected: it
- * is handled like an application, not like a page. Input fields and the text
- * editor keep their selection, otherwise you could no longer pick up what you
- * wrote. The browser's right-click menu is removed by App.tsx.
+ * The interface cannot be selected: it is handled like an application, not
+ * like a page. Input fields and the text editor keep their selection,
+ * otherwise you could no longer pick up what you wrote. The browser's right-click menu is removed by App.tsx.
  */
-html:not([data-milo-debug]) body {
+body {
   -webkit-user-select: none;
   user-select: none;
 }
 
-html:not([data-milo-debug])
-  :is(input, textarea, [contenteditable="true"], [contenteditable="true"] *) {
+:is(input, textarea, [contenteditable="true"], [contenteditable="true"] *) {
   -webkit-user-select: text;
   user-select: text;
 }

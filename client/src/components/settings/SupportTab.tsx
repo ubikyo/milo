@@ -14,7 +14,7 @@ import SupportTemplates from "./SupportTemplates";
 
 // The "Support" section of Settings ("Paramétrage"): what a request arriving
 // by e-mail receives automatically — a due date, in business days, and labels.
-// As in the Developer tab, values are sent to the server right away:
+// As in the other tabs, values are sent to the server right away:
 // the due date on leaving the field, the labels on each checkbox.
 //
 // Next come the automatic notifications — the replies an event

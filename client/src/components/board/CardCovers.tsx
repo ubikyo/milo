@@ -1,20 +1,17 @@
-import { Group, Input, Menu, Stack } from "@mantine/core";
-import { IconTrash } from "@tabler/icons-react";
+import { Group, Input, Stack } from "@mantine/core";
 import { useState } from "react";
 import { COVER_ROTATIONS } from "@milo/shared";
 import type { CardCover } from "@milo/shared";
-import { RED } from "../../themes/colors";
-import AddButton from "../ui/AddButton";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
-import PointMenu, { type PointMenuPosition } from "../ui/PointMenu";
+import { ListFooter, RowCheckbox, useRowSelection } from "../ui/DrawerRows";
 import { FileRow, useOrderedFiles } from "./CardAttachments";
 import { SmallChoice } from "./CardDueDate";
 
 const ROTATIONS = COVER_ROTATIONS.map((r) => ({ value: String(r.value), label: r.label }));
 /**
  * A card's cover images, at the top of its details, in the same style as
- * its attachments: one row per image, which opens it on click, and
- * "Supprimer" on right-click. A handle in front of each row reorders
+ * its attachments: one row per image, which opens it on click, and a
+ * checkbox to select it for deletion. A handle in front of each row reorders
  * them — the first is the one the card shows on the board —, and the
  * rotation interval, to the right of the label, makes them take turns.
  *
@@ -41,13 +38,14 @@ export default function CardCovers({
   onDelete,
   readOnly,
 }: CardCoversProps) {
-  const [toDelete, setToDelete] = useState<CardCover | null>(null);
-  const [menu, setMenu] = useState<{ cover: CardCover; position: PointMenuPosition } | null>(
-    null,
-  );
+  const [confirming, setConfirming] = useState(false);
 
   const { displayed, row } = useOrderedFiles(covers, onReorder, !readOnly);
+  const selection = useRowSelection(covers.map((c) => c.id));
   if (covers.length === 0) return null;
+
+  // Read-only, nothing is deleted: no box is shown, none counts.
+  const toDelete = readOnly ? [] : covers.filter((c) => selection.isChecked(c.id));
 
   return (
     <div data-covers>
@@ -67,36 +65,49 @@ export default function CardCovers({
           <FileRow
             key={cover.id}
             attachment={{ ...cover, is_image: true }}
-            onContextMenu={(position) => !readOnly && setMenu({ cover, position })}
+            checkbox={
+              !readOnly && (
+                <RowCheckbox
+                  label={`Sélectionner ${cover.name || "l'image"}`}
+                  checked={selection.isChecked(cover.id)}
+                  onChange={(on) => selection.toggle(cover.id, on)}
+                  afterHandle
+                />
+              )
+            }
             {...row(cover, rank)}
           />
         ))}
       </Stack>
 
-      {!readOnly && <AddButton label="Ajouter une image" onClick={onPick} mt={4} />}
-
-      {menu && (
-        <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          <Menu.Item
-            color={RED}
-            leftSection={<IconTrash size={16} />}
-            onClick={() => setToDelete(menu.cover)}
-          >
-            Supprimer
-          </Menu.Item>
-        </PointMenu>
-      )}
+      <ListFooter
+        addLabel={readOnly ? undefined : "Ajouter une image"}
+        onAdd={readOnly ? undefined : onPick}
+        checkedCount={toDelete.length}
+        onDeleteChecked={() => setConfirming(true)}
+      />
 
       <DeleteConfirmModal
-        opened={toDelete !== null}
-        onClose={() => setToDelete(null)}
+        opened={confirming && toDelete.length > 0}
+        onClose={() => setConfirming(false)}
         onConfirm={() => {
-          const cover = toDelete;
-          setToDelete(null);
-          if (cover) void onDelete(cover);
+          setConfirming(false);
+          // The deleted images leave the list, and their boxes with them; one
+          // the server refused stays checked (onDelete notifies).
+          void Promise.all(toDelete.map((cover) => onDelete(cover)));
         }}
-        title="Supprimer l'image de couverture"
-        message={<>Voulez-vous vraiment supprimer « {toDelete?.name || "cette image"} » ?</>}
+        title={
+          toDelete.length > 1
+            ? `Supprimer ${toDelete.length} images de couverture`
+            : "Supprimer l'image de couverture"
+        }
+        message={
+          toDelete.length > 1 ? (
+            <>Voulez-vous vraiment supprimer ces {toDelete.length} images de couverture ?</>
+          ) : (
+            <>Voulez-vous vraiment supprimer « {toDelete[0]?.name || "cette image"} » ?</>
+          )
+        }
       />
     </div>
   );

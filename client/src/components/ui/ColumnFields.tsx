@@ -1,32 +1,36 @@
-import { Group, Input, Menu, NumberInput, Select, Stack } from "@mantine/core";
-import { IconChevronDown, IconTrash } from "@tabler/icons-react";
+import { Group, Input, NumberInput, Select, Stack } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { IconChevronDown } from "@tabler/icons-react";
 import { useState } from "react";
 import type { DragEvent } from "react";
 import classes from "../../assets/styles/ColumnFields.module.css";
-import { RED } from "../../themes/colors";
 import { withField } from "../../widgets/types";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
-import AddButton from "./AddButton";
 import {
   ROUNDING,
   INPUT_BACKGROUND,
   Handle,
+  ListFooter,
+  RowCheckbox,
+  RowCheckboxSpace,
+  useRowSelection,
   NAME_INSET,
+  INPUT_INSET,
   INPUT_STYLE,
   move,
   rowStyle,
 } from "./DrawerRows";
-import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
 
 // The columns of a list widget — projects, Support requests, Assets positions:
 // which ones it shows, in what order, and at what default width.
 //
 // Each shown column is a row: its handle to drag it elsewhere, its name, its
 // width. The name is a select: a click opens the list of columns, to replace it
-// with another one. A right click removes it ("Supprimer"). "Ajouter une
-// colonne" adds an empty row at the end, where you pick which one. A column can
-// appear as many times as you like; the list keeps at least one: the last one
-// cannot be removed.
+// with another one. Its box, after the handle, selects it: the checked rows
+// are removed together, from the button that takes the place of "Ajouter une
+// colonne" meanwhile. That button adds an empty row at the end, where you pick
+// which one. A column can appear as many times as you like; the list keeps at
+// least one: the last one cannot be removed.
 //
 // The width is the one the grid uses as long as nobody has dragged their
 // columns: everyone can still adjust them for themselves, and double-clicking a
@@ -167,8 +171,7 @@ export default function ColumnFields({
   const [isOpen, setOpened] = useState<number | null>(null);
   /** The rank of the row whose width has focus: its field takes the drawer background. */
   const [input, setInput] = useState<number | null>(null);
-  /** The right-click menu, and the rank of the row it targets. */
-  const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
+  const selection = useRowSelection(ids);
 
   /** The displayed rows: the list, and at the end the one being added. */
   const rows = adding ? [...list, { key: "" }] : list;
@@ -178,7 +181,26 @@ export default function ColumnFields({
   // The last remaining column cannot be removed: the list shows at least one.
   const last = list.length === 1;
 
-  const remove = (rank: number) => store(list.filter((_, i) => i !== rank));
+  /**
+   * Removes the checked rows. When all of them are checked, the first one
+   * stays: the list keeps at least one column. It is not left checked — as the
+   * last column, it no longer has a box.
+   */
+  const removeChecked = () => {
+    const checked = new Set(selection.checked);
+    const all = checked.size === list.length;
+    const kept = all ? list.findIndex((_, i) => checked.has(ids[i]!)) : -1;
+    const next = list.filter((_, i) => i === kept || !checked.has(ids[i]!));
+    if (all) {
+      notifications.show({
+        color: "orange",
+        title: "Suppression impossible",
+        message: "La liste garde au moins une colonne.",
+      });
+    }
+    store(next);
+    selection.reset();
+  };
 
   // The new row is placed at the end, empty: this is where you say which column
   // you wanted. It enters the configuration only once a column is chosen; left
@@ -226,10 +248,6 @@ export default function ColumnFields({
               wrap="nowrap"
               onDragOver={(e) => dragHover(e, rank)}
               onDrop={(e) => e.preventDefault()}
-              onContextMenu={(e) => {
-                if (newRow || last) return;
-                setMenu({ rank, position: menuPosition(e) });
-              }}
               style={rowStyle(rank, rows.length, held === rank)}
             >
               <Handle
@@ -240,13 +258,25 @@ export default function ColumnFields({
                 onDragStart={() => setHeld(rank)}
                 onDragEnd={() => setHeld(null)}
               />
+              {newRow || last ? (
+                // Neither the added row nor the last column can be removed: an
+                // empty space keeps the names aligned.
+                <RowCheckboxSpace afterHandle />
+              ) : (
+                <RowCheckbox
+                  label={`Sélectionner ${column.label}`}
+                  checked={selection.isChecked(ids[rank]!)}
+                  onChange={(on) => selection.toggle(ids[rank]!, on)}
+                  afterHandle
+                />
+              )}
               <Select
                 // The text has the size of the names.
                 size="sm"
                 radius={ROUNDING}
                 // The field keeps the same inset as the width field, top and
                 // bottom, and extends over its left inset: the name stays
-                // aligned with the handle.
+                // aligned with the checkbox.
                 style={{ flex: 1, marginLeft: -NAME_INSET }}
                 data={options}
                 value={entry.key || null}
@@ -274,7 +304,7 @@ export default function ColumnFields({
                     minHeight: "var(--input-height-xs)",
                     // Without a border, the text aligns with the other names.
                     borderWidth: 0,
-                    paddingLeft: NAME_INSET,
+                    paddingLeft: INPUT_INSET,
                     cursor: "pointer",
                     ...(isOpen === rank ? { backgroundColor: INPUT_BACKGROUND } : {}),
                   },
@@ -287,6 +317,8 @@ export default function ColumnFields({
                 radius={ROUNDING}
                 disabled={newRow}
                 w={100}
+                // Closer to the column it sizes than the row's usual gap.
+                ml={-6}
                 placeholder="Auto"
                 suffix=" px"
                 min={WIDTH_MIN}
@@ -306,19 +338,12 @@ export default function ColumnFields({
       </Stack>
 
       {/* As close as possible to the list it extends. */}
-      <AddButton label="Ajouter une colonne" onClick={add} mt={4} />
-
-      {menu && (
-        <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          <Menu.Item
-            color={RED}
-            leftSection={<IconTrash size={16} />}
-            onClick={() => remove(menu.rank)}
-          >
-            Supprimer
-          </Menu.Item>
-        </PointMenu>
-      )}
+      <ListFooter
+        addLabel="Ajouter une colonne"
+        onAdd={add}
+        checkedCount={selection.checked.length}
+        onDeleteChecked={removeChecked}
+      />
     </Input.Wrapper>
   );
 }

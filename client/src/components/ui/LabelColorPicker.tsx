@@ -31,6 +31,8 @@ interface LabelColorPickerProps {
   onChange: (color: string) => void;
   label: string;
   withinPortal?: boolean;
+  /** The padding around the palette; Mantine's "xs" by default. */
+  palettePadding?: number | string;
 }
 
 export default function LabelColorPicker({
@@ -38,6 +40,7 @@ export default function LabelColorPicker({
   onChange,
   label,
   withinPortal = true,
+  palettePadding = "xs",
 }: LabelColorPickerProps) {
   const [opened, setOpened] = useState(false);
   const colors = useLabelColors();
@@ -70,7 +73,7 @@ export default function LabelColorPicker({
           aria-label={`Couleur de ${label}`}
         />
       </Popover.Target>
-      <Popover.Dropdown p="xs">
+      <Popover.Dropdown p={palettePadding}>
         {/* A matrix: each column a hue, each row a shade. */}
         <SimpleGrid cols={LABEL_HUES.length} spacing={4}>
           {LABEL_COLORS.map((c) => (

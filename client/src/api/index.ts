@@ -82,7 +82,6 @@ import type {
   TaskCardRow,
   TaskList,
   TaskListCopyInput,
-  DeveloperSettings,
   NotificationSettings,
   SupportContent,
   SupportContentEvent,
@@ -663,9 +662,6 @@ export const api = {
   getAssetSettings: () => get<AssetSettings>("/asset-settings"),
   updateAssetSettings: (data: Partial<AssetSettings>) =>
     put<AssetSettings>("/asset-settings", data),
-  getDeveloperSettings: () => get<DeveloperSettings>("/developer"),
-  updateDeveloperSettings: (data: DeveloperSettings) =>
-    put<DeveloperSettings>("/developer", data),
   getNotificationSettings: () => get<NotificationSettings>("/notification-settings"),
   updateNotificationSettings: (data: Partial<NotificationSettings>) =>
     put<NotificationSettings>("/notification-settings", data),

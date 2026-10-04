@@ -6,7 +6,6 @@ import {
   Menu,
   Modal,
   PasswordInput,
-  SimpleGrid,
   Stack,
   Text,
   TextInput,
@@ -244,7 +243,6 @@ export default function EntraTab({
   const toSend = (): EntraSettingsInput => ({
     client_id: settings.client_id,
     tenant: settings.tenant,
-    mail_sender: settings.mail_sender,
     ...(secretTouched ? { secret } : {}),
   });
 
@@ -284,8 +282,12 @@ export default function EntraTab({
 
   // The checks apply to what the server has in the database: the display
   // goes with it.
+  // The sending address is set in the Notifications tab: it is read again
+  // in case it changed since this tab loaded.
   const runTest = async () => {
-    if (await save()) setTestOpened(true);
+    if (!(await save())) return;
+    await reload();
+    setTestOpened(true);
   };
 
   /** Reconnect with what is typed, or disconnect. */
@@ -399,6 +401,9 @@ export default function EntraTab({
   const secretField = (
     <PasswordInput
       label="Secret"
+      // A quarter of the row, as before the redirect moved beside it.
+      w="calc((100% - var(--mantine-spacing-md)) / 4)"
+      style={{ flexShrink: 0 }}
       value={masked ? MASK : secret}
       visibilityToggleButtonProps={
         masked ? { style: { display: "none" } } : undefined
@@ -431,65 +436,56 @@ export default function EntraTab({
               the values are looked up, so better not rename them along
               the way. The labels above the fields, as in the card
               details, with the same gaps. */}
-          <SimpleGrid cols={2} spacing="md" verticalSpacing="xl">
+          <Stack gap="xl">
+            {/* The two IDs, one per line, across the whole width. */}
             <TextInput
               label="ID d'application"
               value={settings.client_id}
-              onChange={(e) => updateStatement({ client_id: e.currentTarget.value })}
+              onChange={(e) =>
+                updateStatement({ client_id: e.currentTarget.value })
+              }
             />
             <TextInput
               label="ID de l'annuaire"
               value={settings.tenant}
-              onChange={(e) => updateStatement({ tenant: e.currentTarget.value })}
-            />
-            {/* The secret and the redirect in the left column, at the
-                width of the application ID. */}
-            {secretField}
-            {/* Where Milo's emails are sent from: notices, assignments,
-                replies to the requests entered. A received request replies
-                from its own mailbox. */}
-            <TextInput
-              label="Adresse d'envoi"
-              type="email"
-              placeholder="milo@…"
-              value={settings.mail_sender}
-              onChange={(e) => updateStatement({ mail_sender: e.currentTarget.value })}
-            />
-            {/* The address to copy into Azure, as is: it can be read,
-                and copied with a click. Longer than the IDs, it overflows
-                by a quarter onto the right column, empty at that height. */}
-            <TextInput
-              label="Redirection"
-              style={{
-                gridColumn: "1 / -1",
-                width: "calc((100% - var(--mantine-spacing-md)) / 2 * 1.25)",
-              }}
-              value={redirection}
-              readOnly
-              rightSection={
-                <CopyButton value={redirection}>
-                  {({ copied, copy }) => (
-                    <Button
-                      variant="subtle"
-                      color="gray"
-                      size="compact-sm"
-                      onClick={copy}
-                      aria-label="Copier l'adresse de redirection"
-                      style={
-                        { "--button-hover": NEUTRAL_HOVER } as CSSProperties
-                      }
-                    >
-                      {copied ? (
-                        <IconCheck size={14} />
-                      ) : (
-                        <IconCopy size={14} />
-                      )}
-                    </Button>
-                  )}
-                </CopyButton>
+              onChange={(e) =>
+                updateStatement({ tenant: e.currentTarget.value })
               }
             />
-          </SimpleGrid>
+            <Group gap="md" wrap="nowrap" align="flex-start">
+              {secretField}
+              {/* The address to copy into Azure, as is: it can be read,
+                and copied with a click. It takes the rest of the row. */}
+              <TextInput
+                label="Redirection"
+                style={{ flex: 1, minWidth: 0 }}
+                value={redirection}
+                readOnly
+                rightSection={
+                  <CopyButton value={redirection}>
+                    {({ copied, copy }) => (
+                      <Button
+                        variant="subtle"
+                        color="gray"
+                        size="compact-sm"
+                        onClick={copy}
+                        aria-label="Copier l'adresse de redirection"
+                        style={
+                          { "--button-hover": NEUTRAL_HOVER } as CSSProperties
+                        }
+                      >
+                        {copied ? (
+                          <IconCheck size={14} />
+                        ) : (
+                          <IconCopy size={14} />
+                        )}
+                      </Button>
+                    )}
+                  </CopyButton>
+                }
+              />
+            </Group>
+          </Stack>
         </Stack>
       </Stack>
 

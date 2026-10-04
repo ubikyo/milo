@@ -3,12 +3,36 @@
    rounded. The whole row opens the attachment on click, and darkens one step
    on hover. */
 .row {
-  display: block;
+  position: relative;
   padding: 10px;
   background-color: light-dark(#ededed, var(--mantine-color-dark-6));
+}
+
+/* The link that opens the file: its content is the thumbnail, the name and
+   the icon, but it stretches over the whole row, so that a click anywhere
+   opens the file. */
+.link {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
   color: inherit;
   text-decoration: none;
-  cursor: pointer;
+}
+
+.link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+/* The handle and the checkbox, in front of the link: above it, they take
+   their own clicks. */
+.above {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
 }
 
 .row:first-child {

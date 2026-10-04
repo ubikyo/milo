@@ -1,7 +1,6 @@
 import {
   Button,
   Group,
-  Menu,
   Modal,
   NumberInput,
   Slider,
@@ -9,22 +8,22 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { RED, defaultMilestoneColor } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import LabelColorPicker from "../ui/LabelColorPicker";
 import { useLabelColors } from "../ui/LabelChip";
-import AddButton from "../ui/AddButton";
 import {
   ROUNDING,
-  ROW_INSET,
   NAME_INSET,
   INPUT_STYLE,
+  ListFooter,
+  RowCheckbox,
+  RowCheckboxSpace,
   nameFieldStyle,
   rowStyle,
+  useRowSelection,
 } from "../ui/DrawerRows";
-import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 import { MilestoneLabels, milestoneMarks } from "./milestoneMarks";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { DEFAULT_LABEL_COLOR } from "@milo/shared";
@@ -52,8 +51,6 @@ interface MilestonesModalProps {
   onSave: (milestones: Milestone[]) => Promise<unknown>;
 }
 
-/** The space added to the left of a milestone's color swatch. */
-const COLOR_GAP = 3;
 /** The space between the percentage and the label. */
 const LABEL_GAP = 4;
 /** The space between the swatch and the percentage. */
@@ -169,8 +166,10 @@ export default function MilestonesModal({
   const [input, setInput] = useState<number | null>(null);
   // The milestone just added: its label takes focus.
   const [toName, setToName] = useState<number | null>(null);
-  const [menu, setMenu] = useState<{ key: number; position: PointMenuPosition } | null>(null);
   const colors = useLabelColors();
+  // The end milestone cannot be checked: it is not deletable. Each opening
+  // gives new keys, so nothing stays checked from one type to another.
+  const selection = useRowSelection(inputs.filter((s) => !s.fixed).map((s) => s.key));
 
   useEffect(() => {
     if (!type) return;
@@ -207,6 +206,14 @@ export default function MilestonesModal({
       [...inputs, newValue].sort((a, b) => (Number(a.value) || 0) - (Number(b.value) || 0)),
     );
     setToName(newValue.key);
+  };
+
+  // The checked milestones leave the list at once: nothing is saved before
+  // "Enregistrer".
+  const removeChecked = () => {
+    const checked = new Set(selection.checked);
+    setInputs((list) => list.filter((s) => !checked.has(s.key)));
+    selection.reset();
   };
 
   // The label is optional: a milestone without a label colors its slice but
@@ -255,8 +262,9 @@ export default function MilestonesModal({
 
         {/* Milestones are presented like the drawers' lists
             (ColumnFields): one row per milestone — its color, its
-            percentage, its label right on the row. Right-click removes it
-            — the end, at 100%, stays; "Ajouter" adds one halfway. */}
+            percentage, its label right on the row. Checked milestones are
+            removed together — the end, at 100%, has no checkbox and stays;
+            "Ajouter" adds one halfway. */}
         <div>
           <Stack gap={1}>
             {inputs.map((s, rank) => (
@@ -264,16 +272,19 @@ export default function MilestonesModal({
                 key={s.key}
                 gap="sm"
                 wrap="nowrap"
-                onContextMenu={(e) => {
-                  if (s.fixed) return;
-                  setMenu({ key: s.key, position: menuPosition(e) });
-                }}
-                style={{
-                  ...rowStyle(rank, inputs.length, false),
-                  // The color swatch, first, sits a bit further from the edge.
-                  paddingLeft: ROW_INSET + COLOR_GAP,
-                }}
+                style={rowStyle(rank, inputs.length, false)}
               >
+                {s.fixed ? (
+                  // The end cannot be removed: an empty space keeps the
+                  // swatches aligned.
+                  <RowCheckboxSpace />
+                ) : (
+                  <RowCheckbox
+                    label={`Sélectionner ${s.label || `le jalon à ${s.value}%`}`}
+                    checked={selection.isChecked(s.key)}
+                    onChange={(on) => selection.toggle(s.key, on)}
+                  />
+                )}
                 {/* The swatch and the percentage follow closely: the percentage
                     field already carries its own inset. */}
                 <Group gap={PERCENT_GAP} wrap="nowrap" style={{ flexShrink: 0 }}>
@@ -331,23 +342,13 @@ export default function MilestonesModal({
             ))}
           </Stack>
           {/* As close as possible to the list it extends. */}
-          <AddButton label="Ajouter un jalon" onClick={add} mt={4} />
+          <ListFooter
+            addLabel="Ajouter un jalon"
+            onAdd={add}
+            checkedCount={selection.checked.length}
+            onDeleteChecked={removeChecked}
+          />
         </div>
-
-        {menu && (
-          <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-            <Menu.Item
-              color={RED}
-              leftSection={<IconTrash size={16} />}
-              onClick={() => {
-                setInputs((list) => list.filter((x) => x.key !== menu.key));
-                setMenu(null);
-              }}
-            >
-              Retirer
-            </Menu.Item>
-          </PointMenu>
-        )}
 
         {/* The slider as a project will show it, without touching it: filled
             to the end, each slice in its milestone's color. */}
