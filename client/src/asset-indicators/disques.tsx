@@ -1,58 +1,58 @@
 import { Stack } from "@mantine/core";
 import { IconDatabase } from "@tabler/icons-react";
 import { diskUsage } from "../lib/poste";
-import { BarresEtiquettes } from "../indicators/etiquettes";
-import { NOM, Rien, TitreIndicateur } from "./commun";
+import { LabelBars } from "../indicators/etiquettes";
+import { NAME, Nothing, TitreIndicateur } from "./commun";
 import type { AssetIndicatorWidget } from "./types";
 
 // L'occupation des disques système, par tranche : vert, bleu, orange, puis
 // rouge. Une barre rouge qui s'allonge, ce sont des postes qui vont manquer de
 // place.
 
-const LIBELLE = "Disques";
+const LABEL = "Disques";
 
 /**
  * Les tranches d'occupation, en pourcentage : la borne haute est exclue. Le
  * libellé de chaque barre dit la tranche qu'elle compte.
  */
-const TRANCHES = [
-  { name: "0 à 49 %", jusqua: 50, color: "green.6" },
-  { name: "50 à 69 %", jusqua: 70, color: "blue.6" },
-  { name: "70 à 84 %", jusqua: 85, color: "orange.6" },
-  { name: "85 à 100 %", jusqua: Infinity, color: "red.6" },
+const BANDS = [
+  { name: "0 à 49 %", upTo: 50, color: "green.6" },
+  { name: "50 à 69 %", upTo: 70, color: "blue.6" },
+  { name: "70 à 84 %", upTo: 85, color: "orange.6" },
+  { name: "85 à 100 %", upTo: Infinity, color: "red.6" },
 ];
 
-export const disquesIndicator: AssetIndicatorWidget = {
+export const disksIndicator: AssetIndicatorWidget = {
   type: "disks",
   kind: "asset",
-  label: LIBELLE,
+  label: LABEL,
   icon: IconDatabase,
-  defaultConfig: { [NOM]: "" },
+  defaultConfig: { [NAME]: "" },
 
   Display: ({ config, assets }) => {
-    const comptes = TRANCHES.map(() => 0);
-    let mesures = 0;
-    for (const poste of assets) {
-      const occupe = diskUsage(poste.system_disk);
+    const accounts = BANDS.map(() => 0);
+    let measures = 0;
+    for (const workstation of assets) {
+      const occupe = diskUsage(workstation.system_disk);
       if (occupe == null) continue;
-      mesures += 1;
-      const rang = TRANCHES.findIndex((t) => occupe < t.jusqua);
-      comptes[rang] = (comptes[rang] ?? 0) + 1;
+      measures += 1;
+      const rank = BANDS.findIndex((t) => occupe < t.upTo);
+      accounts[rank] = (accounts[rank] ?? 0) + 1;
     }
     // Une tranche où ne tombe aucun poste n'a pas de barre à montrer.
-    const data = TRANCHES.map(({ name, color }, i) => ({
+    const data = BANDS.map(({ name, color }, i) => ({
       name,
       color,
-      value: comptes[i] ?? 0,
-    })).filter((tranche) => tranche.value > 0);
+      value: accounts[i] ?? 0,
+    })).filter((band) => band.value > 0);
 
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaut={`${LIBELLE} système`} />
-        {mesures === 0 ? (
-          <Rien>Aucun disque mesuré</Rien>
+        <TitreIndicateur config={config} defaultValue={`${LABEL} système`} />
+        {measures === 0 ? (
+          <Nothing>Aucun disque mesuré</Nothing>
         ) : (
-          <BarresEtiquettes data={data} />
+          <LabelBars data={data} />
         )}
       </Stack>
     );

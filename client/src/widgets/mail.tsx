@@ -22,7 +22,7 @@ import { api } from "../api";
 import classes from "../assets/styles/AccessNumero.module.css";
 import EmailFrame from "../components/support/EmailFrame";
 import { NEUTRAL_HOVER } from "../themes/colors";
-import { avec, nombre } from "./types";
+import { withField, count } from "./types";
 import type { AccessWidget } from "./types";
 import type { AccessMail, AccessMailDetail, Id, MailAddress } from "@milo/shared";
 
@@ -35,27 +35,27 @@ import type { AccessMail, AccessMailDetail, Id, MailAddress } from "@milo/shared
 //
 // Rien n'est modifié dans la boîte : un e-mail ouvert ici n'y est pas marqué lu.
 
-const QUANTITE = "quantite";
-const HAUTEUR = "hauteur";
-const COLONNES = "colonnes";
-const NON_LUS = "nonLus";
-const ENTETE = "entete";
-const ENCADRE = "encadre";
+const QUANTITY = "quantite";
+const HEIGHT = "hauteur";
+const COLUMNS = "colonnes";
+const UNREAD = "nonLus";
+const HEADER = "entete";
+const FRAMED = "encadre";
 
 /** Les e-mails d'une page : ceux que la grille demande d'un coup. */
-const QUANTITE_PAR_DEFAUT = 15;
-const QUANTITE_MIN = 5;
-const QUANTITE_MAX = 100;
+const QUANTITY_DEFAULT = 15;
+const QUANTITY_MIN = 5;
+const QUANTITY_MAX = 100;
 
 /** La hauteur de la grille, au-delà de laquelle elle défile. */
-const HAUTEUR_PAR_DEFAUT = 360;
-const HAUTEUR_MIN = 120;
-const HAUTEUR_MAX = 1600;
+const DEFAULT_HEIGHT = 360;
+const HEIGHT_MIN = 120;
+const HEIGHT_MAX = 1600;
 
 /** La page relit la boîte à ce rythme : les nouveaux e-mails se posent en tête. */
-const RELECTURE = 2 * 60_000;
+const RELOAD_INTERVAL = 2 * 60_000;
 
-const COLONNES_PROPOSEES = [
+const PROPOSED_COLUMNS = [
   { value: "expediteur", label: "Expéditeur" },
   { value: "objet", label: "Objet" },
   { value: "apercu", label: "Aperçu" },
@@ -63,93 +63,93 @@ const COLONNES_PROPOSEES = [
   { value: "pieces", label: "Pièces jointes" },
 ];
 
-const COLONNES_PAR_DEFAUT = ["expediteur", "objet", "date"];
+const DEFAULT_COLUMNS = ["expediteur", "objet", "date"];
 
-const coche = (config: unknown, cle: string, defaut: boolean): boolean => {
-  const valeur = (config as Record<string, unknown> | null)?.[cle];
-  return valeur === undefined ? defaut : Boolean(valeur);
+const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean => {
+  const value = (config as Record<string, unknown> | null)?.[key];
+  return value === undefined ? defaultValue : Boolean(value);
 };
 
 /** Les colonnes rangées, dans l'ordre de la grille, sans ce qui n'en est pas une. */
-const colonnesDe = (config: unknown): string[] => {
-  const valeur = (config as Record<string, unknown> | null)?.[COLONNES];
-  if (!Array.isArray(valeur)) return COLONNES_PAR_DEFAUT;
-  return COLONNES_PROPOSEES.map((c) => c.value).filter((c) => valeur.includes(c));
+const columnsOf = (config: unknown): string[] => {
+  const value = (config as Record<string, unknown> | null)?.[COLUMNS];
+  if (!Array.isArray(value)) return DEFAULT_COLUMNS;
+  return PROPOSED_COLUMNS.map((c) => c.value).filter((c) => value.includes(c));
 };
 
-const borne = (valeur: number, min: number, max: number) => Math.min(max, Math.max(min, valeur));
+const bound = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 /** Aujourd'hui, l'heure ; cette année, le jour ; avant, la date entière. */
-const quand = (iso: string): string => {
+const whenLabel = (iso: string): string => {
   const date = dayjs(iso);
   if (date.isSame(dayjs(), "day")) return date.format("HH:mm");
   if (date.isSame(dayjs(), "year")) return date.format("D MMM");
   return date.format("DD/MM/YYYY");
 };
 
-const nomDe = (a: MailAddress) => a.name || a.email || "Inconnu";
+const nameOf = (a: MailAddress) => a.name || a.email || "Inconnu";
 
-const taille = (octets: number): string => {
-  if (octets < 1024) return `${octets} o`;
-  if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} Ko`;
-  return `${(octets / (1024 * 1024)).toFixed(1)} Mo`;
+const size = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 };
 
 /** Les e-mails ouverts, pour la durée de la page : les rouvrir ne redemande rien. */
-const dejaOuverts = new Map<string, AccessMailDetail>();
+const alreadyOpened = new Map<string, AccessMailDetail>();
 
-function Lecture({
+function Reader({
   blockId,
-  entete,
+  header,
   onClose,
 }: {
   blockId: Id;
-  entete: AccessMail | null;
+  header: AccessMail | null;
   onClose: () => void;
 }) {
   const [detail, setDetail] = useState<AccessMailDetail | null>(null);
-  const [erreur, setErreur] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!entete) return;
-    const connu = dejaOuverts.get(entete.id);
-    setDetail(connu ?? null);
-    setErreur("");
-    if (connu) return;
-    let actif = true;
+    if (!header) return;
+    const known = alreadyOpened.get(header.id);
+    setDetail(known ?? null);
+    setError("");
+    if (known) return;
+    let active = true;
     api
-      .getAccessMail(blockId, entete.id)
+      .getAccessMail(blockId, header.id)
       .then((d) => {
-        dejaOuverts.set(d.id, d);
-        if (actif) setDetail(d);
+        alreadyOpened.set(d.id, d);
+        if (active) setDetail(d);
       })
-      .catch((e: Error) => actif && setErreur(e.message));
+      .catch((e: Error) => active && setError(e.message));
     return () => {
-      actif = false;
+      active = false;
     };
-  }, [blockId, entete]);
+  }, [blockId, header]);
 
-  const telecharger = async (pieceId: string, nom: string) => {
-    if (!entete) return;
+  const download = async (attachmentId: string, name: string) => {
+    if (!header) return;
     try {
-      const fichier = await api.downloadAccessMailAttachment(blockId, entete.id, pieceId);
-      const url = URL.createObjectURL(fichier);
-      const lien = document.createElement("a");
-      lien.href = url;
-      lien.download = nom;
-      lien.click();
+      const file = await api.downloadAccessMailAttachment(blockId, header.id, attachmentId);
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.click();
       URL.revokeObjectURL(url);
     } catch (e) {
       notifications.show({ color: "red", message: (e as Error).message });
     }
   };
 
-  const adresses = (liste: MailAddress[]) =>
-    liste.map((a) => (a.name ? `${a.name} <${a.email}>` : a.email)).join(", ");
+  const addresses = (list: MailAddress[]) =>
+    list.map((a) => (a.name ? `${a.name} <${a.email}>` : a.email)).join(", ");
 
   return (
     <Drawer
-      opened={entete !== null}
+      opened={header !== null}
       onClose={onClose}
       position="right"
       size={760}
@@ -157,7 +157,7 @@ function Lecture({
       data-no-widget-drag
       title={
         <Title order={4} lineClamp={2}>
-          {entete?.subject || "Sans objet"}
+          {header?.subject || "Sans objet"}
         </Title>
       }
     >
@@ -169,29 +169,29 @@ function Lecture({
         onContextMenu={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {entete && (
+        {header && (
           <Stack gap={2}>
             <Group justify="space-between" wrap="nowrap" align="flex-start">
               <Text size="sm" fw={600}>
-                {nomDe(entete.from)}{" "}
-                {entete.from.name && (
+                {nameOf(header.from)}{" "}
+                {header.from.name && (
                   <Text span size="sm" c="dimmed" fw={400}>
-                    &lt;{entete.from.email}&gt;
+                    &lt;{header.from.email}&gt;
                   </Text>
                 )}
               </Text>
               <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>
-                {dayjs(entete.received_at).format("dddd D MMMM YYYY, HH:mm")}
+                {dayjs(header.received_at).format("dddd D MMMM YYYY, HH:mm")}
               </Text>
             </Group>
             {detail && detail.to.length > 0 && (
               <Text size="xs" c="dimmed">
-                À : {adresses(detail.to)}
+                À : {addresses(detail.to)}
               </Text>
             )}
             {detail && detail.cc.length > 0 && (
               <Text size="xs" c="dimmed">
-                Cc : {adresses(detail.cc)}
+                Cc : {addresses(detail.cc)}
               </Text>
             )}
           </Stack>
@@ -204,10 +204,10 @@ function Lecture({
                 variant="default"
                 leftSection={<IconPaperclip size={12} />}
                 style={{ cursor: "pointer", textTransform: "none" }}
-                onClick={() => telecharger(p.id, p.name)}
+                onClick={() => download(p.id, p.name)}
                 title="Télécharger"
               >
-                {p.name} · {taille(p.size)}
+                {p.name} · {size(p.size)}
               </Badge>
             ))}
             {detail.url && (
@@ -227,12 +227,12 @@ function Lecture({
             )}
           </Group>
         )}
-        {erreur && (
+        {error && (
           <Text size="sm" c="red">
-            {erreur}
+            {error}
           </Text>
         )}
-        {!detail && !erreur && (
+        {!detail && !error && (
           <Group gap="xs" c="dimmed">
             <Loader size="xs" color="gray" />
             <Text size="sm">Chargement de l'e-mail…</Text>
@@ -244,85 +244,85 @@ function Lecture({
   );
 }
 
-type Etat =
+type State =
   | { phase: "attente" }
   | { phase: "pret"; messages: AccessMail[]; more: boolean; unread: number | null }
   | { phase: "erreur"; message: string };
 
-function Courrier({ blockId, config }: { blockId: Id; config: unknown }) {
-  const quantite = borne(nombre(config, QUANTITE, QUANTITE_PAR_DEFAUT), QUANTITE_MIN, QUANTITE_MAX);
-  const hauteur = borne(nombre(config, HAUTEUR, HAUTEUR_PAR_DEFAUT), HAUTEUR_MIN, HAUTEUR_MAX);
-  const nonLus = coche(config, NON_LUS, false);
-  const colonnes = colonnesDe(config);
-  const [etat, setEtat] = useState<Etat>({ phase: "attente" });
-  const [suite, setSuite] = useState(false);
-  const [ouvert, setOuvert] = useState<AccessMail | null>(null);
+function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
+  const quantity = bound(count(config, QUANTITY, QUANTITY_DEFAULT), QUANTITY_MIN, QUANTITY_MAX);
+  const height = bound(count(config, HEIGHT, DEFAULT_HEIGHT), HEIGHT_MIN, HEIGHT_MAX);
+  const unreadOnly = isChecked(config, UNREAD, false);
+  const columns = columnsOf(config);
+  const [state, setState] = useState<State>({ phase: "attente" });
+  const [more, setMore] = useState(false);
+  const [isOpen, setOpened] = useState<AccessMail | null>(null);
   // La page suivante ne se demande qu'une fois à la fois, même si le bas de la
   // grille est atteint plusieurs fois pendant qu'elle arrive.
-  const enCours = useRef(false);
+  const ongoing = useRef(false);
 
   // La première page, relue à intervalle : ce qui est arrivé depuis se pose en
   // tête, et les e-mails déjà là reprennent leur état — lu ailleurs, par exemple.
   useEffect(() => {
     if (!blockId) return;
-    let actif = true;
-    setEtat({ phase: "attente" });
-    const lire = (premiere: boolean) =>
+    let active = true;
+    setState({ phase: "attente" });
+    const read = (first: boolean) =>
       api
-        .getAccessMails(blockId, 0, quantite, nonLus)
+        .getAccessMails(blockId, 0, quantity, unreadOnly)
         .then((page) => {
-          if (!actif) return;
-          setEtat((avant) => {
-            if (premiere || avant.phase !== "pret") {
+          if (!active) return;
+          setState((before) => {
+            if (first || before.phase !== "pret") {
               return { phase: "pret", messages: page.messages, more: page.more, unread: page.unread ?? null };
             }
-            const frais = new Map(page.messages.map((m) => [m.id, m]));
-            const connus = new Set(avant.messages.map((m) => m.id));
+            const fresh = new Map(page.messages.map((m) => [m.id, m]));
+            const known = new Set(before.messages.map((m) => m.id));
             return {
-              ...avant,
-              unread: page.unread ?? avant.unread,
+              ...before,
+              unread: page.unread ?? before.unread,
               messages: [
-                ...page.messages.filter((m) => !connus.has(m.id)),
-                ...avant.messages.map((m) => frais.get(m.id) ?? m),
+                ...page.messages.filter((m) => !known.has(m.id)),
+                ...before.messages.map((m) => fresh.get(m.id) ?? m),
               ],
             };
           });
         })
-        .catch((e: Error) => actif && premiere && setEtat({ phase: "erreur", message: e.message }));
-    lire(true);
-    const battement = setInterval(() => lire(false), RELECTURE);
+        .catch((e: Error) => active && first && setState({ phase: "erreur", message: e.message }));
+    read(true);
+    const heartbeat = setInterval(() => read(false), RELOAD_INTERVAL);
     return () => {
-      actif = false;
-      clearInterval(battement);
+      active = false;
+      clearInterval(heartbeat);
     };
-  }, [blockId, quantite, nonLus]);
+  }, [blockId, quantity, unreadOnly]);
 
-  const chargerLaSuite = useCallback(() => {
-    if (etat.phase !== "pret" || !etat.more || enCours.current) return;
-    enCours.current = true;
-    setSuite(true);
+  const loadMore = useCallback(() => {
+    if (state.phase !== "pret" || !state.more || ongoing.current) return;
+    ongoing.current = true;
+    setMore(true);
     api
-      .getAccessMails(blockId, etat.messages.length, quantite, nonLus)
+      .getAccessMails(blockId, state.messages.length, quantity, unreadOnly)
       .then((page) =>
-        setEtat((avant) => {
-          if (avant.phase !== "pret") return avant;
-          const connus = new Set(avant.messages.map((m) => m.id));
+        setState((before) => {
+          if (before.phase !== "pret") return before;
+          const known = new Set(before.messages.map((m) => m.id));
           return {
-            ...avant,
+            ...before,
             more: page.more,
-            messages: [...avant.messages, ...page.messages.filter((m) => !connus.has(m.id))],
+            messages: [...before.messages, ...page.messages.filter((m) => !known.has(m.id))],
           };
         }),
       )
       .catch((e: Error) => notifications.show({ color: "red", message: e.message }))
       .finally(() => {
-        enCours.current = false;
-        setSuite(false);
+        ongoing.current = false;
+        setMore(false);
       });
-  }, [etat, blockId, quantite, nonLus]);
+  }, [state, blockId, quantity, unreadOnly]);
 
-  const contenu = (() => {
-    if (etat.phase === "attente") {
+  const content = (() => {
+    if (state.phase === "attente") {
       return (
         <Group gap="xs" c="dimmed">
           <Loader size="xs" color="gray" />
@@ -330,12 +330,12 @@ function Courrier({ blockId, config }: { blockId: Id; config: unknown }) {
         </Group>
       );
     }
-    if (etat.phase === "erreur") {
+    if (state.phase === "erreur") {
       return (
         <Group gap={6} wrap="nowrap" align="flex-start">
           <IconMail size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <Text size="sm" c="red" lineClamp={3}>
-            {etat.message}
+            {state.message}
           </Text>
         </Group>
       );
@@ -343,21 +343,21 @@ function Courrier({ blockId, config }: { blockId: Id; config: unknown }) {
 
     return (
       <Stack gap={6}>
-        {coche(config, ENTETE, true) && (
+        {isChecked(config, HEADER, true) && (
           <Group gap={6} c="dimmed">
             <IconMail size={14} />
             <Text size="xs">
               Boîte de réception
-              {etat.unread !== null && ` · ${etat.unread} non lu${etat.unread > 1 ? "s" : ""}`}
+              {state.unread !== null && ` · ${state.unread} non lu${state.unread > 1 ? "s" : ""}`}
             </Text>
           </Group>
         )}
-        {etat.messages.length === 0 ? (
+        {state.messages.length === 0 ? (
           <Text size="sm" c="dimmed">
-            {nonLus ? "Aucun e-mail non lu" : "Aucun e-mail"}
+            {unreadOnly ? "Aucun e-mail non lu" : "Aucun e-mail"}
           </Text>
         ) : (
-          <ScrollArea.Autosize mah={hauteur} onBottomReached={chargerLaSuite} type="hover" offsetScrollbars="y">
+          <ScrollArea.Autosize mah={height} onBottomReached={loadMore} type="hover" offsetScrollbars="y">
             <Table
               highlightOnHover
               stickyHeader
@@ -368,7 +368,7 @@ function Courrier({ blockId, config }: { blockId: Id; config: unknown }) {
             >
               <Table.Thead>
                 <Table.Tr>
-                  {colonnes.map((c) => (
+                  {columns.map((c) => (
                     <Table.Th
                       key={c}
                       fz="xs"
@@ -377,21 +377,21 @@ function Courrier({ blockId, config }: { blockId: Id; config: unknown }) {
                       w={c === "date" ? 72 : c === "pieces" ? 28 : c === "expediteur" ? "30%" : undefined}
                       ta={c === "date" ? "right" : undefined}
                     >
-                      {c === "pieces" ? <IconPaperclip size={12} /> : COLONNES_PROPOSEES.find((p) => p.value === c)?.label}
+                      {c === "pieces" ? <IconPaperclip size={12} /> : PROPOSED_COLUMNS.find((p) => p.value === c)?.label}
                     </Table.Th>
                   ))}
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {etat.messages.map((m) => (
-                  <Table.Tr key={m.id} onClick={() => setOuvert(m)} style={{ cursor: "pointer" }}>
-                    {colonnes.map((c) => {
-                      const graisse = m.is_read ? 400 : 600;
+                {state.messages.map((m) => (
+                  <Table.Tr key={m.id} onClick={() => setOpened(m)} style={{ cursor: "pointer" }}>
+                    {columns.map((c) => {
+                      const weight = m.is_read ? 400 : 600;
                       if (c === "expediteur") {
                         return (
                           <Table.Td key={c}>
-                            <Text size="sm" fw={graisse} truncate title={m.from.email}>
-                              {nomDe(m.from)}
+                            <Text size="sm" fw={weight} truncate title={m.from.email}>
+                              {nameOf(m.from)}
                             </Text>
                           </Table.Td>
                         );
@@ -399,7 +399,7 @@ function Courrier({ blockId, config }: { blockId: Id; config: unknown }) {
                       if (c === "objet") {
                         return (
                           <Table.Td key={c}>
-                            <Text size="sm" fw={graisse} truncate c={m.importance === "high" ? "red" : undefined}>
+                            <Text size="sm" fw={weight} truncate c={m.importance === "high" ? "red" : undefined}>
                               {m.subject || "Sans objet"}
                             </Text>
                           </Table.Td>
@@ -417,8 +417,8 @@ function Courrier({ blockId, config }: { blockId: Id; config: unknown }) {
                       if (c === "date") {
                         return (
                           <Table.Td key={c} ta="right">
-                            <Text size="xs" c="dimmed" fw={graisse} style={{ whiteSpace: "nowrap" }}>
-                              {quand(m.received_at)}
+                            <Text size="xs" c="dimmed" fw={weight} style={{ whiteSpace: "nowrap" }}>
+                              {whenLabel(m.received_at)}
                             </Text>
                           </Table.Td>
                         );
@@ -435,12 +435,12 @@ function Courrier({ blockId, config }: { blockId: Id; config: unknown }) {
             </Table>
             {/* Le bas de la grille demande la page suivante ; quand la grille
                 ne défile pas encore, le bouton fait de même. */}
-            {etat.more && (
+            {state.more && (
               <Group justify="center" py={6}>
-                {suite ? (
+                {more ? (
                   <Loader size="xs" color="gray" />
                 ) : (
-                  <Button size="compact-xs" variant="subtle" color="gray" onClick={chargerLaSuite}>
+                  <Button size="compact-xs" variant="subtle" color="gray" onClick={loadMore}>
                     Charger les suivants
                   </Button>
                 )}
@@ -448,15 +448,15 @@ function Courrier({ blockId, config }: { blockId: Id; config: unknown }) {
             )}
           </ScrollArea.Autosize>
         )}
-        <Lecture blockId={blockId} entete={ouvert} onClose={() => setOuvert(null)} />
+        <Reader blockId={blockId} header={isOpen} onClose={() => setOpened(null)} />
       </Stack>
     );
   })();
 
-  if (!coche(config, ENCADRE, false)) return contenu;
+  if (!isChecked(config, FRAMED, false)) return content;
   return (
     <Box className={classes.encart} style={{ border: "none" }}>
-      {contenu}
+      {content}
     </Box>
   );
 }
@@ -467,22 +467,22 @@ export const mailWidget: AccessWidget = {
   label: "Mail",
   icon: IconMail,
   defaultConfig: {
-    [QUANTITE]: QUANTITE_PAR_DEFAUT,
-    [HAUTEUR]: HAUTEUR_PAR_DEFAUT,
-    [COLONNES]: COLONNES_PAR_DEFAUT,
-    [NON_LUS]: false,
-    [ENTETE]: true,
-    [ENCADRE]: false,
+    [QUANTITY]: QUANTITY_DEFAULT,
+    [HEIGHT]: DEFAULT_HEIGHT,
+    [COLUMNS]: DEFAULT_COLUMNS,
+    [UNREAD]: false,
+    [HEADER]: true,
+    [FRAMED]: false,
   },
   // Chaque ligne ouvre son e-mail.
   ownClicks: true,
 
-  Display: Courrier,
+  Display: Mail,
 
-  marges: () => ({ haute: 0, basse: 15 }),
+  margins: () => ({ top: 0, bottom: 15 }),
 
   // Il dessine lui-même son cadre, réglé dans le bloc « Apparence » du tiroir.
-  cadrePropre: true,
+  ownFrame: true,
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
@@ -493,20 +493,20 @@ export const mailWidget: AccessWidget = {
         {/* Un champ vidé le temps d'une saisie range la valeur par défaut. */}
         <NumberInput
           label="E-mails par chargement"
-          value={nombre(config, QUANTITE, QUANTITE_PAR_DEFAUT)}
-          onChange={(v) => onChange(avec(config, QUANTITE, v === "" ? QUANTITE_PAR_DEFAUT : Number(v)))}
-          min={QUANTITE_MIN}
-          max={QUANTITE_MAX}
+          value={count(config, QUANTITY, QUANTITY_DEFAULT)}
+          onChange={(v) => onChange(withField(config, QUANTITY, v === "" ? QUANTITY_DEFAULT : Number(v)))}
+          min={QUANTITY_MIN}
+          max={QUANTITY_MAX}
           allowNegative={false}
           allowDecimal={false}
           w={170}
         />
         <NumberInput
           label="Hauteur de la grille"
-          value={nombre(config, HAUTEUR, HAUTEUR_PAR_DEFAUT)}
-          onChange={(v) => onChange(avec(config, HAUTEUR, v === "" ? HAUTEUR_PAR_DEFAUT : Number(v)))}
-          min={HAUTEUR_MIN}
-          max={HAUTEUR_MAX}
+          value={count(config, HEIGHT, DEFAULT_HEIGHT)}
+          onChange={(v) => onChange(withField(config, HEIGHT, v === "" ? DEFAULT_HEIGHT : Number(v)))}
+          min={HEIGHT_MIN}
+          max={HEIGHT_MAX}
           suffix=" px"
           allowNegative={false}
           allowDecimal={false}
@@ -515,11 +515,11 @@ export const mailWidget: AccessWidget = {
       </Group>
       <Checkbox.Group
         label="Colonnes"
-        value={colonnesDe(config)}
-        onChange={(valeurs) => valeurs.length && onChange(avec(config, COLONNES, valeurs))}
+        value={columnsOf(config)}
+        onChange={(values) => values.length && onChange(withField(config, COLUMNS, values))}
       >
         <Stack gap="xs" mt={6}>
-          {COLONNES_PROPOSEES.map((c) => (
+          {PROPOSED_COLUMNS.map((c) => (
             <Checkbox key={c.value} value={c.value} label={c.label} color="teal" />
           ))}
         </Stack>
@@ -527,14 +527,14 @@ export const mailWidget: AccessWidget = {
       <Stack gap="sm">
         <Checkbox
           label="Non lus uniquement"
-          checked={coche(config, NON_LUS, false)}
-          onChange={(e) => onChange(avec(config, NON_LUS, e.currentTarget.checked))}
+          checked={isChecked(config, UNREAD, false)}
+          onChange={(e) => onChange(withField(config, UNREAD, e.currentTarget.checked))}
           color="teal"
         />
         <Checkbox
           label="Afficher le nombre de non lus"
-          checked={coche(config, ENTETE, true)}
-          onChange={(e) => onChange(avec(config, ENTETE, e.currentTarget.checked))}
+          checked={isChecked(config, HEADER, true)}
+          onChange={(e) => onChange(withField(config, HEADER, e.currentTarget.checked))}
           color="teal"
         />
       </Stack>

@@ -8,7 +8,7 @@ const TAG_HEIGHT = 20;
 // Le retrait de part et d'autre de la référence, plus serré que celui de Mantine.
 const TAG_PADDING_X = 2;
 // L'écart de part et d'autre du séparateur, quand l'étiquette se copie.
-const ECART_SEPARATEUR = 4;
+const SEPARATOR_GAP = 4;
 
 interface ReferenceTagProps {
   /** La référence affichée. */
@@ -17,15 +17,15 @@ interface ReferenceTagProps {
    * La référence la plus longue qu'on attend : toutes les étiquettes d'une
    * liste en prennent la largeur.
    */
-  gabarit: string;
+  template: string;
   /**
    * Vrai pour ajouter, au bout de l'étiquette et derrière un trait, un
    * bouton qui copie la référence.
    */
-  copiable?: boolean;
+  copyable?: boolean;
 }
 
-export function ReferenceTag({ reference, gabarit, copiable }: ReferenceTagProps) {
+export function ReferenceTag({ reference, template, copyable }: ReferenceTagProps) {
   return (
     <Badge color="green" variant="filled" radius="sm" h={TAG_HEIGHT} px={TAG_PADDING_X}>
       <span style={{ display: "inline-flex", alignItems: "center", height: "100%" }}>
@@ -34,10 +34,10 @@ export function ReferenceTag({ reference, gabarit, copiable }: ReferenceTagProps
         <span style={{ display: "inline-grid", justifyItems: "center" }}>
           <span style={{ gridArea: "1 / 1" }}>{reference}</span>
           <span style={{ gridArea: "1 / 1", visibility: "hidden" }} aria-hidden>
-            {gabarit}
+            {template}
           </span>
         </span>
-        {copiable && (
+        {copyable && (
           <>
             <span
               aria-hidden
@@ -45,7 +45,7 @@ export function ReferenceTag({ reference, gabarit, copiable }: ReferenceTagProps
               style={{
                 width: 1,
                 height: TAG_HEIGHT,
-                marginInline: ECART_SEPARATEUR,
+                marginInline: SEPARATOR_GAP,
                 // Un blanc très transparent : le trait se voit sans
                 // concurrencer la référence.
                 backgroundColor: "rgba(255, 255, 255, 0.3)",

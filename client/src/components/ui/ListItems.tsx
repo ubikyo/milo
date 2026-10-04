@@ -84,11 +84,11 @@ function Row({
   actions,
   children,
 }: RowProps) {
-  const [survol, setSurvol] = useState(false);
+  const [hover, setHovering] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const active = survol || menu !== null;
+  const active = hover || menu !== null;
 
-  const ouvrirMenu = (e: MouseEvent<HTMLDivElement>) => {
+  const openMenu = (e: MouseEvent<HTMLDivElement>) => {
     if (!actions?.length) return;
     e.preventDefault();
     // Depuis le clavier, l'événement n'a pas de position : le menu se pose
@@ -101,7 +101,7 @@ function Row({
     }
   };
 
-  const gestes = actions?.filter((a) => !a.danger) ?? [];
+  const regularActions = actions?.filter((a) => !a.danger) ?? [];
   const dangers = actions?.filter((a) => a.danger) ?? [];
   const item = ({ label, icon: Icon, onClick, danger }: RowAction) => (
     <Menu.Item
@@ -127,11 +127,11 @@ function Row({
         flexShrink: 0,
         backgroundColor: active ? ROW_HOVER_BG : undefined,
       }}
-      onMouseEnter={() => setSurvol(true)}
-      onMouseLeave={() => setSurvol(false)}
-      onFocusCapture={() => setSurvol(true)}
-      onBlurCapture={() => setSurvol(false)}
-      onContextMenu={ouvrirMenu}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+      onFocusCapture={() => setHovering(true)}
+      onBlurCapture={() => setHovering(false)}
+      onContextMenu={openMenu}
     >
       {typeof children === "function" ? children(active) : children}
 
@@ -142,7 +142,7 @@ function Row({
         createPortal(
           <Menu
             opened
-            onChange={(ouvert) => !ouvert && setMenu(null)}
+            onChange={(isOpen) => !isOpen && setMenu(null)}
             position="bottom-start"
             withinPortal
             shadow="md"
@@ -159,8 +159,8 @@ function Row({
               />
             </Menu.Target>
             <Menu.Dropdown>
-              {gestes.map(item)}
-              {gestes.length > 0 && dangers.length > 0 && <Menu.Divider />}
+              {regularActions.map(item)}
+              {regularActions.length > 0 && dangers.length > 0 && <Menu.Divider />}
               {dangers.map(item)}
             </Menu.Dropdown>
           </Menu>,

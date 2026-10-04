@@ -1,10 +1,10 @@
 import { Stack } from "@mantine/core";
 import { IconList } from "@tabler/icons-react";
-import { COLONNES_PROJETS, ProjetsListeWidget } from "../components/project/ProjectTable";
-import ActionsCopierColler from "../components/ui/ActionsCopierColler";
-import ChampsColonnes, { LISTE_COLONNES } from "../components/ui/ChampsColonnes";
-import ChampsListeDuTableau from "../components/ui/ChampsListeDuTableau";
-import { useParametrage } from "../lib/droits";
+import { PROJECT_COLUMNS, ProjectsListWidget } from "../components/project/ProjectTable";
+import CopyPasteActions from "../components/ui/ActionsCopierColler";
+import ColumnFields, { LIST_COLUMNS } from "../components/ui/ChampsColonnes";
+import BoardListFields from "../components/ui/ChampsListeDuTableau";
+import { useSettingsMode } from "../lib/droits";
 import type { WidgetConfigProps } from "../widgets/types";
 import type { ProjectIndicatorWidget } from "./types";
 
@@ -14,7 +14,7 @@ import type { ProjectIndicatorWidget } from "./types";
 // page (ProjetsListeContext). Le menu « Actions » de son tiroir copie et
 // colle les étiquettes et les catégories du tableau.
 
-export const listeProjetsIndicator: ProjectIndicatorWidget = {
+export const projectsListIndicator: ProjectIndicatorWidget = {
   type: "list",
   kind: "project",
   label: "Projets",
@@ -22,7 +22,7 @@ export const listeProjetsIndicator: ProjectIndicatorWidget = {
   // Posé, le widget montre ces colonnes ; les autres s'ajoutent depuis son
   // tiroir.
   defaultConfig: {
-    [LISTE_COLONNES]: [
+    [LIST_COLUMNS]: [
       "number",
       "name",
       "category_name",
@@ -34,24 +34,24 @@ export const listeProjetsIndicator: ProjectIndicatorWidget = {
   },
   ownClicks: true,
   fill: true,
-  Display: ({ config }) => <ProjetsListeWidget config={config} />,
-  Config: Reglages,
+  Display: ({ config }) => <ProjectsListWidget config={config} />,
+  Config: Settings,
 };
 
-function Reglages(props: WidgetConfigProps) {
+function Settings(props: WidgetConfigProps) {
   // Les types de jalons relèvent du Paramétrage.
-  const parametrage = useParametrage();
+  const canEditSettings = useSettingsMode();
   return (
     <>
-      <ActionsCopierColler univers="projects" choses={["labels", "categories"]} />
+      <CopyPasteActions scope="projects" items={["labels", "categories"]} />
       <Stack gap="xl">
-        <ChampsColonnes colonnes={COLONNES_PROJETS} {...props} />
+        <ColumnFields columns={PROJECT_COLUMNS} {...props} />
         {/* Les catégories, les étiquettes du tableau et les types de jalons,
             sous ses colonnes : ils partent à la sauvegarde, avec la
             configuration. */}
-        <ChampsListeDuTableau sorte="categories" />
-        <ChampsListeDuTableau sorte="project-labels" />
-        {parametrage && <ChampsListeDuTableau sorte="milestone-types" />}
+        <BoardListFields kind="categories" />
+        <BoardListFields kind="project-labels" />
+        {canEditSettings && <BoardListFields kind="milestone-types" />}
       </Stack>
     </>
   );

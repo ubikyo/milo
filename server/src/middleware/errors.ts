@@ -3,7 +3,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../env.js";
 import { HttpError } from "../lib/http.js";
-import { TAILLE_MAX_MO } from "../lib/medias.js";
+import { SIZE_MAX_MB } from "../lib/medias.js";
 
 export const notFoundHandler = (req: Request, res: Response): void => {
   res.status(404).json({ error: `Route inconnue : ${req.method} ${req.path}` });
@@ -29,9 +29,9 @@ export const errorHandler = (
   // limite est celle que la route a posée — 25 Mo pour une pièce jointe, bien
   // plus pour une sauvegarde — et c'est l'analyseur qui la porte.
   if (typeof err === "object" && err !== null && "type" in err) {
-    const corps = err as { type?: string; limit?: number };
-    if (corps.type === "entity.too.large") {
-      const mo = corps.limit ? Math.round(corps.limit / (1024 * 1024)) : TAILLE_MAX_MO;
+    const body = err as { type?: string; limit?: number };
+    if (body.type === "entity.too.large") {
+      const mo = body.limit ? Math.round(body.limit / (1024 * 1024)) : SIZE_MAX_MB;
       res.status(413).json({ error: `Fichier trop volumineux (${mo} Mo au maximum)` });
       return;
     }

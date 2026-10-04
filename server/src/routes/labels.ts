@@ -12,15 +12,15 @@ import type { CopyResult, Id, Resource, Right } from "@milo/shared";
 import { DEFAULT_LABEL_COLOR, isLabelColor } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { LabelRow, NextRow } from "../db/rows.js";
-import { exiger } from "../lib/droits.js";
-import { badRequest, orNotFound, refuserSiUtilise, requireText } from "../lib/http.js";
+import { require } from "../lib/droits.js";
+import { badRequest, orNotFound, refuseIfUsed, requireText } from "../lib/http.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
-import { boardOuvert } from "../repositories/boards.js";
-import { tableauOuvert } from "../repositories/boards.js";
-import { ordreRecu, rangerEtiquettes, rangerEtiquettesDeProjets } from "../repositories/reorder.js";
+import { openTaskBoard } from "../repositories/boards.js";
+import { openBoard } from "../repositories/boards.js";
+import { receivedOrder, arrangeLabels, arrangeProjectLabels } from "../repositories/reorder.js";
 
-const ETIQUETTE_INTROUVABLE = "Étiquette introuvable";
+const LABEL_NOT_FOUND = "Étiquette introuvable";
 
 interface LabelTable {
   /** Le nom de la table. Il n'entre dans le SQL qu'ici, jamais depuis une requête. */
@@ -32,67 +32,67 @@ interface LabelTable {
    * Lève sinon, et rend l'identifiant vérifié — la copie en a besoin des deux
    * côtés, et ne veut pas d'un identifiant reçu tel quel.
    */
-  verifierTableau: (boardId: unknown, req: Request, droit: Right) => Id;
+  verifyBoard: (boardId: unknown, req: Request, right: Right) => Id;
   /** Vrai quand ces étiquettes portent un poids : celles des projets seules. */
-  avecPoids?: boolean;
+  withWeight?: boolean;
   /** Le rangement de la table, tableau par tableau (repositories/reorder.ts). */
-  ranger: (ids: Id[], boardId: Id) => void;
+  store: (ids: Id[], boardId: Id) => void;
 }
 
 /** Le poids reçu : un entier, positif ou non. */
-const poidsEtiquette = (valeur: unknown): number => {
-  const poids = Number(valeur);
-  if (!Number.isInteger(poids)) badRequest("Le poids doit être un nombre entier");
-  return poids;
+const labelWeight = (value: unknown): number => {
+  const weight = Number(value);
+  if (!Number.isInteger(weight)) badRequest("Le poids doit être un nombre entier");
+  return weight;
 };
 
-const creerRoutes = ({
+const createRoutes = ({
   table,
   touched,
-  verifierTableau,
-  avecPoids = false,
-  ranger,
+  verifyBoard,
+  withWeight = false,
+  store,
 }: LabelTable): Router => {
-  const parId = selection<LabelRow>(`SELECT * FROM ${table} WHERE id = ?`);
-  const duTableau = selection<LabelRow>(
+  const byId = selection<LabelRow>(`SELECT * FROM ${table} WHERE id = ?`);
+  const ofBoard = selection<LabelRow>(
     `SELECT * FROM ${table} WHERE board_id = ? ORDER BY position, id`,
   );
-  const rangSuivant = scalar<NextRow>(
+  const nextRank = scalar<NextRow>(
     `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM ${table} WHERE board_id = ?`,
   );
   // Sans poids, la colonne n'existe pas : on n'écrit que ce que la table porte.
   const insertion = mutation(
-    avecPoids
+    withWeight
       ? `INSERT INTO ${table} (board_id, name, color, position, created_at, weight) VALUES (?, ?, ?, ?, ?, ?)`
       : `INSERT INTO ${table} (board_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?)`,
   );
-  const creer = {
-    run: (boardId: unknown, name: string, color: string, rang: number, instant: string, poids = 0) =>
-      avecPoids
-        ? insertion.run(boardId, name, color, rang, instant, poids)
-        : insertion.run(boardId, name, color, rang, instant),
+  const create = {
+    run: (boardId: unknown, name: string, color: string, rank: number, instant: string, weight = 0) =>
+      withWeight
+        ? insertion.run(boardId, name, color, rank, instant, weight)
+        : insertion.run(boardId, name, color, rank, instant),
   };
-  const miseAJour = mutation(
-    avecPoids
+  const updatedAt = mutation(
+    withWeight
       ? `UPDATE ${table} SET name = ?, color = ?, weight = ? WHERE id = ?`
       : `UPDATE ${table} SET name = ?, color = ? WHERE id = ?`,
   );
-  const modifier = {
-    run: (name: string, color: string, poids: number, id: Id) =>
-      avecPoids ? miseAJour.run(name, color, poids, id) : miseAJour.run(name, color, id),
+  const updateStatement = {
+    run: (name: string, color: string, weight: number, id: Id) =>
+      withWeight ? updatedAt.run(name, color, weight, id) : updatedAt.run(name, color, id),
   };
-  const deMemeNom = selection<LabelRow>(
+  const withSameName = selection<LabelRow>(
     `SELECT * FROM ${table} WHERE board_id = ? AND name = ? COLLATE NOCASE LIMIT 1`,
   );
-  const supprimer = mutation(`DELETE FROM ${table} WHERE id = ?`);
+  const remove = mutation(`DELETE FROM ${table} WHERE id = ?`);
   // Ce qui porte l'étiquette : des cartes, ou des projets.
-  const utilisations = scalar<{ count: number }>(
+  const uses = scalar<{ count: number }>(
     table === "labels"
       ? "SELECT COUNT(*) AS count FROM card_labels WHERE label_id = ?"
       : "SELECT COUNT(*) AS count FROM project_label_links WHERE label_id = ?",
   );
 
-  const effacerDuTableau = mutation(`DELETE FROM ${table} WHERE board_id = ?`);
+  const clearFromBoard = mutation(`DELETE FROM ${table} WHERE board_id = ?`);
 
   /**
    * Les étiquettes d'un tableau posées dans un autre. Celles qui y portent
@@ -101,20 +101,20 @@ const creerRoutes = ({
    * Les autres se rangent à la suite de celles de l'accueil. « remplacer » :
    * celles de l'accueil s'en vont d'abord — et quittent ce qui les portait.
    */
-  const copier = transaction((source: Id, cible: Id, remplacer: boolean): CopyResult => {
-    const removed = remplacer ? effacerDuTableau.run(cible).changes : 0;
+  const copy = transaction((source: Id, target: Id, replaceExisting: boolean): CopyResult => {
+    const removed = replaceExisting ? clearFromBoard.run(target).changes : 0;
     const timestamp = now();
-    let rang = rangSuivant(cible).next;
+    let rank = nextRank(target).next;
     let copied = 0;
     let skipped = 0;
 
-    for (const label of duTableau.all(source)) {
-      if (deMemeNom.get(cible, label.name)) {
+    for (const label of ofBoard.all(source)) {
+      if (withSameName.get(target, label.name)) {
         skipped += 1;
         continue;
       }
-      creer.run(cible, label.name, label.color, rang, timestamp, label.weight ?? 0);
-      rang += 1;
+      create.run(target, label.name, label.color, rank, timestamp, label.weight ?? 0);
+      rank += 1;
       copied += 1;
     }
 
@@ -127,8 +127,8 @@ const creerRoutes = ({
   routes.get("/", (req, res) => {
     const { board } = req.query;
     if (!board) badRequest("Le paramètre board est requis");
-    verifierTableau(board, req, "view");
-    res.json(duTableau.all(board));
+    verifyBoard(board, req, "view");
+    res.json(ofBoard.all(board));
   });
 
   routes.post("/", (req, res) => {
@@ -137,12 +137,12 @@ const creerRoutes = ({
     const color = req.body.color || DEFAULT_LABEL_COLOR;
     if (!boardId) badRequest("Le tableau est requis");
     if (!isLabelColor(color)) badRequest("Couleur inconnue");
-    verifierTableau(boardId, req, "create");
-    const poids = poidsEtiquette(req.body.weight ?? 0);
+    verifyBoard(boardId, req, "create");
+    const weight = labelWeight(req.body.weight ?? 0);
 
-    const { next } = rangSuivant(boardId);
-    const { lastInsertRowid } = creer.run(boardId, name, color, next, now(), poids);
-    res.status(201).json(parId.get(lastInsertRowid));
+    const { next } = nextRank(boardId);
+    const { lastInsertRowid } = create.run(boardId, name, color, next, now(), weight);
+    res.status(201).json(byId.get(lastInsertRowid));
   });
 
   // Déclaré avant « /:id » n'est pas nécessaire — les verbes diffèrent —,
@@ -153,44 +153,44 @@ const creerRoutes = ({
       badRequest("Le tableau d'origine et celui de destination sont requis");
     }
 
-    const remplacer = req.body.replace === true;
-    const source = verifierTableau(from_board, req, "view");
-    const cible = verifierTableau(to_board, req, "create");
+    const replaceExisting = req.body.replace === true;
+    const source = verifyBoard(from_board, req, "view");
+    const target = verifyBoard(to_board, req, "create");
     // Effacer celles de l'accueil, c'est en supprimer.
-    if (remplacer) verifierTableau(to_board, req, "delete");
-    if (source === cible) badRequest("Choisissez un autre tableau que celui-ci");
+    if (replaceExisting) verifyBoard(to_board, req, "delete");
+    if (source === target) badRequest("Choisissez un autre tableau que celui-ci");
 
-    res.json(copier(source, cible, remplacer));
+    res.json(copy(source, target, replaceExisting));
   });
 
   // L'ordre des étiquettes d'un tableau, glissé dans le tiroir du widget : il
   // nomme toutes celles du tableau, chacune une fois. Déclaré avant « /:id ».
   routes.put("/reorder", (req, res) => {
-    const boardId = verifierTableau(req.body.board_id, req, "update");
-    const ids = ordreRecu(req.body.ids, duTableau.all(boardId), "L'ordre doit nommer toutes les étiquettes");
-    ranger(ids, boardId);
-    res.json(duTableau.all(boardId));
+    const boardId = verifyBoard(req.body.board_id, req, "update");
+    const ids = receivedOrder(req.body.ids, ofBoard.all(boardId), "L'ordre doit nommer toutes les étiquettes");
+    store(ids, boardId);
+    res.json(ofBoard.all(boardId));
   });
 
   routes.put("/:id", (req, res) => {
-    const existing = orNotFound(parId.get(req.params.id), ETIQUETTE_INTROUVABLE);
-    verifierTableau(existing.board_id, req, "update");
+    const existing = orNotFound(byId.get(req.params.id), LABEL_NOT_FOUND);
+    verifyBoard(existing.board_id, req, "update");
 
     const name = requireText(req.body.name ?? existing.name, "Le nom de l'étiquette est requis");
     const color = req.body.color ?? existing.color;
     if (!isLabelColor(color)) badRequest("Couleur inconnue");
-    const poids = poidsEtiquette(req.body.weight ?? existing.weight ?? 0);
+    const weight = labelWeight(req.body.weight ?? existing.weight ?? 0);
 
-    modifier.run(name, color, poids, existing.id);
-    res.json(parId.get(existing.id));
+    updateStatement.run(name, color, weight, existing.id);
+    res.json(byId.get(existing.id));
   });
 
   routes.delete("/:id", (req, res) => {
-    const existing = orNotFound(parId.get(req.params.id), ETIQUETTE_INTROUVABLE);
-    verifierTableau(existing.board_id, req, "delete");
-    refuserSiUtilise(existing.name, utilisations(existing.id).count);
+    const existing = orNotFound(byId.get(req.params.id), LABEL_NOT_FOUND);
+    verifyBoard(existing.board_id, req, "delete");
+    refuseIfUsed(existing.name, uses(existing.id).count);
 
-    supprimer.run(existing.id);
+    remove.run(existing.id);
     res.status(204).end();
   });
 
@@ -198,24 +198,24 @@ const creerRoutes = ({
 };
 
 /** Étiquettes d'un tableau de tâches : il peut être privé. */
-export const labelRoutes = creerRoutes({
+export const labelRoutes = createRoutes({
   table: "labels",
   // Les cartes portent leurs étiquettes : le tableau se relit avec elles.
   touched: ["labels", "task-lists"],
-  verifierTableau: (boardId, req, droit) => boardOuvert(boardId, req, droit).id,
-  ranger: rangerEtiquettes,
+  verifyBoard: (boardId, req, right) => openTaskBoard(boardId, req, right).id,
+  store: arrangeLabels,
 });
 
 /** Étiquettes d'un tableau de projets : il peut être privé, lui aussi. */
-export const projectLabelRoutes = creerRoutes({
+export const projectLabelRoutes = createRoutes({
   table: "project_labels",
   touched: ["project-labels", "projects"],
   // Le tableau de projets n'appartient à aucune société : ses étiquettes
   // suivent les droits du mode Projets dans n'importe laquelle.
-  verifierTableau: (boardId, req, droit) => {
-    exiger(req, "projects", droit);
-    return tableauOuvert(boardId, req.user).id;
+  verifyBoard: (boardId, req, right) => {
+    require(req, "projects", right);
+    return openBoard(boardId, req.user).id;
   },
-  avecPoids: true,
-  ranger: rangerEtiquettesDeProjets,
+  withWeight: true,
+  store: arrangeProjectLabels,
 });

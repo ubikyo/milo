@@ -5,7 +5,7 @@
 import type { CardCover, Id } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { NextRow } from "../db/rows.js";
-import { supprimerMedia, urlMedia } from "../lib/medias.js";
+import { deleteMedia, mediaUrl } from "../lib/medias.js";
 import { attachments } from "./attachments.js";
 
 export interface CardCoverRow {
@@ -35,23 +35,23 @@ export const covers = {
   files: selection<{ file: string }>("SELECT DISTINCT file FROM card_covers"),
 };
 
-const ranger = mutation("UPDATE card_covers SET position = ? WHERE id = ? AND card_id = ?");
+const store = mutation("UPDATE card_covers SET position = ? WHERE id = ? AND card_id = ?");
 
 /** L'ordre complet des couvertures d'une carte ; un identifiant d'une autre carte est ignoré. */
 export const reorderCovers = transaction((cardId: Id, ids: Id[]) => {
-  ids.forEach((id, index) => ranger.run(index, id, cardId));
+  ids.forEach((id, index) => store.run(index, id, cardId));
 });
 
 /** Retire la couverture, et son fichier si plus rien ne le cite. */
 export const removeCover = (row: CardCoverRow): void => {
   covers.remove.run(row.id);
-  if (attachments.countOfFile({ file: row.file }).count === 0) supprimerMedia(row.file);
+  if (attachments.countOfFile({ file: row.file }).count === 0) deleteMedia(row.file);
 };
 
-export const coverOf = (row: CardCoverRow): CardCover => ({ ...row, url: urlMedia(row.file) });
+export const coverOf = (row: CardCoverRow): CardCover => ({ ...row, url: mediaUrl(row.file) });
 
 /** Les adresses des couvertures de toutes les cartes d'un tableau, dans leur ordre. */
-const couverturesDuTableau = selection<{ card_id: Id; file: string }>(
+const coversOfBoard = selection<{ card_id: Id; file: string }>(
   `SELECT card_covers.card_id, card_covers.file
    FROM card_covers
    JOIN task_cards ON task_cards.id = card_covers.card_id
@@ -61,13 +61,13 @@ const couverturesDuTableau = selection<{ card_id: Id; file: string }>(
 );
 
 export const coverUrlsOfBoard = (boardId: unknown): Map<Id, string[]> => {
-  const parCarte = new Map<Id, string[]>();
-  for (const { card_id, file } of couverturesDuTableau.all(boardId)) {
-    const deja = parCarte.get(card_id);
-    if (deja) deja.push(urlMedia(file));
-    else parCarte.set(card_id, [urlMedia(file)]);
+  const byCard = new Map<Id, string[]>();
+  for (const { card_id, file } of coversOfBoard.all(boardId)) {
+    const already = byCard.get(card_id);
+    if (already) already.push(mediaUrl(file));
+    else byCard.set(card_id, [mediaUrl(file)]);
   }
-  return parCarte;
+  return byCard;
 };
 
 export const coversOf = (cardId: Id): CardCover[] => covers.ofCard.all(cardId).map(coverOf);

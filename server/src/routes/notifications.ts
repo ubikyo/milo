@@ -8,15 +8,15 @@ import { notifications } from "../repositories/notifications.js";
 export const notificationRoutes = Router();
 
 notificationRoutes.get("/", (req, res) => {
-  res.json(notifications.deQui(req.user.id));
+  res.json(notifications.forUser(req.user.id));
 });
 
 notificationRoutes.delete("/", (req, res) => {
-  notifications.toutRetirer(req.user.id);
+  notifications.removeAll(req.user.id);
   res.status(204).end();
 });
 
 notificationRoutes.delete("/:id", (req, res) => {
-  notifications.retirer(String(req.params.id), req.user.id);
+  notifications.remove(String(req.params.id), req.user.id);
   res.status(204).end();
 });

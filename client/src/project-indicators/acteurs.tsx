@@ -1,44 +1,44 @@
 import { Checkbox, Stack } from "@mantine/core";
 import { IconUsers } from "@tabler/icons-react";
-import { AnneauxActeurs } from "../indicators/acteurs";
-import { avec } from "../widgets/types";
-import { ChampNom, NOM, TitreIndicateur, termine } from "./commun";
+import { ActorRings } from "../indicators/acteurs";
+import { withField } from "../widgets/types";
+import { NameField, NAME, TitreIndicateur, isFinished } from "./commun";
 import type { ProjectIndicatorWidget } from "./types";
 
 // La part de chaque acteur dans les projets du tableau ouvert, en barres
 // radiales, comme au Support. Les projets terminés n'y comptent que si on le
 // demande.
 
-const LIBELLE = "Acteurs";
-const TOUS = "tous";
+const LABEL = "Acteurs";
+const ALL = "tous";
 
-const tousLesProjets = (config: unknown) =>
-  Boolean((config as Record<string, unknown> | null)?.[TOUS]);
+const allProjects = (config: unknown) =>
+  Boolean((config as Record<string, unknown> | null)?.[ALL]);
 
-export const acteursProjetsIndicator: ProjectIndicatorWidget = {
+export const projectActorsIndicator: ProjectIndicatorWidget = {
   type: "actors",
   kind: "project",
-  label: LIBELLE,
+  label: LABEL,
   icon: IconUsers,
-  defaultConfig: { [NOM]: "", [TOUS]: false },
+  defaultConfig: { [NAME]: "", [ALL]: false },
 
   Display: ({ config, projects }) => {
-    const comptes = tousLesProjets(config) ? projects : projects.filter((p) => !termine(p));
+    const accounts = allProjects(config) ? projects : projects.filter((p) => !isFinished(p));
     return (
       <Stack gap={4} style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaut={LIBELLE} />
-        <AnneauxActeurs acteurs={comptes.map((p) => p.actors)} unite="projets" />
+        <TitreIndicateur config={config} defaultValue={LABEL} />
+        <ActorRings actors={accounts.map((p) => p.actors)} unit="projets" />
       </Stack>
     );
   },
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
-      <ChampNom config={config} onChange={onChange} defaut={LIBELLE} />
+      <NameField config={config} onChange={onChange} defaultValue={LABEL} />
       <Checkbox
         label="Compter aussi les projets terminés"
-        checked={tousLesProjets(config)}
-        onChange={(e) => onChange(avec(config, TOUS, e.currentTarget.checked))}
+        checked={allProjects(config)}
+        onChange={(e) => onChange(withField(config, ALL, e.currentTarget.checked))}
         color="teal"
       />
     </Stack>

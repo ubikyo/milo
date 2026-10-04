@@ -10,13 +10,13 @@
 // Celles du support sont communes à toutes les sociétés et ne se copient pas.
 
 import {
-  TAILLE_MAX_ENVOI,
-  TAILLE_MAX_ENVOI_MO,
-  TAILLE_MAX_TICKET,
-  ecrireTicket,
-  fichiersDe,
-  fichiersDeposes,
-  oublierFichiers,
+  SEND_SIZE_MAX,
+  SEND_SIZE_MAX_MB,
+  TICKET_SIZE_MAX,
+  writeTicket,
+  filesOf,
+  uploadedFiles,
+  forgetFiles,
 } from "../lib/ticket-files.js";
 import express, { Router } from "express";
 import type { Request } from "express";
@@ -31,16 +31,16 @@ import {
 import type { Id, Right, SupportStatus } from "@milo/shared";
 import { transaction } from "../db/query.js";
 import type { SupportRequestRow, UserRow } from "../db/rows.js";
-import { boardLisible, boards, tableauOuvert } from "../repositories/boards.js";
-import { contexteDuTableau, contexts } from "../repositories/contexts.js";
-import { cleDansLeTableau } from "../repositories/listes.js";
+import { readableBoard, boards, openBoard } from "../repositories/boards.js";
+import { boardContext, contexts } from "../repositories/contexts.js";
+import { keyInBoard } from "../repositories/listes.js";
 import {
-  concernes,
-  notifier,
-  notifierAssignations,
-  notifierSuppression,
-  racine,
-  titreDemande,
+  concerned,
+  notify,
+  notifyAssignments,
+  notifyDeletion,
+  root,
+  requestTitle,
 } from "../lib/notify.js";
 import {
   badRequest,
@@ -48,39 +48,39 @@ import {
   forbidden,
   notFound,
   orNotFound,
-  refuserSiUtilise,
+  refuseIfUsed,
   requireText,
   toIds,
 } from "../lib/http.js";
-import { exiger, peut } from "../lib/droits.js";
-import { personneDuCompte, personneExpediteur } from "../lib/support-variables.js";
-import { descriptionPropre } from "../lib/html.js";
+import { require, requestCan } from "../lib/droits.js";
+import { accountPerson, senderPerson } from "../lib/support-variables.js";
+import { cleanDescription } from "../lib/html.js";
 import {
-  cite,
-  consigner,
+  quote,
+  logAction,
   date,
-  ecarts,
-  fait,
-  liste,
-  messageModification,
+  changes,
+  eventLine,
+  list,
+  editMessage,
 } from "../lib/historique.js";
-import type { Champ } from "../lib/historique.js";
-import { releverLesBoites } from "../lib/support-mail.js";
-import { repondreParEmail } from "../lib/support-reply.js";
-import { envoyerReponseAuto, evenementDuStatut } from "../lib/support-auto-reply.js";
-import { echeance, horodatage, now } from "../lib/time.js";
+import type { Field } from "../lib/historique.js";
+import { pollMailboxes } from "../lib/support-mail.js";
+import { replyByEmail } from "../lib/support-reply.js";
+import { sendAutoReply, statusEvent } from "../lib/support-auto-reply.js";
+import { due, timestamp, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
-import { COMMENTAIRE_SYSTEME, motDeCreation } from "../repositories/comments.js";
-import { ordreRecu, rangerSupportLabels } from "../repositories/reorder.js";
+import { SYSTEM_COMMENT, creationNote } from "../repositories/comments.js";
+import { receivedOrder, arrangeSupportLabels } from "../repositories/reorder.js";
 import {
-  DEMANDE_INTROUVABLE,
-  ETIQUETTE_SUPPORT_INTROUVABLE,
-  assignerDemandes,
-  fermerDemande,
-  fusionnerDemandes,
-  ajouterActeurs,
+  REQUEST_NOT_FOUND,
+  SUPPORT_LABEL_NOT_FOUND,
+  assignRequests,
+  closeRequest,
+  mergeRequests,
+  addActors,
   oneWithRelations,
-  prochainNumeroDeTicket,
+  nextTicketNumber,
   replaceSupportActors,
   replaceSupportLabels,
   supportCommentOf,
@@ -92,14 +92,14 @@ import {
 } from "../repositories/support.js";
 import { users } from "../repositories/users.js";
 
-const COMMENTAIRE_INTROUVABLE = "Commentaire introuvable";
+const COMMENT_NOT_FOUND = "Commentaire introuvable";
 
 
 /** Le statut reçu. Une valeur inconnue est refusée plutôt que corrigée. */
-const statut = (valeur: unknown, defaut: SupportStatus): SupportStatus => {
-  if (valeur === undefined) return defaut;
-  if (!isSupportStatus(valeur)) badRequest("Statut inconnu");
-  return valeur as SupportStatus;
+const requestedStatus = (value: unknown, defaultValue: SupportStatus): SupportStatus => {
+  if (value === undefined) return defaultValue;
+  if (!isSupportStatus(value)) badRequest("Statut inconnu");
+  return value as SupportStatus;
 };
 
 export const supportRequestRoutes = Router();
@@ -107,20 +107,20 @@ export const supportRequestRoutes = Router();
 supportRequestRoutes.use(touch("support-requests"));
 
 /** La demande visée, si elle existe. */
-const demande = (id: unknown) => orNotFound(supportRequests.byId.get(id), DEMANDE_INTROUVABLE);
+const request = (id: unknown) => orNotFound(supportRequests.byId.get(id), REQUEST_NOT_FOUND);
 
 /**
  * La demande, si l'on voit le support et le tableau de son contexte — et
  * qu'on y a `droit` quand on y écrit. Répondre, commenter, assigner, fermer : c'est la
  * modifier.
  */
-const demandePour = (req: Request, id: unknown, droit: Right = "view"): SupportRequestRow => {
-  const d = demande(id);
-  exiger(req, "support", "view", DEMANDE_INTROUVABLE);
-  if (!boardLisible(boards.byId.get(d.board_id), req.user)) {
-    notFound(DEMANDE_INTROUVABLE);
+const requestFor = (req: Request, id: unknown, right: Right = "view"): SupportRequestRow => {
+  const d = request(id);
+  require(req, "support", "view", REQUEST_NOT_FOUND);
+  if (!readableBoard(boards.byId.get(d.board_id), req.user)) {
+    notFound(REQUEST_NOT_FOUND);
   }
-  if (droit !== "view") exiger(req, "support", droit);
+  if (right !== "view") require(req, "support", right);
   return d;
 };
 
@@ -128,36 +128,36 @@ const demandePour = (req: Request, id: unknown, droit: Right = "view"): SupportR
  * Une demande a changé : ceux qui la suivent et ses acteurs en sont prévenus
  * — sauf `sauf`, que l'assignation vient de prévenir.
  */
-const demandeModifiee = (req: Request, demandeId: Id, message: string, sauf: Id[] = []): void => {
-  const d = supportRequests.byId.get(demandeId);
+const updatedRequest = (req: Request, requestId: Id, message: string, except: Id[] = []): void => {
+  const d = supportRequests.byId.get(requestId);
   if (!d) return;
-  notifier({
+  notify({
     kind: "support",
     targetId: d.id,
-    titre: titreDemande(d),
+    title: requestTitle(d),
     message,
-    auteur: req.user,
-    base: racine(req),
-    sauf,
+    author: req.user,
+    base: root(req),
+    except,
   });
 };
 
-const libelleStatut = (valeur: string): string =>
-  SUPPORT_STATUSES.find((s) => s.value === valeur)?.label ?? valeur;
+const statusLabel = (value: string): string =>
+  SUPPORT_STATUSES.find((s) => s.value === value)?.label ?? value;
 
 /** Ce que le fil note d'une demande quand elle change (lib/historique.ts). */
-const photo = (demandeId: Id): Champ[] => {
-  const d = oneWithRelations(demande(demandeId));
+const photo = (requestId: Id): Field[] => {
+  const d = oneWithRelations(request(requestId));
   return [
     {
-      libelle: "Contexte",
-      valeur: cite(d.context_id ? contexts.byId.get(d.context_id)?.name : null),
+      label: "Contexte",
+      value: quote(d.context_id ? contexts.byId.get(d.context_id)?.name : null),
     },
-    { libelle: "Objet", valeur: cite(d.subject) },
-    { libelle: "Statut", valeur: libelleStatut(d.status) },
-    { libelle: "Échéance", valeur: date(d.due_date) },
-    { libelle: "Acteurs", valeur: liste(d.actors.map((a) => a.name)) },
-    { libelle: "Étiquettes", valeur: liste(d.labels.map((l) => l.name)) },
+    { label: "Objet", value: quote(d.subject) },
+    { label: "Statut", value: statusLabel(d.status) },
+    { label: "Échéance", value: date(d.due_date) },
+    { label: "Acteurs", value: list(d.actors.map((a) => a.name)) },
+    { label: "Étiquettes", value: list(d.labels.map((l) => l.name)) },
   ];
 };
 
@@ -165,18 +165,18 @@ const photo = (demandeId: Id): Champ[] => {
  * Des demandes vont être supprimées : leurs acteurs et ceux qui les suivent,
  * lus tant qu'ils sont là, sont prévenus une fois la suppression faite.
  */
-const annoncerSuppressions = (req: Request, demandes: SupportRequestRow[]): (() => void) => {
-  const annonces = demandes.map((d) => ({ d, destinataires: concernes.demande(d.id) }));
+const announceDeletions = (req: Request, requests: SupportRequestRow[]): (() => void) => {
+  const announcements = requests.map((d) => ({ d, recipients: concerned.request(d.id) }));
   return () => {
-    for (const { d, destinataires } of annonces) {
-      notifierSuppression({
+    for (const { d, recipients } of announcements) {
+      notifyDeletion({
         kind: "support",
         targetId: d.id,
-        titre: titreDemande(d),
+        title: requestTitle(d),
         message: "a supprimé la demande",
-        auteur: req.user,
-        destinataires,
-        disparu: true,
+        author: req.user,
+        recipients,
+        vanished: true,
       });
     }
   };
@@ -185,14 +185,14 @@ const annoncerSuppressions = (req: Request, demandes: SupportRequestRow[]): (() 
 // Les demandes d'un tableau — de l'un de ses contextes, ou de tous —, quel que
 // soit leur statut.
 supportRequestRoutes.get("/", (req, res) => {
-  if (!peut(req, "support", "view")) return void res.json([]);
-  const board = tableauOuvert(req.query.board, req.user);
-  const contexte = req.query.context;
+  if (!requestCan(req, "support", "view")) return void res.json([]);
+  const board = openBoard(req.query.board, req.user);
+  const context = req.query.context;
   res.json(
     withRelations(
       supportRequests.ofBoard.all({
         board: board.id,
-        context: contexte && contexte !== "all" ? contexteDuTableau(board.id, contexte) : null,
+        context: context && context !== "all" ? boardContext(board.id, context) : null,
       }),
     ),
   );
@@ -202,9 +202,9 @@ supportRequestRoutes.get("/", (req, res) => {
 // attendre la prochaine relève périodique. Elle signale elle-même les demandes
 // créées ; une relève qui n'apporte rien ne fait rien relire aux clients.
 supportRequestRoutes.post("/sync", (req, res, next) => {
-  exiger(req, "support", "view");
+  require(req, "support", "view");
   res.locals.touched?.clear();
-  releverLesBoites()
+  pollMailboxes()
     .then((created) => res.json({ created }))
     .catch(next);
 });
@@ -218,140 +218,140 @@ supportRequestRoutes.post("/sync", (req, res, next) => {
  * Les demandes cochées, toutes existantes, sans doublon — et toutes où l'on
  * a ce droit.
  */
-const cochees = (req: Request, valeur: unknown, droit: Right): SupportRequestRow[] => {
-  const ids = [...new Set(toIds(valeur))];
+const checked = (req: Request, value: unknown, right: Right): SupportRequestRow[] => {
+  const ids = [...new Set(toIds(value))];
   if (ids.length === 0) badRequest("Aucune demande sélectionnée");
-  return ids.map((id) => demandePour(req, id, droit));
+  return ids.map((id) => requestFor(req, id, right));
 };
 
 // Fusionner : la plus récente reste et reçoit les échanges des autres, qui
 // sont fermées. Elles doivent appartenir au même contexte — une demande ne
 // change pas de contexte en cachette.
 supportRequestRoutes.post("/merge", (req, res) => {
-  const demandes = cochees(req, req.body.ids, "update");
-  if (demandes.length < 2) badRequest("Sélectionnez au moins deux demandes à fusionner");
-  if (new Set(demandes.map((d) => d.context_id)).size > 1) {
+  const requests = checked(req, req.body.ids, "update");
+  if (requests.length < 2) badRequest("Sélectionnez au moins deux demandes à fusionner");
+  if (new Set(requests.map((d) => d.context_id)).size > 1) {
     badRequest("Seules des demandes d'un même contexte peuvent être fusionnées");
   }
 
-  const [garde, ...autres] = [...demandes].sort((a, b) =>
+  const [keptRequest, ...others] = [...requests].sort((a, b) =>
     a.created_at === b.created_at ? b.id - a.id : a.created_at < b.created_at ? 1 : -1,
   ) as [SupportRequestRow, ...SupportRequestRow[]];
-  const avant = new Map(demandes.map((d) => [d.id, photo(d.id)]));
-  fusionnerDemandes(garde, autres, req.user.id, horodatage(now()));
+  const before = new Map(requests.map((d) => [d.id, photo(d.id)]));
+  mergeRequests(keptRequest, others, req.user.id, timestamp(now()));
 
   // Chaque fil note la fusion, signé Milo : celle qui reste, ce qu'elle a
   // reçu — les tickets absorbés, et l'objet, les acteurs, les étiquettes
   // qu'ils lui apportent ; les autres, où elles sont parties.
-  const refs = autres.map((a) => supportTicketRef(a.number));
-  consigner("support", garde.id, req.user, [
-    fait("Fusion", `${refs.join(", ")} ${refs.length > 1 ? "fusionnées" : "fusionnée"} ici`),
-    ...ecarts(avant.get(garde.id)!, photo(garde.id)),
+  const refs = others.map((a) => supportTicketRef(a.number));
+  logAction("support", keptRequest.id, req.user, [
+    eventLine("Fusion", `${refs.join(", ")} ${refs.length > 1 ? "fusionnées" : "fusionnée"} ici`),
+    ...changes(before.get(keptRequest.id)!, photo(keptRequest.id)),
   ]);
-  for (const autre of autres) {
-    consigner("support", autre.id, req.user, [
-      fait("Fusion", `fusionnée dans ${supportTicketRef(garde.number)}`),
-      ...ecarts(avant.get(autre.id)!, photo(autre.id)),
+  for (const other of others) {
+    logAction("support", other.id, req.user, [
+      eventLine("Fusion", `fusionnée dans ${supportTicketRef(keptRequest.number)}`),
+      ...changes(before.get(other.id)!, photo(other.id)),
     ]);
   }
-  demandeModifiee(
+  updatedRequest(
     req,
-    garde.id,
-    autres.length === 1
-      ? `y a fusionné ${titreDemande(autres[0]!)}`
-      : `y a fusionné ${autres.length} demandes`,
+    keptRequest.id,
+    others.length === 1
+      ? `y a fusionné ${requestTitle(others[0]!)}`
+      : `y a fusionné ${others.length} demandes`,
   );
-  for (const autre of autres) {
-    demandeModifiee(req, autre.id, `a fusionné la demande dans ${titreDemande(garde)}`);
+  for (const other of others) {
+    updatedRequest(req, other.id, `a fusionné la demande dans ${requestTitle(keptRequest)}`);
   }
 
-  res.json(supportRequestDetail(demande(garde.id)));
+  res.json(supportRequestDetail(request(keptRequest.id)));
 });
 
 supportRequestRoutes.post("/close", (req, res) => {
-  const demandes = cochees(req, req.body.ids, "update");
-  const note = `Fermée le ${horodatage(now())}`;
+  const requests = checked(req, req.body.ids, "update");
+  const note = `Fermée le ${timestamp(now())}`;
   transaction(() => {
-    for (const d of demandes) fermerDemande(d, req.user.id, note);
+    for (const d of requests) closeRequest(d, req.user.id, note);
   })();
-  for (const d of demandes) demandeModifiee(req, d.id, "a fermé la demande");
+  for (const d of requests) updatedRequest(req, d.id, "a fermé la demande");
   // L'expéditeur de chaque demande qui vient d'être fermée en est prévenu,
   // si le Paramétrage lui a donné une réponse (« Demande fermée »).
-  for (const d of demandes) {
-    if (d.status !== "closed") void envoyerReponseAuto(d.id, "closed");
+  for (const d of requests) {
+    if (d.status !== "closed") void sendAutoReply(d.id, "closed");
   }
   res.status(204).end();
 });
 
 /** Les fichiers rangés pour les e-mails d'une demande. */
-const fichiersDeLaDemande = (demandeId: Id): string[] =>
+const requestFiles = (requestId: Id): string[] =>
   supportComments.attachmentsOfRequest
-    .all(demandeId)
-    .flatMap(({ attachments }) => fichiersDe(attachments).map((f) => f.file));
+    .all(requestId)
+    .flatMap(({ attachments }) => filesOf(attachments).map((f) => f.file));
 
 supportRequestRoutes.post("/delete", (req, res) => {
-  const demandes = cochees(req, req.body.ids, "delete");
-  const fichiers = demandes.flatMap((d) => fichiersDeLaDemande(d.id));
-  const annoncer = annoncerSuppressions(req, demandes);
+  const requests = checked(req, req.body.ids, "delete");
+  const files = requests.flatMap((d) => requestFiles(d.id));
+  const announce = announceDeletions(req, requests);
   // Leurs étiquettes et leur fil partent avec elles, par clé étrangère.
   transaction(() => {
-    for (const d of demandes) supportRequests.remove.run(d.id);
+    for (const d of requests) supportRequests.remove.run(d.id);
   })();
-  oublierFichiers(fichiers);
-  annoncer();
+  forgetFiles(files);
+  announce();
   res.status(204).end();
 });
 
 // Assigner : les comptes choisis s'ajoutent aux acteurs, et ceux qui arrivent
 // sur une demande en sont prévenus, à l'écran et par e-mail.
 supportRequestRoutes.post("/assign", (req, res) => {
-  const demandes = cochees(req, req.body.ids, "update");
-  const comptes = [...new Set(toIds(req.body.actor_ids))]
+  const requests = checked(req, req.body.ids, "update");
+  const accounts = [...new Set(toIds(req.body.actor_ids))]
     .map((id) => users.byId.get(id))
     .filter((u): u is UserRow => Boolean(u && !u.system));
-  if (comptes.length === 0) badRequest("Choisissez au moins un acteur");
+  if (accounts.length === 0) badRequest("Choisissez au moins un acteur");
 
-  const avant = new Map(demandes.map((d) => [d.id, photo(d.id)]));
-  const arrivees = assignerDemandes(demandes, comptes.map((u) => u.id));
-  const parId = new Map(comptes.map((u) => [u.id, u]));
-  notifierAssignations(
-    demandes
-      .filter((d) => arrivees.has(d.id))
+  const before = new Map(requests.map((d) => [d.id, photo(d.id)]));
+  const arrivals = assignRequests(requests, accounts.map((u) => u.id));
+  const byId = new Map(accounts.map((u) => [u.id, u]));
+  notifyAssignments(
+    requests
+      .filter((d) => arrivals.has(d.id))
       .map((d) => ({
-        demande: d,
-        destinataires: arrivees.get(d.id)!.map((id) => parId.get(id)!),
-        auteur: req.user,
-        base: racine(req),
+        request: d,
+        recipients: arrivals.get(d.id)!.map((id) => byId.get(id)!),
+        author: req.user,
+        base: root(req),
       })),
   );
-  for (const d of demandes) {
-    const nouveaux = arrivees.get(d.id);
-    if (!nouveaux) continue;
-    consigner("support", d.id, req.user, ecarts(avant.get(d.id)!, photo(d.id)));
-    demandeModifiee(req, d.id, "a assigné la demande", nouveaux);
+  for (const d of requests) {
+    const newItems = arrivals.get(d.id);
+    if (!newItems) continue;
+    logAction("support", d.id, req.user, changes(before.get(d.id)!, photo(d.id)));
+    updatedRequest(req, d.id, "a assigné la demande", newItems);
   }
   res.status(204).end();
 });
 
 supportRequestRoutes.post("/", (req, res) => {
-  exiger(req, "support", "create");
+  require(req, "support", "create");
   // Le contexte dit, ou le premier du tableau dit.
-  const recu = req.body.context_id ? contexts.byId.get(req.body.context_id) : undefined;
-  const board = tableauOuvert(recu?.board_id ?? req.body.board_id, req.user);
-  const contexte = contexteDuTableau(board.id, recu?.id);
+  const received = req.body.context_id ? contexts.byId.get(req.body.context_id) : undefined;
+  const board = openBoard(received?.board_id ?? req.body.board_id, req.user);
+  const context = boardContext(board.id, received?.id);
 
   // Lus avant de prendre un numéro : une saisie refusée n'en consomme pas.
-  const status = statut(req.body.status, DEFAULT_SUPPORT_STATUS);
-  const dueDate = echeance(req.body.due_date, "");
+  const status = requestedStatus(req.body.status, DEFAULT_SUPPORT_STATUS);
+  const dueDate = due(req.body.due_date, "");
 
   const timestamp = now();
   const { lastInsertRowid } = supportRequests.create.run(
-    prochainNumeroDeTicket(),
+    nextTicketNumber(),
     board.id,
-    contexte,
+    context,
     // Le widget « Tickets » d'où elle est saisie, à défaut le
     // premier du tableau.
-    cleDansLeTableau(board.id, "support.list", req.body.list_key),
+    keyInBoard(board.id, "support.list", req.body.list_key),
     String(req.body.subject ?? "").trim(),
     status,
     dueDate,
@@ -363,21 +363,21 @@ supportRequestRoutes.post("/", (req, res) => {
   supportComments.createSystem.run(
     lastInsertRowid,
     null,
-    motDeCreation("Demande créée", timestamp, req.user.id),
+    creationNote("Demande créée", timestamp, req.user.id),
     timestamp,
     timestamp,
   );
 
-  const creee = demande(lastInsertRowid);
+  const created = request(lastInsertRowid);
   if (Array.isArray(req.body.actor_ids)) {
-    replaceSupportActors(creee.id, toIds(req.body.actor_ids));
-    prevenirNouveauxActeurs(req, creee.id, new Set());
+    replaceSupportActors(created.id, toIds(req.body.actor_ids));
+    notifyNewActors(req, created.id, new Set());
   }
   if (Array.isArray(req.body.label_ids)) {
-    replaceSupportLabels(creee.id, toIds(req.body.label_ids));
+    replaceSupportLabels(created.id, toIds(req.body.label_ids));
   }
 
-  res.status(201).json(supportRequestDetail(creee));
+  res.status(201).json(supportRequestDetail(created));
 });
 
 // Les personnes que citent les modèles — le compte connecté, et l'expéditeur
@@ -385,40 +385,40 @@ supportRequestRoutes.post("/", (req, res) => {
 // s'en sert pour poser ses contenus par défaut ; la demande, elle les connaît.
 supportRequestRoutes.get("/variables", (req, res, next) => {
   const id = req.query["request"];
-  const existing = id ? demandePour(req, id) : null;
-  Promise.all([personneDuCompte(req.user), existing ? personneExpediteur(existing) : null])
-    .then(([utilisateur, expediteur]) => res.json({ utilisateur, expediteur }))
+  const existing = id ? requestFor(req, id) : null;
+  Promise.all([accountPerson(req.user), existing ? senderPerson(existing) : null])
+    .then(([user, sender]) => res.json({ user, sender }))
     .catch(next);
 });
 
 supportRequestRoutes.get("/:id", (req, res) => {
-  res.json(supportRequestDetail(demandePour(req, req.params.id)));
+  res.json(supportRequestDetail(requestFor(req, req.params.id)));
 });
 
 // Chaque champ absent du corps reste tel quel. Le contexte est modifiable,
 // pour un autre du même tableau.
 supportRequestRoutes.put("/:id", (req, res, next) => {
-  const existing = demandePour(req, req.params.id, "update");
-  const avant = acteursActuels(existing.id);
-  const photoAvant = photo(existing.id);
-  const contexte =
+  const existing = requestFor(req, req.params.id, "update");
+  const before = currentActors(existing.id);
+  const photoBefore = photo(existing.id);
+  const context =
     req.body.context_id === undefined
       ? existing.context_id
-      : contexteDuTableau(existing.board_id, req.body.context_id);
+      : boardContext(existing.board_id, req.body.context_id);
 
   supportRequests.update.run(
-    contexte,
+    context,
     req.body.subject === undefined ? existing.subject : String(req.body.subject ?? "").trim(),
-    statut(req.body.status, existing.status),
-    echeance(req.body.due_date, existing.due_date),
+    requestedStatus(req.body.status, existing.status),
+    due(req.body.due_date, existing.due_date),
     now(),
     existing.id,
   );
 
-  let assignes: Id[] = [];
+  let assigned: Id[] = [];
   if (Array.isArray(req.body.actor_ids)) {
     replaceSupportActors(existing.id, toIds(req.body.actor_ids));
-    assignes = prevenirNouveauxActeurs(req, existing.id, avant);
+    assigned = notifyNewActors(req, existing.id, before);
   }
   // Les étiquettes sont communes : une demande qui change de contexte les
   // garde.
@@ -428,34 +428,34 @@ supportRequestRoutes.put("/:id", (req, res, next) => {
 
   // Ce qui a bougé se note dans les commentaires de l'équipe, signé Milo.
   // Rien n'a bougé : rien ne part.
-  const lignes = ecarts(photoAvant, photo(existing.id));
-  if (lignes.length) {
-    consigner("support", existing.id, req.user, lignes);
-    demandeModifiee(req, existing.id, messageModification(lignes), assignes);
+  const rows = changes(photoBefore, photo(existing.id));
+  if (rows.length) {
+    logAction("support", existing.id, req.user, rows);
+    updatedRequest(req, existing.id, editMessage(rows), assigned);
   }
 
   // Un nouveau statut envoie à l'expéditeur la réponse par défaut qui lui
   // correspond, s'il y en a une : la fiche se relit une fois partie.
-  const apres = demande(existing.id);
-  const evenement = apres.status !== existing.status ? evenementDuStatut(apres.status) : null;
-  if (!evenement) {
-    res.json(supportRequestDetail(apres));
+  const after = request(existing.id);
+  const event = after.status !== existing.status ? statusEvent(after.status) : null;
+  if (!event) {
+    res.json(supportRequestDetail(after));
     return;
   }
-  envoyerReponseAuto(existing.id, evenement)
-    .then(() => res.json(supportRequestDetail(demande(existing.id))))
+  sendAutoReply(existing.id, event)
+    .then(() => res.json(supportRequestDetail(request(existing.id))))
     .catch(next);
 });
 
 supportRequestRoutes.delete("/:id", (req, res) => {
   // Ses étiquettes et son fil partent avec elle, par clé étrangère ; les
   // fichiers de ses e-mails, eux, sont effacés du disque.
-  const existante = demandePour(req, req.params.id, "delete");
-  const fichiers = fichiersDeLaDemande(existante.id);
-  const annoncer = annoncerSuppressions(req, [existante]);
-  supportRequests.remove.run(existante.id);
-  oublierFichiers(fichiers);
-  annoncer();
+  const existing = requestFor(req, req.params.id, "delete");
+  const files = requestFiles(existing.id);
+  const announce = announceDeletions(req, [existing]);
+  supportRequests.remove.run(existing.id);
+  forgetFiles(files);
+  announce();
   res.status(204).end();
 });
 
@@ -466,20 +466,20 @@ supportRequestRoutes.delete("/:id", (req, res) => {
  * sait pas produire. Un message vide est refusé.
  */
 /** Une adresse e-mail, à peu près : de quoi refuser une faute de frappe. */
-const ADRESSE = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
+const ADDRESS = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
 
 /** Les adresses en copie d'une réponse : sans doublon, et bien formées. */
-const adressesRecues = (valeur: unknown): string[] => {
-  if (valeur === undefined) return [];
-  if (!Array.isArray(valeur)) badRequest("Les adresses en copie doivent être une liste");
-  const adresses = [...new Set((valeur as unknown[]).map((a) => String(a).trim().toLowerCase()))];
-  const fausse = adresses.find((a) => !ADRESSE.test(a));
-  if (fausse) badRequest(`Adresse e-mail invalide : ${fausse}`);
-  return adresses;
+const receivedAddresses = (value: unknown): string[] => {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) badRequest("Les adresses en copie doivent être une liste");
+  const addresses = [...new Set((value as unknown[]).map((a) => String(a).trim().toLowerCase()))];
+  const invalid = addresses.find((a) => !ADDRESS.test(a));
+  if (invalid) badRequest(`Adresse e-mail invalide : ${invalid}`);
+  return addresses;
 };
 
-const messageRecu = (valeur: unknown): string => {
-  const text = descriptionPropre(valeur);
+const receivedMessage = (value: unknown): string => {
+  const text = cleanDescription(value);
   if (!text) badRequest("Le message est vide");
   return text;
 };
@@ -489,81 +489,81 @@ const messageRecu = (valeur: unknown): string => {
  * geste de quelqu'un d'autre. S'ajouter soi-même ne prévient personne. Rend
  * les comptes prévenus.
  */
-const prevenirNouveauxActeurs = (
+const notifyNewActors = (
   req: Request,
-  demandeId: Id,
-  avant: Set<Id>,
+  requestId: Id,
+  before: Set<Id>,
 ): Id[] => {
-  const apres = demande(demandeId);
-  const nouveaux = oneWithRelations(apres)
-    .actors.filter((a) => !avant.has(a.id) && a.id !== req.user.id)
+  const after = request(requestId);
+  const newItems = oneWithRelations(after)
+    .actors.filter((a) => !before.has(a.id) && a.id !== req.user.id)
     .map((a) => users.byId.get(a.id))
     .filter((u): u is UserRow => Boolean(u));
-  if (!nouveaux.length) return [];
-  notifierAssignations([
-    { demande: apres, destinataires: nouveaux, auteur: req.user, base: racine(req) },
+  if (!newItems.length) return [];
+  notifyAssignments([
+    { request: after, recipients: newItems, author: req.user, base: root(req) },
   ]);
-  return nouveaux.map((u) => u.id);
+  return newItems.map((u) => u.id);
 };
 
-const acteursActuels = (demandeId: Id): Set<Id> =>
-  new Set(oneWithRelations(demande(demandeId)).actors.map((a) => a.id));
+const currentActors = (requestId: Id): Set<Id> =>
+  new Set(oneWithRelations(request(requestId)).actors.map((a) => a.id));
 
 /**
  * Déposer une pièce jointe de réponse, avant d'envoyer la réponse : le fichier
  * arrive seul, en brut, et la réponse ne porte ensuite que son nom de
  * rangement. Un fichier déposé puis jamais envoyé reste sans message.
  */
-const corpsFichier = express.raw({ type: () => true, limit: TAILLE_MAX_TICKET });
+const fileBody = express.raw({ type: () => true, limit: TICKET_SIZE_MAX });
 
-supportRequestRoutes.post("/:id/files", corpsFichier, (req, res) => {
-  demandePour(req, req.params.id, "update");
-  const contenu = req.body as unknown;
-  if (!Buffer.isBuffer(contenu) || contenu.length === 0) badRequest("Le fichier est vide");
+supportRequestRoutes.post("/:id/files", fileBody, (req, res) => {
+  requestFor(req, req.params.id, "update");
+  const content = req.body as unknown;
+  if (!Buffer.isBuffer(content) || content.length === 0) badRequest("Le fichier est vide");
   const name = String(req.query["name"] ?? "").trim() || "piece-jointe";
   const mime = String(req.query["type"] ?? "") || "application/octet-stream";
-  const file = ecrireTicket(contenu as Buffer, name);
-  res.status(201).json({ file, name, mime, size: (contenu as Buffer).length });
+  const file = writeTicket(content as Buffer, name);
+  res.status(201).json({ file, name, mime, size: (content as Buffer).length });
 });
 
 supportRequestRoutes.post("/:id/comments", (req, res, next) => {
-  const existing = demandePour(req, req.params.id, "update");
+  const existing = requestFor(req, req.params.id, "update");
 
   // Un commentaire interne : du texte simple, entre membres de l'équipe,
   // comme ceux des cartes et des projets. Il ne part pas par e-mail.
   if (req.body.internal) {
-    const texte = requireText(req.body.text, "Le commentaire est vide");
+    const text = requireText(req.body.text, "Le commentaire est vide");
     const instant = now();
     const { lastInsertRowid } = supportComments.createInternal.run(
       existing.id,
       req.user.id,
-      texte,
+      text,
       instant,
       instant,
     );
-    demandeModifiee(req, existing.id, "a ajouté un commentaire");
+    updatedRequest(req, existing.id, "a ajouté un commentaire");
     res.status(201).json(supportCommentOf(supportComments.byId.get(lastInsertRowid)!));
     return;
   }
 
-  const text = messageRecu(req.body.text);
-  const copies = { cc: adressesRecues(req.body.cc), bcc: adressesRecues(req.body.bcc) };
+  const text = receivedMessage(req.body.text);
+  const copies = { cc: receivedAddresses(req.body.cc), bcc: receivedAddresses(req.body.bcc) };
   // Le bouton d'envoi dit aussi où en est la demande : en attente, résolue
   // ou fermée.
-  const statut = req.body.status;
-  if (statut !== undefined && !isSupportStatus(statut)) badRequest("Statut inconnu");
+  const requestedStatus = req.body.status;
+  if (requestedStatus !== undefined && !isSupportStatus(requestedStatus)) badRequest("Statut inconnu");
   // Les pièces jointes, déposées d'abord (POST /:id/files).
-  const fichiers = fichiersDeposes(req.body.files);
-  if (!fichiers) badRequest("Pièce jointe introuvable");
+  const files = uploadedFiles(req.body.files);
+  if (!files) badRequest("Pièce jointe introuvable");
   if (
     existing.sender_email &&
-    fichiers!.reduce((total, f) => total + f.size, 0) > TAILLE_MAX_ENVOI
+    files!.reduce((total, f) => total + f.size, 0) > SEND_SIZE_MAX
   ) {
-    badRequest(`Les pièces jointes d'une réponse ne dépassent pas ${TAILLE_MAX_ENVOI_MO} Mo au total`);
+    badRequest(`Les pièces jointes d'une réponse ne dépassent pas ${SEND_SIZE_MAX_MB} Mo au total`);
   }
 
   // Qui écrit sur une demande s'en occupe : il en devient acteur.
-  if (!req.user.system) ajouterActeurs(existing.id, [req.user.id]);
+  if (!req.user.system) addActors(existing.id, [req.user.id]);
 
   const timestamp = now();
   const { lastInsertRowid } = supportComments.create.run(
@@ -577,13 +577,13 @@ supportRequestRoutes.post("/:id/comments", (req, res, next) => {
   // Sur une demande reçue par e-mail, le message part aussi à l'expéditeur —
   // ou fait semblant, tant que les envois sont simulés. Il est enregistré
   // quoi qu'il arrive : son état dit si l'e-mail est parti.
-  if (statut && statut !== existing.status) {
-    supportRequests.setStatus.run(statut, timestamp, existing.id);
+  if (requestedStatus && requestedStatus !== existing.status) {
+    supportRequests.setStatus.run(requestedStatus, timestamp, existing.id);
   }
-  if (fichiers!.length) {
-    supportComments.setAttachments.run(JSON.stringify(fichiers), lastInsertRowid);
+  if (files!.length) {
+    supportComments.setAttachments.run(JSON.stringify(files), lastInsertRowid);
   }
-  demandeModifiee(
+  updatedRequest(
     req,
     existing.id,
     existing.sender_email ? "a répondu par e-mail" : "a ajouté un message",
@@ -591,9 +591,9 @@ supportRequestRoutes.post("/:id/comments", (req, res, next) => {
 
   // La réponse de l'équipe d'abord, puis celle que le nouveau statut appelle :
   // l'expéditeur les reçoit dans cet ordre.
-  const evenement = statut && statut !== existing.status ? evenementDuStatut(statut) : null;
-  repondreParEmail(existing, lastInsertRowid as Id, text, copies, fichiers!)
-    .then(() => (evenement ? envoyerReponseAuto(existing.id, evenement) : undefined))
+  const event = requestedStatus && requestedStatus !== existing.status ? statusEvent(requestedStatus) : null;
+  replyByEmail(existing, lastInsertRowid as Id, text, copies, files!)
+    .then(() => (event ? sendAutoReply(existing.id, event) : undefined))
     .then(() =>
       res.status(201).json(supportCommentOf(supportComments.byId.get(lastInsertRowid)!)),
     )
@@ -606,14 +606,14 @@ export const supportCommentRoutes = Router();
 supportCommentRoutes.use(touch("support-requests"));
 
 supportCommentRoutes.put("/:id", (req, res) => {
-  const comment = orNotFound(supportComments.byId.get(req.params.id), COMMENTAIRE_INTROUVABLE);
-  if (comment.system) forbidden(COMMENTAIRE_SYSTEME);
-  demandePour(req, comment.request_id, "update");
+  const comment = orNotFound(supportComments.byId.get(req.params.id), COMMENT_NOT_FOUND);
+  if (comment.system) forbidden(SYSTEM_COMMENT);
+  requestFor(req, comment.request_id, "update");
   // Chaque fil garde sa forme : texte simple pour un commentaire interne,
   // HTML nettoyé pour un échange.
   const text = comment.internal
     ? requireText(req.body.text, "Le commentaire est vide")
-    : messageRecu(req.body.text);
+    : receivedMessage(req.body.text);
 
   // Un texte identique n'est pas une modification : la date ne bouge pas, et
   // le commentaire ne se met pas à porter « (modifié) ».
@@ -623,7 +623,7 @@ supportCommentRoutes.put("/:id", (req, res) => {
   }
 
   supportComments.update.run(text, now(), comment.id);
-  demandeModifiee(
+  updatedRequest(
     req,
     comment.request_id,
     comment.internal ? "a modifié un commentaire" : "a modifié un message",
@@ -632,21 +632,21 @@ supportCommentRoutes.put("/:id", (req, res) => {
 });
 
 supportCommentRoutes.delete("/:id", (req, res) => {
-  const comment = orNotFound(supportComments.byId.get(req.params.id), COMMENTAIRE_INTROUVABLE);
-  if (comment.system) forbidden(COMMENTAIRE_SYSTEME);
-  demandePour(req, comment.request_id, "update");
+  const comment = orNotFound(supportComments.byId.get(req.params.id), COMMENT_NOT_FOUND);
+  if (comment.system) forbidden(SYSTEM_COMMENT);
+  requestFor(req, comment.request_id, "update");
 
   supportComments.remove.run(comment.id);
   const parent = supportRequests.byId.get(comment.request_id);
   if (parent) {
-    notifierSuppression({
+    notifyDeletion({
       kind: "support",
       targetId: parent.id,
-      titre: titreDemande(parent),
+      title: requestTitle(parent),
       message: comment.internal ? "a supprimé un commentaire" : "a supprimé un message",
-      auteur: req.user,
-      destinataires: concernes.demande(parent.id),
-      disparu: false,
+      author: req.user,
+      recipients: concerned.request(parent.id),
+      vanished: false,
     });
   }
   res.status(204).end();
@@ -658,10 +658,10 @@ supportCommentRoutes.delete("/:id", (req, res) => {
 // portent.
 
 /** Le poids reçu : un entier, positif ou non. */
-const poidsEtiquette = (valeur: unknown): number => {
-  const poids = Number(valeur);
-  if (!Number.isInteger(poids)) badRequest("Le poids doit être un nombre entier");
-  return poids;
+const labelWeight = (value: unknown): number => {
+  const weight = Number(value);
+  if (!Number.isInteger(weight)) badRequest("Le poids doit être un nombre entier");
+  return weight;
 };
 
 export const supportLabelRoutes = Router();
@@ -672,19 +672,19 @@ supportLabelRoutes.use(touch("support-labels", "support-requests"));
 // n'importe laquelle.
 
 supportLabelRoutes.get("/", (req, res) => {
-  if (!peut(req, "support", "view")) return void res.json([]);
+  if (!requestCan(req, "support", "view")) return void res.json([]);
   res.json(supportLabels.all.all());
 });
 
 supportLabelRoutes.post("/", (req, res) => {
-  exiger(req, "support", "create");
+  require(req, "support", "create");
   const name = requireText(req.body.name, "Le nom de l'étiquette est requis");
   // Communes à toutes les sociétés : deux du même nom ne se distingueraient
   // plus dans une liste.
   if (supportLabels.byName.get(name)) conflict("Cette étiquette existe déjà");
   const color = req.body.color || DEFAULT_LABEL_COLOR;
   if (!isLabelColor(color)) badRequest("Couleur inconnue");
-  const weight = poidsEtiquette(req.body.weight ?? 0);
+  const weight = labelWeight(req.body.weight ?? 0);
 
   const { next } = supportLabels.nextPosition();
   const { lastInsertRowid } = supportLabels.create.run(name, color, weight, next, now());
@@ -695,40 +695,40 @@ supportLabelRoutes.post("/", (req, res) => {
 // « /:id », sinon « reorder » serait pris pour un identifiant. Toutes se
 // voient de tous : l'ordre reçu les nomme toutes, chacune une fois.
 supportLabelRoutes.put("/reorder", (req, res) => {
-  exiger(req, "support", "update");
-  const ordre = ordreRecu(
+  require(req, "support", "update");
+  const order = receivedOrder(
     req.body.ids,
     supportLabels.all.all(),
     "L'ordre doit nommer chaque étiquette une fois",
   );
-  rangerSupportLabels(ordre);
+  arrangeSupportLabels(order);
   res.json(supportLabels.all.all());
 });
 
 supportLabelRoutes.put("/:id", (req, res) => {
-  exiger(req, "support", "update");
+  require(req, "support", "update");
   const existing = orNotFound(
     supportLabels.byId.get(req.params.id),
-    ETIQUETTE_SUPPORT_INTROUVABLE,
+    SUPPORT_LABEL_NOT_FOUND,
   );
   const name = requireText(req.body.name ?? existing.name, "Le nom de l'étiquette est requis");
-  const homonyme = supportLabels.byName.get(name);
-  if (homonyme && homonyme.id !== existing.id) conflict("Cette étiquette existe déjà");
+  const namesake = supportLabels.byName.get(name);
+  if (namesake && namesake.id !== existing.id) conflict("Cette étiquette existe déjà");
   const color = req.body.color ?? existing.color;
   if (!isLabelColor(color)) badRequest("Couleur inconnue");
-  const weight = poidsEtiquette(req.body.weight ?? existing.weight);
+  const weight = labelWeight(req.body.weight ?? existing.weight);
 
   supportLabels.update.run(name, color, weight, existing.id);
   res.json(supportLabels.byId.get(existing.id));
 });
 
 supportLabelRoutes.delete("/:id", (req, res) => {
-  exiger(req, "support", "delete");
+  require(req, "support", "delete");
   const existing = orNotFound(
     supportLabels.byId.get(req.params.id),
-    ETIQUETTE_SUPPORT_INTROUVABLE,
+    SUPPORT_LABEL_NOT_FOUND,
   );
-  refuserSiUtilise(existing.name, supportLabels.usage(existing.id).count);
+  refuseIfUsed(existing.name, supportLabels.usage(existing.id).count);
   supportLabels.remove.run(existing.id);
   res.status(204).end();
 });

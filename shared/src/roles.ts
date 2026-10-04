@@ -11,7 +11,7 @@
 import type { Id } from "./domain.js";
 import { MODES } from "./modes.js";
 import type { Mode } from "./modes.js";
-import { GENRES_DU_MODE, accesLePlusLarge } from "./widget-kinds.js";
+import { MODE_KINDS, widestAccess } from "./widget-kinds.js";
 import type { WidgetRights } from "./widget-kinds.js";
 
 export const RIGHTS = [
@@ -49,13 +49,13 @@ export const allPermissions = (): Permissions =>
  */
 export const validPermissions = (value: unknown): Permissions => {
   const source = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
-  const resultat: Permissions = {};
+  const result: Permissions = {};
   for (const { value: area } of AREAS) {
-    const demandes = Array.isArray(source[area]) ? (source[area] as unknown[]) : [];
-    const accordes = rightsFor(area).filter((r) => demandes.includes(r));
-    if (accordes.length > 0) resultat[area] = accordes;
+    const requests = Array.isArray(source[area]) ? (source[area] as unknown[]) : [];
+    const granted = rightsFor(area).filter((r) => requests.includes(r));
+    if (granted.length > 0) result[area] = granted;
   }
-  return resultat;
+  return result;
 };
 
 /** L'accès au Paramétrage : aucun, Voir, ou Modifier (qui comprend Voir). */
@@ -110,17 +110,17 @@ export const validAdminPermissions = (value: unknown): AdminPermissions => {
  * le plus large des types de ses widgets. « Lire » ouvre le mode en lecture ;
  * « Modifier » y donne tout ce que le domaine propose.
  */
-export const permissionsDesWidgets = (widgets: WidgetRights): Permissions => {
-  const resultat: Permissions = {};
+export const widgetPermissions = (widgets: WidgetRights): Permissions => {
+  const result: Permissions = {};
   for (const { value: area } of AREAS) {
-    const acces = GENRES_DU_MODE[area].reduce(
-      (acc, kind) => accesLePlusLarge(acc, widgets[kind]),
+    const access = MODE_KINDS[area].reduce(
+      (acc, kind) => widestAccess(acc, widgets[kind]),
       "" as WidgetRights[keyof WidgetRights],
     );
-    if (acces === "view") resultat[area] = ["view"];
-    if (acces === "update") resultat[area] = [...rightsFor(area)];
+    if (access === "view") result[area] = ["view"];
+    if (access === "update") result[area] = [...rightsFor(area)];
   }
-  return resultat;
+  return result;
 };
 
 /**
@@ -132,7 +132,7 @@ export const permissionsDesWidgets = (widgets: WidgetRights): Permissions => {
 export type CompanyRights = Record<string, Permissions>;
 
 /** La clé des droits qui valent pour toutes les sociétés. */
-export const TOUTES_SOCIETES = "*";
+export const ALL_COMPANIES = "*";
 
 /**
  * Le compte a-t-il ce droit dans cette société ? Ce qui n'appartient à aucune
@@ -146,7 +146,7 @@ export const can = (
   right: Right,
   companyId?: Id | string | null,
 ): boolean =>
-  (rights[TOUTES_SOCIETES]?.[area]?.includes(right) ?? false) ||
+  (rights[ALL_COMPANIES]?.[area]?.includes(right) ?? false) ||
   (companyId === null || companyId === undefined || companyId === ""
     ? Object.values(rights).some((p) => p[area]?.includes(right) ?? false)
     : (rights[String(companyId)]?.[area]?.includes(right) ?? false));
@@ -154,5 +154,5 @@ export const can = (
 /** Les sociétés où le compte a ce droit. */
 export const companiesWith = (rights: CompanyRights, area: Area, right: Right = "view"): Id[] =>
   Object.entries(rights)
-    .filter(([id, p]) => id !== TOUTES_SOCIETES && p[area]?.includes(right))
+    .filter(([id, p]) => id !== ALL_COMPANIES && p[area]?.includes(right))
     .map(([id]) => Number(id));

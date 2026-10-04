@@ -3,5 +3,5 @@
 // partagé (shared, widget-kinds.ts) : le serveur s'en sert pour vérifier les
 // droits.
 
-export { WIDGET_KINDS, libelleDuGenre } from "@milo/shared";
+export { WIDGET_KINDS, kindLabel } from "@milo/shared";
 export type { WidgetKind } from "@milo/shared";

@@ -1,6 +1,6 @@
 import DeleteConfirmModal from "./DeleteConfirmModal";
 
-interface HeriteConfirmModalProps {
+interface InheritConfirmModalProps {
   opened: boolean;
   /** L'état qu'on quitte : vrai, on décoche « Hérité » ; faux, on le coche. */
   inherited: boolean;
@@ -14,12 +14,12 @@ interface HeriteConfirmModalProps {
  * ses widgets — pour sa propre copie ; le cocher efface cette copie. Le menu
  * d'onglet de chaque mode la pose.
  */
-export default function HeriteConfirmModal({
+export default function InheritConfirmModal({
   opened,
   inherited,
   onClose,
   onConfirm,
-}: HeriteConfirmModalProps) {
+}: InheritConfirmModalProps) {
   return inherited ? (
     <DeleteConfirmModal
       opened={opened}

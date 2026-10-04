@@ -6,28 +6,28 @@
 import type { Id } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 
-const ligne = selection<{ ids: string }>(
+const row = selection<{ ids: string }>(
   "SELECT ids FROM user_tab_orders WHERE user_id = ? AND scope = ?",
 );
-const poser = mutation(
+const insertRow = mutation(
   `INSERT INTO user_tab_orders (user_id, scope, ids) VALUES (?, ?, ?)
    ON CONFLICT(user_id, scope) DO UPDATE SET ids = excluded.ids`,
 );
 
 export const userTabOrders = {
   /** L'ordre rangé par ce compte, ou « null » s'il n'en a pas. */
-  lire: (userId: Id, scope: string): string[] | null => {
-    const trouve = ligne.get(userId, scope);
-    if (!trouve) return null;
+  read: (userId: Id, scope: string): string[] | null => {
+    const found = row.get(userId, scope);
+    if (!found) return null;
     try {
-      const lu: unknown = JSON.parse(trouve.ids);
-      return Array.isArray(lu) ? lu.map(String) : null;
+      const readValue: unknown = JSON.parse(found.ids);
+      return Array.isArray(readValue) ? readValue.map(String) : null;
     } catch {
       return null;
     }
   },
-  ranger: (userId: Id, scope: string, ids: (string | number)[]): void => {
-    poser.run(userId, scope, JSON.stringify(ids.map(String)));
+  store: (userId: Id, scope: string, ids: (string | number)[]): void => {
+    insertRow.run(userId, scope, JSON.stringify(ids.map(String)));
   },
 };
 
@@ -36,11 +36,11 @@ export const userTabOrders = {
  * un onglet créé depuis — gardent l'ordre commun, à la suite : le tri est
  * stable, et les lignes arrivent déjà dans l'ordre commun.
  */
-export const dansLOrdreDe = <T extends { id: Id }>(userId: Id, scope: string, lignes: T[]): T[] => {
-  const ordre = userTabOrders.lire(userId, scope);
-  if (!ordre) return lignes;
-  const rang = new Map(ordre.map((id, i) => [id, i]));
-  return [...lignes].sort(
-    (a, b) => (rang.get(String(a.id)) ?? Infinity) - (rang.get(String(b.id)) ?? Infinity),
+export const inOrderOf = <T extends { id: Id }>(userId: Id, scope: string, rows: T[]): T[] => {
+  const order = userTabOrders.read(userId, scope);
+  if (!order) return rows;
+  const rank = new Map(order.map((id, i) => [id, i]));
+  return [...rows].sort(
+    (a, b) => (rank.get(String(a.id)) ?? Infinity) - (rank.get(String(b.id)) ?? Infinity),
   );
 };

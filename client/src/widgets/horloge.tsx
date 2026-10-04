@@ -2,7 +2,7 @@ import { Box, Checkbox, Input, NumberInput, SegmentedControl, Select, Stack, Tex
 import { IconClock } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import classes from "../assets/styles/AccessNumero.module.css";
-import { avec, nombre, texte } from "./types";
+import { withField, count, text } from "./types";
 import type { AccessWidget } from "./types";
 
 // Une horloge : l'heure qu'il est ailleurs. Utile quand on appelle un site
@@ -15,12 +15,12 @@ import type { AccessWidget } from "./types";
 // Elle se lit en chiffres, ou sur un cadran à aiguilles (« analogique ») : la
 // taille dit alors le diamètre du cadran, et la trotteuse peut s'y ajouter.
 
-const FUSEAU = "fuseau";
-const TAILLE = "taille";
-const ENCADRE = "encadre";
+const TIMEZONE = "fuseau";
+const SIZE = "taille";
+const FRAMED = "encadre";
 const MODE = "mode";
-const SECONDES = "secondes";
-const CHIFFRES = "chiffres";
+const SECONDS = "secondes";
+const DIGITS = "chiffres";
 
 const MODES = [
   { value: "numerique", label: "Numérique" },
@@ -28,14 +28,14 @@ const MODES = [
 ];
 
 /** Le diamètre d'un cadran, en pixels, et ses bornes. */
-const DIAMETRE_PAR_DEFAUT = 120;
-const DIAMETRE_MIN = 40;
-const DIAMETRE_MAX = 400;
+const DEFAULT_DIAMETER = 120;
+const DIAMETER_MIN = 40;
+const DIAMETER_MAX = 400;
 
 // Les fuseaux proposés. La liste complète en compte des centaines : celle-ci
 // couvre les lieux avec lesquels on travaille, et la saisie reste possible par
 // ailleurs si le besoin vient.
-const FUSEAUX = [
+const TIMEZONES = [
   { value: "Europe/Paris", label: "Paris" },
   { value: "Europe/London", label: "Londres" },
   { value: "Europe/Lisbon", label: "Lisbonne" },
@@ -48,72 +48,72 @@ const FUSEAUX = [
   { value: "Australia/Sydney", label: "Sydney" },
 ];
 
-const FUSEAU_PAR_DEFAUT = "Europe/Paris";
+const DEFAULT_TIMEZONE = "Europe/Paris";
 
 /**
  * La taille de l'heure, en pixels. Plus grosse que le texte d'une colonne :
  * c'est tout ce que l'élément porte, et elle se lit de loin. Les bornes
  * tiennent la colonne — en deçà l'heure ne se lit plus, au-delà elle déborde.
  */
-const TAILLE_PAR_DEFAUT = 18;
-const TAILLE_MIN = 8;
-const TAILLE_MAX = 96;
+const DEFAULT_SIZE = 18;
+const SIZE_MIN = 8;
+const SIZE_MAX = 96;
 
 /** Le retrait que l'encadré laisse autour de l'heure. */
-const RETRAIT = 5;
+const INSET = 5;
 
 /**
  * L'air que l'horloge laisse sous elle, que la colonne pose
  * (components/access/SectionBlocks.tsx) : sans cela l'heure toucherait le
  * lien qui la suit.
  */
-const MARGE_BASSE = 15;
+const LOW_MARGIN = 15;
 
 /**
  * L'heure dans ce fuseau, sans les secondes. Un fuseau que le navigateur ne
  * connaît pas ferait lever « Intl » : on retombe alors sur l'heure locale
  * plutôt que de faire tomber la colonne entière.
  */
-const heureDans = (fuseau: string, maintenant: Date): string => {
+const timeIn = (timezone: string, currentTime: Date): string => {
   try {
     return new Intl.DateTimeFormat("fr-FR", {
       hour: "2-digit",
       minute: "2-digit",
-      timeZone: fuseau || FUSEAU_PAR_DEFAUT,
-    }).format(maintenant);
+      timeZone: timezone || DEFAULT_TIMEZONE,
+    }).format(currentTime);
   } catch {
     return new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(
-      maintenant,
+      currentTime,
     );
   }
 };
 
 /** Les heures, minutes et secondes qu'il est dans ce fuseau, pour placer les aiguilles. */
-const instantDans = (fuseau: string, maintenant: Date): { h: number; m: number; s: number } => {
-  const lire = (timeZone?: string) => {
-    const parties = new Intl.DateTimeFormat("fr-FR", {
+const clockPartsIn = (timezone: string, currentTime: Date): { h: number; m: number; s: number } => {
+  const read = (timeZone?: string) => {
+    const dateParts = new Intl.DateTimeFormat("fr-FR", {
       hour: "numeric",
       minute: "numeric",
       second: "numeric",
       hourCycle: "h23",
       ...(timeZone ? { timeZone } : {}),
-    }).formatToParts(maintenant);
-    const valeur = (type: string) => Number(parties.find((p) => p.type === type)?.value ?? 0);
-    return { h: valeur("hour"), m: valeur("minute"), s: valeur("second") };
+    }).formatToParts(currentTime);
+    const value = (type: string) => Number(dateParts.find((p) => p.type === type)?.value ?? 0);
+    return { h: value("hour"), m: value("minute"), s: value("second") };
   };
   try {
-    return lire(fuseau || FUSEAU_PAR_DEFAUT);
+    return read(timezone || DEFAULT_TIMEZONE);
   } catch {
-    return lire();
+    return read();
   }
 };
 
-const estAnalogique = (config: unknown): boolean => texte(config, MODE, "numerique") === "analogique";
+const isAnalog = (config: unknown): boolean => text(config, MODE, "numerique") === "analogique";
 
 /** Une case cochée par défaut tant qu'elle n'a pas été réglée. */
-const coche = (config: unknown, cle: string, defaut: boolean): boolean => {
-  const valeur = (config as Record<string, unknown> | null)?.[cle];
-  return valeur === undefined ? defaut : Boolean(valeur);
+const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean => {
+  const value = (config as Record<string, unknown> | null)?.[key];
+  return value === undefined ? defaultValue : Boolean(value);
 };
 
 /**
@@ -122,40 +122,40 @@ const coche = (config: unknown, cle: string, defaut: boolean): boolean => {
  * grille de 100 de côté, il prend le diamètre réglé ; ses traits suivent la
  * couleur du texte, et la trotteuse prend la couleur de l'application.
  */
-function Cadran({
-  diametre,
+function Dial({
+  diameter,
   h,
   m,
   s,
-  secondes,
-  chiffres,
+  seconds,
+  digits,
 }: {
-  diametre: number;
+  diameter: number;
   h: number;
   m: number;
   s: number;
-  secondes: boolean;
-  chiffres: boolean;
+  seconds: boolean;
+  digits: boolean;
 }) {
-  const angleHeures = ((h % 12) + m / 60) * 30;
-  const angleMinutes = (m + s / 60) * 6;
-  const angleSecondes = s * 6;
-  const aiguille = (angle: number, longueur: number, epaisseur: number, couleur: string, queue = 0) => (
+  const hoursAngle = ((h % 12) + m / 60) * 30;
+  const minutesAngle = (m + s / 60) * 6;
+  const secondsAngle = s * 6;
+  const hand = (angle: number, length: number, thickness: number, color: string, queue = 0) => (
     <line
       x1={50}
       y1={50 + queue}
       x2={50}
-      y2={50 - longueur}
-      stroke={couleur}
-      strokeWidth={epaisseur}
+      y2={50 - length}
+      stroke={color}
+      strokeWidth={thickness}
       strokeLinecap="round"
       transform={`rotate(${angle} 50 50)`}
     />
   );
   return (
     <svg
-      width={diametre}
-      height={diametre}
+      width={diameter}
+      height={diameter}
       viewBox="0 0 100 100"
       role="img"
       aria-label={`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`}
@@ -175,7 +175,7 @@ function Cadran({
           transform={`rotate(${i * 30} 50 50)`}
         />
       ))}
-      {chiffres &&
+      {digits &&
         Array.from({ length: 12 }, (_, i) => {
           const angle = ((i + 1) * 30 * Math.PI) / 180;
           return (
@@ -192,80 +192,80 @@ function Cadran({
             </text>
           );
         })}
-      {aiguille(angleHeures, 24, 4, "var(--mantine-color-text)")}
-      {aiguille(angleMinutes, 36, 2.5, "var(--mantine-color-text)")}
-      {secondes && aiguille(angleSecondes, 40, 1, "var(--mantine-color-teal-6)", 8)}
-      <circle cx={50} cy={50} r={2.5} fill={secondes ? "var(--mantine-color-teal-6)" : "var(--mantine-color-text)"} />
+      {hand(hoursAngle, 24, 4, "var(--mantine-color-text)")}
+      {hand(minutesAngle, 36, 2.5, "var(--mantine-color-text)")}
+      {seconds && hand(secondsAngle, 40, 1, "var(--mantine-color-teal-6)", 8)}
+      <circle cx={50} cy={50} r={2.5} fill={seconds ? "var(--mantine-color-teal-6)" : "var(--mantine-color-text)"} />
     </svg>
   );
 }
 
 /** Une horloge est nue par défaut : c'est l'encadré qu'on demande, pas l'inverse. */
-const estEncadre = (config: unknown): boolean =>
-  Boolean((config as Record<string, unknown> | null)?.[ENCADRE]);
+const isFramed = (config: unknown): boolean =>
+  Boolean((config as Record<string, unknown> | null)?.[FRAMED]);
 
-function Horloge({ config }: { config: unknown }) {
-  const [maintenant, setMaintenant] = useState(() => new Date());
-  const analogique = estAnalogique(config);
-  const secondes = analogique && coche(config, SECONDES, true);
+function Clock({ config }: { config: unknown }) {
+  const [currentTime, setNow] = useState(() => new Date());
+  const analog = isAnalog(config);
+  const seconds = analog && isChecked(config, SECONDS, true);
 
   // L'affichage s'arrête à la minute : la rafraîchir chaque seconde ne
   // changerait rien à l'écran, et ferait battre la page pour rien — sauf
   // quand la trotteuse tourne. Sans elle, l'aiguille des minutes avance tout
   // de même par petits pas.
   useEffect(() => {
-    const battement = setInterval(() => setMaintenant(new Date()), secondes ? 1_000 : analogique ? 10_000 : 30_000);
-    return () => clearInterval(battement);
-  }, [analogique, secondes]);
+    const heartbeat = setInterval(() => setNow(new Date()), seconds ? 1_000 : analog ? 10_000 : 30_000);
+    return () => clearInterval(heartbeat);
+  }, [analog, seconds]);
 
-  const encadre = estEncadre(config);
-  const fuseau = texte(config, FUSEAU, FUSEAU_PAR_DEFAUT);
+  const framed = isFramed(config);
+  const timezone = text(config, TIMEZONE, DEFAULT_TIMEZONE);
 
-  const heure = analogique ? (
-    <Cadran
-      diametre={nombre(config, TAILLE, DIAMETRE_PAR_DEFAUT)}
-      {...instantDans(fuseau, maintenant)}
-      secondes={secondes}
-      chiffres={coche(config, CHIFFRES, false)}
+  const hour = analog ? (
+    <Dial
+      diameter={count(config, SIZE, DEFAULT_DIAMETER)}
+      {...clockPartsIn(timezone, currentTime)}
+      seconds={seconds}
+      digits={isChecked(config, DIGITS, false)}
     />
   ) : (
     // Centrée sur la colonne, quelle que soit sa largeur : l'heure est courte,
     // et collée à gauche elle paraîtrait posée là par accident.
-    <Text ta="center" fz={nombre(config, TAILLE, TAILLE_PAR_DEFAUT)} fw={600}>
-      {heureDans(fuseau, maintenant)}
+    <Text ta="center" fz={count(config, SIZE, DEFAULT_SIZE)} fw={600}>
+      {timeIn(timezone, currentTime)}
     </Text>
   );
 
-  if (!encadre) return heure;
+  if (!framed) return hour;
 
   // Encadrée, l'horloge se détache du reste de la colonne : le fond et le
   // trait de l'encart des attributs (widgets/numero), et l'air qu'il faut
   // autour pour que l'heure n'en touche pas les bords.
   return (
-    <Box className={classes.encart} style={{ padding: RETRAIT, border: "none" }}>
-      {heure}
+    <Box className={classes.encart} style={{ padding: INSET, border: "none" }}>
+      {hour}
     </Box>
   );
 }
 
-export const horlogeWidget: AccessWidget = {
+export const clockWidget: AccessWidget = {
   type: "clock",
   kind: "common",
   label: "Horloge",
   icon: IconClock,
   defaultConfig: {
-    [FUSEAU]: FUSEAU_PAR_DEFAUT,
-    [TAILLE]: TAILLE_PAR_DEFAUT,
-    [ENCADRE]: false,
+    [TIMEZONE]: DEFAULT_TIMEZONE,
+    [SIZE]: DEFAULT_SIZE,
+    [FRAMED]: false,
     [MODE]: "numerique",
   },
 
-  Display: Horloge,
+  Display: Clock,
 
-  marges: () => ({ haute: 0, basse: MARGE_BASSE }),
+  margins: () => ({ top: 0, bottom: LOW_MARGIN }),
 
   // Il dessine lui-même son cadre, réglé dans le bloc « Apparence » du tiroir.
-  cadrePropre: true,
+  ownFrame: true,
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
@@ -277,20 +277,20 @@ export const horlogeWidget: AccessWidget = {
           w="fit-content"
           mt={4}
           data={MODES}
-          value={estAnalogique(config) ? "analogique" : "numerique"}
+          value={isAnalog(config) ? "analogique" : "numerique"}
           onChange={(mode) =>
             onChange({
-              ...avec(config, MODE, mode),
-              [TAILLE]: mode === "analogique" ? DIAMETRE_PAR_DEFAUT : TAILLE_PAR_DEFAUT,
+              ...withField(config, MODE, mode),
+              [SIZE]: mode === "analogique" ? DEFAULT_DIAMETER : DEFAULT_SIZE,
             })
           }
         />
       </Input.Wrapper>
       <Select
         label="Fuseau horaire"
-        data={FUSEAUX}
-        value={texte(config, FUSEAU, FUSEAU_PAR_DEFAUT)}
-        onChange={(value) => value && onChange(avec(config, FUSEAU, value))}
+        data={TIMEZONES}
+        value={text(config, TIMEZONE, DEFAULT_TIMEZONE)}
+        onChange={(value) => value && onChange(withField(config, TIMEZONE, value))}
         allowDeselect={false}
         searchable
         autoFocus
@@ -299,17 +299,17 @@ export const horlogeWidget: AccessWidget = {
       {/* La taille de l'heure. Un champ vidé le temps d'une saisie ne dit
           rien : on range alors la taille par défaut plutôt qu'un zéro, qui
           ferait disparaître l'heure. */}
-      {estAnalogique(config) ? (
+      {isAnalog(config) ? (
         <>
           <NumberInput
             label="Diamètre du cadran"
-            placeholder={String(DIAMETRE_PAR_DEFAUT)}
-            value={nombre(config, TAILLE, DIAMETRE_PAR_DEFAUT)}
-            onChange={(valeur) =>
-              onChange(avec(config, TAILLE, valeur === "" ? DIAMETRE_PAR_DEFAUT : Number(valeur)))
+            placeholder={String(DEFAULT_DIAMETER)}
+            value={count(config, SIZE, DEFAULT_DIAMETER)}
+            onChange={(value) =>
+              onChange(withField(config, SIZE, value === "" ? DEFAULT_DIAMETER : Number(value)))
             }
-            min={DIAMETRE_MIN}
-            max={DIAMETRE_MAX}
+            min={DIAMETER_MIN}
+            max={DIAMETER_MAX}
             suffix=" px"
             allowNegative={false}
             allowDecimal={false}
@@ -318,14 +318,14 @@ export const horlogeWidget: AccessWidget = {
           <Stack gap="sm">
             <Checkbox
               label="Trotteuse (secondes)"
-              checked={coche(config, SECONDES, true)}
-              onChange={(e) => onChange(avec(config, SECONDES, e.currentTarget.checked))}
+              checked={isChecked(config, SECONDS, true)}
+              onChange={(e) => onChange(withField(config, SECONDS, e.currentTarget.checked))}
               color="teal"
             />
             <Checkbox
               label="Chiffres sur le cadran"
-              checked={coche(config, CHIFFRES, false)}
-              onChange={(e) => onChange(avec(config, CHIFFRES, e.currentTarget.checked))}
+              checked={isChecked(config, DIGITS, false)}
+              onChange={(e) => onChange(withField(config, DIGITS, e.currentTarget.checked))}
               color="teal"
             />
           </Stack>
@@ -333,13 +333,13 @@ export const horlogeWidget: AccessWidget = {
       ) : (
         <NumberInput
           label="Taille de la police"
-          placeholder={String(TAILLE_PAR_DEFAUT)}
-          value={nombre(config, TAILLE, TAILLE_PAR_DEFAUT)}
-          onChange={(valeur) =>
-            onChange(avec(config, TAILLE, valeur === "" ? TAILLE_PAR_DEFAUT : Number(valeur)))
+          placeholder={String(DEFAULT_SIZE)}
+          value={count(config, SIZE, DEFAULT_SIZE)}
+          onChange={(value) =>
+            onChange(withField(config, SIZE, value === "" ? DEFAULT_SIZE : Number(value)))
           }
-          min={TAILLE_MIN}
-          max={TAILLE_MAX}
+          min={SIZE_MIN}
+          max={SIZE_MAX}
           suffix=" px"
           allowNegative={false}
           allowDecimal={false}

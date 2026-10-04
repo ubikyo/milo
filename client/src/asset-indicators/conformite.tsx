@@ -1,16 +1,16 @@
 import { Group, RingProgress, Stack, Switch, Text } from "@mantine/core";
 import { IconShieldCheck } from "@tabler/icons-react";
-import { DISQUE_PLEIN, JOURS_SANS_INVENTAIRE } from "../lib/poste";
-import { avec } from "../widgets/types";
+import { DISK_FULL, DAYS_WITHOUT_INVENTORY } from "../lib/poste";
+import { withField } from "../widgets/types";
 import { RED } from "../themes/colors";
 import {
-  ChampNom,
-  disquePlein,
-  NOM,
-  nonChiffre,
-  Rien,
-  sansProtection,
-  silencieux,
+  NameField,
+  diskFull,
+  NAME,
+  notEncrypted,
+  Nothing,
+  unprotected,
+  silent,
   TitreIndicateur,
   windows10,
 } from "./commun";
@@ -21,69 +21,69 @@ import type { Asset } from "@milo/shared";
 // à aucune des règles cochées. À côté, ce qui manque, règle par règle — c'est
 // là qu'on voit par où commencer.
 
-const LIBELLE = "Conformité";
+const LABEL = "Conformité";
 
-interface Regle {
-  cle: string;
+interface Rule {
+  key: string;
   /** Ce que la règle exige, dans le tiroir. */
   label: string;
   /** Ce qui y manque, à côté de l'anneau. */
-  manque: string;
-  enDefaut: (a: Asset) => boolean;
+  missingLabel: string;
+  inDefault: (a: Asset) => boolean;
 }
 
-const REGLES: Regle[] = [
-  { cle: "chiffrement", label: "Disque système chiffré", manque: "non chiffrés", enDefaut: nonChiffre },
-  { cle: "antivirus", label: "Antivirus actif", manque: "sans antivirus", enDefaut: sansProtection },
+const RULES: Rule[] = [
+  { key: "chiffrement", label: "Disque système chiffré", missingLabel: "non chiffrés", inDefault: notEncrypted },
+  { key: "antivirus", label: "Antivirus actif", missingLabel: "sans antivirus", inDefault: unprotected },
   {
-    cle: "disque",
-    label: `Disque système occupé à ${DISQUE_PLEIN} % au plus`,
-    manque: "disques pleins",
-    enDefaut: disquePlein,
+    key: "disque",
+    label: `Disque système occupé à ${DISK_FULL} % au plus`,
+    missingLabel: "disques pleins",
+    inDefault: diskFull,
   },
   {
-    cle: "inventaire",
-    label: `Inventorié depuis moins de ${JOURS_SANS_INVENTAIRE} jours`,
-    manque: "muets",
-    enDefaut: silencieux,
+    key: "inventaire",
+    label: `Inventorié depuis moins de ${DAYS_WITHOUT_INVENTORY} jours`,
+    missingLabel: "muets",
+    inDefault: silent,
   },
-  { cle: "systeme", label: "Système encore maintenu", manque: "sous Windows 10", enDefaut: windows10 },
+  { key: "systeme", label: "Système encore maintenu", missingLabel: "sous Windows 10", inDefault: windows10 },
 ];
 
 /** Une règle compte tant qu'on ne l'a pas décochée : un indicateur neuf les prend toutes. */
-const active = (config: unknown, regle: Regle): boolean =>
-  (config as Record<string, unknown> | null)?.[regle.cle] !== false;
+const active = (config: unknown, rule: Rule): boolean =>
+  (config as Record<string, unknown> | null)?.[rule.key] !== false;
 
 /** La couleur de l'anneau : vert à 90 % et plus, orange à 70 %, rouge en dessous. */
-const couleur = (part: number): string => (part >= 90 ? "teal" : part >= 70 ? "orange" : RED);
+const color = (part: number): string => (part >= 90 ? "teal" : part >= 70 ? "orange" : RED);
 
-export const conformiteIndicator: AssetIndicatorWidget = {
+export const complianceIndicator: AssetIndicatorWidget = {
   type: "compliance",
   kind: "asset",
-  label: LIBELLE,
+  label: LABEL,
   icon: IconShieldCheck,
-  defaultConfig: { [NOM]: "", ...Object.fromEntries(REGLES.map((r) => [r.cle, true])) },
+  defaultConfig: { [NAME]: "", ...Object.fromEntries(RULES.map((r) => [r.key, true])) },
 
   Display: ({ config, assets }) => {
-    const regles = REGLES.filter((r) => active(config, r));
-    const conformes = assets.filter((a) => !regles.some((r) => r.enDefaut(a))).length;
-    const part = assets.length ? Math.round((conformes / assets.length) * 100) : 0;
-    const manques = regles
-      .map((r) => ({ regle: r, nombre: assets.filter(r.enDefaut).length }))
-      .filter((m) => m.nombre > 0);
+    const rules = RULES.filter((r) => active(config, r));
+    const compliant = assets.filter((a) => !rules.some((r) => r.inDefault(a))).length;
+    const part = assets.length ? Math.round((compliant / assets.length) * 100) : 0;
+    const missingLabels = rules
+      .map((r) => ({ rule: r, count: assets.filter(r.inDefault).length }))
+      .filter((m) => m.count > 0);
 
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaut={LIBELLE} />
+        <TitreIndicateur config={config} defaultValue={LABEL} />
         {assets.length === 0 ? (
-          <Rien>Aucun poste</Rien>
+          <Nothing>Aucun poste</Nothing>
         ) : (
           <Group gap="md" wrap="nowrap">
             <RingProgress
               size={110}
               thickness={12}
               roundCaps
-              sections={[{ value: part, color: couleur(part) }]}
+              sections={[{ value: part, color: color(part) }]}
               label={
                 <Text ta="center" fw={600} fz="lg">
                   {part} %
@@ -92,11 +92,11 @@ export const conformiteIndicator: AssetIndicatorWidget = {
             />
             <Stack gap={2} style={{ minWidth: 0 }}>
               <Text size="sm">
-                {conformes} / {assets.length} postes en règle
+                {compliant} / {assets.length} postes en règle
               </Text>
-              {manques.map(({ regle, nombre }) => (
-                <Text key={regle.cle} size="sm" c="dimmed" truncate>
-                  {nombre} {regle.manque}
+              {missingLabels.map(({ rule, count }) => (
+                <Text key={rule.key} size="sm" c="dimmed" truncate>
+                  {count} {rule.missingLabel}
                 </Text>
               ))}
             </Stack>
@@ -108,17 +108,17 @@ export const conformiteIndicator: AssetIndicatorWidget = {
 
   Config: ({ config, onChange }) => (
     <Stack gap="md">
-      <ChampNom config={config} onChange={onChange} defaut={LIBELLE} />
+      <NameField config={config} onChange={onChange} defaultValue={LABEL} />
       <Stack gap="xs">
         <Text size="sm" fw={500}>
           Règles
         </Text>
-        {REGLES.map((regle) => (
+        {RULES.map((rule) => (
           <Switch
-            key={regle.cle}
-            label={regle.label}
-            checked={active(config, regle)}
-            onChange={(e) => onChange(avec(config, regle.cle, e.currentTarget.checked))}
+            key={rule.key}
+            label={rule.label}
+            checked={active(config, rule)}
+            onChange={(e) => onChange(withField(config, rule.key, e.currentTarget.checked))}
             color="teal"
           />
         ))}

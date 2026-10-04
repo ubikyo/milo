@@ -10,55 +10,55 @@
 
 import { useSyncExternalStore } from "react";
 
-export interface WidgetCopie {
+export interface CopiedWidget {
   type: string;
   config: Record<string, unknown>;
   /** Son nom, pour « Coller … » dans le menu des sections. */
   label: string;
 }
 
-const CLE = "milo.presse-papiers.widget";
+const KEY = "milo.presse-papiers.widget";
 
-const lire = (): WidgetCopie | null => {
+const read = (): CopiedWidget | null => {
   try {
-    const brut = localStorage.getItem(CLE);
-    if (!brut) return null;
-    const lu = JSON.parse(brut) as Partial<WidgetCopie>;
-    return typeof lu.type === "string" && lu.config && typeof lu.config === "object"
-      ? { type: lu.type, config: lu.config, label: String(lu.label ?? lu.type) }
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    const readValue = JSON.parse(raw) as Partial<CopiedWidget>;
+    return typeof readValue.type === "string" && readValue.config && typeof readValue.config === "object"
+      ? { type: readValue.type, config: readValue.config, label: String(readValue.label ?? readValue.type) }
       : null;
   } catch {
     return null;
   }
 };
 
-let courant: WidgetCopie | null = lire();
-const abonnes = new Set<() => void>();
-const prevenir = () => abonnes.forEach((f) => f());
+let current: CopiedWidget | null = read();
+const subscribers = new Set<() => void>();
+const notify = () => subscribers.forEach((f) => f());
 
 /** Copier un widget : il remplace le précédent. */
-export const copierWidget = (copie: WidgetCopie): void => {
-  courant = copie;
+export const copyWidget = (copy: CopiedWidget): void => {
+  current = copy;
   try {
-    localStorage.setItem(CLE, JSON.stringify(copie));
+    localStorage.setItem(KEY, JSON.stringify(copy));
   } catch {
     // Stockage refusé : la copie reste en mémoire, le temps de la page.
   }
-  prevenir();
+  notify();
 };
 
 // Une copie faite dans un autre onglet arrive ici aussi.
 window.addEventListener("storage", (e) => {
-  if (e.key !== CLE) return;
-  courant = lire();
-  prevenir();
+  if (e.key !== KEY) return;
+  current = read();
+  notify();
 });
 
-const abonner = (f: () => void) => {
-  abonnes.add(f);
-  return () => abonnes.delete(f);
+const subscribe = (f: () => void) => {
+  subscribers.add(f);
+  return () => subscribers.delete(f);
 };
 
 /** Le widget copié, ou « null ». */
-export const useWidgetCopie = (): WidgetCopie | null =>
-  useSyncExternalStore(abonner, () => courant);
+export const useCopiedWidget = (): CopiedWidget | null =>
+  useSyncExternalStore(subscribe, () => current);

@@ -25,10 +25,10 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import {
-  ACCESS_FEED_INTERVAL_DEFAUT,
+  ACCESS_FEED_INTERVAL_DEFAULT,
   ACCESS_FEED_INTERVAL_MAX,
   ACCESS_FEED_INTERVAL_MIN,
-  ACCESS_FEED_QUANTITE_MAX,
+  ACCESS_FEED_QUANTITY_MAX,
 } from "@milo/shared";
 import type {
   AccessFeed,
@@ -42,81 +42,81 @@ import { HttpError, badRequest } from "./http.js";
 import { now } from "./time.js";
 
 /** Au-delà, la source est trop lente : la colonne attend déjà. */
-const DELAI = 8_000;
+const TIMEOUT = 8_000;
 
 /**
  * Un flux XML tient en quelques centaines de kilo-octets ; un catalogue JSON
  * comme celui de la CISA approche deux mégaoctets et grossit. Au-delà, ce
  * n'est plus un flux.
  */
-const TAILLE_MAX = 10 * 1024 * 1024;
+const SIZE_MAX = 10 * 1024 * 1024;
 
 const REDIRECTIONS_MAX = 3;
 
 /** La relève de fond regarde à ce rythme quels flux sont arrivés à échéance. */
-export const INTERVALLE_RELEVE_FLUX = 60_000;
+export const FEED_POLL_INTERVAL = 60_000;
 
 /**
  * Une relève qui a échoué se retente plus tôt que l'intervalle réglé : une
  * source tombée une minute ne doit pas laisser l'élément vide une demi-heure.
  */
-const NOUVEL_ESSAI = 5 * 60_000;
+const RETRY_DELAY = 5 * 60_000;
 
 /** Les relèves en cours, par adresse : deux demandes n'en font qu'une. */
-const enCours = new Map<string, Promise<void>>();
+const ongoing = new Map<string, Promise<void>>();
 
 /** Une adresse IP qui ne sort pas de la machine ou de son lien. */
-const estInterdite = (ip: string): boolean => {
+const isForbidden = (ip: string): boolean => {
   const v4 = ip.startsWith("::ffff:") ? ip.slice(7) : ip;
   if (isIP(v4) === 4) {
     const [a, b] = v4.split(".").map(Number);
     return a === 0 || a === 127 || (a === 169 && b === 254);
   }
-  const bas = ip.toLowerCase();
-  return bas === "::" || bas === "::1" || bas.startsWith("fe80:");
+  const lowercased = ip.toLowerCase();
+  return lowercased === "::" || lowercased === "::1" || lowercased.startsWith("fe80:");
 };
 
 /** L'adresse, vérifiée : http ou https, vers un hôte qui sort de la machine. */
-const verifier = async (brute: string): Promise<URL> => {
+const verify = async (raw: string): Promise<URL> => {
   let url: URL;
   try {
-    url = new URL(brute);
+    url = new URL(raw);
   } catch {
     return badRequest("Adresse du flux invalide");
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     badRequest("Le flux doit être en http ou https");
   }
-  const hote = url.hostname.replace(/^\[|\]$/g, "");
-  let adresses: string[];
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  let addresses: string[];
   try {
-    adresses = isIP(hote) ? [hote] : (await lookup(hote, { all: true })).map((a) => a.address);
+    addresses = isIP(host) ? [host] : (await lookup(host, { all: true })).map((a) => a.address);
   } catch {
-    throw new HttpError(502, `Hôte introuvable : ${hote}`);
+    throw new HttpError(502, `Hôte introuvable : ${host}`);
   }
-  if (adresses.some(estInterdite)) badRequest("Cette adresse n'est pas autorisée");
+  if (addresses.some(isForbidden)) badRequest("Cette adresse n'est pas autorisée");
   return url;
 };
 
 /** Le corps de la réponse, arrêté dès qu'il dépasse la taille admise. */
-const lireBorne = async (reponse: Response): Promise<string> => {
-  const annonce = Number(reponse.headers.get("content-length"));
-  if (annonce > TAILLE_MAX) throw new HttpError(502, "Le flux est trop volumineux");
-  if (!reponse.body) return "";
-  const morceaux: Uint8Array[] = [];
+const readBound = async (response: Response): Promise<string> => {
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (declaredLength > SIZE_MAX) throw new HttpError(502, "Le flux est trop volumineux");
+  if (!response.body) return "";
+  const chunks: Uint8Array[] = [];
   let total = 0;
-  for await (const morceau of reponse.body as AsyncIterable<Uint8Array>) {
-    total += morceau.length;
-    if (total > TAILLE_MAX) throw new HttpError(502, "Le flux est trop volumineux");
-    morceaux.push(morceau);
+  for await (const chunk of response.body as AsyncIterable<Uint8Array>) {
+    total += chunk.length;
+    if (total > SIZE_MAX) throw new HttpError(502, "Le flux est trop volumineux");
+    chunks.push(chunk);
   }
-  return Buffer.concat(morceaux).toString("utf8");
+  return Buffer.concat(chunks).toString("utf8");
 };
 
-type Objet = Record<string, unknown>;
+type Subject = Record<string, unknown>;
 
-const estObjet = (valeur: unknown): valeur is Objet =>
-  typeof valeur === "object" && valeur !== null && !Array.isArray(valeur);
+const isObject = (value: unknown): value is Subject =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
  * Les champs où chercher le titre, l'adresse et la date d'un article, du plus
@@ -124,35 +124,35 @@ const estObjet = (valeur: unknown): valeur is Objet =>
  * prennent les catalogues qui n'en suivent aucun — « vulnerabilityName » et
  * « dateAdded » sont ceux de la CISA.
  */
-const CHAMPS_TITRE = ["title", "name", "headline", "vulnerabilityName", "summary"];
-const CHAMPS_LIEN = ["url", "external_url", "link", "href", "permalink"];
-const CHAMPS_DATE = [
+const TITLE_FIELDS = ["title", "name", "headline", "vulnerabilityName", "summary"];
+const LINK_FIELDS = ["url", "external_url", "link", "href", "permalink"];
+const DATE_FIELDS = [
   "date_published", "datePublished", "published", "pubDate", "date",
   "dateAdded", "date_modified", "dateModified", "updated",
 ];
 
 /** Les noms sous lesquels un flux JSON range ses articles. */
-const CHAMPS_ARTICLES = ["items", "entries", "articles", "vulnerabilities", "posts", "data"];
+const ARTICLE_FIELDS = ["items", "entries", "articles", "vulnerabilities", "posts", "data"];
 
 const CVE = /^CVE-\d{4}-\d+$/i;
 
-const premierTexte = (objet: Objet, champs: string[]): string => {
-  for (const champ of champs) {
-    const valeur = objet[champ];
-    if (typeof valeur === "string" && valeur.trim()) return valeur.trim();
+const firstText = (subject: Subject, fields: string[]): string => {
+  for (const field of fields) {
+    const value = subject[field];
+    if (typeof value === "string" && value.trim()) return value.trim();
   }
   return "";
 };
 
 /** L'identifiant CVE de l'article, quand il en porte un. */
-const cveDe = (objet: Objet): string => {
-  const id = premierTexte(objet, ["cveID", "cveId", "cve", "id"]);
+const cveDe = (subject: Subject): string => {
+  const id = firstText(subject, ["cveID", "cveId", "cve", "id"]);
   return CVE.test(id) ? id.toUpperCase() : "";
 };
 
-const adresseSure = (lien: string, source: string): string => {
+const safeAddress = (link: string, source: string): string => {
   try {
-    const url = new URL(lien, source);
+    const url = new URL(link, source);
     return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
   } catch {
     return "";
@@ -164,17 +164,17 @@ const adresseSure = (lien: string, source: string): string => {
  * CVE, qui est ce qu'on cherche en la lisant, et mène à sa fiche du NVD quand
  * la source ne donne pas d'autre adresse.
  */
-const articleJson = (objet: Objet, source: string): AccessFeedArticle => {
-  const cve = cveDe(objet);
-  const nom = premierTexte(objet, CHAMPS_TITRE);
-  const title = cve && !nom.includes(cve) ? (nom ? `${cve} · ${nom}` : cve) : nom;
-  const lien =
-    premierTexte(objet, CHAMPS_LIEN) || (cve ? `https://nvd.nist.gov/vuln/detail/${cve}` : "");
-  const brute = premierTexte(objet, CHAMPS_DATE);
-  const date = brute ? new Date(brute) : null;
+const articleJson = (subject: Subject, source: string): AccessFeedArticle => {
+  const cve = cveDe(subject);
+  const name = firstText(subject, TITLE_FIELDS);
+  const title = cve && !name.includes(cve) ? (name ? `${cve} · ${name}` : cve) : name;
+  const link =
+    firstText(subject, LINK_FIELDS) || (cve ? `https://nvd.nist.gov/vuln/detail/${cve}` : "");
+  const raw = firstText(subject, DATE_FIELDS);
+  const date = raw ? new Date(raw) : null;
   return {
     title,
-    url: adresseSure(lien, source),
+    url: safeAddress(link, source),
     date: date && !Number.isNaN(date.getTime()) ? date.toISOString() : null,
   };
 };
@@ -185,49 +185,49 @@ const articleJson = (objet: Objet, source: string): AccessFeedArticle => {
  * garde en tête de son flux RSS des bulletins de 2014 —, et c'est par les
  * derniers qu'on la lit. Les articles sans date gardent leur rang, à la suite.
  */
-const lesDerniers = (articles: AccessFeedArticle[], quantite: number): AccessFeedArticle[] => {
-  const temps = (a: AccessFeedArticle) => (a.date ? Date.parse(a.date) : -Infinity);
-  return articles.sort((a, b) => temps(b) - temps(a)).slice(0, quantite);
+const latest = (articles: AccessFeedArticle[], quantity: number): AccessFeedArticle[] => {
+  const articleTime = (a: AccessFeedArticle) => (a.date ? Date.parse(a.date) : -Infinity);
+  return articles.sort((a, b) => articleTime(b) - articleTime(a)).slice(0, quantity);
 };
 
 /** Les articles d'un flux JSON, les plus récents d'abord. */
-const lireJson = (texte: string, source: string, quantite: number): AccessFeedArticle[] => {
-  let racine: unknown;
+const readJson = (text: string, source: string, quantity: number): AccessFeedArticle[] => {
+  let root: unknown;
   try {
-    racine = JSON.parse(texte);
+    root = JSON.parse(text);
   } catch {
     throw new HttpError(502, "Flux JSON illisible");
   }
-  const liste = Array.isArray(racine)
-    ? racine
-    : estObjet(racine)
-      ? (CHAMPS_ARTICLES.map((c) => racine[c]).find(Array.isArray)
-        ?? Object.values(racine).find((v) => Array.isArray(v) && v.some(estObjet)))
+  const list = Array.isArray(root)
+    ? root
+    : isObject(root)
+      ? (ARTICLE_FIELDS.map((c) => root[c]).find(Array.isArray)
+        ?? Object.values(root).find((v) => Array.isArray(v) && v.some(isObject)))
       : undefined;
-  if (!Array.isArray(liste)) throw new HttpError(502, "Aucun article dans ce flux JSON");
+  if (!Array.isArray(list)) throw new HttpError(502, "Aucun article dans ce flux JSON");
 
-  return lesDerniers(
-    liste.filter(estObjet).map((objet) => articleJson(objet, source)),
-    quantite,
+  return latest(
+    list.filter(isObject).map((subject) => articleJson(subject, source)),
+    quantity,
   );
 };
 
 /** Un flux JSON s'annonce par son type, ou à défaut par son premier caractère. */
-const estJson = (type: string, texte: string): boolean =>
-  /json/i.test(type) || /^[\s\uFEFF]*[[{]/.test(texte);
+const isJson = (type: string, text: string): boolean =>
+  /json/i.test(type) || /^[\s\uFEFF]*[[{]/.test(text);
 
 // --- Lecture d'un flux XML -------------------------------------------------
 
-const ENTITES: Record<string, string> = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
+const ENTITIES: Record<string, string> = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
 
 /** Les entités du texte, ramenées aux caractères qu'elles désignent. */
-const detexter = (texte: string): string =>
-  texte.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (tout, code: string) => {
-    if (code[0] !== "#") return ENTITES[code] ?? tout;
+const stripTags = (text: string): string =>
+  text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, code: string) => {
+    if (code[0] !== "#") return ENTITIES[code] ?? match;
     const point = code[1] === "x" || code[1] === "X"
       ? parseInt(code.slice(2), 16)
       : parseInt(code.slice(1), 10);
-    return point <= 0x10ffff ? String.fromCodePoint(point) : tout;
+    return point <= 0x10ffff ? String.fromCodePoint(point) : match;
   });
 
 /**
@@ -236,20 +236,20 @@ const detexter = (texte: string): string =>
  * lecture. Chacune laisse à sa place un repère, entre deux caractères d'usage
  * privé qu'un flux ne contient pas.
  */
-const REPERE = /\uE000(\d+)\uE000/;
+const MARKER = /\uE000(\d+)\uE000/;
 
 /** Les éléments de ce nom, quel que soit leur préfixe d'espace de noms. */
-const elements = (dans: string, nom: string): { attributs: string; contenu: string }[] =>
+const items = (dans: string, name: string): { attributes: string; content: string }[] =>
   Array.from(
     dans.matchAll(
-      new RegExp(`<((?:[\\w.-]+:)?${nom})(?=[\\s/>])([^>]*?)(?:/>|>([\\s\\S]*?)</\\1\\s*>)`, "g"),
+      new RegExp(`<((?:[\\w.-]+:)?${name})(?=[\\s/>])([^>]*?)(?:/>|>([\\s\\S]*?)</\\1\\s*>)`, "g"),
     ),
-    (m) => ({ attributs: m[2] ?? "", contenu: m[3] ?? "" }),
+    (m) => ({ attributes: m[2] ?? "", content: m[3] ?? "" }),
   );
 
-const attribut = (attributs: string, nom: string): string | undefined => {
-  const m = attributs.match(new RegExp(`(?:^|\\s)${nom}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`));
-  return m ? detexter(m[1] ?? m[2] ?? "") : undefined;
+const attribute = (attributes: string, name: string): string | undefined => {
+  const m = attributes.match(new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`));
+  return m ? stripTags(m[1] ?? m[2] ?? "") : undefined;
 };
 
 /**
@@ -257,27 +257,27 @@ const attribut = (attributs: string, nom: string): string | undefined => {
  * n'en est pas un — une page HTML, le plus souvent — lève : la colonne le dit
  * plutôt que de rester vide.
  */
-const lireXml = (xml: string, source: string, quantite: number): AccessFeedArticle[] => {
+const readXml = (xml: string, source: string, quantity: number): AccessFeedArticle[] => {
   const cdata: string[] = [];
-  const masque = xml
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_tout, contenu: string) =>
-      `\uE000${cdata.push(contenu) - 1}\uE000`,
+  const masked = xml
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_whole, content: string) =>
+      `\uE000${cdata.push(content) - 1}\uE000`,
     )
     .replace(/<!--[\s\S]*?-->/g, "");
 
   /** Le texte d'un élément : ses balises ôtées, ses entités et CDATA rendues. */
-  const texte = (contenu: string): string =>
-    contenu
-      .split(REPERE)
-      .map((morceau, i) => (i % 2 ? cdata[Number(morceau)]! : detexter(morceau.replace(/<[^>]*>/g, ""))))
+  const text = (content: string): string =>
+    content
+      .split(MARKER)
+      .map((chunk, i) => (i % 2 ? cdata[Number(chunk)]! : stripTags(chunk.replace(/<[^>]*>/g, ""))))
       .join("")
       .replace(/\s+/g, " ")
       .trim();
 
-  const premier = (dans: string, ...noms: string[]): string => {
-    for (const nom of noms) {
-      const trouve = elements(dans, nom).map((e) => texte(e.contenu)).find(Boolean);
-      if (trouve) return trouve;
+  const first = (dans: string, ...names: string[]): string => {
+    for (const name of names) {
+      const found = items(dans, name).map((e) => text(e.content)).find(Boolean);
+      if (found) return found;
     }
     return "";
   };
@@ -287,58 +287,58 @@ const lireXml = (xml: string, source: string, quantite: number): AccessFeedArtic
    * attribut « href » — celui de la page (« alternate ») quand il y en a
    * plusieurs.
    */
-  const lienDe = (article: string): string => {
-    const liens = elements(article, "link");
-    const lien =
-      liens.find((l) => (attribut(l.attributs, "rel") ?? "alternate") === "alternate") ?? liens[0];
-    return (lien && (attribut(lien.attributs, "href") || texte(lien.contenu)))
-      || premier(article, "guid");
+  const linkOf = (article: string): string => {
+    const links = items(article, "link");
+    const link =
+      links.find((l) => (attribute(l.attributes, "rel") ?? "alternate") === "alternate") ?? links[0];
+    return (link && (attribute(link.attributes, "href") || text(link.content)))
+      || first(article, "guid");
   };
 
-  const racine = masque
+  const root = masked
     .replace(/<\?[\s\S]*?\?>/g, "")
     .replace(/<!DOCTYPE[^>]*>/gi, "")
     .match(/<(?:[\w.-]+:)?([\w.-]+)/)?.[1];
   const articles = Array.from(
-    masque.matchAll(/<((?:[\w.-]+:)?(?:item|entry))(?=[\s>])[^>]*>([\s\S]*?)<\/\1\s*>/g),
+    masked.matchAll(/<((?:[\w.-]+:)?(?:item|entry))(?=[\s>])[^>]*>([\s\S]*?)<\/\1\s*>/g),
     (m) => m[2]!,
   );
-  if (!articles.length && !["rss", "feed", "RDF"].includes(racine ?? "")) {
+  if (!articles.length && !["rss", "feed", "RDF"].includes(root ?? "")) {
     throw new HttpError(502, "Ce n'est pas un flux RSS ou Atom");
   }
 
-  return lesDerniers(
+  return latest(
     articles.map((article) => {
-      const brute = premier(article, "pubDate", "updated", "published", "date");
-      const date = brute ? new Date(brute) : null;
+      const raw = first(article, "pubDate", "updated", "published", "date");
+      const date = raw ? new Date(raw) : null;
       return {
-        title: premier(article, "title"),
-        url: adresseSure(lienDe(article), source),
+        title: first(article, "title"),
+        url: safeAddress(linkOf(article), source),
         date: date && !Number.isNaN(date.getTime()) ? date.toISOString() : null,
       };
     }),
-    quantite,
+    quantity,
   );
 };
 
 // --- Relève ----------------------------------------------------------------
 
 /** Ce que la source a rendu : son texte, son type annoncé, l'adresse finale. */
-interface Telecharge {
-  texte: string;
+interface Downloaded {
+  text: string;
   type: string;
   url: URL;
 }
 
 /** Le contenu de la source, redirections suivies et vérifiées. */
-const telecharger = async (adresse: string): Promise<Telecharge> => {
-  let url = await verifier(adresse);
-  let reponse: Response | undefined;
-  for (let saut = 0; saut <= REDIRECTIONS_MAX; saut++) {
+const download = async (address: string): Promise<Downloaded> => {
+  let url = await verify(address);
+  let response: Response | undefined;
+  for (let hop = 0; hop <= REDIRECTIONS_MAX; hop++) {
     try {
-      reponse = await fetch(url, {
+      response = await fetch(url, {
         redirect: "manual",
-        signal: AbortSignal.timeout(DELAI),
+        signal: AbortSignal.timeout(TIMEOUT),
         headers: {
           Accept:
             "application/rss+xml, application/atom+xml, application/feed+json, "
@@ -349,41 +349,41 @@ const telecharger = async (adresse: string): Promise<Telecharge> => {
     } catch {
       throw new HttpError(502, `La source ne répond pas : ${url.hostname}`);
     }
-    const suite = reponse.headers.get("location");
-    if (reponse.status < 300 || reponse.status >= 400 || !suite) break;
-    if (saut === REDIRECTIONS_MAX) throw new HttpError(502, "Trop de redirections");
-    url = await verifier(new URL(suite, url).toString());
+    const followUp = response.headers.get("location");
+    if (response.status < 300 || response.status >= 400 || !followUp) break;
+    if (hop === REDIRECTIONS_MAX) throw new HttpError(502, "Trop de redirections");
+    url = await verify(new URL(followUp, url).toString());
   }
-  if (!reponse!.ok) throw new HttpError(502, `La source a répondu ${reponse!.status}`);
-  return { texte: await lireBorne(reponse!), type: reponse!.headers.get("content-type") ?? "", url };
+  if (!response!.ok) throw new HttpError(502, `La source a répondu ${response!.status}`);
+  return { text: await readBound(response!), type: response!.headers.get("content-type") ?? "", url };
 };
 
-const lireTelecharge = ({ texte, type, url }: Telecharge, quantite: number): AccessFeedArticle[] =>
-  estJson(type, texte) ? lireJson(texte, url.href, quantite) : lireXml(texte, url.href, quantite);
+const readDownloaded = ({ text, type, url }: Downloaded, quantity: number): AccessFeedArticle[] =>
+  isJson(type, text) ? readJson(text, url.href, quantity) : readXml(text, url.href, quantity);
 
 /** Les derniers articles de la source, lus, au plus « quantite ». */
-const lireSource = async (adresse: string, quantite: number): Promise<AccessFeedArticle[]> =>
-  lireTelecharge(await telecharger(adresse), quantite);
+const readSource = async (address: string, quantity: number): Promise<AccessFeedArticle[]> =>
+  readDownloaded(await download(address), quantity);
 
 /**
  * Le nom du format d'un flux déjà lu sans erreur : la version qu'annonce un
  * flux RSS, « RSS 1.0 » pour le RDF, « Atom », et « JSON Feed » pour un flux
  * qui suit jsonfeed.org — « JSON » pour un catalogue qui n'en suit aucun.
  */
-const formatDe = ({ texte, type }: Telecharge): string => {
-  if (estJson(type, texte)) {
-    const racine: unknown = JSON.parse(texte);
-    const version = estObjet(racine) ? racine["version"] : undefined;
+const formatDe = ({ text, type }: Downloaded): string => {
+  if (isJson(type, text)) {
+    const root: unknown = JSON.parse(text);
+    const version = isObject(root) ? root["version"] : undefined;
     return typeof version === "string" && /jsonfeed\.org/i.test(version) ? "JSON Feed" : "JSON";
   }
-  const sansPreambule = texte
+  const withoutPreamble = text
     .replace(/<\?[\s\S]*?\?>/g, "")
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/<!DOCTYPE[^>]*>/gi, "");
-  const racine = sansPreambule.match(/<(?:[\w.-]+:)?([\w.-]+)([^>]*)>/);
-  if (racine?.[1] === "feed") return "Atom";
-  if (racine?.[1] === "RDF") return "RSS 1.0";
-  if (racine?.[1] === "rss") return `RSS ${attribut(racine[2] ?? "", "version") || "2.0"}`;
+  const root = withoutPreamble.match(/<(?:[\w.-]+:)?([\w.-]+)([^>]*)>/);
+  if (root?.[1] === "feed") return "Atom";
+  if (root?.[1] === "RDF") return "RSS 1.0";
+  if (root?.[1] === "rss") return `RSS ${attribute(root[2] ?? "", "version") || "2.0"}`;
   return "RSS";
 };
 
@@ -394,18 +394,18 @@ const formatDe = ({ texte, type }: Telecharge): string => {
  * sinon le nom de son format. Rien n'est rangé : la relève reste celle des
  * éléments enregistrés.
  */
-export const sonderFlux = async (adresse: string): Promise<AccessFeedProbe> => {
-  let telecharge: Telecharge;
+export const probeFeed = async (address: string): Promise<AccessFeedProbe> => {
+  let downloaded: Downloaded;
   try {
-    telecharge = await telecharger(adresse);
-  } catch (erreur) {
-    return { state: "injoignable", message: (erreur as Error).message };
+    downloaded = await download(address);
+  } catch (error) {
+    return { state: "injoignable", message: (error as Error).message };
   }
   try {
-    lireTelecharge(telecharge, 1);
-    return { state: "ok", format: formatDe(telecharge) };
-  } catch (erreur) {
-    return { state: "invalide", message: (erreur as Error).message };
+    readDownloaded(downloaded, 1);
+    return { state: "ok", format: formatDe(downloaded) };
+  } catch (error) {
+    return { state: "invalide", message: (error as Error).message };
   }
 };
 
@@ -413,35 +413,35 @@ export const sonderFlux = async (adresse: string): Promise<AccessFeedProbe> => {
  * Relève la source et range ce qu'elle donne. Un échec se range aussi : les
  * articles d'avant restent, et l'erreur attend la prochaine tentative.
  */
-const relever = (url: string, quantite: number): Promise<void> => {
-  const deja = enCours.get(url);
-  if (deja) return deja;
-  const tentative = (async () => {
+const poll = (url: string, quantity: number): Promise<void> => {
+  const already = ongoing.get(url);
+  if (already) return already;
+  const attempt = (async () => {
     const instant = now();
     try {
-      const articles = await lireSource(url, quantite);
-      accessFeeds.ranger.run(url, JSON.stringify(articles), quantite, instant, instant);
-    } catch (erreur) {
-      accessFeeds.echouer.run(url, instant, (erreur as Error).message || "Relève impossible");
+      const articles = await readSource(url, quantity);
+      accessFeeds.store.run(url, JSON.stringify(articles), quantity, instant, instant);
+    } catch (error) {
+      accessFeeds.fail.run(url, instant, (error as Error).message || "Relève impossible");
     }
-  })().finally(() => enCours.delete(url));
-  enCours.set(url, tentative);
-  return tentative;
+  })().finally(() => ongoing.delete(url));
+  ongoing.set(url, attempt);
+  return attempt;
 };
 
 /** Ce qu'un élément RSS règle, lu dans sa configuration et ramené à ses bornes. */
-export interface ReglagesFlux {
+export interface FeedSettings {
   /** Ses sources, dans l'ordre réglé, sans doublon. */
   urls: string[];
   /** Les articles montrés : au plus, chaque source en fournit autant. */
-  quantite: number;
+  quantity: number;
   /** En minutes. */
-  intervalle: number;
+  interval: number;
 }
 
-const borne = (valeur: unknown, defaut: number, min: number, max: number): number => {
-  const lu = valeur === "" || valeur === null || valeur === undefined ? NaN : Number(valeur);
-  return Number.isFinite(lu) ? Math.min(max, Math.max(min, Math.round(lu))) : defaut;
+const bound = (value: unknown, defaultValue: number, min: number, max: number): number => {
+  const readValue = value === "" || value === null || value === undefined ? NaN : Number(value);
+  return Number.isFinite(readValue) ? Math.min(max, Math.max(min, Math.round(readValue))) : defaultValue;
 };
 
 /**
@@ -449,13 +449,13 @@ const borne = (valeur: unknown, defaut: number, min: number, max: number): numbe
  * tiroir. Un élément rangé avant elle n'a que son « url », relue tant que la
  * liste n'a pas été enregistrée.
  */
-const adressesDe = (config: Record<string, unknown>): string[] => {
-  const brutes = Array.isArray(config.sources)
+const addressesOf = (config: Record<string, unknown>): string[] => {
+  const raw = Array.isArray(config.sources)
     ? config.sources.map((s: unknown) =>
-        estObjet(s) && typeof s.url === "string" ? s.url : "",
+        isObject(s) && typeof s.url === "string" ? s.url : "",
       )
     : [typeof config.url === "string" ? config.url : ""];
-  return [...new Set(brutes.map((u) => u.trim()).filter(Boolean))];
+  return [...new Set(raw.map((u) => u.trim()).filter(Boolean))];
 };
 
 /**
@@ -464,12 +464,12 @@ const adressesDe = (config: Record<string, unknown>): string[] => {
  * lui-même. Les clés et les valeurs par défaut sont celles du widget
  * (client/src/widgets/rss.tsx).
  */
-export const reglagesFlux = (config: Record<string, unknown>): ReglagesFlux => ({
-  urls: adressesDe(config),
-  quantite: borne(config.quantite, 5, 1, ACCESS_FEED_QUANTITE_MAX),
-  intervalle: borne(
+export const feedSettings = (config: Record<string, unknown>): FeedSettings => ({
+  urls: addressesOf(config),
+  quantity: bound(config.quantite, 5, 1, ACCESS_FEED_QUANTITY_MAX),
+  interval: bound(
     config.intervalle,
-    ACCESS_FEED_INTERVAL_DEFAUT,
+    ACCESS_FEED_INTERVAL_DEFAULT,
     ACCESS_FEED_INTERVAL_MIN,
     ACCESS_FEED_INTERVAL_MAX,
   ),
@@ -479,22 +479,22 @@ export const reglagesFlux = (config: Record<string, unknown>): ReglagesFlux => (
  * Les sources suivies, chacune avec ce que ses éléments demandent : la plus
  * grande quantité, et l'intervalle le plus court.
  */
-const sourcesSuivies = (): Map<string, { quantite: number; intervalle: number }> => {
-  const sources = new Map<string, { quantite: number; intervalle: number }>();
+const followedSources = (): Map<string, { quantity: number; interval: number }> => {
+  const sources = new Map<string, { quantity: number; interval: number }>();
   for (const { config } of accessFeeds.configurations.all()) {
-    let lu: unknown;
+    let readValue: unknown;
     try {
-      lu = JSON.parse(config);
+      readValue = JSON.parse(config);
     } catch {
       continue;
     }
-    if (!lu || typeof lu !== "object" || Array.isArray(lu)) continue;
-    const { urls, quantite, intervalle } = reglagesFlux(lu as Record<string, unknown>);
+    if (!readValue || typeof readValue !== "object" || Array.isArray(readValue)) continue;
+    const { urls, quantity, interval } = feedSettings(readValue as Record<string, unknown>);
     for (const url of urls) {
-      const connue = sources.get(url);
+      const known = sources.get(url);
       sources.set(url, {
-        quantite: Math.max(quantite, connue?.quantite ?? 0),
-        intervalle: Math.min(intervalle, connue?.intervalle ?? Infinity),
+        quantity: Math.max(quantity, known?.quantity ?? 0),
+        interval: Math.min(interval, known?.interval ?? Infinity),
       });
     }
   }
@@ -506,14 +506,14 @@ const sourcesSuivies = (): Map<string, { quantite: number; intervalle: number }>
  * dernière tentative, ou plus tôt après un échec, ou dès qu'un élément demande
  * plus d'articles que la base n'en garde.
  */
-const aRelever = (ligne: AccessFeedRow | undefined, quantite: number, intervalle: number) => {
-  if (!ligne) return true;
-  if (ligne.fetched_at !== null && ligne.quantity < quantite) return true;
-  const echeance = ligne.error ? Math.min(intervalle * 60_000, NOUVEL_ESSAI) : intervalle * 60_000;
-  return Date.now() - Date.parse(ligne.tried_at) >= echeance;
+const toRecord = (row: AccessFeedRow | undefined, quantity: number, interval: number) => {
+  if (!row) return true;
+  if (row.fetched_at !== null && row.quantity < quantity) return true;
+  const due = row.error ? Math.min(interval * 60_000, RETRY_DELAY) : interval * 60_000;
+  return Date.now() - Date.parse(row.tried_at) >= due;
 };
 
-let releveEnCours = false;
+let pollInProgress = false;
 
 /**
  * La relève de fond : chaque source suivie dont l'échéance est passée est
@@ -521,26 +521,26 @@ let releveEnCours = false;
  * toutes leurs demandes à la même seconde. Les flux que plus aucun élément ne
  * suit quittent la base.
  */
-export const releverLesFlux = async (): Promise<void> => {
-  if (releveEnCours) return;
-  releveEnCours = true;
+export const pollAllFeeds = async (): Promise<void> => {
+  if (pollInProgress) return;
+  pollInProgress = true;
   try {
-    const sources = sourcesSuivies();
-    for (const ligne of accessFeeds.all.all()) {
-      if (!sources.has(ligne.url)) accessFeeds.remove.run(ligne.url);
+    const sources = followedSources();
+    for (const row of accessFeeds.all.all()) {
+      if (!sources.has(row.url)) accessFeeds.remove.run(row.url);
     }
-    for (const [url, { quantite, intervalle }] of sources) {
-      if (aRelever(accessFeeds.byUrl.get(url), quantite, intervalle)) await relever(url, quantite);
+    for (const [url, { quantity, interval }] of sources) {
+      if (toRecord(accessFeeds.byUrl.get(url), quantity, interval)) await poll(url, quantity);
     }
   } finally {
-    releveEnCours = false;
+    pollInProgress = false;
   }
 };
 
-const articlesDe = (ligne: AccessFeedRow): AccessFeedArticle[] => {
+const articlesOf = (row: AccessFeedRow): AccessFeedArticle[] => {
   try {
-    const lus: unknown = JSON.parse(ligne.articles);
-    return Array.isArray(lus) ? (lus as AccessFeedArticle[]) : [];
+    const readItems: unknown = JSON.parse(row.articles);
+    return Array.isArray(readItems) ? (readItems as AccessFeedArticle[]) : [];
   } catch {
     return [];
   }
@@ -552,28 +552,28 @@ const articlesDe = (ligne: AccessFeedRow): AccessFeedArticle[] => {
  * adresse changée, une quantité relevée — ; sinon, c'est la relève de fond qui
  * la tient à jour, et la page n'attend jamais la source.
  */
-const sourceDe = async (
+const sourceOf = async (
   url: string,
-  quantite: number,
-  suivies: () => Map<string, { quantite: number }>,
+  quantity: number,
+  followed: () => Map<string, { quantity: number }>,
 ): Promise<AccessFeedSource> => {
-  let ligne = accessFeeds.byUrl.get(url);
-  const servable = ligne?.fetched_at != null && ligne.quantity >= quantite;
+  let row = accessFeeds.byUrl.get(url);
+  const servable = row?.fetched_at != null && row.quantity >= quantity;
   // Une source qui vient d'échouer n'est pas relancée à chaque visite.
-  const essaiPermis = !ligne || !ligne.error
-    || Date.now() - Date.parse(ligne.tried_at) >= NOUVEL_ESSAI;
-  if (!servable && essaiPermis) {
-    const voulue = Math.max(quantite, suivies().get(url)?.quantite ?? 0);
-    await relever(url, voulue);
-    ligne = accessFeeds.byUrl.get(url);
+  const attemptAllowed = !row || !row.error
+    || Date.now() - Date.parse(row.tried_at) >= RETRY_DELAY;
+  if (!servable && attemptAllowed) {
+    const desiredView = Math.max(quantity, followed().get(url)?.quantity ?? 0);
+    await poll(url, desiredView);
+    row = accessFeeds.byUrl.get(url);
   }
-  if (!ligne?.fetched_at) {
-    return { url, articles: [], fetched_at: null, error: ligne?.error || "Relève impossible" };
+  if (!row?.fetched_at) {
+    return { url, articles: [], fetched_at: null, error: row?.error || "Relève impossible" };
   }
   return {
     url,
-    articles: articlesDe(ligne).slice(0, quantite),
-    fetched_at: ligne.fetched_at,
+    articles: articlesOf(row).slice(0, quantity),
+    fetched_at: row.fetched_at,
     error: null,
   };
 };
@@ -582,12 +582,12 @@ const sourceDe = async (
  * Le flux d'un élément : chacune de ses sources, dans l'ordre réglé. Elles se
  * lisent ensemble, et l'échec de l'une ne retient pas les autres.
  */
-export const fluxDe = async ({ urls, quantite }: ReglagesFlux): Promise<AccessFeed> => {
+export const feedOf = async ({ urls, quantity }: FeedSettings): Promise<AccessFeed> => {
   if (!urls.length) badRequest("L'adresse du flux est requise");
   // Les sources suivies ne se relisent qu'une fois, et seulement s'il faut.
-  let suivies: Map<string, { quantite: number }> | undefined;
-  const lesSuivies = () => (suivies ??= sourcesSuivies());
+  let followed: Map<string, { quantity: number }> | undefined;
+  const getFollowed = () => (followed ??= followedSources());
   return {
-    sources: await Promise.all(urls.map((url) => sourceDe(url, quantite, lesSuivies))),
+    sources: await Promise.all(urls.map((url) => sourceOf(url, quantity, getFollowed))),
   };
 };

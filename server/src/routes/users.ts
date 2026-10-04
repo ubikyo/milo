@@ -13,7 +13,7 @@ import { Router } from "express";
 import type { DirectoryUser, EntraPrincipal, Id } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import { fullName } from "../lib/auth.js";
-import { chercherDansLAnnuaire, profilEntra } from "../lib/entra.js";
+import { searchInDirectory, entraProfile } from "../lib/entra.js";
 import { badRequest, orNotFound, requireText } from "../lib/http.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
@@ -32,29 +32,29 @@ const favorisDe = selection<{ favorite_id: Id }>(
    JOIN users u ON u.id = f.favorite_id
    WHERE f.user_id = ? AND u.system = 0`,
 );
-const ajouterFavori = mutation(
+const addFavorite = mutation(
   `INSERT OR IGNORE INTO user_favorites (user_id, favorite_id)
    SELECT ?, id FROM users WHERE id = ? AND system = 0`,
 );
-const retirerFavori = mutation(
+const removeFavorite = mutation(
   "DELETE FROM user_favorites WHERE user_id = ? AND favorite_id = ?",
 );
 
-const mesFavoris = (userId: Id): Id[] => favorisDe.all(userId).map((f) => f.favorite_id);
+const myFavorites = (userId: Id): Id[] => favorisDe.all(userId).map((f) => f.favorite_id);
 
 /** Les favoris de la personne connectée, en identifiants. */
 userRoutes.get("/favorites", (req, res) => {
-  res.json(mesFavoris(req.user.id));
+  res.json(myFavorites(req.user.id));
 });
 
 userRoutes.put("/favorites/:id", (req, res) => {
-  ajouterFavori.run(req.user.id, Number(req.params.id));
-  res.json(mesFavoris(req.user.id));
+  addFavorite.run(req.user.id, Number(req.params.id));
+  res.json(myFavorites(req.user.id));
 });
 
 userRoutes.delete("/favorites/:id", (req, res) => {
-  retirerFavori.run(req.user.id, Number(req.params.id));
-  res.json(mesFavoris(req.user.id));
+  removeFavorite.run(req.user.id, Number(req.params.id));
+  res.json(myFavorites(req.user.id));
 });
 
 // --- Annuaire --------------------------------------------------------------
@@ -70,19 +70,19 @@ userRoutes.get("/directory", (req, res, next) => {
     res.json([]);
     return;
   }
-  chercherDansLAnnuaire(q, "all")
-    .then((trouves) =>
+  searchInDirectory(q, "all")
+    .then((matches) =>
       res.json(
-        trouves
+        matches
           .filter((p) => p.type === "user")
           .map((p): DirectoryUser => {
-            const compte =
+            const account =
               users.byEntraId.get(p.id) ?? (p.email ? users.byEmail.get(p.email) : undefined);
             return {
               oid: p.id,
               name: p.name,
               email: p.email,
-              user_id: compte?.id ?? null,
+              user_id: account?.id ?? null,
               synced: p.synced,
             };
           }),
@@ -102,8 +102,8 @@ userRoutes.get("/directory/groups", (req, res, next) => {
     res.json([]);
     return;
   }
-  chercherDansLAnnuaire(q, "groups")
-    .then((trouves) => res.json(trouves.filter((p): p is EntraPrincipal => p.type === "group")))
+  searchInDirectory(q, "groups")
+    .then((matches) => res.json(matches.filter((p): p is EntraPrincipal => p.type === "group")))
     .catch(next);
 });
 
@@ -114,19 +114,19 @@ userRoutes.get("/directory/groups", (req, res, next) => {
  */
 userRoutes.post("/directory/:oid", touch("lookups"), (req, res, next) => {
   const oid = requireText(req.params.oid, "Identifiant requis");
-  profilEntra(oid)
-    .then((profil) => {
-      const email = profil.mail || profil.userPrincipalName || "";
+  entraProfile(oid)
+    .then((profile) => {
+      const email = profile.mail || profile.userPrincipalName || "";
       if (!email) badRequest("Cette personne n'a pas d'adresse e-mail dans l'annuaire");
-      let compte = users.byEntraId.get(oid) ?? users.byEmail.get(email);
-      if (!compte) {
-        const prenom = profil.givenName ?? "";
-        const nom = profil.surname ?? "";
-        const complet = fullName(prenom, nom) || profil.displayName || email;
-        const { lastInsertRowid } = users.createFromEntra.run(prenom, nom, complet, email, now(), oid);
-        compte = users.byId.get(lastInsertRowid);
+      let account = users.byEntraId.get(oid) ?? users.byEmail.get(email);
+      if (!account) {
+        const firstName = profile.givenName ?? "";
+        const name = profile.surname ?? "";
+        const full = fullName(firstName, name) || profile.displayName || email;
+        const { lastInsertRowid } = users.createFromEntra.run(firstName, name, full, email, now(), oid);
+        account = users.byId.get(lastInsertRowid);
       }
-      res.status(201).json(publicUser(orNotFound(compte, "Compte introuvable")));
+      res.status(201).json(publicUser(orNotFound(account, "Compte introuvable")));
     })
     .catch(next);
 });

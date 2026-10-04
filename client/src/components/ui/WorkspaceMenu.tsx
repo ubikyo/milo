@@ -5,7 +5,7 @@ import type { CSSProperties } from "react";
 import { api } from "../../api";
 import { NEUTRAL_HOVER } from "../../themes/colors";
 import { ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import type { PublicUser } from "@milo/shared";
 
 // Le workspace où l'on travaille, à gauche du compte : ne paraît qu'à qui en a
@@ -14,19 +14,19 @@ import type { PublicUser } from "@milo/shared";
 // rien de ce qui est à l'écran ne vaut plus.
 
 export default function WorkspaceMenu({ user }: { user: PublicUser }) {
-  const [changement, setChangement] = useState(false);
+  const [switching, setSwitching] = useState(false);
   if (user.workspaces.length < 2) return null;
-  const courant = user.workspaces.find((w) => w.id === user.workspace);
+  const current = user.workspaces.find((w) => w.id === user.workspace);
 
-  const choisir = async (id: number) => {
+  const select = async (id: number) => {
     if (id === user.workspace) return;
-    setChangement(true);
+    setSwitching(true);
     try {
       await api.switchWorkspace(id);
       window.location.reload();
     } catch (e) {
-      notifierErreur(messageErreur(e));
-      setChangement(false);
+      notifyError(errorMessage(e));
+      setSwitching(false);
     }
   };
 
@@ -45,17 +45,17 @@ export default function WorkspaceMenu({ user }: { user: PublicUser }) {
           size="xs"
           rightSection={<IconChevronDown size={14} />}
           aria-label="Workspace"
-          loading={changement}
+          loading={switching}
           style={{ "--button-hover": NEUTRAL_HOVER } as CSSProperties}
         >
-          {courant?.name ?? "Workspace"}
+          {current?.name ?? "Workspace"}
         </Button>
       </Menu.Target>
       <Menu.Dropdown miw={200}>
         {user.workspaces.map((w) => (
           <Menu.Item
             key={w.id}
-            onClick={() => void choisir(w.id)}
+            onClick={() => void select(w.id)}
             // La coche du workspace courant ; les autres gardent sa place,
             // pour que les noms restent alignés.
             leftSection={

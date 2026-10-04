@@ -24,7 +24,7 @@ import "dayjs/locale/fr";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import { BLEU, FOCUS_BORDER, ORANGE, ROUGE, VERT } from "./themes/colors";
+import { BLUE, FOCUS_BORDER, ORANGE, PALETTE_RED, PALETTE_GREEN } from "./themes/colors";
 import Favicon from "./components/ui/Favicon";
 
 // Tous les champs de saisie de Mantine : chacun lit « --input-bd-focus » pour
@@ -33,7 +33,7 @@ import Favicon from "./components/ui/Favicon";
 // que c'est là que Mantine la pose. Passer par le thème plutôt que par une
 // feuille de style évite de viser des classes compilées, dont le nom change
 // d'une version à l'autre.
-const CHAMPS = [
+const FIELDS = [
   "Input",
   "InputBase",
   "TextInput",
@@ -56,9 +56,9 @@ const CHAMPS = [
 // leur « --input-bd-focus » à transparent : ils ne doivent pas s'encadrer au
 // clic, sans quoi la ligne changerait d'aspect à la moindre saisie. Notre gris
 // le rétablissait pour tout le monde.
-const champsSansBleu = Object.fromEntries(
-  CHAMPS.map((nom) => [
-    nom,
+const fieldsWithoutBlue = Object.fromEntries(
+  FIELDS.map((name) => [
+    name,
     {
       styles: (_theme: unknown, props: { variant?: string }) =>
         props.variant === "unstyled"
@@ -69,8 +69,8 @@ const champsSansBleu = Object.fromEntries(
 );
 
 /** Une palette Mantine dont les dix nuances sont la même couleur. */
-const uneSeuleNuance = (couleur: string): MantineColorsTuple =>
-  Array.from({ length: 10 }, () => couleur) as unknown as MantineColorsTuple;
+const singleShade = (color: string): MantineColorsTuple =>
+  Array.from({ length: 10 }, () => color) as unknown as MantineColorsTuple;
 
 const theme = createTheme({
   primaryColor: "blue",
@@ -78,11 +78,11 @@ const theme = createTheme({
   // (themes/colors.ts). Le teal, qui est le vert des actions et des liens,
   // prend le même que « green ».
   colors: {
-    blue: uneSeuleNuance(BLEU),
-    red: uneSeuleNuance(ROUGE),
-    orange: uneSeuleNuance(ORANGE),
-    green: uneSeuleNuance(VERT),
-    teal: uneSeuleNuance(VERT),
+    blue: singleShade(BLUE),
+    red: singleShade(PALETTE_RED),
+    orange: singleShade(ORANGE),
+    green: singleShade(PALETTE_GREEN),
+    teal: singleShade(PALETTE_GREEN),
   },
   // Seuil à partir duquel Mantine juge un fond « clair » et pose du texte
   // noir dessus (« autoContrast »). Le sien, 0.3, bascule au noir dès le vert
@@ -94,7 +94,7 @@ const theme = createTheme({
   // l'entourait de bleu sans que personne n'ait navigué au clavier.
   focusRing: "never",
   components: {
-    ...champsSansBleu,
+    ...fieldsWithoutBlue,
     // Tous les liens en vert.
     Anchor: { defaultProps: { c: "teal" } },
     // Les lignes entre les rangées de toutes les grilles, deux tons plus foncés
@@ -136,10 +136,10 @@ const theme = createTheme({
 });
 
 // La racine est dans index.html : sans elle, rien à monter.
-const racine = document.getElementById("root");
-if (!racine) throw new Error("Élément #root introuvable");
+const root = document.getElementById("root");
+if (!root) throw new Error("Élément #root introuvable");
 
-ReactDOM.createRoot(racine).render(
+ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <ColorSchemeScript defaultColorScheme="auto" />
     {/* "auto" suit le thème du système ; le choix de l'utilisateur est mémorisé

@@ -21,12 +21,12 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EntraSettings, PublicUser, Workspace } from "@milo/shared";
 import { api } from "../../api";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import {
-  HAUTEUR_MAX_PARAMETRAGE,
-  HAUTEUR_PARAMETRAGE,
-  LARGEUR_PARAMETRAGE,
-  PADDING_PARAMETRAGE,
+  SETTINGS_HEIGHT_MAX,
+  SETTINGS_HEIGHT,
+  SETTINGS_WIDTH,
+  SETTINGS_PADDING,
   modalHeaderStyles,
 } from "../../themes/modals";
 import { tabStyle } from "../../themes/tabs";
@@ -39,7 +39,7 @@ import AssetsTab from "./AssetsTab";
 import WorkspacesTab from "./WorkspacesTab";
 import AdministrationTab from "./AdministrationTab";
 import type { ComponentType, ReactNode } from "react";
-import BoutonFermer from "../ui/BoutonFermer";
+import CloseButton from "../ui/BoutonFermer";
 
 const TABS: {
   value: string;
@@ -64,14 +64,14 @@ const TABS: {
  * l'administration se donnent à des utilisateurs et des groupes de
  * l'annuaire.
  */
-const AVEC_ENTRA = new Set(["workspaces", "administration"]);
+const WITH_ENTRA = new Set(["workspaces", "administration"]);
 
 /** Les onglets que le compte « admin » ne voit pas. */
-const SANS_ADMIN = new Set(["developer", "support", "assets"]);
+const WITHOUT_ADMIN = new Set(["developer", "support", "assets"]);
 
 
 /** Entra est configuré : l'application renseignée (identifiant, annuaire, secret). */
-const entraConfiguree = (r: EntraSettings) =>
+const entraConfigured = (r: EntraSettings) =>
   Boolean(r.client_id && r.tenant && r.has_secret);
 
 const MODAL_HEADER = modalHeaderStyles(40);
@@ -135,82 +135,82 @@ export default function SettingsModal({
   user,
   onUserChange,
 }: SettingsModalProps) {
-  const gestion = user.manage_workspaces;
+  const management = user.manage_workspaces;
   // Sans la gestion des workspaces, leur onglet n'est pas là : on ouvre sur
   // Entra.
-  const [activeTab, setActiveTab] = useState<string | null>(gestion ? "workspaces" : "entra");
+  const [activeTab, setActiveTab] = useState<string | null>(management ? "workspaces" : "entra");
   // Tous les workspaces, pour qui les gère : leur onglet, et le choix de
   // celui dont on règle les accès.
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   // Le compte relu : ses workspaces — ceux du sélecteur — et ses droits
   // suivent les workspaces, leurs accès et l'administration.
-  const relireCompte = useCallback(async () => {
+  const reloadAccount = useCallback(async () => {
     try {
       if (onUserChange) onUserChange(await api.me());
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   }, [onUserChange]);
-  const relireWorkspaces = useCallback(async () => {
+  const reloadWorkspaces = useCallback(async () => {
     try {
       setWorkspaces(await api.getWorkspaces());
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
-    await relireCompte();
-  }, [relireCompte]);
+    await reloadAccount();
+  }, [reloadAccount]);
   useEffect(() => {
-    if (opened && gestion) void api.getWorkspaces().then(setWorkspaces, () => undefined);
-  }, [opened, gestion]);
+    if (opened && management) void api.getWorkspaces().then(setWorkspaces, () => undefined);
+  }, [opened, management]);
   // Tant qu'Entra n'est pas configuré, seuls ses réglages et la sauvegarde
   // se montrent. L'onglet Entra en informe la fenêtre à chaque lecture et à
   // chaque enregistrement ; « null » tant qu'il n'a rien dit.
-  const [entraPret, setEntraPret] = useState<boolean | null>(null);
+  const [entraReady, setEntraReady] = useState<boolean | null>(null);
   // Le Support et les Assets touchent au travail des modes, et l'onglet
   // Développeur à celui des personnes : pas au paramétrage de l'application.
   // Le compte « admin » ne les voit pas (SANS_ADMIN).
   // Qui gère les workspaces sans voir le Paramétrage n'a que leur onglet ;
   // il se connecte par Microsoft : Entra est forcément configuré.
-  const visible = (onglet: string) =>
-    (onglet === "workspaces" ? gestion : true) &&
-    (user.settings.view || onglet === "workspaces") &&
-    !(standalone && SANS_ADMIN.has(onglet)) &&
-    !(!canEdit && onglet === "backup") &&
-    (entraPret === true || !AVEC_ENTRA.has(onglet) || !user.settings.view);
+  const visible = (tab: string) =>
+    (tab === "workspaces" ? management : true) &&
+    (user.settings.view || tab === "workspaces") &&
+    !(standalone && WITHOUT_ADMIN.has(tab)) &&
+    !(!canEdit && tab === "backup") &&
+    (entraReady === true || !WITH_ENTRA.has(tab) || !user.settings.view);
 
   // Stable : l'onglet Entra s'en sert dans sa lecture des réglages.
-  const suivreEntra = useCallback((reglages: EntraSettings) => {
-    const pret = entraConfiguree(reglages);
-    setEntraPret(pret);
+  const followEntra = useCallback((settings: EntraSettings) => {
+    const pret = entraConfigured(settings);
+    setEntraReady(pret);
     // L'onglet ouvert vient de disparaître : on passe sur Entra.
-    if (!pret) setActiveTab((t) => (t && AVEC_ENTRA.has(t) ? "entra" : t));
+    if (!pret) setActiveTab((t) => (t && WITH_ENTRA.has(t) ? "entra" : t));
   }, []);
   /**
    * Seul l'onglet Entra a des réglages en attente : les autres onglets
    * enregistrent chaque geste. « Enregistrer » appelle la fonction que
    * l'onglet dépose ici ; « Fermer » n'enregistre rien.
    */
-  const enregistrerEntra = useRef<(() => Promise<boolean>) | null>(null);
-  const [enregistrement, setEnregistrement] = useState(false);
+  const saveEntra = useRef<(() => Promise<boolean>) | null>(null);
+  const [registration, setSaving] = useState(false);
 
   // Enregistre puis referme ; un refus du serveur garde la fenêtre ouverte,
   // avec son message dans l'onglet concerné.
-  const enregistrer = async () => {
-    setEnregistrement(true);
+  const save = async () => {
+    setSaving(true);
     try {
-      if ((await enregistrerEntra.current?.()) === false) {
+      if ((await saveEntra.current?.()) === false) {
         setActiveTab("entra");
         return;
       }
     } finally {
-      setEnregistrement(false);
+      setSaving(false);
     }
     if (!standalone) onClose();
   };
 
   // L'entête du panneau Entra porte son menu « Actions », à droite du
   // titre : l'onglet l'y rend par un portail.
-  const [actionsEntra, setActionsEntra] = useState<HTMLDivElement | null>(null);
+  const [entraActions, setEntraActions] = useState<HTMLDivElement | null>(null);
 
   const panel = (
     value: string,
@@ -268,14 +268,14 @@ export default function SettingsModal({
       title="Paramétrage"
       // Au milieu de l'écran, comme les autres fenêtres.
       centered
-      size={LARGEUR_PARAMETRAGE}
-      padding={PADDING_PARAMETRAGE}
+      size={SETTINGS_WIDTH}
+      padding={SETTINGS_PADDING}
       withCloseButton={false}
       styles={{
         ...MODAL_HEADER,
         content: {
-          height: HAUTEUR_PARAMETRAGE,
-          maxHeight: HAUTEUR_MAX_PARAMETRAGE,
+          height: SETTINGS_HEIGHT,
+          maxHeight: SETTINGS_HEIGHT_MAX,
           display: "flex",
           flexDirection: "column",
           // Repère pour la barre de défilement déportée (voir ListItems)
@@ -320,16 +320,16 @@ export default function SettingsModal({
           "workspaces",
           <WorkspacesTab
             workspaces={workspaces}
-            onChanged={relireWorkspaces}
-            onAccessChanged={() => void relireCompte()}
+            onChanged={reloadWorkspaces}
+            onAccessChanged={() => void reloadAccount()}
           />,
         )}
 
         {panel(
           "administration",
           <AdministrationTab
-            canManageWorkspaces={gestion}
-            onChange={() => void relireCompte()}
+            canManageWorkspaces={management}
+            onChange={() => void reloadAccount()}
           />,
         )}
 
@@ -340,11 +340,11 @@ export default function SettingsModal({
         {panel(
           "entra",
           <EntraTab
-            saveRef={enregistrerEntra}
-            actionsTarget={actionsEntra}
-            onSettings={suivreEntra}
+            saveRef={saveEntra}
+            actionsTarget={entraActions}
+            onSettings={followEntra}
           />,
-          setActionsEntra,
+          setEntraActions,
         )}
 
         {panel("backup", <BackupTab />)}
@@ -364,11 +364,11 @@ export default function SettingsModal({
             Paramétrage.
           </Text>
         )}
-        <BoutonFermer onClick={onClose}>
+        <CloseButton onClick={onClose}>
           {standalone ? "Déconnexion" : "Fermer"}
-        </BoutonFermer>
+        </CloseButton>
         {canEdit && (
-          <Button color="teal" onClick={enregistrer} loading={enregistrement}>
+          <Button color="teal" onClick={save} loading={registration}>
             Enregistrer
           </Button>
         )}

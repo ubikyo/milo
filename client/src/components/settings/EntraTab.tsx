@@ -29,31 +29,31 @@ import { NEUTRAL_HOVER } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import { ACTIONS_BUTTON_STYLE } from "../../themes/menus";
 import SuccessAlert from "../ui/SuccessAlert";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import type {
   EntraSettings,
   EntraSettingsInput,
   EntraStatus,
 } from "@milo/shared";
 import type { CSSProperties } from "react";
-import BoutonFermer from "../ui/BoutonFermer";
+import CloseButton from "../ui/BoutonFermer";
 
 /** Ce que montre l'état de la connexion, selon ce que le serveur en dit. */
-const ETATS: Record<
+const STATES: Record<
   EntraStatus["state"],
-  { libelle: string; couleur: string }
+  { label: string; color: string }
 > = {
-  connected: { libelle: "Connecté", couleur: "green" },
-  error: { libelle: "Refusé", couleur: "red" },
-  disconnected: { libelle: "Déconnecté", couleur: "gray" },
-  unconfigured: { libelle: "Non configuré", couleur: "gray" },
+  connected: { label: "Connecté", color: "green" },
+  error: { label: "Refusé", color: "red" },
+  disconnected: { label: "Déconnecté", color: "gray" },
+  unconfigured: { label: "Non configuré", color: "gray" },
 };
 
 /**
  * Ce que montre le champ d'un secret enregistré : le serveur ne le renvoie
  * jamais, on simule donc sa présence par des points.
  */
-const MASQUE = "********";
+const MASK = "********";
 
 /**
  * La saisie dans un champ qui montre encore le masque : on n'en garde que ce
@@ -61,16 +61,16 @@ const MASQUE = "********";
  * le remplace donc d'ordinaire ; si le curseur s'est posé dedans, on retire
  * les points du masque restés autour du texte tapé, et un effacement le vide.
  */
-function sansMasque(valeur: string): string {
-  if (/^\**$/.test(valeur) && valeur.length < MASQUE.length) return "";
-  if (valeur.length <= MASQUE.length) return valeur;
-  let reste = MASQUE.length;
-  let tape = "";
-  for (const c of valeur) {
-    if (c === "*" && reste > 0) reste -= 1;
-    else tape += c;
+function unmasked(value: string): string {
+  if (/^\**$/.test(value) && value.length < MASK.length) return "";
+  if (value.length <= MASK.length) return value;
+  let rest = MASK.length;
+  let typed = "";
+  for (const c of value) {
+    if (c === "*" && rest > 0) rest -= 1;
+    else typed += c;
   }
-  return reste === 0 ? tape : valeur;
+  return rest === 0 ? typed : value;
 }
 
 /**
@@ -81,25 +81,25 @@ function sansMasque(valeur: string): string {
 function MailTestModal({
   opened,
   onClose,
-  expediteur,
+  sender,
 }: {
   opened: boolean;
   onClose: () => void;
   /** L'adresse d'envoi enregistrée. */
-  expediteur: string;
+  sender: string;
 }) {
-  const [adresse, setAdresse] = useState("");
-  const [envoye, setEnvoye] = useState<string | null>(null);
+  const [address, setAddress] = useState("");
+  const [sent, setSent] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const envoyer = async () => {
-    setEnvoye(null);
+  const send = async () => {
+    setSent(null);
     setBusy(true);
     try {
-      const { sent_to } = await api.testMail(adresse.trim());
-      setEnvoye(sent_to);
+      const { sent_to } = await api.testMail(address.trim());
+      setSent(sent_to);
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -117,37 +117,37 @@ function MailTestModal({
     >
       <Stack gap="md">
         <Text size="sm">
-          {expediteur
-            ? `Le message part de l'adresse d'envoi, ${expediteur}.`
+          {sender
+            ? `Le message part de l'adresse d'envoi, ${sender}.`
             : "Renseignez d'abord l'adresse d'envoi."}
         </Text>
 
         <TextInput
           label="Adresse de test"
           type="email"
-          value={adresse}
-          onChange={(e) => setAdresse(e.currentTarget.value)}
+          value={address}
+          onChange={(e) => setAddress(e.currentTarget.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && adresse.trim() && expediteur) envoyer();
+            if (e.key === "Enter" && address.trim() && sender) send();
           }}
         />
 
-        {envoye && (
+        {sent && (
           <SuccessAlert>
-            <Text size="sm">Message envoyé à {envoye}.</Text>
+            <Text size="sm">Message envoyé à {sent}.</Text>
           </SuccessAlert>
         )}
 
         <Group justify="flex-end" mt="md">
-          <BoutonFermer onClick={onClose} />
+          <CloseButton onClick={onClose} />
           {/* Le vert des actions qui valident, celui de la coche des comptes
               et du compte rendu d'un envoi réussi. */}
           <Button
             color="teal"
             leftSection={<IconSend size={16} />}
-            onClick={envoyer}
+            onClick={send}
             loading={busy}
-            disabled={!adresse.trim() || !expediteur}
+            disabled={!address.trim() || !sender}
           >
             Envoyer
           </Button>
@@ -174,7 +174,7 @@ interface EntraTabProps {
    * enregistrement : la fenêtre ne montre les autres onglets qu'une fois
    * Entra configuré.
    */
-  onSettings?: (reglages: EntraSettings) => void;
+  onSettings?: (settings: EntraSettings) => void;
 }
 
 /**
@@ -191,43 +191,43 @@ export default function EntraTab({
   actionsTarget,
   onSettings,
 }: EntraTabProps) {
-  const [reglages, setReglages] = useState<EntraSettings>(emptyEntraSettings());
+  const [settings, setSettings] = useState<EntraSettings>(emptyEntraSettings());
   const [secret, setSecret] = useState("");
-  const [secretTouche, setSecretTouche] = useState(false);
+  const [secretTouched, setSecretTouched] = useState(false);
   // Rien n'a bougé : « Enregistrer » n'a alors rien à envoyer.
-  const [modifie, setModifie] = useState(false);
+  const [modified, setModified] = useState(false);
   // Tant que le serveur n'a pas répondu, l'onglet ne montre rien : affiché
   // avec ses valeurs par défaut, il montrerait des champs vides qui se
   // rempliraient d'un coup.
-  const [charge, setCharge] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [testOuvert, setTestOuvert] = useState(false);
+  const [testOpen, setTestOpened] = useState(false);
   // L'état de la connexion de Milo à Entra : nul tant qu'il n'est pas connu.
-  const [etat, setEtat] = useState<EntraStatus | null>(null);
+  const [state, setState] = useState<EntraStatus | null>(null);
 
-  const lireEtat = useCallback(() => {
-    setEtat(null);
+  const readState = useCallback(() => {
+    setState(null);
     api
       .getEntraStatus()
-      .then(setEtat)
-      .catch((e) => notifierErreur(messageErreur(e)));
+      .then(setState)
+      .catch((e) => notifyError(errorMessage(e)));
   }, []);
 
   useEffect(() => {
-    lireEtat();
-  }, [lireEtat]);
+    readState();
+  }, [readState]);
 
   const reload = useCallback(async () => {
     try {
-      const lus = await api.getEntraSettings();
-      setReglages(lus);
-      onSettings?.(lus);
-      setModifie(false);
+      const readItems = await api.getEntraSettings();
+      setSettings(readItems);
+      onSettings?.(readItems);
+      setModified(false);
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
       // Même si la lecture a échoué : le message vaut mieux qu'un onglet vide.
-      setCharge(true);
+      setLoaded(true);
     }
   }, [onSettings]);
 
@@ -235,36 +235,36 @@ export default function EntraTab({
     reload();
   }, [reload]);
 
-  const modifier = (champs: Partial<EntraSettings>) => {
-    setReglages((r) => ({ ...r, ...champs }));
-    setModifie(true);
+  const updateStatement = (fields: Partial<EntraSettings>) => {
+    setSettings((r) => ({ ...r, ...fields }));
+    setModified(true);
   };
 
   /** Ce qui part au serveur : les réglages, et le secret seulement si on y a touché. */
-  const aEnvoyer = (): EntraSettingsInput => ({
-    client_id: reglages.client_id,
-    tenant: reglages.tenant,
-    mail_sender: reglages.mail_sender,
-    ...(secretTouche ? { secret } : {}),
+  const toSend = (): EntraSettingsInput => ({
+    client_id: settings.client_id,
+    tenant: settings.tenant,
+    mail_sender: settings.mail_sender,
+    ...(secretTouched ? { secret } : {}),
   });
 
   /** Enregistre et rend vrai si c'est passé : les actions qui suivent en dépendent. */
-  const enregistrer = async (): Promise<boolean> => {
-    if (!modifie) return true;
+  const save = async (): Promise<boolean> => {
+    if (!modified) return true;
 
     setBusy(true);
     try {
-      const enregistres = await api.updateEntraSettings(aEnvoyer());
-      setReglages(enregistres);
-      onSettings?.(enregistres);
-      setSecretTouche(false);
+      const saved = await api.updateEntraSettings(toSend());
+      setSettings(saved);
+      onSettings?.(saved);
+      setSecretTouched(false);
       setSecret("");
-      setModifie(false);
+      setModified(false);
       // De nouveaux identifiants changent la réponse de Microsoft.
-      lireEtat();
+      readState();
       return true;
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
       return false;
     } finally {
       setBusy(false);
@@ -276,7 +276,7 @@ export default function EntraTab({
   // dernière, pas celle du premier affichage.
   useEffect(() => {
     if (!saveRef) return undefined;
-    saveRef.current = enregistrer;
+    saveRef.current = save;
     return () => {
       saveRef.current = null;
     };
@@ -284,19 +284,19 @@ export default function EntraTab({
 
   // Les vérifications portent sur ce que le serveur a en base : l'affichage
   // part avec.
-  const tester = async () => {
-    if (await enregistrer()) setTestOuvert(true);
+  const runTest = async () => {
+    if (await save()) setTestOpened(true);
   };
 
   /** Se reconnecter avec ce qui est saisi, ou se déconnecter. */
-  const changerConnexion = async (connecter: boolean) => {
-    if (connecter && !(await enregistrer())) return;
+  const changeConnection = async (connect: boolean) => {
+    if (connect && !(await save())) return;
     setBusy(true);
-    setEtat(null);
+    setState(null);
     try {
-      setEtat(await (connecter ? api.connectEntra() : api.disconnectEntra()));
+      setState(await (connect ? api.connectEntra() : api.disconnectEntra()));
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -304,7 +304,7 @@ export default function EntraTab({
 
   // Déconnecté, Milo ne passe plus par Microsoft : les vérifications
   // échoueraient d'office.
-  const deconnecte = etat?.state === "disconnected";
+  const disconnected = state?.state === "disconnected";
 
   /**
    * L'adresse de retour de la connexion, à inscrire dans Azure : celle par
@@ -334,25 +334,25 @@ export default function EntraTab({
       <Menu.Dropdown>
         <Menu.Item
           leftSection={<IconMailForward size={16} />}
-          onClick={tester}
-          disabled={deconnecte}
+          onClick={runTest}
+          disabled={disconnected}
         >
           Tester l'envoi
         </Menu.Item>
         <Menu.Divider />
         <Menu.Item
           leftSection={<IconPlugConnected size={16} />}
-          onClick={() => void changerConnexion(true)}
+          onClick={() => void changeConnection(true)}
         >
           Se reconnecter
         </Menu.Item>
         <Menu.Item
           leftSection={<IconPlugConnectedX size={16} />}
-          onClick={() => void changerConnexion(false)}
+          onClick={() => void changeConnection(false)}
           disabled={
-            !etat ||
-            etat.state === "disconnected" ||
-            etat.state === "unconfigured"
+            !state ||
+            state.state === "disconnected" ||
+            state.state === "unconfigured"
           }
         >
           Déconnecter
@@ -365,23 +365,23 @@ export default function EntraTab({
    * L'état de la connexion, à gauche du menu « Actions » : le refus de
    * Microsoft se lit au survol.
    */
-  const badgeEtat = etat ? (
+  const statusBadge = state ? (
     <Tooltip
-      label={etat.error}
-      disabled={!etat.error}
+      label={state.error}
+      disabled={!state.error}
       multiline
       maw={360}
       withinPortal
     >
       <Badge
-        color={ETATS[etat.state].couleur}
+        color={STATES[state.state].color}
         variant="filled"
         size="sm"
         radius="sm"
         tt="none"
         fw={600}
       >
-        {ETATS[etat.state].libelle}
+        {STATES[state.state].label}
       </Badge>
     </Tooltip>
   ) : (
@@ -395,27 +395,27 @@ export default function EntraTab({
    * un secret est enregistré — sans l'œil, qui n'afficherait que des
    * astérisques. Le focus sélectionne le masque : la frappe le remplace.
    */
-  const masque = reglages.has_secret && !secretTouche;
-  const champSecret = (
+  const masked = settings.has_secret && !secretTouched;
+  const secretField = (
     <PasswordInput
       label="Secret"
-      value={masque ? MASQUE : secret}
+      value={masked ? MASK : secret}
       visibilityToggleButtonProps={
-        masque ? { style: { display: "none" } } : undefined
+        masked ? { style: { display: "none" } } : undefined
       }
       onFocus={(e) => {
-        if (masque) e.currentTarget.select();
+        if (masked) e.currentTarget.select();
       }}
       onChange={(e) => {
-        const saisie = e.currentTarget.value;
-        setSecret(masque ? sansMasque(saisie) : saisie);
-        setSecretTouche(true);
-        setModifie(true);
+        const input = e.currentTarget.value;
+        setSecret(masked ? unmasked(input) : input);
+        setSecretTouched(true);
+        setModified(true);
       }}
     />
   );
 
-  if (!charge) return null;
+  if (!loaded) return null;
 
   return (
     <>
@@ -434,17 +434,17 @@ export default function EntraTab({
           <SimpleGrid cols={2} spacing="md" verticalSpacing="xl">
             <TextInput
               label="ID d'application"
-              value={reglages.client_id}
-              onChange={(e) => modifier({ client_id: e.currentTarget.value })}
+              value={settings.client_id}
+              onChange={(e) => updateStatement({ client_id: e.currentTarget.value })}
             />
             <TextInput
               label="ID de l'annuaire"
-              value={reglages.tenant}
-              onChange={(e) => modifier({ tenant: e.currentTarget.value })}
+              value={settings.tenant}
+              onChange={(e) => updateStatement({ tenant: e.currentTarget.value })}
             />
             {/* Le secret et la redirection dans la colonne de gauche, à la
                 largeur de l'ID d'application. */}
-            {champSecret}
+            {secretField}
             {/* D'où partent les e-mails de Milo : les avis, les assignations,
                 les réponses aux demandes saisies. Une demande reçue répond
                 de sa propre boîte. */}
@@ -452,8 +452,8 @@ export default function EntraTab({
               label="Adresse d'envoi"
               type="email"
               placeholder="milo@…"
-              value={reglages.mail_sender}
-              onChange={(e) => modifier({ mail_sender: e.currentTarget.value })}
+              value={settings.mail_sender}
+              onChange={(e) => updateStatement({ mail_sender: e.currentTarget.value })}
             />
             {/* L'adresse à reporter dans Azure, telle quelle : elle se lit,
                 et se copie d'un clic. Plus longue que les ID, elle déborde
@@ -496,16 +496,16 @@ export default function EntraTab({
       {actionsTarget &&
         createPortal(
           <Group gap="sm" wrap="nowrap">
-            {badgeEtat}
+            {statusBadge}
             {menuActions}
           </Group>,
           actionsTarget,
         )}
 
       <MailTestModal
-        opened={testOuvert}
-        onClose={() => setTestOuvert(false)}
-        expediteur={reglages.mail_sender}
+        opened={testOpen}
+        onClose={() => setTestOpened(false)}
+        sender={settings.mail_sender}
       />
     </>
   );

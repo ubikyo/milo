@@ -11,39 +11,39 @@ import {
 } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
-import { RED, couleurJalonParDefaut } from "../../themes/colors";
+import { RED, defaultMilestoneColor } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import LabelColorPicker from "../ui/LabelColorPicker";
 import { useLabelColors } from "../ui/LabelChip";
 import AddButton from "../ui/AddButton";
 import {
-  ARRONDI,
-  RETRAIT_LIGNE,
-  RETRAIT_NOM,
-  STYLE_SAISIE,
-  styleChampNom,
-  styleLigne,
+  ROUNDING,
+  ROW_INSET,
+  NAME_INSET,
+  INPUT_STYLE,
+  nameFieldStyle,
+  rowStyle,
 } from "../ui/LignesDuTiroir";
-import PointMenu, { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
-import { MilestoneLabels, marquesJalons } from "./milestoneMarks";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
+import { MilestoneLabels, milestoneMarks } from "./milestoneMarks";
+import { errorMessage, notifyError } from "../../lib/errors";
 import { DEFAULT_LABEL_COLOR } from "@milo/shared";
 import type { Milestone, MilestoneType } from "@milo/shared";
-import BoutonFermer from "../ui/BoutonFermer";
+import CloseButton from "../ui/BoutonFermer";
 
 /** Un jalon en cours de saisie : la valeur peut être vidée pendant la frappe. */
-interface Saisie {
-  cle: number;
+interface InputEntry {
+  key: number;
   value: number | "";
   label: string;
   /** La couleur de la tranche que le jalon ferme. */
   color: string;
   /** Le jalon de fin, à 100 % : toujours là, ni déplaçable ni supprimable. */
-  fixe?: boolean;
+  fixed?: boolean;
 }
 
 /** La valeur du jalon de fin. */
-const FIN = 100;
+const END = 100;
 
 interface MilestonesModalProps {
   /** Le type dont on règle les jalons ; « null » ferme la fenêtre. */
@@ -53,16 +53,16 @@ interface MilestonesModalProps {
 }
 
 /** L'air ajouté à gauche de la pastille de couleur d'un jalon. */
-const ECART_COULEUR = 3;
+const COLOR_GAP = 3;
 /** L'air entre le pourcentage et le libellé. */
-const ECART_LIBELLE = 4;
+const LABEL_GAP = 4;
 /** L'air entre la pastille et le pourcentage. */
-const ECART_POURCENTAGE = 10;
+const PERCENT_GAP = 10;
 
 // Largeur du pourcentage : de quoi écrire « 100 % » dans un champ.
-const LARGEUR_POURCENTAGE = 54;
+const PERCENT_WIDTH = 54;
 
-interface ChampPourcentageProps {
+interface PercentageFieldProps {
   value: number | "";
   onChange: (value: number | "") => void;
   onBlur?: () => void;
@@ -70,23 +70,23 @@ interface ChampPourcentageProps {
 }
 
 // Les autres jalons s'arrêtent avant la fin : 100 % est déjà pris.
-const MAX_JALON = FIN - 1;
+const MAX_JALON = END - 1;
 
 /** Le pourcentage d'un jalon : un champ « xs » de la ligne, comme une largeur de colonne. */
-function ChampPourcentage({
+function PercentageField({
   value,
   onChange,
   onBlur,
   label,
-}: ChampPourcentageProps) {
-  const [saisi, setSaisi] = useState(false);
+}: PercentageFieldProps) {
+  const [entered, setEntered] = useState(false);
   return (
     <NumberInput
       value={value}
       onChange={(v) => onChange(v === "" ? "" : Number(v))}
-      onFocus={() => setSaisi(true)}
+      onFocus={() => setEntered(true)}
       onBlur={() => {
-        setSaisi(false);
+        setEntered(false);
         onBlur?.();
       }}
       min={0}
@@ -96,13 +96,13 @@ function ChampPourcentage({
       suffix="%"
       hideControls
       size="xs"
-      radius={ARRONDI}
-      w={LARGEUR_POURCENTAGE}
+      radius={ROUNDING}
+      w={PERCENT_WIDTH}
       style={{ flexShrink: 0 }}
       // Le corps du libellé, à droite : un champ « xs » a la hauteur des
       // autres, mais un texte plus petit.
       styles={{
-        input: { fontSize: "var(--mantine-font-size-sm)", ...(saisi ? STYLE_SAISIE : null) },
+        input: { fontSize: "var(--mantine-font-size-sm)", ...(entered ? INPUT_STYLE : null) },
       }}
       aria-label={label}
     />
@@ -111,30 +111,30 @@ function ChampPourcentage({
 
 // Le jalon ajouté se pose à mi-chemin entre le dernier jalon et la fin : son
 // pourcentage se règle ensuite sur sa ligne.
-const aMiChemin = (liste: Saisie[]) => {
-  const dernier = liste
-    .filter((s) => !s.fixe)
+const halfway = (list: InputEntry[]) => {
+  const last = list
+    .filter((s) => !s.fixed)
     .reduce((max, s) => Math.max(max, Number(s.value) || 0), 0);
-  return Math.min(MAX_JALON, Math.round((dernier + FIN) / 2));
+  return Math.min(MAX_JALON, Math.round((last + END) / 2));
 };
 
-let prochaineCle = 0;
-const versSaisie = (m: Milestone): Saisie => ({
-  cle: prochaineCle++,
+let nextKey = 0;
+const toInput = (m: Milestone): InputEntry => ({
+  key: nextKey++,
   value: m.value,
   label: m.label,
-  color: m.color ?? couleurJalonParDefaut(m.value),
+  color: m.color ?? defaultMilestoneColor(m.value),
 });
 
 /**
  * La liste reçue, avec son jalon de fin : repris s'il a été enregistré avec
  * un libellé, ajouté sans libellé sinon. Il ferme toujours la liste.
  */
-const avecFin = (jalons: Milestone[]): Saisie[] => {
-  const fin = jalons.find((m) => m.value === FIN);
+const withEnd = (milestones: Milestone[]): InputEntry[] => {
+  const end = milestones.find((m) => m.value === END);
   return [
-    ...jalons.filter((m) => m.value !== FIN).map(versSaisie),
-    { ...versSaisie(fin ?? { value: FIN, label: "" }), fixe: true },
+    ...milestones.filter((m) => m.value !== END).map(toInput),
+    { ...toInput(end ?? { value: END, label: "" }), fixed: true },
   ];
 };
 
@@ -143,14 +143,14 @@ const avecFin = (jalons: Milestone[]): Saisie[] => {
  * en jalon, chaque tranche prend la couleur du jalon qui la ferme — celle
  * qu'aura la barre d'un projet dont la progression y tombe.
  */
-const tranches = (bornes: { value: number; couleur: string }[]): string => {
-  let debut = 0;
-  const arrets = bornes.map(({ value, couleur }) => {
-    const arret = `${couleur} ${debut}% ${value}%`;
-    debut = value;
-    return arret;
+const bands = (bounds: { value: number; color: string }[]): string => {
+  let start = 0;
+  const stops = bounds.map(({ value, color }) => {
+    const colorStop = `${color} ${start}% ${value}%`;
+    start = value;
+    return colorStop;
   });
-  return `linear-gradient(to right, ${arrets.join(", ")})`;
+  return `linear-gradient(to right, ${stops.join(", ")})`;
 };
 
 /**
@@ -163,55 +163,55 @@ export default function MilestonesModal({
   onClose,
   onSave,
 }: MilestonesModalProps) {
-  const [saisies, setSaisies] = useState<Saisie[]>([]);
+  const [inputs, setInputs] = useState<InputEntry[]>([]);
   const [saving, setSaving] = useState(false);
   // Le champ qui a le focus : il prend le fond de la fenêtre.
-  const [saisie, setSaisie] = useState<number | null>(null);
+  const [input, setInput] = useState<number | null>(null);
   // Le jalon qu'on vient d'ajouter : son libellé prend le focus.
-  const [aNommer, setANommer] = useState<number | null>(null);
-  const [menu, setMenu] = useState<{ cle: number; position: PointMenuPosition } | null>(null);
-  const couleurs = useLabelColors();
+  const [toName, setToName] = useState<number | null>(null);
+  const [menu, setMenu] = useState<{ key: number; position: PointMenuPosition } | null>(null);
+  const colors = useLabelColors();
 
   useEffect(() => {
     if (!type) return;
-    const liste = avecFin(type.milestones);
-    setSaisies(liste);
-    setSaisie(null);
-    setANommer(null);
+    const list = withEnd(type.milestones);
+    setInputs(list);
+    setInput(null);
+    setToName(null);
   }, [type]);
 
-  const modifier = (cle: number, patch: Partial<Saisie>) =>
-    setSaisies((liste) =>
-      liste.map((s) => (s.cle === cle ? { ...s, ...patch } : s)),
+  const updateStatement = (key: number, patch: Partial<InputEntry>) =>
+    setInputs((list) =>
+      list.map((s) => (s.key === key ? { ...s, ...patch } : s)),
     );
 
   // Les jalons se rangent dans l'ordre du curseur : après un ajout, et quand
   // on quitte le pourcentage d'une ligne — pas pendant la frappe, où la ligne
   // sauterait sous le curseur.
-  const trier = () =>
-    setSaisies((liste) =>
-      [...liste].sort(
+  const sortBy = () =>
+    setInputs((list) =>
+      [...list].sort(
         (a, b) => (Number(a.value) || 0) - (Number(b.value) || 0),
       ),
     );
 
   // Le libellé est facultatif : la couleur suffit. Le jalon se range à sa
   // place, et son libellé prend le focus.
-  const ajouter = () => {
-    const nouveau = versSaisie({
-      value: aMiChemin(saisies),
+  const add = () => {
+    const newValue = toInput({
+      value: halfway(inputs),
       label: "",
       color: DEFAULT_LABEL_COLOR,
     });
-    setSaisies(
-      [...saisies, nouveau].sort((a, b) => (Number(a.value) || 0) - (Number(b.value) || 0)),
+    setInputs(
+      [...inputs, newValue].sort((a, b) => (Number(a.value) || 0) - (Number(b.value) || 0)),
     );
-    setANommer(nouveau.cle);
+    setToName(newValue.key);
   };
 
   // Le libellé est facultatif : un jalon sans libellé colore sa tranche mais
   // ne s'écrit pas sous le curseur. Seule la valeur est demandée.
-  const valides = saisies
+  const validEntries = inputs
     .filter((s) => s.value !== "")
     .map((s) => ({
       value: Number(s.value),
@@ -219,22 +219,22 @@ export default function MilestonesModal({
       color: s.color,
     }))
     .sort((a, b) => a.value - b.value);
-  const valeurs = valides.map((s) => s.value);
-  const doublon = valeurs.some((v, i) => valeurs.indexOf(v) !== i);
-  const incomplet = valides.length !== saisies.length;
+  const values = validEntries.map((s) => s.value);
+  const duplicateOf = values.some((v, i) => values.indexOf(v) !== i);
+  const isIncomplete = validEntries.length !== inputs.length;
 
-  const bornes = valides.map((s) => ({
+  const bounds = validEntries.map((s) => ({
     value: s.value,
-    couleur: couleurs(s.color).backgroundColor,
+    color: colors(s.color).backgroundColor,
   }));
 
-  const enregistrer = async () => {
+  const save = async () => {
     setSaving(true);
     try {
-      await onSave(valides);
+      await onSave(validEntries);
       onClose();
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -259,45 +259,45 @@ export default function MilestonesModal({
             — la fin, à 100 %, reste ; « Ajouter » en pose un à mi-chemin. */}
         <div>
           <Stack gap={1}>
-            {saisies.map((s, rang) => (
+            {inputs.map((s, rank) => (
               <Group
-                key={s.cle}
+                key={s.key}
                 gap="sm"
                 wrap="nowrap"
                 onContextMenu={(e) => {
-                  if (s.fixe) return;
-                  setMenu({ cle: s.cle, position: positionDuMenu(e) });
+                  if (s.fixed) return;
+                  setMenu({ key: s.key, position: menuPosition(e) });
                 }}
                 style={{
-                  ...styleLigne(rang, saisies.length, false),
+                  ...rowStyle(rank, inputs.length, false),
                   // La pastille de couleur, en tête, s'écarte un peu plus du bord.
-                  paddingLeft: RETRAIT_LIGNE + ECART_COULEUR,
+                  paddingLeft: ROW_INSET + COLOR_GAP,
                 }}
               >
                 {/* La pastille et le pourcentage se suivent de près : le champ
                     du pourcentage porte déjà son propre retrait. */}
-                <Group gap={ECART_POURCENTAGE} wrap="nowrap" style={{ flexShrink: 0 }}>
+                <Group gap={PERCENT_GAP} wrap="nowrap" style={{ flexShrink: 0 }}>
                   <LabelColorPicker
                     color={s.color}
-                    onChange={(color) => modifier(s.cle, { color })}
+                    onChange={(color) => updateStatement(s.key, { color })}
                     label={s.label || `le jalon à ${s.value}%`}
                   />
 
-                  {s.fixe ? (
+                  {s.fixed ? (
                     // La fin ne se déplace pas : sa valeur se lit, sans champ.
                     <Text
                       size="sm"
-                      w={LARGEUR_POURCENTAGE}
-                      pl={RETRAIT_NOM}
+                      w={PERCENT_WIDTH}
+                      pl={NAME_INSET}
                       style={{ flexShrink: 0 }}
                     >
-                      {FIN}%
+                      {END}%
                     </Text>
                   ) : (
-                    <ChampPourcentage
+                    <PercentageField
                       value={s.value}
-                      onChange={(value) => modifier(s.cle, { value })}
-                      onBlur={trier}
+                      onChange={(value) => updateStatement(s.key, { value })}
+                      onBlur={sortBy}
                       label={`Pourcentage de ${s.label || "ce jalon"}`}
                     />
                   )}
@@ -305,33 +305,33 @@ export default function MilestonesModal({
 
                 <TextInput
                   size="sm"
-                  radius={ARRONDI}
+                  radius={ROUNDING}
                   // Plus près du pourcentage que l'écart de la ligne.
                   style={{
                     flex: 1,
                     minWidth: 0,
-                    marginLeft: `calc(${ECART_LIBELLE}px - var(--mantine-spacing-sm))`,
+                    marginLeft: `calc(${LABEL_GAP}px - var(--mantine-spacing-sm))`,
                   }}
-                  styles={{ input: styleChampNom(saisie === s.cle) }}
+                  styles={{ input: nameFieldStyle(input === s.key) }}
                   placeholder="Libellé (facultatif)"
                   aria-label="Libellé du jalon"
                   value={s.label}
-                  onChange={(e) => modifier(s.cle, { label: e.currentTarget.value })}
+                  onChange={(e) => updateStatement(s.key, { label: e.currentTarget.value })}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
                   }}
-                  autoFocus={aNommer === s.cle}
-                  onFocus={() => setSaisie(s.cle)}
+                  autoFocus={toName === s.key}
+                  onFocus={() => setInput(s.key)}
                   onBlur={() => {
-                    setSaisie(null);
-                    setANommer(null);
+                    setInput(null);
+                    setToName(null);
                   }}
                 />
               </Group>
             ))}
           </Stack>
           {/* Au plus près de la liste qu'il allonge. */}
-          <AddButton label="Ajouter un jalon" onClick={ajouter} mt={4} />
+          <AddButton label="Ajouter un jalon" onClick={add} mt={4} />
         </div>
 
         {menu && (
@@ -340,7 +340,7 @@ export default function MilestonesModal({
               color={RED}
               leftSection={<IconTrash size={16} />}
               onClick={() => {
-                setSaisies((liste) => liste.filter((x) => x.cle !== menu.cle));
+                setInputs((list) => list.filter((x) => x.key !== menu.key));
                 setMenu(null);
               }}
             >
@@ -353,35 +353,35 @@ export default function MilestonesModal({
             jusqu'au bout, chaque tranche de la couleur de son jalon. */}
         <div>
           <Slider
-            value={FIN}
+            value={END}
             min={0}
-            max={FIN}
-            marks={marquesJalons(valides)}
+            max={END}
+            marks={milestoneMarks(validEntries)}
             disabled
             styles={{
-              bar: { background: tranches(bornes) },
+              bar: { background: bands(bounds) },
               thumb: { display: "none" },
             }}
             // 30px entre la liste et l'aperçu : les 16 de l'écart de la pile
             // (« md »), plus ces 14.
             mt={14}
           />
-          <MilestoneLabels jalons={valides} />
+          <MilestoneLabels milestones={validEntries} />
         </div>
 
-        {doublon && (
+        {duplicateOf && (
           <Text size="xs" c={RED}>
             Deux jalons ne peuvent pas porter la même valeur.
           </Text>
         )}
 
         <Group justify="flex-end" mt={MODAL_PADDING - 16}>
-          <BoutonFermer onClick={onClose} />
+          <CloseButton onClick={onClose} />
           <Button
             color="teal"
-            onClick={enregistrer}
+            onClick={save}
             loading={saving}
-            disabled={doublon || incomplet}
+            disabled={duplicateOf || isIncomplete}
           >
             Enregistrer
           </Button>

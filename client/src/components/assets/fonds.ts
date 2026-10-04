@@ -4,4 +4,4 @@
  * grilles de l'inventaire le lisent sans dépendre du Résumé, qui dépend
  * d'elles.
  */
-export const FOND_CARTE = "light-dark(#f0f0f0, var(--mantine-color-dark-6))";
+export const CARD_BACKGROUND = "light-dark(#f0f0f0, var(--mantine-color-dark-6))";

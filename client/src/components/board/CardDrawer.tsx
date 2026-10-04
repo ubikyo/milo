@@ -26,9 +26,9 @@ import {
 } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api";
-import { reduireImage } from "../../lib/reduireImage";
+import { shrinkImage } from "../../lib/reduireImage";
 import CardCovers from "./CardCovers";
-import CardEcheance, { ECHEANCE_VIDE, type Echeance } from "./CardEcheance";
+import CardDueDate, { EMPTY_DUE, type Due } from "./CardEcheance";
 import {
   ACTIONS_BUTTON_STYLE,
   DRAWER_MENU_OFFSET,
@@ -41,18 +41,18 @@ import ActorPicker from "../ui/ActorPicker";
 import RichTextField, { useRichEditor } from "../ui/RichText";
 import CardAttachments from "./CardAttachments";
 import CardChecklists from "./CardChecklists";
-import CardDependances, {
-  nouveauBrouillon,
-  type BrouillonDependance,
+import CardDependencies, {
+  newDraft,
+  type DraftDependency,
 } from "./CardDependances";
-import TaskDestination, { descriptionDe } from "./TaskDestination";
-import type { Destination, TacheSource } from "./TaskDestination";
+import TaskDestination, { descriptionOf } from "./TaskDestination";
+import type { Destination, SourceTask } from "./TaskDestination";
 import LabelPicker from "../ui/LabelPicker";
 import CommentThread from "../project/CommentThread";
-import { FIELDSET_NU } from "../../lib/droits";
+import { BARE_FIELDSET } from "../../lib/droits";
 import { ReferenceTag } from "../ui/ReferenceTag";
 import classes from "../../assets/styles/CardDrawer.module.css";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import type { CSSProperties, DragEvent as ReactDragEvent } from "react";
 import { taskReference } from "@milo/shared";
 import type {
@@ -109,10 +109,10 @@ interface CardDrawerProps {
   }) => void | Promise<void>;
   onSaved: () => void | Promise<void>;
   /** Suivie : on est prévenu de chaque modification de cette carte. */
-  suivie: boolean;
+  followed: boolean;
   onToggleFollow: () => void;
   /** L'élément d'où la tâche est créée, quand la fiche la crée. */
-  source?: TacheSource | null;
+  source?: SourceTask | null;
   /** La carte vient d'être créée. */
   onCreated?: (cardId: Id) => void;
   /** Qui crée la tâche : il en est membre d'office. */
@@ -134,7 +134,7 @@ export default function CardDrawer({
   contexts = [],
   onLabelsChanged,
   onSaved,
-  suivie,
+  followed,
   onToggleFollow,
   source = null,
   onCreated,
@@ -148,35 +148,35 @@ export default function CardDrawer({
     listId: null,
   });
   /** Les étiquettes du tableau choisi : elles ne sont propres qu'à lui. */
-  const [labelsDestination, setLabelsDestination] = useState<Label[]>([]);
+  const [labelsDestination, setDestinationLabels] = useState<Label[]>([]);
   const [text, setText] = useState("");
   const [memberIds, setMemberIds] = useState<string[]>([]);
   /**
    * Les acteurs retirés depuis l'ouverture : le serveur les retirera des
    * checklists à « Sauvegarder », la fiche les y cache déjà.
    */
-  const [acteursRetires, setActeursRetires] = useState<string[]>([]);
+  const [removedActors, setRemovedActors] = useState<string[]>([]);
   const [labelIds, setLabelIds] = useState<string[]>([]);
   /** Le contexte de la carte ; vide tant qu'elle n'est pas lue. */
-  const [contexte, setContexte] = useState("");
+  const [context, setContext] = useState("");
   const [comments, setComments] = useState<CardComment[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [covers, setCovers] = useState<CardCover[]>([]);
   const [links, setLinks] = useState<CardLink[]>([]);
   /** Les dépendances ajoutées dont l'autre carte n'est pas encore choisie. */
-  const [brouillons, setBrouillons] = useState<BrouillonDependance[]>([]);
+  const [drafts, setDrafts] = useState<DraftDependency[]>([]);
   /** Les secondes entre deux couvertures sur le tableau ; s'enregistre avec la fiche. */
   const [rotation, setRotation] = useState(0);
   /** Vrai tant que les fichiers survolent le bloc des couvertures : ils en deviendront. */
-  const [surCouvertures, setSurCouvertures] = useState(false);
+  const [overCovers, setOverCovers] = useState(false);
   /** Vrai tant que des fichiers survolent le tiroir : l'invite de dépôt se montre. */
-  const [survolFichier, setSurvolFichier] = useState(false);
-  const [numero, setNumero] = useState<number | null>(null);
+  const [fileHover, setFileHover] = useState(false);
+  const [phoneNumber, setNumber] = useState<number | null>(null);
   /** L'échéance de la carte : son début, sa fin, sa récurrence, son rappel. */
-  const [echeance, setEcheance] = useState<Echeance>(ECHEANCE_VIDE);
+  const [due, setDue] = useState<Due>(EMPTY_DUE);
   /** Vrai quand le bloc se montre : la carte a une échéance, ou on l'ajoute. */
-  const [avecEcheance, setAvecEcheance] = useState(false);
+  const [withDue, setWithDueDate] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<string | null>("settings");
@@ -187,41 +187,41 @@ export default function CardDrawer({
    * dépendance s'ajoute au bout des autres. Il attend que le bloc paraisse :
    * une checklist ne s'affiche qu'au retour du serveur.
    */
-  const [aMontrer, setAMontrer] = useState<string | null>(null);
-  const zoneFiche = useRef<HTMLDivElement>(null);
+  const [toShow, setToShow] = useState<string | null>(null);
+  const recordZone = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!aMontrer) return;
-    const cibles = zoneFiche.current?.querySelectorAll(aMontrer);
-    const cible = cibles?.[cibles.length - 1];
-    if (!cible) return;
-    cible.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    setAMontrer(null);
+    if (!toShow) return;
+    const targets = recordZone.current?.querySelectorAll(toShow);
+    const target = targets?.[targets.length - 1];
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    setToShow(null);
     // Se relance quand un bloc peut paraître.
-  }, [aMontrer, avecEcheance, checklists, brouillons, attachments, covers]);
+  }, [toShow, withDue, checklists, drafts, attachments, covers]);
 
   /** Le sélecteur de fichiers, ouvert par le menu « Actions » et par l'encart. */
-  const champFichier = useRef<HTMLInputElement>(null);
+  const fileField = useRef<HTMLInputElement>(null);
   /** Le sélecteur des images de couverture : des images seules, une ou plusieurs. */
-  const champCouverture = useRef<HTMLInputElement>(null);
+  const coverField = useRef<HTMLInputElement>(null);
   /**
    * Combien d'éléments du tiroir le glisser a franchis. Un simple booléen
    * clignoterait : passer d'un enfant à l'autre déclenche une sortie avant
    * l'entrée suivante, et l'invite s'éteindrait entre les deux.
    */
-  const profondeur = useRef(0);
+  const depth = useRef(0);
 
   /**
    * Une image collée dans la description : elle part au serveur, et c'est son
    * adresse qui entre dans le texte. Un refus se dit dans le bandeau d'erreur
    * et ne laisse rien derrière lui.
    */
-  const collerImage = async (fichier: File): Promise<string> => {
+  const pasteImage = async (file: File): Promise<string> => {
     if (!card) return "";
     try {
-      const { url } = await api.uploadCardImage(card.id, fichier);
+      const { url } = await api.uploadCardImage(card.id, file);
       return url;
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
       return "";
     }
   };
@@ -230,7 +230,7 @@ export default function CardDrawer({
   // est remplacé à chaque carte ouverte.
   const editor = useRichEditor({
     placeholder: "Description de la carte",
-    onPasteImage: collerImage,
+    onPasteImage: pasteImage,
   });
   useEffect(() => {
     editor?.setEditable(!readOnly);
@@ -240,35 +240,35 @@ export default function CardDrawer({
     if (!opened || !card) return;
     // Un tiroir rouvert repart des paramètres, quel que soit l'onglet quitté.
     setActiveTab("settings");
-    setAMontrer(null);
+    setToShow(null);
     setLoading(true);
     api
       .getTaskCard(card.id)
-      .then((fiche) => {
-        setText(fiche.text);
-        setNumero(fiche.number);
-        setContexte(fiche.context_id ? String(fiche.context_id) : "");
-        setEcheance({
-          forme: fiche.due_form || "date",
-          debut: fiche.start_date || "",
-          fin: fiche.due_date || "",
-          recurrence: fiche.recurrence || "",
-          rappel: fiche.reminder || "",
+      .then((record) => {
+        setText(record.text);
+        setNumber(record.number);
+        setContext(record.context_id ? String(record.context_id) : "");
+        setDue({
+          shape: record.due_form || "date",
+          start: record.start_date || "",
+          end: record.due_date || "",
+          recurrence: record.recurrence || "",
+          reminder: record.reminder || "",
         });
-        setAvecEcheance(Boolean(fiche.due_date));
-        setMemberIds((fiche.members || []).map((m) => String(m.id)));
-        setActeursRetires([]);
-        setLabelIds((fiche.labels || []).map((l) => String(l.id)));
-        setComments(fiche.comments || []);
-        setChecklists(fiche.checklists || []);
-        setAttachments(fiche.attachments || []);
-        setCovers(fiche.covers || []);
-        setLinks(fiche.links || []);
-        setBrouillons([]);
-        setRotation(fiche.cover_interval || 0);
-        editor?.commands.setContent(fiche.description || "");
+        setWithDueDate(Boolean(record.due_date));
+        setMemberIds((record.members || []).map((m) => String(m.id)));
+        setRemovedActors([]);
+        setLabelIds((record.labels || []).map((l) => String(l.id)));
+        setComments(record.comments || []);
+        setChecklists(record.checklists || []);
+        setAttachments(record.attachments || []);
+        setCovers(record.covers || []);
+        setLinks(record.links || []);
+        setDrafts([]);
+        setRotation(record.cover_interval || 0);
+        editor?.commands.setContent(record.description || "");
       })
-      .catch((e) => notifierErreur(messageErreur(e)))
+      .catch((e) => notifyError(errorMessage(e)))
       .finally(() => setLoading(false));
   }, [opened, card, editor]);
 
@@ -279,9 +279,9 @@ export default function CardDrawer({
     setActiveTab("settings");
     setLoading(false);
     setText(source.title);
-    setNumero(null);
-    setEcheance(ECHEANCE_VIDE);
-    setAvecEcheance(false);
+    setNumber(null);
+    setDue(EMPTY_DUE);
+    setWithDueDate(false);
     setMemberIds(currentUserId === undefined ? [] : [String(currentUserId)]);
     setLabelIds([]);
     setComments([]);
@@ -289,14 +289,14 @@ export default function CardDrawer({
     setAttachments([]);
     setCovers([]);
     setLinks([]);
-    setBrouillons([]);
+    setDrafts([]);
     setRotation(0);
-    editor?.commands.setContent(descriptionDe(source));
+    editor?.commands.setContent(descriptionOf(source));
   }, [opened, source, card, editor, currentUserId]);
 
-  const lireLabelsDestination = async () => {
-    if (!destination.boardId) return setLabelsDestination([]);
-    setLabelsDestination(await api.getLabels(destination.boardId));
+  const readTargetLabels = async () => {
+    if (!destination.boardId) return setDestinationLabels([]);
+    setDestinationLabels(await api.getLabels(destination.boardId));
   };
 
   // Changer de tableau retire les étiquettes choisies : elles étaient celles
@@ -304,8 +304,8 @@ export default function CardDrawer({
   useEffect(() => {
     if (!creation) return;
     setLabelIds([]);
-    setLabelsDestination([]);
-    lireLabelsDestination().catch((e) => notifierErreur(messageErreur(e)));
+    setDestinationLabels([]);
+    readTargetLabels().catch((e) => notifyError(errorMessage(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [creation, destination.boardId]);
 
@@ -313,18 +313,18 @@ export default function CardDrawer({
   // que le serveur a retenu. Le tableau, lui, se relira à la fermeture.
   const refreshChecklists = async () => {
     if (!card) return;
-    const fiche = await api.getTaskCard(card.id);
-    setChecklists(fiche.checklists || []);
+    const record = await api.getTaskCard(card.id);
+    setChecklists(record.checklists || []);
   };
 
-  const ajouterChecklist = async () => {
+  const addChecklist = async () => {
     if (!card) return;
     try {
       await api.createChecklist(card.id, "Checklist");
       await refreshChecklists();
-      setAMontrer("[data-checklist]");
+      setToShow("[data-checklist]");
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   };
 
@@ -336,15 +336,15 @@ export default function CardDrawer({
    *
    * La plus récente se range en tête, comme le serveur les donne.
    */
-  const deposerFichiers = async (fichiers: File[]) => {
-    if (!card || readOnly || fichiers.length === 0) return;
-    for (const fichier of fichiers) {
+  const dropFiles = async (files: File[]) => {
+    if (!card || readOnly || files.length === 0) return;
+    for (const file of files) {
       try {
-        const piece = await api.uploadAttachment(card.id, fichier);
-        setAttachments((deja) => [piece, ...deja]);
-        setAMontrer("[data-zone='pieces']");
+        const attachment = await api.uploadAttachment(card.id, file);
+        setAttachments((already) => [attachment, ...already]);
+        setToShow("[data-zone='pieces']");
       } catch (e) {
-        notifierErreur(messageErreur(e));
+        notifyError(errorMessage(e));
       }
     }
   };
@@ -354,121 +354,121 @@ export default function CardDrawer({
    * Elles partent l'une après l'autre et se rangent au bout, comme le serveur
    * les place. Ce qui n'est pas une image est refusé par le serveur, et le dit.
    */
-  const deposerCouvertures = async (fichiers: File[]) => {
-    if (!card || readOnly || fichiers.length === 0) return;
-    for (const fichier of fichiers) {
+  const dropCovers = async (files: File[]) => {
+    if (!card || readOnly || files.length === 0) return;
+    for (const file of files) {
       try {
-        const cover = await api.uploadCover(card.id, await reduireImage(fichier));
-        setCovers((deja) => [...deja, cover]);
-        setAMontrer("[data-couvertures]");
+        const cover = await api.uploadCover(card.id, await shrinkImage(file));
+        setCovers((already) => [...already, cover]);
+        setToShow("[data-couvertures]");
       } catch (e) {
-        notifierErreur(messageErreur(e));
+        notifyError(errorMessage(e));
       }
     }
   };
 
-  const rangerCouvertures = async (ids: Id[]) => {
+  const arrangeCovers = async (ids: Id[]) => {
     if (!card) return;
     // L'ordre se montre tout de suite ; le serveur rend celui qu'il a retenu.
-    setCovers((deja) => ids.map((id) => deja.find((c) => c.id === id)!).filter(Boolean));
+    setCovers((already) => ids.map((id) => already.find((c) => c.id === id)!).filter(Boolean));
     try {
       setCovers(await api.reorderCovers(card.id, ids));
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   };
 
-  const supprimerCouverture = async (cover: CardCover) => {
+  const deleteCover = async (cover: CardCover) => {
     try {
       await api.deleteCover(cover.id);
-      setCovers((deja) => deja.filter((c) => c.id !== cover.id));
+      setCovers((already) => already.filter((c) => c.id !== cover.id));
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   };
 
-  const rangerPieces = async (ids: Id[]) => {
+  const arrangeAttachments = async (ids: Id[]) => {
     if (!card) return;
     // L'ordre se montre tout de suite ; le serveur rend celui qu'il a retenu.
-    setAttachments((deja) => ids.map((id) => deja.find((p) => p.id === id)!).filter(Boolean));
+    setAttachments((already) => ids.map((id) => already.find((p) => p.id === id)!).filter(Boolean));
     try {
       setAttachments(await api.reorderAttachments(card.id, ids));
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   };
 
-  const supprimerPiece = async (piece: Attachment) => {
+  const deleteAttachment = async (attachment: Attachment) => {
     try {
-      await api.deleteAttachment(piece.id);
-      setAttachments((deja) => deja.filter((p) => p.id !== piece.id));
+      await api.deleteAttachment(attachment.id);
+      setAttachments((already) => already.filter((p) => p.id !== attachment.id));
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   };
 
   // --- Glisser-déposer sur le tiroir ----------------------------------------
   // Seuls les fichiers venus du dehors comptent : glisser une checklist ou du
   // texte à l'intérieur du tiroir ne doit rien déclencher.
-  const desFichiers = (e: ReactDragEvent) =>
+  const hasFiles = (e: ReactDragEvent) =>
     e.dataTransfer.types.includes("Files");
 
-  const finDuSurvol = () => {
-    profondeur.current = 0;
-    setSurvolFichier(false);
-    setSurCouvertures(false);
+  const hoverEnd = () => {
+    depth.current = 0;
+    setFileHover(false);
+    setOverCovers(false);
   };
 
   /** Vrai quand le glisser passe sur le bloc des couvertures (CardCovers). */
-  const versCouvertures = (e: ReactDragEvent) =>
+  const toCovers = (e: ReactDragEvent) =>
     e.target instanceof Element && e.target.closest("[data-couvertures]") !== null;
 
-  const survol = {
+  const hover = {
     onDragEnter: (e: ReactDragEvent) => {
-      if (!desFichiers(e)) return;
-      profondeur.current += 1;
-      setSurvolFichier(true);
+      if (!hasFiles(e)) return;
+      depth.current += 1;
+      setFileHover(true);
     },
     onDragLeave: (e: ReactDragEvent) => {
-      if (!desFichiers(e)) return;
-      profondeur.current -= 1;
-      if (profondeur.current <= 0) finDuSurvol();
+      if (!hasFiles(e)) return;
+      depth.current -= 1;
+      if (depth.current <= 0) hoverEnd();
     },
     onDragOver: (e: ReactDragEvent) => {
-      if (!desFichiers(e)) return;
+      if (!hasFiles(e)) return;
       // Sans cela, le navigateur ouvrirait le fichier à la place de la page.
       e.preventDefault();
       e.dataTransfer.dropEffect = "copy";
-      setSurCouvertures(versCouvertures(e));
+      setOverCovers(toCovers(e));
     },
     onDrop: (e: ReactDragEvent) => {
-      if (!desFichiers(e)) return;
+      if (!hasFiles(e)) return;
       e.preventDefault();
-      finDuSurvol();
-      const fichiers = Array.from(e.dataTransfer.files);
+      hoverEnd();
+      const files = Array.from(e.dataTransfer.files);
       // Lâchés sur le bloc des couvertures, les fichiers en deviennent ;
       // partout ailleurs, ce sont des pièces jointes.
-      if (versCouvertures(e)) void deposerCouvertures(fichiers);
-      else void deposerFichiers(fichiers);
+      if (toCovers(e)) void dropCovers(files);
+      else void dropFiles(files);
     },
     // Un glisser abandonné en chemin laisserait l'invite allumée.
-    onDragEnd: finDuSurvol,
+    onDragEnd: hoverEnd,
   };
 
   // L'échéance telle que le serveur la reçoit. Sans fin, rien ne tient : ni
   // début, ni récurrence, ni rappel.
-  const champsEcheance = {
-    due_date: echeance.fin,
-    due_form: echeance.fin ? echeance.forme : "date",
-    start_date: echeance.fin && echeance.forme === "periode" ? echeance.debut : "",
-    recurrence: echeance.fin ? echeance.recurrence : "",
-    reminder: echeance.fin ? echeance.rappel : "",
+  const dueFields = {
+    due_date: due.end,
+    due_form: due.end ? due.shape : "date",
+    start_date: due.end && due.shape === "periode" ? due.start : "",
+    recurrence: due.end ? due.recurrence : "",
+    reminder: due.end ? due.reminder : "",
   } as const;
 
   // « Sauvegarder » : le seul geste qui écrit. Si le serveur refuse, le
   // tiroir reste ouvert avec le message : la saisie n'est jamais perdue.
-  const sauvegarder = async () => {
-    if (creation) return creer();
+  const persist = async () => {
+    if (creation) return create();
     if (!card || loading) return onClose();
     setSaving(true);
     try {
@@ -479,14 +479,14 @@ export default function CardDrawer({
         description: editor?.getHTML() ?? "",
         member_ids: memberIds.map(Number),
         label_ids: labelIds.map(Number),
-        ...champsEcheance,
+        ...dueFields,
         cover_interval: rotation,
-        ...(contexte ? { context_id: Number(contexte) } : {}),
+        ...(context ? { context_id: Number(context) } : {}),
       });
       await onSaved();
       onClose();
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -494,33 +494,33 @@ export default function CardDrawer({
 
   // La création écrit en deux temps : la carte, avec son titre et sa
   // description, dans la liste choisie ; puis ce que la fiche y ajoute.
-  const creer = async () => {
-    const texte = text.trim();
+  const create = async () => {
+    const content = text.trim();
     if (!destination.listId)
-      return notifierErreur("Choisir la liste où créer la tâche.");
-    if (!texte) return notifierErreur("La tâche doit avoir un titre.");
+      return notifyError("Choisir la liste où créer la tâche.");
+    if (!content) return notifyError("La tâche doit avoir un titre.");
     setSaving(true);
     try {
       const description = editor?.getHTML() ?? "";
-      const carte = await api.createTaskCard(
+      const card = await api.createTaskCard(
         Number(destination.listId),
-        texte,
+        content,
         "card",
         description,
       );
-      if (memberIds.length || labelIds.length || echeance.fin) {
-        await api.updateTaskCardDetails(carte.id, {
-          text: texte,
+      if (memberIds.length || labelIds.length || due.end) {
+        await api.updateTaskCardDetails(card.id, {
+          text: content,
           description,
           member_ids: memberIds.map(Number),
           label_ids: labelIds.map(Number),
-          ...champsEcheance,
+          ...dueFields,
         });
       }
       onClose();
-      onCreated?.(carte.id);
+      onCreated?.(card.id);
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -528,21 +528,21 @@ export default function CardDrawer({
 
   const refreshComments = async () => {
     if (!card) return;
-    const fiche = await api.getTaskCard(card.id);
-    setComments(fiche.comments || []);
+    const record = await api.getTaskCard(card.id);
+    setComments(record.comments || []);
   };
 
-  const addComment = async (texte: string) => {
+  const addComment = async (content: string) => {
     if (!card) return;
-    await api.addTaskCardComment(card.id, texte);
+    await api.addTaskCardComment(card.id, content);
     await refreshComments();
   };
 
   // Le fil d'une carte n'a pas de brouillon : la carte existe déjà quand sa
   // fiche s'ouvre, l'identifiant est toujours celui d'une ligne.
-  const updateComment = async (id: number | string, texte: string) => {
+  const updateComment = async (id: number | string, content: string) => {
     if (typeof id !== "number") return;
-    await api.updateTaskCardComment(id, texte);
+    await api.updateTaskCardComment(id, content);
     await refreshComments();
   };
 
@@ -583,7 +583,7 @@ export default function CardDrawer({
           le pointeur — ce sont les éléments en dessous qui continuent de voir
           passer le glisser. */}
       <div
-        {...(creation ? {} : survol)}
+        {...(creation ? {} : hover)}
         style={{
           position: "relative",
           flex: 1,
@@ -592,12 +592,12 @@ export default function CardDrawer({
           flexDirection: "column",
         }}
       >
-        {survolFichier && (
+        {fileHover && (
           <div className={classes.dropZone}>
             <Group gap="xs" wrap="nowrap">
               <IconUpload size={22} />
               <Text fw={600}>
-                {surCouvertures ? "Déposer en image de couverture" : "Glisser ici"}
+                {overCovers ? "Déposer en image de couverture" : "Glisser ici"}
               </Text>
             </Group>
           </div>
@@ -659,7 +659,7 @@ export default function CardDrawer({
                   <>
                     <Menu.Item
                       leftSection={<IconEye size={16} />}
-                      rightSection={suivie ? <IconCheck size={14} /> : null}
+                      rightSection={followed ? <IconCheck size={14} /> : null}
                       onClick={() => onToggleFollow()}
                       closeMenuOnClick={false}
                     >
@@ -672,7 +672,7 @@ export default function CardDrawer({
 
                         <Menu.Item
                           leftSection={<IconChecklist size={16} />}
-                          onClick={ajouterChecklist}
+                          onClick={addChecklist}
                         >
                           Ajouter checklist
                         </Menu.Item>
@@ -681,8 +681,8 @@ export default function CardDrawer({
                         <Menu.Item
                           leftSection={<IconLink size={16} />}
                           onClick={() => {
-                            setBrouillons((deja) => [...deja, nouveauBrouillon()]);
-                            setAMontrer("[data-dependance]");
+                            setDrafts((already) => [...already, newDraft()]);
+                            setToShow("[data-dependance]");
                           }}
                         >
                           Ajouter une dépendance
@@ -698,8 +698,8 @@ export default function CardDrawer({
                   <Menu.Item
                     leftSection={<IconCalendarEvent size={16} />}
                     onClick={() => {
-                      setAvecEcheance(true);
-                      setAMontrer("[data-zone='echeance']");
+                      setWithDueDate(true);
+                      setToShow("[data-zone='echeance']");
                     }}
                   >
                     Ajouter échéance
@@ -710,7 +710,7 @@ export default function CardDrawer({
                 {!creation && !readOnly && (
                   <Menu.Item
                     leftSection={<IconPaperclip size={16} />}
-                    onClick={() => champFichier.current?.click()}
+                    onClick={() => fileField.current?.click()}
                   >
                     Ajouter pièce jointe
                   </Menu.Item>
@@ -718,7 +718,7 @@ export default function CardDrawer({
                 {!creation && !readOnly && (
                   <Menu.Item
                     leftSection={<IconPhoto size={16} />}
-                    onClick={() => champCouverture.current?.click()}
+                    onClick={() => coverField.current?.click()}
                   >
                     Ajouter image de couverture
                   </Menu.Item>
@@ -749,8 +749,8 @@ export default function CardDrawer({
             >
               {/* En lecture seule, tous les champs de la fiche sont éteints
                   d'un coup : c'est ce que fait un « fieldset » désactivé. */}
-              <fieldset disabled={readOnly} style={FIELDSET_NU}>
-                <Stack gap="xl" ref={zoneFiche}>
+              <fieldset disabled={readOnly} style={BARE_FIELDSET}>
+                <Stack gap="xl" ref={recordZone}>
                   {/* Ce qui range la carte vient avant ce qui la nomme : les deux
                     colonnes s'ouvrent chacune sur leur propre liste. Les bulles
                     des membres tiennent en peu de place, les étiquettes portent du
@@ -769,9 +769,9 @@ export default function CardDrawer({
                         users={users}
                         value={memberIds}
                         onChange={(ids) => {
-                          setActeursRetires((deja) => [
-                            ...deja.filter((id) => !ids.includes(id)),
-                            ...memberIds.filter((id) => !ids.includes(id) && !deja.includes(id)),
+                          setRemovedActors((already) => [
+                            ...already.filter((id) => !ids.includes(id)),
+                            ...memberIds.filter((id) => !ids.includes(id) && !already.includes(id)),
                           ]);
                           setMemberIds(ids);
                         }}
@@ -789,8 +789,8 @@ export default function CardDrawer({
                         onLabelsChanged={
                           creation
                             ? () =>
-                                lireLabelsDestination().catch((e) =>
-                                  notifierErreur(messageErreur(e)),
+                                readTargetLabels().catch((e) =>
+                                  notifyError(errorMessage(e)),
                                 )
                             : onLabelsChanged
                         }
@@ -811,10 +811,10 @@ export default function CardDrawer({
                         {/* Remonté de quatre pixels : sans quoi le tag tombe juste
                             sous le haut des étiquettes. */}
                         <div style={{ marginTop: -4 }}>
-                          {numero ? (
+                          {phoneNumber ? (
                             <ReferenceTag
-                              reference={taskReference(numero)}
-                              gabarit={taskReference(9999)}
+                              reference={taskReference(phoneNumber)}
+                              template={taskReference(9999)}
                             />
                           ) : (
                             <Text size="sm" c="dimmed">
@@ -833,7 +833,7 @@ export default function CardDrawer({
                       key={`${source.kind}-${source.id}`}
                       source={source}
                       onChange={setDestination}
-                      onError={notifierErreur}
+                      onError={notifyError}
                     />
                   )}
 
@@ -855,8 +855,8 @@ export default function CardDrawer({
                           value: String(c.id),
                           label: c.name,
                         }))}
-                        value={contexte || null}
-                        onChange={(valeur) => valeur && setContexte(valeur)}
+                        value={context || null}
+                        onChange={(value) => value && setContext(value)}
                         allowDeselect={false}
                         style={{ flex: "1 1 0", minWidth: 0 }}
                       />
@@ -866,14 +866,14 @@ export default function CardDrawer({
                   {/* L'échéance suit ce qui nomme la carte. Tant qu'il n'y en a
                       pas, rien ne s'affiche — la fiche ne porte pas un champ
                       vide de plus. */}
-                  {avecEcheance && (
+                  {withDue && (
                     <div data-zone="echeance">
-                      <CardEcheance
-                        value={echeance}
-                        onChange={setEcheance}
+                      <CardDueDate
+                        value={due}
+                        onChange={setDue}
                         onRemove={() => {
-                          setEcheance(ECHEANCE_VIDE);
-                          setAvecEcheance(false);
+                          setDue(EMPTY_DUE);
+                          setWithDueDate(false);
                         }}
                         readOnly={readOnly}
                       />
@@ -884,11 +884,11 @@ export default function CardDrawer({
                   {card && (
                     <CardCovers
                       covers={covers}
-                      intervalle={rotation}
-                      onIntervalle={setRotation}
-                      onPick={() => champCouverture.current?.click()}
-                      onReorder={rangerCouvertures}
-                      onDelete={supprimerCouverture}
+                      interval={rotation}
+                      onInterval={setRotation}
+                      onPick={() => coverField.current?.click()}
+                      onReorder={arrangeCovers}
+                      onDelete={deleteCover}
                       readOnly={readOnly}
                     />
                   )}
@@ -903,19 +903,19 @@ export default function CardDrawer({
                       checklists={checklists}
                       users={users}
                       onChanged={refreshChecklists}
-                      onError={notifierErreur}
+                      onError={notifyError}
                       // Qui reçoit un élément devient acteur de la carte. Il
                       // rejoint les acteurs de la fiche, et s'enregistre avec
                       // eux à « Sauvegarder ».
                       onMembers={(ids) => {
-                        const poses = ids.map(String);
-                        setMemberIds((deja) => [
-                          ...deja,
-                          ...poses.filter((id) => !deja.includes(id)),
+                        const placed = ids.map(String);
+                        setMemberIds((already) => [
+                          ...already,
+                          ...placed.filter((id) => !already.includes(id)),
                         ]);
-                        setActeursRetires((deja) => deja.filter((id) => !poses.includes(id)));
+                        setRemovedActors((already) => already.filter((id) => !placed.includes(id)));
                       }}
-                      masques={acteursRetires}
+                      hidden={removedActors}
                     />
                   )}
 
@@ -923,14 +923,14 @@ export default function CardDrawer({
                       s'ajoutent par le menu « Actions » et s'enregistrent
                       d'elles-mêmes. */}
                   {card && (
-                    <CardDependances
+                    <CardDependencies
                       cardId={card.id}
                       links={links}
                       onLinks={setLinks}
-                      brouillons={brouillons}
-                      onBrouillons={setBrouillons}
+                      drafts={drafts}
+                      onDrafts={setDrafts}
                       boardId={boardId}
-                      onError={notifierErreur}
+                      onError={notifyError}
                       readOnly={readOnly}
                     />
                   )}
@@ -940,9 +940,9 @@ export default function CardDrawer({
                   <div data-zone="pieces">
                     <CardAttachments
                       attachments={attachments}
-                      onPick={() => champFichier.current?.click()}
-                      onReorder={rangerPieces}
-                      onDelete={supprimerPiece}
+                      onPick={() => fileField.current?.click()}
+                      onReorder={arrangeAttachments}
+                      onDelete={deleteAttachment}
                     />
                   </div>
                 </Stack>
@@ -986,7 +986,7 @@ export default function CardDrawer({
       {/* La carte se supprime depuis son menu « Actions », pas d'ici : le pied
           ne porte donc que les deux gestes communs à tous les tiroirs. */}
       <DrawerFooter
-        onSave={readOnly ? undefined : sauvegarder}
+        onSave={readOnly ? undefined : persist}
         onClose={onClose}
         saving={saving}
       />
@@ -996,26 +996,26 @@ export default function CardDrawer({
           redéposer le même fichier ne déclencherait rien — le navigateur ne
           signale que les changements. */}
       <input
-        ref={champFichier}
+        ref={fileField}
         type="file"
         multiple
         hidden
         onChange={(e) => {
-          const fichiers = Array.from(e.currentTarget.files ?? []);
+          const files = Array.from(e.currentTarget.files ?? []);
           e.currentTarget.value = "";
-          void deposerFichiers(fichiers);
+          void dropFiles(files);
         }}
       />
       <input
-        ref={champCouverture}
+        ref={coverField}
         type="file"
         accept="image/*"
         multiple
         hidden
         onChange={(e) => {
-          const fichiers = Array.from(e.currentTarget.files ?? []);
+          const files = Array.from(e.currentTarget.files ?? []);
           e.currentTarget.value = "";
-          void deposerCouvertures(fichiers);
+          void dropCovers(files);
         }}
       />
     </Drawer>

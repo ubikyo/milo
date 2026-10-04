@@ -23,109 +23,109 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { BackupInfo, RestoreResult } from "@milo/shared";
-import { migrate, numeroterReferences } from "../db/migrations.js";
+import { migrate, numberReferences } from "../db/migrations.js";
 import { INDEXES, SCHEMA } from "../db/schema.js";
 import { db, transaction } from "../db/query.js";
 import { env } from "../env.js";
-import { depaqueter, empaqueter } from "./archive.js";
-import type { Entree } from "./archive.js";
+import { unpack, pack } from "./archive.js";
+import type { Entry } from "./archive.js";
 import { badRequest } from "./http.js";
-import { cheminMedia } from "./medias.js";
-import { cheminTicket } from "./ticket-files.js";
+import { mediaPath } from "./medias.js";
+import { ticketPathFor } from "./ticket-files.js";
 import { now } from "./time.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 
 /** Les deux noms que porte une archive de Milo. */
-const FICHIER_BASE = "milo.db";
-const DOSSIER_MEDIAS = "medias/";
+const DATABASE_FILE = "milo.db";
+const MEDIA_FOLDER = "medias/";
 /** Les fichiers des e-mails du support, à part des médias (lib/ticket-files.ts). */
-const DOSSIER_TICKETS = "tickets/";
+const TICKET_FOLDER = "tickets/";
 
-const CLE_RESTAURATION = "last_restore";
+const RESTORE_KEY = "last_restore";
 
 /**
  * Sans ces tables, ce n'est pas une base de Milo. Trois suffisent à écarter
  * une base SQLite quelconque déposée par erreur ; la vérification d'intégrité,
  * elle, écarte un fichier tronqué.
  */
-const TABLES_ATTENDUES = ["users", "projects", "task_cards"];
+const EXPECTED_TABLES = ["users", "projects", "task_cards"];
 
-interface NomRow {
+interface NameRow {
   name: string;
 }
 
 /** Les fichiers du dossier des médias qui sont bien les nôtres. */
-const mediasPresents = (): string[] =>
-  fs.readdirSync(env.mediaPath).filter((fichier) => cheminMedia(fichier) !== null);
+const presentMedia = (): string[] =>
+  fs.readdirSync(env.mediaPath).filter((file) => mediaPath(file) !== null);
 
-const taille = (chemin: string): number => {
+const size = (relativePath: string): number => {
   try {
-    return fs.statSync(chemin).size;
+    return fs.statSync(relativePath).size;
   } catch {
     return 0;
   }
 };
 
 /** Un dossier de travail, et son ménage quoi qu'il advienne. */
-const dansUnDossierTemporaire = <T>(action: (dossier: string) => T): T => {
-  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), "milo-sauvegarde-"));
+const inTemporaryFolder = <T>(action: (folder: string) => T): T => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "milo-sauvegarde-"));
   try {
-    return action(dossier);
+    return action(folder);
   } finally {
-    fs.rmSync(dossier, { recursive: true, force: true });
+    fs.rmSync(folder, { recursive: true, force: true });
   }
 };
 
 /** Ce que la sauvegarde va peser, pour l'annoncer avant de la demander. */
-export const infoSauvegarde = (): BackupInfo => {
-  const medias = mediasPresents();
+export const backupInfo = (): BackupInfo => {
+  const media = presentMedia();
   return {
-    database_size: taille(env.dbPath),
-    media_count: medias.length,
-    media_size: medias.reduce((somme, fichier) => somme + taille(cheminMedia(fichier)!), 0),
-    last_restore: readSetting(CLE_RESTAURATION, ""),
+    database_size: size(env.dbPath),
+    media_count: media.length,
+    media_size: media.reduce((sum, file) => sum + size(mediaPath(file)!), 0),
+    last_restore: readSetting(RESTORE_KEY, ""),
   };
 };
 
-export const construireSauvegarde = (): Buffer =>
-  dansUnDossierTemporaire((dossier) => {
-    const copie = path.join(dossier, FICHIER_BASE);
+export const buildBackup = (): Buffer =>
+  inTemporaryFolder((folder) => {
+    const copy = path.join(folder, DATABASE_FILE);
     // VACUUM INTO exige un fichier qui n'existe pas : le dossier vient d'être
     // créé pour nous seuls.
-    db.prepare("VACUUM INTO ?").run(copie);
+    db.prepare("VACUUM INTO ?").run(copy);
 
-    const entrees: Entree[] = [{ nom: FICHIER_BASE, contenu: fs.readFileSync(copie) }];
-    for (const fichier of mediasPresents()) {
-      entrees.push({
-        nom: `${DOSSIER_MEDIAS}${fichier}`,
-        contenu: fs.readFileSync(cheminMedia(fichier)!),
+    const entries: Entry[] = [{ name: DATABASE_FILE, content: fs.readFileSync(copy) }];
+    for (const file of presentMedia()) {
+      entries.push({
+        name: `${MEDIA_FOLDER}${file}`,
+        content: fs.readFileSync(mediaPath(file)!),
       });
     }
-    for (const fichier of fs.readdirSync(env.ticketsPath)) {
-      const chemin = cheminTicket(fichier);
-      if (chemin) entrees.push({ nom: `${DOSSIER_TICKETS}${fichier}`, contenu: fs.readFileSync(chemin) });
+    for (const file of fs.readdirSync(env.ticketsPath)) {
+      const relativePath = ticketPathFor(file);
+      if (relativePath) entries.push({ name: `${TICKET_FOLDER}${file}`, content: fs.readFileSync(relativePath) });
     }
-    return empaqueter(entrees);
+    return pack(entries);
   });
 
 /** Les colonnes d'une table, dans l'une ou l'autre des deux bases ouvertes. */
-const colonnes = (base: string, table: string): string[] =>
-  (db.pragma(`${base}.table_info("${table}")`) as NomRow[]).map((c) => c.name);
+const columns = (base: string, table: string): string[] =>
+  (db.pragma(`${base}.table_info("${table}")`) as NameRow[]).map((c) => c.name);
 
-const verifierLaBase = (chemin: string): void => {
+const verifyDatabase = (relativePath: string): void => {
   let tables = new Set<string>();
 
   // SQLite dit ce qui ne va pas — fichier tronqué, chiffré, ou qui n'est pas
   // une base — en levant, et en anglais. Tout cela se ramène ici à une seule
   // réponse : ce fichier ne se restaure pas.
   try {
-    const base = new Database(chemin, { readonly: true });
+    const base = new Database(relativePath, { readonly: true });
     try {
       if (base.pragma("integrity_check", { simple: true }) !== "ok") {
         throw new Error("integrity_check");
       }
       tables = new Set(
-        (base.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as NomRow[]).map(
+        (base.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as NameRow[]).map(
           (t) => t.name,
         ),
       );
@@ -136,8 +136,8 @@ const verifierLaBase = (chemin: string): void => {
     badRequest("La base de cette sauvegarde est illisible ou abîmée");
   }
 
-  for (const attendue of TABLES_ATTENDUES) {
-    if (!tables.has(attendue)) badRequest("Cette sauvegarde ne vient pas de Milo");
+  for (const expected of EXPECTED_TABLES) {
+    if (!tables.has(expected)) badRequest("Cette sauvegarde ne vient pas de Milo");
   }
 };
 
@@ -147,14 +147,14 @@ const verifierLaBase = (chemin: string): void => {
  * pas de vue, ses catégories d'accès n'existent plus. Ses rattrapages et sa
  * conversion se font donc chez elle, avant d'en recopier quoi que ce soit.
  */
-const migrerLaSauvegarde = (chemin: string): void => {
-  const base = new Database(chemin);
+const migrateBackup = (relativePath: string): void => {
+  const base = new Database(relativePath);
   try {
     base.pragma("foreign_keys = ON");
     base.exec(SCHEMA);
     migrate(base);
     base.exec(INDEXES);
-    numeroterReferences(base);
+    numberReferences(base);
   } finally {
     base.close();
   }
@@ -169,50 +169,50 @@ const migrerLaSauvegarde = (chemin: string): void => {
  * celui des dépendances. Le pragma ne se change pas depuis l'intérieur d'une
  * transaction : il se pose avant, et se relève après.
  */
-const remplacerLesDonnees = (chemin: string): { tables: number; rows: number } => {
+const replaceData = (relativePath: string): { tables: number; rows: number } => {
   db.pragma("foreign_keys = OFF");
-  db.prepare("ATTACH DATABASE ? AS sauvegarde").run(chemin);
+  db.prepare("ATTACH DATABASE ? AS sauvegarde").run(relativePath);
 
   try {
     return transaction(() => {
-      const nomsSauvegarde = new Set(
+      const backupNames = new Set(
         (
           db
             .prepare(
               "SELECT name FROM sauvegarde.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
             )
-            .all() as NomRow[]
+            .all() as NameRow[]
         ).map((t) => t.name),
       );
 
-      const nosTables = (
+      const ourTables = (
         db
           .prepare(
             "SELECT name FROM main.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
           )
-          .all() as NomRow[]
+          .all() as NameRow[]
       ).map((t) => t.name);
 
       let tables = 0;
       let rows = 0;
 
-      for (const table of nosTables) {
+      for (const table of ourTables) {
         // Une table que la sauvegarde ne connaît pas est vidée quand même :
         // ses lignes parleraient d'un état que la sauvegarde ignore.
         db.prepare(`DELETE FROM main."${table}"`).run();
-        if (!nomsSauvegarde.has(table)) continue;
+        if (!backupNames.has(table)) continue;
 
         // L'intersection des colonnes : celles que la sauvegarde ignore
         // prennent la valeur par défaut du schéma d'aujourd'hui, celles
         // qu'elle a en trop sont laissées.
-        const communes = colonnes("main", table).filter((c) =>
-          colonnes("sauvegarde", table).includes(c),
+        const common = columns("main", table).filter((c) =>
+          columns("sauvegarde", table).includes(c),
         );
-        if (communes.length === 0) continue;
+        if (common.length === 0) continue;
 
-        const liste = communes.map((c) => `"${c}"`).join(", ");
+        const list = common.map((c) => `"${c}"`).join(", ");
         const { changes } = db
-          .prepare(`INSERT INTO main."${table}" (${liste}) SELECT ${liste} FROM sauvegarde."${table}"`)
+          .prepare(`INSERT INTO main."${table}" (${list}) SELECT ${list} FROM sauvegarde."${table}"`)
           .run();
 
         tables += 1;
@@ -232,57 +232,57 @@ const remplacerLesDonnees = (chemin: string): { tables: number; rows: number } =
  * ignore n'est pas effacé : plus rien ne le cite, et le ménage des orphelins
  * (lib/medias.ts) s'en charge le moment venu.
  */
-const restaurerLesMedias = (fichiers: Map<string, Buffer>): number => {
-  let restaures = 0;
+const restoreMedia = (files: Map<string, Buffer>): number => {
+  let restored = 0;
 
-  for (const [nom, contenu] of fichiers) {
+  for (const [name, content] of files) {
     // Les fichiers des tickets, sous la même garde : un nom des nôtres, dans
     // leur seul dossier.
-    if (nom.startsWith(DOSSIER_TICKETS)) {
-      const cheminT = cheminTicket(nom.slice(DOSSIER_TICKETS.length));
-      if (cheminT) {
-        fs.writeFileSync(cheminT, contenu);
-        restaures += 1;
+    if (name.startsWith(TICKET_FOLDER)) {
+      const ticketPath = ticketPathFor(name.slice(TICKET_FOLDER.length));
+      if (ticketPath) {
+        fs.writeFileSync(ticketPath, content);
+        restored += 1;
       }
       continue;
     }
-    if (!nom.startsWith(DOSSIER_MEDIAS)) continue;
+    if (!name.startsWith(MEDIA_FOLDER)) continue;
     // Le nom est recontrôlé, pas seulement raccourci : une archive fabriquée
     // à la main ne doit pas pouvoir écrire ailleurs que dans le dossier des
     // médias.
-    const chemin = cheminMedia(nom.slice(DOSSIER_MEDIAS.length));
-    if (!chemin) continue;
-    fs.writeFileSync(chemin, contenu);
-    restaures += 1;
+    const relativePath = mediaPath(name.slice(MEDIA_FOLDER.length));
+    if (!relativePath) continue;
+    fs.writeFileSync(relativePath, content);
+    restored += 1;
   }
 
-  return restaures;
+  return restored;
 };
 
-export const restaurerSauvegarde = (archive: Buffer): RestoreResult => {
-  let fichiers: Map<string, Buffer>;
+export const restoreFromBackup = (archive: Buffer): RestoreResult => {
+  let files: Map<string, Buffer>;
   try {
-    fichiers = depaqueter(archive);
-  } catch (erreur) {
-    return badRequest(erreur instanceof Error ? erreur.message : "Sauvegarde illisible");
+    files = unpack(archive);
+  } catch (error) {
+    return badRequest(error instanceof Error ? error.message : "Sauvegarde illisible");
   }
 
-  const base = fichiers.get(FICHIER_BASE);
+  const base = files.get(DATABASE_FILE);
   if (!base) badRequest("Cette archive ne contient pas de base Milo");
 
-  return dansUnDossierTemporaire((dossier) => {
-    const chemin = path.join(dossier, FICHIER_BASE);
-    fs.writeFileSync(chemin, base!);
-    verifierLaBase(chemin);
+  return inTemporaryFolder((folder) => {
+    const relativePath = path.join(folder, DATABASE_FILE);
+    fs.writeFileSync(relativePath, base!);
+    verifyDatabase(relativePath);
 
-    migrerLaSauvegarde(chemin);
-    const { tables, rows } = remplacerLesDonnees(chemin);
-    const medias = restaurerLesMedias(fichiers);
+    migrateBackup(relativePath);
+    const { tables, rows } = replaceData(relativePath);
+    const media = restoreMedia(files);
 
     // Écrit après coup : la restauration vient de remplacer la table des
     // réglages, et cette trace-ci parle de maintenant, pas de la sauvegarde.
-    writeSetting(CLE_RESTAURATION, now());
+    writeSetting(RESTORE_KEY, now());
 
-    return { tables, rows, medias };
+    return { tables, rows, media };
   });
 };

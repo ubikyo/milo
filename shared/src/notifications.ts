@@ -39,8 +39,8 @@ export interface Notification {
  * par leur forme plutôt que par un champ « type » : le payload de versions
  * existait avant, et n'a pas eu à changer.
  */
-export type FluxMessage = VersionPayload | { notification: Notification };
+export type FeedMessage = VersionPayload | { notification: Notification };
 
-export const estNotification = (
-  message: FluxMessage,
+export const isNotification = (
+  message: FeedMessage,
 ): message is { notification: Notification } => "notification" in message;

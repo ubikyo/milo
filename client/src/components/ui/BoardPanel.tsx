@@ -4,9 +4,9 @@ import { useMemo } from "react";
 import { api } from "../../api";
 import {
   CONVERSIONS,
-  WIDGETS_DE_TABLEAU,
-  widgetDeTableau,
-  type DonneesDuTableau,
+  BOARD_WIDGETS,
+  boardWidget,
+  type BoardData,
 } from "../../board-widgets";
 import IndicatorsPanel, { type IndicatorsApi } from "./IndicatorsPanel";
 import type { BoardWidget, Id, IndicatorSection } from "@milo/shared";
@@ -17,7 +17,7 @@ interface BoardPanelProps {
   sections: IndicatorSection[] | null;
   widgets: BoardWidget[];
   /** Ce que le tableau met à la disposition de ses widgets, filtré par lui. */
-  donnees: DonneesDuTableau;
+  data: BoardData;
   onChanged: () => void | Promise<void>;
   /** Verrouillé dans cette fenêtre, ou faute de droit : l'écran se lit seulement. */
   locked: boolean;
@@ -38,14 +38,14 @@ export default function BoardPanel({
   boardId,
   sections,
   widgets,
-  donnees,
+  data,
   onChanged,
   locked,
   onUnlock,
   onCreateTask,
   onCreateSupportRequest,
 }: BoardPanelProps) {
-  const ecritures = useMemo<IndicatorsApi<string>>(
+  const writings = useMemo<IndicatorsApi<string>>(
     () => ({
       create: api.createBoardWidget,
       update: (id, data) => api.updateBoardWidget(id, data),
@@ -60,28 +60,28 @@ export default function BoardPanel({
     <IndicatorsPanel
       sections={sections}
       indicators={widgets}
-      widgets={WIDGETS_DE_TABLEAU}
-      widgetOf={widgetDeTableau}
-      render={(widget, config, rendu) => widget.afficher(donnees, config, rendu)}
-      api={ecritures}
+      widgets={BOARD_WIDGETS}
+      widgetOf={boardWidget}
+      render={(widget, config, render) => widget.show(data, config, render)}
+      api={writings}
       onChanged={onChanged}
       locked={locked}
       onUnlock={onUnlock}
       onDuplicate={(widget) => api.duplicateBoardWidget(widget.id)}
       conversion={{
-        vers: CONVERSIONS,
-        convertir: (widget, type) => api.updateBoardWidget(widget.id, { type }),
+        to: CONVERSIONS,
+        convert: (widget, type) => api.updateBoardWidget(widget.id, { type }),
       }}
       // Seul un lien désigne quelque chose sur quoi travailler : un titre, un
       // numéro ou une horloge n'appellent ni tâche ni ticket.
-      menuEnPlus={(widget, fermer) =>
+      extraMenu={(widget, close) =>
         widget.type === "link" && (onCreateTask || onCreateSupportRequest) ? (
           <>
             {onCreateTask && (
               <Menu.Item
                 leftSection={<IconSquarePlus size={16} />}
                 onClick={() => {
-                  fermer();
+                  close();
                   onCreateTask(widget as BoardWidget);
                 }}
               >
@@ -92,7 +92,7 @@ export default function BoardPanel({
               <Menu.Item
                 leftSection={<IconHeadset size={16} />}
                 onClick={() => {
-                  fermer();
+                  close();
                   onCreateSupportRequest(widget as BoardWidget);
                 }}
               >

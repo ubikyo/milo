@@ -2,28 +2,28 @@
 // connaît : le tiroir des widgets, le panneau et celui des réglages y prennent
 // ce qu'il leur faut.
 
-import { cartesIndicator } from "./cartes";
-import { echeancesTachesIndicator } from "./echeances";
-import { etiquettesTachesIndicator } from "./etiquettes";
-import { listesIndicator } from "./listes";
-import { listeTachesIndicator } from "./liste";
-import { membresIndicator } from "./membres";
-import { widgetsDAcces } from "../widgets/en-section";
+import { cardsIndicator } from "./cartes";
+import { taskDuesIndicator } from "./echeances";
+import { taskLabelsIndicator } from "./etiquettes";
+import { listsIndicator } from "./listes";
+import { taskListIndicator } from "./liste";
+import { membersIndicator } from "./membres";
+import { accessWidgets } from "../widgets/en-section";
 import type { TaskIndicatorDisplayProps, TaskIndicatorWidget } from "./types";
 import type { TaskIndicatorType } from "@milo/shared";
 
 /** Dans l'ordre où le tiroir des widgets les présente. */
 export const TASK_INDICATORS: TaskIndicatorWidget[] = [
-  listeTachesIndicator,
-  ...widgetsDAcces<TaskIndicatorType, TaskIndicatorDisplayProps>(),
-  cartesIndicator,
-  listesIndicator,
-  echeancesTachesIndicator,
-  membresIndicator,
-  etiquettesTachesIndicator,
+  taskListIndicator,
+  ...accessWidgets<TaskIndicatorType, TaskIndicatorDisplayProps>(),
+  cardsIndicator,
+  listsIndicator,
+  taskDuesIndicator,
+  membersIndicator,
+  taskLabelsIndicator,
 ];
 
-const PAR_TYPE = new Map<TaskIndicatorType, TaskIndicatorWidget>(
+const BY_TYPE = new Map<TaskIndicatorType, TaskIndicatorWidget>(
   TASK_INDICATORS.map((p) => [p.type, p]),
 );
 
@@ -31,7 +31,7 @@ const PAR_TYPE = new Map<TaskIndicatorType, TaskIndicatorWidget>(
  * Le widget qui sait lire cet indicateur, ou « undefined » : un type rangé
  * par une version qui en connaissait un de plus n'a pas à faire tomber la page.
  */
-export const indicateurTacheDe = (type: TaskIndicatorType): TaskIndicatorWidget | undefined =>
-  PAR_TYPE.get(type);
+export const taskIndicatorOf = (type: TaskIndicatorType): TaskIndicatorWidget | undefined =>
+  BY_TYPE.get(type);
 
 export type { TaskIndicatorWidget } from "./types";

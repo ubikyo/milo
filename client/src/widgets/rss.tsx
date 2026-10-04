@@ -16,27 +16,27 @@ import { Fragment, useEffect, useState } from "react";
 import type { DragEvent } from "react";
 import { api } from "../api";
 import classes from "../assets/styles/AccessLink.module.css";
-import encart from "../assets/styles/AccessNumero.module.css";
+import inset from "../assets/styles/AccessNumero.module.css";
 import AddButton from "../components/ui/AddButton";
 import {
-  ARRONDI,
-  ListeVide,
-  Poignee,
-  RETRAIT_NOM,
-  deplacer,
-  styleChampNom,
-  styleLigne,
+  ROUNDING,
+  EmptyList,
+  Handle,
+  NAME_INSET,
+  move,
+  nameFieldStyle,
+  rowStyle,
 } from "../components/ui/LignesDuTiroir";
-import PointMenu, { positionDuMenu, type PointMenuPosition } from "../components/ui/PointMenu";
-import ProblemeDeConfiguration from "../components/ui/ProblemeDeConfiguration";
+import PointMenu, { menuPosition, type PointMenuPosition } from "../components/ui/PointMenu";
+import ConfigurationProblem from "../components/ui/ProblemeDeConfiguration";
 import { RED } from "../themes/colors";
-import { avec, nombre, texte } from "./types";
+import { withField, count, text } from "./types";
 import type { AccessWidget, WidgetConfigProps } from "./types";
 import {
-  ACCESS_FEED_INTERVAL_DEFAUT,
+  ACCESS_FEED_INTERVAL_DEFAULT,
   ACCESS_FEED_INTERVAL_MAX,
   ACCESS_FEED_INTERVAL_MIN,
-  ACCESS_FEED_QUANTITE_MAX,
+  ACCESS_FEED_QUANTITY_MAX,
 } from "@milo/shared";
 import type { AccessFeed, AccessFeedProbe, Id } from "@milo/shared";
 
@@ -61,28 +61,28 @@ import type { AccessFeed, AccessFeedProbe, Id } from "@milo/shared";
 /** Les sources, dans l'ordre : une entrée « { url } » par ligne du tiroir. */
 const SOURCES = "sources";
 /** L'adresse unique d'avant la liste, relue tant que la liste n'a pas été enregistrée. */
-const URL_FLUX = "url";
+const FEED_URL = "url";
 /** Vrai quand les articles se regroupent par source plutôt que de se mêler par date. */
-const REGROUPER = "regrouper";
-const QUANTITE = "quantite";
+const GROUP = "regrouper";
+const QUANTITY = "quantite";
 const DATES = "dates";
-const INTERVALLE = "intervalle";
-const ENCADRE = "encadre";
+const INTERVAL = "intervalle";
+const FRAMED = "encadre";
 
 /** Assez pour suivre une source, assez peu pour ne pas envahir la colonne. */
-const QUANTITE_PAR_DEFAUT = 5;
-const QUANTITE_MIN = 1;
-const QUANTITE_MAX = ACCESS_FEED_QUANTITE_MAX;
+const QUANTITY_DEFAULT = 5;
+const QUANTITY_MIN = 1;
+const QUANTITY_MAX = ACCESS_FEED_QUANTITY_MAX;
 
 /**
  * La colonne relit ce que la base garde à ce rythme : c'est une lecture en
  * base, pas une relève de la source, et elle montre ainsi la dernière relève
  * du serveur sans attendre qu'on recharge la page.
  */
-const RELECTURE = 5 * 60_000;
+const RELOAD_INTERVAL = 5 * 60_000;
 
 /** Même interligne qu'un lien de la colonne (lien.tsx). */
-const LIGNE_DE_LIEN = {
+const LINK_ROW = {
   lineHeight: 1.3,
   display: "-webkit-box" as const,
   width: "fit-content" as const,
@@ -90,8 +90,8 @@ const LIGNE_DE_LIEN = {
 };
 
 interface Article {
-  titre: string;
-  lien: string;
+  title: string;
+  link: string;
   date: Date | null;
 }
 
@@ -99,7 +99,7 @@ interface Article {
 interface Source {
   url: string;
   articles: Article[];
-  erreur: string | null;
+  error: string | null;
 }
 
 /**
@@ -108,30 +108,30 @@ interface Source {
  * entre parenthèses en fin de titre — « … (23 septembre 2026) », comme le fait
  * le CERT-FR — que la colonne montre déjà en tête de ligne.
  */
-const MISE_A_JOUR = /\[\s*m[aà]j\s*\]/giu;
-const DATE_FINALE =
+const UPDATED = /\[\s*m[aà]j\s*\]/giu;
+const TRAILING_DATE =
   /\s*\(\s*(?:\d{1,2}(?:er)?\s+\p{L}+\.?\s+\d{4}|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{4}-\d{2}-\d{2})\s*\)\s*$/u;
 
-const nettoyer = (titre: string): string =>
-  titre.replace(MISE_A_JOUR, " ").replace(DATE_FINALE, "").replace(/\s+/g, " ").trim();
+const clean = (title: string): string =>
+  title.replace(UPDATED, " ").replace(TRAILING_DATE, "").replace(/\s+/g, " ").trim();
 
 /**
  * La date en tête de ligne prend toujours la même largeur, celle de la plus
  * longue (« 26 sept. ») : sans quoi chaque titre commencerait ailleurs.
  */
-const COLONNE_DATE = {
+const DATE_COLUMN = {
   display: "inline-block" as const,
   width: "calc(4.2em + 20px)",
   fontVariantNumeric: "tabular-nums" as const,
 };
 
-const sourcesLues = (flux: AccessFeed): Source[] =>
-  flux.sources.map((s) => ({
+const sourcesRead = (feed: AccessFeed): Source[] =>
+  feed.sources.map((s) => ({
     url: s.url,
-    erreur: s.error,
+    error: s.error,
     articles: s.articles.map((a) => ({
-      titre: a.title,
-      lien: a.url,
+      title: a.title,
+      link: a.url,
       date: a.date ? new Date(a.date) : null,
     })),
   }));
@@ -142,18 +142,18 @@ const sourcesLues = (flux: AccessFeed): Source[] =>
  * pour deux sources en prennent trois à la première, deux à la seconde. Une
  * source à court laisse sa part aux suivantes.
  */
-const repartis = (sources: Source[], quantite: number): Article[][] => {
+const distributed = (sources: Source[], quantity: number): Article[][] => {
   const parts: Article[][] = sources.map(() => []);
-  let pris = 0;
-  for (let tour = 0; pris < quantite; tour++) {
-    let fourni = false;
+  let taken = 0;
+  for (let round = 0; taken < quantity; round++) {
+    let provided = false;
     sources.forEach((s, i) => {
-      if (pris >= quantite || tour >= s.articles.length) return;
-      parts[i]!.push(s.articles[tour]!);
-      pris++;
-      fourni = true;
+      if (taken >= quantity || round >= s.articles.length) return;
+      parts[i]!.push(s.articles[round]!);
+      taken++;
+      provided = true;
     });
-    if (!fourni) break;
+    if (!provided) break;
   }
   return parts;
 };
@@ -162,13 +162,13 @@ const repartis = (sources: Source[], quantite: number): Article[][] => {
  * Les articles retenus de toutes les sources, du plus récent au plus ancien.
  * Ceux qui n'ont pas de date suivent, dans l'ordre des sources.
  */
-const melanges = (parts: Article[][]): Article[] => {
-  const temps = (a: Article) => a.date?.getTime() ?? -Infinity;
-  return parts.flat().sort((a, b) => temps(b) - temps(a));
+const interleave = (parts: Article[][]): Article[] => {
+  const articleTime = (a: Article) => a.date?.getTime() ?? -Infinity;
+  return parts.flat().sort((a, b) => articleTime(b) - articleTime(a));
 };
 
 /** Le nom court d'une source : son hôte, sans « www. ». */
-const nomDe = (url: string): string => {
+const nameOf = (url: string): string => {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
@@ -180,42 +180,42 @@ const formatDate = (date: Date): string =>
   new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short" }).format(date);
 
 /** Une source neuve montre ses dates : c'est ce qui dit si elle vit encore. */
-const avecDates = (config: unknown): boolean => {
-  const valeur = (config as Record<string, unknown> | null)?.[DATES];
-  return valeur === undefined ? true : Boolean(valeur);
+const withDates = (config: unknown): boolean => {
+  const value = (config as Record<string, unknown> | null)?.[DATES];
+  return value === undefined ? true : Boolean(value);
 };
 
 /** Les articles se mêlent par date tant qu'on ne demande pas de les regrouper. */
-const estRegroupe = (config: unknown): boolean =>
-  Boolean((config as Record<string, unknown> | null)?.[REGROUPER]);
+const isGrouped = (config: unknown): boolean =>
+  Boolean((config as Record<string, unknown> | null)?.[GROUP]);
 
 /**
  * Les adresses des lignes du tiroir, telles que saisies — vides comprises. Un
  * élément rangé avant la liste n'a que son « url ».
  */
-const lignesDe = (config: unknown): string[] => {
-  const liste = (config as Record<string, unknown> | null)?.[SOURCES];
-  if (!Array.isArray(liste)) {
-    const url = texte(config, URL_FLUX);
+const rowsOf = (config: unknown): string[] => {
+  const list = (config as Record<string, unknown> | null)?.[SOURCES];
+  if (!Array.isArray(list)) {
+    const url = text(config, FEED_URL);
     return url.trim() ? [url] : [];
   }
-  return liste.map((s) => texte(s, "url"));
+  return list.map((s) => text(s, "url"));
 };
 
 /** Les adresses à relever : sans blanc ni doublon, dans l'ordre — comme le serveur les lit. */
-const adressesDe = (config: unknown): string[] => [
-  ...new Set(lignesDe(config).map((u) => u.trim()).filter(Boolean)),
+const addressesOf = (config: unknown): string[] => [
+  ...new Set(rowsOf(config).map((u) => u.trim()).filter(Boolean)),
 ];
 
 /** Un flux est nu par défaut : c'est l'encadré qu'on demande, pas l'inverse. */
-const estEncadre = (config: unknown): boolean =>
-  Boolean((config as Record<string, unknown> | null)?.[ENCADRE]);
+const isFramed = (config: unknown): boolean =>
+  Boolean((config as Record<string, unknown> | null)?.[FRAMED]);
 
 /** La quantité, ramenée dans ses bornes quoi que la configuration porte. */
-const quantiteDe = (config: unknown): number =>
+const quantityOf = (config: unknown): number =>
   Math.min(
-    QUANTITE_MAX,
-    Math.max(QUANTITE_MIN, Math.round(nombre(config, QUANTITE, QUANTITE_PAR_DEFAUT))),
+    QUANTITY_MAX,
+    Math.max(QUANTITY_MIN, Math.round(count(config, QUANTITY, QUANTITY_DEFAULT))),
   );
 
 /**
@@ -225,11 +225,11 @@ const quantiteDe = (config: unknown): number =>
  * rien faire sauter. La clé porte l'adresse : un flux changé ne montre pas les
  * articles de l'ancien.
  */
-const dejaLus = new Map<string, Source[]>();
-const cleDe = (blockId: Id, urls: string[]) => `${blockId}|${urls.join("\n")}`;
+const alreadyRead = new Map<string, Source[]>();
+const keyOf = (blockId: Id, urls: string[]) => `${blockId}|${urls.join("\n")}`;
 
 /** Une adresse de flux que le serveur peut relever : en http ou en https. */
-const adresseLisible = (url: string): boolean => {
+const readableAddress = (url: string): boolean => {
   try {
     return ["http:", "https:"].includes(new URL(url).protocol);
   } catch {
@@ -237,73 +237,73 @@ const adresseLisible = (url: string): boolean => {
   }
 };
 
-type Etat =
+type State =
   | { phase: "attente" }
   | { phase: "pret"; sources: Source[] }
   | { phase: "erreur"; message: string };
 
-function Flux({ blockId, config }: { blockId: Id; config: unknown }) {
-  const contenu = <Articles blockId={blockId} config={config} />;
-  if (!estEncadre(config)) return contenu;
+function Feed({ blockId, config }: { blockId: Id; config: unknown }) {
+  const content = <Articles blockId={blockId} config={config} />;
+  if (!isFramed(config)) return content;
   return (
-    <Box className={encart.encart} style={{ border: "none" }}>
-      {contenu}
+    <Box className={inset.encart} style={{ border: "none" }}>
+      {content}
     </Box>
   );
 }
 
 function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
-  const urls = adressesDe(config);
-  const cle = cleDe(blockId, urls);
-  const quantite = quantiteDe(config);
-  const dates = avecDates(config);
-  const regroupe = estRegroupe(config) && urls.length > 1;
-  const lisibles = urls.length > 0 && urls.every(adresseLisible);
-  const [etat, setEtat] = useState<Etat>(() => {
-    const sources = dejaLus.get(cle);
+  const urls = addressesOf(config);
+  const key = keyOf(blockId, urls);
+  const quantity = quantityOf(config);
+  const dates = withDates(config);
+  const grouped = isGrouped(config) && urls.length > 1;
+  const allReadable = urls.length > 0 && urls.every(readableAddress);
+  const [state, setState] = useState<State>(() => {
+    const sources = alreadyRead.get(key);
     return sources ? { phase: "pret", sources } : { phase: "attente" };
   });
 
   // Les adresses et la quantité sont celles que le serveur lit dans l'élément
   // enregistré : quand elles changent, ce qu'il garde change aussi.
   useEffect(() => {
-    if (!lisibles) return;
+    if (!allReadable) return;
     // Une réponse arrivée après un changement d'adresse ne doit pas écraser
     // celle de la nouvelle.
-    let actif = true;
-    const lire = () =>
+    let active = true;
+    const read = () =>
       api
         .getAccessFeed(blockId)
-        .then((flux) => {
-          const sources = sourcesLues(flux);
-          dejaLus.set(cle, sources);
-          if (actif) setEtat({ phase: "pret", sources });
+        .then((feed) => {
+          const sources = sourcesRead(feed);
+          alreadyRead.set(key, sources);
+          if (active) setState({ phase: "pret", sources });
         })
-        .catch((e: Error) => actif && setEtat({ phase: "erreur", message: e.message }));
+        .catch((e: Error) => active && setState({ phase: "erreur", message: e.message }));
     // Déjà lus, les articles restent à l'écran le temps de la relecture.
-    const connus = dejaLus.get(cle);
-    setEtat(connus ? { phase: "pret", sources: connus } : { phase: "attente" });
-    lire();
-    const battement = setInterval(lire, RELECTURE);
+    const known = alreadyRead.get(key);
+    setState(known ? { phase: "pret", sources: known } : { phase: "attente" });
+    read();
+    const heartbeat = setInterval(read, RELOAD_INTERVAL);
     return () => {
-      actif = false;
-      clearInterval(battement);
+      active = false;
+      clearInterval(heartbeat);
     };
-  }, [blockId, cle, lisibles, quantite]);
+  }, [blockId, key, allReadable, quantity]);
 
   // Sans adresse de flux lisible — aucune, ou une qui n'est pas en http(s) —,
   // le widget est à revoir : le triangle jaune, comme une liste de demandes
   // mal réglée.
-  if (!lisibles) return <ProblemeDeConfiguration widget={rssWidget.label} />;
+  if (!allReadable) return <ConfigurationProblem widget={rssWidget.label} />;
   // Le chargement tient déjà la hauteur des articles attendus, ligne pour
   // ligne : sans cela, chaque flux grandirait d'un coup à son arrivée et
   // repousserait ce qui le suit, l'un après l'autre.
-  if (etat.phase === "attente") {
+  if (state.phase === "attente") {
     // Regroupés, chaque source qui a sa part ajoute la ligne de son nom.
-    const attendues = regroupe ? quantite + Math.min(urls.length, quantite) : quantite;
+    const expected = grouped ? quantity + Math.min(urls.length, quantity) : quantity;
     return (
       <Stack gap={0}>
-        {Array.from({ length: attendues }, (_, i) => (
+        {Array.from({ length: expected }, (_, i) => (
           <Text
             key={i}
             size="sm"
@@ -311,7 +311,7 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
             lineClamp={1}
             // Le retrait d'un lien (AccessLink.module.css), sans son survol :
             // il n'y a encore rien à ouvrir.
-            style={{ ...LIGNE_DE_LIEN, padding: 3, marginInline: -3 }}
+            style={{ ...LINK_ROW, padding: 3, marginInline: -3 }}
           >
             {i === 0 ? "Chargement du flux…" : "\u00a0"}
           </Text>
@@ -322,43 +322,43 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
   // Aucune source ne répond, ou ce qu'elles rendent n'est pas un flux : les
   // adresses sont à revoir aussi. Ce que le serveur a vu se lit au survol.
   // Une source en échec parmi d'autres qui répondent se tait simplement.
-  const enEchec = etat.phase === "erreur" ? [] : etat.sources.filter((s) => s.erreur);
-  if (etat.phase === "erreur" || enEchec.length === etat.sources.length) {
+  const failing = state.phase === "erreur" ? [] : state.sources.filter((s) => s.error);
+  if (state.phase === "erreur" || failing.length === state.sources.length) {
     const message =
-      etat.phase === "erreur"
-        ? etat.message
-        : enEchec.map((s) => `${nomDe(s.url)} : ${s.erreur}`).join("\n");
+      state.phase === "erreur"
+        ? state.message
+        : failing.map((s) => `${nameOf(s.url)} : ${s.error}`).join("\n");
     return (
       <div title={message}>
-        <ProblemeDeConfiguration widget={rssWidget.label} />
+        <ConfigurationProblem widget={rssWidget.label} />
       </div>
     );
   }
 
-  const avecSource = etat.sources.length > 1;
-  const lien = (a: Article, i: number, source?: string) => {
-    const titre = nettoyer(a.titre) || "Sans titre";
+  const withSource = state.sources.length > 1;
+  const link = (a: Article, i: number, source?: string) => {
+    const title = clean(a.title) || "Sans titre";
     return (
       <Anchor
-        key={`${a.lien}-${i}`}
-        href={a.lien || undefined}
+        key={`${a.link}-${i}`}
+        href={a.link || undefined}
         target="_blank"
         rel="noopener noreferrer"
         size="sm"
-        style={LIGNE_DE_LIEN}
+        style={LINK_ROW}
         lineClamp={1}
         c="var(--mantine-color-text)"
         underline="never"
         className={classes.lien}
         // Mêlés, les articles de plusieurs sources disent la leur au survol.
-        title={source ? `${titre} — ${source}` : titre}
+        title={source ? `${title} — ${source}` : title}
       >
         {dates && a.date && (
-          <Text span size="xs" c="dimmed" style={COLONNE_DATE}>
+          <Text span size="xs" c="dimmed" style={DATE_COLUMN}>
             {formatDate(a.date)}
           </Text>
         )}
-        {titre}
+        {title}
       </Anchor>
     );
   };
@@ -366,15 +366,15 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
   // Le titre se nettoie à l'affichage plutôt qu'à la lecture : les articles
   // déjà lus profitent ainsi d'un nettoyage revu, sans attendre la prochaine
   // relève.
-  const parts = repartis(etat.sources, quantite);
-  if (regroupe) {
-    const groupes = etat.sources
+  const parts = distributed(state.sources, quantity);
+  if (grouped) {
+    const groups = state.sources
       .map((s, i) => ({ url: s.url, articles: parts[i]! }))
       .filter((s) => s.articles.length);
-    if (!groupes.length) return <AucunArticle />;
+    if (!groups.length) return <NoArticle />;
     return (
       <Stack gap={0}>
-        {groupes.map((s, g) => (
+        {groups.map((s, g) => (
           <Fragment key={s.url}>
             <Text
               size="xs"
@@ -385,28 +385,28 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
               mt={g === 0 ? 0 : 6}
               mb={2}
             >
-              {nomDe(s.url)}
+              {nameOf(s.url)}
             </Text>
-            {s.articles.map((a, i) => lien(a, i))}
+            {s.articles.map((a, i) => link(a, i))}
           </Fragment>
         ))}
       </Stack>
     );
   }
 
-  const articles = melanges(parts);
-  if (!articles.length) return <AucunArticle />;
-  const sourceDe = new Map(
-    etat.sources.flatMap((s) => s.articles.map((a) => [a, nomDe(s.url)] as const)),
+  const articles = interleave(parts);
+  if (!articles.length) return <NoArticle />;
+  const sourceOf = new Map(
+    state.sources.flatMap((s) => s.articles.map((a) => [a, nameOf(s.url)] as const)),
   );
   return (
     <Stack gap={0}>
-      {articles.map((a, i) => lien(a, i, avecSource ? sourceDe.get(a) : undefined))}
+      {articles.map((a, i) => link(a, i, withSource ? sourceOf.get(a) : undefined))}
     </Stack>
   );
 }
 
-function AucunArticle() {
+function NoArticle() {
   return (
     <Text size="sm" c="dimmed">
       Aucun article
@@ -415,48 +415,48 @@ function AucunArticle() {
 }
 
 /** Le temps de finir de taper l'adresse avant de la sonder. */
-const ATTENTE_SONDE = 600;
+const PROBE_DELAY = 600;
 
 /** La place de l'étiquette dans le champ : celle de la plus longue, « Format invalide ». */
-const LARGEUR_ETIQUETTE = 120;
+const LABEL_WIDTH = 120;
 
 /** Les adresses déjà sondées, pour la durée de la page. */
-const sondees = new Map<string, AccessFeedProbe>();
+const probed = new Map<string, AccessFeedProbe>();
 
 /**
  * Ce que donne l'adresse saisie, sondée par le serveur : injoignable, pas un
  * flux, ou le format du flux. Rien tant que l'adresse n'est pas lisible.
  */
-function useSonde(url: string): AccessFeedProbe | null {
-  const [sonde, setSonde] = useState<AccessFeedProbe | null>(() => sondees.get(url) ?? null);
+function useProbe(url: string): AccessFeedProbe | null {
+  const [probe, setProbe] = useState<AccessFeedProbe | null>(() => probed.get(url) ?? null);
   useEffect(() => {
-    if (!adresseLisible(url)) {
-      setSonde(null);
+    if (!readableAddress(url)) {
+      setProbe(null);
       return;
     }
-    const connue = sondees.get(url);
-    setSonde(connue ?? null);
-    if (connue) return;
-    let actif = true;
-    const minuterie = setTimeout(() => {
+    const known = probed.get(url);
+    setProbe(known ?? null);
+    if (known) return;
+    let active = true;
+    const timeout = setTimeout(() => {
       api
         .probeAccessFeed(url)
         .then((s) => {
-          sondees.set(url, s);
-          if (actif) setSonde(s);
+          probed.set(url, s);
+          if (active) setProbe(s);
         })
-        .catch((e: Error) => actif && setSonde({ state: "injoignable", message: e.message }));
-    }, ATTENTE_SONDE);
+        .catch((e: Error) => active && setProbe({ state: "injoignable", message: e.message }));
+    }, PROBE_DELAY);
     return () => {
-      actif = false;
-      clearTimeout(minuterie);
+      active = false;
+      clearTimeout(timeout);
     };
   }, [url]);
-  return sonde;
+  return probe;
 }
 
-function Etiquette({ sonde }: { sonde: AccessFeedProbe }) {
-  const ok = sonde.state === "ok";
+function Label({ probe }: { probe: AccessFeedProbe }) {
+  const ok = probe.state === "ok";
   // L'étiquette des états de l'application (EntraTab) : pleine, verte ou rouge.
   return (
     <Badge
@@ -466,20 +466,20 @@ function Etiquette({ sonde }: { sonde: AccessFeedProbe }) {
       radius="sm"
       tt="none"
       fw={600}
-      title={ok ? undefined : sonde.message}
+      title={ok ? undefined : probe.message}
       style={{ flexShrink: 0 }}
     >
-      {ok ? sonde.format : sonde.state === "injoignable" ? "Injoignable" : "Format invalide"}
+      {ok ? probe.format : probe.state === "injoignable" ? "Injoignable" : "Format invalide"}
     </Badge>
   );
 }
 
-interface LigneSourceProps {
+interface SourceRowProps {
   url: string;
-  rang: number;
+  rank: number;
   total: number;
-  tenue: boolean;
-  aRemplir: boolean;
+  held: boolean;
+  toFill: boolean;
   onChange: (url: string) => void;
   onBlur: () => void;
   onDragStart: () => void;
@@ -493,31 +493,31 @@ interface LigneSourceProps {
  * tickets : sa poignée, son adresse à même la ligne, et au bout le verdict de
  * la sonde — le format du flux, ou ce qui ne va pas.
  */
-function LigneSource({
+function SourceRow({
   url,
-  rang,
+  rank,
   total,
-  tenue,
-  aRemplir,
+  held,
+  toFill,
   onChange,
   onBlur,
   onDragStart,
   onDragEnd,
   onDragOver,
   onContextMenu,
-}: LigneSourceProps) {
-  const sonde = useSonde(url.trim());
-  const [saisie, setSaisie] = useState(false);
+}: SourceRowProps) {
+  const probe = useProbe(url.trim());
+  const [input, setInput] = useState(false);
   return (
     <Group
       gap="sm"
       wrap="nowrap"
       onDragOver={onDragOver}
       onDrop={(e) => e.preventDefault()}
-      onContextMenu={(e) => onContextMenu(positionDuMenu(e))}
-      style={styleLigne(rang, total, tenue)}
+      onContextMenu={(e) => onContextMenu(menuPosition(e))}
+      style={rowStyle(rank, total, held)}
     >
-      <Poignee
+      <Handle
         label={`Déplacer la source ${url}`}
         active={Boolean(url.trim())}
         onDragStart={onDragStart}
@@ -525,31 +525,31 @@ function LigneSource({
       />
       <TextInput
         size="sm"
-        radius={ARRONDI}
-        style={{ flex: 1, minWidth: 0, marginLeft: -RETRAIT_NOM }}
-        styles={{ input: styleChampNom(saisie) }}
+        radius={ROUNDING}
+        style={{ flex: 1, minWidth: 0, marginLeft: -NAME_INSET }}
+        styles={{ input: nameFieldStyle(input) }}
         placeholder="https://"
         aria-label="Adresse du flux"
         value={url}
         onChange={(e) => onChange(e.currentTarget.value)}
-        autoFocus={aRemplir}
-        onFocus={() => setSaisie(true)}
+        autoFocus={toFill}
+        onFocus={() => setInput(true)}
         onBlur={() => {
-          setSaisie(false);
+          setInput(false);
           onBlur();
         }}
       />
-      {sonde && (
+      {probe && (
         <Box
           style={{
-            width: LARGEUR_ETIQUETTE,
+            width: LABEL_WIDTH,
             flexShrink: 0,
             display: "flex",
             justifyContent: "flex-end",
             paddingRight: 4,
           }}
         >
-          <Etiquette sonde={sonde} />
+          <Label probe={probe} />
         </Box>
       )}
     </Group>
@@ -562,64 +562,64 @@ function LigneSource({
  * retire une, « Ajouter » en pose une vide au bout, qui s'efface si on la
  * quitte sans rien y écrire.
  */
-function ChampSources({ config, onChange }: WidgetConfigProps) {
-  const lignes = lignesDe(config);
+function SourcesField({ config, onChange }: WidgetConfigProps) {
+  const rows = rowsOf(config);
   /** Le rang de la ligne qu'on glisse. */
-  const [tenue, setTenue] = useState<number | null>(null);
+  const [held, setHeld] = useState<number | null>(null);
   /** La ligne qu'on vient d'ajouter : son adresse prend le focus. */
-  const [aRemplir, setARemplir] = useState<number | null>(null);
-  const [menu, setMenu] = useState<{ rang: number; position: PointMenuPosition } | null>(null);
+  const [toFill, setToFill] = useState<number | null>(null);
+  const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
 
-  const poser = (suivantes: string[]) =>
-    onChange(avec(config, SOURCES, suivantes.map((url) => ({ url }))));
-  const retirer = (rang: number) => poser(lignes.filter((_, i) => i !== rang));
+  const insertRow = (nextItems: string[]) =>
+    onChange(withField(config, SOURCES, nextItems.map((url) => ({ url }))));
+  const remove = (rank: number) => insertRow(rows.filter((_, i) => i !== rank));
 
-  const ajouter = () => {
-    poser([...lignes, ""]);
-    setARemplir(lignes.length);
+  const add = () => {
+    insertRow([...rows, ""]);
+    setToFill(rows.length);
   };
 
   // La ligne tenue prend la place de celle qu'elle survole.
-  const survoler = (e: DragEvent<HTMLElement>, rang: number) => {
-    if (tenue === null) return;
+  const dragHover = (e: DragEvent<HTMLElement>, rank: number) => {
+    if (held === null) return;
     e.preventDefault();
-    const suivante = deplacer(lignes, tenue, rang);
-    if (!suivante) return;
-    setTenue(rang);
-    poser(suivante);
+    const next = move(rows, held, rank);
+    if (!next) return;
+    setHeld(rank);
+    insertRow(next);
   };
 
   return (
     <Input.Wrapper label="Sources">
-      {lignes.length === 0 ? (
-        <ListeVide icon={IconRss} message="Aucun flux" />
+      {rows.length === 0 ? (
+        <EmptyList icon={IconRss} message="Aucun flux" />
       ) : (
         <Stack gap={1}>
-          {lignes.map((url, rang) => (
-            <LigneSource
-              key={rang}
+          {rows.map((url, rank) => (
+            <SourceRow
+              key={rank}
               url={url}
-              rang={rang}
-              total={lignes.length}
-              tenue={tenue === rang}
-              aRemplir={aRemplir === rang}
-              onChange={(valeur) => poser(lignes.map((u, i) => (i === rang ? valeur : u)))}
+              rank={rank}
+              total={rows.length}
+              held={held === rank}
+              toFill={toFill === rank}
+              onChange={(value) => insertRow(rows.map((u, i) => (i === rank ? value : u)))}
               onBlur={() => {
-                setARemplir(null);
+                setToFill(null);
                 // Une ligne quittée sans adresse s'efface.
-                if (!url.trim()) retirer(rang);
+                if (!url.trim()) remove(rank);
               }}
-              onDragStart={() => setTenue(rang)}
-              onDragEnd={() => setTenue(null)}
-              onDragOver={(e) => survoler(e, rang)}
-              onContextMenu={(position) => setMenu({ rang, position })}
+              onDragStart={() => setHeld(rank)}
+              onDragEnd={() => setHeld(null)}
+              onDragOver={(e) => dragHover(e, rank)}
+              onContextMenu={(position) => setMenu({ rank, position })}
             />
           ))}
         </Stack>
       )}
 
       {/* Au plus près de la liste qu'il allonge. */}
-      <AddButton label="Ajouter un flux" onClick={ajouter} mt={4} />
+      <AddButton label="Ajouter un flux" onClick={add} mt={4} />
 
       {menu && (
         <PointMenu position={menu.position} onClose={() => setMenu(null)}>
@@ -627,7 +627,7 @@ function ChampSources({ config, onChange }: WidgetConfigProps) {
             color={RED}
             leftSection={<IconTrash size={16} />}
             onClick={() => {
-              retirer(menu.rang);
+              remove(menu.rank);
               setMenu(null);
             }}
           >
@@ -639,10 +639,10 @@ function ChampSources({ config, onChange }: WidgetConfigProps) {
   );
 }
 
-function Reglages({ config, onChange }: WidgetConfigProps) {
+function Settings({ config, onChange }: WidgetConfigProps) {
   return (
     <Stack gap="xl">
-      <ChampSources config={config} onChange={onChange} />
+      <SourcesField config={config} onChange={onChange} />
       {/* Un champ vidé le temps d'une saisie range la valeur par défaut
           plutôt qu'un zéro, qui viderait l'élément. Le serveur relève la
           source au rythme de l'actualisation et garde ses articles : la page
@@ -650,24 +650,24 @@ function Reglages({ config, onChange }: WidgetConfigProps) {
       <Group align="flex-start">
         <NumberInput
           label="Articles affichés"
-          placeholder={String(QUANTITE_PAR_DEFAUT)}
-          value={nombre(config, QUANTITE, QUANTITE_PAR_DEFAUT)}
-          onChange={(valeur) =>
-            onChange(avec(config, QUANTITE, valeur === "" ? QUANTITE_PAR_DEFAUT : Number(valeur)))
+          placeholder={String(QUANTITY_DEFAULT)}
+          value={count(config, QUANTITY, QUANTITY_DEFAULT)}
+          onChange={(value) =>
+            onChange(withField(config, QUANTITY, value === "" ? QUANTITY_DEFAULT : Number(value)))
           }
-          min={QUANTITE_MIN}
-          max={QUANTITE_MAX}
+          min={QUANTITY_MIN}
+          max={QUANTITY_MAX}
           allowNegative={false}
           allowDecimal={false}
           w={120}
         />
         <NumberInput
           label="Actualisation"
-          placeholder={String(ACCESS_FEED_INTERVAL_DEFAUT)}
-          value={nombre(config, INTERVALLE, ACCESS_FEED_INTERVAL_DEFAUT)}
-          onChange={(valeur) =>
+          placeholder={String(ACCESS_FEED_INTERVAL_DEFAULT)}
+          value={count(config, INTERVAL, ACCESS_FEED_INTERVAL_DEFAULT)}
+          onChange={(value) =>
             onChange(
-              avec(config, INTERVALLE, valeur === "" ? ACCESS_FEED_INTERVAL_DEFAUT : Number(valeur)),
+              withField(config, INTERVAL, value === "" ? ACCESS_FEED_INTERVAL_DEFAULT : Number(value)),
             )
           }
           min={ACCESS_FEED_INTERVAL_MIN}
@@ -682,8 +682,8 @@ function Reglages({ config, onChange }: WidgetConfigProps) {
         <Stack gap="xs" mt={6}>
           <Switch
             label="Afficher la date"
-            checked={avecDates(config)}
-            onChange={(e) => onChange(avec(config, DATES, e.currentTarget.checked))}
+            checked={withDates(config)}
+            onChange={(e) => onChange(withField(config, DATES, e.currentTarget.checked))}
             color="teal"
           />
           {/* Les articles affichés se partagent entre les sources, à tour
@@ -691,8 +691,8 @@ function Reglages({ config, onChange }: WidgetConfigProps) {
               source montre sa part, dans l'ordre de la liste. */}
           <Switch
             label="Regrouper les articles par source"
-            checked={estRegroupe(config)}
-            onChange={(e) => onChange(avec(config, REGROUPER, e.currentTarget.checked))}
+            checked={isGrouped(config)}
+            onChange={(e) => onChange(withField(config, GROUP, e.currentTarget.checked))}
             color="teal"
           />
         </Stack>
@@ -707,21 +707,21 @@ export const rssWidget: AccessWidget = {
   icon: IconRss,
   defaultConfig: {
     [SOURCES]: [],
-    [QUANTITE]: QUANTITE_PAR_DEFAUT,
-    [INTERVALLE]: ACCESS_FEED_INTERVAL_DEFAUT,
+    [QUANTITY]: QUANTITY_DEFAULT,
+    [INTERVAL]: ACCESS_FEED_INTERVAL_DEFAULT,
     [DATES]: true,
-    [REGROUPER]: false,
-    [ENCADRE]: false,
+    [GROUP]: false,
+    [FRAMED]: false,
   },
   // Le clic appartient aux articles : chacun ouvre sa page.
   ownClicks: true,
 
-  Display: Flux,
+  Display: Feed,
 
   // Une liste de liens : rien de plus que les liens eux-mêmes.
-  marges: () => ({ haute: 0, basse: 0 }),
+  margins: () => ({ top: 0, bottom: 0 }),
 
   // Il dessine lui-même son cadre, réglé dans le bloc « Apparence » du tiroir.
-  cadrePropre: true,
-  Config: Reglages,
+  ownFrame: true,
+  Config: Settings,
 };

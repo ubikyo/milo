@@ -9,10 +9,10 @@ import { useCallback } from "react";
 import type { Label, ProjectLabel } from "@milo/shared";
 
 /** Les étiquettes des deux modes se dessinent pareil : seul le nom et la couleur comptent ici. */
-type Etiquette = Pick<Label | ProjectLabel, "name" | "color">;
+type ChipLabel = Pick<Label | ProjectLabel, "name" | "color">;
 
 /** Le fond d'une étiquette et la couleur du texte qui va dessus. */
-export interface CouleursEtiquette {
+export interface LabelColors {
   backgroundColor: string;
   color: string;
 }
@@ -52,18 +52,18 @@ export function useLabelColors() {
   const colorScheme = useComputedColorScheme("light");
 
   return useCallback(
-    (color: string | null | undefined): CouleursEtiquette => {
+    (color: string | null | undefined): LabelColors => {
       // « teinte.nuance », ou la seule teinte pour les étiquettes d'avant la
       // matrice : elles prennent alors la nuance courante du thème.
-      const [nom, nuance] = String(color || "").split(".");
-      const teinte = nom && theme.colors[nom] ? nom : "blue";
-      const rang =
-        nuance === undefined ? getPrimaryShade(theme, colorScheme) : Number(nuance);
-      const palette = theme.colors[teinte] ?? theme.colors["blue"]!;
-      const fond = palette[rang] ?? palette[6]!;
+      const [name, shade] = String(color || "").split(".");
+      const hue = name && theme.colors[name] ? name : "blue";
+      const rank =
+        shade === undefined ? getPrimaryShade(theme, colorScheme) : Number(shade);
+      const palette = theme.colors[hue] ?? theme.colors["blue"]!;
+      const background = palette[rank] ?? palette[6]!;
       return {
-        backgroundColor: fond,
-        color: getContrastColor({ color: fond, theme, autoContrast: true, colorScheme }),
+        backgroundColor: background,
+        color: getContrastColor({ color: background, theme, autoContrast: true, colorScheme }),
       };
     },
     [theme, colorScheme],
@@ -75,7 +75,7 @@ export function useLabelColors() {
 // qui les gère. « height » lui impose une hauteur fixe, pour qu'elle s'aligne
 // sur les bulles des membres.
 interface LabelChipProps {
-  label: Etiquette;
+  label: ChipLabel;
   size?: "xs" | "sm";
   height?: number;
   fullWidth?: boolean;
@@ -87,21 +87,21 @@ export default function LabelChip({
   height,
   fullWidth = false,
 }: LabelChipProps) {
-  const couleurs = useLabelColors();
-  const petite = size === "xs";
+  const colors = useLabelColors();
+  const small = size === "xs";
 
   return (
     <Box
       style={{
-        ...couleurs(label.color),
+        ...colors(label.color),
         display: fullWidth ? "flex" : "inline-flex",
         alignItems: "center",
         justifyContent: fullWidth ? "flex-start" : "center",
         borderRadius: 4,
         height,
         width: fullWidth ? "100%" : undefined,
-        padding: petite ? "1px 6px" : "3px 10px",
-        fontSize: petite ? 11 : 12,
+        padding: small ? "1px 6px" : "3px 10px",
+        fontSize: small ? 11 : 12,
         fontWeight: 600,
         lineHeight: 1.4,
         maxWidth: "100%",
@@ -126,13 +126,13 @@ const CARD_LABEL_COMPACT_HEIGHT = 8;
 const CARD_LABEL_TRANSITION = "160ms ease";
 
 interface CardLabelProps {
-  label: Etiquette;
+  label: ChipLabel;
   compact?: boolean;
   onClick?: () => void;
 }
 
 export function CardLabel({ label, compact, onClick }: CardLabelProps) {
-  const couleurs = useLabelColors();
+  const colors = useLabelColors();
 
   return (
     <Box
@@ -145,7 +145,7 @@ export function CardLabel({ label, compact, onClick }: CardLabelProps) {
       onClick={onClick}
       aria-label={label.name}
       style={{
-        ...couleurs(label.color),
+        ...colors(label.color),
         border: "none",
         cursor: "pointer",
         display: "inline-flex",

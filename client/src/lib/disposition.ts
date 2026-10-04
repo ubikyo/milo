@@ -11,17 +11,17 @@
 // reprend d'abord celle d'un widget neuf avant d'y poser ce qu'elle apporte.
 // Le serveur refait les mêmes vérifications, droits compris.
 
-import { cleDeListe, isListWidgetType } from "@milo/shared";
-import type { BoardWidget, DispositionExportee, IndicatorSection } from "@milo/shared";
-import type { WidgetDeTableau } from "../board-widgets";
+import { listKey, isListWidgetType } from "@milo/shared";
+import type { BoardWidget, ExportedLayout, IndicatorSection } from "@milo/shared";
+import type { BoardWidgetDefinition } from "../board-widgets";
 
 const FORMAT = "deflate-raw";
 
 /** La disposition de ce qu'on regarde : les sections dans l'ordre, et ce que chacune porte. */
-export const dispositionDe = (
+export const layoutOf = (
   sections: IndicatorSection[],
   widgets: BoardWidget[],
-): DispositionExportee => ({
+): ExportedLayout => ({
   version: 1,
   sections: sections.map((section) => ({
     width_unit: section.width_unit,
@@ -33,79 +33,79 @@ export const dispositionDe = (
   })),
 });
 
-const enBase64 = (octets: Uint8Array): string => {
-  let binaire = "";
+const toBase64 = (bytes: Uint8Array): string => {
+  let binary = "";
   // Par tranches : String.fromCharCode n'accepte pas un tableau sans fin.
-  for (let i = 0; i < octets.length; i += 0x8000) {
-    binaire += String.fromCharCode(...octets.subarray(i, i + 0x8000));
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   }
-  return btoa(binaire);
+  return btoa(binary);
 };
 
-const deBase64 = (texte: string): Uint8Array<ArrayBuffer> =>
-  Uint8Array.from(atob(texte), (c) => c.charCodeAt(0));
+const fromBase64 = (text: string): Uint8Array<ArrayBuffer> =>
+  Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
 
-const transformer = async (octets: Uint8Array<ArrayBuffer>, flux: CompressionStream | DecompressionStream) =>
-  new Uint8Array(await new Response(new Blob([octets]).stream().pipeThrough(flux)).arrayBuffer());
+const transformer = async (bytes: Uint8Array<ArrayBuffer>, feed: CompressionStream | DecompressionStream) =>
+  new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(feed)).arrayBuffer());
 
 /** Le texte à transmettre : le plus court du JSON et de sa forme compressée. */
-export const encoder = async (disposition: DispositionExportee): Promise<string> => {
-  const json = JSON.stringify(disposition);
+export const encoder = async (layout: ExportedLayout): Promise<string> => {
+  const json = JSON.stringify(layout);
   if (typeof CompressionStream === "undefined") return json;
   try {
-    const compresse = enBase64(
+    const compressed = toBase64(
       await transformer(new TextEncoder().encode(json), new CompressionStream(FORMAT)),
     );
-    return compresse.length < json.length ? compresse : json;
+    return compressed.length < json.length ? compressed : json;
   } catch {
     return json;
   }
 };
 
-const ILLISIBLE = "Ce texte n'est pas une disposition exportée.";
+const UNREADABLE = "Ce texte n'est pas une disposition exportée.";
 
 /** La disposition que porte un texte collé ; lève, avec un message lisible, sinon. */
-export const decoder = async (texte: string): Promise<DispositionExportee> => {
-  const brut = texte.trim();
-  let json = brut;
-  if (!brut.startsWith("{")) {
+export const decode = async (text: string): Promise<ExportedLayout> => {
+  const raw = text.trim();
+  let json = raw;
+  if (!raw.startsWith("{")) {
     try {
       json = new TextDecoder().decode(
-        await transformer(deBase64(brut.replace(/\s+/g, "")), new DecompressionStream(FORMAT)),
+        await transformer(fromBase64(raw.replace(/\s+/g, "")), new DecompressionStream(FORMAT)),
       );
     } catch {
-      throw new Error(ILLISIBLE);
+      throw new Error(UNREADABLE);
     }
   }
-  let lu: unknown;
+  let parsed: unknown;
   try {
-    lu = JSON.parse(json);
+    parsed = JSON.parse(json);
   } catch {
-    throw new Error(ILLISIBLE);
+    throw new Error(UNREADABLE);
   }
-  const objet = lu as Partial<DispositionExportee> | null;
-  if (!objet || typeof objet !== "object" || !Array.isArray(objet.sections)) {
-    throw new Error(ILLISIBLE);
+  const subject = parsed as Partial<ExportedLayout> | null;
+  if (!subject || typeof subject !== "object" || !Array.isArray(subject.sections)) {
+    throw new Error(UNREADABLE);
   }
-  if (objet.version !== 1) {
+  if (subject.version !== 1) {
     throw new Error("Cette disposition vient d'une version que l'application ne sait pas lire.");
   }
-  return objet as DispositionExportee;
+  return subject as ExportedLayout;
 };
 
-const estObjet = (valeur: unknown): valeur is Record<string, unknown> =>
-  Boolean(valeur) && typeof valeur === "object" && !Array.isArray(valeur);
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 /** Ce que l'import fera, dit avant qu'il ne se fasse. */
-export interface ApercuImport {
+export interface ImportPreview {
   /** La disposition à envoyer : nettoyée, chaque configuration complétée. */
-  disposition: DispositionExportee;
+  layout: ExportedLayout;
   sections: number;
   widgets: number;
   /** Les widgets de l'export qui ne seront pas posés : type inconnu, ou que le compte ne modifie pas. */
-  ecartes: number;
+  discarded: number;
   /** Les widgets de liste de la structure actuelle qui disparaîtront, avec leurs éléments. */
-  listesPerdues: BoardWidget[];
+  lostLists: BoardWidget[];
 }
 
 /**
@@ -113,46 +113,46 @@ export interface ApercuImport {
  * widgets qu'il connaît et peut poser, et chaque configuration part de celle
  * d'un widget neuf — un champ ajouté depuis l'export y a sa valeur par défaut.
  */
-export const apercu = (
-  recue: DispositionExportee,
-  actuels: BoardWidget[],
-  widgetOf: (type: string) => WidgetDeTableau | undefined,
-  peutPoser: (widget: WidgetDeTableau) => boolean,
-): ApercuImport => {
-  let ecartes = 0;
-  const sections = recue.sections.filter(estObjet).map((section) => ({
+export const preview = (
+  received: ExportedLayout,
+  current: BoardWidget[],
+  widgetOf: (type: string) => BoardWidgetDefinition | undefined,
+  canPlace: (widget: BoardWidgetDefinition) => boolean,
+): ImportPreview => {
+  let discarded = 0;
+  const sections = received.sections.filter(isObject).map((section) => ({
     width_unit: section.width_unit,
     width_value: section.width_value,
     gap: section.gap,
     widgets: (Array.isArray(section.widgets) ? section.widgets : []).flatMap((w) => {
-      const widget = estObjet(w) && typeof w.type === "string" ? widgetOf(w.type) : undefined;
-      if (!widget || !peutPoser(widget)) {
-        ecartes += 1;
+      const widget = isObject(w) && typeof w.type === "string" ? widgetOf(w.type) : undefined;
+      if (!widget || !canPlace(widget)) {
+        discarded += 1;
         return [];
       }
-      const config = estObjet(w.config) ? w.config : {};
+      const config = isObject(w.config) ? w.config : {};
       return [{ type: widget.type, config: { ...widget.defaultConfig, ...config } }];
     }),
   }));
   // Une liste actuelle que l'import ne reprend pas — sa clé n'y est plus —
   // perd ses éléments. Celles que le compte ne peut pas enlever restent.
-  const clesReprises = new Set(
-    sections.flatMap((s) => s.widgets.map((w) => cleDeListe(w.config)).filter(Boolean)),
+  const reusedKeys = new Set(
+    sections.flatMap((s) => s.widgets.map((w) => listKey(w.config)).filter(Boolean)),
   );
-  const listesPerdues = actuels.filter((w) => {
+  const lostLists = current.filter((w) => {
     const widget = widgetOf(w.type);
     return (
       isListWidgetType(w.type) &&
       widget !== undefined &&
-      peutPoser(widget) &&
-      !clesReprises.has(cleDeListe(w.config))
+      canPlace(widget) &&
+      !reusedKeys.has(listKey(w.config))
     );
   });
   return {
-    disposition: { version: 1, sections },
+    layout: { version: 1, sections },
     sections: sections.length,
     widgets: sections.reduce((n, s) => n + s.widgets.length, 0),
-    ecartes,
-    listesPerdues,
+    discarded,
+    lostLists,
   };
 };

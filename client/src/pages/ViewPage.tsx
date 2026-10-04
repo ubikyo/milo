@@ -1,12 +1,12 @@
 import { Stack } from "@mantine/core";
 import { IconLayoutColumns } from "@tabler/icons-react";
 import type { ReactNode } from "react";
-import type { DonneesDuTableau } from "../board-widgets";
-import { AssetsListeContext, type AssetsListe } from "../components/assets/AssetsList";
-import { TableauDesTachesContext, type TaskBoardProps } from "../components/board/TaskBoard";
-import { ProjetsListeContext, type ProjetsListe } from "../components/project/ProjectTable";
+import type { BoardData } from "../board-widgets";
+import { AssetsListContext, type AssetsListHandle } from "../components/assets/AssetsList";
+import { TaskBoardContext, type TaskBoardProps } from "../components/board/TaskBoard";
+import { ProjectsListContext, type ProjectsList } from "../components/project/ProjectTable";
 import SupportActions from "../components/support/SupportActions";
-import { SupportListeContext, useSupportListe } from "../components/support/SupportRequestsList";
+import { SupportListContext, useSupportList } from "../components/support/SupportRequestsList";
 import type { AccountSlot } from "../components/ui/AccountControls";
 import BoardPanel from "../components/ui/BoardPanel";
 import BoardTabs from "../components/ui/BoardTabs";
@@ -20,7 +20,7 @@ import type {
 } from "@milo/shared";
 
 /** Ce que la liste des demandes et son menu « Actions » demandent à l'application. */
-export interface SupportDuTableau {
+export interface BoardSupport {
   /** « null » tant que les demandes du tableau ne sont pas lues. */
   requests: SupportRequest[] | null;
   loading: boolean;
@@ -46,8 +46,8 @@ interface ViewPageProps {
   onTogglePrivateBoard?: (id: number) => void | Promise<void>;
   onToggleBoardInherited?: (id: number) => void | Promise<void>;
   /** Le tableau qu'on vient de créer : son nom passe aussitôt en saisie. */
-  aRenommer: number | null;
-  onRenommageOuvert: () => void;
+  toRename: number | null;
+  onRenameOpened: () => void;
   onCopyContexts?: (id: number) => void;
   /** Les sections du tableau ouvert ; « null » tant qu'elles ne sont pas lues. */
   sections: IndicatorSection[] | null;
@@ -58,11 +58,11 @@ interface ViewPageProps {
   /** Passer en modification de l'interface ; absent quand il est figé faute de droit. */
   onUnlock?: () => void | Promise<void>;
   /** Les données du tableau, filtrées par lui, pour ses widgets. */
-  donnees: DonneesDuTableau;
-  projets: ProjetsListe;
-  taches: TaskBoardProps;
-  support: SupportDuTableau;
-  assets: AssetsListe;
+  data: BoardData;
+  projects: ProjectsList;
+  tasks: TaskBoardProps;
+  support: BoardSupport;
+  assets: AssetsListHandle;
   /** « Créer une tâche » et « Créer une demande », au clic droit sur un lien. */
   onCreateTaskFromLink?: (widget: BoardWidget) => void;
   onCreateSupportFromLink?: (widget: BoardWidget) => void;
@@ -87,17 +87,17 @@ export default function ViewPage({
   onReorderBoards,
   onTogglePrivateBoard,
   onToggleBoardInherited,
-  aRenommer,
-  onRenommageOuvert,
+  toRename,
+  onRenameOpened,
   onCopyContexts,
   sections,
   widgets,
   onWidgetsChanged,
   locked,
   onUnlock,
-  donnees,
-  projets,
-  taches,
+  data,
+  projects,
+  tasks,
   support,
   assets,
   onCreateTaskFromLink,
@@ -107,19 +107,19 @@ export default function ViewPage({
 }: ViewPageProps) {
   // La liste des demandes garde son état ici — tri, filtres, cases cochées —
   // pour que le menu « Actions » de la rangée porte sur ce qu'on a coché.
-  const liste = useSupportListe(support.requests, "all");
-  const { contexte, setContexte, selection, setCochees } = liste;
+  const list = useSupportList(support.requests, "all");
+  const { context, setContext, selection, setChecked } = list;
   // Le menu « Actions » ne paraît que là où une liste de demandes est posée.
-  const avecDemandes = widgets.some((w) => w.type === "support.list");
+  const withRequests = widgets.some((w) => w.type === "support.list");
 
-  const ouvert = boards?.find((b) => String(b.id) === boardId);
+  const openBoard = boards?.find((b) => String(b.id) === boardId);
 
   // Sans tableau, l'invite prend la place du contenu — mais sous la rangée,
   // qui reste : c'est elle qui porte le compte. Rien pendant une lecture :
   // l'écran vide attend d'être une certitude.
-  let contenu: ReactNode = null;
+  let content: ReactNode = null;
   if (!boards || boards.length === 0) {
-    contenu =
+    content =
       loading || !boards ? null : (
         <EmptyPanel
           icon={IconLayoutColumns}
@@ -128,37 +128,37 @@ export default function ViewPage({
           onAction={onAddBoard}
         />
       );
-  } else if (ouvert) {
-    contenu = (
-      <ProjetsListeContext.Provider value={projets}>
-        <TableauDesTachesContext.Provider value={taches}>
-          <SupportListeContext.Provider
+  } else if (openBoard) {
+    content = (
+      <ProjectsListContext.Provider value={projects}>
+        <TaskBoardContext.Provider value={tasks}>
+          <SupportListContext.Provider
             value={{
-              ...liste,
+              ...list,
               loading: support.loading,
               onOpenRequest: support.onOpenRequest,
               onAddRequest: support.onAddRequest,
             }}
           >
-            <AssetsListeContext.Provider value={assets}>
+            <AssetsListContext.Provider value={assets}>
               <BoardPanel
                 // Un autre tableau : un autre panneau, sans rien emporter du
                 // précédent — ni glisser en cours, ni tiroir ouvert.
-                key={ouvert.id}
-                boardId={ouvert.id}
+                key={openBoard.id}
+                boardId={openBoard.id}
                 sections={sections}
                 widgets={widgets}
-                donnees={donnees}
+                data={data}
                 onChanged={onWidgetsChanged}
                 locked={locked}
                 onUnlock={onUnlock}
                 onCreateTask={onCreateTaskFromLink}
                 onCreateSupportRequest={onCreateSupportFromLink}
               />
-            </AssetsListeContext.Provider>
-          </SupportListeContext.Provider>
-        </TableauDesTachesContext.Provider>
-      </ProjetsListeContext.Provider>
+            </AssetsListContext.Provider>
+          </SupportListContext.Provider>
+        </TaskBoardContext.Provider>
+      </ProjectsListContext.Provider>
     );
   }
 
@@ -176,19 +176,19 @@ export default function ViewPage({
         onCopyContexts={onCopyContexts}
         inheritance={
           onToggleBoardInherited && {
-            of: (onglet) => onglet.inherited !== false,
+            of: (tab) => tab.inherited !== false,
             onToggle: onToggleBoardInherited,
           }
         }
         deleteWarning="Ses projets, ses listes de tâches et ses widgets seront supprimés."
-        aRenommer={aRenommer}
-        onRenommageOuvert={onRenommageOuvert}
+        toRename={toRename}
+        onRenameOpened={onRenameOpened}
         account={account}
         actions={
-          avecDemandes ? (
+          withRequests ? (
             <SupportActions
-              contexte={contexte}
-              onContexteClose={() => setContexte(null)}
+              context={context}
+              onContextClose={() => setContext(null)}
               selected={selection}
               users={support.users}
               onEdit={support.onOpenRequest}
@@ -197,14 +197,14 @@ export default function ViewPage({
               onToggleFollow={support.onToggleFollow}
               onRefresh={support.onRequestsChanged}
               onDone={async () => {
-                setCochees(new Set());
+                setChecked(new Set());
                 await support.onRequestsChanged();
               }}
             />
           ) : undefined
         }
       />
-      {contenu}
+      {content}
     </Stack>
   );
 }

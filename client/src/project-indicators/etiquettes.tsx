@@ -1,61 +1,61 @@
 import { Checkbox, Stack } from "@mantine/core";
 import { IconTags } from "@tabler/icons-react";
-import { avec } from "../widgets/types";
-import { BarresEtiquettes, ChampNom, NOM, Rien, TitreIndicateur, termine } from "./commun";
-import type { Barre } from "./commun";
+import { withField } from "../widgets/types";
+import { LabelBars, NameField, NAME, Nothing, TitreIndicateur, isFinished } from "./commun";
+import type { Bar } from "./commun";
 import type { ProjectIndicatorWidget } from "./types";
 import type { Id } from "@milo/shared";
 
 // Les étiquettes les plus portées par les projets du tableau ouvert, chacune
 // dans sa couleur. Les projets terminés n'y comptent que si on le demande.
 
-const LIBELLE = "Étiquettes";
-const TOUS = "tous";
+const LABEL = "Étiquettes";
+const ALL = "tous";
 
-const tousLesProjets = (config: unknown) =>
-  Boolean((config as Record<string, unknown> | null)?.[TOUS]);
+const allProjects = (config: unknown) =>
+  Boolean((config as Record<string, unknown> | null)?.[ALL]);
 
-export const etiquettesProjetsIndicator: ProjectIndicatorWidget = {
+export const projectLabelsIndicator: ProjectIndicatorWidget = {
   type: "labels",
   kind: "project",
-  label: LIBELLE,
+  label: LABEL,
   icon: IconTags,
-  defaultConfig: { [NOM]: "", [TOUS]: false },
+  defaultConfig: { [NAME]: "", [ALL]: false },
 
   Display: ({ config, projects }) => {
-    const comptes = tousLesProjets(config) ? projects : projects.filter((p) => !termine(p));
-    const parEtiquette = new Map<Id, Barre>();
-    for (const projet of comptes) {
-      for (const etiquette of projet.labels) {
-        const deja = parEtiquette.get(etiquette.id);
-        if (deja) deja.value += 1;
+    const accounts = allProjects(config) ? projects : projects.filter((p) => !isFinished(p));
+    const byLabel = new Map<Id, Bar>();
+    for (const project of accounts) {
+      for (const label of project.labels) {
+        const already = byLabel.get(label.id);
+        if (already) already.value += 1;
         else
-          parEtiquette.set(etiquette.id, {
-            name: etiquette.name,
+          byLabel.set(label.id, {
+            name: label.name,
             value: 1,
-            color: etiquette.color,
+            color: label.color,
           });
       }
     }
-    const data = [...parEtiquette.values()].sort(
+    const data = [...byLabel.values()].sort(
       (a, b) => b.value - a.value || a.name.localeCompare(b.name),
     );
 
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaut={LIBELLE} />
-        {data.length === 0 ? <Rien>Aucune étiquette</Rien> : <BarresEtiquettes data={data} couleursPropres />}
+        <TitreIndicateur config={config} defaultValue={LABEL} />
+        {data.length === 0 ? <Nothing>Aucune étiquette</Nothing> : <LabelBars data={data} ownColors />}
       </Stack>
     );
   },
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
-      <ChampNom config={config} onChange={onChange} defaut={LIBELLE} />
+      <NameField config={config} onChange={onChange} defaultValue={LABEL} />
       <Checkbox
         label="Compter aussi les projets terminés"
-        checked={tousLesProjets(config)}
-        onChange={(e) => onChange(avec(config, TOUS, e.currentTarget.checked))}
+        checked={allProjects(config)}
+        onChange={(e) => onChange(withField(config, ALL, e.currentTarget.checked))}
         color="teal"
       />
     </Stack>

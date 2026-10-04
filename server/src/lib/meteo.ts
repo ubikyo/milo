@@ -9,36 +9,36 @@
 import type { AccessWeather, WeatherPlace, WeatherPoint } from "@milo/shared";
 import { fail } from "./http.js";
 
-const PREVISIONS = "https://api.open-meteo.com/v1/forecast";
-const GEOCODAGE = "https://geocoding-api.open-meteo.com/v1/search";
+const FORECASTS = "https://api.open-meteo.com/v1/forecast";
+const GEOCODING = "https://geocoding-api.open-meteo.com/v1/search";
 
 /** Au-delà, la source est tenue pour muette. */
-const DELAI = 10_000;
+const TIMEOUT = 10_000;
 
 /** La météo ne change pas d'une minute à l'autre : un quart d'heure suffit. */
-const FRAICHEUR = 15 * 60_000;
+const FRESHNESS = 15 * 60_000;
 
 /** Les heures montrées en courbe : la journée qui vient. */
-const HEURES = 24;
+const HOURS = 24;
 
 /** Les jours montrés : la semaine. */
-const JOURS = 7;
+const DAYS = 7;
 
-const appeler = async <T>(url: string): Promise<T> => {
-  let reponse: Response;
+const call = async <T>(url: string): Promise<T> => {
+  let response: Response;
   try {
-    reponse = await fetch(url, { signal: AbortSignal.timeout(DELAI) });
+    response = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) });
   } catch {
     return fail(502, "Le service météo ne répond pas");
   }
-  const corps = (await reponse.json().catch(() => ({}))) as T & { reason?: string };
-  if (!reponse.ok) fail(502, corps.reason || `Le service météo a répondu ${reponse.status}`);
-  return corps;
+  const body = (await response.json().catch(() => ({}))) as T & { reason?: string };
+  if (!response.ok) fail(502, body.reason || `Le service météo a répondu ${response.status}`);
+  return body;
 };
 
 // --- Lieux -----------------------------------------------------------------
 
-interface LieuOpenMeteo {
+interface OpenMeteoPlace {
   name: string;
   latitude: number;
   longitude: number;
@@ -47,12 +47,12 @@ interface LieuOpenMeteo {
 }
 
 /** Les lieux qui répondent à ce qu'on tape, deux caractères au moins. */
-export const chercherUnLieu = async (saisie: string): Promise<WeatherPlace[]> => {
-  const nom = saisie.trim().slice(0, 100);
-  if (nom.length < 2) return [];
-  const parametres = new URLSearchParams({ name: nom, count: "10", language: "fr", format: "json" });
-  const { results = [] } = await appeler<{ results?: LieuOpenMeteo[] }>(
-    `${GEOCODAGE}?${parametres.toString()}`,
+export const searchPlace = async (input: string): Promise<WeatherPlace[]> => {
+  const name = input.trim().slice(0, 100);
+  if (name.length < 2) return [];
+  const searchParams = new URLSearchParams({ name: name, count: "10", language: "fr", format: "json" });
+  const { results = [] } = await call<{ results?: OpenMeteoPlace[] }>(
+    `${GEOCODING}?${searchParams.toString()}`,
   );
   return results.map((l) => ({
     name: l.name,
@@ -64,7 +64,7 @@ export const chercherUnLieu = async (saisie: string): Promise<WeatherPlace[]> =>
 
 // --- Prévisions ------------------------------------------------------------
 
-interface PrevisionsOpenMeteo {
+interface OpenMeteoForecasts {
   current: {
     time: string;
     weather_code: number;
@@ -90,7 +90,7 @@ interface PrevisionsOpenMeteo {
 }
 
 /** Les coordonnées que la configuration d'un widget Météo porte, ou « null ». */
-export const coordonneesMeteo = (config: unknown): { latitude: number; longitude: number } | null => {
+export const weatherCoordinates = (config: unknown): { latitude: number; longitude: number } | null => {
   const c = (config as Record<string, unknown> | null) ?? {};
   const latitude = Number(c.latitude);
   const longitude = Number(c.longitude);
@@ -101,21 +101,21 @@ export const coordonneesMeteo = (config: unknown): { latitude: number; longitude
 };
 
 /** Les dernières prévisions de chaque lieu, au centième de degré près. */
-const enCache = new Map<string, { valeur: AccessWeather; lue: number }>();
+const cached = new Map<string, { value: AccessWeather; readValue: number }>();
 
-const versMeteo = (p: PrevisionsOpenMeteo): AccessWeather => {
+const toWeather = (p: OpenMeteoForecasts): AccessWeather => {
   // Les heures commencent à minuit : on garde celles qui suivent l'instant.
-  const debut = Math.max(
+  const start = Math.max(
     0,
     p.hourly.time.findIndex((t) => t >= p.current.time.slice(0, 13)),
   );
-  const hourly: WeatherPoint[] = p.hourly.time.slice(debut, debut + HEURES).map((time, i) => ({
+  const hourly: WeatherPoint[] = p.hourly.time.slice(start, start + HOURS).map((time, i) => ({
     time,
-    code: p.hourly.weather_code[debut + i] ?? 0,
-    temperature: p.hourly.temperature_2m[debut + i] ?? 0,
-    precipitation: p.hourly.precipitation_probability[debut + i] ?? 0,
+    code: p.hourly.weather_code[start + i] ?? 0,
+    temperature: p.hourly.temperature_2m[start + i] ?? 0,
+    precipitation: p.hourly.precipitation_probability[start + i] ?? 0,
   }));
-  const daily: WeatherPoint[] = p.daily.time.slice(0, JOURS).map((time, i) => ({
+  const daily: WeatherPoint[] = p.daily.time.slice(0, DAYS).map((time, i) => ({
     time,
     code: p.daily.weather_code[i] ?? 0,
     temperature: p.daily.temperature_2m_max[i] ?? 0,
@@ -127,7 +127,7 @@ const versMeteo = (p: PrevisionsOpenMeteo): AccessWeather => {
       time: p.current.time,
       code: p.current.weather_code,
       temperature: p.current.temperature_2m,
-      apparent: p.current.apparent_temperature,
+      feelsLike: p.current.apparent_temperature,
       humidity: p.current.relative_humidity_2m,
       wind: p.current.wind_speed_10m,
       is_day: p.current.is_day === 1,
@@ -138,12 +138,12 @@ const versMeteo = (p: PrevisionsOpenMeteo): AccessWeather => {
 };
 
 /** La météo d'un lieu : celle du cache tant qu'elle est fraîche. */
-export const meteoDe = async (latitude: number, longitude: number): Promise<AccessWeather> => {
-  const cle = `${latitude.toFixed(2)}|${longitude.toFixed(2)}`;
-  const connue = enCache.get(cle);
-  if (connue && Date.now() - connue.lue < FRAICHEUR) return connue.valeur;
+export const weatherOf = async (latitude: number, longitude: number): Promise<AccessWeather> => {
+  const key = `${latitude.toFixed(2)}|${longitude.toFixed(2)}`;
+  const known = cached.get(key);
+  if (known && Date.now() - known.readValue < FRESHNESS) return known.value;
 
-  const parametres = new URLSearchParams({
+  const searchParams = new URLSearchParams({
     latitude: latitude.toFixed(4),
     longitude: longitude.toFixed(4),
     current:
@@ -151,9 +151,9 @@ export const meteoDe = async (latitude: number, longitude: number): Promise<Acce
     hourly: "weather_code,temperature_2m,precipitation_probability",
     daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
     timezone: "auto",
-    forecast_days: String(JOURS),
+    forecast_days: String(DAYS),
   });
-  const valeur = versMeteo(await appeler<PrevisionsOpenMeteo>(`${PREVISIONS}?${parametres.toString()}`));
-  enCache.set(cle, { valeur, lue: Date.now() });
-  return valeur;
+  const value = toWeather(await call<OpenMeteoForecasts>(`${FORECASTS}?${searchParams.toString()}`));
+  cached.set(key, { value, readValue: Date.now() });
+  return value;
 };

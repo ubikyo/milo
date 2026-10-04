@@ -1,7 +1,7 @@
 import { Stack, Switch } from "@mantine/core";
 import { useState } from "react";
 import { api } from "../../api";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 
 // La section « Développeur » du Paramétrage. Comme les autres onglets, chaque
 // geste part aussitôt au serveur.
@@ -12,17 +12,17 @@ interface DeveloperTabProps {
 }
 
 export default function DeveloperTab({ debug, onDebugChange, canEdit }: DeveloperTabProps) {
-  const [enCours, setEnCours] = useState(false);
+  const [ongoing, setInProgress] = useState(false);
 
-  const basculer = async (valeur: boolean) => {
-    setEnCours(true);
+  const toggle = async (value: boolean) => {
+    setInProgress(true);
     try {
-      const reglages = await api.updateDeveloperSettings({ debug: valeur });
-      onDebugChange(reglages.debug);
+      const settings = await api.updateDeveloperSettings({ debug: value });
+      onDebugChange(settings.debug);
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
-      setEnCours(false);
+      setInProgress(false);
     }
   };
 
@@ -31,8 +31,8 @@ export default function DeveloperTab({ debug, onDebugChange, canEdit }: Develope
       <Switch
         label="Debug"
         checked={debug}
-        onChange={(e) => basculer(e.currentTarget.checked)}
-        disabled={!canEdit || enCours}
+        onChange={(e) => toggle(e.currentTarget.checked)}
+        disabled={!canEdit || ongoing}
         color="teal"
       />
     </Stack>

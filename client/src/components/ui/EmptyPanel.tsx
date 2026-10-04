@@ -18,7 +18,7 @@ interface EmptyPanelProps {
   size?: "sm" | "md" | "lg";
   fill?: boolean;
   /** Vrai quand l'écran signale un problème : l'icône passe au jaune. */
-  avertissement?: boolean;
+  warning?: boolean;
 }
 
 export default function EmptyPanel({
@@ -28,7 +28,7 @@ export default function EmptyPanel({
   onAction,
   size = "lg",
   fill = true,
-  avertissement = false,
+  warning = false,
 }: EmptyPanelProps) {
   return (
     <EmptyState
@@ -37,7 +37,7 @@ export default function EmptyPanel({
       icon={
         <Icon
           size={size === "lg" ? 22 : 16}
-          color={avertissement ? "var(--mantine-color-yellow-5)" : undefined}
+          color={warning ? "var(--mantine-color-yellow-5)" : undefined}
         />
       }
       // Le message passe par « title » : c'est là que Mantine le rend. Sans

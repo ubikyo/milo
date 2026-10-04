@@ -1,7 +1,7 @@
 // Ce que le client envoie au serveur. Les réponses, elles, sont décrites par
 // les types du domaine (domain.ts).
 
-import type { FormeEcheance, Rappel, Recurrence } from "./echeance.js";
+import type { DueShape, Reminder, Recurrence } from "./echeance.js";
 import type {
   CardKind,
   Id,
@@ -91,7 +91,7 @@ export interface BoardSectionInput {
  * sections, dans l'ordre, et ce que chacune porte. Rien n'y désigne une ligne
  * de la base — l'import pose des sections et des widgets neufs.
  */
-export interface DispositionExportee {
+export interface ExportedLayout {
   /** La forme de l'export : un import refuse ce qu'il ne sait pas lire. */
   version: 1;
   sections: {
@@ -103,13 +103,13 @@ export interface DispositionExportee {
 }
 
 /** Ce que l'import a fait de la disposition reçue. */
-export interface ResultatImport {
+export interface ImportResult {
   /** Les widgets posés. */
-  poses: number;
+  placed: number;
   /** Ceux de l'export qui n'ont pas été posés : un type inconnu, ou que le compte ne modifie pas. */
-  ecartes: number;
+  discarded: number;
   /** Ceux qu'il fallait garder, faute de pouvoir les enlever : posés dans la première section. */
-  gardes: number;
+  keptCount: number;
 }
 
 /** Un widget : sa configuration est celle du widget, le serveur la range sans la relire. */
@@ -147,9 +147,9 @@ export interface TaskCardInput {
   due_date?: string;
   /** « AAAA-MM-JJ », ou vide : l'échéance sans début. */
   start_date?: string;
-  due_form?: FormeEcheance;
+  due_form?: DueShape;
   recurrence?: Recurrence;
-  reminder?: Rappel;
+  reminder?: Reminder;
   /** Voir `TaskCard.cover_interval`. */
   cover_interval?: number;
   member_ids?: Id[];

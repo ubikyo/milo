@@ -6,7 +6,7 @@
 import express, { Router } from "express";
 import { RESOURCES, backupFileName } from "@milo/shared";
 import { badRequest } from "../lib/http.js";
-import { construireSauvegarde, infoSauvegarde, restaurerSauvegarde } from "../lib/backup.js";
+import { buildBackup, backupInfo, restoreFromBackup } from "../lib/backup.js";
 import { touchNow } from "../middleware/events.js";
 
 /**
@@ -14,18 +14,18 @@ import { touchNow } from "../middleware/events.js";
  * commun avec les 25 Mo d'une pièce jointe. La limite reste là pour qu'un
  * corps démesuré soit refusé avant d'être gardé en mémoire.
  */
-const TAILLE_MAX = 512 * 1024 * 1024;
+const SIZE_MAX = 512 * 1024 * 1024;
 
-const corpsArchive = express.raw({ type: () => true, limit: TAILLE_MAX });
+const archiveBody = express.raw({ type: () => true, limit: SIZE_MAX });
 
 export const backupRoutes = Router();
 
 backupRoutes.get("/", (_req, res) => {
-  res.json(infoSauvegarde());
+  res.json(backupInfo());
 });
 
 backupRoutes.get("/archive", (_req, res) => {
-  const archive = construireSauvegarde();
+  const archive = buildBackup();
 
   res.type("application/gzip");
   res.setHeader("Content-Disposition", `attachment; filename="${backupFileName()}"`);
@@ -35,13 +35,13 @@ backupRoutes.get("/archive", (_req, res) => {
   res.send(archive);
 });
 
-backupRoutes.post("/restore", corpsArchive, (req, res) => {
-  const contenu: unknown = req.body;
-  if (!Buffer.isBuffer(contenu) || contenu.length === 0) badRequest("Archive vide");
+backupRoutes.post("/restore", archiveBody, (req, res) => {
+  const content: unknown = req.body;
+  if (!Buffer.isBuffer(content) || content.length === 0) badRequest("Archive vide");
 
-  const resultat = restaurerSauvegarde(contenu as Buffer);
+  const result = restoreFromBackup(content as Buffer);
 
   // Tout a changé, jusqu'aux sessions : les clients connectés relisent tout.
   touchNow(res, ...RESOURCES);
-  res.json(resultat);
+  res.json(result);
 });

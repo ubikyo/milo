@@ -1,11 +1,11 @@
 import { Button, Group, Modal, Select, Stack, Text, TextInput } from "@mantine/core";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
-import { useDroits } from "../../lib/droits";
+import { useRights } from "../../lib/droits";
 import { modalHeaderStyles } from "../../themes/modals";
 import type { Board, Id, TaskList, View } from "@milo/shared";
-import { messageErreur, notifierErreur } from "../../lib/errors";
-import BoutonFermer from "../ui/BoutonFermer";
+import { errorMessage, notifyError } from "../../lib/errors";
+import CloseButton from "../ui/BoutonFermer";
 
 // Déplacer ou copier une liste vers un tableau. Les deux gestes posent la même
 // question — lequel ? — et la même boîte y répond, l'intitulé près.
@@ -34,7 +34,7 @@ interface MoveOrCopyListModalProps {
 }
 
 /** « Ma liste » -> « Ma liste (copie) ». */
-const nomDeCopie = (nom: string): string => `${nom} (copie)`;
+const copyName = (name: string): string => `${name} (copie)`;
 
 export default function MoveOrCopyListModal({
   opened,
@@ -44,84 +44,84 @@ export default function MoveOrCopyListModal({
   viewId,
   onDone,
 }: MoveOrCopyListModalProps) {
-  const peut = useDroits();
+  const can = useRights();
   const [views, setViews] = useState<View[] | null>(null);
-  const [vue, setVue] = useState<string | null>(null);
+  const [view, setView] = useState<string | null>(null);
   /** Les tableaux de la vue retenue ; « null » tant qu'on les lit. */
   const [boards, setBoards] = useState<Board[] | null>(null);
   const [boardId, setBoardId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const copie = mode === "copy";
+  const copy = mode === "copy";
 
   // À l'ouverture : la vue du tableau courant, et pour une copie son tableau
   // — dupliquer une liste sur place ne doit rien demander de plus que son
   // nom.
   useEffect(() => {
     if (!opened) return;
-    setVue(viewId === null ? null : String(viewId));
-    setBoardId(copie && list ? String(list.board_id) : null);
-    setName(list ? nomDeCopie(list.name) : "");
+    setView(viewId === null ? null : String(viewId));
+    setBoardId(copy && list ? String(list.board_id) : null);
+    setName(list ? copyName(list.name) : "");
 
-    let annule = false;
+    let cancelled = false;
     api
       .getViews()
-      .then((lues) => {
-        if (!annule) setViews(lues);
+      .then((readItems) => {
+        if (!cancelled) setViews(readItems);
       })
       .catch((e) => {
-        if (!annule) notifierErreur(messageErreur(e));
+        if (!cancelled) notifyError(errorMessage(e));
       });
     return () => {
-      annule = true;
+      cancelled = true;
     };
-  }, [opened, list, copie, viewId]);
+  }, [opened, list, copy, viewId]);
 
   // Les tableaux suivent la vue retenue. Une réponse arrivée après un
   // nouveau choix serait périmée : on l'abandonne.
   useEffect(() => {
-    if (!opened || !vue) {
+    if (!opened || !view) {
       setBoards(null);
       return;
     }
-    let annule = false;
+    let cancelled = false;
     setBoards(null);
     api
-      .getBoards(vue)
-      .then((lus) => {
-        if (!annule) setBoards(lus);
+      .getBoards(view)
+      .then((readItems) => {
+        if (!cancelled) setBoards(readItems);
       })
       .catch((e) => {
-        if (!annule) notifierErreur(messageErreur(e));
+        if (!cancelled) notifyError(errorMessage(e));
       });
     return () => {
-      annule = true;
+      cancelled = true;
     };
-  }, [opened, vue]);
+  }, [opened, view]);
 
   // Changer de vue, c'est repartir du choix du tableau : celui qu'on avait
   // retenu n'appartient pas à la nouvelle.
-  const changerVue = (valeur: string | null) => {
-    setVue(valeur);
+  const changeView = (value: string | null) => {
+    setView(value);
     setBoardId(null);
   };
 
   // Déplacer exclut le tableau qui porte déjà la liste ; copier l'accepte.
   const boardOptions = (boards ?? [])
-    .filter((board) => copie || board.id !== list?.board_id)
+    .filter((board) => copy || board.id !== list?.board_id)
     .map((board) => ({ value: String(board.id), label: board.name }));
 
   // Sans le droit d'ajouter des tâches, aucune vue n'accueille.
-  const viewOptions = peut("tasks", "create")
+  const viewOptions = can("tasks", "create")
     ? (views ?? []).map((v) => ({ value: String(v.id), label: v.name }))
     : [];
 
-  const valider = async () => {
+  const validate = async () => {
     if (!boardId || !list) return;
     setSaving(true);
     try {
-      if (copie) {
+      if (copy) {
         await api.copyTaskList(list.id, { board_id: Number(boardId), name: name.trim() });
       } else {
         await api.updateTaskList(list.id, { board_id: Number(boardId) });
@@ -129,7 +129,7 @@ export default function MoveOrCopyListModal({
       await onDone();
       onClose();
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -137,13 +137,13 @@ export default function MoveOrCopyListModal({
 
   // Une vue sans tableau d'accueil ne peut rien recevoir : on le dit au
   // lieu de laisser une liste déroulante vide.
-  const aucuneDestination = boards !== null && boardOptions.length === 0;
+  const noDestination = boards !== null && boardOptions.length === 0;
 
   return (
     <Modal
       opened={opened}
       onClose={onClose}
-      title={copie ? "Copier la liste" : "Déplacer la liste"}
+      title={copy ? "Copier la liste" : "Déplacer la liste"}
       centered
       padding={32}
       withCloseButton={false}
@@ -157,8 +157,8 @@ export default function MoveOrCopyListModal({
           label="Vue"
           placeholder="Choisir une vue"
           data={viewOptions}
-          value={vue}
-          onChange={changerVue}
+          value={view}
+          onChange={changeView}
           allowDeselect={false}
           searchable={viewOptions.length > 8}
         />
@@ -170,13 +170,13 @@ export default function MoveOrCopyListModal({
           value={boardId}
           onChange={setBoardId}
           allowDeselect={false}
-          disabled={!vue || boards === null || aucuneDestination}
+          disabled={!view || boards === null || noDestination}
           searchable={boardOptions.length > 8}
         />
 
-        {aucuneDestination && (
+        {noDestination && (
           <Text size="sm" c="dimmed">
-            {copie
+            {copy
               ? "Cette vue n'a aucun tableau où copier cette liste."
               : "Cette vue n'a aucun autre tableau où déplacer cette liste."}
           </Text>
@@ -184,14 +184,14 @@ export default function MoveOrCopyListModal({
 
         {/* La copie se nomme : posée dans le tableau d'origine, elle porterait
             sinon le nom de la liste dont elle sort. */}
-        {copie && (
+        {copy && (
           <TextInput
             label="Nom de la copie"
             placeholder="Nom de la copie"
             value={name}
             onChange={(e) => setName(e.currentTarget.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") valider();
+              if (e.key === "Enter") validate();
             }}
             required
           />
@@ -199,14 +199,14 @@ export default function MoveOrCopyListModal({
       </Stack>
 
       <Group justify="flex-end" mt={32}>
-        <BoutonFermer onClick={onClose} />
+        <CloseButton onClick={onClose} />
         <Button
           color="teal"
-          onClick={valider}
+          onClick={validate}
           loading={saving}
-          disabled={!boardId || (copie && !name.trim())}
+          disabled={!boardId || (copy && !name.trim())}
         >
-          {copie ? "Copier" : "Déplacer"}
+          {copy ? "Copier" : "Déplacer"}
         </Button>
       </Group>
     </Modal>

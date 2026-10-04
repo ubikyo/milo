@@ -10,96 +10,96 @@ import {
 import { DatePickerInput, TimeInput } from "@mantine/dates";
 import { IconChevronDown, IconTrash } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import { FORMES_ECHEANCE, RAPPELS, RECURRENCES } from "@milo/shared";
-import type { FormeEcheance, Rappel, Recurrence } from "@milo/shared";
-import champs from "../../assets/styles/EcartField.module.css";
+import { DUE_SHAPES, REMINDERS, RECURRENCES } from "@milo/shared";
+import type { DueShape, Reminder, Recurrence } from "@milo/shared";
+import fields from "../../assets/styles/EcartField.module.css";
 import classes from "../../assets/styles/CardEcheance.module.css";
-import { ARRONDI, RETRAIT_NOM, styleLigne } from "../ui/LignesDuTiroir";
+import { ROUNDING, NAME_INSET, rowStyle } from "../ui/LignesDuTiroir";
 import {
-  COULEUR_ECHEANCE,
-  MOT_ECHEANCE,
-  etatEcheance,
-  sansHeure,
+  DUE_COLOR,
+  DUE_WORD,
+  dueState,
+  withoutTime,
 } from "../../lib/echeance";
-import { largeurChamp, largeurTexte } from "../../lib/largeurChamp";
+import { fieldWidth, textWidth } from "../../lib/largeurChamp";
 import { GREEN, RED, STRONG_TEXT } from "../../themes/colors";
 
 /** L'échéance d'une carte, telle que la fiche la saisit. */
-export interface Echeance {
+export interface Due {
   /** Une date seule, ou une période : elle s'enregistre avec la carte. */
-  forme: FormeEcheance;
+  shape: DueShape;
   /** Le début de la période, « AAAA-MM-JJ » ; vide pour une date seule. */
-  debut: string;
+  start: string;
   /** La fin, en ISO ; minuit à l'heure locale vaut « sans heure » (lib/echeance.ts). */
-  fin: string;
+  end: string;
   recurrence: Recurrence;
-  rappel: Rappel;
+  reminder: Reminder;
 }
 
-export const ECHEANCE_VIDE: Echeance = {
-  forme: "date",
-  debut: "",
-  fin: "",
+export const EMPTY_DUE: Due = {
+  shape: "date",
+  start: "",
+  end: "",
   recurrence: "",
-  rappel: "",
+  reminder: "",
 };
 
 /** La largeur du statut : tous les badges la prennent, « Bientôt » comme « En retard ». */
-const STATUT_L = 98;
+const STATUS_WIDTH = 98;
 
 // Les champs de date et d'heure ne prennent que leur largeur : le texte le plus
 // long qu'ils montrent, à la taille des champs « xs » (12 px), et RETRAIT_CHAMP
 // de part et d'autre. Ni bordure (CardEcheance.module.css) ni icône : Mantine
 // masque l'horloge du champ d'heure.
-const TAILLE_CHAMP = 12;
+const FIELD_SIZE = 12;
 
 /** L'air de part et d'autre de la valeur, dans le champ. */
-const RETRAIT_CHAMP = 5;
+const FIELD_INSET = 5;
 
-const largeurDe = (...textes: string[]): number =>
-  Math.max(...textes.map((t) => largeurTexte(t, TAILLE_CHAMP))) +
-  2 * RETRAIT_CHAMP;
+const widthOf = (...texts: string[]): number =>
+  Math.max(...texts.map((t) => textWidth(t, FIELD_SIZE))) +
+  2 * FIELD_INSET;
 
 /**
  * Un petit choix discret, comme le type de jalons à droite de la progression
  * d'un projet : sans cadre tant qu'on ne le survole pas, à la largeur de ce
  * qu'il montre.
  */
-interface PetitChoixProps<T extends string> {
+interface SmallChoiceProps<T extends string> {
   data: readonly { value: T; label: string }[];
   value: T;
   onChange: (value: T) => void;
   label: string;
   /** Le nom écrit à gauche du choix ; à défaut, son libellé. */
-  nom?: string;
+  name?: string;
   disabled?: boolean;
 }
 
-export function PetitChoix<T extends string>({
+export function SmallChoice<T extends string>({
   data,
   value,
   onChange,
   label,
-  nom = label,
+  name = label,
   disabled,
-}: PetitChoixProps<T>) {
+}: SmallChoiceProps<T>) {
   // Mantine refuse une valeur vide : « Jamais » et « Aucun » passent par une clé.
-  const VIDE = "-";
-  const choisi = data.find((d) => d.value === value)?.label ?? "";
+  const EMPTY = "-";
+  const selected = data.find((d) => d.value === value)?.label ?? "";
   return (
     // Le nom à gauche, au contraste plein — blanc sur le sombre — : il se lit
     // d'abord, la valeur grise ensuite.
     <Group gap={4} wrap="nowrap" align="center">
       <Text span c={STRONG_TEXT} style={{ whiteSpace: "nowrap", fontSize: 11 }}>
-        {nom}
+        {name}
       </Text>
       <Select
-        data={data.map((d) => ({ value: d.value || VIDE, label: d.label }))}
-        value={value || VIDE}
-        onChange={(v) => onChange((v === VIDE || v === null ? "" : v) as T)}
+        data={data.map((d) => ({ value: d.value || EMPTY, label: d.label }))}
+        value={value || EMPTY}
+        onChange={(v) => onChange((v === EMPTY || v === null ? "" : v) as T)}
         allowDeselect={false}
         size="xs"
-        w={largeurChamp(choisi) + 14}
+        w={fieldWidth(selected) + 14}
         withCheckIcon={false}
         rightSection={<IconChevronDown size={10} />}
         rightSectionWidth={14}
@@ -111,7 +111,7 @@ export function PetitChoix<T extends string>({
         aria-label={label}
         title={label}
         disabled={disabled}
-        className={`${champs.champ} ${champs.unite}`}
+        className={`${fields.champ} ${fields.unite}`}
       />
     </Group>
   );
@@ -122,7 +122,7 @@ export function PetitChoix<T extends string>({
  * comme une phrase. Collé à ses voisins, l'écart de la ligne ne s'y applique
  * pas ; l'air vient du retrait des champs eux-mêmes.
  */
-function Liaison({ mot }: { mot: string }) {
+function LinkRecord({ word }: { word: string }) {
   return (
     <Text
       size="xs"
@@ -132,23 +132,23 @@ function Liaison({ mot }: { mot: string }) {
         marginInline: "calc(5px - var(--mantine-spacing-xs))",
       }}
     >
-      {mot}
+      {word}
     </Text>
   );
 }
 
 /** La date (« AAAA-MM-JJ ») et l'heure (« HH:mm », vide à minuit) d'une fin ISO. */
-const decouper = (fin: string): { jour: string; heure: string } => {
-  const d = dayjs(fin);
-  if (!fin || !d.isValid()) return { jour: "", heure: "" };
+const split = (end: string): { day: string; hour: string } => {
+  const d = dayjs(end);
+  if (!end || !d.isValid()) return { day: "", hour: "" };
   return {
-    jour: d.format("YYYY-MM-DD"),
-    heure: sansHeure(fin) ? "" : d.format("HH:mm"),
+    day: d.format("YYYY-MM-DD"),
+    hour: withoutTime(end) ? "" : d.format("HH:mm"),
   };
 };
 
-const assembler = (jour: string, heure: string): string =>
-  jour ? dayjs(`${jour} ${heure || "00:00"}`).toISOString() : "";
+const assemble = (day: string, hour: string): string =>
+  day ? dayjs(`${day} ${hour || "00:00"}`).toISOString() : "";
 
 /**
  * L'échéance d'une carte, au-dessus de son titre. À droite de l'intitulé, sur
@@ -156,9 +156,9 @@ const assembler = (jour: string, heure: string): string =>
  * récurrence et le rappel. Dessous, les dates : le début s'il y en a un, puis
  * le jour et l'heure de la fin. L'heure est facultative.
  */
-interface CardEcheanceProps {
-  value: Echeance;
-  onChange: (value: Echeance) => void;
+interface CardDueDateProps {
+  value: Due;
+  onChange: (value: Due) => void;
   onRemove: () => void;
   readOnly?: boolean;
   /**
@@ -168,19 +168,19 @@ interface CardEcheanceProps {
   simple?: boolean;
 }
 
-export default function CardEcheance({
+export default function CardDueDate({
   value,
   onChange,
   onRemove,
   readOnly,
   simple,
-}: CardEcheanceProps) {
-  const mode = value.forme;
+}: CardDueDateProps) {
+  const mode = value.shape;
 
-  const { jour, heure } = decouper(value.fin);
-  const etat = etatEcheance(value.fin);
-  const changer = (modif: Partial<Echeance>) =>
-    onChange({ ...value, ...modif });
+  const { day, hour } = split(value.end);
+  const state = dueState(value.end);
+  const change = (change: Partial<Due>) =>
+    onChange({ ...value, ...change });
 
   return (
     <div>
@@ -197,34 +197,34 @@ export default function CardEcheance({
         )}
         {!simple && (
           <Group gap="sm" wrap="nowrap">
-            <PetitChoix
-              data={FORMES_ECHEANCE}
+            <SmallChoice
+              data={DUE_SHAPES}
               value={mode}
               // Une date seule n'a pas de début. Passée en période, sa date en
               // devient le début ; la fin la garde aussi, le temps d'en choisir
               // une autre — sans fin, l'échéance ne s'enregistrerait pas.
-              onChange={(forme) =>
-                changer(
-                  forme === "date"
-                    ? { forme, debut: "" }
-                    : { forme, debut: value.debut || jour },
+              onChange={(shape) =>
+                change(
+                  shape === "date"
+                    ? { shape, start: "" }
+                    : { shape, start: value.start || day },
                 )
               }
               label="Forme de l'échéance"
-              nom="Forme"
+              name="Forme"
               disabled={readOnly}
             />
-            <PetitChoix
+            <SmallChoice
               data={RECURRENCES}
               value={value.recurrence}
-              onChange={(recurrence) => changer({ recurrence })}
+              onChange={(recurrence) => change({ recurrence })}
               label="Récurrence"
               disabled={readOnly}
             />
-            <PetitChoix
-              data={RAPPELS}
-              value={value.rappel}
-              onChange={(rappel) => changer({ rappel })}
+            <SmallChoice
+              data={REMINDERS}
+              value={value.reminder}
+              onChange={(reminder) => change({ reminder })}
               label="Rappel"
               disabled={readOnly}
             />
@@ -241,8 +241,8 @@ export default function CardEcheance({
         wrap="nowrap"
         align="center"
         style={{
-          ...styleLigne(0, 1, false),
-          paddingLeft: RETRAIT_NOM,
+          ...rowStyle(0, 1, false),
+          paddingLeft: NAME_INSET,
           // Seule, à côté d'un champ ordinaire — le statut d'une demande —,
           // la ligne en prend la hauteur pour tomber à son niveau.
           ...(simple && {
@@ -256,85 +256,85 @@ export default function CardEcheance({
         {mode === "periode" && (
           <DatePickerInput
             size="xs"
-            radius={ARRONDI}
+            radius={ROUNDING}
             placeholder="Du"
             aria-label="Du"
-            value={value.debut || null}
-            onChange={(d) => changer({ debut: d ?? "" })}
-            maxDate={jour || undefined}
+            value={value.start || null}
+            onChange={(d) => change({ start: d ?? "" })}
+            maxDate={day || undefined}
             valueFormat="DD/MM/YYYY"
             popoverProps={{ withinPortal: true }}
             className={classes.champ}
             styles={{
-              input: { paddingInline: RETRAIT_CHAMP, textAlign: "center" },
+              input: { paddingInline: FIELD_INSET, textAlign: "center" },
             }}
-            w={largeurDe("00/00/0000", "Du")}
+            w={widthOf("00/00/0000", "Du")}
             style={{ flexShrink: 0 }}
             readOnly={readOnly}
           />
         )}
-        {mode === "periode" && <Liaison mot="au" />}
+        {mode === "periode" && <LinkRecord word="au" />}
         <DatePickerInput
           size="xs"
-          radius={ARRONDI}
+          radius={ROUNDING}
           placeholder={mode === "periode" ? "Au" : "Jusqu'au"}
           aria-label={mode === "periode" ? "Au" : "Jusqu'au"}
-          value={jour || null}
-          onChange={(d) => changer({ fin: assembler(d ?? "", heure) })}
-          minDate={value.debut || undefined}
+          value={day || null}
+          onChange={(d) => change({ end: assemble(d ?? "", hour) })}
+          minDate={value.start || undefined}
           valueFormat="DD/MM/YYYY"
           popoverProps={{ withinPortal: true }}
           className={classes.champ}
           styles={{
-            input: { paddingInline: RETRAIT_CHAMP, textAlign: "center" },
+            input: { paddingInline: FIELD_INSET, textAlign: "center" },
           }}
-          w={largeurDe("00/00/0000", "Au", "Jusqu'au")}
+          w={widthOf("00/00/0000", "Au", "Jusqu'au")}
           style={{ flexShrink: 0 }}
           readOnly={readOnly}
         />
-        <Liaison mot="à" />
+        <LinkRecord word="à" />
         <TimeInput
           size="xs"
-          radius={ARRONDI}
+          radius={ROUNDING}
           aria-label="Heure"
-          value={heure}
+          value={hour}
           onChange={(e) =>
-            changer({ fin: assembler(jour, e.currentTarget.value) })
+            change({ end: assemble(day, e.currentTarget.value) })
           }
-          disabled={!jour || readOnly}
+          disabled={!day || readOnly}
           className={classes.champ}
           styles={{
-            input: { paddingInline: RETRAIT_CHAMP, textAlign: "center" },
+            input: { paddingInline: FIELD_INSET, textAlign: "center" },
           }}
-          w={largeurDe("00:00")}
+          w={widthOf("00:00")}
         />
         {/* L'état et le bouton se calent au bout de la ligne. */}
         <div style={{ flex: 1 }} />
         {/* L'état : en retard, bientôt, ou à venir. */}
         <Box
-          w={STATUT_L}
+          w={STATUS_WIDTH}
           style={{ flexShrink: 0, display: "flex", justifyContent: "center" }}
         >
-          {etat === "aucun" ? (
+          {state === "aucun" ? (
             // Loin encore : le vert de ce qui va bien, comme une carte
             // terminée.
-            jour && (
+            day && (
               <Badge color={GREEN} variant="filled" radius="sm" fullWidth>
                 À venir
               </Badge>
             )
           ) : (
             <Badge
-              color={COULEUR_ECHEANCE[etat]}
+              color={DUE_COLOR[state]}
               variant="filled"
               radius="sm"
               fullWidth
             >
-              {MOT_ECHEANCE[etat]}
+              {DUE_WORD[state]}
             </Badge>
           )}
         </Box>
-        {!readOnly && (!simple || jour) && (
+        {!readOnly && (!simple || day) && (
           <ActionIcon
             variant="subtle"
             color={RED}

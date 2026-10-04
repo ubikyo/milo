@@ -1,17 +1,17 @@
 // Les dépendances entre cartes. Une liaison s'écrit une fois, de sa source
 // vers sa cible ; chaque carte la lit depuis son côté (shared, dependances.ts).
 
-import { PAGE_DE_LIAISONS, TASK_REFERENCE_PREFIX, relationLue } from "@milo/shared";
-import type { CardLink, Id, LinkCandidates, SorteDeLiaison } from "@milo/shared";
+import { LINKS_PAGE_SIZE, TASK_REFERENCE_PREFIX, relationFromSide } from "@milo/shared";
+import type { CardLink, Id, LinkCandidates, LinkKind } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import type { Selection } from "../db/query.js";
-import { CLAUSE_TABLEAUX_VISIBLES } from "./boards.js";
+import { VISIBLE_BOARDS_CLAUSE } from "./boards.js";
 
 export interface CardLinkRow {
   id: Id;
   source_id: Id;
   target_id: Id;
-  kind: SorteDeLiaison;
+  kind: LinkKind;
   created_at: string;
 }
 
@@ -21,7 +21,7 @@ export const cardLinks = {
    * La même liaison, dans un sens ou dans l'autre : « X est lié à Y » et « Y
    * est lié à X » ne font qu'une.
    */
-  existante: selection<{ id: Id }>(
+  existing: selection<{ id: Id }>(
     `SELECT id FROM card_links
      WHERE kind = @kind AND id != @sauf
        AND ((source_id = @source AND target_id = @target)
@@ -36,11 +36,11 @@ export const cardLinks = {
 
 // L'autre carte n'est montrée que si son tableau l'est à cette personne : une
 // dépendance vers un tableau privé ne le laisse pas deviner.
-const liaisonsDeLaCarte = selection<
+const cardLinkRecords = selection<
   CardLinkRow & {
-    autre_id: Id;
-    autre_text: string;
-    autre_number: number;
+    other_id: Id;
+    other_text: string;
+    other_number: number;
     board_id: Id;
     board_name: string;
   }
@@ -54,19 +54,19 @@ const liaisonsDeLaCarte = selection<
    JOIN task_lists ON task_lists.id = task_cards.list_id
    JOIN boards ON boards.id = task_lists.board_id
    WHERE (card_links.source_id = @card OR card_links.target_id = @card)
-     AND ${CLAUSE_TABLEAUX_VISIBLES("boards.id")}
+     AND ${VISIBLE_BOARDS_CLAUSE("boards.id")}
    ORDER BY card_links.created_at, card_links.id`,
 );
 
 /** Les dépendances d'une carte, telles qu'elle les lit et que `userId` les voit. */
 export const linksOf = (cardId: Id, userId: Id): CardLink[] =>
-  liaisonsDeLaCarte.all({ card: cardId, me: userId }).map((row) => ({
+  cardLinkRecords.all({ card: cardId, me: userId }).map((row) => ({
     id: row.id,
-    relation: relationLue(row.kind, row.source_id === cardId),
+    relation: relationFromSide(row.kind, row.source_id === cardId),
     card: {
-      id: row.autre_id,
-      text: row.autre_text,
-      number: row.autre_number,
+      id: row.other_id,
+      text: row.other_text,
+      number: row.other_number,
       board_id: row.board_id,
       board_name: row.board_name,
     },
@@ -82,53 +82,53 @@ export const linkOf = (row: CardLinkRow, cardId: Id, userId: Id): CardLink =>
 // accents, par titre ou par référence. La requête se prépare au premier appel :
 // « milo_plier » est déclarée par la recherche (routes/search.ts), chargée avec
 // l'application.
-let candidatsPrepares: Selection<LinkCandidates["items"][number]> | null = null;
+let preparedCandidates: Selection<LinkCandidates["items"][number]> | null = null;
 
 export const linkCandidates = (
   card: { id: Id; board_id: Id },
   userId: Id,
-  recherche: string,
+  search: string,
   offset: number,
 ): LinkCandidates => {
-  candidatsPrepares ??= selection(
+  preparedCandidates ??= selection(
     `SELECT tc.id, tc.text, tc.number, b.id AS board_id, b.name AS board_name,
             (b.id = @board) AS same_board
      FROM task_cards tc
      JOIN task_lists tl ON tl.id = tc.list_id
      JOIN boards b ON b.id = tl.board_id
      WHERE tc.kind = 'card' AND tc.id != @card
-       AND ${CLAUSE_TABLEAUX_VISIBLES("b.id")}
+       AND ${VISIBLE_BOARDS_CLAUSE("b.id")}
        AND (@q = '%%'
          OR milo_plier(tc.text) LIKE @q ESCAPE '\\'
          OR (tc.number > 0 AND milo_plier('${TASK_REFERENCE_PREFIX}' || tc.number) LIKE @q ESCAPE '\\'))
      ORDER BY same_board DESC, b.name, b.id, tl.position, tl.id, tc.position, tc.id
      LIMIT @limit OFFSET @offset`,
   );
-  const plie = recherche
+  const folded = search
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[\\%_]/g, (c) => `\\${c}`);
-  const lignes = candidatsPrepares.all({
+  const rows = preparedCandidates.all({
     card: card.id,
     board: card.board_id,
     me: userId,
-    q: `%${plie}%`,
+    q: `%${folded}%`,
     // Une ligne de plus que la page : elle dit s'il en reste.
-    limit: PAGE_DE_LIAISONS + 1,
+    limit: LINKS_PAGE_SIZE + 1,
     offset,
   });
   return {
-    items: lignes
-      .slice(0, PAGE_DE_LIAISONS)
+    items: rows
+      .slice(0, LINKS_PAGE_SIZE)
       .map((l) => ({ ...l, same_board: Boolean(l.same_board) })),
-    more: lignes.length > PAGE_DE_LIAISONS,
+    more: rows.length > LINKS_PAGE_SIZE,
   };
 };
 
 // Le nombre de liaisons de chaque carte d'un tableau, des deux côtés : c'est
 // ce qui allume le picto de la carte.
-const comptesDuTableau = selection<{ card_id: Id; total: number }>(
+const countsOfBoard = selection<{ card_id: Id; total: number }>(
   `SELECT card_id, COUNT(*) AS total FROM (
      SELECT card_links.source_id AS card_id FROM card_links
      UNION ALL
@@ -141,4 +141,4 @@ const comptesDuTableau = selection<{ card_id: Id; total: number }>(
 );
 
 export const linkCountsOfBoard = (boardId: unknown): Map<Id, number> =>
-  new Map(comptesDuTableau.all(boardId).map((r) => [r.card_id, r.total]));
+  new Map(countsOfBoard.all(boardId).map((r) => [r.card_id, r.total]));

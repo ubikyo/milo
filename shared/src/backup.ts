@@ -18,7 +18,7 @@ export interface BackupInfo {
 export interface RestoreResult {
   tables: number;
   rows: number;
-  medias: number;
+  media: number;
 }
 
 /** Le nom du fichier proposé au téléchargement, daté du jour. */

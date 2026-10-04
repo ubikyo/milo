@@ -28,7 +28,7 @@ export const payload = (): VersionPayload => ({ version: total(), versions: { ..
  */
 const clients = new Map<Response, Id>();
 
-const ecrire = (res: Response, data: string): void => {
+const write = (res: Response, data: string): void => {
   try {
     res.write(data);
   } catch {
@@ -36,9 +36,9 @@ const ecrire = (res: Response, data: string): void => {
   }
 };
 
-const diffuser = (): void => {
+const broadcast = (): void => {
   const data = `data: ${JSON.stringify(payload())}\n\n`;
-  for (const client of clients.keys()) ecrire(client, data);
+  for (const client of clients.keys()) write(client, data);
 };
 
 /**
@@ -46,10 +46,10 @@ const diffuser = (): void => {
  * elle n'en a aucun, elle ne verra rien : ce qui se perd ici est repris par
  * l'e-mail, qui lui arrive de toute façon.
  */
-export const pousserNotification = (userId: Id, notification: Notification): void => {
+export const pushNotification = (userId: Id, notification: Notification): void => {
   const data = `data: ${JSON.stringify({ notification })}\n\n`;
   for (const [client, id] of clients) {
-    if (id === userId) ecrire(client, data);
+    if (id === userId) write(client, data);
   }
 };
 
@@ -71,30 +71,30 @@ declare global {
 export const touch =
   (...resources: Resource[]) =>
   (_req: Request, res: Response, next: NextFunction): void => {
-    const deja = res.locals.touched ?? new Set<Resource>();
-    for (const resource of resources) deja.add(resource);
-    res.locals.touched = deja;
+    const already = res.locals.touched ?? new Set<Resource>();
+    for (const resource of resources) already.add(resource);
+    res.locals.touched = already;
     next();
   };
 
 /** La même chose, depuis le corps d'une route. */
 export const touchNow = (res: Response, ...resources: Resource[]): void => {
-  const deja = res.locals.touched ?? new Set<Resource>();
-  for (const resource of resources) deja.add(resource);
-  res.locals.touched = deja;
+  const already = res.locals.touched ?? new Set<Resource>();
+  for (const resource of resources) already.add(resource);
+  res.locals.touched = already;
 };
 
 /**
  * Incrémente les compteurs des ressources touchées, une fois la réponse
  * partie et seulement si elle a réussi. Une lecture ne touche rien.
  */
-export const compterEcritures = (req: Request, res: Response, next: NextFunction): void => {
+export const countWrites = (req: Request, res: Response, next: NextFunction): void => {
   if (req.method === "GET") return next();
   res.on("finish", () => {
     const touched = res.locals.touched;
     if (res.statusCode >= 400 || !touched?.size) return;
     for (const resource of touched) versions[resource] += 1;
-    diffuser();
+    broadcast();
   });
   next();
 };
@@ -104,17 +104,17 @@ export const compterEcritures = (req: Request, res: Response, next: NextFunction
  * par exemple : les compteurs montent et les clients relisent, comme après
  * une route.
  */
-export const signalerEcriture = (...resources: Resource[]): void => {
+export const signalWrite = (...resources: Resource[]): void => {
   if (!resources.length) return;
   for (const resource of resources) versions[resource] += 1;
-  diffuser();
+  broadcast();
 };
 
 /**
  * Le flux d'événements (SSE). Le client le consomme avec `fetch` et non
  * `EventSource`, qui n'accepte pas d'en-tête d'authentification.
  */
-export const flux = (req: Request, res: Response): void => {
+export const feed = (req: Request, res: Response): void => {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
@@ -127,10 +127,10 @@ export const flux = (req: Request, res: Response): void => {
 
   // Commentaire périodique : maintient la connexion ouverte à travers les
   // proxys.
-  const battement = setInterval(() => ecrire(res, ": ping\n\n"), 25_000);
+  const heartbeat = setInterval(() => write(res, ": ping\n\n"), 25_000);
 
   req.on("close", () => {
-    clearInterval(battement);
+    clearInterval(heartbeat);
     clients.delete(res);
   });
 };

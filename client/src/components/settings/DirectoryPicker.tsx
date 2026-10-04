@@ -1,17 +1,17 @@
 import { Group, Select, Text } from "@mantine/core";
 import { IconUser, IconUsersGroup } from "@tabler/icons-react";
-import OrigineAnnuaire from "../ui/OrigineAnnuaire";
+import DirectoryOrigin from "../ui/OrigineAnnuaire";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
-import { messageErreur } from "../../lib/errors";
+import { errorMessage } from "../../lib/errors";
 import type { EntraPrincipal } from "@milo/shared";
 import type { SelectProps } from "@mantine/core";
 
 // Le temps de laisser finir la frappe avant d'interroger l'annuaire.
-const ATTENTE = 300;
+const WAITING = 300;
 
 /** La clé d'un principal dans la liste : un utilisateur et un groupe peuvent partager un nom. */
-const cle = (p: EntraPrincipal) => `${p.type}:${p.id}`;
+const key = (p: EntraPrincipal) => `${p.type}:${p.id}`;
 
 interface DirectoryPickerProps extends Omit<
   SelectProps,
@@ -40,77 +40,77 @@ export default function DirectoryPicker({
   resetOnSelect = false,
   ...props
 }: DirectoryPickerProps) {
-  const [recherche, setRecherche] = useState("");
-  const [trouves, setTrouves] = useState<EntraPrincipal[]>([]);
-  const [erreur, setErreur] = useState<string | null>(null);
-  const [enCours, setEnCours] = useState(false);
+  const [search, setSearch] = useState("");
+  const [matches, setFound] = useState<EntraPrincipal[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [ongoing, setInProgress] = useState(false);
 
   useEffect(() => {
-    const terme = recherche.trim();
+    const term = search.trim();
     // Le champ affiche le nom du principal choisi : ce n'est pas une recherche.
-    if (terme.length < 2 || terme === value?.name) {
-      setTrouves([]);
+    if (term.length < 2 || term === value?.name) {
+      setFound([]);
       return undefined;
     }
-    let abandonne = false;
-    const minuterie = window.setTimeout(() => {
-      setEnCours(true);
+    let abandoned = false;
+    const timeout = window.setTimeout(() => {
+      setInProgress(true);
       api
-        .searchDirectory(terme, groupsOnly)
-        .then((liste) => {
-          if (abandonne) return;
-          setTrouves(liste);
-          setErreur(null);
+        .searchDirectory(term, groupsOnly)
+        .then((list) => {
+          if (abandoned) return;
+          setFound(list);
+          setError(null);
         })
         .catch((e) => {
-          if (!abandonne) setErreur(messageErreur(e));
+          if (!abandoned) setError(errorMessage(e));
         })
         .finally(() => {
-          if (!abandonne) setEnCours(false);
+          if (!abandoned) setInProgress(false);
         });
-    }, ATTENTE);
+    }, WAITING);
     return () => {
-      abandonne = true;
-      window.clearTimeout(minuterie);
+      abandoned = true;
+      window.clearTimeout(timeout);
     };
-  }, [recherche, groupsOnly, value?.name]);
+  }, [search, groupsOnly, value?.name]);
 
   // Le principal choisi reste dans la liste, sans quoi le champ se viderait.
-  const tous =
-    value && !trouves.some((p) => cle(p) === cle(value))
-      ? [value, ...trouves]
-      : trouves;
-  const parCle = new Map(tous.map((p) => [cle(p), p]));
+  const all =
+    value && !matches.some((p) => key(p) === key(value))
+      ? [value, ...matches]
+      : matches;
+  const byKey = new Map(all.map((p) => [key(p), p]));
 
   return (
     <Select
       searchable
-      data={tous.map((p) => ({ value: cle(p), label: p.name || p.email }))}
-      value={value ? cle(value) : null}
+      data={all.map((p) => ({ value: key(p), label: p.name || p.email }))}
+      value={value ? key(value) : null}
       onChange={(v) => {
-        onChange(v ? (parCle.get(v) ?? null) : null);
+        onChange(v ? (byKey.get(v) ?? null) : null);
         // Mantine pose le nom choisi dans le champ juste après : on l'efface
         // derrière lui.
-        if (v && resetOnSelect) window.setTimeout(() => setRecherche(""), 0);
+        if (v && resetOnSelect) window.setTimeout(() => setSearch(""), 0);
       }}
-      searchValue={recherche}
-      onSearchChange={setRecherche}
+      searchValue={search}
+      onSearchChange={setSearch}
       // L'annuaire a déjà filtré : la liste ne refiltre pas derrière lui.
       filter={({ options }) => options}
       nothingFoundMessage={
-        erreur ??
-        (enCours
+        error ??
+        (ongoing
           ? "Recherche…"
-          : recherche.trim().length < 2
+          : search.trim().length < 2
             ? "Tapez au moins deux caractères"
             : "Aucun résultat")
       }
       renderOption={({ option }) => {
-        const p = parCle.get(option.value);
-        const Icone = p?.type === "group" ? IconUsersGroup : IconUser;
+        const p = byKey.get(option.value);
+        const Icon = p?.type === "group" ? IconUsersGroup : IconUser;
         return (
           <Group gap="xs" wrap="nowrap" style={{ width: "100%" }}>
-            <Icone size={16} style={{ flexShrink: 0 }} />
+            <Icon size={16} style={{ flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <Text size="sm" truncate>
                 {option.label}
@@ -123,7 +123,7 @@ export default function DirectoryPicker({
             </div>
             {/* L'origine du compte, à droite : deux comptes de même nom et
                 de même adresse se distinguent ainsi. */}
-            {p && <OrigineAnnuaire synced={p.synced} />}
+            {p && <DirectoryOrigin synced={p.synced} />}
           </Group>
         );
       }}

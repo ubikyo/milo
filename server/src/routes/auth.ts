@@ -13,11 +13,11 @@ import { passwordIssues } from "@milo/shared";
 import { env } from "../env.js";
 import { createToken, fullName, hashPassword, verifyPassword } from "../lib/auth.js";
 import {
-  entraConfiguree,
-  groupesEntra,
-  profilEntra,
-  terminerLaConnexion,
-  urlDeConnexion,
+  entraConfigured,
+  entraGroups,
+  entraProfile,
+  completeLogin,
+  loginUrl,
 } from "../lib/entra.js";
 import { badRequest, conflict, requireText } from "../lib/http.js";
 import { touch } from "../middleware/events.js";
@@ -25,31 +25,31 @@ import { rateLimit } from "../middleware/rate-limit.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import {
   ADMIN_USERNAME,
-  aAcces,
+  hasAccess,
   publicUser,
   sessions,
   users,
-  workspacesDu,
+  workspacesOf,
 } from "../repositories/users.js";
 import { workspaces } from "../repositories/workspaces.js";
 import { now } from "../lib/time.js";
-import { vueVisible } from "../repositories/views.js";
+import { visibleView } from "../repositories/views.js";
 
 /** Ouvre une session et rend son jeton. */
 const openSession = (userId: number | bigint): string => {
   const token = createToken();
-  const maintenant = Date.now();
+  const currentTime = Date.now();
   sessions.open.run(
     token,
     userId,
-    new Date(maintenant).toISOString(),
-    new Date(maintenant).toISOString(),
-    new Date(maintenant + env.sessionMaxIdleMs).toISOString(),
+    new Date(currentTime).toISOString(),
+    new Date(currentTime).toISOString(),
+    new Date(currentTime + env.sessionMaxIdleMs).toISOString(),
   );
   return token;
 };
 
-const verifierMotDePasse = (password: unknown): void => {
+const verifyPasswordRules = (password: unknown): void => {
   const issues = passwordIssues(password);
   if (issues.length > 0) {
     badRequest(`Le mot de passe doit contenir : ${issues.join(", ")}`);
@@ -61,7 +61,7 @@ const verifierMotDePasse = (password: unknown): void => {
  * dix essais par quart d'heure et par adresse suffisent largement à un usage
  * normal, et coupent court à un forçage.
  */
-const limiteTentatives = rateLimit({ max: 10, fenetreMs: 15 * 60 * 1000 });
+const attemptLimit = rateLimit({ max: 10, windowMs: 15 * 60 * 1000 });
 
 export const publicAuthRoutes = Router();
 
@@ -70,21 +70,21 @@ export const publicAuthRoutes = Router();
 // Microsoft est possible : sans application renseignée, l'écran de connexion
 // ne propose que le compte « admin ».
 publicAuthRoutes.get("/setup", (_req, res) => {
-  res.json({ needs_setup: !users.admin.get(), entra: entraConfiguree() });
+  res.json({ needs_setup: !users.admin.get(), entra: entraConfigured() });
 });
 
 // Le premier workspace existe déjà — la base en reçoit un (migrations.ts) :
 // il prend le nom choisi. Ses accès se règlent ensuite, une fois Entra
 // renseigné.
-publicAuthRoutes.post("/setup", limiteTentatives, (req, res) => {
+publicAuthRoutes.post("/setup", attemptLimit, (req, res) => {
   if (users.admin.get()) conflict("Le compte admin existe déjà");
 
   const password = String(req.body.password ?? "");
-  verifierMotDePasse(password);
+  verifyPasswordRules(password);
   const workspace = requireText(req.body.workspace, "Le nom du workspace est requis");
 
-  const premier = workspaces.first.get();
-  if (premier) workspaces.rename.run(workspace, premier.id);
+  const first = workspaces.first.get();
+  if (first) workspaces.rename.run(workspace, first.id);
   else workspaces.create.run(workspace, 0, now());
   const { lastInsertRowid } = users.createAdmin.run(ADMIN_USERNAME, hashPassword(password), now());
   res.status(201).json({
@@ -93,7 +93,7 @@ publicAuthRoutes.post("/setup", limiteTentatives, (req, res) => {
   });
 });
 
-publicAuthRoutes.post("/login", limiteTentatives, (req, res) => {
+publicAuthRoutes.post("/login", attemptLimit, (req, res) => {
   const username = String(req.body.username ?? "").trim().toLowerCase();
   const password = String(req.body.password ?? "");
   const admin = username === ADMIN_USERNAME ? users.admin.get() : undefined;
@@ -113,7 +113,7 @@ publicAuthRoutes.post("/login", limiteTentatives, (req, res) => {
  * nous appelle : c'est elle qu'il faut inscrire dans Azure, et l'onglet Entra
  * la montre telle quelle.
  */
-const adresseDeRetour = (req: Request): string =>
+const returnAddress = (req: Request): string =>
   `${req.protocol}://${req.get("host")}/api/auth/entra/callback`;
 
 /**
@@ -123,13 +123,13 @@ const adresseDeRetour = (req: Request): string =>
  * `state` lie le retour de Microsoft à la demande qui l'a ouvert : sans lui,
  * n'importe qui pourrait appeler l'adresse de retour avec un code à lui.
  */
-const DUREE = 10 * 60 * 1000;
-const demandes = new Map<string, { redirectUri: string; expire: number }>();
+const DURATION = 10 * 60 * 1000;
+const requests = new Map<string, { redirectUri: string; expiresAt: number }>();
 
-const oublierLesExpirees = (): void => {
-  const maintenant = Date.now();
-  for (const [cle, demande] of demandes) {
-    if (demande.expire < maintenant) demandes.delete(cle);
+const forgetExpired = (): void => {
+  const currentTime = Date.now();
+  for (const [key, request] of requests) {
+    if (request.expiresAt < currentTime) requests.delete(key);
   }
 };
 
@@ -138,21 +138,21 @@ const oublierLesExpirees = (): void => {
  * jamais vers un serveur, ni le nôtre ni celui d'un tiers, et le client
  * l'efface de la barre d'adresse dès qu'il l'a lu.
  */
-const retour = (fragment: Record<string, string>): string =>
+const returnUrl = (fragment: Record<string, string>): string =>
   `/#${new URLSearchParams(fragment).toString()}`;
 
 /** Ouvre une connexion : le navigateur part vers Microsoft. */
-publicAuthRoutes.get("/entra/start", limiteTentatives, (req, res) => {
-  oublierLesExpirees();
+publicAuthRoutes.get("/entra/start", attemptLimit, (req, res) => {
+  forgetExpired();
   const state = randomBytes(32).toString("hex");
-  const redirectUri = adresseDeRetour(req);
+  const redirectUri = returnAddress(req);
   try {
-    const url = urlDeConnexion(redirectUri, state);
-    demandes.set(state, { redirectUri, expire: Date.now() + DUREE });
+    const url = loginUrl(redirectUri, state);
+    requests.set(state, { redirectUri, expiresAt: Date.now() + DURATION });
     res.redirect(url);
-  } catch (erreur) {
+  } catch (error) {
     res.redirect(
-      retour({ auth_error: erreur instanceof Error ? erreur.message : "Connexion impossible" }),
+      returnUrl({ auth_error: error instanceof Error ? error.message : "Connexion impossible" }),
     );
   }
 });
@@ -165,53 +165,53 @@ publicAuthRoutes.get("/entra/start", limiteTentatives, (req, res) => {
  */
 publicAuthRoutes.get("/entra/callback", touch("lookups"), (req, res, next) => {
   void (async () => {
-    oublierLesExpirees();
+    forgetExpired();
     const state = String(req.query["state"] ?? "");
-    const demande = demandes.get(state);
-    demandes.delete(state);
+    const request = requests.get(state);
+    requests.delete(state);
 
-    if (!demande) {
-      res.redirect(retour({ auth_error: "Cette connexion a expiré. Recommencez." }));
+    if (!request) {
+      res.redirect(returnUrl({ auth_error: "Cette connexion a expiré. Recommencez." }));
       return;
     }
-    const refus = String(req.query["error_description"] ?? req.query["error"] ?? "");
-    if (refus) {
-      res.redirect(retour({ auth_error: refus.split("\n")[0] ?? refus }));
+    const refusal = String(req.query["error_description"] ?? req.query["error"] ?? "");
+    if (refusal) {
+      res.redirect(returnUrl({ auth_error: refusal.split("\n")[0] ?? refusal }));
       return;
     }
 
     try {
-      const { oid, email: emailJeton } = await terminerLaConnexion(
+      const { oid, email: tokenEmail } = await completeLogin(
         String(req.query["code"] ?? ""),
-        demande.redirectUri,
+        request.redirectUri,
       );
-      const [profil, groupes] = await Promise.all([profilEntra(oid), groupesEntra(oid)]);
+      const [profile, groups] = await Promise.all([entraProfile(oid), entraGroups(oid)]);
 
-      const email = profil.mail || profil.userPrincipalName || emailJeton;
-      const prenom = profil.givenName ?? "";
-      const nom = profil.surname ?? "";
-      const complet = fullName(prenom, nom) || profil.displayName || email;
+      const email = profile.mail || profile.userPrincipalName || tokenEmail;
+      const firstName = profile.givenName ?? "";
+      const name = profile.surname ?? "";
+      const full = fullName(firstName, name) || profile.displayName || email;
 
       let user = users.byEntraId.get(oid) ?? (email ? users.byEmail.get(email) : undefined);
       if (!user) {
-        const { lastInsertRowid } = users.createFromEntra.run(prenom, nom, complet, email, now(), oid);
+        const { lastInsertRowid } = users.createFromEntra.run(firstName, name, full, email, now(), oid);
         user = users.byId.get(lastInsertRowid)!;
       }
-      users.syncEntra.run(prenom, nom, complet, email, oid, JSON.stringify(groupes), user.id);
+      users.syncEntra.run(firstName, name, full, email, oid, JSON.stringify(groups), user.id);
       user = users.byId.get(user.id)!;
 
-      if (!aAcces(user)) {
+      if (!hasAccess(user)) {
         res.redirect(
-          retour({
+          returnUrl({
             auth_error: "Votre compte n'a accès à aucun workspace. Demandez un accès à un administrateur.",
           }),
         );
         return;
       }
-      res.redirect(retour({ token: openSession(user.id) }));
-    } catch (erreur) {
+      res.redirect(returnUrl({ token: openSession(user.id) }));
+    } catch (error) {
       res.redirect(
-        retour({ auth_error: erreur instanceof Error ? erreur.message : "Connexion impossible" }),
+        returnUrl({ auth_error: error instanceof Error ? error.message : "Connexion impossible" }),
       );
     }
   })().catch(next);
@@ -229,9 +229,9 @@ authRoutes.get("/me", (req, res) => {
 // Ce que la personne règle elle-même : sa vue d'ouverture — une vue qu'elle
 // voit, ou rien pour la première. Son identité vient d'Entra.
 authRoutes.put("/me", (req, res) => {
-  const recu = String(req.body.default_view ?? req.user.default_view ?? "");
-  if (recu !== "" && !vueVisible(Number(recu), req.user)) badRequest("Vue introuvable");
-  users.setDefaultView.run(recu, req.user.id);
+  const received = String(req.body.default_view ?? req.user.default_view ?? "");
+  if (received !== "" && !visibleView(Number(received), req.user)) badRequest("Vue introuvable");
+  users.setDefaultView.run(received, req.user.id);
   res.json(publicUser(users.byId.get(req.user.id)!));
 });
 
@@ -239,7 +239,7 @@ authRoutes.put("/me", (req, res) => {
 // droits deviennent ceux de celui-là.
 authRoutes.put("/me/workspace", touch("lookups"), (req, res) => {
   const id = Number(req.body.workspace);
-  if (!workspacesDu(req.user).some((w) => w.id === id)) badRequest("Workspace introuvable");
+  if (!workspacesOf(req.user).some((w) => w.id === id)) badRequest("Workspace introuvable");
   users.setWorkspace.run(id, req.user.id);
   res.json(publicUser(users.byId.get(req.user.id)!));
 });

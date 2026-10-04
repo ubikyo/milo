@@ -7,7 +7,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 
 // Ce qui, dans la rangée, se glisse : le trait d'insertion et le bout de
 // rangée sont posés entre les onglets, et ne doivent pas se compter avec eux.
-const ATTRIBUT_ONGLET = "data-milo-tab";
+const TAB_ATTRIBUTE = "data-milo-tab";
 
 // Course en deçà de laquelle l'appui reste un clic : sans ce seuil, le moindre
 // tremblement de la main sur un onglet le déplacerait.
@@ -18,12 +18,12 @@ const DRAG_THRESHOLD = 5;
  * tant que la main n'est pas relâchée — seul le trait d'insertion se déplace,
  * et les mesures prises pendant le geste restent donc justes.
  */
-interface Glisser<K> {
+interface Drag<K> {
   id: K;
   target: number;
 }
 
-interface GlisserEnCours<K> extends Glisser<K> {
+interface DragInProgress<K> extends Drag<K> {
   index: number;
   startX: number;
   started: boolean;
@@ -58,10 +58,10 @@ export function useTabReorder<T, K extends string | number>(
   items: T[],
   keyOf: (item: T) => K,
   onReorder?: (keys: K[]) => void | Promise<void>,
-  zoneDe: (element: HTMLElement) => HTMLElement | null = (element) => element.parentElement,
+  zoneOf: (element: HTMLElement) => HTMLElement | null = (element) => element.parentElement,
 ) {
-  const [drag, setDrag] = useState<Glisser<K> | null>(null);
-  const dragRef = useRef<GlisserEnCours<K> | null>(null);
+  const [drag, setDrag] = useState<Drag<K> | null>(null);
+  const dragRef = useRef<DragInProgress<K> | null>(null);
   // La rangée, retenue au premier appui : elle appartient à ModeBar, et c'est
   // l'onglet touché qui la désigne — il en est un enfant direct.
   const zoneRef = useRef<HTMLElement | null>(null);
@@ -69,42 +69,42 @@ export function useTabReorder<T, K extends string | number>(
    * Le nouvel ordre est montré aussitôt, sans attendre la réponse du serveur.
    * Il s'efface dès que la liste revient lue : c'est elle qui fait foi.
    */
-  const [ordreLocal, setOrdreLocal] = useState<K[] | null>(null);
+  const [localOrder, setLocalOrder] = useState<K[] | null>(null);
   // Vrai entre un dépôt et le clic qu'il déclenche : glisser un onglet ne
   // revient pas à l'ouvrir. Remis à faux au début de chaque geste, pour qu'un
   // dépôt hors de la rangée — qui n'est suivi d'aucun clic — n'avale pas le
   // clic suivant.
-  const vientDeGlisser = useRef(false);
+  const justDragged = useRef(false);
 
   useEffect(() => {
-    setOrdreLocal(null);
+    setLocalOrder(null);
   }, [items]);
 
-  const ordered = ordreLocal
-    ? ordreLocal
-        .map((cle) => items.find((item) => keyOf(item) === cle))
+  const ordered = localOrder
+    ? localOrder
+        .map((key) => items.find((item) => keyOf(item) === key))
         .filter((item): item is T => item !== undefined)
     : items;
 
   // Les écouteurs du geste sont posés une fois pour toutes ; ils lisent l'état
   // courant par une ref plutôt que de se réabonner à chaque rendu.
-  const etat = useRef({ ordered, keyOf, onReorder });
+  const state = useRef({ ordered, keyOf, onReorder });
   useLayoutEffect(() => {
-    etat.current = { ordered, keyOf, onReorder };
+    state.current = { ordered, keyOf, onReorder };
   });
 
   useEffect(() => {
     // Le rang visé : le premier onglet dont on n'a pas dépassé le milieu, ou
     // la fin de la rangée.
-    const rangVise = (clientX: number): number | null => {
+    const targetRank = (clientX: number): number | null => {
       const zone = zoneRef.current;
       if (!zone) return null;
-      const rangee = [...zone.querySelectorAll(`[${ATTRIBUT_ONGLET}]`)];
-      for (const [i, onglet] of rangee.entries()) {
-        const rect = onglet.getBoundingClientRect();
+      const band = [...zone.querySelectorAll(`[${TAB_ATTRIBUTE}]`)];
+      for (const [i, tab] of band.entries()) {
+        const rect = tab.getBoundingClientRect();
         if (clientX < rect.left + rect.width / 2) return i;
       }
-      return rangee.length;
+      return band.length;
     };
 
     const onMove = (event: PointerEvent) => {
@@ -116,7 +116,7 @@ export function useTabReorder<T, K extends string | number>(
         document.body.style.userSelect = "none";
         document.body.style.cursor = "grabbing";
       }
-      d.target = rangVise(event.clientX) ?? d.index;
+      d.target = targetRank(event.clientX) ?? d.index;
       setDrag({ id: d.id, target: d.target });
     };
 
@@ -127,23 +127,23 @@ export function useTabReorder<T, K extends string | number>(
       document.body.style.cursor = "";
       setDrag(null);
       if (!d || !d.started) return;
-      vientDeGlisser.current = true;
+      justDragged.current = true;
 
       // Le rang visé se lit sur la rangée complète ; une fois l'onglet ôté,
       // tout ce qui le suivait remonte d'un cran.
-      const cible = d.target > d.index ? d.target - 1 : d.target;
-      if (cible === d.index) return;
-      const { ordered: courants, keyOf: cleDe } = etat.current;
-      const ordre = courants.map(cleDe).filter((cle) => cle !== d.id);
-      ordre.splice(cible, 0, d.id);
+      const target = d.target > d.index ? d.target - 1 : d.target;
+      if (target === d.index) return;
+      const { ordered: currentItems, keyOf: keyOf } = state.current;
+      const order = currentItems.map(keyOf).filter((key) => key !== d.id);
+      order.splice(target, 0, d.id);
 
-      setOrdreLocal(ordre);
+      setLocalOrder(order);
       try {
-        await etat.current.onReorder?.(ordre);
+        await state.current.onReorder?.(order);
       } catch {
         // Le rangement n'a pas pris : la liste relue par le mode fait foi, et
         // l'ordre montré ici s'efface pour lui laisser la place.
-        setOrdreLocal(null);
+        setLocalOrder(null);
       }
     };
 
@@ -156,21 +156,21 @@ export function useTabReorder<T, K extends string | number>(
   }, []);
 
   /** Ce qu'un onglet porte pour se glisser, à étaler sur son Tabs.Tab. */
-  const tabProps = (cle: K, index: number, style: CSSProperties) => ({
+  const tabProps = (key: K, index: number, style: CSSProperties) => ({
     // Ce par quoi le geste retrouve les onglets dans la rangée : voir
     // ATTRIBUT_ONGLET.
-    [ATTRIBUT_ONGLET]: "",
+    [TAB_ATTRIBUTE]: "",
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
-      vientDeGlisser.current = false;
+      justDragged.current = false;
       if (event.button !== 0 || !onReorder) return;
-      zoneRef.current = zoneDe(event.currentTarget);
-      dragRef.current = { id: cle, index, startX: event.clientX, started: false, target: index };
+      zoneRef.current = zoneOf(event.currentTarget);
+      dragRef.current = { id: key, index, startX: event.clientX, started: false, target: index };
     },
     style: {
       ...style,
       // L'onglet tenu reste à sa place, en transparence : le trait
       // d'insertion dit à lui seul où il se posera.
-      ...(drag?.id === cle ? { opacity: 0.4 } : {}),
+      ...(drag?.id === key ? { opacity: 0.4 } : {}),
       // Sur un écran tactile, le geste appartient à l'onglet : sans cela le
       // navigateur y verrait un défilement.
       ...(onReorder ? { touchAction: "none" } : {}),
@@ -184,8 +184,8 @@ export function useTabReorder<T, K extends string | number>(
   const guardChange =
     <V,>(onChange: (value: V) => void) =>
     (value: V) => {
-      if (vientDeGlisser.current) {
-        vientDeGlisser.current = false;
+      if (justDragged.current) {
+        justDragged.current = false;
         return;
       }
       onChange(value);

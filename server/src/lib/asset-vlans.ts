@@ -5,49 +5,49 @@
 import type { AssetVlan } from "@milo/shared";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 
-const CLE = "asset_vlans";
+const KEY = "asset_vlans";
 
 export const vlans = (): AssetVlan[] => {
-  const enregistres = readSetting<AssetVlan[] | null>(CLE, null);
+  const saved = readSetting<AssetVlan[] | null>(KEY, null);
   // Les VLAN enregistrés avant qu'ils aient un nom en reçoivent un vide.
-  return Array.isArray(enregistres)
-    ? enregistres.map((v) => ({ ...v, name: v.name ?? "" }))
+  return Array.isArray(saved)
+    ? saved.map((v) => ({ ...v, name: v.name ?? "" }))
     : [];
 };
 
-export const enregistrerVlans = (liste: AssetVlan[]): void =>
-  writeSetting(CLE, liste);
+export const saveVlans = (list: AssetVlan[]): void =>
+  writeSetting(KEY, list);
 
 /** Une adresse IPv4 en nombre sur 32 bits, ou null si ce n'en est pas une. */
-const enNombre = (adresse: string): number | null => {
-  const octets = adresse.trim().split(".");
-  if (octets.length !== 4 || !octets.every((o) => /^\d{1,3}$/.test(o) && Number(o) <= 255)) {
+const toNumber = (address: string): number | null => {
+  const bytes = address.trim().split(".");
+  if (bytes.length !== 4 || !bytes.every((o) => /^\d{1,3}$/.test(o) && Number(o) <= 255)) {
     return null;
   }
-  return octets.reduce((n, o) => n * 256 + Number(o), 0);
+  return bytes.reduce((n, o) => n * 256 + Number(o), 0);
 };
 
 /**
  * Le VLAN dont le sous-réseau contient l'adresse, ou null. Si plusieurs la
  * contiennent (« 10.1.0.0/16 » et « 10.1.106.0/24 »), le plus précis gagne.
  */
-export const vlanDe = (adresse: string, liste: AssetVlan[]): AssetVlan | null => {
-  const ip = enNombre(adresse);
+export const vlanOf = (address: string, list: AssetVlan[]): AssetVlan | null => {
+  const ip = toNumber(address);
   if (ip === null) return null;
-  let trouve: AssetVlan | null = null;
+  let found: AssetVlan | null = null;
   let precision = -1;
-  for (const v of liste) {
-    const [reseau = "", bits = ""] = v.subnet.split("/");
-    const debut = enNombre(reseau);
-    const longueur = Number(bits);
-    if (debut === null || !(longueur >= 0 && longueur <= 32)) continue;
+  for (const v of list) {
+    const [network = "", bits = ""] = v.subnet.split("/");
+    const start = toNumber(network);
+    const length = Number(bits);
+    if (start === null || !(length >= 0 && length <= 32)) continue;
     // Les nombres de JavaScript sont des flottants : la division évite les
     // décalages de bits, signés sur 32 bits.
-    const taille = 2 ** (32 - longueur);
-    if (Math.floor(ip / taille) === Math.floor(debut / taille) && longueur > precision) {
-      trouve = v;
-      precision = longueur;
+    const size = 2 ** (32 - length);
+    if (Math.floor(ip / size) === Math.floor(start / size) && length > precision) {
+      found = v;
+      precision = length;
     }
   }
-  return trouve;
+  return found;
 };

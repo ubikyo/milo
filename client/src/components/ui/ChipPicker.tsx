@@ -17,7 +17,7 @@ import type { ReactNode } from "react";
 
 // Le temps laissé au second clic d'un double clic avant que le premier ne
 // coche l'option.
-const DELAI_DOUBLE_CLIC = 250;
+const DOUBLE_CLICK_DELAY = 250;
 
 /** Le minimum qu'une option doit porter : de quoi l'identifier et la nommer. */
 export interface ChipOption {
@@ -29,7 +29,7 @@ export interface ChipOption {
 // bas de l'écran. Les lignes n'ont pas toutes la même hauteur — un nom seul, un
 // nom et son adresse : la hauteur se mesure sur la dixième, marquée comme les
 // autres de « data-ligne ».
-const LIGNES_VISIBLES = 10;
+const VISIBLE_ROWS = 10;
 
 /**
  * Choix multiple montré en vignettes : un titre, sous lui ce qui est retenu,
@@ -138,14 +138,14 @@ export default function ChipPicker<T extends ChipOption>({
 }: ChipPickerProps<T>) {
   // Séparées, les options courent d'un bord à l'autre de la liste, et leur
   // filet aussi ; la dernière n'en a pas — il n'y a rien à séparer dessous.
-  const filet = (rang: number) =>
-    separated && rang < listOptions.length - 1
+  const rule = (rank: number) =>
+    separated && rank < listOptions.length - 1
       ? { borderBottom: "1px solid var(--mantine-color-default-border)" }
       : undefined;
-  const RETRAIT_SEPARE = 10;
+  const SEPARATED_INSET = 10;
   const [opened, setOpened] = useState(false);
-  const contenuRef = useRef<HTMLDivElement>(null);
-  const [hauteurMax, setHauteurMax] = useState<number | undefined>(undefined);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
 
   // Mesurée à chaque rendu, la liste ouverte : une recherche, une réponse de
   // l'annuaire changent ses lignes. Avant d'être peinte, pour qu'elle ne
@@ -154,49 +154,49 @@ export default function ChipPicker<T extends ChipOption>({
   // second passage.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
-    const contenu = contenuRef.current;
-    if (!contenu) return;
-    const lignes = contenu.querySelectorAll("[data-ligne]");
-    const hauteur =
-      lignes.length > LIGNES_VISIBLES
+    const content = contentRef.current;
+    if (!content) return;
+    const rows = content.querySelectorAll("[data-ligne]");
+    const height =
+      rows.length > VISIBLE_ROWS
         ? Math.ceil(
-            lignes[LIGNES_VISIBLES - 1]!.getBoundingClientRect().bottom -
-              contenu.getBoundingClientRect().top,
+            rows[VISIBLE_ROWS - 1]!.getBoundingClientRect().bottom -
+              content.getBoundingClientRect().top,
           )
         : undefined;
-    if (hauteur !== hauteurMax) setHauteurMax(hauteur);
+    if (height !== maxHeight) setMaxHeight(height);
   });
 
-  const ouvrirFermer = (ouvert: boolean) => {
-    if (!ouvert && closeBlocked) return;
-    setOpened(ouvert);
-    if (!ouvert) onClose?.();
+  const toggleOpen = (isOpen: boolean) => {
+    if (!isOpen && closeBlocked) return;
+    setOpened(isOpen);
+    if (!isOpen) onClose?.();
   };
 
-  const retenues = value
+  const chosen = value
     .map((id) => options.find((o) => String(o.id) === String(id)))
     .filter((o): o is T => Boolean(o));
 
   // Le clic sur une option à rôle propre attend de savoir s'il est le premier
   // d'un double clic : sinon, ouvrir l'option la cocherait au passage.
-  const clicEnAttente = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const oublierClic = () => {
-    if (clicEnAttente.current) clearTimeout(clicEnAttente.current);
-    clicEnAttente.current = null;
+  const pendingClick = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const forgetClick = () => {
+    if (pendingClick.current) clearTimeout(pendingClick.current);
+    pendingClick.current = null;
   };
-  useEffect(() => oublierClic, []);
+  useEffect(() => forgetClick, []);
 
-  const bascule = (id: number | string) => {
-    const cle = String(id);
+  const toggle = (id: number | string) => {
+    const key = String(id);
     onChange(
-      value.includes(cle) ? value.filter((v) => v !== cle) : [...value, cle],
+      value.includes(key) ? value.filter((v) => v !== key) : [...value, key],
     );
   };
 
   return (
     <Popover
       opened={opened}
-      onChange={ouvrirFermer}
+      onChange={toggleOpen}
       position={position}
       // Pas de portail : ce choix s'ouvre dans un tiroir, dont le piège à focus
       // ne laisse pas la main à ce qui est sorti hors de lui — un champ de
@@ -212,7 +212,7 @@ export default function ChipPicker<T extends ChipOption>({
       <Popover.Target>
         {target ? (
           <UnstyledButton
-            onClick={() => ouvrirFermer(!opened)}
+            onClick={() => toggleOpen(!opened)}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -232,18 +232,18 @@ export default function ChipPicker<T extends ChipOption>({
             style={{ minWidth: 0, width: "fit-content", maxWidth: "100%" }}
             onClick={(e) => {
               if (opened && !(e.target as Element).closest("button"))
-                ouvrirFermer(false);
+                toggleOpen(false);
             }}
           >
             <Input.Label>{label}</Input.Label>
             <Group gap={chipGap} align="center" wrap="wrap">
               {leadingChips}
-              {retenues.map((option) => (
+              {chosen.map((option) => (
                 // Cliquer une vignette rouvre la même liste : on ajoute et on
                 // retire au même endroit.
                 <UnstyledButton
                   key={option.id}
-                  onClick={() => ouvrirFermer(!opened)}
+                  onClick={() => toggleOpen(!opened)}
                   // Jamais comprimée : trop à l'étroit, la vignette descend à la
                   // ligne suivante plutôt que de s'écraser.
                   style={{
@@ -260,7 +260,7 @@ export default function ChipPicker<T extends ChipOption>({
                 size={chipHeight}
                 radius={plusRadius}
                 style={{ flexShrink: 0 }}
-                onClick={() => ouvrirFermer(!opened)}
+                onClick={() => toggleOpen(!opened)}
                 aria-label={`Choisir : ${label}`}
               >
                 <IconPlus size={PLUS_SIZE} />
@@ -293,7 +293,7 @@ export default function ChipPicker<T extends ChipOption>({
         )}
         {/* La barre fine des autres listes de l'application (ListItems). */}
         <ScrollArea.Autosize
-          mah={hauteurMax}
+          mah={maxHeight}
           type="auto"
           scrollbars="y"
           scrollbarSize={2}
@@ -303,10 +303,10 @@ export default function ChipPicker<T extends ChipOption>({
           // Tenu à sa largeur, il tronque.
           styles={{ content: { display: "block", minWidth: 0 } }}
         >
-          <div ref={contenuRef}>
+          <div ref={contentRef}>
             {listOptions.length > 0 && (
               <Stack gap={separated ? 0 : 2}>
-                {listOptions.map((option, rang) =>
+                {listOptions.map((option, rank) =>
                   // Deux mises en page. Sans rôle propre au clic, l'élément est
                   // le libellé de la case : cliquer l'un ou l'autre coche. Avec
                   // un rôle propre (les étiquettes se modifient), l'élément vit à
@@ -319,14 +319,14 @@ export default function ChipPicker<T extends ChipOption>({
                       gap={8}
                       wrap="nowrap"
                       align="center"
-                      px={separated ? RETRAIT_SEPARE : 4}
+                      px={separated ? SEPARATED_INSET : 4}
                       py={separated ? 8 : 4}
-                      style={filet(rang)}
+                      style={rule(rank)}
                       data-ligne
                     >
                       <Checkbox
                         checked={value.includes(String(option.id))}
-                        onChange={() => bascule(option.id)}
+                        onChange={() => toggle(option.id)}
                         size="xs"
                         styles={{ input: { cursor: "pointer" } }}
                         aria-label={option.name}
@@ -335,15 +335,15 @@ export default function ChipPicker<T extends ChipOption>({
                           ouvre le rôle propre sans rien cocher. */}
                       <div
                         onClick={(e) => {
-                          oublierClic();
+                          forgetClick();
                           if (e.detail > 1) return;
-                          clicEnAttente.current = setTimeout(() => {
-                            clicEnAttente.current = null;
-                            bascule(option.id);
-                          }, DELAI_DOUBLE_CLIC);
+                          pendingClick.current = setTimeout(() => {
+                            pendingClick.current = null;
+                            toggle(option.id);
+                          }, DOUBLE_CLICK_DELAY);
                         }}
                         onDoubleClick={() => {
-                          oublierClic();
+                          forgetClick();
                           onOptionClick(option);
                         }}
                         style={{
@@ -358,7 +358,7 @@ export default function ChipPicker<T extends ChipOption>({
                     <Checkbox
                       key={option.id}
                       checked={value.includes(String(option.id))}
-                      onChange={() => bascule(option.id)}
+                      onChange={() => toggle(option.id)}
                       label={render(option)}
                       size="xs"
                       styles={{
@@ -374,9 +374,9 @@ export default function ChipPicker<T extends ChipOption>({
                         },
                         input: { cursor: "pointer" },
                       }}
-                      px={separated ? RETRAIT_SEPARE : 4}
+                      px={separated ? SEPARATED_INSET : 4}
                       py={separated ? 8 : 4}
-                      style={filet(rang)}
+                      style={rule(rank)}
                       // Le reste des attributs va à la case elle-même : la
                       // marque de ligne se pose sur son conteneur.
                       wrapperProps={{ "data-ligne": true }}

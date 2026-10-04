@@ -9,10 +9,10 @@ import classes from "../../assets/styles/Logo.module.css";
 // à ses formes. La toile y est détachée de la hampe pour flotter seule. Seule
 // la couleur de l'encre change avec le thème (les déclinaisons « Inv » la
 // passent en blanc).
-const ENCRE = { light: "rgb(36,49,62)", dark: "white" } as const;
+const INK = { light: "rgb(36,49,62)", dark: "white" } as const;
 // Les lettres de la variante 1 : noires en clair, blanches en sombre.
-const LETTRES = { light: "black", dark: "white" } as const;
-const VERT = "rgb(35,182,151)";
+const LETTERS = { light: "black", dark: "white" } as const;
+const GREEN = "rgb(35,182,151)";
 
 interface LogoProps {
   variant?: 1 | 2;
@@ -29,7 +29,7 @@ export default function Logo({ variant = 2, h = 40 }: LogoProps) {
 
   // On impose la hauteur et on laisse la largeur suivre le ratio, sinon le
   // logo occupe toute la largeur disponible.
-  const encre = ENCRE[scheme];
+  const ink = INK[scheme];
   const style = {
     height: h,
     width: "auto",
@@ -39,7 +39,7 @@ export default function Logo({ variant = 2, h = 40 }: LogoProps) {
   } as const;
 
   if (variant === 1) {
-    const lettres = LETTRES[scheme];
+    const letters = LETTERS[scheme];
     return (
       <svg
         className={classes.logoAnime}
@@ -50,11 +50,11 @@ export default function Logo({ variant = 2, h = 40 }: LogoProps) {
       >
         <g transform="matrix(1.01164,0,0,1,0,0)">
           <g transform="matrix(0.98849,0,0,1,-954.641,-1455)">
-            <Drapeau encre={encre} />
+            <Flag ink={ink} />
           </g>
           <g
             transform="matrix(0.787633,0,0,0.796804,-746.593,-1067.82)"
-            fill={lettres}
+            fill={letters}
             fillRule="nonzero"
           >
             <path d="M1196.82,1950.35L1178.9,1950.35L1164.57,1845.37L1112.71,1950.35L1107.23,1950.35L1054.74,1844.53L1040.4,1950.35L1022.91,1950.35L1044.83,1796.04L1049.26,1796.04L1109.97,1918.52L1170.26,1796.04L1174.69,1796.04L1196.82,1950.35Z" />
@@ -77,7 +77,7 @@ export default function Logo({ variant = 2, h = 40 }: LogoProps) {
     >
       <g transform="matrix(1.01164,0,0,0.672969,0,0)">
         <g transform="matrix(0.98849,0,0,1.48595,-954.641,-2162.06)">
-          <Drapeau encre={encre} />
+          <Flag ink={ink} />
         </g>
       </g>
     </svg>
@@ -86,33 +86,33 @@ export default function Logo({ variant = 2, h = 40 }: LogoProps) {
 
 // La hampe, la toile et les deux traits d'encre, dans le repère commun aux deux
 // variantes.
-function Drapeau({ encre }: { encre: string }) {
+function Flag({ ink }: { ink: string }) {
   return (
     <>
       <g transform="matrix(0.685553,-0.737466,0.882069,0.819978,-1055.82,990.064)">
         <path
           d="M795.788,1682.73C794.63,1681.69 793.988,1680.32 793.99,1678.9C793.99,1678.9 793.99,1678.9 793.99,1678.89C793.996,1675.09 797.692,1672 802.247,1672C831.993,1672.02 934.225,1672.06 976.394,1672.08C981.144,1672.08 985.678,1673.74 988.904,1676.65C992.131,1679.57 993.757,1683.48 993.392,1687.43C992.022,1702.29 990.016,1724.04 989.061,1734.4C988.752,1737.75 985.45,1740.35 981.433,1740.42C959.575,1740.76 893.256,1741.8 870.092,1742.16C864.945,1742.24 860,1740.48 856.494,1737.33C842.208,1724.48 804.474,1690.54 795.788,1682.73Z"
-          fill={encre}
+          fill={ink}
         />
       </g>
       <g transform="matrix(-0.694396,-0.729146,1.44849,-1.37945,-573.098,4716.95)">
         <path
           d="M855.335,1674.79C858.702,1673.01 863.371,1672 868.254,1672L984.494,1672C988.78,1672 992.394,1673.61 992.919,1675.75C995.357,1685.71 1002.07,1713.13 1005.96,1729.01C1006.66,1731.86 1004.74,1734.72 1000.73,1736.78C996.721,1738.83 991.073,1739.85 985.389,1739.55C934.237,1736.82 813.844,1730.42 771.212,1728.15C768.344,1728 765.896,1727.04 764.901,1725.67C763.906,1724.31 764.536,1722.78 766.525,1721.73C788.63,1710.05 838.939,1683.45 855.335,1674.79Z"
-          fill={encre}
+          fill={ink}
         />
       </g>
       <g transform="matrix(1.11875,0,0,1,-149.265,0)">
         {/* La hampe */}
         <path
           d="M1257,1584L1240.16,1584L1240.16,1463.89C1240.16,1458.98 1243.71,1455 1248.1,1455C1252.46,1455 1257,1455 1257,1455Z"
-          fill={VERT}
+          fill={GREEN}
         />
         {/* La toile : elle mord d'un point sur la hampe, pour qu'aucun
           jour ne s'ouvre entre les deux quand elle flotte. */}
         <path
           className={classes.toile}
           d="M1256,1455L1337.07,1459L1313.83,1492.92L1337.07,1526.84L1256,1526.84Z"
-          fill={VERT}
+          fill={GREEN}
         />
       </g>
     </>

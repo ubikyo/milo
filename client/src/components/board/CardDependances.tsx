@@ -4,27 +4,27 @@ import { RELATIONS } from "@milo/shared";
 import type { CardLink, Id, LinkedCard, Relation } from "@milo/shared";
 import { api } from "../../api";
 import classes from "../../assets/styles/CardEcheance.module.css";
-import { largeurTexte } from "../../lib/largeurChamp";
-import { messageErreur } from "../../lib/errors";
+import { textWidth } from "../../lib/largeurChamp";
+import { errorMessage } from "../../lib/errors";
 import { RED } from "../../themes/colors";
 import AddButton from "../ui/AddButton";
-import { ARRONDI, RETRAIT_NOM, styleLigne } from "../ui/LignesDuTiroir";
-import ChoixDeCarte from "./ChoixDeCarte";
+import { ROUNDING, NAME_INSET, rowStyle } from "../ui/LignesDuTiroir";
+import CardChoice from "./ChoixDeCarte";
 
 /**
  * Une dépendance pas encore enregistrée : sa relation est choisie, il lui
  * manque l'autre carte. Elle part au serveur dès qu'on la choisit.
  */
-export interface BrouillonDependance {
-  cle: number;
+export interface DraftDependency {
+  key: number;
   relation: Relation;
 }
 
-let prochaineCle = 1;
+let nextKey = 1;
 
 /** Une ligne vide de plus, ouverte sur « Est bloqué par ». */
-export const nouveauBrouillon = (): BrouillonDependance => ({
-  cle: prochaineCle++,
+export const newDraft = (): DraftDependency => ({
+  key: nextKey++,
   relation: "blocked_by",
 });
 
@@ -36,12 +36,12 @@ const OPTIONS_RELATION = RELATIONS.map((r) => ({
 
 // Le texte des champs commence à cet écart de leur bord, comme les dates de
 // l'échéance (CardEcheance) : la ligne pose le premier à RETRAIT_NOM.
-const RETRAIT_CHAMP = 5;
+const FIELD_INSET = 5;
 
 // Le choix de la relation prend la largeur de la plus longue, à la taille des
 // champs « xs » (12 px), avec la place de son chevron : les lignes s'alignent.
-const largeurRelation = () =>
-  Math.max(...OPTIONS_RELATION.map((r) => largeurTexte(r.label, 12))) + RETRAIT_CHAMP + 28;
+const relationWidth = () =>
+  Math.max(...OPTIONS_RELATION.map((r) => textWidth(r.label, 12))) + FIELD_INSET + 28;
 
 /**
  * Les dépendances d'une carte, sous la même allure que son échéance : une
@@ -49,84 +49,84 @@ const largeurRelation = () =>
  * cherchée dans le tableau puis dans les autres. Tout s'enregistre au fil des
  * gestes ; la carte d'en face montre la relation inverse.
  */
-interface CardDependancesProps {
+interface CardDependenciesProps {
   cardId: Id;
   boardId: Id | string | null;
   links: CardLink[];
   onLinks: (links: CardLink[]) => void;
-  brouillons: BrouillonDependance[];
-  onBrouillons: (brouillons: BrouillonDependance[]) => void;
+  drafts: DraftDependency[];
+  onDrafts: (drafts: DraftDependency[]) => void;
   onError: (message: string) => void;
   readOnly?: boolean;
 }
 
-export default function CardDependances({
+export default function CardDependencies({
   cardId,
   boardId,
   links,
   onLinks,
-  brouillons,
-  onBrouillons,
+  drafts,
+  onDrafts,
   onError,
   readOnly,
-}: CardDependancesProps) {
-  if (links.length === 0 && brouillons.length === 0) return null;
+}: CardDependenciesProps) {
+  if (links.length === 0 && drafts.length === 0) return null;
 
-  const total = links.length + brouillons.length;
+  const total = links.length + drafts.length;
 
-  const creer = async (brouillon: BrouillonDependance, cible: LinkedCard) => {
+  const create = async (draft: DraftDependency, target: LinkedCard) => {
     try {
-      const lien = await api.createCardLink(cardId, {
-        relation: brouillon.relation,
-        target_id: cible.id,
+      const link = await api.createCardLink(cardId, {
+        relation: draft.relation,
+        target_id: target.id,
       });
-      onBrouillons(brouillons.filter((b) => b.cle !== brouillon.cle));
-      onLinks([...links, lien]);
+      onDrafts(drafts.filter((b) => b.key !== draft.key));
+      onLinks([...links, link]);
     } catch (e) {
-      onError(messageErreur(e));
+      onError(errorMessage(e));
     }
   };
 
-  const modifier = async (lien: CardLink, relation: Relation, cible: Id) => {
-    if (relation === lien.relation && cible === lien.card.id) return;
+  const updateStatement = async (link: CardLink, relation: Relation, target: Id) => {
+    if (relation === link.relation && target === link.card.id) return;
     try {
-      const modifie = await api.updateCardLink(lien.id, cardId, { relation, target_id: cible });
-      onLinks(links.map((l) => (l.id === lien.id ? modifie : l)));
+      const modified = await api.updateCardLink(link.id, cardId, { relation, target_id: target });
+      onLinks(links.map((l) => (l.id === link.id ? modified : l)));
     } catch (e) {
-      onError(messageErreur(e));
+      onError(errorMessage(e));
     }
   };
 
-  const supprimer = async (lien: CardLink) => {
+  const remove = async (link: CardLink) => {
     try {
-      await api.deleteCardLink(lien.id, cardId);
-      onLinks(links.filter((l) => l.id !== lien.id));
+      await api.deleteCardLink(link.id, cardId);
+      onLinks(links.filter((l) => l.id !== link.id));
     } catch (e) {
-      onError(messageErreur(e));
+      onError(errorMessage(e));
     }
   };
 
   /** Une ligne : la relation, l'autre carte, et de quoi la retirer. */
-  const ligne = (
-    rang: number,
-    cle: string,
+  const row = (
+    rank: number,
+    key: string,
     relation: Relation,
-    cible: LinkedCard | null,
+    target: LinkedCard | null,
     onRelation: (relation: Relation) => void,
-    onCible: (cible: LinkedCard) => void,
-    onRetirer: () => void,
+    onTarget: (target: LinkedCard) => void,
+    onRemove: () => void,
   ) => (
     <Group
-      key={cle}
+      key={key}
       data-dependance
       gap="xs"
       wrap="nowrap"
       align="center"
-      style={{ ...styleLigne(rang, total, false), paddingLeft: RETRAIT_NOM }}
+      style={{ ...rowStyle(rank, total, false), paddingLeft: NAME_INSET }}
     >
       <Select
         size="xs"
-        radius={ARRONDI}
+        radius={ROUNDING}
         data={OPTIONS_RELATION}
         value={relation}
         onChange={(v) => v && onRelation(v as Relation)}
@@ -135,27 +135,27 @@ export default function CardDependances({
         rightSection={<IconChevronDown size={12} />}
         comboboxProps={{ withinPortal: true }}
         className={classes.champ}
-        styles={{ input: { paddingInlineStart: RETRAIT_CHAMP } }}
-        w={largeurRelation()}
+        styles={{ input: { paddingInlineStart: FIELD_INSET } }}
+        w={relationWidth()}
         style={{ flexShrink: 0 }}
         aria-label="Relation"
         readOnly={readOnly}
       />
-      <ChoixDeCarte
+      <CardChoice
         cardId={cardId}
         boardId={boardId}
-        value={cible}
-        onChange={onCible}
+        value={target}
+        onChange={onTarget}
         onError={onError}
         readOnly={readOnly}
         className={classes.champ}
-        retrait={RETRAIT_CHAMP}
+        inset={FIELD_INSET}
       />
       {!readOnly && (
         <ActionIcon
           variant="subtle"
           color={RED}
-          onClick={onRetirer}
+          onClick={onRemove}
           aria-label="Supprimer la dépendance"
           title="Supprimer la dépendance"
         >
@@ -168,29 +168,29 @@ export default function CardDependances({
   return (
     <Input.Wrapper label="Dépendances">
       <Stack gap={1}>
-        {links.map((lien, rang) =>
-          ligne(
-            rang,
-            `lien-${lien.id}`,
-            lien.relation,
-            lien.card,
-            (relation) => void modifier(lien, relation, lien.card.id),
-            (cible) => void modifier(lien, lien.relation, cible.id),
-            () => void supprimer(lien),
+        {links.map((link, rank) =>
+          row(
+            rank,
+            `lien-${link.id}`,
+            link.relation,
+            link.card,
+            (relation) => void updateStatement(link, relation, link.card.id),
+            (target) => void updateStatement(link, link.relation, target.id),
+            () => void remove(link),
           ),
         )}
-        {brouillons.map((brouillon, rang) =>
-          ligne(
-            links.length + rang,
-            `brouillon-${brouillon.cle}`,
-            brouillon.relation,
+        {drafts.map((draft, rank) =>
+          row(
+            links.length + rank,
+            `brouillon-${draft.key}`,
+            draft.relation,
             null,
             (relation) =>
-              onBrouillons(
-                brouillons.map((b) => (b.cle === brouillon.cle ? { ...b, relation } : b)),
+              onDrafts(
+                drafts.map((b) => (b.key === draft.key ? { ...b, relation } : b)),
               ),
-            (cible) => void creer(brouillon, cible),
-            () => onBrouillons(brouillons.filter((b) => b.cle !== brouillon.cle)),
+            (target) => void create(draft, target),
+            () => onDrafts(drafts.filter((b) => b.key !== draft.key)),
           ),
         )}
       </Stack>
@@ -198,7 +198,7 @@ export default function CardDependances({
       {!readOnly && (
         <AddButton
           label="Ajouter une dépendance"
-          onClick={() => onBrouillons([...brouillons, nouveauBrouillon()])}
+          onClick={() => onDrafts([...drafts, newDraft()])}
           mt={4}
         />
       )}

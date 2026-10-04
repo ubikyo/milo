@@ -9,14 +9,14 @@
 // celle-ci ne sait teinter qu'une couleur qu'elle peut lire — un hexadécimal
 // ou une variable CSS — et rendrait du noir sur une couleur écrite en
 // « light-dark(…) », ce qu'est justement le vert (themes/colors.ts).
-export const alertStyles = (couleur: string) => ({
+export const alertStyles = (color: string) => ({
   root: {
-    backgroundColor: `color-mix(in srgb, ${couleur}, transparent 90%)`,
-    border: `1px solid ${couleur}`,
+    backgroundColor: `color-mix(in srgb, ${color}, transparent 90%)`,
+    border: `1px solid ${color}`,
   },
-  message: { color: couleur },
-  title: { color: couleur },
-  label: { color: couleur },
-  icon: { color: couleur },
-  closeButton: { color: couleur },
+  message: { color: color },
+  title: { color: color },
+  label: { color: color },
+  icon: { color: color },
+  closeButton: { color: color },
 });

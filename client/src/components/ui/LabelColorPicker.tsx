@@ -13,7 +13,7 @@ import { useLabelColors } from "./LabelChip";
  * enfant de la pastille : Mantine place les enfants au-dessus de ses calques
  * de couleur, qui recouvriraient un contour posé sur la pastille elle-même.
  */
-export function BordureSelection() {
+export function SelectionBorder() {
   return (
     <span
       style={{
@@ -40,7 +40,7 @@ export default function LabelColorPicker({
   withinPortal = true,
 }: LabelColorPickerProps) {
   const [opened, setOpened] = useState(false);
-  const couleurs = useLabelColors();
+  const colors = useLabelColors();
 
   return (
     <Popover
@@ -58,7 +58,7 @@ export default function LabelColorPicker({
         <ColorSwatch
           component="button"
           type="button"
-          color={couleurs(color).backgroundColor}
+          color={colors(color).backgroundColor}
           size={18}
           // Le clic ouvre la palette et rien d'autre : la ligne qui porte la
           // pastille a son propre rôle au clic.
@@ -78,7 +78,7 @@ export default function LabelColorPicker({
               key={c}
               component="button"
               type="button"
-              color={couleurs(c).backgroundColor}
+              color={colors(c).backgroundColor}
               size={20}
               onClick={() => {
                 setOpened(false);
@@ -88,7 +88,7 @@ export default function LabelColorPicker({
               aria-label={c}
               aria-pressed={c === color}
             >
-              {c === color && <BordureSelection />}
+              {c === color && <SelectionBorder />}
             </ColorSwatch>
           ))}
         </SimpleGrid>

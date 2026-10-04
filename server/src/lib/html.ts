@@ -6,7 +6,7 @@
 import { DomUtils, parseDocument } from "htmlparser2";
 import type { ChildNode, Element } from "domhandler";
 import sanitizeHtml from "sanitize-html";
-import { estUneAdresseMedia } from "./medias.js";
+import { isMediaAddress } from "./medias.js";
 
 const BALISES_RICHES = [
   "p", "br", "strong", "b", "em", "i", "u", "s", "del", "code", "pre",
@@ -14,7 +14,7 @@ const BALISES_RICHES = [
   "img",
 ];
 
-const assainir = (html: unknown): string =>
+const sanitize = (html: unknown): string =>
   sanitizeHtml(String(html ?? ""), {
     allowedTags: BALISES_RICHES,
     // Un lien garde son adresse et s'ouvre ailleurs ; rien d'autre ne passe,
@@ -26,21 +26,21 @@ const assainir = (html: unknown): string =>
     // Une image ne vient que de nos propres médias : c'est là que les images
     // collées sont déposées. Une image d'ailleurs — y compris une « data: »
     // qui ferait grossir la ligne sans fin — est jetée avec sa balise.
-    exclusiveFilter: (frame) => frame.tag === "img" && !estUneAdresseMedia(frame.attribs["src"]),
+    exclusiveFilter: (frame) => frame.tag === "img" && !isMediaAddress(frame.attribs["src"]),
   });
 
 /**
  * Un texte brut — le corps d'un e-mail, un message d'avant l'éditeur — mis en
  * HTML : échappé, un paragraphe par bloc, un saut de ligne par ligne.
  */
-export const texteEnHtml = (texte: string): string =>
-  texte
+export const textToHtml = (text: string): string =>
+  text
     .split(/\n{2,}/)
-    .map((bloc) => bloc.trim())
+    .map((block) => block.trim())
     .filter(Boolean)
     .map(
-      (bloc) =>
-        `<p>${bloc
+      (block) =>
+        `<p>${block
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
@@ -55,19 +55,19 @@ export const texteEnHtml = (texte: string): string =>
  * Une image en est : une description qui ne montre qu'une photo n'est pas une
  * description vide, et la carte doit porter sa pastille comme une autre.
  */
-export const porteDuContenu = (html: unknown): boolean => {
-  const texte = String(html ?? "");
-  if (/<img\b/i.test(texte)) return true;
-  return texte.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim() !== "";
+export const hasContent = (html: unknown): boolean => {
+  const text = String(html ?? "");
+  if (/<img\b/i.test(text)) return true;
+  return text.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim() !== "";
 };
 
 /**
  * La description telle qu'on la garde. Sans cette remise à plat, une fiche
  * sans texte compterait tout de même comme ayant une description.
  */
-export const descriptionPropre = (html: unknown): string => {
-  const propre = assainir(html);
-  return porteDuContenu(propre) ? propre : "";
+export const cleanDescription = (html: unknown): string => {
+  const propre = sanitize(html);
+  return hasContent(propre) ? propre : "";
 };
 
 /**
@@ -82,9 +82,9 @@ export const descriptionPropre = (html: unknown): string => {
  * l'utilisateur : la nouvelle forme s'enregistre, mais la date ne bouge pas
  * pour autant.
  */
-export const memeDescription = (recue: string, existante: string): boolean => {
-  const propre = descriptionPropre(existante);
-  return recue === propre || (!/<[a-z/!]/i.test(propre) && recue === `<p>${propre}</p>`);
+export const sameDescription = (received: string, existing: string): boolean => {
+  const propre = cleanDescription(existing);
+  return received === propre || (!/<[a-z/!]/i.test(propre) && received === `<p>${propre}</p>`);
 };
 
 // --- E-mails reçus ---------------------------------------------------------
@@ -104,38 +104,38 @@ const BALISES_EMAIL = [
   "tt", "wbr", "ins", "kbd", "samp", "var", "picture",
 ];
 
-const ATTRIBUTS_EMAIL = [
+const EMAIL_ATTRIBUTES = [
   "style", "class", "id", "align", "valign", "width", "height", "bgcolor", "background",
   "color", "border", "cellpadding", "cellspacing", "dir", "lang", "face", "size",
   "colspan", "rowspan", "title", "role", "type", "start", "span",
 ];
 
 /** Au-delà, le corps est coupé : un fil de réponses ne grossit pas sans fin. */
-const LONGUEUR_MAX_EMAIL = 2 * 1024 * 1024;
+const EMAIL_LENGTH_MAX = 2 * 1024 * 1024;
 
 /**
  * Le corps d'un e-mail tel qu'on le garde. « images » donne, pour chaque
  * identifiant « cid: » d'une image intégrée, l'adresse où elle a été rangée.
  * Un e-mail en texte brut garde ses lignes telles quelles.
  */
-export const emailPropre = (
-  corps: string,
+export const cleanEmail = (
+  body: string,
   type: "html" | "text",
   images: Map<string, string>,
 ): string => {
-  const brut = corps.length > LONGUEUR_MAX_EMAIL ? corps.slice(0, LONGUEUR_MAX_EMAIL) : corps;
+  const raw = body.length > EMAIL_LENGTH_MAX ? body.slice(0, EMAIL_LENGTH_MAX) : body;
   if (type === "text") {
-    const echappe = brut.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    return `<pre style="white-space: pre-wrap; font-family: inherit; margin: 0">${echappe}</pre>`;
+    const escaped = raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return `<pre style="white-space: pre-wrap; font-family: inherit; margin: 0">${escaped}</pre>`;
   }
-  return sanitizeHtml(brut, {
+  return sanitizeHtml(raw, {
     allowedTags: BALISES_EMAIL,
     // Les feuilles de style de l'e-mail, qui le mettent en page.
     allowVulnerableTags: true,
     allowedAttributes: {
-      "*": ATTRIBUTS_EMAIL,
-      a: [...ATTRIBUTS_EMAIL, "href", "name", "target", "rel"],
-      img: [...ATTRIBUTS_EMAIL, "src", "alt"],
+      "*": EMAIL_ATTRIBUTES,
+      a: [...EMAIL_ATTRIBUTES, "href", "name", "target", "rel"],
+      img: [...EMAIL_ATTRIBUTES, "src", "alt"],
     },
     allowedSchemes: ["http", "https", "mailto", "tel"],
     allowedSchemesByTag: { img: ["http", "https", "data", "cid"] },
@@ -152,10 +152,10 @@ export const emailPropre = (
       img: (tagName, attribs) => {
         const src = attribs["src"] ?? "";
         if (!/^cid:/i.test(src)) return { tagName, attribs };
-        const cle = src.slice(4).replace(/^<|>$/g, "");
-        const url = images.get(cle);
-        const { src: _src, ...reste } = attribs;
-        return { tagName, attribs: url ? { ...reste, src: url } : reste };
+        const key = src.slice(4).replace(/^<|>$/g, "");
+        const url = images.get(key);
+        const { src: _src, ...rest } = attribs;
+        return { tagName, attribs: url ? { ...rest, src: url } : rest };
       },
     },
   });
@@ -167,10 +167,10 @@ export const emailPropre = (
  * répond, la citation de Mail d'Apple, celle de Gmail. Graph préfixe parfois
  * les identifiants d'un « x_ ».
  */
-const DEBUT_HISTORIQUE = /^(x_)?(appendonsend|divRplyFwdMsg|mail-editor-reference-message-container)$/;
+const HISTORY_START = /^(x_)?(appendonsend|divRplyFwdMsg|mail-editor-reference-message-container)$/;
 
-const ouvreLHistorique = (e: Element): boolean =>
-  DEBUT_HISTORIQUE.test(e.attribs["id"] ?? "") ||
+const opensHistory = (e: Element): boolean =>
+  HISTORY_START.test(e.attribs["id"] ?? "") ||
   (e.name === "blockquote" && (e.attribs["type"] ?? "").toLowerCase() === "cite") ||
   /(^|\s)gmail_quote(\s|$)/.test(e.attribs["class"] ?? "");
 
@@ -179,23 +179,23 @@ const ouvreLHistorique = (e: Element): boolean =>
  * premier repère, lui compris, est retiré. Un corps où rien ne resterait est
  * rendu tel quel — mieux vaut un historique en trop qu'un message vide.
  */
-export const sansHistorique = (html: string): string => {
+export const withoutHistory = (html: string): string => {
   const document = parseDocument(html);
-  const repere = DomUtils.findOne(ouvreLHistorique, document.children, true);
-  if (!repere) return html;
+  const marker = DomUtils.findOne(opensHistory, document.children, true);
+  if (!marker) return html;
 
   // Outlook sur ordinateur trace un filet juste avant l'entête « De : ».
-  const avant = DomUtils.prevElementSibling(repere);
-  if (avant?.name === "hr") DomUtils.removeElement(avant);
+  const before = DomUtils.prevElementSibling(marker);
+  if (before?.name === "hr") DomUtils.removeElement(before);
 
   // Ce qui suit le repère, à chaque niveau jusqu'à la racine.
-  let noeud: ChildNode | null = repere;
-  while (noeud) {
-    while (noeud.next) DomUtils.removeElement(noeud.next);
-    noeud = noeud.parent && noeud.parent !== document ? (noeud.parent as ChildNode) : null;
+  let treeNode: ChildNode | null = marker;
+  while (treeNode) {
+    while (treeNode.next) DomUtils.removeElement(treeNode.next);
+    treeNode = treeNode.parent && treeNode.parent !== document ? (treeNode.parent as ChildNode) : null;
   }
-  DomUtils.removeElement(repere);
+  DomUtils.removeElement(marker);
 
-  const reste = DomUtils.getOuterHTML(document.children);
-  return porteDuContenu(reste) ? reste : html;
+  const rest = DomUtils.getOuterHTML(document.children);
+  return hasContent(rest) ? rest : html;
 };

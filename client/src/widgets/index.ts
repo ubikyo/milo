@@ -6,41 +6,41 @@
 // ici — et une valeur de plus dans « ACCESS_BLOCK_TYPES » (shared/domain.ts),
 // qui est ce que la base range.
 
-import { calendrierWidget } from "./calendrier";
-import { categorieWidget } from "./categorie";
-import { horlogeWidget } from "./horloge";
+import { calendarWidget } from "./calendrier";
+import { categoryWidget } from "./categorie";
+import { clockWidget } from "./horloge";
 import { imageWidget } from "./image";
-import { lienWidget } from "./lien";
+import { linkWidget } from "./lien";
 import { mailWidget } from "./mail";
-import { meteoWidget } from "./meteo";
-import { numeroWidget } from "./numero";
+import { weatherWidget } from "./meteo";
+import { numberWidget } from "./numero";
 import { rssWidget } from "./rss";
-import { sousCategorieWidget } from "./sous-categorie";
+import { subcategoryWidget } from "./sous-categorie";
 import { todoWidget } from "./todo";
 import type { AccessWidget } from "./types";
 import type { AccessBlockType } from "@milo/shared";
 
 /** Dans l'ordre où le tiroir des widgets les présente. */
 export const WIDGETS: AccessWidget[] = [
-  categorieWidget,
-  sousCategorieWidget,
-  lienWidget,
-  numeroWidget,
-  horlogeWidget,
+  categoryWidget,
+  subcategoryWidget,
+  linkWidget,
+  numberWidget,
+  clockWidget,
   imageWidget,
-  meteoWidget,
-  calendrierWidget,
+  weatherWidget,
+  calendarWidget,
   mailWidget,
   todoWidget,
   rssWidget,
 ];
 
-const PAR_TYPE = new Map<AccessBlockType, AccessWidget>(WIDGETS.map((p) => [p.type, p]));
+const BY_TYPE = new Map<AccessBlockType, AccessWidget>(WIDGETS.map((p) => [p.type, p]));
 
 /**
  * Le widget qui sait lire cet élément, ou « undefined » : un type rangé par
  * une version qui en connaissait un de plus n'a pas à faire tomber la page.
  */
-export const widgetDe = (type: AccessBlockType): AccessWidget | undefined => PAR_TYPE.get(type);
+export const widgetFor = (type: AccessBlockType): AccessWidget | undefined => BY_TYPE.get(type);
 
 export type { AccessWidget } from "./types";

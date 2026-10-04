@@ -23,18 +23,18 @@ import dayjs from "dayjs";
 import { Fragment, createContext, useContext, useMemo, useState } from "react";
 import ActorAvatars, { ACTOR_AVATAR_SIZE, ACTOR_GAP, SenderAvatar } from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
-import { colonnesGardees, largeursParDefaut } from "../ui/ChampsColonnes";
+import { keptColumns, defaultWidths } from "../ui/ChampsColonnes";
 import EmptyPanel from "../ui/EmptyPanel";
-import GrilleScroll from "../ui/GrilleScroll";
+import GridScroll from "../ui/GrilleScroll";
 import LabelChip from "../ui/LabelChip";
 import { ReferenceTag } from "../ui/ReferenceTag";
-import { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
-import { useColonnesRedimensionnables } from "../ui/useColonnesRedimensionnables";
-import { COULEUR_ECHEANCE, MOT_ECHEANCE, dateCourte, etatEcheance } from "../../lib/echeance";
+import { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
+import { useResizableColumns } from "../ui/useColonnesRedimensionnables";
+import { DUE_COLOR, DUE_WORD, shortDate, dueState } from "../../lib/echeance";
 import { STRONG_TEXT } from "../../themes/colors";
-import { SUPPORT_STATUSES, cleDeListe, supportStatusLabel, supportTicketRef } from "@milo/shared";
-import { useEnModification } from "../../lib/edition";
-import { deLaListe } from "../../lib/listes";
+import { SUPPORT_STATUSES, listKey, supportStatusLabel, supportTicketRef } from "@milo/shared";
+import { useIsEditing } from "../../lib/edition";
+import { inList } from "../../lib/listes";
 import type { CSSProperties, ReactNode } from "react";
 import type { Actor, SupportRequest, SupportStatus } from "@milo/shared";
 
@@ -46,7 +46,7 @@ import type { Actor, SupportRequest, SupportStatus } from "@milo/shared";
 // « SupportListeContext » ; le widget ne choisit que ses colonnes.
 
 /** L'onglet qui ne filtre rien : il montre les demandes de tous les statuts. */
-export const TOUS = "all";
+export const ALL = "all";
 
 // Padding vertical des lignes, comme dans le tableau des projets : la hauteur
 // inclut le padding (box-sizing).
@@ -58,14 +58,14 @@ const LABELS_SHOWN = 2;
 const LABEL_HEIGHT = 20;
 
 // Le numéro de ticket le plus long qu'on attend : le tag en prend la largeur.
-const REFERENCE_GABARIT = supportTicketRef(9999);
+const REFERENCE_TEMPLATE = supportTicketRef(9999);
 
 /**
  * La couleur du tag de chaque statut, dessiné comme une étiquette : le
  * rouge de ce que personne n'a encore pris, l'orange de ce qui est en cours,
  * le vert de ce qui est réglé.
  */
-const COULEUR_STATUT: Record<SupportStatus, string> = {
+const STATUS_COLOR: Record<SupportStatus, string> = {
   new: "red.6",
   open: "orange.6",
   pending: "orange.6",
@@ -74,7 +74,7 @@ const COULEUR_STATUT: Record<SupportStatus, string> = {
 };
 
 /** Une valeur absente se lit pareil partout : un tiret discret. */
-function Vide() {
+function Empty() {
   return (
     <Text size="sm" c="dimmed">
       —
@@ -83,12 +83,12 @@ function Vide() {
 }
 
 function LabelsCell({ labels }: { labels: SupportRequest["labels"] }) {
-  if (!labels.length) return <Vide />;
+  if (!labels.length) return <Empty />;
 
   // Les plus lourdes devant : le serveur les range ainsi, la saisie du tiroir
   // non.
   const montrees = [...labels].sort((a, b) => b.weight - a.weight).slice(0, LABELS_SHOWN);
-  const restantes = labels.length - montrees.length;
+  const remaining = labels.length - montrees.length;
 
   return (
     // Boîte de hauteur fixe : sans elle, la line-box ajoute un demi-pixel et la
@@ -105,9 +105,9 @@ function LabelsCell({ labels }: { labels: SupportRequest["labels"] }) {
         {montrees.map((label) => (
           <LabelChip key={label.id} label={label} size="xs" height={LABEL_HEIGHT} />
         ))}
-        {restantes > 0 && (
+        {remaining > 0 && (
           <Text size="xs" c="dimmed">
-            +{restantes}
+            +{remaining}
           </Text>
         )}
       </Group>
@@ -116,12 +116,12 @@ function LabelsCell({ labels }: { labels: SupportRequest["labels"] }) {
 }
 
 /** L'expéditeur d'une demande reçue par e-mail, en acteur à afficher. */
-const expediteurDe = (demande: SupportRequest): Actor | null =>
-  demande.sender_email
+const senderOf = (request: SupportRequest): Actor | null =>
+  request.sender_email
     ? {
         id: 0,
-        name: demande.sender_name || demande.sender_email,
-        email: demande.sender_email,
+        name: request.sender_name || request.sender_email,
+        email: request.sender_email,
         gravatar_url: "",
       }
     : null;
@@ -130,46 +130,46 @@ const expediteurDe = (demande: SupportRequest): Actor | null =>
  * Les acteurs qu'on montre : l'expéditeur en tête — il est acteur d'office —,
  * puis les désignés. Celui qui a un compte y est déjà, il n'est pas redoublé.
  */
-const acteursMontres = (demande: SupportRequest): Actor[] => {
-  const expediteur = expediteurSansCompte(demande);
-  return expediteur ? [expediteur, ...demande.actors] : demande.actors;
+const shownActors = (request: SupportRequest): Actor[] => {
+  const sender = senderWithoutAccount(request);
+  return sender ? [sender, ...request.actors] : request.actors;
 };
 
 /** L'expéditeur, s'il n'est pas déjà parmi les acteurs sous son compte. */
-const expediteurSansCompte = (demande: SupportRequest): Actor | null => {
-  const expediteur = expediteurDe(demande);
-  if (!expediteur) return null;
-  const adresse = expediteur.email.toLowerCase();
-  return demande.actors.some((a) => a.email.toLowerCase() === adresse) ? null : expediteur;
+const senderWithoutAccount = (request: SupportRequest): Actor | null => {
+  const sender = senderOf(request);
+  if (!sender) return null;
+  const address = sender.email.toLowerCase();
+  return request.actors.some((a) => a.email.toLowerCase() === address) ? null : sender;
 };
 
 /** La clé d'un acteur dans le filtre : un compte, ou une adresse sans compte. */
-const cleActeur = (a: Actor): string => (a.id ? `u:${a.id}` : `e:${a.email.toLowerCase()}`);
+const actorKey = (a: Actor): string => (a.id ? `u:${a.id}` : `e:${a.email.toLowerCase()}`);
 
-function ActeursCell({ demande }: { demande: SupportRequest }) {
+function ActorsCell({ request }: { request: SupportRequest }) {
   // L'expéditeur passe en tête, marqué de son enveloppe — qu'il ait un compte
   // ou non. Avec un compte, il est déjà parmi les acteurs : il en sort pour
   // n'être montré qu'une fois, mais avec sa marque, comme dans le tiroir.
-  const adresse = demande.sender_email.toLowerCase();
-  const avecCompte = adresse
-    ? demande.actors.find((a) => a.email.toLowerCase() === adresse)
+  const address = request.sender_email.toLowerCase();
+  const withAccount = address
+    ? request.actors.find((a) => a.email.toLowerCase() === address)
     : undefined;
-  const expediteur = avecCompte ?? expediteurDe(demande);
-  if (!expediteur) return <ActorAvatars actors={demande.actors} />;
-  const autres = avecCompte ? demande.actors.filter((a) => a !== avecCompte) : demande.actors;
+  const sender = withAccount ?? senderOf(request);
+  if (!sender) return <ActorAvatars actors={request.actors} />;
+  const others = withAccount ? request.actors.filter((a) => a !== withAccount) : request.actors;
   return (
     <Group gap={ACTOR_GAP} wrap="nowrap">
       <div style={{ display: "inline-flex" }}>
-        <SenderAvatar person={expediteur} />
+        <SenderAvatar person={sender} />
       </div>
-      {autres.length > 0 && <ActorAvatars actors={autres} />}
+      {others.length > 0 && <ActorAvatars actors={others} />}
     </Group>
   );
 }
 
 /** L'échéance, et la bulle qui dit où on en est — la même qu'une carte. */
-function EcheanceCell({ due }: { due: string }) {
-  const etat = etatEcheance(due);
+function DueCell({ due }: { due: string }) {
+  const state = dueState(due);
   if (!due) {
     return (
       <Text size="sm" c="dimmed">
@@ -182,12 +182,12 @@ function EcheanceCell({ due }: { due: string }) {
     <Group gap="xs" wrap="nowrap">
       {/* La date prend elle-même la couleur de l'état : orange à trois jours,
           rouge une fois passée. */}
-      <Text size="sm" c={COULEUR_ECHEANCE[etat]} fw={etat === "aucun" ? undefined : 600}>
-        {dateCourte(due)}
+      <Text size="sm" c={DUE_COLOR[state]} fw={state === "aucun" ? undefined : 600}>
+        {shortDate(due)}
       </Text>
-      {etat !== "aucun" && (
-        <Badge color={COULEUR_ECHEANCE[etat]} variant="filled" radius="sm" size="sm">
-          {MOT_ECHEANCE[etat]}
+      {state !== "aucun" && (
+        <Badge color={DUE_COLOR[state]} variant="filled" radius="sm" size="sm">
+          {DUE_WORD[state]}
         </Badge>
       )}
     </Group>
@@ -222,44 +222,44 @@ interface FilterOption {
   label: string;
 }
 
-const TOUT = "all";
+const ALL_OPTION = "all";
 
-const ORDRE_STATUT = Object.fromEntries(SUPPORT_STATUSES.map((s, i) => [s.value, i])) as Record<
+const STATUS_ORDER = Object.fromEntries(SUPPORT_STATUSES.map((s, i) => [s.value, i])) as Record<
   SupportStatus,
   number
 >;
 
 /** La valeur sur laquelle chaque colonne se trie ; « null » passe en bas. */
-const VALEURS: Record<ColumnKey, (d: SupportRequest) => string | number | null> = {
+const VALUES: Record<ColumnKey, (d: SupportRequest) => string | number | null> = {
   ticket: (d) => d.number,
   subject: (d) => d.subject || null,
   actors: (d) => {
-    const a = acteursMontres(d);
+    const a = shownActors(d);
     return a.length ? a.map((x) => x.name).join(", ") : null;
   },
   // Par la plus lourde des étiquettes : celle que la cellule montre en tête.
   labels: (d) => (d.labels.length ? Math.max(...d.labels.map((l) => l.weight)) : null),
   due: (d) => d.due_date || null,
-  status: (d) => ORDRE_STATUT[d.status],
+  status: (d) => STATUS_ORDER[d.status],
   received: (d) => d.created_at,
 };
 
-const ECHEANCES: FilterOption[] = [
-  { value: TOUT, label: "Toutes" },
-  { value: "retard", label: MOT_ECHEANCE.retard },
-  { value: "bientot", label: MOT_ECHEANCE.bientot },
+const DUES: FilterOption[] = [
+  { value: ALL_OPTION, label: "Toutes" },
+  { value: "retard", label: DUE_WORD.retard },
+  { value: "bientot", label: DUE_WORD.bientot },
   { value: "avec", label: "Avec échéance" },
   { value: "sans", label: "Sans échéance" },
 ];
 
-const PERIODES: FilterOption[] = [
-  { value: TOUT, label: "Toutes les dates" },
+const PERIODS: FilterOption[] = [
+  { value: ALL_OPTION, label: "Toutes les dates" },
   { value: "1", label: "Aujourd'hui" },
   { value: "7", label: "7 derniers jours" },
   { value: "30", label: "30 derniers jours" },
 ];
 
-interface Filtres {
+interface Filters {
   ticket: string;
   subject: string;
   actor: string;
@@ -269,39 +269,39 @@ interface Filtres {
   received: string;
 }
 
-const SANS_FILTRE: Filtres = {
+const NO_FILTER: Filters = {
   ticket: "",
   subject: "",
-  actor: TOUT,
-  label: TOUT,
-  due: TOUT,
-  status: TOUT,
-  received: TOUT,
+  actor: ALL_OPTION,
+  label: ALL_OPTION,
+  due: ALL_OPTION,
+  status: ALL_OPTION,
+  received: ALL_OPTION,
 };
 
-const retenue = (f: Filtres, d: SupportRequest): boolean => {
+const chosen = (f: Filters, d: SupportRequest): boolean => {
   if (f.ticket && !supportTicketRef(d.number).toLowerCase().includes(f.ticket.trim().toLowerCase()))
     return false;
   if (f.subject && !d.subject.toLowerCase().includes(f.subject.trim().toLowerCase())) return false;
-  if (f.actor !== TOUT && !acteursMontres(d).some((a) => cleActeur(a) === f.actor)) return false;
-  if (f.label !== TOUT && !d.labels.some((l) => l.name === f.label)) return false;
-  if (f.due !== TOUT) {
+  if (f.actor !== ALL_OPTION && !shownActors(d).some((a) => actorKey(a) === f.actor)) return false;
+  if (f.label !== ALL_OPTION && !d.labels.some((l) => l.name === f.label)) return false;
+  if (f.due !== ALL_OPTION) {
     if (f.due === "sans" ? d.due_date : !d.due_date) return false;
-    if ((f.due === "retard" || f.due === "bientot") && etatEcheance(d.due_date) !== f.due)
+    if ((f.due === "retard" || f.due === "bientot") && dueState(d.due_date) !== f.due)
       return false;
   }
-  if (f.status !== TOUT && d.status !== f.status) return false;
-  if (f.received !== TOUT) {
-    const depuis = dayjs()
+  if (f.status !== ALL_OPTION && d.status !== f.status) return false;
+  if (f.received !== ALL_OPTION) {
+    const since = dayjs()
       .startOf("day")
       .subtract(Number(f.received) - 1, "day");
-    if (dayjs(d.created_at).isBefore(depuis)) return false;
+    if (dayjs(d.created_at).isBefore(since)) return false;
   }
   return true;
 };
 
 /** L'entonnoir d'une liste de choix. Il se colore tant qu'il retient quelque chose. */
-function ChoixFilter({
+function ChoiceFilter({
   label,
   options,
   value,
@@ -312,13 +312,13 @@ function ChoixFilter({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const actif = value !== TOUT;
+  const active = value !== ALL_OPTION;
   return (
     <Menu position="bottom-end" withinPortal shadow="md">
       <Menu.Target>
         <ActionIcon
-          variant={actif ? "light" : "subtle"}
-          color={actif ? "teal" : "gray"}
+          variant={active ? "light" : "subtle"}
+          color={active ? "teal" : "gray"}
           size="sm"
           aria-label={`Filtrer par ${label}`}
         >
@@ -343,7 +343,7 @@ function ChoixFilter({
 }
 
 /** L'entonnoir d'une colonne de texte : on tape ce qu'on cherche. */
-function TexteFilter({
+function TextFilter({
   label,
   value,
   onChange,
@@ -352,13 +352,13 @@ function TexteFilter({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const actif = value.trim() !== "";
+  const active = value.trim() !== "";
   return (
     <Popover position="bottom-end" withinPortal shadow="md" trapFocus>
       <Popover.Target>
         <ActionIcon
-          variant={actif ? "light" : "subtle"}
-          color={actif ? "teal" : "gray"}
+          variant={active ? "light" : "subtle"}
+          color={active ? "teal" : "gray"}
           size="sm"
           aria-label={`Filtrer par ${label}`}
         >
@@ -386,7 +386,7 @@ function SortableTh({
   onSort,
   filter,
   style,
-  poignee,
+  handle,
 }: {
   label: string;
   column: ColumnKey;
@@ -394,7 +394,7 @@ function SortableTh({
   onSort: (key: ColumnKey) => void;
   filter?: ReactNode;
   style?: CSSProperties;
-  poignee: ReactNode;
+  handle: ReactNode;
 }) {
   const active = sort.key === column;
   const Icon = !active ? IconSelector : sort.direction === "asc" ? IconChevronUp : IconChevronDown;
@@ -413,16 +413,16 @@ function SortableTh({
         </UnstyledButton>
         {filter}
       </Group>
-      {poignee}
+      {handle}
     </Table.Th>
   );
 }
 
 /** La clé des boîtes reçues, dans la configuration de la liste : chacune vers un contexte. */
-export const BOITES = "boites";
+export const MAILBOXES = "boites";
 
 /** Les colonnes que la liste sait montrer, dans l'ordre. */
-export const COLONNES_SUPPORT: { key: ColumnKey; label: string }[] = [
+export const SUPPORT_COLUMNS: { key: ColumnKey; label: string }[] = [
   { key: "ticket", label: "Ticket" },
   { key: "subject", label: "Objet" },
   { key: "actors", label: "Acteurs" },
@@ -436,73 +436,73 @@ export const COLONNES_SUPPORT: { key: ColumnKey; label: string }[] = [
  * L'état de la liste, tenu par la page : ce qu'on voit dans l'onglet ouvert,
  * trié et filtré, et ce qu'on y a coché.
  */
-export const useSupportListe = (requests: SupportRequest[] | null, onglet: string) => {
+export const useSupportList = (requests: SupportRequest[] | null, tab: string) => {
   // Par défaut, les plus récentes en premier : c'est l'ordre du serveur.
   const [sort, setSort] = useState<Sort>({ key: "received", direction: "desc" });
-  const [filtres, setFiltres] = useState<Filtres>(SANS_FILTRE);
-  const [cochees, setCochees] = useState<Set<number>>(new Set());
+  const [filters, setFilters] = useState<Filters>(NO_FILTER);
+  const [checked, setChecked] = useState<Set<number>>(new Set());
   /** La ligne dont le menu du clic droit est ouvert, et où il s'ouvre. */
-  const [contexte, setContexte] = useState<{
-    demande: SupportRequest;
+  const [context, setContext] = useState<{
+    request: SupportRequest;
     position: PointMenuPosition;
   } | null>(null);
 
   const dansLOnglet = useMemo(
     () =>
-      !requests ? [] : onglet === TOUS ? requests : requests.filter((r) => r.status === onglet),
-    [requests, onglet],
+      !requests ? [] : tab === ALL ? requests : requests.filter((r) => r.status === tab),
+    [requests, tab],
   );
 
   // Ce que les entonnoirs proposent : ce qui se trouve dans l'onglet, pas plus.
   const optionsActeurs = useMemo<FilterOption[]>(() => {
-    const vus = new Map<string, string>();
-    for (const d of dansLOnglet) for (const a of acteursMontres(d)) vus.set(cleActeur(a), a.name);
+    const seen = new Map<string, string>();
+    for (const d of dansLOnglet) for (const a of shownActors(d)) seen.set(actorKey(a), a.name);
     return [
-      { value: TOUT, label: "Tous" },
-      ...[...vus]
+      { value: ALL_OPTION, label: "Tous" },
+      ...[...seen]
         .sort((a, b) => a[1].localeCompare(b[1], "fr"))
         .map(([value, label]) => ({ value, label })),
     ];
   }, [dansLOnglet]);
   const optionsEtiquettes = useMemo<FilterOption[]>(() => {
-    const noms = new Set(dansLOnglet.flatMap((d) => d.labels.map((l) => l.name)));
+    const names = new Set(dansLOnglet.flatMap((d) => d.labels.map((l) => l.name)));
     return [
-      { value: TOUT, label: "Toutes" },
-      ...[...noms].sort((a, b) => a.localeCompare(b, "fr")).map((n) => ({ value: n, label: n })),
+      { value: ALL_OPTION, label: "Toutes" },
+      ...[...names].sort((a, b) => a.localeCompare(b, "fr")).map((n) => ({ value: n, label: n })),
     ];
   }, [dansLOnglet]);
 
   const montrees = useMemo(() => {
-    const valeur = VALEURS[sort.key];
-    const facteur = sort.direction === "asc" ? 1 : -1;
+    const value = VALUES[sort.key];
+    const factor = sort.direction === "asc" ? 1 : -1;
     return dansLOnglet
-      .filter((d) => retenue(filtres, d))
+      .filter((d) => chosen(filters, d))
       .sort((a, b) => {
-        const gauche = valeur(a);
-        const droite = valeur(b);
-        if (gauche == null && droite == null) return 0;
-        if (gauche == null) return 1;
-        if (droite == null) return -1;
-        if (typeof gauche === "number" && typeof droite === "number")
-          return (gauche - droite) * facteur;
-        return String(gauche).localeCompare(String(droite), "fr", { numeric: true }) * facteur;
+        const left = value(a);
+        const rightHand = value(b);
+        if (left == null && rightHand == null) return 0;
+        if (left == null) return 1;
+        if (rightHand == null) return -1;
+        if (typeof left === "number" && typeof rightHand === "number")
+          return (left - rightHand) * factor;
+        return String(left).localeCompare(String(rightHand), "fr", { numeric: true }) * factor;
       });
-  }, [dansLOnglet, filtres, sort]);
+  }, [dansLOnglet, filters, sort]);
 
   // Les cases cochées ne valent que pour ce qu'on voit : une demande filtrée
   // ou passée dans un autre onglet ne subit pas une action à l'aveugle.
-  const selection = montrees.filter((d) => cochees.has(d.id));
+  const selection = montrees.filter((d) => checked.has(d.id));
 
   return {
-    onglet,
+    tab,
     sort,
     setSort,
-    filtres,
-    setFiltres,
-    cochees,
-    setCochees,
-    contexte,
-    setContexte,
+    filters,
+    setFilters,
+    checked,
+    setChecked,
+    context,
+    setContext,
     dansLOnglet,
     montrees,
     selection,
@@ -511,7 +511,7 @@ export const useSupportListe = (requests: SupportRequest[] | null, onglet: strin
   };
 };
 
-export interface SupportListe extends ReturnType<typeof useSupportListe> {
+export interface SupportList extends ReturnType<typeof useSupportList> {
   loading: boolean;
   onOpenRequest: (request: SupportRequest) => void;
   /**
@@ -522,74 +522,74 @@ export interface SupportListe extends ReturnType<typeof useSupportListe> {
 }
 
 /** L'état de la liste, donné par la page au widget. Hors du mode Support, il n'y en a pas. */
-export const SupportListeContext = createContext<SupportListe | null>(null);
+export const SupportListContext = createContext<SupportList | null>(null);
 
 export default function SupportRequestsList({ config }: { config: unknown }) {
-  const liste = useContext(SupportListeContext);
+  const list = useContext(SupportListContext);
   // Hors du mode Support, rien à lister. Le reste vit dans un composant à
   // part : ses hooks s'appellent ainsi à chaque rendu, dans le même ordre.
-  if (!liste) return null;
-  return <ListeDesDemandes config={config} liste={liste} />;
+  if (!list) return null;
+  return <RequestsList config={config} list={list} />;
 }
 
-function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportListe }) {
+function RequestsList({ config, list }: { config: unknown; list: SupportList }) {
   const {
-    onglet,
+    tab,
     sort,
     setSort,
-    filtres,
-    setFiltres,
-    cochees,
-    setCochees,
-    contexte,
-    setContexte,
-    montrees: toutesMontrees,
-    dansLOnglet: toutDansLOnglet,
+    filters,
+    setFilters,
+    checked,
+    setChecked,
+    context,
+    setContext,
+    montrees: allShown,
+    dansLOnglet: allInTab,
     optionsActeurs,
     optionsEtiquettes,
     loading,
     onOpenRequest,
-    onAddRequest: ajouterDemande,
-  } = liste;
+    onAddRequest: addRequest,
+  } = list;
 
   // Les demandes du tableau, du contexte choisi, que la page a lues — celles
   // de ce widget seulement (lib/listes.ts). Une demande ajoutée ici est la
   // sienne.
-  const deCeWidget = deLaListe(config);
-  const montrees = toutesMontrees.filter(deCeWidget);
-  const dansLOnglet = toutDansLOnglet.filter(deCeWidget);
-  const onAddRequest = ajouterDemande && (() => ajouterDemande(cleDeListe(config)));
-  const enModification = useEnModification();
+  const ofThisWidget = inList(config);
+  const montrees = allShown.filter(ofThisWidget);
+  const dansLOnglet = allInTab.filter(ofThisWidget);
+  const onAddRequest = addRequest && (() => addRequest(listKey(config)));
+  const isEditing = useIsEditing();
 
   // Les colonnes gardées, dans l'ordre choisi par la configuration.
   // Une colonne peut revenir : « id » distingue chaque occurrence.
-  const colonnes = colonnesGardees(COLONNES_SUPPORT, config);
+  const columns = keptColumns(SUPPORT_COLUMNS, config);
   // La case à cocher en tête de chaque ligne, puis les colonnes.
-  const nombreDeColonnes = colonnes.length + 1;
-  const redim = useColonnesRedimensionnables(
+  const columnCount = columns.length + 1;
+  const resize = useResizableColumns(
     "support",
-    ["case", ...colonnes.map((c) => c.id)],
-    largeursParDefaut(COLONNES_SUPPORT, config),
+    ["case", ...columns.map((c) => c.id)],
+    defaultWidths(SUPPORT_COLUMNS, config),
   );
 
-  const filtre = Object.entries(filtres).some(
-    ([cle, v]) => v !== SANS_FILTRE[cle as keyof Filtres],
+  const isFiltered = Object.entries(filters).some(
+    ([key, v]) => v !== NO_FILTER[key as keyof Filters],
   );
-  const filtrer = (cle: keyof Filtres) => (valeur: string) =>
-    setFiltres((f) => ({ ...f, [cle]: valeur }));
+  const filter = (key: keyof Filters) => (value: string) =>
+    setFilters((f) => ({ ...f, [key]: value }));
 
-  const basculer = (id: number) =>
-    setCochees((deja) => {
-      const suivant = new Set(deja);
-      if (suivant.has(id)) suivant.delete(id);
-      else suivant.add(id);
-      return suivant;
+  const toggle = (id: number) =>
+    setChecked((already) => {
+      const next = new Set(already);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
 
-  const trier = (key: ColumnKey) =>
-    setSort((courant) =>
-      courant.key === key
-        ? { key, direction: courant.direction === "asc" ? "desc" : "asc" }
+  const sortBy = (key: ColumnKey) =>
+    setSort((current) =>
+      current.key === key
+        ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
         : {
             key,
             direction: key === "subject" || key === "actors" || key === "labels" ? "asc" : "desc",
@@ -608,22 +608,22 @@ function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportLi
       label={label}
       column={column}
       sort={sort}
-      onSort={trier}
+      onSort={sortBy}
       filter={filter}
       style={style}
-      poignee={redim.poignee(id)}
+      handle={resize.handle(id)}
     />
   );
 
   // L'entête de chaque colonne : les colonnes s'affichent dans l'ordre de la
   // configuration, la case à cocher restant en tête.
-  const entetes: Record<ColumnKey, (id: string) => ReactNode> = {
+  const headers: Record<ColumnKey, (id: string) => ReactNode> = {
     ticket: (id) =>
       th(
         id,
         "Ticket",
         "ticket",
-        <TexteFilter label="ticket" value={filtres.ticket} onChange={filtrer("ticket")} />,
+        <TextFilter label="ticket" value={filters.ticket} onChange={filter("ticket")} />,
         { width: 1, whiteSpace: "nowrap" },
       ),
     subject: (id) =>
@@ -631,7 +631,7 @@ function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportLi
         id,
         "Objet",
         "subject",
-        <TexteFilter label="objet" value={filtres.subject} onChange={filtrer("subject")} />,
+        <TextFilter label="objet" value={filters.subject} onChange={filter("subject")} />,
         { width: SUBJECT_WIDTH },
       ),
     actors: (id) =>
@@ -639,11 +639,11 @@ function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportLi
         id,
         "Acteurs",
         "actors",
-        <ChoixFilter
+        <ChoiceFilter
           label="acteur"
           options={optionsActeurs}
-          value={filtres.actor}
-          onChange={filtrer("actor")}
+          value={filters.actor}
+          onChange={filter("actor")}
         />,
         { width: 1, whiteSpace: "nowrap" },
       ),
@@ -652,11 +652,11 @@ function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportLi
         id,
         "Étiquettes",
         "labels",
-        <ChoixFilter
+        <ChoiceFilter
           label="étiquette"
           options={optionsEtiquettes}
-          value={filtres.label}
-          onChange={filtrer("label")}
+          value={filters.label}
+          onChange={filter("label")}
         />,
         { minWidth: LABELS_MIN_WIDTH },
       ),
@@ -666,12 +666,12 @@ function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportLi
         "Statut",
         "status",
         // Sous un onglet de statut, le filtre n'aurait rien à choisir.
-        onglet === TOUS ? (
-          <ChoixFilter
+        tab === ALL ? (
+          <ChoiceFilter
             label="statut"
-            options={[{ value: TOUT, label: "Tous" }, ...SUPPORT_STATUSES]}
-            value={filtres.status}
-            onChange={filtrer("status")}
+            options={[{ value: ALL_OPTION, label: "Tous" }, ...SUPPORT_STATUSES]}
+            value={filters.status}
+            onChange={filter("status")}
           />
         ) : undefined,
       ),
@@ -680,11 +680,11 @@ function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportLi
         id,
         "Reçu le",
         "received",
-        <ChoixFilter
+        <ChoiceFilter
           label="date de réception"
-          options={PERIODES}
-          value={filtres.received}
-          onChange={filtrer("received")}
+          options={PERIODS}
+          value={filters.received}
+          onChange={filter("received")}
         />,
         { width: DATE_WIDTH, maxWidth: DATE_WIDTH },
       ),
@@ -693,74 +693,74 @@ function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportLi
         id,
         "Échéance",
         "due",
-        <ChoixFilter
+        <ChoiceFilter
           label="échéance"
-          options={ECHEANCES}
-          value={filtres.due}
-          onChange={filtrer("due")}
+          options={DUES}
+          value={filters.due}
+          onChange={filter("due")}
         />,
         { width: DATE_WIDTH, maxWidth: DATE_WIDTH },
       ),
   };
 
   // La cellule de chaque colonne, pour une demande.
-  const cellules: Record<ColumnKey, (demande: SupportRequest) => ReactNode> = {
-    ticket: (demande) => (
+  const cells: Record<ColumnKey, (request: SupportRequest) => ReactNode> = {
+    ticket: (request) => (
       <Table.Td key="ticket" style={{ whiteSpace: "nowrap" }}>
-        <ReferenceTag reference={supportTicketRef(demande.number)} gabarit={REFERENCE_GABARIT} />
+        <ReferenceTag reference={supportTicketRef(request.number)} template={REFERENCE_TEMPLATE} />
       </Table.Td>
     ),
-    subject: (demande) => (
+    subject: (request) => (
       <Table.Td key="subject" style={{ maxWidth: SUBJECT_WIDTH, width: SUBJECT_WIDTH }}>
-        {demande.subject ? (
+        {request.subject ? (
           <Text size="sm" truncate>
-            {demande.subject}
+            {request.subject}
           </Text>
         ) : (
-          <Vide />
+          <Empty />
         )}
       </Table.Td>
     ),
-    actors: (demande) => (
+    actors: (request) => (
       <Table.Td key="actors">
-        <ActeursCell demande={demande} />
+        <ActorsCell request={request} />
       </Table.Td>
     ),
-    labels: (demande) => (
+    labels: (request) => (
       <Table.Td key="labels">
-        <LabelsCell labels={demande.labels} />
+        <LabelsCell labels={request.labels} />
       </Table.Td>
     ),
-    status: (demande) => (
+    status: (request) => (
       <Table.Td key="status">
         <LabelChip
           label={{
-            name: supportStatusLabel(demande.status),
-            color: COULEUR_STATUT[demande.status],
+            name: supportStatusLabel(request.status),
+            color: STATUS_COLOR[request.status],
           }}
           size="xs"
           height={LABEL_HEIGHT}
         />
       </Table.Td>
     ),
-    received: (demande) => (
+    received: (request) => (
       <Table.Td
         key="received"
         style={{ whiteSpace: "nowrap", width: DATE_WIDTH, maxWidth: DATE_WIDTH }}
       >
-        <Text size="sm">{dayjs(demande.created_at).format("DD/MM/YYYY HH:mm")}</Text>
+        <Text size="sm">{dayjs(request.created_at).format("DD/MM/YYYY HH:mm")}</Text>
       </Table.Td>
     ),
-    due: (demande) => (
+    due: (request) => (
       <Table.Td key="due" style={{ width: DATE_WIDTH, maxWidth: DATE_WIDTH }}>
-        <EcheanceCell due={demande.due_date} />
+        <DueCell due={request.due_date} />
       </Table.Td>
     ),
   };
 
   // Sans demande dans l'onglet, seul l'écran vide s'affiche. Une liste vidée
   // par les filtres, elle, garde ses entêtes : c'est là qu'on les retire.
-  if (dansLOnglet.length === 0 && !filtre) {
+  if (dansLOnglet.length === 0 && !isFiltered) {
     return loading ? null : (
       <EmptyPanel
         icon={IconLifebuoy}
@@ -775,9 +775,9 @@ function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportLi
   return (
     // Une section plus étroite que la liste la fait défiler de côté, plutôt
     // que d'écraser ses colonnes.
-    <GrilleScroll>
+    <GridScroll>
       <Table
-        {...redim.tableProps}
+        {...resize.tableProps}
         highlightOnHover
         verticalSpacing={0}
         styles={{
@@ -798,30 +798,30 @@ function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportLi
           },
         }}
       >
-        {redim.colgroup}
+        {resize.colgroup}
         <Table.Thead>
           <Table.Tr>
             {/* Pas de « tout cocher » : on choisit les demandes une à une. */}
             <Table.Th style={{ width: 1 }} />
-            {colonnes.map((c) => entetes[c.key](c.id))}
+            {columns.map((c) => headers[c.key](c.id))}
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {montrees.map((demande) => (
+          {montrees.map((request) => (
             <Table.Tr
-              key={demande.id}
-              onClick={() => onOpenRequest(demande)}
+              key={request.id}
+              onClick={() => onOpenRequest(request)}
               // En modification, le clic droit revient au menu du widget.
               onContextMenu={(e) => {
-                if (enModification) return;
-                setContexte({ demande, position: positionDuMenu(e) });
+                if (isEditing) return;
+                setContext({ request, position: menuPosition(e) });
               }}
               // La ligne dont le menu est ouvert garde le fond du survol : on
               // voit sur quelle demande il porte.
               style={{
                 cursor: "pointer",
                 backgroundColor:
-                  contexte?.demande.id === demande.id ? "var(--table-hover-color)" : undefined,
+                  context?.request.id === request.id ? "var(--table-hover-color)" : undefined,
               }}
             >
               {/* La case ne doit pas ouvrir la demande : le clic s'arrête là. */}
@@ -829,13 +829,13 @@ function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportLi
                 <Checkbox
                   size="xs"
                   color="teal"
-                  aria-label={`Cocher ${supportTicketRef(demande.number)}`}
-                  checked={cochees.has(demande.id)}
-                  onChange={() => basculer(demande.id)}
+                  aria-label={`Cocher ${supportTicketRef(request.number)}`}
+                  checked={checked.has(request.id)}
+                  onChange={() => toggle(request.id)}
                 />
               </Table.Td>
-              {colonnes.map((c) => (
-                <Fragment key={c.id}>{cellules[c.key](demande)}</Fragment>
+              {columns.map((c) => (
+                <Fragment key={c.id}>{cells[c.key](request)}</Fragment>
               ))}
             </Table.Tr>
           ))}
@@ -843,12 +843,12 @@ function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportLi
           {/* Filtrée jusqu'au vide, la liste le dit, et de quoi défaire. */}
           {montrees.length === 0 && (
             <Table.Tr style={{ backgroundColor: "transparent" }}>
-              <Table.Td colSpan={nombreDeColonnes}>
+              <Table.Td colSpan={columnCount}>
                 <Group gap="xs">
                   <Text size="sm" c="dimmed">
                     Aucune demande ne correspond aux filtres.
                   </Text>
-                  <UnstyledButton onClick={() => setFiltres(SANS_FILTRE)}>
+                  <UnstyledButton onClick={() => setFilters(NO_FILTER)}>
                     <Text size="sm" c="teal">
                       Retirer les filtres
                     </Text>
@@ -862,13 +862,13 @@ function ListeDesDemandes({ config, liste }: { config: unknown; liste: SupportLi
               explicite neutralise le survol — cette ligne n'est pas une demande. */}
           {onAddRequest && (
             <Table.Tr style={{ backgroundColor: "transparent" }}>
-              <Table.Td colSpan={nombreDeColonnes}>
+              <Table.Td colSpan={columnCount}>
                 <AddButton label="Nouveau ticket" onClick={onAddRequest} />
               </Table.Td>
             </Table.Tr>
           )}
         </Table.Tbody>
       </Table>
-    </GrilleScroll>
+    </GridScroll>
   );
 }

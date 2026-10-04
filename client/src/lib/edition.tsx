@@ -4,6 +4,6 @@
 
 import { createContext, useContext } from "react";
 
-export const EditionContext = createContext(false);
+export const EditingContext = createContext(false);
 
-export const useEnModification = (): boolean => useContext(EditionContext);
+export const useIsEditing = (): boolean => useContext(EditingContext);

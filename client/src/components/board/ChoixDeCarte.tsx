@@ -3,21 +3,21 @@ import { useEffect, useRef, useState } from "react";
 import { taskReference } from "@milo/shared";
 import type { Id, LinkCandidates, LinkedCard } from "@milo/shared";
 import { api } from "../../api";
-import { messageErreur } from "../../lib/errors";
+import { errorMessage } from "../../lib/errors";
 
-type Candidat = LinkCandidates["items"][number];
+type Candidate = LinkCandidates["items"][number];
 
 /** Le nom d'une carte : sa référence, puis son titre. */
-export const nomDeCarte = (carte: { number: number; text: string }): string =>
-  carte.number > 0 ? `${taskReference(carte.number)} · ${carte.text}` : carte.text;
+export const cardName = (card: { number: number; text: string }): string =>
+  card.number > 0 ? `${taskReference(card.number)} · ${card.text}` : card.text;
 
 // Le temps qu'on laisse à la frappe avant de chercher : chaque lettre ne
 // relance pas la recherche.
-const ATTENTE_FRAPPE = 250;
+const TYPING_DELAY = 250;
 
 // La hauteur de la liste : moins que dix lignes, pour que la première page
 // déborde déjà et que descendre charge la suivante.
-const HAUTEUR_LISTE = 260;
+const LIST_HEIGHT = 260;
 
 /**
  * Le choix de l'autre carte d'une dépendance. Les cartes arrivent du serveur
@@ -25,20 +25,20 @@ const HAUTEUR_LISTE = 260;
  * regroupées sous leur nom. Descendre au bas de la liste charge la page
  * suivante ; taper filtre, par titre ou par référence.
  */
-interface ChoixDeCarteProps {
+interface CardChoiceProps {
   cardId: Id;
   /** Le tableau de la carte : une carte d'ailleurs porte le nom du sien. */
   boardId: Id | string | null;
   value: LinkedCard | null;
-  onChange: (carte: LinkedCard) => void;
+  onChange: (card: LinkedCard) => void;
   onError: (message: string) => void;
   readOnly?: boolean;
   className?: string;
   /** Le retrait du texte dans le champ, aligné sur les autres champs de la ligne. */
-  retrait: number;
+  inset: number;
 }
 
-export default function ChoixDeCarte({
+export default function CardChoice({
   cardId,
   boardId,
   value,
@@ -46,66 +46,66 @@ export default function ChoixDeCarte({
   onError,
   readOnly,
   className,
-  retrait,
-}: ChoixDeCarteProps) {
-  const [recherche, setRecherche] = useState("");
-  const [cartes, setCartes] = useState<Candidat[]>([]);
-  const [encore, setEncore] = useState(false);
-  const [charge, setCharge] = useState(false);
+  inset,
+}: CardChoiceProps) {
+  const [search, setSearch] = useState("");
+  const [cards, setCards] = useState<Candidate[]>([]);
+  const [still, setHasMore] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   // Seule la dernière demande compte : une réponse lente à une frappe
   // ancienne n'écrase pas la liste d'une frappe plus récente.
-  const demande = useRef(0);
+  const request = useRef(0);
 
   const combobox = useCombobox({
     onDropdownClose: () => {
       combobox.resetSelectedOption();
-      setRecherche("");
+      setSearch("");
     },
   });
-  const ouvert = combobox.dropdownOpened;
+  const isOpen = combobox.dropdownOpened;
 
-  const charger = async (q: string, depuis: number) => {
-    const numero = ++demande.current;
-    setCharge(true);
+  const load = async (q: string, since: number) => {
+    const phoneNumber = ++request.current;
+    setLoaded(true);
     try {
-      const page = await api.getLinkCandidates(cardId, q, depuis);
-      if (numero !== demande.current) return;
-      setCartes((deja) => (depuis === 0 ? page.items : [...deja, ...page.items]));
-      setEncore(page.more);
+      const page = await api.getLinkCandidates(cardId, q, since);
+      if (phoneNumber !== request.current) return;
+      setCards((already) => (since === 0 ? page.items : [...already, ...page.items]));
+      setHasMore(page.more);
     } catch (e) {
-      if (numero === demande.current) onError(messageErreur(e));
+      if (phoneNumber === request.current) onError(errorMessage(e));
     } finally {
-      if (numero === demande.current) setCharge(false);
+      if (phoneNumber === request.current) setLoaded(false);
     }
   };
 
   // À l'ouverture et à chaque frappe, la liste repart de la première page.
   useEffect(() => {
-    if (!ouvert) return;
-    const minuterie = window.setTimeout(() => void charger(recherche.trim(), 0), ATTENTE_FRAPPE);
-    return () => window.clearTimeout(minuterie);
+    if (!isOpen) return;
+    const timeout = window.setTimeout(() => void load(search.trim(), 0), TYPING_DELAY);
+    return () => window.clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ouvert, recherche, cardId]);
+  }, [isOpen, search, cardId]);
 
-  const suivante = () => {
-    if (encore && !charge) void charger(recherche.trim(), cartes.length);
+  const next = () => {
+    if (still && !loaded) void load(search.trim(), cards.length);
   };
 
-  const ailleurs = (carte: LinkedCard) => String(carte.board_id) !== String(boardId);
-  const affiche = value
-    ? ailleurs(value)
-      ? `${nomDeCarte(value)} — ${value.board_name}`
-      : nomDeCarte(value)
+  const elsewhere = (card: LinkedCard) => String(card.board_id) !== String(boardId);
+  const shown = value
+    ? elsewhere(value)
+      ? `${cardName(value)} — ${value.board_name}`
+      : cardName(value)
     : "";
 
   // Les cartes se regroupent par tableau, dans l'ordre où elles arrivent :
   // « Ce tableau » en tête, puis chacun des autres sous son nom.
-  const groupes: { cle: string; titre: string; cartes: Candidat[] }[] = [];
-  for (const carte of cartes) {
-    const cle = carte.same_board ? "ici" : String(carte.board_id);
-    const dernier = groupes[groupes.length - 1];
-    if (dernier?.cle === cle) dernier.cartes.push(carte);
-    else groupes.push({ cle, titre: carte.same_board ? "Ce tableau" : carte.board_name, cartes: [carte] });
+  const groups: { key: string; title: string; cards: Candidate[] }[] = [];
+  for (const card of cards) {
+    const key = card.same_board ? "ici" : String(card.board_id);
+    const last = groups[groups.length - 1];
+    if (last?.key === key) last.cards.push(card);
+    else groups.push({ key, title: card.same_board ? "Ce tableau" : card.board_name, cards: [card] });
   }
 
   return (
@@ -113,8 +113,8 @@ export default function ChoixDeCarte({
       store={combobox}
       withinPortal
       onOptionSubmit={(id) => {
-        const carte = cartes.find((c) => String(c.id) === id);
-        if (carte) onChange(carte);
+        const card = cards.find((c) => String(c.id) === id);
+        if (card) onChange(card);
         combobox.closeDropdown();
       }}
     >
@@ -124,19 +124,19 @@ export default function ChoixDeCarte({
           radius="xs"
           className={className}
           style={{ flex: 1, minWidth: 0 }}
-          styles={{ input: { paddingInlineStart: retrait } }}
+          styles={{ input: { paddingInlineStart: inset } }}
           // Fermé, le champ montre la carte choisie ; ouvert, ce qu'on tape.
-          value={ouvert ? recherche : affiche}
-          placeholder={ouvert && value ? affiche : "Chercher une carte"}
+          value={isOpen ? search : shown}
+          placeholder={isOpen && value ? shown : "Chercher une carte"}
           onChange={(e) => {
-            setRecherche(e.currentTarget.value);
+            setSearch(e.currentTarget.value);
             combobox.openDropdown();
             combobox.updateSelectedOptionIndex();
           }}
           onClick={() => !readOnly && combobox.openDropdown()}
           onFocus={() => !readOnly && combobox.openDropdown()}
           onBlur={() => combobox.closeDropdown()}
-          rightSection={charge ? <Loader size={12} /> : null}
+          rightSection={loaded ? <Loader size={12} /> : null}
           rightSectionPointerEvents="none"
           readOnly={readOnly}
           aria-label="Carte reliée"
@@ -145,20 +145,20 @@ export default function ChoixDeCarte({
 
       <Combobox.Dropdown>
         <Combobox.Options>
-          <ScrollArea.Autosize mah={HAUTEUR_LISTE} type="scroll" onBottomReached={suivante}>
-            {groupes.map((groupe) => (
-              <Combobox.Group key={groupe.cle} label={groupe.titre}>
-                {groupe.cartes.map((carte) => (
-                  <Combobox.Option key={carte.id} value={String(carte.id)}>
+          <ScrollArea.Autosize mah={LIST_HEIGHT} type="scroll" onBottomReached={next}>
+            {groups.map((group) => (
+              <Combobox.Group key={group.key} label={group.title}>
+                {group.cards.map((card) => (
+                  <Combobox.Option key={card.id} value={String(card.id)}>
                     <Text size="xs" style={{ wordBreak: "break-word" }}>
-                      {nomDeCarte(carte)}
+                      {cardName(card)}
                     </Text>
                   </Combobox.Option>
                 ))}
               </Combobox.Group>
             ))}
-            {!charge && cartes.length === 0 && <Combobox.Empty>Aucune carte</Combobox.Empty>}
-            {charge && cartes.length > 0 && (
+            {!loaded && cards.length === 0 && <Combobox.Empty>Aucune carte</Combobox.Empty>}
+            {loaded && cards.length > 0 && (
               <Group justify="center" py={4}>
                 <Loader size={14} />
               </Group>

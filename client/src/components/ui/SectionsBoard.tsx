@@ -1,5 +1,5 @@
 import { Box, Center, Group, Menu, ScrollArea } from "@mantine/core";
-import { useAccesWidget } from "../../lib/droits";
+import { useWidgetAccess } from "../../lib/droits";
 import {
   IconClipboard,
   IconColumns,
@@ -15,13 +15,13 @@ import { PLUS_SIZE } from "../../themes/plus";
 import AddButton from "./AddButton";
 import ColumnInsert, { COLUMN_INSERT_ZONE as INSERT_ZONE } from "./ColumnInsert";
 import DeleteConfirmModal from "./DeleteConfirmModal";
-import EcartField, { ECART_FIELD_HEIGHT, ECART_FIELD_WIDTH } from "./EcartField";
+import GapField, { ECART_FIELD_HEIGHT, ECART_FIELD_WIDTH } from "./EcartField";
 import EmptyPanel from "./EmptyPanel";
-import LargeurField from "./LargeurField";
-import PointMenu, { positionDuMenu, type PointMenuPosition } from "./PointMenu";
-import SectionDropZone, { POINTILLE } from "./SectionDropZone";
-import WidgetDrawer, { type ChoixDeWidget } from "./WidgetDrawer";
-import { TraitInsertion, type WidgetDrag } from "./WidgetDrop";
+import WidthField from "./LargeurField";
+import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
+import SectionDropZone, { DOTTED } from "./SectionDropZone";
+import WidgetDrawer, { type WidgetChoice } from "./WidgetDrawer";
+import { InsertionLine, type WidgetDrag } from "./WidgetDrop";
 import type { Id, SectionWidthUnit } from "@milo/shared";
 
 // Des sections en colonnes, et les widgets qu'elles portent. C'est la rangée
@@ -69,7 +69,7 @@ interface SectionsBoardProps<S extends BoardSection> {
   /** Ce que la section porte. « drag » est inerte pour les copies qui suivent le pointeur. */
   renderWidgets: (section: S, drag: WidgetDrag) => ReactNode;
   /** Ce que le tiroir de gauche propose, dans l'ordre. */
-  widgets: ChoixDeWidget[];
+  widgets: WidgetChoice[];
   /** Un widget du tiroir posé dans cette section, à cette place. */
   onCreateWidget: (section: S, type: string, index: number) => void | Promise<void>;
   /** Ce que la section porte désormais, dans l'ordre : le rangement part au serveur. */
@@ -82,7 +82,7 @@ interface SectionsBoardProps<S extends BoardSection> {
    * Le widget copié (lib/presse-papiers.ts), à coller au bout d'une section :
    * son nom, et de quoi le poser. Sans lui, le menu ne propose pas de coller.
    */
-  coller?: { libelle: string; onColler: (section: S) => void | Promise<void> };
+  paste?: { label: string; onPaste: (section: S) => void | Promise<void> };
   /**
    * Un widget lâché sur la corbeille, qui paraît à gauche d'« Ajouter un
    * widget » le temps du glisser. Sans lui, pas de corbeille.
@@ -93,11 +93,11 @@ interface SectionsBoardProps<S extends BoardSection> {
   /** Le nouvel ordre des colonnes, posé par leur poignée. */
   onReorderSections: (ids: Id[]) => void | Promise<void>;
   /** Ce qui se règle au pied de la colonne : sa largeur, l'écart qui la suit. */
-  onChangeSection: (section: S, modif: ModifSection) => void | Promise<void>;
+  onChangeSection: (section: S, change: EditSection) => void | Promise<void>;
 }
 
 /** Ce que le pied d'une colonne change : sa largeur, ou l'écart qui la suit. */
-export type ModifSection = Partial<Pick<BoardSection, "width_unit" | "width_value" | "gap">>;
+export type EditSection = Partial<Pick<BoardSection, "width_unit" | "width_value" | "gap">>;
 
 // Largeur en deçà de laquelle une colonne automatique ne se resserre plus.
 // Faute de cette place, elle disparaît plutôt que de renvoyer ses voisines à
@@ -106,17 +106,17 @@ const SECTION_MIN_WIDTH = 20;
 
 // Tolérance des calculs de largeur : le navigateur place les colonnes au
 // demi-pixel près.
-const ARRONDI = 0.5;
+const ROUNDING = 0.5;
 
 // « Ajouter un widget », posé à gauche du « ? » des raccourcis
 // (ShortcutsHelp) : à sa hauteur — celle d'un ActionIcon « lg » —, et l'air
 // qui l'en sépare.
-const AIDE_TAILLE = 34;
-const AIDE_ECART = 10;
+const HELP_SIZE = 34;
+const HELP_OFFSET = 10;
 
 // Ce que la rangée tient quand le widget vient du tiroir : il n'a pas encore
 // d'identifiant, et aucun widget rangé n'a celui-ci.
-const NOUVEAU: Id = -1;
+const NEW_VALUE: Id = -1;
 
 // Course en deçà de laquelle l'appui sur la poignée reste un clic.
 const DRAG_THRESHOLD = 5;
@@ -126,32 +126,32 @@ const GRIP_SIZE = 16;
 
 // L'écart minimal entre le trait du cadre et ce qui le côtoie : le « + » de
 // l'écart, l'icône d'une poignée.
-const TRAIT_ECART = 2;
+const LINE_GAP = 2;
 
 // La bande que la poignée occupe en haut de chaque colonne, hors du cadre —
 // l'icône, à son écart du trait —, et celle du pied, à la même hauteur, où se
 // règlent la largeur et l'écart. Elle est tenue même
 // verrouillée, pour que le contenu ne bouge pas quand on passe de l'édition à
 // la lecture.
-const GRIP_ZONE = GRIP_SIZE + 2 * TRAIT_ECART;
+const GRIP_ZONE = GRIP_SIZE + 2 * LINE_GAP;
 
 // L'air entre le trait du cadre et le contenu, en haut et en bas.
-const CADRE_PADDING = 8;
+const FRAME_PADDING = 8;
 
 // Ce qui coiffe le contenu d'une colonne : la bande de la poignée et l'air
 // sous le trait. Il ne prend pas de place au-dessus des widgets : la colonne
 // le porte en débord, et la zone de défilement remonte d'autant pour le
 // montrer — les sections commencent ainsi juste sous la marge de la rangée.
-const BANDE_HAUT = GRIP_ZONE + CADRE_PADDING;
+const TOP_BAND = GRIP_ZONE + FRAME_PADDING;
 
 /** Ce dont le cadre d'une colonne déborde dans l'écart, de chaque côté. */
-interface Debords {
-  gauche: number;
-  droite: number;
+interface Overflows {
+  left: number;
+  rightHand: number;
 }
 
 /** Le glisser d'une colonne, tel que le rendu le voit. */
-interface GlisserSection {
+interface SectionDrag {
   id: Id;
   /** Le coin haut gauche de la copie qui suit le pointeur. */
   x: number;
@@ -164,7 +164,7 @@ interface GlisserSection {
 }
 
 /** Le redimensionnement d'une colonne en pixels, par l'écart qui la suit. */
-interface Redimensionnement {
+interface Resizing {
   id: Id;
   startX: number;
   /** Sa largeur au premier appui. */
@@ -173,11 +173,11 @@ interface Redimensionnement {
    * 1 quand la colonne est à gauche de l'écart, -1 à droite : tirer vers la
    * gauche élargit alors celle-ci.
    */
-  sens: 1 | -1;
+  direction: 1 | -1;
   started: boolean;
 }
 
-interface GlisserSectionEnCours extends GlisserSection {
+interface SectionDragInProgress extends SectionDrag {
   startX: number;
   startY: number;
   offsetX: number;
@@ -191,7 +191,7 @@ interface GlisserSectionEnCours extends GlisserSection {
 }
 
 /** Le glisser des copies : elles se montrent sans répondre. */
-const INERTE: WidgetDrag = {
+const INERT: WidgetDrag = {
   dragged: null,
   onDragStart: () => {},
   onDragEnd: () => {},
@@ -202,9 +202,9 @@ const INERTE: WidgetDrag = {
  * Le rang visé : la première colonne dont on n'a pas dépassé le milieu, ligne
  * par ligne — les colonnes qui ne tiennent plus passent à la ligne suivante.
  */
-const rangDepuis = (places: DOMRect[], x: number, y: number): number => {
-  const rang = places.findIndex((r) => y < r.top || (y <= r.bottom && x < r.left + r.width / 2));
-  return rang === -1 ? places.length : rang;
+const rankFrom = (places: DOMRect[], x: number, y: number): number => {
+  const rank = places.findIndex((r) => y < r.top || (y <= r.bottom && x < r.left + r.width / 2));
+  return rank === -1 ? places.length : rank;
 };
 
 /**
@@ -220,14 +220,14 @@ const rangDepuis = (places: DOMRect[], x: number, y: number): number => {
  * et 25 % réclameraient 100 % plus deux écarts, et la dernière retournerait à
  * la ligne. D'où « ecarts », la somme de ceux qui séparent les colonnes.
  */
-const largeurDe = (section: BoardSection, ecarts: number): CSSProperties => {
+const widthOf = (section: BoardSection, gaps: number): CSSProperties => {
   if (section.width_unit === "auto") {
     return { flex: "1 1 0px", minWidth: 0 };
   }
   if (section.width_unit === "percent") {
     const part = section.width_value ?? 0;
     return {
-      flex: `0 0 calc((100% - ${ecarts}px) * ${part} / 100)`,
+      flex: `0 0 calc((100% - ${gaps}px) * ${part} / 100)`,
       minWidth: 0,
     };
   }
@@ -243,43 +243,43 @@ const largeurDe = (section: BoardSection, ecarts: number): CSSProperties => {
  * se gardent dans l'ordre tant que le reste leur donne à chacune sa largeur
  * minimale ; les suivantes disparaissent.
  */
-const masquees = (
-  suite: BoardSection[],
+const hiddenItems = (
+  followUp: BoardSection[],
   largeur: number,
-  ecartApres: (section: BoardSection) => number,
-  ecarts: number,
+  gapAfter: (section: BoardSection) => number,
+  gaps: number,
 ): Set<Id> => {
-  const cachees = new Set<Id>();
-  let fixes = 0;
-  let autos: BoardSection[] = [];
-  const somme = (liste: BoardSection[]) => liste.reduce((a, s) => a + ecartApres(s), 0);
+  const hidden = new Set<Id>();
+  let fixed = 0;
+  let autoSections: BoardSection[] = [];
+  const sum = (list: BoardSection[]) => list.reduce((a, s) => a + gapAfter(s), 0);
 
-  const finirLigne = () => {
-    let gardees: BoardSection[] = [];
-    for (const section of autos) {
-      const besoin =
-        fixes + somme(gardees) + ecartApres(section) + SECTION_MIN_WIDTH * (gardees.length + 1);
-      if (besoin <= largeur + ARRONDI) gardees = [...gardees, section];
-      else cachees.add(section.id);
+  const finishRow = () => {
+    let keptKeys: BoardSection[] = [];
+    for (const section of autoSections) {
+      const need =
+        fixed + sum(keptKeys) + gapAfter(section) + SECTION_MIN_WIDTH * (keptKeys.length + 1);
+      if (need <= largeur + ROUNDING) keptKeys = [...keptKeys, section];
+      else hidden.add(section.id);
     }
-    fixes = 0;
-    autos = [];
+    fixed = 0;
+    autoSections = [];
   };
 
-  for (const section of suite) {
+  for (const section of followUp) {
     if (section.width_unit === "auto") {
-      autos.push(section);
+      autoSections.push(section);
       continue;
     }
     const part = section.width_value ?? 0;
-    const w = section.width_unit === "percent" ? ((largeur - ecarts) * part) / 100 : part;
-    const occupe = fixes + somme(autos);
-    const place = w + ecartApres(section);
-    if ((fixes > 0 || autos.length > 0) && occupe + place > largeur + ARRONDI) finirLigne();
-    fixes += place;
+    const w = section.width_unit === "percent" ? ((largeur - gaps) * part) / 100 : part;
+    const occupe = fixed + sum(autoSections);
+    const place = w + gapAfter(section);
+    if ((fixed > 0 || autoSections.length > 0) && occupe + place > largeur + ROUNDING) finishRow();
+    fixed += place;
   }
-  finirLigne();
-  return cachees;
+  finishRow();
+  return hidden;
 };
 
 export default function SectionsBoard<S extends BoardSection>({
@@ -293,61 +293,61 @@ export default function SectionsBoard<S extends BoardSection>({
   onReorderWidgets,
   onAddSection,
   onDuplicateSection,
-  coller,
+  paste,
   onDeleteWidget,
   onDeleteSection,
   onReorderSections,
   onChangeSection,
 }: SectionsBoardProps<S>) {
   // La permission du compte sur chaque type de widget : le tiroir s'y règle.
-  const acces = useAccesWidget();
+  const access = useWidgetAccess();
 
   // Le widget que l'on tient, ou « null ». Il vit ici et non dans une
   // colonne : on le prend dans l'une et on le pose dans une autre.
-  const [widgetGlisse, setWidgetGlisse] = useState<Id | null>(null);
+  const [draggedWidget, setDraggedWidget] = useState<Id | null>(null);
   /** Le tiroir des widgets, ouvert par une colonne. */
-  const [tiroirOuvert, setTiroirOuvert] = useState(false);
+  const [drawerOpen, setDrawerOpened] = useState(false);
   // Sortir de la modification referme le tiroir : on n'y pose plus rien.
   useEffect(() => {
-    if (locked) setTiroirOuvert(false);
+    if (locked) setDrawerOpened(false);
   }, [locked]);
   /** Le type du widget pris dans le tiroir, le temps du glisser. */
-  const [typeNouveau, setTypeNouveau] = useState<string | null>(null);
+  const [newType, setNewType] = useState<string | null>(null);
   /**
    * La corbeille survolée par le widget tenu : elle se colore, et un widget
    * lâché au-dessus d'elle s'y jette à la fin du glisser, même si le
    * navigateur n'a pas livré le dépôt.
    */
-  const [surCorbeille, setSurCorbeille] = useState(false);
+  const [overTrash, setOverTrash] = useState(false);
   /** La colonne survolée pendant le glisser : c'est elle qui reçoit. */
-  const [colonneSurvolee, setColonneSurvolee] = useState<Id | null>(null);
+  const [hoveredColumn, setHoveredColumn] = useState<Id | null>(null);
   /** La colonne tenue par sa poignée : voir « Colonnes : glisser ». */
-  const [glisse, setGlisse] = useState<GlisserSection | null>(null);
-  const glisseRef = useRef<GlisserSectionEnCours | null>(null);
+  const [dragging, setDragged] = useState<SectionDrag | null>(null);
+  const draggingRef = useRef<SectionDragInProgress | null>(null);
   /**
    * L'ordre posé, montré sans attendre le serveur : sans lui, la colonne
    * reviendrait à sa place le temps de l'aller-retour. Les sections relues
    * reprennent la main.
    */
-  const [ordreLocal, setOrdreLocal] = useState<Id[] | null>(null);
-  useEffect(() => setOrdreLocal(null), [sections]);
+  const [localOrder, setLocalOrder] = useState<Id[] | null>(null);
+  useEffect(() => setLocalOrder(null), [sections]);
   /** Le menu du clic droit dans le vide d'une colonne. */
-  const [menuSection, setMenuSection] = useState<{
+  const [sectionMenu, setSectionMenu] = useState<{
     section: S;
     position: PointMenuPosition;
   } | null>(null);
-  const [sectionASupprimer, setSectionASupprimer] = useState<S | null>(null);
+  const [sectionToDelete, setSectionToDelete] = useState<S | null>(null);
   /**
    * Les largeurs et les écarts saisis, montrés sans attendre le serveur, comme
    * l'ordre posé : sans eux, la colonne reviendrait à l'ancien réglage le
    * temps de l'aller-retour.
    */
-  const [modifsLocales, setModifsLocales] = useState<ReadonlyMap<Id, ModifSection>>(new Map());
-  useEffect(() => setModifsLocales(new Map()), [sections]);
+  const [localEdits, setLocalEdits] = useState<ReadonlyMap<Id, EditSection>>(new Map());
+  useEffect(() => setLocalEdits(new Map()), [sections]);
 
-  const changerSection = async (section: S, modif: ModifSection) => {
-    setModifsLocales((avant) => new Map(avant).set(section.id, { ...avant.get(section.id), ...modif }));
-    await onChangeSection(section, modif);
+  const changerSection = async (section: S, change: EditSection) => {
+    setLocalEdits((before) => new Map(before).set(section.id, { ...before.get(section.id), ...change }));
+    await onChangeSection(section, change);
   };
 
   /**
@@ -355,67 +355,67 @@ export default function SectionsBoard<S extends BoardSection>({
    * est celle de la colonne d'accueil telle qu'elle sera : c'est elle qui dit
    * l'ordre, et le serveur y admet un widget venu d'ailleurs.
    */
-  const deposer = async (sectionId: Id, index: number) => {
-    const id = widgetGlisse;
-    setWidgetGlisse(null);
-    setColonneSurvolee(null);
+  const drop = async (sectionId: Id, index: number) => {
+    const id = draggedWidget;
+    setDraggedWidget(null);
+    setHoveredColumn(null);
     const section = sections?.find((s) => s.id === sectionId);
     if (id === null || !section) return;
 
-    const actuel = widgetIds(section);
-    if (id === NOUVEAU) {
-      setTypeNouveau(null);
-      if (typeNouveau) await onCreateWidget(section, typeNouveau, Math.min(index, actuel.length));
+    const currentIds = widgetIds(section);
+    if (id === NEW_VALUE) {
+      setNewType(null);
+      if (newType) await onCreateWidget(section, newType, Math.min(index, currentIds.length));
       return;
     }
-    const arrivee = actuel.filter((autre) => autre !== id);
-    const place = Math.min(index, arrivee.length);
-    const suivant = [...arrivee.slice(0, place), id, ...arrivee.slice(place)];
+    const arrival = currentIds.filter((other) => other !== id);
+    const place = Math.min(index, arrival.length);
+    const next = [...arrival.slice(0, place), id, ...arrival.slice(place)];
     // Poser un widget là où il est déjà ne change rien.
-    if (actuel.length === suivant.length && actuel.every((v, i) => v === suivant[i])) return;
+    if (currentIds.length === next.length && currentIds.every((v, i) => v === next[i])) return;
 
-    await onReorderWidgets(sectionId, suivant);
+    await onReorderWidgets(sectionId, next);
   };
 
   /** Le widget tenu, lâché sur la corbeille : une seule fois, par le dépôt ou la fin du glisser. */
-  const jeterDansLaCorbeille = () => {
-    const id = widgetGlisse;
-    setSurCorbeille(false);
-    setWidgetGlisse(null);
-    setColonneSurvolee(null);
-    if (id !== null && id !== NOUVEAU) onDeleteWidget?.(id);
+  const moveToTrash = () => {
+    const id = draggedWidget;
+    setOverTrash(false);
+    setDraggedWidget(null);
+    setHoveredColumn(null);
+    if (id !== null && id !== NEW_VALUE) onDeleteWidget?.(id);
   };
 
   const drag: WidgetDrag = {
-    dragged: widgetGlisse,
-    onDragStart: setWidgetGlisse,
+    dragged: draggedWidget,
+    onDragStart: setDraggedWidget,
     onDragEnd: () => {
-      if (surCorbeille) jeterDansLaCorbeille();
-      setWidgetGlisse(null);
-      setSurCorbeille(false);
+      if (overTrash) moveToTrash();
+      setDraggedWidget(null);
+      setOverTrash(false);
     },
-    onDrop: deposer,
+    onDrop: drop,
   };
 
   // --- Colonnes : glisser par la poignée ---------------------------------
   // Une copie suit le pointeur ; la colonne reste à sa place, à demi effacée,
   // et un trait dans l'écart montre où elle se posera. Au pointeur et non au glisser natif : celui-ci
   // ne laisse voir qu'une image figée.
-  const rangees = !sections
+  const bands = !sections
     ? null
-    : ordreLocal
-      ? ordreLocal
+    : localOrder
+      ? localOrder
           .map((id) => sections.find((s) => s.id === id))
           .filter((s): s is S => s !== undefined)
       : sections;
   const ordonnees =
-    rangees?.map((s) => {
-      const modif = modifsLocales.get(s.id);
-      return modif ? { ...s, ...modif } : s;
+    bands?.map((s) => {
+      const change = localEdits.get(s.id);
+      return change ? { ...s, ...change } : s;
     }) ?? null;
 
   /** La colonne qu'on élargit par l'écart qui la suit, ou « null ». */
-  const redimRef = useRef<Redimensionnement | null>(null);
+  const resizeRef = useRef<Resizing | null>(null);
   /**
    * Vrai le temps du clic qui suit un redimensionnement : ce clic tombe sur le
    * « + » de l'écart, et ne doit pas insérer de colonne.
@@ -423,9 +423,9 @@ export default function SectionsBoard<S extends BoardSection>({
   const vientDeRedimensionner = useRef(false);
 
   // Les écouteurs sont posés une fois : ils lisent l'état courant par une ref.
-  const etat = useRef({ ordonnees, onReorderSections, changerSection });
+  const state = useRef({ ordonnees, onReorderSections, changerSection });
   useLayoutEffect(() => {
-    etat.current = { ordonnees, onReorderSections, changerSection };
+    state.current = { ordonnees, onReorderSections, changerSection };
   });
 
   // --- Colonnes : redimensionner par l'écart ------------------------------
@@ -433,7 +433,7 @@ export default function SectionsBoard<S extends BoardSection>({
   // relâcher. En deçà du seuil, l'appui reste le clic qui insère.
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
-      const r = redimRef.current;
+      const r = resizeRef.current;
       if (!r) return;
       const dx = event.clientX - r.startX;
       if (!r.started) {
@@ -441,24 +441,24 @@ export default function SectionsBoard<S extends BoardSection>({
         r.started = true;
         document.body.style.cursor = "col-resize";
       }
-      const largeur = Math.max(1, Math.round(r.largeur + r.sens * dx));
-      setModifsLocales((avant) =>
-        new Map(avant).set(r.id, { ...avant.get(r.id), width_value: largeur }),
+      const largeur = Math.max(1, Math.round(r.largeur + r.direction * dx));
+      setLocalEdits((before) =>
+        new Map(before).set(r.id, { ...before.get(r.id), width_value: largeur }),
       );
     };
 
     const onUp = async (event: PointerEvent) => {
-      const r = redimRef.current;
-      redimRef.current = null;
+      const r = resizeRef.current;
+      resizeRef.current = null;
       if (!r?.started) return;
       document.body.style.cursor = "";
       vientDeRedimensionner.current = true;
       setTimeout(() => (vientDeRedimensionner.current = false));
-      const { ordonnees: actuelles, changerSection: changer } = etat.current;
-      const section = actuelles?.find((s) => s.id === r.id);
+      const { ordonnees: current, changerSection: change } = state.current;
+      const section = current?.find((s) => s.id === r.id);
       if (!section) return;
-      const largeur = Math.max(1, Math.round(r.largeur + r.sens * (event.clientX - r.startX)));
-      await changer(section, { width_unit: "px", width_value: largeur });
+      const largeur = Math.max(1, Math.round(r.largeur + r.direction * (event.clientX - r.startX)));
+      await change(section, { width_unit: "px", width_value: largeur });
     };
 
     window.addEventListener("pointermove", onMove);
@@ -470,35 +470,35 @@ export default function SectionsBoard<S extends BoardSection>({
   }, []);
 
   /** L'appui sur l'écart voisin d'une colonne en pixels. */
-  const prendreLargeur = (event: ReactPointerEvent<HTMLElement>, section: S, sens: 1 | -1) => {
+  const grabWidth = (event: ReactPointerEvent<HTMLElement>, section: S, direction: 1 | -1) => {
     if (event.button !== 0 || locked) return;
     // Pas de sélection du texte voisin pendant qu'on tire.
     event.preventDefault();
-    redimRef.current = {
+    resizeRef.current = {
       id: section.id,
       startX: event.clientX,
-      largeur: section.width_value ?? mesurer(section, "px"),
-      sens,
+      largeur: section.width_value ?? measure(section, "px"),
+      direction,
       started: false,
     };
   };
 
   /** Un « + » d'écart : il n'insère pas au clic qui termine un redimensionnement. */
-  const inserer = (rang: number) => () => {
-    if (!vientDeRedimensionner.current) onAddSection(rang);
+  const insert = (rank: number) => () => {
+    if (!vientDeRedimensionner.current) onAddSection(rank);
   };
 
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
-      const d = glisseRef.current;
+      const d = draggingRef.current;
       if (!d) return;
       if (!d.started) {
         if (Math.hypot(event.clientX - d.startX, event.clientY - d.startY) < DRAG_THRESHOLD) return;
         d.started = true;
         document.body.style.cursor = "grabbing";
       }
-      d.target = rangDepuis(d.places, event.clientX, event.clientY);
-      setGlisse({
+      d.target = rankFrom(d.places, event.clientX, event.clientY);
+      setDragged({
         id: d.id,
         x: event.clientX - d.offsetX,
         y: event.clientY - d.offsetY,
@@ -509,19 +509,19 @@ export default function SectionsBoard<S extends BoardSection>({
     };
 
     const onUp = async () => {
-      const d = glisseRef.current;
-      glisseRef.current = null;
+      const d = draggingRef.current;
+      draggingRef.current = null;
       document.body.style.cursor = "";
-      setGlisse(null);
-      const { ordonnees: actuelles, onReorderSections: ranger } = etat.current;
-      if (!d?.started || !actuelles) return;
+      setDragged(null);
+      const { ordonnees: current, onReorderSections: store } = state.current;
+      if (!d?.started || !current) return;
 
-      const actuel = actuelles.map((s) => s.id);
-      const autres = actuel.filter((id) => id !== d.id);
-      const suivant = [...autres.slice(0, d.target), d.id, ...autres.slice(d.target)];
-      if (suivant.every((v, i) => v === actuel[i])) return;
-      setOrdreLocal(suivant);
-      await ranger(suivant);
+      const currentIds = current.map((s) => s.id);
+      const others = currentIds.filter((id) => id !== d.id);
+      const next = [...others.slice(0, d.target), d.id, ...others.slice(d.target)];
+      if (next.every((v, i) => v === currentIds[i])) return;
+      setLocalOrder(next);
+      await store(next);
     };
 
     window.addEventListener("pointermove", onMove);
@@ -532,45 +532,45 @@ export default function SectionsBoard<S extends BoardSection>({
     };
   }, []);
 
-  const prendreColonne = (event: ReactPointerEvent<HTMLElement>, section: S) => {
+  const grabColumn = (event: ReactPointerEvent<HTMLElement>, section: S) => {
     if (event.button !== 0 || locked) return;
-    const colonne = event.currentTarget.closest<HTMLElement>("[data-section-id]");
-    const rangee = colonne?.parentElement;
-    if (!colonne || !rangee) return;
-    const cadre = colonne.getBoundingClientRect();
-    glisseRef.current = {
+    const column = event.currentTarget.closest<HTMLElement>("[data-section-id]");
+    const band = column?.parentElement;
+    if (!column || !band) return;
+    const frame = column.getBoundingClientRect();
+    draggingRef.current = {
       id: section.id,
-      x: cadre.left,
-      y: cadre.top,
-      width: cadre.width,
-      height: cadre.height,
+      x: frame.left,
+      y: frame.top,
+      width: frame.width,
+      height: frame.height,
       target: 0,
       startX: event.clientX,
       startY: event.clientY,
-      offsetX: event.clientX - cadre.left,
-      offsetY: event.clientY - cadre.top,
+      offsetX: event.clientX - frame.left,
+      offsetY: event.clientY - frame.top,
       started: false,
-      places: [...rangee.querySelectorAll<HTMLElement>("[data-section-id]")]
-        .filter((autre) => autre !== colonne)
-        .map((autre) => autre.getBoundingClientRect()),
+      places: [...band.querySelectorAll<HTMLElement>("[data-section-id]")]
+        .filter((other) => other !== column)
+        .map((other) => other.getBoundingClientRect()),
     };
   };
 
-  const tenue = glisse && ordonnees ? ordonnees.find((s) => s.id === glisse.id) : undefined;
+  const held = dragging && ordonnees ? ordonnees.find((s) => s.id === dragging.id) : undefined;
 
   /**
    * La poignée de la colonne : c'est par elle, et par elle seule, que la
    * colonne se déplace — le reste appartient à ses widgets, qui ont leur
    * propre glisser.
    */
-  const poignee = (section: S) => (
+  const handle = (section: S) => (
     <Center
-      onPointerDown={(e) => prendreColonne(e, section)}
+      onPointerDown={(e) => grabColumn(e, section)}
       aria-label="Déplacer la section"
       c="dimmed"
       style={{
         position: "absolute",
-        top: -BANDE_HAUT,
+        top: -TOP_BAND,
         left: 0,
         right: 0,
         height: GRIP_ZONE,
@@ -587,12 +587,12 @@ export default function SectionsBoard<S extends BoardSection>({
    * « auto » à « px » ou « % » la garde telle qu'elle est. Les pour-cent se
    * lisent, comme dans « largeurDe », sur la rangée moins ses écarts.
    */
-  const mesurer = (section: S, unite: "px" | "percent"): number => {
-    const colonne = rangeeEl?.querySelector<HTMLElement>(`[data-section-id="${section.id}"]`);
-    const largeur = colonne?.getBoundingClientRect().width ?? 0;
-    if (unite === "px") return largeur;
-    const disponible = (largeurRangee ?? 0) - ecarts;
-    return disponible > 0 ? (largeur / disponible) * 100 : 100;
+  const measure = (section: S, unit: "px" | "percent"): number => {
+    const column = bandEl?.querySelector<HTMLElement>(`[data-section-id="${section.id}"]`);
+    const largeur = column?.getBoundingClientRect().width ?? 0;
+    if (unit === "px") return largeur;
+    const available = (bandWidth ?? 0) - gaps;
+    return available > 0 ? (largeur / available) * 100 : 100;
   };
 
   /**
@@ -600,26 +600,26 @@ export default function SectionsBoard<S extends BoardSection>({
    * le pointeur et la colonne tenue, restée à sa place, qui se montrent sans
    * répondre.
    */
-  const cadre = (section: S, debords: Debords, inerte = false) => {
-    const nombre = widgetIds(section).length;
+  const frame = (section: S, overflows: Overflows, inert = false) => {
+    const count = widgetIds(section).length;
     return (
       <Box
         // Le clic droit dans le vide de la colonne. Sur un widget, c'est le
         // menu du widget qui s'ouvre : il a déjà pris l'événement.
         onContextMenu={(e) => {
-          if (inerte || locked || e.defaultPrevented) return;
-          setMenuSection({ section, position: positionDuMenu(e) });
+          if (inert || locked || e.defaultPrevented) return;
+          setSectionMenu({ section, position: menuPosition(e) });
         }}
         // Lâché dans le vide de la colonne, sous ses widgets, le widget tenu
         // va au bout. Sur un widget, c'est lui qui a reçu le dépôt.
         onDragOver={(e) => {
-          if (inerte || locked || widgetGlisse === null) return;
+          if (inert || locked || draggedWidget === null) return;
           e.preventDefault();
         }}
         onDrop={(e) => {
-          if (inerte || locked || widgetGlisse === null || e.defaultPrevented) return;
+          if (inert || locked || draggedWidget === null || e.defaultPrevented) return;
           e.preventDefault();
-          void deposer(section.id, nombre);
+          void drop(section.id, count);
         }}
         style={{
           flex: 1,
@@ -629,7 +629,7 @@ export default function SectionsBoard<S extends BoardSection>({
           // La bande du pied, et l'air au-dessus du trait, tenus verrouillé ou
           // non : le contenu ne bouge pas d'un mode à l'autre. Celle de la
           // poignée déborde au-dessus (BANDE_HAUT).
-          paddingBottom: GRIP_ZONE + CADRE_PADDING,
+          paddingBottom: GRIP_ZONE + FRAME_PADDING,
         }}
       >
         {/* Le cadre en pointillé, posé par-dessus et non autour : il déborde
@@ -641,21 +641,21 @@ export default function SectionsBoard<S extends BoardSection>({
             <Box
               style={{
                 position: "absolute",
-                top: -CADRE_PADDING,
+                top: -FRAME_PADDING,
               bottom: GRIP_ZONE,
-              left: -debords.gauche,
-              right: -debords.droite,
-                border: `1px dashed ${POINTILLE}`,
+              left: -overflows.left,
+              right: -overflows.rightHand,
+                border: `1px dashed ${DOTTED}`,
                 borderRadius: "var(--mantine-radius-md)",
                 pointerEvents: "none",
               }}
             />
-            {poignee(section)}
-            {!inerte && (
-              <LargeurField
+            {handle(section)}
+            {!inert && (
+              <WidthField
                 value={section}
                 onChange={(largeur) => changerSection(section, largeur)}
-                mesurer={(unite) => mesurer(section, unite)}
+                measure={(unit) => measure(section, unit)}
                 style={{
                   bottom: (GRIP_ZONE - ECART_FIELD_HEIGHT) / 2,
                   left: "50%",
@@ -666,27 +666,27 @@ export default function SectionsBoard<S extends BoardSection>({
           </>
         )}
 
-        {renderWidgets(section, inerte ? INERTE : drag)}
+        {renderWidgets(section, inert ? INERT : drag)}
 
         {/* L'invite ne paraît que pour une colonne vide. Verrouillée, la zone
             garde sa place sans se montrer ; sinon elle ne double pas le cadre
             de la colonne. */}
-        {nombre === 0 && (
+        {count === 0 && (
           <SectionDropZone
-            onClick={() => setTiroirOuvert(true)}
-            accueille={!inerte && colonneSurvolee === section.id}
+            onClick={() => setDrawerOpened(true)}
+            accepting={!inert && hoveredColumn === section.id}
             invisible={locked}
-            sansCadre
+            withoutFrame
             onDragOver={(e) => {
-              if (locked || widgetGlisse === null) return;
+              if (locked || draggedWidget === null) return;
               e.preventDefault();
-              setColonneSurvolee(section.id);
+              setHoveredColumn(section.id);
             }}
-            onDragLeave={() => setColonneSurvolee((s) => (s === section.id ? null : s))}
+            onDragLeave={() => setHoveredColumn((s) => (s === section.id ? null : s))}
             onDrop={(e) => {
-              if (locked || widgetGlisse === null) return;
+              if (locked || draggedWidget === null) return;
               e.preventDefault();
-              void deposer(section.id, 0);
+              void drop(section.id, 0);
             }}
           />
         )}
@@ -698,101 +698,101 @@ export default function SectionsBoard<S extends BoardSection>({
   // La largeur de la rangée, relevée avant l'affichage et à chaque
   // redimensionnement : c'est sur elle que se décident les colonnes
   // automatiques masquées.
-  const [rangeeEl, setRangeeEl] = useState<HTMLDivElement | null>(null);
-  const [largeurRangee, setLargeurRangee] = useState<number | null>(null);
+  const [bandEl, setBandEl] = useState<HTMLDivElement | null>(null);
+  const [bandWidth, setBandWidth] = useState<number | null>(null);
   useLayoutEffect(() => {
-    if (!rangeeEl) return;
-    setLargeurRangee(rangeeEl.getBoundingClientRect().width);
-    const observateur = new ResizeObserver(([entree]) => {
-      if (entree) setLargeurRangee(entree.contentRect.width);
+    if (!bandEl) return;
+    setBandWidth(bandEl.getBoundingClientRect().width);
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setBandWidth(entry.contentRect.width);
     });
-    observateur.observe(rangeeEl);
-    return () => observateur.disconnect();
-  }, [rangeeEl]);
+    observer.observe(bandEl);
+    return () => observer.disconnect();
+  }, [bandEl]);
 
   // L'écart qui suit chaque colonne, sa marge droite : la dernière n'en a
   // pas. Les pour-cent se lisent sur la rangée moins leur somme.
-  const derniere = ordonnees?.[ordonnees.length - 1];
-  const ecartApres = (section: BoardSection) => (section.id === derniere?.id ? 0 : section.gap);
-  const ecarts = (ordonnees ?? []).reduce((a, s) => a + ecartApres(s), 0);
+  const last = ordonnees?.[ordonnees.length - 1];
+  const gapAfter = (section: BoardSection) => (section.id === last?.id ? 0 : section.gap);
+  const gaps = (ordonnees ?? []).reduce((a, s) => a + gapAfter(s), 0);
 
-  const cachees =
-    ordonnees && largeurRangee !== null
-      ? masquees(ordonnees, largeurRangee, ecartApres, ecarts)
+  const hidden =
+    ordonnees && bandWidth !== null
+      ? hiddenItems(ordonnees, bandWidth, gapAfter, gaps)
       : new Set<Id>();
-  const montrees = (ordonnees ?? []).filter((s) => !cachees.has(s.id));
+  const shown = (ordonnees ?? []).filter((s) => !hidden.has(s.id));
 
   // Les écarts de part et d'autre de chaque colonne montrée : celui qui la
   // précède est l'écart de la voisine de gauche, celui qui la suit le sien.
   // Aux bords de la rangée, il n'y a pas d'écart : on reprend celui de l'autre
   // côté, pour que le cadre et le « + » s'y posent comme dans un écart.
-  const ecartsAutour = (section: BoardSection): Debords & { avant: number; apres: number } => {
-    const rang = montrees.findIndex((s) => s.id === section.id);
-    const precedente = montrees[rang - 1];
-    const apresReel = rang >= 0 && rang < montrees.length - 1 ? section.gap : null;
-    const avant = precedente ? precedente.gap : (apresReel ?? section.gap);
-    const apres = apresReel ?? avant;
+  const gapsAround = (section: BoardSection): Overflows & { before: number; after: number } => {
+    const rank = shown.findIndex((s) => s.id === section.id);
+    const previous = shown[rank - 1];
+    const afterActual = rank >= 0 && rank < shown.length - 1 ? section.gap : null;
+    const before = previous ? previous.gap : (afterActual ?? section.gap);
+    const after = afterActual ?? before;
     // Ce dont le cadre déborde de chaque côté de la colonne, dans l'écart : il
     // s'écarte de ce qu'elle porte sans le pousser, ni rien changer à l'écart.
     // Au plus loin, avec deux pixels de jour entre les traits de deux voisines.
-    const debord = (ecart: number) => Math.max(0, Math.floor(ecart / 2) - 1);
-    return { avant, apres, gauche: debord(avant), droite: debord(apres) };
+    const overflow = (gap: number) => Math.max(0, Math.floor(gap / 2) - 1);
+    return { before, after, left: overflow(before), rightHand: overflow(after) };
   };
 
   // La marge laissée hors des colonnes du bord : le « + » s'y centre comme
   // dans un écart, et la zone de défilement ne le rogne pas.
-  const bords = montrees.length > 0
+  const edges = shown.length > 0
     ? Math.max(
-        ecartsAutour(montrees[0]!).avant,
-        ecartsAutour(montrees[montrees.length - 1]!).apres,
+        gapsAround(shown[0]!).before,
+        gapsAround(shown[shown.length - 1]!).after,
       )
     : 0;
-  const marge = Math.ceil((bords + PLUS_SIZE) / 2);
+  const margin = Math.ceil((edges + PLUS_SIZE) / 2);
   // L'air entre deux lignes, quand des colonnes fixes passent à la ligne : le
   // plus large des écarts de la rangée.
-  const ecartLignes = Math.max(0, ...montrees.map((s) => s.gap));
+  const rowsGap = Math.max(0, ...shown.map((s) => s.gap));
 
   // Où la colonne tenue se posera. Rien ne bouge pendant le glisser : elle
   // reste à sa place, à demi effacée, et un trait dans l'écart montre où elle
   // ira — au bord gauche de la colonne visée parmi les autres, ou à droite de
   // la dernière. Reposée à sa place, elle ne change rien : pas de trait.
-  const autres = glisse && ordonnees ? ordonnees.filter((s) => s.id !== glisse.id) : [];
-  const rangTenue = glisse && ordonnees ? ordonnees.findIndex((s) => s.id === glisse.id) : -1;
-  const visee =
-    glisse && glisse.target !== rangTenue
-      ? glisse.target < autres.length
-        ? { id: autres[glisse.target]!.id, avant: true }
-        : { id: autres[autres.length - 1]?.id, avant: false }
+  const others = dragging && ordonnees ? ordonnees.filter((s) => s.id !== dragging.id) : [];
+  const heldRank = dragging && ordonnees ? ordonnees.findIndex((s) => s.id === dragging.id) : -1;
+  const targeted =
+    dragging && dragging.target !== heldRank
+      ? dragging.target < others.length
+        ? { id: others[dragging.target]!.id, before: true }
+        : { id: others[others.length - 1]?.id, before: false }
       : null;
 
-  const rangee = sections && (
+  const band = sections && (
     <Group
-      ref={setRangeeEl}
+      ref={setBandEl}
       align="stretch"
       gap={0}
       wrap="wrap"
       // Les colonnes occupent la hauteur restante : c'est elle que la zone en
       // pointillé remplit, sous ce que la section porte déjà.
-      style={{ flexGrow: 1, rowGap: ecartLignes }}
+      style={{ flexGrow: 1, rowGap: rowsGap }}
     >
-      {(ordonnees ?? []).map((section, rang) => {
-        const cachee = cachees.has(section.id);
+      {(ordonnees ?? []).map((section, rank) => {
+        const isHidden = hidden.has(section.id);
         // Le « + » du bout se pose sur la dernière colonne montrée.
-        const dernier = section.id === montrees[montrees.length - 1]?.id;
-        const estTenue = section.id === glisse?.id;
-        const autour = ecartsAutour(section);
+        const last = section.id === shown[shown.length - 1]?.id;
+        const isHeld = section.id === dragging?.id;
+        const surrounding = gapsAround(section);
         // L'écart entre la colonne montrée à gauche et celle-ci — celui de son
         // « + » de gauche — redimensionne celle des deux qui est en pixels, la
         // gauche d'abord. Aux bords de la rangée, il n'y a pas d'écart à tirer.
-        const precedente = montrees[montrees.findIndex((s) => s.id === section.id) - 1];
-        const redimensionne = !precedente
+        const previous = shown[shown.findIndex((s) => s.id === section.id) - 1];
+        const startResize = !previous
           ? undefined
-          : precedente.width_unit === "px"
-            ? (e: ReactPointerEvent<HTMLElement>) => prendreLargeur(e, precedente, 1)
+          : previous.width_unit === "px"
+            ? (e: ReactPointerEvent<HTMLElement>) => grabWidth(e, previous, 1)
             : section.width_unit === "px"
-              ? (e: ReactPointerEvent<HTMLElement>) => prendreLargeur(e, section, -1)
+              ? (e: ReactPointerEvent<HTMLElement>) => grabWidth(e, section, -1)
               : undefined;
-        const enEdition = !locked && !glisse && widgetGlisse === null && !cachee;
+        const inEditing = !locked && !dragging && draggedWidget === null && !isHidden;
         return (
           <Fragment key={section.id}>
             {/* La place de la colonne dans la rangée, et l'écart qui la suit
@@ -803,22 +803,22 @@ export default function SectionsBoard<S extends BoardSection>({
             <Box
               data-section-id={section.id}
               style={{
-                ...largeurDe(section, ecarts),
-                marginRight: ecartApres(section),
-                display: cachee ? "none" : "flex",
+                ...widthOf(section, gaps),
+                marginRight: gapAfter(section),
+                display: isHidden ? "none" : "flex",
                 flexDirection: "column",
                 position: "relative",
-                ...(estTenue ? { opacity: 0.5, pointerEvents: "none" } : {}),
+                ...(isHeld ? { opacity: 0.5, pointerEvents: "none" } : {}),
               }}
             >
-              {visee?.id === section.id && (
-                <TraitInsertion
-                  avant={visee.avant}
-                  ecart={visee.avant ? autour.avant : autour.apres}
-                  debout
+              {targeted?.id === section.id && (
+                <InsertionLine
+                  before={targeted.before}
+                  gap={targeted.before ? surrounding.before : surrounding.after}
+                  standing
                 />
               )}
-              {enEdition && (
+              {inEditing && (
                 <>
                   <ColumnInsert
                     label="Insérer une section ici"
@@ -826,38 +826,38 @@ export default function SectionsBoard<S extends BoardSection>({
                     // à la même distance, comme dans un écart. Entre la bande
                     // de la poignée et celle du pied, à la hauteur du cadre.
                     style={{
-                      top: -CADRE_PADDING,
+                      top: -FRAME_PADDING,
                       bottom: GRIP_ZONE,
-                      left: -(autour.avant + INSERT_ZONE) / 2,
+                      left: -(surrounding.before + INSERT_ZONE) / 2,
                     }}
-                    onClick={inserer(rang)}
-                    onResizeStart={redimensionne}
+                    onClick={insert(rank)}
+                    onResizeStart={startResize}
                   />
-                  {dernier ? (
+                  {last ? (
                     <ColumnInsert
                       label="Insérer une section ici"
                       style={{
-                        top: -CADRE_PADDING,
+                        top: -FRAME_PADDING,
                         bottom: GRIP_ZONE,
-                        right: -(autour.apres + INSERT_ZONE) / 2,
+                        right: -(surrounding.after + INSERT_ZONE) / 2,
                       }}
-                      onClick={inserer(sections.length)}
+                      onClick={insert(sections.length)}
                     />
                   ) : (
                     // L'écart qui suit la colonne se saisit sous lui, centré
                     // dans la bande du pied, à côté de la largeur.
-                    <EcartField
+                    <GapField
                       value={section.gap}
                       onChange={(gap) => changerSection(section, { gap })}
                       style={{
                         bottom: (GRIP_ZONE - ECART_FIELD_HEIGHT) / 2,
-                        right: -(autour.apres + ECART_FIELD_WIDTH) / 2,
+                        right: -(surrounding.after + ECART_FIELD_WIDTH) / 2,
                       }}
                     />
                   )}
                 </>
               )}
-              {cadre(section, autour, estTenue)}
+              {frame(section, surrounding, isHeld)}
             </Box>
           </Fragment>
         );
@@ -869,20 +869,20 @@ export default function SectionsBoard<S extends BoardSection>({
   // section » serait une conclusion prématurée. Verrouillée, la rangée vide
   // propose d'en ajouter si elle peut se déverrouiller : le geste la
   // déverrouille d'abord, puis pose la section.
-  const ajoutPossible = !locked || Boolean(onUnlock);
+  const canAdd = !locked || Boolean(onUnlock);
   // Verrouillée, une rangée dont aucune section ne porte rien n'a rien à
   // montrer : l'écran vide revient, comme sans section. Le geste la
   // déverrouille alors sans en ajouter une de plus — les siennes attendent.
-  const vide =
+  const empty =
     sections !== null &&
     (sections.length === 0 || (locked && sections.every((s) => widgetIds(s).length === 0)));
-  const contenu = !sections ? null : vide ? (
+  const content = !sections ? null : empty ? (
     <EmptyPanel
       icon={IconColumns}
       message="Aucune section"
-      actionLabel={ajoutPossible ? "Créer une section" : undefined}
+      actionLabel={canAdd ? "Créer une section" : undefined}
       onAction={
-        ajoutPossible
+        canAdd
           ? async () => {
               if (locked) await onUnlock?.();
               if (sections.length === 0) onAddSection();
@@ -892,7 +892,7 @@ export default function SectionsBoard<S extends BoardSection>({
     />
   ) : (
     <ScrollArea
-      style={{ flex: 1, minHeight: 0, marginInline: -marge, marginTop: -BANDE_HAUT }}
+      style={{ flex: 1, minHeight: 0, marginInline: -margin, marginTop: -TOP_BAND }}
       type="always"
       scrollbarSize={2}
       styles={{
@@ -915,17 +915,17 @@ export default function SectionsBoard<S extends BoardSection>({
         // colonne, et la zone de défilement rogne ce qui dépasse : elle
         // s'élargit d'autant dans la marge de la page, et le contenu s'en
         // retire, pour que les colonnes restent à leur place.
-        viewport: { paddingInline: marge, paddingTop: BANDE_HAUT },
+        viewport: { paddingInline: margin, paddingTop: TOP_BAND },
         content: { display: "flex", flexDirection: "column", minHeight: "100%" },
       }}
     >
-      {rangee}
+      {band}
     </ScrollArea>
   );
 
   return (
     <>
-      {contenu}
+      {content}
 
       {/* Le tiroir des widgets s'ouvre d'ici, pour toutes les colonnes : on
           choisit la place en y glissant le widget. Verrouillée, ou sans
@@ -934,43 +934,43 @@ export default function SectionsBoard<S extends BoardSection>({
         <Box
           style={{
             position: "fixed",
-            right: PAGE_GUTTER + AIDE_TAILLE + AIDE_ECART,
+            right: PAGE_GUTTER + HELP_SIZE + HELP_OFFSET,
             bottom: PAGE_GUTTER,
             zIndex: 200,
             display: "flex",
             alignItems: "center",
-            gap: AIDE_ECART,
+            gap: HELP_OFFSET,
           }}
         >
           {/* Le temps qu'on tient un widget posé — pas celui qu'on tire du
               tiroir —, une corbeille à gauche : y lâcher le widget le
               supprime, après la question habituelle. */}
-          {onDeleteWidget && widgetGlisse !== null && widgetGlisse !== NOUVEAU && (
+          {onDeleteWidget && draggedWidget !== null && draggedWidget !== NEW_VALUE && (
             <Box
               aria-label="Supprimer le widget"
               onDragEnter={(e) => {
                 e.preventDefault();
-                setSurCorbeille(true);
+                setOverTrash(true);
               }}
               onDragOver={(e) => {
                 e.preventDefault();
                 e.dataTransfer.dropEffect = "move";
-                setSurCorbeille(true);
+                setOverTrash(true);
               }}
               // Passer sur l'icône n'est pas sortir : seul compte ce qui mène
               // hors de la corbeille.
               onDragLeave={(e) => {
                 if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-                  setSurCorbeille(false);
+                  setOverTrash(false);
                 }
               }}
               onDrop={(e) => {
                 e.preventDefault();
-                jeterDansLaCorbeille();
+                moveToTrash();
               }}
               style={{
-                width: AIDE_TAILLE,
-                height: AIDE_TAILLE,
+                width: HELP_SIZE,
+                height: HELP_SIZE,
                 borderRadius: "50%",
                 display: "flex",
                 alignItems: "center",
@@ -979,7 +979,7 @@ export default function SectionsBoard<S extends BoardSection>({
                 // widget tenu, elle fonce d'un cran.
                 color: "var(--mantine-color-white)",
                 backgroundColor: RED,
-                filter: surCorbeille ? "brightness(0.85)" : undefined,
+                filter: overTrash ? "brightness(0.85)" : undefined,
                 transition: "filter 120ms ease",
               }}
             >
@@ -988,22 +988,22 @@ export default function SectionsBoard<S extends BoardSection>({
           )}
           <AddButton
             label="Ajouter un widget"
-            onClick={() => setTiroirOuvert(true)}
-            h={AIDE_TAILLE}
+            onClick={() => setDrawerOpened(true)}
+            h={HELP_SIZE}
           />
         </Box>
       )}
 
       {/* La copie qui suit le pointeur : la colonne entière, à sa taille,
           sans inclinaison. */}
-      {glisse && tenue && (
+      {dragging && held && (
         <Box
           style={{
             position: "fixed",
-            left: glisse.x,
-            top: glisse.y,
-            width: glisse.width,
-            height: glisse.height,
+            left: dragging.x,
+            top: dragging.y,
+            width: dragging.width,
+            height: dragging.height,
             zIndex: 400,
             pointerEvents: "none",
             display: "flex",
@@ -1013,45 +1013,45 @@ export default function SectionsBoard<S extends BoardSection>({
             boxShadow: "var(--mantine-shadow-xl)",
           }}
         >
-          {cadre(tenue, ecartsAutour(tenue), true)}
+          {frame(held, gapsAround(held), true)}
         </Box>
       )}
 
       <WidgetDrawer
-        opened={tiroirOuvert}
-        onClose={() => setTiroirOuvert(false)}
+        opened={drawerOpen}
+        onClose={() => setDrawerOpened(false)}
         // Le tiroir ne propose que les types que le compte peut modifier.
-        widgets={widgets.filter((w) => acces(w.kind) === "update")}
+        widgets={widgets.filter((w) => access(w.kind) === "update")}
         onDragStart={(widget) => {
-          setTypeNouveau(widget.type);
-          setWidgetGlisse(NOUVEAU);
+          setNewType(widget.type);
+          setDraggedWidget(NEW_VALUE);
         }}
         onDragEnd={() => {
-          setWidgetGlisse(null);
-          setColonneSurvolee(null);
+          setDraggedWidget(null);
+          setHoveredColumn(null);
         }}
       />
 
-      {menuSection && (
-        <PointMenu position={menuSection.position} onClose={() => setMenuSection(null)}>
-          {coller && (
+      {sectionMenu && (
+        <PointMenu position={sectionMenu.position} onClose={() => setSectionMenu(null)}>
+          {paste && (
             <>
               <Menu.Item
                 leftSection={<IconClipboard size={16} />}
                 onClick={() => {
-                  const { section } = menuSection;
-                  setMenuSection(null);
-                  void coller.onColler(section);
+                  const { section } = sectionMenu;
+                  setSectionMenu(null);
+                  void paste.onPaste(section);
                 }}
               >
-                Coller « {coller.libelle} »
+                Coller « {paste.label} »
               </Menu.Item>
               <Menu.Divider />
             </>
           )}
           <Menu.Item
             leftSection={<IconCopyPlus size={16} />}
-            onClick={() => void onDuplicateSection(menuSection.section)}
+            onClick={() => void onDuplicateSection(sectionMenu.section)}
           >
             Dupliquer
           </Menu.Item>
@@ -1059,7 +1059,7 @@ export default function SectionsBoard<S extends BoardSection>({
           <Menu.Item
             color={RED}
             leftSection={<IconTrash size={16} />}
-            onClick={() => setSectionASupprimer(menuSection.section)}
+            onClick={() => setSectionToDelete(sectionMenu.section)}
           >
             Supprimer
           </Menu.Item>
@@ -1067,18 +1067,18 @@ export default function SectionsBoard<S extends BoardSection>({
       )}
 
       <DeleteConfirmModal
-        opened={sectionASupprimer !== null}
-        onClose={() => setSectionASupprimer(null)}
+        opened={sectionToDelete !== null}
+        onClose={() => setSectionToDelete(null)}
         onConfirm={async () => {
-          const section = sectionASupprimer;
-          setSectionASupprimer(null);
+          const section = sectionToDelete;
+          setSectionToDelete(null);
           if (section) await onDeleteSection(section);
         }}
         title="Supprimer la section"
         message={
           <>
             Voulez-vous vraiment supprimer cette section ?
-            {sectionASupprimer && widgetIds(sectionASupprimer).length > 0 && (
+            {sectionToDelete && widgetIds(sectionToDelete).length > 0 && (
               <>
                 {" "}
                 Ses widgets seront supprimés avec elle, et avec eux les projets, les tâches, les

@@ -1,6 +1,6 @@
 import { Stack } from "@mantine/core";
 import { IconColumns } from "@tabler/icons-react";
-import { BarresEtiquettes, NOM, Rien, TitreIndicateur } from "./commun";
+import { LabelBars, NAME, Nothing, TitreIndicateur } from "./commun";
 import type { TaskIndicatorWidget } from "./types";
 import { useListColors } from "../components/board/TaskBoard";
 
@@ -9,26 +9,26 @@ import { useListColors } from "../components/board/TaskBoard";
 // tableau, résolu pour le thème courant, et couvre au moins son nom : une
 // liste vide se reconnaît encore à sa couleur.
 
-const LIBELLE = "Cartes par liste";
+const LABEL = "Cartes par liste";
 
-export const listesIndicator: TaskIndicatorWidget = {
+export const listsIndicator: TaskIndicatorWidget = {
   type: "lists",
   kind: "task",
-  label: LIBELLE,
+  label: LABEL,
   icon: IconColumns,
-  defaultConfig: { [NOM]: "" },
+  defaultConfig: { [NAME]: "" },
 
   Display: ({ config, lists }) => {
-    const couleurs = useListColors();
-    const data = lists.map((liste) => ({
-      name: liste.name,
-      value: liste.cards.filter((c) => c.kind === "card").length,
-      color: couleurs(liste.color).fond,
+    const colors = useListColors();
+    const data = lists.map((list) => ({
+      name: list.name,
+      value: list.cards.filter((c) => c.kind === "card").length,
+      color: colors(list.color).background,
     }));
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaut={LIBELLE} />
-        {data.length === 0 ? <Rien>Aucune liste</Rien> : <BarresEtiquettes data={data} libelleDedans couleursPropres />}
+        <TitreIndicateur config={config} defaultValue={LABEL} />
+        {data.length === 0 ? <Nothing>Aucune liste</Nothing> : <LabelBars data={data} insideLabel ownColors />}
       </Stack>
     );
   },

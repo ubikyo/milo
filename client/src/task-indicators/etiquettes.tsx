@@ -1,44 +1,44 @@
 import { Stack } from "@mantine/core";
 import { IconTags } from "@tabler/icons-react";
-import { BarresEtiquettes, NOM, Rien, TitreIndicateur, tachesDe } from "./commun";
-import type { Barre } from "./commun";
+import { LabelBars, NAME, Nothing, TitreIndicateur, tasksOf } from "./commun";
+import type { Bar } from "./commun";
 import type { TaskIndicatorWidget } from "./types";
 import type { Id } from "@milo/shared";
 
 // Les étiquettes les plus portées par les cartes du tableau ouvert, chacune
 // dans sa couleur.
 
-const LIBELLE = "Étiquettes";
+const LABEL = "Étiquettes";
 
-export const etiquettesTachesIndicator: TaskIndicatorWidget = {
+export const taskLabelsIndicator: TaskIndicatorWidget = {
   type: "labels",
   kind: "task",
-  label: LIBELLE,
+  label: LABEL,
   icon: IconTags,
-  defaultConfig: { [NOM]: "" },
+  defaultConfig: { [NAME]: "" },
 
   Display: ({ config, lists }) => {
-    const parEtiquette = new Map<Id, Barre>();
-    for (const carte of tachesDe(lists)) {
-      for (const etiquette of carte.labels) {
-        const deja = parEtiquette.get(etiquette.id);
-        if (deja) deja.value += 1;
+    const byLabel = new Map<Id, Bar>();
+    for (const card of tasksOf(lists)) {
+      for (const label of card.labels) {
+        const already = byLabel.get(label.id);
+        if (already) already.value += 1;
         else
-          parEtiquette.set(etiquette.id, {
-            name: etiquette.name,
+          byLabel.set(label.id, {
+            name: label.name,
             value: 1,
-            color: etiquette.color,
+            color: label.color,
           });
       }
     }
-    const data = [...parEtiquette.values()].sort(
+    const data = [...byLabel.values()].sort(
       (a, b) => b.value - a.value || a.name.localeCompare(b.name),
     );
 
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaut={LIBELLE} />
-        {data.length === 0 ? <Rien>Aucune étiquette</Rien> : <BarresEtiquettes data={data} couleursPropres />}
+        <TitreIndicateur config={config} defaultValue={LABEL} />
+        {data.length === 0 ? <Nothing>Aucune étiquette</Nothing> : <LabelBars data={data} ownColors />}
       </Stack>
     );
   },

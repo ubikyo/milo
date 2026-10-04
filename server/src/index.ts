@@ -4,11 +4,11 @@
 
 import { createApp } from "./app.js";
 import { env } from "./env.js";
-import { INTERVALLE_RELEVE_FLUX, releverLesFlux } from "./lib/feed.js";
-import { INTERVALLE_RAPPELS, envoyerLesRappels } from "./lib/rappels.js";
-import { INTERVALLE_RELEVE, releverLesBoites } from "./lib/support-mail.js";
-import { INTERVALLE_ENTRETIEN, entretenirAbonnements } from "./lib/support-webhooks.js";
-import { menageDesMedias } from "./repositories/attachments.js";
+import { FEED_POLL_INTERVAL, pollAllFeeds } from "./lib/feed.js";
+import { REMINDERS_INTERVAL, sendReminders } from "./lib/rappels.js";
+import { POLL_INTERVAL, pollMailboxes } from "./lib/support-mail.js";
+import { MAINTENANCE_INTERVAL, maintainSubscriptions } from "./lib/support-webhooks.js";
+import { mediaCleanup } from "./repositories/attachments.js";
 import { sessions } from "./repositories/users.js";
 
 const app = createApp();
@@ -17,60 +17,60 @@ const app = createApp();
 // aucune pièce jointe ni aucune description ne cite non plus : les deux
 // partent au démarrage, puis une fois par jour. `unref` laisse le processus se
 // terminer.
-const purger = () => {
+const purge = () => {
   sessions.purgeExpired.run(new Date().toISOString());
   // Le ménage lit le disque : une panne de ce côté ne doit pas empêcher le
   // serveur de démarrer.
   try {
-    menageDesMedias();
-  } catch (erreur) {
-    console.error("Ménage des médias :", erreur);
+    mediaCleanup();
+  } catch (error) {
+    console.error("Ménage des médias :", error);
   }
 };
-purger();
-setInterval(purger, 24 * 60 * 60 * 1000).unref();
+purge();
+setInterval(purge, 24 * 60 * 60 * 1000).unref();
 
 // Les boîtes de support des sociétés sont relevées au démarrage, puis toutes
 // les cinq minutes : chaque e-mail reçu y devient une demande.
-const relever = () => {
-  releverLesBoites().catch((erreur) => console.error("Relève des boîtes de support :", erreur));
+const poll = () => {
+  pollMailboxes().catch((error) => console.error("Relève des boîtes de support :", error));
 };
-relever();
-setInterval(relever, INTERVALLE_RELEVE).unref();
+poll();
+setInterval(poll, POLL_INTERVAL).unref();
 
 // Les flux des éléments RSS sont relevés par le serveur, chacun à l'intervalle
 // que ses éléments règlent (30 minutes par défaut) : la relève de fond regarde
 // chaque minute lesquels sont arrivés à échéance.
-const releverFlux = () => {
-  releverLesFlux().catch((erreur) => console.error("Relève des flux RSS :", erreur));
+const pollFeeds = () => {
+  pollAllFeeds().catch((error) => console.error("Relève des flux RSS :", error));
 };
-releverFlux();
-setInterval(releverFlux, INTERVALLE_RELEVE_FLUX).unref();
+pollFeeds();
+setInterval(pollFeeds, FEED_POLL_INTERVAL).unref();
 
 // Les rappels des échéances partent à la minute près.
-const rappeler = () => {
+const remind = () => {
   try {
-    envoyerLesRappels();
-  } catch (erreur) {
-    console.error("Rappels des échéances :", erreur);
+    sendReminders();
+  } catch (error) {
+    console.error("Rappels des échéances :", error);
   }
 };
-rappeler();
-setInterval(rappeler, INTERVALLE_RAPPELS).unref();
+remind();
+setInterval(remind, REMINDERS_INTERVAL).unref();
 
 const server = app.listen(env.port, () => {
   console.log(`API Milo disponible sur http://localhost:${env.port}`);
   // Les abonnements aux boîtes de support se demandent une fois Milo à
   // l'écoute : Graph vérifie l'adresse avant d'accepter.
-  entretenir();
+  maintain();
 });
 
-const entretenir = () => {
-  entretenirAbonnements().catch((erreur) =>
-    console.error("Abonnements aux boîtes de support :", erreur),
+const maintain = () => {
+  maintainSubscriptions().catch((error) =>
+    console.error("Abonnements aux boîtes de support :", error),
   );
 };
-setInterval(entretenir, INTERVALLE_ENTRETIEN).unref();
+setInterval(maintain, MAINTENANCE_INTERVAL).unref();
 
 // Une extinction propre ferme les connexions en cours plutôt que de les
 // couper net : c'est ce que systemd demande avant de tuer le processus.

@@ -9,7 +9,7 @@ import type { Attachment, Id } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { AttachmentRow, CountRow } from "../db/rows.js";
 import { covers } from "./covers.js";
-import { estUneImage, mediasCites, supprimerLesOrphelins, supprimerMedia, urlMedia } from "../lib/medias.js";
+import { isImage, citedMedia, deleteOrphans, deleteMedia, mediaUrl } from "../lib/medias.js";
 
 export const attachments = {
   byId: selection<AttachmentRow>("SELECT * FROM card_attachments WHERE id = ?"),
@@ -34,23 +34,23 @@ export const attachments = {
   ),
 };
 
-const ranger = mutation("UPDATE card_attachments SET position = ? WHERE id = ? AND card_id = ?");
+const store = mutation("UPDATE card_attachments SET position = ? WHERE id = ? AND card_id = ?");
 
 /** L'ordre complet des pièces d'une carte ; un identifiant d'une autre carte est ignoré. */
 export const reorderAttachments = transaction((cardId: Id, ids: Id[]) => {
-  ids.forEach((id, index) => ranger.run(index, id, cardId));
+  ids.forEach((id, index) => store.run(index, id, cardId));
 });
 
 /** Une pièce jointe telle qu'elle revient au client : avec son adresse. */
 export const attachmentOf = (row: AttachmentRow): Attachment => ({
   ...row,
-  url: urlMedia(row.file),
-  is_image: estUneImage(row.file),
+  url: mediaUrl(row.file),
+  is_image: isImage(row.file),
 });
 
 // Le nombre de pièces jointes de chaque carte d'un tableau : c'est ce qui
 // allume le trombone de la carte.
-const comptesDuTableau = selection<{ card_id: Id; total: number }>(
+const countsOfBoard = selection<{ card_id: Id; total: number }>(
   `SELECT card_attachments.card_id, COUNT(*) AS total
    FROM card_attachments
    JOIN task_cards ON task_cards.id = card_attachments.card_id
@@ -60,7 +60,7 @@ const comptesDuTableau = selection<{ card_id: Id; total: number }>(
 );
 
 export const attachmentCountsOfBoard = (boardId: unknown): Map<Id, number> =>
-  new Map(comptesDuTableau.all(boardId).map((r) => [r.card_id, r.total]));
+  new Map(countsOfBoard.all(boardId).map((r) => [r.card_id, r.total]));
 
 export const attachmentsOf = (cardId: Id): Attachment[] =>
   attachments.ofCard.all(cardId).map(attachmentOf);
@@ -72,13 +72,13 @@ export const attachmentsOf = (cardId: Id): Attachment[] =>
  */
 export const removeAttachment = (row: AttachmentRow): void => {
   attachments.remove.run(row.id);
-  if (attachments.countOfFile({ file: row.file }).count === 0) supprimerMedia(row.file);
+  if (attachments.countOfFile({ file: row.file }).count === 0) deleteMedia(row.file);
 };
 
 // --- Ménage ----------------------------------------------------------------
 
 /** Tous les fichiers cités par une pièce jointe. */
-const fichiersDesPiecesJointes = selection<{ file: string }>(
+const attachmentFiles = selection<{ file: string }>(
   "SELECT DISTINCT file FROM card_attachments",
 );
 
@@ -88,7 +88,7 @@ const fichiersDesPiecesJointes = selection<{ file: string }>(
  * doit valoir pour ce que l'application garde, pas pour ce qu'elle produit
  * aujourd'hui.
  */
-const textesHtml = [
+const htmlTexts = [
   selection<{ html: string }>("SELECT description AS html FROM task_cards WHERE description <> ''"),
   selection<{ html: string }>("SELECT description AS html FROM projects WHERE description <> ''"),
   selection<{ html: string }>("SELECT text AS html FROM card_comments"),
@@ -103,16 +103,16 @@ const textesHtml = [
  * Tourne au démarrage puis une fois par jour ; les fichiers récents sont
  * épargnés (voir `DELAI_DE_GRACE`).
  */
-export const menageDesMedias = (): number => {
-  const cites = new Set<string>();
+export const mediaCleanup = (): number => {
+  const cited = new Set<string>();
 
-  for (const { file } of fichiersDesPiecesJointes.all()) cites.add(file);
-  for (const { file } of covers.files.all()) cites.add(file);
-  for (const lecture of textesHtml) {
-    for (const { html } of lecture.all()) {
-      for (const fichier of mediasCites(html)) cites.add(fichier);
+  for (const { file } of attachmentFiles.all()) cited.add(file);
+  for (const { file } of covers.files.all()) cited.add(file);
+  for (const reading of htmlTexts) {
+    for (const { html } of reading.all()) {
+      for (const file of citedMedia(html)) cited.add(file);
     }
   }
 
-  return supprimerLesOrphelins(cites);
+  return deleteOrphans(cited);
 };

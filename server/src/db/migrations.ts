@@ -11,14 +11,14 @@ import {
   SUPPORT_NEW_MESSAGE_DUE_DAYS,
   SUPPORT_NEW_MESSAGE_LABELS,
   SUPPORT_URGENCY_LABELS,
-  typeDuPanneau,
+  panelType,
   validWidgetRights,
-  widgetRightsPartout,
+  widgetRightsEverywhere,
 } from "@milo/shared";
-import { heureDeParis } from "../lib/time.js";
+import { parisTime } from "../lib/time.js";
 
 /** Les jalons que tous les projets partageaient avant qu'ils suivent la catégorie. */
-const JALONS_HISTORIQUES = [
+const HISTORICAL_MILESTONES = [
   { value: 10, label: "Étude" },
   { value: 20, label: "Devis" },
   { value: 30, label: "Commande" },
@@ -34,7 +34,7 @@ const columns = (db: Database, table: string): string[] =>
   (db.prepare(`PRAGMA table_info(${table})`).all() as ColumnInfo[]).map((c) => c.name);
 
 /** Les clés étrangères sont suspendues le temps d'un échange de table. */
-const sansClesEtrangeres = (db: Database, action: () => void): void => {
+const withoutForeignKeys = (db: Database, action: () => void): void => {
   db.pragma("foreign_keys = OFF");
   try {
     action();
@@ -50,7 +50,7 @@ const sansClesEtrangeres = (db: Database, action: () => void): void => {
  * ordre : sans elle, le panneau ne les montrerait plus. Reposé après la
  * restauration d'une sauvegarde, comme le rôle Administrateur.
  */
-export const rattacherIndicateurs = (db: Database): void => {
+export const attachIndicators = (db: Database): void => {
   for (const [table, panel] of [
     ["support_indicators", "support"],
     ["asset_indicators", "assets"],
@@ -71,25 +71,25 @@ export const rattacherIndicateurs = (db: Database): void => {
 };
 
 /** Posé une fois les références des projets et des cartes données par le compteur commun. */
-const REFERENCES_COMMUNES = "references_communes";
+const SHARED_REFERENCES = "references_communes";
 /** Le compteur des références (repositories/references.ts). */
-const COMPTEUR_REFERENCES = "support_ticket_counter";
+const REFERENCE_COUNTER = "support_ticket_counter";
 
-const lireReglage = (db: Database, cle: string): unknown => {
-  const ligne = db.prepare("SELECT value FROM settings WHERE key = ?").get(cle) as
+const readSetting = (db: Database, key: string): unknown => {
+  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as
     { value: string } | undefined;
   try {
-    return ligne ? JSON.parse(ligne.value) : undefined;
+    return row ? JSON.parse(row.value) : undefined;
   } catch {
     return undefined;
   }
 };
 
-const ecrireReglage = (db: Database, cle: string, valeur: unknown): void => {
+const writeSetting = (db: Database, key: string, value: unknown): void => {
   db.prepare(
     `INSERT INTO settings (key, value) VALUES (?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-  ).run(cle, JSON.stringify(valeur));
+  ).run(key, JSON.stringify(value));
 };
 
 /**
@@ -101,24 +101,24 @@ const ecrireReglage = (db: Database, cle: string, valeur: unknown): void => {
  * démonstration. Reposé après la restauration d'une sauvegarde, comme le rôle
  * Administrateur : une sauvegarde d'avant le compteur commun se renumérote.
  */
-export const numeroterReferences = (db: Database): void => {
-  const communes = lireReglage(db, REFERENCES_COMMUNES) === true;
-  const sansReference = communes ? "number = 0" : "1";
-  const elements = db
+export const numberReferences = (db: Database): void => {
+  const common = readSetting(db, SHARED_REFERENCES) === true;
+  const withoutReference = common ? "number = 0" : "1";
+  const items = db
     .prepare(
-      `SELECT 'project' AS sorte, id, created_at FROM projects WHERE ${sansReference}
+      `SELECT 'project' AS sorte, id, created_at FROM projects WHERE ${withoutReference}
        UNION ALL
-       SELECT 'card' AS sorte, id, created_at FROM task_cards WHERE kind = 'card' AND ${sansReference}
+       SELECT 'card' AS sorte, id, created_at FROM task_cards WHERE kind = 'card' AND ${withoutReference}
        ORDER BY created_at, id`,
     )
-    .all() as { sorte: "project" | "card"; id: number }[];
-  if (communes && elements.length === 0) return;
+    .all() as { kind: "project" | "card"; id: number }[];
+  if (common && items.length === 0) return;
 
   db.transaction(() => {
-    const compteur = lireReglage(db, COMPTEUR_REFERENCES);
+    const counter = readSetting(db, REFERENCE_COUNTER);
     const { max } = db
       .prepare(
-        communes
+        common
           ? `SELECT MAX(
                (SELECT COALESCE(MAX(number), 0) FROM support_requests),
                (SELECT COALESCE(MAX(number), 0) FROM projects),
@@ -127,17 +127,17 @@ export const numeroterReferences = (db: Database): void => {
           : "SELECT COALESCE(MAX(number), 0) AS max FROM support_requests",
       )
       .get() as { max: number };
-    let numero = Math.max(typeof compteur === "number" ? compteur : 0, max);
-    const projet = db.prepare("UPDATE projects SET number = ? WHERE id = ?");
-    const carte = db.prepare("UPDATE task_cards SET number = ? WHERE id = ?");
-    for (const { sorte, id } of elements) {
-      numero += 1;
-      (sorte === "project" ? projet : carte).run(numero, id);
+    let phoneNumber = Math.max(typeof counter === "number" ? counter : 0, max);
+    const project = db.prepare("UPDATE projects SET number = ? WHERE id = ?");
+    const card = db.prepare("UPDATE task_cards SET number = ? WHERE id = ?");
+    for (const { kind, id } of items) {
+      phoneNumber += 1;
+      (kind === "project" ? project : card).run(phoneNumber, id);
     }
     // Un séparateur ne porte pas de référence.
-    if (!communes) db.exec("UPDATE task_cards SET number = 0 WHERE kind = 'separator'");
-    ecrireReglage(db, COMPTEUR_REFERENCES, numero);
-    ecrireReglage(db, REFERENCES_COMMUNES, true);
+    if (!common) db.exec("UPDATE task_cards SET number = 0 WHERE kind = 'separator'");
+    writeSetting(db, REFERENCE_COUNTER, phoneNumber);
+    writeSetting(db, SHARED_REFERENCES, true);
   })();
 };
 
@@ -148,25 +148,25 @@ export const numeroterReferences = (db: Database): void => {
  * qu'on a vidé exprès le reste. Reposée après la restauration d'une
  * sauvegarde d'avant les sections de ces modes.
  */
-export const poserSectionsParDefaut = (db: Database): void => {
+export const setDefaultSections = (db: Database): void => {
   for (const [table, panel] of [
     ["project_indicators", "projects"],
     ["task_indicators", "tasks"],
   ] as const) {
-    const cle = `${panel}_sections_posees`;
-    if (lireReglage(db, cle) === true) continue;
+    const key = `${panel}_sections_posees`;
+    if (readSetting(db, key) === true) continue;
     db.transaction(() => {
       if (!db.prepare("SELECT 1 FROM indicator_sections WHERE panel = ?").get(panel)) {
-        const maintenant = new Date().toISOString();
+        const currentTime = new Date().toISOString();
         const { lastInsertRowid } = db
           .prepare("INSERT INTO indicator_sections (panel, position, created_at) VALUES (?, 0, ?)")
-          .run(panel, maintenant);
+          .run(panel, currentTime);
         db.prepare(
           `INSERT INTO ${table} (section_id, type, config, position, created_at)
            VALUES (?, 'list', '{}', 0, ?)`,
-        ).run(lastInsertRowid, maintenant);
+        ).run(lastInsertRowid, currentTime);
       }
-      ecrireReglage(db, cle, true);
+      writeSetting(db, key, true);
     })();
   }
 };
@@ -179,18 +179,18 @@ export const poserSectionsParDefaut = (db: Database): void => {
 export const migrate = (db: Database): void => {
   // D'abord : les accès qui suivent se posent dans le premier workspace.
   workspaces(db);
-  if (!columns(db, "boards").includes("view_id")) rattraperAvantLesVues(db);
+  if (!columns(db, "boards").includes("view_id")) catchUpBeforeViews(db);
   // Comptes d'avant la vue d'ouverture : la conversion la tire de leur mode.
   if (!columns(db, "users").includes("default_view")) {
     db.exec("ALTER TABLE users ADD COLUMN default_view TEXT NOT NULL DEFAULT ''");
   }
-  vuesEtTableaux(db);
-  separerParametrage(db);
-  permissionsParTypeDeWidget(db);
-  contextes(db);
-  listesParWidget(db);
-  contextesFacultatifs(db);
-  boitesConfirmees(db);
+  viewsAndBoards(db);
+  splitSettings(db);
+  permissionsByWidgetType(db);
+  contexts(db);
+  listsPerWidget(db);
+  optionalContexts(db);
+  confirmedMailboxes(db);
   // Une demande par liste qui reçoit la boîte : l'unicité de l'e-mail passe
   // à la liste (idx_support_requests_mailbox_list, schema.ts).
   db.exec("DROP INDEX IF EXISTS idx_support_requests_mailbox");
@@ -199,15 +199,15 @@ export const migrate = (db: Database): void => {
     db.exec("ALTER TABLE list_mailbox_optins DROP COLUMN token");
   }
   // Après tous les rattrapages des accès : ils ont pu poser un Paramétrage.
-  gestionDesWorkspaces(db);
-  administrationGlobale(db);
-  sansUptimeAvec365(db);
-  categoriesRangees(db);
+  workspaceManagement(db);
+  globalAdministration(db);
+  withoutUptimeWith365(db);
+  sortedCategories(db);
   // Cartes créées avant la période, la récurrence et le rappel de l'échéance.
-  const colonnesDesCartes = columns(db, "task_cards");
-  for (const colonne of ["start_date", "recurrence", "reminder", "reminded_for"]) {
-    if (!colonnesDesCartes.includes(colonne)) {
-      db.exec(`ALTER TABLE task_cards ADD COLUMN ${colonne} TEXT NOT NULL DEFAULT ''`);
+  const cardColumns = columns(db, "task_cards");
+  for (const column of ["start_date", "recurrence", "reminder", "reminded_for"]) {
+    if (!cardColumns.includes(column)) {
+      db.exec(`ALTER TABLE task_cards ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
     }
   }
   // Pièces jointes d'avant leur ordre : la plus récente reste en tête.
@@ -215,30 +215,30 @@ export const migrate = (db: Database): void => {
     db.exec("ALTER TABLE card_attachments ADD COLUMN position INTEGER NOT NULL DEFAULT 0");
     db.exec("UPDATE card_attachments SET position = -id");
   }
-  if (!colonnesDesCartes.includes("overdue_for")) {
+  if (!cardColumns.includes("overdue_for")) {
     db.exec("ALTER TABLE task_cards ADD COLUMN overdue_for TEXT NOT NULL DEFAULT ''");
   }
   if (!columns(db, "checklist_items").includes("overdue_for")) {
     db.exec("ALTER TABLE checklist_items ADD COLUMN overdue_for TEXT NOT NULL DEFAULT ''");
   }
-  if (!colonnesDesCartes.includes("due_form")) {
+  if (!cardColumns.includes("due_form")) {
     db.exec("ALTER TABLE task_cards ADD COLUMN due_form TEXT NOT NULL DEFAULT 'date'");
     // Une échéance qui avait un début était une période.
     db.exec("UPDATE task_cards SET due_form = 'periode' WHERE start_date != ''");
   }
-  if (!colonnesDesCartes.includes("cover_interval")) {
+  if (!cardColumns.includes("cover_interval")) {
     db.exec("ALTER TABLE task_cards ADD COLUMN cover_interval INTEGER NOT NULL DEFAULT 0");
   }
   // Couvertures d'avant leur nom et leur taille.
-  const colonnesDesCouvertures = columns(db, "card_covers");
-  if (colonnesDesCouvertures.length > 0 && !colonnesDesCouvertures.includes("name")) {
+  const coverColumns = columns(db, "card_covers");
+  if (coverColumns.length > 0 && !coverColumns.includes("name")) {
     db.exec("ALTER TABLE card_covers ADD COLUMN name TEXT NOT NULL DEFAULT ''");
     db.exec("ALTER TABLE card_covers ADD COLUMN size INTEGER NOT NULL DEFAULT 0");
   }
   // Les vues sans workspace — celles d'avant eux, celles qu'une base neuve
   // vient de recevoir (vuesEtTableaux) — vont dans le premier.
   db.prepare("UPDATE views SET workspace_id = ? WHERE workspace_id IS NULL").run(
-    premierWorkspace(db),
+    firstWorkspace(db),
   );
 };
 
@@ -246,7 +246,7 @@ export const migrate = (db: Database): void => {
  * Les catégories se rangent : d'avant leur position, elles prennent dans
  * chaque tableau l'ordre de leur nom, celui qu'elles avaient à l'écran.
  */
-const categoriesRangees = (db: Database): void => {
+const sortedCategories = (db: Database): void => {
   if (columns(db, "categories").includes("position")) return;
   db.transaction(() => {
     db.exec("ALTER TABLE categories ADD COLUMN position INTEGER NOT NULL DEFAULT 0");
@@ -262,36 +262,36 @@ const categoriesRangees = (db: Database): void => {
 };
 
 /** Le nom du workspace qu'une base reçoit quand elle n'en a aucun. */
-const WORKSPACE_DE_DEPART = "Milo";
+const STARTING_WORKSPACE = "Milo";
 
 /** Le premier workspace, créé s'il n'y en a aucun : il en existe toujours un. */
-export const premierWorkspace = (db: Database): number => {
-  const ligne = db.prepare("SELECT id FROM workspaces ORDER BY position, id LIMIT 1").get() as
+export const firstWorkspace = (db: Database): number => {
+  const row = db.prepare("SELECT id FROM workspaces ORDER BY position, id LIMIT 1").get() as
     | { id: number }
     | undefined;
-  if (ligne) return ligne.id;
+  if (row) return row.id;
   return Number(
     db
       .prepare("INSERT INTO workspaces (name, position, created_at) VALUES (?, 0, ?)")
-      .run(WORKSPACE_DE_DEPART, new Date().toISOString()).lastInsertRowid,
+      .run(STARTING_WORKSPACE, new Date().toISOString()).lastInsertRowid,
   );
 };
 
 /** Posé une fois la gestion des workspaces donnée à qui modifiait le Paramétrage. */
-const GESTION_DES_WORKSPACES = "gestion_des_workspaces";
+const WORKSPACE_MANAGEMENT = "gestion_des_workspaces";
 
 /**
  * Qui modifiait le Paramétrage avant les workspaces les gère d'emblée : sans
  * quoi seul le compte « admin » pourrait les créer et en donner la gestion.
  */
-const gestionDesWorkspaces = (db: Database): void => {
-  if (lireReglage(db, GESTION_DES_WORKSPACES)) return;
+const workspaceManagement = (db: Database): void => {
+  if (readSetting(db, WORKSPACE_MANAGEMENT)) return;
   db.exec("UPDATE principal_permissions SET workspaces = 'update' WHERE settings = 'update'");
-  ecrireReglage(db, GESTION_DES_WORKSPACES, true);
+  writeSetting(db, WORKSPACE_MANAGEMENT, true);
 };
 
 /** Posé une fois l'administration sortie des accès des workspaces. */
-const ADMINISTRATION_GLOBALE = "administration_globale";
+const GLOBAL_ADMINISTRATION = "administration_globale";
 
 /**
  * Le Paramétrage et la gestion des workspaces valent pour toute
@@ -300,8 +300,8 @@ const ADMINISTRATION_GLOBALE = "administration_globale";
  * Les accès qui ne lisent plus aucun type de widget s'effacent : ils
  * n'ouvraient le workspace que par le Paramétrage.
  */
-const administrationGlobale = (db: Database): void => {
-  if (lireReglage(db, ADMINISTRATION_GLOBALE)) return;
+const globalAdministration = (db: Database): void => {
+  if (readSetting(db, GLOBAL_ADMINISTRATION)) return;
   db.transaction(() => {
     db.exec(
       `INSERT OR REPLACE INTO principal_admin
@@ -315,26 +315,26 @@ const administrationGlobale = (db: Database): void => {
         GROUP BY principal_type, principal_id`,
     );
     db.exec("UPDATE principal_permissions SET settings = '', workspaces = ''");
-    const lignes = db.prepare("SELECT rowid, widgets FROM principal_permissions").all() as {
+    const rows = db.prepare("SELECT rowid, widgets FROM principal_permissions").all() as {
       rowid: number;
       widgets: string;
     }[];
-    const oublier = db.prepare("DELETE FROM principal_permissions WHERE rowid = ?");
-    for (const { rowid, widgets } of lignes) {
-      let lu: unknown = {};
+    const forget = db.prepare("DELETE FROM principal_permissions WHERE rowid = ?");
+    for (const { rowid, widgets } of rows) {
+      let readValue: unknown = {};
       try {
-        lu = JSON.parse(widgets);
+        readValue = JSON.parse(widgets);
       } catch {
         // Illisible : n'accordait rien.
       }
-      if (!Object.values(validWidgetRights(lu)).some((acces) => acces !== "")) oublier.run(rowid);
+      if (!Object.values(validWidgetRights(readValue)).some((access) => access !== "")) forget.run(rowid);
     }
-    ecrireReglage(db, ADMINISTRATION_GLOBALE, true);
+    writeSetting(db, GLOBAL_ADMINISTRATION, true);
   })();
 };
 
 /** Posé une fois Uptime retiré et le type « 365 » accordé. */
-const SANS_UPTIME_AVEC_365 = "sans_uptime_avec_365";
+const WITHOUT_UPTIME_WITH_365 = "sans_uptime_avec_365";
 
 /**
  * Le widget Uptime s'en va, avec les machines qu'il vérifiait — et le type
@@ -342,33 +342,33 @@ const SANS_UPTIME_AVEC_365 = "sans_uptime_avec_365";
  * du type « Commun » au type « 365 » : chacun y reçoit la permission qu'il
  * avait sur « Commun », pour ne perdre aucun des deux.
  */
-const sansUptimeAvec365 = (db: Database): void => {
-  if (lireReglage(db, SANS_UPTIME_AVEC_365)) return;
+const withoutUptimeWith365 = (db: Database): void => {
+  if (readSetting(db, WITHOUT_UPTIME_WITH_365)) return;
   db.transaction(() => {
     db.exec("DELETE FROM board_widgets WHERE type = 'uptime'");
     db.exec("DROP TABLE IF EXISTS access_uptime");
-    const lignes = db.prepare("SELECT rowid, widgets FROM principal_permissions").all() as {
+    const rows = db.prepare("SELECT rowid, widgets FROM principal_permissions").all() as {
       rowid: number;
       widgets: string;
     }[];
-    const ecrire = db.prepare("UPDATE principal_permissions SET widgets = ? WHERE rowid = ?");
-    for (const { rowid, widgets } of lignes) {
-      let lu: Record<string, unknown> = {};
+    const write = db.prepare("UPDATE principal_permissions SET widgets = ? WHERE rowid = ?");
+    for (const { rowid, widgets } of rows) {
+      let readValue: Record<string, unknown> = {};
       try {
-        const brut = JSON.parse(widgets) as unknown;
-        if (brut && typeof brut === "object") lu = brut as Record<string, unknown>;
+        const raw = JSON.parse(widgets) as unknown;
+        if (raw && typeof raw === "object") readValue = raw as Record<string, unknown>;
       } catch {
         // Illisible : n'accordait rien, et n'accorde toujours rien.
       }
-      const { telemetry: _telemetrie, ...reste } = lu;
-      ecrire.run(JSON.stringify({ ...reste, m365: reste["m365"] ?? reste["common"] ?? "" }), rowid);
+      const { telemetry: _telemetry, ...rest } = readValue;
+      write.run(JSON.stringify({ ...rest, m365: rest["m365"] ?? rest["common"] ?? "" }), rowid);
     }
-    ecrireReglage(db, SANS_UPTIME_AVEC_365, true);
+    writeSetting(db, WITHOUT_UPTIME_WITH_365, true);
   })();
 };
 
 /** Le premier workspace, dans une requête : là où se posent les accès d'avant eux. */
-const PREMIER_WORKSPACE = "(SELECT id FROM workspaces ORDER BY position, id LIMIT 1)";
+const FIRST_WORKSPACE = "(SELECT id FROM workspaces ORDER BY position, id LIMIT 1)";
 
 /**
  * Les workspaces : les vues et les comptes en reçoivent un, et les accès
@@ -386,11 +386,11 @@ const workspaces = (db: Database): void => {
       "ALTER TABLE users ADD COLUMN workspace_id INTEGER REFERENCES workspaces(id) ON DELETE SET NULL",
     );
   }
-  const premier = premierWorkspace(db);
+  const first = firstWorkspace(db);
   if (!columns(db, "principal_permissions").includes("workspace_id")) {
-    sansClesEtrangeres(db, () =>
+    withoutForeignKeys(db, () =>
       db.transaction(() =>
-        refaireLaTable(
+        rebuildTable(
           db,
           "principal_permissions",
           (sql) =>
@@ -400,7 +400,7 @@ const workspaces = (db: Database): void => {
     workspaces TEXT NOT NULL DEFAULT '' CHECK (workspaces IN ('', 'update')),
     PRIMARY KEY (workspace_id, principal_type, principal_id)`,
             ),
-          { workspace_id: String(premier) },
+          { workspace_id: String(first) },
         ),
       )(),
     );
@@ -408,12 +408,12 @@ const workspaces = (db: Database): void => {
 };
 
 /** Les rattrapages des bases d'avant les vues, dans l'ordre où ils sont venus. */
-const rattraperAvantLesVues = (db: Database): void => {
+const catchUpBeforeViews = (db: Database): void => {
   // Bases d'avant Entra : les comptes gardent leur ligne — ils sont acteurs,
   // auteurs, membres — et s'y rattachent par leur e-mail à leur première
   // connexion par Microsoft. Leurs mots de passe ne servent plus.
-  const colonnesComptes = columns(db, "users");
-  if (colonnesComptes.length > 0 && !colonnesComptes.includes("entra_id")) {
+  const accountColumns = columns(db, "users");
+  if (accountColumns.length > 0 && !accountColumns.includes("entra_id")) {
     db.exec("ALTER TABLE users ADD COLUMN entra_id TEXT NOT NULL DEFAULT ''");
     db.exec("ALTER TABLE users ADD COLUMN entra_groups TEXT NOT NULL DEFAULT '[]'");
     db.exec("ALTER TABLE users ADD COLUMN system INTEGER NOT NULL DEFAULT 0");
@@ -467,9 +467,9 @@ const rattraperAvantLesVues = (db: Database): void => {
   // Comptes d'avant que la liste devienne un widget des sections : le
   // panneau des statistiques ne se montrait ou ne se cachait que par eux. Il
   // n'y a plus de panneau à part, le réglage s'en va.
-  for (const colonne of ["support_stats", "asset_stats"]) {
-    if (columns(db, "users").includes(colonne)) {
-      db.exec(`ALTER TABLE users DROP COLUMN ${colonne}`);
+  for (const column of ["support_stats", "asset_stats"]) {
+    if (columns(db, "users").includes(column)) {
+      db.exec(`ALTER TABLE users DROP COLUMN ${column}`);
     }
   }
 
@@ -486,25 +486,25 @@ const rattraperAvantLesVues = (db: Database): void => {
   const listColumns = columns(db, "task_lists");
   // Une base d'avant les tableaux : ses listes pendent encore à une société.
   // Les rattrapages qui suivent ne concernent qu'elle, jamais une base neuve.
-  const listesAvantTableaux = listColumns.length > 0 && !listColumns.includes("board_id");
+  const listsBeforeBoards = listColumns.length > 0 && !listColumns.includes("board_id");
 
   // Listes créées avant leur rattachement à une société : on les affecte à la
   // première société connue. Cette colonne cède ensuite la place à
   // « board_id » (migration suivante), mais le rattrapage reste nécessaire
   // pour la traverser.
-  if (listesAvantTableaux && !listColumns.includes("company_id")) {
+  if (listsBeforeBoards && !listColumns.includes("company_id")) {
     db.exec(
       "ALTER TABLE task_lists ADD COLUMN company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE",
     );
-    const premiere = db.prepare("SELECT id FROM companies ORDER BY id LIMIT 1").get() as
+    const first = db.prepare("SELECT id FROM companies ORDER BY id LIMIT 1").get() as
       { id: number } | undefined;
-    if (premiere) {
-      db.prepare("UPDATE task_lists SET company_id = ? WHERE company_id IS NULL").run(premiere.id);
+    if (first) {
+      db.prepare("UPDATE task_lists SET company_id = ? WHERE company_id IS NULL").run(first.id);
     }
   }
 
   // Listes créées avant le choix d'une couleur : sans couleur, donc vide.
-  if (listesAvantTableaux && !listColumns.includes("color")) {
+  if (listsBeforeBoards && !listColumns.includes("color")) {
     db.exec("ALTER TABLE task_lists ADD COLUMN color TEXT NOT NULL DEFAULT ''");
   }
 
@@ -513,8 +513,8 @@ const rattraperAvantLesVues = (db: Database): void => {
   // SQLite ne sait pas retirer « company_id » (elle porte une clé étrangère) :
   // la table est reconstruite, en conservant les identifiants pour que les
   // cartes restent accrochées à leur liste.
-  if (listesAvantTableaux) {
-    const migrer = db.transaction(() => {
+  if (listsBeforeBoards) {
+    const migrateItem = db.transaction(() => {
       db.exec(`
         CREATE TABLE task_lists_migration (
           id INTEGER PRIMARY KEY,
@@ -526,10 +526,10 @@ const rattraperAvantLesVues = (db: Database): void => {
         );
       `);
 
-      const creerTableau = db.prepare(
+      const createBoard = db.prepare(
         "INSERT INTO boards (company_id, name, position, created_at) VALUES (?, 'Tableau', 0, ?)",
       );
-      const reprendre = db.prepare(
+      const copyOver = db.prepare(
         `INSERT INTO task_lists_migration (id, board_id, name, position, color, created_at)
          SELECT id, ?, name, position, color, created_at
          FROM task_lists WHERE company_id IS ?`,
@@ -538,26 +538,26 @@ const rattraperAvantLesVues = (db: Database): void => {
       // Une liste sans société (société supprimée en cours de route) n'a pas
       // de tableau naturel : elle rejoint celui de la première société plutôt
       // que de disparaître avec ses cartes.
-      const secours = db.prepare("SELECT id FROM companies ORDER BY id LIMIT 1").get() as
+      const fallback = db.prepare("SELECT id FROM companies ORDER BY id LIMIT 1").get() as
         { id: number } | undefined;
-      const societes = (
+      const companies = (
         db.prepare("SELECT DISTINCT company_id FROM task_lists").all() as {
           company_id: number | null;
         }[]
       ).map(({ company_id }) => company_id);
 
-      for (const societe of societes) {
-        const proprietaire = societe ?? secours?.id;
-        if (!proprietaire) continue;
-        const { lastInsertRowid } = creerTableau.run(proprietaire, new Date().toISOString());
-        reprendre.run(lastInsertRowid, societe);
+      for (const company of companies) {
+        const owner = company ?? fallback?.id;
+        if (!owner) continue;
+        const { lastInsertRowid } = createBoard.run(owner, new Date().toISOString());
+        copyOver.run(lastInsertRowid, company);
       }
 
       db.exec("DROP TABLE task_lists");
       db.exec("ALTER TABLE task_lists_migration RENAME TO task_lists");
     });
 
-    sansClesEtrangeres(db, migrer);
+    withoutForeignKeys(db, migrateItem);
   }
 
   // Bases créées avant les tableaux de projets : les catégories étaient
@@ -567,8 +567,8 @@ const rattraperAvantLesVues = (db: Database): void => {
   // que les projets restent accrochés à leur catégorie.
   const categoryColumns = columns(db, "categories");
   if (categoryColumns.length > 0 && !categoryColumns.includes("board_id")) {
-    const migrer = db.transaction(() => {
-      const { lastInsertRowid: tableau } = db
+    const migrateItem = db.transaction(() => {
+      const { lastInsertRowid: board } = db
         .prepare("INSERT INTO project_boards (name, position, created_at) VALUES (?, 0, ?)")
         .run("Tableau", new Date().toISOString());
 
@@ -582,7 +582,7 @@ const rattraperAvantLesVues = (db: Database): void => {
       `);
       db.prepare(
         "INSERT INTO categories_migration (id, board_id, name) SELECT id, ?, name FROM categories",
-      ).run(tableau);
+      ).run(board);
       db.exec("DROP TABLE categories");
       db.exec("ALTER TABLE categories_migration RENAME TO categories");
 
@@ -591,10 +591,10 @@ const rattraperAvantLesVues = (db: Database): void => {
           "ALTER TABLE projects ADD COLUMN board_id INTEGER REFERENCES project_boards(id) ON DELETE CASCADE",
         );
       }
-      db.prepare("UPDATE projects SET board_id = ? WHERE board_id IS NULL").run(tableau);
+      db.prepare("UPDATE projects SET board_id = ? WHERE board_id IS NULL").run(board);
     });
 
-    sansClesEtrangeres(db, migrer);
+    withoutForeignKeys(db, migrateItem);
   }
 
   // Commentaires écrits avant qu'on retienne leur auteur : la colonne est
@@ -614,7 +614,7 @@ const rattraperAvantLesVues = (db: Database): void => {
 
     db.transaction(() => {
       const update = db.prepare("UPDATE task_cards SET number = ? WHERE id = ?");
-      const parTableau = db.prepare(
+      const byBoard = db.prepare(
         `SELECT task_cards.id
          FROM task_cards
          JOIN task_lists ON task_lists.id = task_cards.list_id
@@ -624,7 +624,7 @@ const rattraperAvantLesVues = (db: Database): void => {
       for (const { id } of db.prepare("SELECT id FROM boards").all() as {
         id: number;
       }[]) {
-        (parTableau.all(id) as { id: number }[]).forEach((card, index) =>
+        (byBoard.all(id) as { id: number }[]).forEach((card, index) =>
           update.run(index + 1, card.id),
         );
       }
@@ -639,8 +639,8 @@ const rattraperAvantLesVues = (db: Database): void => {
   // Fils ouverts avant qu'on distingue les mots de l'application : on retrouve
   // ceux qui notaient une création à leur texte, écrit par nous seuls.
   for (const table of ["comments", "card_comments"]) {
-    const colonnes = columns(db, table);
-    if (colonnes.length > 0 && !colonnes.includes("system")) {
+    const columnNames = columns(db, table);
+    if (columnNames.length > 0 && !columnNames.includes("system")) {
       db.exec(`ALTER TABLE ${table} ADD COLUMN system INTEGER NOT NULL DEFAULT 0`);
       db.prepare(
         `UPDATE ${table} SET system = 1
@@ -731,7 +731,7 @@ const rattraperAvantLesVues = (db: Database): void => {
       `INSERT OR IGNORE INTO support_request_actors (request_id, user_id)
        SELECT id, actor_id FROM support_requests WHERE actor_id IS NOT NULL`,
     );
-    sansClesEtrangeres(db, () => {
+    withoutForeignKeys(db, () => {
       db.exec("DROP INDEX IF EXISTS idx_support_requests_actor");
       db.exec("ALTER TABLE support_requests DROP COLUMN actor_id");
     });
@@ -742,7 +742,7 @@ const rattraperAvantLesVues = (db: Database): void => {
   // table est reconstruite, en conservant les identifiants pour que les
   // acteurs, les étiquettes et les fils restent accrochés à leur demande.
   if (!columns(db, "support_requests").includes("mail_id")) {
-    sansClesEtrangeres(
+    withoutForeignKeys(
       db,
       db.transaction(() => {
         db.exec(`
@@ -772,15 +772,15 @@ const rattraperAvantLesVues = (db: Database): void => {
   if (!columns(db, "support_requests").includes("number")) {
     db.transaction(() => {
       db.exec("ALTER TABLE support_requests ADD COLUMN number INTEGER NOT NULL DEFAULT 0");
-      const demandes = db
+      const requests = db
         .prepare("SELECT id FROM support_requests ORDER BY created_at, id")
         .all() as { id: number }[];
-      const numeroter = db.prepare("UPDATE support_requests SET number = ? WHERE id = ?");
-      demandes.forEach(({ id }, i) => numeroter.run(i + 1, id));
+      const numberItems = db.prepare("UPDATE support_requests SET number = ? WHERE id = ?");
+      requests.forEach(({ id }, i) => numberItems.run(i + 1, id));
       db.prepare(
         `INSERT INTO settings (key, value) VALUES ('support_ticket_counter', ?)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      ).run(String(demandes.length));
+      ).run(String(requests.length));
     })();
   }
   // Étiquettes du support d'avant leur mise en commun : chaque société avait
@@ -789,29 +789,29 @@ const rattraperAvantLesVues = (db: Database): void => {
   // colonne de société. SQLite ne sait pas retirer une colonne citée par une
   // clé étrangère : la table est reconstruite, identifiants conservés.
   if (columns(db, "support_labels").includes("company_id")) {
-    sansClesEtrangeres(
+    withoutForeignKeys(
       db,
       db.transaction(() => {
-        const etiquettes = db
+        const labels = db
           .prepare("SELECT id, name FROM support_labels ORDER BY company_id, position, id")
           .all() as { id: number; name: string }[];
-        const gardee = new Map<string, number>();
-        const reprendre = db.prepare(
+        const keptByKey = new Map<string, number>();
+        const copyOver = db.prepare(
           `INSERT OR IGNORE INTO support_request_labels (request_id, label_id)
            SELECT request_id, ? FROM support_request_labels WHERE label_id = ?`,
         );
-        const oublier = db.prepare("DELETE FROM support_request_labels WHERE label_id = ?");
-        const retirer = db.prepare("DELETE FROM support_labels WHERE id = ?");
-        for (const { id, name } of etiquettes) {
-          const cle = name.trim().toLowerCase();
-          const deja = gardee.get(cle);
-          if (deja === undefined) {
-            gardee.set(cle, id);
+        const forget = db.prepare("DELETE FROM support_request_labels WHERE label_id = ?");
+        const remove = db.prepare("DELETE FROM support_labels WHERE id = ?");
+        for (const { id, name } of labels) {
+          const key = name.trim().toLowerCase();
+          const already = keptByKey.get(key);
+          if (already === undefined) {
+            keptByKey.set(key, id);
             continue;
           }
-          reprendre.run(deja, id);
-          oublier.run(id);
-          retirer.run(id);
+          copyOver.run(already, id);
+          forget.run(id);
+          remove.run(id);
         }
         db.exec(`
           DROP INDEX IF EXISTS idx_support_labels_company;
@@ -829,12 +829,12 @@ const rattraperAvantLesVues = (db: Database): void => {
         `);
         // Une seule liste désormais : les rangs repartent de zéro, dans
         // l'ordre où elles se suivaient.
-        const ranger = db.prepare("UPDATE support_labels SET position = ? WHERE id = ?");
+        const store = db.prepare("UPDATE support_labels SET position = ? WHERE id = ?");
         (
           db.prepare("SELECT id FROM support_labels ORDER BY position, id").all() as {
             id: number;
           }[]
-        ).forEach(({ id }, rang) => ranger.run(rang, id));
+        ).forEach(({ id }, rank) => store.run(rank, id));
       }),
     );
   }
@@ -844,10 +844,10 @@ const rattraperAvantLesVues = (db: Database): void => {
   if (!columns(db, "support_labels").includes("weight")) {
     db.transaction(() => {
       db.exec("ALTER TABLE support_labels ADD COLUMN weight INTEGER NOT NULL DEFAULT 0");
-      const peser = db.prepare(
+      const setWeight = db.prepare(
         "UPDATE support_labels SET weight = ? WHERE name = ? COLLATE NOCASE",
       );
-      for (const { name, weight } of SUPPORT_URGENCY_LABELS) peser.run(weight, name);
+      for (const { name, weight } of SUPPORT_URGENCY_LABELS) setWeight.run(weight, name);
     })();
   }
 
@@ -861,47 +861,47 @@ const rattraperAvantLesVues = (db: Database): void => {
   // et quinze jours ouvrés d'échéance. Le marqueur des étiquettes d'urgence,
   // absent, dit que la base est neuve ; une base plus ancienne qui n'en a pas
   // non plus a déjà des étiquettes, et passe à l'étape suivante.
-  const vides =
+  const empty =
     !db.prepare("SELECT 1 FROM settings WHERE key = 'support_urgency_labels'").get() &&
     !db.prepare("SELECT 1 FROM support_labels LIMIT 1").get();
-  if (vides) {
+  if (empty) {
     db.transaction(() => {
-      const creer = db.prepare(
+      const create = db.prepare(
         "INSERT INTO support_labels (name, color, weight, position, created_at) VALUES (?, ?, ?, ?, ?)",
       );
       const instant = new Date().toISOString();
       const ids = new Map<string, number>();
       [...SUPPORT_URGENCY_LABELS, ...SUPPORT_CHANNEL_LABELS].forEach(
-        ({ name, color, weight }, rang) => {
-          ids.set(name, Number(creer.run(name, color, weight, rang, instant).lastInsertRowid));
+        ({ name, color, weight }, rank) => {
+          ids.set(name, Number(create.run(name, color, weight, rank, instant).lastInsertRowid));
         },
       );
-      const reglage = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
-      reglage.run(
+      const setting = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+      setting.run(
         "support_default_label_ids",
         JSON.stringify(SUPPORT_NEW_MESSAGE_LABELS.map((name) => ids.get(name))),
       );
-      reglage.run("support_default_due_days", JSON.stringify(SUPPORT_NEW_MESSAGE_DUE_DAYS));
+      setting.run("support_default_due_days", JSON.stringify(SUPPORT_NEW_MESSAGE_DUE_DAYS));
     })();
   }
 
   // Bases d'avant les étiquettes d'urgence : le support les reçoit une fois.
   // Le réglage le note — une étiquette supprimée ensuite ne revient pas à
   // chaque démarrage.
-  const URGENCES = "support_urgency_labels";
-  if (!db.prepare("SELECT 1 FROM settings WHERE key = ?").get(URGENCES)) {
+  const URGENCIES = "support_urgency_labels";
+  if (!db.prepare("SELECT 1 FROM settings WHERE key = ?").get(URGENCIES)) {
     db.transaction(() => {
-      const existe = db.prepare("SELECT 1 FROM support_labels WHERE name = ? COLLATE NOCASE");
-      const rang = db.prepare("SELECT COALESCE(MAX(position), -1) + 1 AS next FROM support_labels");
-      const creer = db.prepare(
+      const exists = db.prepare("SELECT 1 FROM support_labels WHERE name = ? COLLATE NOCASE");
+      const rank = db.prepare("SELECT COALESCE(MAX(position), -1) + 1 AS next FROM support_labels");
+      const create = db.prepare(
         "INSERT INTO support_labels (name, color, weight, position, created_at) VALUES (?, ?, ?, ?, ?)",
       );
       const instant = new Date().toISOString();
       for (const { name, color, weight } of SUPPORT_URGENCY_LABELS) {
-        if (existe.get(name)) continue;
-        creer.run(name, color, weight, (rang.get() as { next: number }).next, instant);
+        if (exists.get(name)) continue;
+        create.run(name, color, weight, (rank.get() as { next: number }).next, instant);
       }
-      db.prepare("INSERT INTO settings (key, value) VALUES (?, 'true')").run(URGENCES);
+      db.prepare("INSERT INTO settings (key, value) VALUES (?, 'true')").run(URGENCIES);
     })();
   }
 
@@ -972,16 +972,16 @@ const rattraperAvantLesVues = (db: Database): void => {
   // extraite du JSON : relire les inventaires entiers à chaque démarrage
   // coûterait pour rien. Un poste déjà à jour n'est pas réécrit.
   if (assetColumns.length > 0) {
-    const datations = db
+    const inventoryDates = db
       .prepare(
         `SELECT id, last_inventory, json_extract(content, '$.ACCESSLOG.LOGDATE') AS logdate
          FROM assets WHERE json_valid(content)`,
       )
       .all() as { id: number; last_inventory: string; logdate: unknown }[];
-    const dater = db.prepare("UPDATE assets SET last_inventory = ? WHERE id = ?");
-    for (const { id, last_inventory, logdate } of datations) {
-      const date = typeof logdate === "string" ? heureDeParis(logdate) : null;
-      if (date && date !== last_inventory) dater.run(date, id);
+    const updateDate = db.prepare("UPDATE assets SET last_inventory = ? WHERE id = ?");
+    for (const { id, last_inventory, logdate } of inventoryDates) {
+      const date = typeof logdate === "string" ? parisTime(logdate) : null;
+      if (date && date !== last_inventory) updateDate.run(date, id);
     }
   }
 
@@ -990,7 +990,7 @@ const rattraperAvantLesVues = (db: Database): void => {
   // indexée ou citée par une clé étrangère : l'index tombe d'abord, et les
   // clés étrangères sont suspendues le temps du retrait.
   if (projectColumns.includes("building_id")) {
-    sansClesEtrangeres(db, () => {
+    withoutForeignKeys(db, () => {
       db.exec("DROP INDEX IF EXISTS idx_projects_building");
       db.exec("ALTER TABLE projects DROP COLUMN building_id");
     });
@@ -1000,10 +1000,10 @@ const rattraperAvantLesVues = (db: Database): void => {
 
   // Catégories d'avant les jalons propres à chacune : elles reprennent ceux
   // que le curseur d'avancement affichait jusque-là pour tous les projets.
-  const colonnesCategories = columns(db, "categories");
-  if (colonnesCategories.length > 0 && !colonnesCategories.includes("milestones")) {
+  const categoryColumnNames = columns(db, "categories");
+  if (categoryColumnNames.length > 0 && !categoryColumnNames.includes("milestones")) {
     db.exec("ALTER TABLE categories ADD COLUMN milestones TEXT NOT NULL DEFAULT '[]'");
-    db.prepare("UPDATE categories SET milestones = ?").run(JSON.stringify(JALONS_HISTORIQUES));
+    db.prepare("UPDATE categories SET milestones = ?").run(JSON.stringify(HISTORICAL_MILESTONES));
   }
 
   // Bases d'avant les types de jalons : les jalons vivaient sur la catégorie.
@@ -1017,36 +1017,36 @@ const rattraperAvantLesVues = (db: Database): void => {
       "ALTER TABLE projects ADD COLUMN milestone_type_id INTEGER REFERENCES milestone_types(id) ON DELETE SET NULL",
     );
     db.transaction(() => {
-      const anciennes = db
+      const old = db
         .prepare(
           "SELECT id, name, milestones FROM categories WHERE milestones NOT IN ('', '[]') ORDER BY id",
         )
         .all() as { id: number; name: string; milestones: string }[];
-      const parNom = db.prepare("SELECT id FROM milestone_types WHERE name = ?");
-      const creer = db.prepare("INSERT INTO milestone_types (name, milestones) VALUES (?, ?)");
-      const rattacher = db.prepare(
+      const byName = db.prepare("SELECT id FROM milestone_types WHERE name = ?");
+      const create = db.prepare("INSERT INTO milestone_types (name, milestones) VALUES (?, ?)");
+      const attach = db.prepare(
         "UPDATE projects SET milestone_type_id = ? WHERE category_id = ?",
       );
-      const historiques = JSON.stringify(JALONS_HISTORIQUES);
-      const parListe = new Map<string, number>();
+      const historical = JSON.stringify(HISTORICAL_MILESTONES);
+      const byList = new Map<string, number>();
 
-      for (const categorie of anciennes) {
-        let liste: string;
+      for (const category of old) {
+        let list: string;
         try {
-          liste = JSON.stringify(JSON.parse(categorie.milestones));
+          list = JSON.stringify(JSON.parse(category.milestones));
         } catch {
           continue;
         }
-        let typeId = parListe.get(liste);
+        let typeId = byList.get(list);
         if (typeId === undefined) {
-          const voulu = liste === historiques ? "Standard" : categorie.name;
+          const desired = list === historical ? "Standard" : category.name;
           // Un nom déjà pris par une autre liste reçoit un numéro.
-          let nom = voulu;
-          for (let n = 2; parNom.get(nom); n += 1) nom = `${voulu} ${n}`;
-          typeId = Number(creer.run(nom, liste).lastInsertRowid);
-          parListe.set(liste, typeId);
+          let name = desired;
+          for (let n = 2; byName.get(name); n += 1) name = `${desired} ${n}`;
+          typeId = Number(create.run(name, list).lastInsertRowid);
+          byList.set(list, typeId);
         }
-        rattacher.run(typeId, categorie.id);
+        attach.run(typeId, category.id);
       }
     })();
   }
@@ -1067,11 +1067,11 @@ const rattraperAvantLesVues = (db: Database): void => {
       .get() as { sql: string } | undefined
   )?.sql;
   if (definition && !definition.includes("'new'")) {
-    sansClesEtrangeres(
+    withoutForeignKeys(
       db,
       db.transaction(() => {
         db.exec("UPDATE support_requests SET status = 'open' WHERE status = 'unresolved'");
-        const nouvelle = definition
+        const newRow = definition
           .replace(
             /CREATE TABLE\s+"?support_requests"?/i,
             "CREATE TABLE support_requests_migration",
@@ -1081,29 +1081,29 @@ const rattraperAvantLesVues = (db: Database): void => {
             "CHECK (status IN ('new', 'open', 'pending', 'resolved', 'closed'))",
           )
           .replace(/status TEXT NOT NULL DEFAULT 'open'/i, "status TEXT NOT NULL DEFAULT 'new'");
-        const liste = columns(db, "support_requests").map((c) => `"${c}"`).join(", ");
-        db.exec(nouvelle);
+        const list = columns(db, "support_requests").map((c) => `"${c}"`).join(", ");
+        db.exec(newRow);
         db.exec(
-          `INSERT INTO support_requests_migration (${liste}) SELECT ${liste} FROM support_requests`,
+          `INSERT INTO support_requests_migration (${list}) SELECT ${list} FROM support_requests`,
         );
         db.exec("DROP TABLE support_requests");
         db.exec("ALTER TABLE support_requests_migration RENAME TO support_requests");
 
         // Un ordre d'onglets rangé perd « Non résolu » et reçoit « Nouveau » en
         // tête : c'est là qu'arrivent les demandes.
-        const rangee = db
+        const existingRow = db
           .prepare("SELECT value FROM settings WHERE key = 'tab_order_support'")
           .get() as { value: string } | undefined;
-        if (rangee) {
-          let ordre: unknown;
+        if (existingRow) {
+          let order: unknown;
           try {
-            ordre = JSON.parse(rangee.value);
+            order = JSON.parse(existingRow.value);
           } catch {
-            ordre = [];
+            order = [];
           }
-          const valeurs = Array.isArray(ordre) ? ordre.filter((v) => v !== "unresolved" && v !== "new") : [];
+          const values = Array.isArray(order) ? order.filter((v) => v !== "unresolved" && v !== "new") : [];
           db.prepare("UPDATE settings SET value = ? WHERE key = 'tab_order_support'").run(
-            JSON.stringify(["new", ...valeurs]),
+            JSON.stringify(["new", ...values]),
           );
         }
       }),
@@ -1119,7 +1119,7 @@ const rattraperAvantLesVues = (db: Database): void => {
       );
     }
   }
-  rattacherIndicateurs(db);
+  attachIndicators(db);
 
   // Sections d'avant les modes Projet et Tâche : la contrainte CHECK de leur
   // panneau ne connaît que le Support et les Assets. SQLite ne sait pas la
@@ -1131,10 +1131,10 @@ const rattraperAvantLesVues = (db: Database): void => {
       .get() as { sql: string } | undefined
   )?.sql;
   if (sections && !sections.includes("'projects'")) {
-    sansClesEtrangeres(
+    withoutForeignKeys(
       db,
       db.transaction(() => {
-        const nouvelle = sections
+        const newRow = sections
           .replace(
             /CREATE TABLE\s+"?indicator_sections"?/i,
             "CREATE TABLE indicator_sections_migration",
@@ -1143,10 +1143,10 @@ const rattraperAvantLesVues = (db: Database): void => {
             /CHECK\s*\(\s*panel IN \([^)]*\)\s*\)/i,
             "CHECK (panel IN ('support', 'assets', 'projects', 'tasks'))",
           );
-        const liste = columns(db, "indicator_sections").map((c) => `"${c}"`).join(", ");
-        db.exec(nouvelle);
+        const list = columns(db, "indicator_sections").map((c) => `"${c}"`).join(", ");
+        db.exec(newRow);
         db.exec(
-          `INSERT INTO indicator_sections_migration (${liste}) SELECT ${liste} FROM indicator_sections`,
+          `INSERT INTO indicator_sections_migration (${list}) SELECT ${list} FROM indicator_sections`,
         );
         db.exec("DROP TABLE indicator_sections");
         db.exec("ALTER TABLE indicator_sections_migration RENAME TO indicator_sections");
@@ -1159,22 +1159,22 @@ const rattraperAvantLesVues = (db: Database): void => {
   if (!columns(db, "indicator_sections").includes("gap")) {
     db.exec("ALTER TABLE indicator_sections ADD COLUMN gap INTEGER NOT NULL DEFAULT 50");
     for (const panel of ["support", "assets", "projects", "tasks"]) {
-      const cle = `${panel}_sections_gap`;
-      const reglage = db.prepare("SELECT value FROM settings WHERE key = ?").get(cle) as
+      const key = `${panel}_sections_gap`;
+      const setting = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as
         { value: string } | undefined;
-      let ecart: unknown;
+      let gap: unknown;
       try {
-        ecart = reglage ? JSON.parse(reglage.value) : undefined;
+        gap = setting ? JSON.parse(setting.value) : undefined;
       } catch {
-        ecart = undefined;
+        gap = undefined;
       }
-      if (typeof ecart === "number" && Number.isFinite(ecart)) {
+      if (typeof gap === "number" && Number.isFinite(gap)) {
         db.prepare("UPDATE indicator_sections SET gap = ? WHERE panel = ?").run(
-          Math.round(ecart),
+          Math.round(gap),
           panel,
         );
       }
-      db.prepare("DELETE FROM settings WHERE key = ?").run(cle);
+      db.prepare("DELETE FROM settings WHERE key = ?").run(key);
     }
   }
 
@@ -1182,8 +1182,8 @@ const rattraperAvantLesVues = (db: Database): void => {
   if (!columns(db, "projects").includes("number")) {
     db.exec("ALTER TABLE projects ADD COLUMN number INTEGER NOT NULL DEFAULT 0");
   }
-  numeroterReferences(db);
-  poserSectionsParDefaut(db);
+  numberReferences(db);
+  setDefaultSections(db);
 
   // Bases d'avant « Hérité » : toutes les sections étaient publiques. Les
   // index d'avant ne couvraient pas le propriétaire : ils sont refaits.
@@ -1211,7 +1211,7 @@ const rattraperAvantLesVues = (db: Database): void => {
   // Les mots d'ouverture d'un fil étaient signés de qui avait créé l'élément :
   // ils le sont désormais de Milo, c'est-à-dire d'aucun compte, et le
   // créateur passe dans le texte.
-  for (const [table, debut] of [
+  for (const [table, start] of [
     ["comments", "Projet créé le %"],
     ["card_comments", "Carte créée le %"],
     ["support_comments", "Demande créée le %"],
@@ -1224,15 +1224,15 @@ const rattraperAvantLesVues = (db: Database): void => {
              ''),
            user_id = NULL
        WHERE system = 1 AND user_id IS NOT NULL AND text LIKE ?`,
-    ).run(debut);
+    ).run(start);
   }
 
-  separerParametrage(db);
-  permissionsParTypeDeWidget(db);
+  splitSettings(db);
+  permissionsByWidgetType(db);
 };
 
 /** Posé une fois le Paramétrage sorti des rôles. */
-const PARAMETRAGE_HORS_ROLES = "parametrage_hors_roles";
+const SETTINGS_OUTSIDE_ROLES = "parametrage_hors_roles";
 
 /**
  * Le Paramétrage se réglait dans les rôles, société par société ; il se règle
@@ -1241,15 +1241,15 @@ const PARAMETRAGE_HORS_ROLES = "parametrage_hors_roles";
  * de ses rôles le cochait, sinon « Voir » si l'un le cochait. Tous les modes
  * lui restent ouverts. Puis la case disparaît des rôles.
  */
-export const separerParametrage = (db: Database): void => {
-  if (lireReglage(db, PARAMETRAGE_HORS_ROLES)) return;
+export const splitSettings = (db: Database): void => {
+  if (readSetting(db, SETTINGS_OUTSIDE_ROLES)) return;
   // Une base neuve n'a jamais eu de rôles : il n'y a rien à en sortir.
   if (columns(db, "role_assignments").length === 0) {
-    ecrireReglage(db, PARAMETRAGE_HORS_ROLES, true);
+    writeSetting(db, SETTINGS_OUTSIDE_ROLES, true);
     return;
   }
   db.transaction(() => {
-    const lignes = db
+    const rows = db
       .prepare(
         `SELECT a.principal_type, a.principal_id, a.principal_name, a.principal_email,
                 r.is_admin, r.permissions
@@ -1263,47 +1263,47 @@ export const separerParametrage = (db: Database): void => {
       is_admin: number;
       permissions: string;
     }[];
-    const parPrincipal = new Map<string, { ligne: (typeof lignes)[number]; acces: number }>();
-    for (const ligne of lignes) {
-      let coches: unknown = [];
+    const byPrincipal = new Map<string, { row: (typeof rows)[number]; access: number }>();
+    for (const row of rows) {
+      let checkedItems: unknown = [];
       try {
-        coches = (JSON.parse(ligne.permissions) as Record<string, unknown>)["settings"] ?? [];
+        checkedItems = (JSON.parse(row.permissions) as Record<string, unknown>)["settings"] ?? [];
       } catch {
         // Un JSON illisible n'accordait rien.
       }
-      const liste = Array.isArray(coches) ? coches : [];
-      const acces = ligne.is_admin || liste.includes("update") ? 2 : liste.includes("view") ? 1 : 0;
-      const cle = `${ligne.principal_type}:${ligne.principal_id}`;
-      const deja = parPrincipal.get(cle);
-      if (!deja || acces > deja.acces) parPrincipal.set(cle, { ligne, acces });
+      const list = Array.isArray(checkedItems) ? checkedItems : [];
+      const access = row.is_admin || list.includes("update") ? 2 : list.includes("view") ? 1 : 0;
+      const key = `${row.principal_type}:${row.principal_id}`;
+      const already = byPrincipal.get(key);
+      if (!already || access > already.access) byPrincipal.set(key, { row, access });
     }
-    const poser = db.prepare(
+    const insertRow = db.prepare(
       `INSERT OR IGNORE INTO principal_permissions
          (workspace_id, principal_type, principal_id, principal_name, principal_email, settings, modes)
-       VALUES (${PREMIER_WORKSPACE}, ?, ?, ?, ?, ?, ?)`,
+       VALUES (${FIRST_WORKSPACE}, ?, ?, ?, ?, ?, ?)`,
     );
     // Les modes ouverts ne servent plus : les types de widgets les remplacent
     // (permissionsParTypeDeWidget).
     const modes = "[]";
-    for (const { ligne, acces } of parPrincipal.values()) {
-      poser.run(
-        ligne.principal_type,
-        ligne.principal_id,
-        ligne.principal_name,
-        ligne.principal_email,
-        ["", "view", "update"][acces],
+    for (const { row, access } of byPrincipal.values()) {
+      insertRow.run(
+        row.principal_type,
+        row.principal_id,
+        row.principal_name,
+        row.principal_email,
+        ["", "view", "update"][access],
         modes,
       );
     }
     db.exec(
       "UPDATE roles SET permissions = json_remove(permissions, '$.settings') WHERE json_valid(permissions)",
     );
-    ecrireReglage(db, PARAMETRAGE_HORS_ROLES, true);
+    writeSetting(db, SETTINGS_OUTSIDE_ROLES, true);
   })();
 };
 
 /** Posé une fois les permissions passées aux types de widgets. */
-const PERMISSIONS_PAR_TYPE = "permissions_par_type_de_widget";
+const PERMISSIONS_BY_TYPE = "permissions_par_type_de_widget";
 
 /**
  * Les rôles, société par société, et les modes ouverts laissent la place à
@@ -1312,35 +1312,35 @@ const PERMISSIONS_PAR_TYPE = "permissions_par_type_de_widget";
  * reçoit « Modifier » pour tous les types et garde son Paramétrage. Puis les
  * rôles s'en vont.
  */
-export const permissionsParTypeDeWidget = (db: Database): void => {
+export const permissionsByWidgetType = (db: Database): void => {
   if (!columns(db, "principal_permissions").includes("widgets")) {
     db.exec("ALTER TABLE principal_permissions ADD COLUMN widgets TEXT NOT NULL DEFAULT '{}'");
   }
-  if (lireReglage(db, PERMISSIONS_PAR_TYPE)) return;
+  if (readSetting(db, PERMISSIONS_BY_TYPE)) return;
   db.transaction(() => {
     if (columns(db, "role_assignments").length > 0) {
       db.exec(
         `INSERT OR IGNORE INTO principal_permissions
            (workspace_id, principal_type, principal_id, principal_name, principal_email)
-         SELECT ${PREMIER_WORKSPACE}, principal_type, principal_id, MAX(principal_name),
+         SELECT ${FIRST_WORKSPACE}, principal_type, principal_id, MAX(principal_name),
                 MAX(principal_email)
          FROM role_assignments GROUP BY principal_type, principal_id`,
       );
     }
     db.prepare("UPDATE principal_permissions SET widgets = ?").run(
-      JSON.stringify(widgetRightsPartout("update")),
+      JSON.stringify(widgetRightsEverywhere("update")),
     );
     db.exec("DROP TABLE IF EXISTS role_assignments");
     db.exec("DROP TABLE IF EXISTS roles");
-    ecrireReglage(db, PERMISSIONS_PAR_TYPE, true);
+    writeSetting(db, PERMISSIONS_BY_TYPE, true);
   })();
 };
 
 /** Posé une fois les modes devenus des vues. */
-const VUES_ET_TABLEAUX = "vues_et_tableaux";
+const VIEWS_AND_BOARDS = "vues_et_tableaux";
 
 /** Les modes d'avant les vues, dans l'ordre de leur sélecteur, et le nom de leur vue. */
-const VUES_DE_DEPART = [
+const STARTING_VIEWS = [
   ["access", "Accès"],
   ["projects", "Projets"],
   ["tasks", "Tâches"],
@@ -1348,7 +1348,7 @@ const VUES_DE_DEPART = [
   ["assets", "Assets"],
 ] as const;
 
-type ModeDAvant = (typeof VUES_DE_DEPART)[number][0];
+type PreviousMode = (typeof STARTING_VIEWS)[number][0];
 
 /**
  * Une table refaite d'après son propre CREATE, retouché par « retouche » —
@@ -1356,30 +1356,30 @@ type ModeDAvant = (typeof VUES_DE_DEPART)[number][0];
  * identifiants passent tels quels. Les clés étrangères doivent être
  * suspendues (sansClesEtrangeres).
  */
-const refaireLaTable = (
+const rebuildTable = (
   db: Database,
   table: string,
-  retouche: (sql: string) => string,
-  calculees: Record<string, string> = {},
+  patch: (sql: string) => string,
+  computed: Record<string, string> = {},
 ): void => {
-  const ligne = db
+  const row = db
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
     .get(table) as { sql: string } | undefined;
-  if (!ligne) return;
-  const nouvelle = retouche(ligne.sql).replace(
+  if (!row) return;
+  const newRow = patch(row.sql).replace(
     new RegExp(`CREATE TABLE\\s+"?${table}"?`, "i"),
     `CREATE TABLE ${table}_migration`,
   );
-  db.exec(nouvelle);
+  db.exec(newRow);
   // Les colonnes de la nouvelle table : reprises de l'ancienne, ou calculées
   // d'après elle (« calculees ») ; celles qui disparaissent restent derrière.
-  const anciennes = new Set(columns(db, table));
-  const gardees = columns(db, `${table}_migration`).filter(
-    (c) => c in calculees || anciennes.has(c),
+  const old = new Set(columns(db, table));
+  const keptKeys = columns(db, `${table}_migration`).filter(
+    (c) => c in computed || old.has(c),
   );
-  const liste = gardees.map((c) => `"${c}"`).join(", ");
-  const valeurs = gardees.map((c) => calculees[c] ?? `"${c}"`).join(", ");
-  db.exec(`INSERT INTO ${table}_migration (${liste}) SELECT ${valeurs} FROM ${table} AS ancienne`);
+  const list = keptKeys.map((c) => `"${c}"`).join(", ");
+  const values = keptKeys.map((c) => computed[c] ?? `"${c}"`).join(", ");
+  db.exec(`INSERT INTO ${table}_migration (${list}) SELECT ${values} FROM ${table} AS ancienne`);
   db.exec(`DROP TABLE ${table}`);
   db.exec(`ALTER TABLE ${table}_migration RENAME TO ${table}`);
 };
@@ -1403,69 +1403,69 @@ const refaireLaTable = (
  * Sur une base neuve, les cinq vues naissent avec un tableau chacun, et la
  * liste qui va avec.
  */
-export const vuesEtTableaux = (db: Database): void => {
-  if (lireReglage(db, VUES_ET_TABLEAUX)) return;
-  const ancienne = !columns(db, "boards").includes("view_id");
-  sansClesEtrangeres(db, () =>
+export const viewsAndBoards = (db: Database): void => {
+  if (readSetting(db, VIEWS_AND_BOARDS)) return;
+  const old = !columns(db, "boards").includes("view_id");
+  withoutForeignKeys(db, () =>
     db.transaction(() => {
-      const maintenant = new Date().toISOString();
-      const creerVue = db.prepare(
+      const currentTime = new Date().toISOString();
+      const createView = db.prepare(
         "INSERT INTO views (name, position, created_at) VALUES (?, ?, ?)",
       );
-      const vues = Object.fromEntries(
-        VUES_DE_DEPART.map(([mode, nom], rang) => [
+      const views = Object.fromEntries(
+        STARTING_VIEWS.map(([mode, name], rank) => [
           mode,
-          Number(creerVue.run(nom, rang, maintenant).lastInsertRowid),
+          Number(createView.run(name, rank, currentTime).lastInsertRowid),
         ]),
-      ) as Record<ModeDAvant, number>;
+      ) as Record<PreviousMode, number>;
 
-      if (!ancienne) {
-        poserLesTableauxDeDepart(db, vues, maintenant);
+      if (!old) {
+        setStartingBoards(db, views, currentTime);
       } else {
-        convertirLesModes(db, vues, maintenant);
+        convertModes(db, views, currentTime);
       }
-      ecrireReglage(db, VUES_ET_TABLEAUX, true);
+      writeSetting(db, VIEWS_AND_BOARDS, true);
     })(),
   );
 };
 
 /** Une base neuve : un tableau par vue, avec la liste de la vue. */
-const poserLesTableauxDeDepart = (
+const setStartingBoards = (
   db: Database,
-  vues: Record<ModeDAvant, number>,
-  maintenant: string,
+  views: Record<PreviousMode, number>,
+  currentTime: string,
 ): void => {
-  const creerTableau = db.prepare(
+  const createBoard = db.prepare(
     "INSERT INTO boards (view_id, name, position, created_at) VALUES (?, ?, 0, ?)",
   );
-  const creerSection = db.prepare(
+  const createSection = db.prepare(
     "INSERT INTO board_sections (board_id, position, created_at) VALUES (?, 0, ?)",
   );
-  const creerWidget = db.prepare(
+  const createWidget = db.prepare(
     "INSERT INTO board_widgets (section_id, type, config, position, created_at) VALUES (?, ?, '{}', 0, ?)",
   );
-  const listes: Record<ModeDAvant, [string, string | null]> = {
+  const lists: Record<PreviousMode, [string, string | null]> = {
     access: ["Liens", null],
     projects: ["Projets", "project.list"],
     tasks: ["Tâches", "task.list"],
     support: ["Demandes", "support.list"],
     assets: ["Postes", "asset.list"],
   };
-  for (const [mode, [nom, liste]] of Object.entries(listes) as [
-    ModeDAvant,
+  for (const [mode, [name, list]] of Object.entries(lists) as [
+    PreviousMode,
     [string, string | null],
   ][]) {
-    const tableau = Number(creerTableau.run(vues[mode], nom, maintenant).lastInsertRowid);
-    const section = Number(creerSection.run(tableau, maintenant).lastInsertRowid);
-    if (liste) creerWidget.run(section, liste, maintenant);
+    const board = Number(createBoard.run(views[mode], name, currentTime).lastInsertRowid);
+    const section = Number(createSection.run(board, currentTime).lastInsertRowid);
+    if (list) createWidget.run(section, list, currentTime);
   }
 };
 
 /** Une base d'avant les vues : chaque mode devient la sienne. */
-const convertirLesModes = (
+const convertModes = (
   db: Database,
-  vues: Record<ModeDAvant, number>,
-  maintenant: string,
+  views: Record<PreviousMode, number>,
+  currentTime: string,
 ): void => {
   // --- Les tableaux ---------------------------------------------------------
   // La table des tableaux de tâches devient celle de tous les tableaux : ses
@@ -1488,18 +1488,18 @@ const convertirLesModes = (
        (id, view_id, company_id, name, position, show_card_numbers, owner_id, is_private, created_at)
      SELECT id, ?, company_id, name, position, show_card_numbers, owner_id, is_private, created_at
      FROM boards`,
-  ).run(vues.tasks);
-  const tableauxDeTaches = (
+  ).run(views.tasks);
+  const taskBoards = (
     db.prepare("SELECT id FROM boards_migration ORDER BY id").all() as {
       id: number;
     }[]
   ).map((l) => l.id);
 
-  const creerTableau = db.prepare(
+  const createBoard = db.prepare(
     `INSERT INTO boards_migration (view_id, name, position, owner_id, is_private, created_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
   );
-  type Onglet = {
+  type Tab = {
     id: number;
     name: string;
     position: number;
@@ -1507,27 +1507,27 @@ const convertirLesModes = (
     is_private: number;
     created_at: string;
   };
-  const versTableaux = (table: string, vue: number): Map<number, number> => {
-    const correspondance = new Map<number, number>();
-    if (columns(db, table).length === 0) return correspondance;
-    for (const o of db.prepare(`SELECT * FROM ${table} ORDER BY position, id`).all() as Onglet[]) {
-      correspondance.set(
+  const toBoards = (table: string, view: number): Map<number, number> => {
+    const mapping = new Map<number, number>();
+    if (columns(db, table).length === 0) return mapping;
+    for (const o of db.prepare(`SELECT * FROM ${table} ORDER BY position, id`).all() as Tab[]) {
+      mapping.set(
         o.id,
         Number(
-          creerTableau.run(vue, o.name, o.position, o.owner_id, o.is_private, o.created_at)
+          createBoard.run(view, o.name, o.position, o.owner_id, o.is_private, o.created_at)
             .lastInsertRowid,
         ),
       );
     }
-    return correspondance;
+    return mapping;
   };
-  const tableauxDeProjets = versTableaux("project_boards", vues.projects);
-  const tableauxDAcces = versTableaux("access_categories", vues.access);
-  const tableauSupport = Number(
-    creerTableau.run(vues.support, "Demandes", 0, null, 0, maintenant).lastInsertRowid,
+  const projectBoards = toBoards("project_boards", views.projects);
+  const accessBoards = toBoards("access_categories", views.access);
+  const supportBoard = Number(
+    createBoard.run(views.support, "Demandes", 0, null, 0, currentTime).lastInsertRowid,
   );
-  const tableauAssets = Number(
-    creerTableau.run(vues.assets, "Postes", 0, null, 0, maintenant).lastInsertRowid,
+  const assetsBoard = Number(
+    createBoard.run(views.assets, "Postes", 0, null, 0, currentTime).lastInsertRowid,
   );
   db.exec("DROP TABLE boards");
   db.exec("ALTER TABLE boards_migration RENAME TO boards");
@@ -1535,21 +1535,21 @@ const convertirLesModes = (
   // Les projets, leurs catégories et leurs étiquettes suivent leur tableau,
   // et désignent désormais la table de tous les tableaux.
   for (const table of ["categories", "projects", "project_labels"]) {
-    const deplacer = db.prepare(`UPDATE ${table} SET board_id = ? WHERE board_id = ?`);
+    const move = db.prepare(`UPDATE ${table} SET board_id = ? WHERE board_id = ?`);
     // Du plus grand identifiant au plus petit n'aiderait pas : les nouveaux
     // identifiants viennent après tous les anciens, aucun ne se recouvre.
-    for (const [ancien, nouveau] of tableauxDeProjets) deplacer.run(nouveau, ancien);
-    refaireLaTable(db, table, (sql) =>
+    for (const [old, newValue] of projectBoards) move.run(newValue, old);
+    rebuildTable(db, table, (sql) =>
       sql.replace(/REFERENCES\s+"?project_boards"?\s*\(id\)/gi, "REFERENCES boards(id)"),
     );
   }
 
   // --- Les sections et les widgets -----------------------------------------
-  const creerSection = db.prepare(
+  const createSection = db.prepare(
     `INSERT INTO board_sections (board_id, width_unit, width_value, gap, position, owner_id, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
-  const creerWidget = db.prepare(
+  const createWidget = db.prepare(
     `INSERT INTO board_widgets (section_id, type, config, position, created_at)
      VALUES (?, ?, ?, ?, ?)`,
   );
@@ -1568,10 +1568,10 @@ const convertirLesModes = (
     position: number;
     created_at: string;
   };
-  const poserSection = (tableau: number, s: Section): number =>
+  const insertSection = (board: number, s: Section): number =>
     Number(
-      creerSection.run(
-        tableau,
+      createSection.run(
+        board,
         s.width_unit,
         s.width_value,
         s.gap ?? 50,
@@ -1586,42 +1586,42 @@ const convertirLesModes = (
     const sections = db
       .prepare("SELECT * FROM access_sections ORDER BY position, id")
       .all() as (Section & { category_id: number })[];
-    const blocs = db.prepare(
+    const blocks = db.prepare(
       "SELECT * FROM access_blocks WHERE section_id = ? ORDER BY position, id",
     );
     for (const section of sections) {
-      const tableau = tableauxDAcces.get(section.category_id);
-      if (tableau === undefined) continue;
-      const nouvelle = poserSection(tableau, section);
-      for (const w of blocs.all(section.id) as Widget[]) {
-        creerWidget.run(nouvelle, w.type, w.config, w.position, w.created_at);
+      const board = accessBoards.get(section.category_id);
+      if (board === undefined) continue;
+      const newRow = insertSection(board, section);
+      for (const w of blocks.all(section.id) as Widget[]) {
+        createWidget.run(newRow, w.type, w.config, w.position, w.created_at);
       }
     }
   }
 
   // Les panneaux : leurs sections vont à chacun des tableaux qui les montrait.
-  const panneaux = [
-    ["support", "support_indicators", [tableauSupport]],
-    ["assets", "asset_indicators", [tableauAssets]],
-    ["projects", "project_indicators", [...tableauxDeProjets.values()]],
-    ["tasks", "task_indicators", tableauxDeTaches],
+  const panels = [
+    ["support", "support_indicators", [supportBoard]],
+    ["assets", "asset_indicators", [assetsBoard]],
+    ["projects", "project_indicators", [...projectBoards.values()]],
+    ["tasks", "task_indicators", taskBoards],
   ] as const;
   if (columns(db, "indicator_sections").length > 0) {
-    for (const [panneau, table, tableaux] of panneaux) {
+    for (const [panel, table, tableaux] of panels) {
       const sections = db
         .prepare("SELECT * FROM indicator_sections WHERE panel = ? ORDER BY position, id")
-        .all(panneau) as Section[];
+        .all(panel) as Section[];
       const widgets =
         columns(db, table).length > 0
           ? db.prepare(`SELECT * FROM ${table} WHERE section_id = ? ORDER BY position, id`)
           : null;
-      for (const tableau of tableaux) {
+      for (const board of tableaux) {
         for (const section of sections) {
-          const nouvelle = poserSection(tableau, section);
+          const newRow = insertSection(board, section);
           for (const w of (widgets?.all(section.id) ?? []) as Widget[]) {
-            creerWidget.run(
-              nouvelle,
-              typeDuPanneau(panneau, w.type),
+            createWidget.run(
+              newRow,
+              panelType(panel, w.type),
               w.config,
               w.position,
               w.created_at,
@@ -1635,25 +1635,25 @@ const convertirLesModes = (
   // --- Ce qui est propre à chaque compte -----------------------------------
   // « Hérité » décoché : la portée d'un panneau ou d'une catégorie devient
   // celle de chacun de ses tableaux.
-  const portees: [string, number[]][] = [
-    ["support", [tableauSupport]],
-    ["assets", [tableauAssets]],
-    ["projects", [...tableauxDeProjets.values()]],
-    ["tasks", tableauxDeTaches],
-    ...[...tableauxDAcces].map(([categorie, tableau]): [string, number[]] => [
-      `access:${categorie}`,
-      [tableau],
+  const scopes: [string, number[]][] = [
+    ["support", [supportBoard]],
+    ["assets", [assetsBoard]],
+    ["projects", [...projectBoards.values()]],
+    ["tasks", taskBoards],
+    ...[...accessBoards].map(([category, board]): [string, number[]] => [
+      `access:${category}`,
+      [board],
     ]),
   ];
-  const personnelles = db.prepare("SELECT user_id FROM personal_layouts WHERE scope = ?");
-  const poserPersonnelle = db.prepare(
+  const personal = db.prepare("SELECT user_id FROM personal_layouts WHERE scope = ?");
+  const setPersonal = db.prepare(
     "INSERT OR IGNORE INTO personal_layouts (user_id, scope, created_at) VALUES (?, ?, ?)",
   );
-  for (const [ancienne, tableaux] of portees) {
-    for (const { user_id } of personnelles.all(ancienne) as {
+  for (const [old, tableaux] of scopes) {
+    for (const { user_id } of personal.all(old) as {
       user_id: number;
     }[]) {
-      for (const tableau of tableaux) poserPersonnelle.run(user_id, `board:${tableau}`, maintenant);
+      for (const board of tableaux) setPersonal.run(user_id, `board:${board}`, currentTime);
     }
   }
   db.exec("DELETE FROM personal_layouts WHERE scope NOT LIKE 'board:%'");
@@ -1661,59 +1661,59 @@ const convertirLesModes = (
   // L'ordre des onglets : celui des modes devient celui des vues, ceux des
   // tableaux suivent leur nouvel identifiant. Les onglets fixes du Support et
   // des Assets n'existent plus.
-  const ordres = db.prepare("SELECT user_id, scope, ids FROM user_tab_orders").all() as {
+  const orders = db.prepare("SELECT user_id, scope, ids FROM user_tab_orders").all() as {
     user_id: number;
     scope: string;
     ids: string;
   }[];
-  const lire = (texte: string): string[] => {
+  const read = (text: string): string[] => {
     try {
-      const lu: unknown = JSON.parse(texte);
-      return Array.isArray(lu) ? lu.map(String) : [];
+      const readValue: unknown = JSON.parse(text);
+      return Array.isArray(readValue) ? readValue.map(String) : [];
     } catch {
       return [];
     }
   };
-  const parCompte = new Map<number, Map<string, string[]>>();
-  const ajouter = (compte: number, portee: string, ids: string[]) => {
-    const deja = parCompte.get(compte) ?? new Map<string, string[]>();
-    deja.set(portee, [...(deja.get(portee) ?? []), ...ids]);
-    parCompte.set(compte, deja);
+  const byAccount = new Map<number, Map<string, string[]>>();
+  const add = (account: number, scope: string, ids: string[]) => {
+    const already = byAccount.get(account) ?? new Map<string, string[]>();
+    already.set(scope, [...(already.get(scope) ?? []), ...ids]);
+    byAccount.set(account, already);
   };
-  const traduire = (ids: string[], correspondance: Map<number, number>): string[] =>
+  const translate = (ids: string[], mapping: Map<number, number>): string[] =>
     ids.flatMap((id) => {
-      const nouveau = correspondance.get(Number(id));
-      return nouveau === undefined ? [] : [String(nouveau)];
+      const newValue = mapping.get(Number(id));
+      return newValue === undefined ? [] : [String(newValue)];
     });
-  for (const { user_id, scope, ids } of ordres) {
-    const liste = lire(ids);
+  for (const { user_id, scope, ids } of orders) {
+    const list = read(ids);
     if (scope === "modes") {
-      ajouter(
+      add(
         user_id,
         "views",
-        liste.flatMap((mode) => (mode in vues ? [String(vues[mode as ModeDAvant])] : [])),
+        list.flatMap((mode) => (mode in views ? [String(views[mode as PreviousMode])] : [])),
       );
     } else if (scope === "project-boards") {
-      ajouter(user_id, `boards:${vues.projects}`, traduire(liste, tableauxDeProjets));
+      add(user_id, `boards:${views.projects}`, translate(list, projectBoards));
     } else if (scope === "access-categories") {
-      ajouter(user_id, `boards:${vues.access}`, traduire(liste, tableauxDAcces));
+      add(user_id, `boards:${views.access}`, translate(list, accessBoards));
     } else if (scope.startsWith("boards:")) {
       // Les tableaux de tâches se rangeaient société par société : ils se
       // rangent désormais ensemble, dans la vue Tâches.
-      ajouter(user_id, `boards:${vues.tasks}`, liste);
+      add(user_id, `boards:${views.tasks}`, list);
     }
   }
   db.exec("DELETE FROM user_tab_orders");
-  const poserOrdre = db.prepare(
+  const setOrder = db.prepare(
     "INSERT INTO user_tab_orders (user_id, scope, ids) VALUES (?, ?, ?)",
   );
-  for (const [compte, portees2] of parCompte) {
-    for (const [portee, ids] of portees2) poserOrdre.run(compte, portee, JSON.stringify(ids));
+  for (const [account, scopes2] of byAccount) {
+    for (const [scope, ids] of scopes2) setOrder.run(account, scope, JSON.stringify(ids));
   }
 
   // La vue d'ouverture : celle du mode d'ouverture.
-  for (const [mode, vue] of Object.entries(vues)) {
-    db.prepare("UPDATE users SET default_view = ? WHERE default_mode = ?").run(String(vue), mode);
+  for (const [mode, view] of Object.entries(views)) {
+    db.prepare("UPDATE users SET default_view = ? WHERE default_mode = ?").run(String(view), mode);
   }
 
   // --- Ce qui ne sert plus --------------------------------------------------
@@ -1732,10 +1732,10 @@ const convertirLesModes = (
   }
 };
 
-const CONTEXTES = "contextes";
+const CONTEXTS = "contextes";
 
 /** L'ordre des contextes nés des sociétés ; les autres suivent, par nom. */
-const ORDRE_DES_CONTEXTES = [
+const CONTEXTS_ORDER = [
   "Les manufactures",
   "Arco Marketing",
   "SAMB",
@@ -1744,7 +1744,7 @@ const ORDRE_DES_CONTEXTES = [
   "Monot",
 ];
 
-interface SocieteDAvant {
+interface PreviousCompany {
   id: number;
   name: string;
   support_email: string;
@@ -1767,61 +1767,61 @@ interface SocieteDAvant {
  *
  * Les sociétés et le filtre des tableaux disparaissent.
  */
-export const contextes = (db: Database): void => {
-  if (lireReglage(db, CONTEXTES)) return;
-  const existe = (table: string): boolean =>
+export const contexts = (db: Database): void => {
+  if (readSetting(db, CONTEXTS)) return;
+  const exists = (table: string): boolean =>
     Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
-  sansClesEtrangeres(db, () =>
+  withoutForeignKeys(db, () =>
     db.transaction(() => {
-      const maintenant = new Date().toISOString();
-      const rang = (nom: string): number => {
-        const i = ORDRE_DES_CONTEXTES.findIndex(
-          (n) => n.localeCompare(nom, "fr", { sensitivity: "base" }) === 0,
+      const currentTime = new Date().toISOString();
+      const rank = (name: string): number => {
+        const i = CONTEXTS_ORDER.findIndex(
+          (n) => n.localeCompare(name, "fr", { sensitivity: "base" }) === 0,
         );
-        return i < 0 ? ORDRE_DES_CONTEXTES.length : i;
+        return i < 0 ? CONTEXTS_ORDER.length : i;
       };
-      const societes = (
-        existe("companies")
-          ? (db.prepare("SELECT id, name, support_email FROM companies").all() as SocieteDAvant[])
+      const companies = (
+        exists("companies")
+          ? (db.prepare("SELECT id, name, support_email FROM companies").all() as PreviousCompany[])
           : []
-      ).sort((a, b) => rang(a.name) - rang(b.name) || a.name.localeCompare(b.name, "fr"));
+      ).sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, "fr"));
 
       // Les contextes de chaque tableau, et la correspondance des sociétés.
       db.exec(
         "CREATE TEMP TABLE correspondance (board_id INTEGER, company_id INTEGER, context_id INTEGER)",
       );
-      const creerContexte = db.prepare(
+      const createContext = db.prepare(
         "INSERT INTO contexts (board_id, name, position, created_at) VALUES (?, ?, ?, ?)",
       );
-      const correspond = db.prepare("INSERT INTO temp.correspondance VALUES (?, ?, ?)");
+      const matches = db.prepare("INSERT INTO temp.correspondance VALUES (?, ?, ?)");
       const tableaux = db.prepare("SELECT id FROM boards").all() as {
         id: number;
       }[];
       for (const { id } of tableaux) {
-        const dejaLa = db.prepare("SELECT 1 FROM contexts WHERE board_id = ?").get(id);
-        if (dejaLa) continue;
+        const alreadyThere = db.prepare("SELECT 1 FROM contexts WHERE board_id = ?").get(id);
+        if (alreadyThere) continue;
         // Sans société, le tableau n'a pas de contexte : on en ajoute depuis
         // sa liste.
-        if (societes.length === 0) continue;
-        societes.forEach((societe, position) => {
-          const contexte = creerContexte.run(
+        if (companies.length === 0) continue;
+        companies.forEach((company, position) => {
+          const context = createContext.run(
             id,
-            societe.name,
+            company.name,
             position,
-            maintenant,
+            currentTime,
           ).lastInsertRowid;
-          correspond.run(id, societe.id, contexte);
+          matches.run(id, company.id, context);
         });
       }
-      const premier = (tableau: string) =>
-        `(SELECT id FROM contexts WHERE board_id = ${tableau} ORDER BY position, id LIMIT 1)`;
-      const contexteDe = (tableau: string, societe: string) =>
+      const first = (board: string) =>
+        `(SELECT id FROM contexts WHERE board_id = ${board} ORDER BY position, id LIMIT 1)`;
+      const contextOf = (board: string, company: string) =>
         `COALESCE((SELECT context_id FROM temp.correspondance c
-                   WHERE c.board_id = ${tableau} AND c.company_id = ${societe}), ${premier(tableau)})`;
+                   WHERE c.board_id = ${board} AND c.company_id = ${company}), ${first(board)})`;
 
       // Le tableau qui reçoit les demandes, celui qui reçoit les postes : celui
       // de la première liste posée en public.
-      const tableauDuWidget = (type: string): number | null =>
+      const widgetBoard = (type: string): number | null =>
         (
           db
             .prepare(
@@ -1836,15 +1836,15 @@ export const contextes = (db: Database): void => {
             { id: number } | undefined
         )?.id ??
         null;
-      const tableauDesDemandes = tableauDuWidget("support.list");
-      const tableauDesPostes = tableauDuWidget("asset.list");
+      const requestsBoard = widgetBoard("support.list");
+      const workstationsBoard = widgetBoard("asset.list");
 
-      const colonnesDesTableaux = columns(db, "boards");
-      const filtreDesTableaux = colonnesDesTableaux.includes("company_id");
+      const boardColumns = columns(db, "boards");
+      const boardsFilter = boardColumns.includes("company_id");
 
       // Les projets.
       if (columns(db, "projects").includes("company_id"))
-        refaireLaTable(
+        rebuildTable(
           db,
           "projects",
           (sql) =>
@@ -1853,7 +1853,7 @@ export const contextes = (db: Database): void => {
               "context_id INTEGER REFERENCES contexts(id) ON DELETE CASCADE,",
             ),
           {
-            context_id: contexteDe("ancienne.board_id", "ancienne.company_id"),
+            context_id: contextOf("ancienne.board_id", "ancienne.company_id"),
           },
         );
 
@@ -1863,25 +1863,25 @@ export const contextes = (db: Database): void => {
           "ALTER TABLE task_cards ADD COLUMN context_id INTEGER REFERENCES contexts(id) ON DELETE CASCADE",
         );
       }
-      const tableauDeLaCarte =
+      const cardBoard =
         "(SELECT l.board_id FROM task_lists l WHERE l.id = task_cards.list_id)";
       db.exec(
         `UPDATE task_cards SET context_id = ${
-          filtreDesTableaux
-            ? contexteDe(
-                tableauDeLaCarte,
-                `(SELECT b.company_id FROM boards b WHERE b.id = ${tableauDeLaCarte})`,
+          boardsFilter
+            ? contextOf(
+                cardBoard,
+                `(SELECT b.company_id FROM boards b WHERE b.id = ${cardBoard})`,
               )
-            : premier(tableauDeLaCarte)
+            : first(cardBoard)
         } WHERE context_id IS NULL`,
       );
 
       // Les demandes : le contexte de leur société, dans le tableau des demandes.
-      const colonnesDesDemandes = columns(db, "support_requests");
-      if (colonnesDesDemandes.includes("company_id")) {
+      const requestColumns = columns(db, "support_requests");
+      if (requestColumns.includes("company_id")) {
         // Sans tableau où aller, une demande n'a plus où se montrer.
-        if (tableauDesDemandes === null) db.exec("DELETE FROM support_requests");
-        refaireLaTable(
+        if (requestsBoard === null) db.exec("DELETE FROM support_requests");
+        rebuildTable(
           db,
           "support_requests",
           (sql) =>
@@ -1891,8 +1891,8 @@ export const contextes = (db: Database): void => {
             mailbox TEXT NOT NULL DEFAULT '',`,
             ),
           {
-            context_id: contexteDe(String(tableauDesDemandes), "ancienne.company_id"),
-            mailbox: existe("companies")
+            context_id: contextOf(String(requestsBoard), "ancienne.company_id"),
+            mailbox: exists("companies")
               ? "COALESCE((SELECT support_email FROM companies s WHERE s.id = ancienne.company_id), '')"
               : "''",
           },
@@ -1901,7 +1901,7 @@ export const contextes = (db: Database): void => {
 
       // Les postes : le contexte de leur société, dans le tableau des postes.
       if (columns(db, "assets").includes("company_id")) {
-        refaireLaTable(
+        rebuildTable(
           db,
           "assets",
           (sql) =>
@@ -1911,7 +1911,7 @@ export const contextes = (db: Database): void => {
             ),
           {
             context_id: `CASE WHEN ancienne.company_id IS NULL THEN NULL ELSE (SELECT context_id
-              FROM temp.correspondance c WHERE c.board_id = ${tableauDesPostes ?? "NULL"}
+              FROM temp.correspondance c WHERE c.board_id = ${workstationsBoard ?? "NULL"}
               AND c.company_id = ancienne.company_id) END`,
           },
         );
@@ -1931,10 +1931,10 @@ export const contextes = (db: Database): void => {
         config: string;
         board_id: number;
       }[];
-      const contexteDeLaSociete = db.prepare(
+      const companyContext = db.prepare(
         "SELECT context_id FROM temp.correspondance WHERE board_id = ? AND company_id = ?",
       );
-      const tagsReconnus = columns(db, "assets").includes("context_id")
+      const knownTags = columns(db, "assets").includes("context_id")
         ? (db
             .prepare(
               `SELECT DISTINCT a.tag, c.company_id FROM assets a
@@ -1943,7 +1943,7 @@ export const contextes = (db: Database): void => {
             )
             .all() as { tag: string; company_id: number }[])
         : [];
-      const ecrireConfig = db.prepare("UPDATE board_widgets SET config = ? WHERE id = ?");
+      const writeConfig = db.prepare("UPDATE board_widgets SET config = ? WHERE id = ?");
       for (const widget of configs) {
         let config: Record<string, unknown> = {};
         try {
@@ -1951,55 +1951,55 @@ export const contextes = (db: Database): void => {
         } catch {
           // Une configuration illisible repart de zéro.
         }
-        const contexteDuTableau = (societe: number): number | null =>
-          (contexteDeLaSociete.get(widget.board_id, societe) as { context_id: number } | undefined)
+        const boardContext = (company: number): number | null =>
+          (companyContext.get(widget.board_id, company) as { context_id: number } | undefined)
             ?.context_id ?? null;
         if (widget.type === "support.list") {
-          const seule = config.boite ? Number(config.boite) : null;
-          config.boites = societes
-            .filter((s) => s.support_email && (seule === null || s.id === seule))
+          const single = config.boite ? Number(config.boite) : null;
+          config.boites = companies
+            .filter((s) => s.support_email && (single === null || s.id === single))
             .map((s) => ({
               email: s.support_email,
-              contexte: contexteDuTableau(s.id),
+              context: boardContext(s.id),
             }))
-            .filter((b) => b.contexte !== null);
+            .filter((b) => b.context !== null);
           delete config.boite;
         } else {
-          const seul = typeof config.tag === "string" && config.tag ? config.tag : null;
-          config.tags = tagsReconnus
-            .filter((t) => seul === null || t.tag === seul)
+          const only = typeof config.tag === "string" && config.tag ? config.tag : null;
+          config.tags = knownTags
+            .filter((t) => only === null || t.tag === only)
             .map((t) => ({
               tag: t.tag,
-              contexte: contexteDuTableau(t.company_id),
+              context: boardContext(t.company_id),
             }))
-            .filter((t) => t.contexte !== null);
+            .filter((t) => t.context !== null);
           delete config.tag;
         }
-        ecrireConfig.run(JSON.stringify(config), widget.id);
+        writeConfig.run(JSON.stringify(config), widget.id);
       }
 
       // L'adresse d'envoi commune.
-      const entra = (lireReglage(db, "entra") ?? null) as Record<string, unknown> | null;
+      const entra = (readSetting(db, "entra") ?? null) as Record<string, unknown> | null;
       if (entra && !entra.mail_sender) {
-        const expediteur =
-          societes.find((s) => s.name === "Arco Marketing" && s.support_email) ??
-          societes.find((s) => s.support_email);
-        if (expediteur)
-          ecrireReglage(db, "entra", {
+        const sender =
+          companies.find((s) => s.name === "Arco Marketing" && s.support_email) ??
+          companies.find((s) => s.support_email);
+        if (sender)
+          writeSetting(db, "entra", {
             ...entra,
-            mail_sender: expediteur.support_email,
+            mail_sender: sender.support_email,
           });
       }
 
       // Le filtre des tableaux et les sociétés disparaissent.
-      if (filtreDesTableaux) {
-        refaireLaTable(db, "boards", (sql) =>
+      if (boardsFilter) {
+        rebuildTable(db, "boards", (sql) =>
           sql.replace(
             /company_id INTEGER[^,]*,/,
             "all_contexts_label TEXT NOT NULL DEFAULT 'Tous les contextes',",
           ),
         );
-      } else if (!colonnesDesTableaux.includes("all_contexts_label")) {
+      } else if (!boardColumns.includes("all_contexts_label")) {
         db.exec(
           "ALTER TABLE boards ADD COLUMN all_contexts_label TEXT NOT NULL DEFAULT 'Tous les contextes'",
         );
@@ -2014,14 +2014,14 @@ export const contextes = (db: Database): void => {
         db.exec(`DROP INDEX IF EXISTS ${index}`);
       }
       db.exec("DROP TABLE temp.correspondance");
-      ecrireReglage(db, CONTEXTES, true);
+      writeSetting(db, CONTEXTS, true);
     })(),
   );
 };
 
-const LISTES_PAR_WIDGET = "listes_par_widget";
+const LISTS_PER_WIDGET = "listes_par_widget";
 
-interface WidgetDeListe {
+interface ListWidget {
   id: number;
   type: string;
   config: string;
@@ -2039,8 +2039,8 @@ interface WidgetDeListe {
  * demande va d'abord à celui qui reçoit sa boîte, un poste à celui qui
  * reçoit son tag.
  */
-export const listesParWidget = (db: Database): void => {
-  if (lireReglage(db, LISTES_PAR_WIDGET)) return;
+export const listsPerWidget = (db: Database): void => {
+  if (readSetting(db, LISTS_PER_WIDGET)) return;
   db.transaction(() => {
     for (const table of ["projects", "task_lists", "support_requests", "assets"]) {
       // Une base neuve n'a pas encore ses postes : leur table naît après les
@@ -2058,107 +2058,107 @@ export const listesParWidget = (db: Database): void => {
          WHERE w.type IN ('project.list', 'task.list', 'support.list', 'asset.list')
          ORDER BY s.owner_id IS NOT NULL, s.owner_id, s.position, s.id, w.position, w.id`,
       )
-      .all() as WidgetDeListe[];
-    const lire = (config: string): Record<string, unknown> => {
+      .all() as ListWidget[];
+    const read = (config: string): Record<string, unknown> => {
       try {
         return (JSON.parse(config) as Record<string, unknown>) ?? {};
       } catch {
         return {};
       }
     };
-    const ecrire = db.prepare("UPDATE board_widgets SET config = ? WHERE id = ?");
+    const write = db.prepare("UPDATE board_widgets SET config = ? WHERE id = ?");
     // Les clés des widgets publics, par tableau et par type, dans l'ordre.
-    const publiques = new Map<string, string[]>();
+    const publicIds = new Map<string, string[]>();
     // Le rang atteint, par compte, tableau et type, pour les copies.
-    const rangs = new Map<string, number>();
+    const ranks = new Map<string, number>();
     const configs = new Map<number, Record<string, unknown>>();
     for (const widget of widgets) {
-      const config = lire(widget.config);
-      const groupe = `${widget.board_id}:${widget.type}`;
+      const config = read(widget.config);
+      const group = `${widget.board_id}:${widget.type}`;
       if (typeof config.liste !== "string" || !config.liste) {
         if (widget.owner_id === null) {
           config.liste = crypto.randomUUID();
         } else {
-          const cle = `${widget.owner_id}:${groupe}`;
-          const rang = rangs.get(cle) ?? 0;
-          rangs.set(cle, rang + 1);
-          config.liste = publiques.get(groupe)?.[rang] ?? crypto.randomUUID();
+          const key = `${widget.owner_id}:${group}`;
+          const rank = ranks.get(key) ?? 0;
+          ranks.set(key, rank + 1);
+          config.liste = publicIds.get(group)?.[rank] ?? crypto.randomUUID();
         }
-        ecrire.run(JSON.stringify(config), widget.id);
+        write.run(JSON.stringify(config), widget.id);
       }
       if (widget.owner_id === null) {
-        publiques.set(groupe, [...(publiques.get(groupe) ?? []), config.liste as string]);
+        publicIds.set(group, [...(publicIds.get(group) ?? []), config.liste as string]);
       }
       configs.set(widget.id, config);
     }
-    const premiere = (boardId: number, type: string): string =>
-      publiques.get(`${boardId}:${type}`)?.[0] ?? "";
+    const first = (boardId: number, type: string): string =>
+      publicIds.get(`${boardId}:${type}`)?.[0] ?? "";
 
-    const poser = (table: string, type: string, tableau: string) => {
-      const lignes = db
-        .prepare(`SELECT id, ${tableau} AS board_id FROM ${table} WHERE list_key = ''`)
+    const insertRow = (table: string, type: string, board: string) => {
+      const rows = db
+        .prepare(`SELECT id, ${board} AS board_id FROM ${table} WHERE list_key = ''`)
         .all() as { id: number; board_id: number | null }[];
-      const maj = db.prepare(`UPDATE ${table} SET list_key = ? WHERE id = ?`);
-      for (const { id, board_id } of lignes) {
-        if (board_id !== null) maj.run(premiere(board_id, type), id);
+      const updateStatement = db.prepare(`UPDATE ${table} SET list_key = ? WHERE id = ?`);
+      for (const { id, board_id } of rows) {
+        if (board_id !== null) updateStatement.run(first(board_id, type), id);
       }
     };
-    poser("projects", "project.list", "board_id");
-    poser("task_lists", "task.list", "board_id");
+    insertRow("projects", "project.list", "board_id");
+    insertRow("task_lists", "task.list", "board_id");
 
     // Le widget public d'un tableau qui reçoit cette valeur, sinon le premier.
-    const receveur = (boardId: number, type: string, champ: string, cle: string, valeur: string) =>
+    const receiver = (boardId: number, type: string, field: string, key: string, value: string) =>
       widgets.find((w) => {
         if (w.owner_id !== null || w.board_id !== boardId || w.type !== type) return false;
-        const liste = configs.get(w.id)?.[champ];
+        const list = configs.get(w.id)?.[field];
         return (
-          Array.isArray(liste) &&
-          (liste as Record<string, unknown>[]).some(
-            (r) => typeof r?.[cle] === "string" && (r[cle] as string).toLowerCase() === valeur,
+          Array.isArray(list) &&
+          (list as Record<string, unknown>[]).some(
+            (r) => typeof r?.[key] === "string" && (r[key] as string).toLowerCase() === value,
           )
         );
       });
-    const demandes = db
+    const requests = db
       .prepare(
         `SELECT r.id, r.mailbox, c.board_id FROM support_requests r
          JOIN contexts c ON c.id = r.context_id WHERE r.list_key = ''`,
       )
       .all() as { id: number; mailbox: string; board_id: number }[];
-    const majDemande = db.prepare("UPDATE support_requests SET list_key = ? WHERE id = ?");
-    for (const d of demandes) {
+    const updateRequest = db.prepare("UPDATE support_requests SET list_key = ? WHERE id = ?");
+    for (const d of requests) {
       const w = d.mailbox
-        ? receveur(d.board_id, "support.list", "boites", "email", d.mailbox.toLowerCase())
+        ? receiver(d.board_id, "support.list", "boites", "email", d.mailbox.toLowerCase())
         : undefined;
-      majDemande.run(
-        w ? (configs.get(w.id)!.liste as string) : premiere(d.board_id, "support.list"),
+      updateRequest.run(
+        w ? (configs.get(w.id)!.liste as string) : first(d.board_id, "support.list"),
         d.id,
       );
     }
     if (columns(db, "assets").length === 0) {
-      ecrireReglage(db, LISTES_PAR_WIDGET, true);
+      writeSetting(db, LISTS_PER_WIDGET, true);
       return;
     }
-    const postes = db
+    const workstations = db
       .prepare(
         `SELECT a.id, a.tag, c.board_id FROM assets a
          JOIN contexts c ON c.id = a.context_id WHERE a.list_key = ''`,
       )
       .all() as { id: number; tag: string; board_id: number }[];
-    const majPoste = db.prepare("UPDATE assets SET list_key = ? WHERE id = ?");
-    for (const a of postes) {
-      const w = receveur(a.board_id, "asset.list", "tags", "tag", a.tag.trim().toLowerCase());
-      majPoste.run(
-        w ? (configs.get(w.id)!.liste as string) : premiere(a.board_id, "asset.list"),
+    const updateWorkstation = db.prepare("UPDATE assets SET list_key = ? WHERE id = ?");
+    for (const a of workstations) {
+      const w = receiver(a.board_id, "asset.list", "tags", "tag", a.tag.trim().toLowerCase());
+      updateWorkstation.run(
+        w ? (configs.get(w.id)!.liste as string) : first(a.board_id, "asset.list"),
         a.id,
       );
     }
-    ecrireReglage(db, LISTES_PAR_WIDGET, true);
+    writeSetting(db, LISTS_PER_WIDGET, true);
   })();
 };
 
-const CONTEXTES_FACULTATIFS = "contextes_facultatifs";
+const OPTIONAL_CONTEXTS = "contextes_facultatifs";
 
-interface ColonneDetaillee {
+interface DetailedColumn {
   name: string;
   notnull: number;
 }
@@ -2168,22 +2168,22 @@ interface ColonneDetaillee {
  * ont pas non plus. Le contexte devient facultatif, et une demande comme un
  * poste portent leur tableau — c'était leur contexte qui le disait.
  */
-export const contextesFacultatifs = (db: Database): void => {
-  if (lireReglage(db, CONTEXTES_FACULTATIFS)) return;
-  const obligatoire = (table: string, colonne: string): boolean =>
-    (db.prepare(`PRAGMA table_info(${table})`).all() as ColonneDetaillee[]).some(
-      (c) => c.name === colonne && c.notnull === 1,
+export const optionalContexts = (db: Database): void => {
+  if (readSetting(db, OPTIONAL_CONTEXTS)) return;
+  const isRequired = (table: string, column: string): boolean =>
+    (db.prepare(`PRAGMA table_info(${table})`).all() as DetailedColumn[]).some(
+      (c) => c.name === column && c.notnull === 1,
     );
-  const tableauDuContexte = "(SELECT board_id FROM contexts WHERE id = ancienne.context_id)";
-  sansClesEtrangeres(db, () =>
+  const contextBoard = "(SELECT board_id FROM contexts WHERE id = ancienne.context_id)";
+  withoutForeignKeys(db, () =>
     db.transaction(() => {
-      if (obligatoire("projects", "context_id")) {
-        refaireLaTable(db, "projects", (sql) =>
+      if (isRequired("projects", "context_id")) {
+        rebuildTable(db, "projects", (sql) =>
           sql.replace(/context_id INTEGER NOT NULL/, "context_id INTEGER"),
         );
       }
       if (!columns(db, "support_requests").includes("board_id")) {
-        refaireLaTable(
+        rebuildTable(
           db,
           "support_requests",
           (sql) =>
@@ -2191,11 +2191,11 @@ export const contextesFacultatifs = (db: Database): void => {
               /context_id INTEGER( NOT NULL)?/,
               "board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,\n            context_id INTEGER",
             ),
-          { board_id: tableauDuContexte },
+          { board_id: contextBoard },
         );
       }
-      const postes = columns(db, "assets");
-      if (postes.length > 0 && !postes.includes("board_id")) {
+      const workstations = columns(db, "assets");
+      if (workstations.length > 0 && !workstations.includes("board_id")) {
         db.exec(
           "ALTER TABLE assets ADD COLUMN board_id INTEGER REFERENCES boards(id) ON DELETE CASCADE",
         );
@@ -2203,12 +2203,12 @@ export const contextesFacultatifs = (db: Database): void => {
           "UPDATE assets SET board_id = (SELECT board_id FROM contexts WHERE id = assets.context_id)",
         );
       }
-      ecrireReglage(db, CONTEXTES_FACULTATIFS, true);
+      writeSetting(db, OPTIONAL_CONTEXTS, true);
     })(),
   );
 };
 
-const BOITES_CONFIRMEES = "boites_confirmees_par_liste";
+const CONFIRMED_MAILBOXES = "boites_confirmees_par_liste";
 
 /**
  * Les boîtes de support se confirment liste par liste (lib/optin.ts). Celles
@@ -2217,12 +2217,12 @@ const BOITES_CONFIRMEES = "boites_confirmees_par_liste";
  * base passée par la confirmation par adresse (mailbox_optins) en garde
  * l'état, recopié pour chaque liste qui dit l'adresse.
  */
-export const boitesConfirmees = (db: Database): void => {
-  if (lireReglage(db, BOITES_CONFIRMEES)) return;
-  const parAdresse = columns(db, "mailbox_optins").length > 0;
+export const confirmedMailboxes = (db: Database): void => {
+  if (readSetting(db, CONFIRMED_MAILBOXES)) return;
+  const byAddress = columns(db, "mailbox_optins").length > 0;
   db.transaction(() => {
-    const avant = new Map<string, string>(
-      parAdresse
+    const before = new Map<string, string>(
+      byAddress
         ? (
             db.prepare("SELECT email, confirmed_at FROM mailbox_optins").all() as {
               email: string;
@@ -2234,30 +2234,30 @@ export const boitesConfirmees = (db: Database): void => {
     const configs = db
       .prepare("SELECT config FROM board_widgets WHERE type = 'support.list'")
       .all() as { config: string }[];
-    const poser = db.prepare(
+    const insertRow = db.prepare(
       `INSERT OR IGNORE INTO list_mailbox_optins (list_key, email, confirmed_at, created_at)
        VALUES (?, ?, ?, ?)`,
     );
-    const maintenant = new Date().toISOString();
+    const currentTime = new Date().toISOString();
     for (const { config } of configs) {
-      let lu: { boites?: { email?: unknown }[]; liste?: unknown } = {};
+      let readValue: { mailboxes?: { email?: unknown }[]; list?: unknown } = {};
       try {
-        lu = JSON.parse(config) as typeof lu;
+        readValue = JSON.parse(config) as typeof readValue;
       } catch {
         continue;
       }
-      const liste = typeof lu.liste === "string" ? lu.liste : "";
-      if (!liste) continue;
-      for (const boite of Array.isArray(lu.boites) ? lu.boites : []) {
-        const email = typeof boite?.email === "string" ? boite.email.trim().toLowerCase() : "";
+      const list = typeof readValue.list === "string" ? readValue.list : "";
+      if (!list) continue;
+      for (const mailbox of Array.isArray(readValue.mailboxes) ? readValue.mailboxes : []) {
+        const email = typeof mailbox?.email === "string" ? mailbox.email.trim().toLowerCase() : "";
         if (!email) continue;
         // Par adresse, seules celles qui étaient confirmées le restent ; sans
         // confirmation du tout, toutes l'étaient de fait.
-        const confirmee = parAdresse ? (avant.get(email) ?? "") : "1970-01-01T00:00:00.000Z";
-        poser.run(liste, email, confirmee, maintenant);
+        const confirmed = byAddress ? (before.get(email) ?? "") : "1970-01-01T00:00:00.000Z";
+        insertRow.run(list, email, confirmed, currentTime);
       }
     }
-    if (parAdresse) db.exec("DROP TABLE mailbox_optins");
-    ecrireReglage(db, BOITES_CONFIRMEES, true);
+    if (byAddress) db.exec("DROP TABLE mailbox_optins");
+    writeSetting(db, CONFIRMED_MAILBOXES, true);
   })();
 };

@@ -16,10 +16,10 @@ import type { Asset, AssetSupport } from "@milo/shared";
 const API = "https://endoflife.date/api";
 
 /** La liste d'un produit reste bonne un jour : les dates ne bougent guère. */
-const DUREE_CACHE = 24 * 60 * 60 * 1000;
+const CACHE_DURATION = 24 * 60 * 60 * 1000;
 
 /** Au-delà, le service est trop lent : la fiche attend. */
-const DELAI = 5_000;
+const TIMEOUT = 5_000;
 
 /** Une version d'un produit, telle qu'endoflife.date la décrit. */
 interface Cycle {
@@ -29,36 +29,36 @@ interface Cycle {
   eol: string | boolean;
 }
 
-const caches = new Map<string, { lu: number; cycles: Cycle[] }>();
-const enCours = new Map<string, Promise<Cycle[] | null>>();
+const caches = new Map<string, { readValue: number; cycles: Cycle[] }>();
+const ongoing = new Map<string, Promise<Cycle[] | null>>();
 
 /** La liste des versions d'un produit, en cache ; « null » si on ne l'a jamais eue. */
-const cyclesDe = (produit: string): Promise<Cycle[] | null> => {
-  const cache = caches.get(produit);
-  if (cache && Date.now() - cache.lu < DUREE_CACHE) return Promise.resolve(cache.cycles);
-  const deja = enCours.get(produit);
-  if (deja) return deja;
+const cyclesDe = (product: string): Promise<Cycle[] | null> => {
+  const cache = caches.get(product);
+  if (cache && Date.now() - cache.readValue < CACHE_DURATION) return Promise.resolve(cache.cycles);
+  const already = ongoing.get(product);
+  if (already) return already;
 
-  const lecture = (async () => {
+  const reading = (async () => {
     try {
-      const reponse = await fetch(`${API}/${produit}.json`, {
-        signal: AbortSignal.timeout(DELAI),
+      const response = await fetch(`${API}/${product}.json`, {
+        signal: AbortSignal.timeout(TIMEOUT),
         headers: { Accept: "application/json", "User-Agent": "Milo (inventaire)" },
       });
-      if (!reponse.ok) throw new Error(`endoflife.date a répondu ${reponse.status}`);
-      const cycles = (await reponse.json()) as Cycle[];
+      if (!response.ok) throw new Error(`endoflife.date a répondu ${response.status}`);
+      const cycles = (await response.json()) as Cycle[];
       if (!Array.isArray(cycles)) throw new Error("Réponse inattendue");
-      caches.set(produit, { lu: Date.now(), cycles });
+      caches.set(product, { readValue: Date.now(), cycles });
       return cycles;
     } catch {
       // La liste d'hier vaut mieux que rien.
       return cache?.cycles ?? null;
     } finally {
-      enCours.delete(produit);
+      ongoing.delete(product);
     }
   })();
-  enCours.set(produit, lecture);
-  return lecture;
+  ongoing.set(product, reading);
+  return reading;
 };
 
 /**
@@ -66,44 +66,44 @@ const cyclesDe = (produit: string): Promise<Cycle[] | null> => {
  * Windows a une liste par édition : « e » pour Entreprise et Éducation, « w »
  * pour Famille et Professionnel, et des branches LTSC à part.
  */
-const recherche = (os: NonNullable<Asset["os"]>): { produit: string; cycles: string[] } | null => {
-  const nom = os.name;
+const search = (os: NonNullable<Asset["os"]>): { product: string; cycles: string[] } | null => {
+  const name = os.name;
   const version = os.version.trim();
-  const majeure = version.split(/[.\s]/)[0] ?? "";
+  const major = version.split(/[.\s]/)[0] ?? "";
 
   switch (os.family) {
     case "windows": {
-      if (/server/i.test(nom)) {
-        const annee = /server\s+(\d{4})/i.exec(nom)?.[1];
-        return annee ? { produit: "windows-server", cycles: [annee] } : null;
+      if (/server/i.test(name)) {
+        const year = /server\s+(\d{4})/i.exec(name)?.[1];
+        return year ? { product: "windows-server", cycles: [year] } : null;
       }
-      const generation = /windows\s+(10|11)\b/i.exec(nom)?.[1];
+      const generation = /windows\s+(10|11)\b/i.exec(name)?.[1];
       if (!generation || !version) return null;
       const v = version.toLowerCase();
       const base = `${generation}-${v}`;
-      if (/iot/i.test(nom) && /ltsc/i.test(nom)) {
-        return { produit: "windows", cycles: [`${base}-iot-lts`] };
+      if (/iot/i.test(name) && /ltsc/i.test(name)) {
+        return { product: "windows", cycles: [`${base}-iot-lts`] };
       }
-      if (/ltsc|ltsb/i.test(nom)) return { produit: "windows", cycles: [`${base}-e-lts`] };
-      const edition = /entreprise|enterprise|[ée]ducation/i.test(nom) ? "e" : "w";
-      return { produit: "windows", cycles: [`${base}-${edition}`, base] };
+      if (/ltsc|ltsb/i.test(name)) return { product: "windows", cycles: [`${base}-e-lts`] };
+      const editMode = /entreprise|enterprise|[ée]ducation/i.test(name) ? "e" : "w";
+      return { product: "windows", cycles: [`${base}-${editMode}`, base] };
     }
     case "macos":
       // Avant la 11, macOS se numérotait en 10.x : la version est « 10.15 ».
-      if (majeure === "10") {
-        return { produit: "macos", cycles: [version.split(".").slice(0, 2).join(".")] };
+      if (major === "10") {
+        return { product: "macos", cycles: [version.split(".").slice(0, 2).join(".")] };
       }
-      return majeure ? { produit: "macos", cycles: [majeure] } : null;
+      return major ? { product: "macos", cycles: [major] } : null;
     case "ubuntu": {
-      const v = /\d+\.\d+/.exec(version || nom)?.[0];
-      return v ? { produit: "ubuntu", cycles: [v] } : null;
+      const v = /\d+\.\d+/.exec(version || name)?.[0];
+      return v ? { product: "ubuntu", cycles: [v] } : null;
     }
     case "debian":
     case "redhat":
     case "fedora": {
-      const v = majeure || /\d+/.exec(nom)?.[0];
-      const produit = os.family === "redhat" ? "rhel" : os.family;
-      return v ? { produit, cycles: [v] } : null;
+      const v = major || /\d+/.exec(name)?.[0];
+      const product = os.family === "redhat" ? "rhel" : os.family;
+      return v ? { product, cycles: [v] } : null;
     }
     default:
       return null;
@@ -111,22 +111,22 @@ const recherche = (os: NonNullable<Asset["os"]>): { produit: string; cycles: str
 };
 
 /** La fin de support du système d'un poste ; « null » quand on ne sait pas la dire. */
-export const finDeSupport = async (os: Asset["os"]): Promise<AssetSupport | null> => {
+export const endOfSupport = async (os: Asset["os"]): Promise<AssetSupport | null> => {
   if (!os) return null;
-  const cherche = recherche(os);
-  if (!cherche) return null;
+  const lookup = search(os);
+  if (!lookup) return null;
 
-  const cycles = await cyclesDe(cherche.produit);
+  const cycles = await cyclesDe(lookup.product);
   if (!cycles) return null;
-  const trouve = cherche.cycles
-    .map((nom) => cycles.find((c) => c.cycle.toLowerCase() === nom))
+  const found = lookup.cycles
+    .map((name) => cycles.find((c) => c.cycle.toLowerCase() === name))
     .find(Boolean);
-  if (!trouve) return null;
+  if (!found) return null;
 
-  const eol = typeof trouve.eol === "string" ? trouve.eol : null;
+  const eol = typeof found.eol === "string" ? found.eol : null;
   return {
-    cycle: trouve.releaseLabel ?? trouve.cycle,
+    cycle: found.releaseLabel ?? found.cycle,
     eol,
-    ended: eol ? new Date(eol).getTime() < Date.now() : trouve.eol === true,
+    ended: eol ? new Date(eol).getTime() < Date.now() : found.eol === true,
   };
 };

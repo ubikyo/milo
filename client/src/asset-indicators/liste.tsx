@@ -1,9 +1,9 @@
 import { Stack } from "@mantine/core";
 import { IconList, IconTag } from "@tabler/icons-react";
-import AssetsList, { COLONNES_ASSETS, TAGS } from "../components/assets/AssetsList";
-import ChampReception, { receptionsAProbleme } from "../components/ui/ChampReception";
-import ProblemeDeConfiguration from "../components/ui/ProblemeDeConfiguration";
-import ChampsColonnes from "../components/ui/ChampsColonnes";
+import AssetsList, { ASSET_COLUMNS, TAGS } from "../components/assets/AssetsList";
+import ReceptionField, { inboxesWithProblem } from "../components/ui/ChampReception";
+import ConfigurationProblem from "../components/ui/ProblemeDeConfiguration";
+import ColumnFields from "../components/ui/ChampsColonnes";
 import { useReferences } from "../lib/references";
 import type { IndicatorConfigProps } from "../indicators/types";
 import type { AssetIndicatorWidget } from "./types";
@@ -12,31 +12,31 @@ import type { AssetIndicatorWidget } from "./types";
  * Les réglages de la liste : les tags d'agent GLPI dont elle reçoit les
  * postes, chacun vers un contexte du tableau, puis ses colonnes.
  */
-function ChampsListe(props: IndicatorConfigProps) {
+function ListFields(props: IndicatorConfigProps) {
   const { assetTags } = useReferences();
   return (
     <Stack gap="xl">
-      <ChampReception
-        cle={TAGS}
-        champ="tag"
+      <ReceptionField
+        key={TAGS}
+        field="tag"
         label="Tags de l'agent GLPI"
         placeholder="Tag de l'agent"
-        ajouter="Ajouter un tag GLPI agent"
-        icone={IconTag}
-        vide="Aucun tag GLPI agent"
+        add="Ajouter un tag GLPI agent"
+        icon={IconTag}
+        empty="Aucun tag GLPI agent"
         suggestions={assetTags}
         {...props}
       />
-      <ChampsColonnes colonnes={COLONNES_ASSETS} {...props} />
+      <ColumnFields columns={ASSET_COLUMNS} {...props} />
     </Stack>
   );
 }
 
 /** La liste, ou l'invite à revoir ses réglages quand ses tags ne tiennent pas. */
-function Liste({ config }: { config: unknown }) {
+function ListIndicator({ config }: { config: unknown }) {
   const { contexts } = useReferences();
-  if (receptionsAProbleme(config, TAGS, "tag", contexts.map((c) => c.id))) {
-    return <ProblemeDeConfiguration widget={listeAssetIndicator.label} />;
+  if (inboxesWithProblem(config, TAGS, "tag", contexts.map((c) => c.id))) {
+    return <ConfigurationProblem widget={assetListIndicator.label} />;
   }
   return <AssetsList config={config} />;
 }
@@ -45,7 +45,7 @@ function Liste({ config }: { config: unknown }) {
 // indicateur, et sa configuration ne dit que les colonnes qu'elle montre. Les
 // postes viennent de la page (AssetsListeContext).
 
-export const listeAssetIndicator: AssetIndicatorWidget = {
+export const assetListIndicator: AssetIndicatorWidget = {
   type: "list",
   kind: "asset",
   label: "Assets",
@@ -53,6 +53,6 @@ export const listeAssetIndicator: AssetIndicatorWidget = {
   defaultConfig: {},
   ownClicks: true,
   fill: true,
-  Display: ({ config }) => <Liste config={config} />,
-  Config: ChampsListe,
+  Display: ({ config }) => <ListIndicator config={config} />,
+  Config: ListFields,
 };

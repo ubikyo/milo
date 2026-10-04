@@ -29,12 +29,12 @@ export interface WidgetDrag {
 }
 
 /** Épaisseur du trait qui dit où le widget se posera. */
-const TRAIT = 2;
+const LINE_THICKNESS = 2;
 
 /** Là où le widget tenu se posera : un widget, et de quel côté. */
-export interface CibleWidget {
+export interface WidgetTarget {
   id: Id;
-  avant: boolean;
+  before: boolean;
 }
 
 /**
@@ -43,9 +43,9 @@ export interface CibleWidget {
  * section porte — celle que le dépôt attend.
  */
 export const useWidgetDrop = (sectionId: Id, drag: WidgetDrag, locked: boolean) => {
-  const [cible, setCible] = useState<CibleWidget | null>(null);
+  const [target, setTarget] = useState<WidgetTarget | null>(null);
 
-  const propsDe = (id: Id, index: number) => ({
+  const propsOf = (id: Id, index: number) => ({
     draggable: !locked,
     onDragStart: (e: DragEvent<HTMLElement>) => {
       // Certains navigateurs n'amorcent pas le glisser sans charge.
@@ -54,26 +54,26 @@ export const useWidgetDrop = (sectionId: Id, drag: WidgetDrag, locked: boolean) 
       drag.onDragStart(id);
     },
     onDragEnd: () => {
-      setCible(null);
+      setTarget(null);
       drag.onDragEnd();
     },
     onDragOver: (e: DragEvent<HTMLElement>) => {
       if (drag.dragged === null || locked) return;
       e.preventDefault();
-      const cadre = e.currentTarget.getBoundingClientRect();
-      setCible({ id, avant: e.clientY < cadre.top + cadre.height / 2 });
+      const frame = e.currentTarget.getBoundingClientRect();
+      setTarget({ id, before: e.clientY < frame.top + frame.height / 2 });
     },
-    onDragLeave: () => setCible((c) => (c?.id === id ? null : c)),
+    onDragLeave: () => setTarget((c) => (c?.id === id ? null : c)),
     onDrop: (e: DragEvent<HTMLElement>) => {
       if (drag.dragged === null || locked) return;
       e.preventDefault();
-      const avant = cible?.avant ?? true;
-      setCible(null);
-      drag.onDrop(sectionId, avant ? index : index + 1);
+      const before = target?.before ?? true;
+      setTarget(null);
+      drag.onDrop(sectionId, before ? index : index + 1);
     },
   });
 
-  return { cible, propsDe };
+  return { target, propsOf };
 };
 
 /**
@@ -83,25 +83,25 @@ export const useWidgetDrop = (sectionId: Id, drag: WidgetDrag, locked: boolean) 
  * trait d'une colonne, à sa gauche ou à sa droite plutôt qu'au-dessus ou
  * au-dessous.
  */
-export function TraitInsertion({
-  avant,
-  ecart = 0,
-  debout = false,
+export function InsertionLine({
+  before,
+  gap = 0,
+  standing = false,
 }: {
-  avant: boolean;
-  ecart?: number;
-  debout?: boolean;
+  before: boolean;
+  gap?: number;
+  standing?: boolean;
 }) {
-  const decalage = -(ecart + TRAIT) / 2 - (ecart ? 0 : TRAIT / 2);
+  const offset = -(gap + LINE_THICKNESS) / 2 - (gap ? 0 : LINE_THICKNESS / 2);
   return (
     <Box
       aria-hidden
       style={{
         position: "absolute",
-        ...(debout
-          ? { top: 0, bottom: 0, [avant ? "left" : "right"]: decalage, width: TRAIT }
-          : { left: 0, right: 0, [avant ? "top" : "bottom"]: decalage, height: TRAIT }),
-        borderRadius: TRAIT,
+        ...(standing
+          ? { top: 0, bottom: 0, [before ? "left" : "right"]: offset, width: LINE_THICKNESS }
+          : { left: 0, right: 0, [before ? "top" : "bottom"]: offset, height: LINE_THICKNESS }),
+        borderRadius: LINE_THICKNESS,
         backgroundColor: "var(--mantine-color-teal-filled)",
         pointerEvents: "none",
       }}

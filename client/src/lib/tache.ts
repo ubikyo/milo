@@ -4,32 +4,32 @@
 
 import { projectReference, supportTicketRef } from "@milo/shared";
 import type { AccessBlockType, Asset, BoardWidget, Id, Project, SupportRequest } from "@milo/shared";
-import type { TacheSource } from "../components/board/TaskDestination";
-import { widgetDe } from "../widgets";
+import type { SourceTask } from "../components/board/TaskDestination";
+import { widgetFor } from "../widgets";
 
-const texte = (valeur: unknown): string => (typeof valeur === "string" ? valeur.trim() : "");
+const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
-export const sourceProjet = (projet: Project, boardName?: string): TacheSource => ({
+export const projectSource = (project: Project, boardName?: string): SourceTask => ({
   kind: "project",
-  id: projet.id,
-  title: [projet.number > 0 ? projectReference(projet.number) : "", projet.name]
+  id: project.id,
+  title: [project.number > 0 ? projectReference(project.number) : "", project.name]
     .filter(Boolean)
     .join(" — "),
   boardName,
 });
 
-export const sourceDemande = (demande: SupportRequest): TacheSource => ({
+export const requestSource = (request: SupportRequest): SourceTask => ({
   kind: "support",
-  id: demande.id,
-  title: [demande.number > 0 ? supportTicketRef(demande.number) : "", demande.subject]
+  id: request.id,
+  title: [request.number > 0 ? supportTicketRef(request.number) : "", request.subject]
     .filter(Boolean)
     .join(" — "),
 });
 
-export const sourcePoste = (poste: Asset): TacheSource => ({
+export const workstationSource = (workstation: Asset): SourceTask => ({
   kind: "asset",
-  id: poste.id,
-  title: poste.name,
+  id: workstation.id,
+  title: workstation.name,
 });
 
 /**
@@ -37,16 +37,16 @@ export const sourcePoste = (poste: Asset): TacheSource => ({
  * le nom de son widget. Le lien ramène à son tableau ; un lien garde en plus
  * son adresse.
  */
-export const sourceAcces = (bloc: BoardWidget, boardId: Id, boardName?: string): TacheSource => {
-  const config = bloc.config ?? {};
-  const lignes = Array.isArray(config.lignes) ? (config.lignes as Record<string, unknown>[]) : [];
+export const accessSource = (block: BoardWidget, boardId: Id, boardName?: string): SourceTask => {
+  const config = block.config ?? {};
+  const rows = Array.isArray(config.lignes) ? (config.lignes as Record<string, unknown>[]) : [];
   const title =
-    texte(config.titre) ||
-    texte(config.libelle) ||
-    texte(lignes[0]?.libelle) ||
-    texte(config.url) ||
-    widgetDe(bloc.type as AccessBlockType)?.label ||
+    text(config.titre) ||
+    text(config.libelle) ||
+    text(rows[0]?.libelle) ||
+    text(config.url) ||
+    widgetFor(block.type as AccessBlockType)?.label ||
     "Accès";
-  const url = bloc.type === "link" ? texte(config.url) : "";
+  const url = block.type === "link" ? text(config.url) : "";
   return { kind: "access", id: boardId, title, url: url || undefined, boardName };
 };

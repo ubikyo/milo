@@ -7,7 +7,7 @@
 
 import { createContext, useContext } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { can, widgetRightsPartout } from "@milo/shared";
+import { can, widgetRightsEverywhere } from "@milo/shared";
 import type {
   Area,
   CompanyRights,
@@ -17,52 +17,52 @@ import type {
   WidgetRights,
 } from "@milo/shared";
 
-export type Peut = (area: Area, right: Right) => boolean;
+export type Can = (area: Area, right: Right) => boolean;
 
 /** Le droit demandé : il vaut partout. */
-export const peutAvec =
-  (rights: CompanyRights): Peut =>
+export const canFrom =
+  (rights: CompanyRights): Can =>
   (area, right) =>
     can(rights, area, right);
 
-const DroitsContext = createContext<Peut>(() => false);
-const WidgetsContext = createContext<WidgetRights>(widgetRightsPartout(""));
-const ParametrageContext = createContext(false);
+const RightsContext = createContext<Can>(() => false);
+const WidgetsContext = createContext<WidgetRights>(widgetRightsEverywhere(""));
+const SettingsAccessContext = createContext(false);
 
-export function DroitsProvider({
+export function RightsProvider({
   rights,
   widgets,
-  parametrage,
+  canEditSettings,
   children,
 }: {
   rights: CompanyRights;
   /** Ses permissions par type de widget (shared, widget-kinds.ts). */
   widgets: WidgetRights;
   /** Le droit de modifier le Paramétrage — les types de jalons, entre autres. */
-  parametrage: boolean;
+  canEditSettings: boolean;
   children: ReactNode;
 }) {
   return (
-    <DroitsContext.Provider value={peutAvec(rights)}>
+    <RightsContext.Provider value={canFrom(rights)}>
       <WidgetsContext.Provider value={widgets}>
-        <ParametrageContext.Provider value={parametrage}>{children}</ParametrageContext.Provider>
+        <SettingsAccessContext.Provider value={canEditSettings}>{children}</SettingsAccessContext.Provider>
       </WidgetsContext.Provider>
-    </DroitsContext.Provider>
+    </RightsContext.Provider>
   );
 }
 
 /** `peut(area, right)`, pour le compte connecté. */
-export const useDroits = (): Peut => useContext(DroitsContext);
+export const useRights = (): Can => useContext(RightsContext);
 
 /** Vrai quand le compte connecté peut modifier le Paramétrage. */
-export const useParametrage = (): boolean => useContext(ParametrageContext);
+export const useSettingsMode = (): boolean => useContext(SettingsAccessContext);
 
 /**
  * La permission du compte connecté sur un type de widget : « » (aucune), le
  * widget ne paraît pas ; « view », il se lit sans se modifier ; « update »,
  * il se pose, se range, se règle.
  */
-export const useAccesWidget = (): ((kind: WidgetKind) => WidgetAccess) => {
+export const useWidgetAccess = (): ((kind: WidgetKind) => WidgetAccess) => {
   const widgets = useContext(WidgetsContext);
   return (kind) => widgets[kind];
 };
@@ -71,4 +71,4 @@ export const useAccesWidget = (): ((kind: WidgetKind) => WidgetAccess) => {
  * Un « fieldset » sans bordure ni marge : désactivé, il éteint d'un coup tous
  * les champs d'une fiche qu'on ne peut que lire.
  */
-export const FIELDSET_NU: CSSProperties = { border: 0, padding: 0, margin: 0, minWidth: 0 };
+export const BARE_FIELDSET: CSSProperties = { border: 0, padding: 0, margin: 0, minWidth: 0 };

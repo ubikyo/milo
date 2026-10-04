@@ -1,7 +1,7 @@
 import { Button, Group } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { RED } from "../../themes/colors";
-import BoutonFermer from "./BoutonFermer";
+import CloseButton from "./BoutonFermer";
 
 // Le pied de tous les tiroirs. Il porte les trois gestes, toujours au même
 // endroit : la suppression à gauche, « Fermer » et « Sauvegarder » à droite.
@@ -50,7 +50,7 @@ export default function DrawerFooter({
       )}
 
       <Group gap="sm" wrap="nowrap">
-        <BoutonFermer onClick={onClose} />
+        <CloseButton onClick={onClose} />
         {onSave && (
           <Button color="teal" onClick={onSave} loading={saving}>
             Sauvegarder

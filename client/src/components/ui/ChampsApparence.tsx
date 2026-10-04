@@ -1,6 +1,6 @@
-import { nombre, texte } from "../../widgets/types";
-import { poser, type LigneReglage } from "./LignesReglages";
-import { FOND, TITRE, VALEUR, type TexteDeCarte } from "./TitreIndicateur";
+import { count, text } from "../../widgets/types";
+import { insertRow, type SettingRow } from "./LignesReglages";
+import { BACKGROUND, TITLE, VALUE, type CardText } from "./TitreIndicateur";
 
 // L'allure de la carte d'un indicateur, en lignes du bloc « Apparence »
 // (LignesReglages) : le titre et la valeur règlent leur couleur et leur
@@ -9,35 +9,35 @@ import { FOND, TITRE, VALEUR, type TexteDeCarte } from "./TitreIndicateur";
 
 type Config = Record<string, unknown>;
 
-const ligneTexte = (
-  nom: string,
-  quoi: string,
-  t: TexteDeCarte,
+const textLine = (
+  name: string,
+  what: string,
+  t: CardText,
   config: unknown,
   onChange: (config: Config) => void,
-): LigneReglage => {
-  const taille = nombre(config, t.cleTaille, t.tailleDefaut);
-  const couleur = texte(config, t.cleCouleur);
+): SettingRow => {
+  const size = count(config, t.sizeKey, t.defaultSize);
+  const color = text(config, t.colorKey);
   return {
-    nom,
-    quoi,
-    couleur: {
-      valeur: couleur,
-      onChange: (v) => onChange(poser(config, { [t.cleCouleur]: v })),
+    name,
+    what,
+    color: {
+      value: color,
+      onChange: (v) => onChange(insertRow(config, { [t.colorKey]: v })),
     },
-    taille: {
-      valeur: taille,
-      defaut: t.tailleDefaut,
-      min: t.tailleMin,
-      max: t.tailleMax,
+    size: {
+      value: size,
+      defaultValue: t.defaultSize,
+      min: t.minSize,
+      max: t.maxSize,
       onChange: (v) =>
         onChange(
-          poser(config, { [t.cleTaille]: v === t.tailleDefaut ? "" : v }),
+          insertRow(config, { [t.sizeKey]: v === t.defaultSize ? "" : v }),
         ),
     },
-    modifiee: taille !== t.tailleDefaut || couleur !== "",
-    reinitialiser: () =>
-      onChange(poser(config, { [t.cleTaille]: "", [t.cleCouleur]: "" })),
+    modified: size !== t.defaultSize || color !== "",
+    reset: () =>
+      onChange(insertRow(config, { [t.sizeKey]: "", [t.colorKey]: "" })),
   };
 };
 
@@ -45,24 +45,24 @@ const ligneTexte = (
  * Les lignes de la carte d'un indicateur : le titre, la valeur pour un
  * indicateur qui compte, puis le fond.
  */
-export const lignesApparence = (
+export const appearanceRows = (
   config: unknown,
   onChange: (config: Config) => void,
-  avecValeur?: boolean,
-): LigneReglage[] => {
-  const fond = texte(config, FOND);
+  withValue?: boolean,
+): SettingRow[] => {
+  const background = text(config, BACKGROUND);
   return [
-    ligneTexte("Titre", "du titre", TITRE, config, onChange),
-    ...(avecValeur ? [ligneTexte("Valeur", "de la valeur", VALEUR, config, onChange)] : []),
+    textLine("Titre", "du titre", TITLE, config, onChange),
+    ...(withValue ? [textLine("Valeur", "de la valeur", VALUE, config, onChange)] : []),
     {
-      nom: "Fond",
-      quoi: "du fond",
-      couleur: {
-        valeur: fond,
-        onChange: (v) => onChange(poser(config, { [FOND]: v })),
+      name: "Fond",
+      what: "du fond",
+      color: {
+        value: background,
+        onChange: (v) => onChange(insertRow(config, { [BACKGROUND]: v })),
       },
-      modifiee: fond !== "",
-      reinitialiser: () => onChange(poser(config, { [FOND]: "" })),
+      modified: background !== "",
+      reset: () => onChange(insertRow(config, { [BACKGROUND]: "" })),
     },
   ];
 };

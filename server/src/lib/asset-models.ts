@@ -9,10 +9,10 @@
 import type { AssetModel } from "@milo/shared";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 
-const CLE = "asset_models";
+const KEY = "asset_models";
 
 /** La table de départ : les Mac à puce Apple, de 2020 à 2024. */
-const MODELES_DE_DEPART: AssetModel[] = [
+const STARTER_TEMPLATES: AssetModel[] = [
   { identifier: "MacBookAir10,1", name: 'MacBook Air 13" (M1, 2020)' },
   { identifier: "MacBookPro17,1", name: 'MacBook Pro 13" (M1, 2020)' },
   { identifier: "Macmini9,1", name: "Mac mini (M1, 2020)" },
@@ -44,19 +44,19 @@ const MODELES_DE_DEPART: AssetModel[] = [
 ];
 
 /** La table des modèles : celle du Paramétrage, ou celle de départ. */
-export const modeles = (): AssetModel[] => {
-  const enregistres = readSetting<AssetModel[] | null>(CLE, null);
-  return Array.isArray(enregistres) ? enregistres : MODELES_DE_DEPART;
+export const templates = (): AssetModel[] => {
+  const saved = readSetting<AssetModel[] | null>(KEY, null);
+  return Array.isArray(saved) ? saved : STARTER_TEMPLATES;
 };
 
-export const enregistrerModeles = (liste: AssetModel[]): void => writeSetting(CLE, liste);
+export const saveTemplates = (list: AssetModel[]): void => writeSetting(KEY, list);
 
 /**
  * Le nom d'un modèle d'après son identifiant, sans égard à la casse ni aux
  * espaces ; vide quand la table ne le connaît pas.
  */
-export const nomDuModele = (identifiant: string): string => {
-  const cherche = identifiant.trim().toLowerCase();
-  if (!cherche) return "";
-  return modeles().find((m) => m.identifier.trim().toLowerCase() === cherche)?.name ?? "";
+export const templateName = (identifier: string): string => {
+  const search = identifier.trim().toLowerCase();
+  if (!search) return "";
+  return templates().find((m) => m.identifier.trim().toLowerCase() === search)?.name ?? "";
 };

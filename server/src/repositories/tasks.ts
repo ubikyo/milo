@@ -3,7 +3,7 @@
 import type { Actor, Id, Label, OpenChecklistItem, TaskCard, TaskList } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { LabelRow, NextRow, TaskCardRow, TaskListRow } from "../db/rows.js";
-import { porteDuContenu } from "../lib/html.js";
+import { hasContent } from "../lib/html.js";
 import { attachmentCountsOfBoard } from "./attachments.js";
 import { coverUrlsOfBoard } from "./covers.js";
 import { linkCountsOfBoard } from "./links.js";
@@ -55,7 +55,7 @@ export const taskCards = {
    * Les cartes d'une liste passée à un autre tableau prennent le premier de
    * ses contextes : ceux de l'ancien n'y ont pas cours.
    */
-  recontextualiser: mutation(
+  reassignContext: mutation(
     `UPDATE task_cards SET context_id =
        (SELECT id FROM contexts WHERE board_id = ? ORDER BY position, id LIMIT 1)
      WHERE list_id = ?`,
@@ -74,14 +74,14 @@ export const taskCards = {
   ),
 };
 
-const reordonnerListes = mutation("UPDATE task_lists SET position = ? WHERE id = ?");
+const updateListPositions = mutation("UPDATE task_lists SET position = ? WHERE id = ?");
 export const reorderTaskLists = transaction((ids: Id[]) => {
-  ids.forEach((id, index) => reordonnerListes.run(index, id));
+  ids.forEach((id, index) => updateListPositions.run(index, id));
 });
 
-const reordonnerCartes = mutation("UPDATE task_cards SET list_id = ?, position = ? WHERE id = ?");
+const updateCardPositions = mutation("UPDATE task_cards SET list_id = ?, position = ? WHERE id = ?");
 export const reorderTaskCards = transaction((listId: Id, ids: Id[]) => {
-  ids.forEach((id, index) => reordonnerCartes.run(listId, index, id));
+  ids.forEach((id, index) => updateCardPositions.run(listId, index, id));
 });
 
 /** Le tableau qui porte une carte, par sa liste. */
@@ -96,7 +96,7 @@ export const boardOfCard = (card: TaskCardRow): Id => {
 // requête par sorte : membres, étiquettes, comptes de checklists, éléments
 // restants. Une carte ne déclenche aucune requête à elle seule.
 
-const cartesDuTableau = selection<TaskCardRow>(
+const cardsOfBoard = selection<TaskCardRow>(
   `SELECT task_cards.*
    FROM task_cards
    JOIN task_lists ON task_lists.id = task_cards.list_id
@@ -104,7 +104,7 @@ const cartesDuTableau = selection<TaskCardRow>(
    ORDER BY task_cards.position, task_cards.id`,
 );
 
-const membresDuTableau = selection<{ card_id: Id; id: Id; name: string; email: string }>(
+const boardMembers = selection<{ card_id: Id; id: Id; name: string; email: string }>(
   `SELECT card_members.card_id, users.id, users.name, users.email
    FROM card_members
    JOIN task_cards ON task_cards.id = card_members.card_id
@@ -114,7 +114,7 @@ const membresDuTableau = selection<{ card_id: Id; id: Id; name: string; email: s
    ORDER BY users.name`,
 );
 
-const etiquettesDuTableau = selection<LabelRow & { card_id: Id }>(
+const boardLabels = selection<LabelRow & { card_id: Id }>(
   `SELECT card_labels.card_id, labels.*
    FROM card_labels
    JOIN labels ON labels.id = card_labels.label_id
@@ -127,7 +127,7 @@ const etiquettesDuTableau = selection<LabelRow & { card_id: Id }>(
 // Plusieurs checklists sur une carte : les cases s'additionnent, la pastille
 // n'en montre qu'un seul rapport. La somme se fait en SQL plutôt qu'en
 // JavaScript — c'est le travail d'un GROUP BY.
-const comptesDuTableau = selection<{ card_id: Id; total: number; done: number }>(
+const countsOfBoard = selection<{ card_id: Id; total: number; done: number }>(
   `SELECT card_checklists.card_id,
           COUNT(checklist_items.id) AS total,
           COALESCE(SUM(checklist_items.done), 0) AS done
@@ -141,7 +141,7 @@ const comptesDuTableau = selection<{ card_id: Id; total: number; done: number }>
 
 // Les éléments non cochés : c'est ce que déplie la pastille d'une carte, pour
 // voir ce qu'il reste à faire sans ouvrir la fiche.
-const restantsDuTableau = selection<{ card_id: Id; id: Id; text: string }>(
+const boardRemaining = selection<{ card_id: Id; id: Id; text: string }>(
   `SELECT card_checklists.card_id, checklist_items.id, checklist_items.text
    FROM checklist_items
    JOIN card_checklists ON card_checklists.id = checklist_items.checklist_id
@@ -154,7 +154,7 @@ const restantsDuTableau = selection<{ card_id: Id; id: Id; text: string }>(
 
 // Le nombre de commentaires de chaque carte : la carte l'affiche à côté de ses
 // acteurs.
-const commentairesDuTableau = selection<{ card_id: Id; total: number }>(
+const commentsOfBoard = selection<{ card_id: Id; total: number }>(
   `SELECT card_comments.card_id, COUNT(*) AS total
    FROM card_comments
    JOIN task_cards ON task_cards.id = card_comments.card_id
@@ -163,10 +163,10 @@ const commentairesDuTableau = selection<{ card_id: Id; total: number }>(
    GROUP BY card_comments.card_id`,
 );
 
-const pousser = <K, V>(map: Map<K, V[]>, cle: K, valeur: V): void => {
-  const deja = map.get(cle);
-  if (deja) deja.push(valeur);
-  else map.set(cle, [valeur]);
+const pushItem = <K, V>(map: Map<K, V[]>, key: K, value: V): void => {
+  const already = map.get(key);
+  if (already) already.push(value);
+  else map.set(key, [value]);
 };
 
 /**
@@ -175,53 +175,53 @@ const pousser = <K, V>(map: Map<K, V[]>, cle: K, valeur: V): void => {
  * existence intéresse la carte, sa fiche ira chercher le texte.
  */
 export const listsWithCards = (boardId: unknown): TaskList[] => {
-  const comptes = new Map<Id, { total: number; done: number }>();
-  for (const ligne of comptesDuTableau.all(boardId)) {
-    comptes.set(ligne.card_id, { total: ligne.total, done: ligne.done });
+  const accounts = new Map<Id, { total: number; done: number }>();
+  for (const row of countsOfBoard.all(boardId)) {
+    accounts.set(row.card_id, { total: row.total, done: row.done });
   }
 
-  const restants = new Map<Id, OpenChecklistItem[]>();
-  for (const { card_id, ...item } of restantsDuTableau.all(boardId)) {
-    pousser(restants, card_id, item);
+  const remaining = new Map<Id, OpenChecklistItem[]>();
+  for (const { card_id, ...item } of boardRemaining.all(boardId)) {
+    pushItem(remaining, card_id, item);
   }
 
-  const etiquettes = new Map<Id, Label[]>();
-  for (const { card_id, ...label } of etiquettesDuTableau.all(boardId)) {
-    pousser(etiquettes, card_id, label);
+  const labels = new Map<Id, Label[]>();
+  for (const { card_id, ...label } of boardLabels.all(boardId)) {
+    pushItem(labels, card_id, label);
   }
 
-  const membres = new Map<Id, Actor[]>();
-  for (const row of membresDuTableau.all(boardId)) {
-    pousser(membres, row.card_id, actorOf(row));
+  const members = new Map<Id, Actor[]>();
+  for (const row of boardMembers.all(boardId)) {
+    pushItem(members, row.card_id, actorOf(row));
   }
 
   // Les cartes sont rangées par liste en un passage : les parcourir une fois
   // par liste revenait à lire le tableau autant de fois qu'il a de colonnes.
-  const parListe = new Map<Id, TaskCard[]>();
-  const couvertures = coverUrlsOfBoard(boardId);
-  const liaisons = linkCountsOfBoard(boardId);
-  const piecesJointes = attachmentCountsOfBoard(boardId);
-  const commentaires = new Map(
-    commentairesDuTableau.all(boardId).map((r) => [r.card_id, r.total]),
+  const byList = new Map<Id, TaskCard[]>();
+  const covers = coverUrlsOfBoard(boardId);
+  const linkRecords = linkCountsOfBoard(boardId);
+  const parseAttachments = attachmentCountsOfBoard(boardId);
+  const comments = new Map(
+    commentsOfBoard.all(boardId).map((r) => [r.card_id, r.total]),
   );
-  for (const { description, ...card } of cartesDuTableau.all(boardId)) {
-    pousser(parListe, card.list_id, {
+  for (const { description, ...card } of cardsOfBoard.all(boardId)) {
+    pushItem(byList, card.list_id, {
       ...card,
-      cover_urls: couvertures.get(card.id) ?? [],
-      link_count: liaisons.get(card.id) ?? 0,
-      attachment_count: piecesJointes.get(card.id) ?? 0,
-      comment_count: commentaires.get(card.id) ?? 0,
-      has_description: porteDuContenu(description),
-      members: membres.get(card.id) ?? [],
-      labels: etiquettes.get(card.id) ?? [],
-      checklist_total: comptes.get(card.id)?.total ?? 0,
-      checklist_done: comptes.get(card.id)?.done ?? 0,
-      checklist_open: restants.get(card.id) ?? [],
+      cover_urls: covers.get(card.id) ?? [],
+      link_count: linkRecords.get(card.id) ?? 0,
+      attachment_count: parseAttachments.get(card.id) ?? 0,
+      comment_count: comments.get(card.id) ?? 0,
+      has_description: hasContent(description),
+      members: members.get(card.id) ?? [],
+      labels: labels.get(card.id) ?? [],
+      checklist_total: accounts.get(card.id)?.total ?? 0,
+      checklist_done: accounts.get(card.id)?.done ?? 0,
+      checklist_open: remaining.get(card.id) ?? [],
     });
   }
 
   return taskLists.ofBoard.all(boardId).map((list) => ({
     ...list,
-    cards: parListe.get(list.id) ?? [],
+    cards: byList.get(list.id) ?? [],
   }));
 };

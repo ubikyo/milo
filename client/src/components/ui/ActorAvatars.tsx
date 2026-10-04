@@ -41,16 +41,16 @@ const colorFor = (key: string): string => {
 // alors le prénom et le nom dans la partie qui précède l'arobase, dont les
 // morceaux sont séparés par un point, un tiret ou un souligné.
 export const initialsOf = (name: string | undefined): string => {
-  const brut = String(name || "").trim();
-  const arobase = brut.indexOf("@");
-  const source = arobase > 0 ? brut.slice(0, arobase).replace(/[._-]+/g, " ") : brut;
+  const raw = String(name || "").trim();
+  const atSign = raw.indexOf("@");
+  const source = atSign > 0 ? raw.slice(0, atSign).replace(/[._-]+/g, " ") : raw;
 
   const parts = source.split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
   if (parts.length === 1) return (parts[0] as string).slice(0, 2).toUpperCase();
-  const premier = parts[0] as string;
-  const dernier = parts[parts.length - 1] as string;
-  return (premier.charAt(0) + dernier.charAt(0)).toUpperCase();
+  const first = parts[0] as string;
+  const last = parts[parts.length - 1] as string;
+  return (first.charAt(0) + last.charAt(0)).toUpperCase();
 };
 
 // Pastille d'une seule personne, hors groupe. Même couleur et mêmes initiales

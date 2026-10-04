@@ -16,10 +16,10 @@ const LABEL_FIELD_HEIGHT = 22;
 
 // Largeur du poids : de quoi écrire trois chiffres, comme le pourcentage des
 // jalons (MilestonesModal).
-const LARGEUR_POIDS = 52;
+const WEIGHT_WIDTH = 52;
 
 /** Le poids d'une étiquette, sans cadre : la liste en est le cadre. */
-function ChampPoids({
+function WeightField({
   value,
   onChange,
   onBlur,
@@ -47,7 +47,7 @@ function ChampPoids({
       title="Poids : les plus lourdes passent devant dans les grilles"
       variant="unstyled"
       size="sm"
-      w={LARGEUR_POIDS}
+      w={WEIGHT_WIDTH}
       style={{ flexShrink: 0 }}
       styles={{
         input: {
@@ -62,8 +62,8 @@ function ChampPoids({
 }
 import LabelColorPicker from "../ui/LabelColorPicker";
 import ListItems from "../ui/ListItems";
-import { DragHandle, InsertLine, usePileGlissante } from "../ui/PileGlissante";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { DragHandle, InsertLine, useDraggableStack } from "../ui/PileGlissante";
+import { errorMessage, notifyError } from "../../lib/errors";
 
 /**
  * Les étiquettes d'un tableau, gérées en ligne comme les sociétés ou les
@@ -72,10 +72,10 @@ import { messageErreur, notifierErreur } from "../../lib/errors";
  * règle (« onReorder »), chaque ligne se glisse par sa poignée.
  */
 /** Les étiquettes des trois modes se gèrent exactement pareil. */
-type Etiquette = Label | ProjectLabel | SupportLabel;
+type AnyLabel = Label | ProjectLabel | SupportLabel;
 
 interface LabelsManagerProps {
-  labels: Etiquette[];
+  labels: AnyLabel[];
   onCreate: (name: string, color: string, weight: number) => Promise<unknown>;
   onUpdate: (
     id: number,
@@ -85,9 +85,9 @@ interface LabelsManagerProps {
   /** Ce que dit la liste quand elle est vide : tout n'est pas un tableau. */
   emptyText?: string;
   /** Ce que la suppression emporte, dit dans les mots du mode. */
-  porteurs?: string;
+  carriers?: string;
   /** Vrai quand les étiquettes portent un poids : le support seul en a un. */
-  avecPoids?: boolean;
+  withWeight?: boolean;
   /** L'ordre complet, une fois une ligne glissée. Sans elle, pas de poignée. */
   onReorder?: (ids: number[]) => Promise<unknown>;
 }
@@ -98,8 +98,8 @@ export default function LabelsManager({
   onUpdate,
   onDelete,
   emptyText = "Aucune étiquette sur ce tableau",
-  porteurs = "des cartes qui la portent",
-  avecPoids = false,
+  carriers = "des cartes qui la portent",
+  withWeight = false,
   onReorder,
 }: LabelsManagerProps) {
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -109,25 +109,25 @@ export default function LabelsManager({
   const [newColor, setNewColor] = useState(DEFAULT_LABEL_COLOR);
   const [newWeight, setNewWeight] = useState<number | "">(0);
   // Les poids en cours de saisie, par étiquette : enregistrés en quittant le champ.
-  const [poids, setPoids] = useState<Record<number, number | "">>({});
+  const [weight, setWeights] = useState<Record<number, number | "">>({});
   const [busy, setBusy] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<Etiquette | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<AnyLabel | null>(null);
   // L'ordre qu'on vient de poser, le temps que la liste relue le rapporte :
   // sans lui, la ligne lâchée reviendrait un instant à sa place d'avant.
-  const [ordrePose, setOrdrePose] = useState<number[] | null>(null);
-  useEffect(() => setOrdrePose(null), [labels]);
-  const rangees = ordrePose
-    ? ordrePose.flatMap((id) => labels.find((l) => l.id === id) ?? [])
+  const [placedOrder, setPlacedOrder] = useState<number[] | null>(null);
+  useEffect(() => setPlacedOrder(null), [labels]);
+  const bands = placedOrder
+    ? placedOrder.flatMap((id) => labels.find((l) => l.id === id) ?? [])
     : labels;
 
-  const { zoneRef, drag, onPointerDown } = usePileGlissante({
-    ids: rangees.map((l) => l.id),
+  const { zoneRef, drag, onPointerDown } = useDraggableStack({
+    ids: bands.map((l) => l.id),
     selector: "[data-ligne-etiquette]",
-    onReorder: async (ordre) => {
+    onReorder: async (order) => {
       if (!onReorder) return;
-      const ids = ordre.map(Number);
-      setOrdrePose(ids);
-      if (!(await run(() => onReorder(ids)))) setOrdrePose(null);
+      const ids = order.map(Number);
+      setPlacedOrder(ids);
+      if (!(await run(() => onReorder(ids)))) setPlacedOrder(null);
     },
   });
 
@@ -137,14 +137,14 @@ export default function LabelsManager({
       await action();
       return true;
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
       return false;
     } finally {
       setBusy(false);
     }
   };
 
-  const startEdit = (label: Etiquette) => {
+  const startEdit = (label: AnyLabel) => {
     setEditingId(label.id);
     setEditingName(label.name);
   };
@@ -155,10 +155,10 @@ export default function LabelsManager({
   };
 
   const saveEdit = async () => {
-    const nom = editingName.trim();
+    const name = editingName.trim();
     const label = labels.find((l) => l.id === editingId);
-    if (!nom || nom === label?.name || editingId === null) return cancelEdit();
-    if (await run(() => onUpdate(editingId, { name: nom }))) cancelEdit();
+    if (!name || name === label?.name || editingId === null) return cancelEdit();
+    if (await run(() => onUpdate(editingId, { name: name }))) cancelEdit();
   };
 
   // La couleur est celle choisie dans la ligne d'ajout ; une fois l'étiquette
@@ -169,21 +169,21 @@ export default function LabelsManager({
     if (await run(() => onCreate(newName.trim(), newColor, Number(newWeight) || 0))) {
       setNewName("");
       setNewWeight(0);
-      const [teinte, nuance] = newColor.split(".");
-      const rang = LABEL_HUES.indexOf(teinte as LabelHue);
-      const suivante = LABEL_HUES[(rang + 1) % LABEL_HUES.length];
-      setNewColor(`${suivante}.${nuance}`);
+      const [hue, shade] = newColor.split(".");
+      const rank = LABEL_HUES.indexOf(hue as LabelHue);
+      const next = LABEL_HUES[(rank + 1) % LABEL_HUES.length];
+      setNewColor(`${next}.${shade}`);
     }
   };
 
   // Un poids vidé revient à celui enregistré ; inchangé, il ne part pas.
-  const savePoids = async (label: Etiquette) => {
-    const saisi = poids[label.id];
-    const oublier = () =>
-      setPoids(({ [label.id]: _, ...reste }) => reste);
-    const actuel = "weight" in label ? label.weight : 0;
-    if (saisi === undefined || saisi === "" || saisi === actuel) return oublier();
-    if (await run(() => onUpdate(label.id, { weight: saisi }))) oublier();
+  const saveWeights = async (label: AnyLabel) => {
+    const entered = weight[label.id];
+    const forget = () =>
+      setWeights(({ [label.id]: _, ...rest }) => rest);
+    const current = "weight" in label ? label.weight : 0;
+    if (entered === undefined || entered === "" || entered === current) return forget();
+    if (await run(() => onUpdate(label.id, { weight: entered }))) forget();
   };
 
   return (
@@ -209,8 +209,8 @@ export default function LabelsManager({
                 onChange={setNewColor}
                 label="la nouvelle étiquette"
               />
-              {avecPoids && (
-                <ChampPoids
+              {withWeight && (
+                <WeightField
                   value={newWeight}
                   onChange={setNewWeight}
                   label="Poids de la nouvelle étiquette"
@@ -221,13 +221,13 @@ export default function LabelsManager({
         }}
       >
         <div ref={zoneRef}>
-          {rangees.map((label, rang) => (
+          {bands.map((label, rank) => (
             <div
               key={label.id}
               data-ligne-etiquette
               style={{ opacity: drag?.id === label.id ? 0.4 : 1 }}
             >
-              {drag?.target === rang && <InsertLine />}
+              {drag?.target === rank && <InsertLine />}
               <ListItems.Row
                 height={LABEL_ROW_HEIGHT}
                 actions={[
@@ -250,7 +250,7 @@ export default function LabelsManager({
                         gardent leurs clics. */}
                     {onReorder && (
                       <DragHandle
-                        onPointerDown={onPointerDown(label.id, rang)}
+                        onPointerDown={onPointerDown(label.id, rank)}
                         visible={active}
                         label="Glisser pour réordonner"
                       />
@@ -261,11 +261,11 @@ export default function LabelsManager({
                       onChange={(color) => run(() => onUpdate(label.id, { color }))}
                     />
 
-                    {avecPoids && (
-                      <ChampPoids
-                        value={poids[label.id] ?? ("weight" in label ? label.weight : 0)}
-                        onChange={(v) => setPoids((p) => ({ ...p, [label.id]: v }))}
-                        onBlur={() => void savePoids(label)}
+                    {withWeight && (
+                      <WeightField
+                        value={weight[label.id] ?? ("weight" in label ? label.weight : 0)}
+                        onChange={(v) => setWeights((p) => ({ ...p, [label.id]: v }))}
+                        onBlur={() => void saveWeights(label)}
                         label={`Poids de ${label.name}`}
                       />
                     )}
@@ -321,7 +321,7 @@ export default function LabelsManager({
               </ListItems.Row>
             </div>
           ))}
-          {drag && drag.target >= rangees.length && <InsertLine />}
+          {drag && drag.target >= bands.length && <InsertLine />}
         </div>
       </ListItems>
 
@@ -336,7 +336,7 @@ export default function LabelsManager({
         message={
           <>
             Voulez-vous vraiment supprimer « {pendingDelete?.name} » ? Elle sera
-            retirée {porteurs}. Cette action est irréversible.
+            retirée {carriers}. Cette action est irréversible.
           </>
         }
       />

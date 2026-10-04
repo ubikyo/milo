@@ -8,13 +8,13 @@ import type { Id } from "@milo/shared";
 // (CardChecklists), les lignes d'attributs du mode Accès (widgets/numero).
 
 /** Le glisser en cours : ce qu'on déplace, et le rang où il se posera. */
-interface Glisser {
+interface Drag {
   id: Id;
   target: number;
 }
 
 /** Le même geste, suivi hors du rendu : il change à chaque mouvement. */
-interface GlisserEnCours extends Glisser {
+interface DragInProgress extends Drag {
   index: number;
   startY: number;
   /** Faux tant que le pointeur n'a pas franchi le seuil de déclenchement. */
@@ -30,7 +30,7 @@ const DRAG_THRESHOLD = 4;
 // départ restent justes. En tête de pile (« auBord »), il n'a pas de voisin
 // au-dessus : il se pose sur le bord haut du premier, sans déborder sur ce qui
 // précède la pile — l'intitulé d'un champ.
-export function InsertLine({ gap = 0, auBord = false }: { gap?: number; auBord?: boolean }) {
+export function InsertLine({ gap = 0, atEdge = false }: { gap?: number; atEdge?: boolean }) {
   return (
     <div style={{ position: "relative", height: 0 }}>
       <div
@@ -38,7 +38,7 @@ export function InsertLine({ gap = 0, auBord = false }: { gap?: number; auBord?:
           position: "absolute",
           left: 0,
           right: 0,
-          top: auBord ? 0 : -gap / 2 - 1,
+          top: atEdge ? 0 : -gap / 2 - 1,
           borderTop: "2px solid var(--mantine-color-teal-5)",
         }}
       />
@@ -55,22 +55,22 @@ export function InsertLine({ gap = 0, auBord = false }: { gap?: number; auBord?:
  * `selector` désigne, dans la zone, ce qui se glisse ; `onReorder` reçoit
  * l'ordre complet, une fois la main relâchée.
  */
-export interface PileGlissante {
+export interface DraggableStack {
   ids: Id[];
   /** Ce qui, dans la zone, se glisse. */
   selector: string;
-  onReorder: (ordre: Id[]) => void | Promise<void>;
+  onReorder: (order: Id[]) => void | Promise<void>;
 }
 
-export function usePileGlissante({ ids, selector, onReorder }: PileGlissante) {
-  const [drag, setDrag] = useState<Glisser | null>(null);
-  const dragRef = useRef<GlisserEnCours | null>(null);
+export function useDraggableStack({ ids, selector, onReorder }: DraggableStack) {
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const dragRef = useRef<DragInProgress | null>(null);
   const zoneRef = useRef<HTMLDivElement | null>(null);
   // Le geste se joue sur des écouteurs posés une fois pour toutes : ils
   // lisent l'état courant par une ref, plutôt que de se réabonner à chaque
   // rendu.
-  const etat = useRef({ ids, onReorder });
-  etat.current = { ids, onReorder };
+  const state = useRef({ ids, onReorder });
+  state.current = { ids, onReorder };
 
   const onPointerDown = (id: Id, index: number) => (event: ReactPointerEvent) => {
     if (event.button !== 0) return;
@@ -85,15 +85,15 @@ export function usePileGlissante({ ids, selector, onReorder }: PileGlissante) {
   };
 
   useEffect(() => {
-    const rangVise = (clientY: number): number | null => {
+    const targetRank = (clientY: number): number | null => {
       const zone = zoneRef.current;
       if (!zone) return null;
-      const lignes = [...zone.querySelectorAll(selector)];
-      for (let i = 0; i < lignes.length; i += 1) {
-        const rect = (lignes[i] as HTMLElement).getBoundingClientRect();
+      const rows = [...zone.querySelectorAll(selector)];
+      for (let i = 0; i < rows.length; i += 1) {
+        const rect = (rows[i] as HTMLElement).getBoundingClientRect();
         if (clientY < rect.top + rect.height / 2) return i;
       }
-      return lignes.length;
+      return rows.length;
     };
 
     const onMove = (event: PointerEvent) => {
@@ -104,7 +104,7 @@ export function usePileGlissante({ ids, selector, onReorder }: PileGlissante) {
         d.started = true;
         document.body.style.userSelect = "none";
       }
-      d.target = rangVise(event.clientY) ?? d.index;
+      d.target = targetRank(event.clientY) ?? d.index;
       setDrag({ id: d.id, target: d.target });
     };
 
@@ -117,11 +117,11 @@ export function usePileGlissante({ ids, selector, onReorder }: PileGlissante) {
 
       // Le rang visé se lit sur la pile complète ; une fois l'élément ôté,
       // tout ce qui le suivait remonte d'un cran.
-      const cible = d.target > d.index ? d.target - 1 : d.target;
-      if (cible === d.index) return;
-      const ordre = etat.current.ids.filter((id) => id !== d.id);
-      ordre.splice(cible, 0, d.id);
-      await etat.current.onReorder(ordre);
+      const target = d.target > d.index ? d.target - 1 : d.target;
+      if (target === d.index) return;
+      const order = state.current.ids.filter((id) => id !== d.id);
+      order.splice(target, 0, d.id);
+      await state.current.onReorder(order);
     };
 
     window.addEventListener("pointermove", onMove);

@@ -9,20 +9,20 @@ import { api } from "../api";
 import type { MailboxOptinState } from "@milo/shared";
 
 /** Le temps entre deux lectures. */
-const RELECTURE = 10_000;
+const RELOAD_INTERVAL = 10_000;
 
-const EVENEMENT = "milo:confirmations";
+const EVENT = "milo:confirmations";
 
 /**
  * Les derniers états lus, par liste et adresses : un widget qui revient —
  * un autre onglet, puis celui-ci — les retrouve aussitôt, sans repasser par
  * un état qu'il n'a pas.
  */
-const memoire = new Map<string, Map<string, MailboxOptinState>>();
+const remembered = new Map<string, Map<string, MailboxOptinState>>();
 
 /** Une adresse vient d'être confirmée : chacun relit. */
-export const signalerConfirmation = (): void => {
-  window.dispatchEvent(new Event(EVENEMENT));
+export const signalConfirmation = (): void => {
+  window.dispatchEvent(new Event(EVENT));
 };
 
 /**
@@ -30,52 +30,52 @@ export const signalerConfirmation = (): void => {
  * « lus » reste faux jusqu'à la première réponse : rien ne se conclut avant.
  * Sans liste — un widget pas encore enregistré —, il n'y a rien à lire.
  */
-export const useConfirmations = (liste: string, emails: string[]) => {
-  const cle = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))]
+export const useConfirmations = (list: string, emails: string[]) => {
+  const key = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))]
     .sort()
     .join(",");
-  const memo = `${liste}|${cle}`;
-  const [etats, setEtats] = useState<Map<string, MailboxOptinState>>(
-    () => memoire.get(memo) ?? new Map(),
+  const memo = `${list}|${key}`;
+  const [states, setStates] = useState<Map<string, MailboxOptinState>>(
+    () => remembered.get(memo) ?? new Map(),
   );
-  const [lus, setLus] = useState(() => !cle || !liste || memoire.has(memo));
+  const [isRead, setLoaded] = useState(() => !key || !list || remembered.has(memo));
 
   useEffect(() => {
-    if (!cle || !liste) {
-      setEtats(new Map());
-      setLus(true);
+    if (!key || !list) {
+      setStates(new Map());
+      setLoaded(true);
       return;
     }
-    const connus = memoire.get(memo);
-    setEtats(connus ?? new Map());
-    setLus(Boolean(connus));
-    let actif = true;
-    const lire = () =>
+    const known = remembered.get(memo);
+    setStates(known ?? new Map());
+    setLoaded(Boolean(known));
+    let active = true;
+    const read = () =>
       api
-        .getMailboxOptins(liste, cle.split(","))
-        .then((reponse) => {
-          const recus = new Map(reponse.map((e) => [e.email.toLowerCase(), e]));
-          memoire.set(memo, recus);
-          if (!actif) return;
-          setEtats(recus);
-          setLus(true);
+        .getMailboxOptins(list, key.split(","))
+        .then((response) => {
+          const received = new Map(response.map((e) => [e.email.toLowerCase(), e]));
+          remembered.set(memo, received);
+          if (!active) return;
+          setStates(received);
+          setLoaded(true);
         })
         .catch(() => {
           /* sans les états, rien ne se conclut : la prochaine lecture dira */
         });
     // Tout de suite si rien n'est connu ; sinon, le temps que la saisie se pose.
-    const delai = setTimeout(lire, connus ? 300 : 0);
-    const intervalle = setInterval(lire, RELECTURE);
-    window.addEventListener(EVENEMENT, lire);
+    const delay = setTimeout(read, known ? 300 : 0);
+    const interval = setInterval(read, RELOAD_INTERVAL);
+    window.addEventListener(EVENT, read);
     return () => {
-      actif = false;
-      clearTimeout(delai);
-      clearInterval(intervalle);
-      window.removeEventListener(EVENEMENT, lire);
+      active = false;
+      clearTimeout(delay);
+      clearInterval(interval);
+      window.removeEventListener(EVENT, read);
     };
-  }, [cle, liste, memo]);
+  }, [key, list, memo]);
 
-  const confirmee = (email: string) =>
-    etats.get(email.trim().toLowerCase())?.status === "confirmed";
-  return { etats, lus, confirmee };
+  const confirmed = (email: string) =>
+    states.get(email.trim().toLowerCase())?.status === "confirmed";
+  return { states, isRead, confirmed };
 };

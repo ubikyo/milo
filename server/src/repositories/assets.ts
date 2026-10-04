@@ -19,13 +19,13 @@ import type {
 } from "@milo/shared";
 import { mutation, selection, transaction } from "../db/query.js";
 import type { AssetRow } from "../db/rows.js";
-import { tagsRecus } from "./receptions.js";
-import { nomDuModele } from "../lib/asset-models.js";
-import { vlanDe, vlans } from "../lib/asset-vlans.js";
-import { sectionsDe, texteDe } from "../lib/inventory.js";
-import type { Arbre } from "../lib/inventory.js";
+import { receivedTags } from "./receptions.js";
+import { templateName } from "../lib/asset-models.js";
+import { vlanOf, vlans } from "../lib/asset-vlans.js";
+import { sectionsOf, textOf } from "../lib/inventory.js";
+import type { Tree } from "../lib/inventory.js";
 
-export const POSTE_INTROUVABLE = "Poste introuvable";
+export const WORKSTATION_NOT_FOUND = "Poste introuvable";
 
 export const assets = {
   byId: selection<AssetRow>("SELECT * FROM assets WHERE id = ?"),
@@ -53,10 +53,10 @@ export const assets = {
   remove: mutation("DELETE FROM assets WHERE id = ?"),
 };
 
-const poserContexte = mutation(
+const setContext = mutation(
   "UPDATE assets SET board_id = ?, context_id = ?, list_key = ? WHERE lower(trim(tag)) = ?",
 );
-const sansReception = mutation(
+const withoutReceipt = mutation(
   "UPDATE assets SET board_id = NULL, context_id = NULL, list_key = ''",
 );
 
@@ -65,22 +65,22 @@ const sansReception = mutation(
  * son tag, ou nulle part. Refait quand une liste de postes change ce qu'elle
  * reçoit.
  */
-export const recontextualiserLesPostes = transaction((): void => {
-  sansReception.run();
-  for (const reception of tagsRecus()) {
-    poserContexte.run(
-      reception.board_id,
-      reception.context_id,
-      reception.liste,
-      reception.valeur.trim().toLowerCase(),
+export const reassignWorkstationContexts = transaction((): void => {
+  withoutReceipt.run();
+  for (const inbox of receivedTags()) {
+    setContext.run(
+      inbox.board_id,
+      inbox.context_id,
+      inbox.list,
+      inbox.value.trim().toLowerCase(),
     );
   }
 });
 
 /** Le contenu gardé en base, ou rien quand il est illisible. */
-const contenuDe = (row: AssetRow): Arbre => {
+const contentOf = (row: AssetRow): Tree => {
   try {
-    return JSON.parse(row.content) as Arbre;
+    return JSON.parse(row.content) as Tree;
   } catch {
     return {};
   }
@@ -91,15 +91,15 @@ const contenuDe = (row: AssetRow): Arbre => {
  * Linux et macOS — l'agent le donne alors dans TYPE. Rien quand l'agent ne le
  * déclare pas, ou sans taille lisible.
  */
-const volumeSysteme = (contenu: Arbre): AssetEntry | undefined =>
-  entreesDe(sectionsDe(contenu), "DRIVES").find(
-    (entree) =>
-      (entree["LETTER"] ?? "").trim().toUpperCase().startsWith("C:") ||
-      (entree["TYPE"] ?? "").trim() === "/",
+const systemVolume = (content: Tree): AssetEntry | undefined =>
+  entriesOf(sectionsOf(content), "DRIVES").find(
+    (entry) =>
+      (entry["LETTER"] ?? "").trim().toUpperCase().startsWith("C:") ||
+      (entry["TYPE"] ?? "").trim() === "/",
   );
 
-const disqueSysteme = (contenu: Arbre): Asset["system_disk"] => {
-  const volume = volumeSysteme(contenu);
+const systemDisk = (content: Tree): Asset["system_disk"] => {
+  const volume = systemVolume(content);
   if (!volume) return null;
   const total = Number(volume["TOTAL"]);
   const free = Number(volume["FREE"]);
@@ -108,48 +108,48 @@ const disqueSysteme = (contenu: Arbre): Asset["system_disk"] => {
 };
 
 /** Oui, non, ou rien : l'agent écrit « Yes », « 1 » ou « true » selon sa version. */
-const ouiNon = (valeur: string | undefined): boolean | null => {
-  const v = (valeur ?? "").trim().toLowerCase();
+const yesNo = (value: string | undefined): boolean | null => {
+  const v = (value ?? "").trim().toLowerCase();
   if (v === "yes" || v === "1" || v === "true") return true;
   if (v === "no" || v === "0" || v === "false") return false;
   return null;
 };
 
 /** Le volume système chiffré (BitLocker, FileVault, LUKS), si l'agent le dit. */
-const volumeChiffre = (contenu: Arbre): boolean | null =>
-  ouiNon(volumeSysteme(contenu)?.["ENCRYPT_STATUS"]);
+const volumeEncrypted = (content: Tree): boolean | null =>
+  yesNo(systemVolume(content)?.["ENCRYPT_STATUS"]);
 
 /**
  * L'architecture : celle que le système déclare (« arm64 », « x86_64 »,
  * « 64-bit »…), à défaut celle que dit la description du processeur
  * (« ARMv8 (64-bit) », « Intel64 Family 6 »).
  */
-const architectureDe = (contenu: Arbre, cpu: AssetEntry | undefined): AssetSummary["arch"] => {
+const architectureOf = (content: Tree, cpu: AssetEntry | undefined): AssetSummary["arch"] => {
   const indices = [
-    texteDe(contenu, "OPERATINGSYSTEM", "ARCH"),
+    textOf(content, "OPERATINGSYSTEM", "ARCH"),
     cpu?.["DESCRIPTION"] ?? "",
     cpu?.["NAME"] ?? "",
   ];
-  for (const indice of indices.map((i) => i.trim().toLowerCase()).filter(Boolean)) {
-    if (/arm|aarch|apple/.test(indice)) return "ARM";
-    if (/x86_64|amd64|x64|intel64|64-bit|64 bits/.test(indice)) return "x64";
-    if (/i[3-6]86|x86|32-bit|32 bits/.test(indice)) return "x86";
+  for (const hint of indices.map((i) => i.trim().toLowerCase()).filter(Boolean)) {
+    if (/arm|aarch|apple/.test(hint)) return "ARM";
+    if (/x86_64|amd64|x64|intel64|64-bit|64 bits/.test(hint)) return "x64";
+    if (/i[3-6]86|x86|32-bit|32 bits/.test(hint)) return "x86";
   }
   return "";
 };
 
 /** Le nom du chiffrement du volume système et son algorithme ; « None » ne dit rien. */
-const chiffrementDe = (contenu: Arbre): AssetSummary["encryption"] => {
-  const volume = volumeSysteme(contenu);
-  const algorithme = (volume?.["ENCRYPT_ALGO"] ?? "").trim();
+const encryptionOf = (content: Tree): AssetSummary["encryption"] => {
+  const volume = systemVolume(content);
+  const algorithm = (volume?.["ENCRYPT_ALGO"] ?? "").trim();
   return {
     name: (volume?.["ENCRYPT_NAME"] ?? "").trim(),
-    algorithm: algorithme.toLowerCase() === "none" ? "" : algorithme,
+    algorithm: algorithm.toLowerCase() === "none" ? "" : algorithm,
   };
 };
 
 /** Les profils du pare-feu de Windows, sous leur nom français. */
-const PROFILS_PARE_FEU: Record<string, string> = {
+const FIREWALL_PROFILES: Record<string, string> = {
   DomainProfile: "Domaine",
   StandardProfile: "Privé",
   PublicProfile: "Public",
@@ -159,50 +159,50 @@ const PROFILS_PARE_FEU: Record<string, string> = {
  * Le pare-feu, tel que l'agent le décrit : une entrée par profil sous Windows,
  * une seule ailleurs (macOS). Les entrées sans état lisible ne comptent pas.
  */
-const pareFeuDe = (sections: AssetSection[]): AssetSummary["firewall"] => {
-  const profils = entreesDe(sections, "FIREWALL")
-    .map((entree) => ({
-      nom: PROFILS_PARE_FEU[entree["PROFILE"] ?? ""] ?? entree["PROFILE"] ?? "",
-      actif: ouiNon(
-        { on: "yes", off: "no" }[(entree["STATUS"] ?? "").trim().toLowerCase()] ??
-          entree["STATUS"],
+const firewallOf = (sections: AssetSection[]): AssetSummary["firewall"] => {
+  const profiles = entriesOf(sections, "FIREWALL")
+    .map((entry) => ({
+      name: FIREWALL_PROFILES[entry["PROFILE"] ?? ""] ?? entry["PROFILE"] ?? "",
+      active: yesNo(
+        { on: "yes", off: "no" }[(entry["STATUS"] ?? "").trim().toLowerCase()] ??
+          entry["STATUS"],
       ),
     }))
-    .filter((profil) => profil.actif !== null);
-  if (profils.length === 0) return { state: "unknown", disabled: [] };
-  const eteints = profils.filter((profil) => !profil.actif);
+    .filter((profile) => profile.active !== null);
+  if (profiles.length === 0) return { state: "unknown", disabled: [] };
+  const switchedOff = profiles.filter((profile) => !profile.active);
   return {
-    state: eteints.length === 0 ? "on" : eteints.length === profils.length ? "off" : "partial",
-    disabled: eteints.map((profil) => profil.nom).filter(Boolean),
+    state: switchedOff.length === 0 ? "on" : switchedOff.length === profiles.length ? "off" : "partial",
+    disabled: switchedOff.map((profile) => profile.name).filter(Boolean),
   };
 };
 
 /** Le système du poste : son nom, et la famille qui choisit son logo. */
-const systemeDe = (contenu: Arbre): Asset["os"] => {
-  const nom =
-    texteDe(contenu, "OPERATINGSYSTEM", "FULL_NAME") ||
-    texteDe(contenu, "OPERATINGSYSTEM", "NAME") ||
-    texteDe(contenu, "HARDWARE", "OSNAME");
-  const noyau = texteDe(contenu, "OPERATINGSYSTEM", "KERNEL_NAME").toLowerCase();
-  if (!nom && !noyau) return null;
+const systemOf = (content: Tree): Asset["os"] => {
+  const name =
+    textOf(content, "OPERATINGSYSTEM", "FULL_NAME") ||
+    textOf(content, "OPERATINGSYSTEM", "NAME") ||
+    textOf(content, "HARDWARE", "OSNAME");
+  const kernel = textOf(content, "OPERATINGSYSTEM", "KERNEL_NAME").toLowerCase();
+  if (!name && !kernel) return null;
 
   let family: AssetOsFamily = "other";
-  if (sousWindows(contenu)) family = "windows";
-  else if (noyau === "darwin" || /mac ?os|os x/i.test(nom)) family = "macos";
-  else if (/ubuntu/i.test(nom)) family = "ubuntu";
-  else if (/debian/i.test(nom)) family = "debian";
-  else if (/red ?hat|rhel/i.test(nom)) family = "redhat";
-  else if (/fedora/i.test(nom)) family = "fedora";
-  else if (noyau === "linux" || /linux/i.test(nom)) family = "linux";
+  if (onWindows(content)) family = "windows";
+  else if (kernel === "darwin" || /mac ?os|os x/i.test(name)) family = "macos";
+  else if (/ubuntu/i.test(name)) family = "ubuntu";
+  else if (/debian/i.test(name)) family = "debian";
+  else if (/red ?hat|rhel/i.test(name)) family = "redhat";
+  else if (/fedora/i.test(name)) family = "fedora";
+  else if (kernel === "linux" || /linux/i.test(name)) family = "linux";
   return {
     family,
     // « Microsoft » n'apprend rien devant « Windows ».
-    name: nom.replace(/^Microsoft\s+/i, ""),
+    name: name.replace(/^Microsoft\s+/i, ""),
     // La version d'affichage de Windows (« 23H2 ») dit plus que son numéro.
     version:
-      texteDe(contenu, "OPERATINGSYSTEM", "DISPLAYVERSION") ||
-      texteDe(contenu, "OPERATINGSYSTEM", "VERSION"),
-    kernel: texteDe(contenu, "OPERATINGSYSTEM", "KERNEL_VERSION"),
+      textOf(content, "OPERATINGSYSTEM", "DISPLAYVERSION") ||
+      textOf(content, "OPERATINGSYSTEM", "VERSION"),
+    kernel: textOf(content, "OPERATINGSYSTEM", "KERNEL_VERSION"),
   };
 };
 
@@ -212,14 +212,14 @@ const systemeDe = (contenu: Arbre): Asset["os"] => {
  * rangé en base reste tel que l'agent l'a envoyé, et les chemins des
  * processus gardent le leur.
  */
-const NOMS_DE_PRODUIT: Record<string, string> = {
+const PRODUCT_NAMES: Record<string, string> = {
   "Sentinel Agent": "SentinelOne EPP",
 };
 
-const nomDeProduit = (nom: string): string => NOMS_DE_PRODUIT[nom.trim()] ?? nom;
+const productName = (name: string): string => PRODUCT_NAMES[name.trim()] ?? name;
 
 /** Les sections dont le champ NAME est un nom de produit. */
-const SECTIONS_DE_PRODUITS = new Set(["ANTIVIRUS", "SOFTWARES"]);
+const PRODUCT_SECTIONS = new Set(["ANTIVIRUS", "SOFTWARES"]);
 
 /**
  * La protection du poste. Windows en déclare souvent deux — Defender resté en
@@ -227,17 +227,17 @@ const SECTIONS_DE_PRODUITS = new Set(["ANTIVIRUS", "SOFTWARES"]);
  * Hors de Windows, l'agent n'en recense aucune : rien ne permet de conclure
  * qu'il n'y en a pas.
  */
-const protectionDe = (contenu: Arbre): AssetProtection => {
-  const protections = entreesDe(sectionsDe(contenu), "ANTIVIRUS");
-  const retenue =
-    protections.find((p) => ouiNon(p["ENABLED"]) === true) ?? protections[0];
-  if (!retenue) {
-    return { state: sousWindows(contenu) ? "none" : "unknown", name: "", company: "" };
+const protectionOf = (content: Tree): AssetProtection => {
+  const protections = entriesOf(sectionsOf(content), "ANTIVIRUS");
+  const chosen =
+    protections.find((p) => yesNo(p["ENABLED"]) === true) ?? protections[0];
+  if (!chosen) {
+    return { state: onWindows(content) ? "none" : "unknown", name: "", company: "" };
   }
   return {
-    state: ouiNon(retenue["ENABLED"]) === false ? "inactive" : "active",
-    name: nomDeProduit(retenue["NAME"] ?? ""),
-    company: retenue["COMPANY"] ?? "",
+    state: yesNo(chosen["ENABLED"]) === false ? "inactive" : "active",
+    name: productName(chosen["NAME"] ?? ""),
+    company: chosen["COMPANY"] ?? "",
   };
 };
 
@@ -245,7 +245,7 @@ const protectionDe = (contenu: Arbre): AssetProtection => {
  * Ce que la liste montre : le nom et le système, qui s'y connecte, quand on
  * l'a vu, sa protection, et l'état de son disque système.
  */
-export const assetOf = (row: AssetRow, contenu: Arbre = contenuDe(row)): Asset => ({
+export const assetOf = (row: AssetRow, content: Tree = contentOf(row)): Asset => ({
   id: row.id,
   name: row.name,
   board_id: row.board_id,
@@ -254,10 +254,10 @@ export const assetOf = (row: AssetRow, contenu: Arbre = contenuDe(row)): Asset =
   tag: row.tag,
   user: row.last_user,
   last_inventory: row.last_inventory,
-  system_disk: disqueSysteme(contenu),
-  system_disk_encrypted: volumeChiffre(contenu),
-  os: systemeDe(contenu),
-  protection: protectionDe(contenu),
+  system_disk: systemDisk(content),
+  system_disk_encrypted: volumeEncrypted(content),
+  os: systemOf(content),
+  protection: protectionOf(content),
 });
 
 /**
@@ -269,22 +269,22 @@ export const assetOf = (row: AssetRow, contenu: Arbre = contenuDe(row)): Asset =
  * Le domaine est joint quand l'agent le donne : « ARCO\jquintard » se lit
  * mieux qu'un identifiant seul quand deux domaines se ressemblent.
  */
-export const utilisateurDuContenu = (contenu: Arbre): string => {
-  const sessions = contenu["USERS"];
-  const ouvertes = Array.isArray(sessions) ? sessions : sessions ? [sessions] : [];
-  for (const session of ouvertes) {
-    const login = texteDe(session, "LOGIN");
+export const contentUser = (content: Tree): string => {
+  const sessions = content["USERS"];
+  const openSessions = Array.isArray(sessions) ? sessions : sessions ? [sessions] : [];
+  for (const session of openSessions) {
+    const login = textOf(session, "LOGIN");
     if (!login) continue;
-    const domaine = texteDe(session, "DOMAIN");
-    return domaine ? `${domaine}\\${login}` : login;
+    const domain = textOf(session, "DOMAIN");
+    return domain ? `${domain}\\${login}` : login;
   }
 
-  return texteDe(contenu, "HARDWARE", "LASTLOGGEDUSER") || texteDe(contenu, "ACCESSLOG", "USERID");
+  return textOf(content, "HARDWARE", "LASTLOGGEDUSER") || textOf(content, "ACCESSLOG", "USERID");
 };
 
 /** Les entrées d'une section, ou rien : toutes sont facultatives. */
-const entreesDe = (sections: AssetSection[], nom: string) =>
-  sections.find((section) => section.name === nom)?.entries ?? [];
+const entriesOf = (sections: AssetSection[], name: string) =>
+  sections.find((section) => section.name === name)?.entries ?? [];
 
 /**
  * L'identifiant TeamViewer, tel que l'agent l'a lu dans la base de registres
@@ -293,13 +293,13 @@ const entreesDe = (sections: AssetSection[], nom: string) =>
  * ouvrir.
  */
 const teamviewerDe = (sections: AssetSection[]): string =>
-  entreesDe(sections, "REMOTE_MGMT").find(
-    (entree) => (entree["TYPE"] ?? "").toLowerCase() === "teamviewer",
+  entriesOf(sections, "REMOTE_MGMT").find(
+    (entry) => (entry["TYPE"] ?? "").toLowerCase() === "teamviewer",
   )?.["ID"] ?? "";
 
 /** Une adresse qui ne mène nulle part : la machine elle-même, ou un lien mort. */
-const inutilisable = (adresse: string): boolean =>
-  !adresse || adresse.startsWith("127.") || adresse.startsWith("169.254.") || adresse === "0.0.0.0";
+const unusable = (address: string): boolean =>
+  !address || address.startsWith("127.") || address.startsWith("169.254.") || address === "0.0.0.0";
 
 /**
  * Par où joindre le poste. Les cartes réseau actives d'abord, les virtuelles
@@ -310,30 +310,30 @@ const inutilisable = (adresse: string): boolean =>
  * pu changer depuis, et c'est pour ça que l'échec d'une demande d'inventaire
  * dit toujours quelle adresse a été appelée.
  */
-const adresseDe = (sections: AssetSection[]): string => {
-  const cartes = entreesDe(sections, "NETWORKS");
-  const premiere = (entree: Record<string, string>): string =>
-    (entree["IPADDRESS"] ?? "").split(",")[0]!.trim();
+const addressOf = (sections: AssetSection[]): string => {
+  const cards = entriesOf(sections, "NETWORKS");
+  const first = (entry: Record<string, string>): string =>
+    (entry["IPADDRESS"] ?? "").split(",")[0]!.trim();
 
-  const active = cartes.find(
-    (entree) =>
-      (entree["STATUS"] ?? "").toLowerCase() === "up" &&
-      entree["VIRTUALDEV"] !== "1" &&
-      !inutilisable(premiere(entree)),
+  const active = cards.find(
+    (entry) =>
+      (entry["STATUS"] ?? "").toLowerCase() === "up" &&
+      entry["VIRTUALDEV"] !== "1" &&
+      !unusable(first(entry)),
   );
-  if (active) return premiere(active);
+  if (active) return first(active);
 
-  const autre = cartes.find((entree) => !inutilisable(premiere(entree)));
-  if (autre) return premiere(autre);
+  const other = cards.find((entry) => !unusable(first(entry)));
+  if (other) return first(other);
 
   // Ce que la machine dit d'elle-même, à défaut : plusieurs adresses y sont
   // parfois collées, séparées par une barre oblique.
-  const materiel = entreesDe(sections, "HARDWARE")[0]?.["IPADDR"] ?? "";
-  const declaree = materiel
+  const hardware = entriesOf(sections, "HARDWARE")[0]?.["IPADDR"] ?? "";
+  const declared = hardware
     .split(/[/,]/)
     .map((a) => a.trim())
-    .find((a) => !inutilisable(a));
-  return declaree ?? "";
+    .find((a) => !unusable(a));
+  return declared ?? "";
 };
 
 /**
@@ -347,7 +347,7 @@ const adresseDe = (sections: AssetSection[]): string => {
 // serve à qui le regarde ; VERSIONCLIENT et VERSIONPROVIDER parlent de
 // l'agent, pas de la machine ; LICENSEINFOS, les clés de licence, n'a pas à
 // s'afficher.
-const SECTIONS_MASQUEES = new Set([
+const HIDDEN_SECTIONS = new Set([
   "ACCESSLOG",
   "ACCOUNTINFO",
   "ENVS",
@@ -355,7 +355,7 @@ const SECTIONS_MASQUEES = new Set([
   "VERSIONCLIENT",
   "VERSIONPROVIDER",
 ]);
-const CHAMPS_GARDES: Record<string, string[]> = {
+const KEPT_FIELDS: Record<string, string[]> = {
   // Les colonnes du tableau « EPP / EDR » de la fiche.
   ANTIVIRUS: ["COMPANY", "NAME", "ENABLED", "VERSION"],
   BIOS: ["SMANUFACTURER", "SMODEL", "SSN"],
@@ -378,7 +378,7 @@ const CHAMPS_GARDES: Record<string, string[]> = {
   // Machines virtuelles et conteneurs : les colonnes du tableau de la fiche.
   VIRTUALMACHINES: ["NAME", "MEMORY", "STATUS", "VMTYPE"],
 };
-const CHAMPS_RETIRES: Record<string, string[]> = {
+const REMOVED_FIELDS: Record<string, string[]> = {
   CPUS: ["FAMILYNUMBER", "ID", "MODEL", "SPEED", "STEPPING"],
   // L'EDID brut de l'écran, encodé : illisible, et ce qu'il dit est déjà
   // dans les autres champs.
@@ -386,36 +386,36 @@ const CHAMPS_RETIRES: Record<string, string[]> = {
 };
 
 /** Une entrée telle que la fiche la montre, selon la règle de sa section. */
-const entreeAffichee = (section: string, brute: AssetEntry): AssetEntry => {
-  let entree =
-    SECTIONS_DE_PRODUITS.has(section) && typeof brute["NAME"] === "string"
-      ? { ...brute, NAME: nomDeProduit(brute["NAME"]) }
-      : brute;
+const displayedEntry = (section: string, raw: AssetEntry): AssetEntry => {
+  let entry =
+    PRODUCT_SECTIONS.has(section) && typeof raw["NAME"] === "string"
+      ? { ...raw, NAME: productName(raw["NAME"]) }
+      : raw;
   // Le modèle sous son nom, l'identifiant à la suite : « MacBook Pro 16"
   // (M2 Max, 2023) — Mac14,6 ».
-  const modele = section === "BIOS" ? nomDuModele(entree["SMODEL"] ?? "") : "";
-  if (modele) entree = { ...entree, SMODEL: `${modele} — ${entree["SMODEL"]}` };
-  const gardes = CHAMPS_GARDES[section];
-  if (gardes) {
+  const template = section === "BIOS" ? templateName(entry["SMODEL"] ?? "") : "";
+  if (template) entry = { ...entry, SMODEL: `${template} — ${entry["SMODEL"]}` };
+  const keptCount = KEPT_FIELDS[section];
+  if (keptCount) {
     return Object.fromEntries(
-      gardes.filter((champ) => champ in entree).map((champ) => [champ, entree[champ]!]),
+      keptCount.filter((field) => field in entry).map((field) => [field, entry[field]!]),
     );
   }
-  const retires = CHAMPS_RETIRES[section];
-  if (retires) {
-    return Object.fromEntries(Object.entries(entree).filter(([champ]) => !retires.includes(champ)));
+  const removed = REMOVED_FIELDS[section];
+  if (removed) {
+    return Object.fromEntries(Object.entries(entry).filter(([field]) => !removed.includes(field)));
   }
-  return entree;
+  return entry;
 };
 
 /**
  * Windows, d'après ce que le poste dit de son système. L'agent le nomme de
  * plusieurs façons selon sa version : on prend la première qui répond.
  */
-const sousWindows = (contenu: Arbre): boolean =>
-  texteDe(contenu, "OPERATINGSYSTEM", "KERNEL_NAME").toLowerCase() === "mswin32" ||
-  /windows/i.test(texteDe(contenu, "OPERATINGSYSTEM", "NAME")) ||
-  /windows/i.test(texteDe(contenu, "HARDWARE", "OSNAME"));
+const onWindows = (content: Tree): boolean =>
+  textOf(content, "OPERATINGSYSTEM", "KERNEL_NAME").toLowerCase() === "mswin32" ||
+  /windows/i.test(textOf(content, "OPERATINGSYSTEM", "NAME")) ||
+  /windows/i.test(textOf(content, "HARDWARE", "OSNAME"));
 
 /**
  * Les entrées qu'on écarte d'une section. Sous Linux et macOS, les comptes
@@ -423,10 +423,10 @@ const sousWindows = (contenu: Arbre): boolean =>
  * et de même pour les groupes : macOS en déclare une centaine, et personne ne
  * s'y connecte.
  */
-const entreeEcartee = (section: string, entree: AssetEntry, windows: boolean): boolean => {
+const discardedEntry = (section: string, entry: AssetEntry, windows: boolean): boolean => {
   if (windows) return false;
-  if (section === "LOCAL_USERS") return (entree["LOGIN"] ?? "").startsWith("_");
-  if (section === "LOCAL_GROUPS") return (entree["NAME"] ?? "").startsWith("_");
+  if (section === "LOCAL_USERS") return (entry["LOGIN"] ?? "").startsWith("_");
+  if (section === "LOCAL_GROUPS") return (entry["NAME"] ?? "").startsWith("_");
   return false;
 };
 
@@ -439,54 +439,54 @@ const entreeEcartee = (section: string, entree: AssetEntry, windows: boolean): b
  * donne pas toujours les membres : sous Windows, jamais ; sous macOS, ceux de
  * /etc/group seulement. Un administrateur peut donc échapper à la marque.
  */
-const administrateursDe = (sections: AssetSection[]): ((compte: AssetEntry) => boolean) => {
-  const membres = new Set(
-    entreesDe(sections, "LOCAL_GROUPS")
-      .filter((groupe) => groupe["ID"] === "S-1-5-32-544" || groupe["NAME"] === "admin")
-      .flatMap((groupe) => (groupe["MEMBER"] ?? "").split(","))
-      .map((membre) => membre.trim().toLowerCase())
+const administratorsOf = (sections: AssetSection[]): ((account: AssetEntry) => boolean) => {
+  const members = new Set(
+    entriesOf(sections, "LOCAL_GROUPS")
+      .filter((group) => group["ID"] === "S-1-5-32-544" || group["NAME"] === "admin")
+      .flatMap((group) => (group["MEMBER"] ?? "").split(","))
+      .map((member) => member.trim().toLowerCase())
       .filter(Boolean),
   );
-  return (compte) =>
-    compte["ID"] === "0" ||
-    /^S-1-5-21-.*-500$/.test(compte["ID"] ?? "") ||
-    [compte["LOGIN"], compte["NAME"]].some((nom) => nom && membres.has(nom.toLowerCase()));
+  return (account) =>
+    account["ID"] === "0" ||
+    /^S-1-5-21-.*-500$/.test(account["ID"] ?? "") ||
+    [account["LOGIN"], account["NAME"]].some((name) => name && members.has(name.toLowerCase()));
 };
 
 /**
  * Le VLAN du Paramétrage qui porte une carte réseau : celui de la première de
  * ses adresses IPv4 qui tombe dans un sous-réseau déclaré.
  */
-const vlanDeCarte = (entree: AssetEntry, table: AssetVlan[]): AssetVlan | null =>
-  (entree["IPADDRESS"] ?? "")
+const cardVlan = (entry: AssetEntry, table: AssetVlan[]): AssetVlan | null =>
+  (entry["IPADDRESS"] ?? "")
     .split(",")
     .map((a) => a.trim())
-    .filter((a) => !inutilisable(a))
-    .map((ip) => vlanDe(ip, table))
+    .filter((a) => !unusable(a))
+    .map((ip) => vlanOf(ip, table))
     .find(Boolean) ?? null;
 
-const sectionsAffichees = (sections: AssetSection[], windows: boolean): AssetSection[] => {
-  const administrateur = administrateursDe(sections);
+const displayedSections = (sections: AssetSection[], windows: boolean): AssetSection[] => {
+  const administrator = administratorsOf(sections);
   const table = vlans();
   return sections
-    .filter((section) => !SECTIONS_MASQUEES.has(section.name))
+    .filter((section) => !HIDDEN_SECTIONS.has(section.name))
     .map((section) => ({
       ...section,
       entries: section.entries
-        .filter((entree) => !entreeEcartee(section.name, entree, windows))
-        .map((entree) =>
-          section.name === "LOCAL_USERS" && administrateur(entree)
-            ? { ...entree, ADMIN: "1" }
-            : entree,
+        .filter((entry) => !discardedEntry(section.name, entry, windows))
+        .map((entry) =>
+          section.name === "LOCAL_USERS" && administrator(entry)
+            ? { ...entry, ADMIN: "1" }
+            : entry,
         )
         // VLAN et VLAN_NAME ne sont pas de l'agent non plus : le VLAN du
         // Paramétrage qui porte la carte, quand il y en a un.
-        .map((entree) => {
-          const vlan = section.name === "NETWORKS" ? vlanDeCarte(entree, table) : null;
-          return vlan ? { ...entree, VLAN: String(vlan.vlan), VLAN_NAME: vlan.name } : entree;
+        .map((entry) => {
+          const vlan = section.name === "NETWORKS" ? cardVlan(entry, table) : null;
+          return vlan ? { ...entry, VLAN: String(vlan.vlan), VLAN_NAME: vlan.name } : entry;
         })
-        .map((entree) => entreeAffichee(section.name, entree))
-        .filter((entree) => Object.keys(entree).length > 0),
+        .map((entry) => displayedEntry(section.name, entry))
+        .filter((entry) => Object.keys(entry).length > 0),
     }))
     .filter((section) => section.entries.length > 0);
 };
@@ -497,28 +497,28 @@ const sectionsAffichees = (sections: AssetSection[], windows: boolean): AssetSec
  * section plutôt que de faire tomber la requête.
  */
 export const assetDetail = (row: AssetRow): AssetDetail => {
-  const contenu = contenuDe(row);
-  const sections = sectionsDe(contenu);
+  const content = contentOf(row);
+  const sections = sectionsOf(content);
 
   return {
-    ...assetOf(row, contenu),
+    ...assetOf(row, content),
     deviceid: row.deviceid,
     tag: row.tag,
     created_at: row.created_at,
     // TeamViewer et l'adresse se lisent sur l'inventaire entier : ce que la
     // fiche masque peut encore servir à les trouver.
-    sections: sectionsAffichees(sections, sousWindows(contenu)),
+    sections: displayedSections(sections, onWindows(content)),
     teamviewer_id: teamviewerDe(sections),
-    address: adresseDe(sections),
-    summary: resumeDe(sections, contenu),
+    address: addressOf(sections),
+    summary: summaryOf(sections, content),
     // Elle se lit sur endoflife.date : la route la pose (lib/endoflife.ts).
     support: null,
   };
 };
 
 /** Un nombre positif, ou rien. */
-const nombre = (valeur: string | undefined): number | null => {
-  const n = Number(valeur);
+const count = (value: string | undefined): number | null => {
+  const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
@@ -529,74 +529,74 @@ const nombre = (valeur: string | undefined): number | null => {
  * alors.
  */
 /** Une carte telle que lue, et si elle est connectée : de quoi choisir. */
-type CarteLue = AssetNetwork & { connectee: boolean };
+type ReadCard = AssetNetwork & { connected: boolean };
 
-const cartesDe = (sections: AssetSection[]): AssetNetwork[] => {
+const cardsOf = (sections: AssetSection[]): AssetNetwork[] => {
   // La table des VLAN du Paramétrage, lue une fois pour toutes les cartes.
   const table = vlans();
-  const cartes = entreesDe(sections, "NETWORKS").flatMap((entree): CarteLue[] => {
-    if (entree["VIRTUALDEV"] === "1") return [];
-    const description = entree["DESCRIPTION"] ?? "";
-    const type = (entree["TYPE"] ?? "").toLowerCase();
+  const cards = entriesOf(sections, "NETWORKS").flatMap((entry): ReadCard[] => {
+    if (entry["VIRTUALDEV"] === "1") return [];
+    const description = entry["DESCRIPTION"] ?? "";
+    const type = (entry["TYPE"] ?? "").toLowerCase();
     const wifi = type === "wifi" || /wi-?fi|wireless|wlan|802\.11/i.test(description);
     const ethernet = type === "ethernet" || (!type && /ethernet|gbe|lan\b/i.test(description));
     if (!wifi && !ethernet) return [];
-    const ips = (entree["IPADDRESS"] ?? "")
+    const ips = (entry["IPADDRESS"] ?? "")
       .split(",")
       .map((a) => a.trim())
-      .filter((a) => !inutilisable(a));
+      .filter((a) => !unusable(a));
     if (ips.length === 0) return [];
-    const vlan = vlanDeCarte(entree, table);
+    const vlan = cardVlan(entry, table);
     return [
       {
         kind: wifi ? "wifi" : "ethernet",
         description,
         ips,
         vlan: vlan && { vlan: vlan.vlan, name: vlan.name },
-        connectee: (entree["STATUS"] ?? "").toLowerCase() === "up",
+        connected: (entry["STATUS"] ?? "").toLowerCase() === "up",
       },
     ];
   });
   // Une seule carte : une connectée, le Wi-Fi avant l'Ethernet ; à défaut de
   // connectée, la première qui a une adresse.
-  const choisie =
-    cartes.find((c) => c.connectee && c.kind === "wifi") ??
-    cartes.find((c) => c.connectee) ??
-    cartes[0];
-  if (!choisie) return [];
-  const { connectee: _connectee, ...carte } = choisie;
-  return [carte];
+  const selected =
+    cards.find((c) => c.connected && c.kind === "wifi") ??
+    cards.find((c) => c.connected) ??
+    cards[0];
+  if (!selected) return [];
+  const { connected: _connected, ...card } = selected;
+  return [card];
 };
 
 /** L'onglet « Résumé » : ce qu'on cherche d'abord en ouvrant un poste. */
-const resumeDe = (sections: AssetSection[], contenu: Arbre): AssetSummary => {
-  const bios = entreesDe(sections, "BIOS")[0] ?? {};
-  const cpus = entreesDe(sections, "CPUS");
-  const premier = cpus[0];
+const summaryOf = (sections: AssetSection[], content: Tree): AssetSummary => {
+  const bios = entriesOf(sections, "BIOS")[0] ?? {};
+  const cpus = entriesOf(sections, "CPUS");
+  const first = cpus[0];
   // La mémoire que la machine déclare, à défaut la somme de ses barrettes.
-  const barrettes = entreesDe(sections, "MEMORIES")
-    .map((m) => nombre(m["CAPACITY"]) ?? 0)
+  const ramModules = entriesOf(sections, "MEMORIES")
+    .map((m) => count(m["CAPACITY"]) ?? 0)
     .reduce((a, b) => a + b, 0);
-  const memoire = nombre(entreesDe(sections, "HARDWARE")[0]?.["MEMORY"]) ?? (barrettes || null);
+  const memorySize = count(entriesOf(sections, "HARDWARE")[0]?.["MEMORY"]) ?? (ramModules || null);
 
   return {
-    networks: cartesDe(sections),
+    networks: cardsOf(sections),
     manufacturer: bios["SMANUFACTURER"] ?? bios["MMANUFACTURER"] ?? "",
     // Le nom que le Paramétrage donne à l'identifiant (« Mac14,6 »), s'il
     // en a un.
-    model: nomDuModele(bios["SMODEL"] ?? "") || (bios["SMODEL"] ?? ""),
+    model: templateName(bios["SMODEL"] ?? "") || (bios["SMODEL"] ?? ""),
     serial: bios["SSN"] ?? "",
-    cpu: premier?.["NAME"]
+    cpu: first?.["NAME"]
       ? {
-          name: premier["NAME"].trim(),
+          name: first["NAME"].trim(),
           count: cpus.length,
-          cores: nombre(premier["CORE"]),
-          threads: nombre(premier["THREAD"]),
+          cores: count(first["CORE"]),
+          threads: count(first["THREAD"]),
         }
       : null,
-    memory: memoire,
-    arch: architectureDe(contenu, premier),
-    encryption: chiffrementDe(contenu),
-    firewall: pareFeuDe(sections),
+    memory: memorySize,
+    arch: architectureOf(content, first),
+    encryption: encryptionOf(content),
+    firewall: firewallOf(sections),
   };
 };

@@ -1,16 +1,16 @@
 import { Stack } from "@mantine/core";
 import { IconList } from "@tabler/icons-react";
-import BoitesDeReception, { ressembleAUneAdresse } from "../components/support/BoitesDeReception";
-import { receptionsAProbleme, receptionsDe } from "../components/ui/ChampReception";
+import Inboxes, { looksLikeAddress } from "../components/support/BoitesDeReception";
+import { inboxesWithProblem, inboxesOf } from "../components/ui/ChampReception";
 import { useConfirmations } from "../lib/confirmations";
-import { cleDeListe } from "@milo/shared";
-import ProblemeDeConfiguration from "../components/ui/ProblemeDeConfiguration";
-import { TIROIR_LARGEUR } from "../components/ui/IndicatorDrawer";
+import { listKey } from "@milo/shared";
+import ConfigurationProblem from "../components/ui/ProblemeDeConfiguration";
+import { DRAWER_WIDTH } from "../components/ui/IndicatorDrawer";
 import { useReferences } from "../lib/references";
-import ChampsColonnes from "../components/ui/ChampsColonnes";
+import ColumnFields from "../components/ui/ChampsColonnes";
 import SupportRequestsList, {
-  BOITES,
-  COLONNES_SUPPORT,
+  MAILBOXES,
+  SUPPORT_COLUMNS,
 } from "../components/support/SupportRequestsList";
 import type { IndicatorConfigProps, SupportIndicatorWidget } from "./types";
 
@@ -19,33 +19,33 @@ import type { IndicatorConfigProps, SupportIndicatorWidget } from "./types";
  * chacune vers un contexte du tableau et confirmée par sa boîte, ce qu'elle
  * fait des e-mails relevés, puis ses colonnes.
  */
-function ChampsListe(props: IndicatorConfigProps) {
+function ListFields(props: IndicatorConfigProps) {
   return (
     <Stack gap="xl">
-      <BoitesDeReception {...props} />
-      <ChampsColonnes colonnes={COLONNES_SUPPORT} {...props} />
+      <Inboxes {...props} />
+      <ColumnFields columns={SUPPORT_COLUMNS} {...props} />
     </Stack>
   );
 }
 
 /** La liste, ou l'invite à revoir ses réglages quand ses boîtes ne tiennent pas. */
-function Liste({ config }: { config: unknown }) {
+function ListIndicator({ config }: { config: unknown }) {
   const { contexts } = useReferences();
   const ids = contexts.map((c) => c.id);
-  const emails = receptionsDe(config, BOITES).map((b) =>
+  const emails = inboxesOf(config, MAILBOXES).map((b) =>
     typeof b.email === "string" ? b.email : "",
   );
-  const { lus, confirmee } = useConfirmations(cleDeListe(config), emails);
+  const { isRead, confirmed } = useConfirmations(listKey(config), emails);
   // Chaque boîte doit avoir une adresse e-mail lisible, son contexte, et
   // être confirmée.
-  if (receptionsAProbleme(config, BOITES, "email", ids, ressembleAUneAdresse)) {
-    return <ProblemeDeConfiguration widget={listeIndicator.label} />;
+  if (inboxesWithProblem(config, MAILBOXES, "email", ids, looksLikeAddress)) {
+    return <ConfigurationProblem widget={listIndicator.label} />;
   }
   // Tant que les confirmations ne sont pas lues, rien ne se montre : la liste
   // ne paraît pas pour céder la place à l'avertissement un instant après.
-  if (!lus) return null;
-  if (emails.some((e) => !confirmee(e))) {
-    return <ProblemeDeConfiguration widget={listeIndicator.label} />;
+  if (!isRead) return null;
+  if (emails.some((e) => !confirmed(e))) {
+    return <ConfigurationProblem widget={listIndicator.label} />;
   }
   return <SupportRequestsList config={config} />;
 }
@@ -55,7 +55,7 @@ function Liste({ config }: { config: unknown }) {
 // qu'elle liste — l'onglet ouvert, trié, filtré — vient de la page
 // (SupportListeContext).
 
-export const listeIndicator: SupportIndicatorWidget = {
+export const listIndicator: SupportIndicatorWidget = {
   type: "list",
   kind: "helpdesk",
   label: "Tickets",
@@ -63,8 +63,8 @@ export const listeIndicator: SupportIndicatorWidget = {
   defaultConfig: {},
   ownClicks: true,
   fill: true,
-  Display: ({ config }) => <Liste config={config} />,
+  Display: ({ config }) => <ListIndicator config={config} />,
   // Les boîtes de réception portent leur contexte et leur état sur la ligne.
-  drawerSize: TIROIR_LARGEUR + 100,
-  Config: ChampsListe,
+  drawerSize: DRAWER_WIDTH + 100,
+  Config: ListFields,
 };

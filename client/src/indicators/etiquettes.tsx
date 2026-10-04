@@ -1,20 +1,20 @@
 import { Box, Checkbox, Group, Stack, Text, useMantineTheme } from "@mantine/core";
 import { IconTags } from "@tabler/icons-react";
-import { avec } from "../widgets/types";
-import { ChampNom, enCours, NOM, Rien, TitreIndicateur } from "./commun";
+import { withField } from "../widgets/types";
+import { NameField, ongoing, NAME, Nothing, TitreIndicateur } from "./commun";
 import type { SupportIndicatorWidget } from "./types";
 import type { Id } from "@milo/shared";
 
 // Les étiquettes les plus portées, chacune dans sa couleur : ce qui occupe le
 // support. Les demandes réglées n'y comptent que si on le demande.
 
-const LIBELLE = "Étiquettes";
-const TOUTES = "toutes";
+const LABEL = "Étiquettes";
+const ALL = "toutes";
 
 /** La hauteur d'une barre. */
-const HAUTEUR_BARRE = 24;
+const BAR_HEIGHT = 24;
 
-export interface Barre {
+export interface Bar {
   name: string;
   value: number;
   /**
@@ -25,20 +25,20 @@ export interface Barre {
 }
 
 /** Du plus bas au meilleur : rouge, orange, jaune, citron vert, vert. */
-const DEGRADE = ["red.6", "orange.6", "yellow.6", "lime.6", "green.6"];
+const GRADIENT = ["red.6", "orange.6", "yellow.6", "lime.6", "green.6"];
 
 /**
  * La couleur d'une barre selon sa place entre la plus basse et la plus haute
  * du graphique : la plus haute en vert, la plus basse en rouge, les autres
  * entre les deux. Toutes égales — ou une seule —, elles sont vertes.
  */
-const couleurDeValeur = (valeur: number, min: number, max: number): string => {
-  const t = max > min ? (valeur - min) / (max - min) : 1;
-  return DEGRADE[Math.round(t * (DEGRADE.length - 1))] as string;
+const colorOfValue = (value: number, min: number, max: number): string => {
+  const t = max > min ? (value - min) / (max - min) : 1;
+  return GRADIENT[Math.round(t * (GRADIENT.length - 1))] as string;
 };
 
 /** Le libellé d'une barre, posé à son bord gauche et jamais renvoyé à la ligne. */
-function Libelle({ children, color }: { children: string; color: string }) {
+function LabelText({ children, color }: { children: string; color: string }) {
   return (
     <Text
       size="sm"
@@ -70,71 +70,71 @@ function Libelle({ children, color }: { children: string; color: string }) {
 // catégories et leurs listes. Avec « libelleDedans », une barre est au moins
 // aussi large que son libellé : une liste vide garde ainsi sa couleur au lieu
 // de disparaître.
-export function BarresEtiquettes({
+export function LabelBars({
   data,
-  libelleDedans = false,
-  couleursPropres = false,
+  insideLabel = false,
+  ownColors = false,
 }: {
-  data: Barre[];
-  libelleDedans?: boolean;
+  data: Bar[];
+  insideLabel?: boolean;
   /** Chaque barre garde sa couleur — celle d'une liste — au lieu du dégradé. */
-  couleursPropres?: boolean;
+  ownColors?: boolean;
 }) {
   const theme = useMantineTheme();
   const max = Math.max(...data.map((d) => d.value), 0);
   const min = Math.min(...data.map((d) => d.value));
   return (
     <Stack gap="xs">
-      {data.map((barre) => {
+      {data.map((bar) => {
         // Pleine comme l'étiquette elle-même (LabelChip) : le texte passe au
         // noir sur une couleur claire, au blanc sinon.
-        const couleurs = theme.variantColorResolver({
-          color: couleursPropres ? barre.color : couleurDeValeur(barre.value, min, max),
+        const colors = theme.variantColorResolver({
+          color: ownColors ? bar.color : colorOfValue(bar.value, min, max),
           theme,
           variant: "filled",
           autoContrast: true,
         });
-        const part = max > 0 ? (barre.value / max) * 100 : 0;
-        if (libelleDedans)
+        const part = max > 0 ? (bar.value / max) * 100 : 0;
+        if (insideLabel)
           return (
-            <Group key={barre.name} gap="md" wrap="nowrap">
+            <Group key={bar.name} gap="md" wrap="nowrap">
               <Box style={{ flex: 1, minWidth: 0 }}>
                 <Text
                   size="sm"
                   fw={500}
-                  c={couleurs.color}
+                  c={colors.color}
                   px="sm"
                   truncate
                   style={{
                     width: "fit-content",
                     minWidth: `${part}%`,
                     maxWidth: "100%",
-                    height: HAUTEUR_BARRE,
-                    lineHeight: `${HAUTEUR_BARRE}px`,
+                    height: BAR_HEIGHT,
+                    lineHeight: `${BAR_HEIGHT}px`,
                     borderRadius: "var(--mantine-radius-sm)",
-                    backgroundColor: couleurs.background,
+                    backgroundColor: colors.background,
                   }}
                 >
-                  {barre.name}
+                  {bar.name}
                 </Text>
               </Box>
               <Text size="sm" fw={500} style={{ whiteSpace: "nowrap" }}>
-                {barre.value}
+                {bar.value}
               </Text>
             </Group>
           );
         return (
-          <Group key={barre.name} gap="md" wrap="nowrap">
+          <Group key={bar.name} gap="md" wrap="nowrap">
             <Box
               style={{
                 position: "relative",
                 flex: 1,
                 minWidth: 0,
-                height: HAUTEUR_BARRE,
+                height: BAR_HEIGHT,
                 overflow: "hidden",
               }}
             >
-              <Libelle color="var(--mantine-color-text)">{barre.name}</Libelle>
+              <LabelText color="var(--mantine-color-text)">{bar.name}</LabelText>
               <Box
                 style={{
                   position: "absolute",
@@ -144,7 +144,7 @@ export function BarresEtiquettes({
                   width: `${part}%`,
                   overflow: "hidden",
                   borderRadius: "var(--mantine-radius-sm)",
-                  backgroundColor: couleurs.background,
+                  backgroundColor: colors.background,
                 }}
               >
                 {/* Le libellé de la barre court sur toute la rangée : il
@@ -156,12 +156,12 @@ export function BarresEtiquettes({
                     width: part > 0 ? `${(100 / part) * 100}%` : 0,
                   }}
                 >
-                  <Libelle color={couleurs.color}>{barre.name}</Libelle>
+                  <LabelText color={colors.color}>{bar.name}</LabelText>
                 </Box>
               </Box>
             </Box>
             <Text size="sm" fw={500} style={{ whiteSpace: "nowrap" }}>
-              {barre.value}
+              {bar.value}
             </Text>
           </Group>
         );
@@ -170,50 +170,50 @@ export function BarresEtiquettes({
   );
 }
 
-const toutesLesDemandes = (config: unknown) =>
-  Boolean((config as Record<string, unknown> | null)?.[TOUTES]);
+const allRequests = (config: unknown) =>
+  Boolean((config as Record<string, unknown> | null)?.[ALL]);
 
-export const etiquettesIndicator: SupportIndicatorWidget = {
+export const labelsIndicator: SupportIndicatorWidget = {
   type: "labels",
   kind: "helpdesk",
-  label: LIBELLE,
+  label: LABEL,
   icon: IconTags,
-  defaultConfig: { [NOM]: "", [TOUTES]: false },
+  defaultConfig: { [NAME]: "", [ALL]: false },
 
   Display: ({ config, requests }) => {
-    const comptees = toutesLesDemandes(config) ? requests : requests.filter(enCours);
-    const parEtiquette = new Map<Id, Barre>();
-    for (const demande of comptees) {
-      for (const etiquette of demande.labels) {
-        const deja = parEtiquette.get(etiquette.id);
-        if (deja) deja.value += 1;
+    const counted = allRequests(config) ? requests : requests.filter(ongoing);
+    const byLabel = new Map<Id, Bar>();
+    for (const request of counted) {
+      for (const label of request.labels) {
+        const already = byLabel.get(label.id);
+        if (already) already.value += 1;
         else
-          parEtiquette.set(etiquette.id, {
-            name: etiquette.name,
+          byLabel.set(label.id, {
+            name: label.name,
             value: 1,
-            color: etiquette.color,
+            color: label.color,
           });
       }
     }
-    const data = [...parEtiquette.values()].sort(
+    const data = [...byLabel.values()].sort(
       (a, b) => b.value - a.value || a.name.localeCompare(b.name),
     );
 
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaut={LIBELLE} />
-        {data.length === 0 ? <Rien>Aucune étiquette</Rien> : <BarresEtiquettes data={data} couleursPropres />}
+        <TitreIndicateur config={config} defaultValue={LABEL} />
+        {data.length === 0 ? <Nothing>Aucune étiquette</Nothing> : <LabelBars data={data} ownColors />}
       </Stack>
     );
   },
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
-      <ChampNom config={config} onChange={onChange} defaut={LIBELLE} />
+      <NameField config={config} onChange={onChange} defaultValue={LABEL} />
       <Checkbox
         label="Compter aussi les tickets résolus et fermés"
-        checked={toutesLesDemandes(config)}
-        onChange={(e) => onChange(avec(config, TOUTES, e.currentTarget.checked))}
+        checked={allRequests(config)}
+        onChange={(e) => onChange(withField(config, ALL, e.currentTarget.checked))}
         color="teal"
       />
     </Stack>

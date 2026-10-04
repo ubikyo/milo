@@ -8,8 +8,8 @@ import {
 } from "@milo/shared";
 import type { SupportLabel } from "@milo/shared";
 import { api } from "../../api";
-import { messageErreur, notifierErreur } from "../../lib/errors";
-import EtiquettesNouveauMessage from "./EtiquettesNouveauMessage";
+import { errorMessage, notifyError } from "../../lib/errors";
+import NewMessageLabels from "./EtiquettesNouveauMessage";
 import SupportTemplates from "./SupportTemplates";
 
 // La section « Support » du Paramétrage : ce que reçoit d'office une demande
@@ -25,17 +25,17 @@ interface SupportTabProps {
 }
 
 export default function SupportTab({ canEdit }: SupportTabProps) {
-  const [jours, setJours] = useState<number | null>(null);
-  const [enregistres, setEnregistres] = useState<number | null>(null);
+  const [days, setDays] = useState<number | null>(null);
+  const [saved, setSaved] = useState<number | null>(null);
   // Les étiquettes du Support, et celles qu'un e-mail reçoit d'office.
-  const [etiquettes, setEtiquettes] = useState<SupportLabel[]>([]);
+  const [labels, setLabels] = useState<SupportLabel[]>([]);
   const [labelIds, setLabelIds] = useState<string[]>([]);
 
-  const relireEtiquettes = useCallback(async () => {
+  const reloadLabels = useCallback(async () => {
     try {
-      setEtiquettes(await api.getSupportLabels());
+      setLabels(await api.getSupportLabels());
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   }, []);
 
@@ -43,16 +43,16 @@ export default function SupportTab({ canEdit }: SupportTabProps) {
     api
       .getSupportSettings()
       .then((r) => {
-        setJours(r.default_due_days);
-        setEnregistres(r.default_due_days);
+        setDays(r.default_due_days);
+        setSaved(r.default_due_days);
         setLabelIds(r.default_label_ids.map(String));
       })
-      .catch((e) => notifierErreur(messageErreur(e)));
-    void relireEtiquettes();
-  }, [relireEtiquettes]);
+      .catch((e) => notifyError(errorMessage(e)));
+    void reloadLabels();
+  }, [reloadLabels]);
 
-  const choisirEtiquettes = async (ids: string[]) => {
-    const avant = labelIds;
+  const selectLabels = async (ids: string[]) => {
+    const before = labelIds;
     setLabelIds(ids);
     try {
       const r = await api.updateSupportSettings({
@@ -60,21 +60,21 @@ export default function SupportTab({ canEdit }: SupportTabProps) {
       });
       setLabelIds(r.default_label_ids.map(String));
     } catch (e) {
-      notifierErreur(messageErreur(e));
-      setLabelIds(avant);
+      notifyError(errorMessage(e));
+      setLabelIds(before);
     }
   };
 
-  const enregistrer = async () => {
-    const valeur = jours ?? 0;
-    if (valeur === enregistres) return;
+  const save = async () => {
+    const value = days ?? 0;
+    if (value === saved) return;
     try {
-      const r = await api.updateSupportSettings({ default_due_days: valeur });
-      setJours(r.default_due_days);
-      setEnregistres(r.default_due_days);
+      const r = await api.updateSupportSettings({ default_due_days: value });
+      setDays(r.default_due_days);
+      setSaved(r.default_due_days);
     } catch (e) {
-      notifierErreur(messageErreur(e));
-      setJours(enregistres);
+      notifyError(errorMessage(e));
+      setDays(saved);
     }
   };
 
@@ -94,54 +94,54 @@ export default function SupportTab({ canEdit }: SupportTabProps) {
           allowDecimal={false}
           allowNegative={false}
           clampBehavior="strict"
-          value={jours ?? ""}
+          value={days ?? ""}
           onChange={(v) =>
-            setJours(typeof v === "number" ? v : v === "" ? 0 : Number(v))
+            setDays(typeof v === "number" ? v : v === "" ? 0 : Number(v))
           }
-          onBlur={() => void enregistrer()}
+          onBlur={() => void save()}
           onKeyDown={(e) => {
-            if (e.key === "Enter") void enregistrer();
+            if (e.key === "Enter") void save();
           }}
-          disabled={!canEdit || jours === null}
+          disabled={!canEdit || days === null}
         />
       </Group>
       {/* Les étiquettes qu'un ticket arrivé par e-mail reçoit d'office, à la
           ligne et sur toute la largeur, comme les listes qui suivent. */}
-      <EtiquettesNouveauMessage
-        etiquettes={etiquettes}
+      <NewMessageLabels
+        labels={labels}
         value={labelIds}
-        onChange={(ids) => void choisirEtiquettes(ids)}
+        onChange={(ids) => void selectLabels(ids)}
         canEdit={canEdit}
       />
       <SupportTemplates
         label="Notifications automatiques"
-        evenements={SUPPORT_REPLY_EVENTS}
-        charger={api.getSupportReplies}
-        creer={api.createSupportReply}
-        modifier={api.updateSupportReply}
-        supprimer={api.deleteSupportReply}
+        events={SUPPORT_REPLY_EVENTS}
+        load={api.getSupportReplies}
+        create={api.createSupportReply}
+        updateStatement={api.updateSupportReply}
+        remove={api.deleteSupportReply}
         addTitle="Ajouter une réponse"
         entityLabel="la réponse"
         emptyIcon={IconMessageReply}
         emptyText="Aucune réponse pour le moment"
         canEdit={canEdit}
-        onError={notifierErreur}
+        onError={notifyError}
         // Partie d'office, une notification n'a personne qui l'écrit.
-        groupesVariables={["Expéditeur", "Demande"]}
+        variableGroups={["Expéditeur", "Demande"]}
       />
       <SupportTemplates
         label="Contenus par défaut"
-        evenements={SUPPORT_CONTENT_EVENTS}
-        charger={api.getSupportContents}
-        creer={api.createSupportContent}
-        modifier={api.updateSupportContent}
-        supprimer={api.deleteSupportContent}
+        events={SUPPORT_CONTENT_EVENTS}
+        load={api.getSupportContents}
+        create={api.createSupportContent}
+        updateStatement={api.updateSupportContent}
+        remove={api.deleteSupportContent}
         addTitle="Ajouter un contenu"
         entityLabel="le contenu"
         emptyIcon={IconSignature}
         emptyText="Aucun contenu pour le moment"
         canEdit={canEdit}
-        onError={notifierErreur}
+        onError={notifyError}
       />
     </Stack>
   );

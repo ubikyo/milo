@@ -6,7 +6,7 @@
 import { mutation, scalar, selection } from "../db/query.js";
 import type { NextRow, WorkspaceRow } from "../db/rows.js";
 
-export const WORKSPACE_INTROUVABLE = "Workspace introuvable";
+export const WORKSPACE_NOT_FOUND = "Workspace introuvable";
 
 export const workspaces = {
   all: selection<WorkspaceRow>("SELECT * FROM workspaces ORDER BY position, id"),
@@ -19,6 +19,6 @@ export const workspaces = {
 };
 
 /** Les vues d'un workspace, toutes : privées comprises. */
-export const vuesDuWorkspace = selection<{ id: number }>(
+export const workspaceViews = selection<{ id: number }>(
   "SELECT id FROM views WHERE workspace_id = ?",
 );

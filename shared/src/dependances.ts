@@ -5,8 +5,8 @@
 import type { Id } from "./domain.js";
 
 /** Ce qu'une liaison enregistre, lu depuis sa carte source. */
-export const SORTES_DE_LIAISON = ["blocks", "parent_of", "related", "duplicate"] as const;
-export type SorteDeLiaison = (typeof SORTES_DE_LIAISON)[number];
+export const LINK_KINDS = ["blocks", "parent_of", "related", "duplicate"] as const;
+export type LinkKind = (typeof LINK_KINDS)[number];
 
 /** Ce qu'une carte dit d'une autre, telle que sa fiche la montre. */
 export const RELATIONS = [
@@ -19,33 +19,33 @@ export const RELATIONS = [
 ] as const;
 export type Relation = (typeof RELATIONS)[number]["value"];
 
-export const isRelation = (valeur: unknown): valeur is Relation =>
-  RELATIONS.some((r) => r.value === valeur);
+export const isRelation = (value: unknown): value is Relation =>
+  RELATIONS.some((r) => r.value === value);
 
 /**
  * Comment s'enregistre une relation posée sur une carte : sa sorte, et si la
  * carte en est la source. « est bloqué par Y » s'écrit « Y bloque X ». Le lien
  * et le doublon se lisent pareil des deux côtés.
  */
-export const enregistrement = (
+export const registration = (
   relation: Relation,
-): { sorte: SorteDeLiaison; source: boolean } => {
+): { kind: LinkKind; source: boolean } => {
   switch (relation) {
     case "blocked_by":
-      return { sorte: "blocks", source: false };
+      return { kind: "blocks", source: false };
     case "child_of":
-      return { sorte: "parent_of", source: false };
+      return { kind: "parent_of", source: false };
     default:
-      return { sorte: relation, source: true };
+      return { kind: relation, source: true };
   }
 };
 
 /** La relation qu'une carte lit d'une liaison, selon qu'elle en est la source ou la cible. */
-export const relationLue = (sorte: SorteDeLiaison, source: boolean): Relation => {
-  if (source) return sorte;
-  if (sorte === "blocks") return "blocked_by";
-  if (sorte === "parent_of") return "child_of";
-  return sorte;
+export const relationFromSide = (kind: LinkKind, source: boolean): Relation => {
+  if (source) return kind;
+  if (kind === "blocks") return "blocked_by";
+  if (kind === "parent_of") return "child_of";
+  return kind;
 };
 
 /** L'autre carte d'une dépendance : elle peut vivre sur un autre tableau. */
@@ -76,7 +76,7 @@ export interface LinkCandidates {
 }
 
 /** Combien de cartes une page de la recherche rend. */
-export const PAGE_DE_LIAISONS = 10;
+export const LINKS_PAGE_SIZE = 10;
 
 /** Ce qu'on envoie pour poser ou changer une dépendance d'une carte. */
 export interface CardLinkInput {

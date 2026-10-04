@@ -27,43 +27,43 @@ import defilement from "../../assets/styles/ListeScroll.module.css";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import AddButton from "../ui/AddButton";
 import {
-  ARRONDI,
-  BoutonDeLigne,
-  ListeVide,
-  RETRAIT_LIGNE,
-  RETRAIT_NOM,
-  STYLE_SAISIE,
-  styleChampNom,
-  styleLigne,
+  ROUNDING,
+  RowButton,
+  EmptyList,
+  ROW_INSET,
+  NAME_INSET,
+  INPUT_STYLE,
+  nameFieldStyle,
+  rowStyle,
 } from "../ui/LignesDuTiroir";
 import PointMenu, {
-  positionDuMenu,
+  menuPosition,
   type PointMenuPosition,
 } from "../ui/PointMenu";
 import { RED } from "../../themes/colors";
 import DirectoryPicker from "./DirectoryPicker";
 import PrincipalPermissionsModal from "./PrincipalPermissionsModal";
 import type {
-  LignePermission,
+  PermissionRow,
   SectionPermissions,
 } from "./PrincipalPermissionsModal";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import { GREEN } from "../../themes/colors";
 import type { EntraPrincipal, PrincipalPermissions } from "@milo/shared";
 
 /** Le fond de l'icône d'une ligne : un gris neutre, plus foncé que la ligne. */
-const FOND_AVATAR = "light-dark(#d4d4d4, var(--mantine-color-dark-4))";
+const AVATAR_BACKGROUND = "light-dark(#d4d4d4, var(--mantine-color-dark-4))";
 
 /** L'air ajouté en haut et en bas d'une ligne : 10 px de hauteur en plus. */
-const AIR_EN_PLUS = 5;
+const EXTRA_PADDING = 5;
 
 /**
  * La hauteur d'une ligne : celle d'un utilisateur, son nom (« sm ») sur son
  * adresse (« xs »), avec l'air de la ligne en haut et en bas.
  */
-const HAUTEUR_LIGNE = `calc(${2 * (RETRAIT_LIGNE + AIR_EN_PLUS)}px + (var(--mantine-font-size-sm) + var(--mantine-font-size-xs)) * var(--mantine-line-height))`;
+const ROW_HEIGHT = `calc(${2 * (ROW_INSET + EXTRA_PADDING)}px + (var(--mantine-font-size-sm) + var(--mantine-font-size-xs)) * var(--mantine-line-height))`;
 
-const cle = (p: EntraPrincipal) => `${p.type}:${p.id}`;
+const key = (p: EntraPrincipal) => `${p.type}:${p.id}`;
 
 interface PrincipalsPermissionsProps<T> {
   load: () => Promise<PrincipalPermissions<T>[]>;
@@ -75,9 +75,9 @@ interface PrincipalsPermissionsProps<T> {
   /** Lui retire tout ; rend la liste à jour. */
   remove: (principal: EntraPrincipal) => Promise<PrincipalPermissions<T>[]>;
   /** Celles de qui arrive de l'annuaire : aucune. */
-  vide: () => T;
+  empty: () => T;
   /** Ce qu'il a, d'un coup d'œil, au bout de sa ligne. */
-  resume: (permissions: T) => string;
+  summary: (permissions: T) => string;
   /**
    * La fenêtre des permissions (PrincipalPermissionsModal). Sans elle, les
    * permissions se règlent sur la ligne (enLigne) : ni fenêtre, ni
@@ -85,7 +85,7 @@ interface PrincipalsPermissionsProps<T> {
    */
   sections?: (
     permissions: T,
-    changer: (permissions: T) => void,
+    change: (permissions: T) => void,
   ) => SectionPermissions[];
   /**
    * Des permissions peu nombreuses, réglées à même la ligne plutôt que dans
@@ -99,14 +99,14 @@ interface PrincipalsPermissionsProps<T> {
    * que nommées dans chaque choix. Au-delà de la largeur, la liste défile de
    * côté.
    */
-  enColonnes?: boolean;
-  enLigne?: (
+  inColumns?: boolean;
+  inline?: (
     permissions: T,
-    changer: (permissions: T) => void,
-  ) => LignePermission[];
+    change: (permissions: T) => void,
+  ) => PermissionRow[];
   emptyText: string;
   /** Le geste qui lui retire tout, et sa confirmation. */
-  retirer: { label: string; message: (nom: string) => ReactNode };
+  removeDialog: { label: string; message: (name: string) => ReactNode };
   /**
    * Après un enregistrement ou un retrait : ses propres droits ont pu changer
    * — un workspace de plus dans son sélecteur, par exemple.
@@ -115,22 +115,22 @@ interface PrincipalsPermissionsProps<T> {
 }
 
 /** La largeur d'un choix de permission sur la ligne : de quoi lire « Modifier ». */
-const LARGEUR_CHOIX = 130;
+const CHOICE_WIDTH = 130;
 
 /**
  * En colonnes : la largeur d'une colonne — de quoi lire « Support » en
  * en-tête —, et l'écart entre deux.
  */
-const LARGEUR_COLONNE = 52;
-const ECART_COLONNES = 4;
+const COLUMN_WIDTH = 52;
+const COLUMNS_GAP = 4;
 /** L'écart des éléments d'une ligne (« sm »), que l'en-tête reprend. */
-const ECART = 12;
+const GAP = 12;
 
 /** Le fond d'une permission en lecture : le gris neutre des boutons de ligne. */
-const FOND_LECTURE = "light-dark(#d4d4d4, var(--mantine-color-dark-4))";
+const READ_BACKGROUND = "light-dark(#d4d4d4, var(--mantine-color-dark-4))";
 
 /** L'icône d'un niveau : rien, lire, modifier ; à défaut, son initiale. */
-const ICONES_NIVEAU: Record<string, typeof IconMinus> = {
+const LEVEL_ICONS: Record<string, typeof IconMinus> = {
   "": IconMinus,
   view: IconEye,
   update: IconPencil,
@@ -142,44 +142,44 @@ const ICONES_NIVEAU: Record<string, typeof IconMinus> = {
  * estompé ; lire : un œil sur le gris neutre ; modifier : un crayon sur le
  * vert de l'application. L'infobulle dit lequel.
  */
-function BoutonNiveau({
-  nom,
+function LevelButton({
+  name,
   options,
-  valeur,
+  value,
   onChange,
   disabled,
-}: LignePermission) {
-  const rang = Math.max(
+}: PermissionRow) {
+  const rank = Math.max(
     0,
-    options.findIndex((o) => o.value === valeur),
+    options.findIndex((o) => o.value === value),
   );
-  const actuel = options[rang];
-  const suivant = options[(rang + 1) % options.length];
+  const current = options[rank];
+  const next = options[(rank + 1) % options.length];
   // Un oui se coche ; les niveaux d'un type de widget ont leur icône.
-  const Icone = actuel?.label === "Oui" ? IconCheck : ICONES_NIVEAU[valeur];
-  const fond =
-    valeur === "update" ? GREEN : valeur ? FOND_LECTURE : "transparent";
-  const couleur =
-    valeur === "update"
+  const Icon = current?.label === "Oui" ? IconCheck : LEVEL_ICONS[value];
+  const background =
+    value === "update" ? GREEN : value ? READ_BACKGROUND : "transparent";
+  const color =
+    value === "update"
       ? "#ffffff"
-      : valeur
+      : value
         ? "var(--mantine-color-text)"
         : "var(--mantine-color-dimmed)";
   return (
-    <Tooltip label={`${nom} : ${actuel?.label ?? ""}`} withinPortal>
+    <Tooltip label={`${name} : ${current?.label ?? ""}`} withinPortal>
       <ActionIcon
         variant="filled"
         radius={3}
-        onClick={() => suivant && onChange(suivant.value)}
+        onClick={() => next && onChange(next.value)}
         disabled={disabled}
-        aria-label={`${nom} : ${actuel?.label ?? ""}. Passer à ${suivant?.label ?? ""}`}
-        style={{ backgroundColor: fond, color: couleur }}
+        aria-label={`${name} : ${current?.label ?? ""}. Passer à ${next?.label ?? ""}`}
+        style={{ backgroundColor: background, color: color }}
       >
-        {Icone ? (
-          <Icone size={16} />
+        {Icon ? (
+          <Icon size={16} />
         ) : (
           <Text size="xs" fw={600}>
-            {actuel?.label.charAt(0)}
+            {current?.label.charAt(0)}
           </Text>
         )}
       </ActionIcon>
@@ -188,16 +188,16 @@ function BoutonNiveau({
 }
 
 /** Les niveaux d'une ligne en colonnes, chacun centré sous son en-tête. */
-function NiveauxEnColonnes({ lignes }: { lignes: LignePermission[] }) {
+function LevelsInColumns({ rows }: { rows: PermissionRow[] }) {
   return (
-    <Group gap={ECART_COLONNES} wrap="nowrap" style={{ flexShrink: 0 }}>
-      {lignes.map((l) => (
+    <Group gap={COLUMNS_GAP} wrap="nowrap" style={{ flexShrink: 0 }}>
+      {rows.map((l) => (
         <Box
-          key={l.nom}
-          w={l.largeur ?? LARGEUR_COLONNE}
+          key={l.name}
+          w={l.largeur ?? COLUMN_WIDTH}
           style={{ display: "flex", justifyContent: "center" }}
         >
-          <BoutonNiveau {...l} />
+          <LevelButton {...l} />
         </Box>
       ))}
     </Group>
@@ -205,51 +205,51 @@ function NiveauxEnColonnes({ lignes }: { lignes: LignePermission[] }) {
 }
 
 // « Aucun » ne peut pas être la valeur vide d'un Select : il lui faut la sienne.
-const AUCUN = "aucun";
+const NONE = "aucun";
 
 /**
  * Les permissions réglées à même la ligne (enLigne) : un choix chacune, son
  * nom en invite — « Workspaces », « Paramétrage » —, au bout de la ligne.
  */
-function ChoixEnLigne({
-  lignes,
-  enColonnes,
+function InlineChoice({
+  rows,
+  inColumns,
 }: {
-  lignes: LignePermission[];
+  rows: PermissionRow[];
   /** En colonnes : le nom est dans l'en-tête, pas dans le choix. */
-  enColonnes?: boolean;
+  inColumns?: boolean;
 }) {
-  const [saisi, setSaisi] = useState<string | null>(null);
-  if (enColonnes) return <NiveauxEnColonnes lignes={lignes} />;
+  const [entered, setEntered] = useState<string | null>(null);
+  if (inColumns) return <LevelsInColumns rows={rows} />;
   return (
     <>
-      {lignes.map(({ nom, options, valeur, onChange, disabled, largeur }) => (
+      {rows.map(({ name, options, value, onChange, disabled, largeur }) => (
         <Select
-          key={nom}
-          aria-label={nom}
+          key={name}
+          aria-label={name}
           // Son nom devant la valeur : « Workspaces : Modifier ».
           leftSection={
             <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
-              {nom}
+              {name}
             </Text>
           }
-          leftSectionWidth={nom.length * 6.5 + 14}
+          leftSectionWidth={name.length * 6.5 + 14}
           data={options.map((o) => ({
-            value: o.value || AUCUN,
+            value: o.value || NONE,
             label: o.label,
           }))}
-          value={valeur || AUCUN}
-          onChange={(v) => onChange(v === AUCUN || !v ? "" : v)}
+          value={value || NONE}
+          onChange={(v) => onChange(v === NONE || !v ? "" : v)}
           allowDeselect={false}
           disabled={disabled}
           size="xs"
-          radius={ARRONDI}
-          w={largeur ?? LARGEUR_CHOIX + nom.length * 6.5}
+          radius={ROUNDING}
+          w={largeur ?? CHOICE_WIDTH + name.length * 6.5}
           style={{ flexShrink: 0 }}
           comboboxProps={{ withinPortal: true }}
-          onFocus={() => setSaisi(nom)}
-          onBlur={() => setSaisi(null)}
-          styles={saisi === nom ? { input: STYLE_SAISIE } : undefined}
+          onFocus={() => setEntered(name)}
+          onBlur={() => setEntered(null)}
+          styles={entered === name ? { input: INPUT_STYLE } : undefined}
         />
       ))}
     </>
@@ -269,19 +269,19 @@ export default function PrincipalsPermissions<T>({
   load,
   save,
   remove,
-  vide,
-  resume,
+  empty,
+  summary,
   sections,
-  enLigne,
-  enColonnes = false,
+  inline,
+  inColumns = false,
   emptyText,
-  retirer,
+  removeDialog,
   onChange,
 }: PrincipalsPermissionsProps<T>) {
-  const [acces, setAcces] = useState<PrincipalPermissions<T>[]>([]);
+  const [access, setAccess] = useState<PrincipalPermissions<T>[]>([]);
   // Celui dont la fenêtre des permissions est ouverte : un principal de la
   // liste, ou celui qu'on vient de choisir dans l'annuaire.
-  const [permissionsDe, setPermissionsDe] = useState<EntraPrincipal | null>(
+  const [permissionsOf, setPermissionsOf] = useState<EntraPrincipal | null>(
     null,
   );
   const [pendingDelete, setPendingDelete] = useState<EntraPrincipal | null>(
@@ -289,48 +289,48 @@ export default function PrincipalsPermissions<T>({
   );
   // La ligne ajoutée, où l'on cherche dans l'annuaire — et, réglées à même
   // la ligne, les permissions qu'on lui donne.
-  const [enAjout, setEnAjout] = useState(false);
-  const [nouveau, setNouveau] = useState<EntraPrincipal | null>(null);
-  const [nouvelles, setNouvelles] = useState<T>(vide);
-  const ligneAjout = useRef<HTMLDivElement | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [newValue, setNewEntry] = useState<EntraPrincipal | null>(null);
+  const [newItems, setNewValues] = useState<T>(empty);
+  const addRow = useRef<HTMLDivElement | null>(null);
 
   // La ligne dont on change l'utilisateur ou le groupe, d'un clic sur son nom.
-  const [aRemplacer, setARemplacer] = useState<string | null>(null);
+  const [toReplace, setToReplace] = useState<string | null>(null);
 
   /**
    * Un autre à la place : il reçoit les mêmes permissions, puis l'ancien
    * perd les siennes. S'il avait déjà une ligne, ses permissions sont
    * remplacées par celles-ci.
    */
-  const remplacer = async (
-    ancien: EntraPrincipal,
-    nouveau: EntraPrincipal,
+  const replaceExisting = async (
+    old: EntraPrincipal,
+    newValue: EntraPrincipal,
     permissions: T,
   ) => {
     try {
-      await save(nouveau, permissions);
-      setAcces(await remove(ancien));
+      await save(newValue, permissions);
+      setAccess(await remove(old));
       onChange?.();
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
       void reload();
     }
   };
 
-  const fermerAjout = () => {
-    setEnAjout(false);
-    setNouveau(null);
-    setNouvelles(vide());
+  const closeAdd = () => {
+    setAdding(false);
+    setNewEntry(null);
+    setNewValues(empty());
   };
 
   /** Enregistre aussitôt des permissions réglées sur la ligne. */
-  const enregistrer = async (principal: EntraPrincipal, permissions: T) => {
+  const handleSave = async (principal: EntraPrincipal, permissions: T) => {
     try {
-      setAcces(await save(principal, permissions));
+      setAccess(await save(principal, permissions));
       onChange?.();
       return true;
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
       return false;
     }
   };
@@ -339,13 +339,13 @@ export default function PrincipalsPermissions<T>({
    * La ligne d'ajout part dès qu'elle a qui et au moins une permission :
    * l'ordre importe peu, la recherche d'abord ou les permissions.
    */
-  const tenterAjout = async (
+  const tryAdd = async (
     principal: EntraPrincipal | null,
     permissions: T,
   ) => {
-    if (!principal || !enLigne) return;
-    if (enLigne(permissions, () => {}).every((l) => !l.valeur)) return;
-    if (await enregistrer(principal, permissions)) fermerAjout();
+    if (!principal || !inline) return;
+    if (inline(permissions, () => {}).every((l) => !l.value)) return;
+    if (await handleSave(principal, permissions)) closeAdd();
   };
   const [menu, setMenu] = useState<{
     principal: EntraPrincipal;
@@ -354,9 +354,9 @@ export default function PrincipalsPermissions<T>({
 
   const reload = useCallback(async () => {
     try {
-      setAcces(await load());
+      setAccess(await load());
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   }, [load]);
 
@@ -364,83 +364,83 @@ export default function PrincipalsPermissions<T>({
     reload();
   }, [reload]);
 
-  const actuel = permissionsDe
-    ? acces.find((a) => cle(a.principal) === cle(permissionsDe))
+  const current = permissionsOf
+    ? access.find((a) => key(a.principal) === key(permissionsOf))
     : undefined;
   // Qui arrive de l'annuaire n'en a pas encore : aucune.
-  const initiales = actuel?.permissions ?? vide();
+  const initials = current?.permissions ?? empty();
 
-  const total = acces.length + (enAjout ? 1 : 0);
+  const total = access.length + (adding ? 1 : 0);
   // Le nom d'une ligne prend ce que lui laissent les permissions, au bout.
-  const styleNom = { flex: 1, minWidth: 0 };
+  const nameStyle = { flex: 1, minWidth: 0 };
 
   return (
     <Stack gap="sm">
       <div>
         {total === 0 ? (
-          <ListeVide icon={IconUsersGroup} message={emptyText} />
+          <EmptyList icon={IconUsersGroup} message={emptyText} />
         ) : (
           <ScrollArea
             type="auto"
-            scrollbars={enColonnes ? "x" : false}
+            scrollbars={inColumns ? "x" : false}
             classNames={{
               scrollbar: defilement.scrollbar,
               thumb: defilement.thumb,
             }}
           >
-            {enColonnes && enLigne && (
+            {inColumns && inline && (
               // L'en-tête des colonnes : le nom de chaque permission, au-dessus
               // de ses choix.
               <Group
-                gap={ECART}
+                gap={GAP}
                 wrap="nowrap"
                 pb={4}
                 style={{
-                  paddingLeft: RETRAIT_NOM,
-                  paddingRight: RETRAIT_LIGNE,
+                  paddingLeft: NAME_INSET,
+                  paddingRight: ROW_INSET,
                 }}
               >
                 {/* La place de l'icône et du nom : les colonnes se calent au
                     bout, comme les niveaux des lignes. */}
                 <Box style={{ flex: 1 }} />
                 <Group
-                  gap={ECART_COLONNES}
+                  gap={COLUMNS_GAP}
                   wrap="nowrap"
                   style={{ flexShrink: 0 }}
                 >
-                  {enLigne(vide(), () => {}).map((l) => (
+                  {inline(empty(), () => {}).map((l) => (
                     <Text
-                      key={l.nom}
+                      key={l.name}
                       size="xs"
                       fw={500}
                       c="dimmed"
-                      w={l.largeur ?? LARGEUR_COLONNE}
+                      w={l.largeur ?? COLUMN_WIDTH}
                       ta="center"
                       truncate
                     >
-                      {l.nom}
+                      {l.name}
                     </Text>
                   ))}
                 </Group>
               </Group>
             )}
             <Stack gap={1}>
-              {acces.map(({ principal, permissions }, rang) => (
+              {access.map(({ principal, permissions }, rank) => (
                 <Group
-                  key={cle(principal)}
+                  key={key(principal)}
                   gap="sm"
                   wrap="nowrap"
                   onContextMenu={(e) =>
-                    setMenu({ principal, position: positionDuMenu(e) })
+                    setMenu({ principal, position: menuPosition(e) })
                   }
                   style={{
-                    ...styleLigne(rang, total, false),
-                    paddingLeft: RETRAIT_NOM,
+                    ...rowStyle(rank, total, false),
+                    paddingLeft: NAME_INSET,
                     // Sur deux lignes, nom et adresse : un peu plus d'air.
-                    paddingBlock: RETRAIT_LIGNE + AIR_EN_PLUS,
+                    paddingBlock: ROW_INSET + EXTRA_PADDING,
                     // Un groupe, sans adresse, garde la hauteur d'un
                     // utilisateur : toutes les lignes se valent.
-                    minHeight: HAUTEUR_LIGNE,
+                    minHeight: ROW_HEIGHT,
                   }}
                 >
                   {/* Un gris neutre derrière l'icône : ceux de Mantine tirent sur
@@ -451,7 +451,7 @@ export default function PrincipalsPermissions<T>({
                     styles={{
                       root: { flexShrink: 0 },
                       placeholder: {
-                        backgroundColor: FOND_AVATAR,
+                        backgroundColor: AVATAR_BACKGROUND,
                         color: "var(--mantine-color-text)",
                       },
                     }}
@@ -462,32 +462,32 @@ export default function PrincipalsPermissions<T>({
                       <IconUser size={16} />
                     )}
                   </Avatar>
-                  {aRemplacer === cle(principal) ? (
+                  {toReplace === key(principal) ? (
                     // Un autre de l'annuaire à sa place, avec ses permissions.
                     // Quittée sans choix, la recherche rend la ligne telle quelle.
                     <DirectoryPicker
                       aria-label={`Remplacer ${principal.name}`}
                       placeholder="Chercher un utilisateur ou un groupe Entra"
                       value={principal}
-                      onChange={(autre) => {
-                        setARemplacer(null);
-                        if (autre && cle(autre) !== cle(principal)) {
-                          void remplacer(principal, autre, permissions);
+                      onChange={(other) => {
+                        setToReplace(null);
+                        if (other && key(other) !== key(principal)) {
+                          void replaceExisting(principal, other, permissions);
                         }
                       }}
-                      onBlur={() => setARemplacer(null)}
+                      onBlur={() => setToReplace(null)}
                       autoFocus
                       size="sm"
-                      radius={ARRONDI}
-                      style={styleNom}
-                      styles={{ input: styleChampNom(true) }}
+                      radius={ROUNDING}
+                      style={nameStyle}
+                      styles={{ input: nameFieldStyle(true) }}
                       comboboxProps={{ withinPortal: true }}
                     />
                   ) : (
                     <UnstyledButton
-                      onClick={() => setARemplacer(cle(principal))}
+                      onClick={() => setToReplace(key(principal))}
                       title="Changer d'utilisateur ou de groupe"
-                      style={styleNom}
+                      style={nameStyle}
                     >
                       <Text size="sm" truncate>
                         {principal.name || principal.email}
@@ -502,80 +502,80 @@ export default function PrincipalsPermissions<T>({
                     </UnstyledButton>
                   )}
 
-                  {enLigne ? (
+                  {inline ? (
                     // Ses permissions à même la ligne : elles partent au choix.
-                    <ChoixEnLigne
-                      enColonnes={enColonnes}
-                      lignes={enLigne(
+                    <InlineChoice
+                      inColumns={inColumns}
+                      rows={inline(
                         permissions,
-                        (p) => void enregistrer(principal, p),
+                        (p) => void handleSave(principal, p),
                       )}
                     />
                   ) : (
                     // Ce qu'il a, d'un coup d'œil, et sa fenêtre au clic.
-                    <BoutonDeLigne
+                    <RowButton
                       icon={IconShieldLock}
-                      onClick={() => setPermissionsDe(principal)}
+                      onClick={() => setPermissionsOf(principal)}
                     >
-                      {resume(permissions)}
-                    </BoutonDeLigne>
+                      {summary(permissions)}
+                    </RowButton>
                   )}
                 </Group>
               ))}
-              {enAjout && (
+              {adding && (
                 <Group
-                  ref={ligneAjout}
+                  ref={addRow}
                   gap="sm"
                   wrap="nowrap"
                   // Quittée sans rien choisir, la ligne s'efface. Aller de la
                   // recherche aux permissions ne la quitte pas.
                   onBlur={(e) => {
                     if (
-                      ligneAjout.current?.contains(
+                      addRow.current?.contains(
                         e.relatedTarget as Node | null,
                       )
                     )
                       return;
-                    if (enLigne && nouveau) return;
-                    fermerAjout();
+                    if (inline && newValue) return;
+                    closeAdd();
                   }}
                   style={{
-                    ...styleLigne(total - 1, total, false),
-                    paddingLeft: RETRAIT_LIGNE,
+                    ...rowStyle(total - 1, total, false),
+                    paddingLeft: ROW_INSET,
                   }}
                 >
                   <DirectoryPicker
                     aria-label="Ajouter un utilisateur ou un groupe"
                     placeholder="Chercher un utilisateur ou un groupe Entra"
-                    value={enLigne ? nouveau : null}
-                    resetOnSelect={!enLigne}
+                    value={inline ? newValue : null}
+                    resetOnSelect={!inline}
                     // Avec des permissions en ligne, le choix reste dans le champ
                     // le temps de les régler à droite. Sinon, choisir ouvre la
                     // fenêtre des permissions : il n'entre dans la liste qu'une
                     // fois enregistré.
                     onChange={(principal) => {
-                      if (enLigne) {
-                        setNouveau(principal);
-                        void tenterAjout(principal, nouvelles);
+                      if (inline) {
+                        setNewEntry(principal);
+                        void tryAdd(principal, newItems);
                         return;
                       }
                       if (!principal) return;
-                      fermerAjout();
-                      setPermissionsDe(principal);
+                      closeAdd();
+                      setPermissionsOf(principal);
                     }}
                     autoFocus
                     size="sm"
-                    radius={ARRONDI}
+                    radius={ROUNDING}
                     style={{ flex: 1, minWidth: 0 }}
-                    styles={{ input: styleChampNom(true) }}
+                    styles={{ input: nameFieldStyle(true) }}
                     comboboxProps={{ withinPortal: true }}
                   />
-                  {enLigne && (
-                    <ChoixEnLigne
-                      enColonnes={enColonnes}
-                      lignes={enLigne(nouvelles, (p) => {
-                        setNouvelles(p);
-                        void tenterAjout(nouveau, p);
+                  {inline && (
+                    <InlineChoice
+                      inColumns={inColumns}
+                      rows={inline(newItems, (p) => {
+                        setNewValues(p);
+                        void tryAdd(newValue, p);
                       })}
                     />
                   )}
@@ -587,7 +587,7 @@ export default function PrincipalsPermissions<T>({
         {/* Au plus près de la liste qu'il allonge. */}
         <AddButton
           label="Ajouter un utilisateur ou un groupe"
-          onClick={() => setEnAjout(true)}
+          onClick={() => setAdding(true)}
           mt={4}
         />
       </div>
@@ -599,7 +599,7 @@ export default function PrincipalsPermissions<T>({
               <Menu.Item
                 leftSection={<IconShieldLock size={16} />}
                 onClick={() => {
-                  setPermissionsDe(menu.principal);
+                  setPermissionsOf(menu.principal);
                   setMenu(null);
                 }}
               >
@@ -616,22 +616,22 @@ export default function PrincipalsPermissions<T>({
               setMenu(null);
             }}
           >
-            {retirer.label}
+            {removeDialog.label}
           </Menu.Item>
         </PointMenu>
       )}
 
       {sections && (
         <PrincipalPermissionsModal
-          principal={permissionsDe}
-          initial={initiales}
+          principal={permissionsOf}
+          initial={initials}
           sections={sections}
           onSave={async (permissions) => {
-            if (!permissionsDe) return;
-            setAcces(await save(permissionsDe, permissions));
+            if (!permissionsOf) return;
+            setAccess(await save(permissionsOf, permissions));
             onChange?.();
           }}
-          onClose={() => setPermissionsDe(null)}
+          onClose={() => setPermissionsOf(null)}
         />
       )}
 
@@ -641,16 +641,16 @@ export default function PrincipalsPermissions<T>({
         onConfirm={async () => {
           if (pendingDelete) {
             try {
-              setAcces(await remove(pendingDelete));
+              setAccess(await remove(pendingDelete));
               onChange?.();
             } catch (e) {
-              notifierErreur(messageErreur(e));
+              notifyError(errorMessage(e));
             }
           }
           setPendingDelete(null);
         }}
-        title={retirer.label}
-        message={retirer.message(pendingDelete?.name ?? "")}
+        title={removeDialog.label}
+        message={removeDialog.message(pendingDelete?.name ?? "")}
       />
     </Stack>
   );

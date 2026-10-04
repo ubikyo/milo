@@ -19,7 +19,7 @@ export const FIELD_BG = "light-dark(var(--mantine-color-white), var(--mantine-co
 // La corbeille du bouton qui retire une image : l'icône de Tabler, recopiée
 // telle quelle. La vue ci-dessous est en DOM et non en React (voir pourquoi
 // juste en dessous) : elle ne peut donc pas monter un composant d'icône.
-const ICONE_CORBEILLE = `
+const TRASH_ICON = `
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
        fill="none" stroke="currentColor" stroke-width="2"
        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -42,28 +42,28 @@ const ICONE_CORBEILLE = `
  * invisible jusqu'à ce qu'on referme et rouvre la fiche. Le DOM, lui,
  * s'affiche toujours.
  */
-const ImageAvecRetrait = Image.extend({
+const ImageWithRemoval = Image.extend({
   addNodeView() {
     return ({ node, editor, getPos }) => {
-      const enveloppe = document.createElement("div");
-      enveloppe.className = classes.image ?? "";
+      const wrapper = document.createElement("div");
+      wrapper.className = classes.image ?? "";
 
       const image = document.createElement("img");
       image.src = String(node.attrs["src"] ?? "");
       image.alt = String(node.attrs["alt"] ?? "");
 
-      const bouton = document.createElement("button");
-      bouton.type = "button";
-      bouton.className = classes.imageRemove ?? "";
-      bouton.setAttribute("aria-label", "Supprimer l'image");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = classes.imageRemove ?? "";
+      button.setAttribute("aria-label", "Supprimer l'image");
       // Le rouge de l'application, tenu en un seul endroit (themes/colors.ts).
-      bouton.style.backgroundColor = RED;
-      bouton.innerHTML = ICONE_CORBEILLE;
+      button.style.backgroundColor = RED;
+      button.innerHTML = TRASH_ICON;
 
       // Sans cela, appuyer sur le bouton déplace d'abord le curseur dans la
       // description : le clic partirait sur une sélection qui a bougé.
-      bouton.addEventListener("mousedown", (e) => e.preventDefault());
-      bouton.addEventListener("click", () => {
+      button.addEventListener("mousedown", (e) => e.preventDefault());
+      button.addEventListener("click", () => {
         const position = getPos();
         if (typeof position !== "number") return;
         editor
@@ -73,20 +73,20 @@ const ImageAvecRetrait = Image.extend({
           .run();
       });
 
-      enveloppe.append(image, bouton);
+      wrapper.append(image, button);
 
       return {
-        dom: enveloppe,
+        dom: wrapper,
         // L'adresse d'une image peut changer sans que la vue soit refaite.
-        update: (nouveau) => {
-          if (nouveau.type.name !== node.type.name) return false;
-          image.src = String(nouveau.attrs["src"] ?? "");
-          image.alt = String(nouveau.attrs["alt"] ?? "");
+        update: (newValue) => {
+          if (newValue.type.name !== node.type.name) return false;
+          image.src = String(newValue.attrs["src"] ?? "");
+          image.alt = String(newValue.attrs["alt"] ?? "");
           return true;
         },
         // Le bouton est à nous : l'éditeur n'a pas à interpréter ce qui s'y
         // passe, ni à s'inquiéter de ce que nous changeons dans cette enveloppe.
-        stopEvent: (event) => event.target instanceof Node && bouton.contains(event.target),
+        stopEvent: (event) => event.target instanceof Node && button.contains(event.target),
         ignoreMutation: () => true,
       };
     };
@@ -94,7 +94,7 @@ const ImageAvecRetrait = Image.extend({
 });
 
 /** Le fichier de chaque image trouvée dans un presse-papiers. */
-const imagesCollees = (data: DataTransfer | null): File[] =>
+const pastedImages = (data: DataTransfer | null): File[] =>
   Array.from(data?.files ?? []).filter((f) => f.type.startsWith("image/"));
 
 interface RichEditorOptions {
@@ -121,26 +121,26 @@ export function useRichEditor({ placeholder = "", onPasteImage }: RichEditorOpti
   // L'éditeur n'est construit qu'une fois : ce que le collage doit appeler
   // passe donc par des références, sans quoi il appellerait toujours la
   // première version de la fonction reçue.
-  const deposer = useRef(onPasteImage);
-  const courant = useRef<Editor | null>(null);
+  const drop = useRef(onPasteImage);
+  const current = useRef<Editor | null>(null);
 
   const editor = useEditor({
-    extensions: [StarterKit, Placeholder.configure({ placeholder }), ImageAvecRetrait],
+    extensions: [StarterKit, Placeholder.configure({ placeholder }), ImageWithRemoval],
     content: "",
     editorProps: {
       // Une image collée ne se colle pas telle quelle : elle part au serveur,
       // et c'est son adresse qui entre dans la description. Le presse-papiers
       // peut en porter plusieurs — elles s'insèrent l'une après l'autre.
       handlePaste: (_view, event) => {
-        const images = imagesCollees(event.clipboardData);
-        if (images.length === 0 || !deposer.current) return false;
+        const images = pastedImages(event.clipboardData);
+        if (images.length === 0 || !drop.current) return false;
 
         event.preventDefault();
         void (async () => {
           for (const image of images) {
             try {
-              const url = await deposer.current?.(image);
-              if (url) courant.current?.chain().focus().setImage({ src: url }).run();
+              const url = await drop.current?.(image);
+              if (url) current.current?.chain().focus().setImage({ src: url }).run();
             } catch {
               // Le dépôt a déjà dit ce qui n'allait pas : rien à ajouter ici.
             }
@@ -154,8 +154,8 @@ export function useRichEditor({ placeholder = "", onPasteImage }: RichEditorOpti
   // Les deux références suivent ce que le rendu vient de produire, et c'est le
   // collage — bien plus tard — qui les lit.
   useEffect(() => {
-    deposer.current = onPasteImage;
-    courant.current = editor;
+    drop.current = onPasteImage;
+    current.current = editor;
   });
 
   return editor;
@@ -203,21 +203,21 @@ export default function RichTextField({
   // « title » (leur libellé) qu'aucune propriété ne retire pour tous — celui du
   // lien s'impose même par-dessus. On l'efface du DOM à chaque fois qu'il revient ;
   // l'« aria-label » reste.
-  const racine = useRef<HTMLDivElement>(null);
+  const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const noeud = racine.current;
-    if (!noeud) return;
-    const effacer = () =>
-      noeud.querySelectorAll("[title]").forEach((el) => el.removeAttribute("title"));
-    effacer();
-    const observateur = new MutationObserver(effacer);
-    observateur.observe(noeud, { subtree: true, childList: true, attributeFilter: ["title"] });
-    return () => observateur.disconnect();
+    const treeNode = root.current;
+    if (!treeNode) return;
+    const clear = () =>
+      treeNode.querySelectorAll("[title]").forEach((el) => el.removeAttribute("title"));
+    clear();
+    const observer = new MutationObserver(clear);
+    observer.observe(treeNode, { subtree: true, childList: true, attributeFilter: ["title"] });
+    return () => observer.disconnect();
   }, []);
 
-  const champ = (
+  const field = (
     <RichTextEditor
-      ref={racine}
+      ref={root}
       editor={editor}
       variant="subtle"
       classNames={{
@@ -279,5 +279,5 @@ export default function RichTextField({
     </RichTextEditor>
   );
 
-  return label ? <Input.Wrapper label={label}>{champ}</Input.Wrapper> : champ;
+  return label ? <Input.Wrapper label={label}>{field}</Input.Wrapper> : field;
 }

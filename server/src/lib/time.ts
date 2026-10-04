@@ -6,15 +6,15 @@ export const now = (): string => new Date().toISOString();
  * « 22/09/2026 à 20:15 ». Le fuseau est celui de Paris : l'application est
  * française, et la base, elle, garde ses dates en temps universel.
  */
-export const horodatage = (iso: string): string => {
+export const timestamp = (iso: string): string => {
   const date = new Date(iso);
-  const jour = date.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" });
-  const heure = date.toLocaleTimeString("fr-FR", {
+  const day = date.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" });
+  const hour = date.toLocaleTimeString("fr-FR", {
     timeZone: "Europe/Paris",
     hour: "2-digit",
     minute: "2-digit",
   });
-  return `${jour} à ${heure}`;
+  return `${day} à ${hour}`;
 };
 
 /**
@@ -24,11 +24,11 @@ export const horodatage = (iso: string): string => {
  * est refusée plutôt que rangée telle quelle. Les cartes et les demandes de
  * support la lisent de la même façon.
  */
-export const echeance = (valeur: unknown, actuelle: string): string => {
-  if (valeur === undefined) return actuelle;
-  const texte = String(valeur ?? "").trim();
-  if (!texte) return "";
-  const date = new Date(texte);
+export const due = (value: unknown, current: string): string => {
+  if (value === undefined) return current;
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const date = new Date(text);
   if (Number.isNaN(date.getTime())) badRequest("Date d'échéance invalide");
   return date.toISOString();
 };
@@ -42,16 +42,16 @@ export const echeance = (valeur: unknown, actuelle: string): string => {
  * deux l'été, et c'est l'heure d'hiver ou d'été du jour de l'inventaire qui
  * compte, pas celle d'aujourd'hui.
  */
-export const heureDeParis = (texte: string): string | null => {
-  const morceaux = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(texte.trim());
-  if (!morceaux) return null;
-  const [, an, mois, jour, heure, minute, seconde = "0"] = morceaux;
-  const commeUtc = Date.UTC(+an!, +mois! - 1, +jour!, +heure!, +minute!, +seconde);
-  if (Number.isNaN(commeUtc)) return null;
+export const parisTime = (text: string): string | null => {
+  const chunks = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(text.trim());
+  if (!chunks) return null;
+  const [, an, months, day, hour, minute, secondValue = "0"] = chunks;
+  const asUtc = Date.UTC(+an!, +months! - 1, +day!, +hour!, +minute!, +secondValue);
+  if (Number.isNaN(asUtc)) return null;
 
   // Ce qu'affichent les horloges de Paris à cet instant, relu comme de l'UTC :
   // l'écart avec l'instant lui-même est le décalage.
-  const aParis = new Date(commeUtc).toLocaleString("sv-SE", { timeZone: "Europe/Paris" });
-  const decalage = Date.parse(`${aParis.replace(" ", "T")}Z`) - commeUtc;
-  return new Date(commeUtc - decalage).toISOString();
+  const inParis = new Date(asUtc).toLocaleString("sv-SE", { timeZone: "Europe/Paris" });
+  const offset = Date.parse(`${inParis.replace(" ", "T")}Z`) - asUtc;
+  return new Date(asUtc - offset).toISOString();
 };

@@ -31,13 +31,13 @@ export const emptyFollows = (): Follows => ({ project: [], card: [], list: [], s
  * Une liste n'en a pas : ce qu'on notifie pour une liste, c'est toujours l'une
  * de ses cartes, et c'est vers elle que le lien pointe.
  */
-export type LienKind = "project" | "card" | "support" | "asset" | "access";
+export type LinkTargetKind = "project" | "card" | "support" | "asset" | "access";
 
 /**
  * Un poste s'ouvre par son identifiant ; un élément du mode Accès, par sa
  * catégorie — c'est elle qui s'ouvre, l'élément n'a pas de fiche.
  */
-const PARAMETRES: Record<LienKind, string> = {
+const QUERY_PARAMS: Record<LinkTargetKind, string> = {
   project: "projet",
   card: "carte",
   support: "demande",
@@ -45,4 +45,4 @@ const PARAMETRES: Record<LienKind, string> = {
   access: "acces",
 };
 
-export const lienElement = (kind: LienKind, id: Id): string => `?${PARAMETRES[kind]}=${id}`;
+export const itemLink = (kind: LinkTargetKind, id: Id): string => `?${QUERY_PARAMS[kind]}=${id}`;

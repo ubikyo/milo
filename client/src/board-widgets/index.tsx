@@ -18,16 +18,16 @@ import type { IndicatorConfigProps } from "../indicators/types";
 import { PROJECT_INDICATORS } from "../project-indicators";
 import { TASK_INDICATORS } from "../task-indicators";
 import { WIDGETS } from "../widgets";
-import { lignesMarges, lignesMargesPour, margesDe, margesReglees } from "../widgets/marges";
-import encart from "../assets/styles/AccessNumero.module.css";
-import { lignesApparence } from "../components/ui/ChampsApparence";
-import LignesReglages, { ligneCadre } from "../components/ui/LignesReglages";
-import { ENCADRE, estEncadre, type AccessWidget } from "../widgets/types";
-import { ECART } from "../components/ui/IndicatorsPanel";
-import type { IndicatorWidgetBase, RenduWidget } from "../components/ui/IndicatorsPanel";
+import { marginRows, marginRowsFor, marginsOf, configuredMargins } from "../widgets/marges";
+import inset from "../assets/styles/AccessNumero.module.css";
+import { appearanceRows } from "../components/ui/ChampsApparence";
+import SettingRows, { frameRow } from "../components/ui/LignesReglages";
+import { FRAMED, isFramed, type AccessWidget } from "../widgets/types";
+import { GAP } from "../components/ui/IndicatorsPanel";
+import type { IndicatorWidgetBase, WidgetRender } from "../components/ui/IndicatorsPanel";
 
 /** Ce qu'un tableau met à la disposition de ses widgets : ses données, filtrées par lui. */
-export interface DonneesDuTableau {
+export interface BoardData {
   requests: SupportRequest[];
   projects: Project[];
   lists: TaskList[];
@@ -37,14 +37,14 @@ export interface DonneesDuTableau {
 }
 
 /** Un widget de tableau : ce que tout widget porte, et de quoi l'afficher. */
-export interface WidgetDeTableau extends IndicatorWidgetBase<string> {
+export interface BoardWidgetDefinition extends IndicatorWidgetBase<string> {
   /** La largeur de son tiroir, quand ses champs ne tiennent pas dans celle de tous. */
   drawerSize?: number;
   /** Ce que la section montre de lui. */
-  afficher: (donnees: DonneesDuTableau, config: unknown, rendu: RenduWidget) => ReactNode;
+  show: (data: BoardData, config: unknown, render: WidgetRender) => ReactNode;
 }
 
-const COMMUNS = new Set<string>(COMMON_WIDGET_TYPES);
+const COMMON = new Set<string>(COMMON_WIDGET_TYPES);
 
 /**
  * Les champs d'un widget du mode Accès : les siens, puis le bloc
@@ -52,53 +52,53 @@ const COMMUNS = new Set<string>(COMMON_WIDGET_TYPES);
  * Le tiroir ne connaît pas ses voisins : les marges proposées par défaut sont
  * celles d'un widget seul dans sa colonne.
  */
-const champsDe = (widget: AccessWidget): ComponentType<IndicatorConfigProps> =>
-  function Champs({ config, onChange }: IndicatorConfigProps) {
-    const objet = (config ?? {}) as Record<string, unknown>;
+const fieldsOf = (widget: AccessWidget): ComponentType<IndicatorConfigProps> =>
+  function Fields({ config, onChange }: IndicatorConfigProps) {
+    const subject = (config ?? {}) as Record<string, unknown>;
     return (
       <Stack gap="xl">
         <widget.Config config={config} onChange={onChange} />
         {/* Ses lignes d'apparence, puis les marges, en un seul bloc. */}
-        <LignesReglages
+        <SettingRows
           label="Apparence"
-          lignes={[
-            ...(widget.apparence?.(config, onChange) ?? []),
-            ligneCadre(
+          rows={[
+            ...(widget.appearance?.(config, onChange) ?? []),
+            frameRow(
               config,
               onChange,
-              ENCADRE,
-              estEncadre(config, widget.cadreParDefaut),
-              widget.cadreParDefaut ?? false,
+              FRAMED,
+              isFramed(config, widget.defaultFrame),
+              widget.defaultFrame ?? false,
             ),
-            ...lignesMarges(widget, objet, onChange, { previousType: null, nextType: null }),
+            ...marginRows(widget, subject, onChange, { previousType: null, nextType: null }),
           ]}
         />
-        {widget.ConfigFin && <widget.ConfigFin config={config} onChange={onChange} />}
+        {widget.ConfigEnd && <widget.ConfigEnd config={config} onChange={onChange} />}
       </Stack>
     );
   };
 
 /** Un widget du mode Accès, en widget de tableau. */
-const deLAcces = (widget: AccessWidget): WidgetDeTableau => ({
+const fromAccess = (widget: AccessWidget): BoardWidgetDefinition => ({
   type: widget.type,
   kind: widget.kind,
   label: widget.label,
   icon: widget.icon,
   defaultConfig: widget.defaultConfig,
-  Config: champsDe(widget),
+  Config: fieldsOf(widget),
   // Les titres gardent leur double-clic, le lien son clic, et les autres
   // ont déjà leur encart : aucun ne se pose dans la carte des indicateurs.
   ownClicks: true,
   ...(widget.inlineEdit ? { inlineEdit: true } : {}),
   ...(widget.drawerSize ? { drawerSize: widget.drawerSize } : {}),
   ...(widget.hidden ? { hidden: widget.hidden } : {}),
-  marges: (config, previousType, nextType) =>
-    margesDe(widget, config, {
+  margins: (config, previousType, nextType) =>
+    marginsOf(widget, config, {
       previousType: previousType as AccessBlockType | null,
       nextType: nextType as AccessBlockType | null,
     }),
-  afficher: (_donnees, config, { id, onChange, locked }) =>
-    encadrer(
+  show: (_data, config, { id, onChange, locked }) =>
+    frame(
       <widget.Display
         blockId={id}
         config={config}
@@ -107,7 +107,7 @@ const deLAcces = (widget: AccessWidget): WidgetDeTableau => ({
         locked={locked}
       />,
       // Un widget qui dessine son cadre lui-même n'en reçoit pas un second.
-      !widget.cadrePropre && estEncadre(config, widget.cadreParDefaut),
+      !widget.ownFrame && isFramed(config, widget.defaultFrame),
     ),
 });
 
@@ -116,33 +116,33 @@ const deLAcces = (widget: AccessWidget): WidgetDeTableau => ({
  * lui-même : l'encart des attributs, sans trait — celui des horloges et des
  * flux encadrés.
  */
-const encadrer = (contenu: ReactNode, encadre: boolean): ReactNode =>
-  encadre ? (
-    <Box className={encart.encart} style={{ border: "none" }}>
-      {contenu}
+const frame = (content: ReactNode, framed: boolean): ReactNode =>
+  framed ? (
+    <Box className={inset.encart} style={{ border: "none" }}>
+      {content}
     </Box>
   ) : (
-    contenu
+    content
   );
 
 /** L'air d'un indicateur tant que rien n'est réglé : la moitié de leur écart, de chaque côté. */
-const MARGES_INDICATEUR = { haute: ECART / 2, basse: ECART / 2 };
+const MARGINS_INDICATOR = { top: GAP / 2, bottom: GAP / 2 };
 
 /**
  * Le bloc « Apparence » d'un indicateur : sa carte — titre, valeur, fond —
  * s'il en a une, son cadre, ses marges. Une carte est encadrée tant que rien
  * n'est réglé ; une liste, qui garde ses clics, ne l'est pas.
  */
-const apparenceDe = (w: IndicatorWidgetBase<string>): ComponentType<IndicatorConfigProps> =>
-  function Apparence({ config, onChange }: IndicatorConfigProps) {
-    const carte = !w.ownClicks;
+const appearanceOf = (w: IndicatorWidgetBase<string>): ComponentType<IndicatorConfigProps> =>
+  function Appearance({ config, onChange }: IndicatorConfigProps) {
+    const card = !w.ownClicks;
     return (
-      <LignesReglages
+      <SettingRows
         label="Apparence"
-        lignes={[
-          ...(carte ? lignesApparence(config, onChange, w.avecValeur) : []),
-          ligneCadre(config, onChange, ENCADRE, estEncadre(config, carte), carte),
-          ...lignesMargesPour(MARGES_INDICATEUR, config, onChange),
+        rows={[
+          ...(card ? appearanceRows(config, onChange, w.withValue) : []),
+          frameRow(config, onChange, FRAMED, isFramed(config, card), card),
+          ...marginRowsFor(MARGINS_INDICATOR, config, onChange),
         ]}
       />
     );
@@ -153,49 +153,49 @@ const apparenceDe = (w: IndicatorWidgetBase<string>): ComponentType<IndicatorCon
  * communs que leur registre reprenait du mode Accès n'y sont pas : ils
  * viennent une fois, du mode Accès lui-même.
  */
-const propres = <W extends IndicatorWidgetBase<string>>(
-  prefixe: string,
+const prefixed = <W extends IndicatorWidgetBase<string>>(
+  prefix: string,
   widgets: W[],
-  afficher: (widget: W, donnees: DonneesDuTableau, config: unknown, rendu: RenduWidget) => ReactNode,
-): WidgetDeTableau[] =>
+  show: (widget: W, data: BoardData, config: unknown, render: WidgetRender) => ReactNode,
+): BoardWidgetDefinition[] =>
   widgets
-    .filter((w) => !COMMUNS.has(w.type))
+    .filter((w) => !COMMON.has(w.type))
     .map((w) => ({
       ...w,
-      type: `${prefixe}.${w.type}`,
+      type: `${prefix}.${w.type}`,
       // Le cadre et les marges, comme pour tous les widgets : une carte
       // est déjà encadrée par le panneau (IndicatorsPanel) ; une liste l'est
       // ici, à la demande.
-      Apparence: apparenceDe(w),
-      marges: (config) => margesReglees(config, MARGES_INDICATEUR),
-      afficher: (donnees, config, rendu) =>
-        encadrer(afficher(w, donnees, config, rendu), Boolean(w.ownClicks) && estEncadre(config)),
+      Appearance: appearanceOf(w),
+      margins: (config) => configuredMargins(config, MARGINS_INDICATOR),
+      show: (data, config, render) =>
+        frame(show(w, data, config, render), Boolean(w.ownClicks) && isFramed(config)),
     }));
 
 /** Dans l'ordre où le tiroir des widgets les présente, groupés par type. */
-export const WIDGETS_DE_TABLEAU: WidgetDeTableau[] = [
-  ...WIDGETS.map(deLAcces),
-  ...propres("project", PROJECT_INDICATORS, (w, d, config, rendu) => (
-    <w.Display config={config} projects={d.projects} userId={d.userId} {...rendu} />
+export const BOARD_WIDGETS: BoardWidgetDefinition[] = [
+  ...WIDGETS.map(fromAccess),
+  ...prefixed("project", PROJECT_INDICATORS, (w, d, config, render) => (
+    <w.Display config={config} projects={d.projects} userId={d.userId} {...render} />
   )),
-  ...propres("task", TASK_INDICATORS, (w, d, config, rendu) => (
-    <w.Display config={config} lists={d.lists} userId={d.userId} {...rendu} />
+  ...prefixed("task", TASK_INDICATORS, (w, d, config, render) => (
+    <w.Display config={config} lists={d.lists} userId={d.userId} {...render} />
   )),
-  ...propres("support", INDICATORS, (w, d, config, rendu) => (
-    <w.Display config={config} requests={d.requests} userId={d.userId} {...rendu} />
+  ...prefixed("support", INDICATORS, (w, d, config, render) => (
+    <w.Display config={config} requests={d.requests} userId={d.userId} {...render} />
   )),
-  ...propres("asset", ASSET_INDICATORS, (w, d, config, rendu) => (
-    <w.Display config={config} assets={d.assets} {...rendu} />
+  ...prefixed("asset", ASSET_INDICATORS, (w, d, config, render) => (
+    <w.Display config={config} assets={d.assets} {...render} />
   )),
 ];
 
-const PAR_TYPE = new Map(WIDGETS_DE_TABLEAU.map((w) => [w.type, w]));
+const BY_TYPE = new Map(BOARD_WIDGETS.map((w) => [w.type, w]));
 
 /**
  * Le widget qui sait lire ce type, ou « undefined » : un type rangé par une
  * version qui en connaissait un de plus n'a pas à faire tomber la page.
  */
-export const widgetDeTableau = (type: string): WidgetDeTableau | undefined => PAR_TYPE.get(type);
+export const boardWidget = (type: string): BoardWidgetDefinition | undefined => BY_TYPE.get(type);
 
 /** Les conversions permises : la catégorie et la sous-catégorie partagent leur configuration. */
 export const CONVERSIONS: Record<string, string> = {

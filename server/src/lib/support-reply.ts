@@ -10,18 +10,18 @@
 import { supportTicketRef } from "@milo/shared";
 import type { Id, SupportMailStatus } from "@milo/shared";
 import type { SupportRequestRow, TicketFileRow } from "../db/rows.js";
-import { lireTicket } from "./ticket-files.js";
+import { readTicket } from "./ticket-files.js";
 import { env } from "../env.js";
 import { supportComments } from "../repositories/support.js";
-import { entraConfiguree, repondreParGraph } from "./entra.js";
+import { entraConfigured, replyByGraph } from "./entra.js";
 
 /**
  * La boîte d'où répondre à une demande, ou rien : une demande saisie dans
  * Milo n'a personne à qui répondre, et sans Entra rien ne part.
  */
-export const boiteDeReponse = (demande: SupportRequestRow): string => {
-  if (!demande.sender_email || !demande.mail_id || !entraConfiguree()) return "";
-  return demande.mailbox;
+export const replyMailbox = (request: SupportRequestRow): string => {
+  if (!request.sender_email || !request.mail_id || !entraConfigured()) return "";
+  return request.mailbox;
 };
 
 /**
@@ -29,45 +29,45 @@ export const boiteDeReponse = (demande: SupportRequestRow): string => {
  * advenu. Ne lève jamais : le message est enregistré quoi qu'il arrive, c'est
  * son état qui dit si l'e-mail est parti.
  */
-export const repondreParEmail = async (
-  demande: SupportRequestRow,
+export const replyByEmail = async (
+  request: SupportRequestRow,
   commentId: Id,
   html: string,
   copies: { cc: string[]; bcc: string[] } = { cc: [], bcc: [] },
-  fichiers: TicketFileRow[] = [],
+  files: TicketFileRow[] = [],
 ): Promise<SupportMailStatus> => {
-  const boite = boiteDeReponse(demande);
-  if (!boite) return "";
+  const mailbox = replyMailbox(request);
+  if (!mailbox) return "";
 
-  const noter = (statut: SupportMailStatus) => {
-    supportComments.setMailStatus.run(statut, demande.sender_email, commentId);
+  const record = (status: SupportMailStatus) => {
+    supportComments.setMailStatus.run(status, request.sender_email, commentId);
     supportComments.setMailCopies.run(copies.cc.join(", "), copies.bcc.join(", "), commentId);
-    return statut;
+    return status;
   };
 
   if (!env.supportReplySend) {
     console.log(
-      `[Simulation] Réponse de ${boite} à ${demande.sender_email} — « RE: ${demande.subject} » (non envoyée)`,
+      `[Simulation] Réponse de ${mailbox} à ${request.sender_email} — « RE: ${request.subject} » (non envoyée)`,
     );
-    return noter("simulated");
+    return record("simulated");
   }
 
   try {
-    const pieces = fichiers.flatMap((f) => {
-      const contenu = lireTicket(f.file);
-      return contenu ? [{ name: f.name, mime: f.mime, contenu }] : [];
+    const attachments = files.flatMap((f) => {
+      const content = readTicket(f.file);
+      return content ? [{ name: f.name, mime: f.mime, content }] : [];
     });
-    await repondreParGraph(
-      boite,
-      demande.mail_id,
+    await replyByGraph(
+      mailbox,
+      request.mail_id,
       html,
-      supportTicketRef(demande.number),
+      supportTicketRef(request.number),
       copies,
-      pieces,
+      attachments,
     );
-    return noter("sent");
-  } catch (erreur) {
-    console.error(`Réponse à ${demande.sender_email} depuis ${boite} :`, erreur);
-    return noter("failed");
+    return record("sent");
+  } catch (error) {
+    console.error(`Réponse à ${request.sender_email} depuis ${mailbox} :`, error);
+    return record("failed");
   }
 };

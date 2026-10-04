@@ -2,27 +2,27 @@ import { Group, Menu, Modal, ScrollArea, Stack, Text } from "@mantine/core";
 import { IconStack2, IconTrash, IconUsers } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../api";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import { RED } from "../../themes/colors";
 import {
-  HAUTEUR_MAX_PARAMETRAGE,
-  HAUTEUR_PARAMETRAGE,
-  LARGEUR_PARAMETRAGE,
-  PADDING_PARAMETRAGE,
+  SETTINGS_HEIGHT_MAX,
+  SETTINGS_HEIGHT,
+  SETTINGS_WIDTH,
+  SETTINGS_PADDING,
   modalHeaderStyles,
 } from "../../themes/modals";
 import defilement from "../../assets/styles/ListeScroll.module.css";
 import AddButton from "../ui/AddButton";
-import BoutonFermer from "../ui/BoutonFermer";
+import CloseButton from "../ui/BoutonFermer";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import {
-  BoutonDeLigne,
-  ChampDeLigne,
-  ListeVide,
-  RETRAIT_LIGNE,
-  styleLigne,
+  RowButton,
+  RowField,
+  EmptyList,
+  ROW_INSET,
+  rowStyle,
 } from "../ui/LignesDuTiroir";
-import PointMenu, { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
+import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 import WorkspaceAccess from "./WorkspaceAccess";
 import type { Workspace } from "@milo/shared";
 
@@ -48,42 +48,42 @@ export default function WorkspacesTab({
   onAccessChanged,
 }: WorkspacesTabProps) {
   // Le workspace dont la fenêtre des accès est ouverte.
-  const [accesDe, setAccesDe] = useState<Workspace | null>(null);
-  const [aSupprimer, setASupprimer] = useState<Workspace | null>(null);
+  const [accessOf, setAccessOf] = useState<Workspace | null>(null);
+  const [toDelete, setToDelete] = useState<Workspace | null>(null);
   const [menu, setMenu] = useState<{ workspace: Workspace; position: PointMenuPosition } | null>(
     null,
   );
   // La ligne ajoutée, en attente de son nom.
-  const [enAjout, setEnAjout] = useState(false);
+  const [adding, setAdding] = useState(false);
   // Le nombre d'accès de chaque workspace : les utilisateurs et les groupes
   // qui y ont un droit. Relus à la fermeture de leur fenêtre.
-  const [acces, setAcces] = useState<Record<number, number>>({});
+  const [access, setAccess] = useState<Record<number, number>>({});
 
-  const lireAcces = useCallback(async () => {
+  const readAccess = useCallback(async () => {
     try {
-      const comptes = await Promise.all(
+      const accounts = await Promise.all(
         workspaces.map(async (w) => [w.id, (await api.getAssignments(w.id)).length] as const),
       );
-      setAcces(Object.fromEntries(comptes));
+      setAccess(Object.fromEntries(accounts));
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   }, [workspaces]);
 
   useEffect(() => {
-    void lireAcces();
-  }, [lireAcces]);
+    void readAccess();
+  }, [readAccess]);
 
-  const ecrire = async (action: () => Promise<unknown>) => {
+  const write = async (action: () => Promise<unknown>) => {
     try {
       await action();
       await onChanged();
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   };
 
-  const total = workspaces.length + (enAjout ? 1 : 0);
+  const total = workspaces.length + (adding ? 1 : 0);
 
   return (
     <Stack gap="sm">
@@ -96,54 +96,54 @@ export default function WorkspacesTab({
 
       <div>
         {total === 0 ? (
-          <ListeVide icon={IconStack2} message="Aucun workspace" />
+          <EmptyList icon={IconStack2} message="Aucun workspace" />
         ) : (
           <Stack gap={1}>
-            {workspaces.map((w, rang) => (
+            {workspaces.map((w, rank) => (
               <Group
                 key={w.id}
                 gap="sm"
                 wrap="nowrap"
-                onContextMenu={(e) => setMenu({ workspace: w, position: positionDuMenu(e) })}
-                style={{ ...styleLigne(rang, total, false), paddingLeft: RETRAIT_LIGNE }}
+                onContextMenu={(e) => setMenu({ workspace: w, position: menuPosition(e) })}
+                style={{ ...rowStyle(rank, total, false), paddingLeft: ROW_INSET }}
               >
-                <ChampDeLigne
-                  nom={w.name}
+                <RowField
+                  name={w.name}
                   placeholder="Nom du workspace"
                   label={`Nom de ${w.name}`}
-                  onValider={(nom) => {
-                    if (nom && nom !== w.name) void ecrire(() => api.updateWorkspace(w.id, nom));
+                  onValidate={(name) => {
+                    if (name && name !== w.name) void write(() => api.updateWorkspace(w.id, name));
                   }}
                 />
                 {/* Ses accès : leur nombre, et leur fenêtre au clic. */}
-                {acces[w.id] !== undefined && (
-                  <BoutonDeLigne
+                {access[w.id] !== undefined && (
+                  <RowButton
                     icon={IconUsers}
-                    onClick={() => setAccesDe(w)}
+                    onClick={() => setAccessOf(w)}
                     // À 5 px du bout de la ligne, retrait compris.
-                    margeDroite={5 - RETRAIT_LIGNE}
+                    rightMargin={5 - ROW_INSET}
                   >
                     {/* « accès » est invariable. */}
-                    {`${acces[w.id]} accès`}
-                  </BoutonDeLigne>
+                    {`${access[w.id]} accès`}
+                  </RowButton>
                 )}
               </Group>
             ))}
-            {enAjout && (
+            {adding && (
               <Group
                 gap="sm"
                 wrap="nowrap"
-                style={{ ...styleLigne(total - 1, total, false), paddingLeft: RETRAIT_LIGNE }}
+                style={{ ...rowStyle(total - 1, total, false), paddingLeft: ROW_INSET }}
               >
-                <ChampDeLigne
-                  nom=""
+                <RowField
+                  name=""
                   placeholder="Nom du workspace"
                   label="Nom du nouveau workspace"
                   autoFocus
                   // Quittée sans nom, la ligne s'efface ; nommée, elle est créée.
-                  onValider={(nom) => {
-                    setEnAjout(false);
-                    if (nom) void ecrire(() => api.createWorkspace(nom));
+                  onValidate={(name) => {
+                    setAdding(false);
+                    if (name) void write(() => api.createWorkspace(name));
                   }}
                 />
               </Group>
@@ -151,7 +151,7 @@ export default function WorkspacesTab({
           </Stack>
         )}
         {/* Au plus près de la liste qu'il allonge. */}
-        <AddButton label="Ajouter un workspace" onClick={() => setEnAjout(true)} mt={4} />
+        <AddButton label="Ajouter un workspace" onClick={() => setAdding(true)} mt={4} />
       </div>
 
       {menu && (
@@ -159,7 +159,7 @@ export default function WorkspacesTab({
           <Menu.Item
             leftSection={<IconUsers size={16} />}
             onClick={() => {
-              setAccesDe(menu.workspace);
+              setAccessOf(menu.workspace);
               setMenu(null);
             }}
           >
@@ -172,7 +172,7 @@ export default function WorkspacesTab({
                 color={RED}
                 leftSection={<IconTrash size={16} />}
                 onClick={() => {
-                  setASupprimer(menu.workspace);
+                  setToDelete(menu.workspace);
                   setMenu(null);
                 }}
               >
@@ -184,29 +184,29 @@ export default function WorkspacesTab({
       )}
 
       <DeleteConfirmModal
-        opened={aSupprimer !== null}
-        onClose={() => setASupprimer(null)}
+        opened={toDelete !== null}
+        onClose={() => setToDelete(null)}
         onConfirm={async () => {
-          const w = aSupprimer;
-          setASupprimer(null);
-          if (w) await ecrire(() => api.deleteWorkspace(w.id));
+          const w = toDelete;
+          setToDelete(null);
+          if (w) await write(() => api.deleteWorkspace(w.id));
         }}
         title="Supprimer le workspace"
         message={
           <>
-            Voulez-vous vraiment supprimer « {aSupprimer?.name} » ? Toutes ses vues et tout ce
+            Voulez-vous vraiment supprimer « {toDelete?.name} » ? Toutes ses vues et tout ce
             qu'elles contiennent seront supprimés. Cette action est irréversible.
           </>
         }
       />
 
       <Modal
-        opened={accesDe !== null}
+        opened={accessOf !== null}
         onClose={() => {
-          setAccesDe(null);
-          void lireAcces();
+          setAccessOf(null);
+          void readAccess();
         }}
-        title={`Accès — ${accesDe?.name ?? ""}`}
+        title={`Accès — ${accessOf?.name ?? ""}`}
         centered
         // Un fondu sur place, sans glisser : de la taille du Paramétrage et
         // au même endroit, elle paraît par-dessus lui. Sans voile non plus :
@@ -215,19 +215,19 @@ export default function WorkspacesTab({
         withOverlay={false}
         // La taille du Paramétrage, d'où elle s'ouvre : la liste défile dans
         // sa hauteur, « Fermer » reste en bas.
-        size={LARGEUR_PARAMETRAGE}
-        padding={PADDING_PARAMETRAGE}
+        size={SETTINGS_WIDTH}
+        padding={SETTINGS_PADDING}
         withCloseButton={false}
         styles={{
-          ...modalHeaderStyles(PADDING_PARAMETRAGE),
+          ...modalHeaderStyles(SETTINGS_PADDING),
           content: {
-            height: HAUTEUR_PARAMETRAGE,
-            maxHeight: HAUTEUR_MAX_PARAMETRAGE,
+            height: SETTINGS_HEIGHT,
+            maxHeight: SETTINGS_HEIGHT_MAX,
             display: "flex",
             flexDirection: "column",
           },
           body: {
-            ...modalHeaderStyles(PADDING_PARAMETRAGE).body,
+            ...modalHeaderStyles(SETTINGS_PADDING).body,
             flex: 1,
             minHeight: 0,
             display: "flex",
@@ -242,13 +242,13 @@ export default function WorkspacesTab({
             style={{ flex: 1, minHeight: 0 }}
             classNames={{ scrollbar: defilement.scrollbar, thumb: defilement.thumb }}
           >
-            {accesDe && <WorkspaceAccess workspace={accesDe.id} onChange={onAccessChanged} />}
+            {accessOf && <WorkspaceAccess workspace={accessOf.id} onChange={onAccessChanged} />}
           </ScrollArea>
           <Group justify="flex-end">
-            <BoutonFermer
+            <CloseButton
               onClick={() => {
-                setAccesDe(null);
-                void lireAcces();
+                setAccessOf(null);
+                void readAccess();
               }}
             />
           </Group>

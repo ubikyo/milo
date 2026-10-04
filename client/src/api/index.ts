@@ -15,10 +15,10 @@ import type {
   AssetDetail,
   IndicatorSection,
   IndicatorSectionInput,
-  DispositionExportee,
+  ExportedLayout,
   LayoutState,
   MailboxOptinState,
-  ResultatImport,
+  ImportResult,
   AssetRefresh,
   Attachment,
   CardCover,
@@ -206,11 +206,11 @@ const download = async (path: string): Promise<Blob> => {
 
 /** « all » et les valeurs vides ne sont pas des filtres : elles ne partent pas. */
 const queryString = (params: Record<string, unknown>): string => {
-  const cherches = new URLSearchParams();
-  for (const [cle, valeur] of Object.entries(params)) {
-    if (valeur && valeur !== "all") cherches.set(cle, String(valeur));
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value && value !== "all") searchParams.set(key, String(value));
   }
-  const qs = cherches.toString();
+  const qs = searchParams.toString();
   return qs ? `?${qs}` : "";
 };
 
@@ -219,7 +219,7 @@ const queryString = (params: Record<string, unknown>): string => {
  * sections se lisent et se créent par le tableau ; elles se modifient ensuite
  * par leur identifiant.
  */
-const sectionsDuTableau = (boardId: Id | string) => ({
+const boardSections = (boardId: Id | string) => ({
   all: () => get<IndicatorSection[]>(`/boards/${boardId}/sections`),
   create: (data: IndicatorSectionInput) =>
     post<IndicatorSection>(`/boards/${boardId}/sections`, data),
@@ -233,12 +233,12 @@ const sectionsDuTableau = (boardId: Id | string) => ({
   getLayout: () => get<LayoutState>(`/boards/${boardId}/layout`),
   setLayout: (inherited: boolean) => put<LayoutState>(`/boards/${boardId}/layout`, { inherited }),
   /** Une disposition exportée remplace la structure regardée. */
-  importer: (disposition: DispositionExportee) =>
-    post<ResultatImport>(`/boards/${boardId}/import`, disposition),
+  importSections: (layout: ExportedLayout) =>
+    post<ImportResult>(`/boards/${boardId}/import`, layout),
 });
 
 /** Les écritures et lectures des sections d'un tableau. */
-export type SectionsDuPanneau = ReturnType<typeof sectionsDuTableau>;
+export type PanelSections = ReturnType<typeof boardSections>;
 
 export const api = {
   // --- Session -------------------------------------------------------------
@@ -371,7 +371,7 @@ export const api = {
     put<Board[]>("/boards/reorder", { view_id, ids }),
 
   // Ce qu'un tableau porte : ses sections et ses widgets.
-  boardSections: sectionsDuTableau,
+  boardSections: boardSections,
   getBoardWidgets: (boardId: Id | string) => get<BoardWidget[]>(`/boards/${boardId}/widgets`),
   createBoardWidget: (data: BoardWidgetInput) => post<BoardWidget>("/board-widgets", data),
   // Seule la configuration bouge — sauf la catégorie et la sous-catégorie,
@@ -387,15 +387,15 @@ export const api = {
   // La confirmation des boîtes de support : leur état, et la relance du lien
   // à celles qui attendent.
   // Chaque liste — par sa clé de liste — confirme ses propres adresses.
-  getMailboxOptins: (liste: string, emails: string[]) =>
+  getMailboxOptins: (list: string, emails: string[]) =>
     get<MailboxOptinState[]>(
-      `/mailbox-optins?liste=${encodeURIComponent(liste)}&emails=${encodeURIComponent(emails.join(","))}`,
+      `/mailbox-optins?liste=${encodeURIComponent(list)}&emails=${encodeURIComponent(emails.join(","))}`,
     ),
-  resendMailboxOptins: (liste: string, emails: string[]) =>
-    post<{ sent: number }>("/mailbox-optins/resend", { liste, emails }),
+  resendMailboxOptins: (list: string, emails: string[]) =>
+    post<{ sent: number }>("/mailbox-optins/resend", { list, emails }),
   /** Le code à quatre chiffres de l'e-mail, à la place du lien. */
-  confirmMailboxOptin: (liste: string, email: string, code: string) =>
-    post<MailboxOptinState>("/mailbox-optins/confirm", { liste, email, code }),
+  confirmMailboxOptin: (list: string, email: string, code: string) =>
+    post<MailboxOptinState>("/mailbox-optins/confirm", { list, email, code }),
   // Le flux d'un widget RSS, tel que la base le garde : le serveur relève
   // la source lui-même, à l'intervalle que le widget règle.
   getAccessFeed: (widgetId: Id) => get<AccessFeed>(`/board-widgets/${widgetId}/feed`),
@@ -647,7 +647,7 @@ export const api = {
   // Les fiches Entra que citent les modèles : le compte connecté, et
   // l'expéditeur de la demande quand on en donne une.
   getSupportVariables: (requestId?: Id) =>
-    get<{ utilisateur: SupportPerson; expediteur: SupportPerson | null }>(
+    get<{ user: SupportPerson; sender: SupportPerson | null }>(
       `/support-requests/variables${requestId ? `?request=${requestId}` : ""}`,
     ),
   // Ce qui se pose d'office dans l'éditeur d'une réponse : une signature…
@@ -704,13 +704,13 @@ export const api = {
     id: Id,
     text: string,
     internal = false,
-    envoi: {
+    sending: {
       status?: SupportStatus;
       cc?: string[];
       bcc?: string[];
       files?: SupportFileDeposit[];
     } = {},
-  ) => post<SupportComment>(`/support-requests/${id}/comments`, { text, internal, ...envoi }),
+  ) => post<SupportComment>(`/support-requests/${id}/comments`, { text, internal, ...sending }),
   // Une pièce jointe de réponse, déposée avant l'envoi de la réponse qui la porte.
   uploadSupportFile: (id: Id, file: File) =>
     upload<SupportFileDeposit>(`/support-requests/${id}/files`, file),

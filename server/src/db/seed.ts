@@ -11,14 +11,14 @@ export const seedIfEmpty = (db: Database): void => {
 
   // Les catégories appartiennent à un tableau : celui de la vue Projets,
   // posé avec les vues de départ (migrations.ts, vuesEtTableaux).
-  const tableau = db
+  const board = db
     .prepare(
       `SELECT b.id FROM boards b JOIN views v ON v.id = b.view_id
        WHERE v.name = 'Projets' ORDER BY b.position, b.id LIMIT 1`,
     )
     .get() as { id: number } | undefined;
-  if (!tableau) return;
-  const boardId = tableau.id;
+  if (!board) return;
+  const boardId = board.id;
 
   const insertCategory = db.prepare("INSERT INTO categories (board_id, name) VALUES (?, ?)");
   const categoryIds: Record<string, number | bigint> = {};

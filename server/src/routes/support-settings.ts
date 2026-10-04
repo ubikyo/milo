@@ -6,49 +6,49 @@ import { SUPPORT_DUE_DAYS_MAX } from "@milo/shared";
 import type { SupportSettings } from "@milo/shared";
 import { badRequest, toIds } from "../lib/http.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
-import { prioriteLaPlusLegere, supportLabels } from "../repositories/support.js";
+import { lightestPriority, supportLabels } from "../repositories/support.js";
 
-const CLE_ECHEANCE = "support_default_due_days";
-const CLE_ETIQUETTES = "support_default_label_ids";
+const DUE_KEY = "support_default_due_days";
+const LABELS_KEY = "support_default_label_ids";
 
 /**
  * Les étiquettes d'office d'un e-mail entrant. Jamais réglées : la priorité
  * la plus légère, comme avant que le Paramétrage les propose. Une étiquette
  * supprimée depuis disparaît d'elle-même du réglage.
  */
-const etiquettesParDefaut = (): number[] => {
-  const ids = readSetting<number[] | null>(CLE_ETIQUETTES, null);
-  if (!Array.isArray(ids)) return [prioriteLaPlusLegere().id];
+const defaultLabels = (): number[] => {
+  const ids = readSetting<number[] | null>(LABELS_KEY, null);
+  if (!Array.isArray(ids)) return [lightestPriority().id];
   return toIds(ids).filter((id) => supportLabels.byId.get(id));
 };
 
-export const reglagesSupport = (): SupportSettings => {
-  const jours = Number(readSetting<number>(CLE_ECHEANCE, 0));
+export const supportSettings = (): SupportSettings => {
+  const days = Number(readSetting<number>(DUE_KEY, 0));
   return {
-    default_due_days: Number.isInteger(jours) && jours > 0 ? jours : 0,
-    default_label_ids: etiquettesParDefaut(),
+    default_due_days: Number.isInteger(days) && days > 0 ? days : 0,
+    default_label_ids: defaultLabels(),
   };
 };
 
 export const supportSettingsRoutes = Router();
 
 supportSettingsRoutes.get("/", (_req, res) => {
-  res.json(reglagesSupport());
+  res.json(supportSettings());
 });
 
 supportSettingsRoutes.put("/", (req, res) => {
-  const recu = req.body?.default_due_days;
-  if (recu !== undefined) {
-    const jours = Number(recu);
-    if (!Number.isInteger(jours) || jours < 0 || jours > SUPPORT_DUE_DAYS_MAX) {
+  const received = req.body?.default_due_days;
+  if (received !== undefined) {
+    const days = Number(received);
+    if (!Number.isInteger(days) || days < 0 || days > SUPPORT_DUE_DAYS_MAX) {
       badRequest(`L'échéance par défaut va de 0 à ${SUPPORT_DUE_DAYS_MAX} jours ouvrés`);
     }
-    writeSetting(CLE_ECHEANCE, jours);
+    writeSetting(DUE_KEY, days);
   }
-  const etiquettes = req.body?.default_label_ids;
-  if (etiquettes !== undefined) {
-    if (!Array.isArray(etiquettes)) badRequest("Les étiquettes par défaut sont une liste");
-    writeSetting(CLE_ETIQUETTES, [...new Set(toIds(etiquettes))]);
+  const labels = req.body?.default_label_ids;
+  if (labels !== undefined) {
+    if (!Array.isArray(labels)) badRequest("Les étiquettes par défaut sont une liste");
+    writeSetting(LABELS_KEY, [...new Set(toIds(labels))]);
   }
-  res.json(reglagesSupport());
+  res.json(supportSettings());
 });

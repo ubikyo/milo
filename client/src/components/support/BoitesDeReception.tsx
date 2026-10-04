@@ -21,9 +21,9 @@ import {
 import { useContext, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../api";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import {
-  signalerConfirmation,
+  signalConfirmation,
   useConfirmations,
 } from "../../lib/confirmations";
 import { RED } from "../../themes/colors";
@@ -33,14 +33,14 @@ import {
   TAB_MENU_STYLES,
 } from "../../themes/menus";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
-import BoutonFermer from "../ui/BoutonFermer";
-import { ActionsDuTiroirContext } from "../ui/IndicatorDrawer";
-import { RETRAIT_LIGNE, RETRAIT_NOM } from "../ui/LignesDuTiroir";
-import { avec } from "../../widgets/types";
-import ChampReception, { receptionsDe } from "../ui/ChampReception";
-import { BOITES } from "./SupportRequestsList";
+import CloseButton from "../ui/BoutonFermer";
+import { DrawerActionsContext } from "../ui/IndicatorDrawer";
+import { ROW_INSET, NAME_INSET } from "../ui/LignesDuTiroir";
+import { withField } from "../../widgets/types";
+import ReceptionField, { inboxesOf } from "../ui/ChampReception";
+import { MAILBOXES } from "./SupportRequestsList";
 import type { IndicatorConfigProps } from "../../indicators/types";
-import { cleDeListe } from "@milo/shared";
+import { listKey } from "@milo/shared";
 
 // Les boîtes d'où une liste de tickets reçoit ses tickets, en lignes comme les
 // tags de l'agent GLPI (ChampReception) : une ligne par adresse, avec le
@@ -50,82 +50,82 @@ import { cleDeListe } from "@milo/shared";
 // adresses qui attendent (server, lib/optin.ts).
 
 /** Une boîte : son adresse, et le contexte de ses demandes. */
-interface Boite {
+interface Mailbox {
   email: string;
-  contexte: number | null;
+  context: number | null;
 }
 
 /** La clé de la configuration qui dit de supprimer les e-mails relevés (server, receptions.ts). */
-const SUPPRESSION = "suppression";
+const DELETION = "suppression";
 
 /** La place de l'état, au bout de la ligne : les badges s'alignent. */
-const LARGEUR_ETAT = 76;
+const STATE_WIDTH = 76;
 
-export const ressembleAUneAdresse = (email: string) =>
+export const looksLikeAddress = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
-const boitesDe = (config: unknown): Boite[] =>
-  receptionsDe(config, BOITES).map((r) => ({
+const mailboxesOf = (config: unknown): Mailbox[] =>
+  inboxesOf(config, MAILBOXES).map((r) => ({
     email: typeof r.email === "string" ? r.email : "",
-    contexte: typeof r.contexte === "number" ? r.contexte : null,
+    context: typeof r.context === "number" ? r.context : null,
   }));
 
 /** L'état d'une adresse : confirmée, ou en attente — une adresse pas encore enregistrée aussi. */
-function Etat({ confirmee }: { confirmee: boolean }) {
+function State({ confirmed }: { confirmed: boolean }) {
   return (
     <Box
       style={{
-        width: LARGEUR_ETAT,
+        width: STATE_WIDTH,
         flexShrink: 0,
         display: "flex",
         justifyContent: "flex-end",
         // Le bout de la ligne n'est qu'à RETRAIT_LIGNE : l'étiquette, plus
         // basse qu'un champ, s'en écarte jusqu'à RETRAIT_NOM, l'air qu'a la
         // valeur à gauche.
-        paddingRight: RETRAIT_NOM - RETRAIT_LIGNE,
+        paddingRight: NAME_INSET - ROW_INSET,
       }}
     >
       {/* L'étiquette des états de l'application (EntraTab) : pleine, verte ou rouge. */}
       <Badge
-        color={confirmee ? "green" : RED}
+        color={confirmed ? "green" : RED}
         variant="filled"
         size="sm"
         radius="sm"
         tt="none"
         fw={600}
       >
-        {confirmee ? "Confirmé" : "En attente"}
+        {confirmed ? "Confirmé" : "En attente"}
       </Badge>
     </Box>
   );
 }
 
 /** Les boîtes de réception d'une liste de demandes, et ce qu'elle fait des e-mails relevés. */
-export default function BoitesDeReception({
+export default function Inboxes({
   config,
   onChange,
 }: IndicatorConfigProps) {
-  const boites = boitesDe(config);
+  const mailboxes = mailboxesOf(config);
   // La liste que le widget désigne : ses confirmations sont les siennes. Un
   // widget pas encore enregistré n'en a pas — tout y attend.
-  const liste = cleDeListe(config);
-  const [relance, setRelance] = useState(false);
-  const [aConfirmer, setAConfirmer] = useState(false);
-  const cibleActions = useContext(ActionsDuTiroirContext);
+  const list = listKey(config);
+  const [retrying, setRetry] = useState(false);
+  const [toConfirm, setToConfirm] = useState(false);
+  const targetActions = useContext(DrawerActionsContext);
 
   // Les états de confirmation, relus régulièrement : la boîte peut confirmer
   // pendant que le tiroir est ouvert.
-  const adresses = boites
+  const addresses = mailboxes
     .map((b) => b.email.trim().toLowerCase())
-    .filter(ressembleAUneAdresse);
-  const { confirmee } = useConfirmations(liste, adresses);
+    .filter(looksLikeAddress);
+  const { confirmed } = useConfirmations(list, addresses);
 
-  const enAttente = [...new Set(adresses)].filter((e) => !confirmee(e));
+  const pending = [...new Set(addresses)].filter((e) => !confirmed(e));
 
-  const relancer = async () => {
-    setRelance(true);
+  const retry = async () => {
+    setRetry(true);
     try {
-      const { sent } = await api.resendMailboxOptins(liste, enAttente);
+      const { sent } = await api.resendMailboxOptins(list, pending);
       notifications.show({
         color: sent ? "teal" : "gray",
         title: sent ? "Confirmation relancée" : "Rien n'est parti",
@@ -134,16 +134,16 @@ export default function BoitesDeReception({
           : "Enregistrez d'abord les adresses : le code leur est envoyé à l'enregistrement.",
       });
     } catch (e) {
-      notifierErreur(messageErreur(e), "La relance a échoué");
+      notifyError(errorMessage(e), "La relance a échoué");
     } finally {
-      setRelance(false);
+      setRetry(false);
     }
   };
 
   return (
     <Stack gap="xs">
       {/* Le menu « Actions » se pose au bout de la rangée d'onglets du tiroir. */}
-      {cibleActions &&
+      {targetActions &&
         createPortal(
           <Menu
             position="bottom-end"
@@ -157,9 +157,9 @@ export default function BoitesDeReception({
                 color="gray"
                 size="xs"
                 rightSection={<IconChevronDown size={14} />}
-                loading={relance}
+                loading={retrying}
                 // Rien à confirmer ni à relancer sans adresse en attente.
-                disabled={enAttente.length === 0}
+                disabled={pending.length === 0}
                 style={ACTIONS_BUTTON_STYLE}
               >
                 Actions
@@ -168,25 +168,25 @@ export default function BoitesDeReception({
             <Menu.Dropdown>
               <Menu.Item
                 leftSection={<IconMailCheck size={16} />}
-                disabled={enAttente.length === 0}
-                onClick={() => setAConfirmer(true)}
+                disabled={pending.length === 0}
+                onClick={() => setToConfirm(true)}
               >
                 Confirmer une adresse
               </Menu.Item>
               <Menu.Item
                 leftSection={<IconMailForward size={16} />}
-                disabled={enAttente.length === 0}
-                onClick={() => void relancer()}
+                disabled={pending.length === 0}
+                onClick={() => void retry()}
               >
                 Relancer confirmation
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>,
-          cibleActions,
+          targetActions,
         )}
-      <ChampReception
-        cle={BOITES}
-        champ="email"
+      <ReceptionField
+        key={MAILBOXES}
+        field="email"
         label="Adresses de réception"
         description={
           <>
@@ -197,30 +197,30 @@ export default function BoitesDeReception({
           </>
         }
         placeholder="Adresse e-mail"
-        ajouter="Ajouter une adresse e-mail"
-        icone={IconMail}
-        vide="Aucune adresse e-mail"
-        normaliser={(valeur) => valeur.trim()}
+        add="Ajouter une adresse e-mail"
+        icon={IconMail}
+        empty="Aucune adresse e-mail"
+        normalizeValue={(value) => value.trim()}
         // Une adresse pas encore lisible n'a pas d'état à montrer.
-        etat={(email) => (email.trim() ? <Etat confirmee={confirmee(email)} /> : null)}
+        state={(email) => (email.trim() ? <State confirmed={confirmed(email)} /> : null)}
         config={config}
         onChange={onChange}
       />
-      <ConfirmerModal
-        liste={liste}
-        opened={aConfirmer}
-        adresses={enAttente}
-        onClose={() => setAConfirmer(false)}
+      <ConfirmModal
+        list={list}
+        opened={toConfirm}
+        addresses={pending}
+        onClose={() => setToConfirm(false)}
       />
       <Switch
         mt="xs"
         color="teal"
         label="Supprimer les e-mails relevés de la boîte"
         checked={
-          (config as Record<string, unknown> | null)?.[SUPPRESSION] === true
+          (config as Record<string, unknown> | null)?.[DELETION] === true
         }
         onChange={(e) =>
-          onChange(avec(config, SUPPRESSION, e.currentTarget.checked))
+          onChange(withField(config, DELETION, e.currentTarget.checked))
         }
       />
     </Stack>
@@ -231,50 +231,50 @@ export default function BoitesDeReception({
  * La saisie du code à quatre chiffres reçu par la boîte.
  * Plusieurs adresses attendent : on choisit d'abord laquelle.
  */
-function ConfirmerModal({
-  liste,
+function ConfirmModal({
+  list,
   opened,
-  adresses,
+  addresses,
   onClose,
 }: {
-  liste: string;
+  list: string;
   opened: boolean;
-  adresses: string[];
+  addresses: string[];
   onClose: () => void;
 }) {
   const [email, setEmail] = useState<string | null>(null);
   const [code, setCode] = useState("");
-  const [erreur, setErreur] = useState<string | null>(null);
-  const [envoi, setEnvoi] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
 
   // Chaque ouverture repart de zéro, sur la première adresse qui attend.
   useEffect(() => {
     if (!opened) return;
-    setEmail(adresses[0] ?? null);
+    setEmail(addresses[0] ?? null);
     setCode("");
-    setErreur(null);
+    setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened]);
 
-  const confirmer = async (saisi = code) => {
-    if (!email || saisi.length !== 4) return;
-    setEnvoi(true);
-    setErreur(null);
+  const confirm = async (entered = code) => {
+    if (!email || entered.length !== 4) return;
+    setSending(true);
+    setError(null);
     try {
-      await api.confirmMailboxOptin(liste, email, saisi);
+      await api.confirmMailboxOptin(list, email, entered);
       notifications.show({
         color: "teal",
         title: "Adresse confirmée",
         message: email,
       });
-      signalerConfirmation();
+      signalConfirmation();
       onClose();
     } catch (e) {
-      setErreur(messageErreur(e));
-      notifierErreur(messageErreur(e));
+      setError(errorMessage(e));
+      notifyError(errorMessage(e));
       setCode("");
     } finally {
-      setEnvoi(false);
+      setSending(false);
     }
   };
 
@@ -293,14 +293,14 @@ function ConfirmerModal({
           Saisissez le code à quatre chiffres reçu dans l'e-mail de
           confirmation.
         </Text>
-        {adresses.length > 1 && (
+        {addresses.length > 1 && (
           <Select
             label="Adresse"
-            data={adresses}
+            data={addresses}
             value={email}
-            onChange={(valeur) => {
-              setEmail(valeur);
-              setErreur(null);
+            onChange={(value) => {
+              setEmail(value);
+              setError(null);
             }}
             allowDeselect={false}
           />
@@ -314,20 +314,20 @@ function ConfirmerModal({
             value={code}
             onChange={setCode}
             // Le quatrième chiffre posé, la confirmation part d'elle-même.
-            onComplete={(saisi) => void confirmer(saisi)}
-            error={Boolean(erreur)}
-            disabled={envoi}
+            onComplete={(entered) => void confirm(entered)}
+            error={Boolean(error)}
+            disabled={sending}
             aria-label="Code de confirmation"
           />
         </Group>
       </Stack>
       <Group justify="flex-end" mt={MODAL_PADDING}>
-        <BoutonFermer onClick={onClose}>Annuler</BoutonFermer>
+        <CloseButton onClick={onClose}>Annuler</CloseButton>
         <Button
           color="teal"
-          onClick={() => void confirmer()}
+          onClick={() => void confirm()}
           disabled={code.length !== 4 || !email}
-          loading={envoi}
+          loading={sending}
         >
           Confirmer
         </Button>

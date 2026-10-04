@@ -1,10 +1,10 @@
 import { Drawer, Group, ScrollArea, Stack, Text, Title } from "@mantine/core";
 import { IconGripVertical } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
-import encart from "../../assets/styles/AccessNumero.module.css";
+import inset from "../../assets/styles/AccessNumero.module.css";
 import type { ComponentType, DragEvent } from "react";
-import { libelleDuGenre, type WidgetKind } from "../../widgets/genres";
-import { ECART_SOUS_CATEGORIE } from "../../widgets/sous-categorie";
+import { kindLabel, type WidgetKind } from "../../widgets/genres";
+import { SUBCATEGORY_GAP } from "../../widgets/sous-categorie";
 
 // Ce qu'une section peut recevoir, un widget par ligne : sa poignée, son
 // icône, son nom, dans l'encart des widgets. Le tiroir s'ouvre à gauche, et
@@ -18,7 +18,7 @@ import { ECART_SOUS_CATEGORIE } from "../../widgets/sous-categorie";
 // sous-catégorie.
 
 /** Ce que le tiroir montre d'un widget. */
-export interface ChoixDeWidget {
+export interface WidgetChoice {
   type: string;
   /** Le groupe où il se range dans le tiroir. */
   kind: WidgetKind;
@@ -26,7 +26,7 @@ export interface ChoixDeWidget {
   icon: ComponentType<{ size?: number }>;
 }
 
-interface WidgetDrawerProps<P extends ChoixDeWidget> {
+interface WidgetDrawerProps<P extends WidgetChoice> {
   opened: boolean;
   onClose: () => void;
   widgets: P[];
@@ -36,12 +36,12 @@ interface WidgetDrawerProps<P extends ChoixDeWidget> {
   onDragEnd: () => void;
 }
 
-const LARGEUR = 320;
+const WIDTH = 320;
 
 /** L'air au-dessus du titre d'un type, quand d'autres widgets le précèdent. */
-const ECART_GROUPES = 40;
+const GROUPS_GAP = 40;
 
-export default function WidgetDrawer<P extends ChoixDeWidget>({
+export default function WidgetDrawer<P extends WidgetChoice>({
   opened,
   onClose,
   widgets,
@@ -49,38 +49,38 @@ export default function WidgetDrawer<P extends ChoixDeWidget>({
   onDragEnd,
 }: WidgetDrawerProps<P>) {
   /** Vrai pendant qu'un widget est tenu. */
-  const [tenu, setTenu] = useState(false);
+  const [held, setHeld] = useState(false);
 
   // Le pointeur sorti du tiroir, au-dessus de l'interface, le referme. Lu sur
   // toute la page : c'est le voile du tiroir qui reçoit d'abord le survol.
   useEffect(() => {
-    if (!tenu || !opened) return;
-    const survoler = (e: globalThis.DragEvent) => {
-      if (e.clientX > LARGEUR) onClose();
+    if (!held || !opened) return;
+    const dragHover = (e: globalThis.DragEvent) => {
+      if (e.clientX > WIDTH) onClose();
     };
-    window.addEventListener("dragover", survoler);
-    return () => window.removeEventListener("dragover", survoler);
-  }, [tenu, opened, onClose]);
+    window.addEventListener("dragover", dragHover);
+    return () => window.removeEventListener("dragover", dragHover);
+  }, [held, opened, onClose]);
 
-  const prendre = (e: DragEvent<HTMLElement>, widget: P) => {
+  const grab = (e: DragEvent<HTMLElement>, widget: P) => {
     // Certains navigateurs n'amorcent pas le glisser sans charge.
     e.dataTransfer.setData("text/plain", widget.type);
     e.dataTransfer.effectAllowed = "copy";
-    setTenu(true);
+    setHeld(true);
     onDragStart(widget);
   };
 
-  const lacher = () => {
-    setTenu(false);
+  const release = () => {
+    setHeld(false);
     onDragEnd();
   };
 
   // Les widgets par type, chaque groupe à la place de son premier widget.
-  const groupes: { kind: WidgetKind; widgets: P[] }[] = [];
+  const groups: { kind: WidgetKind; widgets: P[] }[] = [];
   for (const widget of widgets) {
-    const groupe = groupes.find((g) => g.kind === widget.kind);
-    if (groupe) groupe.widgets.push(widget);
-    else groupes.push({ kind: widget.kind, widgets: [widget] });
+    const group = groups.find((g) => g.kind === widget.kind);
+    if (group) group.widgets.push(widget);
+    else groups.push({ kind: widget.kind, widgets: [widget] });
   }
 
   return (
@@ -88,7 +88,7 @@ export default function WidgetDrawer<P extends ChoixDeWidget>({
       opened={opened}
       onClose={onClose}
       position="left"
-      size={LARGEUR}
+      size={WIDTH}
       padding={30}
       withCloseButton={false}
       // Refermé en plein glisser, le tiroir reste dans la page, caché : la
@@ -103,8 +103,8 @@ export default function WidgetDrawer<P extends ChoixDeWidget>({
       <Title order={1} size={18} c="var(--mantine-color-white)" mb={20}>
         Widgets
       </Title>
-      {groupes.map((groupe, rang) => (
-        <div key={groupe.kind}>
+      {groups.map((group, rank) => (
+        <div key={group.kind}>
           {/* Le titre d'une sous-catégorie (widgets/sous-categorie.tsx) : sa
               taille, sa graisse, l'air sous lui ; 40 px au-dessus quand
               d'autres widgets le précèdent. */}
@@ -113,24 +113,24 @@ export default function WidgetDrawer<P extends ChoixDeWidget>({
             size={16}
             fw={400}
             c="var(--mantine-color-white)"
-            mb={ECART_SOUS_CATEGORIE}
-            pt={rang > 0 ? ECART_GROUPES : 0}
+            mb={SUBCATEGORY_GAP}
+            pt={rank > 0 ? GROUPS_GAP : 0}
           >
-            {libelleDuGenre(groupe.kind)}
+            {kindLabel(group.kind)}
           </Title>
           <Stack gap={4}>
-            {groupe.widgets.map((widget) => (
+            {group.widgets.map((widget) => (
               // L'encart des widgets, sans son trait : le fond suffit à détacher
               // chaque ligne.
               <Group
                 key={widget.type}
                 draggable
-                onDragStart={(e) => prendre(e, widget)}
-                onDragEnd={lacher}
+                onDragStart={(e) => grab(e, widget)}
+                onDragEnd={release}
                 aria-label={`Glisser le widget ${widget.label}`}
                 gap="sm"
                 wrap="nowrap"
-                className={encart.encart}
+                className={inset.encart}
                 style={{ padding: 10, border: "none", cursor: "grab" }}
               >
                 <Text c="dimmed" component="span" style={{ display: "flex" }}>

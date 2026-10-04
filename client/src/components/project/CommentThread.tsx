@@ -14,7 +14,7 @@ import { RED } from "../../themes/colors";
 import { PersonAvatar } from "../ui/ActorAvatars";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import EmptyPanel from "../ui/EmptyPanel";
-import PointMenu, { positionDuMenu } from "../ui/PointMenu";
+import PointMenu, { menuPosition } from "../ui/PointMenu";
 import type { PointMenuPosition } from "../ui/PointMenu";
 import { MILO_ACTOR_ID } from "@milo/shared";
 import type { Actor, SqliteBool } from "@milo/shared";
@@ -24,7 +24,7 @@ import type { Actor, SqliteBool } from "@milo/shared";
  * et cartes — s'y rangent, ainsi que les brouillons d'un projet pas encore
  * créé, dont l'identifiant n'est pas encore un numéro de ligne.
  */
-export interface FilItem {
+export interface ThreadItem {
   id: number | string;
   text: string;
   /** Les mots que l'application écrit elle-même : ni retouchés, ni effacés. */
@@ -47,12 +47,12 @@ const COMMENT_PADDING = 30;
 // Un mot de Milo : l'entête, une ligne d'air, puis une puce par champ. Le
 // texte garde sa flèche « A → B » — le serveur s'en sert pour regrouper les
 // retouches — mais elle s'affiche en chevron.
-const FLECHE = " → ";
+const ARROW = " → ";
 
-function texteSysteme(texte: string): ReactNode {
-  const [entete = "", ...lignes] = texte.split("\n");
-  const ligne = (l: string) =>
-    l.split(FLECHE).map((morceau, i) => (
+function systemText(text: string): ReactNode {
+  const [header = "", ...rows] = text.split("\n");
+  const row = (l: string) =>
+    l.split(ARROW).map((chunk, i) => (
       <Fragment key={i}>
         {i > 0 && (
           <IconChevronRight
@@ -61,22 +61,22 @@ function texteSysteme(texte: string): ReactNode {
             aria-label="devient"
           />
         )}
-        {morceau}
+        {chunk}
       </Fragment>
     ));
   return (
     <>
-      {entete}
-      {lignes.length > 0 && <div style={{ height: "0.75em" }} />}
-      {lignes.map((l, i) => (
-        <div key={i}>{ligne(l)}</div>
+      {header}
+      {rows.length > 0 && <div style={{ height: "0.75em" }} />}
+      {rows.map((l, i) => (
+        <div key={i}>{row(l)}</div>
       ))}
     </>
   );
 }
 
 interface CommentBubbleProps {
-  comment: FilItem;
+  comment: ThreadItem;
   onUpdate: (id: number | string, text: string) => void;
   onDelete: (id: number | string) => void;
   /** Le fil se lit sans s'écrire : la bulle ne se modifie ni ne se supprime. */
@@ -102,14 +102,14 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
 
   // Un mot écrit par l'application — la création de la carte ou du projet,
   // signée Milo — note un fait : il ne se retouche ni ne s'efface.
-  const fige = readOnly || Boolean(comment.system) || comment.author?.id === MILO_ACTOR_ID;
+  const frozen = readOnly || Boolean(comment.system) || comment.author?.id === MILO_ACTOR_ID;
 
   // Un mot de Milo — la création, les modifications — se montre plié : la
   // bulle se réduit à son bandeau, Milo et la date, sur fond bleu. Le bouton
   // à droite de la bulle le déplie, avec l'animation d'un accordéon.
-  const systeme = Boolean(comment.system) || comment.author?.id === MILO_ACTOR_ID;
-  const [deplie, setDeplie] = useState(false);
-  const plie = systeme && !deplie;
+  const isSystemDisk = Boolean(comment.system) || comment.author?.id === MILO_ACTOR_ID;
+  const [expanded, setExpanded] = useState(false);
+  const folded = isSystemDisk && !expanded;
 
   const remove = () => {
     setConfirmDeleteOpened(false);
@@ -120,9 +120,9 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
     <>
       <Paper
         // Replié, la bulle est un bandeau bleu plein, sans bordure.
-        withBorder={!plie}
+        withBorder={!folded}
         bg={
-          plie
+          folded
             ? "var(--mantine-color-blue-filled)"
             : "light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))"
         }
@@ -132,8 +132,8 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
         }}
         // Les actions passent par le clic droit, et le double-clic modifie —
         // qui que soit l'auteur. Un mot figé n'a ni menu ni double-clic.
-        onContextMenu={fige || editing ? undefined : (e) => setMenu(positionDuMenu(e))}
-        onDoubleClick={fige || editing ? undefined : startEdit}
+        onContextMenu={frozen || editing ? undefined : (e) => setMenu(menuPosition(e))}
+        onDoubleClick={frozen || editing ? undefined : startEdit}
       >
         {/* Modifier un commentaire ne le sort pas de sa bulle : l'entête reste
             en place, seul le texte passe en saisie. Entrée valide, Maj+Entrée
@@ -148,7 +148,7 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
             // et la date se posent trop haut dans leur bandeau.
             py={8}
             // Plié, le bandeau est toute la bulle : il n'a rien à séparer.
-            style={plie ? undefined : { borderBottom: HEADER_LINE }}
+            style={folded ? undefined : { borderBottom: HEADER_LINE }}
           >
             {/* L'auteur à gauche, la date à droite. Un commentaire écrit avant
                 qu'on retienne l'auteur, ou dont le compte a été supprimé, n'en
@@ -156,7 +156,7 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
             <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
               <PersonAvatar person={comment.author} size={22} />
               {comment.author && (
-                <Text size="xs" fw={600} c={plie ? "white" : undefined} truncate>
+                <Text size="xs" fw={600} c={folded ? "white" : undefined} truncate>
                   {comment.author.name}
                 </Text>
               )}
@@ -165,24 +165,24 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
             <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
               {/* Un mot de Milo complété par une retouche voisine n'est pas
                   « modifié » : il raconte la suite. */}
-              <Text size="xs" c={plie ? "white" : "dimmed"}>
+              <Text size="xs" c={folded ? "white" : "dimmed"}>
                 {formatTimestamp(comment.updated_at)}
-                {!systeme && comment.updated_at !== comment.created_at ? " (modifié)" : ""}
+                {!isSystemDisk && comment.updated_at !== comment.created_at ? " (modifié)" : ""}
               </Text>
 
-              {systeme && (
+              {isSystemDisk && (
                 <ActionIcon
                   variant="subtle"
-                  color={plie ? "white" : "gray"}
+                  color={folded ? "white" : "gray"}
                   size="sm"
-                  onClick={() => setDeplie((d) => !d)}
-                  aria-label={deplie ? "Replier le commentaire" : "Déplier le commentaire"}
-                  aria-expanded={deplie}
+                  onClick={() => setExpanded((d) => !d)}
+                  aria-label={expanded ? "Replier le commentaire" : "Déplier le commentaire"}
+                  aria-expanded={expanded}
                   // Déplié, le survol est un gris neutre : celui de Mantine
                   // tire sur le bleu. En sombre, dark-4 plutôt que
                   // NEUTRAL_HOVER, qui se confond avec le fond de la bulle.
                   style={
-                    plie
+                    folded
                       ? undefined
                       : ({
                           "--ai-hover": "light-dark(#ececec, var(--mantine-color-dark-4))",
@@ -194,7 +194,7 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
                   <IconChevronLeft
                     size={16}
                     style={{
-                      transform: deplie ? "rotate(-90deg)" : "none",
+                      transform: expanded ? "rotate(-90deg)" : "none",
                       transition: "transform 200ms ease",
                     }}
                   />
@@ -207,7 +207,7 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
               comptent, et rien d'autre ne se met en forme. En saisie, le champ
               prend exactement la place du texte — même retrait, même taille,
               ni cadre ni fond : on écrit là où on lisait. */}
-          <Collapse expanded={!plie}>
+          <Collapse expanded={!folded}>
             {editing ? (
               <Textarea
                 value={text}
@@ -230,19 +230,19 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
               />
             ) : (
               <Text
-                component={systeme ? "div" : "p"}
+                component={isSystemDisk ? "div" : "p"}
                 size="sm"
                 p={COMMENT_PADDING}
                 style={{ whiteSpace: "pre-wrap" }}
               >
-                {systeme ? texteSysteme(comment.text) : comment.text}
+                {isSystemDisk ? systemText(comment.text) : comment.text}
               </Text>
             )}
           </Collapse>
         </Stack>
       </Paper>
 
-      {menu && !fige && (
+      {menu && !frozen && (
         <PointMenu position={menu} onClose={() => setMenu(null)}>
           <Menu.Item leftSection={<IconPencil size={16} />} onClick={startEdit}>
             Modifier
@@ -259,7 +259,7 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
       )}
 
       <DeleteConfirmModal
-        opened={confirmDeleteOpened && !fige}
+        opened={confirmDeleteOpened && !frozen}
         onClose={() => setConfirmDeleteOpened(false)}
         onConfirm={remove}
         title="Supprimer le commentaire"
@@ -272,7 +272,7 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
 }
 
 interface CommentThreadProps {
-  comments: FilItem[];
+  comments: ThreadItem[];
   onAdd: (text: string) => void;
   onUpdate: (id: number | string, text: string) => void;
   onDelete: (id: number | string) => void;

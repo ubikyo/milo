@@ -20,8 +20,8 @@
 export const LOGO_CID = "milo-logo";
 
 /** Ce que l'image mesure à l'écran, en pixels. */
-export const LOGO_LARGEUR = 37;
-export const LOGO_HAUTEUR = 28;
+export const LOGO_WIDTH_PX = 37;
+export const LOGO_HEIGHT_PX = 28;
 
 const BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAEoAAAA4CAMAAABt5J6JAAABOFBMVEUAAAAdmX8gqYwgqIsfo4cenIIclXwbkHcbjHQainIZ" +
@@ -40,4 +40,4 @@ const BASE64 =
   "KQAAAABJRU5ErkJggg==";
 
 /** L'image, prête à être jointe au message. */
-export const logoJoint = (): Buffer => Buffer.from(BASE64, "base64");
+export const attachedLogo = (): Buffer => Buffer.from(BASE64, "base64");

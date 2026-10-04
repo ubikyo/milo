@@ -21,10 +21,10 @@ import { ROW_CONTROL_HEIGHT, ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../them
 // l'application porte et ouvre l'élément choisi, où qu'il soit.
 
 /** Le temps qu'on laisse à la frappe avant d'interroger le serveur. */
-const ATTENTE = 200;
+const WAITING = 200;
 
 /** Les sortes, dans l'ordre où la liste les présente — celui des modes. */
-const SORTES: { kind: SearchKind; label: string; icon: ComponentType<{ size?: number }> }[] = [
+const KINDS: { kind: SearchKind; label: string; icon: ComponentType<{ size?: number }> }[] = [
   { kind: "access", label: "Accès", icon: IconKey },
   { kind: "project", label: "Projets", icon: IconFolder },
   { kind: "card", label: "Tâches", icon: IconLayoutKanban },
@@ -32,86 +32,86 @@ const SORTES: { kind: SearchKind; label: string; icon: ComponentType<{ size?: nu
   { kind: "asset", label: "Assets", icon: IconDeviceDesktop },
 ];
 
-const cle = (r: SearchResult) => `${r.kind}:${r.id}`;
+const key = (r: SearchResult) => `${r.kind}:${r.id}`;
 
 /** Les angles bas de la liste, plus vifs que ceux des menus. */
-const RAYON = 2;
+const RADIUS = 2;
 
 /** L'option qui, faute de résultat, envoie la saisie à Google. */
 const GOOGLE = "google";
 
 export interface SearchBoxProps {
-  onOpen: (resultat: SearchResult) => void;
+  onOpen: (result: SearchResult) => void;
 }
 
 export default function SearchBox({ onOpen }: SearchBoxProps) {
   const combobox = useCombobox({
     onDropdownClose: () => combobox.resetSelectedOption(),
   });
-  const [saisie, setSaisie] = useState("");
-  const [resultats, setResultats] = useState<SearchResult[] | null>(null);
+  const [input, setInput] = useState("");
+  const [results, setResults] = useState<SearchResult[] | null>(null);
   // La dernière recherche partie : une réponse plus lente qu'une frappe
   // suivante n'écrase pas ce que celle-ci a rendu.
-  const derniere = useRef(0);
+  const last = useRef(0);
 
   useEffect(() => {
-    const cherche = saisie.trim();
-    if (cherche.length < SEARCH_MIN_LENGTH) {
-      setResultats(null);
+    const search = input.trim();
+    if (search.length < SEARCH_MIN_LENGTH) {
+      setResults(null);
       return;
     }
-    const numero = ++derniere.current;
-    const minuterie = window.setTimeout(async () => {
+    const phoneNumber = ++last.current;
+    const timeout = window.setTimeout(async () => {
       try {
-        const trouves = await api.search(cherche);
-        if (numero === derniere.current) setResultats(trouves);
+        const matches = await api.search(search);
+        if (phoneNumber === last.current) setResults(matches);
       } catch {
-        if (numero === derniere.current) setResultats([]);
+        if (phoneNumber === last.current) setResults([]);
       }
-    }, ATTENTE);
-    return () => window.clearTimeout(minuterie);
-  }, [saisie]);
+    }, WAITING);
+    return () => window.clearTimeout(timeout);
+  }, [input]);
 
   // La première ligne est prête pour Entrée — le premier résultat, ou Google
   // faute de mieux. Après le rendu : avant, les options n'existent pas encore.
   useEffect(() => {
-    if (resultats) combobox.selectFirstOption();
+    if (results) combobox.selectFirstOption();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resultats]);
+  }, [results]);
 
-  const choisir = (valeur: string) => {
-    if (valeur === GOOGLE) {
+  const select = (value: string) => {
+    if (value === GOOGLE) {
       window.open(
-        `https://www.google.com/search?q=${encodeURIComponent(saisie.trim())}`,
+        `https://www.google.com/search?q=${encodeURIComponent(input.trim())}`,
         "_blank",
         "noopener",
       );
       combobox.closeDropdown();
-      setSaisie("");
-      setResultats(null);
+      setInput("");
+      setResults(null);
       return;
     }
-    const resultat = resultats?.find((r) => cle(r) === valeur);
-    if (!resultat) return;
+    const result = results?.find((r) => key(r) === value);
+    if (!result) return;
     combobox.closeDropdown();
-    setSaisie("");
-    setResultats(null);
-    onOpen(resultat);
+    setInput("");
+    setResults(null);
+    onOpen(result);
   };
 
-  const groupes = SORTES.map(({ kind, label, icon: Icone }) => {
-    const siens = (resultats ?? []).filter((r) => r.kind === kind);
-    if (siens.length === 0) return null;
+  const groups = KINDS.map(({ kind, label, icon: Icon }) => {
+    const own = (results ?? []).filter((r) => r.kind === kind);
+    if (own.length === 0) return null;
     return (
       <Combobox.Group key={kind} label={label}>
-        {siens.map((r) => {
+        {own.map((r) => {
           // Un lien du mode Accès s'ouvre tel quel, dans un nouvel onglet :
           // son icône le dit.
-          const IconeLigne = r.url ? IconExternalLink : Icone;
+          const IconRow = r.url ? IconExternalLink : Icon;
           return (
-            <Combobox.Option key={cle(r)} value={cle(r)}>
+            <Combobox.Option key={key(r)} value={key(r)}>
               <Group gap="xs" wrap="nowrap">
-                <IconeLigne size={16} />
+                <IconRow size={16} />
                 <div style={{ minWidth: 0 }}>
                   <Text size="sm" truncate>
                     {r.title}
@@ -134,7 +134,7 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
     <Combobox
       store={combobox}
       classNames={{ option: classes.option }}
-      onOptionSubmit={choisir}
+      onOptionSubmit={select}
       position="bottom-start"
       offset={ROW_MENU_OFFSET}
       width={360}
@@ -143,8 +143,8 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
         ...TAB_MENU_STYLES,
         dropdown: {
           ...TAB_MENU_STYLES.dropdown,
-          borderBottomLeftRadius: RAYON,
-          borderBottomRightRadius: RAYON,
+          borderBottomLeftRadius: RADIUS,
+          borderBottomRightRadius: RADIUS,
         },
       }}
     >
@@ -153,7 +153,7 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
           variant="unstyled"
           placeholder="Recherche"
           aria-label="Recherche"
-          value={saisie}
+          value={input}
           h={ROW_CONTROL_HEIGHT}
           styles={{
             input: {
@@ -166,7 +166,7 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
             } as CSSProperties,
           }}
           onChange={(event) => {
-            setSaisie(event.currentTarget.value);
+            setInput(event.currentTarget.value);
             combobox.openDropdown();
           }}
           onFocus={() => combobox.openDropdown()}
@@ -174,29 +174,29 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
           onKeyDown={(event) => {
             // Échap vide le champ ; une seconde fois, il le quitte.
             if (event.key !== "Escape") return;
-            if (saisie) setSaisie("");
+            if (input) setInput("");
             else event.currentTarget.blur();
           }}
         />
       </Combobox.Target>
 
-      <Combobox.Dropdown hidden={resultats === null}>
+      <Combobox.Dropdown hidden={results === null}>
         <Combobox.Options>
           {/* La barre de Mantine, comme partout ailleurs, et non celle du
               navigateur. */}
           <ScrollArea.Autosize mah={420} type="scroll" scrollbarSize={6}>
-            {resultats && resultats.length === 0 ? (
+            {results && results.length === 0 ? (
               // Rien dans Milo : la saisie part sur Google, Entrée suffit.
               <Combobox.Option value={GOOGLE}>
                 <Group gap="xs" wrap="nowrap">
                   <IconBrandGoogle size={16} />
                   <Text size="sm" truncate>
-                    Rechercher « {saisie.trim()} » sur Google
+                    Rechercher « {input.trim()} » sur Google
                   </Text>
                 </Group>
               </Combobox.Option>
             ) : (
-              groupes
+              groups
             )}
           </ScrollArea.Autosize>
         </Combobox.Options>

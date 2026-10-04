@@ -14,12 +14,12 @@ import { gunzipSync, inflateSync } from "node:zlib";
 import type { AssetEntry, AssetSection } from "@milo/shared";
 
 /** Ce qu'un élément porte : du texte, un élément, ou plusieurs du même nom. */
-type Noeud = string | Arbre | Noeud[];
-export interface Arbre {
-  [nom: string]: Noeud;
+type TreeNode = string | Tree | TreeNode[];
+export interface Tree {
+  [name: string]: TreeNode;
 }
 
-const ENTITES: Record<string, string> = {
+const ENTITIES: Record<string, string> = {
   lt: "<",
   gt: ">",
   amp: "&",
@@ -28,13 +28,13 @@ const ENTITES: Record<string, string> = {
 };
 
 /** Les entités du texte reçu, ramenées aux caractères qu'elles désignent. */
-const detexter = (texte: string): string =>
-  texte.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (tout, code: string) => {
+const stripTags = (text: string): string =>
+  text.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, code: string) => {
     if (code.startsWith("#x") || code.startsWith("#X")) {
       return String.fromCodePoint(parseInt(code.slice(2), 16));
     }
     if (code.startsWith("#")) return String.fromCodePoint(parseInt(code.slice(1), 10));
-    return ENTITES[code] ?? tout;
+    return ENTITIES[code] ?? match;
   });
 
 /**
@@ -42,13 +42,13 @@ const detexter = (texte: string): string =>
  * comprime : on reconnaît la compression à ses premiers octets plutôt qu'à
  * l'en-tête annoncé, qui varie d'une version à l'autre.
  */
-export const decompresser = (corps: Buffer): string => {
-  if (corps.length >= 2) {
+export const decompresser = (body: Buffer): string => {
+  if (body.length >= 2) {
     // 1f 8b : gzip. 78 xx : zlib (« deflate »), ce qu'envoie l'agent Perl.
-    if (corps[0] === 0x1f && corps[1] === 0x8b) return gunzipSync(corps).toString("utf8");
-    if (corps[0] === 0x78) return inflateSync(corps).toString("utf8");
+    if (body[0] === 0x1f && body[1] === 0x8b) return gunzipSync(body).toString("utf8");
+    if (body[0] === 0x78) return inflateSync(body).toString("utf8");
   }
-  return corps.toString("utf8");
+  return body.toString("utf8");
 };
 
 /**
@@ -56,71 +56,71 @@ export const decompresser = (corps: Buffer): string => {
  * deviennent une liste : c'est ainsi que se lisent les vingt barrettes, les
  * trois disques ou les six cents logiciels d'un poste.
  */
-export const lireXml = (xml: string): Arbre => {
+export const readXml = (xml: string): Tree => {
   // CDATA d'abord : son contenu peut porter « < » et « > », qui tromperaient
   // la lecture des balises. Il devient du texte échappé comme un autre.
-  const texteBrut = xml
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_tout, contenu: string) =>
-      contenu.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
+  const plainText = xml
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_whole, content: string) =>
+      content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
     )
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/<\?[\s\S]*?\?>/g, "")
     .replace(/<!DOCTYPE[^>]*>/gi, "");
 
-  const racine: Arbre = {};
-  const pile: { enfants: Arbre; texte: string }[] = [{ enfants: racine, texte: "" }];
+  const root: Tree = {};
+  const stack: { children: Tree; text: string }[] = [{ children: root, text: "" }];
 
   const balises = /<\s*(\/?)\s*([^\s/>]+)([^>]*?)(\/?)\s*>/g;
   let position = 0;
   let balise: RegExpExecArray | null;
 
-  const poser = (parent: Arbre, nom: string, valeur: Noeud) => {
-    const deja = parent[nom];
-    if (deja === undefined) parent[nom] = valeur;
-    else if (Array.isArray(deja)) deja.push(valeur);
-    else parent[nom] = [deja, valeur];
+  const setNode = (parent: Tree, name: string, value: TreeNode) => {
+    const already = parent[name];
+    if (already === undefined) parent[name] = value;
+    else if (Array.isArray(already)) already.push(value);
+    else parent[name] = [already, value];
   };
 
-  while ((balise = balises.exec(texteBrut)) !== null) {
-    const courant = pile[pile.length - 1]!;
-    courant.texte += texteBrut.slice(position, balise.index);
+  while ((balise = balises.exec(plainText)) !== null) {
+    const current = stack[stack.length - 1]!;
+    current.text += plainText.slice(position, balise.index);
     position = balises.lastIndex;
 
-    const [, fermante, nom, , videe] = balise;
+    const [, closing, name, , selfClosing] = balise;
 
     // <TAG/> : un élément sans contenu. Il existe, et ne porte rien.
-    if (videe) {
-      poser(courant.enfants, nom!, "");
+    if (selfClosing) {
+      setNode(current.children, name!, "");
       continue;
     }
 
-    if (fermante) {
-      const ferme = pile.pop()!;
-      const parent = pile[pile.length - 1];
+    if (closing) {
+      const closed = stack.pop()!;
+      const parent = stack[stack.length - 1];
       // Un élément qui n'a pas d'enfant vaut son texte ; sinon ses enfants.
       // Le texte qui traîne autour d'éléments (indentation, sauts de ligne) se
       // perd, et c'est bien ce qu'on veut.
-      const valeur: Noeud =
-        Object.keys(ferme.enfants).length > 0 ? ferme.enfants : detexter(ferme.texte).trim();
-      if (parent) poser(parent.enfants, nom!, valeur);
+      const value: TreeNode =
+        Object.keys(closed.children).length > 0 ? closed.children : stripTags(closed.text).trim();
+      if (parent) setNode(parent.children, name!, value);
       continue;
     }
 
-    pile.push({ enfants: {}, texte: "" });
+    stack.push({ children: {}, text: "" });
   }
 
-  return racine;
+  return root;
 };
 
 /** Un chemin dans l'arbre, ou une chaîne vide : rien n'est jamais obligatoire. */
-export const texteDe = (arbre: Noeud | undefined, ...chemin: string[]): string => {
-  let courant: Noeud | undefined = arbre;
-  for (const pas of chemin) {
-    if (courant === undefined || typeof courant === "string" || Array.isArray(courant)) return "";
-    courant = courant[pas];
+export const textOf = (tree: TreeNode | undefined, ...path: string[]): string => {
+  let current: TreeNode | undefined = tree;
+  for (const pas of path) {
+    if (current === undefined || typeof current === "string" || Array.isArray(current)) return "";
+    current = current[pas];
   }
-  if (typeof courant === "string") return courant;
-  if (Array.isArray(courant)) return typeof courant[0] === "string" ? courant[0] : "";
+  if (typeof current === "string") return current;
+  if (Array.isArray(current)) return typeof current[0] === "string" ? current[0] : "";
   return "";
 };
 
@@ -129,18 +129,18 @@ export const texteDe = (arbre: Noeud | undefined, ...chemin: string[]): string =
  * l'affichage ne cherche pas à rendre la profondeur, il montre des couples.
  * Plusieurs valeurs de même nom se lisent à la suite, séparées par une virgule.
  */
-const aplatir = (noeud: Noeud, prefixe = "", dans: AssetEntry = {}): AssetEntry => {
-  if (typeof noeud === "string") {
-    if (noeud) dans[prefixe || "VALEUR"] = noeud;
+const aplatir = (treeNode: TreeNode, prefix = "", dans: AssetEntry = {}): AssetEntry => {
+  if (typeof treeNode === "string") {
+    if (treeNode) dans[prefix || "VALEUR"] = treeNode;
     return dans;
   }
-  if (Array.isArray(noeud)) {
-    const valeurs = noeud.filter((v): v is string => typeof v === "string" && v !== "");
-    if (valeurs.length) dans[prefixe || "VALEUR"] = valeurs.join(", ");
+  if (Array.isArray(treeNode)) {
+    const values = treeNode.filter((v): v is string => typeof v === "string" && v !== "");
+    if (values.length) dans[prefix || "VALEUR"] = values.join(", ");
     return dans;
   }
-  for (const [nom, valeur] of Object.entries(noeud)) {
-    aplatir(valeur, prefixe ? `${prefixe}.${nom}` : nom, dans);
+  for (const [name, value] of Object.entries(treeNode)) {
+    aplatir(value, prefix ? `${prefix}.${name}` : name, dans);
   }
   return dans;
 };
@@ -153,16 +153,16 @@ const aplatir = (noeud: Noeud, prefixe = "", dans: AssetEntry = {}): AssetEntry 
  * Les sections vides sont écartées : elles n'apprennent rien, et un agent en
  * envoie régulièrement.
  */
-export const sectionsDe = (contenu: Noeud | undefined): AssetSection[] => {
-  if (!contenu || typeof contenu === "string" || Array.isArray(contenu)) return [];
+export const sectionsOf = (content: TreeNode | undefined): AssetSection[] => {
+  if (!content || typeof content === "string" || Array.isArray(content)) return [];
 
-  return Object.entries(contenu)
-    .map(([nom, valeur]) => {
-      const brutes = Array.isArray(valeur) ? valeur : [valeur];
-      const entries = brutes
-        .map((entree) => (typeof entree === "string" ? { [nom]: entree } : aplatir(entree)))
-        .filter((entree) => Object.keys(entree).length > 0);
-      return { name: nom, entries };
+  return Object.entries(content)
+    .map(([name, value]) => {
+      const raw = Array.isArray(value) ? value : [value];
+      const entries = raw
+        .map((entry) => (typeof entry === "string" ? { [name]: entry } : aplatir(entry)))
+        .filter((entry) => Object.keys(entry).length > 0);
+      return { name: name, entries };
     })
     .filter((section) => section.entries.length > 0)
     .sort((a, b) => a.name.localeCompare(b.name));

@@ -10,27 +10,27 @@ export const diskUsage = (disk: Asset["system_disk"]): number | null =>
     : null;
 
 /** Au-delà, le disque système est presque plein : la liste le dit en rouge. */
-export const DISQUE_PLEIN = 85;
+export const DISK_FULL = 85;
 
 /** Au-delà, un poste qui ne s'est pas inventorié est sans doute éteint ou perdu. */
-export const JOURS_SANS_INVENTAIRE = 30;
+export const DAYS_WITHOUT_INVENTORY = 30;
 
 /** Les jours écoulés depuis le dernier inventaire. */
-export const joursDepuisInventaire = (poste: Asset): number =>
-  dayjs().diff(dayjs(poste.last_inventory), "day", true);
+export const daysSinceInventory = (workstation: Asset): number =>
+  dayjs().diff(dayjs(workstation.last_inventory), "day", true);
 
 /**
  * « Windows 11 Professionnel 23H2 » : le nom, et la version s'il ne la dit pas
  * déjà. Sous macOS, le numéro de build entre parenthèses — « (23F79) » —
  * n'apprend rien à qui lit la liste : il est retiré.
  */
-export const libelleOs = (os: NonNullable<Asset["os"]>): string => {
-  const propre = (texte: string) =>
-    os.family === "macos" ? texte.replace(/\s*\([^)]*\)/g, "").trim() : texte;
-  const nom = propre(os.name);
+export const osLabel = (os: NonNullable<Asset["os"]>): string => {
+  const propre = (text: string) =>
+    os.family === "macos" ? text.replace(/\s*\([^)]*\)/g, "").trim() : text;
+  const name = propre(os.name);
   const version = propre(os.version);
-  const libelle = version && !nom.includes(version) ? `${nom} ${version}`.trim() : nom;
+  const label = version && !name.includes(version) ? `${name} ${version}`.trim() : name;
   // L'édition « Entreprise » (ou « Enterprise ») va de soi sur un parc
   // d'entreprise : le nom tient mieux sans.
-  return libelle.replace(/\s*\b(Entreprise|Enterprise)\b/gi, "").trim();
+  return label.replace(/\s*\b(Entreprise|Enterprise)\b/gi, "").trim();
 };

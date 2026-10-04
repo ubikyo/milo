@@ -14,7 +14,7 @@ import { api, entraLoginUrl } from "../api";
 import { passwordIssues } from "@milo/shared";
 import Logo from "../components/ui/Logo";
 import PasswordRules from "../components/ui/PasswordRules";
-import { messageErreur, notifierErreur } from "../lib/errors";
+import { errorMessage, notifyError } from "../lib/errors";
 import type { AuthResult } from "@milo/shared";
 import type { FormEvent } from "react";
 
@@ -53,7 +53,7 @@ export default function LoginPage({
 
   // Le refus rapporté par le retour de Microsoft, porté comme toute erreur.
   useEffect(() => {
-    if (initialError) notifierErreur(initialError);
+    if (initialError) notifyError(initialError);
   }, [initialError]);
 
   const incomplete =
@@ -72,7 +72,7 @@ export default function LoginPage({
           : await api.login(username.trim(), password),
       );
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
       setBusy(false);
     }

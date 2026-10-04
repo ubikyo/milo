@@ -9,15 +9,15 @@ import type { DirectoryUser } from "@milo/shared";
 // adresse externe se tape telle quelle, et Entrée, la virgule ou le
 // point-virgule la posent.
 
-const DELAI_RECHERCHE = 300;
-const RECHERCHE_MIN = 2;
+const SEARCH_DELAY = 300;
+const SEARCH_MIN = 2;
 
 /** Une adresse e-mail, à peu près : de quoi écarter une faute de frappe. */
-export const estUneAdresse = (texte: string): boolean =>
-  /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(texte.trim());
+export const isAddress = (text: string): boolean =>
+  /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(text.trim());
 
 /** La largeur du libellé : « CC » et « CCI » alignent leur champ. */
-const LARGEUR_LIBELLE = 36;
+const LABEL_WIDTH = 36;
 
 interface RecipientsInputProps {
   label: string;
@@ -26,27 +26,27 @@ interface RecipientsInputProps {
 }
 
 export default function RecipientsInput({ label, value, onChange }: RecipientsInputProps) {
-  const [recherche, setRecherche] = useState("");
-  const [annuaire, setAnnuaire] = useState<DirectoryUser[]>([]);
+  const [search, setSearch] = useState("");
+  const [directory, setDirectory] = useState<DirectoryUser[]>([]);
 
   useEffect(() => {
-    const terme = recherche.trim();
-    if (terme.length < RECHERCHE_MIN || estUneAdresse(terme)) {
-      setAnnuaire([]);
+    const term = search.trim();
+    if (term.length < SEARCH_MIN || isAddress(term)) {
+      setDirectory([]);
       return;
     }
-    let annule = false;
-    const minuterie = setTimeout(() => {
+    let cancelled = false;
+    const timeout = setTimeout(() => {
       api
-        .searchDirectoryUsers(terme)
-        .then((trouves) => !annule && setAnnuaire(trouves.filter((p) => p.email)))
-        .catch(() => !annule && setAnnuaire([]));
-    }, DELAI_RECHERCHE);
+        .searchDirectoryUsers(term)
+        .then((matches) => !cancelled && setDirectory(matches.filter((p) => p.email)))
+        .catch(() => !cancelled && setDirectory([]));
+    }, SEARCH_DELAY);
     return () => {
-      annule = true;
-      clearTimeout(minuterie);
+      cancelled = true;
+      clearTimeout(timeout);
     };
-  }, [recherche]);
+  }, [search]);
 
   // Les personnes de l'annuaire, par leur adresse : c'est elle que le tag
   // porte, et elle qui part dans l'e-mail. Une adresse n'y figure qu'une
@@ -54,7 +54,7 @@ export default function RecipientsInput({ label, value, onChange }: RecipientsIn
   // Mantine refuse — en faisant tomber la page — deux options de même valeur.
   const suggestions = [
     ...new Map(
-      annuaire
+      directory
         .map((p) => ({ value: p.email.toLowerCase(), label: `${p.name} <${p.email}>` }))
         .filter((o) => !value.includes(o.value))
         .map((o) => [o.value, o] as const),
@@ -73,7 +73,7 @@ export default function RecipientsInput({ label, value, onChange }: RecipientsIn
         borderBottom: "1px solid light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-4))",
       }}
     >
-      <Text size="sm" fw={600} c="dimmed" w={LARGEUR_LIBELLE} style={{ flexShrink: 0 }}>
+      <Text size="sm" fw={600} c="dimmed" w={LABEL_WIDTH} style={{ flexShrink: 0 }}>
         {label}
       </Text>
       <TagsInput
@@ -86,10 +86,10 @@ export default function RecipientsInput({ label, value, onChange }: RecipientsIn
         // Seules les adresses bien formées deviennent des tags : un nom tapé
         // sans choisir la personne dans la liste ne part nulle part.
         onChange={(tags) =>
-          onChange([...new Set(tags.map((t) => t.trim().toLowerCase()).filter(estUneAdresse))])
+          onChange([...new Set(tags.map((t) => t.trim().toLowerCase()).filter(isAddress))])
         }
-        searchValue={recherche}
-        onSearchChange={setRecherche}
+        searchValue={search}
+        onSearchChange={setSearch}
         data={suggestions}
         // L'annuaire a déjà cherché : la liste ne se refiltre pas sur ce qu'on tape.
         filter={({ options }) => options}

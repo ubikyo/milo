@@ -5,7 +5,7 @@ import dayjs from "dayjs";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import classes from "../assets/styles/AccessNumero.module.css";
-import { avec } from "./types";
+import { withField } from "./types";
 import type { AccessWidget } from "./types";
 import type { AccessCalendarEvent, Id } from "@milo/shared";
 
@@ -15,120 +15,120 @@ import type { AccessCalendarEvent, Id } from "@milo/shared";
 // permission d'application Calendars.Read) : chacun voit les siens, quel que
 // soit le tableau. Un jour choisi montre ses rendez-vous sous le mois.
 
-const RENDEZ_VOUS = "rendezVous";
-const LISTE = "liste";
-const ENCADRE = "encadre";
+const APPOINTMENTS = "rendezVous";
+const LIST = "liste";
+const FRAMED = "encadre";
 
 /** La page relit l'agenda à ce rythme : un rendez-vous pris ailleurs finit par paraître. */
-const RELECTURE = 5 * 60_000;
+const RELOAD_INTERVAL = 5 * 60_000;
 
 /** Au plus, les rendez-vous listés sous le mois. */
-const LISTE_MAX = 6;
+const LIST_MAX = 6;
 
-const coche = (config: unknown, cle: string, defaut: boolean): boolean => {
-  const valeur = (config as Record<string, unknown> | null)?.[cle];
-  return valeur === undefined ? defaut : Boolean(valeur);
+const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean => {
+  const value = (config as Record<string, unknown> | null)?.[key];
+  return value === undefined ? defaultValue : Boolean(value);
 };
 
 /** Les jours qu'un rendez-vous couvre, au format des jours du calendrier. */
-const joursDe = (r: AccessCalendarEvent): string[] => {
+const daysOf = (r: AccessCalendarEvent): string[] => {
   // Un rendez-vous d'une journée entière finit à minuit le lendemain, en UTC :
   // on le lit à la date, sans fuseau, pour ne pas déborder d'un jour.
-  const debut = r.all_day ? dayjs(r.start.slice(0, 10)) : dayjs(r.start);
-  const fin = r.all_day ? dayjs(r.end.slice(0, 10)).subtract(1, "day") : dayjs(r.end).subtract(1, "minute");
-  const jours: string[] = [];
-  for (let j = debut.startOf("day"); !j.isAfter(fin, "day") && jours.length < 62; j = j.add(1, "day")) {
-    jours.push(j.format("YYYY-MM-DD"));
+  const start = r.all_day ? dayjs(r.start.slice(0, 10)) : dayjs(r.start);
+  const end = r.all_day ? dayjs(r.end.slice(0, 10)).subtract(1, "day") : dayjs(r.end).subtract(1, "minute");
+  const days: string[] = [];
+  for (let j = start.startOf("day"); !j.isAfter(end, "day") && days.length < 62; j = j.add(1, "day")) {
+    days.push(j.format("YYYY-MM-DD"));
   }
-  return jours.length ? jours : [debut.format("YYYY-MM-DD")];
+  return days.length ? days : [start.format("YYYY-MM-DD")];
 };
 
-const heure = (iso: string) => dayjs(iso).format("HH:mm");
+const hour = (iso: string) => dayjs(iso).format("HH:mm");
 
-type Etat =
+type State =
   | { phase: "attente" }
-  | { phase: "pret"; rendezVous: AccessCalendarEvent[] }
+  | { phase: "pret"; appointments: AccessCalendarEvent[] }
   | { phase: "erreur"; message: string };
 
-function Calendrier({ blockId, config }: { blockId: Id; config: unknown }) {
-  const avecRendezVous = coche(config, RENDEZ_VOUS, false);
-  const avecListe = coche(config, LISTE, true);
-  const [mois, setMois] = useState(() => dayjs().startOf("month").format("YYYY-MM-DD"));
-  const [choisi, setChoisi] = useState(() => dayjs().format("YYYY-MM-DD"));
-  const [etat, setEtat] = useState<Etat>({ phase: "attente" });
+function CalendarWidget({ blockId, config }: { blockId: Id; config: unknown }) {
+  const withAppointments = isChecked(config, APPOINTMENTS, false);
+  const withList = isChecked(config, LIST, true);
+  const [months, setMonth] = useState(() => dayjs().startOf("month").format("YYYY-MM-DD"));
+  const [selected, setChosen] = useState(() => dayjs().format("YYYY-MM-DD"));
+  const [state, setState] = useState<State>({ phase: "attente" });
 
   // La grille montre quelques jours des mois voisins : la période les couvre.
   useEffect(() => {
-    if (!avecRendezVous || !blockId) return;
-    let actif = true;
-    const debut = dayjs(mois).startOf("month").subtract(7, "day").toDate();
-    const fin = dayjs(mois).endOf("month").add(8, "day").startOf("day").toDate();
-    const lire = () =>
+    if (!withAppointments || !blockId) return;
+    let active = true;
+    const start = dayjs(months).startOf("month").subtract(7, "day").toDate();
+    const end = dayjs(months).endOf("month").add(8, "day").startOf("day").toDate();
+    const read = () =>
       api
-        .getAccessCalendar(blockId, debut, fin)
-        .then((rendezVous) => actif && setEtat({ phase: "pret", rendezVous }))
-        .catch((e: Error) => actif && setEtat({ phase: "erreur", message: e.message }));
-    lire();
-    const battement = setInterval(lire, RELECTURE);
+        .getAccessCalendar(blockId, start, end)
+        .then((appointments) => active && setState({ phase: "pret", appointments }))
+        .catch((e: Error) => active && setState({ phase: "erreur", message: e.message }));
+    read();
+    const heartbeat = setInterval(read, RELOAD_INTERVAL);
     return () => {
-      actif = false;
-      clearInterval(battement);
+      active = false;
+      clearInterval(heartbeat);
     };
-  }, [avecRendezVous, blockId, mois]);
+  }, [withAppointments, blockId, months]);
 
-  const parJour = useMemo(() => {
-    const carte = new Map<string, AccessCalendarEvent[]>();
-    if (etat.phase !== "pret") return carte;
-    for (const r of etat.rendezVous) {
-      for (const jour of joursDe(r)) carte.set(jour, [...(carte.get(jour) ?? []), r]);
+  const byDay = useMemo(() => {
+    const card = new Map<string, AccessCalendarEvent[]>();
+    if (state.phase !== "pret") return card;
+    for (const r of state.appointments) {
+      for (const day of daysOf(r)) card.set(day, [...(card.get(day) ?? []), r]);
     }
-    return carte;
-  }, [etat]);
+    return card;
+  }, [state]);
 
-  const duJour = parJour.get(choisi) ?? [];
+  const ofDay = byDay.get(selected) ?? [];
 
-  const contenu = (
+  const content = (
     <Stack gap="sm">
       <Calendar
         fullWidth
-        date={mois}
-        onDateChange={setMois}
+        date={months}
+        onDateChange={setMonth}
         // Le calendrier ne descend pas au-delà du mois : les niveaux « année »
         // et « décennie » n'ont rien à montrer ici.
         maxLevel="year"
         highlightToday
         getDayProps={(date) => ({
-          selected: date === choisi,
-          onClick: () => setChoisi(date),
+          selected: date === selected,
+          onClick: () => setChosen(date),
         })}
         renderDay={(date) => {
-          const nombre = parJour.get(date)?.length ?? 0;
+          const count = byDay.get(date)?.length ?? 0;
           return (
-            <Indicator size={5} color="teal" offset={-3} disabled={!nombre} position="bottom-center">
+            <Indicator size={5} color="teal" offset={-3} disabled={!count} position="bottom-center">
               <div>{dayjs(date).date()}</div>
             </Indicator>
           );
         }}
       />
-      {avecRendezVous && etat.phase === "erreur" && (
+      {withAppointments && state.phase === "erreur" && (
         <Text size="xs" c="red" lineClamp={3}>
-          {etat.message}
+          {state.message}
         </Text>
       )}
-      {avecRendezVous && avecListe && etat.phase === "pret" && (
+      {withAppointments && withList && state.phase === "pret" && (
         <Stack gap={4}>
           <Text size="xs" c="dimmed" tt="capitalize">
-            {dayjs(choisi).format("dddd D MMMM")}
+            {dayjs(selected).format("dddd D MMMM")}
           </Text>
-          {duJour.length === 0 && (
+          {ofDay.length === 0 && (
             <Text size="sm" c="dimmed">
               Aucun rendez-vous
             </Text>
           )}
-          {duJour.slice(0, LISTE_MAX).map((r) => (
+          {ofDay.slice(0, LIST_MAX).map((r) => (
             <Group key={r.id} gap="xs" wrap="nowrap" align="baseline">
               <Text size="xs" c="dimmed" style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }} w={84}>
-                {r.all_day ? "Journée" : `${heure(r.start)} – ${heure(r.end)}`}
+                {r.all_day ? "Journée" : `${hour(r.start)} – ${hour(r.end)}`}
               </Text>
               <Box style={{ minWidth: 0 }}>
                 <Anchor
@@ -152,9 +152,9 @@ function Calendrier({ blockId, config }: { blockId: Id; config: unknown }) {
               </Box>
             </Group>
           ))}
-          {duJour.length > LISTE_MAX && (
+          {ofDay.length > LIST_MAX && (
             <Text size="xs" c="dimmed">
-              et {duJour.length - LISTE_MAX} de plus
+              et {ofDay.length - LIST_MAX} de plus
             </Text>
           )}
         </Stack>
@@ -162,44 +162,44 @@ function Calendrier({ blockId, config }: { blockId: Id; config: unknown }) {
     </Stack>
   );
 
-  if (!coche(config, ENCADRE, false)) return contenu;
+  if (!isChecked(config, FRAMED, false)) return content;
   return (
     <Box className={classes.encart} style={{ border: "none" }}>
-      {contenu}
+      {content}
     </Box>
   );
 }
 
-export const calendrierWidget: AccessWidget = {
+export const calendarWidget: AccessWidget = {
   type: "calendar",
   kind: "m365",
   label: "Calendrier",
   icon: IconCalendar,
-  defaultConfig: { [RENDEZ_VOUS]: false, [LISTE]: true, [ENCADRE]: false },
+  defaultConfig: { [APPOINTMENTS]: false, [LIST]: true, [FRAMED]: false },
   // Les jours et les flèches du mois prennent leurs clics.
   ownClicks: true,
 
-  Display: Calendrier,
+  Display: CalendarWidget,
 
-  marges: () => ({ haute: 0, basse: 15 }),
+  margins: () => ({ top: 0, bottom: 15 }),
 
   // Il dessine lui-même son cadre, réglé dans le bloc « Apparence » du tiroir.
-  cadrePropre: true,
+  ownFrame: true,
 
   Config: ({ config, onChange }) => (
     <Stack gap="sm">
       <Checkbox
         label="Marquer mes rendez-vous Outlook (Entra)"
         description="Chacun voit les siens. Demande la permission Calendars.Read sur l'application Entra."
-        checked={coche(config, RENDEZ_VOUS, false)}
-        onChange={(e) => onChange(avec(config, RENDEZ_VOUS, e.currentTarget.checked))}
+        checked={isChecked(config, APPOINTMENTS, false)}
+        onChange={(e) => onChange(withField(config, APPOINTMENTS, e.currentTarget.checked))}
         color="teal"
       />
       <Checkbox
         label="Lister les rendez-vous du jour choisi"
-        checked={coche(config, LISTE, true)}
-        disabled={!coche(config, RENDEZ_VOUS, false)}
-        onChange={(e) => onChange(avec(config, LISTE, e.currentTarget.checked))}
+        checked={isChecked(config, LIST, true)}
+        disabled={!isChecked(config, APPOINTMENTS, false)}
+        onChange={(e) => onChange(withField(config, LIST, e.currentTarget.checked))}
         color="teal"
       />
     </Stack>

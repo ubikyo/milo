@@ -15,7 +15,7 @@ export interface LookupItem {
   name: string;
   project_count?: number;
 }
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 
 /**
  * Liste éditable pour les ressources qui n'ont qu'un nom : sociétés et
@@ -62,17 +62,17 @@ interface LookupManagerProps {
  * et un compte facultatif à l'intérieur d'un attribut JSX se lisaient mal, et
  * obligeaient à répéter la vérification du cas « rien à supprimer ».
  */
-function SuppressionMessage({ item }: { item: LookupItem | null }) {
+function DeletionMessage({ item }: { item: LookupItem | null }) {
   if (!item) return null;
-  const projets = item.project_count ?? 0;
+  const projects = item.project_count ?? 0;
 
   // Un élément encore utilisé ne se supprime pas : le serveur refuse, et dit
   // par combien de ressources. On le dit dès ici quand on le sait déjà.
-  return projets > 0 ? (
+  return projects > 0 ? (
     <>
       « {item.name} » est utilisé dans{" "}
       <strong>
-        {projets} projet{projets > 1 ? "s" : ""}
+        {projects} projet{projects > 1 ? "s" : ""}
       </strong>{" "}
       : il ne pourra pas être supprimé tant qu'il leur est rattaché.
     </>
@@ -118,7 +118,7 @@ export default function LookupManager({
       await action();
       return true;
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
       return false;
     } finally {
       setBusy(false);
@@ -137,10 +137,10 @@ export default function LookupManager({
 
   const saveEdit = async () => {
     // Un nom vidé ou inchangé : on referme sans rien demander au serveur.
-    const nom = editingName.trim();
+    const name = editingName.trim();
     const item = items.find((i) => i.id === editingId);
-    if (!nom || nom === item?.name || editingId === null) return cancelEdit();
-    if (await run(() => onUpdate(editingId, nom))) cancelEdit();
+    if (!name || name === item?.name || editingId === null) return cancelEdit();
+    if (await run(() => onUpdate(editingId, name))) cancelEdit();
   };
 
   // Le champ d'ajout garde le focus : la saisie suivante enchaîne.
@@ -250,7 +250,7 @@ export default function LookupManager({
           setPendingDelete(null);
         }}
         title={`Supprimer ${entityLabel}`}
-        message={<SuppressionMessage item={pendingDelete} />}
+        message={<DeletionMessage item={pendingDelete} />}
       />
     </Stack>
   );

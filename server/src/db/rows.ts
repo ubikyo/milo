@@ -8,8 +8,8 @@ import type {
   SupportMailStatus,
   CardKind,
   Id,
-  FormeEcheance,
-  Rappel,
+  DueShape,
+  Reminder,
   Recurrence,
   SectionWidthUnit,
   SqliteBool,
@@ -207,9 +207,9 @@ export interface TaskCardRow {
   description: string;
   due_date: string;
   start_date: string;
-  due_form: FormeEcheance;
+  due_form: DueShape;
   recurrence: Recurrence;
-  reminder: Rappel;
+  reminder: Reminder;
   reminded_for: string;
   overdue_for: string;
   cover_interval: number;

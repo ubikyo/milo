@@ -1,6 +1,6 @@
 import { IconCloud, IconServer2 } from "@tabler/icons-react";
 
-interface OrigineAnnuaireProps {
+interface DirectoryOriginProps {
   synced?: boolean;
   /**
    * La largeur de la case où l'icône se centre. Dans la liste des acteurs,
@@ -15,16 +15,16 @@ interface OrigineAnnuaireProps {
  * sa ligne : synchronisé depuis l'Active Directory local, ou créé dans le
  * cloud. Deux comptes de même nom et de même adresse se distinguent ainsi.
  */
-export default function OrigineAnnuaire({ synced, largeur }: OrigineAnnuaireProps) {
-  const Icone = synced ? IconServer2 : IconCloud;
-  const libelle = synced ? "Active Directory (AD DS)" : "Cloud";
+export default function DirectoryOrigin({ synced, largeur }: DirectoryOriginProps) {
+  const Icon = synced ? IconServer2 : IconCloud;
+  const label = synced ? "Active Directory (AD DS)" : "Cloud";
   return (
     <span
-      title={libelle}
-      aria-label={libelle}
+      title={label}
+      aria-label={label}
       style={{ display: "flex", justifyContent: "center", flexShrink: 0, width: largeur }}
     >
-      <Icone size={16} color="var(--mantine-color-dimmed)" />
+      <Icon size={16} color="var(--mantine-color-dimmed)" />
     </span>
   );
 }

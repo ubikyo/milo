@@ -11,21 +11,21 @@ import {
 import { Fragment, useEffect, useRef, useState } from "react";
 import { ADD_ACTION, RED } from "../../themes/colors";
 import DeleteConfirmModal from "./DeleteConfirmModal";
-import HeriteConfirmModal from "./HeriteConfirmModal";
+import InheritConfirmModal from "./HeriteConfirmModal";
 import ModeBar from "./ModeBar";
-import ContextesMenu from "./ContextesMenu";
-import SaisieAjustee from "./SaisieAjustee";
-import PointMenu, { ancreDuMenu, type PointMenuPosition } from "./PointMenu";
+import ContextsMenu from "./ContextesMenu";
+import AdjustedInput from "./SaisieAjustee";
+import PointMenu, { menuAnchor, type PointMenuPosition } from "./PointMenu";
 import { InsertLine, useTabReorder } from "./useTabReorder";
 import { tabStyle } from "../../themes/tabs";
 import type { AccountSlot } from "./AccountControls";
 import type { ReactNode, SyntheticEvent } from "react";
 
 /** Ce qui se passe dans la liste des contextes ne remonte pas à l'onglet. */
-const garder = (e: SyntheticEvent) => e.stopPropagation();
+const keep = (e: SyntheticEvent) => e.stopPropagation();
 
 /** Un onglet : les tableaux des modes n'ont en commun qu'un identifiant et un nom. */
-interface Onglet {
+interface Tab {
   id: number;
   name: string;
   /** Les modes dont les onglets se ferment aux autres : Accès, Projet et Tâche. */
@@ -48,7 +48,7 @@ interface Onglet {
 // appartient à ModeBar : elle est la même dans tous les modes, y compris ceux
 // qui n'ont pas de tableaux.
 interface BoardTabsProps {
-  boards: Onglet[];
+  boards: Tab[];
   value: string | null;
   onChange: (value: string | null) => void;
   /** Ajouter un onglet. Sans lui — sans le droit d'ajouter —, pas de « + ». */
@@ -89,7 +89,7 @@ interface BoardTabsProps {
    * Le décocher se confirme. Sans lui, le menu n'en propose pas.
    */
   inheritance?: {
-    of: (onglet: Onglet) => boolean;
+    of: (tab: Tab) => boolean;
     onToggle: (id: number) => void | Promise<void>;
   };
   /** La société et le compte, que ModeBar pose au bout de la rangée. */
@@ -100,8 +100,8 @@ interface BoardTabsProps {
    * L'onglet à passer en saisie de son nom dès qu'il paraît — celui qu'on
    * vient de créer. « onRenommageOuvert » dit que c'est fait.
    */
-  aRenommer?: number | null;
-  onRenommageOuvert?: () => void;
+  toRename?: number | null;
+  onRenameOpened?: () => void;
 }
 
 export default function BoardTabs({
@@ -120,89 +120,89 @@ export default function BoardTabs({
   inheritance,
   account,
   actions,
-  aRenommer,
-  onRenommageOuvert,
+  toRename,
+  onRenameOpened,
 }: BoardTabsProps) {
-  const { contextes } = account;
+  const { contexts } = account;
   // Le menu contextuel ouvert, et l'onglet qu'il vise.
-  const [menu, setMenu] = useState<{ onglet: Onglet; position: PointMenuPosition } | null>(null);
+  const [menu, setMenu] = useState<{ tab: Tab; position: PointMenuPosition } | null>(null);
   // L'onglet dont on confirme la suppression.
-  const [aSupprimer, setASupprimer] = useState<Onglet | null>(null);
+  const [toDelete, setToDelete] = useState<Tab | null>(null);
   // L'onglet privé qu'on s'apprête à ouvrir à tous : ce geste se confirme.
-  const [aOuvrir, setAOuvrir] = useState<Onglet | null>(null);
+  const [toOpen, setToOpen] = useState<Tab | null>(null);
   // L'onglet dont on s'apprête à basculer « Hérité », et l'état qu'on quitte :
   // ce geste se confirme dans les deux sens. L'état reste posé à la
   // fermeture : le message ne change pas pendant que la fenêtre s'efface.
-  const [aBasculer, setABasculer] = useState<{
-    onglet: Onglet | null;
-    herite: boolean;
-  }>({ onglet: null, herite: true });
-  const fermerBascule = () => setABasculer((b) => ({ ...b, onglet: null }));
-  const [plusSurvole, setPlusSurvole] = useState(false);
+  const [toToggle, setToSwitch] = useState<{
+    tab: Tab | null;
+    inherits: boolean;
+  }>({ tab: null, inherits: true });
+  const closeToggle = () => setToSwitch((b) => ({ ...b, tab: null }));
+  const [plusHovered, setMoreHovered] = useState(false);
   // L'onglet en cours de renommage et le nom qu'on y tape.
-  const [renomme, setRenomme] = useState<{ id: number; name: string } | null>(null);
+  const [renamed, setRenamed] = useState<{ id: number; name: string } | null>(null);
   // Le nom validé, montré le temps que le serveur réponde et que la rangée
   // revienne relue : sans lui, l'ancien nom reparaîtrait un instant.
-  const [provisoire, setProvisoire] = useState<{ id: number; name: string } | null>(null);
+  const [provisional, setProvisional] = useState<{ id: number; name: string } | null>(null);
   // Vrai dès que la saisie est conclue : Entrée suivie de la perte du focus ne
   // doit pas enregistrer deux fois.
-  const conclu = useRef(false);
+  const finished = useRef(false);
 
   // Le glisser-déposer des onglets : voir useTabReorder.
   const {
-    ordered: onglets,
+    ordered: tabs,
     tabProps,
     guardChange,
     insertAt,
   } = useTabReorder(boards, (board) => board.id, onReorder);
-  const changerOnglet = guardChange(onChange);
+  const changeTab = guardChange(onChange);
 
-  const ouvrirRenommage = (onglet: Onglet) => {
+  const ouvrirRenommage = (tab: Tab) => {
     if (!onRename) return;
-    conclu.current = false;
-    setRenomme({ id: onglet.id, name: onglet.name });
+    finished.current = false;
+    setRenamed({ id: tab.id, name: tab.name });
   };
 
   // L'onglet qu'on vient de créer passe en saisie de son nom dès qu'il paraît
   // dans la rangée relue.
   useEffect(() => {
-    if (aRenommer == null) return;
-    const onglet = boards.find((b) => b.id === aRenommer);
-    if (!onglet) return;
-    ouvrirRenommage(onglet);
-    onRenommageOuvert?.();
+    if (toRename == null) return;
+    const tab = boards.find((b) => b.id === toRename);
+    if (!tab) return;
+    ouvrirRenommage(tab);
+    onRenameOpened?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aRenommer, boards]);
+  }, [toRename, boards]);
 
-  const conclureRenommage = async (valider: boolean) => {
-    if (!renomme || conclu.current) return;
-    conclu.current = true;
-    const { id, name } = renomme;
-    setRenomme(null);
-    const nom = name.trim();
-    const onglet = boards.find((b) => b.id === id);
-    if (!valider || !nom || !onglet || nom === onglet.name || !onRename) return;
-    setProvisoire({ id, name: nom });
+  const finishRename = async (validate: boolean) => {
+    if (!renamed || finished.current) return;
+    finished.current = true;
+    const { id, name } = renamed;
+    setRenamed(null);
+    const trimmedName = name.trim();
+    const tab = boards.find((b) => b.id === id);
+    if (!validate || !trimmedName || !tab || trimmedName === tab.name || !onRename) return;
+    setProvisional({ id, name: trimmedName });
     try {
-      await onRename(id, nom);
+      await onRename(id, trimmedName);
     } finally {
-      setProvisoire(null);
+      setProvisional(null);
     }
   };
 
-  const supprimer = async () => {
-    const onglet = aSupprimer;
-    setASupprimer(null);
-    if (onglet && onDelete) await onDelete(onglet.id);
+  const remove = async () => {
+    const tab = toDelete;
+    setToDelete(null);
+    if (tab && onDelete) await onDelete(tab.id);
   };
 
   // « Renommer » ne vaut que si l'on peut modifier l'onglet : sans tiroir ni
   // renommage, il ne ferait rien.
-  const modifiable = Boolean(onEdit || onRename);
+  const editable = Boolean(onEdit || onRename);
   // Un menu sans rien dedans ne s'ouvre pas : c'est le cas de qui ne fait que
   // lire.
-  const menuUtile =
-    modifiable ||
+  const usefulMenu =
+    editable ||
     Boolean(
       onDelete ||
         onCopyContexts ||
@@ -211,12 +211,12 @@ export default function BoardTabs({
     );
 
   // Copier les contextes de l'onglet visé : seulement s'il en a au moins un.
-  const copierContextes = Boolean(onCopyContexts) && (menu?.onglet.contexts?.length ?? 0) > 0;
+  const copyContexts = Boolean(onCopyContexts) && (menu?.tab.contexts?.length ?? 0) > 0;
 
   return (
     <>
-      <ModeBar value={value} onChange={changerOnglet} account={account} actions={actions}>
-        {onglets.map((board, index) => (
+      <ModeBar value={value} onChange={changeTab} account={account} actions={actions}>
+        {tabs.map((board, index) => (
           <Fragment key={board.id}>
             {insertAt(index) && <InsertLine />}
             <Tabs.Tab
@@ -224,7 +224,7 @@ export default function BoardTabs({
               {...tabProps(board.id, index, tabStyle(value === String(board.id)))}
               onContextMenu={(e) => {
                 // Le menu de l'onglet pend sous lui, comme celui d'une rangée.
-                if (menuUtile) setMenu({ onglet: board, position: ancreDuMenu(e) });
+                if (usefulMenu) setMenu({ tab: board, position: menuAnchor(e) });
               }}
               onDoubleClick={() => ouvrirRenommage(board)}
             >
@@ -233,12 +233,12 @@ export default function BoardTabs({
                   petit, et le champ s'aligne en haut de sa ligne
                   (SaisieAjustee). */}
               <span style={{ display: "inline-flex", alignItems: "baseline" }}>
-                {renomme?.id === board.id ? (
-                  <SaisieAjustee
-                    value={renomme.name}
+                {renamed?.id === board.id ? (
+                  <AdjustedInput
+                    value={renamed.name}
                     onChange={(e) => {
                       const name = e.currentTarget.value;
-                      setRenomme((r) => (r ? { ...r, name } : r));
+                      setRenamed((r) => (r ? { ...r, name } : r));
                     }}
                     // Les touches restent au champ : sans cela, les flèches
                     // changeraient d'onglet et Entrée enregistrerait deux fois.
@@ -246,14 +246,14 @@ export default function BoardTabs({
                       e.stopPropagation();
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        conclureRenommage(true);
+                        finishRename(true);
                       }
                       if (e.key === "Escape") {
                         e.preventDefault();
-                        conclureRenommage(false);
+                        finishRename(false);
                       }
                     }}
-                    onBlur={() => conclureRenommage(true)}
+                    onBlur={() => finishRename(true)}
                     // L'appui dans le champ place le curseur : il ne commence pas
                     // à glisser l'onglet, et le clic ne le rouvre pas.
                     onPointerDown={(e) => e.stopPropagation()}
@@ -263,8 +263,8 @@ export default function BoardTabs({
                     autoFocus
                     aria-label={`Renommer ${board.name}`}
                   />
-                ) : provisoire?.id === board.id ? (
-                  provisoire.name
+                ) : provisional?.id === board.id ? (
+                  provisional.name
                 ) : (
                   board.name
                 )}
@@ -274,19 +274,19 @@ export default function BoardTabs({
                     l'onglet glisserait, se renommerait au double clic, ou
                     ouvrirait son menu. */}
                 {value === String(board.id) &&
-                  contextes &&
-                  (contextes.items.length > 0 || contextes.gestion) && (
+                  contexts &&
+                  (contexts.items.length > 0 || contexts.management) && (
                     <span
                       style={{ display: "inline-flex", marginLeft: 12 }}
                       // Arrêté ici, l'appui n'atteint pas non plus ce qui
                       // referme le menu de l'onglet : on le referme soi-même.
                       onPointerDown={(e) => {
                         setMenu(null);
-                        garder(e);
+                        keep(e);
                       }}
-                      onMouseDown={garder}
-                      onClick={garder}
-                      onDoubleClick={garder}
+                      onMouseDown={keep}
+                      onClick={keep}
+                      onDoubleClick={keep}
                       // Arrêté ici, le clic droit n'atteint plus ce qui tait le
                     // menu du navigateur (App) : il le tait lui-même — sauf en
                     // Debug, où ce menu revient.
@@ -294,21 +294,21 @@ export default function BoardTabs({
                       if (!document.documentElement.hasAttribute("data-milo-debug")) {
                         e.preventDefault();
                       }
-                      garder(e);
+                      keep(e);
                     }}
-                      onKeyDown={garder}
-                      onDragStart={garder}
-                      onDragOver={garder}
-                      onDrop={garder}
+                      onKeyDown={keep}
+                      onDragStart={keep}
+                      onDragOver={keep}
+                      onDrop={keep}
                     >
-                      <ContextesMenu {...contextes} dansOnglet />
+                      <ContextsMenu {...contexts} inTab />
                     </span>
                   )}
               </span>
             </Tabs.Tab>
           </Fragment>
         ))}
-        {insertAt(onglets.length) && <InsertLine />}
+        {insertAt(tabs.length) && <InsertLine />}
 
         {/* Au bout du dernier onglet : en ajouter un. Le vert des autres
             gestes « ajouter », un ton plus foncé au survol (AddButton). */}
@@ -318,12 +318,12 @@ export default function BoardTabs({
             size="sm"
             aria-label="Ajouter"
             onClick={onAdd}
-            onMouseEnter={() => setPlusSurvole(true)}
-            onMouseLeave={() => setPlusSurvole(false)}
+            onMouseEnter={() => setMoreHovered(true)}
+            onMouseLeave={() => setMoreHovered(false)}
             ml={4}
             style={{
               alignSelf: "center",
-              color: plusSurvole ? ADD_ACTION.hover : ADD_ACTION.color,
+              color: plusHovered ? ADD_ACTION.hover : ADD_ACTION.color,
             }}
           >
             <IconPlus size={16} />
@@ -333,23 +333,23 @@ export default function BoardTabs({
 
       {menu && (
         <PointMenu position={menu.position} onClose={() => setMenu(null)}>
-          {modifiable && (
+          {editable && (
             <Menu.Item
               leftSection={<IconPencil size={16} />}
               onClick={() =>
-                onEdit ? onEdit(menu.onglet.id) : ouvrirRenommage(menu.onglet)
+                onEdit ? onEdit(menu.tab.id) : ouvrirRenommage(menu.tab)
               }
             >
               Renommer
             </Menu.Item>
           )}
           {/* Ce que l'onglet porte, reporté sur un autre : à part du reste. */}
-          {copierContextes && <Menu.Divider />}
+          {copyContexts && <Menu.Divider />}
           {/* Un tableau sans contexte n'en a aucun à copier. */}
-          {copierContextes && onCopyContexts && (
+          {copyContexts && onCopyContexts && (
             <Menu.Item
               leftSection={<IconCategory size={16} />}
-              onClick={() => onCopyContexts(menu.onglet.id)}
+              onClick={() => onCopyContexts(menu.tab.id)}
             >
               Copier les contextes
             </Menu.Item>
@@ -365,12 +365,12 @@ export default function BoardTabs({
           {onTogglePrivate && (
             <Menu.Item
               leftSection={<IconEyeOff size={16} />}
-              rightSection={menu.onglet.is_private ? <IconCheck size={14} /> : null}
+              rightSection={menu.tab.is_private ? <IconCheck size={14} /> : null}
               // Le rendre privé se fait aussitôt ; l'ouvrir à tous se confirme.
               onClick={() =>
-                menu.onglet.is_private
-                  ? setAOuvrir(menu.onglet)
-                  : onTogglePrivate(menu.onglet.id)
+                menu.tab.is_private
+                  ? setToOpen(menu.tab)
+                  : onTogglePrivate(menu.tab.id)
               }
             >
               Privée
@@ -380,14 +380,14 @@ export default function BoardTabs({
             (() => {
               // Un onglet privé n'est qu'à son auteur : il n'y a rien à
               // partager, ni donc à hériter.
-              const prive = Boolean(menu.onglet.is_private);
-              const herite = !prive && inheritance.of(menu.onglet);
+              const isPrivate = Boolean(menu.tab.is_private);
+              const inherits = !isPrivate && inheritance.of(menu.tab);
               return (
                 <Menu.Item
                   leftSection={<IconHierarchy2 size={16} />}
-                  rightSection={herite ? <IconCheck size={14} /> : null}
-                  disabled={prive}
-                  onClick={() => setABasculer({ onglet: menu.onglet, herite })}
+                  rightSection={inherits ? <IconCheck size={14} /> : null}
+                  disabled={isPrivate}
+                  onClick={() => setToSwitch({ tab: menu.tab, inherits })}
                 >
                   Héritée
                 </Menu.Item>
@@ -399,7 +399,7 @@ export default function BoardTabs({
               <Menu.Item
                 color={RED}
                 leftSection={<IconTrash size={16} />}
-                onClick={() => setASupprimer(menu.onglet)}
+                onClick={() => setToDelete(menu.tab)}
               >
                 Supprimer
               </Menu.Item>
@@ -408,29 +408,29 @@ export default function BoardTabs({
         </PointMenu>
       )}
 
-      <HeriteConfirmModal
-        opened={aBasculer.onglet !== null}
-        inherited={aBasculer.herite}
-        onClose={fermerBascule}
+      <InheritConfirmModal
+        opened={toToggle.tab !== null}
+        inherited={toToggle.inherits}
+        onClose={closeToggle}
         onConfirm={() => {
-          const onglet = aBasculer.onglet;
-          fermerBascule();
-          if (onglet && inheritance) void inheritance.onToggle(onglet.id);
+          const tab = toToggle.tab;
+          closeToggle();
+          if (tab && inheritance) void inheritance.onToggle(tab.id);
         }}
       />
 
       <DeleteConfirmModal
-        opened={aOuvrir !== null}
-        onClose={() => setAOuvrir(null)}
+        opened={toOpen !== null}
+        onClose={() => setToOpen(null)}
         onConfirm={() => {
-          const onglet = aOuvrir;
-          setAOuvrir(null);
-          if (onglet && onTogglePrivate) void onTogglePrivate(onglet.id);
+          const tab = toOpen;
+          setToOpen(null);
+          if (tab && onTogglePrivate) void onTogglePrivate(tab.id);
         }}
         title="Retirer « Privée »"
         message={
           <>
-            « {aOuvrir?.name} » ne sera plus privé : tous ceux qui ont accès à ce mode
+            « {toOpen?.name} » ne sera plus privé : tous ceux qui ont accès à ce mode
             pourront le voir.
           </>
         }
@@ -440,13 +440,13 @@ export default function BoardTabs({
       />
 
       <DeleteConfirmModal
-        opened={aSupprimer !== null}
-        onClose={() => setASupprimer(null)}
-        onConfirm={supprimer}
+        opened={toDelete !== null}
+        onClose={() => setToDelete(null)}
+        onConfirm={remove}
         title={deleteTitle}
         message={
           <>
-            Voulez-vous vraiment supprimer « {aSupprimer?.name} » ? {deleteWarning} Cette action est
+            Voulez-vous vraiment supprimer « {toDelete?.name} » ? {deleteWarning} Cette action est
             irréversible.
           </>
         }

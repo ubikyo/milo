@@ -6,14 +6,14 @@ import { RED } from "../../themes/colors";
 import AddButton from "../ui/AddButton";
 import { useLabelColors } from "../ui/LabelChip";
 import {
-  ARRONDI,
-  ListeVide,
-  RETRAIT_LIGNE,
-  RETRAIT_NOM,
-  styleChampNom,
-  styleLigne,
+  ROUNDING,
+  EmptyList,
+  ROW_INSET,
+  NAME_INSET,
+  nameFieldStyle,
+  rowStyle,
 } from "../ui/LignesDuTiroir";
-import PointMenu, { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
+import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 
 // Les étiquettes qu'un ticket arrivé par e-mail reçoit d'office, au
 // Paramétrage. Elles se présentent comme les colonnes d'une liste
@@ -23,53 +23,53 @@ import PointMenu, { positionDuMenu, type PointMenuPosition } from "../ui/PointMe
 // s'efface. Une étiquette ne revient pas deux fois.
 
 /** La taille de la pastille de couleur, dans le champ. */
-const TAILLE_PASTILLE = 12;
+const BADGE_SIZE = 12;
 
-interface EtiquettesNouveauMessageProps {
+interface NewMessageLabelsProps {
   /** Les étiquettes du Support. */
-  etiquettes: SupportLabel[];
+  labels: SupportLabel[];
   /** Celles qu'un nouveau message reçoit. */
   value: string[];
   onChange: (ids: string[]) => void;
   canEdit: boolean;
 }
 
-export default function EtiquettesNouveauMessage({
-  etiquettes,
+export default function NewMessageLabels({
+  labels,
   value,
   onChange,
   canEdit,
-}: EtiquettesNouveauMessageProps) {
-  const couleurs = useLabelColors();
+}: NewMessageLabelsProps) {
+  const colors = useLabelColors();
   // La ligne ajoutée, en attente de son étiquette.
-  const [enAjout, setEnAjout] = useState(false);
+  const [adding, setAdding] = useState(false);
   /** Le rang de la ligne dont la liste est ouverte : son champ prend le fond. */
-  const [ouverte, setOuverte] = useState<number | null>(null);
-  const [menu, setMenu] = useState<{ rang: number; position: PointMenuPosition } | null>(null);
+  const [isOpen, setOpened] = useState<number | null>(null);
+  const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
 
   // Une étiquette supprimée depuis ne se montre plus.
-  const choisies = value.filter((id) => etiquettes.some((e) => String(e.id) === id));
-  const lignes = enAjout ? [...choisies, ""] : choisies;
+  const selected = value.filter((id) => labels.some((e) => String(e.id) === id));
+  const rows = adding ? [...selected, ""] : selected;
 
   /** Les étiquettes qu'une ligne peut prendre : la sienne, et celles qui ne sont pas déjà prises. */
   const options = (id: string) =>
-    etiquettes
-      .filter((e) => String(e.id) === id || !choisies.includes(String(e.id)))
+    labels
+      .filter((e) => String(e.id) === id || !selected.includes(String(e.id)))
       .map((e) => ({ value: String(e.id), label: e.name }));
 
-  const remplacer = (rang: number, id: string | null) => {
-    setEnAjout(false);
+  const replaceExisting = (rank: number, id: string | null) => {
+    setAdding(false);
     if (!id) return;
-    if (rang === choisies.length) return onChange([...choisies, id]);
-    onChange(choisies.map((c, i) => (i === rang ? id : c)));
+    if (rank === selected.length) return onChange([...selected, id]);
+    onChange(selected.map((c, i) => (i === rank ? id : c)));
   };
 
-  const pastille = (id: string) => {
-    const etiquette = etiquettes.find((e) => String(e.id) === id);
-    return etiquette ? (
+  const dot = (id: string) => {
+    const label = labels.find((e) => String(e.id) === id);
+    return label ? (
       <ColorSwatch
-        color={couleurs(etiquette.color).backgroundColor}
-        size={TAILLE_PASTILLE}
+        color={colors(label.color).backgroundColor}
+        size={BADGE_SIZE}
         withShadow={false}
       />
     ) : null;
@@ -77,53 +77,53 @@ export default function EtiquettesNouveauMessage({
 
   return (
     <Input.Wrapper label="Étiquettes nouveau message">
-      {lignes.length === 0 ? (
-        <ListeVide icon={IconTag} message="Aucune étiquette" />
+      {rows.length === 0 ? (
+        <EmptyList icon={IconTag} message="Aucune étiquette" />
       ) : (
         <Stack gap={1}>
-          {lignes.map((id, rang) => {
-            const nouvelle = rang === choisies.length;
+          {rows.map((id, rank) => {
+            const newRow = rank === selected.length;
             return (
               <Group
-                key={nouvelle ? "nouvelle" : id}
+                key={newRow ? "nouvelle" : id}
                 gap="sm"
                 wrap="nowrap"
                 onContextMenu={(e) => {
-                  if (!canEdit || nouvelle) return;
-                  setMenu({ rang, position: positionDuMenu(e) });
+                  if (!canEdit || newRow) return;
+                  setMenu({ rank, position: menuPosition(e) });
                 }}
-                style={{ ...styleLigne(rang, lignes.length, false), paddingLeft: RETRAIT_LIGNE }}
+                style={{ ...rowStyle(rank, rows.length, false), paddingLeft: ROW_INSET }}
               >
                 <Select
                   size="sm"
-                  radius={ARRONDI}
+                  radius={ROUNDING}
                   style={{ flex: 1, minWidth: 0 }}
                   data={options(id)}
                   value={id || null}
                   placeholder="Choisir une étiquette"
-                  onChange={(choix) => remplacer(rang, choix)}
+                  onChange={(choice) => replaceExisting(rank, choice)}
                   // La ligne ajoutée, quittée sans étiquette, s'efface.
-                  onBlur={() => nouvelle && setEnAjout(false)}
-                  onDropdownOpen={() => setOuverte(rang)}
-                  onDropdownClose={() => setOuverte(null)}
+                  onBlur={() => newRow && setAdding(false)}
+                  onDropdownOpen={() => setOpened(rank)}
+                  onDropdownClose={() => setOpened(null)}
                   allowDeselect={false}
-                  autoFocus={nouvelle}
+                  autoFocus={newRow}
                   disabled={!canEdit}
                   // La pastille de l'étiquette, devant son nom.
-                  leftSection={pastille(id)}
-                  leftSectionWidth={id ? RETRAIT_NOM + TAILLE_PASTILLE : undefined}
+                  leftSection={dot(id)}
+                  leftSectionWidth={id ? NAME_INSET + BADGE_SIZE : undefined}
                   rightSection={<IconChevronDown size={14} />}
                   rightSectionPointerEvents="none"
                   comboboxProps={{ shadow: "md", withinPortal: true }}
                   styles={{
                     section: { justifyContent: "flex-end" },
                     input: {
-                      ...styleChampNom(ouverte === rang),
+                      ...nameFieldStyle(isOpen === rank),
                       cursor: "pointer",
-                      ...(id ? { paddingLeft: RETRAIT_NOM + TAILLE_PASTILLE + 8 } : null),
+                      ...(id ? { paddingLeft: NAME_INSET + BADGE_SIZE + 8 } : null),
                     },
                   }}
-                  aria-label={nouvelle ? "Étiquette à ajouter" : "Étiquette"}
+                  aria-label={newRow ? "Étiquette à ajouter" : "Étiquette"}
                 />
               </Group>
             );
@@ -132,8 +132,8 @@ export default function EtiquettesNouveauMessage({
       )}
 
       {/* Au plus près de la liste qu'il allonge — tant qu'il reste une étiquette à ajouter. */}
-      {canEdit && choisies.length < etiquettes.length && (
-        <AddButton label="Ajouter une étiquette" onClick={() => setEnAjout(true)} mt={4} />
+      {canEdit && selected.length < labels.length && (
+        <AddButton label="Ajouter une étiquette" onClick={() => setAdding(true)} mt={4} />
       )}
 
       {menu && (
@@ -142,7 +142,7 @@ export default function EtiquettesNouveauMessage({
             color={RED}
             leftSection={<IconTrash size={16} />}
             onClick={() => {
-              onChange(choisies.filter((_, i) => i !== menu.rang));
+              onChange(selected.filter((_, i) => i !== menu.rank));
               setMenu(null);
             }}
           >

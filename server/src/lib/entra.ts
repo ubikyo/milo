@@ -29,13 +29,13 @@ import type {
   EntraStatus,
 } from "@milo/shared";
 import { badRequest, fail } from "./http.js";
-import type { PieceJointe } from "./mail-template.js";
+import type { MailAttachment } from "./mail-template.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 
-const CLE = "entra";
+const KEY = "entra";
 
 /** Les réglages tels qu'ils sont rangés : secret compris. */
-interface Stockes {
+interface Stored {
   client_id: string;
   tenant: string;
   secret: string;
@@ -43,7 +43,7 @@ interface Stockes {
    * Milo a été déconnecté d'Entra depuis le Paramétrage : plus rien ne passe
    * par Microsoft — connexions, annuaire, courrier — jusqu'à la reconnexion.
    */
-  deconnecte: boolean;
+  disconnected: boolean;
   /**
    * L'adresse d'où partent les e-mails de Milo — avis, assignations, réponses
    * aux demandes saisies. Une demande reçue répond de sa propre boîte.
@@ -51,16 +51,16 @@ interface Stockes {
   mail_sender: string;
 }
 
-const VIDES: Stockes = {
+const EMPTY_VALUES: Stored = {
   client_id: "",
   tenant: "",
   secret: "",
-  deconnecte: false,
+  disconnected: false,
   mail_sender: "",
 };
 
 /** L'inscription que la messagerie OAuth rangeait, avant qu'Entra la reprenne. */
-interface AncienneMessagerie {
+interface LegacyMessaging {
   oauth?: { client_id?: string; tenant?: string; secret?: string };
 }
 
@@ -68,29 +68,29 @@ interface AncienneMessagerie {
  * Les réglages en base. Une base d'avant Entra n'en a pas : on reprend
  * l'inscription que la messagerie connaissait.
  */
-export const reglagesEntra = (): Stockes => {
-  const lus = readSetting<Partial<Stockes> | null>(CLE, null);
-  if (lus) {
+export const entraSettings = (): Stored => {
+  const readItems = readSetting<Partial<Stored> | null>(KEY, null);
+  if (readItems) {
     return {
-      client_id: lus.client_id ?? "",
-      tenant: lus.tenant ?? "",
-      secret: lus.secret ?? "",
-      deconnecte: lus.deconnecte ?? false,
-      mail_sender: lus.mail_sender ?? "",
+      client_id: readItems.client_id ?? "",
+      tenant: readItems.tenant ?? "",
+      secret: readItems.secret ?? "",
+      disconnected: readItems.disconnected ?? false,
+      mail_sender: readItems.mail_sender ?? "",
     };
   }
 
-  const { oauth } = readSetting<AncienneMessagerie>("mail", {});
+  const { oauth } = readSetting<LegacyMessaging>("mail", {});
   return {
-    ...VIDES,
+    ...EMPTY_VALUES,
     client_id: oauth?.client_id ?? "",
     tenant: oauth?.tenant ?? "",
     secret: oauth?.secret ?? "",
   };
 };
 
-export const reglagesEntraPublics = (): EntraSettings => {
-  const r = reglagesEntra();
+export const publicEntraSettings = (): EntraSettings => {
+  const r = entraSettings();
   return {
     client_id: r.client_id,
     tenant: r.tenant,
@@ -99,45 +99,45 @@ export const reglagesEntraPublics = (): EntraSettings => {
   };
 };
 
-const texte = (valeur: unknown, max = 255): string =>
-  String(valeur ?? "")
+const text = (value: unknown, max = 255): string =>
+  String(value ?? "")
     .trim()
     .slice(0, max);
 
 /** Ce qui n'est pas dit ne change pas ; pour le secret, la chaîne vide efface. */
-export const modifierEntra = (entree: EntraSettingsInput): void => {
-  const suivants = { ...reglagesEntra() };
+export const updateEntra = (entry: EntraSettingsInput): void => {
+  const nextItems = { ...entraSettings() };
 
-  if (entree.client_id !== undefined) suivants.client_id = texte(entree.client_id);
-  if (entree.tenant !== undefined) suivants.tenant = texte(entree.tenant);
-  if (entree.secret !== undefined) suivants.secret = String(entree.secret);
-  if (entree.mail_sender !== undefined) {
-    const adresse = texte(entree.mail_sender);
-    if (adresse && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adresse)) badRequest("Adresse d'envoi invalide");
-    suivants.mail_sender = adresse;
+  if (entry.client_id !== undefined) nextItems.client_id = text(entry.client_id);
+  if (entry.tenant !== undefined) nextItems.tenant = text(entry.tenant);
+  if (entry.secret !== undefined) nextItems.secret = String(entry.secret);
+  if (entry.mail_sender !== undefined) {
+    const address = text(entry.mail_sender);
+    if (address && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) badRequest("Adresse d'envoi invalide");
+    nextItems.mail_sender = address;
   }
 
-  writeSetting(CLE, suivants);
-  jetonEnCache = null;
+  writeSetting(KEY, nextItems);
+  cachedToken = null;
 };
 
 /** L'adresse d'envoi commune ; vide tant qu'on ne l'a pas réglée. */
-export const adresseDEnvoi = (): string => reglagesEntra().mail_sender;
+export const sendingAddress = (): string => entraSettings().mail_sender;
 
-const inscriptionComplete = (r: Stockes): boolean => Boolean(r.client_id && r.tenant && r.secret);
+const registrationComplete = (r: Stored): boolean => Boolean(r.client_id && r.tenant && r.secret);
 
 /**
  * L'inscription est-elle complète, et Milo connecté ? Sans elles, rien ne
  * passe par Microsoft.
  */
-export const entraConfiguree = (): boolean => {
-  const r = reglagesEntra();
-  return inscriptionComplete(r) && !r.deconnecte;
+export const entraConfigured = (): boolean => {
+  const r = entraSettings();
+  return registrationComplete(r) && !r.disconnected;
 };
 
-const exigerInscription = (): Stockes => {
-  const r = reglagesEntra();
-  if (r.deconnecte) badRequest("Milo est déconnecté d'Entra : reconnectez-le dans Paramétrage → Entra");
+const requireRegistration = (): Stored => {
+  const r = entraSettings();
+  if (r.disconnected) badRequest("Milo est déconnecté d'Entra : reconnectez-le dans Paramétrage → Entra");
   if (!r.client_id) badRequest("Renseignez l'ID d'application dans Paramétrage → Entra");
   if (!r.tenant) badRequest("Renseignez l'ID de l'annuaire dans Paramétrage → Entra");
   if (!r.secret) badRequest("Renseignez le secret d'application dans Paramétrage → Entra");
@@ -146,13 +146,13 @@ const exigerInscription = (): Stockes => {
 
 // --- Jetons ----------------------------------------------------------------
 
-const AUTORITE = "https://login.microsoftonline.com";
+const AUTHORITY = "https://login.microsoftonline.com";
 const GRAPH = "https://graph.microsoft.com/v1.0";
 
-const pointDeTerminaison = (tenant: string, quoi: "authorize" | "token"): string =>
-  `${AUTORITE}/${encodeURIComponent(tenant)}/oauth2/v2.0/${quoi}`;
+const endpoint = (tenant: string, what: "authorize" | "token"): string =>
+  `${AUTHORITY}/${encodeURIComponent(tenant)}/oauth2/v2.0/${what}`;
 
-interface ReponseJeton {
+interface TokenResponse {
   access_token?: string;
   id_token?: string;
   expires_in?: number;
@@ -160,19 +160,19 @@ interface ReponseJeton {
   error_description?: string;
 }
 
-const appelerJeton = async (tenant: string, corps: URLSearchParams): Promise<ReponseJeton> => {
-  const reponse = await fetch(pointDeTerminaison(tenant, "token"), {
+const requestToken = async (tenant: string, body: URLSearchParams): Promise<TokenResponse> => {
+  const response = await fetch(endpoint(tenant, "token"), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: corps,
+    body: body,
   });
-  const jeton = (await reponse.json().catch(() => ({}))) as ReponseJeton;
-  if (!reponse.ok || !jeton.access_token) {
+  const token = (await response.json().catch(() => ({}))) as TokenResponse;
+  if (!response.ok || !token.access_token) {
     // Microsoft décrit précisément ce qui manque (redirection non inscrite,
     // secret expiré, consentement absent) : ce message vaut mieux qu'un autre.
-    fail(400, jeton.error_description?.split("\n")[0] || jeton.error || "Microsoft a refusé la demande");
+    fail(400, token.error_description?.split("\n")[0] || token.error || "Microsoft a refusé la demande");
   }
-  return jeton;
+  return token;
 };
 
 /**
@@ -180,13 +180,13 @@ const appelerJeton = async (tenant: string, corps: URLSearchParams): Promise<Rep
  * expiration : chaque connexion et chaque envoi en demandent un, Microsoft
  * n'a pas à en délivrer un par appel.
  */
-let jetonEnCache: { valeur: string; expire: number } | null = null;
+let cachedToken: { value: string; expiresAt: number } | null = null;
 
-const jetonApplication = async (): Promise<string> => {
-  if (jetonEnCache && jetonEnCache.expire > Date.now()) return jetonEnCache.valeur;
+const appToken = async (): Promise<string> => {
+  if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken.value;
 
-  const r = exigerInscription();
-  const jeton = await appelerJeton(
+  const r = requireRegistration();
+  const token = await requestToken(
     r.tenant,
     new URLSearchParams({
       client_id: r.client_id,
@@ -195,28 +195,28 @@ const jetonApplication = async (): Promise<string> => {
       scope: "https://graph.microsoft.com/.default",
     }),
   );
-  jetonEnCache = {
-    valeur: jeton.access_token!,
-    expire: Date.now() + ((jeton.expires_in ?? 3600) - 60) * 1000,
+  cachedToken = {
+    value: token.access_token!,
+    expiresAt: Date.now() + ((token.expires_in ?? 3600) - 60) * 1000,
   };
-  return jetonEnCache.valeur;
+  return cachedToken.value;
 };
 
 /**
  * L'état de la connexion de Milo à Entra : un jeton d'application obtenu
  * suffit à le dire — l'identifiant, l'annuaire et le secret sont acceptés.
  */
-export const etatEntra = async (): Promise<EntraStatus> => {
-  const r = reglagesEntra();
-  if (!inscriptionComplete(r)) return { state: "unconfigured", error: "" };
-  if (r.deconnecte) return { state: "disconnected", error: "" };
+export const entraState = async (): Promise<EntraStatus> => {
+  const r = entraSettings();
+  if (!registrationComplete(r)) return { state: "unconfigured", error: "" };
+  if (r.disconnected) return { state: "disconnected", error: "" };
   try {
-    await jetonApplication();
+    await appToken();
     return { state: "connected", error: "" };
-  } catch (erreur) {
+  } catch (error) {
     return {
       state: "error",
-      error: erreur instanceof Error ? erreur.message : "Microsoft a refusé la demande",
+      error: error instanceof Error ? error.message : "Microsoft a refusé la demande",
     };
   }
 };
@@ -225,40 +225,40 @@ export const etatEntra = async (): Promise<EntraStatus> => {
  * Connecte ou déconnecte Milo. Dans les deux cas le jeton en cache tombe :
  * la reconnexion en redemande un, et rend donc l'état réel.
  */
-export const connecterEntra = (connecte: boolean): void => {
-  writeSetting(CLE, { ...reglagesEntra(), deconnecte: !connecte });
-  jetonEnCache = null;
+export const connectEntra = (connected: boolean): void => {
+  writeSetting(KEY, { ...entraSettings(), disconnected: !connected });
+  cachedToken = null;
 };
 
-interface ErreurGraph {
+interface GraphError {
   error?: { code?: string; message?: string };
 }
 
 /** Un appel à Graph au nom de l'application. Lève ce que Graph a répondu. */
 const graph = async <T>(
-  chemin: string,
-  init: { method?: string; body?: unknown; entetes?: Record<string, string> } = {},
+  path: string,
+  init: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
 ): Promise<T> => {
-  const reponse = await fetch(chemin.startsWith("https://") ? chemin : `${GRAPH}${chemin}`, {
+  const response = await fetch(path.startsWith("https://") ? path : `${GRAPH}${path}`, {
     method: init.method ?? "GET",
     headers: {
-      Authorization: `Bearer ${await jetonApplication()}`,
+      Authorization: `Bearer ${await appToken()}`,
       ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...init.entetes,
+      ...init.headers,
     },
     ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
   });
 
-  if (reponse.status === 202 || reponse.status === 204) return undefined as T;
-  const corps = (await reponse.json().catch(() => ({}))) as T & ErreurGraph;
-  if (!reponse.ok) {
+  if (response.status === 202 || response.status === 204) return undefined as T;
+  const body = (await response.json().catch(() => ({}))) as T & GraphError;
+  if (!response.ok) {
     // Les permissions de l'application sont inscrites dans le jeton à sa
     // délivrance : un jeton gardé en cache ignore celles accordées depuis. Un
     // refus l'oublie, et l'essai suivant en demande un neuf.
-    if (reponse.status === 401 || reponse.status === 403) jetonEnCache = null;
-    fail(400, corps.error?.message || `Microsoft Graph a répondu ${reponse.status}`);
+    if (response.status === 401 || response.status === 403) cachedToken = null;
+    fail(400, body.error?.message || `Microsoft Graph a répondu ${response.status}`);
   }
-  return corps;
+  return body;
 };
 
 interface Page<T> {
@@ -267,20 +267,20 @@ interface Page<T> {
 }
 
 /** Toutes les pages d'une liste Graph. */
-const toutesLesPages = async <T>(chemin: string): Promise<T[]> => {
-  const resultat: T[] = [];
-  let suivante: string | undefined = chemin;
-  while (suivante) {
-    const page: Page<T> = await graph<Page<T>>(suivante);
-    resultat.push(...page.value);
-    suivante = page["@odata.nextLink"];
+const allPages = async <T>(path: string): Promise<T[]> => {
+  const result: T[] = [];
+  let nextPage: string | undefined = path;
+  while (nextPage) {
+    const page: Page<T> = await graph<Page<T>>(nextPage);
+    result.push(...page.value);
+    nextPage = page["@odata.nextLink"];
   }
-  return resultat;
+  return result;
 };
 
 // --- Annuaire --------------------------------------------------------------
 
-interface UtilisateurGraph {
+interface GraphUser {
   id: string;
   displayName?: string;
   givenName?: string | null;
@@ -290,14 +290,14 @@ interface UtilisateurGraph {
   onPremisesSyncEnabled?: boolean | null;
 }
 
-interface GroupeGraph {
+interface GraphGroup {
   id: string;
   displayName?: string;
   mail?: string | null;
   onPremisesSyncEnabled?: boolean | null;
 }
 
-const versUtilisateur = (u: UtilisateurGraph): EntraPrincipal => ({
+const toUser = (u: GraphUser): EntraPrincipal => ({
   type: "user",
   id: u.id,
   name: u.displayName ?? "",
@@ -305,7 +305,7 @@ const versUtilisateur = (u: UtilisateurGraph): EntraPrincipal => ({
   synced: u.onPremisesSyncEnabled === true,
 });
 
-const versGroupe = (g: GroupeGraph): EntraPrincipal => ({
+const toGroup = (g: GraphGroup): EntraPrincipal => ({
   type: "group",
   id: g.id,
   name: g.displayName ?? "",
@@ -314,13 +314,13 @@ const versGroupe = (g: GroupeGraph): EntraPrincipal => ({
 });
 
 /** Au plus, par recherche et par sorte : de quoi voir toute une famille de groupes. */
-const RESULTATS = 50;
+const RESULTS = 50;
 
 /** Les éléments de plusieurs listes, sans doublon, dans l'ordre alphabétique. */
-const fusionner = <T extends { id: string; displayName?: string }>(...listes: T[][]): T[] => {
-  const parId = new Map<string, T>();
-  for (const liste of listes) for (const e of liste) parId.set(e.id, e);
-  return [...parId.values()].sort((x, y) =>
+const merge = <T extends { id: string; displayName?: string }>(...lists: T[][]): T[] => {
+  const byId = new Map<string, T>();
+  for (const list of lists) for (const e of list) byId.set(e.id, e);
+  return [...byId.values()].sort((x, y) =>
     (x.displayName ?? "").localeCompare(y.displayName ?? "", "fr", { sensitivity: "base" }),
   );
 };
@@ -337,56 +337,56 @@ const fusionner = <T extends { id: string; displayName?: string }>(...listes: T[
  *     tirets et aux changements de casse ; elle exige l'en-tête
  *     ConsistencyLevel.
  */
-export const chercherDansLAnnuaire = async (
-  saisie: string,
-  quoi: "all" | "groups" = "all",
+export const searchInDirectory = async (
+  input: string,
+  what: "all" | "groups" = "all",
 ): Promise<EntraPrincipal[]> => {
-  const terme = saisie.replace(/["\\]/g, "").trim();
-  if (terme.length < 2) return [];
+  const term = input.replace(/["\\]/g, "").trim();
+  if (term.length < 2) return [];
 
   // Une apostrophe se double dans une chaîne OData.
-  const odata = terme.replace(/'/g, "''");
-  const entetes = { ConsistencyLevel: "eventual" };
-  const vide = Promise.resolve({ value: [] });
+  const odata = term.replace(/'/g, "''");
+  const headers = { ConsistencyLevel: "eventual" };
+  const empty = Promise.resolve({ value: [] });
 
-  const groupes = Promise.all([
-    graph<Page<GroupeGraph>>(
-      `/groups?$filter=${encodeURIComponent(`startswith(displayName,'${odata}')`)}&$select=id,displayName,mail,onPremisesSyncEnabled&$top=${RESULTATS}`,
+  const groups = Promise.all([
+    graph<Page<GraphGroup>>(
+      `/groups?$filter=${encodeURIComponent(`startswith(displayName,'${odata}')`)}&$select=id,displayName,mail,onPremisesSyncEnabled&$top=${RESULTS}`,
     ),
-    graph<Page<GroupeGraph>>(
-      `/groups?$search=${encodeURIComponent(`"displayName:${terme}"`)}&$select=id,displayName,mail,onPremisesSyncEnabled&$top=${RESULTATS}`,
-      { entetes },
+    graph<Page<GraphGroup>>(
+      `/groups?$search=${encodeURIComponent(`"displayName:${term}"`)}&$select=id,displayName,mail,onPremisesSyncEnabled&$top=${RESULTS}`,
+      { headers },
     ),
   ]);
 
-  const utilisateurs =
-    quoi === "groups"
-      ? Promise.all([vide, vide] as [Promise<Page<UtilisateurGraph>>, Promise<Page<UtilisateurGraph>>])
+  const users =
+    what === "groups"
+      ? Promise.all([empty, empty] as [Promise<Page<GraphUser>>, Promise<Page<GraphUser>>])
       : Promise.all([
-          graph<Page<UtilisateurGraph>>(
-            `/users?$filter=${encodeURIComponent(`startswith(displayName,'${odata}') or startswith(mail,'${odata}') or startswith(userPrincipalName,'${odata}')`)}&$select=id,displayName,mail,userPrincipalName,onPremisesSyncEnabled&$top=${RESULTATS}`,
+          graph<Page<GraphUser>>(
+            `/users?$filter=${encodeURIComponent(`startswith(displayName,'${odata}') or startswith(mail,'${odata}') or startswith(userPrincipalName,'${odata}')`)}&$select=id,displayName,mail,userPrincipalName,onPremisesSyncEnabled&$top=${RESULTS}`,
           ),
-          graph<Page<UtilisateurGraph>>(
-            `/users?$search=${encodeURIComponent(`"displayName:${terme}" OR "mail:${terme}"`)}&$select=id,displayName,mail,userPrincipalName,onPremisesSyncEnabled&$top=${RESULTATS}`,
-            { entetes },
+          graph<Page<GraphUser>>(
+            `/users?$search=${encodeURIComponent(`"displayName:${term}" OR "mail:${term}"`)}&$select=id,displayName,mail,userPrincipalName,onPremisesSyncEnabled&$top=${RESULTS}`,
+            { headers },
           ),
         ]);
 
-  const [[u1, u2], [g1, g2]] = await Promise.all([utilisateurs, groupes]);
+  const [[u1, u2], [g1, g2]] = await Promise.all([users, groups]);
   return [
-    ...fusionner(u1.value, u2.value).map(versUtilisateur),
-    ...fusionner(g1.value, g2.value).map(versGroupe),
+    ...merge(u1.value, u2.value).map(toUser),
+    ...merge(g1.value, g2.value).map(toGroup),
   ];
 };
 
 /** Le profil d'un utilisateur : son nom, son adresse. */
-export const profilEntra = async (oid: string): Promise<UtilisateurGraph> =>
-  graph<UtilisateurGraph>(
+export const entraProfile = async (oid: string): Promise<GraphUser> =>
+  graph<GraphUser>(
     `/users/${encodeURIComponent(oid)}?$select=id,displayName,givenName,surname,mail,userPrincipalName`,
   );
 
 /** La fiche d'un utilisateur telle qu'Entra la tient : ce que citent les modèles. */
-export interface FicheEntra {
+export interface EntraRecord {
   givenName?: string | null;
   surname?: string | null;
   displayName?: string | null;
@@ -404,24 +404,24 @@ export interface FicheEntra {
   country?: string | null;
 }
 
-const CHAMPS_FICHE =
+const RECORD_FIELDS =
   "givenName,surname,displayName,mail,userPrincipalName,businessPhones,mobilePhone," +
   "jobTitle,department,companyName,streetAddress,city,state,postalCode,country";
 
 /** La fiche d'un utilisateur, par son identifiant. */
-export const ficheEntra = (oid: string): Promise<FicheEntra> =>
-  graph<FicheEntra>(`/users/${encodeURIComponent(oid)}?$select=${CHAMPS_FICHE}`);
+export const entraRecord = (oid: string): Promise<EntraRecord> =>
+  graph<EntraRecord>(`/users/${encodeURIComponent(oid)}?$select=${RECORD_FIELDS}`);
 
 /**
  * La fiche de qui porte cette adresse dans l'annuaire — son adresse
  * principale ou son identifiant de connexion ; « null » : personne.
  */
-export const ficheEntraParAdresse = async (adresse: string): Promise<FicheEntra | null> => {
-  const valeur = adresse.trim().replace(/'/g, "''");
-  if (!valeur) return null;
-  const filtre = encodeURIComponent(`mail eq '${valeur}' or userPrincipalName eq '${valeur}'`);
-  const page = await graph<Page<FicheEntra>>(
-    `/users?$filter=${filtre}&$select=${CHAMPS_FICHE}&$top=1`,
+export const entraRecordByAddress = async (address: string): Promise<EntraRecord | null> => {
+  const value = address.trim().replace(/'/g, "''");
+  if (!value) return null;
+  const filter = encodeURIComponent(`mail eq '${value}' or userPrincipalName eq '${value}'`);
+  const page = await graph<Page<EntraRecord>>(
+    `/users?$filter=${filter}&$select=${RECORD_FIELDS}&$top=1`,
   );
   return page.value[0] ?? null;
 };
@@ -430,16 +430,16 @@ export const ficheEntraParAdresse = async (adresse: string): Promise<FicheEntra 
  * Les groupes de l'utilisateur, y compris ceux dont il est membre par un autre
  * groupe : ses droits suivent ses groupes, quelle que soit la profondeur.
  */
-export const groupesEntra = async (oid: string): Promise<string[]> => {
-  const groupes = await toutesLesPages<{ id: string }>(
+export const entraGroups = async (oid: string): Promise<string[]> => {
+  const groups = await allPages<{ id: string }>(
     `/users/${encodeURIComponent(oid)}/transitiveMemberOf/microsoft.graph.group?$select=id&$top=999`,
   );
-  return groupes.map((g) => g.id);
+  return groups.map((g) => g.id);
 };
 
 // --- Agenda ----------------------------------------------------------------
 
-interface RendezVousGraph {
+interface GraphAppointment {
   id: string;
   subject?: string | null;
   start?: { dateTime?: string };
@@ -452,48 +452,48 @@ interface RendezVousGraph {
 }
 
 /** Une date que Graph rend en UTC sans le dire : on la lui fait dire. */
-const enUtc = (valeur: string | undefined): string => {
-  if (!valeur) return "";
-  return /(Z|[+-]\d{2}:\d{2})$/.test(valeur) ? valeur : `${valeur.replace(/\.\d+$/, "")}Z`;
+const toUtc = (value: string | undefined): string => {
+  if (!value) return "";
+  return /(Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value.replace(/\.\d+$/, "")}Z`;
 };
 
 /** Au plus, sur une période : de quoi couvrir un mois chargé. */
-const RENDEZ_VOUS_MAX = 500;
+const APPOINTMENTS_MAX = 500;
 
 /**
  * Les rendez-vous de l'agenda principal de l'utilisateur entre deux instants,
  * occurrences des séries comprises (calendarView). Demande la permission
  * d'application Calendars.Read ; les rendez-vous annulés n'y sont pas.
  */
-export const agendaEntra = async (
+export const entraAgenda = async (
   oid: string,
-  debut: Date,
-  fin: Date,
+  start: Date,
+  end: Date,
 ): Promise<AccessCalendarEvent[]> => {
-  const parametres = new URLSearchParams({
-    startDateTime: debut.toISOString(),
-    endDateTime: fin.toISOString(),
+  const searchParams = new URLSearchParams({
+    startDateTime: start.toISOString(),
+    endDateTime: end.toISOString(),
     $select: "id,subject,start,end,isAllDay,isCancelled,location,showAs,webLink",
     $orderby: "start/dateTime",
     $top: "100",
   });
-  const rendezVous: RendezVousGraph[] = [];
-  let suivante: string | undefined =
-    `/users/${encodeURIComponent(oid)}/calendarView?${parametres.toString()}`;
-  while (suivante && rendezVous.length < RENDEZ_VOUS_MAX) {
-    const page: Page<RendezVousGraph> = await graph<Page<RendezVousGraph>>(suivante, {
-      entetes: { Prefer: 'outlook.timezone="UTC"' },
+  const appointments: GraphAppointment[] = [];
+  let nextPage: string | undefined =
+    `/users/${encodeURIComponent(oid)}/calendarView?${searchParams.toString()}`;
+  while (nextPage && appointments.length < APPOINTMENTS_MAX) {
+    const page: Page<GraphAppointment> = await graph<Page<GraphAppointment>>(nextPage, {
+      headers: { Prefer: 'outlook.timezone="UTC"' },
     });
-    rendezVous.push(...page.value);
-    suivante = page["@odata.nextLink"];
+    appointments.push(...page.value);
+    nextPage = page["@odata.nextLink"];
   }
-  return rendezVous
+  return appointments
     .filter((r) => !r.isCancelled)
     .map((r) => ({
       id: r.id,
       subject: r.subject ?? "",
-      start: enUtc(r.start?.dateTime),
-      end: enUtc(r.end?.dateTime),
+      start: toUtc(r.start?.dateTime),
+      end: toUtc(r.end?.dateTime),
       all_day: r.isAllDay === true,
       location: r.location?.displayName ?? "",
       show_as: r.showAs ?? "",
@@ -508,14 +508,14 @@ export const agendaEntra = async (
 // Milo n'est pas marqué lu : cela demanderait Mail.ReadWrite sur toutes les
 // boîtes.
 
-interface AdresseGraph {
+interface GraphAddress {
   emailAddress?: { name?: string; address?: string };
 }
 
-interface EnteteGraph {
+interface GraphHeader {
   id: string;
   subject?: string | null;
-  from?: AdresseGraph | null;
+  from?: GraphAddress | null;
   receivedDateTime?: string;
   bodyPreview?: string;
   isRead?: boolean;
@@ -523,17 +523,17 @@ interface EnteteGraph {
   importance?: string;
 }
 
-const CHAMPS_ENTETE = "id,subject,from,receivedDateTime,bodyPreview,isRead,hasAttachments,importance";
+const HEADER_FIELDS = "id,subject,from,receivedDateTime,bodyPreview,isRead,hasAttachments,importance";
 
-const versAdresse = (a: AdresseGraph | null | undefined): MailAddress => ({
+const toAddress = (a: GraphAddress | null | undefined): MailAddress => ({
   name: a?.emailAddress?.name ?? "",
   email: a?.emailAddress?.address ?? "",
 });
 
-const versEntete = (m: EnteteGraph): AccessMail => ({
+const toHeader = (m: GraphHeader): AccessMail => ({
   id: m.id,
   subject: m.subject ?? "",
-  from: versAdresse(m.from),
+  from: toAddress(m.from),
   received_at: m.receivedDateTime ?? "",
   preview: m.bodyPreview ?? "",
   is_read: m.isRead !== false,
@@ -546,46 +546,46 @@ const versEntete = (m: EnteteGraph): AccessMail => ({
  * « nonLus » ne garde que les non lus : Graph veut alors que le tri porte
  * aussi sur le filtre, et dans le même ordre — d'où la date en tête du filtre.
  */
-export const pageDeLaBoite = async (
+export const mailboxPage = async (
   oid: string,
-  decalage: number,
-  combien: number,
-  nonLus: boolean,
+  offset: number,
+  howMany: number,
+  unreadOnly: boolean,
 ): Promise<AccessMailPage> => {
-  const parametres = new URLSearchParams({
-    $top: String(combien),
-    $skip: String(decalage),
-    $select: CHAMPS_ENTETE,
+  const searchParams = new URLSearchParams({
+    $top: String(howMany),
+    $skip: String(offset),
+    $select: HEADER_FIELDS,
     $orderby: "receivedDateTime desc",
   });
-  if (nonLus) parametres.set("$filter", "receivedDateTime ge 1900-01-01T00:00:00Z and isRead eq false");
-  const boite = `/users/${encodeURIComponent(oid)}/mailFolders/inbox`;
-  const [page, dossier] = await Promise.all([
-    graph<Page<EnteteGraph>>(`${boite}/messages?${parametres.toString()}`),
-    decalage === 0
-      ? graph<{ unreadItemCount?: number }>(`${boite}?$select=unreadItemCount`)
+  if (unreadOnly) searchParams.set("$filter", "receivedDateTime ge 1900-01-01T00:00:00Z and isRead eq false");
+  const mailbox = `/users/${encodeURIComponent(oid)}/mailFolders/inbox`;
+  const [page, folder] = await Promise.all([
+    graph<Page<GraphHeader>>(`${mailbox}/messages?${searchParams.toString()}`),
+    offset === 0
+      ? graph<{ unreadItemCount?: number }>(`${mailbox}?$select=unreadItemCount`)
       : Promise.resolve(null),
   ]);
   return {
-    messages: page.value.map(versEntete),
+    messages: page.value.map(toHeader),
     more: Boolean(page["@odata.nextLink"]),
-    ...(dossier ? { unread: dossier.unreadItemCount ?? 0 } : {}),
+    ...(folder ? { unread: folder.unreadItemCount ?? 0 } : {}),
   };
 };
 
 /** Au-delà, une image intégrée n'est pas rapatriée : elle ferait un corps trop lourd. */
-const IMAGE_INTEGREE_MAX = 2 * 1024 * 1024;
+const EMBEDDED_IMAGE_MAX = 2 * 1024 * 1024;
 
 /**
  * Un e-mail de la boîte, corps compris tel que l'expéditeur l'a écrit, et ses
  * pièces jointes. Les images intégrées (« cid: ») reviennent en adresses
  * « data: », prêtes à remplacer leur citation.
  */
-export const courrierDeLaBoite = async (
+export const mailOfMailbox = async (
   oid: string,
   id: string,
 ): Promise<{
-  entete: AccessMail;
+  header: AccessMail;
   to: MailAddress[];
   cc: MailAddress[];
   body: string;
@@ -596,29 +596,29 @@ export const courrierDeLaBoite = async (
 }> => {
   const base = `/users/${encodeURIComponent(oid)}/messages/${encodeURIComponent(id)}`;
   const message = await graph<
-    EnteteGraph & {
-      toRecipients?: AdresseGraph[];
-      ccRecipients?: AdresseGraph[];
+    GraphHeader & {
+      toRecipients?: GraphAddress[];
+      ccRecipients?: GraphAddress[];
       body?: { content?: string; contentType?: string };
       webLink?: string;
     }
-  >(`${base}?$select=${CHAMPS_ENTETE},toRecipients,ccRecipients,body,webLink`);
+  >(`${base}?$select=${HEADER_FIELDS},toRecipients,ccRecipients,body,webLink`);
 
   const images = new Map<string, string>();
   const attachments: AccessMailAttachment[] = [];
   if (message.hasAttachments || /cid:/i.test(message.body?.content ?? "")) {
-    const pieces = await toutesLesPages<PieceGraph>(
+    const graphAttachments = await allPages<GraphAttachment>(
       `${base}/attachments?$select=id,name,contentType,size,isInline`,
     );
-    for (const piece of pieces) {
-      if (piece["@odata.type"] !== "#microsoft.graph.fileAttachment") continue;
-      if (!piece.isInline) {
-        attachments.push({ id: piece.id, name: piece.name ?? "piece-jointe", size: piece.size ?? 0 });
+    for (const attachment of graphAttachments) {
+      if (attachment["@odata.type"] !== "#microsoft.graph.fileAttachment") continue;
+      if (!attachment.isInline) {
+        attachments.push({ id: attachment.id, name: attachment.name ?? "piece-jointe", size: attachment.size ?? 0 });
         continue;
       }
-      if ((piece.size ?? 0) > IMAGE_INTEGREE_MAX) continue;
-      const detail = await graph<PieceGraph & { contentBytes?: string }>(
-        `${base}/attachments/${encodeURIComponent(piece.id)}`,
+      if ((attachment.size ?? 0) > EMBEDDED_IMAGE_MAX) continue;
+      const detail = await graph<GraphAttachment & { contentBytes?: string }>(
+        `${base}/attachments/${encodeURIComponent(attachment.id)}`,
       );
       const cid = (detail.contentId ?? "").replace(/^<|>$/g, "");
       if (cid && detail.contentBytes && /^image\//.test(detail.contentType ?? "")) {
@@ -628,9 +628,9 @@ export const courrierDeLaBoite = async (
   }
 
   return {
-    entete: versEntete(message),
-    to: (message.toRecipients ?? []).map(versAdresse),
-    cc: (message.ccRecipients ?? []).map(versAdresse),
+    header: toHeader(message),
+    to: (message.toRecipients ?? []).map(toAddress),
+    cc: (message.ccRecipients ?? []).map(toAddress),
     body: message.body?.content ?? "",
     body_type: (message.body?.contentType ?? "").toLowerCase() === "text" ? "text" : "html",
     url: message.webLink ?? "",
@@ -640,46 +640,46 @@ export const courrierDeLaBoite = async (
 };
 
 /** Une pièce jointe d'un e-mail de la boîte, contenu compris. */
-export const pieceDeLaBoite = async (
+export const mailboxAttachment = async (
   oid: string,
   id: string,
-  pieceId: string,
-): Promise<{ name: string; mime: string; contenu: Buffer }> => {
-  const piece = await graph<PieceGraph & { contentBytes?: string }>(
-    `/users/${encodeURIComponent(oid)}/messages/${encodeURIComponent(id)}/attachments/${encodeURIComponent(pieceId)}`,
+  attachmentId: string,
+): Promise<{ name: string; mime: string; content: Buffer }> => {
+  const attachment = await graph<GraphAttachment & { contentBytes?: string }>(
+    `/users/${encodeURIComponent(oid)}/messages/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}`,
   );
-  if (piece["@odata.type"] !== "#microsoft.graph.fileAttachment" || !piece.contentBytes) {
+  if (attachment["@odata.type"] !== "#microsoft.graph.fileAttachment" || !attachment.contentBytes) {
     fail(404, "Pièce jointe introuvable");
   }
   return {
-    name: piece.name ?? "piece-jointe",
-    mime: piece.contentType ?? "application/octet-stream",
-    contenu: Buffer.from(piece.contentBytes!, "base64"),
+    name: attachment.name ?? "piece-jointe",
+    mime: attachment.contentType ?? "application/octet-stream",
+    content: Buffer.from(attachment.contentBytes!, "base64"),
   };
 };
 
 // --- Connexion des utilisateurs --------------------------------------------
 
 /** Ce que la connexion demande : qui est la personne, rien de plus. */
-const PORTEE_CONNEXION = "openid profile email";
+const SIGN_IN_SCOPE = "openid profile email";
 
 /** L'adresse de la page de connexion Microsoft. */
-export const urlDeConnexion = (redirectUri: string, state: string): string => {
-  const r = exigerInscription();
-  const parametres = new URLSearchParams({
+export const loginUrl = (redirectUri: string, state: string): string => {
+  const r = requireRegistration();
+  const searchParams = new URLSearchParams({
     client_id: r.client_id,
     response_type: "code",
     redirect_uri: redirectUri,
     response_mode: "query",
-    scope: PORTEE_CONNEXION,
+    scope: SIGN_IN_SCOPE,
     state,
     prompt: "select_account",
   });
-  return `${pointDeTerminaison(r.tenant, "authorize")}?${parametres.toString()}`;
+  return `${endpoint(r.tenant, "authorize")}?${searchParams.toString()}`;
 };
 
 /** Les revendications du jeton d'identité dont on se sert. */
-interface Revendications {
+interface Claims {
   oid?: string;
   tid?: string;
   aud?: string;
@@ -695,12 +695,12 @@ interface Revendications {
  * à être revérifiée (OpenID Connect, § 3.1.3.7). On contrôle en revanche
  * qu'il vient bien de notre locataire et qu'il nous est destiné.
  */
-export const terminerLaConnexion = async (
+export const completeLogin = async (
   code: string,
   redirectUri: string,
 ): Promise<{ oid: string; email: string; name: string }> => {
-  const r = exigerInscription();
-  const jeton = await appelerJeton(
+  const r = requireRegistration();
+  const token = await requestToken(
     r.tenant,
     new URLSearchParams({
       client_id: r.client_id,
@@ -708,43 +708,43 @@ export const terminerLaConnexion = async (
       grant_type: "authorization_code",
       code,
       redirect_uri: redirectUri,
-      scope: PORTEE_CONNEXION,
+      scope: SIGN_IN_SCOPE,
     }),
   );
 
-  let revendications: Revendications = {};
+  let claims: Claims = {};
   try {
-    const charge = jeton.id_token?.split(".")[1] ?? "";
-    revendications = JSON.parse(Buffer.from(charge, "base64url").toString("utf8")) as Revendications;
+    const loaded = token.id_token?.split(".")[1] ?? "";
+    claims = JSON.parse(Buffer.from(loaded, "base64url").toString("utf8")) as Claims;
   } catch {
     fail(400, "Microsoft n'a pas renvoyé de jeton d'identité lisible");
   }
 
-  if (revendications.aud !== r.client_id) fail(400, "Jeton d'identité destiné à une autre application");
+  if (claims.aud !== r.client_id) fail(400, "Jeton d'identité destiné à une autre application");
   // Un locataire saisi par son nom de domaine ne se compare pas à l'identifiant
   // du jeton : seul un identifiant est contrôlé.
-  if (/^[0-9a-f-]{36}$/i.test(r.tenant) && revendications.tid?.toLowerCase() !== r.tenant.toLowerCase()) {
+  if (/^[0-9a-f-]{36}$/i.test(r.tenant) && claims.tid?.toLowerCase() !== r.tenant.toLowerCase()) {
     fail(403, "Ce compte n'appartient pas à l'annuaire de l'entreprise");
   }
-  if (!revendications.oid) fail(400, "Microsoft n'a pas renvoyé l'identifiant du compte");
+  if (!claims.oid) fail(400, "Microsoft n'a pas renvoyé l'identifiant du compte");
 
   return {
-    oid: revendications.oid!,
-    email: texte(revendications.email ?? revendications.preferred_username ?? ""),
-    name: texte(revendications.name ?? ""),
+    oid: claims.oid!,
+    email: text(claims.email ?? claims.preferred_username ?? ""),
+    name: text(claims.name ?? ""),
   };
 };
 
 // --- Courrier --------------------------------------------------------------
 
-export interface Envoi {
+export interface Sending {
   /** La boîte qui expédie : celle du support d'une société. */
   from: string;
   to: string;
   subject: string;
   text: string;
   html?: string;
-  attachments?: PieceJointe[];
+  attachments?: MailAttachment[];
 }
 
 /**
@@ -752,7 +752,7 @@ export interface Envoi {
  * gardé dans ses éléments envoyés : ce sont des notifications, pas une
  * correspondance.
  */
-export const envoyerParGraph = async ({ from, to, subject, text, html, attachments }: Envoi) => {
+export const sendViaGraph = async ({ from, to, subject, text, html, attachments }: Sending) => {
   await graph(`/users/${encodeURIComponent(from)}/sendMail`, {
     method: "POST",
     body: {
@@ -774,7 +774,7 @@ export const envoyerParGraph = async ({ from, to, subject, text, html, attachmen
   });
 };
 
-export interface MessageRecu {
+export interface ReceivedMessage {
   id: string;
   subject: string;
   from: string;
@@ -791,9 +791,9 @@ interface MessageGraph {
 }
 
 /** Les derniers messages de la boîte de réception d'une boîte (Mail.Read). */
-export const lireMessages = async (boite: string, combien = 25): Promise<MessageRecu[]> => {
+export const readMessages = async (mailbox: string, howMany = 25): Promise<ReceivedMessage[]> => {
   const page = await graph<Page<MessageGraph>>(
-    `/users/${encodeURIComponent(boite)}/mailFolders/inbox/messages?$top=${combien}&$select=id,subject,receivedDateTime,bodyPreview,from&$orderby=receivedDateTime desc`,
+    `/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages?$top=${howMany}&$select=id,subject,receivedDateTime,bodyPreview,from&$orderby=receivedDateTime desc`,
   );
   return page.value.map((m) => ({
     id: m.id,
@@ -804,7 +804,7 @@ export const lireMessages = async (boite: string, combien = 25): Promise<Message
   }));
 };
 
-export interface CourrierRecu {
+export interface ReceivedMail {
   /** L'identifiant de Graph, pour aller chercher le reste du message. */
   graph_id: string;
   /** L'identifiant Internet (Message-ID) : il ne change pas si le message change de dossier. */
@@ -821,7 +821,7 @@ export interface CourrierRecu {
   has_attachments: boolean;
 }
 
-interface CourrierGraph {
+interface GraphMail {
   id: string;
   internetMessageId?: string;
   conversationId?: string;
@@ -833,10 +833,10 @@ interface CourrierGraph {
 }
 
 /** Un message de Graph tel que la relève le lit, corps compris. */
-const CHAMPS_COURRIER =
+const MAIL_FIELDS =
   "id,internetMessageId,conversationId,subject,receivedDateTime,from,body,hasAttachments";
 
-const versCourrier = (m: CourrierGraph): CourrierRecu => ({
+const toMail = (m: GraphMail): ReceivedMail => ({
   graph_id: m.id,
   mail_id: m.internetMessageId || m.id,
   conversation_id: m.conversationId ?? "",
@@ -862,24 +862,24 @@ interface PageDelta<T> extends Page<T> {
  * Le corps arrive tel qu'il a été écrit, en HTML : converti en texte par
  * Graph, il perdait ses images, sa mise en page et gagnait des sauts de ligne.
  */
-export const deltaDeLaBoite = async (
-  boite: string,
-  lien: string | null,
-): Promise<{ courriers: CourrierRecu[]; lien: string }> => {
-  let suivante: string | undefined =
-    lien ??
-    `/users/${encodeURIComponent(boite)}/mailFolders/inbox/messages/delta?$select=${CHAMPS_COURRIER}`;
-  const courriers: CourrierRecu[] = [];
-  let prochain = "";
-  while (suivante) {
-    const page: PageDelta<CourrierGraph & { "@removed"?: unknown }> = await graph(suivante, {
-      entetes: { Prefer: "odata.maxpagesize=50" },
+export const mailboxDelta = async (
+  mailbox: string,
+  link: string | null,
+): Promise<{ mails: ReceivedMail[]; link: string }> => {
+  let nextPage: string | undefined =
+    link ??
+    `/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages/delta?$select=${MAIL_FIELDS}`;
+  const mails: ReceivedMail[] = [];
+  let deltaLink = "";
+  while (nextPage) {
+    const page: PageDelta<GraphMail & { "@removed"?: unknown }> = await graph(nextPage, {
+      headers: { Prefer: "odata.maxpagesize=50" },
     });
-    for (const m of page.value) if (!m["@removed"]) courriers.push(versCourrier(m));
-    suivante = page["@odata.nextLink"];
-    prochain = page["@odata.deltaLink"] ?? prochain;
+    for (const m of page.value) if (!m["@removed"]) mails.push(toMail(m));
+    nextPage = page["@odata.nextLink"];
+    deltaLink = page["@odata.deltaLink"] ?? deltaLink;
   }
-  return { courriers, lien: prochain };
+  return { mails, link: deltaLink };
 };
 
 /**
@@ -887,16 +887,16 @@ export const deltaDeLaBoite = async (
  * les éléments supprimés plutôt que de l'effacer : il y reste retrouvable,
  * et la réponse à sa demande (repondreParGraph) le cite toujours.
  */
-export const supprimerCourrier = async (boite: string, graphId: string): Promise<void> => {
-  await graph(`/users/${encodeURIComponent(boite)}/messages/${encodeURIComponent(graphId)}`, {
+export const deleteMail = async (mailbox: string, graphId: string): Promise<void> => {
+  await graph(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(graphId)}`, {
     method: "DELETE",
   });
 };
 
 /** Ce que la delta query ne dit pas — ou plus — d'un e-mail. */
-export interface DetailsCourrier {
+export interface MailDetails {
   /** Ce qu'il cite de ceux qui le précèdent : In-Reply-To et References. */
-  cites: string[];
+  cited: string[];
   conversation_id: string;
   has_attachments: boolean;
   /**
@@ -912,20 +912,20 @@ export interface DetailsCourrier {
  * garde les champs demandés à sa création, et un lien créé avant qu'on les
  * demande ne les rendrait jamais.
  */
-export const detailsDuCourrier = async (
-  boite: string,
+export const mailDetails = async (
+  mailbox: string,
   graphId: string,
-): Promise<DetailsCourrier> => {
+): Promise<MailDetails> => {
   const message = await graph<{
     internetMessageHeaders?: { name: string; value: string }[];
     conversationId?: string;
     hasAttachments?: boolean;
     uniqueBody?: { content?: string; contentType?: string };
   }>(
-    `/users/${encodeURIComponent(boite)}/messages/${encodeURIComponent(graphId)}?$select=internetMessageHeaders,conversationId,hasAttachments,uniqueBody`,
+    `/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(graphId)}?$select=internetMessageHeaders,conversationId,hasAttachments,uniqueBody`,
   );
   return {
-    cites: (message.internetMessageHeaders ?? [])
+    cited: (message.internetMessageHeaders ?? [])
       .filter((e) => /^(in-reply-to|references)$/i.test(e.name))
       .flatMap((e) => e.value.match(/<[^>]+>/g) ?? []),
     conversation_id: message.conversationId ?? "",
@@ -937,17 +937,17 @@ export const detailsDuCourrier = async (
 };
 
 /** Un fichier joint à un e-mail : une image intégrée au corps, ou une pièce jointe. */
-export interface FichierRecu {
+export interface ReceivedFile {
   name: string;
   mime: string;
   size: number;
   inline: boolean;
   /** Ce que le corps cite (« cid:… ») pour une image intégrée. */
   content_id: string;
-  contenu: Buffer;
+  content: Buffer;
 }
 
-interface PieceGraph {
+interface GraphAttachment {
   "@odata.type"?: string;
   id: string;
   name?: string;
@@ -963,35 +963,35 @@ interface PieceGraph {
  * contenu à rapatrier. Au-delà de « tailleMax », un fichier est laissé dans la
  * boîte.
  */
-export const fichiersDuCourrier = async (
-  boite: string,
+export const mailFiles = async (
+  mailbox: string,
   graphId: string,
-  tailleMax: number,
-): Promise<FichierRecu[]> => {
-  const base = `/users/${encodeURIComponent(boite)}/messages/${encodeURIComponent(graphId)}/attachments`;
-  const pieces = await toutesLesPages<PieceGraph>(
+  maxSize: number,
+): Promise<ReceivedFile[]> => {
+  const base = `/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(graphId)}/attachments`;
+  const graphAttachments = await allPages<GraphAttachment>(
     `${base}?$select=id,name,contentType,size,isInline`,
   );
-  const fichiers: FichierRecu[] = [];
-  for (const piece of pieces) {
-    if (piece["@odata.type"] !== "#microsoft.graph.fileAttachment") continue;
-    if ((piece.size ?? 0) > tailleMax) continue;
+  const files: ReceivedFile[] = [];
+  for (const attachment of graphAttachments) {
+    if (attachment["@odata.type"] !== "#microsoft.graph.fileAttachment") continue;
+    if ((attachment.size ?? 0) > maxSize) continue;
     // Le contenu à part, en brut : dans la liste, il ferait voyager tous les
     // fichiers en base64 d'un coup.
-    const detail = await graph<PieceGraph & { contentBytes?: string }>(
-      `${base}/${encodeURIComponent(piece.id)}`,
+    const detail = await graph<GraphAttachment & { contentBytes?: string }>(
+      `${base}/${encodeURIComponent(attachment.id)}`,
     );
     if (!detail.contentBytes) continue;
-    fichiers.push({
-      name: piece.name ?? "piece-jointe",
-      mime: piece.contentType ?? "application/octet-stream",
-      size: piece.size ?? 0,
+    files.push({
+      name: attachment.name ?? "piece-jointe",
+      mime: attachment.contentType ?? "application/octet-stream",
+      size: attachment.size ?? 0,
       inline: Boolean(detail.isInline),
       content_id: (detail.contentId ?? "").replace(/^<|>$/g, ""),
-      contenu: Buffer.from(detail.contentBytes, "base64"),
+      content: Buffer.from(detail.contentBytes, "base64"),
     });
   }
-  return fichiers;
+  return files;
 };
 
 /**
@@ -1008,40 +1008,40 @@ export const fichiersDuCourrier = async (
  * Tout passe par « reply », qui n'exige que Mail.Send : un brouillon
  * (« createReply ») demanderait en plus Mail.ReadWrite sur la boîte.
  */
-export const repondreParGraph = async (
-  boite: string,
+export const replyByGraph = async (
+  mailbox: string,
   mailId: string,
   html: string,
   ticket: string,
   copies: { cc: string[]; bcc: string[] } = { cc: [], bcc: [] },
-  pieces: { name: string; mime: string; contenu: Buffer }[] = [],
+  graphAttachments: { name: string; mime: string; content: Buffer }[] = [],
 ): Promise<void> => {
-  const racine = `/users/${encodeURIComponent(boite)}/messages`;
-  const trouve = await graph<Page<{ id: string; subject?: string }>>(
-    `${racine}?$filter=internetMessageId eq '${mailId.replace(/'/g, "''")}'&$select=id,subject&$top=1`,
+  const root = `/users/${encodeURIComponent(mailbox)}/messages`;
+  const found = await graph<Page<{ id: string; subject?: string }>>(
+    `${root}?$filter=internetMessageId eq '${mailId.replace(/'/g, "''")}'&$select=id,subject&$top=1`,
   );
-  const message = trouve.value[0];
+  const message = found.value[0];
   if (!message) fail(400, "L'e-mail d'origine est introuvable dans la boîte de support");
 
   // « Imprimante » devient « RE: [HLP-12] Imprimante » ; un objet qui porte
   // déjà le numéro le garde tel quel.
-  const origine = (message!.subject ?? "").replace(/^((?:re|tr|fw|fwd)\s*:\s*)+/i, "");
-  const objet = origine.includes(`[${ticket}]`) ? `RE: ${origine}` : `RE: [${ticket}] ${origine}`;
+  const origin = (message!.subject ?? "").replace(/^((?:re|tr|fw|fwd)\s*:\s*)+/i, "");
+  const subject = origin.includes(`[${ticket}]`) ? `RE: ${origin}` : `RE: [${ticket}] ${origin}`;
 
-  await graph(`${racine}/${encodeURIComponent(message!.id)}/reply`, {
+  await graph(`${root}/${encodeURIComponent(message!.id)}/reply`, {
     method: "POST",
     body: {
       comment: html,
       message: {
-        subject: objet.trim(),
+        subject: subject.trim(),
         internetMessageHeaders: [{ name: "X-Milo-Ticket", value: ticket }],
         ccRecipients: copies.cc.map((address) => ({ emailAddress: { address } })),
         bccRecipients: copies.bcc.map((address) => ({ emailAddress: { address } })),
-        attachments: pieces.map((p) => ({
+        attachments: graphAttachments.map((p) => ({
           "@odata.type": "#microsoft.graph.fileAttachment",
           name: p.name,
           contentType: p.mime,
-          contentBytes: p.contenu.toString("base64"),
+          contentBytes: p.content.toString("base64"),
         })),
       },
     },
@@ -1050,7 +1050,7 @@ export const repondreParGraph = async (
 
 // --- Notifications de changement -------------------------------------------
 
-export interface Abonnement {
+export interface Subscription {
   id: string;
   expirationDateTime: string;
 }
@@ -1060,28 +1060,28 @@ export interface Abonnement {
  * de réception. Graph vérifie l'adresse avant d'accepter : Milo doit déjà
  * écouter, et répondre à sa validation.
  */
-export const creerAbonnement = (
-  boite: string,
+export const createSubscription = (
+  mailbox: string,
   notificationUrl: string,
   clientState: string,
   expiration: string,
-): Promise<Abonnement> =>
-  graph<Abonnement>("/subscriptions", {
+): Promise<Subscription> =>
+  graph<Subscription>("/subscriptions", {
     method: "POST",
     body: {
       changeType: "created",
       notificationUrl,
-      resource: `users/${boite}/mailFolders('inbox')/messages`,
+      resource: `users/${mailbox}/mailFolders('inbox')/messages`,
       expirationDateTime: expiration,
       clientState,
     },
   });
 
-export const renouvelerAbonnement = (id: string, expiration: string): Promise<Abonnement> =>
-  graph<Abonnement>(`/subscriptions/${encodeURIComponent(id)}`, {
+export const renewSubscription = (id: string, expiration: string): Promise<Subscription> =>
+  graph<Subscription>(`/subscriptions/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: { expirationDateTime: expiration },
   });
 
-export const supprimerAbonnement = (id: string): Promise<void> =>
+export const deleteSubscription = (id: string): Promise<void> =>
   graph<void>(`/subscriptions/${encodeURIComponent(id)}`, { method: "DELETE" });

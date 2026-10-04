@@ -7,6 +7,6 @@ import EmptyPanel from "./EmptyPanel";
  * triangle jaune, et le type du widget, pour savoir lequel revoir. Ses
  * réglages se rouvrent par son menu, comme d'habitude.
  */
-export default function ProblemeDeConfiguration({ widget }: { widget: string }) {
-  return <EmptyPanel icon={IconAlertTriangle} message={widget} avertissement size="md" />;
+export default function ConfigurationProblem({ widget }: { widget: string }) {
+  return <EmptyPanel icon={IconAlertTriangle} message={widget} warning size="md" />;
 }

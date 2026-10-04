@@ -5,18 +5,18 @@ import { ASSET_MODEL_MAX, VLAN_NAME_MAX } from "@milo/shared";
 import type { AssetSettings } from "@milo/shared";
 import { api } from "../../api";
 import defilement from "../../assets/styles/ListeScroll.module.css";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import { RED } from "../../themes/colors";
 import AddButton from "../ui/AddButton";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import {
-  ARRONDI,
-  ListeVide,
-  RETRAIT_LIGNE,
-  styleChampNom,
-  styleLigne,
+  ROUNDING,
+  EmptyList,
+  ROW_INSET,
+  nameFieldStyle,
+  rowStyle,
 } from "../ui/LignesDuTiroir";
-import PointMenu, { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
+import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 import type { ClipboardEvent, ComponentType } from "react";
 
 // La section « Assets » du Paramétrage, et ses deux listes :
@@ -31,54 +31,54 @@ import type { ClipboardEvent, ComponentType } from "react";
 // « sous-réseau VLAN nom » chacun, le nom facultatif.
 
 /** La largeur de la première colonne : identifiant ou sous-réseau. */
-const LARGEUR_PREMIERE = 200;
+const FIRST_WIDTH = 200;
 
 /** Assez pour « 4094 ». */
-const VLAN_LONGUEUR = 4;
+const VLAN_LENGTH = 4;
 
 /** La largeur de la colonne des numéros de VLAN. */
-const LARGEUR_VLAN = 60;
+const VLAN_WIDTH = 60;
 
 /** Au-delà, la liste défile. */
-const LIGNES_VISIBLES = 5;
+const VISIBLE_ROWS = 5;
 
 /**
  * La hauteur d'une ligne et de l'écart qui la suit : un champ « xs » (30 px),
  * le retrait de la ligne en haut et en bas (2 × 4 px), et le filet de 1 px.
  */
-const HAUTEUR_LIGNE = 30 + 2 * 4 + 1;
+const ROW_HEIGHT = 30 + 2 * 4 + 1;
 
 /** Une ligne d'une liste : ses champs, tels qu'on les saisit, dans l'ordre des colonnes. */
-type Ligne = string[];
+type Row = string[];
 
 /**
  * Une colonne : son libellé, sa longueur, et sa largeur — fixe, ou le reste
  * de la ligne. Une colonne « facultative » peut rester vide.
  */
-interface Colonne {
+interface Column {
   label: string;
   maxLength: number;
   largeur?: number;
-  numerique?: boolean;
-  facultative?: boolean;
+  digital?: boolean;
+  optional?: boolean;
 }
 
-const vide = (colonnes: Colonne[]): Ligne => colonnes.map(() => "");
+const empty = (columns: Column[]): Row => columns.map(() => "");
 
-const styleColonne = (colonne: Colonne) =>
-  colonne.largeur ? { width: colonne.largeur, flexShrink: 0 } : { flex: 1, minWidth: 0 };
+const columnStyle = (column: Column) =>
+  column.largeur ? { width: column.largeur, flexShrink: 0 } : { flex: 1, minWidth: 0 };
 
-const nettoye = (l: Ligne): Ligne => l.map((v) => v.trim());
+const cleaned = (l: Row): Row => l.map((v) => v.trim());
 
-interface LigneEditableProps {
-  colonnes: Colonne[];
-  valeur: Ligne;
-  rang: number;
+interface EditableRowProps {
+  columns: Column[];
+  value: Row;
+  rank: number;
   total: number;
   /** Vrai pour la ligne ajoutée, pas encore enregistrée. */
-  nouvelle?: boolean;
+  newRow?: boolean;
   /** La ligne complète et changée part : vrai quand le serveur l'a prise. */
-  onValider: (ligne: Ligne) => Promise<boolean>;
+  onValidate: (row: Row) => Promise<boolean>;
   /** La ligne ajoutée, quittée vide ou abandonnée. */
   onAbandon?: () => void;
   onContextMenu?: (e: React.MouseEvent<HTMLElement>) => void;
@@ -86,68 +86,68 @@ interface LigneEditableProps {
 }
 
 /** Une ligne : ses champs à même la ligne, et son brouillon le temps de la saisie. */
-function LigneEditable({
-  colonnes,
-  valeur,
-  rang,
+function EditableRow({
+  columns,
+  value,
+  rank,
   total,
-  nouvelle,
-  onValider,
+  newRow,
+  onValidate,
   onAbandon,
   onContextMenu,
   onPaste,
-}: LigneEditableProps) {
-  const [brouillon, setBrouillon] = useState<Ligne>(valeur);
+}: EditableRowProps) {
+  const [draft, setDraft] = useState<Row>(value);
   const [focus, setFocus] = useState<number | null>(null);
-  const ligne = useRef<HTMLDivElement | null>(null);
+  const row = useRef<HTMLDivElement | null>(null);
   // Échap quitte la ligne sans rien envoyer : la sortie qui suit le sait.
-  const annule = useRef(false);
+  const cancelled = useRef(false);
 
-  const complet = (l: Ligne) => colonnes.every((c, i) => c.facultative || Boolean(l[i]));
+  const full = (l: Row) => columns.every((c, i) => c.optional || Boolean(l[i]));
 
   // Quitter un champ pour un autre de la même ligne n'enregistre pas.
-  const quitter = async () => {
-    const apres = nettoye(brouillon);
-    if (annule.current) {
-      annule.current = false;
-      if (nouvelle) return onAbandon?.();
-      return setBrouillon(valeur);
+  const leave = async () => {
+    const after = cleaned(draft);
+    if (cancelled.current) {
+      cancelled.current = false;
+      if (newRow) return onAbandon?.();
+      return setDraft(value);
     }
-    if (nouvelle) {
-      if (apres.every((v) => !v)) return onAbandon?.();
+    if (newRow) {
+      if (after.every((v) => !v)) return onAbandon?.();
       // Incomplète, la ligne ajoutée attend la suite.
-      if (complet(apres)) await onValider(apres);
+      if (full(after)) await onValidate(after);
       return;
     }
     // Vidée ou inchangée : elle revient à ce qu'elle était.
-    if (!complet(apres) || apres.every((v, i) => v === valeur[i])) return setBrouillon(valeur);
-    if (!(await onValider(apres))) setBrouillon(valeur);
+    if (!full(after) || after.every((v, i) => v === value[i])) return setDraft(value);
+    if (!(await onValidate(after))) setDraft(value);
   };
 
   return (
     <Group
-      ref={ligne}
+      ref={row}
       gap="xs"
       wrap="nowrap"
       onContextMenu={onContextMenu}
       onBlur={(e) => {
-        if (ligne.current?.contains(e.relatedTarget as Node | null)) return;
-        void quitter();
+        if (row.current?.contains(e.relatedTarget as Node | null)) return;
+        void leave();
       }}
-      style={{ ...styleLigne(rang, total, false), paddingLeft: RETRAIT_LIGNE }}
+      style={{ ...rowStyle(rank, total, false), paddingLeft: ROW_INSET }}
     >
-      {colonnes.map((colonne, i) => (
+      {columns.map((column, i) => (
         <TextInput
-          key={colonne.label}
+          key={column.label}
           size="sm"
-          radius={ARRONDI}
-          placeholder={colonne.label}
-          aria-label={colonne.label}
-          value={brouillon[i] ?? ""}
+          radius={ROUNDING}
+          placeholder={column.label}
+          aria-label={column.label}
+          value={draft[i] ?? ""}
           onChange={(e) => {
-            const texte = e.currentTarget.value;
-            setBrouillon((avant) =>
-              avant.map((v, j) => (j === i ? (colonne.numerique ? texte.replace(/\D/g, "") : texte) : v)),
+            const text = e.currentTarget.value;
+            setDraft((before) =>
+              before.map((v, j) => (j === i ? (column.digital ? text.replace(/\D/g, "") : text) : v)),
             );
           }}
           onKeyDown={(e) => {
@@ -157,18 +157,18 @@ function LigneEditable({
               e.currentTarget.blur();
             }
             if (e.key === "Escape") {
-              annule.current = true;
+              cancelled.current = true;
               e.currentTarget.blur();
             }
           }}
           onPaste={i === 0 ? onPaste : undefined}
-          maxLength={colonne.maxLength}
-          inputMode={colonne.numerique ? "numeric" : undefined}
-          autoFocus={nouvelle && i === 0}
+          maxLength={column.maxLength}
+          inputMode={column.digital ? "numeric" : undefined}
+          autoFocus={newRow && i === 0}
           onFocus={() => setFocus(i)}
           onBlurCapture={() => setFocus(null)}
-          style={styleColonne(colonne)}
-          styles={{ input: styleChampNom(focus === i) }}
+          style={columnStyle(column)}
+          styles={{ input: nameFieldStyle(focus === i) }}
         />
       ))}
     </Group>
@@ -183,37 +183,37 @@ function LigneEditable({
  * `decouper`, s'il est donné, permet de coller plusieurs lignes d'un coup dans
  * la ligne ajoutée : chaque ligne du presse-papiers devient une ligne.
  */
-function ListeLignes({
-  titre,
-  colonnes,
-  lignes,
-  enregistrer,
+function ListRows({
+  title,
+  columns,
+  rows,
+  save,
   emptyIcon,
   emptyText,
-  libelleAjout,
-  titreSuppression,
-  decouper,
+  addLabel,
+  deleteTitle,
+  split,
 }: {
-  titre: string;
-  colonnes: Colonne[];
-  lignes: Ligne[];
-  enregistrer: (liste: Ligne[]) => Promise<boolean>;
+  title: string;
+  columns: Column[];
+  rows: Row[];
+  save: (list: Row[]) => Promise<boolean>;
   emptyIcon: ComponentType<{ size?: number }>;
   emptyText: string;
-  libelleAjout: string;
-  titreSuppression: string;
-  decouper?: (ligne: string) => Ligne | null;
+  addLabel: string;
+  deleteTitle: string;
+  split?: (row: string) => Row | null;
 }) {
   // La ligne ajoutée, en attente de ses champs.
-  const [enAjout, setEnAjout] = useState(false);
-  const [menu, setMenu] = useState<{ rang: number; position: PointMenuPosition } | null>(null);
-  const [aSupprimer, setASupprimer] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
+  const [toDelete, setToDelete] = useState<number | null>(null);
 
-  const envoyer = async (liste: Ligne[]): Promise<boolean> => {
+  const send = async (list: Row[]): Promise<boolean> => {
     try {
-      return await enregistrer(liste);
+      return await save(list);
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
       return false;
     }
   };
@@ -223,77 +223,77 @@ function ListeLignes({
    * champs — les ajoute toutes d'un coup. Une ligne illisible arrête tout :
    * rien n'est ajouté, et on dit laquelle.
    */
-  const coller = (e: ClipboardEvent<HTMLInputElement>) => {
-    if (!decouper) return;
-    const brutes = e.clipboardData
+  const paste = (e: ClipboardEvent<HTMLInputElement>) => {
+    if (!split) return;
+    const raw = e.clipboardData
       .getData("text")
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean);
-    if (brutes.length === 0) return;
-    if (brutes.length === 1 && !decouper(brutes[0] ?? "")) return; // un collage ordinaire
+    if (raw.length === 0) return;
+    if (raw.length === 1 && !split(raw[0] ?? "")) return; // un collage ordinaire
     e.preventDefault();
-    const lues: Ligne[] = [];
-    for (const brute of brutes) {
-      const lue = decouper(brute);
-      if (!lue) {
-        notifierErreur(`Ligne illisible : « ${brute} »`);
+    const readRows: Row[] = [];
+    for (const line of raw) {
+      const readValue = split(line);
+      if (!readValue) {
+        notifyError(`Ligne illisible : « ${line} »`);
         return;
       }
-      lues.push(lue);
+      readRows.push(readValue);
     }
-    void envoyer([...lignes, ...lues]).then((ok) => ok && setEnAjout(false));
+    void send([...rows, ...readRows]).then((ok) => ok && setAdding(false));
   };
 
-  const total = lignes.length + (enAjout ? 1 : 0);
+  const total = rows.length + (adding ? 1 : 0);
 
   return (
-    <Input.Wrapper label={titre}>
+    <Input.Wrapper label={title}>
       {total === 0 ? (
-        <ListeVide icon={emptyIcon} message={emptyText} />
+        <EmptyList icon={emptyIcon} message={emptyText} />
       ) : (
         // Cinq lignes au plus à la fois : au-delà, la liste défile. Une ligne
         // ajoutée, qui prend le focus, s'y montre d'elle-même.
         <ScrollArea.Autosize
-          mah={LIGNES_VISIBLES * HAUTEUR_LIGNE}
+          mah={VISIBLE_ROWS * ROW_HEIGHT}
           type="auto"
           scrollbars="y"
           classNames={{ scrollbar: defilement.scrollbar, thumb: defilement.thumb }}
         >
           <Stack gap={1}>
-            {lignes.map((ligne, rang) => (
-              <LigneEditable
+            {rows.map((row, rank) => (
+              <EditableRow
                 // Une ligne relue du serveur repart de sa nouvelle valeur.
-                key={`${rang}-${ligne.join("|")}`}
-                colonnes={colonnes}
-                valeur={ligne}
-                rang={rang}
+                key={`${rank}-${row.join("|")}`}
+                columns={columns}
+                value={row}
+                rank={rank}
                 total={total}
-                onValider={(apres) => envoyer(lignes.map((l, i) => (i === rang ? apres : l)))}
-                onContextMenu={(e) => setMenu({ rang, position: positionDuMenu(e) })}
+                onValidate={(after) => send(rows.map((l, i) => (i === rank ? after : l)))}
+                onContextMenu={(e) => setMenu({ rank, position: menuPosition(e) })}
               />
             ))}
-            {enAjout && (
-              <LigneEditable
-                colonnes={colonnes}
-                valeur={vide(colonnes)}
-                rang={total - 1}
+            {adding && (
+              <EditableRow
+                columns={columns}
+                value={empty(columns)}
+                rank={total - 1}
                 total={total}
-                nouvelle
-                onValider={async (apres) => {
-                  const ok = await envoyer([...lignes, apres]);
-                  if (ok) setEnAjout(false);
+                newRow
+                onValidate={async (after) => {
+                  const ok = await send([...rows, after]);
+                  if (ok) setAdding(false);
                   return ok;
                 }}
-                onAbandon={() => setEnAjout(false)}
-                onPaste={decouper ? coller : undefined}
+                onAbandon={() => setAdding(false)}
+                onPaste={split ? paste : undefined}
               />
             )}
           </Stack>
         </ScrollArea.Autosize>
       )}
       {/* Au plus près de la liste qu'il allonge. */}
-      <AddButton label={libelleAjout} onClick={() => setEnAjout(true)} mt={4} />
+      <AddButton label={addLabel} onClick={() => setAdding(true)} mt={4} />
 
       {menu && (
         <PointMenu position={menu.position} onClose={() => setMenu(null)}>
@@ -301,7 +301,7 @@ function ListeLignes({
             color={RED}
             leftSection={<IconTrash size={16} />}
             onClick={() => {
-              setASupprimer(menu.rang);
+              setToDelete(menu.rank);
               setMenu(null);
             }}
           >
@@ -311,17 +311,17 @@ function ListeLignes({
       )}
 
       <DeleteConfirmModal
-        opened={aSupprimer !== null}
-        onClose={() => setASupprimer(null)}
+        opened={toDelete !== null}
+        onClose={() => setToDelete(null)}
         onConfirm={async () => {
-          const rang = aSupprimer;
-          setASupprimer(null);
-          if (rang !== null) await envoyer(lignes.filter((_, i) => i !== rang));
+          const rank = toDelete;
+          setToDelete(null);
+          if (rank !== null) await send(rows.filter((_, i) => i !== rank));
         }}
-        title={titreSuppression}
+        title={deleteTitle}
         message={
           <>
-            Voulez-vous vraiment supprimer « {lignes[aSupprimer ?? -1]?.[0]} » ? Cette action est
+            Voulez-vous vraiment supprimer « {rows[toDelete ?? -1]?.[0]} » ? Cette action est
             irréversible.
           </>
         }
@@ -330,41 +330,41 @@ function ListeLignes({
   );
 }
 
-const COLONNES_MODELES: Colonne[] = [
+const MODEL_COLUMNS: Column[] = [
   {
     label: "Identifiant",
     maxLength: ASSET_MODEL_MAX,
     // Plus court qu'un sous-réseau : « Mac14,6 ».
-    largeur: LARGEUR_PREMIERE - 40,
+    largeur: FIRST_WIDTH - 40,
   },
   { label: "Nom commercial", maxLength: ASSET_MODEL_MAX },
 ];
 
-const COLONNES_VLAN: Colonne[] = [
-  { label: "Sous-réseau", maxLength: 18, largeur: LARGEUR_PREMIERE },
+const VLAN_COLUMNS: Column[] = [
+  { label: "Sous-réseau", maxLength: 18, largeur: FIRST_WIDTH },
   {
     label: "VLAN",
-    maxLength: VLAN_LONGUEUR,
-    largeur: LARGEUR_VLAN,
-    numerique: true,
+    maxLength: VLAN_LENGTH,
+    largeur: VLAN_WIDTH,
+    digital: true,
   },
-  { label: "Nom", maxLength: VLAN_NAME_MAX, facultative: true },
+  { label: "Nom", maxLength: VLAN_NAME_MAX, optional: true },
 ];
 
 /**
  * « 10.1.106.0/24 106 Wi-Fi invités » : le sous-réseau, le VLAN, puis le nom
  * facultatif — séparés d'espaces, d'une tabulation, d'un « ; » ou d'une « , ».
  */
-const LIGNE_VLAN = /^(\S+\/\d+)[\s;,]+(\d+)(?:[\s;,]+(.*))?$/;
+const VLAN_ROW = /^(\S+\/\d+)[\s;,]+(\d+)(?:[\s;,]+(.*))?$/;
 
-const decouperVlan = (ligne: string): Ligne | null => {
-  const m = LIGNE_VLAN.exec(ligne);
+const splitVlan = (row: string): Row | null => {
+  const m = VLAN_ROW.exec(row);
   if (!m) return null;
   return [m[1] ?? "", m[2] ?? "", (m[3] ?? "").trim()];
 };
 
 export default function AssetsTab() {
-  const [reglages, setReglages] = useState<AssetSettings>({
+  const [settings, setSettings] = useState<AssetSettings>({
     models: [],
     vlans: [],
   });
@@ -372,27 +372,27 @@ export default function AssetsTab() {
   useEffect(() => {
     api
       .getAssetSettings()
-      .then(setReglages)
-      .catch((e) => notifierErreur(messageErreur(e)));
+      .then(setSettings)
+      .catch((e) => notifyError(errorMessage(e)));
   }, []);
 
   /** Une table part entière : le serveur la remplace d'un coup. */
-  const enregistrer = async (
+  const save = async (
     data: Partial<AssetSettings>,
   ): Promise<boolean> => {
-    setReglages(await api.updateAssetSettings(data));
+    setSettings(await api.updateAssetSettings(data));
     return true;
   };
 
   return (
     <Stack gap="xl">
-      <ListeLignes
-        titre="Modèles"
-        colonnes={COLONNES_MODELES}
-        lignes={reglages.models.map((m) => [m.identifier, m.name])}
-        enregistrer={(liste) =>
-          enregistrer({
-            models: liste.map(([identifier = "", name = ""]) => ({
+      <ListRows
+        title="Modèles"
+        columns={MODEL_COLUMNS}
+        rows={settings.models.map((m) => [m.identifier, m.name])}
+        save={(list) =>
+          save({
+            models: list.map(([identifier = "", name = ""]) => ({
               identifier,
               name,
             })),
@@ -400,16 +400,16 @@ export default function AssetsTab() {
         }
         emptyIcon={IconDeviceLaptop}
         emptyText="Aucun modèle"
-        libelleAjout="Ajouter un modèle"
-        titreSuppression="Supprimer le modèle"
+        addLabel="Ajouter un modèle"
+        deleteTitle="Supprimer le modèle"
       />
-      <ListeLignes
-        titre="VLAN"
-        colonnes={COLONNES_VLAN}
-        lignes={reglages.vlans.map((v) => [v.subnet, String(v.vlan), v.name])}
-        enregistrer={(liste) =>
-          enregistrer({
-            vlans: liste.map(([subnet = "", vlan = "", name = ""]) => ({
+      <ListRows
+        title="VLAN"
+        columns={VLAN_COLUMNS}
+        rows={settings.vlans.map((v) => [v.subnet, String(v.vlan), v.name])}
+        save={(list) =>
+          save({
+            vlans: list.map(([subnet = "", vlan = "", name = ""]) => ({
               subnet,
               vlan: Number(vlan),
               name,
@@ -418,9 +418,9 @@ export default function AssetsTab() {
         }
         emptyIcon={IconNetwork}
         emptyText="Aucun VLAN"
-        libelleAjout="Ajouter un VLAN"
-        titreSuppression="Supprimer le VLAN"
-        decouper={decouperVlan}
+        addLabel="Ajouter un VLAN"
+        deleteTitle="Supprimer le VLAN"
+        split={splitVlan}
       />
     </Stack>
   );

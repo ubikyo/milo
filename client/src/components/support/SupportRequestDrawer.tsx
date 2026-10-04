@@ -13,7 +13,7 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import CardEcheance, { ECHEANCE_VIDE } from "../board/CardEcheance";
+import CardDueDate, { EMPTY_DUE } from "../board/CardEcheance";
 import {
   IconCheck,
   IconChevronDown,
@@ -41,10 +41,10 @@ import DrawerScrollArea, {
 import EmptyPanel from "../ui/EmptyPanel";
 import LabelPicker, { SUPPORT_LABELS_API } from "../ui/LabelPicker";
 import CommentThread from "../project/CommentThread";
-import { FIELDSET_NU, useDroits } from "../../lib/droits";
+import { BARE_FIELDSET, useRights } from "../../lib/droits";
 import SupportMessages, { SupportReply } from "./SupportMessages";
-import type { EnvoiReponse, MessageSupport } from "./SupportMessages";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import type { ReplySending, SupportMessage } from "./SupportMessages";
+import { errorMessage, notifyError } from "../../lib/errors";
 import {
   DEFAULT_SUPPORT_STATUS,
   MILO_ACTOR_ID,
@@ -79,23 +79,23 @@ const TABS = [
 const MESSAGES_MIN_HEIGHT = 200;
 
 // Le statut et l'échéance, sur la ligne sous l'objet.
-const LARGEUR_STATUT = 120;
-const LARGEUR_ECHEANCE = 320;
+const STATUS_WIDTH = 120;
+const DUE_WIDTH = 320;
 
 const DRAWER_PADDING = 40;
 
 /** Une réponse de l'équipe : ni un e-mail reçu, ni un mot de Milo. */
-const deLEquipe = (m: MessageSupport): boolean =>
+const fromTeam = (m: SupportMessage): boolean =>
   m.format !== "email" && !m.system && m.author?.id !== MILO_ACTOR_ID;
 
 /**
  * L'évènement que vit la prochaine réponse de l'équipe, d'après le fil : vide,
  * l'expéditeur seul y a écrit, ou l'équipe a déjà répondu.
  */
-const evenementDuFil = (echanges: MessageSupport[]): SupportContentEvent =>
-  echanges.some(deLEquipe)
+const threadEvent = (exchanges: SupportMessage[]): SupportContentEvent =>
+  exchanges.some(fromTeam)
     ? "reply"
-    : echanges.some((m) => m.format === "email")
+    : exchanges.some((m) => m.format === "email")
       ? "first_reply"
       : "new";
 
@@ -109,7 +109,7 @@ const DRAWER_WIDTH_CREATION = DRAWER_WIDTH + 200;
 
 // La colonne des acteurs, dans l'onglet « Ticket » : de quoi tenir quelques
 // bulles et le « + », sans prendre la place des étiquettes.
-const ACTEURS_WIDTH = 140;
+const ACTORS_WIDTH = 140;
 
 // Hauteur des étiquettes et du « + » qui les suit, comme sur la fiche d'une
 // carte.
@@ -153,7 +153,7 @@ interface SupportRequestDrawerProps {
   onSaved: () => void | Promise<void>;
   onDeleted: () => void | Promise<void>;
   /** La personne suit cette demande : elle est prévenue de chaque modification. */
-  suivi: boolean;
+  following: boolean;
   onToggleFollow: () => void | Promise<void>;
 }
 
@@ -172,7 +172,7 @@ export default function SupportRequestDrawer({
   currentUser,
   onSaved,
   onDeleted,
-  suivi,
+  following,
   onToggleFollow,
 }: SupportRequestDrawerProps) {
   const [subject, setSubject] = useState("");
@@ -182,30 +182,30 @@ export default function SupportRequestDrawer({
    * regarde, ou le premier —, et reste modifiable : c'est ainsi qu'on
    * rattrape une demande ouverte au mauvais endroit.
    */
-  const [contexteId, setContexteId] = useState(contextId);
+  const [activeContextId, setActiveContextId] = useState(contextId);
   /** Les étiquettes du support, communes à tous les contextes. */
-  const [etiquettes, setEtiquettes] = useState<SupportLabel[]>([]);
+  const [labels, setLabels] = useState<SupportLabel[]>([]);
   /** Les acteurs retenus, en chaînes : ceux qui s'occupent de la demande. */
   const [actorIds, setActorIds] = useState<string[]>([]);
   const [labelIds, setLabelIds] = useState<string[]>([]);
   /** L'échéance, en ISO ; vide quand la demande n'en a pas. */
-  const [echeance, setEcheance] = useState("");
-  const [comments, setComments] = useState<MessageSupport[]>([]);
+  const [due, setDue] = useState("");
+  const [comments, setComments] = useState<SupportMessage[]>([]);
   /** Les contenus par défaut, que la réponse pose dans son éditeur. */
-  const [contenus, setContenus] = useState<SupportContent[]>([]);
+  const [contents, setContents] = useState<SupportContent[]>([]);
   /** Les fiches Entra que leurs variables citent : qui écrit, et l'expéditeur. */
-  const [personnes, setPersonnes] = useState<{
-    utilisateur: SupportPerson | null;
-    expediteur: SupportPerson | null;
-  }>({ utilisateur: null, expediteur: null });
+  const [people, setPeople] = useState<{
+    user: SupportPerson | null;
+    sender: SupportPerson | null;
+  }>({ user: null, sender: null });
   const [activeTab, setActiveTab] = useState<string | null>("settings");
   const [confirmDeleteOpened, setConfirmDeleteOpened] = useState(false);
-  const [enregistrement, setEnregistrement] = useState(false);
+  const [registration, setSaving] = useState(false);
 
   // Sans le droit de modifier les demandes, la fiche se lit seulement.
-  const peut = useDroits();
-  const lectureSeule = Boolean(request) && !peut("support", "update");
-  const peutSupprimer = Boolean(request) && peut("support", "delete");
+  const can = useRights();
+  const readOnly = Boolean(request) && !can("support", "update");
+  const canDelete = Boolean(request) && can("support", "delete");
 
   useEffect(() => {
     if (!opened) return;
@@ -213,27 +213,27 @@ export default function SupportRequestDrawer({
     setActiveTab("settings");
 
     if (!request) {
-      setContexteId(contextId);
+      setActiveContextId(contextId);
       setSubject(defaultSubject);
       setStatus(defaultStatus);
       // Qui crée la demande s'en occupe, jusqu'à ce qu'on en décide autrement.
       setActorIds(assignCurrentUser ? [String(currentUser.id)] : []);
       setLabelIds([]);
-      setEcheance("");
+      setDue("");
       setComments([]);
       return;
     }
 
-    setContexteId(String(request.context_id));
+    setActiveContextId(String(request.context_id));
     setSubject(request.subject);
     setStatus(request.status);
     setActorIds(request.actors.map((a) => String(a.id)));
     setLabelIds(request.labels.map((l) => String(l.id)));
-    setEcheance(request.due_date || "");
+    setDue(request.due_date || "");
     api
       .getSupportRequest(request.id)
-      .then((fiche) => setComments(fiche.comments))
-      .catch((e) => notifierErreur(messageErreur(e)));
+      .then((record) => setComments(record.comments))
+      .catch((e) => notifyError(errorMessage(e)));
   }, [
     opened,
     request,
@@ -245,39 +245,39 @@ export default function SupportRequestDrawer({
   ]);
 
   /** Les étiquettes du support : communes à toutes les sociétés. */
-  const relireEtiquettes = useCallback(async () => {
+  const reloadLabels = useCallback(async () => {
     try {
-      setEtiquettes(await api.getSupportLabels());
+      setLabels(await api.getSupportLabels());
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   }, []);
 
   useEffect(() => {
-    if (opened) void relireEtiquettes();
-  }, [opened, relireEtiquettes]);
+    if (opened) void reloadLabels();
+  }, [opened, reloadLabels]);
 
   useEffect(() => {
     if (!opened) return;
     api
       .getSupportContents()
-      .then(setContenus)
-      .catch((e) => notifierErreur(messageErreur(e)));
+      .then(setContents)
+      .catch((e) => notifyError(errorMessage(e)));
   }, [opened]);
 
-  const demandeId = request?.id;
+  const requestId = request?.id;
   useEffect(() => {
     if (!opened) return;
-    setPersonnes({ utilisateur: null, expediteur: null });
+    setPeople({ user: null, sender: null });
     api
-      .getSupportVariables(demandeId)
-      .then(setPersonnes)
-      .catch((e) => notifierErreur(messageErreur(e)));
-  }, [opened, demandeId]);
+      .getSupportVariables(requestId)
+      .then(setPeople)
+      .catch((e) => notifyError(errorMessage(e)));
+  }, [opened, requestId]);
 
   // Un seul fil côté serveur, deux côté fiche : les échanges avec
   // l'expéditeur, et les commentaires internes.
-  const echanges = comments.filter((c) => !c.internal);
+  const exchanges = comments.filter((c) => !c.internal);
   const notes = comments.filter((c) => c.internal);
 
   // Ce que la réponse porte d'office : le contenu du moment du fil, puis celui
@@ -286,46 +286,46 @@ export default function SupportRequestDrawer({
   // demande. Avant création, elle n'a ni numéro ni expéditeur : ces
   // variables restent vides. Le rendu attend les fiches, pour ne pas poser
   // une signature sans téléphone qui se corrigerait sous les yeux.
-  const contenuPour = (evenement: SupportContentEvent) =>
-    contenus.find((c) => c.event === evenement)?.html ?? "";
-  const modeleReponse = (() => {
-    const html = [contenuPour(evenementDuFil(echanges)), contenuPour("all")]
+  const contentFor = (event: SupportContentEvent) =>
+    contents.find((c) => c.event === event)?.html ?? "";
+  const replyTemplate = (() => {
+    const html = [contentFor(threadEvent(exchanges)), contentFor("all")]
       .filter(Boolean)
       .join("<p></p>");
-    if (!html || !personnes.utilisateur) return "";
-    const valeurs = supportReplyValues({
-      ...personnes,
-      demande: { number: request?.number ?? 0, subject, status },
+    if (!html || !people.user) return "";
+    const values = supportReplyValues({
+      ...people,
+      request: { number: request?.number ?? 0, subject, status },
     });
-    return fillSupportTemplate(html, valeurs);
+    return fillSupportTemplate(html, values);
   })();
 
   const refreshComments = async () => {
     if (!request) return;
-    const fiche = await api.getSupportRequest(request.id);
-    setComments(fiche.comments);
+    const record = await api.getSupportRequest(request.id);
+    setComments(record.comments);
   };
 
   /**
    * Ce que la demande porte. Rien de tout cela n'est obligatoire : une demande
    * sans objet se lit par son fil.
    */
-  const saisie = (): SupportRequestInput => ({
-    context_id: contexteId ? Number(contexteId) : undefined,
+  const input = (): SupportRequestInput => ({
+    context_id: activeContextId ? Number(activeContextId) : undefined,
     subject: subject.trim(),
     status,
     actor_ids: actorIds.map(Number),
-    due_date: echeance,
+    due_date: due,
     label_ids: labelIds.map(Number),
   });
 
   /** Cette adresse est-elle celle de qui a écrit à la boîte de support ? */
-  const estExpediteur = (email: string): boolean =>
+  const isSender = (email: string): boolean =>
     Boolean(request?.sender_email) &&
     email.toLowerCase() === request!.sender_email.toLowerCase();
 
   /** L'expéditeur, quand aucun compte choisi ne porte déjà son adresse. */
-  const expediteur =
+  const sender =
     request?.sender_email &&
     !users.some(
       (u) =>
@@ -342,33 +342,33 @@ export default function SupportRequestDrawer({
 
   /** Vrai dès que la demande dit quelque chose : de quoi valoir d'être créée. */
   // L'acteur posé d'office — qui crée la demande — ne suffit pas à la remplir.
-  const remplie = Boolean(
+  const isFilled = Boolean(
     subject.trim() ||
     actorIds.some((id) => id !== String(currentUser.id)) ||
     labelIds.length ||
-    echeance ||
+    due ||
     comments.length,
   );
 
   // « Sauvegarder » : le seul geste qui écrit. Une demande neuve dont rien
   // n'a été dit n'est pas créée. Si le serveur refuse, le tiroir reste ouvert
   // avec le message plutôt que d'emporter la saisie.
-  const sauvegarder = async () => {
-    if (!request && !remplie) return onClose();
-    setEnregistrement(true);
+  const persist = async () => {
+    if (!request && !isFilled) return onClose();
+    setSaving(true);
     try {
       if (request) {
-        await api.updateSupportRequest(request.id, saisie());
+        await api.updateSupportRequest(request.id, input());
       } else {
-        const creee = await api.createSupportRequest({
-          ...saisie(),
+        const created = await api.createSupportRequest({
+          ...input(),
           board_id: boardId ?? undefined,
           list_key: listKey || undefined,
         });
         // Les échanges tenus avant la création partent à sa suite.
         for (const comment of comments) {
           await api.addSupportComment(
-            creee.id,
+            created.id,
             comment.text,
             Boolean(comment.internal),
           );
@@ -379,37 +379,37 @@ export default function SupportRequestDrawer({
       // referme le tiroir.
       if (!request) onClose();
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
-      setEnregistrement(false);
+      setSaving(false);
     }
   };
 
-  const supprimer = async () => {
+  const remove = async () => {
     setConfirmDeleteOpened(false);
     if (!request) return;
     try {
       await api.deleteSupportRequest(request.id);
       await onDeleted();
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   };
 
   // Avant création, les commentaires vivent en local et partent au serveur une
   // fois la demande enregistrée — comme ceux d'un projet qu'on ouvre.
-  const ajouterCommentaire = async (texte: string, envoi?: EnvoiReponse) => {
+  const addComment = async (text: string, sending?: ReplySending) => {
     // Le bouton d'envoi dit où en est la demande : la fiche le montre aussitôt.
-    if (envoi) setStatus(envoi.status);
+    if (sending) setStatus(sending.status);
     if (!request) {
       const instant = new Date().toISOString();
-      const moi = String(currentUser.id);
-      setActorIds((deja) => (deja.includes(moi) ? deja : [...deja, moi]));
-      setComments((fil) => [
-        ...fil,
+      const me = String(currentUser.id);
+      setActorIds((already) => (already.includes(me) ? already : [...already, me]));
+      setComments((thread) => [
+        ...thread,
         {
-          id: `draft-${instant}-${fil.length}`,
-          text: texte,
+          id: `draft-${instant}-${thread.length}`,
+          text: text,
           author: currentUser,
           created_at: instant,
           updated_at: instant,
@@ -419,31 +419,31 @@ export default function SupportRequestDrawer({
     }
     // Les pièces jointes partent d'abord, une à une : la réponse ne porte
     // ensuite que leurs noms de rangement.
-    const { files = [], ...reste } = envoi ?? {};
-    const deposes = [];
-    for (const fichier of files)
-      deposes.push(await api.uploadSupportFile(request.id, fichier));
-    await api.addSupportComment(request.id, texte, false, {
-      ...reste,
-      files: deposes,
+    const { files = [], ...rest } = sending ?? {};
+    const uploaded = [];
+    for (const file of files)
+      uploaded.push(await api.uploadSupportFile(request.id, file));
+    await api.addSupportComment(request.id, text, false, {
+      ...rest,
+      files: uploaded,
     });
     // Qui écrit devient acteur : le serveur l'a posé, la fiche le montre — et
     // l'enregistrement de la fiche ne l'en retirera pas.
-    const moi = String(currentUser.id);
-    setActorIds((deja) => (deja.includes(moi) ? deja : [...deja, moi]));
+    const me = String(currentUser.id);
+    setActorIds((already) => (already.includes(me) ? already : [...already, me]));
     await refreshComments();
   };
 
   // Les commentaires internes : même geste que sur une carte ou un projet.
   // Avant création, ils attendent en local, comme les échanges.
-  const ajouterNote = async (texte: string) => {
+  const addNote = async (text: string) => {
     if (!request) {
       const instant = new Date().toISOString();
-      setComments((fil) => [
-        ...fil,
+      setComments((thread) => [
+        ...thread,
         {
-          id: `draft-${instant}-${fil.length}`,
-          text: texte,
+          id: `draft-${instant}-${thread.length}`,
+          text: text,
           internal: true,
           author: currentUser,
           created_at: instant,
@@ -452,28 +452,28 @@ export default function SupportRequestDrawer({
       ]);
       return;
     }
-    await api.addSupportComment(request.id, texte, true);
+    await api.addSupportComment(request.id, text, true);
     await refreshComments();
   };
 
-  const modifierNote = async (id: number | string, texte: string) => {
+  const editNote = async (id: number | string, text: string) => {
     if (!request || typeof id !== "number") {
-      setComments((fil) =>
-        fil.map((c) =>
+      setComments((thread) =>
+        thread.map((c) =>
           c.id === id
-            ? { ...c, text: texte, updated_at: new Date().toISOString() }
+            ? { ...c, text: text, updated_at: new Date().toISOString() }
             : c,
         ),
       );
       return;
     }
-    await api.updateSupportComment(id, texte);
+    await api.updateSupportComment(id, text);
     await refreshComments();
   };
 
-  const supprimerCommentaire = async (id: number | string) => {
+  const deleteComment = async (id: number | string) => {
     if (!request || typeof id !== "number") {
-      setComments((fil) => fil.filter((c) => c.id !== id));
+      setComments((thread) => thread.filter((c) => c.id !== id));
       return;
     }
     await api.deleteSupportComment(id);
@@ -544,7 +544,7 @@ export default function SupportRequestDrawer({
                   {/* Le menu ne se referme pas, pour qu'on voie la coche changer. */}
                   <Menu.Item
                     leftSection={<IconEye size={16} />}
-                    rightSection={suivi ? <IconCheck size={14} /> : null}
+                    rightSection={following ? <IconCheck size={14} /> : null}
                     onClick={() => void onToggleFollow()}
                     closeMenuOnClick={false}
                   >
@@ -565,7 +565,7 @@ export default function SupportRequestDrawer({
               <Stack gap="xl" style={{ flex: 1, minHeight: 0 }}>
                 {/* En lecture seule, les champs de la fiche sont éteints d'un
                     coup : c'est ce que fait un « fieldset » désactivé. */}
-                <fieldset disabled={lectureSeule} style={FIELDSET_NU}>
+                <fieldset disabled={readOnly} style={BARE_FIELDSET}>
                   <Stack gap="xl">
                     {/* Comme sur la fiche d'une carte : les deux colonnes s'ouvrent
                       chacune sur leur propre liste à cocher. Les bulles des
@@ -573,7 +573,7 @@ export default function SupportRequestDrawer({
                       largeur fixe, les étiquettes prennent le reste. */}
                     <Group align="flex-start" gap="md" wrap="nowrap">
                       <div
-                        style={{ flex: `0 0 ${ACTEURS_WIDTH}px`, minWidth: 0 }}
+                        style={{ flex: `0 0 ${ACTORS_WIDTH}px`, minWidth: 0 }}
                       >
                         <ActorPicker
                           chipHeight={CHIP_HEIGHT}
@@ -587,7 +587,7 @@ export default function SupportRequestDrawer({
                               style={{ display: "inline-flex" }}
                               aria-label={u.name}
                             >
-                              {estExpediteur(u.email) ? (
+                              {isSender(u.email) ? (
                                 <SenderAvatar person={u} size={CHIP_HEIGHT} />
                               ) : (
                                 <PersonAvatar person={u} size={CHIP_HEIGHT} />
@@ -598,10 +598,10 @@ export default function SupportRequestDrawer({
                           // montré en tête, sans se retirer. Celui qui a un compte
                           // est déjà parmi les acteurs, il n'est pas redoublé.
                           leadingChips={
-                            expediteur && (
+                            sender && (
                               <span style={{ display: "inline-flex" }}>
                                 <SenderAvatar
-                                  person={expediteur}
+                                  person={sender}
                                   size={CHIP_HEIGHT}
                                 />
                               </span>
@@ -614,11 +614,11 @@ export default function SupportRequestDrawer({
                           renommer ou les recolorer touche toutes les demandes. */}
                         <LabelPicker
                           chipHeight={CHIP_HEIGHT}
-                          labels={etiquettes}
+                          labels={labels}
                           value={labelIds}
                           onChange={setLabelIds}
-                          boardId={contexteId}
-                          onLabelsChanged={relireEtiquettes}
+                          boardId={activeContextId}
+                          onLabelsChanged={reloadLabels}
                           labelsApi={SUPPORT_LABELS_API}
                           emptyText="Aucune étiquette"
                         />
@@ -643,7 +643,7 @@ export default function SupportRequestDrawer({
                     <Group align="flex-start" gap="md" wrap="nowrap">
                       <div
                         style={{
-                          width: `calc(${LARGEUR_STATUT + LARGEUR_ECHEANCE}px + var(--mantine-spacing-md))`,
+                          width: `calc(${STATUS_WIDTH + DUE_WIDTH}px + var(--mantine-spacing-md))`,
                           flexShrink: 0,
                         }}
                       >
@@ -668,10 +668,10 @@ export default function SupportRequestDrawer({
                               value: String(c.id),
                               label: c.name,
                             }))}
-                            value={contexteId || null}
+                            value={activeContextId || null}
                             onChange={(value) => {
-                              if (!value || value === contexteId) return;
-                              setContexteId(value);
+                              if (!value || value === activeContextId) return;
+                              setActiveContextId(value);
                             }}
                             allowDeselect={false}
                           />
@@ -681,7 +681,7 @@ export default function SupportRequestDrawer({
 
                     {/* Le statut et l'échéance, à la ligne. */}
                     <Group align="flex-start" gap="md" wrap="nowrap">
-                      <div style={{ width: LARGEUR_STATUT, flexShrink: 0 }}>
+                      <div style={{ width: STATUS_WIDTH, flexShrink: 0 }}>
                         {/* Le statut est ce que disent les onglets : le changer ici
                           fait passer la demande de l'un à l'autre. */}
                         <Select
@@ -698,23 +698,23 @@ export default function SupportRequestDrawer({
                         />
                       </div>
                       {/* Comme celle d'une tâche : la date, l'heure et l'état. */}
-                      <div style={{ width: LARGEUR_ECHEANCE, flexShrink: 0 }}>
-                        <CardEcheance
+                      <div style={{ width: DUE_WIDTH, flexShrink: 0 }}>
+                        <CardDueDate
                           simple
-                          value={{ ...ECHEANCE_VIDE, fin: echeance }}
-                          onChange={(v) => setEcheance(v.fin)}
-                          onRemove={() => setEcheance("")}
+                          value={{ ...EMPTY_DUE, end: due }}
+                          onChange={(v) => setDue(v.end)}
+                          onRemove={() => setDue("")}
                         />
                       </div>
                       {/* Une demande ouverte s'enregistre ici, calé à droite de
                         la ligne, plutôt qu'au pied du tiroir : les échanges, dessous,
                         ont leur propre envoi. La création garde « Sauvegarder »
                         en bas. */}
-                      {request && !lectureSeule && (
+                      {request && !readOnly && (
                         <Button
                           color="teal"
-                          onClick={sauvegarder}
-                          loading={enregistrement}
+                          onClick={persist}
+                          loading={registration}
                           style={{
                             alignSelf: "flex-end",
                             flexShrink: 0,
@@ -755,7 +755,7 @@ export default function SupportRequestDrawer({
                       celle des commentaires. Sinon, le fil défile dans son
                       cadre, sa barre fine contre le bord droit du cadre :
                       celle du tiroir, elle, fait défiler tout le panneau. */}
-                    {echanges.length === 0 ? (
+                    {exchanges.length === 0 ? (
                       <EmptyPanel
                         icon={IconMessage}
                         message="Aucun échange pour le moment."
@@ -770,16 +770,16 @@ export default function SupportRequestDrawer({
                       >
                         <Stack gap="md" p={30}>
                           <SupportMessages
-                            messages={echanges}
+                            messages={exchanges}
                             senderEmail={request?.sender_email ?? ""}
                             onDelete={
-                              lectureSeule
+                              readOnly
                                 ? undefined
                                 : async (id) => {
                                     try {
-                                      await supprimerCommentaire(id);
+                                      await deleteComment(id);
                                     } catch (e) {
-                                      notifierErreur(messageErreur(e));
+                                      notifyError(errorMessage(e));
                                     }
                                   }
                             }
@@ -787,10 +787,10 @@ export default function SupportRequestDrawer({
                           {/* Avant création, le fil ne part au serveur qu'avec la
                           demande : on le dit plutôt que de le laisser croire
                           enregistré. */}
-                          {!request && echanges.length > 0 && (
+                          {!request && exchanges.length > 0 && (
                             <Text size="xs" c="dimmed">
-                              {echanges.length > 1
-                                ? `${echanges.length} messages seront enregistrés`
+                              {exchanges.length > 1
+                                ? `${exchanges.length} messages seront enregistrés`
                                 : "Ce message sera enregistré"}{" "}
                               avec la demande.
                             </Text>
@@ -801,23 +801,23 @@ export default function SupportRequestDrawer({
                   </Paper>
                 </div>
 
-                {!lectureSeule && (
+                {!readOnly && (
                   <SupportReply
-                    modele={modeleReponse}
-                    parEmail={Boolean(request?.sender_email)}
-                    avecFichiers={Boolean(request)}
+                    template={replyTemplate}
+                    byEmail={Boolean(request?.sender_email)}
+                    withFiles={Boolean(request)}
                     // À la création, une réponse n'a de sens que si quelqu'un
                     // s'occupe de la demande.
-                    bloque={
+                    blockedReason={
                       !request && !actorIds.length
                         ? "Choisir au moins un acteur avant d'envoyer"
                         : undefined
                     }
-                    onSend={async (html, envoi) => {
+                    onSend={async (html, sending) => {
                       try {
-                        await ajouterCommentaire(html, envoi);
+                        await addComment(html, sending);
                       } catch (e) {
-                        notifierErreur(messageErreur(e));
+                        notifyError(errorMessage(e));
                         // Relancée : l'éditeur garde ainsi le texte refusé.
                         throw e;
                       }
@@ -834,22 +834,22 @@ export default function SupportRequestDrawer({
                     part à l'expéditeur. */}
                 <CommentThread
                   comments={notes}
-                  onAdd={(texte) =>
-                    void ajouterNote(texte).catch((e) =>
-                      notifierErreur(messageErreur(e)),
+                  onAdd={(text) =>
+                    void addNote(text).catch((e) =>
+                      notifyError(errorMessage(e)),
                     )
                   }
-                  onUpdate={(id, texte) =>
-                    void modifierNote(id, texte).catch((e) =>
-                      notifierErreur(messageErreur(e)),
+                  onUpdate={(id, text) =>
+                    void editNote(id, text).catch((e) =>
+                      notifyError(errorMessage(e)),
                     )
                   }
                   onDelete={(id) =>
-                    void supprimerCommentaire(id).catch((e) =>
-                      notifierErreur(messageErreur(e)),
+                    void deleteComment(id).catch((e) =>
+                      notifyError(errorMessage(e)),
                     )
                   }
-                  readOnly={lectureSeule}
+                  readOnly={readOnly}
                 />
                 {!request && notes.length > 0 && (
                   <Text size="xs" c="dimmed">
@@ -863,19 +863,19 @@ export default function SupportRequestDrawer({
         </Tabs>
 
         <DrawerFooter
-          onSave={lectureSeule || request ? undefined : sauvegarder}
+          onSave={readOnly || request ? undefined : persist}
           onClose={onClose}
           onDelete={
-            peutSupprimer ? () => setConfirmDeleteOpened(true) : undefined
+            canDelete ? () => setConfirmDeleteOpened(true) : undefined
           }
-          saving={enregistrement}
+          saving={registration}
         />
       </Drawer>
 
       <DeleteConfirmModal
         opened={confirmDeleteOpened}
         onClose={() => setConfirmDeleteOpened(false)}
-        onConfirm={supprimer}
+        onConfirm={remove}
         title="Supprimer la demande"
         message={
           <>

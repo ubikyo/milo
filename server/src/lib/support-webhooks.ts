@@ -11,50 +11,50 @@
 
 import crypto from "node:crypto";
 import { env } from "../env.js";
-import { boitesRecues } from "../repositories/receptions.js";
+import { receivedMailboxes } from "../repositories/receptions.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 import {
-  creerAbonnement,
-  entraConfiguree,
-  renouvelerAbonnement,
-  supprimerAbonnement,
+  createSubscription,
+  entraConfigured,
+  renewSubscription,
+  deleteSubscription,
 } from "./entra.js";
 
 /** Le chemin que Microsoft appelle, sous l'adresse publique. */
-export const CHEMIN_NOTIFICATIONS = "/api/support-mail/notifications";
+export const NOTIFICATIONS_PATH = "/api/support-mail/notifications";
 
 /** Le temps entre deux entretiens des abonnements. */
-export const INTERVALLE_ENTRETIEN = 6 * 60 * 60 * 1000;
+export const MAINTENANCE_INTERVAL = 6 * 60 * 60 * 1000;
 
 // Graph accepte un peu moins de sept jours pour un abonnement aux messages.
-const DUREE_ABONNEMENT = 6 * 24 * 60 * 60 * 1000;
+const SUBSCRIPTION_DURATION = 6 * 24 * 60 * 60 * 1000;
 // Renouvelé dès qu'il lui reste moins de deux jours : un entretien manqué ne
 // le laisse pas expirer.
-const MARGE_RENOUVELLEMENT = 2 * 24 * 60 * 60 * 1000;
+const RENEWAL_MARGIN = 2 * 24 * 60 * 60 * 1000;
 
-const CLE_ABONNEMENTS = "support_mail_subscriptions";
-const CLE_SECRET = "support_mail_webhook_secret";
+const SUBSCRIPTIONS_KEY = "support_mail_subscriptions";
+const SECRET_KEY = "support_mail_webhook_secret";
 
 /** L'abonnement de chaque boîte, par adresse en minuscules. */
-type Abonnements = Record<string, { id: string; expire: string }>;
+type Subscriptions = Record<string, { id: string; expiresAt: string }>;
 
 
 /**
  * Le secret que Graph renvoie avec chaque notification (« clientState ») :
  * une notification qui ne le porte pas ne vient pas de nos abonnements.
  */
-export const secretDesNotifications = (): string => {
-  const deja = readSetting<string>(CLE_SECRET, "");
-  if (deja) return deja;
+export const notificationsSecret = (): string => {
+  const already = readSetting<string>(SECRET_KEY, "");
+  if (already) return already;
   const secret = crypto.randomBytes(24).toString("hex");
-  writeSetting(CLE_SECRET, secret);
+  writeSetting(SECRET_KEY, secret);
   return secret;
 };
 
-export const notificationsActives = (): boolean =>
-  entraConfiguree() && env.publicUrl.startsWith("https://");
+export const activeNotifications = (): boolean =>
+  entraConfigured() && env.publicUrl.startsWith("https://");
 
-let dejaSignale = false;
+let alreadyReported = false;
 
 /**
  * Chaque boîte de support a son abonnement, et il ne va pas expirer : ceux
@@ -62,52 +62,52 @@ let dejaSignale = false;
  * boîtes qui ne sont plus de support supprimés. Une boîte qui échoue
  * n'empêche pas les autres.
  */
-export const entretenirAbonnements = async (): Promise<void> => {
-  if (!notificationsActives()) {
-    if (!dejaSignale && entraConfiguree()) {
+export const maintainSubscriptions = async (): Promise<void> => {
+  if (!activeNotifications()) {
+    if (!alreadyReported && entraConfigured()) {
       console.log(
         "Notifications de Graph inactives : MILO_PUBLIC_URL (en https) n'est pas réglée. La relève périodique suffit.",
       );
-      dejaSignale = true;
+      alreadyReported = true;
     }
     return;
   }
 
-  const url = `${env.publicUrl}${CHEMIN_NOTIFICATIONS}`;
-  const secret = secretDesNotifications();
-  const abonnements = readSetting<Abonnements>(CLE_ABONNEMENTS, {});
-  const suivants: Abonnements = {};
-  const expiration = () => new Date(Date.now() + DUREE_ABONNEMENT).toISOString();
-  const boites = new Set(boitesRecues().map((b) => b.valeur.toLowerCase()));
+  const url = `${env.publicUrl}${NOTIFICATIONS_PATH}`;
+  const secret = notificationsSecret();
+  const subscriptions = readSetting<Subscriptions>(SUBSCRIPTIONS_KEY, {});
+  const nextItems: Subscriptions = {};
+  const expiration = () => new Date(Date.now() + SUBSCRIPTION_DURATION).toISOString();
+  const mailboxes = new Set(receivedMailboxes().map((b) => b.value.toLowerCase()));
 
-  for (const boite of boites) {
-    const actuel = abonnements[boite];
+  for (const mailbox of mailboxes) {
+    const current = subscriptions[mailbox];
     try {
-      if (actuel && Date.parse(actuel.expire) - Date.now() > MARGE_RENOUVELLEMENT) {
-        suivants[boite] = actuel;
+      if (current && Date.parse(current.expiresAt) - Date.now() > RENEWAL_MARGIN) {
+        nextItems[mailbox] = current;
         continue;
       }
-      if (actuel) {
+      if (current) {
         try {
-          const prolonge = await renouvelerAbonnement(actuel.id, expiration());
-          suivants[boite] = { id: prolonge.id, expire: prolonge.expirationDateTime };
+          const extended = await renewSubscription(current.id, expiration());
+          nextItems[mailbox] = { id: extended.id, expiresAt: extended.expirationDateTime };
           continue;
         } catch {
           // Expiré ou supprimé chez Microsoft : il se recrée ci-dessous.
         }
       }
-      const cree = await creerAbonnement(boite, url, secret, expiration());
-      suivants[boite] = { id: cree.id, expire: cree.expirationDateTime };
-    } catch (erreur) {
-      console.error(`Abonnement aux e-mails de ${boite} :`, erreur);
+      const created = await createSubscription(mailbox, url, secret, expiration());
+      nextItems[mailbox] = { id: created.id, expiresAt: created.expirationDateTime };
+    } catch (error) {
+      console.error(`Abonnement aux e-mails de ${mailbox} :`, error);
     }
   }
 
   // Les boîtes qui ne sont plus celles d'une société n'ont plus à prévenir.
-  for (const [boite, { id }] of Object.entries(abonnements)) {
-    if (boites.has(boite)) continue;
-    await supprimerAbonnement(id).catch(() => {});
+  for (const [mailbox, { id }] of Object.entries(subscriptions)) {
+    if (mailboxes.has(mailbox)) continue;
+    await deleteSubscription(id).catch(() => {});
   }
 
-  writeSetting(CLE_ABONNEMENTS, suivants);
+  writeSetting(SUBSCRIPTIONS_KEY, nextItems);
 };

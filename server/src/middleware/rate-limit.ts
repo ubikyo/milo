@@ -11,42 +11,42 @@
 import type { NextFunction, Request, Response } from "express";
 import { HttpError } from "../lib/http.js";
 
-interface Fenetre {
-  essais: number;
-  debut: number;
+interface Window {
+  attempts: number;
+  start: number;
 }
 
 export interface RateLimitOptions {
   /** Nombre d'essais tolérés par fenêtre. */
   max: number;
   /** Durée de la fenêtre, en millisecondes. */
-  fenetreMs: number;
+  windowMs: number;
 }
 
-export const rateLimit = ({ max, fenetreMs }: RateLimitOptions) => {
-  const parCle = new Map<string, Fenetre>();
+export const rateLimit = ({ max, windowMs }: RateLimitOptions) => {
+  const byKey = new Map<string, Window>();
 
   // Ménage périodique : sans lui, la table garderait une entrée par adresse
   // vue depuis le démarrage. `unref` laisse le processus se terminer.
   setInterval(() => {
-    const limite = Date.now() - fenetreMs;
-    for (const [cle, fenetre] of parCle) {
-      if (fenetre.debut < limite) parCle.delete(cle);
+    const cutoff = Date.now() - windowMs;
+    for (const [key, window] of byKey) {
+      if (window.start < cutoff) byKey.delete(key);
     }
-  }, fenetreMs).unref();
+  }, windowMs).unref();
 
   return (req: Request, _res: Response, next: NextFunction): void => {
-    const cle = req.ip ?? "inconnue";
-    const maintenant = Date.now();
-    const fenetre = parCle.get(cle);
+    const key = req.ip ?? "inconnue";
+    const currentTime = Date.now();
+    const window = byKey.get(key);
 
-    if (!fenetre || maintenant - fenetre.debut > fenetreMs) {
-      parCle.set(cle, { essais: 1, debut: maintenant });
+    if (!window || currentTime - window.start > windowMs) {
+      byKey.set(key, { attempts: 1, start: currentTime });
       return next();
     }
 
-    fenetre.essais += 1;
-    if (fenetre.essais > max) {
+    window.attempts += 1;
+    if (window.attempts > max) {
       throw new HttpError(429, "Trop de tentatives. Réessayez dans quelques minutes.");
     }
     next();

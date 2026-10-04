@@ -35,11 +35,11 @@ import {
   TAB_MENU_STYLES,
 } from "../../themes/menus";
 import { tabStyle } from "../../themes/tabs";
-import champs from "../../assets/styles/EcartField.module.css";
-import { largeurChamp } from "../../lib/largeurChamp";
-import { TYPE_JALONS_PAR_DEFAUT } from "@milo/shared";
+import fields from "../../assets/styles/EcartField.module.css";
+import { fieldWidth } from "../../lib/largeurChamp";
+import { DEFAULT_MILESTONE_TYPE } from "@milo/shared";
 import CommentThread from "./CommentThread";
-import { MilestoneLabels, marquesJalons } from "./milestoneMarks";
+import { MilestoneLabels, milestoneMarks } from "./milestoneMarks";
 import MoveOrCopyProjectModal from "./MoveOrCopyProjectModal";
 import type { ProjectAction } from "./MoveOrCopyProjectModal";
 import { ACTOR_GAP } from "../ui/ActorAvatars";
@@ -53,9 +53,9 @@ import DrawerScrollArea, {
   DRAWER_STYLES,
   DRAWER_TABS_STYLES,
 } from "../ui/DrawerScroll";
-import { FIELDSET_NU, useDroits } from "../../lib/droits";
+import { BARE_FIELDSET, useRights } from "../../lib/droits";
 import LabelPicker, { PROJECT_LABELS_API } from "../ui/LabelPicker";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import type {
   Category,
   Context,
@@ -65,12 +65,12 @@ import type {
   ProjectLabel,
   PublicUser,
 } from "@milo/shared";
-import type { FilItem } from "./CommentThread";
-import BoutonFermer from "../ui/BoutonFermer";
+import type { ThreadItem } from "./CommentThread";
+import CloseButton from "../ui/BoutonFermer";
 
 /** La fiche en cours de saisie. Tout y est en chaînes : ce sont des champs. */
 
-interface Formulaire {
+interface Form {
   name: string;
   category_id: string;
   context_id: string;
@@ -92,7 +92,7 @@ const TABS = [
 // mesure que sur la fiche d'une carte : les deux tiroirs se lisent pareil.
 const CHIP_HEIGHT = 30;
 
-const emptyForm: Formulaire = {
+const emptyForm: Form = {
   name: "",
   category_id: "",
   context_id: "",
@@ -130,7 +130,7 @@ interface ProjectDrawerProps {
   onSaved: () => void;
   onDeleted: () => void;
   /** Suivi : on est prévenu de chaque modification de ce projet. */
-  suivi: boolean;
+  following: boolean;
   onToggleFollow: () => void | Promise<void>;
 }
 
@@ -152,11 +152,11 @@ export default function ProjectDrawer({
   onLabelsChanged,
   onSaved,
   onDeleted,
-  suivi,
+  following,
   onToggleFollow,
 }: ProjectDrawerProps) {
-  const [form, setForm] = useState<Formulaire>(emptyForm);
-  const [comments, setComments] = useState<FilItem[]>([]);
+  const [form, setForm] = useState<Form>(emptyForm);
+  const [comments, setComments] = useState<ThreadItem[]>([]);
   const [confirmDeleteOpened, setConfirmDeleteOpened] = useState(false);
   const [saving, setSaving] = useState(false);
   /**
@@ -164,7 +164,7 @@ export default function ProjectDrawer({
    * « null » quand elle est fermée. Les deux posent la même question, et une
    * seule boîte y répond.
    */
-  const [deplacement, setDeplacement] = useState<ProjectAction | null>(null);
+  const [movement, setMove] = useState<ProjectAction | null>(null);
   const [newCategoryOpened, setNewCategoryOpened] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [creatingCategory, setCreatingCategory] = useState(false);
@@ -173,12 +173,12 @@ export default function ProjectDrawer({
   const isEditing = Boolean(projectId);
 
   // Sans le droit de modifier les projets, la fiche se lit seulement.
-  const peut = useDroits();
-  const lectureSeule = isEditing && !peut("projects", "update");
+  const can = useRights();
+  const readOnly = isEditing && !can("projects", "update");
 
   // Les jalons sous le curseur de progression sont ceux du type choisi : ils
   // changent avec lui, et manquent s'il n'y en a aucun.
-  const jalons =
+  const milestones =
     milestoneTypes.find((t) => String(t.id) === form.milestone_type_id)
       ?.milestones ?? [];
 
@@ -186,8 +186,8 @@ export default function ProjectDrawer({
   // que le tiroir vit, son contenu est remplacé à chaque projet ouvert.
   const editor = useRichEditor({ placeholder: "Description du projet" });
   useEffect(() => {
-    editor?.setEditable(!lectureSeule);
-  }, [editor, lectureSeule]);
+    editor?.setEditable(!readOnly);
+  }, [editor, readOnly]);
 
   // Les listes servent seulement à calculer les valeurs par défaut : on les lit
   // via une ref pour que leur rechargement (création d'une catégorie depuis ce
@@ -201,21 +201,21 @@ export default function ProjectDrawer({
     if (!opened) return;
     // Un tiroir rouvert repart des paramètres, quel que soit l'onglet quitté.
     setActiveTab("settings");
-    setDeplacement(null);
+    setMove(null);
 
     if (!projectId) {
       const {
         categories: cats,
-        contextId: propose,
+        contextId: proposed,
         milestoneTypes: types,
       } = lookupsRef.current;
       // Un nouveau projet prend le type « Défaut », posé avec le widget.
-      const defaut = types.find((t) => t.name === TYPE_JALONS_PAR_DEFAUT);
+      const defaultValue = types.find((t) => t.name === DEFAULT_MILESTONE_TYPE);
       setForm({
         ...emptyForm,
         category_id: cats[0] ? String(cats[0].id) : "",
-        context_id: propose,
-        milestone_type_id: defaut ? String(defaut.id) : "",
+        context_id: proposed,
+        milestone_type_id: defaultValue ? String(defaultValue.id) : "",
       });
       setComments([]);
       editor?.commands.setContent("");
@@ -247,7 +247,7 @@ export default function ProjectDrawer({
 
   // « Sauvegarder » : le seul geste qui écrit. Un projet sans nom ni catégorie
   // n'est pas créé — le tiroir reste ouvert, la saisie n'est jamais perdue.
-  const sauvegarder = async () => {
+  const persist = async () => {
     if (!form.name.trim() || !form.category_id) return;
     setSaving(true);
     const payload: ProjectInput = {
@@ -290,7 +290,7 @@ export default function ProjectDrawer({
       setNewCategoryName("");
       setNewCategoryOpened(false);
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
       setCreatingCategory(false);
     }
@@ -308,9 +308,9 @@ export default function ProjectDrawer({
    * projet n'a pas bougé : le tiroir reste ouvert, et la copie paraît d'elle-
    * même dans la liste — le serveur signale l'écriture à tous les clients.
    */
-  const handleMoved = (geste: ProjectAction) => () => {
-    setDeplacement(null);
-    if (geste === "move") onSaved();
+  const handleMoved = (action: ProjectAction) => () => {
+    setMove(null);
+    if (action === "move") onSaved();
   };
 
   const handleDelete = async () => {
@@ -443,29 +443,29 @@ export default function ProjectDrawer({
                       pas, pour qu'on voie la coche changer. */}
                   <Menu.Item
                     leftSection={<IconEye size={16} />}
-                    rightSection={suivi ? <IconCheck size={14} /> : null}
+                    rightSection={following ? <IconCheck size={14} /> : null}
                     onClick={() => onToggleFollow()}
                     closeMenuOnClick={false}
                   >
                     Suivre
                   </Menu.Item>
 
-                  {!lectureSeule && (
+                  {!readOnly && (
                     <>
                       <Menu.Divider />
 
                       <Menu.Item
                         leftSection={<IconFolderSymlink size={16} />}
-                        onClick={() => setDeplacement("move")}
+                        onClick={() => setMove("move")}
                       >
                         Déplacer
                       </Menu.Item>
                     </>
                   )}
-                  {peut("projects", "create") && (
+                  {can("projects", "create") && (
                     <Menu.Item
                       leftSection={<IconCopy size={16} />}
-                      onClick={() => setDeplacement("copy")}
+                      onClick={() => setMove("copy")}
                     >
                       Copier
                     </Menu.Item>
@@ -479,7 +479,7 @@ export default function ProjectDrawer({
             <DrawerScrollArea>
               {/* En lecture seule, tous les champs de la fiche sont éteints
                   d'un coup : c'est ce que fait un « fieldset » désactivé. */}
-              <fieldset disabled={lectureSeule} style={FIELDSET_NU}>
+              <fieldset disabled={readOnly} style={BARE_FIELDSET}>
                 <Stack gap="xl">
                   {/* Comme sur une carte, ce qui range le projet vient avant ce
                     qui le nomme : acteurs et étiquettes ouvrent la fiche, chaque
@@ -597,7 +597,7 @@ export default function ProjectDrawer({
                           size="xs"
                           // À la taille du nom choisi, chevron compris.
                           w={
-                            largeurChamp(
+                            fieldWidth(
                               milestoneTypes.find(
                                 (t) => String(t.id) === form.milestone_type_id,
                               )?.name ?? "Jalons",
@@ -609,7 +609,7 @@ export default function ProjectDrawer({
                           comboboxProps={{ width: 220, position: "bottom-end" }}
                           aria-label="Type de jalons"
                           title="Type de jalons"
-                          className={`${champs.champ} ${champs.unite}`}
+                          className={`${fields.champ} ${fields.unite}`}
                         />
                         <NumberInput
                           value={form.status}
@@ -630,11 +630,11 @@ export default function ProjectDrawer({
                           suffix="%"
                           hideControls
                           // De quoi écrire le plus long : « 100% ».
-                          w={largeurChamp("100%")}
+                          w={fieldWidth("100%")}
                           size="xs"
                           aria-label="Progression"
                           title="Progression"
-                          className={`${champs.champ} ${champs.nombre}`}
+                          className={`${fields.champ} ${fields.nombre}`}
                         />
                       </Group>
                     </Group>
@@ -646,10 +646,10 @@ export default function ProjectDrawer({
                       min={0}
                       max={100}
                       step={1}
-                      marks={marquesJalons(jalons)}
-                      color={progressColor(form.status, jalons)}
+                      marks={milestoneMarks(milestones)}
+                      color={progressColor(form.status, milestones)}
                     />
-                    <MilestoneLabels jalons={jalons} />
+                    <MilestoneLabels milestones={milestones} />
                   </div>
                 </Stack>
               </fieldset>
@@ -665,7 +665,7 @@ export default function ProjectDrawer({
                   onAdd={handleAddComment}
                   onUpdate={handleUpdateComment}
                   onDelete={handleDeleteComment}
-                  readOnly={lectureSeule}
+                  readOnly={readOnly}
                 />
 
                 {!isEditing && comments.length > 0 && (
@@ -687,10 +687,10 @@ export default function ProjectDrawer({
         </Tabs>
 
         <DrawerFooter
-          onSave={lectureSeule ? undefined : sauvegarder}
+          onSave={readOnly ? undefined : persist}
           onClose={onClose}
           onDelete={
-            isEditing && peut("projects", "delete")
+            isEditing && can("projects", "delete")
               ? () => setConfirmDeleteOpened(true)
               : undefined
           }
@@ -703,9 +703,9 @@ export default function ProjectDrawer({
           comme pour un déplacement. La même boîte qu'au menu d'une ligne de la
           liste. */}
       <MoveOrCopyProjectModal
-        opened={deplacement !== null}
-        onClose={() => setDeplacement(null)}
-        mode={deplacement ?? "move"}
+        opened={movement !== null}
+        onClose={() => setMove(null)}
+        mode={movement ?? "move"}
         project={
           projectId
             ? {
@@ -717,7 +717,7 @@ export default function ProjectDrawer({
             : null
         }
         boards={boards}
-        onMoved={handleMoved(deplacement ?? "move")}
+        onMoved={handleMoved(movement ?? "move")}
       />
 
       <Modal
@@ -746,7 +746,7 @@ export default function ProjectDrawer({
           {/* Espace au-dessus des actions égal au retrait de la fenêtre, comme
               dans la confirmation de suppression. */}
           <Group justify="flex-end" mt={MODAL_PADDING - 16}>
-            <BoutonFermer onClick={closeNewCategory} />
+            <CloseButton onClick={closeNewCategory} />
             <Button
               color="teal"
               onClick={createCategory}

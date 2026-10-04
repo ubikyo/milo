@@ -2,8 +2,8 @@ import { Anchor, Stack, Switch, Text, TextInput } from "@mantine/core";
 import { IconLink } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import classes from "../assets/styles/AccessLink.module.css";
-import { poser } from "../components/ui/LignesReglages";
-import { avec, texte } from "./types";
+import { insertRow } from "../components/ui/LignesReglages";
+import { withField, text } from "./types";
 import type { AccessWidget, WidgetDisplayProps } from "./types";
 
 // Un lien : l'adresse d'un service, le mot qui la désigne, et de quoi
@@ -19,13 +19,13 @@ import type { AccessWidget, WidgetDisplayProps } from "./types";
 // clic attend de savoir s'il en vient un second. C'est ce que fait déjà une
 // carte du mode Tâche.
 
-const LIBELLE = "libelle";
+const LABEL = "libelle";
 const URL = "url";
-const ACTIF = "actif";
-const COULEUR = "couleur";
+const ACTIVE = "actif";
+const COLOR = "couleur";
 
 /** La couleur d'un lien qui n'en a pas reçu : celle du texte, selon le thème. */
-const COULEUR_PAR_DEFAUT = "var(--mantine-color-text)";
+const DEFAULT_COLOR = "var(--mantine-color-text)";
 
 /**
  * Délai laissé à un second clic avant que le premier n'ouvre l'adresse. Assez
@@ -34,7 +34,7 @@ const COULEUR_PAR_DEFAUT = "var(--mantine-color-text)";
  * tient encore le clic pour un geste de la personne, sans quoi il bloquerait
  * l'ouverture.
  */
-const DELAI_DOUBLE_CLIC = 250;
+const DOUBLE_CLICK_DELAY = 250;
 
 /**
  * L'interligne d'une ligne de lien. Celui de Mantine pour un texte « sm »
@@ -47,7 +47,7 @@ const DELAI_DOUBLE_CLIC = 250;
  * la variable que Mantine lit pour l'interligne d'un « Text », et resterait
  * sans effet — comme « fz » sur un titre.
  */
-const INTERLIGNE = { lineHeight: 1.3 };
+const LINE_SPACING = { lineHeight: 1.3 };
 
 /**
  * L'ancre, elle, demande une précaution de plus. Mantine lui remet
@@ -57,8 +57,8 @@ const INTERLIGNE = { lineHeight: 1.3 };
  * celui du corps de page — près de 25 pixels pour un mot de 14. On la remet
  * donc en bloc, dans la forme que la coupure à une ligne réclame.
  */
-const LIGNE_DE_LIEN = {
-  ...INTERLIGNE,
+const LINK_ROW = {
+  ...LINE_SPACING,
   display: "-webkit-box" as const,
   // L'ancre s'arrête au mot : en bloc, elle occuperait toute la colonne et le
   // survol s'allumerait bien au-delà du texte. « max-width » la borne tout de
@@ -68,21 +68,21 @@ const LIGNE_DE_LIEN = {
 };
 
 /** Un lien neuf est allumé : on le crée pour s'en servir. */
-const estActif = (config: unknown): boolean => {
-  const valeur = (config as Record<string, unknown> | null)?.[ACTIF];
-  return valeur === undefined ? true : Boolean(valeur);
+const isActive = (config: unknown): boolean => {
+  const value = (config as Record<string, unknown> | null)?.[ACTIVE];
+  return value === undefined ? true : Boolean(value);
 };
 
-function Lien({ config, onChange, locked }: WidgetDisplayProps) {
-  const minuteur = useRef<number | null>(null);
-  const champ = useRef<HTMLInputElement | null>(null);
-  const [edition, setEdition] = useState(false);
-  const [brouillon, setBrouillon] = useState("");
+function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
+  const timer = useRef<number | null>(null);
+  const field = useRef<HTMLInputElement | null>(null);
+  const [editMode, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
 
   // Un lien démonté pendant l'attente n'ouvrira rien.
   useEffect(
     () => () => {
-      if (minuteur.current !== null) window.clearTimeout(minuteur.current);
+      if (timer.current !== null) window.clearTimeout(timer.current);
     },
     [],
   );
@@ -90,71 +90,71 @@ function Lien({ config, onChange, locked }: WidgetDisplayProps) {
   // Le champ prend le focus dès qu'il paraît, et la saisie s'y trouve déjà
   // sélectionnée : le double-clic vaut « je remplace cet intitulé ».
   useEffect(() => {
-    if (!edition) return;
-    champ.current?.focus();
-    champ.current?.select();
-  }, [edition]);
+    if (!editMode) return;
+    field.current?.focus();
+    field.current?.select();
+  }, [editMode]);
 
-  const url = texte(config, URL);
-  const intitule = texte(config, LIBELLE);
-  const libelle = intitule || url;
-  const actif = estActif(config);
-  const couleur = texte(config, COULEUR) || COULEUR_PAR_DEFAUT;
+  const url = text(config, URL);
+  const title = text(config, LABEL);
+  const label = title || url;
+  const active = isActive(config);
+  const color = text(config, COLOR) || DEFAULT_COLOR;
 
-  const clic = () => {
+  const click = () => {
     // Le second clic d'un double-clic retombe ici : il ne relance rien, c'est
     // « onDoubleClick » qui prendra la main et annulera l'attente.
-    if (minuteur.current !== null) return;
-    minuteur.current = window.setTimeout(() => {
-      minuteur.current = null;
+    if (timer.current !== null) return;
+    timer.current = window.setTimeout(() => {
+      timer.current = null;
       if (url) window.open(url, "_blank", "noopener,noreferrer");
-    }, DELAI_DOUBLE_CLIC);
+    }, DOUBLE_CLICK_DELAY);
   };
 
-  const doubleClic = () => {
-    if (minuteur.current !== null) {
-      window.clearTimeout(minuteur.current);
-      minuteur.current = null;
+  const doubleClick = () => {
+    if (timer.current !== null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
     }
     if (locked) return;
-    setBrouillon(intitule);
-    setEdition(true);
+    setDraft(title);
+    setEditing(true);
   };
 
   // L'intitulé part au serveur en refermant la saisie — c'est le seul geste
   // qu'elle porte. Inchangé, rien n'est envoyé. Effacé, le lien se remet à se
   // lire par son adresse.
-  const fermer = async () => {
-    setEdition(false);
-    const nouveau = brouillon.trim();
-    if (nouveau === intitule) return;
-    await onChange(avec(config, LIBELLE, nouveau));
+  const close = async () => {
+    setEditing(false);
+    const newValue = draft.trim();
+    if (newValue === title) return;
+    await onChange(withField(config, LABEL, newValue));
   };
 
-  if (edition) {
+  if (editMode) {
     return (
       // Le champ prend exactement la place du mot qu'il remplace : la taille
       // et l'interligne de la ligne de lien, sans la bordure ni la hauteur
       // minimale que Mantine laisse à un champ « unstyled » — sans quoi la
       // colonne sauterait au double-clic.
       <TextInput
-        ref={champ}
+        ref={field}
         aria-label="Intitulé du lien"
         placeholder={url || "Lien"}
-        value={brouillon}
-        onChange={(e) => setBrouillon(e.currentTarget.value)}
-        onBlur={fermer}
+        value={draft}
+        onChange={(e) => setDraft(e.currentTarget.value)}
+        onBlur={close}
         onKeyDown={(e) => {
-          if (e.key === "Enter") fermer();
+          if (e.key === "Enter") close();
           // Échap renonce : l'intitulé d'avant reste.
-          if (e.key === "Escape") setEdition(false);
+          if (e.key === "Escape") setEditing(false);
         }}
         variant="unstyled"
         styles={{
           input: {
-            ...INTERLIGNE,
+            ...LINE_SPACING,
             fontSize: "var(--mantine-font-size-sm)",
-            color: couleur,
+            color: color,
             height: "auto",
             minHeight: 0,
             border: "none",
@@ -167,17 +167,17 @@ function Lien({ config, onChange, locked }: WidgetDisplayProps) {
   // Éteint, le lien se lit encore — barré et grisé — tant que la catégorie
   // est ouverte : c'est de là qu'on le rallume. Verrouillée, il ne paraît
   // plus du tout (voir « hidden » plus bas).
-  if (!actif) {
+  if (!active) {
     return (
       <Text
         size="sm"
-        style={INTERLIGNE}
+        style={LINE_SPACING}
         c="dimmed"
         td="line-through"
-        onDoubleClick={doubleClic}
+        onDoubleClick={doubleClick}
         lineClamp={1}
       >
-        {libelle || "Lien"}
+        {label || "Lien"}
       </Text>
     );
   }
@@ -188,12 +188,12 @@ function Lien({ config, onChange, locked }: WidgetDisplayProps) {
     return (
       <Text
         size="sm"
-        style={INTERLIGNE}
-        c={couleur}
-        onDoubleClick={doubleClic}
+        style={LINE_SPACING}
+        c={color}
+        onDoubleClick={doubleClick}
         lineClamp={1}
       >
-        {libelle || "Lien"}
+        {label || "Lien"}
       </Text>
     );
   }
@@ -207,57 +207,57 @@ function Lien({ config, onChange, locked }: WidgetDisplayProps) {
       target="_blank"
       rel="noopener noreferrer"
       size="sm"
-      style={LIGNE_DE_LIEN}
+      style={LINK_ROW}
       lineClamp={1}
       // Ni bleu ni souligné : le lien se lit comme le reste de la colonne.
       // La couleur est posée ici plutôt qu'en feuille de style — elle
       // l'emporte alors à coup sûr sur celle de Mantine, quel que soit l'ordre
       // des feuilles. Le retrait et le fond au survol, eux, n'ont pas
       // d'équivalent en ligne (assets/styles/AccessLink.module.css).
-      c={couleur}
+      c={color}
       underline="never"
       className={classes.lien}
       onClick={(e) => {
         e.preventDefault();
-        clic();
+        click();
       }}
-      onDoubleClick={doubleClic}
+      onDoubleClick={doubleClick}
     >
-      {libelle}
+      {label}
     </Anchor>
   );
 }
 
-export const lienWidget: AccessWidget = {
+export const linkWidget: AccessWidget = {
   type: "link",
   kind: "common",
   label: "Lien",
   icon: IconLink,
-  defaultConfig: { [LIBELLE]: "", [URL]: "", [ACTIF]: true },
+  defaultConfig: { [LABEL]: "", [URL]: "", [ACTIVE]: true },
   // Le clic simple appartient au lien : la page ne l'enveloppe pas d'un
   // bouton qui ouvrirait le tiroir.
   ownClicks: true,
   // Éteint et verrouillé, il disparaît : plus personne n'a à le voir, et
   // personne ne peut plus le rallumer de toute façon.
-  hidden: (config, locked) => locked && !estActif(config),
+  hidden: (config, locked) => locked && !isActive(config),
 
-  Display: Lien,
+  Display: LinkWidget,
 
   // Serrés comme les lignes d'un paragraphe : l'interligne suffit à les séparer.
-  marges: () => ({ haute: 0, basse: 0 }),
+  margins: () => ({ top: 0, bottom: 0 }),
 
   // Sans couleur choisie, le lien suit celle du texte : blanc sur le thème
   // sombre, noir sur le clair.
-  apparence: (config, onChange) => [
+  appearance: (config, onChange) => [
     {
-      nom: "Texte",
-      quoi: "du lien",
-      couleur: {
-        valeur: texte(config, COULEUR),
-        onChange: (v) => onChange(poser(config, { [COULEUR]: v })),
+      name: "Texte",
+      what: "du lien",
+      color: {
+        value: text(config, COLOR),
+        onChange: (v) => onChange(insertRow(config, { [COLOR]: v })),
       },
-      modifiee: texte(config, COULEUR) !== "",
-      reinitialiser: () => onChange(poser(config, { [COULEUR]: "" })),
+      modified: text(config, COLOR) !== "",
+      reset: () => onChange(insertRow(config, { [COLOR]: "" })),
     },
   ],
 
@@ -266,15 +266,15 @@ export const lienWidget: AccessWidget = {
       <TextInput
         label="Nom"
         placeholder="Nom du lien"
-        value={texte(config, LIBELLE)}
-        onChange={(e) => onChange(avec(config, LIBELLE, e.currentTarget.value))}
+        value={text(config, LABEL)}
+        onChange={(e) => onChange(withField(config, LABEL, e.currentTarget.value))}
         autoFocus
       />
       <TextInput
         label="URL"
         placeholder="https://"
-        value={texte(config, URL)}
-        onChange={(e) => onChange(avec(config, URL, e.currentTarget.value))}
+        value={text(config, URL)}
+        onChange={(e) => onChange(withField(config, URL, e.currentTarget.value))}
       />
     </Stack>
   ),
@@ -282,11 +282,11 @@ export const lienWidget: AccessWidget = {
   // Éteindre plutôt que supprimer : l'adresse est conservée, elle ne se
   // montre simplement plus une fois la catégorie verrouillée. Posé après les
   // marges, en dernier du tiroir.
-  ConfigFin: ({ config, onChange }) => (
+  ConfigEnd: ({ config, onChange }) => (
     <Switch
       label="Activé"
-      checked={estActif(config)}
-      onChange={(e) => onChange(avec(config, ACTIF, e.currentTarget.checked))}
+      checked={isActive(config)}
+      onChange={(e) => onChange(withField(config, ACTIVE, e.currentTarget.checked))}
       color="teal"
     />
   ),

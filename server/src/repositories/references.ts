@@ -9,9 +9,9 @@ import { readSetting, writeSetting } from "./settings.js";
  * Le dernier numéro donné. La clé est celle d'avant le compteur commun,
  * quand seuls les tickets en portaient : elle continue d'en tenir le compte.
  */
-export const COMPTEUR_REFERENCES = "support_ticket_counter";
+export const REFERENCE_COUNTER = "support_ticket_counter";
 
-const plusGrandeReference = scalar<{ max: number }>(
+const largestReference = scalar<{ max: number }>(
   `SELECT MAX(
      (SELECT COALESCE(MAX(number), 0) FROM support_requests),
      (SELECT COALESCE(MAX(number), 0) FROM projects),
@@ -27,8 +27,8 @@ const plusGrandeReference = scalar<{ max: number }>(
  * À appeler dans la transaction qui crée l'élément : si elle échoue, le
  * numéro n'est pas consommé.
  */
-export const prochaineReference = (): number => {
-  const numero = Math.max(readSetting(COMPTEUR_REFERENCES, 0), plusGrandeReference().max) + 1;
-  writeSetting(COMPTEUR_REFERENCES, numero);
-  return numero;
+export const nextReference = (): number => {
+  const phoneNumber = Math.max(readSetting(REFERENCE_COUNTER, 0), largestReference().max) + 1;
+  writeSetting(REFERENCE_COUNTER, phoneNumber);
+  return phoneNumber;
 };

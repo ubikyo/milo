@@ -25,10 +25,10 @@ import { ACTOR_GAP, PersonAvatar } from "../ui/ActorAvatars";
 import ActorPicker from "../ui/ActorPicker";
 import AddButton from "../ui/AddButton";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
-import PointMenu, { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
-import { DragHandle, InsertLine, usePileGlissante } from "../ui/PileGlissante";
-import { ARRONDI, FOND_LIGNE, RETRAIT_LIGNE, RETRAIT_NOM, styleLigne } from "../ui/LignesDuTiroir";
-import { messageErreur } from "../../lib/errors";
+import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
+import { DragHandle, InsertLine, useDraggableStack } from "../ui/PileGlissante";
+import { ROUNDING, ROW_BACKGROUND, ROW_INSET, NAME_INSET, rowStyle } from "../ui/LignesDuTiroir";
+import { errorMessage } from "../../lib/errors";
 import type {
   CSSProperties,
   MouseEvent as ReactMouseEvent,
@@ -80,26 +80,26 @@ const INLINE_HEIGHT = 30;
 
 // La hauteur d'une ligne : la saisie, et l'air que la ligne garde au-dessus
 // et au-dessous d'elle.
-const LIGNE_HEIGHT = INLINE_HEIGHT + 2 * RETRAIT_LIGNE;
+const ROW_HEIGHT = INLINE_HEIGHT + 2 * ROW_INSET;
 
 // Une ligne de checklist : celle du tiroir d'un widget, mais avec autant d'air
 // à droite qu'à gauche — elle finit sur une date ou un pourcentage, pas sur
 // un champ calé au bord.
-const styleLigneChecklist = (rang: number, total: number, tenue: boolean): CSSProperties => ({
-  ...styleLigne(rang, total, tenue),
-  paddingRight: RETRAIT_NOM,
+const checklistRowStyle = (rank: number, total: number, held: boolean): CSSProperties => ({
+  ...rowStyle(rank, total, held),
+  paddingRight: NAME_INSET,
 });
 
 // L'entête d'une checklist se détache de ses éléments : un gris neutre plus
 // foncé sur le clair ; sur le sombre, un cran plus loin du fond du tiroir.
-const FOND_ENTETE = "light-dark(#dcdcdc, var(--mantine-color-dark-5))";
+const HEADER_BACKGROUND = "light-dark(#dcdcdc, var(--mantine-color-dark-5))";
 
 // Ces saisies ne portent aucun cadre, pas même le bleu que Mantine pose au
 // focus : on ne fait que continuer à lire la même ligne, elle ne doit pas
 // s'encadrer au clic. C'est le parti pris des cartes et des listes du tableau.
 const inlineInput = (extra?: CSSProperties) => ({
   input: {
-    borderRadius: `var(--mantine-radius-${ARRONDI})`,
+    borderRadius: `var(--mantine-radius-${ROUNDING})`,
     "--input-bd": "transparent",
     "--input-bd-focus": "transparent",
     height: INLINE_HEIGHT,
@@ -109,16 +109,16 @@ const inlineInput = (extra?: CSSProperties) => ({
 });
 
 // Le clic droit dans une saisie garde le menu du navigateur : copier, coller.
-const dansUneSaisie = (event: ReactMouseEvent): boolean =>
+const inInput = (event: ReactMouseEvent): boolean =>
   event.target instanceof HTMLElement && event.target.closest("input, textarea") !== null;
 
 // Une date se garde en « AAAA-MM-JJ » et se montre à la française.
-const afficheDate = (valeur: string | null | undefined): string | null =>
-  valeur ? dayjs(valeur).format("DD/MM/YYYY") : null;
+const showDate = (value: string | null | undefined): string | null =>
+  value ? dayjs(value).format("DD/MM/YYYY") : null;
 
 // Où en est une checklist, en pourcentage. Vide, elle est à zéro : aucune case
 // cochée n'est pas un travail achevé.
-const avancement = (items: Element[]): number => {
+const progress = (items: Element[]): number => {
   if (!items || items.length === 0) return 0;
   return Math.round((items.filter((i) => i.done).length / items.length) * 100);
 };
@@ -133,7 +133,7 @@ interface ItemDateProps {
 
 function ItemDate({ value, onChange }: ItemDateProps) {
   const [opened, setOpened] = useState(false);
-  const texte = afficheDate(value);
+  const text = showDate(value);
 
   return (
     <Popover
@@ -149,17 +149,17 @@ function ItemDate({ value, onChange }: ItemDateProps) {
       <Popover.Target>
         <UnstyledButton
           onClick={() => setOpened((o) => !o)}
-          c={texte ? undefined : FIELD_ICON}
+          c={text ? undefined : FIELD_ICON}
           style={{
             display: "inline-flex",
             alignItems: "center",
             gap: 4,
             flexShrink: 0,
-            ...(texte ? DATE_TAG : null),
+            ...(text ? DATE_TAG : null),
           }}
           aria-label="Date de l'élément"
         >
-          {texte ?? <IconCalendar size={16} />}
+          {text ?? <IconCalendar size={16} />}
         </UnstyledButton>
       </Popover.Target>
       <Popover.Dropdown p="xs">
@@ -202,23 +202,23 @@ interface ItemMembersProps {
 }
 
 function ItemMembers({ members, users, onChange }: ItemMembersProps) {
-  const retenus = members || [];
+  const chosen = members || [];
 
   return (
     <ActorPicker
       label="Acteurs de l'élément"
       users={users}
-      value={retenus.map((m) => String(m.id))}
+      value={chosen.map((m) => String(m.id))}
       onChange={(ids) => onChange(ids.map(Number))}
       position="bottom-end"
       target={
-        retenus.length === 0 ? (
+        chosen.length === 0 ? (
           <Text span c={FIELD_ICON} style={{ display: "inline-flex" }}>
             <IconUserPlus size={16} />
           </Text>
         ) : (
           <Group gap={ACTOR_GAP} wrap="nowrap">
-            {retenus.map((m) => (
+            {chosen.map((m) => (
               <span key={m.id} style={{ display: "inline-flex" }} aria-label={m.name}>
                 <PersonAvatar person={m} size={ITEM_AVATAR_SIZE} />
               </span>
@@ -237,9 +237,9 @@ interface ChecklistItemProps {
   item: Element;
   users: PublicUser[];
   /** Le style de la ligne dans la pile : son fond, ses bouts arrondis. */
-  ligne: CSSProperties;
+  row: CSSProperties;
   /** Les acteurs retirés de la carte, pas encore sauvegardés : ils ne se montrent plus. */
-  masques: string[];
+  hidden: string[];
   /**
    * Vrai pour l'élément qu'on vient d'ajouter : il s'ouvre en saisie, le
    * curseur dedans.
@@ -257,8 +257,8 @@ interface ChecklistItemProps {
 function ChecklistItem({
   item,
   users,
-  ligne,
-  masques,
+  row,
+  hidden,
   // Vrai pour l'élément qu'on vient d'ajouter : il s'ouvre en saisie, le
   // curseur dedans. Sans cela, ajouter une ligne donnerait un « Sans
   // libellé » qu'il faudrait encore cliquer pour l'écrire.
@@ -271,23 +271,23 @@ function ChecklistItem({
   onMembers,
   onContextMenu,
 }: ChecklistItemProps) {
-  const [edite, setEdite] = useState<string | null>(autoEdit ? item.text : null);
+  const [edited, setEdited] = useState<string | null>(autoEdit ? item.text : null);
 
   useEffect(() => {
-    if (autoEdit) setEdite(item.text);
+    if (autoEdit) setEdited(item.text);
     // Ne dépend que du signal : le texte suivra la saisie, pas l'inverse.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoEdit]);
 
-  const fermerSaisie = () => {
-    setEdite(null);
+  const closeInput = () => {
+    setEdited(null);
     onEditDone?.();
   };
 
-  const valider = () => {
-    const texte = (edite ?? "").trim();
-    fermerSaisie();
-    if (texte && texte !== item.text) onRename(texte);
+  const validate = () => {
+    const text = (edited ?? "").trim();
+    closeInput();
+    if (text && text !== item.text) onRename(text);
   };
 
   return (
@@ -296,8 +296,8 @@ function ChecklistItem({
       wrap="nowrap"
       align="center"
       data-checklist-item={item.id}
-      onContextMenu={(e) => !dansUneSaisie(e) && onContextMenu(positionDuMenu(e))}
-      style={{ ...ligne, minHeight: LIGNE_HEIGHT }}
+      onContextMenu={(e) => !inInput(e) && onContextMenu(menuPosition(e))}
+      style={{ ...row, minHeight: ROW_HEIGHT }}
     >
       {/* Seule la poignée déplace la ligne : tout le reste répond déjà au
           clic, une ligne glissable de bout en bout les gênerait. */}
@@ -311,10 +311,10 @@ function ChecklistItem({
         aria-label={item.text || "Élément de checklist"}
       />
 
-      {edite === null ? (
+      {edited === null ? (
         <Text
           size="sm"
-          onClick={() => setEdite(item.text)}
+          onClick={() => setEdited(item.text)}
           // Coché, le libellé se barre et s'efface : la ligne est faite.
           td={item.done ? "line-through" : undefined}
           c={item.done ? "dimmed" : undefined}
@@ -324,15 +324,15 @@ function ChecklistItem({
         </Text>
       ) : (
         <TextInput
-          value={edite}
-          onChange={(e) => setEdite(e.currentTarget.value)}
-          onBlur={valider}
+          value={edited}
+          onChange={(e) => setEdited(e.currentTarget.value)}
+          onBlur={validate}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              valider();
+              validate();
             }
-            if (e.key === "Escape") fermerSaisie();
+            if (e.key === "Escape") closeInput();
           }}
           size="sm"
           autoFocus
@@ -344,7 +344,7 @@ function ChecklistItem({
       )}
 
       <ItemMembers
-        members={(item.members || []).filter((m) => !masques.includes(String(m.id)))}
+        members={(item.members || []).filter((m) => !hidden.includes(String(m.id)))}
         users={users}
         onChange={onMembers}
       />
@@ -364,7 +364,7 @@ interface ChecklistProps {
   dragged: boolean;
   onHandlePointerDown: (event: ReactPointerEvent) => void;
   onMembers?: (ids: number[]) => void;
-  masques: string[];
+  hidden: string[];
 }
 
 function Checklist({
@@ -375,14 +375,14 @@ function Checklist({
   dragged,
   onHandlePointerDown,
   onMembers,
-  masques,
+  hidden,
 }: ChecklistProps) {
   /** Le titre en cours de saisie ; « null » tant qu'on ne le modifie pas. */
-  const [titre, setTitre] = useState<string | null>(null);
-  const [aSupprimer, setASupprimer] = useState<ChecklistType | null>(null);
-  const [itemASupprimer, setItemASupprimer] = useState<Element | null>(null);
+  const [title, setTitle] = useState<string | null>(null);
+  const [toDelete, setToDelete] = useState<ChecklistType | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<Element | null>(null);
   // L'élément qu'on vient d'ajouter : il s'ouvre en saisie.
-  const [nouvelItem, setNouvelItem] = useState<Id | null>(null);
+  const [newItem, setNewItem] = useState<Id | null>(null);
   // Le menu contextuel ouvert : celui de l'entête (sans élément) ou d'un
   // élément.
   const [menu, setMenu] = useState<{ item: Element | null; position: PointMenuPosition } | null>(
@@ -391,60 +391,60 @@ function Checklist({
 
   const items = checklist.items || [];
   // L'entête ouvre la pile, les éléments la suivent.
-  const lignes = items.length + 1;
-  const pourcentage = avancement(items);
+  const rows = items.length + 1;
+  const percentage = progress(items);
 
   // Tout ce qui part au serveur passe par ici : une panne se dit à l'écran,
   // au lieu de laisser le geste sans effet apparent.
-  const agir = async (action: () => Promise<unknown>) => {
+  const act = async (action: () => Promise<unknown>) => {
     try {
       await action();
     } catch (e) {
-      onError?.(messageErreur(e));
+      onError?.(errorMessage(e));
     }
   };
 
   // Les éléments se glissent entre eux, à l'intérieur de leur checklist.
-  const { zoneRef, drag, onPointerDown } = usePileGlissante({
+  const { zoneRef, drag, onPointerDown } = useDraggableStack({
     ids: items.map((i) => i.id),
     selector: "[data-checklist-item]",
-    onReorder: (ordre) =>
-      agir(async () => {
-        await api.reorderChecklistItems(checklist.id, ordre);
+    onReorder: (order) =>
+      act(async () => {
+        await api.reorderChecklistItems(checklist.id, order);
         await onChanged();
       }),
   });
 
-  const validerTitre = async () => {
-    const nom = (titre ?? "").trim();
-    setTitre(null);
-    if (!nom || nom === checklist.title) return;
-    await agir(async () => {
-      await api.updateChecklist(checklist.id, { title: nom });
+  const validateTitle = async () => {
+    const name = (title ?? "").trim();
+    setTitle(null);
+    if (!name || name === checklist.title) return;
+    await act(async () => {
+      await api.updateChecklist(checklist.id, { title: name });
       await onChanged();
     });
   };
 
   // La ligne naît sans libellé et s'ouvre aussitôt en saisie : on l'écrit dans
   // la foulée du clic, sans avoir à la rouvrir.
-  const ajouterItem = () =>
-    agir(async () => {
-      const cree = await api.createChecklistItem(checklist.id);
+  const addItem = () =>
+    act(async () => {
+      const created = await api.createChecklistItem(checklist.id);
       await onChanged();
-      setNouvelItem(cree.id);
+      setNewItem(created.id);
     });
 
-  const modifierItem = (item: Element, data: ChecklistItemInput) =>
-    agir(async () => {
+  const editItem = (item: Element, data: ChecklistItemInput) =>
+    act(async () => {
       await api.updateChecklistItem(item.id, data);
       await onChanged();
     });
 
-  const supprimerItem = async () => {
-    const item = itemASupprimer;
-    setItemASupprimer(null);
+  const deleteItem = async () => {
+    const item = itemToDelete;
+    setItemToDelete(null);
     if (!item) return;
-    await agir(async () => {
+    await act(async () => {
       await api.deleteChecklistItem(item.id);
       await onChanged();
     });
@@ -462,9 +462,9 @@ function Checklist({
           wrap="nowrap"
           align="center"
           onContextMenu={(e) =>
-            !dansUneSaisie(e) && setMenu({ item: null, position: positionDuMenu(e) })
+            !inInput(e) && setMenu({ item: null, position: menuPosition(e) })
           }
-          style={{ ...styleLigneChecklist(0, lignes, false), backgroundColor: FOND_ENTETE }}
+          style={{ ...checklistRowStyle(0, rows, false), backgroundColor: HEADER_BACKGROUND }}
         >
           {/* La poignée ouvre l'entête : c'est par elle qu'on range les
               checklists entre elles. */}
@@ -472,11 +472,11 @@ function Checklist({
             onPointerDown={onHandlePointerDown}
             label="Glisser pour réordonner la checklist"
           />
-          {titre === null ? (
+          {title === null ? (
             <Text
               fw={600}
               size="sm"
-              onClick={() => setTitre(checklist.title)}
+              onClick={() => setTitle(checklist.title)}
               style={{
                 flex: 1,
                 minWidth: 0,
@@ -491,15 +491,15 @@ function Checklist({
             </Text>
           ) : (
             <TextInput
-              value={titre}
-              onChange={(e) => setTitre(e.currentTarget.value)}
-              onBlur={validerTitre}
+              value={title}
+              onChange={(e) => setTitle(e.currentTarget.value)}
+              onBlur={validateTitle}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  validerTitre();
+                  validateTitle();
                 }
-                if (e.key === "Escape") setTitre(null);
+                if (e.key === "Escape") setTitle(null);
               }}
               size="sm"
               autoFocus
@@ -515,16 +515,16 @@ function Checklist({
               lignes. */}
           <Group gap={6} wrap="nowrap" style={{ flexShrink: 0 }}>
             <Progress
-              value={pourcentage}
+              value={percentage}
               color="teal"
               size={PROGRESS_HEIGHT}
               radius="xl"
               w={PROGRESS_WIDTH}
               // Le fond de la barre est celui des éléments de la checklist.
-              styles={{ root: { backgroundColor: FOND_LIGNE } }}
+              styles={{ root: { backgroundColor: ROW_BACKGROUND } }}
             />
             <Text size="xs" c="dimmed" w={34} ta="right">
-              {pourcentage}%
+              {percentage}%
             </Text>
           </Group>
         </Group>
@@ -535,17 +535,17 @@ function Checklist({
             <ChecklistItem
               item={item}
               users={users}
-              ligne={styleLigneChecklist(index + 1, lignes, drag?.id === item.id)}
-              masques={masques}
-              autoEdit={nouvelItem === item.id}
-              onEditDone={() => setNouvelItem(null)}
+              row={checklistRowStyle(index + 1, rows, drag?.id === item.id)}
+              hidden={hidden}
+              autoEdit={newItem === item.id}
+              onEditDone={() => setNewItem(null)}
               onPointerDown={onPointerDown(item.id, index)}
-              onToggle={(done) => modifierItem(item, { done })}
-              onRename={(text) => modifierItem(item, { text })}
-              onDate={(due_date) => modifierItem(item, { due_date })}
+              onToggle={(done) => editItem(item, { done })}
+              onRename={(text) => editItem(item, { text })}
+              onDate={(due_date) => editItem(item, { due_date })}
               onMembers={(member_ids) => {
                 onMembers?.(member_ids);
-                return modifierItem(item, { member_ids });
+                return editItem(item, { member_ids });
               }}
               onContextMenu={(position) => setMenu({ item, position })}
             />
@@ -555,7 +555,7 @@ function Checklist({
       </Stack>
 
       {/* Au plus près de la pile qu'il allonge. */}
-      <AddButton label="Ajouter un élément" onClick={ajouterItem} mt={4} />
+      <AddButton label="Ajouter un élément" onClick={addItem} mt={4} />
 
       {menu && (
         <PointMenu position={menu.position} onClose={() => setMenu(null)}>
@@ -563,7 +563,7 @@ function Checklist({
             color={RED}
             leftSection={<IconTrash size={16} />}
             onClick={() =>
-              menu.item ? setItemASupprimer(menu.item) : setASupprimer(checklist)
+              menu.item ? setItemToDelete(menu.item) : setToDelete(checklist)
             }
           >
             {menu.item ? "Supprimer l'élément" : "Supprimer la checklist"}
@@ -572,11 +572,11 @@ function Checklist({
       )}
 
       <DeleteConfirmModal
-        opened={aSupprimer !== null}
-        onClose={() => setASupprimer(null)}
+        opened={toDelete !== null}
+        onClose={() => setToDelete(null)}
         onConfirm={() => {
-          setASupprimer(null);
-          return agir(async () => {
+          setToDelete(null);
+          return act(async () => {
             await api.deleteChecklist(checklist.id);
             await onChanged();
           });
@@ -599,13 +599,13 @@ function Checklist({
       />
 
       <DeleteConfirmModal
-        opened={itemASupprimer !== null}
-        onClose={() => setItemASupprimer(null)}
-        onConfirm={supprimerItem}
+        opened={itemToDelete !== null}
+        onClose={() => setItemToDelete(null)}
+        onConfirm={deleteItem}
         title="Supprimer l'élément"
         message={
           <>
-            Voulez-vous vraiment supprimer « {itemASupprimer?.text || "cet élément"} » ?
+            Voulez-vous vraiment supprimer « {itemToDelete?.text || "cet élément"} » ?
           </>
         }
       />
@@ -636,7 +636,7 @@ interface CardChecklistsProps {
    * éléments à « Sauvegarder » ; d'ici là, les éléments ne les montrent déjà
    * plus.
    */
-  masques?: string[];
+  hidden?: string[];
 }
 
 export default function CardChecklists({
@@ -646,25 +646,25 @@ export default function CardChecklists({
   onChanged,
   onError,
   onMembers,
-  masques = [],
+  hidden = [],
 }: CardChecklistsProps) {
-  const listes = checklists || [];
+  const currentChecklists = checklists || [];
 
   // Les checklists se glissent entre elles, par la poignée de leur entête.
-  const { zoneRef, drag, onPointerDown } = usePileGlissante({
-    ids: listes.map((c) => c.id),
+  const { zoneRef, drag, onPointerDown } = useDraggableStack({
+    ids: currentChecklists.map((c) => c.id),
     selector: "[data-checklist]",
-    onReorder: async (ordre) => {
+    onReorder: async (order) => {
       try {
-        await api.reorderChecklists(cardId, ordre);
+        await api.reorderChecklists(cardId, order);
         await onChanged();
       } catch (e) {
-        onError?.(messageErreur(e));
+        onError?.(errorMessage(e));
       }
     },
   });
 
-  if (listes.length === 0) return null;
+  if (currentChecklists.length === 0) return null;
 
   return (
     // Le bloc porte son intitulé comme les autres champs de la fiche — le
@@ -672,10 +672,10 @@ export default function CardChecklists({
     // n'a aucune checklist.
     <Input.Wrapper label="Checklist">
       <Stack gap={CHECKLIST_GAP} ref={zoneRef}>
-        {listes.map((checklist, index) => (
+        {currentChecklists.map((checklist, index) => (
           <div key={checklist.id}>
             {drag?.target === index && (
-              <InsertLine gap={CHECKLIST_GAP} auBord={index === 0} />
+              <InsertLine gap={CHECKLIST_GAP} atEdge={index === 0} />
             )}
             <Checklist
               checklist={checklist}
@@ -685,11 +685,11 @@ export default function CardChecklists({
               dragged={drag?.id === checklist.id}
               onHandlePointerDown={onPointerDown(checklist.id, index)}
               onMembers={onMembers}
-              masques={masques}
+              hidden={hidden}
             />
           </div>
         ))}
-        {drag && drag.target >= listes.length && <InsertLine gap={CHECKLIST_GAP} />}
+        {drag && drag.target >= currentChecklists.length && <InsertLine gap={CHECKLIST_GAP} />}
       </Stack>
     </Input.Wrapper>
   );

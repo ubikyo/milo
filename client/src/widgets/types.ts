@@ -15,7 +15,7 @@
 
 import type { WidgetKind } from "./genres";
 import type { ComponentType } from "react";
-import type { LigneReglage } from "../components/ui/LignesReglages";
+import type { SettingRow } from "../components/ui/LignesReglages";
 import type { AccessBlockType, Id } from "@milo/shared";
 
 /** Ce que le tiroir passe aux champs d'un widget. */
@@ -24,12 +24,12 @@ import type { AccessBlockType, Id } from "@milo/shared";
  * le registre (board-widgets) s'en chargeant pour ceux qui ne le font pas
  * eux-mêmes (cadrePropre).
  */
-export const ENCADRE = "encadre";
+export const FRAMED = "encadre";
 
 /** Vrai quand le widget est encadré ; sans réglage, « defaut » vaut. */
-export const estEncadre = (config: unknown, defaut = false): boolean => {
-  const valeur = (config as Record<string, unknown> | null)?.[ENCADRE];
-  return typeof valeur === "boolean" ? valeur : defaut;
+export const isFramed = (config: unknown, defaultValue = false): boolean => {
+  const value = (config as Record<string, unknown> | null)?.[FRAMED];
+  return typeof value === "boolean" ? value : defaultValue;
 };
 
 export interface WidgetConfigProps {
@@ -60,9 +60,9 @@ export interface WidgetDisplayProps {
 }
 
 /** L'air laissé au-dessus et au-dessous d'un élément, en pixels. */
-export interface Marges {
-  haute: number;
-  basse: number;
+export interface Margins {
+  top: number;
+  bottom: number;
 }
 
 export interface AccessWidget {
@@ -84,19 +84,19 @@ export interface AccessWidget {
    * d'un lien. Le tiroir les pose dans le bloc « Apparence », avant les
    * marges communes à tous.
    */
-  apparence?: (config: unknown, onChange: WidgetConfigProps["onChange"]) => LigneReglage[];
+  appearance?: (config: unknown, onChange: WidgetConfigProps["onChange"]) => SettingRow[];
   /**
    * Vrai quand le widget dessine lui-même son cadre (ENCADRE) — l'air autour
    * de l'heure d'une horloge, par exemple. Sinon, le registre l'encadre.
    */
-  cadrePropre?: boolean;
+  ownFrame?: boolean;
   /** Vrai quand il est encadré tant que rien n'est réglé — les attributs. */
-  cadreParDefaut?: boolean;
+  defaultFrame?: boolean;
   /**
    * Les champs qu'il pose tout en bas du tiroir, après les marges communes à
    * tous — l'interrupteur d'un lien, qui se lit comme un dernier mot.
    */
-  ConfigFin?: ComponentType<WidgetConfigProps>;
+  ConfigEnd?: ComponentType<WidgetConfigProps>;
   /**
    * La largeur de son tiroir, en pixels, quand ses champs ne tiennent pas
    * dans celle de tous (TIROIR_LARGEUR).
@@ -108,7 +108,7 @@ export interface AccessWidget {
    * C'est la colonne qui le pose, et la configuration peut le remplacer
    * (marges.tsx) : l'affichage n'en pose aucun lui-même.
    */
-  marges: (previousType: AccessBlockType | null, nextType: AccessBlockType | null) => Marges;
+  margins: (previousType: AccessBlockType | null, nextType: AccessBlockType | null) => Margins;
   /**
    * Vrai quand l'élément se nomme à même la colonne : rien ne s'ouvre à sa
    * création, il paraît vide et attend qu'on le renseigne sur place.
@@ -135,9 +135,9 @@ export interface AccessWidget {
  * Une valeur absente ou d'un autre type vaut le repli plutôt que de s'afficher
  * en « undefined ».
  */
-export const texte = (config: unknown, cle: string, defaut = ""): string => {
-  const valeur = (config as Record<string, unknown> | null)?.[cle];
-  return typeof valeur === "string" ? valeur : defaut;
+export const text = (config: unknown, key: string, defaultValue = ""): string => {
+  const value = (config as Record<string, unknown> | null)?.[key];
+  return typeof value === "string" ? value : defaultValue;
 };
 
 /**
@@ -145,19 +145,19 @@ export const texte = (config: unknown, cle: string, defaut = ""): string => {
  * illisible vaut le repli ; une taille rangée en chaîne par une version
  * antérieure, elle, se relit tout de même.
  */
-export const nombre = (config: unknown, cle: string, defaut: number): number => {
-  const valeur = (config as Record<string, unknown> | null)?.[cle];
-  if (valeur === null || valeur === undefined || valeur === "") return defaut;
-  const lu = Number(valeur);
-  return Number.isFinite(lu) ? lu : defaut;
+export const count = (config: unknown, key: string, defaultValue: number): number => {
+  const value = (config as Record<string, unknown> | null)?.[key];
+  if (value === null || value === undefined || value === "") return defaultValue;
+  const readValue = Number(value);
+  return Number.isFinite(readValue) ? readValue : defaultValue;
 };
 
 /** La configuration reçue, à laquelle on change un champ. */
-export const avec = (
+export const withField = (
   config: unknown,
-  cle: string,
-  valeur: unknown,
+  key: string,
+  value: unknown,
 ): Record<string, unknown> => ({
   ...((config as Record<string, unknown> | null) ?? {}),
-  [cle]: valeur,
+  [key]: value,
 });

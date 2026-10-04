@@ -5,7 +5,7 @@
 import cors from "cors";
 import express from "express";
 import { env } from "./env.js";
-import { compterEcritures, flux, payload } from "./middleware/events.js";
+import { countWrites, feed, payload } from "./middleware/events.js";
 import { errorHandler, notFoundHandler } from "./middleware/errors.js";
 import {
   requireAuth,
@@ -87,7 +87,7 @@ export const createApp = (): express.Express => {
   // Les compteurs de version montent après chaque écriture réussie, et le flux
   // les pousse aux clients. Posé avant les routes : chacune déclare ce qu'elle
   // touche, ce middleware en tire les conséquences une fois la réponse partie.
-  app.use("/api", compterEcritures);
+  app.use("/api", countWrites);
 
   // --- Sans authentification ------------------------------------------------
   app.use("/api/auth", publicAuthRoutes);
@@ -112,7 +112,7 @@ export const createApp = (): express.Express => {
   app.use("/api", requireAuth);
 
   app.get("/api/version", (_req, res) => res.json(payload()));
-  app.get("/api/events", flux);
+  app.get("/api/events", feed);
 
   app.use("/api/users", userRoutes);
   // Ce que règle le Paramétrage demande ses droits (Voir, Modifier). Les

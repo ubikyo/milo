@@ -1,7 +1,7 @@
 import { Stack, TextInput, Title } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
-import { poser, type LigneReglage } from "../components/ui/LignesReglages";
-import { avec, nombre, texte } from "./types";
+import { insertRow, type SettingRow } from "../components/ui/LignesReglages";
+import { withField, count, text } from "./types";
 import type { AccessWidget, WidgetDisplayProps } from "./types";
 import type { ComponentType } from "react";
 import type { AccessBlockType } from "@milo/shared";
@@ -12,18 +12,18 @@ import type { AccessBlockType } from "@milo/shared";
 // l'air qu'ils laissent en dessous. Ils sont donc décrits une fois ici, et
 // chacun n'a plus qu'à dire ces trois-là.
 
-const TITRE = "titre";
-const COULEUR = "couleur";
-const TAILLE = "taille";
+const TITLE = "titre";
+const COLOR = "couleur";
+const SIZE = "taille";
 
 /**
  * Les bornes de la taille : en deçà le titre ne se lit plus, au-delà il
  * déborde de la colonne.
  */
-const TAILLE_MIN = 8;
-const TAILLE_MAX = 64;
+const SIZE_MIN = 8;
+const SIZE_MAX = 64;
 
-interface TitreOptions {
+interface TitleOptions {
   type: AccessBlockType;
   label: string;
   icon: ComponentType<{ size?: number }>;
@@ -32,105 +32,105 @@ interface TitreOptions {
   /** Ce qu'un titre encore vide laisse voir : la place qu'il tient, et rien de plus. */
   placeholder: string;
   /** La taille par défaut, que la configuration peut remplacer. */
-  taille: number;
+  size: number;
   /** La graisse du titre ; à défaut, celle de son niveau. */
-  graisse?: number;
+  weight?: number;
   /** La couleur par défaut, en hexadécimal : le sélecteur la montre telle quelle. */
-  couleur: string;
+  color: string;
   /** L'air laissé avant ce qui suit dans la colonne. */
-  margeBasse: number;
+  lowMargin: number;
   /**
    * L'air laissé au-dessus quand un élément le précède. En tête de colonne,
    * le titre n'en prend pas : rien n'est à écarter. Elle peut dépendre du
    * type de cet élément.
    */
-  margeHaute?: number | ((previousType: AccessBlockType) => number);
+  highMargin?: number | ((previousType: AccessBlockType) => number);
 }
 
 /** La ligne « Texte » du tiroir : la couleur et la taille du titre. */
-const ligneTexte = (
+const textLine = (
   config: unknown,
   onChange: (config: Record<string, unknown>) => void,
-  options: TitreOptions,
-): LigneReglage => {
-  const couleur = texte(config, COULEUR);
-  const taille = nombre(config, TAILLE, options.taille);
+  options: TitleOptions,
+): SettingRow => {
+  const color = text(config, COLOR);
+  const size = count(config, SIZE, options.size);
   return {
-    nom: "Texte",
-    quoi: "du titre",
+    name: "Texte",
+    what: "du titre",
     // La couleur du titre, ramenée à la sienne, n'est plus rangée.
-    couleur: {
-      valeur: couleur,
-      onChange: (v) => onChange(poser(config, { [COULEUR]: v === options.couleur ? "" : v })),
+    color: {
+      value: color,
+      onChange: (v) => onChange(insertRow(config, { [COLOR]: v === options.color ? "" : v })),
     },
-    taille: {
-      valeur: taille,
-      defaut: options.taille,
-      min: TAILLE_MIN,
-      max: TAILLE_MAX,
-      onChange: (v) => onChange(poser(config, { [TAILLE]: v === options.taille ? "" : v })),
+    size: {
+      value: size,
+      defaultValue: options.size,
+      min: SIZE_MIN,
+      max: SIZE_MAX,
+      onChange: (v) => onChange(insertRow(config, { [SIZE]: v === options.size ? "" : v })),
     },
-    modifiee: (couleur !== "" && couleur !== options.couleur) || taille !== options.taille,
-    reinitialiser: () => onChange(poser(config, { [COULEUR]: "", [TAILLE]: "" })),
+    modified: (color !== "" && color !== options.color) || size !== options.size,
+    reset: () => onChange(insertRow(config, { [COLOR]: "", [SIZE]: "" })),
   };
 };
 
-const affichage = (options: TitreOptions): ComponentType<WidgetDisplayProps> =>
-  function TitreEditable({ config, onChange }: WidgetDisplayProps) {
-    const [edition, setEdition] = useState(false);
-    const [brouillon, setBrouillon] = useState("");
+const display = (options: TitleOptions): ComponentType<WidgetDisplayProps> =>
+  function EditableTitle({ config, onChange }: WidgetDisplayProps) {
+    const [editMode, setEditing] = useState(false);
+    const [draft, setDraft] = useState("");
     // Le titre qui vient d'être saisi, le temps que le serveur le renvoie :
     // sans lui, l'ancien reparaîtrait un instant entre la saisie et la réponse.
-    const [enAttente, setEnAttente] = useState<string | null>(null);
-    const champ = useRef<HTMLInputElement | null>(null);
+    const [pending, setPending] = useState<string | null>(null);
+    const field = useRef<HTMLInputElement | null>(null);
 
-    const enregistre = texte(config, TITRE);
-    const taille = nombre(config, TAILLE, options.taille);
-    const couleur = texte(config, COULEUR, options.couleur) || options.couleur;
-    const titre = enAttente ?? enregistre;
+    const saved = text(config, TITLE);
+    const size = count(config, SIZE, options.size);
+    const color = text(config, COLOR, options.color) || options.color;
+    const title = pending ?? saved;
 
     // Le champ prend le focus dès qu'il paraît, et la saisie s'y trouve déjà
     // sélectionnée : le double-clic vaut « je remplace ce titre ».
     useEffect(() => {
-      if (!edition) return;
-      champ.current?.focus();
-      champ.current?.select();
-    }, [edition]);
+      if (!editMode) return;
+      field.current?.focus();
+      field.current?.select();
+    }, [editMode]);
 
-    const ouvrir = () => {
-      setBrouillon(titre);
-      setEdition(true);
+    const openItem = () => {
+      setDraft(title);
+      setEditing(true);
     };
 
     // Le titre part au serveur en refermant la saisie — c'est le seul geste
     // qu'elle porte. Inchangé, rien n'est envoyé.
-    const fermer = async () => {
-      setEdition(false);
-      const nouveau = brouillon.trim();
-      if (nouveau === titre) return;
-      setEnAttente(nouveau);
+    const close = async () => {
+      setEditing(false);
+      const newValue = draft.trim();
+      if (newValue === title) return;
+      setPending(newValue);
       try {
-        await onChange(avec(config, TITRE, nouveau));
+        await onChange(withField(config, TITLE, newValue));
       } finally {
         // La configuration relue prend le relais — ou, si le serveur a
         // refusé, le titre enregistré reparaît.
-        setEnAttente(null);
+        setPending(null);
       }
     };
 
-    if (edition) {
+    if (editMode) {
       return (
         <TextInput
-          ref={champ}
+          ref={field}
           aria-label={options.label}
           placeholder={options.placeholder}
-          value={brouillon}
-          onChange={(e) => setBrouillon(e.currentTarget.value)}
-          onBlur={fermer}
+          value={draft}
+          onChange={(e) => setDraft(e.currentTarget.value)}
+          onBlur={close}
           onKeyDown={(e) => {
-            if (e.key === "Enter") fermer();
+            if (e.key === "Enter") close();
             // Échap renonce : le titre d'avant reste.
-            if (e.key === "Escape") setEdition(false);
+            if (e.key === "Escape") setEditing(false);
           }}
           // Le champ prend exactement la place du titre qu'il remplace,
           // sinon la ligne — et tout ce qui la suit — sauterait au
@@ -142,11 +142,11 @@ const affichage = (options: TitreOptions): ComponentType<WidgetDisplayProps> =>
           variant="unstyled"
           styles={{
             input: {
-              fontSize: taille,
+              fontSize: size,
               fontWeight:
-                options.graisse ?? `var(--mantine-h${options.order}-font-weight)`,
+                options.weight ?? `var(--mantine-h${options.order}-font-weight)`,
               lineHeight: `var(--mantine-h${options.order}-line-height)`,
-              color: couleur,
+              color: color,
               height: "auto",
               minHeight: 0,
               border: "none",
@@ -159,23 +159,23 @@ const affichage = (options: TitreOptions): ComponentType<WidgetDisplayProps> =>
     return (
       <Title
         order={options.order}
-        size={taille}
-        fw={options.graisse}
-        onDoubleClick={ouvrir}
-        c={couleur}
+        size={size}
+        fw={options.weight}
+        onDoubleClick={openItem}
+        c={color}
         // La main : le titre se double-clique, il ne se saisit pas là où il
         // est posé — le caret laisserait croire qu'on écrit déjà dedans.
         // Un titre encore vide garde sa couleur : c'est le même titre, il
         // attend seulement son nom.
         style={{ cursor: "pointer" }}
       >
-        {titre || options.placeholder}
+        {title || options.placeholder}
       </Title>
     );
   };
 
 /** Le widget d'un titre, à partir de ce qui le distingue de l'autre. */
-export const creerTitreWidget = (options: TitreOptions): AccessWidget => ({
+export const createWidgetTitle = (options: TitleOptions): AccessWidget => ({
   type: options.type,
   // Les titres sont des widgets communs à tous les modes.
   kind: "common",
@@ -183,31 +183,31 @@ export const creerTitreWidget = (options: TitreOptions): AccessWidget => ({
   icon: options.icon,
   // Un titre neuf est vide : on le nomme en double-cliquant dessus, là où il
   // est, plutôt que dans un tiroir qui s'ouvrirait aussitôt.
-  defaultConfig: { [TITRE]: "" },
+  defaultConfig: { [TITLE]: "" },
   inlineEdit: true,
   ownClicks: true,
 
-  Display: affichage(options),
+  Display: display(options),
 
-  marges: (previousType) => ({
-    haute:
+  margins: (previousType) => ({
+    top:
       previousType === null
         ? 0
-        : typeof options.margeHaute === "function"
-          ? options.margeHaute(previousType)
-          : (options.margeHaute ?? 0),
-    basse: options.margeBasse,
+        : typeof options.highMargin === "function"
+          ? options.highMargin(previousType)
+          : (options.highMargin ?? 0),
+    bottom: options.lowMargin,
   }),
 
-  apparence: (config, onChange) => [ligneTexte(config, onChange, options)],
+  appearance: (config, onChange) => [textLine(config, onChange, options)],
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
       <TextInput
         label="Titre"
         placeholder={options.placeholder}
-        value={texte(config, TITRE)}
-        onChange={(e) => onChange(avec(config, TITRE, e.currentTarget.value))}
+        value={text(config, TITLE)}
+        onChange={(e) => onChange(withField(config, TITLE, e.currentTarget.value))}
         autoFocus
       />
     </Stack>

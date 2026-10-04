@@ -12,8 +12,8 @@ import { IconChevronDown, IconClipboard, IconCopy } from "@tabler/icons-react";
 import { createContext, useContext, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../api";
-import { useDroits } from "../../lib/droits";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { useRights } from "../../lib/droits";
+import { errorMessage, notifyError } from "../../lib/errors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import {
   ACTIONS_BUTTON_STYLE,
@@ -21,9 +21,9 @@ import {
   TAB_MENU_STYLES,
 } from "../../themes/menus";
 import type { CopyResult, Id } from "@milo/shared";
-import BoutonFermer from "./BoutonFermer";
-import { compteRendu } from "./CopyToBoardModal";
-import { ActionsDuTiroirContext } from "./IndicatorDrawer";
+import CloseButton from "./BoutonFermer";
+import { report } from "./CopyToBoardModal";
+import { DrawerActionsContext } from "./IndicatorDrawer";
 
 // Le menu « Actions » du tiroir d'un widget « Projets » ou « Tâches » :
 // copier les étiquettes ou les catégories du tableau ouvert, puis les coller
@@ -36,139 +36,139 @@ import { ActionsDuTiroirContext } from "./IndicatorDrawer";
 // ce que le collage a donné.
 
 /** Les étiquettes des cartes et celles des projets ne sont pas les mêmes. */
-export type Univers = "tasks" | "projects";
-export type ChoseCopiee = "labels" | "categories";
+export type Scope = "tasks" | "projects";
+export type CopiedItem = "labels" | "categories";
 
 /** Un tableau copié, en attente d'être collé. */
-export interface Copie {
+export interface Copy {
   boardId: Id;
   boardName: string;
 }
 
 /** Ce qui est copié, chaque sorte de son côté : « projects.labels », … */
-export type PressePapiers = Partial<Record<`${Univers}.${ChoseCopiee}`, Copie>>;
+export type Clipboard = Partial<Record<`${Scope}.${CopiedItem}`, Copy>>;
 
-export interface CopierCollerValeur {
+export interface CopyPasteValue {
   /** Le tableau ouvert : celui qu'on copie, ou celui où l'on colle. */
   board: { id: Id; name: string } | null;
-  pressePapiers: PressePapiers;
-  onCopier: (cle: keyof PressePapiers, copie: Copie) => void;
+  clipboard: Clipboard;
+  onCopy: (key: keyof Clipboard, copy: Copy) => void;
   /**
    * Le nombre de collages faits : les listes du tableau ouvert dans le tiroir
    * (ChampsListeDuTableau) se relisent quand il change.
    */
-  collages: number;
-  onColle: () => void;
+  pastes: number;
+  onPasted: () => void;
 }
 
-export const CopierCollerContext = createContext<CopierCollerValeur | null>(
+export const CopyPasteContext = createContext<CopyPasteValue | null>(
   null,
 );
 
-const MOTS: Record<
-  ChoseCopiee,
+const WORDS: Record<
+  CopiedItem,
   {
-    copier: string;
-    coller: string;
-    copiees: string;
+    copy: string;
+    paste: string;
+    copied: string;
     les: string;
-    remplacer: string;
-    garde?: string;
+    replaceExisting: string;
+    keptRequest?: string;
   }
 > = {
   labels: {
-    copier: "Copier les étiquettes",
-    coller: "Coller les étiquettes",
-    copiees: "Étiquettes copiées",
+    copy: "Copier les étiquettes",
+    paste: "Coller les étiquettes",
+    copied: "Étiquettes copiées",
     les: "Les étiquettes",
-    remplacer: "Remplacer les étiquettes existantes",
+    replaceExisting: "Remplacer les étiquettes existantes",
   },
   categories: {
-    copier: "Copier les catégories",
-    coller: "Coller les catégories",
-    copiees: "Catégories copiées",
+    copy: "Copier les catégories",
+    paste: "Coller les catégories",
+    copied: "Catégories copiées",
     les: "Les catégories",
-    remplacer: "Remplacer les catégories existantes",
-    garde: "Celles qui rangent encore des projets sont gardées.",
+    replaceExisting: "Remplacer les catégories existantes",
+    keptRequest: "Celles qui rangent encore des projets sont gardées.",
   },
 };
 
 /** Le collage lui-même, du tableau copié vers celui-ci. */
-const coller = (
-  univers: Univers,
-  chose: ChoseCopiee,
+const paste = (
+  scope: Scope,
+  item: CopiedItem,
   source: Id,
-  cible: Id,
-  remplacer: boolean,
+  target: Id,
+  replaceExisting: boolean,
 ): Promise<CopyResult> =>
-  chose === "categories"
-    ? api.copyCategories(source, cible, remplacer)
-    : univers === "tasks"
-      ? api.copyLabels(source, cible, remplacer)
-      : api.copyProjectLabels(source, cible, remplacer);
+  item === "categories"
+    ? api.copyCategories(source, target, replaceExisting)
+    : scope === "tasks"
+      ? api.copyLabels(source, target, replaceExisting)
+      : api.copyProjectLabels(source, target, replaceExisting);
 
-interface ActionsCopierCollerProps {
-  univers: Univers;
+interface CopyPasteActionsProps {
+  scope: Scope;
   /** Ce que le widget propose de copier, dans l'ordre du menu. */
-  choses: ChoseCopiee[];
+  items: CopiedItem[];
 }
 
-export default function ActionsCopierColler({
-  univers,
-  choses,
-}: ActionsCopierCollerProps) {
-  const contexte = useContext(CopierCollerContext);
-  const cible = useContext(ActionsDuTiroirContext);
-  const peut = useDroits();
-  const [aColler, setAColler] = useState<ChoseCopiee | null>(null);
-  const [remplacer, setRemplacer] = useState(false);
+export default function CopyPasteActions({
+  scope,
+  items,
+}: CopyPasteActionsProps) {
+  const context = useContext(CopyPasteContext);
+  const target = useContext(DrawerActionsContext);
+  const can = useRights();
+  const [toPaste, setToPaste] = useState<CopiedItem | null>(null);
+  const [replaceExisting, setReplace] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const board = contexte?.board ?? null;
+  const board = context?.board ?? null;
   // Copier comme coller demandent de pouvoir créer ; remplacer, de supprimer.
-  if (!contexte || !board || !peut(univers, "create")) return null;
-  const peutRemplacer = peut(univers, "delete");
+  if (!context || !board || !can(scope, "create")) return null;
+  const canReplace = can(scope, "delete");
 
   // Coller ne vaut que depuis un autre tableau.
-  const copieDe = (chose: ChoseCopiee) => {
-    const copie = contexte.pressePapiers[`${univers}.${chose}`];
-    return copie && copie.boardId !== board.id ? copie : null;
+  const copyOf = (item: CopiedItem) => {
+    const copy = context.clipboard[`${scope}.${item}`];
+    return copy && copy.boardId !== board.id ? copy : null;
   };
-  const collables = choses.filter((chose) => copieDe(chose));
-  const source = aColler ? copieDe(aColler) : null;
+  const pastable = items.filter((item) => copyOf(item));
+  const source = toPaste ? copyOf(toPaste) : null;
 
-  const copier = (chose: ChoseCopiee) => {
-    contexte.onCopier(`${univers}.${chose}`, {
+  const copy = (item: CopiedItem) => {
+    context.onCopy(`${scope}.${item}`, {
       boardId: board.id,
       boardName: board.name,
     });
     notifications.show({
       color: "teal",
-      title: MOTS[chose].copiees,
+      title: WORDS[item].copied,
       message: `Ouvrez le widget d'un autre tableau pour coller celles de « ${board.name} ».`,
     });
   };
 
-  const valider = async () => {
-    if (!aColler || !source) return;
+  const validate = async () => {
+    if (!toPaste || !source) return;
     setSaving(true);
     try {
-      const fait = await coller(
-        univers,
-        aColler,
+      const done = await paste(
+        scope,
+        toPaste,
         source.boardId,
         board.id,
-        remplacer && peutRemplacer,
+        replaceExisting && canReplace,
       );
-      contexte.onColle();
+      context.onPasted();
       notifications.show({
         color: "teal",
-        title: MOTS[aColler].coller,
-        message: compteRendu(aColler, fait, "ici"),
+        title: WORDS[toPaste].paste,
+        message: report(toPaste, done, "ici"),
       });
-      setAColler(null);
+      setToPaste(null);
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -177,7 +177,7 @@ export default function ActionsCopierColler({
   return (
     <>
       {/* Le menu se pose au bout de la rangée d'onglets du tiroir. */}
-      {cible &&
+      {target &&
         createPortal(
           <Menu
             position="bottom-end"
@@ -197,67 +197,67 @@ export default function ActionsCopierColler({
               </Button>
             </Menu.Target>
             <Menu.Dropdown>
-              {choses.map((chose) => (
+              {items.map((item) => (
                 <Menu.Item
-                  key={`copier-${chose}`}
+                  key={`copier-${item}`}
                   leftSection={<IconCopy size={16} />}
-                  onClick={() => copier(chose)}
+                  onClick={() => copy(item)}
                 >
-                  {MOTS[chose].copier}
+                  {WORDS[item].copy}
                 </Menu.Item>
               ))}
               {/* Coller ne paraît qu'une copie faite, depuis un autre tableau. */}
-              {collables.length > 0 && <Menu.Divider />}
-              {collables.map((chose) => (
+              {pastable.length > 0 && <Menu.Divider />}
+              {pastable.map((item) => (
                 <Menu.Item
-                  key={`coller-${chose}`}
+                  key={`coller-${item}`}
                   leftSection={<IconClipboard size={16} />}
                   onClick={() => {
-                    setRemplacer(false);
-                    setAColler(chose);
+                    setReplace(false);
+                    setToPaste(item);
                   }}
                 >
-                  {MOTS[chose].coller}
+                  {WORDS[item].paste}
                 </Menu.Item>
               ))}
             </Menu.Dropdown>
           </Menu>,
-          cible,
+          target,
         )}
 
       <Modal
-        opened={Boolean(aColler && source)}
-        onClose={() => setAColler(null)}
-        title={aColler ? MOTS[aColler].coller : ""}
+        opened={Boolean(toPaste && source)}
+        onClose={() => setToPaste(null)}
+        title={toPaste ? WORDS[toPaste].paste : ""}
         centered
         padding={MODAL_PADDING}
         withCloseButton={false}
         styles={modalHeaderStyles(MODAL_PADDING)}
       >
-        {aColler && source && (
+        {toPaste && source && (
           <>
             <Stack gap="md">
               <Text size="sm">
-                {MOTS[aColler].les} de « {source.boardName} » seront ajoutées à
+                {WORDS[toPaste].les} de « {source.boardName} » seront ajoutées à
                 « {board.name} ». Celles qui y portent déjà le même nom ne sont
                 pas redoublées.
               </Text>
               <Checkbox
-                label={MOTS[aColler].remplacer}
+                label={WORDS[toPaste].replaceExisting}
                 description={
-                  peutRemplacer
-                    ? MOTS[aColler].garde
+                  canReplace
+                    ? WORDS[toPaste].keptRequest
                     : "Il faut le droit de supprimer pour remplacer."
                 }
-                checked={remplacer && peutRemplacer}
-                disabled={!peutRemplacer}
-                onChange={(e) => setRemplacer(e.currentTarget.checked)}
+                checked={replaceExisting && canReplace}
+                disabled={!canReplace}
+                onChange={(e) => setReplace(e.currentTarget.checked)}
                 color="teal"
               />
             </Stack>
             <Group justify="flex-end" mt={MODAL_PADDING}>
-              <BoutonFermer onClick={() => setAColler(null)} />
-              <Button color="teal" onClick={valider} loading={saving}>
+              <CloseButton onClick={() => setToPaste(null)} />
+              <Button color="teal" onClick={validate} loading={saving}>
                 Coller
               </Button>
             </Group>

@@ -1,8 +1,8 @@
 import { Select, Stack } from "@mantine/core";
 import { IconCards } from "@tabler/icons-react";
-import { etatEcheance } from "../lib/echeance";
-import { avec, texte } from "../widgets/types";
-import { ChampNom, NOM, TitreIndicateur, ValeurIndicateur, tachesDe } from "./commun";
+import { dueState } from "../lib/echeance";
+import { withField, text } from "../widgets/types";
+import { NameField, NAME, TitreIndicateur, IndicatorValue, tasksOf } from "./commun";
 import type { TaskIndicatorWidget } from "./types";
 import type { Id, TaskCard } from "@milo/shared";
 
@@ -11,68 +11,68 @@ import type { Id, TaskCard } from "@milo/shared";
 
 const TYPE = "type";
 
-interface TypeDeCartes {
+interface CardType {
   value: string;
   label: string;
-  compte: (c: TaskCard, moi: Id) => boolean;
+  account: (c: TaskCard, me: Id) => boolean;
 }
 
-const TYPE_PAR_DEFAUT: TypeDeCartes = { value: "total", label: "Cartes au total", compte: () => true };
+const DEFAULT_TYPE: CardType = { value: "total", label: "Cartes au total", account: () => true };
 
-const TYPES: TypeDeCartes[] = [
-  TYPE_PAR_DEFAUT,
-  { value: "late", label: "Cartes en retard", compte: (c) => etatEcheance(c.due_date) === "retard" },
+const TYPES: CardType[] = [
+  DEFAULT_TYPE,
+  { value: "late", label: "Cartes en retard", account: (c) => dueState(c.due_date) === "retard" },
   {
     value: "soon",
     label: "Cartes à échéance proche",
-    compte: (c) => etatEcheance(c.due_date) === "bientot",
+    account: (c) => dueState(c.due_date) === "bientot",
   },
-  { value: "unassigned", label: "Cartes sans membre", compte: (c) => c.members.length === 0 },
+  { value: "unassigned", label: "Cartes sans membre", account: (c) => c.members.length === 0 },
   {
     value: "mine",
     label: "Cartes qui me sont attribuées",
-    compte: (c, moi) => c.members.some((m) => m.id === moi),
+    account: (c, me) => c.members.some((m) => m.id === me),
   },
   {
     value: "checklist",
     label: "Cartes à checklist inachevée",
-    compte: (c) => c.checklist_total > c.checklist_done,
+    account: (c) => c.checklist_total > c.checklist_done,
   },
 ];
 
 /** Le type rangé, ou le premier : une valeur inconnue ne fait rien tomber. */
-const typeDe = (config: unknown) =>
-  TYPES.find((t) => t.value === texte(config, TYPE)) ?? TYPE_PAR_DEFAUT;
+const typeOf = (config: unknown) =>
+  TYPES.find((t) => t.value === text(config, TYPE)) ?? DEFAULT_TYPE;
 
-export const cartesIndicator: TaskIndicatorWidget = {
+export const cardsIndicator: TaskIndicatorWidget = {
   type: "cards",
   kind: "task",
   label: "Indicateur",
   icon: IconCards,
-  avecValeur: true,
-  defaultConfig: { [NOM]: "", [TYPE]: TYPE_PAR_DEFAUT.value },
+  withValue: true,
+  defaultConfig: { [NAME]: "", [TYPE]: DEFAULT_TYPE.value },
 
   Display: ({ config, lists, userId }) => {
-    const type = typeDe(config);
+    const type = typeOf(config);
     return (
       // Le nom en haut, la quantité en bas à gauche, comme les tickets.
       <Stack gap={4} justify="space-between" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaut={type.label} />
-        <ValeurIndicateur config={config}>
-          {tachesDe(lists).filter((c) => type.compte(c, userId)).length}
-        </ValeurIndicateur>
+        <TitreIndicateur config={config} defaultValue={type.label} />
+        <IndicatorValue config={config}>
+          {tasksOf(lists).filter((c) => type.account(c, userId)).length}
+        </IndicatorValue>
       </Stack>
     );
   },
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
-      <ChampNom config={config} onChange={onChange} defaut={typeDe(config).label} />
+      <NameField config={config} onChange={onChange} defaultValue={typeOf(config).label} />
       <Select
         label="Données"
         data={TYPES.map(({ value, label }) => ({ value, label }))}
-        value={typeDe(config).value}
-        onChange={(value) => value && onChange(avec(config, TYPE, value))}
+        value={typeOf(config).value}
+        onChange={(value) => value && onChange(withField(config, TYPE, value))}
         allowDeselect={false}
       />
     </Stack>

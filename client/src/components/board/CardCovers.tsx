@@ -7,8 +7,8 @@ import { RED } from "../../themes/colors";
 import AddButton from "../ui/AddButton";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import PointMenu, { type PointMenuPosition } from "../ui/PointMenu";
-import { LigneFichier, useFichiersRanges } from "./CardAttachments";
-import { PetitChoix } from "./CardEcheance";
+import { FileRow, useOrderedFiles } from "./CardAttachments";
+import { SmallChoice } from "./CardEcheance";
 
 const ROTATIONS = ROTATIONS_COUVERTURE.map((r) => ({ value: String(r.value), label: r.label }));
 
@@ -25,8 +25,8 @@ const ROTATIONS = ROTATIONS_COUVERTURE.map((r) => ({ value: String(r.value), lab
 interface CardCoversProps {
   covers: CardCover[];
   /** Les secondes entre deux images sur le tableau ; zéro, la première reste. */
-  intervalle: number;
-  onIntervalle: (secondes: number) => void;
+  interval: number;
+  onInterval: (seconds: number) => void;
   onPick: () => void;
   onReorder: (ids: CardCover["id"][]) => void | Promise<void>;
   onDelete: (cover: CardCover) => void | Promise<void>;
@@ -35,41 +35,41 @@ interface CardCoversProps {
 
 export default function CardCovers({
   covers,
-  intervalle,
-  onIntervalle,
+  interval,
+  onInterval,
   onPick,
   onReorder,
   onDelete,
   readOnly,
 }: CardCoversProps) {
-  const [aSupprimer, setASupprimer] = useState<CardCover | null>(null);
+  const [toDelete, setToDelete] = useState<CardCover | null>(null);
   const [menu, setMenu] = useState<{ cover: CardCover; position: PointMenuPosition } | null>(
     null,
   );
 
-  const { affiches, ligne } = useFichiersRanges(covers, onReorder, !readOnly);
+  const { displayed, row } = useOrderedFiles(covers, onReorder, !readOnly);
   if (covers.length === 0) return null;
 
   return (
     <div data-couvertures>
       <Group justify="space-between" align="flex-end" wrap="nowrap">
         <Input.Label>Images de couverture</Input.Label>
-        <PetitChoix
+        <SmallChoice
           data={ROTATIONS}
-          value={String(intervalle)}
-          onChange={(v) => onIntervalle(Number(v))}
+          value={String(interval)}
+          onChange={(v) => onInterval(Number(v))}
           label="Intervalle de rotation"
           disabled={readOnly}
         />
       </Group>
 
       <Stack gap={2}>
-        {affiches.map((cover, rang) => (
-          <LigneFichier
+        {displayed.map((cover, rank) => (
+          <FileRow
             key={cover.id}
-            piece={{ ...cover, is_image: true }}
+            attachment={{ ...cover, is_image: true }}
             onContextMenu={(position) => !readOnly && setMenu({ cover, position })}
-            {...ligne(cover, rang)}
+            {...row(cover, rank)}
           />
         ))}
       </Stack>
@@ -81,7 +81,7 @@ export default function CardCovers({
           <Menu.Item
             color={RED}
             leftSection={<IconTrash size={16} />}
-            onClick={() => setASupprimer(menu.cover)}
+            onClick={() => setToDelete(menu.cover)}
           >
             Supprimer
           </Menu.Item>
@@ -89,15 +89,15 @@ export default function CardCovers({
       )}
 
       <DeleteConfirmModal
-        opened={aSupprimer !== null}
-        onClose={() => setASupprimer(null)}
+        opened={toDelete !== null}
+        onClose={() => setToDelete(null)}
         onConfirm={() => {
-          const cover = aSupprimer;
-          setASupprimer(null);
+          const cover = toDelete;
+          setToDelete(null);
           if (cover) void onDelete(cover);
         }}
         title="Supprimer l'image de couverture"
-        message={<>Voulez-vous vraiment supprimer « {aSupprimer?.name || "cette image"} » ?</>}
+        message={<>Voulez-vous vraiment supprimer « {toDelete?.name || "cette image"} » ?</>}
       />
     </div>
   );

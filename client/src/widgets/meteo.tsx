@@ -19,7 +19,7 @@ import { useEffect, useState } from "react";
 import type { ComponentType } from "react";
 import { api } from "../api";
 import classes from "../assets/styles/AccessNumero.module.css";
-import { avec, nombre, texte } from "./types";
+import { withField, count, text } from "./types";
 import type { AccessWidget, WidgetConfigProps } from "./types";
 import type { AccessWeather, Id, WeatherPlace } from "@milo/shared";
 
@@ -36,91 +36,91 @@ import type { AccessWeather, Id, WeatherPlace } from "@milo/shared";
 // Les clés « latitude » et « longitude » sont lues aussi par le serveur
 // (coordonneesMeteo) : elles ne changent pas.
 
-const LIEU = "lieu";
+const PLACE = "lieu";
 const LATITUDE = "latitude";
 const LONGITUDE = "longitude";
-const TAILLE = "taille";
-const AFFICHER_LIEU = "afficherLieu";
+const SIZE = "taille";
+const SHOW_LOCATION = "afficherLieu";
 const DETAILS = "details";
-const PREVISIONS = "previsions";
-const ENCADRE = "encadre";
+const FORECASTS = "previsions";
+const FRAMED = "encadre";
 
-const TAILLE_PAR_DEFAUT = 32;
-const TAILLE_MIN = 12;
-const TAILLE_MAX = 96;
+const DEFAULT_SIZE = 32;
+const SIZE_MIN = 12;
+const SIZE_MAX = 96;
 
 /** La page relit le serveur à ce rythme : c'est lui qui interroge la source. */
-const RELECTURE = 15 * 60_000;
+const RELOAD_INTERVAL = 15 * 60_000;
 
 /** La hauteur d'un graphique de prévisions. */
-const HAUTEUR_GRAPHIQUE = 110;
+const CHART_HEIGHT = 110;
 
-const PREVISIONS_PROPOSEES = [
+const SUGGESTED_FORECASTS = [
   { value: "aucune", label: "Aucune" },
   { value: "temperature", label: "Températures sur 24 h" },
   { value: "pluie", label: "Risque de pluie sur 24 h" },
   { value: "semaine", label: "La semaine" },
 ];
 
-interface Ciel {
-  libelle: string;
-  icone: ComponentType<{ size?: number; color?: string; stroke?: number }>;
-  couleur: string;
+interface Sky {
+  label: string;
+  icon: ComponentType<{ size?: number; color?: string; stroke?: number }>;
+  color: string;
 }
 
 /**
  * L'état du ciel d'après le code de l'OMM (WMO 4677) qu'Open-Meteo donne.
  * La nuit, un ciel clair montre la lune plutôt que le soleil.
  */
-const cielDe = (code: number, jour = true): Ciel => {
+const skyOf = (code: number, day = true): Sky => {
   if (code === 0) {
-    return jour
-      ? { libelle: "Ensoleillé", icone: IconSun, couleur: "#fab005" }
-      : { libelle: "Ciel clair", icone: IconMoon, couleur: "#c4c4c4" };
+    return day
+      ? { label: "Ensoleillé", icon: IconSun, color: "#fab005" }
+      : { label: "Ciel clair", icon: IconMoon, color: "#c4c4c4" };
   }
   if (code <= 2) {
-    return jour
-      ? { libelle: "Éclaircies", icone: IconSunHigh, couleur: "#fab005" }
-      : { libelle: "Éclaircies", icone: IconSunMoon, couleur: "#c4c4c4" };
+    return day
+      ? { label: "Éclaircies", icon: IconSunHigh, color: "#fab005" }
+      : { label: "Éclaircies", icon: IconSunMoon, color: "#c4c4c4" };
   }
-  if (code === 3) return { libelle: "Couvert", icone: IconCloud, couleur: "#a6a6a6" };
-  if (code === 45 || code === 48) return { libelle: "Brouillard", icone: IconCloudFog, couleur: "#a6a6a6" };
-  if (code >= 51 && code <= 57) return { libelle: "Bruine", icone: IconCloudRain, couleur: "#4dabf7" };
-  if (code >= 61 && code <= 67) return { libelle: "Pluie", icone: IconCloudRain, couleur: "#228be6" };
-  if (code >= 71 && code <= 77) return { libelle: "Neige", icone: IconCloudSnow, couleur: "#74c0fc" };
-  if (code >= 80 && code <= 82) return { libelle: "Averses", icone: IconCloudRain, couleur: "#228be6" };
-  if (code === 85 || code === 86) return { libelle: "Averses de neige", icone: IconCloudSnow, couleur: "#74c0fc" };
-  if (code >= 95) return { libelle: "Orage", icone: IconCloudBolt, couleur: "#7048e8" };
-  return { libelle: "Nuageux", icone: IconCloud, couleur: "#a6a6a6" };
+  if (code === 3) return { label: "Couvert", icon: IconCloud, color: "#a6a6a6" };
+  if (code === 45 || code === 48) return { label: "Brouillard", icon: IconCloudFog, color: "#a6a6a6" };
+  if (code >= 51 && code <= 57) return { label: "Bruine", icon: IconCloudRain, color: "#4dabf7" };
+  if (code >= 61 && code <= 67) return { label: "Pluie", icon: IconCloudRain, color: "#228be6" };
+  if (code >= 71 && code <= 77) return { label: "Neige", icon: IconCloudSnow, color: "#74c0fc" };
+  if (code >= 80 && code <= 82) return { label: "Averses", icon: IconCloudRain, color: "#228be6" };
+  if (code === 85 || code === 86) return { label: "Averses de neige", icon: IconCloudSnow, color: "#74c0fc" };
+  if (code >= 95) return { label: "Orage", icon: IconCloudBolt, color: "#7048e8" };
+  return { label: "Nuageux", icon: IconCloud, color: "#a6a6a6" };
 };
 
-const degres = (valeur: number) => `${Math.round(valeur)}°`;
+const degrees = (value: number) => `${Math.round(value)}°`;
 
 /** Une case est cochée par défaut quand elle n'a jamais été réglée. */
-const coche = (config: unknown, cle: string, defaut: boolean): boolean => {
-  const valeur = (config as Record<string, unknown> | null)?.[cle];
-  return valeur === undefined ? defaut : Boolean(valeur);
+const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean => {
+  const value = (config as Record<string, unknown> | null)?.[key];
+  return value === undefined ? defaultValue : Boolean(value);
 };
 
-const aUnLieu = (config: unknown): boolean => {
+const hasLocation = (config: unknown): boolean => {
   const c = (config as Record<string, unknown> | null) ?? {};
   return typeof c[LATITUDE] === "number" && typeof c[LONGITUDE] === "number";
 };
 
 /** Les dernières prévisions de chaque élément, pour la durée de la page. */
-const dejaLues = new Map<string, AccessWeather>();
+const alreadyRead = new Map<string, AccessWeather>();
 
-type Etat =
+type State =
   | { phase: "attente" }
-  | { phase: "pret"; meteo: AccessWeather }
+  | { phase: "pret"; weather: AccessWeather }
   | { phase: "erreur"; message: string };
 
-function Previsions({ meteo, quoi }: { meteo: AccessWeather; quoi: string }) {
-  if (quoi === "temperature") {
-    const data = meteo.hourly.map((h) => ({ heure: `${h.time.slice(11, 13)} h`, temperature: h.temperature }));
+function Forecasts({ weather, what }: { weather: AccessWeather; what: string }) {
+  if (what === "temperature") {
+    const data = weather.hourly.map((h) => ({ hour: `${h.time.slice(11, 13)} h`, temperature: h.temperature }));
     return (
       <AreaChart
-        h={HAUTEUR_GRAPHIQUE}
+        h={CHART_HEIGHT}
         data={data}
         dataKey="heure"
         series={[{ name: "temperature", label: "Température", color: "orange.6" }]}
@@ -134,11 +134,11 @@ function Previsions({ meteo, quoi }: { meteo: AccessWeather; quoi: string }) {
       />
     );
   }
-  if (quoi === "pluie") {
-    const data = meteo.hourly.map((h) => ({ heure: `${h.time.slice(11, 13)} h`, pluie: h.precipitation }));
+  if (what === "pluie") {
+    const data = weather.hourly.map((h) => ({ hour: `${h.time.slice(11, 13)} h`, rain: h.precipitation }));
     return (
       <BarChart
-        h={HAUTEUR_GRAPHIQUE}
+        h={CHART_HEIGHT}
         data={data}
         dataKey="heure"
         series={[{ name: "pluie", label: "Risque de pluie", color: "blue.6" }]}
@@ -149,23 +149,23 @@ function Previsions({ meteo, quoi }: { meteo: AccessWeather; quoi: string }) {
       />
     );
   }
-  if (quoi === "semaine") {
-    const jour = new Intl.DateTimeFormat("fr-FR", { weekday: "short" });
+  if (what === "semaine") {
+    const day = new Intl.DateTimeFormat("fr-FR", { weekday: "short" });
     return (
-      <SimpleGrid cols={meteo.daily.length} spacing={4}>
-        {meteo.daily.map((j) => {
-          const ciel = cielDe(j.code);
+      <SimpleGrid cols={weather.daily.length} spacing={4}>
+        {weather.daily.map((j) => {
+          const sky = skyOf(j.code);
           return (
-            <Stack key={j.time} gap={2} align="center" title={ciel.libelle}>
+            <Stack key={j.time} gap={2} align="center" title={sky.label}>
               <Text size="xs" c="dimmed" tt="capitalize">
-                {jour.format(new Date(`${j.time}T12:00:00`)).replace(".", "")}
+                {day.format(new Date(`${j.time}T12:00:00`)).replace(".", "")}
               </Text>
-              <ciel.icone size={20} color={ciel.couleur} stroke={1.6} />
+              <sky.icon size={20} color={sky.color} stroke={1.6} />
               <Text size="xs" fw={600}>
-                {degres(j.temperature)}
+                {degrees(j.temperature)}
               </Text>
               <Text size="xs" c="dimmed">
-                {degres(j.min ?? j.temperature)}
+                {degrees(j.min ?? j.temperature)}
               </Text>
             </Stack>
           );
@@ -176,43 +176,43 @@ function Previsions({ meteo, quoi }: { meteo: AccessWeather; quoi: string }) {
   return null;
 }
 
-function Meteo({ blockId, config }: { blockId: Id; config: unknown }) {
-  const lieu = texte(config, LIEU);
-  const latitude = nombre(config, LATITUDE, Number.NaN);
-  const longitude = nombre(config, LONGITUDE, Number.NaN);
-  const cle = `${blockId}|${latitude}|${longitude}`;
-  const taille = nombre(config, TAILLE, TAILLE_PAR_DEFAUT);
-  const previsions = texte(config, PREVISIONS, "aucune");
-  const [etat, setEtat] = useState<Etat>(() => {
-    const meteo = dejaLues.get(cle);
-    return meteo ? { phase: "pret", meteo } : { phase: "attente" };
+function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
+  const place = text(config, PLACE);
+  const latitude = count(config, LATITUDE, Number.NaN);
+  const longitude = count(config, LONGITUDE, Number.NaN);
+  const key = `${blockId}|${latitude}|${longitude}`;
+  const size = count(config, SIZE, DEFAULT_SIZE);
+  const forecasts = text(config, FORECASTS, "aucune");
+  const [state, setState] = useState<State>(() => {
+    const weather = alreadyRead.get(key);
+    return weather ? { phase: "pret", weather } : { phase: "attente" };
   });
 
   useEffect(() => {
-    if (!aUnLieu(config) || !blockId) return;
-    let actif = true;
-    const lire = () =>
+    if (!hasLocation(config) || !blockId) return;
+    let active = true;
+    const read = () =>
       api
         .getAccessWeather(blockId)
-        .then((meteo) => {
-          dejaLues.set(cle, meteo);
-          if (actif) setEtat({ phase: "pret", meteo });
+        .then((weather) => {
+          alreadyRead.set(key, weather);
+          if (active) setState({ phase: "pret", weather });
         })
-        .catch((e: Error) => actif && setEtat({ phase: "erreur", message: e.message }));
-    const connue = dejaLues.get(cle);
-    setEtat(connue ? { phase: "pret", meteo: connue } : { phase: "attente" });
-    lire();
-    const battement = setInterval(lire, RELECTURE);
+        .catch((e: Error) => active && setState({ phase: "erreur", message: e.message }));
+    const known = alreadyRead.get(key);
+    setState(known ? { phase: "pret", weather: known } : { phase: "attente" });
+    read();
+    const heartbeat = setInterval(read, RELOAD_INTERVAL);
     return () => {
-      actif = false;
-      clearInterval(battement);
+      active = false;
+      clearInterval(heartbeat);
     };
     // La clé porte l'élément et ses coordonnées : c'est ce qui change la météo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cle]);
+  }, [key]);
 
-  const contenu = (() => {
-    if (!aUnLieu(config)) {
+  const content = (() => {
+    if (!hasLocation(config)) {
       return (
         <Group gap={6} c="dimmed">
           <IconSun size={16} />
@@ -220,43 +220,43 @@ function Meteo({ blockId, config }: { blockId: Id; config: unknown }) {
         </Group>
       );
     }
-    if (etat.phase === "attente") {
+    if (state.phase === "attente") {
       return (
-        <Group gap="xs" c="dimmed" h={taille * 1.4}>
+        <Group gap="xs" c="dimmed" h={size * 1.4}>
           <Loader size="xs" color="gray" />
-          <Text size="sm">Météo{lieu ? ` de ${lieu}` : ""}…</Text>
+          <Text size="sm">Météo{place ? ` de ${place}` : ""}…</Text>
         </Group>
       );
     }
-    if (etat.phase === "erreur") {
+    if (state.phase === "erreur") {
       return (
         <Text size="sm" c="red" lineClamp={2}>
-          {etat.message}
+          {state.message}
         </Text>
       );
     }
 
-    const { current } = etat.meteo;
-    const ciel = cielDe(current.code, current.is_day);
+    const { current } = state.weather;
+    const sky = skyOf(current.code, current.is_day);
     return (
       <Stack gap="xs">
         <Group gap="sm" wrap="nowrap" justify="center">
-          <ciel.icone size={Math.round(taille * 1.3)} color={ciel.couleur} stroke={1.5} />
+          <sky.icon size={Math.round(size * 1.3)} color={sky.color} stroke={1.5} />
           <Stack gap={0}>
-            <Text fz={taille} fw={600} lh={1.1}>
-              {degres(current.temperature)}
+            <Text fz={size} fw={600} lh={1.1}>
+              {degrees(current.temperature)}
             </Text>
             <Text size="xs" c="dimmed" lineClamp={1}>
-              {coche(config, AFFICHER_LIEU, true) && lieu ? `${lieu} · ` : ""}
-              {ciel.libelle}
+              {isChecked(config, SHOW_LOCATION, true) && place ? `${place} · ` : ""}
+              {sky.label}
             </Text>
           </Stack>
         </Group>
-        {coche(config, DETAILS, false) && (
+        {isChecked(config, DETAILS, false) && (
           <Group gap="md" justify="center" c="dimmed">
             <Group gap={4} title="Ressenti">
               <IconTemperature size={14} />
-              <Text size="xs">{degres(current.apparent)}</Text>
+              <Text size="xs">{degrees(current.feelsLike)}</Text>
             </Group>
             <Group gap={4} title="Humidité">
               <IconDroplet size={14} />
@@ -268,71 +268,71 @@ function Meteo({ blockId, config }: { blockId: Id; config: unknown }) {
             </Group>
           </Group>
         )}
-        <Previsions meteo={etat.meteo} quoi={previsions} />
+        <Forecasts weather={state.weather} what={forecasts} />
       </Stack>
     );
   })();
 
-  if (!coche(config, ENCADRE, false)) return contenu;
+  if (!isChecked(config, FRAMED, false)) return content;
   return (
     <Box className={classes.encart} style={{ border: "none" }}>
-      {contenu}
+      {content}
     </Box>
   );
 }
 
 /** Un lieu en valeur de liste : ses coordonnées, assez pour le retrouver. */
-const valeurDe = (latitude: number, longitude: number) => `${latitude},${longitude}`;
+const valueFor = (latitude: number, longitude: number) => `${latitude},${longitude}`;
 
-function ChampLieu({ config, onChange }: WidgetConfigProps) {
-  const [saisie, setSaisie] = useState("");
-  const [cherchee] = useDebouncedValue(saisie, 300);
-  const [lieux, setLieux] = useState<WeatherPlace[]>([]);
-  const [cherche, setCherche] = useState(false);
+function PlaceField({ config, onChange }: WidgetConfigProps) {
+  const [input, setInput] = useState("");
+  const [searched] = useDebouncedValue(input, 300);
+  const [places, setPlaces] = useState<WeatherPlace[]>([]);
+  const [search, setSearching] = useState(false);
 
-  const nom = texte(config, LIEU);
-  const actuel = aUnLieu(config)
-    ? valeurDe(nombre(config, LATITUDE, 0), nombre(config, LONGITUDE, 0))
+  const name = text(config, PLACE);
+  const current = hasLocation(config)
+    ? valueFor(count(config, LATITUDE, 0), count(config, LONGITUDE, 0))
     : null;
 
   useEffect(() => {
     // La saisie qui reprend le lieu choisi n'est pas une recherche.
-    if (cherchee.trim().length < 2 || cherchee === nom) return;
-    let actif = true;
-    setCherche(true);
+    if (searched.trim().length < 2 || searched === name) return;
+    let active = true;
+    setSearching(true);
     api
-      .searchWeatherPlaces(cherchee)
-      .then((trouves) => actif && setLieux(trouves))
-      .catch(() => actif && setLieux([]))
-      .finally(() => actif && setCherche(false));
+      .searchWeatherPlaces(searched)
+      .then((matches) => active && setPlaces(matches))
+      .catch(() => active && setPlaces([]))
+      .finally(() => active && setSearching(false));
     return () => {
-      actif = false;
+      active = false;
     };
-  }, [cherchee, nom]);
+  }, [searched, name]);
 
-  const options = lieux.map((l) => ({
-    value: valeurDe(l.latitude, l.longitude),
+  const options = places.map((l) => ({
+    value: valueFor(l.latitude, l.longitude),
     label: l.detail ? `${l.name} (${l.detail})` : l.name,
   }));
-  if (actuel && !options.some((o) => o.value === actuel)) options.unshift({ value: actuel, label: nom || actuel });
+  if (current && !options.some((o) => o.value === current)) options.unshift({ value: current, label: name || current });
 
   return (
     <Select
       label="Lieu"
       placeholder="Chercher une ville"
       data={options}
-      value={actuel}
+      value={current}
       searchable
-      searchValue={saisie}
-      onSearchChange={setSaisie}
+      searchValue={input}
+      onSearchChange={setInput}
       // Le serveur a déjà trié : la liste ne refiltre pas ce qu'il a trouvé.
       filter={({ options: o }) => o}
-      nothingFoundMessage={saisie.trim().length < 2 ? "Tapez au moins deux lettres" : "Aucun lieu"}
-      rightSection={cherche ? <Loader size="xs" /> : undefined}
-      onChange={(valeur) => {
-        const lieu = lieux.find((l) => valeurDe(l.latitude, l.longitude) === valeur);
-        if (!lieu) return;
-        onChange({ ...avec(config, LIEU, lieu.name), [LATITUDE]: lieu.latitude, [LONGITUDE]: lieu.longitude });
+      nothingFoundMessage={input.trim().length < 2 ? "Tapez au moins deux lettres" : "Aucun lieu"}
+      rightSection={search ? <Loader size="xs" /> : undefined}
+      onChange={(value) => {
+        const place = places.find((l) => valueFor(l.latitude, l.longitude) === value);
+        if (!place) return;
+        onChange({ ...withField(config, PLACE, place.name), [LATITUDE]: place.latitude, [LONGITUDE]: place.longitude });
       }}
       allowDeselect={false}
       autoFocus
@@ -340,37 +340,37 @@ function ChampLieu({ config, onChange }: WidgetConfigProps) {
   );
 }
 
-export const meteoWidget: AccessWidget = {
+export const weatherWidget: AccessWidget = {
   type: "weather",
   kind: "common",
   label: "Météo",
   icon: IconSun,
   defaultConfig: {
-    [TAILLE]: TAILLE_PAR_DEFAUT,
-    [AFFICHER_LIEU]: true,
+    [SIZE]: DEFAULT_SIZE,
+    [SHOW_LOCATION]: true,
     [DETAILS]: false,
-    [PREVISIONS]: "aucune",
-    [ENCADRE]: false,
+    [FORECASTS]: "aucune",
+    [FRAMED]: false,
   },
   ownClicks: true,
 
-  Display: Meteo,
+  Display: Weather,
 
-  marges: () => ({ haute: 0, basse: 15 }),
+  margins: () => ({ top: 0, bottom: 15 }),
 
   // Il dessine lui-même son cadre, réglé dans le bloc « Apparence » du tiroir.
-  cadrePropre: true,
+  ownFrame: true,
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
-      <ChampLieu config={config} onChange={onChange} />
+      <PlaceField config={config} onChange={onChange} />
       <NumberInput
         label="Taille de la température"
-        placeholder={String(TAILLE_PAR_DEFAUT)}
-        value={nombre(config, TAILLE, TAILLE_PAR_DEFAUT)}
-        onChange={(v) => onChange(avec(config, TAILLE, v === "" ? TAILLE_PAR_DEFAUT : Number(v)))}
-        min={TAILLE_MIN}
-        max={TAILLE_MAX}
+        placeholder={String(DEFAULT_SIZE)}
+        value={count(config, SIZE, DEFAULT_SIZE)}
+        onChange={(v) => onChange(withField(config, SIZE, v === "" ? DEFAULT_SIZE : Number(v)))}
+        min={SIZE_MIN}
+        max={SIZE_MAX}
         suffix=" px"
         allowNegative={false}
         allowDecimal={false}
@@ -378,23 +378,23 @@ export const meteoWidget: AccessWidget = {
       />
       <Select
         label="Prévisions"
-        data={PREVISIONS_PROPOSEES}
-        value={texte(config, PREVISIONS, "aucune")}
-        onChange={(v) => v && onChange(avec(config, PREVISIONS, v))}
+        data={SUGGESTED_FORECASTS}
+        value={text(config, FORECASTS, "aucune")}
+        onChange={(v) => v && onChange(withField(config, FORECASTS, v))}
         allowDeselect={false}
         w={240}
       />
       <Stack gap="sm">
         <Checkbox
           label="Afficher le nom du lieu"
-          checked={coche(config, AFFICHER_LIEU, true)}
-          onChange={(e) => onChange(avec(config, AFFICHER_LIEU, e.currentTarget.checked))}
+          checked={isChecked(config, SHOW_LOCATION, true)}
+          onChange={(e) => onChange(withField(config, SHOW_LOCATION, e.currentTarget.checked))}
           color="teal"
         />
         <Checkbox
           label="Afficher le ressenti, l'humidité et le vent"
-          checked={coche(config, DETAILS, false)}
-          onChange={(e) => onChange(avec(config, DETAILS, e.currentTarget.checked))}
+          checked={isChecked(config, DETAILS, false)}
+          onChange={(e) => onChange(withField(config, DETAILS, e.currentTarget.checked))}
           color="teal"
         />
       </Stack>

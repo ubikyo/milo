@@ -6,15 +6,15 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-const jours = (n: number) => n * 24 * 60 * 60 * 1000;
+const days = (n: number) => n * 24 * 60 * 60 * 1000;
 
-const entier = (valeur: string | undefined, defaut: number): number => {
-  const n = Number(valeur);
-  return Number.isFinite(n) && n > 0 ? n : defaut;
+const integer = (value: string | undefined, defaultValue: number): number => {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : defaultValue;
 };
 
 export const env = {
-  port: entier(process.env["PORT"], 3001),
+  port: integer(process.env["PORT"], 3001),
 
   // En production, la base doit vivre hors du dossier déployé : un
   // déploiement remplace le code, il ne doit pas emporter les données.
@@ -44,10 +44,10 @@ export const env = {
    * rafale ; trop long, on est prévenu tard. La notification à l'écran, elle,
    * est immédiate quelle que soit cette valeur.
    */
-  notifyWindowMs: entier(process.env["MILO_NOTIFY_WINDOW_MINUTES"], 5) * 60 * 1000,
+  notifyWindowMs: integer(process.env["MILO_NOTIFY_WINDOW_MINUTES"], 5) * 60 * 1000,
 
   /** Une session inutilisée pendant ce délai se ferme d'elle-même. */
-  sessionMaxIdleMs: jours(entier(process.env["MILO_SESSION_DAYS"], 30)),
+  sessionMaxIdleMs: days(integer(process.env["MILO_SESSION_DAYS"], 30)),
 
   /**
    * Les réponses du mode Support partent à l'expéditeur, en réponse à son

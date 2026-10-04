@@ -12,75 +12,75 @@
 
 import { gunzipSync, gzipSync } from "node:zlib";
 
-const BLOC = 512;
+const BLOCK = 512;
 
-export interface Entree {
+export interface Entry {
   /** Le chemin dans l'archive, en barres obliques : « medias/abc.png ». */
-  nom: string;
-  contenu: Buffer;
+  name: string;
+  content: Buffer;
 }
 
 /** Un nombre en octal, complété de zéros à gauche et suivi d'un octet nul. */
-const octal = (valeur: number, largeur: number): string =>
-  `${valeur.toString(8).padStart(largeur - 1, "0")}\0`;
+const octal = (value: number, largeur: number): string =>
+  `${value.toString(8).padStart(largeur - 1, "0")}\0`;
 
-const entete = (entree: Entree, mtime: number): Buffer => {
-  const bloc = Buffer.alloc(BLOC);
+const header = (entry: Entry, mtime: number): Buffer => {
+  const block = Buffer.alloc(BLOCK);
 
   // Un nom de plus de 100 octets demanderait le champ « prefix » ; les nôtres
   // — « milo.db », « medias/ » et trente-deux caractères — n'en approchent
   // pas, et on préfère refuser que produire une archive silencieusement fausse.
-  const nom = Buffer.from(entree.nom, "utf8");
-  if (nom.length > 100) throw new Error(`Nom trop long pour l'archive : ${entree.nom}`);
-  nom.copy(bloc, 0);
+  const name = Buffer.from(entry.name, "utf8");
+  if (name.length > 100) throw new Error(`Nom trop long pour l'archive : ${entry.name}`);
+  name.copy(block, 0);
 
-  bloc.write(octal(0o644, 8), 100); // mode
-  bloc.write(octal(0, 8), 108); // uid
-  bloc.write(octal(0, 8), 116); // gid
-  bloc.write(octal(entree.contenu.length, 12), 124);
-  bloc.write(octal(Math.floor(mtime / 1000), 12), 136);
-  bloc.write("        ", 148); // somme de contrôle : des espaces le temps du calcul
-  bloc.write("0", 156); // fichier ordinaire
-  bloc.write("ustar\0", 257);
-  bloc.write("00", 263);
+  block.write(octal(0o644, 8), 100); // mode
+  block.write(octal(0, 8), 108); // uid
+  block.write(octal(0, 8), 116); // gid
+  block.write(octal(entry.content.length, 12), 124);
+  block.write(octal(Math.floor(mtime / 1000), 12), 136);
+  block.write("        ", 148); // somme de contrôle : des espaces le temps du calcul
+  block.write("0", 156); // fichier ordinaire
+  block.write("ustar\0", 257);
+  block.write("00", 263);
 
   // La somme de contrôle se calcule sur l'entête entier, son propre champ
   // compté comme huit espaces : d'où l'ordre ci-dessus. Six chiffres octaux,
   // un octet nul, une espace — c'est la forme qu'attendent les lecteurs.
-  let somme = 0;
-  for (const octet of bloc) somme += octet;
-  bloc.write(`${somme.toString(8).padStart(6, "0")}\0 `, 148);
+  let sum = 0;
+  for (const byte of block) sum += byte;
+  block.write(`${sum.toString(8).padStart(6, "0")}\0 `, 148);
 
-  return bloc;
+  return block;
 };
 
 /** Ce qu'il manque à un contenu pour terminer le dernier bloc entamé. */
-const reste = (longueur: number): number => (BLOC - (longueur % BLOC)) % BLOC;
+const rest = (length: number): number => (BLOCK - (length % BLOCK)) % BLOCK;
 
 /** Les entrées, en une archive compressée. */
-export const empaqueter = (entrees: Entree[]): Buffer => {
-  const maintenant = Date.now();
-  const morceaux: Buffer[] = [];
+export const pack = (entries: Entry[]): Buffer => {
+  const currentTime = Date.now();
+  const chunks: Buffer[] = [];
 
-  for (const entree of entrees) {
-    morceaux.push(entete(entree, maintenant), entree.contenu);
-    morceaux.push(Buffer.alloc(reste(entree.contenu.length)));
+  for (const entry of entries) {
+    chunks.push(header(entry, currentTime), entry.content);
+    chunks.push(Buffer.alloc(rest(entry.content.length)));
   }
   // Deux blocs nuls closent une archive tar.
-  morceaux.push(Buffer.alloc(BLOC * 2));
+  chunks.push(Buffer.alloc(BLOCK * 2));
 
-  return gzipSync(Buffer.concat(morceaux));
+  return gzipSync(Buffer.concat(chunks));
 };
 
-const texte = (bloc: Buffer, debut: number, longueur: number): string => {
-  const brut = bloc.subarray(debut, debut + longueur);
-  const fin = brut.indexOf(0);
-  return brut.subarray(0, fin === -1 ? brut.length : fin).toString("utf8").trim();
+const text = (block: Buffer, start: number, length: number): string => {
+  const raw = block.subarray(start, start + length);
+  const end = raw.indexOf(0);
+  return raw.subarray(0, end === -1 ? raw.length : end).toString("utf8").trim();
 };
 
-const nombreOctal = (bloc: Buffer, debut: number, longueur: number): number => {
-  const valeur = parseInt(texte(bloc, debut, longueur) || "0", 8);
-  return Number.isFinite(valeur) && valeur >= 0 ? valeur : -1;
+const octalNumber = (block: Buffer, start: number, length: number): number => {
+  const value = parseInt(text(block, start, length) || "0", 8);
+  return Number.isFinite(value) && value >= 0 ? value : -1;
 };
 
 /**
@@ -88,7 +88,7 @@ const nombreOctal = (bloc: Buffer, debut: number, longueur: number): number => {
  * nôtres : c'est le premier tri de la restauration, avant même de regarder ce
  * qu'elle contient.
  */
-export const depaqueter = (archive: Buffer): Map<string, Buffer> => {
+export const unpack = (archive: Buffer): Map<string, Buffer> => {
   let tar: Buffer;
   try {
     tar = gunzipSync(archive);
@@ -96,36 +96,36 @@ export const depaqueter = (archive: Buffer): Map<string, Buffer> => {
     throw new Error("Ce fichier n'est pas une sauvegarde Milo");
   }
 
-  const fichiers = new Map<string, Buffer>();
+  const files = new Map<string, Buffer>();
   let position = 0;
 
-  while (position + BLOC <= tar.length) {
-    const bloc = tar.subarray(position, position + BLOC);
-    position += BLOC;
+  while (position + BLOCK <= tar.length) {
+    const block = tar.subarray(position, position + BLOCK);
+    position += BLOCK;
 
-    const nom = texte(bloc, 0, 100);
+    const name = text(block, 0, 100);
     // Bloc nul : fin de l'archive.
-    if (!nom) break;
+    if (!name) break;
 
-    if (texte(bloc, 257, 6) !== "ustar") {
+    if (text(block, 257, 6) !== "ustar") {
       throw new Error("Ce fichier n'est pas une sauvegarde Milo");
     }
 
-    const taille = nombreOctal(bloc, 124, 12);
-    if (taille < 0 || position + taille > tar.length) {
+    const size = octalNumber(block, 124, 12);
+    if (size < 0 || position + size > tar.length) {
       throw new Error("Sauvegarde incomplète ou abîmée");
     }
 
     // Seuls les fichiers ordinaires nous intéressent : une sauvegarde n'en
     // contient pas d'autres, et on ne veut pas suivre un lien qui sortirait
     // du dossier des médias.
-    const type = texte(bloc, 156, 1);
+    const type = text(block, 156, 1);
     if (type === "" || type === "0") {
-      fichiers.set(nom, Buffer.from(tar.subarray(position, position + taille)));
+      files.set(name, Buffer.from(tar.subarray(position, position + size)));
     }
 
-    position += taille + reste(taille);
+    position += size + rest(size);
   }
 
-  return fichiers;
+  return files;
 };

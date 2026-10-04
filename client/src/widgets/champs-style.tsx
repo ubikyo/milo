@@ -1,4 +1,4 @@
-import { BLEU, ORANGE, ROUGE, VERT } from "../themes/colors";
+import { BLUE, ORANGE, PALETTE_RED, PALETTE_GREEN } from "../themes/colors";
 
 // Les couleurs proposées d'un clic dans les champs couleur des tiroirs
 // (components/ui/LignesReglages.tsx).
@@ -9,14 +9,14 @@ import { BLEU, ORANGE, ROUGE, VERT } from "../themes/colors";
  * boutons), et des neutres — des gris francs, pas ceux de Mantine, qui tirent
  * sur le bleu.
  */
-export const NUANCES = [
-  ROUGE,
+export const SHADES = [
+  PALETTE_RED,
   ORANGE,
   "#fab005", // jaune
   "#82c91e", // lime
-  VERT,
+  PALETTE_GREEN,
   "#1098ad", // cyan
-  BLEU,
+  BLUE,
   "#4263eb", // indigo
   "#7048e8", // violet
   "#ae3ec9", // grape
@@ -27,4 +27,4 @@ export const NUANCES = [
 ];
 
 /** Le nombre de nuances par rangée. */
-export const NUANCES_PAR_RANGEE = 7;
+export const SHADES_PER_ROW = 7;

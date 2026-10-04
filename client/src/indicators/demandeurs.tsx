@@ -1,58 +1,58 @@
 import { Select, Stack } from "@mantine/core";
 import { IconMailForward } from "@tabler/icons-react";
-import { avec, nombre } from "../widgets/types";
-import { ChampNom, NOM, Rien, TitreIndicateur } from "./commun";
-import { BarresEtiquettes, type Barre } from "./etiquettes";
+import { withField, count } from "../widgets/types";
+import { NameField, NAME, Nothing, TitreIndicateur } from "./commun";
+import { LabelBars, type Bar } from "./etiquettes";
 import type { SupportIndicatorWidget } from "./types";
 
 // Qui écrit le plus au support : les expéditeurs des demandes reçues par
 // e-mail, du plus fréquent au moins fréquent. Une demande saisie à la main n'a
 // pas d'expéditeur, elle ne compte pas.
 
-const LIBELLE = "Top demandeurs";
-const QUANTITE = "quantite";
-const QUANTITES = [3, 5, 10];
-const QUANTITE_PAR_DEFAUT = 5;
+const LABEL = "Top demandeurs";
+const QUANTITY = "quantite";
+const QUANTITIES = [3, 5, 10];
+const QUANTITY_DEFAULT = 5;
 
-const quantiteDe = (config: unknown) => {
-  const n = nombre(config, QUANTITE, QUANTITE_PAR_DEFAUT);
-  return QUANTITES.includes(n) ? n : QUANTITE_PAR_DEFAUT;
+const quantityOf = (config: unknown) => {
+  const n = count(config, QUANTITY, QUANTITY_DEFAULT);
+  return QUANTITIES.includes(n) ? n : QUANTITY_DEFAULT;
 };
 
-export const demandeursIndicator: SupportIndicatorWidget = {
+export const requestersIndicator: SupportIndicatorWidget = {
   type: "senders",
   kind: "helpdesk",
-  label: LIBELLE,
+  label: LABEL,
   icon: IconMailForward,
-  defaultConfig: { [NOM]: "", [QUANTITE]: QUANTITE_PAR_DEFAUT },
+  defaultConfig: { [NAME]: "", [QUANTITY]: QUANTITY_DEFAULT },
 
   Display: ({ config, requests }) => {
     // Un expéditeur se reconnaît à son adresse : son nom peut changer d'un
     // e-mail à l'autre, on garde le premier lu.
-    const parAdresse = new Map<string, Barre>();
-    for (const demande of requests) {
-      const adresse = demande.sender_email.trim().toLowerCase();
-      if (!adresse) continue;
-      const deja = parAdresse.get(adresse);
-      if (deja) deja.value += 1;
+    const byAddress = new Map<string, Bar>();
+    for (const request of requests) {
+      const address = request.sender_email.trim().toLowerCase();
+      if (!address) continue;
+      const already = byAddress.get(address);
+      if (already) already.value += 1;
       else
-        parAdresse.set(adresse, {
-          name: demande.sender_name.trim() || adresse,
+        byAddress.set(address, {
+          name: request.sender_name.trim() || address,
           value: 1,
           color: "teal.6",
         });
     }
-    const data = [...parAdresse.values()]
+    const data = [...byAddress.values()]
       .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
-      .slice(0, quantiteDe(config));
+      .slice(0, quantityOf(config));
 
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaut={LIBELLE} />
+        <TitreIndicateur config={config} defaultValue={LABEL} />
         {data.length === 0 ? (
-          <Rien>Aucun demandeur</Rien>
+          <Nothing>Aucun demandeur</Nothing>
         ) : (
-          <BarresEtiquettes data={data} />
+          <LabelBars data={data} />
         )}
       </Stack>
     );
@@ -60,12 +60,12 @@ export const demandeursIndicator: SupportIndicatorWidget = {
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
-      <ChampNom config={config} onChange={onChange} defaut={LIBELLE} />
+      <NameField config={config} onChange={onChange} defaultValue={LABEL} />
       <Select
         label="Nombre de demandeurs"
-        data={QUANTITES.map((n) => ({ value: String(n), label: String(n) }))}
-        value={String(quantiteDe(config))}
-        onChange={(value) => value && onChange(avec(config, QUANTITE, Number(value)))}
+        data={QUANTITIES.map((n) => ({ value: String(n), label: String(n) }))}
+        value={String(quantityOf(config))}
+        onChange={(value) => value && onChange(withField(config, QUANTITY, Number(value)))}
         allowDeselect={false}
       />
     </Stack>

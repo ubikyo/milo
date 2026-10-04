@@ -70,14 +70,14 @@ const groupBy = <Row, Value>(
   key: (row: Row) => Id,
   value: (row: Row) => Value,
 ): Map<Id, Value[]> => {
-  const parCle = new Map<Id, Value[]>();
+  const byKey = new Map<Id, Value[]>();
   for (const row of rows) {
     const k = key(row);
-    const deja = parCle.get(k);
-    if (deja) deja.push(value(row));
-    else parCle.set(k, [value(row)]);
+    const already = byKey.get(k);
+    if (already) already.push(value(row));
+    else byKey.set(k, [value(row)]);
   }
-  return parCle;
+  return byKey;
 };
 
 /** Un lot de projets, chacun avec ses acteurs et ses étiquettes. */
@@ -85,17 +85,17 @@ export const withRelations = (rows: ProjectJoinedRow[]): Project[] => {
   if (rows.length === 0) return [];
   const ids = JSON.stringify(rows.map((p) => p.id));
 
-  const acteurs = groupBy(actorsFor.all(ids), (r) => r.project_id, actorOf);
-  const etiquettes = groupBy(
+  const actors = groupBy(actorsFor.all(ids), (r) => r.project_id, actorOf);
+  const labels = groupBy(
     labelsFor.all(ids),
     (r) => r.project_id,
-    ({ project_id: _ignore, ...label }): ProjectLabel => label,
+    ({ project_id: _ignored, ...label }): ProjectLabel => label,
   );
 
   return rows.map((p) => ({
     ...p,
-    actors: acteurs.get(p.id) ?? ([] as Actor[]),
-    labels: etiquettes.get(p.id) ?? ([] as ProjectLabel[]),
+    actors: actors.get(p.id) ?? ([] as Actor[]),
+    labels: labels.get(p.id) ?? ([] as ProjectLabel[]),
   }));
 };
 
@@ -112,14 +112,14 @@ const labelIds = selection<{ label_id: Id }>(
   "SELECT label_id FROM project_label_links WHERE project_id = ?",
 );
 
-export const acteursDe = (projectId: unknown): Id[] =>
+export const actorsOf = (projectId: unknown): Id[] =>
   actorIds.all(projectId).map((l) => l.user_id);
 
-export const etiquettesDe = (projectId: unknown): Id[] =>
+export const labelsOf = (projectId: unknown): Id[] =>
   labelIds.all(projectId).map((l) => l.label_id);
 
-const supprimerActeurs = mutation("DELETE FROM project_actors WHERE project_id = ?");
-const ajouterActeur = mutation(
+const deleteActors = mutation("DELETE FROM project_actors WHERE project_id = ?");
+const addActor = mutation(
   `INSERT OR IGNORE INTO project_actors (project_id, user_id)
    SELECT ?, id FROM users WHERE id = ?`,
 );
@@ -130,12 +130,12 @@ const ajouterActeur = mutation(
  * charge, ce qui évite une requête de vérification par acteur.
  */
 export const replaceActors = transaction((projectId: Id, actorIds: Id[]) => {
-  supprimerActeurs.run(projectId);
-  for (const userId of actorIds) ajouterActeur.run(projectId, userId);
+  deleteActors.run(projectId);
+  for (const userId of actorIds) addActor.run(projectId, userId);
 });
 
-const supprimerEtiquettes = mutation("DELETE FROM project_label_links WHERE project_id = ?");
-const ajouterEtiquette = mutation(
+const deleteLabels = mutation("DELETE FROM project_label_links WHERE project_id = ?");
+const addLabel = mutation(
   `INSERT OR IGNORE INTO project_label_links (project_id, label_id)
    SELECT ?, id FROM project_labels WHERE id = ? AND board_id = ?`,
 );
@@ -150,18 +150,18 @@ const ajouterEtiquette = mutation(
  * besoin. La même règle que pour la copie d'une liste (copy-list.ts) : sans
  * elle, la copie arriverait nue et on ne saurait plus ce que le projet portait.
  */
-const etiquetteJumelle = selection<{ id: Id }>(
+const twinLabel = selection<{ id: Id }>(
   `SELECT id FROM project_labels
    WHERE board_id = ? AND name = ? COLLATE NOCASE AND color = ?
    ORDER BY position, id`,
 );
-const rangEtiquetteSuivant = scalar<NextRow>(
+const nextLabelRank = scalar<NextRow>(
   "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM project_labels WHERE board_id = ?",
 );
-const creerEtiquette = mutation(
+const createLabel = mutation(
   "INSERT INTO project_labels (board_id, name, color, weight, position, created_at) VALUES (?, ?, ?, ?, ?, ?)",
 );
-const etiquettesCompletes = selection<{
+const fullLabels = selection<{
   id: Id;
   board_id: Id;
   name: string;
@@ -177,30 +177,30 @@ const etiquettesCompletes = selection<{
 
 /** Les étiquettes d'un projet, reportées sur sa copie. */
 export const copyProjectLabels = transaction(
-  (sourceId: Id, copieId: Id, boardCible: Id, timestamp: string) => {
-    for (const label of etiquettesCompletes.all(sourceId)) {
+  (sourceId: Id, copyId: Id, targetBoard: Id, timestamp: string) => {
+    for (const label of fullLabels.all(sourceId)) {
       const id =
-        label.board_id === boardCible
+        label.board_id === targetBoard
           ? label.id
-          : (etiquetteJumelle.get(boardCible, label.name, label.color)?.id ??
+          : (twinLabel.get(targetBoard, label.name, label.color)?.id ??
             Number(
-              creerEtiquette.run(
-                boardCible,
+              createLabel.run(
+                targetBoard,
                 label.name,
                 label.color,
                 label.weight,
-                rangEtiquetteSuivant(boardCible).next,
+                nextLabelRank(targetBoard).next,
                 timestamp,
               ).lastInsertRowid,
             ));
-      ajouterEtiquette.run(copieId, id, boardCible);
+      addLabel.run(copyId, id, targetBoard);
     }
   },
 );
 
 export const replaceProjectLabels = transaction(
   (projectId: Id, labelIds: Id[], boardId: Id) => {
-    supprimerEtiquettes.run(projectId);
-    for (const labelId of labelIds) ajouterEtiquette.run(projectId, labelId, boardId);
+    deleteLabels.run(projectId);
+    for (const labelId of labelIds) addLabel.run(projectId, labelId, boardId);
   },
 );

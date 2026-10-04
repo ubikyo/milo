@@ -6,7 +6,7 @@
 // la saisissant. Ses acteurs et ses étiquettes se posent comme les membres et
 // les étiquettes d'une carte : autant qu'il faut, par une table d'association.
 
-import { piecesJointes } from "../lib/ticket-files.js";
+import { parseAttachments } from "../lib/ticket-files.js";
 import { MILO_ACTOR, SUPPORT_URGENCY_LABELS, supportTicketRef } from "@milo/shared";
 import type {
   Actor,
@@ -25,11 +25,11 @@ import type {
   WithAuthorColumns,
 } from "../db/rows.js";
 import { withAuthor } from "./comments.js";
-import { prochaineReference } from "./references.js";
+import { nextReference } from "./references.js";
 import { actorOf } from "./users.js";
 
-export const DEMANDE_INTROUVABLE = "Demande introuvable";
-export const ETIQUETTE_SUPPORT_INTROUVABLE = "Étiquette introuvable";
+export const REQUEST_NOT_FOUND = "Demande introuvable";
+export const SUPPORT_LABEL_NOT_FOUND = "Étiquette introuvable";
 
 export const supportRequests = {
   byId: selection<SupportRequestRow>("SELECT * FROM support_requests WHERE id = ?"),
@@ -70,7 +70,7 @@ export const supportRequests = {
    * son e-mail d'origine ou de l'un de ses messages — reçu, ou parti de Milo.
    * C'est ainsi qu'une réponse retrouve son ticket.
    */
-  citeeParMail: selection<SupportRequestRow>(
+  citedByMail: selection<SupportRequestRow>(
     `SELECT * FROM support_requests
      WHERE mailbox = ? COLLATE NOCASE AND list_key = ? AND (
        mail_id = ? OR id IN (SELECT request_id FROM support_comments WHERE mail_id = ?)
@@ -78,7 +78,7 @@ export const supportRequests = {
      ORDER BY id DESC LIMIT 1`,
   ),
   /** La demande d'une boîte née dans cette conversation de Graph. */
-  deLaConversation: selection<SupportRequestRow>(
+  ofConversation: selection<SupportRequestRow>(
     `SELECT * FROM support_requests
      WHERE mailbox = ? COLLATE NOCASE AND list_key = ?
        AND conversation_id = ? AND conversation_id != ''
@@ -93,23 +93,23 @@ export const supportRequests = {
      WHERE ((mailbox = ? COLLATE NOCASE AND list_key = ?) OR mailbox = '') AND number = ?`,
   ),
   /** Un e-mail déjà rangé dans un fil de la boîte : il ne s'importe pas deux fois. */
-  mailDejaRange: selection<{ id: Id }>(
+  mailAlreadyFiled: selection<{ id: Id }>(
     `SELECT support_comments.id FROM support_comments
      JOIN support_requests ON support_requests.id = support_comments.request_id
      WHERE support_requests.mailbox = ? COLLATE NOCASE AND support_requests.list_key = ?
        AND support_comments.mail_id = ?`,
   ),
   /** Les demandes nées d'un e-mail de cet objet, parti de cette adresse. */
-  nesDUnEnvoi: selection<{ id: Id }>(
+  createdBySend: selection<{ id: Id }>(
     `SELECT id FROM support_requests
      WHERE subject = ? AND sender_email = ? COLLATE NOCASE AND mail_id != ''`,
   ),
   /** Cet e-mail est-il déjà dans le fil de cette demande ? */
-  mailDansLeFil: selection<{ id: Id }>(
+  mailInThread: selection<{ id: Id }>(
     "SELECT id FROM support_comments WHERE request_id = ? AND mail_id = ?",
   ),
   /** Une réponse de l'expéditeur rouvre une demande qu'on croyait close. */
-  rouvrir: mutation(
+  reopen: mutation(
     `UPDATE support_requests SET status = ?, updated_at = ?
      WHERE id = ? AND status IN ('resolved', 'closed')`,
   ),
@@ -131,7 +131,7 @@ export const supportRequests = {
  * Le numéro du prochain ticket : la prochaine référence, commune aux demandes,
  * aux projets et aux cartes (repositories/references.ts).
  */
-export const prochainNumeroDeTicket = prochaineReference;
+export const nextTicketNumber = nextReference;
 
 export const supportLabels = {
   byId: selection<SupportLabelRow>("SELECT * FROM support_labels WHERE id = ?"),
@@ -157,22 +157,22 @@ export const supportLabels = {
  * L'étiquette qui porte ce nom. Si elle a disparu — renommée, supprimée —,
  * elle est recréée : une demande reçue par e-mail la porte toujours.
  */
-export const etiquetteNommee = (name: string): SupportLabelRow => {
-  const deja = supportLabels.byName.get(name);
-  if (deja) return deja;
-  const modele = SUPPORT_URGENCY_LABELS.find((l) => l.name === name);
+export const namedLabel = (name: string): SupportLabelRow => {
+  const already = supportLabels.byName.get(name);
+  if (already) return already;
+  const template = SUPPORT_URGENCY_LABELS.find((l) => l.name === name);
   const { next } = supportLabels.nextPosition();
   const { lastInsertRowid } = supportLabels.create.run(
     name,
-    modele?.color ?? "red.6",
-    modele?.weight ?? 0,
+    template?.color ?? "red.6",
+    template?.weight ?? 0,
     next,
     new Date().toISOString(),
   );
   return supportLabels.byId.get(lastInsertRowid)!;
 };
 
-const prioritesParPoids = selection<SupportLabelRow>(
+const prioritiesByWeight = selection<SupportLabelRow>(
   `SELECT * FROM support_labels
    WHERE name COLLATE NOCASE IN (SELECT value FROM json_each(?))
    ORDER BY weight, position, id
@@ -183,18 +183,18 @@ const prioritesParPoids = selection<SupportLabelRow>(
  * Celle des étiquettes d'urgence qui pèse le moins, telle que les poids ont
  * été réglés. S'il n'en reste aucune, la plus légère du modèle est recréée.
  */
-export const prioriteLaPlusLegere = (): SupportLabelRow => {
-  const noms = SUPPORT_URGENCY_LABELS.map((l) => l.name);
-  const trouvee = prioritesParPoids.get(JSON.stringify(noms));
-  if (trouvee) return trouvee;
-  const modele = [...SUPPORT_URGENCY_LABELS].sort((a, b) => a.weight - b.weight)[0]!;
-  return etiquetteNommee(modele.name);
+export const lightestPriority = (): SupportLabelRow => {
+  const names = SUPPORT_URGENCY_LABELS.map((l) => l.name);
+  const foundItem = prioritiesByWeight.get(JSON.stringify(names));
+  if (foundItem) return foundItem;
+  const template = [...SUPPORT_URGENCY_LABELS].sort((a, b) => a.weight - b.weight)[0]!;
+  return namedLabel(template.name);
 };
 
 // --- Acteurs d'une demande -------------------------------------------------
 
-const supprimerActeurs = mutation("DELETE FROM support_request_actors WHERE request_id = ?");
-const ajouterActeur = mutation(
+const deleteActors = mutation("DELETE FROM support_request_actors WHERE request_id = ?");
+const addActor = mutation(
   `INSERT OR IGNORE INTO support_request_actors (request_id, user_id)
    SELECT ?, id FROM users WHERE id = ?`,
 );
@@ -205,19 +205,19 @@ const ajouterActeur = mutation(
  * charge, comme pour les membres d'une carte.
  */
 export const replaceSupportActors = transaction((requestId: Id, userIds: Id[]) => {
-  supprimerActeurs.run(requestId);
-  for (const userId of userIds) ajouterActeur.run(requestId, userId);
+  deleteActors.run(requestId);
+  for (const userId of userIds) addActor.run(requestId, userId);
 });
 
 /** Des acteurs ajoutés à une demande, sans retirer ceux qui y sont. */
-export const ajouterActeurs = transaction((requestId: Id, userIds: Id[]) => {
-  for (const userId of userIds) ajouterActeur.run(requestId, userId);
+export const addActors = transaction((requestId: Id, userIds: Id[]) => {
+  for (const userId of userIds) addActor.run(requestId, userId);
 });
 
 // --- Étiquettes posées sur une demande -------------------------------------
 
-const supprimerEtiquettes = mutation("DELETE FROM support_request_labels WHERE request_id = ?");
-const ajouterEtiquette = mutation(
+const deleteLabels = mutation("DELETE FROM support_request_labels WHERE request_id = ?");
+const addLabel = mutation(
   `INSERT OR IGNORE INTO support_request_labels (request_id, label_id)
    SELECT ?, id FROM support_labels WHERE id = ?`,
 );
@@ -228,17 +228,17 @@ const ajouterEtiquette = mutation(
  * d'une carte.
  */
 export const replaceSupportLabels = transaction((requestId: Id, labelIds: Id[]) => {
-  supprimerEtiquettes.run(requestId);
-  for (const labelId of labelIds) ajouterEtiquette.run(requestId, labelId);
+  deleteLabels.run(requestId);
+  for (const labelId of labelIds) addLabel.run(requestId, labelId);
 });
 
 // --- Lecture d'un lot ------------------------------------------------------
 // Les acteurs, les étiquettes et le nombre d'échanges se lisent pour tout le
 // lot en trois requêtes, et non trois par demande.
 
-type EtiquetteLieeRow = SupportLabel & { request_id: Id };
+type LinkedLabelRow = SupportLabel & { request_id: Id };
 
-const etiquettesDesDemandes = selection<EtiquetteLieeRow>(
+const requestLabels = selection<LinkedLabelRow>(
   `SELECT support_request_labels.request_id, support_labels.*
    FROM support_request_labels
    JOIN support_labels ON support_labels.id = support_request_labels.label_id
@@ -246,7 +246,7 @@ const etiquettesDesDemandes = selection<EtiquetteLieeRow>(
    ORDER BY support_labels.weight DESC, support_labels.position, support_labels.id`,
 );
 
-const acteursDesDemandes = selection<{ request_id: Id; id: Id; name: string; email: string }>(
+const requestActors = selection<{ request_id: Id; id: Id; name: string; email: string }>(
   `SELECT support_request_actors.request_id, users.id, users.name, users.email
    FROM support_request_actors
    JOIN users ON users.id = support_request_actors.user_id
@@ -254,7 +254,7 @@ const acteursDesDemandes = selection<{ request_id: Id; id: Id; name: string; ema
    ORDER BY users.name`,
 );
 
-const echangesDesDemandes = selection<{ request_id: Id; count: number }>(
+const requestExchanges = selection<{ request_id: Id; count: number }>(
   `SELECT request_id, COUNT(*) AS count
    FROM support_comments
    WHERE request_id IN (SELECT value FROM json_each(?))
@@ -266,29 +266,29 @@ export const withRelations = (rows: SupportRequestRow[]): SupportRequest[] => {
   if (rows.length === 0) return [];
   const ids = JSON.stringify(rows.map((r) => r.id));
 
-  const acteurs = new Map<Id, Actor[]>();
-  for (const row of acteursDesDemandes.all(ids)) {
-    const deja = acteurs.get(row.request_id);
-    if (deja) deja.push(actorOf(row));
-    else acteurs.set(row.request_id, [actorOf(row)]);
+  const actors = new Map<Id, Actor[]>();
+  for (const row of requestActors.all(ids)) {
+    const already = actors.get(row.request_id);
+    if (already) already.push(actorOf(row));
+    else actors.set(row.request_id, [actorOf(row)]);
   }
 
-  const etiquettes = new Map<Id, SupportLabel[]>();
-  for (const { request_id, ...label } of etiquettesDesDemandes.all(ids)) {
-    const deja = etiquettes.get(request_id);
-    if (deja) deja.push(label);
-    else etiquettes.set(request_id, [label]);
+  const labels = new Map<Id, SupportLabel[]>();
+  for (const { request_id, ...label } of requestLabels.all(ids)) {
+    const already = labels.get(request_id);
+    if (already) already.push(label);
+    else labels.set(request_id, [label]);
   }
 
-  const echanges = new Map<Id, number>();
-  for (const row of echangesDesDemandes.all(ids)) echanges.set(row.request_id, row.count);
+  const exchanges = new Map<Id, number>();
+  for (const row of requestExchanges.all(ids)) exchanges.set(row.request_id, row.count);
 
   // L'identifiant de l'e-mail ne sert qu'à l'import : il ne sort pas.
-  return rows.map(({ mail_id: _mailId, ...demande }) => ({
-    ...demande,
-    actors: acteurs.get(demande.id) ?? [],
-    labels: etiquettes.get(demande.id) ?? [],
-    comment_count: echanges.get(demande.id) ?? 0,
+  return rows.map(({ mail_id: _mailId, ...request }) => ({
+    ...request,
+    actors: actors.get(request.id) ?? [],
+    labels: labels.get(request.id) ?? [],
+    comment_count: exchanges.get(request.id) ?? 0,
   }));
 };
 
@@ -358,8 +358,8 @@ export const supportComments = {
 export const supportCommentOf = (
   row: WithAuthorColumns<SupportCommentRow>,
 ): SupportComment => {
-  const { sender_name, sender_email, mail_id: _mailId, attachments, ...reste } = row;
-  const comment = withAuthor({ ...reste, attachments: piecesJointes(attachments) });
+  const { sender_name, sender_email, mail_id: _mailId, attachments, ...rest } = row;
+  const comment = withAuthor({ ...rest, attachments: parseAttachments(attachments) });
   // Une réponse par défaut partie d'office : c'est Milo qui l'a envoyée.
   if (!comment.user_id && row.auto_event) return { ...comment, author: MILO_ACTOR };
   // Un e-mail reçu est un mot « système » sans compte : c'est l'expéditeur
@@ -379,11 +379,11 @@ export const supportRequestDetail = (row: SupportRequestRow): SupportRequestDeta
 
 // --- Actions sur plusieurs demandes ----------------------------------------
 
-const fermer = mutation(
+const close = mutation(
   "UPDATE support_requests SET status = 'closed', updated_at = ? WHERE id = ?",
 );
 
-const recopierFil = mutation(
+const copyThread = mutation(
   `INSERT INTO support_comments
      (request_id, user_id, text, system, sender_name, sender_email, mail_status, mail_to,
       mail_cc, mail_bcc, internal, mail_id, format, attachments, created_at, updated_at)
@@ -395,19 +395,19 @@ const recopierFil = mutation(
      AND NOT (system = 1 AND user_id IS NULL AND sender_email = '' AND format = '')`,
 );
 
-const reprendreActeurs = mutation(
+const carryActors = mutation(
   `INSERT OR IGNORE INTO support_request_actors (request_id, user_id)
    SELECT ?, user_id FROM support_request_actors WHERE request_id = ?`,
 );
 
-const reprendreEtiquettes = mutation(
+const carryLabels = mutation(
   `INSERT OR IGNORE INTO support_request_labels (request_id, label_id)
    SELECT ?, label_id FROM support_request_labels WHERE request_id = ?`,
 );
 
 // Ce que la demande gardée n'a pas, elle le prend de celles qu'elle absorbe :
 // un objet, un expéditeur.
-const completer = mutation(
+const completeText = mutation(
   `UPDATE support_requests SET
      subject = CASE WHEN subject = '' THEN :subject ELSE subject END,
      sender_name = CASE WHEN sender_email = '' THEN :sender_name ELSE sender_name END,
@@ -415,7 +415,7 @@ const completer = mutation(
    WHERE id = :id`,
 );
 
-const acteursDe = selection<{ user_id: Id }>(
+const actorsOf = selection<{ user_id: Id }>(
   "SELECT user_id FROM support_request_actors WHERE request_id = ?",
 );
 
@@ -423,11 +423,11 @@ const acteursDe = selection<{ user_id: Id }>(
  * Ferme une demande, en le notant dans son fil. Une demande déjà fermée ne
  * l'est pas une seconde fois.
  */
-export const fermerDemande = (demande: SupportRequestRow, auteur: Id, note: string): void => {
-  if (demande.status === "closed") return;
+export const closeRequest = (request: SupportRequestRow, author: Id, note: string): void => {
+  if (request.status === "closed") return;
   const instant = new Date().toISOString();
-  fermer.run(instant, demande.id);
-  supportComments.createSystem.run(demande.id, auteur, note, instant, instant);
+  close.run(instant, request.id);
+  supportComments.createSystem.run(request.id, author, note, instant, instant);
 };
 
 /**
@@ -435,31 +435,31 @@ export const fermerDemande = (demande: SupportRequestRow, auteur: Id, note: stri
  * acteurs et les étiquettes des autres. Celles-ci sont fermées, pas
  * supprimées — leur fil reste lisible là où il était, et dit où il est parti.
  */
-export const fusionnerDemandes = transaction(
-  (garde: SupportRequestRow, autres: SupportRequestRow[], auteur: Id, quand: string) => {
-    for (const autre of autres) {
-      completer.run({
-        id: garde.id,
-        subject: autre.subject,
-        sender_name: autre.sender_name,
-        sender_email: autre.sender_email,
+export const mergeRequests = transaction(
+  (keptRequest: SupportRequestRow, others: SupportRequestRow[], author: Id, whenLabel: string) => {
+    for (const other of others) {
+      completeText.run({
+        id: keptRequest.id,
+        subject: other.subject,
+        sender_name: other.sender_name,
+        sender_email: other.sender_email,
       });
-      recopierFil.run(garde.id, autre.id);
-      reprendreActeurs.run(garde.id, autre.id);
-      reprendreEtiquettes.run(garde.id, autre.id);
-      fermerDemande(autre, auteur, `Fusionnée dans ${supportTicketRef(garde.number)} le ${quand}`);
+      copyThread.run(keptRequest.id, other.id);
+      carryActors.run(keptRequest.id, other.id);
+      carryLabels.run(keptRequest.id, other.id);
+      closeRequest(other, author, `Fusionnée dans ${supportTicketRef(keptRequest.number)} le ${whenLabel}`);
     }
     const instant = new Date().toISOString();
     supportComments.createSystem.run(
-      garde.id,
-      auteur,
-      `${autres.map((a) => supportTicketRef(a.number)).join(", ")} ${
-        autres.length > 1 ? "fusionnées" : "fusionnée"
-      } ici le ${quand}`,
+      keptRequest.id,
+      author,
+      `${others.map((a) => supportTicketRef(a.number)).join(", ")} ${
+        others.length > 1 ? "fusionnées" : "fusionnée"
+      } ici le ${whenLabel}`,
       instant,
       instant,
     );
-    supportRequests.touch.run(instant, garde.id);
+    supportRequests.touch.run(instant, keptRequest.id);
   },
 );
 
@@ -468,22 +468,22 @@ export const fusionnerDemandes = transaction(
  * retirer ceux qui y sont déjà. Rend, pour chaque demande, les comptes qui
  * viennent d'y arriver : ce sont eux qu'on prévient.
  */
-export const assignerDemandes = transaction(
-  (demandes: SupportRequestRow[], userIds: Id[]): Map<Id, Id[]> => {
-    const arrivees = new Map<Id, Id[]>();
+export const assignRequests = transaction(
+  (requests: SupportRequestRow[], userIds: Id[]): Map<Id, Id[]> => {
+    const arrivals = new Map<Id, Id[]>();
     const instant = new Date().toISOString();
-    for (const demande of demandes) {
-      const deja = new Set(acteursDe.all(demande.id).map((r) => r.user_id));
-      const nouveaux: Id[] = [];
+    for (const request of requests) {
+      const already = new Set(actorsOf.all(request.id).map((r) => r.user_id));
+      const newItems: Id[] = [];
       for (const userId of userIds) {
-        if (deja.has(userId)) continue;
-        if (ajouterActeur.run(demande.id, userId).changes) nouveaux.push(userId);
+        if (already.has(userId)) continue;
+        if (addActor.run(request.id, userId).changes) newItems.push(userId);
       }
-      if (nouveaux.length) {
-        supportRequests.touch.run(instant, demande.id);
-        arrivees.set(demande.id, nouveaux);
+      if (newItems.length) {
+        supportRequests.touch.run(instant, request.id);
+        arrivals.set(request.id, newItems);
       }
     }
-    return arrivees;
+    return arrivals;
   },
 );

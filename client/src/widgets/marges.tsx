@@ -1,6 +1,6 @@
-import { poser, type LigneReglage } from "../components/ui/LignesReglages";
-import { nombre } from "./types";
-import type { AccessWidget, Marges } from "./types";
+import { insertRow, type SettingRow } from "../components/ui/LignesReglages";
+import { count } from "./types";
+import type { AccessWidget, Margins } from "./types";
 import type { BoardWidget, AccessBlockType } from "@milo/shared";
 
 // L'air au-dessus et au-dessous d'un élément de colonne.
@@ -11,43 +11,43 @@ import type { BoardWidget, AccessBlockType } from "@milo/shared";
 // bien qu'un élément laissé tel quel suit encore ses voisins quand on le
 // déplace.
 
-const MARGE_HAUTE = "margeHaute";
-const MARGE_BASSE = "margeBasse";
+const HIGH_MARGIN = "margeHaute";
+const LOW_MARGIN = "margeBasse";
 
 /** Au-delà, l'élément se perdrait loin de sa colonne. */
-const MARGE_MAX = 200;
+const MARGIN_MAX = 200;
 
-interface Voisins {
+interface Neighbors {
   previousType: AccessBlockType | null;
   nextType: AccessBlockType | null;
 }
 
 /** Une marge rangée dans la configuration, ou « null » : l'ordinaire du widget vaut. */
-const reglee = (config: unknown, cle: string): number | null => {
-  const lu = nombre(config, cle, Number.NaN);
-  return Number.isNaN(lu) ? null : lu;
+const configured = (config: unknown, key: string): number | null => {
+  const readValue = count(config, key, Number.NaN);
+  return Number.isNaN(readValue) ? null : readValue;
 };
 
 /** Les éléments qui ouvrent un groupe : l'air qui les précède est le leur. */
-const TITRES: AccessBlockType[] = ["category", "subcategory"];
+const TITLES: AccessBlockType[] = ["category", "subcategory"];
 
 /**
  * L'ordinaire du widget, sauf devant une catégorie ou une sous-catégorie :
  * l'élément n'y laisse rien sous lui, le titre posant seul l'écart qui
  * l'en sépare.
  */
-const ordinairesDe = (widget: AccessWidget, { previousType, nextType }: Voisins): Marges => {
-  const ordinaires = widget.marges(previousType, nextType);
-  return nextType !== null && TITRES.includes(nextType) ? { ...ordinaires, basse: 0 } : ordinaires;
+const regularOf = (widget: AccessWidget, { previousType, nextType }: Neighbors): Margins => {
+  const regular = widget.margins(previousType, nextType);
+  return nextType !== null && TITLES.includes(nextType) ? { ...regular, bottom: 0 } : regular;
 };
 
 /** L'air que l'élément laisse vraiment : le sien, ou celui de sa configuration. */
-export const margesDe = (
+export const marginsOf = (
   widget: AccessWidget,
   config: unknown,
-  voisins: Voisins,
-): Marges => {
-  return margesReglees(config, ordinairesDe(widget, voisins));
+  neighbors: Neighbors,
+): Margins => {
+  return configuredMargins(config, regularOf(widget, neighbors));
 };
 
 /**
@@ -56,29 +56,29 @@ export const margesDe = (
  * personne (components/access/SectionBlocks.tsx). Les éléments arrivent déjà
  * dans leur ordre.
  */
-export const voisinsDe = (
+export const neighborsOf = (
   blocks: BoardWidget[],
-  bloc: BoardWidget,
-  widgetDe: (type: AccessBlockType) => AccessWidget | undefined,
+  block: BoardWidget,
+  widgetFor: (type: AccessBlockType) => AccessWidget | undefined,
   locked: boolean,
-): Voisins => {
-  const visibles = blocks.filter((b) => {
-    if (b.section_id !== bloc.section_id) return false;
-    if (b.id === bloc.id) return true;
-    const widget = widgetDe(b.type as AccessBlockType);
+): Neighbors => {
+  const visibleItems = blocks.filter((b) => {
+    if (b.section_id !== block.section_id) return false;
+    if (b.id === block.id) return true;
+    const widget = widgetFor(b.type as AccessBlockType);
     return widget !== undefined && !widget.hidden?.(b.config, locked);
   });
-  const rang = visibles.findIndex((b) => b.id === bloc.id);
+  const rank = visibleItems.findIndex((b) => b.id === block.id);
   return {
-    previousType: (visibles[rang - 1]?.type as AccessBlockType | undefined) ?? null,
-    nextType: (visibles[rang + 1]?.type as AccessBlockType | undefined) ?? null,
+    previousType: (visibleItems[rank - 1]?.type as AccessBlockType | undefined) ?? null,
+    nextType: (visibleItems[rank + 1]?.type as AccessBlockType | undefined) ?? null,
   };
 };
 
 /** L'air que la configuration règle, l'ordinaire valant ailleurs. */
-export const margesReglees = (config: unknown, ordinaires: Marges): Marges => ({
-  haute: reglee(config, MARGE_HAUTE) ?? ordinaires.haute,
-  basse: reglee(config, MARGE_BASSE) ?? ordinaires.basse,
+export const configuredMargins = (config: unknown, regular: Margins): Margins => ({
+  top: configured(config, HIGH_MARGIN) ?? regular.top,
+  bottom: configured(config, LOW_MARGIN) ?? regular.bottom,
 });
 
 /**
@@ -87,46 +87,46 @@ export const margesReglees = (config: unknown, ordinaires: Marges): Marges => ({
  * « ordinaires » tant que rien n'est réglé. Ramener un champ à cet ordinaire,
  * le vider ou cliquer sur son bouton retire le réglage.
  */
-export const lignesMargesPour = (
-  ordinaires: Marges,
+export const marginRowsFor = (
+  regular: Margins,
   config: unknown,
   onChange: (config: Record<string, unknown>) => void,
-): LigneReglage[] => {
-  const actuelles = margesReglees(config, ordinaires);
+): SettingRow[] => {
+  const current = configuredMargins(config, regular);
 
-  const regler = (cle: string, ordinaire: number, valeur: number | "") =>
-    onChange(poser(config, { [cle]: valeur === ordinaire ? "" : valeur }));
+  const adjust = (key: string, regular: number, value: number | "") =>
+    onChange(insertRow(config, { [key]: value === regular ? "" : value }));
 
-  const ligne = (
-    nom: string,
-    quoi: string,
-    cle: string,
-    valeur: number,
-    ordinaire: number,
-  ): LigneReglage => ({
-    nom,
-    quoi,
-    taille: {
-      valeur,
-      defaut: ordinaire,
+  const row = (
+    name: string,
+    what: string,
+    key: string,
+    value: number,
+    regular: number,
+  ): SettingRow => ({
+    name,
+    what,
+    size: {
+      value,
+      defaultValue: regular,
       min: 0,
-      max: MARGE_MAX,
-      onChange: (v) => regler(cle, ordinaire, v),
+      max: MARGIN_MAX,
+      onChange: (v) => adjust(key, regular, v),
     },
-    modifiee: valeur !== ordinaire,
-    reinitialiser: () => regler(cle, ordinaire, ""),
+    modified: value !== regular,
+    reset: () => adjust(key, regular, ""),
   });
 
   return [
-    ligne("Haut", "de la marge haute", MARGE_HAUTE, actuelles.haute, ordinaires.haute),
-    ligne("Bas", "de la marge basse", MARGE_BASSE, actuelles.basse, ordinaires.basse),
+    row("Haut", "de la marge haute", HIGH_MARGIN, current.top, regular.top),
+    row("Bas", "de la marge basse", LOW_MARGIN, current.bottom, regular.bottom),
   ];
 };
 
 /** Les lignes des marges d'un widget du mode Accès, d'après son ordinaire. */
-export const lignesMarges = (
+export const marginRows = (
   widget: AccessWidget,
   config: Record<string, unknown>,
   onChange: (config: Record<string, unknown>) => void,
-  voisins: Voisins,
-): LigneReglage[] => lignesMargesPour(ordinairesDe(widget, voisins), config, onChange);
+  neighbors: Neighbors,
+): SettingRow[] => marginRowsFor(regularOf(widget, neighbors), config, onChange);

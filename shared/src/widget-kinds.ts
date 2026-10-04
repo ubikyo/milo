@@ -21,7 +21,7 @@ export const WIDGET_KINDS = [
 export type WidgetKind = (typeof WIDGET_KINDS)[number]["value"];
 
 /** Le libellé d'un type, tel que l'interface le montre. */
-export const libelleDuGenre = (kind: WidgetKind): string =>
+export const kindLabel = (kind: WidgetKind): string =>
   WIDGET_KINDS.find((k) => k.value === kind)?.label ?? kind;
 
 /** La permission sur un type : aucune, la lecture, ou la modification (qui comprend la lecture). */
@@ -37,8 +37,8 @@ export type WidgetAccess = (typeof WIDGET_ACCESS)[number]["value"];
 export type WidgetRights = Record<WidgetKind, WidgetAccess>;
 
 /** Les mêmes permissions pour tous les types. */
-export const widgetRightsPartout = (acces: WidgetAccess): WidgetRights =>
-  Object.fromEntries(WIDGET_KINDS.map((k) => [k.value, acces])) as WidgetRights;
+export const widgetRightsEverywhere = (access: WidgetAccess): WidgetRights =>
+  Object.fromEntries(WIDGET_KINDS.map((k) => [k.value, access])) as WidgetRights;
 
 /** Des permissions reçues de l'extérieur, ramenées à ce qui existe : un type absent n'a rien. */
 export const validWidgetRights = (value: unknown): WidgetRights => {
@@ -53,26 +53,26 @@ export const validWidgetRights = (value: unknown): WidgetRights => {
   ) as WidgetRights;
 };
 
-const RANG: Record<WidgetAccess, number> = { "": 0, view: 1, update: 2 };
+const RANK: Record<WidgetAccess, number> = { "": 0, view: 1, update: 2 };
 
 /** La plus large de deux permissions. */
-export const accesLePlusLarge = (a: WidgetAccess, b: WidgetAccess): WidgetAccess =>
-  RANG[a] >= RANG[b] ? a : b;
+export const widestAccess = (a: WidgetAccess, b: WidgetAccess): WidgetAccess =>
+  RANK[a] >= RANK[b] ? a : b;
 
 /** Plusieurs jeux de permissions réunis — les siennes et celles de ses groupes : le plus large l'emporte. */
-export const reunirWidgetRights = (jeux: WidgetRights[]): WidgetRights =>
+export const mergeWidgetRights = (rightSets: WidgetRights[]): WidgetRights =>
   Object.fromEntries(
     WIDGET_KINDS.map((k) => [
       k.value,
-      jeux.reduce<WidgetAccess>((acc, jeu) => accesLePlusLarge(acc, jeu[k.value]), ""),
+      rightSets.reduce<WidgetAccess>((acc, rightSet) => widestAccess(acc, rightSet[k.value]), ""),
     ]),
   ) as WidgetRights;
 
 /** « Lire » ou mieux. */
-export const peutLire = (acces: WidgetAccess): boolean => acces !== "";
+export const canRead = (access: WidgetAccess): boolean => access !== "";
 
 /** Les types de chaque mode : ses données suivent le plus large d'entre eux. */
-export const GENRES_DU_MODE: Record<Mode, readonly WidgetKind[]> = {
+export const MODE_KINDS: Record<Mode, readonly WidgetKind[]> = {
   access: ["common", "m365"],
   projects: ["project"],
   tasks: ["task"],
@@ -105,7 +105,7 @@ export const COMMON_WIDGET_TYPES = [
  * Support (« support. »), des Assets (« asset. »), des projets
  * (« project. ») et des tâches (« task. »).
  */
-const PROPRES = {
+const OWN = {
   support: ["list", "tickets", "status", "actors", "trend", "age", "due", "labels", "senders"],
   asset: ["list", "assets", "compliance", "systems", "disks"],
   project: ["list", "projects", "progress", "categories", "actors", "labels"],
@@ -113,7 +113,7 @@ const PROPRES = {
 } as const;
 
 /** Le préfixe des widgets de chaque type de données, et le type de widget qui va avec. */
-const PREFIXES: Record<keyof typeof PROPRES, WidgetKind> = {
+const PREFIXES: Record<keyof typeof OWN, WidgetKind> = {
   support: "helpdesk",
   asset: "asset",
   project: "project",
@@ -127,8 +127,8 @@ const PREFIXES: Record<keyof typeof PROPRES, WidgetKind> = {
  */
 export const BOARD_WIDGET_TYPES: readonly string[] = [
   ...COMMON_WIDGET_TYPES,
-  ...Object.entries(PROPRES).flatMap(([prefixe, types]) =>
-    types.map((type) => `${prefixe}.${type}`),
+  ...Object.entries(OWN).flatMap(([prefix, types]) =>
+    types.map((type) => `${prefix}.${type}`),
   ),
 ];
 
@@ -151,12 +151,12 @@ export const LIST_WIDGET_TYPES: readonly string[] = [
 export const isListWidgetType = (type: string): boolean => LIST_WIDGET_TYPES.includes(type);
 
 /** La clé de la configuration d'un widget de liste qui désigne ses éléments. */
-export const CLE_DE_LISTE = "liste";
+export const LIST_KEY = "liste";
 
 /** La clé de liste d'une configuration ; vide si elle n'en porte pas. */
-export const cleDeListe = (config: unknown): string => {
-  const valeur = (config as Record<string, unknown> | null)?.[CLE_DE_LISTE];
-  return typeof valeur === "string" ? valeur : "";
+export const listKey = (config: unknown): string => {
+  const value = (config as Record<string, unknown> | null)?.[LIST_KEY];
+  return typeof value === "string" ? value : "";
 };
 
 /**
@@ -166,23 +166,23 @@ export const cleDeListe = (config: unknown): string => {
 export const WIDGETS_365: readonly string[] = ["calendar", "mail"];
 
 /** Le type de widget d'un widget, d'après ce que la base range de lui. */
-export const genreDuWidget = (type: string): WidgetKind => {
+export const widgetKind = (type: string): WidgetKind => {
   if (WIDGETS_365.includes(type)) return "m365";
-  const prefixe = type.split(".")[0] as keyof typeof PREFIXES;
-  return type.includes(".") && PREFIXES[prefixe] ? PREFIXES[prefixe] : "common";
+  const prefix = type.split(".")[0] as keyof typeof PREFIXES;
+  return type.includes(".") && PREFIXES[prefix] ? PREFIXES[prefix] : "common";
 };
 
 /**
  * Le type rangé d'un widget des anciens panneaux — Support, Assets, Projet,
  * Tâche —, sous son préfixe. Les widgets communs gardent le leur.
  */
-export const typeDuPanneau = (
-  panneau: "support" | "assets" | "projects" | "tasks",
+export const panelType = (
+  panel: "support" | "assets" | "projects" | "tasks",
   type: string,
 ): string => {
   if ((COMMON_WIDGET_TYPES as readonly string[]).includes(type)) return type;
-  const prefixe = { support: "support", assets: "asset", projects: "project", tasks: "task" }[
-    panneau
+  const prefix = { support: "support", assets: "asset", projects: "project", tasks: "task" }[
+    panel
   ];
-  return `${prefixe}.${type}`;
+  return `${prefix}.${type}`;
 };

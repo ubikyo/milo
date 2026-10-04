@@ -21,7 +21,7 @@ export interface PointMenuPosition {
  * Le menu d'un onglet : il s'ouvre contre lui, et non au point cliqué — sous
  * un onglet de tableau, au-dessus d'une vue.
  */
-export const ancreDuMenu = (
+export const menuAnchor = (
   event: ReactMouseEvent<HTMLElement>,
   /** L'élément contre lequel le poser, s'il n'est pas celui qui a reçu le clic. */
   element: Element = event.currentTarget,
@@ -34,7 +34,7 @@ export const ancreDuMenu = (
 
 // Le clic droit ouvre notre menu, pas celui du navigateur. Depuis le clavier,
 // l'événement n'a pas de position : le menu se pose sous l'élément.
-export const positionDuMenu = (event: ReactMouseEvent<HTMLElement>): PointMenuPosition => {
+export const menuPosition = (event: ReactMouseEvent<HTMLElement>): PointMenuPosition => {
   event.preventDefault();
   event.stopPropagation();
   if (event.clientX === 0 && event.clientY === 0) {
@@ -68,7 +68,7 @@ export default function PointMenu({
   return createPortal(
     <Menu
       opened
-      onChange={(ouvert) => !ouvert && onClose()}
+      onChange={(isOpen) => !isOpen && onClose()}
       position={placement}
       offset={offset}
       withinPortal

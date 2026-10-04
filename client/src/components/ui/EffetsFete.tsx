@@ -5,39 +5,39 @@ import Confetti from "./Confetti";
 // Les fêtes qu'une liste peut réserver à la carte qui la rejoint : chacune a
 // sa marque, à poser n'importe où dans le titre de la liste. Une liste peut en
 // porter plusieurs : toutes se jouent ensemble.
-export type Effet = "confettis" | "coeurs" | "pouces" | "fusee" | "flammes" | "neige" | "foudre";
+export type Effect = "confettis" | "coeurs" | "pouces" | "fusee" | "flammes" | "neige" | "foudre";
 
 // Les marques sont cherchées sans leur sélecteur de variante (« ❤ » plutôt que
 // « ❤️ ») : qu'elles soient saisies en texte ou en emoji, elles se reconnaissent.
 // L'emoji, lui, est ce que le menu de la liste pose au bout du titre.
-export const MARQUES: { marque: string; emoji: string; effet: Effet; label: string }[] = [
-  { marque: "✨", emoji: "✨", effet: "confettis", label: "Confettis" },
-  { marque: "❤", emoji: "❤️", effet: "coeurs", label: "Pluie de cœurs" },
-  { marque: "👍", emoji: "👍", effet: "pouces", label: "Pouces" },
-  { marque: "🚀", emoji: "🚀", effet: "fusee", label: "Fusée" },
-  { marque: "🔥", emoji: "🔥", effet: "flammes", label: "Flammes" },
-  { marque: "❄", emoji: "❄️", effet: "neige", label: "Neige" },
-  { marque: "⚡", emoji: "⚡", effet: "foudre", label: "Foudre" },
+export const MARKS: { mark: string; emoji: string; effect: Effect; label: string }[] = [
+  { mark: "✨", emoji: "✨", effect: "confettis", label: "Confettis" },
+  { mark: "❤", emoji: "❤️", effect: "coeurs", label: "Pluie de cœurs" },
+  { mark: "👍", emoji: "👍", effect: "pouces", label: "Pouces" },
+  { mark: "🚀", emoji: "🚀", effect: "fusee", label: "Fusée" },
+  { mark: "🔥", emoji: "🔥", effect: "flammes", label: "Flammes" },
+  { mark: "❄", emoji: "❄️", effect: "neige", label: "Neige" },
+  { mark: "⚡", emoji: "⚡", effect: "foudre", label: "Foudre" },
 ];
 
 /** Les fêtes que réclame un titre de liste, dans l'ordre des marques. */
-export const effetsDuTitre = (titre: string): Effet[] =>
-  MARQUES.filter((m) => titre.includes(m.marque)).map((m) => m.effet);
+export const titleEffects = (title: string): Effect[] =>
+  MARKS.filter((m) => title.includes(m.mark)).map((m) => m.effect);
 
 /**
  * Pose la marque d'une fête au bout du titre, ou l'en retire si elle y est
  * déjà — où qu'elle soit, avec son sélecteur de variante et l'espace qui la
  * précède.
  */
-export const basculerMarque = (titre: string, effet: Effet): string => {
-  const m = MARQUES.find((x) => x.effet === effet);
-  if (!m) return titre;
-  if (!titre.includes(m.marque)) return `${titre.trimEnd()} ${m.emoji}`;
-  const sansMarque = titre.split(m.marque).map((morceau, i) =>
+export const toggleMark = (title: string, effect: Effect): string => {
+  const m = MARKS.find((x) => x.effect === effect);
+  if (!m) return title;
+  if (!title.includes(m.mark)) return `${title.trimEnd()} ${m.emoji}`;
+  const withoutMark = title.split(m.mark).map((chunk, i) =>
     // Le sélecteur de variante suit la marque : il part avec elle.
-    i > 0 ? morceau.replace(/^\uFE0F/, "") : morceau,
+    i > 0 ? chunk.replace(/^\uFE0F/, "") : chunk,
   );
-  return sansMarque.join("").replace(/\s{2,}/g, " ").trim();
+  return withoutMark.join("").replace(/\s{2,}/g, " ").trim();
 };
 
 /** Un rectangle à l'écran : celui de la liste, ou celui de la carte. */
@@ -48,32 +48,32 @@ export interface Zone {
   height: number;
 }
 
-const alea = (min: number, max: number): number => min + Math.random() * (max - min);
-const parmi = <T,>(valeurs: readonly T[]): T =>
-  valeurs[Math.floor(Math.random() * valeurs.length)] as T;
-const couleur = (c: string) => `var(--mantine-color-${c}-filled)`;
+const random = (min: number, max: number): number => min + Math.random() * (max - min);
+const pickFrom = <T,>(values: readonly T[]): T =>
+  values[Math.floor(Math.random() * values.length)] as T;
+const color = (c: string) => `var(--mantine-color-${c}-filled)`;
 
 // Les propriétés personnalisées (« --dx ») ne figurent pas dans CSSProperties :
 // React les accepte, TypeScript ne les connaît pas.
-type StyleAvecVariables = CSSProperties & Record<`--${string}`, string | number>;
+type StyleWithVariables = CSSProperties & Record<`--${string}`, string | number>;
 
 /**
  * Retire l'effet au bout de sa durée. Le rappel est gardé dans une référence :
  * il change à chaque rendu du tableau, et remettrait le compte à zéro.
  */
-function useFin(onDone: () => void, duree: number) {
-  const fini = useRef(onDone);
+function useFinish(onDone: () => void, duration: number) {
+  const finished = useRef(onDone);
   useEffect(() => {
-    fini.current = onDone;
+    finished.current = onDone;
   }, [onDone]);
   useEffect(() => {
-    const t = setTimeout(() => fini.current(), duree);
+    const t = setTimeout(() => finished.current(), duration);
     return () => clearTimeout(t);
-  }, [duree]);
+  }, [duration]);
 }
 
 /** Le calque d'un effet : posé sur l'écran, il ne retient aucun clic. */
-function Calque({ style, animations, children }: {
+function Layer({ style, animations, children }: {
   style: CSSProperties;
   animations: string;
   children: ReactNode;
@@ -89,14 +89,14 @@ function Calque({ style, animations, children }: {
   );
 }
 
-interface EffetProps {
+interface EffectProps {
   zone: Zone;
   onDone: () => void;
 }
 
 // --- ❤️ Pluie de cœurs ----------------------------------------------------
-const COEURS_DUREE = 3400;
-const COEURS_ANIMATIONS = `
+const HEARTS_DURATION = 3400;
+const HEARTS_ANIMATIONS = `
 @keyframes milo-coeur-chute {
   0%   { transform: translate3d(0, var(--haut), 0); opacity: 0; }
   10%  { opacity: 1; }
@@ -109,41 +109,41 @@ const COEURS_ANIMATIONS = `
 }
 `;
 
-function Coeurs({ zone, onDone }: EffetProps) {
-  useFin(onDone, COEURS_DUREE);
-  const coeurs = useMemo(
+function Hearts({ zone, onDone }: EffectProps) {
+  useFinish(onDone, HEARTS_DURATION);
+  const cores = useMemo(
     () =>
       Array.from({ length: 40 }, (_, i) => ({
         id: i,
-        depart: alea(0, 96),
-        taille: alea(12, 26),
-        couleur: couleur(parmi(["red", "pink", "grape"])),
-        haut: alea(-180, -40),
-        bas: Math.min(zone.height, 520) * alea(0.5, 1),
-        duree: alea(1900, 2700),
-        retard: alea(0, 600),
-        balance: alea(6, 18),
-        rythme: alea(500, 900),
+        start: random(0, 96),
+        taille: random(12, 26),
+        color: color(pickFrom(["red", "pink", "grape"])),
+        top: random(-180, -40),
+        fall: Math.min(zone.height, 520) * random(0.5, 1),
+        duration: random(1900, 2700),
+        late: random(0, 600),
+        balance: random(6, 18),
+        tempo: random(500, 900),
       })),
     [zone.height],
   );
   return (
-    <Calque
+    <Layer
       style={{ left: zone.x, top: zone.y, width: zone.width, height: 0 }}
-      animations={COEURS_ANIMATIONS}
+      animations={HEARTS_ANIMATIONS}
     >
-      {coeurs.map((c) => (
+      {cores.map((c) => (
         <span
           key={c.id}
           style={{
             position: "absolute",
-            left: `${c.depart}%`,
+            left: `${c.start}%`,
             top: 0,
             opacity: 0,
-            "--haut": `${c.haut}px`,
-            "--bas": `${c.bas}px`,
-            animation: `milo-coeur-chute ${c.duree}ms ease-in ${c.retard}ms forwards`,
-          } as StyleAvecVariables}
+            "--haut": `${c.top}px`,
+            "--bas": `${c.fall}px`,
+            animation: `milo-coeur-chute ${c.duration}ms ease-in ${c.late}ms forwards`,
+          } as StyleWithVariables}
         >
           <svg
             viewBox="0 0 24 24"
@@ -151,22 +151,22 @@ function Coeurs({ zone, onDone }: EffetProps) {
             height={c.taille}
             style={{
               display: "block",
-              fill: c.couleur,
+              fill: c.color,
               "--balance": `${c.balance}px`,
-              animation: `milo-coeur-balance ${c.rythme}ms ease-in-out infinite alternate`,
-            } as StyleAvecVariables}
+              animation: `milo-coeur-balance ${c.tempo}ms ease-in-out infinite alternate`,
+            } as StyleWithVariables}
           >
             <path d="M12 21.6 10.6 20.3C5.4 15.6 2 12.5 2 8.7 2 5.6 4.4 3.2 7.5 3.2c1.7 0 3.4.8 4.5 2.1 1.1-1.3 2.8-2.1 4.5-2.1 3.1 0 5.5 2.4 5.5 5.5 0 3.8-3.4 6.9-8.6 11.6z" />
           </svg>
         </span>
       ))}
-    </Calque>
+    </Layer>
   );
 }
 
 // --- 👍 Pouces qui apparaissent et disparaissent ------------------------
-const POUCES_DUREE = 2600;
-const POUCES_ANIMATIONS = `
+const THUMBS_UP_DURATION = 2600;
+const THUMBS_UP_ANIMATIONS = `
 @keyframes milo-pouce {
   0%   { transform: scale(0) rotate(var(--angle)); opacity: 0; }
   25%  { transform: scale(1.3) rotate(var(--angle)); opacity: 1; }
@@ -176,26 +176,26 @@ const POUCES_ANIMATIONS = `
 }
 `;
 
-function Pouces({ zone, onDone }: EffetProps) {
-  useFin(onDone, POUCES_DUREE);
-  const pouces = useMemo(
+function ThumbsUp({ zone, onDone }: EffectProps) {
+  useFinish(onDone, THUMBS_UP_DURATION);
+  const thumbsUp = useMemo(
     () =>
       Array.from({ length: 14 }, (_, i) => ({
         id: i,
-        x: alea(4, 88),
-        y: alea(0, Math.max(60, Math.min(zone.height, 420) - 40)),
-        taille: alea(22, 40),
-        angle: alea(-25, 25),
-        retard: alea(0, 1300),
+        x: random(4, 88),
+        y: random(0, Math.max(60, Math.min(zone.height, 420) - 40)),
+        taille: random(22, 40),
+        angle: random(-25, 25),
+        late: random(0, 1300),
       })),
     [zone.height],
   );
   return (
-    <Calque
+    <Layer
       style={{ left: zone.x, top: zone.y, width: zone.width, height: 0 }}
-      animations={POUCES_ANIMATIONS}
+      animations={THUMBS_UP_ANIMATIONS}
     >
-      {pouces.map((p) => (
+      {thumbsUp.map((p) => (
         <span
           key={p.id}
           style={{
@@ -206,21 +206,21 @@ function Pouces({ zone, onDone }: EffetProps) {
             lineHeight: 1,
             opacity: 0,
             "--angle": `${p.angle}deg`,
-            animation: `milo-pouce 1100ms ease-out ${p.retard}ms forwards`,
-          } as StyleAvecVariables}
+            animation: `milo-pouce 1100ms ease-out ${p.late}ms forwards`,
+          } as StyleWithVariables}
         >
           👍
         </span>
       ))}
-    </Calque>
+    </Layer>
   );
 }
 
 // --- 🚀 Fusée qui traverse l'écran ---------------------------------------
-const FUSEE_TRAVERSEE = 1600;
-const FUSEE_FUMEE = 900;
-const FUSEE_DUREE = FUSEE_TRAVERSEE + FUSEE_FUMEE;
-const FUSEE_ANIMATIONS = `
+const ROCKET_CROSSING = 1600;
+const ROCKET_SMOKE = 900;
+const ROCKET_DURATION = ROCKET_CROSSING + ROCKET_SMOKE;
+const ROCKET_ANIMATIONS = `
 @keyframes milo-fusee {
   from { transform: translate3d(var(--x0), var(--y0), 0); }
   to   { transform: translate3d(var(--x1), var(--y1), 0); }
@@ -232,20 +232,20 @@ const FUSEE_ANIMATIONS = `
 `;
 
 // Gris neutre : les gris de la palette tirent sur le bleu.
-const FUMEE = "light-dark(#cfcfcf, #8a8a8a)";
+const SMOKE = "light-dark(#cfcfcf, #8a8a8a)";
 
-function Fusee({ onDone }: { onDone: () => void }) {
-  useFin(onDone, FUSEE_DUREE);
+function Rocket({ onDone }: { onDone: () => void }) {
+  useFinish(onDone, ROCKET_DURATION);
   // La fusée part du bas à gauche et sort en haut à droite, en ligne droite
   // et à vitesse constante : les bouffées de fumée, semées à intervalles
   // réguliers sur le trajet, tombent ainsi juste derrière elle.
-  const trajet = useMemo(() => {
+  const path = useMemo(() => {
     const largeur = window.innerWidth;
-    const hauteur = window.innerHeight;
+    const height = window.innerHeight;
     const x0 = -80;
-    const y0 = hauteur * alea(0.7, 0.95);
+    const y0 = height * random(0.7, 0.95);
     const x1 = largeur + 80;
-    const y1 = hauteur * alea(0.02, 0.25);
+    const y1 = height * random(0.02, 0.25);
     const angle = (Math.atan2(y1 - y0, x1 - x0) * 180) / Math.PI;
     const n = 28;
     const fumee = Array.from({ length: n }, (_, i) => {
@@ -254,8 +254,8 @@ function Fusee({ onDone }: { onDone: () => void }) {
         id: i,
         x: x0 + (x1 - x0) * f,
         y: y0 + (y1 - y0) * f,
-        retard: FUSEE_TRAVERSEE * f,
-        taille: alea(14, 24),
+        late: ROCKET_CROSSING * f,
+        taille: random(14, 24),
       };
     });
     // L'emoji pointe déjà vers le haut à droite, à 45° : on ne tourne que l'écart.
@@ -263,8 +263,8 @@ function Fusee({ onDone }: { onDone: () => void }) {
   }, []);
 
   return (
-    <Calque style={{ inset: 0 }} animations={FUSEE_ANIMATIONS}>
-      {trajet.fumee.map((b) => (
+    <Layer style={{ inset: 0 }} animations={ROCKET_ANIMATIONS}>
+      {path.fumee.map((b) => (
         <span
           key={b.id}
           style={{
@@ -274,9 +274,9 @@ function Fusee({ onDone }: { onDone: () => void }) {
             width: b.taille,
             height: b.taille,
             borderRadius: "50%",
-            backgroundColor: FUMEE,
+            backgroundColor: SMOKE,
             opacity: 0,
-            animation: `milo-fumee ${FUSEE_FUMEE}ms ease-out ${b.retard}ms forwards`,
+            animation: `milo-fumee ${ROCKET_SMOKE}ms ease-out ${b.late}ms forwards`,
           }}
         />
       ))}
@@ -285,32 +285,32 @@ function Fusee({ onDone }: { onDone: () => void }) {
           position: "absolute",
           left: 0,
           top: 0,
-          "--x0": `${trajet.x0}px`,
-          "--y0": `${trajet.y0}px`,
-          "--x1": `${trajet.x1}px`,
-          "--y1": `${trajet.y1}px`,
-          transform: `translate3d(${trajet.x0}px, ${trajet.y0}px, 0)`,
-          animation: `milo-fusee ${FUSEE_TRAVERSEE}ms linear forwards`,
-        } as StyleAvecVariables}
+          "--x0": `${path.x0}px`,
+          "--y0": `${path.y0}px`,
+          "--x1": `${path.x1}px`,
+          "--y1": `${path.y1}px`,
+          transform: `translate3d(${path.x0}px, ${path.y0}px, 0)`,
+          animation: `milo-fusee ${ROCKET_CROSSING}ms linear forwards`,
+        } as StyleWithVariables}
       >
         <span
           style={{
             display: "block",
             fontSize: 48,
             lineHeight: 1,
-            transform: `translate(-50%, -50%) rotate(${trajet.rotation}deg)`,
+            transform: `translate(-50%, -50%) rotate(${path.rotation}deg)`,
           }}
         >
           🚀
         </span>
       </span>
-    </Calque>
+    </Layer>
   );
 }
 
 // --- 🔥 Flammes en bas de la carte ---------------------------------------
-const FLAMMES_DUREE = 2600;
-const FLAMMES_ANIMATIONS = `
+const FLAMES_DURATION = 2600;
+const FLAMES_ANIMATIONS = `
 @keyframes milo-flamme-vie {
   0%   { transform: scale(0); opacity: 0; }
   15%  { transform: scale(1); opacity: 1; }
@@ -328,44 +328,44 @@ const FLAMMES_ANIMATIONS = `
 `;
 
 // Une langue de feu : une goutte pointe en haut, chaude au cœur.
-const FLAMME_EXTERIEURE =
+const OUTER_FLAME =
   "radial-gradient(circle at 35% 65%, #ffd23f 0%, #ff8a1f 45%, #e8401c 80%, #b8200c 100%)";
-const FLAMME_INTERIEURE =
+const INNER_FLAME =
   "radial-gradient(circle at 35% 65%, #fffbe0 0%, #ffe066 50%, #ffb12b 100%)";
 
-function Flammes({ zone, onDone }: EffetProps) {
-  useFin(onDone, FLAMMES_DUREE);
-  const { langues, etincelles } = useMemo(() => {
+function Flames({ zone, onDone }: EffectProps) {
+  useFinish(onDone, FLAMES_DURATION);
+  const { tongues, sparks } = useMemo(() => {
     const n = Math.max(5, Math.round(zone.width / 16));
-    const langues = Array.from({ length: n }, (_, i) => {
-      const taille = alea(16, 26);
+    const tongues = Array.from({ length: n }, (_, i) => {
+      const taille = random(16, 26);
       return {
         id: i,
-        x: ((i + 0.5) / n) * 100 + alea(-3, 3),
+        x: ((i + 0.5) / n) * 100 + random(-3, 3),
         taille,
-        interieure: taille * alea(0.45, 0.6),
-        retard: alea(0, 250),
-        danse: alea(140, 280),
+        inner: taille * random(0.45, 0.6),
+        late: random(0, 250),
+        dance: random(140, 280),
       };
     });
-    const etincelles = Array.from({ length: 18 }, (_, i) => ({
+    const sparks = Array.from({ length: 18 }, (_, i) => ({
       id: i,
-      x: alea(5, 95),
-      dx: alea(-14, 14),
-      monte: alea(-70, -35),
-      retard: alea(200, 1800),
-      duree: alea(500, 900),
+      x: random(5, 95),
+      dx: random(-14, 14),
+      mounted: random(-70, -35),
+      late: random(200, 1800),
+      duration: random(500, 900),
     }));
-    return { langues, etincelles };
+    return { tongues, sparks };
   }, [zone.width]);
 
   // Les flammes prennent racine juste sous la carte et lèchent son bas.
   return (
-    <Calque
+    <Layer
       style={{ left: zone.x, top: zone.y + zone.height + 4, width: zone.width, height: 0 }}
-      animations={FLAMMES_ANIMATIONS}
+      animations={FLAMES_ANIMATIONS}
     >
-      {langues.map((l) => (
+      {tongues.map((l) => (
         <span
           key={l.id}
           style={{
@@ -377,7 +377,7 @@ function Flammes({ zone, onDone }: EffetProps) {
             marginLeft: -l.taille / 2,
             transformOrigin: "50% 100%",
             opacity: 0,
-            animation: `milo-flamme-vie ${FLAMMES_DUREE - l.retard}ms ease-out ${l.retard}ms forwards`,
+            animation: `milo-flamme-vie ${FLAMES_DURATION - l.late}ms ease-out ${l.late}ms forwards`,
           }}
         >
           <span
@@ -385,23 +385,23 @@ function Flammes({ zone, onDone }: EffetProps) {
               position: "absolute",
               inset: 0,
               transformOrigin: "50% 100%",
-              animation: `milo-flamme-danse ${l.danse}ms ease-in-out infinite alternate`,
+              animation: `milo-flamme-danse ${l.dance}ms ease-in-out infinite alternate`,
             }}
           >
             {[
-              { taille: l.taille, fond: FLAMME_EXTERIEURE },
-              { taille: l.interieure, fond: FLAMME_INTERIEURE },
-            ].map((goutte, i) => (
+              { taille: l.taille, background: OUTER_FLAME },
+              { taille: l.inner, background: INNER_FLAME },
+            ].map((drop, i) => (
               <span
                 key={i}
                 style={{
                   position: "absolute",
                   left: "50%",
-                  bottom: goutte.taille * 0.2,
-                  width: goutte.taille,
-                  height: goutte.taille,
-                  marginLeft: -goutte.taille / 2,
-                  background: goutte.fond,
+                  bottom: drop.taille * 0.2,
+                  width: drop.taille,
+                  height: drop.taille,
+                  marginLeft: -drop.taille / 2,
+                  background: drop.background,
                   borderRadius: "50% 0 50% 50%",
                   transform: "rotate(-45deg) scale(1, 1.1)",
                   filter: i === 0 ? "blur(0.6px)" : undefined,
@@ -411,7 +411,7 @@ function Flammes({ zone, onDone }: EffetProps) {
           </span>
         </span>
       ))}
-      {etincelles.map((e) => (
+      {sparks.map((e) => (
         <span
           key={e.id}
           style={{
@@ -425,18 +425,18 @@ function Flammes({ zone, onDone }: EffetProps) {
             boxShadow: "0 0 4px #ff8a1f",
             opacity: 0,
             "--dx": `${e.dx}px`,
-            "--monte": `${e.monte}px`,
-            animation: `milo-etincelle ${e.duree}ms ease-out ${e.retard}ms forwards`,
-          } as StyleAvecVariables}
+            "--monte": `${e.mounted}px`,
+            animation: `milo-etincelle ${e.duration}ms ease-out ${e.late}ms forwards`,
+          } as StyleWithVariables}
         />
       ))}
-    </Calque>
+    </Layer>
   );
 }
 
 // --- ❄️ Neige qui tombe ---------------------------------------------------
-const NEIGE_DUREE = 6200;
-const NEIGE_ANIMATIONS = `
+const SNOW_DURATION = 6200;
+const SNOW_ANIMATIONS = `
 @keyframes milo-neige-chute {
   0%   { transform: translate3d(0, var(--haut), 0); opacity: 0; }
   10%  { opacity: 1; }
@@ -450,48 +450,48 @@ const NEIGE_ANIMATIONS = `
 `;
 
 // Blanc bleuté, cerné d'une ombre : la neige reste visible sur un fond clair.
-const FLOCON = "light-dark(#f4f9ff, #ffffff)";
-const OMBRE_FLOCON = "0 0 3px rgba(60, 100, 160, 0.45)";
+const SNOWFLAKE = "light-dark(#f4f9ff, #ffffff)";
+const SNOWFLAKE_SHADOW = "0 0 3px rgba(60, 100, 160, 0.45)";
 
-function Neige({ zone, onDone }: EffetProps) {
-  useFin(onDone, NEIGE_DUREE);
-  const flocons = useMemo(
+function Neige({ zone, onDone }: EffectProps) {
+  useFinish(onDone, SNOW_DURATION);
+  const snowflakes = useMemo(
     () =>
       Array.from({ length: 60 }, (_, i) => {
-        const etoile = alea(0, 1) < 0.35;
+        const etoile = random(0, 1) < 0.35;
         return {
           id: i,
-          depart: alea(0, 98),
+          start: random(0, 98),
           etoile,
-          taille: etoile ? alea(12, 20) : alea(4, 9),
-          haut: alea(-160, -20),
-          bas: Math.min(zone.height, 560) * alea(0.6, 1.05),
-          dx: alea(-30, 30),
-          duree: alea(3000, 4500),
-          retard: alea(0, 1600),
-          balance: alea(900, 1600),
+          taille: etoile ? random(12, 20) : random(4, 9),
+          top: random(-160, -20),
+          fall: Math.min(zone.height, 560) * random(0.6, 1.05),
+          dx: random(-30, 30),
+          duration: random(3000, 4500),
+          late: random(0, 1600),
+          balance: random(900, 1600),
         };
       }),
     [zone.height],
   );
   return (
-    <Calque
+    <Layer
       style={{ left: zone.x, top: zone.y, width: zone.width, height: 0 }}
-      animations={NEIGE_ANIMATIONS}
+      animations={SNOW_ANIMATIONS}
     >
-      {flocons.map((f) => (
+      {snowflakes.map((f) => (
         <span
           key={f.id}
           style={{
             position: "absolute",
-            left: `${f.depart}%`,
+            left: `${f.start}%`,
             top: 0,
             opacity: 0,
-            "--haut": `${f.haut}px`,
-            "--bas": `${f.bas}px`,
+            "--haut": `${f.top}px`,
+            "--bas": `${f.fall}px`,
             "--dx": `${f.dx}px`,
-            animation: `milo-neige-chute ${f.duree}ms linear ${f.retard}ms forwards`,
-          } as StyleAvecVariables}
+            animation: `milo-neige-chute ${f.duration}ms linear ${f.late}ms forwards`,
+          } as StyleWithVariables}
         >
           <span
             style={{
@@ -501,15 +501,15 @@ function Neige({ zone, onDone }: EffetProps) {
                 ? {
                     fontSize: f.taille,
                     lineHeight: 1,
-                    color: FLOCON,
-                    textShadow: OMBRE_FLOCON,
+                    color: SNOWFLAKE,
+                    textShadow: SNOWFLAKE_SHADOW,
                   }
                 : {
                     width: f.taille,
                     height: f.taille,
                     borderRadius: "50%",
-                    backgroundColor: FLOCON,
-                    boxShadow: OMBRE_FLOCON,
+                    backgroundColor: SNOWFLAKE,
+                    boxShadow: SNOWFLAKE_SHADOW,
                   }),
             }}
           >
@@ -518,16 +518,16 @@ function Neige({ zone, onDone }: EffetProps) {
           </span>
         </span>
       ))}
-    </Calque>
+    </Layer>
   );
 }
 
 // --- ⚡ Foudre qui tombe ---------------------------------------------------
-const ECLAIRS = 3;
-const ECART_ECLAIRS = 450;
-const ECLAIR_DUREE = 650;
-const FOUDRE_DUREE = (ECLAIRS - 1) * ECART_ECLAIRS + ECLAIR_DUREE + 100;
-const FOUDRE_ANIMATIONS = `
+const FLASHES = 3;
+const FLASHES_GAP = 450;
+const FLASH_DURATION = 650;
+const LIGHTNING_DURATION = (FLASHES - 1) * FLASHES_GAP + FLASH_DURATION + 100;
+const LIGHTNING_ANIMATIONS = `
 @keyframes milo-eclair {
   0%   { opacity: 0; }
   6%   { opacity: 1; }
@@ -548,42 +548,42 @@ const FOUDRE_ANIMATIONS = `
 /** Un éclair en zigzag, du haut de l'écran jusqu'au point d'impact, avec une fourche. */
 function zigzag(xImpact: number, yImpact: number) {
   const pas = 12;
-  let x = xImpact + alea(-60, 60);
+  let x = xImpact + random(-60, 60);
   const points: [number, number][] = [[x, 0]];
   for (let i = 1; i < pas; i++) {
     const f = i / pas;
     // Le zigzag se resserre à l'approche du point d'impact.
-    x += alea(-38, 38) * (1 - f * 0.5) + (xImpact - x) * f * 0.5;
+    x += random(-38, 38) * (1 - f * 0.5) + (xImpact - x) * f * 0.5;
     points.push([x, yImpact * f]);
   }
   points.push([xImpact, yImpact]);
-  const depart = points[Math.floor(alea(3, 7))] ?? points[0]!;
-  const sens = Math.random() < 0.5 ? -1 : 1;
-  const fourche: [number, number][] = [depart];
-  let [fx, fy] = depart;
+  const start = points[Math.floor(random(3, 7))] ?? points[0]!;
+  const direction = Math.random() < 0.5 ? -1 : 1;
+  const fork: [number, number][] = [start];
+  let [fx, fy] = start;
   for (let i = 0; i < 4; i++) {
-    fx += sens * alea(15, 40);
-    fy += alea(25, 50);
-    fourche.push([fx, fy]);
+    fx += direction * random(15, 40);
+    fy += random(25, 50);
+    fork.push([fx, fy]);
   }
-  const trace = (pts: [number, number][]) => pts.map(([a, b]) => `${a},${b}`).join(" ");
-  return { tronc: trace(points), fourche: trace(fourche) };
+  const toPoints = (pts: [number, number][]) => pts.map(([a, b]) => `${a},${b}`).join(" ");
+  return { trunk: toPoints(points), fork: toPoints(fork) };
 }
 
-function Foudre({ zone, onDone }: EffetProps) {
-  useFin(onDone, FOUDRE_DUREE);
-  const eclairs = useMemo(
+function Lightning({ zone, onDone }: EffectProps) {
+  useFinish(onDone, LIGHTNING_DURATION);
+  const flashes = useMemo(
     () =>
-      Array.from({ length: ECLAIRS }, (_, i) => ({
+      Array.from({ length: FLASHES }, (_, i) => ({
         id: i,
-        retard: i * ECART_ECLAIRS,
-        ...zigzag(zone.x + zone.width * alea(0.15, 0.85), zone.y + alea(10, 40)),
+        late: i * FLASHES_GAP,
+        ...zigzag(zone.x + zone.width * random(0.15, 0.85), zone.y + random(10, 40)),
       })),
     [zone.x, zone.y, zone.width],
   );
   return (
-    <Calque style={{ inset: 0 }} animations={FOUDRE_ANIMATIONS}>
-      {eclairs.map((e) => (
+    <Layer style={{ inset: 0 }} animations={LIGHTNING_ANIMATIONS}>
+      {flashes.map((e) => (
         <div key={e.id}>
           <div
             style={{
@@ -591,7 +591,7 @@ function Foudre({ zone, onDone }: EffetProps) {
               inset: 0,
               backgroundColor: "#fff",
               opacity: 0,
-              animation: `milo-flash ${ECLAIR_DUREE}ms linear ${e.retard}ms forwards`,
+              animation: `milo-flash ${FLASH_DURATION}ms linear ${e.late}ms forwards`,
             }}
           />
           <svg
@@ -603,10 +603,10 @@ function Foudre({ zone, onDone }: EffetProps) {
               opacity: 0,
               overflow: "visible",
               filter: "drop-shadow(0 0 6px #ffe066) drop-shadow(0 0 14px #fab005)",
-              animation: `milo-eclair ${ECLAIR_DUREE}ms linear ${e.retard}ms forwards`,
+              animation: `milo-eclair ${FLASH_DURATION}ms linear ${e.late}ms forwards`,
             }}
           >
-            {[e.tronc, e.fourche].map((pts, i) => (
+            {[e.trunk, e.fork].map((pts, i) => (
               <g key={i} fill="none" strokeLinejoin="round" strokeLinecap="round">
                 <polyline points={pts} stroke="#ffd43b" strokeWidth={i === 0 ? 6 : 3} />
                 <polyline points={pts} stroke="#fffdf0" strokeWidth={i === 0 ? 2.5 : 1.2} />
@@ -615,38 +615,38 @@ function Foudre({ zone, onDone }: EffetProps) {
           </svg>
         </div>
       ))}
-    </Calque>
+    </Layer>
   );
 }
 
 // --- Aiguillage -------------------------------------------------------------
-interface EffetFeteProps {
-  effet: Effet;
+interface CelebrationEffectProps {
+  effect: Effect;
   /** La liste qui accueille la carte. */
-  liste: Zone;
+  column: Zone;
   /** La carte arrivée, quand elle est à l'écran : les flammes s'y attachent. */
-  carte: Zone | null;
+  card: Zone | null;
   onDone: () => void;
 }
 
-export default function EffetFete({ effet, liste, carte, onDone }: EffetFeteProps) {
-  switch (effet) {
+export default function CelebrationEffect({ effect, column, card, onDone }: CelebrationEffectProps) {
+  switch (effect) {
     case "confettis":
-      return <Confetti x={liste.x} y={liste.y} width={liste.width} onDone={onDone} />;
+      return <Confetti x={column.x} y={column.y} width={column.width} onDone={onDone} />;
     case "coeurs":
-      return <Coeurs zone={liste} onDone={onDone} />;
+      return <Hearts zone={column} onDone={onDone} />;
     case "pouces":
-      return <Pouces zone={liste} onDone={onDone} />;
+      return <ThumbsUp zone={column} onDone={onDone} />;
     case "fusee":
-      return <Fusee onDone={onDone} />;
+      return <Rocket onDone={onDone} />;
     case "flammes":
       // Sans carte mesurée, les flammes prennent le haut de la liste.
       return (
-        <Flammes zone={carte ?? { ...liste, height: Math.min(liste.height, 80) }} onDone={onDone} />
+        <Flames zone={card ?? { ...column, height: Math.min(column.height, 80) }} onDone={onDone} />
       );
     case "neige":
-      return <Neige zone={liste} onDone={onDone} />;
+      return <Neige zone={column} onDone={onDone} />;
     case "foudre":
-      return <Foudre zone={liste} onDone={onDone} />;
+      return <Lightning zone={column} onDone={onDone} />;
   }
 }

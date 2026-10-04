@@ -15,10 +15,10 @@ import type { SupportAttachment } from "@milo/shared";
 import { selection } from "../db/query.js";
 import type { TicketFileRow } from "../db/rows.js";
 import { env } from "../env.js";
-import { typeEnLigne } from "./medias.js";
+import { inlineType } from "./medias.js";
 
 /** Au-delà, une pièce jointe n'est pas rapatriée : l'e-mail le dit à sa place. */
-export const TAILLE_MAX_TICKET = 50 * 1024 * 1024;
+export const TICKET_SIZE_MAX = 50 * 1024 * 1024;
 
 /**
  * Au-delà, les pièces jointes d'une réponse ne partent pas par e-mail : Graph
@@ -26,94 +26,94 @@ export const TAILLE_MAX_TICKET = 50 * 1024 * 1024;
  * requête, et le base64 les grossit d'un tiers. Au-delà, il faudrait passer
  * par un brouillon — et la permission Mail.ReadWrite.
  */
-export const TAILLE_MAX_ENVOI = 3 * 1024 * 1024;
-export const TAILLE_MAX_ENVOI_MO = TAILLE_MAX_ENVOI / (1024 * 1024);
+export const SEND_SIZE_MAX = 3 * 1024 * 1024;
+export const SEND_SIZE_MAX_MB = SEND_SIZE_MAX / (1024 * 1024);
 
 /**
  * Les fichiers d'une réponse, tels que le client les a déposés : seuls des
  * noms des nôtres, présents sur le disque. La taille est relue sur le disque,
  * pas crue sur parole.
  */
-export const fichiersDeposes = (valeur: unknown): TicketFileRow[] | null => {
-  if (valeur === undefined) return [];
-  if (!Array.isArray(valeur)) return null;
-  const fichiers: TicketFileRow[] = [];
-  for (const brut of valeur as { file?: unknown; name?: unknown; mime?: unknown }[]) {
-    const file = String(brut?.file ?? "");
-    const chemin = cheminTicket(file);
-    if (!chemin || !fs.existsSync(chemin)) return null;
-    fichiers.push({
+export const uploadedFiles = (value: unknown): TicketFileRow[] | null => {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+  const files: TicketFileRow[] = [];
+  for (const raw of value as { file?: unknown; name?: unknown; mime?: unknown }[]) {
+    const file = String(raw?.file ?? "");
+    const relativePath = ticketPathFor(file);
+    if (!relativePath || !fs.existsSync(relativePath)) return null;
+    files.push({
       file,
-      name: String(brut?.name ?? "").trim() || file,
-      mime: String(brut?.mime ?? "") || "application/octet-stream",
-      size: fs.statSync(chemin).size,
+      name: String(raw?.name ?? "").trim() || file,
+      mime: String(raw?.mime ?? "") || "application/octet-stream",
+      size: fs.statSync(relativePath).size,
       inline: false,
     });
   }
-  return fichiers;
+  return files;
 };
 
 /** Le contenu d'un fichier de ticket, pour l'envoyer. */
-export const lireTicket = (fichier: string): Buffer | null => {
-  const chemin = cheminTicket(fichier);
-  return chemin && fs.existsSync(chemin) ? fs.readFileSync(chemin) : null;
+export const readTicket = (file: string): Buffer | null => {
+  const relativePath = ticketPathFor(file);
+  return relativePath && fs.existsSync(relativePath) ? fs.readFileSync(relativePath) : null;
 };
 
-const NOM_RANGE = /^[0-9a-f]{32}(\.[a-z0-9]{1,12})?$/;
+const RANGE_NAME = /^[0-9a-f]{32}(\.[a-z0-9]{1,12})?$/;
 
 fs.mkdirSync(env.ticketsPath, { recursive: true });
 
-const extensionDe = (nom: string): string => {
-  const trouve = /\.([A-Za-z0-9]{1,12})$/.exec(nom.trim());
-  return trouve ? `.${trouve[1]!.toLowerCase()}` : "";
+const extensionOf = (name: string): string => {
+  const found = /\.([A-Za-z0-9]{1,12})$/.exec(name.trim());
+  return found ? `.${found[1]!.toLowerCase()}` : "";
 };
 
 /** Le chemin d'un fichier de ticket, ou rien si le nom n'est pas l'un des nôtres. */
-export const cheminTicket = (fichier: string): string | null =>
-  NOM_RANGE.test(fichier) ? path.join(env.ticketsPath, fichier) : null;
+export const ticketPathFor = (file: string): string | null =>
+  RANGE_NAME.test(file) ? path.join(env.ticketsPath, file) : null;
 
 /** Écrit le fichier et rend le nom sous lequel il est rangé. */
-export const ecrireTicket = (contenu: Buffer, nomOrigine: string): string => {
-  const fichier = `${crypto.randomBytes(16).toString("hex")}${extensionDe(nomOrigine)}`;
-  fs.writeFileSync(path.join(env.ticketsPath, fichier), contenu);
-  return fichier;
+export const writeTicket = (content: Buffer, originalName: string): string => {
+  const file = `${crypto.randomBytes(16).toString("hex")}${extensionOf(originalName)}`;
+  fs.writeFileSync(path.join(env.ticketsPath, file), content);
+  return file;
 };
 
-export const supprimerTicket = (fichier: string): void => {
-  const chemin = cheminTicket(fichier);
-  if (chemin) fs.rmSync(chemin, { force: true });
+export const deleteTicket = (file: string): void => {
+  const relativePath = ticketPathFor(file);
+  if (relativePath) fs.rmSync(relativePath, { force: true });
 };
 
 /** L'adresse publique d'un fichier de ticket. */
-export const urlTicket = (fichier: string): string => `/api/ticket-files/${fichier}`;
+export const ticketUrl = (file: string): string => `/api/ticket-files/${file}`;
 
-export { typeEnLigne };
+export { inlineType };
 
 /** Les fichiers d'un message, relus de leur JSON ; rien s'il est illisible. */
-export const fichiersDe = (json: string): TicketFileRow[] => {
+export const filesOf = (json: string): TicketFileRow[] => {
   try {
-    const liste = JSON.parse(json) as unknown;
-    return Array.isArray(liste) ? (liste as TicketFileRow[]) : [];
+    const list = JSON.parse(json) as unknown;
+    return Array.isArray(list) ? (list as TicketFileRow[]) : [];
   } catch {
     return [];
   }
 };
 
 /** Les pièces jointes telles que le fil les montre : sans les images intégrées. */
-export const piecesJointes = (json: string): SupportAttachment[] =>
-  fichiersDe(json)
+export const parseAttachments = (json: string): SupportAttachment[] =>
+  filesOf(json)
     .filter((f) => !f.inline)
-    .map((f) => ({ name: f.name, url: urlTicket(f.file), mime: f.mime, size: f.size }));
+    .map((f) => ({ name: f.name, url: ticketUrl(f.file), mime: f.mime, size: f.size }));
 
-const messagesQuiCitent = selection<{ attachments: string }>(
+const messagesCiting = selection<{ attachments: string }>(
   "SELECT attachments FROM support_comments WHERE attachments LIKE ?",
 );
 
 /** Le fichier tel qu'un message le décrit : son nom d'origine, surtout. */
-export const fichierCite = (fichier: string): TicketFileRow | undefined => {
-  for (const { attachments } of messagesQuiCitent.all(`%"${fichier}"%`)) {
-    const trouve = fichiersDe(attachments).find((f) => f.file === fichier);
-    if (trouve) return trouve;
+export const quotedFile = (file: string): TicketFileRow | undefined => {
+  for (const { attachments } of messagesCiting.all(`%"${file}"%`)) {
+    const found = filesOf(attachments).find((f) => f.file === file);
+    if (found) return found;
   }
   return undefined;
 };
@@ -123,8 +123,8 @@ export const fichierCite = (fichier: string): TicketFileRow | undefined => {
  * recopie le fil d'une demande dans une autre, fichiers compris : supprimer
  * l'une ne doit pas priver l'autre de ses images.
  */
-export const oublierFichiers = (fichiers: string[]): void => {
-  for (const fichier of fichiers) {
-    if (!fichierCite(fichier)) supprimerTicket(fichier);
+export const forgetFiles = (files: string[]): void => {
+  for (const file of files) {
+    if (!quotedFile(file)) deleteTicket(file);
   }
 };

@@ -8,8 +8,8 @@
 import { mutation, selection } from "../db/query.js";
 import type { SettingRow } from "../db/rows.js";
 
-const lire = selection<SettingRow>("SELECT * FROM settings WHERE key = ?");
-const ecrire = mutation(
+const read = selection<SettingRow>("SELECT * FROM settings WHERE key = ?");
+const write = mutation(
   `INSERT INTO settings (key, value) VALUES (?, ?)
    ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
 );
@@ -20,16 +20,16 @@ const ecrire = mutation(
  * est traité comme une absence : l'application repart du défaut plutôt que de
  * refuser de démarrer.
  */
-export const readSetting = <T>(key: string, defaut: T): T => {
-  const ligne = lire.get(key);
-  if (!ligne) return defaut;
+export const readSetting = <T>(key: string, defaultValue: T): T => {
+  const row = read.get(key);
+  if (!row) return defaultValue;
   try {
-    return JSON.parse(ligne.value) as T;
+    return JSON.parse(row.value) as T;
   } catch {
-    return defaut;
+    return defaultValue;
   }
 };
 
-export const writeSetting = (key: string, valeur: unknown): void => {
-  ecrire.run(key, JSON.stringify(valeur));
+export const writeSetting = (key: string, value: unknown): void => {
+  write.run(key, JSON.stringify(value));
 };

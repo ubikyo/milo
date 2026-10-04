@@ -2,49 +2,49 @@ import { BarChart } from "@mantine/charts";
 import { Select, Stack } from "@mantine/core";
 import { IconChartHistogram } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import { avec, nombre } from "../widgets/types";
-import { ChampNom, NOM, TitreIndicateur } from "./commun";
+import { withField, count } from "../widgets/types";
+import { NameField, NAME, TitreIndicateur } from "./commun";
 import type { SupportIndicatorWidget } from "./types";
 
 // Les demandes reçues jour après jour, sur la période choisie : de quoi voir
 // venir un afflux, ou le calme d'une semaine de vacances.
 
-const LIBELLE = "Évolution";
-const PERIODE = "jours";
-const PERIODES = [7, 14, 30];
-const PERIODE_PAR_DEFAUT = 14;
+const LABEL = "Évolution";
+const PERIOD = "jours";
+const PERIODS = [7, 14, 30];
+const PERIOD_DEFAULT = 14;
 
 /** La période rangée, ou celle par défaut : une valeur inconnue ne fait rien tomber. */
-const periodeDe = (config: unknown) => {
-  const jours = nombre(config, PERIODE, PERIODE_PAR_DEFAUT);
-  return PERIODES.includes(jours) ? jours : PERIODE_PAR_DEFAUT;
+const periodOf = (config: unknown) => {
+  const days = count(config, PERIOD, PERIOD_DEFAULT);
+  return PERIODS.includes(days) ? days : PERIOD_DEFAULT;
 };
 
 export const evolutionIndicator: SupportIndicatorWidget = {
   type: "trend",
   kind: "helpdesk",
-  label: LIBELLE,
+  label: LABEL,
   icon: IconChartHistogram,
-  defaultConfig: { [NOM]: "", [PERIODE]: PERIODE_PAR_DEFAUT },
+  defaultConfig: { [NAME]: "", [PERIOD]: PERIOD_DEFAULT },
 
   Display: ({ config, requests }) => {
-    const jours = periodeDe(config);
-    const debut = dayjs().startOf("day").subtract(jours - 1, "day");
-    const parJour = new Map<string, number>();
-    for (const demande of requests) {
-      const jour = dayjs(demande.created_at).startOf("day");
-      if (jour.isBefore(debut)) continue;
-      const cle = jour.format("YYYY-MM-DD");
-      parJour.set(cle, (parJour.get(cle) ?? 0) + 1);
+    const days = periodOf(config);
+    const start = dayjs().startOf("day").subtract(days - 1, "day");
+    const byDay = new Map<string, number>();
+    for (const request of requests) {
+      const day = dayjs(request.created_at).startOf("day");
+      if (day.isBefore(start)) continue;
+      const key = day.format("YYYY-MM-DD");
+      byDay.set(key, (byDay.get(key) ?? 0) + 1);
     }
-    const data = Array.from({ length: jours }, (_, i) => {
-      const jour = debut.add(i, "day");
-      return { jour: jour.format("DD/MM"), tickets: parJour.get(jour.format("YYYY-MM-DD")) ?? 0 };
+    const data = Array.from({ length: days }, (_, i) => {
+      const day = start.add(i, "day");
+      return { day: day.format("DD/MM"), tickets: byDay.get(day.format("YYYY-MM-DD")) ?? 0 };
     });
 
     return (
       <Stack gap={4} style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaut={`${LIBELLE} sur ${jours} jours`} />
+        <TitreIndicateur config={config} defaultValue={`${LABEL} sur ${days} jours`} />
         <BarChart
           h={160}
           data={data}
@@ -60,12 +60,12 @@ export const evolutionIndicator: SupportIndicatorWidget = {
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
-      <ChampNom config={config} onChange={onChange} defaut={LIBELLE} />
+      <NameField config={config} onChange={onChange} defaultValue={LABEL} />
       <Select
         label="Période"
-        data={PERIODES.map((j) => ({ value: String(j), label: `${j} derniers jours` }))}
-        value={String(periodeDe(config))}
-        onChange={(value) => value && onChange(avec(config, PERIODE, Number(value)))}
+        data={PERIODS.map((j) => ({ value: String(j), label: `${j} derniers jours` }))}
+        value={String(periodOf(config))}
+        onChange={(value) => value && onChange(withField(config, PERIOD, Number(value)))}
         allowDeselect={false}
       />
     </Stack>

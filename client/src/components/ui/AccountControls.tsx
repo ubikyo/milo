@@ -9,7 +9,7 @@ import { initialsOf } from "./ActorAvatars";
 import { ROW_CONTROL_HEIGHT, ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
 import type { ReactNode } from "react";
 import type { PublicUser, SearchResult } from "@milo/shared";
-import type { ContextesMenuProps } from "./ContextesMenu";
+import type { ContextsMenuProps } from "./ContextesMenu";
 import WorkspaceMenu from "./WorkspaceMenu";
 
 // Les contextes du tableau ouvert et le compte, au bout de la rangée d'onglets
@@ -21,7 +21,7 @@ export interface AccountControlsProps {
    * Les contextes du tableau ouvert ; absents sans tableau. Ils ne se posent
    * plus ici mais dans l'onglet actif (BoardTabs), à l'essai.
    */
-  contextes?: Omit<ContextesMenuProps, "visibleFrom">;
+  contexts?: Omit<ContextsMenuProps, "visibleFrom">;
   user: PublicUser;
   onLogout: () => void;
   onOpenSettings: () => void;
@@ -49,7 +49,7 @@ export type AccountSlot = Omit<AccountControlsProps, "actions"> & {
    * Ouvre l'élément choisi dans la recherche, où qu'il se trouve. La recherche
    * est posée par ModeBar, devant ce bout de rangée.
    */
-  onSearchOpen: (resultat: SearchResult) => void;
+  onSearchOpen: (result: SearchResult) => void;
 };
 
 export default function AccountControls({

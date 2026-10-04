@@ -1,8 +1,8 @@
 import { Select, Stack } from "@mantine/core";
 import { IconFolders } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import { avec, texte } from "../widgets/types";
-import { ChampNom, NOM, TitreIndicateur, ValeurIndicateur, termine } from "./commun";
+import { withField, text } from "../widgets/types";
+import { NameField, NAME, TitreIndicateur, IndicatorValue, isFinished } from "./commun";
 import type { ProjectIndicatorWidget } from "./types";
 import type { Id, Project } from "@milo/shared";
 
@@ -13,82 +13,82 @@ import type { Id, Project } from "@milo/shared";
 const TYPE = "type";
 
 /** Au-delà, un projet en cours qu'on ne modifie plus est à l'arrêt ; en deçà, un projet est récent. */
-const JOURS = 30;
+const DAYS = 30;
 
-const depuis = (date: string): number => dayjs().diff(dayjs(date), "day", true);
+const since = (date: string): number => dayjs().diff(dayjs(date), "day", true);
 
-interface TypeDeProjets {
+interface ProjectType {
   value: string;
   label: string;
-  compte: (p: Project, moi: Id) => boolean;
+  account: (p: Project, me: Id) => boolean;
 }
 
-const TYPE_PAR_DEFAUT: TypeDeProjets = {
+const DEFAULT_TYPE: ProjectType = {
   value: "in_progress",
   label: "Projets en cours",
-  compte: (p) => !termine(p),
+  account: (p) => !isFinished(p),
 };
 
-const TYPES: TypeDeProjets[] = [
-  TYPE_PAR_DEFAUT,
-  { value: "not_started", label: "Projets non démarrés", compte: (p) => p.status === 0 },
-  { value: "done", label: "Projets terminés", compte: termine },
+const TYPES: ProjectType[] = [
+  DEFAULT_TYPE,
+  { value: "not_started", label: "Projets non démarrés", account: (p) => p.status === 0 },
+  { value: "done", label: "Projets terminés", account: isFinished },
   {
     value: "unassigned",
     label: "Projets sans acteur",
-    compte: (p) => !termine(p) && p.actors.length === 0,
+    account: (p) => !isFinished(p) && p.actors.length === 0,
   },
   {
     value: "mine",
     label: "Projets qui me sont attribués",
-    compte: (p, moi) => !termine(p) && p.actors.some((a) => a.id === moi),
+    account: (p, me) => !isFinished(p) && p.actors.some((a) => a.id === me),
   },
   {
     value: "stale",
-    label: `Projets sans activité depuis ${JOURS} jours`,
-    compte: (p) => !termine(p) && depuis(p.updated_at) >= JOURS,
+    label: `Projets sans activité depuis ${DAYS} jours`,
+    account: (p) => !isFinished(p) && since(p.updated_at) >= DAYS,
   },
   {
     value: "recent",
-    label: `Projets créés ces ${JOURS} derniers jours`,
-    compte: (p) => depuis(p.created_at) < JOURS,
+    label: `Projets créés ces ${DAYS} derniers jours`,
+    account: (p) => since(p.created_at) < DAYS,
   },
-  { value: "total", label: "Projets au total", compte: () => true },
+  { value: "total", label: "Projets au total", account: () => true },
 ];
 
 /** Le type rangé, ou le premier : une valeur inconnue ne fait rien tomber. */
-const typeDe = (config: unknown) =>
-  TYPES.find((t) => t.value === texte(config, TYPE)) ?? TYPE_PAR_DEFAUT;
+const typeOf = (config: unknown) =>
+  TYPES.find((t) => t.value === text(config, TYPE)) ?? DEFAULT_TYPE;
 
-export const projetsIndicator: ProjectIndicatorWidget = {
+export const projectsIndicator: ProjectIndicatorWidget = {
   type: "projects",
   kind: "project",
   label: "Indicateur",
   icon: IconFolders,
-  avecValeur: true,
-  defaultConfig: { [NOM]: "", [TYPE]: TYPE_PAR_DEFAUT.value },
+  withValue: true,
+  defaultConfig: { [NAME]: "", [TYPE]: DEFAULT_TYPE.value },
 
   Display: ({ config, projects, userId }) => {
-    const type = typeDe(config);
+    const type = typeOf(config);
     return (
       // Le nom en haut, la quantité en bas à gauche, comme les tickets.
       <Stack gap={4} justify="space-between" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaut={type.label} />
-        <ValeurIndicateur config={config}>
-          {projects.filter((p) => type.compte(p, userId)).length}
-        </ValeurIndicateur>
+        <TitreIndicateur config={config} defaultValue={type.label} />
+        <IndicatorValue config={config}>
+          {projects.filter((p) => type.account(p, userId)).length}
+        </IndicatorValue>
       </Stack>
     );
   },
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
-      <ChampNom config={config} onChange={onChange} defaut={typeDe(config).label} />
+      <NameField config={config} onChange={onChange} defaultValue={typeOf(config).label} />
       <Select
         label="Données"
         data={TYPES.map(({ value, label }) => ({ value, label }))}
-        value={typeDe(config).value}
-        onChange={(value) => value && onChange(avec(config, TYPE, value))}
+        value={typeOf(config).value}
+        onChange={(value) => value && onChange(withField(config, TYPE, value))}
         allowDeselect={false}
       />
     </Stack>

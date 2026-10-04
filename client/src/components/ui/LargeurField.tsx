@@ -12,49 +12,49 @@ import { ECART_FIELD_HEIGHT } from "./EcartField";
 // colonne a à l'écran : elle ne saute pas. Le nombre part à la validation —
 // Entrée ou perte du focus —, comme l'écart.
 
-const UNITES: { value: SectionWidthUnit; label: string }[] = [
+const UNITS: { value: SectionWidthUnit; label: string }[] = [
   { value: "auto", label: "auto" },
   { value: "px", label: "px" },
   { value: "percent", label: "%" },
 ];
 
 /** Le nombre que l'unité admet. */
-const borne = (unite: SectionWidthUnit, nombre: number): number =>
-  Math.max(1, unite === "percent" ? Math.min(Math.round(nombre), 100) : Math.round(nombre));
+const bound = (unit: SectionWidthUnit, count: number): number =>
+  Math.max(1, unit === "percent" ? Math.min(Math.round(count), 100) : Math.round(count));
 
 /** La largeur d'une section : « width_value » n'a de sens qu'hors « auto ». */
-export interface LargeurSection {
+export interface SectionWidth {
   width_unit: SectionWidthUnit;
   width_value: number | null;
 }
 
-interface LargeurFieldProps {
-  value: LargeurSection;
-  onChange: (largeur: LargeurSection) => void | Promise<void>;
+interface WidthFieldProps {
+  value: SectionWidth;
+  onChange: (largeur: SectionWidth) => void | Promise<void>;
   /** La largeur que la colonne a à l'écran, dans cette unité. */
-  mesurer: (unite: Exclude<SectionWidthUnit, "auto">) => number;
+  measure: (unit: Exclude<SectionWidthUnit, "auto">) => number;
   style?: CSSProperties;
 }
 
-export default function LargeurField({ value, onChange, mesurer, style }: LargeurFieldProps) {
+export default function WidthField({ value, onChange, measure, style }: WidthFieldProps) {
   /** Ce qui est tapé ; « null » tant qu'on n'y a pas touché. */
-  const [saisie, setSaisie] = useState<number | string | null>(null);
+  const [input, setInput] = useState<number | string | null>(null);
 
-  const choisir = (unite: SectionWidthUnit) => {
-    if (unite === value.width_unit) return;
-    setSaisie(null);
+  const select = (unit: SectionWidthUnit) => {
+    if (unit === value.width_unit) return;
+    setInput(null);
     void onChange({
-      width_unit: unite,
-      width_value: unite === "auto" ? null : borne(unite, mesurer(unite)),
+      width_unit: unit,
+      width_value: unit === "auto" ? null : bound(unit, measure(unit)),
     });
   };
 
-  const valider = () => {
-    if (saisie === null || value.width_unit === "auto") return;
-    const nombre = Number(saisie);
-    setSaisie(null);
-    if (saisie === "" || !Number.isFinite(nombre)) return;
-    const largeur = borne(value.width_unit, nombre);
+  const validate = () => {
+    if (input === null || value.width_unit === "auto") return;
+    const count = Number(input);
+    setInput(null);
+    if (input === "" || !Number.isFinite(count)) return;
+    const largeur = bound(value.width_unit, count);
     if (largeur !== value.width_value) {
       void onChange({ width_unit: value.width_unit, width_value: largeur });
     }
@@ -77,17 +77,17 @@ export default function LargeurField({ value, onChange, mesurer, style }: Largeu
           allowDecimal={false}
           allowNegative={false}
           hideControls
-          value={saisie ?? value.width_value ?? ""}
-          onChange={setSaisie}
-          onBlur={valider}
+          value={input ?? value.width_value ?? ""}
+          onChange={setInput}
+          onBlur={validate}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              valider();
+              validate();
               e.currentTarget.blur();
             }
             if (e.key === "Escape") {
-              setSaisie(null);
+              setInput(null);
               e.currentTarget.blur();
             }
           }}
@@ -100,9 +100,9 @@ export default function LargeurField({ value, onChange, mesurer, style }: Largeu
       <Select
         size="xs"
         w={value.width_unit === "auto" ? 44 : 32}
-        data={UNITES}
+        data={UNITS}
         value={value.width_unit}
-        onChange={(unite) => unite && choisir(unite as SectionWidthUnit)}
+        onChange={(unit) => unit && select(unit as SectionWidthUnit)}
         allowDeselect={false}
         withCheckIcon={false}
         rightSection={<IconChevronDown size={10} />}

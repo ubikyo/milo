@@ -2,7 +2,7 @@ import { ActionIcon, Box, Checkbox, Group, Progress, Stack, Text, TextInput } fr
 import { IconListCheck, IconPlus, IconX } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import classes from "../assets/styles/AccessNumero.module.css";
-import { avec } from "./types";
+import { withField } from "./types";
 import type { AccessWidget, WidgetConfigProps, WidgetDisplayProps } from "./types";
 
 // Une liste de choses à faire : des éléments qu'on coche, à même la colonne.
@@ -11,37 +11,37 @@ import type { AccessWidget, WidgetConfigProps, WidgetDisplayProps } from "./type
 // configuration du widget : la liste est celle du tableau, la même pour qui le
 // regarde. Catégorie verrouillée, elle se lit sans se modifier.
 
-const ELEMENTS = "elements";
-const MASQUER_FAITS = "masquerFaits";
-const FAITS_EN_BAS = "faitsEnBas";
-const PROGRESSION = "progression";
-const ENCADRE = "encadre";
+const ITEMS = "elements";
+const HIDE_DONE = "masquerFaits";
+const DONE_AT_BOTTOM = "faitsEnBas";
+const PROGRESS = "progression";
+const FRAMED = "encadre";
 
 interface Element {
   id: string;
-  texte: string;
-  fait: boolean;
+  text: string;
+  done: boolean;
 }
 
-const coche = (config: unknown, cle: string, defaut: boolean): boolean => {
-  const valeur = (config as Record<string, unknown> | null)?.[cle];
-  return valeur === undefined ? defaut : Boolean(valeur);
+const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean => {
+  const value = (config as Record<string, unknown> | null)?.[key];
+  return value === undefined ? defaultValue : Boolean(value);
 };
 
 /** Les éléments rangés, sans ce qui n'en a pas la forme. */
-const elementsDe = (config: unknown): Element[] => {
-  const valeur = (config as Record<string, unknown> | null)?.[ELEMENTS];
-  if (!Array.isArray(valeur)) return [];
-  return valeur.flatMap((e: unknown) => {
+const itemsOf = (config: unknown): Element[] => {
+  const value = (config as Record<string, unknown> | null)?.[ITEMS];
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((e: unknown) => {
     const o = e as Partial<Element> | null;
-    if (!o || typeof o.texte !== "string") return [];
-    return [{ id: typeof o.id === "string" ? o.id : crypto.randomUUID(), texte: o.texte, fait: Boolean(o.fait) }];
+    if (!o || typeof o.text !== "string") return [];
+    return [{ id: typeof o.id === "string" ? o.id : crypto.randomUUID(), text: o.text, done: Boolean(o.done) }];
   });
 };
 
-const nouvelId = () => crypto.randomUUID();
+const newId = () => crypto.randomUUID();
 
-function Ligne({
+function Row({
   element,
   locked,
   onToggle,
@@ -51,17 +51,17 @@ function Ligne({
   element: Element;
   locked: boolean;
   onToggle: () => void;
-  onRename: (texte: string) => void;
+  onRename: (text: string) => void;
   onRemove: () => void;
 }) {
-  const [edition, setEdition] = useState(false);
-  const [brouillon, setBrouillon] = useState(element.texte);
-  const [survol, setSurvol] = useState(false);
+  const [editMode, setEditing] = useState(false);
+  const [draft, setDraft] = useState(element.text);
+  const [hover, setHovering] = useState(false);
 
-  const fermer = () => {
-    setEdition(false);
-    const texte = brouillon.trim();
-    if (texte && texte !== element.texte) onRename(texte);
+  const close = () => {
+    setEditing(false);
+    const text = draft.trim();
+    if (text && text !== element.text) onRename(text);
   };
 
   return (
@@ -69,26 +69,26 @@ function Ligne({
       gap="xs"
       wrap="nowrap"
       align="flex-start"
-      onMouseEnter={() => setSurvol(true)}
-      onMouseLeave={() => setSurvol(false)}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
     >
       <Checkbox
-        checked={element.fait}
+        checked={element.done}
         onChange={onToggle}
         disabled={locked}
         color="teal"
         size="xs"
         mt={3}
-        aria-label={element.texte}
+        aria-label={element.text}
       />
-      {edition ? (
+      {editMode ? (
         <TextInput
-          value={brouillon}
-          onChange={(e) => setBrouillon(e.currentTarget.value)}
-          onBlur={fermer}
+          value={draft}
+          onChange={(e) => setDraft(e.currentTarget.value)}
+          onBlur={close}
           onKeyDown={(e) => {
-            if (e.key === "Enter") fermer();
-            if (e.key === "Escape") setEdition(false);
+            if (e.key === "Enter") close();
+            if (e.key === "Escape") setEditing(false);
           }}
           autoFocus
           variant="unstyled"
@@ -101,28 +101,28 @@ function Ligne({
           size="sm"
           lh={1.3}
           style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere", cursor: locked ? undefined : "pointer" }}
-          td={element.fait ? "line-through" : undefined}
-          c={element.fait ? "dimmed" : undefined}
+          td={element.done ? "line-through" : undefined}
+          c={element.done ? "dimmed" : undefined}
           // Un clic sur le texte coche, comme le ferait une étiquette ; le
           // double-clic renomme.
           onClick={() => !locked && onToggle()}
           onDoubleClick={() => {
             if (locked) return;
-            setBrouillon(element.texte);
-            setEdition(true);
+            setDraft(element.text);
+            setEditing(true);
           }}
         >
-          {element.texte}
+          {element.text}
         </Text>
       )}
-      {!locked && !edition && (
+      {!locked && !editMode && (
         <ActionIcon
           variant="subtle"
           color="gray"
           size="xs"
           onClick={onRemove}
           aria-label="Retirer"
-          style={{ visibility: survol ? "visible" : "hidden" }}
+          style={{ visibility: hover ? "visible" : "hidden" }}
         >
           <IconX size={12} />
         </ActionIcon>
@@ -131,71 +131,71 @@ function Ligne({
   );
 }
 
-function ListeAFaire({ config, onChange, locked }: WidgetDisplayProps) {
+function TodoList({ config, onChange, locked }: WidgetDisplayProps) {
   // Les éléments se changent aussitôt à l'écran, sans attendre que le serveur
   // ait rangé la configuration ; ce qu'il renvoie les remplace ensuite.
-  const [elements, setElements] = useState(() => elementsDe(config));
-  const [saisie, setSaisie] = useState("");
-  const ranges = JSON.stringify((config as Record<string, unknown> | null)?.[ELEMENTS] ?? []);
+  const [items, setItems] = useState(() => itemsOf(config));
+  const [input, setInput] = useState("");
+  const serialized = JSON.stringify((config as Record<string, unknown> | null)?.[ITEMS] ?? []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => setElements(elementsDe(config)), [ranges]);
+  useEffect(() => setItems(itemsOf(config)), [serialized]);
 
-  const ranger = (suivants: Element[]) => {
-    setElements(suivants);
-    void onChange(avec(config, ELEMENTS, suivants));
+  const store = (nextItems: Element[]) => {
+    setItems(nextItems);
+    void onChange(withField(config, ITEMS, nextItems));
   };
 
-  const ajouter = () => {
-    const texte = saisie.trim();
-    if (!texte) return;
-    ranger([...elements, { id: nouvelId(), texte, fait: false }]);
-    setSaisie("");
+  const add = () => {
+    const text = input.trim();
+    if (!text) return;
+    store([...items, { id: newId(), text, done: false }]);
+    setInput("");
   };
 
-  const masquer = coche(config, MASQUER_FAITS, false);
-  const enBas = coche(config, FAITS_EN_BAS, true);
-  const faits = elements.filter((e) => e.fait).length;
-  const visibles = elements
-    .filter((e) => !(masquer && e.fait))
-    .sort((a, b) => (enBas ? Number(a.fait) - Number(b.fait) : 0));
+  const hide = isChecked(config, HIDE_DONE, false);
+  const atBottom = isChecked(config, DONE_AT_BOTTOM, true);
+  const done = items.filter((e) => e.done).length;
+  const visibleItems = items
+    .filter((e) => !(hide && e.done))
+    .sort((a, b) => (atBottom ? Number(a.done) - Number(b.done) : 0));
 
   // Cocher, saisir ou sélectionner un mot ne fait pas glisser le widget.
-  const contenu = (
+  const content = (
     <Stack gap={6} data-no-widget-drag>
-      {coche(config, PROGRESSION, false) && elements.length > 0 && (
+      {isChecked(config, PROGRESS, false) && items.length > 0 && (
         <Group gap="xs" wrap="nowrap">
-          <Progress value={(faits / elements.length) * 100} color="teal" size="sm" style={{ flex: 1 }} />
+          <Progress value={(done / items.length) * 100} color="teal" size="sm" style={{ flex: 1 }} />
           <Text size="xs" c="dimmed" style={{ fontVariantNumeric: "tabular-nums" }}>
-            {faits}/{elements.length}
+            {done}/{items.length}
           </Text>
         </Group>
       )}
-      {visibles.map((e) => (
-        <Ligne
+      {visibleItems.map((e) => (
+        <Row
           key={e.id}
           element={e}
           locked={locked}
-          onToggle={() => ranger(elements.map((x) => (x.id === e.id ? { ...x, fait: !x.fait } : x)))}
-          onRename={(texte) => ranger(elements.map((x) => (x.id === e.id ? { ...x, texte } : x)))}
-          onRemove={() => ranger(elements.filter((x) => x.id !== e.id))}
+          onToggle={() => store(items.map((x) => (x.id === e.id ? { ...x, done: !x.done } : x)))}
+          onRename={(text) => store(items.map((x) => (x.id === e.id ? { ...x, text } : x)))}
+          onRemove={() => store(items.filter((x) => x.id !== e.id))}
         />
       ))}
-      {elements.length === 0 && locked && (
+      {items.length === 0 && locked && (
         <Text size="sm" c="dimmed">
           Rien à faire
         </Text>
       )}
-      {masquer && faits > 0 && (
+      {hide && done > 0 && (
         <Text size="xs" c="dimmed">
-          {faits} élément{faits > 1 ? "s" : ""} fait{faits > 1 ? "s" : ""} masqué{faits > 1 ? "s" : ""}
+          {done} élément{done > 1 ? "s" : ""} fait{done > 1 ? "s" : ""} masqué{done > 1 ? "s" : ""}
         </Text>
       )}
       {!locked && (
         <TextInput
           placeholder="Ajouter un élément"
-          value={saisie}
-          onChange={(e) => setSaisie(e.currentTarget.value)}
-          onKeyDown={(e) => e.key === "Enter" && ajouter()}
+          value={input}
+          onChange={(e) => setInput(e.currentTarget.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
           size="xs"
           variant="unstyled"
           leftSection={<IconPlus size={14} />}
@@ -206,45 +206,45 @@ function ListeAFaire({ config, onChange, locked }: WidgetDisplayProps) {
     </Stack>
   );
 
-  if (!coche(config, ENCADRE, false)) return contenu;
+  if (!isChecked(config, FRAMED, false)) return content;
   return (
     <Box className={classes.encart} style={{ border: "none" }}>
-      {contenu}
+      {content}
     </Box>
   );
 }
 
-function Champs({ config, onChange }: WidgetConfigProps) {
-  const elements = elementsDe(config);
-  const faits = elements.filter((e) => e.fait).length;
+function Fields({ config, onChange }: WidgetConfigProps) {
+  const items = itemsOf(config);
+  const done = items.filter((e) => e.done).length;
   return (
     <Stack gap="sm">
       <Checkbox
         label="Placer les éléments faits en bas de la liste"
-        checked={coche(config, FAITS_EN_BAS, true)}
-        onChange={(e) => onChange(avec(config, FAITS_EN_BAS, e.currentTarget.checked))}
+        checked={isChecked(config, DONE_AT_BOTTOM, true)}
+        onChange={(e) => onChange(withField(config, DONE_AT_BOTTOM, e.currentTarget.checked))}
         color="teal"
       />
       <Checkbox
         label="Masquer les éléments faits"
-        checked={coche(config, MASQUER_FAITS, false)}
-        onChange={(e) => onChange(avec(config, MASQUER_FAITS, e.currentTarget.checked))}
+        checked={isChecked(config, HIDE_DONE, false)}
+        onChange={(e) => onChange(withField(config, HIDE_DONE, e.currentTarget.checked))}
         color="teal"
       />
       <Checkbox
         label="Afficher la progression"
-        checked={coche(config, PROGRESSION, false)}
-        onChange={(e) => onChange(avec(config, PROGRESSION, e.currentTarget.checked))}
+        checked={isChecked(config, PROGRESS, false)}
+        onChange={(e) => onChange(withField(config, PROGRESS, e.currentTarget.checked))}
         color="teal"
       />
-      {faits > 0 && (
+      {done > 0 && (
         <Text
           size="sm"
           c="red"
           style={{ cursor: "pointer", width: "fit-content" }}
-          onClick={() => onChange(avec(config, ELEMENTS, elements.filter((e) => !e.fait)))}
+          onClick={() => onChange(withField(config, ITEMS, items.filter((e) => !e.done)))}
         >
-          Retirer les {faits} élément{faits > 1 ? "s" : ""} fait{faits > 1 ? "s" : ""}
+          Retirer les {done} élément{done > 1 ? "s" : ""} fait{done > 1 ? "s" : ""}
         </Text>
       )}
     </Stack>
@@ -256,17 +256,17 @@ export const todoWidget: AccessWidget = {
   kind: "common",
   label: "À faire",
   icon: IconListCheck,
-  defaultConfig: { [ELEMENTS]: [], [FAITS_EN_BAS]: true, [MASQUER_FAITS]: false, [PROGRESSION]: false },
+  defaultConfig: { [ITEMS]: [], [DONE_AT_BOTTOM]: true, [HIDE_DONE]: false, [PROGRESS]: false },
   // On coche, renomme et retire à même la colonne.
   ownClicks: true,
 
-  Display: ListeAFaire,
+  Display: TodoList,
 
-  marges: () => ({ haute: 0, basse: 15 }),
+  margins: () => ({ top: 0, bottom: 15 }),
 
   // Il dessine lui-même son cadre, réglé dans le bloc « Apparence » du tiroir.
-  cadrePropre: true,
+  ownFrame: true,
 
-  Config: Champs,
+  Config: Fields,
 
 };

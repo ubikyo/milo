@@ -9,52 +9,52 @@
 
 import { fillSupportTemplate, supportReplyValues } from "@milo/shared";
 import type { Id, SupportReplyEvent, SupportStatus } from "@milo/shared";
-import { signalerEcriture } from "../middleware/events.js";
+import { signalWrite } from "../middleware/events.js";
 import { supportComments, supportRequests } from "../repositories/support.js";
-import { reponsePour } from "../routes/support-replies.js";
-import { porteDuContenu } from "./html.js";
-import { boiteDeReponse, repondreParEmail } from "./support-reply.js";
-import { personneExpediteur } from "./support-variables.js";
+import { replyFor } from "../routes/support-replies.js";
+import { hasContent } from "./html.js";
+import { replyMailbox, replyByEmail } from "./support-reply.js";
+import { senderPerson } from "./support-variables.js";
 import { now } from "./time.js";
 
 /** L'évènement qu'un nouveau statut déclenche ; « Nouveau » n'en déclenche aucun. */
-export const evenementDuStatut = (statut: SupportStatus): SupportReplyEvent | null =>
-  statut === "new" ? null : statut;
+export const statusEvent = (status: SupportStatus): SupportReplyEvent | null =>
+  status === "new" ? null : status;
 
 /**
  * Envoie la réponse qu'appelle l'évènement, s'il y en a une et que la demande
  * a quelqu'un à qui répondre, et que son modèle est renseigné. Ne lève
  * jamais : un échec se lit sur le message, dans le fil.
  */
-export const envoyerReponseAuto = async (
-  demandeId: Id,
-  evenement: SupportReplyEvent,
+export const sendAutoReply = async (
+  requestId: Id,
+  event: SupportReplyEvent,
 ): Promise<void> => {
   try {
-    const demande = supportRequests.byId.get(demandeId);
-    if (!demande || !boiteDeReponse(demande)) return;
-    const reponse = reponsePour(evenement);
-    if (!reponse) return;
+    const request = supportRequests.byId.get(requestId);
+    if (!request || !replyMailbox(request)) return;
+    const reply = replyFor(event);
+    if (!reply) return;
 
-    if (!porteDuContenu(reponse.html)) return;
+    if (!hasContent(reply.html)) return;
     // Partie d'office, la réponse n'a pas d'utilisateur : ses variables restent vides.
-    const expediteur = await personneExpediteur(demande);
+    const sender = await senderPerson(request);
     const html = fillSupportTemplate(
-      reponse.html,
-      supportReplyValues({ expediteur, demande }),
+      reply.html,
+      supportReplyValues({ sender, request }),
     );
 
     const instant = now();
     const { lastInsertRowid } = supportComments.createAuto.run(
-      demande.id,
+      request.id,
       html,
-      evenement,
+      event,
       instant,
       instant,
     );
-    await repondreParEmail(demande, lastInsertRowid as Id, html);
-    signalerEcriture("support-requests");
-  } catch (erreur) {
-    console.error(`Réponse par défaut « ${evenement} » à la demande ${demandeId} :`, erreur);
+    await replyByEmail(request, lastInsertRowid as Id, html);
+    signalWrite("support-requests");
+  } catch (error) {
+    console.error(`Réponse par défaut « ${event} » à la demande ${requestId} :`, error);
   }
 };

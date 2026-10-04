@@ -5,7 +5,7 @@ import type { Database as SqliteDatabase } from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import { env } from "../env.js";
-import { migrate, numeroterReferences } from "./migrations.js";
+import { migrate, numberReferences } from "./migrations.js";
 import { seedIfEmpty } from "./seed.js";
 import { INDEXES, SCHEMA } from "./schema.js";
 
@@ -28,6 +28,6 @@ migrate(db);
 db.exec(INDEXES);
 seedIfEmpty(db);
 // Les projets de démonstration n'ont pas de référence : ils en reçoivent une.
-numeroterReferences(db);
+numberReferences(db);
 
 export default db;

@@ -15,25 +15,25 @@ import { IconDeviceLaptop, IconRefresh } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api";
 import SuccessAlert from "../ui/SuccessAlert";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import { tabStyle } from "../../themes/tabs";
-import { SANS_CADRE, TABLEAUX, VIDE } from "./InventoryTables";
-import AssetSummaryPanel, { FOND_CARTE } from "./AssetSummaryPanel";
-import SystemeExploitation from "./SystemeExploitation";
-import TitreFiche, { ESPACE_SOUS_TITRE } from "./TitreFiche";
+import { WITHOUT_FRAME, TABLEAUX, EMPTY } from "./InventoryTables";
+import AssetSummaryPanel, { CARD_BACKGROUND } from "./AssetSummaryPanel";
+import OperatingSystem from "./SystemeExploitation";
+import RecordTitle, { SPACE_BELOW_TITLE } from "./TitreFiche";
 import classes from "../../assets/styles/AssetDrawer.module.css";
 import type { CSSProperties } from "react";
 import type { Asset, AssetDetail, AssetEntry, AssetSection } from "@milo/shared";
-import BoutonFermer from "../ui/BoutonFermer";
+import CloseButton from "../ui/BoutonFermer";
 
 const DRAWER_PADDING = 40;
 const DRAWER_WIDTH = 1100;
 
 /** Largeur de la colonne d'onglets : « Utilisateurs et groupes » y tient. */
-const LARGEUR_ONGLETS = 210;
+const TABS_WIDTH = 210;
 
 /** L'espace entre les boutons de l'en-tête et le reste de la fiche. */
-const ESPACE_SOUS_ENTETE = 30;
+const SPACE_BELOW_HEADER = 30;
 
 /**
  * Après une demande d'inventaire, l'agent refait son tour de machine et
@@ -42,8 +42,8 @@ const ESPACE_SOUS_ENTETE = 30;
  * date changer, puis on renonce — sans bloquer quoi que ce soit, le tiroir
  * reste lisible pendant ce temps.
  */
-const ATTENTE_RELECTURE = 3_000;
-const RELECTURES = 10;
+const REREAD_DELAY = 3_000;
+const RELOAD_ATTEMPTS = 10;
 
 /**
  * Ce qu'on ouvre pour prendre la main. Le schéma « teamviewer10: » lance le
@@ -55,8 +55,8 @@ const RELECTURES = 10;
  * Aucun mot de passe ne voyage dans l'un ni dans l'autre : il est demandé à
  * l'arrivée, sauf si le poste figure dans les appareils du compte TeamViewer.
  */
-export const lienTeamviewer = (id: string) => `teamviewer10://control?device=${id}`;
-export const lienTeamviewerSecours = (id: string) =>
+export const teamviewerLink = (id: string) => `teamviewer10://control?device=${id}`;
+export const teamviewerFallbackLink = (id: string) =>
   `https://start.teamviewer.com/device/${id}/authorization/password/mode/control`;
 
 /**
@@ -75,35 +75,35 @@ interface AssetDrawerProps {
  * Les champs qu'on sait nommer en français, par section. Les autres gardent
  * le nom de l'agent.
  */
-const LIBELLES_CHAMPS: Record<string, Record<string, string>> = {
+const FIELD_LABELS: Record<string, Record<string, string>> = {
   BIOS: { SMANUFACTURER: "Fabricant", SMODEL: "Modèle", SSN: "Numéro de série" },
 };
 
 /** Les champs d'une entrée, en deux colonnes : le nom, la valeur. */
-function Entree({ section, entry }: { section: string; entry: AssetEntry }) {
-  const libelles = LIBELLES_CHAMPS[section] ?? {};
+function Entry({ section, entry }: { section: string; entry: AssetEntry }) {
+  const labels = FIELD_LABELS[section] ?? {};
   return (
     <Table withRowBorders={false} verticalSpacing={2} horizontalSpacing={0}>
       <Table.Tbody>
-        {Object.entries(entry).map(([champ, valeur]) => (
-          <Table.Tr key={champ}>
+        {Object.entries(entry).map(([field, value]) => (
+          <Table.Tr key={field}>
             {/* Le nom des champs est celui de l'agent, en capitales, quand on
                 ne lui en connaît pas de meilleur : c'est lui qu'on retrouvera
                 dans la doc et dans le XML le jour où il faudra en discuter. */}
             <Table.Td style={{ width: "30%", verticalAlign: "top" }}>
-              {libelles[champ] ? (
+              {labels[field] ? (
                 <Text size="sm" c="dimmed">
-                  {libelles[champ]}
+                  {labels[field]}
                 </Text>
               ) : (
                 <Text size="xs" c="dimmed" ff="monospace">
-                  {champ}
+                  {field}
                 </Text>
               )}
             </Table.Td>
             <Table.Td style={{ verticalAlign: "top" }}>
               <Text size="sm" style={{ wordBreak: "break-word" }}>
-                {valeur || VIDE}
+                {value || EMPTY}
               </Text>
             </Table.Td>
           </Table.Tr>
@@ -114,16 +114,16 @@ function Entree({ section, entry }: { section: string; entry: AssetEntry }) {
 }
 
 /** Un groupe d'onglet : une section de l'inventaire, sous son libellé. */
-interface Groupe {
+interface LocalGroup {
   section: string;
-  libelle: string;
+  label: string;
 }
 
 /** Un onglet de la fiche : plusieurs sections de l'inventaire, à la suite. */
-interface Onglet {
+interface Tab {
   value: string;
-  libelle: string;
-  groupes: Groupe[];
+  label: string;
+  groups: LocalGroup[];
 }
 
 /**
@@ -133,52 +133,52 @@ interface Onglet {
  * des partitions, des lecteurs réseau —, pas des disques ; ANTIVIRUS recense
  * aussi bien les EDR que les antivirus d'autrefois.
  */
-const ONGLETS: Onglet[] = [
+const TABS: Tab[] = [
   {
     value: "utilisateurs",
-    libelle: "Utilisateurs et groupes",
-    groupes: [
-      { section: "LOCAL_USERS", libelle: "Utilisateurs locaux" },
-      { section: "LOCAL_GROUPS", libelle: "Groupes locaux" },
+    label: "Utilisateurs et groupes",
+    groups: [
+      { section: "LOCAL_USERS", label: "Utilisateurs locaux" },
+      { section: "LOCAL_GROUPS", label: "Groupes locaux" },
     ],
   },
   {
     value: "materiel",
-    libelle: "Matériel",
-    groupes: [
-      { section: "BIOS", libelle: "BIOS" },
-      { section: "CPUS", libelle: "Processeurs" },
-      { section: "MEMORIES", libelle: "Mémoire" },
-      { section: "BATTERIES", libelle: "Batterie" },
-      { section: "POWERSUPPLIES", libelle: "Alimentation" },
-      { section: "CONTROLLERS", libelle: "Contrôleurs" },
-      { section: "VIDEOS", libelle: "Vidéo" },
-      { section: "SOUNDS", libelle: "Audio" },
-      { section: "STORAGES", libelle: "Stockage" },
+    label: "Matériel",
+    groups: [
+      { section: "BIOS", label: "BIOS" },
+      { section: "CPUS", label: "Processeurs" },
+      { section: "MEMORIES", label: "Mémoire" },
+      { section: "BATTERIES", label: "Batterie" },
+      { section: "POWERSUPPLIES", label: "Alimentation" },
+      { section: "CONTROLLERS", label: "Contrôleurs" },
+      { section: "VIDEOS", label: "Vidéo" },
+      { section: "SOUNDS", label: "Audio" },
+      { section: "STORAGES", label: "Stockage" },
     ],
   },
   {
     value: "peripheriques",
-    libelle: "Périphériques",
-    groupes: [
-      { section: "INPUTS", libelle: "Périphériques d'entrée" },
-      { section: "MONITORS", libelle: "Moniteurs" },
-      { section: "PRINTERS", libelle: "Imprimantes" },
-      { section: "USBDEVICES", libelle: "USB" },
+    label: "Périphériques",
+    groups: [
+      { section: "INPUTS", label: "Périphériques d'entrée" },
+      { section: "MONITORS", label: "Moniteurs" },
+      { section: "PRINTERS", label: "Imprimantes" },
+      { section: "USBDEVICES", label: "USB" },
     ],
   },
   {
     value: "systeme",
-    libelle: "Système d'exploitation",
-    groupes: [
-      { section: "OPERATINGSYSTEM", libelle: "Description" },
-      { section: "NETWORKS", libelle: "Réseaux" },
-      { section: "DRIVES", libelle: "Volumes" },
-      { section: "ANTIVIRUS", libelle: "EPP / EDR" },
-      { section: "FIREWALL", libelle: "Pare-feu" },
-      { section: "SOFTWARES", libelle: "Applications" },
-      { section: "PROCESSES", libelle: "Process" },
-      { section: "VIRTUALMACHINES", libelle: "Machines virtuelles" },
+    label: "Système d'exploitation",
+    groups: [
+      { section: "OPERATINGSYSTEM", label: "Description" },
+      { section: "NETWORKS", label: "Réseaux" },
+      { section: "DRIVES", label: "Volumes" },
+      { section: "ANTIVIRUS", label: "EPP / EDR" },
+      { section: "FIREWALL", label: "Pare-feu" },
+      { section: "SOFTWARES", label: "Applications" },
+      { section: "PROCESSES", label: "Process" },
+      { section: "VIRTUALMACHINES", label: "Machines virtuelles" },
     ],
   },
 ];
@@ -187,17 +187,17 @@ const ONGLETS: Onglet[] = [
  * Ce qu'on laisse de côté pour le moment : HARDWARE répète ce que disent les
  * autres sections, USERS ce que disent les comptes locaux.
  */
-const SECTIONS_ECARTEES = new Set(["HARDWARE", "USERS"]);
+const EXCLUDED_SECTIONS = new Set(["HARDWARE", "USERS"]);
 
 /** L'onglet « Résumé », toujours le premier : il ne se lit pas dans une section. */
-const RESUME = "resume";
+const SUMMARY = "resume";
 
 /** Les sections déjà rangées dans un onglet. */
-const SECTIONS_RANGEES = new Set(ONGLETS.flatMap((o) => o.groupes.map((g) => g.section)));
+const PLACED_SECTIONS = new Set(TABS.flatMap((o) => o.groups.map((g) => g.section)));
 
 /** Un groupe tel qu'il s'affiche : son libellé, et la section de l'inventaire. */
-interface GroupeAffiche {
-  libelle: string;
+interface DisplayedGroup {
+  label: string;
   section: AssetSection;
 }
 
@@ -207,25 +207,25 @@ interface GroupeAffiche {
  * seuls certains postes déclarent — va dans « Autres », sous son nom
  * d'agent, plutôt que de disparaître sans qu'on le sache.
  */
-const ongletsDe = (sections: AssetSection[]) => {
-  const parNom = new Map(sections.map((s) => [s.name, s]));
-  const onglets = ONGLETS.map(({ value, libelle, groupes }) => ({
+const tabsOf = (sections: AssetSection[]) => {
+  const byName = new Map(sections.map((s) => [s.name, s]));
+  const tabs = TABS.map(({ value, label, groups }) => ({
     value,
-    libelle,
-    groupes: groupes.flatMap(({ section, libelle: titre }): GroupeAffiche[] => {
-      const trouvee = parNom.get(section);
-      return trouvee ? [{ libelle: titre, section: trouvee }] : [];
+    label,
+    groups: groups.flatMap(({ section, label: title }): DisplayedGroup[] => {
+      const foundItem = byName.get(section);
+      return foundItem ? [{ label: title, section: foundItem }] : [];
     }),
   }));
-  const autres = sections
-    .filter((s) => !SECTIONS_RANGEES.has(s.name) && !SECTIONS_ECARTEES.has(s.name))
-    .map((section) => ({ libelle: section.name, section }));
-  onglets.push({ value: "autres", libelle: "Autres", groupes: autres });
-  return onglets.filter((o) => o.groupes.length > 0);
+  const others = sections
+    .filter((s) => !PLACED_SECTIONS.has(s.name) && !EXCLUDED_SECTIONS.has(s.name))
+    .map((section) => ({ label: section.name, section }));
+  tabs.push({ value: "autres", label: "Autres", groups: others });
+  return tabs.filter((o) => o.groups.length > 0);
 };
 
 /** L'air sous une section dépliée, avant l'en-tête de la suivante. */
-const ESPACE_SOUS_SECTION = 30;
+const SPACE_BELOW_SECTION = 30;
 
 /**
  * Les sections d'un onglet à la suite, chacune dans un accordéon, toutes
@@ -235,20 +235,20 @@ const ESPACE_SOUS_SECTION = 30;
  * Le compte dit si elle décrit une chose ou six cents. L'onglet n'est monté
  * qu'ouvert : y revenir replie tout de nouveau.
  */
-function SectionsOnglet({
-  groupes,
+function SectionsTab({
+  groups,
   os,
 }: {
-  groupes: GroupeAffiche[];
+  groups: DisplayedGroup[];
   /** Le système du poste, dont la Description prend le logo. */
   os: AssetDetail["os"];
 }) {
-  const [ouvertes, setOuvertes] = useState<string[]>([]);
+  const [openSessions, setOpenedItems] = useState<string[]>([]);
   return (
     <Accordion
       multiple
-      value={ouvertes}
-      onChange={setOuvertes}
+      value={openSessions}
+      onChange={setOpenedItems}
       chevronPosition="right"
       // Le titre de la première section tombe à la hauteur de « Résumé » :
       // l'en-tête n'a pas de marge à lui, l'écart entre deux en-têtes vient
@@ -259,19 +259,19 @@ function SectionsOnglet({
         item: { border: "none" },
         control: { paddingInline: 0 },
         label: { paddingBlock: 0 },
-        content: { paddingInline: 0, paddingTop: ESPACE_SOUS_TITRE, paddingBottom: 0 },
+        content: { paddingInline: 0, paddingTop: SPACE_BELOW_TITLE, paddingBottom: 0 },
       }}
     >
-      {groupes.map(({ libelle, section }) => (
+      {groups.map(({ label, section }) => (
         <Accordion.Item
           key={section.name}
           value={section.name}
           // Dépliée, la section s'écarte de la suivante.
-          mb={ouvertes.includes(section.name) ? ESPACE_SOUS_SECTION : 0}
+          mb={openSessions.includes(section.name) ? SPACE_BELOW_SECTION : 0}
         >
           <Accordion.Control>
             <Group gap="xs">
-              <TitreFiche replie={!ouvertes.includes(section.name)}>{libelle}</TitreFiche>
+              <RecordTitle collapsed={!openSessions.includes(section.name)}>{label}</RecordTitle>
               {section.entries.length > 1 && (
                 <Badge size="xs" variant="light" color="gray">
                   {section.entries.length}
@@ -281,11 +281,11 @@ function SectionsOnglet({
           </Accordion.Control>
           <Accordion.Panel>
             {/* La grille sur le gris des cartes du Résumé, à leur arrondi. */}
-            {SANS_CADRE.has(section.name) ? (
-              <ContenuSection section={section} os={os} />
+            {WITHOUT_FRAME.has(section.name) ? (
+              <SectionContent section={section} os={os} />
             ) : (
-              <Box p="md" style={{ backgroundColor: FOND_CARTE, borderRadius: 10 }}>
-                <ContenuSection section={section} os={os} />
+              <Box p="md" style={{ backgroundColor: CARD_BACKGROUND, borderRadius: 10 }}>
+                <SectionContent section={section} os={os} />
               </Box>
             )}
           </Accordion.Panel>
@@ -296,15 +296,15 @@ function SectionsOnglet({
 }
 
 /** Le contenu d'une section : son tableau quand elle en a un, ses fiches sinon. */
-function ContenuSection({ section, os }: { section: AssetSection; os: AssetDetail["os"] }) {
+function SectionContent({ section, os }: { section: AssetSection; os: AssetDetail["os"] }) {
   // La description du système, en cartes comme le Résumé.
-  if (section.name === "OPERATINGSYSTEM") return <SystemeExploitation section={section} os={os} />;
-  const Tableau = TABLEAUX[section.name];
-  if (Tableau) return <Tableau section={section} />;
+  if (section.name === "OPERATINGSYSTEM") return <OperatingSystem section={section} os={os} />;
+  const SectionTable = TABLEAUX[section.name];
+  if (SectionTable) return <SectionTable section={section} />;
   return (
     <Stack gap="md">
-      {section.entries.map((entry, rang) => (
-        <Entree key={rang} section={section.name} entry={entry} />
+      {section.entries.map((entry, rank) => (
+        <Entry key={rank} section={section.name} entry={entry} />
       ))}
     </Stack>
   );
@@ -313,17 +313,17 @@ function ContenuSection({ section, os }: { section: AssetSection; os: AssetDetai
 export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps) {
   const [detail, setDetail] = useState<AssetDetail | null>(null);
   /** L'onglet affiché ; le premier s'ouvre avec la fiche. */
-  const [domaine, setDomaine] = useState<string | null>(null);
+  const [domain, setDomain] = useState<string | null>(null);
   /** Ce qu'a donné la dernière demande d'inventaire, dit en une phrase. */
-  const [avis, setAvis] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   /** Vrai de la demande jusqu'au retour de l'agent, ou jusqu'à ce qu'on renonce. */
-  const [demande, setDemande] = useState(false);
+  const [request, setRequested] = useState(false);
   /**
    * Faux dès que le tiroir se ferme ou change de poste : l'attente d'un
    * inventaire dure plusieurs secondes, et ce qui revient ensuite ne concerne
    * peut-être plus ce qu'on regarde.
    */
-  const vivant = useRef(true);
+  const alive = useRef(true);
 
   // L'identifiant, et non le poste : la liste se relit à chaque écriture que le
   // serveur annonce, et le poste est alors un nouvel objet pour les mêmes
@@ -335,31 +335,31 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
     if (!opened || assetId === null) return;
     // Le poste change, ou le tiroir se rouvre : on repart de la liste fermée
     // et on relit. L'inventaire est volumineux, il ne voyage que là.
-    setDomaine(null);
-    setAvis(null);
-    setDemande(false);
+    setDomain(null);
+    setNotice(null);
+    setRequested(false);
     setDetail(null);
-    vivant.current = true;
+    alive.current = true;
 
-    let abandonne = false;
+    let abandoned = false;
     api
       .getAsset(assetId)
-      .then((recu) => {
-        if (abandonne) return;
-        setDetail(recu);
+      .then((received) => {
+        if (abandoned) return;
+        setDetail(received);
         // Le résumé s'ouvre : c'est ce qu'on vient chercher.
-        setDomaine(RESUME);
+        setDomain(SUMMARY);
       })
       .catch((e) => {
-        if (!abandonne) notifierErreur(messageErreur(e));
+        if (!abandoned) notifyError(errorMessage(e));
       });
     return () => {
-      abandonne = true;
-      vivant.current = false;
+      abandoned = true;
+      alive.current = false;
     };
   }, [opened, assetId]);
 
-  const patienter = (ms: number) => new Promise((suite) => setTimeout(suite, ms));
+  const wait = (ms: number) => new Promise((followUp) => setTimeout(followUp, ms));
 
   /**
    * Redemander l'inventaire au poste. Le serveur ne fait que transmettre :
@@ -367,48 +367,48 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
    * relisant qu'on voit arriver le nouveau. Tant qu'il n'est pas là, ce qui
    * est affiché reste affiché — c'est l'inventaire précédent, et il est daté.
    */
-  const redemanderInventaire = async () => {
-    if (assetId === null || demande) return;
-    setAvis(null);
-    setDemande(true);
+  const refetchInventory = async () => {
+    if (assetId === null || request) return;
+    setNotice(null);
+    setRequested(true);
 
-    const avant = detail?.last_inventory;
+    const before = detail?.last_inventory;
     try {
       const { address } = await api.refreshAsset(assetId);
-      if (!vivant.current) return;
-      setAvis(`Demande envoyée à ${address}. L'agent refait son tour de machine…`);
+      if (!alive.current) return;
+      setNotice(`Demande envoyée à ${address}. L'agent refait son tour de machine…`);
 
-      for (let essai = 0; essai < RELECTURES; essai++) {
-        await patienter(ATTENTE_RELECTURE);
-        if (!vivant.current) return;
-        const recu = await api.getAsset(assetId);
-        if (!vivant.current) return;
-        if (recu.last_inventory !== avant) {
-          setDetail(recu);
+      for (let attempt = 0; attempt < RELOAD_ATTEMPTS; attempt++) {
+        await wait(REREAD_DELAY);
+        if (!alive.current) return;
+        const received = await api.getAsset(assetId);
+        if (!alive.current) return;
+        if (received.last_inventory !== before) {
+          setDetail(received);
           // L'onglet ouvert le reste s'il existe encore : on regardait ce
           // qu'il disait, c'est bien pour cela qu'on a redemandé l'inventaire.
-          const onglets = ongletsDe(recu.sections);
-          setDomaine((courant) =>
-            courant === RESUME || (courant && onglets.some((o) => o.value === courant))
-              ? courant
-              : RESUME,
+          const tabs = tabsOf(received.sections);
+          setDomain((current) =>
+            current === SUMMARY || (current && tabs.some((o) => o.value === current))
+              ? current
+              : SUMMARY,
           );
-          setAvis("Inventaire reçu à l'instant.");
+          setNotice("Inventaire reçu à l'instant.");
           return;
         }
       }
-      setAvis(
+      setNotice(
         "Demande transmise, mais rien n'est revenu dans les trente secondes. "
           + "L'inventaire arrivera peut-être plus tard : rouvrez le poste pour voir.",
       );
     } catch (e) {
-      if (vivant.current) notifierErreur(messageErreur(e));
+      if (alive.current) notifyError(errorMessage(e));
     } finally {
-      if (vivant.current) setDemande(false);
+      if (alive.current) setRequested(false);
     }
   };
 
-  const onglets = useMemo(() => (detail ? ongletsDe(detail.sections) : []), [detail]);
+  const tabs = useMemo(() => (detail ? tabsOf(detail.sections) : []), [detail]);
 
   return (
     <Drawer
@@ -429,7 +429,7 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
     >
       <Stack gap="xs" style={{ flex: 1, minHeight: 0 }}>
         {/* Le tag de l'asset est dans la carte Identité du Résumé. */}
-        <Group justify="flex-end" wrap="nowrap" align="center" pb={ESPACE_SOUS_ENTETE}>
+        <Group justify="flex-end" wrap="nowrap" align="center" pb={SPACE_BELOW_HEADER}>
 
           <Group gap="sm" wrap="nowrap">
             {/* Prendre la main. Le bouton n'existe que si l'agent a trouvé un
@@ -438,7 +438,7 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
             {detail?.teamviewer_id && (
               <Button
                 component="a"
-                href={lienTeamviewer(detail.teamviewer_id)}
+                href={teamviewerLink(detail.teamviewer_id)}
                 variant="light"
                 color="teal"
                 leftSection={<IconDeviceLaptop size={16} />}
@@ -453,8 +453,8 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
               variant="subtle"
               color="gray"
               leftSection={<IconRefresh size={16} />}
-              onClick={redemanderInventaire}
-              loading={demande}
+              onClick={refetchInventory}
+              loading={request}
               disabled={!detail?.address}
             >
               Rafraîchir
@@ -462,15 +462,15 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
           </Group>
         </Group>
 
-        {avis && <SuccessAlert onClose={() => setAvis(null)}>{avis}</SuccessAlert>}
+        {notice && <SuccessAlert onClose={() => setNotice(null)}>{notice}</SuccessAlert>}
 
         {/* Les onglets en colonne le long du bord gauche, chacun réunissant
             plusieurs sections de l'inventaire. */}
         {detail && (
           <Tabs
             orientation="vertical"
-            value={domaine}
-            onChange={setDomaine}
+            value={domain}
+            onChange={setDomain}
             // Seul l'onglet ouvert est monté : un inventaire porte parfois
             // six cents logiciels, et les garder tous en place alourdirait la
             // fiche pour rien.
@@ -481,17 +481,17 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
             {/* La colonne d'onglets descend jusqu'au bas de la fiche : son
                 filet borde le panneau sur toute sa hauteur. Cinq onglets
                 tiennent sans défiler. */}
-            <Tabs.List style={{ flex: `0 0 ${LARGEUR_ONGLETS}px` }}>
-              <Tabs.Tab value={RESUME} style={tabStyle(domaine === RESUME)}>
+            <Tabs.List style={{ flex: `0 0 ${TABS_WIDTH}px` }}>
+              <Tabs.Tab value={SUMMARY} style={tabStyle(domain === SUMMARY)}>
                 Résumé
               </Tabs.Tab>
-              {onglets.map((onglet) => (
+              {tabs.map((tab) => (
                 <Tabs.Tab
-                  key={onglet.value}
-                  value={onglet.value}
-                  style={tabStyle(domaine === onglet.value)}
+                  key={tab.value}
+                  value={tab.value}
+                  style={tabStyle(domain === tab.value)}
                 >
-                  {onglet.libelle}
+                  {tab.label}
                 </Tabs.Tab>
               ))}
             </Tabs.List>
@@ -518,12 +518,12 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
                 },
               }}
             >
-              <Tabs.Panel value={RESUME} px={40}>
+              <Tabs.Panel value={SUMMARY} px={40}>
                 <AssetSummaryPanel detail={detail} />
               </Tabs.Panel>
-              {onglets.map((onglet) => (
-                <Tabs.Panel key={onglet.value} value={onglet.value} px={40}>
-                  <SectionsOnglet groupes={onglet.groupes} os={detail.os} />
+              {tabs.map((tab) => (
+                <Tabs.Panel key={tab.value} value={tab.value} px={40}>
+                  <SectionsTab groups={tab.groups} os={detail.os} />
                 </Tabs.Panel>
               ))}
             </ScrollArea>
@@ -531,7 +531,7 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
         )}
 
         <Group justify="flex-end" mt="auto" pt="md">
-          <BoutonFermer onClick={onClose} />
+          <CloseButton onClick={onClose} />
         </Group>
       </Stack>
     </Drawer>

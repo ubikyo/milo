@@ -4,25 +4,25 @@
 import { Router } from "express";
 import type { NotificationSettings } from "@milo/shared";
 import { NOTIFICATION_EMAIL_DELAYS } from "@milo/shared";
-import { reglagesNotifications } from "../lib/notify.js";
+import { notificationSettings } from "../lib/notify.js";
 import { writeSetting } from "../repositories/settings.js";
 
 export const notificationSettingsRoutes = Router();
 
 notificationSettingsRoutes.get("/", (_req, res) => {
-  res.json(reglagesNotifications());
+  res.json(notificationSettings());
 });
 
 notificationSettingsRoutes.put("/", (req, res) => {
-  const corps = (req.body ?? {}) as Partial<NotificationSettings>;
-  if (corps.toasts !== undefined) writeSetting("notify_toasts", Boolean(corps.toasts));
-  if (corps.email !== undefined) writeSetting("notify_email", Boolean(corps.email));
-  if (corps.emailMode === "immediate" || corps.emailMode === "grouped") {
-    writeSetting("notify_email_mode", corps.emailMode);
+  const body = (req.body ?? {}) as Partial<NotificationSettings>;
+  if (body.toasts !== undefined) writeSetting("notify_toasts", Boolean(body.toasts));
+  if (body.email !== undefined) writeSetting("notify_email", Boolean(body.email));
+  if (body.emailMode === "immediate" || body.emailMode === "grouped") {
+    writeSetting("notify_email_mode", body.emailMode);
   }
-  const delai = Number(corps.emailDelayMinutes);
-  if ((NOTIFICATION_EMAIL_DELAYS as readonly number[]).includes(delai)) {
-    writeSetting("notify_email_delay", delai);
+  const delay = Number(body.emailDelayMinutes);
+  if ((NOTIFICATION_EMAIL_DELAYS as readonly number[]).includes(delay)) {
+    writeSetting("notify_email_delay", delay);
   }
-  res.json(reglagesNotifications());
+  res.json(notificationSettings());
 });

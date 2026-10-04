@@ -1,10 +1,10 @@
 import { useCallback } from "react";
 import { api } from "../../api";
 import PrincipalsPermissions from "./PrincipalsPermissions";
-import { WIDGET_ACCESS, WIDGET_KINDS, peutLire, widgetRightsPartout } from "@milo/shared";
+import { WIDGET_ACCESS, WIDGET_KINDS, canRead, widgetRightsEverywhere } from "@milo/shared";
 import type { EntraPrincipal, Id, WidgetAccess, WidgetRights } from "@milo/shared";
 
-const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? "s" : ""}`;
+const pluralize = (n: number, word: string) => `${n} ${word}${n > 1 ? "s" : ""}`;
 
 /**
  * Les accès d'un workspace, ouverts depuis sa ligne (WorkspacesTab) : les
@@ -31,25 +31,25 @@ export default function WorkspaceAccess({
         api.setAssignments(principal, widgets, workspace)
       }
       remove={(principal) => api.deleteAssignments(principal, workspace)}
-      vide={() => widgetRightsPartout("")}
-      resume={(widgets) => pluriel(Object.values(widgets).filter(peutLire).length, "type")}
+      empty={() => widgetRightsEverywhere("")}
+      summary={(widgets) => pluralize(Object.values(widgets).filter(canRead).length, "type")}
       // Une permission par type de widget, réglée à même la ligne, en
       // colonnes : un type de plus fait une colonne de plus.
-      enColonnes
-      enLigne={(widgets, changer) =>
+      inColumns
+      inline={(widgets, change) =>
         WIDGET_KINDS.map((k) => ({
-          nom: k.label,
+          name: k.label,
           options: WIDGET_ACCESS,
-          valeur: widgets[k.value],
-          onChange: (valeur: string) =>
-            changer({ ...widgets, [k.value]: valeur as WidgetAccess }),
+          value: widgets[k.value],
+          onChange: (value: string) =>
+            change({ ...widgets, [k.value]: value as WidgetAccess }),
         }))
       }
       emptyText="Aucun accès pour le moment"
       onChange={onChange}
-      retirer={{
+      removeDialog={{
         label: "Retirer l'accès",
-        message: (nom) => <>Voulez-vous vraiment retirer à « {nom} » son accès à ce workspace ?</>,
+        message: (name) => <>Voulez-vous vraiment retirer à « {name} » son accès à ce workspace ?</>,
       }}
     />
   );

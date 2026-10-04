@@ -18,34 +18,34 @@ import { useLayoutEffect, useRef, useState } from "react";
 interface SectionDropZoneProps {
   onClick: () => void;
   /** Vrai pendant qu'un widget est tenu au-dessus : la zone accueille. */
-  accueille?: boolean;
+  accepting?: boolean;
   /** Vrai quand la catégorie est verrouillée : la zone occupe, mais ne se voit plus. */
   invisible?: boolean;
   /**
    * La colonne porte déjà son cadre en pointillé : la zone ne double pas le
    * trait, elle ne le montre que pour accueillir.
    */
-  sansCadre?: boolean;
+  withoutFrame?: boolean;
   onDragOver?: (event: React.DragEvent) => void;
   onDragLeave?: () => void;
   onDrop?: (event: React.DragEvent) => void;
 }
 
 /** Le gris du pointillé : le filet de la rangée d'onglets. Le cadre des colonnes le reprend. */
-export const POINTILLE =
+export const DOTTED =
   "light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))";
 
 // Hauteur minimale : une colonne vide doit rester une zone, pas un trait.
 const MIN_HEIGHT = 120;
 
 // L'air que le libellé laisse de chaque côté avant de céder la place.
-const MARGE_LIBELLE = 8;
+const MARGIN_LABEL = 8;
 
 export default function SectionDropZone({
   onClick,
-  accueille = false,
+  accepting = false,
   invisible = false,
-  sansCadre = false,
+  withoutFrame = false,
   onDragOver,
   onDragLeave,
   onDrop,
@@ -54,17 +54,17 @@ export default function SectionDropZone({
   // étroite ne garde que le « + ». Il reste posé, mais hors du flux, pour
   // qu'on mesure toujours sa largeur.
   const zone = useRef<HTMLButtonElement>(null);
-  const libelle = useRef<HTMLParagraphElement>(null);
-  const [tient, setTient] = useState(true);
+  const label = useRef<HTMLParagraphElement>(null);
+  const [tient, setFits] = useState(true);
   useLayoutEffect(() => {
     const element = zone.current;
     if (!element) return;
-    const mesurer = () =>
-      setTient((libelle.current?.scrollWidth ?? 0) <= element.clientWidth - 2 * MARGE_LIBELLE);
-    mesurer();
-    const observateur = new ResizeObserver(mesurer);
-    observateur.observe(element);
-    return () => observateur.disconnect();
+    const measure = () =>
+      setFits((label.current?.scrollWidth ?? 0) <= element.clientWidth - 2 * MARGIN_LABEL);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, []);
 
   return (
@@ -88,11 +88,11 @@ export default function SectionDropZone({
         // Le filet de la rangée d'onglets, sauf pendant qu'on tient un élément
         // au-dessus : il passe alors au blanc, pour dire que c'est ici que ça
         // se pose.
-        border: accueille
+        border: accepting
           ? "1px dashed var(--mantine-color-white)"
-          : sansCadre
+          : withoutFrame
             ? "1px dashed transparent"
-            : `1px dashed ${POINTILLE}`,
+            : `1px dashed ${DOTTED}`,
         borderRadius: "var(--mantine-radius-md)",
         backgroundColor: "transparent",
         // Verrouillée : plus rien ne se voit, mais la place reste tenue.
@@ -104,7 +104,7 @@ export default function SectionDropZone({
           <IconPlus size={24} />
         </ThemeIcon>
         <Text
-          ref={libelle}
+          ref={label}
           size="sm"
           c={STRONG_TEXT}
           style={{

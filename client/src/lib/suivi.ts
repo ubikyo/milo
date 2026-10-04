@@ -6,31 +6,31 @@
 // désigner un élément de l'extérieur, depuis un e-mail ou un message. Elle est
 // tenue à jour pour que la page rechargée retrouve ce qui était ouvert.
 
-import type { Id, LienKind } from "@milo/shared";
-import { lienElement } from "@milo/shared";
+import type { Id, LinkTargetKind } from "@milo/shared";
+import { itemLink } from "@milo/shared";
 
-export interface Cible {
+export interface Target {
   /** Pour « access », l'identifiant est celui du tableau. */
-  kind: LienKind;
+  kind: LinkTargetKind;
   id: Id;
 }
 
-const NOMS: Record<string, LienKind> = {
-  projet: "project",
-  carte: "card",
-  demande: "support",
-  poste: "asset",
-  acces: "access",
+const NAMES: Record<string, LinkTargetKind> = {
+  project: "project",
+  card: "card",
+  request: "support",
+  workstation: "asset",
+  access: "access",
 };
 
 /** Ce que l'adresse courante désigne, s'il y a lieu. */
-export const cibleDeLAdresse = (): Cible | null => {
-  const parametres = new URLSearchParams(window.location.search);
+export const addressTarget = (): Target | null => {
+  const searchParams = new URLSearchParams(window.location.search);
 
-  for (const [nom, kind] of Object.entries(NOMS)) {
-    const brut = parametres.get(nom);
-    if (brut === null) continue;
-    const id = Number(brut);
+  for (const [name, kind] of Object.entries(NAMES)) {
+    const raw = searchParams.get(name);
+    if (raw === null) continue;
+    const id = Number(raw);
     if (Number.isInteger(id) && id > 0) return { kind, id };
   }
   return null;
@@ -42,12 +42,12 @@ export const cibleDeLAdresse = (): Cible | null => {
  * « retour » du navigateur ne doit pas se mettre à défaire des ouvertures de
  * fiches.
  */
-export const noterDansLAdresse = (cible: Cible | null): void => {
-  const adresse = cible
-    ? `${window.location.pathname}${lienElement(cible.kind, cible.id)}`
+export const noteInAddress = (target: Target | null): void => {
+  const address = target
+    ? `${window.location.pathname}${itemLink(target.kind, target.id)}`
     : window.location.pathname;
 
-  if (adresse !== window.location.pathname + window.location.search) {
-    window.history.replaceState(null, "", adresse);
+  if (address !== window.location.pathname + window.location.search) {
+    window.history.replaceState(null, "", address);
   }
 };

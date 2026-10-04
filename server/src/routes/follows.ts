@@ -17,13 +17,13 @@ export const followRoutes = Router();
  * pour que le garde de type rende bien un `FollowKind` à la suite, sans
  * transtypage.
  */
-const sorte = (valeur: unknown): FollowKind => {
-  if (!isFollowKind(valeur)) return badRequest("Sorte d'élément inconnue");
-  return valeur;
+const kind = (value: unknown): FollowKind => {
+  if (!isFollowKind(value)) return badRequest("Sorte d'élément inconnue");
+  return value;
 };
 
-const identifiant = (valeur: unknown): Id => {
-  const id = Number(valeur);
+const identifier = (value: unknown): Id => {
+  const id = Number(value);
   if (!Number.isInteger(id) || id <= 0) return badRequest("Identifiant invalide");
   return id;
 };
@@ -33,11 +33,11 @@ followRoutes.get("/", (req, res) => {
 });
 
 followRoutes.put("/:kind/:id", (req, res) => {
-  follows.add(req.user.id, sorte(req.params.kind), identifiant(req.params.id), now());
+  follows.add(req.user.id, kind(req.params.kind), identifier(req.params.id), now());
   res.json(follows.of(req.user.id));
 });
 
 followRoutes.delete("/:kind/:id", (req, res) => {
-  follows.remove(req.user.id, sorte(req.params.kind), identifiant(req.params.id));
+  follows.remove(req.user.id, kind(req.params.kind), identifier(req.params.id));
   res.json(follows.of(req.user.id));
 });

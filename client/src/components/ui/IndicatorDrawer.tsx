@@ -1,8 +1,8 @@
 import { Drawer, Stack, Tabs } from "@mantine/core";
 import { IconSettings } from "@tabler/icons-react";
 import { createContext, useCallback, useEffect, useRef, useState } from "react";
-import { ChampNom } from "../../indicators/commun";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { NameField } from "../../indicators/commun";
+import { errorMessage, notifyError } from "../../lib/errors";
 import { tabStyle } from "../../themes/tabs";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import DrawerFooter from "./DrawerFooter";
@@ -12,7 +12,7 @@ import DrawerScrollArea, {
   DRAWER_STYLES,
   DRAWER_TABS_STYLES,
 } from "./DrawerScroll";
-import type { Indicateur, IndicatorWidgetBase, IndicatorsApi } from "./IndicatorsPanel";
+import type { Indicator, IndicatorWidgetBase, IndicatorsApi } from "./IndicatorsPanel";
 import type { Id } from "@milo/shared";
 
 /**
@@ -21,22 +21,22 @@ import type { Id } from "@milo/shared";
  * champs du widget y portent leur menu (createPortal) ; nul tant qu'il n'est
  * pas monté.
  */
-export const ActionsDuTiroirContext = createContext<HTMLElement | null>(null);
+export const DrawerActionsContext = createContext<HTMLElement | null>(null);
 
 /** Ce qu'un champ du tiroir enregistre lui-même, au clic sur « Sauvegarder ». */
-export type Enregistrement = () => Promise<void>;
+export type Registration = () => Promise<void>;
 
 /**
  * Inscrit ce qu'un champ enregistre au clic sur « Sauvegarder » — les
  * catégories ou les étiquettes du tableau, qui ne sont pas la configuration
  * du widget. Rend de quoi le désinscrire. Nul hors du tiroir.
  */
-export const EnregistrementsDuTiroirContext = createContext<
-  ((enregistrement: Enregistrement) => () => void) | null
+export const DrawerRegistrationsContext = createContext<
+  ((registration: Registration) => () => void) | null
 >(null);
 
 /** La largeur du tiroir, quand le widget n'en demande pas d'autre (drawerSize). */
-export const TIROIR_LARGEUR = 560;
+export const DRAWER_WIDTH = 560;
 
 // Le tiroir d'un indicateur d'un panneau des statistiques — Support ou
 // Assets. Sa coquille est celle des éléments du mode Accès (AccessBlockDrawer) ;
@@ -46,7 +46,7 @@ interface IndicatorDrawerProps<Type extends string, P extends IndicatorWidgetBas
   opened: boolean;
   onClose: () => void;
   /** L'indicateur modifié, ou « null » pour en créer un du widget « creating ». */
-  indicator: Indicateur<Type> | null;
+  indicator: Indicator<Type> | null;
   creating: P | null;
   /** La section qui reçoit l'indicateur créé. */
   sectionId: Id | null;
@@ -69,11 +69,11 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
   const [confirmDeleteOpened, setConfirmDeleteOpened] = useState(false);
   const [saving, setSaving] = useState(false);
   const [actions, setActions] = useState<HTMLDivElement | null>(null);
-  const enregistrements = useRef(new Set<Enregistrement>());
-  const inscrire = useCallback((enregistrement: Enregistrement) => {
-    enregistrements.current.add(enregistrement);
+  const registrations = useRef(new Set<Registration>());
+  const register = useCallback((registration: Registration) => {
+    registrations.current.add(registration);
     return () => {
-      enregistrements.current.delete(enregistrement);
+      registrations.current.delete(registration);
     };
   }, []);
 
@@ -87,20 +87,20 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
 
   // « Sauvegarder » : le seul geste qui écrit. Un widget inconnu n'a rien à
   // enregistrer : le tiroir se contente de se refermer.
-  const sauvegarder = async () => {
+  const persist = async () => {
     if (!widget) return onClose();
     setSaving(true);
     try {
       // Ce que les champs enregistrent eux-mêmes d'abord : une erreur arrête
       // tout, la configuration comprise.
-      for (const enregistrer of enregistrements.current) await enregistrer();
+      for (const save of registrations.current) await save();
       if (indicator) await api.update(indicator.id, { config });
       else if (sectionId !== null) {
         await api.create({ section_id: sectionId, type: widget.type, config });
       }
       await onSaved();
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -113,7 +113,7 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
       await api.remove(indicator.id);
       await onSaved();
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   };
 
@@ -123,7 +123,7 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
         opened={opened}
         onClose={onClose}
         position="right"
-        size={widget?.drawerSize ?? TIROIR_LARGEUR}
+        size={widget?.drawerSize ?? DRAWER_WIDTH}
         padding={DRAWER_PADDING}
         withCloseButton={false}
         // Seul le panneau de l'onglet défile : les onglets et les boutons du
@@ -147,24 +147,24 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
               <Stack gap="xl">
                 {widget &&
                   (widget.Config ? (
-                    <ActionsDuTiroirContext.Provider value={actions}>
-                      <EnregistrementsDuTiroirContext.Provider value={inscrire}>
+                    <DrawerActionsContext.Provider value={actions}>
+                      <DrawerRegistrationsContext.Provider value={register}>
                         <widget.Config config={config} onChange={setConfig} />
-                      </EnregistrementsDuTiroirContext.Provider>
-                    </ActionsDuTiroirContext.Provider>
+                      </DrawerRegistrationsContext.Provider>
+                    </DrawerActionsContext.Provider>
                   ) : (
-                    <ChampNom config={config} onChange={setConfig} defaut={widget.label} />
+                    <NameField config={config} onChange={setConfig} defaultValue={widget.label} />
                   ))}
                 {/* Le bloc « Apparence », commun à tous les widgets
                     (board-widgets). */}
-                {widget?.Apparence && <widget.Apparence config={config} onChange={setConfig} />}
+                {widget?.Appearance && <widget.Appearance config={config} onChange={setConfig} />}
               </Stack>
             </DrawerScrollArea>
           </Tabs.Panel>
         </Tabs>
 
         <DrawerFooter
-          onSave={sauvegarder}
+          onSave={persist}
           onClose={onClose}
           onDelete={indicator ? () => setConfirmDeleteOpened(true) : undefined}
           saving={saving}

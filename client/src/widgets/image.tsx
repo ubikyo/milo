@@ -18,7 +18,7 @@ import { notifications } from "@mantine/notifications";
 import { IconChevronLeft, IconChevronRight, IconPhoto, IconTrash, IconUpload } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { avec, nombre, texte } from "./types";
+import { withField, count, text } from "./types";
 import type { AccessWidget, WidgetConfigProps } from "./types";
 
 // Une image, ou plusieurs qui se relaient : un logo, un plan d'étage, les
@@ -33,58 +33,58 @@ import type { AccessWidget, WidgetConfigProps } from "./types";
 // d'ailleurs se colle aussi.
 
 const IMAGES = "images";
-const INTERVALLE = "intervalle";
-const HAUTEUR = "hauteur";
-const AJUSTEMENT = "ajustement";
+const INTERVAL = "intervalle";
+const HEIGHT = "hauteur";
+const ADJUSTMENT = "ajustement";
 
 /** Le temps passé sur chaque image, en secondes. */
-const INTERVALLE_PAR_DEFAUT = 8;
-const INTERVALLE_MIN = 2;
-const INTERVALLE_MAX = 3600;
+const DEFAULT_INTERVAL = 8;
+const INTERVAL_MIN = 2;
+const INTERVAL_MAX = 3600;
 
 /** La hauteur de l'image, en pixels ; « 0 » : celle que sa largeur lui donne. */
-const HAUTEUR_PAR_DEFAUT = 0;
-const HAUTEUR_MAX = 1200;
+const DEFAULT_HEIGHT = 0;
+const HEIGHT_MAX = 1200;
 
 /** La durée du fondu entre deux images. */
-const FONDU = 600;
+const FADE = 600;
 
 /** Le côté d'une vignette du tiroir. */
-const VIGNETTE = 72;
+const THUMBNAIL = 72;
 
-const AJUSTEMENTS = [
+const ADJUSTMENTS = [
   { value: "cover", label: "Remplir (recadrer)" },
   { value: "contain", label: "Contenir (entière)" },
 ];
 
 /** Les adresses rangées, sans ce qui n'en est pas une. */
-const imagesDe = (config: unknown): string[] => {
-  const valeur = (config as Record<string, unknown> | null)?.[IMAGES];
-  return Array.isArray(valeur) ? valeur.filter((v): v is string => typeof v === "string" && v !== "") : [];
+const imagesOf = (config: unknown): string[] => {
+  const value = (config as Record<string, unknown> | null)?.[IMAGES];
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v !== "") : [];
 };
 
-const intervalleDe = (config: unknown): number =>
+const intervalOf = (config: unknown): number =>
   Math.min(
-    INTERVALLE_MAX,
-    Math.max(INTERVALLE_MIN, nombre(config, INTERVALLE, INTERVALLE_PAR_DEFAUT)),
+    INTERVAL_MAX,
+    Math.max(INTERVAL_MIN, count(config, INTERVAL, DEFAULT_INTERVAL)),
   );
 
-function Diaporama({ config }: { config: unknown }) {
-  const images = imagesDe(config);
-  const hauteur = nombre(config, HAUTEUR, HAUTEUR_PAR_DEFAUT);
-  const ajustement = texte(config, AJUSTEMENT, "cover") === "contain" ? "contain" : "cover";
-  const intervalle = intervalleDe(config);
-  const [rang, setRang] = useState(0);
-  const [pause, setPause] = useState(false);
+function Slideshow({ config }: { config: unknown }) {
+  const images = imagesOf(config);
+  const height = count(config, HEIGHT, DEFAULT_HEIGHT);
+  const adjustment = text(config, ADJUSTMENT, "cover") === "contain" ? "contain" : "cover";
+  const interval = intervalOf(config);
+  const [rank, setRank] = useState(0);
+  const [pause, setPaused] = useState(false);
 
   // Une image retirée dans le tiroir ne laisse pas le rang pointer dans le vide.
-  const courant = images.length ? rang % images.length : 0;
+  const current = images.length ? rank % images.length : 0;
 
   useEffect(() => {
     if (images.length < 2 || pause) return;
-    const battement = setInterval(() => setRang((r) => (r + 1) % images.length), intervalle * 1000);
-    return () => clearInterval(battement);
-  }, [images.length, intervalle, pause]);
+    const heartbeat = setInterval(() => setRank((r) => (r + 1) % images.length), interval * 1000);
+    return () => clearInterval(heartbeat);
+  }, [images.length, interval, pause]);
 
   if (!images.length) {
     return (
@@ -102,8 +102,8 @@ function Diaporama({ config }: { config: unknown }) {
         src={images[0]}
         alt=""
         radius="md"
-        h={hauteur || "auto"}
-        fit={ajustement}
+        h={height || "auto"}
+        fit={adjustment}
       />
     );
   }
@@ -111,22 +111,22 @@ function Diaporama({ config }: { config: unknown }) {
   // À plusieurs, elles se superposent : la première tient la hauteur du
   // cadre quand aucune n'est dite, les autres se posent dessus en fondu.
   return (
-    <Stack gap={6} onMouseEnter={() => setPause(true)} onMouseLeave={() => setPause(false)}>
+    <Stack gap={6} onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
       <Box pos="relative" style={{ borderRadius: "var(--mantine-radius-md)", overflow: "hidden" }}>
         {images.map((src, i) => (
           <Image
             key={`${src}-${i}`}
             src={src}
             alt=""
-            h={hauteur || "auto"}
-            fit={ajustement}
+            h={height || "auto"}
+            fit={adjustment}
             style={{
               position: i === 0 ? "relative" : "absolute",
               inset: i === 0 ? undefined : 0,
               width: "100%",
-              height: hauteur ? hauteur : i === 0 ? "auto" : "100%",
-              opacity: i === courant ? 1 : 0,
-              transition: `opacity ${FONDU}ms ease`,
+              height: height ? height : i === 0 ? "auto" : "100%",
+              opacity: i === current ? 1 : 0,
+              transition: `opacity ${FADE}ms ease`,
             }}
           />
         ))}
@@ -136,14 +136,14 @@ function Diaporama({ config }: { config: unknown }) {
           <UnstyledButton
             key={`${src}-${i}`}
             aria-label={`Image ${i + 1}`}
-            onClick={() => setRang(i)}
+            onClick={() => setRank(i)}
             style={{
               width: 6,
               height: 6,
               borderRadius: "50%",
               backgroundColor:
-                i === courant ? "var(--mantine-color-text)" : "var(--mantine-color-dimmed)",
-              opacity: i === courant ? 1 : 0.5,
+                i === current ? "var(--mantine-color-text)" : "var(--mantine-color-dimmed)",
+              opacity: i === current ? 1 : 0.5,
             }}
           />
         ))}
@@ -152,42 +152,42 @@ function Diaporama({ config }: { config: unknown }) {
   );
 }
 
-function Champs({ config, onChange }: WidgetConfigProps) {
-  const images = imagesDe(config);
-  const [adresse, setAdresse] = useState("");
-  const [envoi, setEnvoi] = useState(false);
+function Fields({ config, onChange }: WidgetConfigProps) {
+  const images = imagesOf(config);
+  const [address, setAddress] = useState("");
+  const [sending, setSending] = useState(false);
 
-  const ranger = (suivantes: string[]) => onChange(avec(config, IMAGES, suivantes));
+  const store = (nextItems: string[]) => onChange(withField(config, IMAGES, nextItems));
 
-  const deposer = async (fichiers: File[]) => {
-    if (!fichiers.length) return;
-    setEnvoi(true);
-    const ajoutees: string[] = [];
+  const drop = async (files: File[]) => {
+    if (!files.length) return;
+    setSending(true);
+    const added: string[] = [];
     try {
-      for (const fichier of fichiers) {
-        const { url } = await api.uploadWidgetImage(fichier);
-        ajoutees.push(url);
+      for (const file of files) {
+        const { url } = await api.uploadWidgetImage(file);
+        added.push(url);
       }
     } catch (e) {
       notifications.show({ color: "red", message: (e as Error).message });
     } finally {
-      setEnvoi(false);
-      if (ajoutees.length) ranger([...images, ...ajoutees]);
+      setSending(false);
+      if (added.length) store([...images, ...added]);
     }
   };
 
-  const ajouterAdresse = () => {
-    const url = adresse.trim();
+  const addAddress = () => {
+    const url = address.trim();
     if (!/^(https?:\/\/|\/api\/medias\/)/.test(url)) return;
-    ranger([...images, url]);
-    setAdresse("");
+    store([...images, url]);
+    setAddress("");
   };
 
-  const deplacer = (de: number, vers: number) => {
-    const suivantes = [...images];
-    const [image] = suivantes.splice(de, 1);
-    suivantes.splice(vers, 0, image!);
-    ranger(suivantes);
+  const move = (de: number, to: number) => {
+    const nextItems = [...images];
+    const [image] = nextItems.splice(de, 1);
+    nextItems.splice(to, 0, image!);
+    store(nextItems);
   };
 
   return (
@@ -198,14 +198,14 @@ function Champs({ config, onChange }: WidgetConfigProps) {
             <Group gap="xs">
               {images.map((src, i) => (
                 <Stack key={`${src}-${i}`} gap={2} align="center">
-                  <Image src={src} alt="" w={VIGNETTE} h={VIGNETTE} radius="sm" fit="cover" />
+                  <Image src={src} alt="" w={THUMBNAIL} h={THUMBNAIL} radius="sm" fit="cover" />
                   <Group gap={0}>
                     <ActionIcon
                       variant="subtle"
                       color="gray"
                       size="sm"
                       disabled={i === 0}
-                      onClick={() => deplacer(i, i - 1)}
+                      onClick={() => move(i, i - 1)}
                       aria-label="Avancer"
                     >
                       <IconChevronLeft size={14} />
@@ -215,7 +215,7 @@ function Champs({ config, onChange }: WidgetConfigProps) {
                         variant="subtle"
                         color="red"
                         size="sm"
-                        onClick={() => ranger(images.filter((_, j) => j !== i))}
+                        onClick={() => store(images.filter((_, j) => j !== i))}
                         aria-label="Retirer"
                       >
                         <IconTrash size={14} />
@@ -226,7 +226,7 @@ function Champs({ config, onChange }: WidgetConfigProps) {
                       color="gray"
                       size="sm"
                       disabled={i === images.length - 1}
-                      onClick={() => deplacer(i, i + 1)}
+                      onClick={() => move(i, i + 1)}
                       aria-label="Reculer"
                     >
                       <IconChevronRight size={14} />
@@ -236,13 +236,13 @@ function Champs({ config, onChange }: WidgetConfigProps) {
               ))}
             </Group>
           )}
-          <FileButton onChange={deposer} accept="image/png,image/jpeg,image/gif,image/webp,image/avif,image/bmp" multiple>
+          <FileButton onChange={drop} accept="image/png,image/jpeg,image/gif,image/webp,image/avif,image/bmp" multiple>
             {(props) => (
               <Button
                 {...props}
                 variant="default"
                 leftSection={<IconUpload size={16} />}
-                loading={envoi}
+                loading={sending}
                 w="fit-content"
               >
                 Déposer des images
@@ -251,10 +251,10 @@ function Champs({ config, onChange }: WidgetConfigProps) {
           </FileButton>
           <TextInput
             placeholder="… ou coller une adresse https://"
-            value={adresse}
-            onChange={(e) => setAdresse(e.currentTarget.value)}
-            onKeyDown={(e) => e.key === "Enter" && ajouterAdresse()}
-            onBlur={ajouterAdresse}
+            value={address}
+            onChange={(e) => setAddress(e.currentTarget.value)}
+            onKeyDown={(e) => e.key === "Enter" && addAddress()}
+            onBlur={addAddress}
           />
         </Stack>
       </Input.Wrapper>
@@ -262,10 +262,10 @@ function Champs({ config, onChange }: WidgetConfigProps) {
         <NumberInput
           label="Hauteur"
           description="0 : automatique"
-          value={nombre(config, HAUTEUR, HAUTEUR_PAR_DEFAUT)}
-          onChange={(v) => onChange(avec(config, HAUTEUR, v === "" ? HAUTEUR_PAR_DEFAUT : Number(v)))}
+          value={count(config, HEIGHT, DEFAULT_HEIGHT)}
+          onChange={(v) => onChange(withField(config, HEIGHT, v === "" ? DEFAULT_HEIGHT : Number(v)))}
           min={0}
-          max={HAUTEUR_MAX}
+          max={HEIGHT_MAX}
           suffix=" px"
           allowNegative={false}
           allowDecimal={false}
@@ -274,9 +274,9 @@ function Champs({ config, onChange }: WidgetConfigProps) {
         <Select
           label="Ajustement"
           description="Quand la hauteur est fixée"
-          data={AJUSTEMENTS}
-          value={texte(config, AJUSTEMENT, "cover")}
-          onChange={(v) => v && onChange(avec(config, AJUSTEMENT, v))}
+          data={ADJUSTMENTS}
+          value={text(config, ADJUSTMENT, "cover")}
+          onChange={(v) => v && onChange(withField(config, ADJUSTMENT, v))}
           allowDeselect={false}
           w={180}
         />
@@ -285,13 +285,13 @@ function Champs({ config, onChange }: WidgetConfigProps) {
           plutôt qu'un zéro, qui ferait tourner les images sans repos. */}
       <NumberInput
         label="Intervalle de rotation"
-        placeholder={String(INTERVALLE_PAR_DEFAUT)}
-        value={nombre(config, INTERVALLE, INTERVALLE_PAR_DEFAUT)}
+        placeholder={String(DEFAULT_INTERVAL)}
+        value={count(config, INTERVAL, DEFAULT_INTERVAL)}
         onChange={(v) =>
-          onChange(avec(config, INTERVALLE, v === "" ? INTERVALLE_PAR_DEFAUT : Number(v)))
+          onChange(withField(config, INTERVAL, v === "" ? DEFAULT_INTERVAL : Number(v)))
         }
-        min={INTERVALLE_MIN}
-        max={INTERVALLE_MAX}
+        min={INTERVAL_MIN}
+        max={INTERVAL_MAX}
         suffix=" s"
         allowNegative={false}
         allowDecimal={false}
@@ -309,17 +309,17 @@ export const imageWidget: AccessWidget = {
   icon: IconPhoto,
   defaultConfig: {
     [IMAGES]: [],
-    [INTERVALLE]: INTERVALLE_PAR_DEFAUT,
-    [HAUTEUR]: HAUTEUR_PAR_DEFAUT,
-    [AJUSTEMENT]: "cover",
+    [INTERVAL]: DEFAULT_INTERVAL,
+    [HEIGHT]: DEFAULT_HEIGHT,
+    [ADJUSTMENT]: "cover",
   },
   // Les points qui mènent d'une image à l'autre prennent leurs clics.
   ownClicks: true,
   drawerSize: 480,
 
-  Display: Diaporama,
+  Display: Slideshow,
 
-  marges: () => ({ haute: 0, basse: 15 }),
+  margins: () => ({ top: 0, bottom: 15 }),
 
-  Config: Champs,
+  Config: Fields,
 };

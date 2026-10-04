@@ -3,14 +3,14 @@
 // « blue » de Mantine, toutes nuances confondues : « red.3 » comme
 // « var(--mantine-color-teal-8) » rendent l'une d'elles, et aucun autre rouge,
 // orange, vert ou bleu ne paraît nulle part.
-export const ROUGE = "#E03131";
+export const PALETTE_RED = "#E03131";
 export const ORANGE = "#E8590C";
-export const VERT = "#2F9E44";
-export const BLEU = "#1971C2";
+export const PALETTE_GREEN = "#2F9E44";
+export const BLUE = "#1971C2";
 
 // Rouge unique de l'application : messages d'erreur, entête et actions de
 // suppression. Une seule source pour éviter deux rouges voisins.
-export const RED = ROUGE;
+export const RED = PALETTE_RED;
 
 // Couleur de la progression d'un projet : rouge en dessous de 30 %, orange
 // de 30 à 70 %, vert au-delà. Sert à la barre du tableau comme au curseur du
@@ -26,9 +26,9 @@ export const statusColor = (status: number): string => {
  * couleurs, ou celui qu'on vient d'ajouter : celle que la règle ci-dessus
  * donne à sa valeur, en couleur d'étiquette.
  */
-export const couleurJalonParDefaut = (valeur: number): string => {
-  if (valeur < 30) return "red.6";
-  if (valeur <= 70) return "orange.6";
+export const defaultMilestoneColor = (value: number): string => {
+  if (value < 30) return "red.6";
+  if (value <= 70) return "orange.6";
   return "teal.6";
 };
 
@@ -40,20 +40,20 @@ export const couleurJalonParDefaut = (valeur: number): string => {
  */
 export const progressColor = (
   status: number,
-  jalons: { value: number; color?: string }[] = [],
+  milestones: { value: number; color?: string }[] = [],
 ): string => {
-  const tranche = [...jalons]
+  const band = [...milestones]
     .sort((a, b) => a.value - b.value)
     .find((m) => status <= m.value);
-  if (!tranche) return statusColor(status);
-  return tranche.color ?? couleurJalonParDefaut(tranche.value);
+  if (!band) return statusColor(status);
+  return band.color ?? defaultMilestoneColor(band.value);
 };
 
 // Vert des messages de réussite : le pendant du rouge ci-dessus, dans le même
 // rôle — un cadre qui rend compte de ce qui vient de se passer.
 //
 // Le vert unique de l'application, sur les deux thèmes.
-export const GREEN = VERT;
+export const GREEN = PALETTE_GREEN;
 
 // Entête d'une confirmation que l'on ne veut pas dramatiser : gris foncé au
 // lieu du rouge, le texte restant blanc dans les deux thèmes.

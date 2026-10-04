@@ -2,12 +2,12 @@ import { Button, Group, Input, Modal, Select, Stack, Text } from "@mantine/core"
 import { useEffect, useState } from "react";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import ListItems from "../ui/ListItems";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import type { EntraPrincipal } from "@milo/shared";
-import BoutonFermer from "../ui/BoutonFermer";
+import CloseButton from "../ui/BoutonFermer";
 
 // Le choix de la permission, au bout de la ligne : de quoi lire « Modifier ».
-const LARGEUR_CHOIX = 200;
+const CHOICE_WIDTH = 200;
 
 // Hauteur du champ : celle du texte, comme le renommage d'une ligne
 // (LookupManager).
@@ -15,7 +15,7 @@ const FIELD_HEIGHT = 22;
 
 // Le choix sans cadre, à la hauteur du texte, aligné à droite : il tient dans
 // sa ligne, comme le renommage d'une société.
-const CHOIX_STYLES = {
+const CHOICE_STYLES = {
   input: {
     height: FIELD_HEIGHT,
     minHeight: FIELD_HEIGHT,
@@ -25,18 +25,18 @@ const CHOIX_STYLES = {
 };
 
 // « Aucun » ne peut pas être la valeur vide d'un Select : il lui faut la sienne.
-const AUCUN = "aucun";
+const NONE = "aucun";
 
 /** Les choix d'un Select, « Aucun » compris sous sa propre valeur. */
-const choix = (options: readonly { value: string; label: string }[]) =>
-  options.map((o) => ({ value: o.value || AUCUN, label: o.label }));
+const choice = (options: readonly { value: string; label: string }[]) =>
+  options.map((o) => ({ value: o.value || NONE, label: o.label }));
 
 /** Une permission : son nom, et le choix de sa valeur au bout de la ligne. */
-export interface LignePermission {
-  nom: string;
+export interface PermissionRow {
+  name: string;
   options: readonly { value: string; label: string }[];
-  valeur: string;
-  onChange: (valeur: string) => void;
+  value: string;
+  onChange: (value: string) => void;
   /** Elle se lit sans se changer. */
   disabled?: boolean;
   /** Sa largeur quand elle se règle à même la ligne (PrincipalsPermissions). */
@@ -46,7 +46,7 @@ export interface LignePermission {
 /** Des permissions qui vont ensemble, sous un libellé. */
 export interface SectionPermissions {
   label: string;
-  lignes: LignePermission[];
+  rows: PermissionRow[];
 }
 
 interface PrincipalPermissionsModalProps<T> {
@@ -55,7 +55,7 @@ interface PrincipalPermissionsModalProps<T> {
   /** Ses permissions actuelles : aucune pour qui arrive de l'annuaire. */
   initial: T;
   /** Les sections de la fenêtre, pour les permissions en cours de choix. */
-  sections: (permissions: T, changer: (permissions: T) => void) => SectionPermissions[];
+  sections: (permissions: T, change: (permissions: T) => void) => SectionPermissions[];
   /** Enregistre ; un refus garde la fenêtre ouverte. */
   onSave: (permissions: T) => Promise<void>;
   onClose: () => void;
@@ -85,36 +85,36 @@ export default function PrincipalPermissionsModal<T>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [principal]);
 
-  const enregistrer = async () => {
+  const save = async () => {
     if (!principal) return;
     setSaving(true);
     try {
       await onSave(permissions);
       onClose();
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
       setSaving(false);
     }
   };
 
   /** Une ligne de la liste : son nom, et le choix de sa permission au bout. */
-  const ligne = ({ nom, options, valeur, onChange, disabled }: LignePermission) => (
-    <ListItems.Row key={nom}>
+  const row = ({ name, options, value, onChange, disabled }: PermissionRow) => (
+    <ListItems.Row key={name}>
       <Text size="sm" truncate style={{ flex: 1, minWidth: 0 }}>
-        {nom}
+        {name}
       </Text>
       <Select
-        aria-label={nom}
-        data={choix(options)}
-        value={valeur || AUCUN}
-        onChange={(value) => onChange(value === AUCUN || !value ? "" : value)}
+        aria-label={name}
+        data={choice(options)}
+        value={value || NONE}
+        onChange={(value) => onChange(value === NONE || !value ? "" : value)}
         allowDeselect={false}
         disabled={disabled}
         variant="unstyled"
         size="sm"
-        w={LARGEUR_CHOIX}
-        styles={CHOIX_STYLES}
+        w={CHOICE_WIDTH}
+        styles={CHOICE_STYLES}
       />
     </ListItems.Row>
   );
@@ -135,15 +135,15 @@ export default function PrincipalPermissionsModal<T>({
       <Stack gap="xl">
         {sections(permissions, setPermissions).map((section) => (
           <Input.Wrapper key={section.label} label={section.label}>
-            <ListItems maxRows={section.lignes.length}>{section.lignes.map(ligne)}</ListItems>
+            <ListItems maxRows={section.rows.length}>{section.rows.map(row)}</ListItems>
           </Input.Wrapper>
         ))}
 
         {/* L'écart de la pile (« xl ») suffit : les boutons tombent à la même
             distance que dans les autres fenêtres (MODAL_PADDING). */}
         <Group justify="flex-end">
-          <BoutonFermer onClick={onClose} />
-          <Button color="teal" onClick={enregistrer} loading={saving}>
+          <CloseButton onClick={onClose} />
+          <Button color="teal" onClick={save} loading={saving}>
             Enregistrer
           </Button>
         </Group>

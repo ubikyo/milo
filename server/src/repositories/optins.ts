@@ -16,61 +16,61 @@ export interface OptinRow {
 }
 
 const de = selection<OptinRow>("SELECT * FROM list_mailbox_optins WHERE list_key = ? AND email = ?");
-const tous = selection<OptinRow>("SELECT * FROM list_mailbox_optins");
-const creer = mutation(
+const all = selection<OptinRow>("SELECT * FROM list_mailbox_optins");
+const create = mutation(
   "INSERT OR IGNORE INTO list_mailbox_optins (list_key, email, created_at) VALUES (?, ?, ?)",
 );
-const nouveauCode = mutation(
+const newCode = mutation(
   `UPDATE list_mailbox_optins SET code = ?, attempts = 0, sent_at = ?
    WHERE list_key = ? AND email = ?`,
 );
-const confirmer = mutation(
+const confirm = mutation(
   `UPDATE list_mailbox_optins SET confirmed_at = ?, code = ''
    WHERE list_key = ? AND email = ? AND confirmed_at = ''`,
 );
-const essai = mutation(
+const attempt = mutation(
   "UPDATE list_mailbox_optins SET attempts = attempts + 1 WHERE list_key = ? AND email = ?",
 );
-const oublierCode = mutation(
+const forgetCode = mutation(
   "UPDATE list_mailbox_optins SET code = '' WHERE list_key = ? AND email = ?",
 );
-const oublier = mutation("DELETE FROM list_mailbox_optins WHERE list_key = ? AND email = ?");
+const forget = mutation("DELETE FROM list_mailbox_optins WHERE list_key = ? AND email = ?");
 
-const cle = (email: string) => email.trim().toLowerCase();
+const key = (email: string) => email.trim().toLowerCase();
 
 /** Ce qui désigne une ligne : la liste et l'adresse, ensemble. */
-export const paire = (liste: string, email: string): string => `${liste}|${cle(email)}`;
+export const pair = (list: string, email: string): string => `${list}|${key(email)}`;
 
 export const optins = {
-  de: (liste: string, email: string) => de.get(liste, cle(email)),
+  de: (list: string, email: string) => de.get(list, key(email)),
   /** Les paires confirmées (paire()), et depuis quand. */
-  confirmees: (): Map<string, string> =>
+  confirmed: (): Map<string, string> =>
     new Map(
-      tous
+      all
         .all()
         .filter((o) => o.confirmed_at)
-        .map((o) => [paire(o.list_key, o.email), o.confirmed_at]),
+        .map((o) => [pair(o.list_key, o.email), o.confirmed_at]),
     ),
   /** Vrai quand la paire était inconnue : elle attend désormais sa confirmation. */
-  creer: (liste: string, email: string): boolean => creer.run(liste, cle(email), now()).changes > 0,
+  create: (list: string, email: string): boolean => create.run(list, key(email), now()).changes > 0,
   /** Le code du dernier e-mail envoyé : l'ancien ne vaut plus. */
-  envoye: (liste: string, email: string, code: string): void => {
-    nouveauCode.run(code, now(), liste, cle(email));
+  sent: (list: string, email: string, code: string): void => {
+    newCode.run(code, now(), list, key(email));
   },
-  essai: (liste: string, email: string): void => {
-    essai.run(liste, cle(email));
+  attempt: (list: string, email: string): void => {
+    attempt.run(list, key(email));
   },
   /** Trop d'essais : le code ne vaut plus, il faut relancer. */
-  oublierCode: (liste: string, email: string): void => {
-    oublierCode.run(liste, cle(email));
+  forgetCode: (list: string, email: string): void => {
+    forgetCode.run(list, key(email));
   },
-  confirmer: (liste: string, email: string): void => {
-    confirmer.run(now(), liste, cle(email));
+  confirm: (list: string, email: string): void => {
+    confirm.run(now(), list, key(email));
   },
   /** Les paires qu'aucune liste ne dit plus : rajoutées, elles se confirmeront de nouveau. */
-  oublierSauf: (gardees: Set<string>): void => {
-    for (const o of tous.all()) {
-      if (!gardees.has(paire(o.list_key, o.email))) oublier.run(o.list_key, o.email);
+  forgetExcept: (keptKeys: Set<string>): void => {
+    for (const o of all.all()) {
+      if (!keptKeys.has(pair(o.list_key, o.email))) forget.run(o.list_key, o.email);
     }
   },
 };

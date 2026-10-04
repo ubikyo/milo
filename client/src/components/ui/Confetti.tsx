@@ -3,14 +3,14 @@ import type { CSSProperties } from "react";
 
 // Une salve de confettis, lâchée au-dessus d'un point de l'écran. Les pièces
 // descendent en tournoyant, dérivent de part et d'autre, puis s'effacent.
-const NOMBRE = 90;
+const COUNT = 90;
 // Durée de la plus longue chute, retard de départ compris : au-delà, la salve
 // n'a plus rien à montrer et se retire.
-const DUREE_MAX = 2600;
+const DURATION_MAX = 2600;
 
 // Les confettis empruntent les couleurs pleines de la palette : de tout, et
 // rien qui jure avec le reste de l'application.
-const COULEURS = [
+const COLORS = [
   "red",
   "orange",
   "yellow",
@@ -37,13 +37,13 @@ const ANIMATIONS = `
 }
 `;
 
-const alea = (min: number, max: number): number => min + Math.random() * (max - min);
-const parmi = <T,>(valeurs: readonly T[]): T =>
-  valeurs[Math.floor(Math.random() * valeurs.length)] as T;
+const random = (min: number, max: number): number => min + Math.random() * (max - min);
+const pickFrom = <T,>(values: readonly T[]): T =>
+  values[Math.floor(Math.random() * values.length)] as T;
 
 // Les propriétés personnalisées (« --dx ») ne figurent pas dans CSSProperties :
 // React les accepte, TypeScript ne les connaît pas.
-type StyleAvecVariables = CSSProperties & Record<`--${string}`, string | number>;
+type StyleWithVariables = CSSProperties & Record<`--${string}`, string | number>;
 
 interface ConfettiProps {
   x: number;
@@ -57,27 +57,27 @@ export default function Confetti({ x, y, width, onDone }: ConfettiProps) {
   // une fois pour toutes, sinon ils changeraient à chaque rendu. Le hasard est
   // ici le propos — une salve identique à chaque fois ne serait pas une salve —
   // et il est enfermé dans un « useMemo » qui ne se rejoue qu'à la largeur.
-  const pieces = useMemo(
+  const attachments = useMemo(
     () =>
-      Array.from({ length: NOMBRE }, (_, i) => {
-        const largeur = alea(5, 11);
+      Array.from({ length: COUNT }, (_, i) => {
+        const largeur = random(5, 11);
         return {
           id: i,
-          depart: alea(10, 90),
-          couleur: parmi(COULEURS),
+          start: random(10, 90),
+          color: pickFrom(COLORS),
           largeur,
-          hauteur: largeur * alea(0.4, 1),
-          rond: Math.random() < 0.25,
+          height: largeur * random(0.4, 1),
+          circle: Math.random() < 0.25,
           // La pièce part au-dessus de la liste et descend, en dérivant vers
           // la gauche ou vers la droite.
-          dx: alea(-width * 0.6, width * 0.6),
-          haut: alea(-210, -80),
-          bas: alea(140, 400),
-          duree: alea(1500, 2200),
-          retard: alea(0, 400),
-          pirouette: alea(400, 1100),
-          ax: Math.round(alea(0, 1)),
-          ay: Math.round(alea(0, 1)),
+          dx: random(-width * 0.6, width * 0.6),
+          top: random(-210, -80),
+          fall: random(140, 400),
+          duration: random(1500, 2200),
+          late: random(0, 400),
+          spin: random(400, 1100),
+          ax: Math.round(random(0, 1)),
+          ay: Math.round(random(0, 1)),
         };
       }),
     [width],
@@ -87,13 +87,13 @@ export default function Confetti({ x, y, width, onDone }: ConfettiProps) {
   // il change à chaque rendu du tableau, et remettrait le compte à zéro. La
   // référence se met à jour par effet et non pendant le rendu, qui doit rester
   // sans effet de bord.
-  const fini = useRef(onDone);
+  const finished = useRef(onDone);
   useEffect(() => {
-    fini.current = onDone;
+    finished.current = onDone;
   }, [onDone]);
 
   useEffect(() => {
-    const t = setTimeout(() => fini.current(), DUREE_MAX);
+    const t = setTimeout(() => finished.current(), DURATION_MAX);
     return () => clearTimeout(t);
   }, []);
 
@@ -111,31 +111,31 @@ export default function Confetti({ x, y, width, onDone }: ConfettiProps) {
       }}
     >
       <style>{ANIMATIONS}</style>
-      {pieces.map((p) => (
+      {attachments.map((p) => (
         <span
           key={p.id}
           style={{
             position: "absolute",
-            left: `${p.depart}%`,
+            left: `${p.start}%`,
             top: 0,
             opacity: 0,
             "--dx": `${p.dx}px`,
-            "--haut": `${p.haut}px`,
-            "--bas": `${p.bas}px`,
-            animation: `milo-confetti-chute ${p.duree}ms linear ${p.retard}ms forwards`,
-          } as StyleAvecVariables}
+            "--haut": `${p.top}px`,
+            "--bas": `${p.fall}px`,
+            animation: `milo-confetti-chute ${p.duration}ms linear ${p.late}ms forwards`,
+          } as StyleWithVariables}
         >
           <span
             style={{
               display: "block",
               width: p.largeur,
-              height: p.hauteur,
-              backgroundColor: p.couleur,
-              borderRadius: p.rond ? "50%" : 1,
+              height: p.height,
+              backgroundColor: p.color,
+              borderRadius: p.circle ? "50%" : 1,
               "--ax": p.ax,
               "--ay": p.ay,
-              animation: `milo-confetti-pirouette ${p.pirouette}ms linear infinite`,
-            } as StyleAvecVariables}
+              animation: `milo-confetti-pirouette ${p.spin}ms linear infinite`,
+            } as StyleWithVariables}
           />
         </span>
       ))}

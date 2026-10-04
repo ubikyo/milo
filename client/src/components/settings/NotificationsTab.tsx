@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { NOTIFICATION_EMAIL_DELAYS } from "@milo/shared";
 import type { NotificationEmailMode, NotificationSettings } from "@milo/shared";
 import { api } from "../../api";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 
 // La section « Notifications » du Paramétrage. Comme les autres onglets,
 // chaque geste part aussitôt au serveur.
@@ -15,8 +15,8 @@ const MODES: { value: NotificationEmailMode; label: string }[] = [
 
 // Le délai réglé hors de la liste — par MILO_NOTIFY_WINDOW_MINUTES — y
 // prend sa place.
-const delais = (actuel: number) =>
-  [...new Set([...NOTIFICATION_EMAIL_DELAYS, actuel])]
+const delays = (current: number) =>
+  [...new Set([...NOTIFICATION_EMAIL_DELAYS, current])]
     .sort((a, b) => a - b)
     .map((m) => ({ value: String(m), label: `${m} min` }));
 
@@ -25,44 +25,44 @@ interface NotificationsTabProps {
 }
 
 export default function NotificationsTab({ canEdit }: NotificationsTabProps) {
-  const [reglages, setReglages] = useState<NotificationSettings | null>(null);
-  const [enCours, setEnCours] = useState(false);
+  const [settings, setSettings] = useState<NotificationSettings | null>(null);
+  const [ongoing, setInProgress] = useState(false);
 
   useEffect(() => {
-    api.getNotificationSettings().then(setReglages, (e) => notifierErreur(messageErreur(e)));
+    api.getNotificationSettings().then(setSettings, (e) => notifyError(errorMessage(e)));
   }, []);
 
-  const changer = async (modif: Partial<NotificationSettings>) => {
-    setEnCours(true);
+  const change = async (change: Partial<NotificationSettings>) => {
+    setInProgress(true);
     try {
-      setReglages(await api.updateNotificationSettings(modif));
+      setSettings(await api.updateNotificationSettings(change));
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
-      setEnCours(false);
+      setInProgress(false);
     }
   };
 
-  if (!reglages) return null;
-  const fige = !canEdit || enCours;
+  if (!settings) return null;
+  const frozen = !canEdit || ongoing;
 
   return (
     <Stack gap="sm">
       <Switch
         label="Notifications à l'écran"
-        checked={reglages.toasts}
-        onChange={(e) => changer({ toasts: e.currentTarget.checked })}
-        disabled={fige}
+        checked={settings.toasts}
+        onChange={(e) => change({ toasts: e.currentTarget.checked })}
+        disabled={frozen}
         color="teal"
       />
       <Switch
         label="Notifications par e-mail"
-        checked={reglages.email}
-        onChange={(e) => changer({ email: e.currentTarget.checked })}
-        disabled={fige}
+        checked={settings.email}
+        onChange={(e) => change({ email: e.currentTarget.checked })}
+        disabled={frozen}
         color="teal"
       />
-      {reglages.email && (
+      {settings.email && (
         <Group
           gap="sm"
           // Aligné sur le libellé de l'interrupteur : sa piste (38 px), puis
@@ -74,20 +74,20 @@ export default function NotificationsTab({ canEdit }: NotificationsTabProps) {
           <Select
             label="Envoi"
             data={MODES}
-            value={reglages.emailMode}
-            onChange={(v) => v && changer({ emailMode: v as NotificationEmailMode })}
+            value={settings.emailMode}
+            onChange={(v) => v && change({ emailMode: v as NotificationEmailMode })}
             allowDeselect={false}
-            disabled={fige}
+            disabled={frozen}
             w={120}
           />
-          {reglages.emailMode === "grouped" && (
+          {settings.emailMode === "grouped" && (
             <Select
               label="Délai de regroupement"
-              data={delais(reglages.emailDelayMinutes)}
-              value={String(reglages.emailDelayMinutes)}
-              onChange={(v) => v && changer({ emailDelayMinutes: Number(v) })}
+              data={delays(settings.emailDelayMinutes)}
+              value={String(settings.emailDelayMinutes)}
+              onChange={(v) => v && change({ emailDelayMinutes: Number(v) })}
               allowDeselect={false}
-              disabled={fige}
+              disabled={frozen}
               w={100}
               // Le libellé déborde du champ plutôt que de passer à la ligne.
               styles={{ label: { whiteSpace: "nowrap" } }}

@@ -8,7 +8,7 @@
 // nécessaire pour les lire.
 
 import type { CardLink } from "./dependances.js";
-import type { FormeEcheance, Rappel, Recurrence } from "./echeance.js";
+import type { DueShape, Reminder, Recurrence } from "./echeance.js";
 import type { CompanyRights } from "./roles.js";
 import type { WidgetRights } from "./widget-kinds.js";
 
@@ -117,10 +117,10 @@ export interface Context {
 }
 
 /** Ce que montre la liste des contextes d'un tableau qui n'en a pas. */
-export const AUCUN_CONTEXTE = "Aucun contexte";
+export const NO_CONTEXT = "Aucun contexte";
 
 /** Le libellé, renommable, de l'entrée qui montre tous les contextes. */
-export const TOUS_LES_CONTEXTES = "Tous les contextes";
+export const ALL_CONTEXTS = "Tous les contextes";
 
 // --- Vues et tableaux -------------------------------------------------------
 
@@ -228,7 +228,7 @@ export interface Milestone {
  * les couleurs du curseur d'avancement.
  */
 /** Le type de jalons posé avec le premier widget de projets, que reçoit un nouveau projet. */
-export const TYPE_JALONS_PAR_DEFAUT = "Défaut";
+export const DEFAULT_MILESTONE_TYPE = "Défaut";
 
 export interface MilestoneType {
   id: Id;
@@ -349,9 +349,9 @@ export interface TaskCard {
   due_date: string;
   /** Le début de la période, « AAAA-MM-JJ », ou vide : l'échéance seule. */
   start_date: string;
-  due_form: FormeEcheance;
+  due_form: DueShape;
   recurrence: Recurrence;
-  reminder: Rappel;
+  reminder: Reminder;
   created_at: string;
   has_description: boolean;
   members: Actor[];
@@ -458,9 +458,9 @@ export interface TaskCardDetail {
   due_date: string;
   /** Voir `TaskCard.start_date`. */
   start_date: string;
-  due_form: FormeEcheance;
+  due_form: DueShape;
   recurrence: Recurrence;
-  reminder: Rappel;
+  reminder: Reminder;
   cover_interval: number;
   created_at: string;
   members: Actor[];
@@ -539,7 +539,7 @@ export const isListColor = (value: unknown): value is ListColor =>
 // --- Sections ----------------------------------------------------------------
 
 /** L'écart qui suit une section neuve, tant que son champ n'en a pas fixé un autre. */
-export const SECTIONS_GAP_DEFAUT = 50;
+export const SECTIONS_GAP_DEFAULT = 50;
 
 /** L'écart le plus large qu'une section puisse laisser : au-delà, la rangée se disloque. */
 export const SECTIONS_GAP_MAX = 100;
@@ -963,12 +963,12 @@ export type AccessFeedProbe =
   | { state: "injoignable" | "invalide"; message: string };
 
 /** L'intervalle de relève d'un flux, en minutes : par défaut, et ses bornes. */
-export const ACCESS_FEED_INTERVAL_DEFAUT = 30;
+export const ACCESS_FEED_INTERVAL_DEFAULT = 30;
 export const ACCESS_FEED_INTERVAL_MIN = 5;
 export const ACCESS_FEED_INTERVAL_MAX = 24 * 60;
 
 /** Les articles qu'un élément montre au plus, et donc que la base en garde. */
-export const ACCESS_FEED_QUANTITE_MAX = 50;
+export const ACCESS_FEED_QUANTITY_MAX = 50;
 
 /** Un lieu trouvé pour un widget Météo : de quoi le nommer et le situer. */
 export interface WeatherPlace {
@@ -1001,7 +1001,7 @@ export interface AccessWeather {
     time: string;
     code: number;
     temperature: number;
-    apparent: number;
+    feelsLike: number;
     humidity: number;
     wind: number;
     is_day: boolean;

@@ -23,10 +23,10 @@ import {
 } from "@tabler/icons-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { NEUTRAL_HOVER, STRONG_TEXT } from "../../themes/colors";
-import GrilleScroll from "../ui/GrilleScroll";
+import GridScroll from "../ui/GrilleScroll";
 import { ReferenceTag } from "../ui/ReferenceTag";
-import { FOND_CARTE } from "./fonds";
-import { useColonnesRedimensionnables } from "../ui/useColonnesRedimensionnables";
+import { CARD_BACKGROUND } from "./fonds";
+import { useResizableColumns } from "../ui/useColonnesRedimensionnables";
 import type { ComponentType, CSSProperties, ReactNode } from "react";
 import type { AssetEntry, AssetSection } from "@milo/shared";
 
@@ -35,203 +35,203 @@ import type { AssetEntry, AssetSection } from "@milo/shared";
 // veuille les comparer, les trier, y chercher la bonne.
 
 /** Une valeur absente se lit pareil partout : un tiret discret. */
-export const VIDE = "—";
+export const EMPTY = "—";
 
 // --- Le tableau triable -----------------------------------------------------
 
-type Sens = "asc" | "desc";
+type Direction = "asc" | "desc";
 
-interface Colonne {
-  cle: string;
-  libelle: string;
+interface Column {
+  key: string;
+  label: string;
   /**
    * Ce sur quoi la colonne se trie. Rien — ou une chaîne vide — quand la
    * ligne n'en dit rien : elle passe alors en bas, dans un sens comme dans
    * l'autre.
    */
-  valeur: (entree: AssetEntry) => string | number | null;
-  rendu: (entree: AssetEntry) => ReactNode;
+  value: (entry: AssetEntry) => string | number | null;
+  render: (entry: AssetEntry) => ReactNode;
   /** Le sens du premier clic : décroissant pour ce qu'on cherche en haut. */
-  premierSens?: Sens;
-  adroite?: boolean;
+  firstDirection?: Direction;
+  onRight?: boolean;
   largeur?: CSSProperties["width"];
 }
 
-interface Tri {
-  cle: string;
-  sens: Sens;
+interface Sorting {
+  key: string;
+  direction: Direction;
 }
 
 /** L'en-tête d'une colonne : un clic trie, un second inverse. */
-function EnTete({
-  colonne,
-  tri,
-  onTri,
-  poignee,
+function Header({
+  column,
+  sorting,
+  onSort,
+  handle,
 }: {
-  colonne: Colonne;
-  tri: Tri;
-  onTri: () => void;
-  poignee: ReactNode;
+  column: Column;
+  sorting: Sorting;
+  onSort: () => void;
+  handle: ReactNode;
 }) {
-  const actif = tri.cle === colonne.cle;
-  const Icone = !actif ? IconSelector : tri.sens === "asc" ? IconChevronUp : IconChevronDown;
+  const active = sorting.key === column.key;
+  const Icon = !active ? IconSelector : sorting.direction === "asc" ? IconChevronUp : IconChevronDown;
   return (
-    <Table.Th style={{ width: colonne.largeur }}>
-      <UnstyledButton onClick={onTri} style={{ width: "100%" }}>
+    <Table.Th style={{ width: column.largeur }}>
+      <UnstyledButton onClick={onSort} style={{ width: "100%" }}>
         <Group
           gap={4}
           wrap="nowrap"
-          justify={colonne.adroite ? "flex-end" : "space-between"}
+          justify={column.onRight ? "flex-end" : "space-between"}
         >
           <Text size="sm" fw={600} c={STRONG_TEXT}>
-            {colonne.libelle}
+            {column.label}
           </Text>
-          <Center c={actif ? undefined : "dimmed"}>
-            <Icone size={14} />
+          <Center c={active ? undefined : "dimmed"}>
+            <Icon size={14} />
           </Center>
         </Group>
       </UnstyledButton>
-      {poignee}
+      {handle}
     </Table.Th>
   );
 }
 
-function TableauTriable({
-  colonnes,
-  entrees,
-  triInitial,
-  espacement = 4,
-  largeurs,
-  parPage,
+function SortableTable({
+  columns,
+  entries,
+  initialSorting,
+  spacing = 4,
+  widths,
+  perPage,
 }: {
-  colonnes: Colonne[];
-  entrees: AssetEntry[];
-  triInitial: Tri;
-  espacement?: number;
+  columns: Column[];
+  entries: AssetEntry[];
+  initialSorting: Sorting;
+  spacing?: number;
   /**
    * Les largeurs de départ, en pixels, des colonnes qui en ont une ; les
    * autres se partagent le reste. Sans elles, la mise en page naturelle.
    */
-  largeurs?: Record<string, number>;
+  widths?: Record<string, number>;
   /**
    * La hauteur de la grille, en lignes : au-delà, elle défile dans sa propre
    * zone, l'entête restant en haut. C'est aussi le nombre de lignes montrées
    * d'abord, et ajoutées chaque fois qu'on arrive au bas de la zone. Sans
    * lui, toutes d'un coup, sur toute leur hauteur.
    */
-  parPage?: number;
+  perPage?: number;
 }) {
-  const [tri, setTri] = useState<Tri>(triInitial);
+  const [sorting, setSort] = useState<Sorting>(initialSorting);
   // Une tranche d'avance sur la hauteur de la zone : sans elle, la zone ne
   // contiendrait que ce qu'elle montre, n'aurait rien à faire défiler, et la
   // suite ne viendrait jamais.
-  const premieres = parPage ? 2 * parPage : Infinity;
-  const [montrees, setMontrees] = useState(premieres);
+  const firstItems = perPage ? 2 * perPage : Infinity;
+  const [shown, setShown] = useState(firstItems);
   // Le repère sous la dernière ligne : quand il paraît, la suite vient.
-  const repere = useRef<HTMLDivElement>(null);
+  const marker = useRef<HTMLDivElement>(null);
   // La grille, pour mesurer la hauteur de ses « parPage » premières lignes.
-  const cadre = useRef<HTMLDivElement>(null);
-  const [hauteur, setHauteur] = useState<number | undefined>(undefined);
+  const frame = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | undefined>(undefined);
   // Chaque tableau de l'inventaire se reconnaît à ses colonnes.
-  const cles = colonnes.map((c) => c.cle);
-  const redim = useColonnesRedimensionnables(`inventaire.${cles.join("-")}`, cles, largeurs);
+  const keys = columns.map((c) => c.key);
+  const resize = useResizableColumns(`inventaire.${keys.join("-")}`, keys, widths);
 
-  const trier = (colonne: Colonne) => {
+  const sortBy = (column: Column) => {
     // Un autre ordre repart du haut de la grille.
-    setMontrees(premieres);
-    setTri((courant) =>
-      courant.cle === colonne.cle
-        ? { cle: colonne.cle, sens: courant.sens === "asc" ? "desc" : "asc" }
-        : { cle: colonne.cle, sens: colonne.premierSens ?? "asc" },
+    setShown(firstItems);
+    setSort((current) =>
+      current.key === column.key
+        ? { key: column.key, direction: current.direction === "asc" ? "desc" : "asc" }
+        : { key: column.key, direction: column.firstDirection ?? "asc" },
     );
   };
 
-  const triees = useMemo(() => {
-    const colonne = colonnes.find((c) => c.cle === tri.cle);
-    if (!colonne) return entrees;
-    const facteur = tri.sens === "asc" ? 1 : -1;
-    return [...entrees].sort((a, b) => {
-      const gauche = colonne.valeur(a);
-      const droite = colonne.valeur(b);
-      const absentG = gauche === null || gauche === "";
-      const absentD = droite === null || droite === "";
-      if (absentG || absentD) return absentG === absentD ? 0 : absentG ? 1 : -1;
-      if (typeof gauche === "number" && typeof droite === "number") {
-        return (gauche - droite) * facteur;
+  const sorted = useMemo(() => {
+    const column = columns.find((c) => c.key === sorting.key);
+    if (!column) return entries;
+    const factor = sorting.direction === "asc" ? 1 : -1;
+    return [...entries].sort((a, b) => {
+      const left = column.value(a);
+      const rightHand = column.value(b);
+      const missingLeft = left === null || left === "";
+      const missingRight = rightHand === null || rightHand === "";
+      if (missingLeft || missingRight) return missingLeft === missingRight ? 0 : missingLeft ? 1 : -1;
+      if (typeof left === "number" && typeof rightHand === "number") {
+        return (left - rightHand) * factor;
       }
       // « numeric » range « 10.2 » après « 9.1 », et « sensitivity » met
       // « adobe » et « Adobe » ensemble.
       return (
-        String(gauche).localeCompare(String(droite), "fr", {
+        String(left).localeCompare(String(rightHand), "fr", {
           numeric: true,
           sensitivity: "base",
-        }) * facteur
+        }) * factor
       );
     });
-  }, [colonnes, entrees, tri]);
+  }, [columns, entries, sorting]);
 
-  const reste = triees.length > montrees;
+  const rest = sorted.length > shown;
   useEffect(() => {
-    const cible = repere.current;
-    if (!cible || !reste || !parPage) return;
+    const target = marker.current;
+    if (!target || !rest || !perPage) return;
     // Une part réellement visible du repère, et non « isIntersecting » : dans
     // une section repliée, de hauteur nulle, le navigateur le dit visible par
     // une intersection d'aire nulle, et tout se chargerait d'un coup.
-    const observateur = new IntersectionObserver((vus) => {
-      if (vus.some((v) => v.intersectionRatio > 0)) setMontrees((n) => n + parPage);
+    const observer = new IntersectionObserver((seen) => {
+      if (seen.some((v) => v.intersectionRatio > 0)) setShown((n) => n + perPage);
     });
-    observateur.observe(cible);
-    return () => observateur.disconnect();
-  }, [reste, parPage, montrees]);
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [rest, perPage, shown]);
 
   // La hauteur de la zone : l'entête et les « parPage » premières lignes. Elle
   // se mesure de nouveau quand la grille change de taille — une section
   // repliée n'en a pas, et se déplie plus tard.
   useLayoutEffect(() => {
-    const grille = cadre.current;
-    if (!grille || !parPage) return;
-    const mesurer = () => {
-      const lignes = grille.querySelectorAll("tbody tr");
-      const derniere = lignes[parPage - 1];
-      if (lignes.length <= parPage || !derniere) return setHauteur(undefined);
+    const grid = frame.current;
+    if (!grid || !perPage) return;
+    const measure = () => {
+      const rows = grid.querySelectorAll("tbody tr");
+      const last = rows[perPage - 1];
+      if (rows.length <= perPage || !last) return setHeight(undefined);
       // Du haut du cadre au bas de la dernière ligne, plus la marge du bas.
-      const marge = parseFloat(getComputedStyle(grille).paddingBottom) || 0;
+      const margin = parseFloat(getComputedStyle(grid).paddingBottom) || 0;
       const h =
-        derniere.getBoundingClientRect().bottom - grille.getBoundingClientRect().top + marge;
-      if (h > 0) setHauteur(Math.ceil(h));
+        last.getBoundingClientRect().bottom - grid.getBoundingClientRect().top + margin;
+      if (h > 0) setHeight(Math.ceil(h));
     };
-    mesurer();
-    const observateur = new ResizeObserver(mesurer);
-    observateur.observe(grille);
-    return () => observateur.disconnect();
-  }, [parPage, triees.length]);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(grid);
+    return () => observer.disconnect();
+  }, [perPage, sorted.length]);
 
-  const grille = (
-    <Table {...redim.tableProps} verticalSpacing={espacement} horizontalSpacing="xs">
-      {redim.colgroup}
-      <Table.Thead style={parPage ? ENTETE_COLLEE : undefined}>
+  const grid = (
+    <Table {...resize.tableProps} verticalSpacing={spacing} horizontalSpacing="xs">
+      {resize.colgroup}
+      <Table.Thead style={perPage ? STICKY_HEADER : undefined}>
         <Table.Tr>
-          {colonnes.map((colonne) => (
-            <EnTete
-              key={colonne.cle}
-              colonne={colonne}
-              tri={tri}
-              onTri={() => trier(colonne)}
-              poignee={redim.poignee(colonne.cle)}
+          {columns.map((column) => (
+            <Header
+              key={column.key}
+              column={column}
+              sorting={sorting}
+              onSort={() => sortBy(column)}
+              handle={resize.handle(column.key)}
             />
           ))}
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
-        {triees.slice(0, montrees).map((entree, rang) => (
-          <Table.Tr key={rang}>
-            {colonnes.map((colonne) => (
+        {sorted.slice(0, shown).map((entry, rank) => (
+          <Table.Tr key={rank}>
+            {columns.map((column) => (
               <Table.Td
-                key={colonne.cle}
-                style={colonne.adroite ? { textAlign: "right", whiteSpace: "nowrap" } : undefined}
+                key={column.key}
+                style={column.onRight ? { textAlign: "right", whiteSpace: "nowrap" } : undefined}
               >
-                {colonne.rendu(entree)}
+                {column.render(entry)}
               </Table.Td>
             ))}
           </Table.Tr>
@@ -246,25 +246,25 @@ function TableauTriable({
   // l'intérieur) : la barre longe ainsi la section sur toute sa hauteur,
   // comme celle du tiroir longe la fenêtre. Sinon, élargie à la main
   // au-delà de la section, elle n'y défile que de côté.
-  if (parPage) {
+  if (perPage) {
     return (
       // La barre fine du tiroir de la fiche : 2 px, toujours visible.
       <ScrollArea.Autosize
-        mah={hauteur}
+        mah={height}
         type="always"
         scrollbarSize={2}
         m="calc(-1 * var(--mantine-spacing-md))"
         style={{ borderRadius: 10 }}
         styles={{ content: { display: "block" } }}
       >
-        <Box ref={cadre} p="md">
-          {grille}
-          {reste && <div ref={repere} style={{ height: 1 }} />}
+        <Box ref={frame} p="md">
+          {grid}
+          {rest && <div ref={marker} style={{ height: 1 }} />}
         </Box>
       </ScrollArea.Autosize>
     );
   }
-  return <GrilleScroll>{grille}</GrilleScroll>;
+  return <GridScroll>{grid}</GridScroll>;
 }
 
 /**
@@ -272,27 +272,27 @@ function TableauTriable({
  * défile, à la marge du cadre, et l'ombre pleine au-dessus de lui cache les
  * lignes qui passent dans cette marge.
  */
-const ENTETE_COLLEE: CSSProperties = {
+const STICKY_HEADER: CSSProperties = {
   position: "sticky",
   top: "var(--mantine-spacing-md)",
   zIndex: 2,
-  backgroundColor: FOND_CARTE,
-  boxShadow: `0 calc(-1 * var(--mantine-spacing-md)) 0 ${FOND_CARTE}`,
+  backgroundColor: CARD_BACKGROUND,
+  boxShadow: `0 calc(-1 * var(--mantine-spacing-md)) 0 ${CARD_BACKGROUND}`,
 };
 
 /** Une cellule de texte ordinaire, ou le tiret quand elle est vide. */
-const texte = (valeur: string | undefined) => (
+const text = (value: string | undefined) => (
   <Text size="sm" style={{ wordBreak: "break-word" }}>
-    {valeur || VIDE}
+    {value || EMPTY}
   </Text>
 );
 
 /** Un champ tel quel : la colonne la plus simple, triée sur sa valeur. */
-const champ = (cle: string, libelle: string): Colonne => ({
-  cle,
-  libelle,
-  valeur: (entree) => entree[cle] ?? null,
-  rendu: (entree) => texte(entree[cle]),
+const field = (key: string, label: string): Column => ({
+  key,
+  label,
+  value: (entry) => entry[key] ?? null,
+  render: (entry) => text(entry[key]),
 });
 
 // --- Volumes ----------------------------------------------------------------
@@ -301,7 +301,7 @@ const champ = (cle: string, libelle: string): Colonne => ({
  * Une taille donnée en Mo par l'agent, lisible : « 3,63 To », « 476 Go »,
  * « 512 Mo ». Au-delà de 1 000 Go, elle passe en To.
  */
-export const taille = (mo: number): string => {
+export const size = (mo: number): string => {
   const go = mo / 1024;
   if (go > 1000) {
     return `${(go / 1024).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} To`;
@@ -312,11 +312,11 @@ export const taille = (mo: number): string => {
 };
 
 /** « Yes » et « No » de l'agent, en français ; le reste tel quel. */
-const ouiNon = (valeur: string | undefined): string => {
-  const v = (valeur ?? "").toLowerCase();
+const yesNo = (value: string | undefined): string => {
+  const v = (value ?? "").toLowerCase();
   if (v === "yes" || v === "1" || v === "true") return "Oui";
   if (v === "no" || v === "0" || v === "false") return "Non";
-  return valeur ?? "";
+  return value ?? "";
 };
 
 /**
@@ -328,46 +328,46 @@ const ouiNon = (valeur: string | undefined): string => {
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Le système de fichiers, ou rien quand l'agent n'a donné qu'un GUID. */
-const systemeDeFichiers = (valeur: string | undefined): string =>
-  valeur && !GUID.test(valeur.trim()) ? valeur : "";
+const fileSystem = (value: string | undefined): string =>
+  value && !GUID.test(value.trim()) ? value : "";
 
 /**
  * La part occupée d'un volume, de 0 à 100, ou rien : un lecteur optique vide
  * ou un partage injoignable ne donne pas de taille.
  */
-const occupation = (entree: AssetEntry): number | null => {
-  const total = Number(entree["TOTAL"]);
-  const libre = Number(entree["FREE"]);
-  if (!(total > 0) || Number.isNaN(libre)) return null;
-  return Math.min(100, Math.max(0, ((total - libre) / total) * 100));
+const usage = (entry: AssetEntry): number | null => {
+  const total = Number(entry["TOTAL"]);
+  const free = Number(entry["FREE"]);
+  if (!(total > 0) || Number.isNaN(free)) return null;
+  return Math.min(100, Math.max(0, ((total - free) / total) * 100));
 };
 
 /** La jauge d'un volume : l'occupé en barre, le libre et le total en clair. */
-function Occupation({ entry }: { entry: AssetEntry }) {
-  const occupe = occupation(entry);
+function Usage({ entry }: { entry: AssetEntry }) {
+  const occupe = usage(entry);
   if (occupe === null) {
     return (
       <Text size="sm" c="dimmed">
-        {VIDE}
+        {EMPTY}
       </Text>
     );
   }
   // La couleur ne dit rien tant qu'il reste de la place, et alerte quand il
   // n'en reste plus.
-  const couleur = occupe >= 90 ? "red" : occupe >= 75 ? "orange" : "blue";
+  const color = occupe >= 90 ? "red" : occupe >= 75 ? "orange" : "blue";
   return (
     <Stack gap={2}>
-      <Progress value={occupe} color={couleur} size="sm" />
+      <Progress value={occupe} color={color} size="sm" />
       <Text size="xs" c="dimmed">
-        {taille(Number(entry["FREE"]))} / {taille(Number(entry["TOTAL"]))}
+        {size(Number(entry["FREE"]))} / {size(Number(entry["TOTAL"]))}
       </Text>
     </Stack>
   );
 }
 
 /** Le volume système : « C: » sous Windows, « / » ailleurs. */
-const systeme = (entree: AssetEntry): boolean =>
-  (entree["LETTER"] ?? "").toUpperCase() === "C:" || entree["TYPE"] === "/";
+const isSystemDisk = (entry: AssetEntry): boolean =>
+  (entry["LETTER"] ?? "").toUpperCase() === "C:" || entry["TYPE"] === "/";
 
 /**
  * Les volumes du poste, présentés comme les cartes réseau : une ligne
@@ -376,39 +376,39 @@ const systeme = (entree: AssetEntry): boolean =>
  * montrée que si l'agent en donne une.
  */
 function Volumes({ section }: { section: AssetSection }) {
-  const lettres = section.entries.some((entree) => entree["LETTER"]);
-  const entrees = [...section.entries].sort(
+  const letters = section.entries.some((entry) => entry["LETTER"]);
+  const entries = [...section.entries].sort(
     (a, b) =>
-      Number(systeme(b)) - Number(systeme(a)) ||
-      (occupation(b) ?? -1) - (occupation(a) ?? -1),
+      Number(isSystemDisk(b)) - Number(isSystemDisk(a)) ||
+      (usage(b) ?? -1) - (usage(a) ?? -1),
   );
   // Le système de fichiers et le chiffrement à droite, à largeur fixe.
-  const colonnes = [
-    ...(lettres ? [`${LARGEUR_PREMIERE}px`] : []),
+  const columns = [
+    ...(letters ? [`${FIRST_WIDTH}px`] : []),
     "1fr",
     "200px",
-    `${LARGEUR_NOMBRE}px`,
+    `${COUNT_WIDTH}px`,
   ].join(" ");
   return (
-    <LignesNumerotees
-      entrees={entrees}
-      textes={0}
-      nombres={0}
-      colonnes={colonnes}
-      valeurs={(entree) => (
+    <NumberedLines
+      entries={entries}
+      texts={0}
+      numbers={0}
+      columns={columns}
+      values={(entry) => (
         <>
           {/* 1re ligne : ce qu'est le volume. */}
-          {lettres && <Valeur libelle="Lettre" valeur={entree["LETTER"]} />}
-          <Valeur libelle="Type" valeur={entree["TYPE"]} />
-          <Valeur
-            libelle="Système de fichiers"
-            valeur={systemeDeFichiers(entree["FILESYSTEM"])}
-            adroite
+          {letters && <Value label="Lettre" value={entry["LETTER"]} />}
+          <Value label="Type" value={entry["TYPE"]} />
+          <Value
+            label="Système de fichiers"
+            value={fileSystem(entry["FILESYSTEM"])}
+            onRight
           />
-          <Valeur libelle="Chiffré" valeur={ouiNon(entree["ENCRYPT_STATUS"])} adroite />
+          <Value label="Chiffré" value={yesNo(entry["ENCRYPT_STATUS"])} onRight />
           {/* 2e ligne : l'espace, sur toute la largeur. */}
           <Box style={{ gridColumn: "1 / -1" }}>
-            <Valeur libelle="Espace" valeur={<Occupation entry={entree} />} />
+            <Value label="Espace" value={<Usage entry={entry} />} />
           </Box>
         </>
       )}
@@ -422,21 +422,21 @@ function Volumes({ section }: { section: AssetSection }) {
  * Oui ou non, d'après ce que l'agent écrit — « yes », « 1 », « on »… —, ou
  * rien quand il ne dit rien de lisible.
  */
-const actif = (valeur: string | undefined): boolean | null => {
-  const v = (valeur ?? "").trim().toLowerCase();
+const active = (value: string | undefined): boolean | null => {
+  const v = (value ?? "").trim().toLowerCase();
   if (["yes", "1", "true", "on", "enabled"].includes(v)) return true;
   if (["no", "0", "false", "off", "disabled"].includes(v)) return false;
   return null;
 };
 
 /** Le tag d'un état lisible, ou rien : la valeur garde alors son tiret. */
-const tagEtat = (valeur: string | undefined) => {
-  const etat = actif(valeur);
-  return etat === null ? valeur : <Etat actif={etat} />;
+const statusTag = (value: string | undefined) => {
+  const state = active(value);
+  return state === null ? value : <State active={state} />;
 };
 
 /** La largeur de la colonne d'un tag d'état, à droite. */
-const LARGEUR_ETAT = 100;
+const STATE_WIDTH = 100;
 
 /**
  * Les protections du poste — antivirus, EPP, EDR —, telles que Windows les
@@ -445,22 +445,22 @@ const LARGEUR_ETAT = 100;
  * installée : les actives d'abord.
  */
 function Protections({ section }: { section: AssetSection }) {
-  const entrees = [...section.entries].sort(
-    (a, b) => Number(actif(b["ENABLED"]) ?? -1) - Number(actif(a["ENABLED"]) ?? -1),
+  const entries = [...section.entries].sort(
+    (a, b) => Number(active(b["ENABLED"]) ?? -1) - Number(active(a["ENABLED"]) ?? -1),
   );
   return (
-    <LignesNumerotees
-      entrees={entrees}
-      textes={0}
-      nombres={0}
+    <NumberedLines
+      entries={entries}
+      texts={0}
+      numbers={0}
       // La version et l'état à droite, à largeur fixe.
-      colonnes={`1fr 1fr ${LARGEUR_NOMBRE}px ${LARGEUR_NOMBRE}px`}
-      valeurs={(entree) => (
+      columns={`1fr 1fr ${COUNT_WIDTH}px ${COUNT_WIDTH}px`}
+      values={(entry) => (
         <>
-          <Valeur libelle="Nom" valeur={entree["NAME"]} />
-          <Valeur libelle="Éditeur" valeur={entree["COMPANY"]} />
-          <Valeur libelle="Version" valeur={entree["VERSION"]} adroite />
-          <Valeur libelle="Statut" valeur={tagEtat(entree["ENABLED"])} adroite />
+          <Value label="Nom" value={entry["NAME"]} />
+          <Value label="Éditeur" value={entry["COMPANY"]} />
+          <Value label="Version" value={entry["VERSION"]} onRight />
+          <Value label="Statut" value={statusTag(entry["ENABLED"])} onRight />
         </>
       )}
     />
@@ -470,7 +470,7 @@ function Protections({ section }: { section: AssetSection }) {
 // --- Pare-feu ---------------------------------------------------------------
 
 /** Les profils du pare-feu de Windows, sous leur nom français. */
-const PROFILS_PARE_FEU: Record<string, string> = {
+const FIREWALL_PROFILES: Record<string, string> = {
   DomainProfile: "Domaine",
   StandardProfile: "Privé",
   PublicProfile: "Public",
@@ -480,24 +480,24 @@ const PROFILS_PARE_FEU: Record<string, string> = {
  * Le pare-feu du poste, présenté comme les volumes : une entrée par profil
  * sous Windows, une seule ailleurs. Les profils actifs d'abord.
  */
-function PareFeu({ section }: { section: AssetSection }) {
-  const entrees = [...section.entries].sort(
-    (a, b) => Number(actif(b["STATUS"]) ?? -1) - Number(actif(a["STATUS"]) ?? -1),
+function Firewall({ section }: { section: AssetSection }) {
+  const entries = [...section.entries].sort(
+    (a, b) => Number(active(b["STATUS"]) ?? -1) - Number(active(a["STATUS"]) ?? -1),
   );
   return (
-    <LignesNumerotees
-      entrees={entrees}
-      textes={0}
-      nombres={0}
+    <NumberedLines
+      entries={entries}
+      texts={0}
+      numbers={0}
       // L'état à droite, à largeur fixe.
-      colonnes={`1fr ${LARGEUR_ETAT}px`}
-      valeurs={(entree) => (
+      columns={`1fr ${STATE_WIDTH}px`}
+      values={(entry) => (
         <>
-          <Valeur
-            libelle="Profil"
-            valeur={PROFILS_PARE_FEU[entree["PROFILE"] ?? ""] ?? entree["PROFILE"]}
+          <Value
+            label="Profil"
+            value={FIREWALL_PROFILES[entry["PROFILE"] ?? ""] ?? entry["PROFILE"]}
           />
-          <Valeur libelle="Statut" valeur={tagEtat(entree["STATUS"])} adroite />
+          <Value label="Statut" value={statusTag(entry["STATUS"])} onRight />
         </>
       )}
     />
@@ -517,72 +517,72 @@ function PareFeu({ section }: { section: AssetSection }) {
  * (« [kworker/0:1] »), et les processus de Windows sans chemin ni option
  * (« System Idle Process ») restent tels quels.
  */
-const application = (commande: string): string => {
-  const texte = commande.trim();
-  if (!texte || texte.startsWith("[")) return texte;
+const application = (command: string): string => {
+  const text = command.trim();
+  if (!text || text.startsWith("[")) return text;
 
-  let programme: string;
-  const bundle = /([^/]+)\.app\//.exec(texte);
-  const exe = /^.*?\.exe\b/i.exec(texte);
-  if (texte.startsWith('"')) {
-    const fin = texte.indexOf('"', 1);
-    programme = fin > 0 ? texte.slice(1, fin) : texte.slice(1);
+  let program: string;
+  const bundle = /([^/]+)\.app\//.exec(text);
+  const exe = /^.*?\.exe\b/i.exec(text);
+  if (text.startsWith('"')) {
+    const end = text.indexOf('"', 1);
+    program = end > 0 ? text.slice(1, end) : text.slice(1);
   } else if (bundle) {
     return bundle[1]!;
   } else if (exe) {
-    programme = exe[0];
-  } else if (!/[\\/]/.test(texte) && !/\s-/.test(texte)) {
+    program = exe[0];
+  } else if (!/[\\/]/.test(text) && !/\s-/.test(text)) {
     // Ni chemin ni option : un nom que Windows donne à ses processus à lui,
     // espaces compris (« System Idle Process », « Memory Compression »).
-    return texte;
+    return text;
   } else {
-    programme = texte.split(/\s/)[0]!;
+    program = text.split(/\s/)[0]!;
   }
 
   // « sshd: jquintard@pts/0 » : le nom que le processus s'est donné.
-  return programme.split(/[\\/]/).pop()!.replace(/:$/, "") || texte;
+  return program.split(/[\\/]/).pop()!.replace(/:$/, "") || text;
 };
 
 /** La part de processeur, en nombre ; rien quand l'agent ne l'a pas lue. */
-const cpu = (entree: AssetEntry): number | null => {
-  const valeur = Number(entree["CPUUSAGE"]);
-  return entree["CPUUSAGE"] && !Number.isNaN(valeur) ? valeur : null;
+const cpu = (entry: AssetEntry): number | null => {
+  const value = Number(entry["CPUUSAGE"]);
+  return entry["CPUUSAGE"] && !Number.isNaN(value) ? value : null;
 };
 
 /**
  * Les processus du poste au moment de l'inventaire, les plus gourmands en
  * tête : c'est eux qu'on vient chercher quand un poste rame.
  */
-function Processus({ section }: { section: AssetSection }) {
-  const colonnes: Colonne[] = [
+function Processes({ section }: { section: AssetSection }) {
+  const columns: Column[] = [
     {
-      cle: "CMD",
-      libelle: "Commande",
-      valeur: (entree) => application(entree["CMD"] ?? ""),
+      key: "CMD",
+      label: "Commande",
+      value: (entry) => application(entry["CMD"] ?? ""),
       // L'application seule, sans chemin ni options.
-      rendu: (entree) => (
+      render: (entry) => (
         <Text size="sm" style={{ wordBreak: "break-word" }}>
-          {application(entree["CMD"] ?? "") || VIDE}
+          {application(entry["CMD"] ?? "") || EMPTY}
         </Text>
       ),
     },
-    champ("USER", "Utilisateur"),
+    field("USER", "Utilisateur"),
     {
-      cle: "CPUUSAGE",
-      libelle: "CPU",
-      valeur: cpu,
-      rendu: (entree) => texte(entree["CPUUSAGE"] ? `${entree["CPUUSAGE"]} %` : ""),
-      premierSens: "desc",
-      adroite: true,
+      key: "CPUUSAGE",
+      label: "CPU",
+      value: cpu,
+      render: (entry) => text(entry["CPUUSAGE"] ? `${entry["CPUUSAGE"]} %` : ""),
+      firstDirection: "desc",
+      onRight: true,
     },
   ];
   return (
-    <TableauTriable
-      colonnes={colonnes}
-      entrees={section.entries}
-      triInitial={{ cle: "CPUUSAGE", sens: "desc" }}
-      largeurs={{ USER: 250, CPUUSAGE: 80 }}
-      parPage={15}
+    <SortableTable
+      columns={columns}
+      entries={section.entries}
+      initialSorting={{ key: "CPUUSAGE", direction: "desc" }}
+      widths={{ USER: 250, CPUUSAGE: 80 }}
+      perPage={15}
     />
   );
 }
@@ -594,12 +594,12 @@ function Processus({ section }: { section: AssetSection }) {
  * sous Windows, devient « 2024-03-15 ». Les autres formats — macOS, Linux —
  * sont déjà dans l'ordre, ou restent tels quels.
  */
-const dateRangeable = (valeur: string | undefined): string => {
-  const texte = (valeur ?? "").trim();
-  const francaise = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(texte);
-  if (!francaise) return texte;
-  const [, jour, mois, an] = francaise;
-  return `${an}-${mois!.padStart(2, "0")}-${jour!.padStart(2, "0")}`;
+const sortableDate = (value: string | undefined): string => {
+  const text = (value ?? "").trim();
+  const frenchDate = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(text);
+  if (!frenchDate) return text;
+  const [, day, months, an] = frenchDate;
+  return `${an}-${months!.padStart(2, "0")}-${day!.padStart(2, "0")}`;
 };
 
 /**
@@ -609,26 +609,26 @@ const dateRangeable = (valeur: string | undefined): string => {
  * la donne — son format change d'un système à l'autre — et ne se relit que
  * pour le tri, le plus récent en tête au premier clic.
  */
-function Logiciels({ section }: { section: AssetSection }) {
-  const colonnes: Colonne[] = [
-    champ("NAME", "Nom"),
-    champ("VERSION", "Version"),
-    champ("PUBLISHER", "Éditeur"),
+function Software({ section }: { section: AssetSection }) {
+  const columns: Column[] = [
+    field("NAME", "Nom"),
+    field("VERSION", "Version"),
+    field("PUBLISHER", "Éditeur"),
     {
-      cle: "INSTALLDATE",
-      libelle: "Installé le",
-      valeur: (entree) => dateRangeable(entree["INSTALLDATE"]),
-      rendu: (entree) => texte(entree["INSTALLDATE"]),
-      premierSens: "desc",
+      key: "INSTALLDATE",
+      label: "Installé le",
+      value: (entry) => sortableDate(entry["INSTALLDATE"]),
+      render: (entry) => text(entry["INSTALLDATE"]),
+      firstDirection: "desc",
     },
   ];
   return (
-    <TableauTriable
-      colonnes={colonnes}
-      entrees={section.entries}
-      triInitial={{ cle: "NAME", sens: "asc" }}
-      largeurs={{ VERSION: 160, PUBLISHER: 180, INSTALLDATE: 110 }}
-      parPage={15}
+    <SortableTable
+      columns={columns}
+      entries={section.entries}
+      initialSorting={{ key: "NAME", direction: "asc" }}
+      widths={{ VERSION: 160, PUBLISHER: 180, INSTALLDATE: 110 }}
+      perPage={15}
     />
   );
 }
@@ -639,13 +639,13 @@ function Logiciels({ section }: { section: AssetSection }) {
  * Les groupes locaux du poste, par nom, présentés comme les processus : 15
  * lignes de haut, la suite au fil du défilement.
  */
-function Groupes({ section }: { section: AssetSection }) {
+function Groups({ section }: { section: AssetSection }) {
   return (
-    <TableauTriable
-      colonnes={[champ("NAME", "Nom")]}
-      entrees={section.entries}
-      triInitial={{ cle: "NAME", sens: "asc" }}
-      parPage={15}
+    <SortableTable
+      columns={[field("NAME", "Nom")]}
+      entries={section.entries}
+      initialSorting={{ key: "NAME", direction: "asc" }}
+      perPage={15}
     />
   );
 }
@@ -656,27 +656,27 @@ function Groupes({ section }: { section: AssetSection }) {
  * vient que de Linux et de macOS : la colonne n'existe que si l'agent en
  * donne un.
  */
-function Comptes({ section }: { section: AssetSection }) {
-  const dossiers = section.entries.some((entree) => entree["HOME"]);
-  const nom: Colonne = {
-    ...champ("NAME", "Nom"),
-    rendu: (entree) =>
-      entree["ADMIN"] ? (
+function Accounts({ section }: { section: AssetSection }) {
+  const folders = section.entries.some((entry) => entry["HOME"]);
+  const name: Column = {
+    ...field("NAME", "Nom"),
+    render: (entry) =>
+      entry["ADMIN"] ? (
         <Group gap={8} wrap="nowrap">
-          {texte(entree["NAME"])}
+          {text(entry["NAME"])}
           <Badge color="green" variant="filled" size="sm" radius="sm" style={{ flexShrink: 0 }}>
             Admin
           </Badge>
         </Group>
       ) : (
-        texte(entree["NAME"])
+        text(entry["NAME"])
       ),
   };
   return (
-    <TableauTriable
-      colonnes={[nom, ...(dossiers ? [champ("HOME", "Dossier")] : [])]}
-      entrees={section.entries}
-      triInitial={{ cle: "NAME", sens: "asc" }}
+    <SortableTable
+      columns={[name, ...(folders ? [field("HOME", "Dossier")] : [])]}
+      entries={section.entries}
+      initialSorting={{ key: "NAME", direction: "asc" }}
     />
   );
 }
@@ -688,9 +688,9 @@ function Comptes({ section }: { section: AssetSection }) {
  * tantôt sous la forme « size=2048 » (Parallels) ; les conteneurs Docker n'en
  * déclarent pas.
  */
-const memoire = (entree: AssetEntry): number | null => {
-  const chiffres = /\d+(?:[.,]\d+)?/.exec(entree["MEMORY"] ?? "");
-  return chiffres ? Number(chiffres[0].replace(",", ".")) : null;
+const memorySize = (entry: AssetEntry): number | null => {
+  const digits = /\d+(?:[.,]\d+)?/.exec(entry["MEMORY"] ?? "");
+  return digits ? Number(digits[0].replace(",", ".")) : null;
 };
 
 /**
@@ -698,20 +698,20 @@ const memoire = (entree: AssetEntry): number | null => {
  * libellé et la couleur de son tag. Ce que l'agent écrit d'autre reste tel
  * quel, en dernier.
  */
-const etatVm = (
-  statut: string | undefined,
-): { rang: number; libelle: string; couleur?: string } => {
-  const s = (statut ?? "").trim().toLowerCase();
+const vmState = (
+  status: string | undefined,
+): { rank: number; label: string; color?: string } => {
+  const s = (status ?? "").trim().toLowerCase();
   if (["running", "started", "up"].includes(s)) {
-    return { rang: 0, libelle: "Démarrée", couleur: "green" };
+    return { rank: 0, label: "Démarrée", color: "green" };
   }
   if (["paused", "suspended", "saved"].includes(s)) {
-    return { rang: 1, libelle: "En pause", couleur: "orange" };
+    return { rank: 1, label: "En pause", color: "orange" };
   }
   if (["off", "stopped", "exited", "shutdown", "poweroff", "powered off"].includes(s)) {
-    return { rang: 2, libelle: "Éteinte", couleur: "red" };
+    return { rank: 2, label: "Éteinte", color: "red" };
   }
-  return { rang: 3, libelle: statut ?? "" };
+  return { rank: 3, label: status ?? "" };
 };
 
 /**
@@ -719,67 +719,67 @@ const etatVm = (
  * (« Docker », « Parallels »…), les démarrées d'abord, présenté comme les
  * processus : 15 lignes de haut, la suite au fil du défilement.
  */
-function MachinesVirtuelles({ section }: { section: AssetSection }) {
-  const colonneMemoire: Colonne = {
-    cle: "MEMORY",
-    libelle: "Mémoire",
-    valeur: memoire,
-    rendu: (entree) => {
-      const mo = memoire(entree);
-      return texte(mo === null ? "" : taille(mo));
+function VirtualMachines({ section }: { section: AssetSection }) {
+  const memoryColumn: Column = {
+    key: "MEMORY",
+    label: "Mémoire",
+    value: memorySize,
+    render: (entry) => {
+      const mo = memorySize(entry);
+      return text(mo === null ? "" : size(mo));
     },
-    premierSens: "desc",
-    adroite: true,
+    firstDirection: "desc",
+    onRight: true,
   };
   // La mémoire n'a sa colonne que si une machine du type en déclare une : les
   // conteneurs Docker n'en disent rien.
-  const colonnesDe = (entrees: AssetEntry[]): Colonne[] => [
-    champ("NAME", "Nom"),
-    ...(entrees.some((entree) => memoire(entree) !== null) ? [colonneMemoire] : []),
+  const columnsOf = (entries: AssetEntry[]): Column[] => [
+    field("NAME", "Nom"),
+    ...(entries.some((entry) => memorySize(entry) !== null) ? [memoryColumn] : []),
     {
-      cle: "STATUS",
-      libelle: "Statut",
-      valeur: (entree) => (entree["STATUS"] ? etatVm(entree["STATUS"]).rang : null),
-      rendu: (entree) => {
-        const etat = etatVm(entree["STATUS"]);
-        return etat.couleur ? (
-          <Badge color={etat.couleur} variant="filled" size="sm" radius="sm">
-            {etat.libelle}
+      key: "STATUS",
+      label: "Statut",
+      value: (entry) => (entry["STATUS"] ? vmState(entry["STATUS"]).rank : null),
+      render: (entry) => {
+        const state = vmState(entry["STATUS"]);
+        return state.color ? (
+          <Badge color={state.color} variant="filled" size="sm" radius="sm">
+            {state.label}
           </Badge>
         ) : (
-          texte(etat.libelle)
+          text(state.label)
         );
       },
     },
   ];
-  const parType = new Map<string, AssetEntry[]>();
+  const byType = new Map<string, AssetEntry[]>();
   // Par nom d'abord : à état égal, le tri par statut les garde dans cet ordre.
-  const parNom = [...section.entries].sort((a, b) =>
+  const byName = [...section.entries].sort((a, b) =>
     (a["NAME"] ?? "").localeCompare(b["NAME"] ?? "", "fr", { numeric: true, sensitivity: "base" }),
   );
-  for (const entree of parNom) {
-    const type = entree["VMTYPE"]?.trim() || "Autre";
-    parType.set(type, [...(parType.get(type) ?? []), entree]);
+  for (const entry of byName) {
+    const type = entry["VMTYPE"]?.trim() || "Autre";
+    byType.set(type, [...(byType.get(type) ?? []), entry]);
   }
-  const types = [...parType.keys()].sort((a, b) =>
+  const types = [...byType.keys()].sort((a, b) =>
     a.localeCompare(b, "fr", { sensitivity: "base" }),
   );
   // Chaque type sous son titre, au style des sous-catégories des widgets, et
   // dans son propre cadre gris : la section n'en pose pas (SANS_CADRE).
   return (
     <>
-      {types.map((type, rang) => (
-        <Box key={type} mt={rang === 0 ? 0 : 30}>
+      {types.map((type, rank) => (
+        <Box key={type} mt={rank === 0 ? 0 : 30}>
           <Title order={2} size={16} fw={400} c="var(--mantine-color-white)" mb={15}>
-            {typeCarte(type)}
+            {cardType(type)}
           </Title>
-          <Box p="md" style={{ backgroundColor: FOND_CARTE, borderRadius: 10 }}>
-            <TableauTriable
-              colonnes={colonnesDe(parType.get(type)!)}
-              entrees={parType.get(type)!}
-              triInitial={{ cle: "STATUS", sens: "asc" }}
-              largeurs={{ MEMORY: 100, STATUS: 120 }}
-              parPage={15}
+          <Box p="md" style={{ backgroundColor: CARD_BACKGROUND, borderRadius: 10 }}>
+            <SortableTable
+              columns={columnsOf(byType.get(type)!)}
+              entries={byType.get(type)!}
+              initialSorting={{ key: "STATUS", direction: "asc" }}
+              widths={{ MEMORY: 100, STATUS: 120 }}
+              perPage={15}
             />
           </Box>
         </Box>
@@ -791,24 +791,24 @@ function MachinesVirtuelles({ section }: { section: AssetSection }) {
 // --- Batterie ---------------------------------------------------------------
 
 /** Un libellé discret, et la valeur en dessous. */
-function Valeur({
-  libelle,
-  valeur,
-  adroite,
+function Value({
+  label,
+  value,
+  onRight,
 }: {
-  libelle: string;
-  valeur?: ReactNode;
+  label: string;
+  value?: ReactNode;
   /** Vrai pour un nombre, qu'on aligne à droite. */
-  adroite?: boolean;
+  onRight?: boolean;
 }) {
   return (
-    <Stack gap={2} ta={adroite ? "right" : undefined}>
+    <Stack gap={2} ta={onRight ? "right" : undefined}>
       <Text size="xs" c="dimmed">
-        {libelle}
+        {label}
       </Text>
       {/* Un bloc et non un paragraphe : la valeur peut porter un badge. */}
       <Text component="div" size="sm" style={{ wordBreak: "break-word" }}>
-        {valeur || VIDE}
+        {value || EMPTY}
       </Text>
     </Stack>
   );
@@ -819,18 +819,18 @@ function Valeur({
  * reste de ce que l'agent remonte (capacité, chimie, fabricant) n'est pas
  * montré.
  */
-function Batterie({ section }: { section: AssetSection }) {
+function Battery({ section }: { section: AssetSection }) {
   return (
-    <LignesNumerotees
-      entrees={section.entries}
-      textes={2}
-      nombres={0}
-      valeurs={(entree) => (
+    <NumberedLines
+      entries={section.entries}
+      texts={2}
+      numbers={0}
+      values={(entry) => (
         <>
-          <Valeur libelle="Nom" valeur={entree["NAME"]} />
-          <Valeur
-            libelle="Numéro de série"
-            valeur={<AvecCopie valeur={entree["SERIAL"]} />}
+          <Value label="Nom" value={entry["NAME"]} />
+          <Value
+            label="Numéro de série"
+            value={<WithCopy value={entry["SERIAL"]} />}
           />
         </>
       )}
@@ -839,7 +839,7 @@ function Batterie({ section }: { section: AssetSection }) {
 }
 
 /** L'état de charge d'une alimentation, tel que l'agent le donne, en français. */
-const ETATS_ALIMENTATION: Record<string, string> = {
+const POWER_STATES: Record<string, string> = {
   charging: "En charge",
   charged: "Chargée",
   "fully charged": "Chargée",
@@ -850,56 +850,56 @@ const ETATS_ALIMENTATION: Record<string, string> = {
 };
 
 /** Les états qui disent qu'une alimentation ne fait pas son travail. */
-const ETATS_EN_DEFAUT = new Set(["not charging", "discharging", "error", "failed"]);
+const FAULTY_STATES = new Set(["not charging", "discharging", "error", "failed"]);
 
 /**
  * Les alimentations du poste : nom, fabricant, puissance maximale et état,
  * en tag ; puis le numéro de série et si elle est branchée.
  */
-function Alimentation({ section }: { section: AssetSection }) {
+function PowerSupply({ section }: { section: AssetSection }) {
   return (
-    <LignesNumerotees
-      entrees={section.entries}
-      textes={0}
-      nombres={0}
+    <NumberedLines
+      entries={section.entries}
+      texts={0}
+      numbers={0}
       // La puissance et l'état à droite, à largeur fixe.
-      colonnes={`1fr 1fr ${LARGEUR_NOMBRE + 20}px ${LARGEUR_ETAT}px`}
-      valeurs={(entree) => {
-        const statut = (entree["STATUS"] ?? "").trim();
-        const cle = statut.toLowerCase();
+      columns={`1fr 1fr ${COUNT_WIDTH + 20}px ${STATE_WIDTH}px`}
+      values={(entry) => {
+        const status = (entry["STATUS"] ?? "").trim();
+        const key = status.toLowerCase();
         return (
           <>
-            <Valeur libelle="Nom" valeur={entree["NAME"]} />
-            <Valeur libelle="Fabricant" valeur={entree["MANUFACTURER"]} />
-            <Valeur
-              libelle="Puissance max"
-              valeur={entree["POWER_MAX"] && `${entree["POWER_MAX"]} W`}
-              adroite
+            <Value label="Nom" value={entry["NAME"]} />
+            <Value label="Fabricant" value={entry["MANUFACTURER"]} />
+            <Value
+              label="Puissance max"
+              value={entry["POWER_MAX"] && `${entry["POWER_MAX"]} W`}
+              onRight
             />
-            <Valeur
-              libelle="Statut"
-              valeur={
-                statut && (
+            <Value
+              label="Statut"
+              value={
+                status && (
                   <Badge
-                    color={ETATS_EN_DEFAUT.has(cle) ? "red" : "green"}
+                    color={FAULTY_STATES.has(key) ? "red" : "green"}
                     variant="filled"
                     size="sm"
                     radius="sm"
                   >
-                    {ETATS_ALIMENTATION[cle] ?? statut}
+                    {POWER_STATES[key] ?? status}
                   </Badge>
                 )
               }
-              adroite
+              onRight
             />
             {/* Sur deux colonnes : le numéro et son bouton tiennent sur une ligne. */}
             <Box style={{ gridColumn: "1 / 3" }}>
-              <Valeur
-                libelle="Numéro de série"
-                valeur={<AvecCopie valeur={entree["SERIALNUMBER"]} />}
+              <Value
+                label="Numéro de série"
+                value={<WithCopy value={entry["SERIALNUMBER"]} />}
               />
             </Box>
-            <Valeur libelle="Branchée" valeur={ouiNon(entree["PLUGGED"])} adroite />
+            <Value label="Branchée" value={yesNo(entry["PLUGGED"])} onRight />
           </>
         );
       }}
@@ -910,16 +910,16 @@ function Alimentation({ section }: { section: AssetSection }) {
 // --- Processeurs, mémoire, contrôleurs -------------------------------------
 
 /** Le fond du numéro de chaque ligne : un gris neutre, foncé. */
-const FOND_NUMERO = "#4a4a4a";
+const NUMBER_BACKGROUND = "#4a4a4a";
 
 /** La largeur minimale du rectangle du numéro. */
-const LARGEUR_NUMERO = 32;
+const NUMBER_WIDTH = 32;
 
 /** La largeur des colonnes de nombres, alignés à droite. */
-const LARGEUR_NOMBRE = 80;
+const COUNT_WIDTH = 80;
 
 /** La largeur de la première colonne, un mot court : fabricant, type. */
-const LARGEUR_PREMIERE = 120;
+const FIRST_WIDTH = 120;
 
 /**
  * Les entrées d'une section, une par ligne : son numéro dans un rectangle
@@ -928,35 +928,35 @@ const LARGEUR_PREMIERE = 120;
  * reste, les nombres viennent à droite, dans une colonne étroite chacun.
  * Plus de valeurs que de colonnes passent à la ligne.
  */
-function LignesNumerotees({
-  entrees,
-  textes,
-  nombres,
-  valeurs,
-  numero,
-  premiere = LARGEUR_PREMIERE,
-  aCote,
-  colonnes: gabarit,
-  largeurNumero,
+function NumberedLines({
+  entries,
+  texts,
+  numbers,
+  values,
+  phoneNumber,
+  first = FIRST_WIDTH,
+  beside,
+  columns: template,
+  numberWidth,
 }: {
-  entrees: AssetEntry[];
-  textes: number;
-  nombres: number;
-  valeurs: (entree: AssetEntry) => ReactNode;
-  numero?: (entree: AssetEntry) => string | undefined;
+  entries: AssetEntry[];
+  texts: number;
+  numbers: number;
+  values: (entry: AssetEntry) => ReactNode;
+  phoneNumber?: (entry: AssetEntry) => string | undefined;
   /** La largeur de la première colonne, en pixels. */
-  premiere?: number;
+  first?: number;
   /** Ce qui vient à droite des valeurs, sur toute la hauteur de la ligne. */
-  aCote?: (entree: AssetEntry) => ReactNode;
+  beside?: (entry: AssetEntry) => ReactNode;
   /** Les colonnes de la grille, quand l'ordre par défaut ne convient pas. */
-  colonnes?: string;
+  columns?: string;
   /** Une largeur fixe pour le rectangle du numéro, au lieu de celle de son contenu. */
-  largeurNumero?: number;
+  numberWidth?: number;
 }) {
-  const colonnes = gabarit ?? [
-    `${premiere}px`,
-    ...Array<string>(textes - 1).fill("1fr"),
-    ...Array<string>(nombres).fill(`${LARGEUR_NOMBRE}px`),
+  const columns = template ?? [
+    `${first}px`,
+    ...Array<string>(texts - 1).fill("1fr"),
+    ...Array<string>(numbers).fill(`${COUNT_WIDTH}px`),
   ].join(" ");
   return (
     // Chaque entrée sur son bloc gris, 20 px de marge intérieure, séparée de
@@ -972,39 +972,39 @@ function LignesNumerotees({
         overflow: "hidden",
       }}
     >
-      {entrees.map((entree, rang) => (
+      {entries.map((entry, rank) => (
         <Group
-          key={rang}
+          key={rank}
           gap="lg"
           align="stretch"
           wrap="nowrap"
           p={20}
-          style={{ backgroundColor: FOND_CARTE }}
+          style={{ backgroundColor: CARD_BACKGROUND }}
         >
           <Center
-            miw={LARGEUR_NUMERO}
-            w={largeurNumero}
+            miw={NUMBER_WIDTH}
+            w={numberWidth}
             px="xs"
-            style={{ backgroundColor: FOND_NUMERO, borderRadius: 6 }}
+            style={{ backgroundColor: NUMBER_BACKGROUND, borderRadius: 6 }}
           >
             <Text size="sm" fw={600} c="white" style={{ whiteSpace: "nowrap" }}>
-              {numero ? numero(entree) || VIDE : rang + 1}
+              {phoneNumber ? phoneNumber(entry) || EMPTY : rank + 1}
             </Text>
           </Center>
           <Box
             style={{
               flex: 1,
               display: "grid",
-              gridTemplateColumns: colonnes,
+              gridTemplateColumns: columns,
               columnGap: "var(--mantine-spacing-lg)",
               rowGap: 4,
               // Plus haut que le texte, ce qui est à côté n'étire pas ses lignes.
               alignContent: "start",
             }}
           >
-            {valeurs(entree)}
+            {values(entry)}
           </Box>
-          {aCote?.(entree)}
+          {beside?.(entry)}
         </Group>
       ))}
     </Stack>
@@ -1012,18 +1012,18 @@ function LignesNumerotees({
 }
 
 /** Les processeurs du poste : fabricant, modèle, cœurs et threads. */
-function Processeurs({ section }: { section: AssetSection }) {
+function Processors({ section }: { section: AssetSection }) {
   return (
-    <LignesNumerotees
-      entrees={section.entries}
-      textes={2}
-      nombres={2}
-      valeurs={(entree) => (
+    <NumberedLines
+      entries={section.entries}
+      texts={2}
+      numbers={2}
+      values={(entry) => (
         <>
-          <Valeur libelle="Fabricant" valeur={entree["MANUFACTURER"]} />
-          <Valeur libelle="Modèle" valeur={entree["NAME"]?.trim()} />
-          <Valeur libelle="Cœurs" valeur={entree["CORE"]} adroite />
-          <Valeur libelle="Threads" valeur={entree["THREAD"]} adroite />
+          <Value label="Fabricant" value={entry["MANUFACTURER"]} />
+          <Value label="Modèle" value={entry["NAME"]?.trim()} />
+          <Value label="Cœurs" value={entry["CORE"]} onRight />
+          <Value label="Threads" value={entry["THREAD"]} onRight />
         </>
       )}
     />
@@ -1031,29 +1031,29 @@ function Processeurs({ section }: { section: AssetSection }) {
 }
 
 /** Le rang d'une carte selon son type : le Wi-Fi d'abord, puis l'Ethernet. */
-const rangType = (type: string | undefined): number => {
+const typeRank = (type: string | undefined): number => {
   const t = (type ?? "").toLowerCase();
   return t === "wifi" ? 0 : t === "ethernet" ? 1 : 2;
 };
 
 /** Un type de carte, une majuscule en tête : « wifi » devient « Wifi ». */
-const typeCarte = (type: string | undefined): string =>
+const cardType = (type: string | undefined): string =>
   type ? type.charAt(0).toUpperCase() + type.slice(1) : "";
 
 /** Un débit en Mb/s, comme l'agent le donne, dit en Gb/s dès le gigabit. */
-const debit = (valeur: string | undefined): string => {
-  const mb = Number(valeur);
-  if (!valeur || Number.isNaN(mb) || mb <= 0) return valeur ?? "";
+const throughput = (value: string | undefined): string => {
+  const mb = Number(value);
+  if (!value || Number.isNaN(mb) || mb <= 0) return value ?? "";
   return mb >= 1000
     ? `${(mb / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Gb/s`
     : `${mb.toLocaleString("fr-FR")} Mb/s`;
 };
 
 /** Un état en tag : vert « Activé », rouge « Désactivé ». */
-function Etat({ actif }: { actif: boolean }) {
+function State({ active }: { active: boolean }) {
   return (
-    <Badge color={actif ? "green" : "red"} variant="filled" size="sm" radius="sm">
-      {actif ? "Activé" : "Désactivé"}
+    <Badge color={active ? "green" : "red"} variant="filled" size="sm" radius="sm">
+      {active ? "Activé" : "Désactivé"}
     </Badge>
   );
 }
@@ -1062,59 +1062,59 @@ function Etat({ actif }: { actif: boolean }) {
  * Les cartes réseau du poste, les connectées en tête ; parmi elles comme
  * parmi les autres, le Wi-Fi d'abord, puis l'Ethernet, puis le reste. VIRTUALDEV n'est pas montré.
  */
-function Reseaux({ section }: { section: AssetSection }) {
+function Networks({ section }: { section: AssetSection }) {
   // Les cartes connectées d'abord ; dans chaque groupe, le type départage.
-  const deconnectee = (entree: AssetEntry) =>
-    (entree["STATUS"] ?? "").toLowerCase() === "up" ? 0 : 1;
-  const entrees = [...section.entries].sort(
-    (a, b) => deconnectee(a) - deconnectee(b) || rangType(a["TYPE"]) - rangType(b["TYPE"]),
+  const disconnected = (entry: AssetEntry) =>
+    (entry["STATUS"] ?? "").toLowerCase() === "up" ? 0 : 1;
+  const entries = [...section.entries].sort(
+    (a, b) => disconnected(a) - disconnected(b) || typeRank(a["TYPE"]) - typeRank(b["TYPE"]),
   );
   return (
-    <LignesNumerotees
-      entrees={entrees}
-      textes={4}
-      nombres={0}
-      valeurs={(entree) => (
+    <NumberedLines
+      entries={entries}
+      texts={4}
+      numbers={0}
+      values={(entry) => (
         <>
           {/* 1re ligne : ce qu'est la carte et son état. */}
-          <Valeur libelle="Type" valeur={typeCarte(entree["TYPE"])} />
-          <Valeur libelle="Nom" valeur={entree["DESCRIPTION"]} />
-          <Valeur libelle="MAC" valeur={entree["MACADDR"]} />
-          <Valeur
-            libelle="Statut"
-            valeur={
-              entree["STATUS"] && <Etat actif={entree["STATUS"].toLowerCase() === "up"} />
+          <Value label="Type" value={cardType(entry["TYPE"])} />
+          <Value label="Nom" value={entry["DESCRIPTION"]} />
+          <Value label="MAC" value={entry["MACADDR"]} />
+          <Value
+            label="Statut"
+            value={
+              entry["STATUS"] && <State active={entry["STATUS"].toLowerCase() === "up"} />
             }
           />
           {/* 2e ligne : l'adressage IPv4, la quatrième colonne laissée vide.
               Sans adresse IPv4, la ligne n'est pas montrée. */}
-          {entree["IPADDRESS"] && (
+          {entry["IPADDRESS"] && (
             <>
-              <Valeur libelle="IPv4" valeur={entree["IPADDRESS"]} />
-              <Valeur libelle="Masque" valeur={entree["IPMASK"]} />
-              <Valeur libelle="Passerelle" valeur={entree["IPGATEWAY"]} />
+              <Value label="IPv4" value={entry["IPADDRESS"]} />
+              <Value label="Masque" value={entry["IPMASK"]} />
+              <Value label="Passerelle" value={entry["IPGATEWAY"]} />
               <Box />
             </>
           )}
           {/* 3e ligne : l'IPv6, souvent longue, sur toute la largeur ; cachée
               sans adresse IPv6. */}
-          {entree["IPADDRESS6"] && (
+          {entry["IPADDRESS6"] && (
             <Box style={{ gridColumn: "1 / -1" }}>
-              <Valeur libelle="IPv6" valeur={entree["IPADDRESS6"]} />
+              <Value label="IPv6" value={entry["IPADDRESS6"]} />
             </Box>
           )}
           {/* 4e ligne : le VLAN du Paramétrage qui porte la carte, son nom
               puis son numéro en tag vert, comme au Résumé ; cachée sans VLAN.
               VLAN et VLAN_NAME viennent du serveur, pas de l'agent. */}
-          {entree["VLAN"] && (
+          {entry["VLAN"] && (
             <Box style={{ gridColumn: "1 / -1" }}>
-              <Valeur
-                libelle="VLAN"
-                valeur={
+              <Value
+                label="VLAN"
+                value={
                   <Group gap={6} wrap="nowrap">
-                    {entree["VLAN_NAME"] && <span>{entree["VLAN_NAME"]}</span>}
+                    {entry["VLAN_NAME"] && <span>{entry["VLAN_NAME"]}</span>}
                     <Badge color="green" variant="filled" size="sm" radius="sm">
-                      VLAN {entree["VLAN"]}
+                      VLAN {entry["VLAN"]}
                     </Badge>
                   </Group>
                 }
@@ -1122,8 +1122,8 @@ function Reseaux({ section }: { section: AssetSection }) {
             </Box>
           )}
           {/* 5e ligne : MTU et vitesse. */}
-          <Valeur libelle="MTU" valeur={entree["MTU"]} />
-          <Valeur libelle="Vitesse" valeur={debit(entree["SPEED"])} />
+          <Value label="MTU" value={entry["MTU"]} />
+          <Value label="Vitesse" value={throughput(entry["SPEED"])} />
         </>
       )}
     />
@@ -1131,9 +1131,9 @@ function Reseaux({ section }: { section: AssetSection }) {
 }
 
 /** Une capacité en Mo, comme l'agent la donne, dite en Go. */
-const enGo = (valeur: string | undefined): string => {
-  const mo = Number(valeur);
-  return valeur && !Number.isNaN(mo)
+const toGb = (value: string | undefined): string => {
+  const mo = Number(value);
+  return value && !Number.isNaN(mo)
     ? `${(mo / 1024).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Go`
     : "";
 };
@@ -1142,19 +1142,19 @@ const enGo = (valeur: string | undefined): string => {
  * Les barrettes du poste : capacité, type et description. Le numéro de slot
  * de l'agent n'est pas montré : celui de la ligne en tient lieu.
  */
-function Memoire({ section }: { section: AssetSection }) {
+function Memory({ section }: { section: AssetSection }) {
   return (
-    <LignesNumerotees
-      entrees={section.entries}
-      textes={2}
-      nombres={1}
+    <NumberedLines
+      entries={section.entries}
+      texts={2}
+      numbers={1}
       // La capacité d'abord, puis le type et la description.
-      colonnes={`${LARGEUR_PREMIERE}px ${LARGEUR_PREMIERE}px 1fr`}
-      valeurs={(entree) => (
+      columns={`${FIRST_WIDTH}px ${FIRST_WIDTH}px 1fr`}
+      values={(entry) => (
         <>
-          <Valeur libelle="Capacité" valeur={enGo(entree["CAPACITY"])} />
-          <Valeur libelle="Type" valeur={entree["TYPE"]} />
-          <Valeur libelle="Description" valeur={entree["DESCRIPTION"]} />
+          <Value label="Capacité" value={toGb(entry["CAPACITY"])} />
+          <Value label="Type" value={entry["TYPE"]} />
+          <Value label="Description" value={entry["DESCRIPTION"]} />
         </>
       )}
     />
@@ -1165,7 +1165,7 @@ function Memoire({ section }: { section: AssetSection }) {
  * Le rectangle des contrôleurs porte leur emplacement PCI (« 00:1f.3 ») : il
  * a sa largeur à lui, fixe, pour que tous s'alignent.
  */
-const LARGEUR_SLOT = 80;
+const SLOT_WIDTH = 80;
 
 /**
  * La largeur des libellés des contrôleurs : ce qu'il faut pour que leurs
@@ -1173,22 +1173,22 @@ const LARGEUR_SLOT = 80;
  * numérotées — le numéro de série d'une batterie —, le rectangle étant plus
  * large.
  */
-const LARGEUR_LIBELLE = LARGEUR_NUMERO + LARGEUR_PREMIERE - LARGEUR_SLOT;
+const LABEL_WIDTH = NUMBER_WIDTH + FIRST_WIDTH - SLOT_WIDTH;
 
 /** Les champs qu'on copie d'un clic : les numéros de série. */
-const CHAMPS_COPIABLES = new Set(["SERIAL", "SERIALNUMBER", "ALTSERIAL", "SSN"]);
+const COPYABLE_FIELDS = new Set(["SERIAL", "SERIALNUMBER", "ALTSERIAL", "SSN"]);
 
 /**
  * Une valeur suivie d'un bouton qui la copie : un numéro de série se recopie
  * dans un ticket, chez le fabricant, rarement à la main sans erreur. Sans
  * valeur, rien à copier : ni bouton ni contenu, la ligne affiche son tiret.
  */
-function AvecCopie({ valeur, children }: { valeur?: string; children?: ReactNode }) {
-  if (!valeur) return children ?? VIDE;
+function WithCopy({ value, children }: { value?: string; children?: ReactNode }) {
+  if (!value) return children ?? EMPTY;
   return (
     <Group gap={4} wrap="nowrap">
-      {children ?? <span>{valeur}</span>}
-      <CopyButton value={valeur}>
+      {children ?? <span>{value}</span>}
+      <CopyButton value={value}>
         {({ copied, copy }) => (
           <Button
             variant="subtle"
@@ -1213,18 +1213,18 @@ function AvecCopie({ valeur, children }: { valeur?: string; children?: ReactNode
  * long que le plus long identifiant, donne la même largeur à toutes les
  * étiquettes, quels que soient leurs chiffres.
  */
-const gabaritIdentifiants = (identifiants: (string | undefined)[]): string =>
-  "D".repeat(Math.max(4, ...identifiants.map((id) => id?.length ?? 0)));
+const idTemplate = (identifiers: (string | undefined)[]): string =>
+  "D".repeat(Math.max(4, ...identifiers.map((id) => id?.length ?? 0)));
 
 /** Un libellé discret à gauche, la valeur à droite, sur une même ligne. */
-function Ligne({ libelle, valeur }: { libelle: string; valeur?: ReactNode }) {
+function Row({ label, value }: { label: string; value?: ReactNode }) {
   return (
     <>
       <Text size="sm" c="dimmed">
-        {libelle}
+        {label}
       </Text>
       <Text component="div" size="sm" style={{ wordBreak: "break-word" }}>
-        {valeur || VIDE}
+        {value || EMPTY}
       </Text>
     </>
   );
@@ -1235,35 +1235,35 @@ function Ligne({ libelle, valeur }: { libelle: string; valeur?: ReactNode }) {
  * — avec l'identifiant du fabricant au bord droit, dans l'étiquette verte
  * des références — et type, l'un sous l'autre.
  */
-function Controleurs({ section }: { section: AssetSection }) {
-  const gabarit = gabaritIdentifiants(section.entries.map((entree) => entree["VENDORID"]));
+function Controllers({ section }: { section: AssetSection }) {
+  const template = idTemplate(section.entries.map((entry) => entry["VENDORID"]));
   return (
-    <LignesNumerotees
-      entrees={section.entries}
-      textes={2}
-      nombres={0}
-      premiere={LARGEUR_LIBELLE}
-      largeurNumero={LARGEUR_SLOT}
-      numero={(entree) => entree["PCISLOT"]}
-      valeurs={(entree) => (
+    <NumberedLines
+      entries={section.entries}
+      texts={2}
+      numbers={0}
+      first={LABEL_WIDTH}
+      numberWidth={SLOT_WIDTH}
+      phoneNumber={(entry) => entry["PCISLOT"]}
+      values={(entry) => (
         <>
-          <Ligne libelle="Nom" valeur={entree["NAME"]} />
-          <Ligne
-            libelle="Fabricant"
-            valeur={
-              (entree["VENDORID"] || entree["MANUFACTURER"]) && (
+          <Row label="Nom" value={entry["NAME"]} />
+          <Row
+            label="Fabricant"
+            value={
+              (entry["VENDORID"] || entry["MANUFACTURER"]) && (
                 // L'étiquette au bord droit de la ligne : d'un contrôleur à
                 // l'autre, elles s'alignent en colonne.
                 <Group gap={8} wrap="nowrap" justify="space-between">
-                  <span>{entree["MANUFACTURER"] || VIDE}</span>
-                  {entree["VENDORID"] && (
-                    <ReferenceTag reference={entree["VENDORID"]} gabarit={gabarit} copiable />
+                  <span>{entry["MANUFACTURER"] || EMPTY}</span>
+                  {entry["VENDORID"] && (
+                    <ReferenceTag reference={entry["VENDORID"]} template={template} copyable />
                   )}
                 </Group>
               )
             }
           />
-          <Ligne libelle="Type" valeur={entree["TYPE"]} />
+          <Row label="Type" value={entry["TYPE"]} />
         </>
       )}
     />
@@ -1271,10 +1271,10 @@ function Controleurs({ section }: { section: AssetSection }) {
 }
 
 /** La couleur de l'écran dessiné : le gris foncé des numéros. */
-const BORD_ECRAN = FOND_NUMERO;
+const SCREEN_EDGE = NUMBER_BACKGROUND;
 
 /** « 1920x1080 », comme l'agent la donne, se lit « 1920 x 1080 ». */
-const espacerResolution = (resolution: string): string =>
+const spaceResolution = (resolution: string): string =>
   resolution.replace(/\s*[x×]\s*/i, " x ");
 
 /**
@@ -1282,17 +1282,17 @@ const espacerResolution = (resolution: string): string =>
  * tient dans la hauteur des trois lignes de texte d'une carte vidéo (moins de
  * 72 px) : plus haut, il étirait la ligne et écartait le texte.
  */
-function Ecran({ resolution }: { resolution?: string }) {
+function Screen({ resolution }: { resolution?: string }) {
   return (
     <Stack gap={0} align="center" style={{ flexShrink: 0 }}>
-      <Center w={104} h={58} style={{ border: `3px solid ${BORD_ECRAN}`, borderRadius: 5 }}>
+      <Center w={104} h={58} style={{ border: `3px solid ${SCREEN_EDGE}`, borderRadius: 5 }}>
         <Text size="xs" fw={600} style={{ whiteSpace: "nowrap" }}>
-          {resolution ? espacerResolution(resolution) : VIDE}
+          {resolution ? spaceResolution(resolution) : EMPTY}
         </Text>
       </Center>
       {/* Le pied : une tige, puis la base. */}
-      <Box w={8} h={6} style={{ backgroundColor: BORD_ECRAN }} />
-      <Box w={36} h={3} style={{ backgroundColor: BORD_ECRAN, borderRadius: 2 }} />
+      <Box w={8} h={6} style={{ backgroundColor: SCREEN_EDGE }} />
+      <Box w={36} h={3} style={{ backgroundColor: SCREEN_EDGE, borderRadius: 2 }} />
     </Stack>
   );
 }
@@ -1303,18 +1303,18 @@ function Ecran({ resolution }: { resolution?: string }) {
  */
 function Video({ section }: { section: AssetSection }) {
   return (
-    <LignesNumerotees
-      entrees={section.entries}
-      textes={2}
-      nombres={0}
-      valeurs={(entree) => (
+    <NumberedLines
+      entries={section.entries}
+      texts={2}
+      numbers={0}
+      values={(entry) => (
         <>
-          <Ligne libelle="Puce" valeur={entree["CHIPSET"]} />
-          <Ligne libelle="Nom" valeur={entree["NAME"]} />
-          <Ligne libelle="Slot PCI" valeur={entree["PCISLOT"]} />
+          <Row label="Puce" value={entry["CHIPSET"]} />
+          <Row label="Nom" value={entry["NAME"]} />
+          <Row label="Slot PCI" value={entry["PCISLOT"]} />
         </>
       )}
-      aCote={(entree) => <Ecran resolution={entree["RESOLUTION"]} />}
+      beside={(entry) => <Screen resolution={entry["RESOLUTION"]} />}
     />
   );
 }
@@ -1326,15 +1326,15 @@ function Video({ section }: { section: AssetSection }) {
  */
 function Audio({ section }: { section: AssetSection }) {
   return (
-    <LignesNumerotees
-      entrees={section.entries}
-      textes={2}
-      nombres={0}
-      valeurs={(entree) => (
+    <NumberedLines
+      entries={section.entries}
+      texts={2}
+      numbers={0}
+      values={(entry) => (
         <>
-          <Ligne libelle="Nom" valeur={entree["NAME"]} />
-          <Ligne libelle="Fabricant" valeur={entree["MANUFACTURER"]} />
-          <Ligne libelle="Description" valeur={entree["DESCRIPTION"]} />
+          <Row label="Nom" value={entry["NAME"]} />
+          <Row label="Fabricant" value={entry["MANUFACTURER"]} />
+          <Row label="Description" value={entry["DESCRIPTION"]} />
         </>
       )}
     />
@@ -1342,7 +1342,7 @@ function Audio({ section }: { section: AssetSection }) {
 }
 
 /** Les champs d'une section, dans l'ordre où ils s'affichent, sous leur nom français. */
-type Champs = [string, string][];
+type Fields = [string, string][];
 
 /**
  * Les lignes d'une entrée : ses champs connus en français, puis ceux qu'on ne
@@ -1352,37 +1352,37 @@ type Champs = [string, string][];
  * et les « Oui » / « Non » se répètent, eux : deux champs à 0 ou à « Oui » ne
  * disent pas la même chose.
  */
-const lignesDe = (
-  entree: AssetEntry,
-  champs: Champs,
-  { ecartes = [], formats = {}, etiquettes = {} }: {
-    ecartes?: string[];
-    formats?: Record<string, (brute: string) => string>;
-    etiquettes?: Record<string, string>;
+const rowsOf = (
+  entry: AssetEntry,
+  fields: Fields,
+  { excluded = [], formats = {}, labels = {} }: {
+    excluded?: string[];
+    formats?: Record<string, (raw: string) => string>;
+    labels?: Record<string, string>;
   } = {},
 ): [string, string, string][] => {
-  const connus = new Set([
-    ...champs.map(([champ]) => champ),
-    ...ecartes,
-    ...Object.values(etiquettes),
+  const known = new Set([
+    ...fields.map(([field]) => field),
+    ...excluded,
+    ...Object.values(labels),
   ]);
-  const affiches: Champs = [
+  const displayed: Fields = [
     // Un champ qui porte une étiquette a sa ligne dès que l'étiquette a une
     // valeur, même s'il n'en a pas lui-même.
-    ...champs.filter(([champ]) => champ in entree || (etiquettes[champ] && entree[etiquettes[champ]])),
-    ...Object.keys(entree)
-      .filter((champ) => !connus.has(champ))
-      .map((champ): [string, string] => [champ, champ]),
+    ...fields.filter(([field]) => field in entry || (labels[field] && entry[labels[field]])),
+    ...Object.keys(entry)
+      .filter((field) => !known.has(field))
+      .map((field): [string, string] => [field, field]),
   ];
-  const dites = new Set<string>();
-  return affiches.flatMap(([champ, libelle]): [string, string, string][] => {
-    const brute = entree[champ] ?? "";
-    const valeur = formats[champ]?.(brute) ?? brute;
-    const cle = valeur.trim().toLowerCase();
-    const texte = /\p{L}/u.test(cle) && cle !== "oui" && cle !== "non";
-    if (texte && dites.has(cle)) return [];
-    if (texte) dites.add(cle);
-    return [[champ, libelle, valeur]];
+  const said = new Set<string>();
+  return displayed.flatMap(([field, label]): [string, string, string][] => {
+    const raw = entry[field] ?? "";
+    const value = formats[field]?.(raw) ?? raw;
+    const key = value.trim().toLowerCase();
+    const text = /\p{L}/u.test(key) && key !== "oui" && key !== "non";
+    if (text && said.has(key)) return [];
+    if (text) said.add(key);
+    return [[field, label, value]];
   });
 };
 
@@ -1392,63 +1392,63 @@ const lignesDe = (
  * autre champ — un identifiant —, montré dans l'étiquette verte des
  * références au bord droit de la ligne plutôt que sur une ligne à lui.
  */
-function FichesNumerotees({
+function NumberedRecords({
   section,
-  champs,
-  ecartes,
+  fields,
+  excluded,
   formats,
-  etiquettes = {},
-  aCote,
+  labels = {},
+  beside,
 }: {
   section: AssetSection;
-  champs: Champs;
-  ecartes?: string[];
-  formats?: Record<string, (brute: string) => string>;
-  etiquettes?: Record<string, string>;
-  aCote?: (entree: AssetEntry) => ReactNode;
+  fields: Fields;
+  excluded?: string[];
+  formats?: Record<string, (raw: string) => string>;
+  labels?: Record<string, string>;
+  beside?: (entry: AssetEntry) => ReactNode;
 }) {
   // Une seule largeur pour toutes les étiquettes de la section.
-  const gabarit = gabaritIdentifiants(
-    section.entries.flatMap((entree) => Object.values(etiquettes).map((e) => entree[e])),
+  const template = idTemplate(
+    section.entries.flatMap((entry) => Object.values(labels).map((e) => entry[e])),
   );
   return (
-    <LignesNumerotees
-      entrees={section.entries}
-      textes={2}
-      nombres={0}
-      valeurs={(entree) =>
-        lignesDe(entree, champs, { ecartes, formats, etiquettes }).map(
-          ([champ, libelle, valeur]) => {
-            const etiquette = etiquettes[champ];
-            const id = etiquette ? entree[etiquette] : undefined;
-            const contenu = id ? (
+    <NumberedLines
+      entries={section.entries}
+      texts={2}
+      numbers={0}
+      values={(entry) =>
+        rowsOf(entry, fields, { excluded, formats, labels }).map(
+          ([field, label, value]) => {
+            const labelField = labels[field];
+            const id = labelField ? entry[labelField] : undefined;
+            const content = id ? (
               // L'étiquette au bord droit de la ligne : d'une entrée à
               // l'autre, elles s'alignent en colonne.
               <Group gap={8} wrap="nowrap" justify="space-between">
-                <span>{valeur || VIDE}</span>
-                <ReferenceTag reference={id} gabarit={gabarit} copiable />
+                <span>{value || EMPTY}</span>
+                <ReferenceTag reference={id} template={template} copyable />
               </Group>
             ) : (
-              valeur
+              value
             );
             return (
-              <Ligne
-                key={champ}
-                libelle={libelle}
-                valeur={
-                  CHAMPS_COPIABLES.has(champ) ? <AvecCopie valeur={valeur} /> : contenu
+              <Row
+                key={field}
+                label={label}
+                value={
+                  COPYABLE_FIELDS.has(field) ? <WithCopy value={value} /> : content
                 }
               />
             );
           },
         )
       }
-      aCote={aCote}
+      beside={beside}
     />
   );
 }
 
-const CHAMPS_STOCKAGE: Champs = [
+const STORAGE_FIELDS: Fields = [
   ["NAME", "Nom"],
   ["TYPE", "Type"],
   ["MANUFACTURER", "Fabricant"],
@@ -1465,26 +1465,26 @@ const CHAMPS_STOCKAGE: Champs = [
 ];
 
 /** La part libre de l'anneau : un gris neutre et clair, pas celui de Mantine qui tire sur le bleu. */
-const FOND_ANNEAU = "light-dark(#e0e0e0, var(--mantine-color-dark-4))";
+const RING_BACKGROUND = "light-dark(#e0e0e0, var(--mantine-color-dark-4))";
 
 /**
  * La capacité d'un disque dans un anneau : sa part de la capacité totale du
  * poste, sa taille au milieu. Un disque dont l'agent ne donne pas la taille
  * garde un anneau vide et le tiret.
  */
-function PartDisque({ capacite, total }: { capacite: number; total: number }) {
-  const connue = capacite > 0;
+function DiskShare({ capacity, total }: { capacity: number; total: number }) {
+  const known = capacity > 0;
   return (
     <RingProgress
       size={88}
       thickness={9}
-      rootColor={FOND_ANNEAU}
+      rootColor={RING_BACKGROUND}
       roundCaps
       style={{ flexShrink: 0, alignSelf: "flex-start" }}
-      sections={connue && total > 0 ? [{ value: (capacite / total) * 100, color: "blue" }] : []}
+      sections={known && total > 0 ? [{ value: (capacity / total) * 100, color: "blue" }] : []}
       label={
         <Text size="xs" fw={700} ta="center" style={{ whiteSpace: "nowrap" }}>
-          {connue ? taille(capacite) : VIDE}
+          {known ? size(capacity) : EMPTY}
         </Text>
       }
     />
@@ -1495,20 +1495,20 @@ function PartDisque({ capacite, total }: { capacite: number; total: number }) {
  * Les supports de stockage du poste. La capacité ne s'écrit pas en ligne :
  * l'anneau à droite la porte, avec la part qu'elle fait du total du poste.
  */
-function Stockage({ section }: { section: AssetSection }) {
-  const capacite = (entree: AssetEntry) => Number(entree["DISKSIZE"]) || 0;
-  const total = section.entries.reduce((somme, entree) => somme + capacite(entree), 0);
+function Storage({ section }: { section: AssetSection }) {
+  const capacity = (entry: AssetEntry) => Number(entry["DISKSIZE"]) || 0;
+  const total = section.entries.reduce((sum, entry) => sum + capacity(entry), 0);
   return (
-    <FichesNumerotees
+    <NumberedRecords
       section={section}
-      champs={CHAMPS_STOCKAGE}
-      ecartes={["DISKSIZE"]}
-      aCote={(entree) => <PartDisque capacite={capacite(entree)} total={total} />}
+      fields={STORAGE_FIELDS}
+      excluded={["DISKSIZE"]}
+      beside={(entry) => <DiskShare capacity={capacity(entry)} total={total} />}
     />
   );
 }
 
-const CHAMPS_ENTREES: Champs = [
+const INPUT_FIELDS: Fields = [
   ["NAME", "Nom"],
   ["CAPTION", "Légende"],
   ["TYPE", "Type"],
@@ -1520,11 +1520,11 @@ const CHAMPS_ENTREES: Champs = [
 ];
 
 /** Les claviers, souris et autres périphériques d'entrée du poste. */
-function Entrees({ section }: { section: AssetSection }) {
-  return <FichesNumerotees section={section} champs={CHAMPS_ENTREES} />;
+function Inputs({ section }: { section: AssetSection }) {
+  return <NumberedRecords section={section} fields={INPUT_FIELDS} />;
 }
 
-const CHAMPS_MONITEURS: Champs = [
+const MONITOR_FIELDS: Fields = [
   ["NAME", "Nom"],
   ["CAPTION", "Légende"],
   ["MANUFACTURER", "Fabricant"],
@@ -1539,13 +1539,13 @@ const CHAMPS_MONITEURS: Champs = [
  * Les moniteurs du poste. BASE64 et UUENCODE portent l'EDID brut de l'écran :
  * illisible, on ne le montre pas.
  */
-function Moniteurs({ section }: { section: AssetSection }) {
+function Monitors({ section }: { section: AssetSection }) {
   return (
-    <FichesNumerotees section={section} champs={CHAMPS_MONITEURS} ecartes={["BASE64", "UUENCODE"]} />
+    <NumberedRecords section={section} fields={MONITOR_FIELDS} excluded={["BASE64", "UUENCODE"]} />
   );
 }
 
-const CHAMPS_IMPRIMANTES: Champs = [
+const PRINTER_FIELDS: Fields = [
   ["NAME", "Nom"],
   ["DRIVER", "Pilote"],
   ["PORT", "Port"],
@@ -1563,18 +1563,18 @@ const CHAMPS_IMPRIMANTES: Champs = [
  * Les imprimantes installées sur le poste. Le processeur d'impression, le
  * statut et la résolution ne sont pas montrés.
  */
-function Imprimantes({ section }: { section: AssetSection }) {
+function Printers({ section }: { section: AssetSection }) {
   return (
-    <FichesNumerotees
+    <NumberedRecords
       section={section}
-      champs={CHAMPS_IMPRIMANTES}
-      ecartes={["PRINTPROCESSOR", "STATUS", "RESOLUTION"]}
-      formats={{ NETWORK: ouiNon, LOCAL: ouiNon, SHARED: ouiNon }}
+      fields={PRINTER_FIELDS}
+      excluded={["PRINTPROCESSOR", "STATUS", "RESOLUTION"]}
+      formats={{ NETWORK: yesNo, LOCAL: yesNo, SHARED: yesNo }}
     />
   );
 }
 
-const CHAMPS_USB: Champs = [
+const USB_FIELDS: Fields = [
   ["NAME", "Nom"],
   ["CAPTION", "Légende"],
   ["MANUFACTURER", "Fabricant"],
@@ -1590,16 +1590,16 @@ const CHAMPS_USB: Champs = [
  */
 function Usb({ section }: { section: AssetSection }) {
   return (
-    <FichesNumerotees
+    <NumberedRecords
       section={section}
-      champs={CHAMPS_USB}
-      etiquettes={{ NAME: "PRODUCTID", MANUFACTURER: "VENDORID" }}
+      fields={USB_FIELDS}
+      labels={{ NAME: "PRODUCTID", MANUFACTURER: "VENDORID" }}
     />
   );
 }
 
 /** Les champs du BIOS qu'on sait nommer ; les autres gardent le nom de l'agent. */
-const LIBELLES_BIOS: Record<string, string> = {
+const BIOS_LABELS: Record<string, string> = {
   SMANUFACTURER: "Fabricant",
   SMODEL: "Modèle",
   SSN: "Numéro de série",
@@ -1614,22 +1614,22 @@ const LIBELLES_BIOS: Record<string, string> = {
 function Bios({ section }: { section: AssetSection }) {
   return (
     <Stack gap={20}>
-      {section.entries.map((entree, rang) => (
+      {section.entries.map((entry, rank) => (
         <Box
-          key={rang}
+          key={rank}
           style={{
             display: "grid",
             gridTemplateColumns:
-              `calc(${LARGEUR_NUMERO + LARGEUR_PREMIERE}px + 2 * var(--mantine-spacing-lg)) 1fr`,
+              `calc(${NUMBER_WIDTH + FIRST_WIDTH}px + 2 * var(--mantine-spacing-lg)) 1fr`,
             rowGap: 4,
           }}
         >
-          {Object.keys(entree).map((champ) => (
-            <Ligne
-              key={champ}
-              libelle={LIBELLES_BIOS[champ] ?? champ}
-              valeur={
-                CHAMPS_COPIABLES.has(champ) ? <AvecCopie valeur={entree[champ]} /> : entree[champ]
+          {Object.keys(entry).map((field) => (
+            <Row
+              key={field}
+              label={BIOS_LABELS[field] ?? field}
+              value={
+                COPYABLE_FIELDS.has(field) ? <WithCopy value={entry[field]} /> : entry[field]
               }
             />
           ))}
@@ -1643,30 +1643,30 @@ function Bios({ section }: { section: AssetSection }) {
  * Les sections qui posent elles-mêmes leurs cadres gris, au lieu d'être
  * rangées dans celui de la section : leurs titres viennent hors des cadres.
  */
-export const SANS_CADRE = new Set(["OPERATINGSYSTEM", "VIRTUALMACHINES"]);
+export const WITHOUT_FRAME = new Set(["OPERATINGSYSTEM", "VIRTUALMACHINES"]);
 
 /** Les sections qui ont leur tableau ; les autres restent en fiches. */
 export const TABLEAUX: Record<string, ComponentType<{ section: AssetSection }>> = {
   ANTIVIRUS: Protections,
-  BATTERIES: Batterie,
+  BATTERIES: Battery,
   BIOS: Bios,
-  CONTROLLERS: Controleurs,
-  CPUS: Processeurs,
+  CONTROLLERS: Controllers,
+  CPUS: Processors,
   DRIVES: Volumes,
-  FIREWALL: PareFeu,
-  INPUTS: Entrees,
-  LOCAL_GROUPS: Groupes,
-  LOCAL_USERS: Comptes,
-  MEMORIES: Memoire,
-  MONITORS: Moniteurs,
-  NETWORKS: Reseaux,
-  POWERSUPPLIES: Alimentation,
-  PRINTERS: Imprimantes,
-  PROCESSES: Processus,
-  SOFTWARES: Logiciels,
+  FIREWALL: Firewall,
+  INPUTS: Inputs,
+  LOCAL_GROUPS: Groups,
+  LOCAL_USERS: Accounts,
+  MEMORIES: Memory,
+  MONITORS: Monitors,
+  NETWORKS: Networks,
+  POWERSUPPLIES: PowerSupply,
+  PRINTERS: Printers,
+  PROCESSES: Processes,
+  SOFTWARES: Software,
   SOUNDS: Audio,
-  STORAGES: Stockage,
+  STORAGES: Storage,
   USBDEVICES: Usb,
   VIDEOS: Video,
-  VIRTUALMACHINES: MachinesVirtuelles,
+  VIRTUALMACHINES: VirtualMachines,
 };

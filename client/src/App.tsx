@@ -12,8 +12,8 @@ import LoginPage from "./pages/LoginPage";
 import ViewPage from "./pages/ViewPage";
 import NotificationsDrawer from "./components/notifications/NotificationsDrawer";
 import CardDrawer from "./components/board/CardDrawer";
-import type { TacheSource } from "./components/board/TaskDestination";
-import { sourceAcces, sourceDemande, sourcePoste, sourceProjet } from "./lib/tache";
+import type { SourceTask } from "./components/board/TaskDestination";
+import { accessSource, requestSource, workstationSource, projectSource } from "./lib/tache";
 import { notifications } from "@mantine/notifications";
 import {
   IconCheck,
@@ -24,19 +24,19 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { RED } from "./themes/colors";
-import { DEFAULT_SUPPORT_STATUS, RESOURCES, emptyFollows, estNotification } from "@milo/shared";
-import { DroitsProvider, peutAvec } from "./lib/droits";
-import { messageErreur, notifierErreur } from "./lib/errors";
+import { DEFAULT_SUPPORT_STATUS, RESOURCES, emptyFollows, isNotification } from "@milo/shared";
+import { RightsProvider, canFrom } from "./lib/droits";
+import { errorMessage, notifyError } from "./lib/errors";
 import { ReferencesContext } from "./lib/references";
-import { EditionContext } from "./lib/edition";
-import { cibleDeLAdresse, noterDansLAdresse } from "./lib/suivi";
-import type { Cible } from "./lib/suivi";
+import { EditingContext } from "./lib/edition";
+import { addressTarget, noteInAddress } from "./lib/suivi";
+import type { Target } from "./lib/suivi";
 import AssetDrawer from "./components/assets/AssetDrawer";
 import SupportRequestDrawer from "./components/support/SupportRequestDrawer";
 import PreferencesModal from "./components/settings/PreferencesModal";
 import CopyToBoardModal from "./components/ui/CopyToBoardModal";
-import { CopierCollerContext } from "./components/ui/ActionsCopierColler";
-import type { PressePapiers } from "./components/ui/ActionsCopierColler";
+import { CopyPasteContext } from "./components/ui/ActionsCopierColler";
+import type { Clipboard } from "./components/ui/ActionsCopierColler";
 import type { AccountSlot } from "./components/ui/AccountControls";
 import DeleteConfirmModal from "./components/ui/DeleteConfirmModal";
 import MoveOrCopyProjectModal from "./components/project/MoveOrCopyProjectModal";
@@ -44,10 +44,10 @@ import type { ProjectAction } from "./components/project/MoveOrCopyProjectModal"
 import ProjectDrawer from "./components/project/ProjectDrawer";
 import ViewSwitch from "./components/ui/ViewSwitch";
 import ShortcutsHelp from "./components/ui/ShortcutsHelp";
-import DispositionModal from "./components/ui/DispositionModal";
-import PointMenu, { positionDuMenu, type PointMenuPosition } from "./components/ui/PointMenu";
-import CodeKonami from "./components/ui/CodeKonami";
-import { poserLInterface, viderLaPage } from "./lib/chuteInterface";
+import LayoutModal from "./components/ui/DispositionModal";
+import PointMenu, { menuPosition, type PointMenuPosition } from "./components/ui/PointMenu";
+import KonamiCode from "./components/ui/CodeKonami";
+import { placeInterface, clearPage } from "./lib/chuteInterface";
 import SettingsModal from "./components/settings/SettingsModal";
 import type {
   Asset,
@@ -55,7 +55,7 @@ import type {
   Board,
   BoardWidget,
   Category,
-  FluxMessage,
+  FeedMessage,
   FollowKind,
   Follows,
   Id,
@@ -80,33 +80,33 @@ import type {
  * rendu si ce qu'on a en main concerne encore ce qui est affiché — une remise
  * à zéro par effet arriverait trop tard.
  */
-interface LuPour<T> {
+interface LoadedFor<T> {
   /** La vue ou le tableau qui a servi à la lire. */
-  cle: string;
+  key: string;
   items: T[];
 }
 
 /** Les types de widgets qu'un tableau porte, par leur préfixe : ce qu'il faut lire pour eux. */
-const avecPrefixe = (widgets: BoardWidget[], prefixe: string) =>
-  widgets.some((w) => w.type.startsWith(`${prefixe}.`));
+const withPrefix = (widgets: BoardWidget[], prefix: string) =>
+  widgets.some((w) => w.type.startsWith(`${prefix}.`));
 
 /** Les éléments d'un contexte, ou tous (« all ») ; « null » tant qu'ils ne sont pas lus. */
-const duContexte = <T extends { context_id: Id | null }>(
-  elements: T[] | null,
-  contexte: string,
+const inContext = <T extends { context_id: Id | null }>(
+  items: T[] | null,
+  context: string,
 ): T[] | null =>
-  elements && contexte !== "all"
-    ? elements.filter((e) => String(e.context_id) === contexte)
-    : elements;
+  items && context !== "all"
+    ? items.filter((e) => String(e.context_id) === context)
+    : items;
 
 export default function App() {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
   // La connexion par Microsoft est possible : l'application Entra est renseignée.
-  const [entraPret, setEntraPret] = useState(false);
+  const [entraReady, setEntraReady] = useState(false);
   // Ce que le retour d'une connexion Microsoft a apporté comme erreur.
-  const [erreurConnexion, setErreurConnexion] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   // Les types de jalons des réglages : un projet en choisit un.
   const [milestoneTypes, setMilestoneTypes] = useState<MilestoneType[]>([]);
@@ -116,36 +116,36 @@ export default function App() {
   const [views, setViews] = useState<View[] | null>(null);
   const [viewId, setViewId] = useState<string | null>(null);
   // La vue d'ouverture s'applique une fois, à l'ouverture de la session.
-  const vueAppliquee = useRef<number | null>(null);
+  const appliedView = useRef<number | null>(null);
   // Les tableaux de la vue ouverte, et celui qui est ouvert.
-  const [boardsLus, setBoardsLus] = useState<LuPour<Board> | null>(null);
+  const [boardsRead, setBoardsRead] = useState<LoadedFor<Board> | null>(null);
   const [boardId, setBoardId] = useState<string | null>(null);
   // Ce que le tableau ouvert porte : ses sections, ses widgets.
-  const [sectionsLues, setSectionsLues] = useState<LuPour<IndicatorSection> | null>(null);
-  const [widgetsLus, setWidgetsLus] = useState<LuPour<BoardWidget> | null>(null);
+  const [sectionsRead, setSectionsRead] = useState<LoadedFor<IndicatorSection> | null>(null);
+  const [loadedWidgets, setWidgetsRead] = useState<LoadedFor<BoardWidget> | null>(null);
   // Ses données : ses projets, ses listes, les demandes et les postes de sa
   // société. Chacune porte le tableau qui a servi à la lire.
-  const [projectsLus, setProjectsLus] = useState<LuPour<Project> | null>(null);
+  const [readProjects, setProjectsRead] = useState<LoadedFor<Project> | null>(null);
   // Les comptes acteurs d'au moins un projet du tableau : les seuls que le
   // filtre « Acteurs » propose.
   const [projectActorIds, setProjectActorIds] = useState<number[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [projectLabelsLues, setProjectLabelsLues] = useState<LuPour<ProjectLabel> | null>(null);
-  const [taskListsLues, setTaskListsLues] = useState<LuPour<TaskList> | null>(null);
-  const [labelsLues, setLabelsLues] = useState<LuPour<Label> | null>(null);
-  const [supportLues, setSupportLues] = useState<LuPour<SupportRequest> | null>(null);
-  const [assetsLus, setAssetsLus] = useState<LuPour<Asset> | null>(null);
+  const [readProjectLabels, setProjectLabelsRead] = useState<LoadedFor<ProjectLabel> | null>(null);
+  const [loadedTaskLists, setTaskListsRead] = useState<LoadedFor<TaskList> | null>(null);
+  const [labelsLues, setLabelsRead] = useState<LoadedFor<Label> | null>(null);
+  const [supportRead, setSupportRead] = useState<LoadedFor<SupportRequest> | null>(null);
+  const [assetsRead, setAssetsRead] = useState<LoadedFor<Asset> | null>(null);
 
   // « Modifier l'interface » vaut pour toute l'application : tous les
   // tableaux, toutes les vues. Il ne vit que dans cette fenêtre, qui s'ouvre
   // hors modification ; I ou le clic droit sur le fond le basculent.
   const [enModification, setEnModification] = useState(false);
-  const basculerModification = () => setEnModification((avant) => !avant);
+  const toggleEdit = () => setEnModification((before) => !before);
   // Le menu du clic droit sur le fond de l'application, et la fenêtre
   // d'export ou d'import de la disposition du tableau ouvert.
-  const fond = useRef<HTMLDivElement>(null);
-  const [menuFond, setMenuFond] = useState<PointMenuPosition | null>(null);
-  const [disposition, setDisposition] = useState<"export" | "import" | null>(null);
+  const background = useRef<HTMLDivElement>(null);
+  const [backgroundMenu, setBackgroundMenu] = useState<PointMenuPosition | null>(null);
+  const [layout, setLayout] = useState<"export" | "import" | null>(null);
 
   // Les filtres de la liste des projets.
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -154,129 +154,129 @@ export default function App() {
 
   // Les droits du compte. Le serveur les vérifie ; ici, ils taisent ce qu'on
   // ne voit pas et retirent ce qu'on ne peut pas faire.
-  const peut = useMemo(() => peutAvec(user?.rights ?? {}), [user]);
+  const can = useMemo(() => canFrom(user?.rights ?? {}), [user]);
   // Organiser les vues et les tableaux partagés demande de pouvoir modifier
   // au moins un type de widget (comme le serveur, lib/droits.ts).
-  const peutOrganiser = Object.values(user?.widgets ?? {}).some((a) => a === "update");
+  const canArrange = Object.values(user?.widgets ?? {}).some((a) => a === "update");
 
   // Lectures en cours. Un écran vide est une conclusion : on ne la tire
   // jamais pendant une lecture.
-  const [lectures, setLectures] = useState(0);
-  const chargement = lectures > 0;
+  const [reads, setReads] = useState(0);
+  const loading = reads > 0;
 
   // Juste après la connexion, la page reste vierge le temps des lectures, puis
   // l'interface s'y pose morceau par morceau. Les lectures s'enchaînent : on
   // attend qu'elles se taisent un instant — et jamais plus de quelques
   // secondes, pour ne pas laisser la page vide.
-  const [entree, setEntree] = useState(false);
+  const [entry, setEntered] = useState(false);
   useEffect(() => {
-    if (!entree || chargement) return;
+    if (!entry || loading) return;
     const t = setTimeout(() => {
-      setEntree(false);
-      poserLInterface();
+      setEntered(false);
+      placeInterface();
     }, 600);
     return () => clearTimeout(t);
-  }, [entree, chargement]);
+  }, [entry, loading]);
   useEffect(() => {
-    if (!entree) return;
+    if (!entry) return;
     const t = setTimeout(() => {
-      setEntree(false);
-      poserLInterface();
+      setEntered(false);
+      placeInterface();
     }, 4000);
     return () => clearTimeout(t);
-  }, [entree]);
-  const lire = useCallback(async <T,>(lecture: () => Promise<T>): Promise<T> => {
-    setLectures((n) => n + 1);
+  }, [entry]);
+  const read = useCallback(async <T,>(reading: () => Promise<T>): Promise<T> => {
+    setReads((n) => n + 1);
     try {
-      return await lecture();
+      return await reading();
     } finally {
-      setLectures((n) => n - 1);
+      setReads((n) => n - 1);
     }
   }, []);
 
-  const boards = boardsLus?.cle === viewId ? boardsLus.items : null;
+  const boards = boardsRead?.key === viewId ? boardsRead.items : null;
   const board = boards?.find((b) => String(b.id) === boardId) ?? null;
-  const sections = sectionsLues?.cle === boardId ? sectionsLues.items : null;
+  const sections = sectionsRead?.key === boardId ? sectionsRead.items : null;
   const widgets = useMemo(
-    () => (widgetsLus?.cle === boardId ? widgetsLus.items : []),
-    [widgetsLus, boardId],
+    () => (loadedWidgets?.key === boardId ? loadedWidgets.items : []),
+    [loadedWidgets, boardId],
   );
-  const projects = projectsLus?.cle === boardId ? projectsLus.items : null;
-  const projectLabels = projectLabelsLues?.cle === boardId ? projectLabelsLues.items : [];
-  const taskLists = taskListsLues?.cle === boardId ? taskListsLues.items : null;
-  const labels = labelsLues?.cle === boardId ? labelsLues.items : [];
-  const supportRequests = supportLues?.cle === boardId ? supportLues.items : null;
-  const assets = assetsLus?.cle === boardId ? assetsLus.items : null;
+  const projects = readProjects?.key === boardId ? readProjects.items : null;
+  const projectLabels = readProjectLabels?.key === boardId ? readProjectLabels.items : [];
+  const taskLists = loadedTaskLists?.key === boardId ? loadedTaskLists.items : null;
+  const labels = labelsLues?.key === boardId ? labelsLues.items : [];
+  const supportRequests = supportRead?.key === boardId ? supportRead.items : null;
+  const assets = assetsRead?.key === boardId ? assetsRead.items : null;
 
   // Ce que les widgets du tableau ouvert demandent à lire.
-  const besoinProjets = avecPrefixe(widgets, "project");
-  const besoinTaches = avecPrefixe(widgets, "task");
-  const besoinSupport = avecPrefixe(widgets, "support");
-  const besoinAssets = avecPrefixe(widgets, "asset");
+  const projectsNeed = withPrefix(widgets, "project");
+  const tasksNeed = withPrefix(widgets, "task");
+  const supportNeed = withPrefix(widgets, "support");
+  const assetsNeed = withPrefix(widgets, "asset");
   // Le contexte que ce compte regarde dans le tableau ouvert, ou « all ».
-  const contexteChoisi = board?.context_id ? String(board.context_id) : "all";
-  const contextes = board?.contexts ?? [];
+  const selectedContext = board?.context_id ? String(board.context_id) : "all";
+  const contexts = board?.contexts ?? [];
   // Les cartes du contexte choisi ; les séparateurs, qui tranchent pour tous,
   // restent. Gardé d'un rendu à l'autre : le tableau des tâches oublie son
   // ordre provisoire quand ses listes changent.
-  const tachesVues = useMemo(
+  const visibleTasks = useMemo(
     () =>
-      taskLists && contexteChoisi !== "all"
+      taskLists && selectedContext !== "all"
         ? taskLists.map((l) => ({
             ...l,
             cards: l.cards.filter(
-              (c) => c.kind === "separator" || String(c.context_id) === contexteChoisi,
+              (c) => c.kind === "separator" || String(c.context_id) === selectedContext,
             ),
           }))
         : taskLists,
-    [taskLists, contexteChoisi],
+    [taskLists, selectedContext],
   );
   // Les projets, les demandes et les postes du contexte choisi, filtrés ici :
   // la page les a lus pour tout le tableau.
-  const projetsVus = useMemo(
-    () => duContexte(projects, contexteChoisi),
-    [projects, contexteChoisi],
+  const viewedProjects = useMemo(
+    () => inContext(projects, selectedContext),
+    [projects, selectedContext],
   );
-  const demandesVues = useMemo(
-    () => duContexte(supportRequests, contexteChoisi),
-    [supportRequests, contexteChoisi],
+  const visibleRequests = useMemo(
+    () => inContext(supportRequests, selectedContext),
+    [supportRequests, selectedContext],
   );
-  const postesVus = useMemo(() => duContexte(assets, contexteChoisi), [assets, contexteChoisi]);
+  const viewedWorkstations = useMemo(() => inContext(assets, selectedContext), [assets, selectedContext]);
 
   const [drawerOpened, setDrawerOpened] = useState(false);
   /** Le widget de liste d'où l'on ajoute un projet ou une demande ; vide sinon. */
-  const [listeDeLAjout, setListeDeLAjout] = useState("");
+  const [addTargetList, setNewListName] = useState("");
   // Le tableau dont on gère les catégories, et la fenêtre des types de jalons.
   // Le tableau dont on copie les contextes vers un autre, depuis le menu de
   // son onglet.
-  const [copieContextes, setCopieContextes] = useState<Id | null>(null);
+  const [contextsCopy, setCopiedContexts] = useState<Id | null>(null);
   // Les étiquettes et les catégories copiées depuis le menu « Actions » du
   // widget d'un tableau, en attente d'être collées dans un autre.
-  const [pressePapiers, setPressePapiers] = useState<PressePapiers>({});
-  const [collages, setCollages] = useState(0);
+  const [clipboard, setClipboard] = useState<Clipboard>({});
+  const [pastes, setPastes] = useState(0);
   const [assetDrawerOpened, setAssetDrawerOpened] = useState(false);
   const [openedAsset, setOpenedAsset] = useState<Asset | null>(null);
   const [supportDrawerOpened, setSupportDrawerOpened] = useState(false);
   const [editedSupportRequest, setEditedSupportRequest] = useState<SupportRequest | null>(null);
   // L'objet d'une demande créée depuis un lien ; « null » pour une demande
   // créée depuis une liste de demandes, qui part vide.
-  const [objetDemandeAcces, setObjetDemandeAcces] = useState<string | null>(null);
+  const [accessRequestSubject, setAccessRequestSubject] = useState<string | null>(null);
   const [settingsOpened, setSettingsOpened] = useState(false);
   const [preferencesOpened, setPreferencesOpened] = useState(false);
   // Le tiroir des notifications, et ce qui le fait se relire.
   const [notificationsOpened, setNotificationsOpened] = useState(false);
   const [notificationsRevision, setNotificationsRevision] = useState(0);
   // « Créer une tâche » depuis un autre élément : d'où elle part.
-  const [tacheSource, setTacheSource] = useState<TacheSource | null>(null);
+  const [sourceTask, setSourceTask] = useState<SourceTask | null>(null);
   // Dernière version de données connue, pour détecter les modifications
   // faites par quelqu'un d'autre.
-  const versionsConnues = useRef<ResourceVersions | null>(null);
+  const knownVersions = useRef<ResourceVersions | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [follows, setFollows] = useState<Follows>(emptyFollows());
   // Carte désignée par l'adresse, en attente que son tableau soit lu.
-  const [carteAOuvrir, setCarteAOuvrir] = useState<number | null>(null);
+  const [cardToOpen, setCardToOpen] = useState<number | null>(null);
   // Carte dont le tiroir est ouvert : c'est elle que l'adresse porte.
-  const [carteAffichee, setCarteAffichee] = useState<number | null>(null);
+  const [displayedCard, setDisplayedCard] = useState<number | null>(null);
   const [movedProject, setMovedProject] = useState<{
     project: Project;
     mode: ProjectAction;
@@ -289,17 +289,17 @@ export default function App() {
   useEffect(() => {
     // Vrai au retour d'une connexion Microsoft : l'interface s'y construira
     // sous les yeux, comme après une connexion par mot de passe.
-    let connexion = false;
+    let connection = false;
     const check = async () => {
       // Le retour de Microsoft porte la session, ou l'erreur, dans le
       // fragment de l'adresse : on le lit, puis on l'efface de la barre
       // d'adresse — un jeton n'a rien à faire dans l'historique.
-      const retour = new URLSearchParams(window.location.hash.slice(1));
-      if (retour.has("token") || retour.has("auth_error")) {
-        const jeton = retour.get("token");
-        if (jeton) setToken(jeton);
-        connexion = Boolean(jeton);
-        setErreurConnexion(retour.get("auth_error"));
+      const returnParams = new URLSearchParams(window.location.hash.slice(1));
+      if (returnParams.has("token") || returnParams.has("auth_error")) {
+        const token = returnParams.get("token");
+        if (token) setToken(token);
+        connection = Boolean(token);
+        setConnectionError(returnParams.get("auth_error"));
         window.history.replaceState(null, "", window.location.pathname + window.location.search);
       }
 
@@ -308,19 +308,19 @@ export default function App() {
       for (;;) {
         try {
           const { needs_setup, entra } = await api.getSetupState();
-          setEntraPret(entra);
+          setEntraReady(entra);
           if (needs_setup) {
             setNeedsSetup(true);
           } else if (getToken()) {
             setUser(await api.me());
-            if (connexion) {
-              viderLaPage();
-              setEntree(true);
+            if (connection) {
+              clearPage();
+              setEntered(true);
             }
           }
           break;
-        } catch (erreur) {
-          if (erreur instanceof HttpError && erreur.status === 401) {
+        } catch (error) {
+          if (error instanceof HttpError && error.status === 401) {
             setToken(null);
             break;
           }
@@ -344,14 +344,14 @@ export default function App() {
       .catch(() => setDebug(false));
   }, [user]);
   useEffect(() => {
-    const racine = document.documentElement;
+    const root = document.documentElement;
     if (debug) {
-      racine.setAttribute("data-milo-debug", "");
-      return () => racine.removeAttribute("data-milo-debug");
+      root.setAttribute("data-milo-debug", "");
+      return () => root.removeAttribute("data-milo-debug");
     }
-    const bloquer = (e: MouseEvent) => e.preventDefault();
-    document.addEventListener("contextmenu", bloquer);
-    return () => document.removeEventListener("contextmenu", bloquer);
+    const block = (e: MouseEvent) => e.preventDefault();
+    document.addEventListener("contextmenu", block);
+    return () => document.removeEventListener("contextmenu", block);
   }, [debug]);
 
   // Session refusée par le serveur : retour à l'écran de connexion.
@@ -364,8 +364,8 @@ export default function App() {
     setUser(account);
     setNeedsSetup(false);
     // L'interface se construira sous les yeux, une fois chargée.
-    viderLaPage();
-    setEntree(true);
+    clearPage();
+    setEntered(true);
   };
 
   const handleLogout = async () => {
@@ -376,7 +376,7 @@ export default function App() {
     }
     setToken(null);
     setUser(null);
-    setProjectsLus(null);
+    setProjectsRead(null);
   };
 
   // --- Lectures ----------------------------------------------------------------
@@ -391,37 +391,37 @@ export default function App() {
   }, []);
 
   const loadViews = useCallback(async () => {
-    setViews(await lire(() => api.getViews()));
-  }, [lire]);
+    setViews(await read(() => api.getViews()));
+  }, [read]);
 
   const loadBoards = useCallback(async () => {
     // Sans vue ouverte, il n'y a pas de tableaux à lire : ils restent
     // inconnus, et non « aucun ».
-    if (!viewId) return setBoardsLus(null);
-    const items = await lire(() => api.getBoards(viewId));
-    setBoardsLus({ cle: viewId, items });
-  }, [viewId, lire]);
+    if (!viewId) return setBoardsRead(null);
+    const items = await read(() => api.getBoards(viewId));
+    setBoardsRead({ key: viewId, items });
+  }, [viewId, read]);
 
   // Les sections et les widgets du tableau ouvert, d'un coup.
   const loadWidgets = useCallback(async () => {
     if (!boardId) {
-      setSectionsLues(null);
-      setWidgetsLus(null);
+      setSectionsRead(null);
+      setWidgetsRead(null);
       return;
     }
-    const [s, w] = await lire(() =>
+    const [s, w] = await read(() =>
       Promise.all([api.boardSections(boardId).all(), api.getBoardWidgets(boardId)]),
     );
-    setSectionsLues({ cle: boardId, items: s });
-    setWidgetsLus({ cle: boardId, items: w });
-  }, [boardId, lire]);
+    setSectionsRead({ key: boardId, items: s });
+    setWidgetsRead({ key: boardId, items: w });
+  }, [boardId, read]);
 
   // Les projets du tableau, de tous ses contextes : le contexte choisi les
   // filtre ici (projetsVus), sans rien redemander au serveur — en changer
   // est immédiat. Il en va de même des demandes et des postes.
   const loadProjects = useCallback(async () => {
-    if (!boardId || !besoinProjets) return setProjectsLus(null);
-    const data = await lire(() =>
+    if (!boardId || !projectsNeed) return setProjectsRead(null);
+    const data = await read(() =>
       api.getProjects({
         board: boardId,
         category: categoryFilter,
@@ -429,21 +429,21 @@ export default function App() {
         actor: actorFilter,
       }),
     );
-    setProjectsLus({ cle: boardId, items: data });
-  }, [boardId, besoinProjets, categoryFilter, statusFilter, actorFilter, lire]);
+    setProjectsRead({ key: boardId, items: data });
+  }, [boardId, projectsNeed, categoryFilter, statusFilter, actorFilter, read]);
 
   // Les acteurs que propose le filtre « Acteurs » : ceux des projets du
   // contexte choisi. Lus à part, ils ne retardent pas la liste.
-  const loadActeursDesProjets = useCallback(async () => {
-    if (!boardId || !besoinProjets) return setProjectActorIds([]);
-    setProjectActorIds(await api.getProjectActorIds({ board: boardId, context: contexteChoisi }));
-  }, [boardId, besoinProjets, contexteChoisi]);
+  const loadProjectActors = useCallback(async () => {
+    if (!boardId || !projectsNeed) return setProjectActorIds([]);
+    setProjectActorIds(await api.getProjectActorIds({ board: boardId, context: selectedContext }));
+  }, [boardId, projectsNeed, selectedContext]);
 
   // Les catégories sont propres au tableau ouvert.
   const loadCategories = useCallback(async () => {
-    if (!boardId || !besoinProjets) return setCategories([]);
+    if (!boardId || !projectsNeed) return setCategories([]);
     setCategories(await api.getCategories(boardId));
-  }, [boardId, besoinProjets]);
+  }, [boardId, projectsNeed]);
 
   // Les étiquettes des projets et celles des cartes, propres au tableau.
   // Appelées avec un « patch », elles l'appliquent sur place, sans rien
@@ -451,7 +451,7 @@ export default function App() {
   const loadProjectLabels = useCallback(
     async (patch?: { id: number; data: Partial<ProjectLabel> }) => {
       if (patch) {
-        setProjectLabelsLues((l) =>
+        setProjectLabelsRead((l) =>
           l
             ? {
                 ...l,
@@ -461,19 +461,19 @@ export default function App() {
         );
         return;
       }
-      if (!boardId || !besoinProjets) return setProjectLabelsLues(null);
-      setProjectLabelsLues({
-        cle: boardId,
+      if (!boardId || !projectsNeed) return setProjectLabelsRead(null);
+      setProjectLabelsRead({
+        key: boardId,
         items: await api.getProjectLabels(boardId),
       });
     },
-    [boardId, besoinProjets],
+    [boardId, projectsNeed],
   );
 
   const loadLabels = useCallback(
     async (patch?: { id: number; data: Partial<Label> }) => {
       if (patch) {
-        setLabelsLues((l) =>
+        setLabelsRead((l) =>
           l
             ? {
                 ...l,
@@ -483,32 +483,32 @@ export default function App() {
         );
         return;
       }
-      if (!boardId || !besoinTaches) return setLabelsLues(null);
-      setLabelsLues({ cle: boardId, items: await api.getLabels(boardId) });
+      if (!boardId || !tasksNeed) return setLabelsRead(null);
+      setLabelsRead({ key: boardId, items: await api.getLabels(boardId) });
     },
-    [boardId, besoinTaches],
+    [boardId, tasksNeed],
   );
 
   const loadTaskLists = useCallback(async () => {
-    if (!boardId || !besoinTaches) return setTaskListsLues(null);
-    const items = await lire(() => api.getTaskLists(boardId));
-    setTaskListsLues({ cle: boardId, items });
-  }, [boardId, besoinTaches, lire]);
+    if (!boardId || !tasksNeed) return setTaskListsRead(null);
+    const items = await read(() => api.getTaskLists(boardId));
+    setTaskListsRead({ key: boardId, items });
+  }, [boardId, tasksNeed, read]);
 
   // Les demandes du tableau, du contexte choisi — toutes, quel que soit leur
   // statut.
   const loadSupportRequests = useCallback(async () => {
-    if (!boardId || !besoinSupport) return setSupportLues(null);
-    const items = await lire(() => api.getSupportRequests(Number(boardId), "all"));
-    setSupportLues({ cle: boardId, items });
-  }, [boardId, besoinSupport, lire]);
+    if (!boardId || !supportNeed) return setSupportRead(null);
+    const items = await read(() => api.getSupportRequests(Number(boardId), "all"));
+    setSupportRead({ key: boardId, items });
+  }, [boardId, supportNeed, read]);
 
   // Les postes du tableau, du contexte choisi.
   const loadAssets = useCallback(async () => {
-    if (!boardId || !besoinAssets) return setAssetsLus(null);
-    const items = await lire(() => api.getAssets(Number(boardId), "all"));
-    setAssetsLus({ cle: boardId, items });
-  }, [boardId, besoinAssets, lire]);
+    if (!boardId || !assetsNeed) return setAssetsRead(null);
+    const items = await read(() => api.getAssets(Number(boardId), "all"));
+    setAssetsRead({ key: boardId, items });
+  }, [boardId, assetsNeed, read]);
 
   useEffect(() => {
     if (user) loadLookups();
@@ -537,8 +537,8 @@ export default function App() {
   }, [user, loadProjects]);
 
   useEffect(() => {
-    if (user) loadActeursDesProjets().catch(() => {});
-  }, [user, loadActeursDesProjets]);
+    if (user) loadProjectActors().catch(() => {});
+  }, [user, loadProjectActors]);
   useEffect(() => {
     if (user) loadCategories().catch(() => {});
   }, [user, loadCategories]);
@@ -562,21 +562,21 @@ export default function App() {
   // sans attendre celle que le serveur fait de lui-même. Ce qu'elle apporte
   // arrive par le flux d'événements.
   useEffect(() => {
-    if (user && besoinSupport) api.syncSupportMail().catch(() => {});
-  }, [user, besoinSupport, boardId]);
+    if (user && supportNeed) api.syncSupportMail().catch(() => {});
+  }, [user, supportNeed, boardId]);
 
   // La vue d'ouverture, une fois la session ouverte : celle du compte, à
   // défaut la première.
   useEffect(() => {
-    if (!user || !views || vueAppliquee.current === user.id) return;
-    vueAppliquee.current = user.id;
-    const voulue = views.find((v) => String(v.id) === user.default_view) ?? views[0];
-    if (voulue) setViewId(String(voulue.id));
+    if (!user || !views || appliedView.current === user.id) return;
+    appliedView.current = user.id;
+    const desiredView = views.find((v) => String(v.id) === user.default_view) ?? views[0];
+    if (desiredView) setViewId(String(desiredView.id));
   }, [user, views]);
 
   // La vue ouverte doit exister : en supprimer une ramène sur la première.
   useEffect(() => {
-    if (!views || vueAppliquee.current === null) return;
+    if (!views || appliedView.current === null) return;
     if (!views.some((v) => String(v.id) === viewId))
       setViewId(views[0] ? String(views[0].id) : null);
   }, [views, viewId]);
@@ -585,9 +585,9 @@ export default function App() {
   // un tableau, ramène sur le premier de la liste.
   useEffect(() => {
     if (!boards) return;
-    const premier = boards[0];
-    if (!premier) return setBoardId(null);
-    if (!boards.some((b) => String(b.id) === boardId)) setBoardId(String(premier.id));
+    const first = boards[0];
+    if (!first) return setBoardId(null);
+    if (!boards.some((b) => String(b.id) === boardId)) setBoardId(String(first.id));
   }, [boards, boardId]);
 
   // Un filtre peut pointer vers une catégorie ou un acteur qui vient de
@@ -611,11 +611,11 @@ export default function App() {
    * Suivre ou cesser de suivre. Le serveur rend la liste entière, qui remplace
    * la nôtre.
    */
-  const basculerSuivi = useCallback(
+  const toggleFollow = useCallback(
     async (kind: FollowKind, id: number) => {
-      const suivi = follows[kind].includes(id);
+      const following = follows[kind].includes(id);
       try {
-        setFollows(suivi ? await api.unfollow(kind, id) : await api.follow(kind, id));
+        setFollows(following ? await api.unfollow(kind, id) : await api.follow(kind, id));
       } catch {
         /* le serveur a refusé : la case reste dans l'état qu'il connaît */
       }
@@ -624,10 +624,10 @@ export default function App() {
   );
 
   /** Se placer sur un tableau, où qu'il soit : sa vue d'abord. */
-  const allerAuTableau = useCallback(async (id: Id) => {
-    const tableau = await api.getBoard(id);
-    setViewId(String(tableau.view_id));
-    setBoardId(String(tableau.id));
+  const goToBoard = useCallback(async (id: Id) => {
+    const board = await api.getBoard(id);
+    setViewId(String(board.view_id));
+    setBoardId(String(board.id));
   }, []);
 
   /**
@@ -635,82 +635,82 @@ export default function App() {
    * de la recherche. Une demande et un poste s'ouvrent sur place ; un projet,
    * une carte et un widget mènent d'abord à leur tableau.
    */
-  const ouvrirCible = useCallback(
-    async (cible: Cible) => {
+  const openTarget = useCallback(
+    async (target: Target) => {
       try {
-        if (cible.kind === "support") {
-          setEditedSupportRequest(await api.getSupportRequest(cible.id));
+        if (target.kind === "support") {
+          setEditedSupportRequest(await api.getSupportRequest(target.id));
           setSupportDrawerOpened(true);
-        } else if (cible.kind === "asset") {
-          setOpenedAsset(await api.getAsset(cible.id));
+        } else if (target.kind === "asset") {
+          setOpenedAsset(await api.getAsset(target.id));
           setAssetDrawerOpened(true);
-        } else if (cible.kind === "project") {
-          const projet = await api.getProject(cible.id);
-          await allerAuTableau(projet.board_id);
-          setSelectedProjectId(cible.id);
+        } else if (target.kind === "project") {
+          const project = await api.getProject(target.id);
+          await goToBoard(project.board_id);
+          setSelectedProjectId(target.id);
           setDrawerOpened(true);
-        } else if (cible.kind === "access") {
-          await allerAuTableau(cible.id);
+        } else if (target.kind === "access") {
+          await goToBoard(target.id);
         } else {
           // Une carte : c'est le tableau qui l'ouvrira, une fois ses listes lues.
-          const ou = await api.getCardLocation(cible.id);
-          setViewId(String(ou.view_id));
-          setBoardId(String(ou.board_id));
-          setCarteAOuvrir(cible.id);
+          const or = await api.getCardLocation(target.id);
+          setViewId(String(or.view_id));
+          setBoardId(String(or.board_id));
+          setCardToOpen(target.id);
         }
       } catch {
         /* élément supprimé entre-temps, ou devenu privé : il n'y a rien à ouvrir */
       }
     },
-    [allerAuTableau],
+    [goToBoard],
   );
 
   /** Ce que la recherche a trouvé : un lien ouvre directement son adresse. */
-  const ouvrirRecherche = useCallback(
-    async (resultat: SearchResult) => {
-      if (resultat.kind !== "access") return ouvrirCible({ kind: resultat.kind, id: resultat.id });
-      if (resultat.url) {
-        window.open(resultat.url, "_blank", "noopener");
+  const openSearch = useCallback(
+    async (result: SearchResult) => {
+      if (result.kind !== "access") return openTarget({ kind: result.kind, id: result.id });
+      if (result.url) {
+        window.open(result.url, "_blank", "noopener");
         return;
       }
-      if (resultat.board_id) return ouvrirCible({ kind: "access", id: resultat.board_id });
+      if (result.board_id) return openTarget({ kind: "access", id: result.board_id });
     },
-    [ouvrirCible],
+    [openTarget],
   );
 
   // Paramétrage › Notifications : éteintes, les notifications ne passent plus
   // à l'écran — elles se rangent toujours dans le tiroir. Relu à chaque
   // fermeture du Paramétrage, où le réglage a pu changer.
-  const toastsActifs = useRef(true);
+  const toastsEnabled = useRef(true);
   useEffect(() => {
     if (!user || settingsOpened) return;
     api
       .getNotificationSettings()
-      .then((r) => (toastsActifs.current = r.toasts))
+      .then((r) => (toastsEnabled.current = r.toasts))
       .catch(() => undefined);
   }, [user, settingsOpened]);
 
   /** Ce qu'on voit quand un élément suivi change, chez quelqu'un d'autre. */
-  const montrerNotification = useCallback(
-    (avis: NotificationSuivi) => {
-      if (!toastsActifs.current) return;
+  const showNotification = useCallback(
+    (notice: NotificationSuivi) => {
+      if (!toastsEnabled.current) return;
       notifications.show({
-        id: avis.id,
-        title: avis.title,
-        icon: avis.deleted ? <IconTrash size={18} /> : <IconEye size={18} />,
-        color: avis.deleted ? RED : "teal",
+        id: notice.id,
+        title: notice.title,
+        icon: notice.deleted ? <IconTrash size={18} /> : <IconEye size={18} />,
+        color: notice.deleted ? RED : "teal",
         autoClose: 10000,
         message: (
           <Stack gap={4}>
             <Text size="sm">
-              {avis.author} {avis.message}
+              {notice.author} {notice.message}
             </Text>
-            {!avis.deleted && (
+            {!notice.deleted && (
               <Anchor
                 size="sm"
                 onClick={() => {
-                  notifications.hide(avis.id);
-                  ouvrirCible({ kind: avis.kind, id: avis.target_id });
+                  notifications.hide(notice.id);
+                  openTarget({ kind: notice.kind, id: notice.target_id });
                 }}
               >
                 Ouvrir
@@ -720,7 +720,7 @@ export default function App() {
         ),
       });
     },
-    [ouvrirCible],
+    [openTarget],
   );
 
   // Flux d'événements : le serveur pousse ses compteurs dès qu'une écriture a
@@ -729,17 +729,17 @@ export default function App() {
   useEffect(() => {
     if (!user) return undefined;
 
-    let arrete = false;
-    let controleur: AbortController | undefined;
+    let stopped = false;
+    let controller: AbortController | undefined;
 
-    const lecteurs: Record<Resource, () => void | Promise<void>> = {
+    const readers: Record<Resource, () => void | Promise<void>> = {
       lookups: loadLookups,
       views: loadViews,
       boards: loadBoards,
       "board-widgets": loadWidgets,
       categories: loadCategories,
       projects: async () => {
-        await Promise.all([loadProjects(), loadActeursDesProjets()]);
+        await Promise.all([loadProjects(), loadProjectActors()]);
       },
       "task-lists": loadTaskLists,
       labels: () => loadLabels(),
@@ -751,50 +751,50 @@ export default function App() {
       assets: loadAssets,
     };
 
-    const appliquer = async (message: FluxMessage) => {
-      if (estNotification(message)) {
-        montrerNotification(message.notification);
+    const apply = async (message: FeedMessage) => {
+      if (isNotification(message)) {
+        showNotification(message.notification);
         setNotificationsRevision((r) => r + 1);
         return;
       }
       const { versions } = message;
       // Premier message : les compteurs servent de référence, sans rien relire.
-      const connues = versionsConnues.current;
-      versionsConnues.current = versions;
-      if (connues === null) return;
-      const bouges = RESOURCES.filter((r) => versions[r] !== connues[r]);
-      await Promise.all(bouges.map((r) => lecteurs[r]()));
+      const known = knownVersions.current;
+      knownVersions.current = versions;
+      if (known === null) return;
+      const moved = RESOURCES.filter((r) => versions[r] !== known[r]);
+      await Promise.all(moved.map((r) => readers[r]()));
     };
 
-    const ecouter = async () => {
-      while (!arrete) {
+    const listen = async () => {
+      while (!stopped) {
         try {
-          controleur = new AbortController();
-          const reponse = await fetch("/api/events", {
+          controller = new AbortController();
+          const response = await fetch("/api/events", {
             headers: { Authorization: `Bearer ${getToken()}` },
-            signal: controleur.signal,
+            signal: controller.signal,
           });
-          if (!reponse.ok || !reponse.body) throw new Error("flux indisponible");
-          const lecteur = reponse.body.getReader();
-          const decodeur = new TextDecoder();
-          let tampon = "";
-          while (!arrete) {
-            const { done, value } = await lecteur.read();
+          if (!response.ok || !response.body) throw new Error("flux indisponible");
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          while (!stopped) {
+            const { done, value } = await reader.read();
             if (done) break;
-            tampon += decodeur.decode(value, { stream: true });
+            buffer += decoder.decode(value, { stream: true });
             // Les événements sont séparés par une ligne vide.
-            const morceaux = tampon.split("\n\n");
-            tampon = morceaux.pop() ?? "";
-            for (const morceau of morceaux) {
-              const ligne = morceau.split("\n").find((l) => l.startsWith("data:"));
-              if (!ligne) continue; // commentaire de maintien de connexion
-              let message: FluxMessage;
+            const chunks = buffer.split("\n\n");
+            buffer = chunks.pop() ?? "";
+            for (const chunk of chunks) {
+              const row = chunk.split("\n").find((l) => l.startsWith("data:"));
+              if (!row) continue; // commentaire de maintien de connexion
+              let message: FeedMessage;
               try {
-                message = JSON.parse(ligne.slice(5)) as FluxMessage;
+                message = JSON.parse(row.slice(5)) as FeedMessage;
               } catch {
                 continue;
               }
-              await appliquer(message);
+              await apply(message);
             }
           }
         } catch {
@@ -802,15 +802,15 @@ export default function App() {
         }
         // Ce qui a changé pendant la coupure est inconnu : le premier message
         // du flux repris servira de nouvelle référence.
-        versionsConnues.current = null;
-        if (!arrete) await new Promise((resoudre) => setTimeout(resoudre, 2000));
+        knownVersions.current = null;
+        if (!stopped) await new Promise((resoudre) => setTimeout(resoudre, 2000));
       }
     };
 
-    ecouter();
+    listen();
     return () => {
-      arrete = true;
-      controleur?.abort();
+      stopped = true;
+      controller?.abort();
     };
   }, [
     user,
@@ -825,104 +825,104 @@ export default function App() {
     loadProjectLabels,
     loadSupportRequests,
     loadAssets,
-    montrerNotification,
+    showNotification,
   ]);
 
   // --- Gestes ------------------------------------------------------------------
 
   // Un réglage refusé par le serveur : le menu s'est refermé, la raison se dit
   // en notification.
-  const signalerRefus = (e: unknown) => notifierErreur(messageErreur(e), "Modification refusée");
+  const reportRejection = (e: unknown) => notifyError(errorMessage(e), "Modification refusée");
 
   /** Écrire, signaler un refus, puis relire quoi qu'il arrive. */
-  const ecrire = async (ecriture: () => Promise<unknown>, relire: () => Promise<unknown>) => {
+  const write = async (writing: () => Promise<unknown>, reload: () => Promise<unknown>) => {
     try {
-      await ecriture();
+      await writing();
     } catch (e) {
-      signalerRefus(e);
+      reportRejection(e);
     } finally {
-      await relire();
+      await reload();
     }
   };
 
-  const changerDeVue = useCallback((id: string) => {
+  const changeView = useCallback((id: string) => {
     setViewId(id);
     setBoardId(null);
   }, []);
 
   // La vue et le tableau qu'on vient de créer : leur nom passe aussitôt en
   // saisie, dès qu'ils paraissent.
-  const [vueARenommer, setVueARenommer] = useState<number | null>(null);
-  const [tableauARenommer, setTableauARenommer] = useState<number | null>(null);
+  const [viewToRename, setViewToRename] = useState<number | null>(null);
+  const [boardToRename, setBoardToRename] = useState<number | null>(null);
 
   // Le « + » des vues crée aussitôt « Nouvelle vue », avec son premier
   // tableau, et l'ouvre : son nom se tape ensuite sur place.
-  const creerVue = async () => {
+  const createView = async () => {
     try {
-      const { view, board: premier } = await api.createView("Nouvelle vue");
+      const { view, board: first } = await api.createView("Nouvelle vue");
       await loadViews();
       setViewId(String(view.id));
-      setBoardId(String(premier.id));
-      setVueARenommer(view.id);
+      setBoardId(String(first.id));
+      setViewToRename(view.id);
     } catch (e) {
-      signalerRefus(e);
+      reportRejection(e);
     }
   };
 
-  const vueDe = (id: Id) => views?.find((v) => v.id === id);
+  const viewOf = (id: Id) => views?.find((v) => v.id === id);
 
   const addBoard = async () => {
     if (!viewId) return;
     try {
       // « Nouveau tableau », ouvert aussitôt : son nom se tape sur place.
-      const cree = await api.createBoard(viewId, "Nouveau tableau");
+      const created = await api.createBoard(viewId, "Nouveau tableau");
       await loadBoards();
-      setBoardId(String(cree.id));
-      setTableauARenommer(cree.id);
+      setBoardId(String(created.id));
+      setBoardToRename(created.id);
     } catch (e) {
-      signalerRefus(e);
+      reportRejection(e);
     }
   };
 
-  const boardDe = (id: Id) => boards?.find((b) => b.id === id);
+  const boardOf = (id: Id) => boards?.find((b) => b.id === id);
 
   /** Le tableau tel que le serveur vient de le rendre, à sa place. */
-  const poserTableau = (suivant: Board) =>
-    setBoardsLus((avant) =>
-      avant
+  const setBoard = (next: Board) =>
+    setBoardsRead((before) =>
+      before
         ? {
-            ...avant,
-            items: avant.items.map((b) => (b.id === suivant.id ? suivant : b)),
+            ...before,
+            items: before.items.map((b) => (b.id === next.id ? next : b)),
           }
-        : avant,
+        : before,
     );
 
   // Le contexte qu'on regarde dans le tableau ouvert : choisi pour soi, il se
   // voit aussitôt et se retrouve à la prochaine visite.
-  const changerContexte = (valeur: string) => {
+  const changeContext = (value: string) => {
     if (!board) return;
-    const contextId = valeur === "all" ? null : Number(valeur);
-    poserTableau({ ...board, context_id: contextId });
-    void ecrire(() => api.selectContext(board.id, contextId), loadBoards);
+    const contextId = value === "all" ? null : Number(value);
+    setBoard({ ...board, context_id: contextId });
+    void write(() => api.selectContext(board.id, contextId), loadBoards);
   };
 
   // Les contextes du tableau ouvert : chaque écriture rend le tableau à jour.
-  const ecrireContextes = (ecriture: () => Promise<Board>) =>
-    ecrire(
-      async () => poserTableau(await ecriture()),
+  const writeContexts = (writing: () => Promise<Board>) =>
+    write(
+      async () => setBoard(await writing()),
       async () => {
         await loadBoards();
       },
     );
-  const gestionDesContextes =
-    board && peutOrganiser
+  const contextManagement =
+    board && canArrange
       ? {
-          onAdd: (name: string) => ecrireContextes(() => api.addContext(board.id, name)),
-          onRename: (id: Id, name: string) => ecrireContextes(() => api.renameContext(id, name)),
+          onAdd: (name: string) => writeContexts(() => api.addContext(board.id, name)),
+          onRename: (id: Id, name: string) => writeContexts(() => api.renameContext(id, name)),
           onRenameAll: (name: string) =>
-            ecrireContextes(() => api.updateBoard(board.id, { all_contexts_label: name })),
+            writeContexts(() => api.updateBoard(board.id, { all_contexts_label: name })),
           onDelete: async (id: Id) => {
-            await ecrireContextes(() => api.deleteContext(id));
+            await writeContexts(() => api.deleteContext(id));
             await Promise.all([
               loadProjects(),
               loadTaskLists(),
@@ -931,24 +931,24 @@ export default function App() {
             ]);
           },
           onReorder: (ids: Id[]) => {
-            poserTableau({
+            setBoard({
               ...board,
               contexts: ids
                 .map((id) => board.contexts.find((c) => c.id === id))
                 .filter((c): c is NonNullable<typeof c> => Boolean(c)),
             });
-            return ecrireContextes(() => api.reorderContexts(board.id, ids));
+            return writeContexts(() => api.reorderContexts(board.id, ids));
           },
         }
       : undefined;
 
   // « Hérité » d'un tableau : le décocher (confirmé par le menu) part d'une
   // copie de sa structure partagée, le recocher efface la sienne.
-  const basculerHerite = async (id: Id) => {
-    const tableau = boardDe(id);
-    if (!tableau) return;
-    await ecrire(
-      () => api.boardSections(id).setLayout(tableau.inherited === false),
+  const toggleInherited = async (id: Id) => {
+    const board = boardOf(id);
+    if (!board) return;
+    await write(
+      () => api.boardSections(id).setLayout(board.inherited === false),
       async () => {
         await loadBoards();
         if (String(id) === boardId) await loadWidgets();
@@ -960,14 +960,14 @@ export default function App() {
   // siens (lib/listes.ts) ; sans widget désigné, le serveur les donne au
   // premier du tableau.
   const handleOpenNewProject = useCallback((listKey = "") => {
-    setListeDeLAjout(listKey);
+    setNewListName(listKey);
     setSelectedProjectId(null);
     setDrawerOpened(true);
   }, []);
 
   const openNewSupportRequest = useCallback((listKey = "") => {
-    setListeDeLAjout(listKey);
-    setObjetDemandeAcces(null);
+    setNewListName(listKey);
+    setAccessRequestSubject(null);
     setEditedSupportRequest(null);
     setSupportDrawerOpened(true);
   }, []);
@@ -981,33 +981,33 @@ export default function App() {
       // Jamais pendant une saisie de texte. Les listes déroulantes de Mantine
       // sont des <input readonly> : les raccourcis y fonctionnent toujours.
       const el = document.activeElement as HTMLElement | null;
-      const saisieDeTexte =
+      const textInput =
         el &&
         (el.tagName === "TEXTAREA" ||
           el.isContentEditable ||
           (el.tagName === "INPUT" && !(el as HTMLInputElement).readOnly));
-      if (saisieDeTexte) return;
+      if (textInput) return;
 
       if (event.code === "Tab" && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
         event.preventDefault();
-        const liste = event.altKey
+        const list = event.altKey
           ? (boards ?? []).map((b) => String(b.id))
           : (views ?? []).map((v) => String(v.id));
-        if (!liste.length) return;
-        const courant = event.altKey ? boardId : viewId;
-        const suivant = liste[(liste.indexOf(courant ?? "") + 1) % liste.length]!;
-        if (event.altKey) setBoardId(suivant);
-        else changerDeVue(suivant);
+        if (!list.length) return;
+        const current = event.altKey ? boardId : viewId;
+        const next = list[(list.indexOf(current ?? "") + 1) % list.length]!;
+        if (event.altKey) setBoardId(next);
+        else changeView(next);
         return;
       }
 
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
 
       if (event.code === "KeyN") {
-        if (widgets.some((w) => w.type === "project.list") && peut("projects", "create")) {
+        if (widgets.some((w) => w.type === "project.list") && can("projects", "create")) {
           event.preventDefault();
           handleOpenNewProject();
-        } else if (widgets.some((w) => w.type === "support.list") && peut("support", "create")) {
+        } else if (widgets.some((w) => w.type === "support.list") && can("support", "create")) {
           event.preventDefault();
           openNewSupportRequest();
         }
@@ -1016,14 +1016,14 @@ export default function App() {
 
       if (event.code === "KeyI") {
         event.preventDefault();
-        basculerModification();
+        toggleEdit();
         return;
       }
 
       if (event.code === "KeyS" && board) {
         event.preventDefault();
-        const valeurs = ["all", ...contextes.map((c) => String(c.id))];
-        changerContexte(valeurs[(valeurs.indexOf(contexteChoisi) + 1) % valeurs.length]!);
+        const values = ["all", ...contexts.map((c) => String(c.id))];
+        changeContext(values[(values.indexOf(selectedContext) + 1) % values.length]!);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1033,29 +1033,29 @@ export default function App() {
   /**
    * Ce que l'adresse désignait à l'arrivée, ouvert une fois la session ouverte.
    */
-  const adresseLue = useRef(false);
+  const readAddress = useRef(false);
   useEffect(() => {
-    if (!user || adresseLue.current) return;
-    adresseLue.current = true;
-    const cible = cibleDeLAdresse();
-    if (cible) ouvrirCible(cible);
-  }, [user, ouvrirCible]);
+    if (!user || readAddress.current) return;
+    readAddress.current = true;
+    const target = addressTarget();
+    if (target) openTarget(target);
+  }, [user, openTarget]);
 
   // L'adresse suit ce qui est ouvert, pour qu'un rechargement le retrouve.
   useEffect(() => {
     if (drawerOpened && selectedProjectId) {
-      noterDansLAdresse({ kind: "project", id: selectedProjectId });
-    } else if (carteAffichee) {
-      noterDansLAdresse({ kind: "card", id: carteAffichee });
+      noteInAddress({ kind: "project", id: selectedProjectId });
+    } else if (displayedCard) {
+      noteInAddress({ kind: "card", id: displayedCard });
     } else {
-      noterDansLAdresse(null);
+      noteInAddress(null);
     }
-  }, [drawerOpened, selectedProjectId, carteAffichee]);
+  }, [drawerOpened, selectedProjectId, displayedCard]);
 
   /** Le tableau rapporte la carte ouverte : l'adresse la suit, la demande est servie. */
-  const handleCarteOuverte = useCallback((id: number | null) => {
-    setCarteAffichee(id);
-    setCarteAOuvrir(null);
+  const handleCardOpened = useCallback((id: number | null) => {
+    setDisplayedCard(id);
+    setCardToOpen(null);
   }, []);
 
   const handleOpenProject = (project: Project) => {
@@ -1067,10 +1067,10 @@ export default function App() {
   // s'ouvre aussitôt.
   const duplicateProject = async (project: Project) => {
     try {
-      const copieProjet = await api.copyProject(project.id, {
+      const projectCopy = await api.copyProject(project.id, {
         name: `${project.name} (copie)`,
       });
-      handleOpenProject(copieProjet);
+      handleOpenProject(projectCopy);
     } finally {
       await loadProjects();
     }
@@ -1087,11 +1087,11 @@ export default function App() {
   };
 
   const deleteProject = async () => {
-    const projet = deletedProject;
+    const project = deletedProject;
     setDeletedProject(null);
-    if (!projet) return;
+    if (!project) return;
     try {
-      await api.deleteProject(projet.id);
+      await api.deleteProject(project.id);
     } finally {
       await loadProjects();
     }
@@ -1101,14 +1101,14 @@ export default function App() {
   // « Nouveau », dans le contexte choisi du tableau.
   const openSupportRequestFromLink = (widget: BoardWidget) => {
     if (!board) return;
-    setObjetDemandeAcces(sourceAcces(widget, board.id).title);
+    setAccessRequestSubject(accessSource(widget, board.id).title);
     setEditedSupportRequest(null);
     setSupportDrawerOpened(true);
   };
 
   // Depuis un poste : la demande prend son nom pour objet.
-  const openSupportRequestFromAsset = (poste: Asset) => {
-    setObjetDemandeAcces(sourcePoste(poste).title);
+  const openSupportRequestFromAsset = (workstation: Asset) => {
+    setAccessRequestSubject(workstationSource(workstation).title);
     setEditedSupportRequest(null);
     setSupportDrawerOpened(true);
   };
@@ -1118,8 +1118,8 @@ export default function App() {
     return (
       <LoginPage
         needsSetup={needsSetup}
-        entra={entraPret}
-        initialError={erreurConnexion}
+        entra={entraReady}
+        initialError={connectionError}
         onAuthenticated={handleAuthenticated}
       />
     );
@@ -1141,15 +1141,15 @@ export default function App() {
 
   // Les contextes du tableau ouvert, et le compte.
   const account: AccountSlot = {
-    contextes: board
+    contexts: board
       ? {
-          items: contextes,
-          tous: board.all_contexts_label,
-          value: contexteChoisi,
-          onChange: changerContexte,
+          items: contexts,
+          all: board.all_contexts_label,
+          value: selectedContext,
+          onChange: changeContext,
           // Hors modification, le tableau garde ses contextes : on les choisit
           // seulement, sans les ajouter, renommer, ranger ni supprimer.
-          gestion: enModification ? gestionDesContextes : undefined,
+          management: enModification ? contextManagement : undefined,
         }
       : undefined,
     onOpenSettings: () => setSettingsOpened(true),
@@ -1157,55 +1157,55 @@ export default function App() {
     onLogout: handleLogout,
     onOpenPreferences: () => setPreferencesOpened(true),
     onOpenNotifications: () => setNotificationsOpened(true),
-    onSearchOpen: ouvrirRecherche,
+    onSearchOpen: openSearch,
   };
 
   // Le tableau ouvert est figé : hors modification de l'interface, ou — sur sa
   // structure partagée — faute de pouvoir l'organiser. Sa propre structure
   // (« Hérité » décoché) n'est qu'à soi.
-  const herite = board?.inherited !== false;
-  const fige = boardId ? !enModification || (herite && !peutOrganiser) : true;
+  const inherits = board?.inherited !== false;
+  const frozen = boardId ? !enModification || (inherits && !canArrange) : true;
   // Hors modification, les onglets sont figés aussi : ni les tableaux ni les
   // vues ne se glissent, ni ne s'ajoutent.
-  const ongletsFiges = !enModification;
+  const tabsLocked = !enModification;
   // La structure du tableau ouvert se remplace par un import : il faut
   // pouvoir y toucher, comme pour la modifier.
-  const dispositionModifiable = Boolean(board) && !(herite && !peutOrganiser);
+  const editableLayout = Boolean(board) && !(inherits && !canArrange);
   // Les tableaux tels que cette fenêtre les montre : leur verrou est le sien.
-  const tableauxAffiches =
+  const displayedBoards =
     boards?.map((b) => ({
       ...b,
       is_locked: enModification ? (0 as const) : (1 as const),
     })) ?? null;
-  const creerTache = peut("tasks", "create");
+  const createTask = can("tasks", "create");
   // La demande naît dans le tableau ouvert : sans widget « Demandes de
   // support » pour la montrer, on ne la propose pas.
-  const creerDemande =
-    peut("support", "create") && widgets.some((w) => w.type === "support.list");
+  const createRequest =
+    can("support", "create") && widgets.some((w) => w.type === "support.list");
   const nomDuTableau = (id: Id) => boards?.find((b) => b.id === id)?.name;
 
   return (
-    <DroitsProvider rights={user.rights} widgets={user.widgets} parametrage={user.settings.update}>
-      <EditionContext.Provider value={enModification}>
+    <RightsProvider rights={user.rights} widgets={user.widgets} canEditSettings={user.settings.update}>
+      <EditingContext.Provider value={enModification}>
         <ReferencesContext.Provider
           value={{
-            contexts: contextes,
+            contexts: contexts,
             assetTags: [...new Set((assets ?? []).map((a) => a.tag).filter(Boolean))].sort(),
           }}
         >
           {/* Le presse-papiers des étiquettes et des catégories, que le menu
             « Actions » du tiroir d'un widget remplit et vide dans un autre. */}
-          <CopierCollerContext.Provider
+          <CopyPasteContext.Provider
             value={{
               board: board && { id: board.id, name: board.name },
-              pressePapiers,
-              onCopier: (cle, copie) => setPressePapiers((avant) => ({ ...avant, [cle]: copie })),
-              collages,
-              onColle: () => setCollages((n) => n + 1),
+              clipboard,
+              onCopy: (key, copy) => setClipboard((before) => ({ ...before, [key]: copy })),
+              pastes,
+              onPasted: () => setPastes((n) => n + 1),
             }}
           >
             <Stack
-              ref={fond}
+              ref={background}
               gap={0}
               h="100vh"
               // Le clic droit sur le fond : ce qu'aucun élément — onglet, widget,
@@ -1213,10 +1213,10 @@ export default function App() {
               // celui du navigateur, pour copier et coller ; une fenêtre ou un
               // tiroir, portés hors de la page, ne l'ouvrent pas.
               onContextMenu={(e) => {
-                const cible = e.target as HTMLElement;
-                if (e.defaultPrevented || !fond.current?.contains(cible)) return;
-                if (cible.closest("input, textarea, [contenteditable='true']")) return;
-                setMenuFond(positionDuMenu(e));
+                const target = e.target as HTMLElement;
+                if (e.defaultPrevented || !background.current?.contains(target)) return;
+                if (target.closest("input, textarea, [contenteditable='true']")) return;
+                setBackgroundMenu(menuPosition(e));
               }}
             >
               {/* La rangée d'onglets de la vue est la première ligne de l'écran. */}
@@ -1237,77 +1237,77 @@ export default function App() {
               >
                 {viewId && (
                   <ViewPage
-                    boards={tableauxAffiches}
+                    boards={displayedBoards}
                     boardId={boardId}
                     onBoardChange={setBoardId}
                     // Hors modification, ni « + » de tableau, ni de vue (ongletsFiges).
-                    onAddBoard={peutOrganiser && !ongletsFiges ? addBoard : undefined}
-                    aRenommer={tableauARenommer}
-                    onRenommageOuvert={() => setTableauARenommer(null)}
+                    onAddBoard={canArrange && !tabsLocked ? addBoard : undefined}
+                    toRename={boardToRename}
+                    onRenameOpened={() => setBoardToRename(null)}
                     // Renommer, supprimer, rendre privé ou hérité : en
                     // modification seulement.
                     onRenameBoard={
-                      peutOrganiser && enModification
-                        ? (id, name) => ecrire(() => api.updateBoard(id, { name }), loadBoards)
+                      canArrange && enModification
+                        ? (id, name) => write(() => api.updateBoard(id, { name }), loadBoards)
                         : undefined
                     }
                     onDeleteBoard={
-                      peutOrganiser && enModification
-                        ? (id) => ecrire(() => api.deleteBoard(id), loadBoards)
+                      canArrange && enModification
+                        ? (id) => write(() => api.deleteBoard(id), loadBoards)
                         : undefined
                     }
                     onReorderBoards={
-                      ongletsFiges
+                      tabsLocked
                         ? undefined
-                        : (ids) => ecrire(() => api.reorderBoards(viewId, ids), loadBoards)
+                        : (ids) => write(() => api.reorderBoards(viewId, ids), loadBoards)
                     }
                     onTogglePrivateBoard={
-                      peutOrganiser && enModification
+                      canArrange && enModification
                         ? (id) =>
-                            ecrire(
+                            write(
                               () =>
                                 api.updateBoard(id, {
-                                  is_private: !boardDe(id)?.is_private,
+                                  is_private: !boardOf(id)?.is_private,
                                 }),
                               loadBoards,
                             )
                         : undefined
                     }
-                    onToggleBoardInherited={enModification ? basculerHerite : undefined}
+                    onToggleBoardInherited={enModification ? toggleInherited : undefined}
                     // Les contextes sont la structure commune du tableau : les
                     // copier demande de pouvoir organiser, et le mode édition —
                     // comme les ajouter ou les renommer.
-                    onCopyContexts={peutOrganiser && enModification ? setCopieContextes : undefined}
+                    onCopyContexts={canArrange && enModification ? setCopiedContexts : undefined}
                     sections={sections}
                     widgets={widgets}
                     onWidgetsChanged={loadWidgets}
-                    locked={fige}
+                    locked={frozen}
                     // Passer en modification n'a de sens que pour qui peut toucher à la
                     // structure qu'il regarde : faute de droit, rien ne se propose.
                     onUnlock={
-                      boardId && !(herite && !peutOrganiser)
+                      boardId && !(inherits && !canArrange)
                         ? () => setEnModification(true)
                         : undefined
                     }
-                    donnees={{
-                      requests: demandesVues ?? [],
-                      projects: projetsVus ?? [],
-                      lists: tachesVues ?? [],
-                      assets: postesVus ?? [],
+                    data={{
+                      requests: visibleRequests ?? [],
+                      projects: viewedProjects ?? [],
+                      lists: visibleTasks ?? [],
+                      assets: viewedWorkstations ?? [],
                       userId: user.id,
                     }}
-                    projets={{
-                      projects: projetsVus,
-                      loading: chargement,
+                    projects={{
+                      projects: viewedProjects,
+                      loading: loading,
                       onRowClick: handleOpenProject,
                       onMoveProject: (project, mode) => setMovedProject({ project, mode }),
                       onDuplicateProject: (project) => void duplicateProject(project),
                       onDeleteProject: setDeletedProject,
-                      onCreateTask: (projet) =>
-                        setTacheSource(sourceProjet(projet, nomDuTableau(projet.board_id))),
-                      onAddProject: peut("projects", "create") ? handleOpenNewProject : undefined,
+                      onCreateTask: (project) =>
+                        setSourceTask(projectSource(project, nomDuTableau(project.board_id))),
+                      onAddProject: can("projects", "create") ? handleOpenNewProject : undefined,
                       followedIds: follows.project,
-                      onToggleFollow: (projet) => basculerSuivi("project", projet.id),
+                      onToggleFollow: (project) => toggleFollow("project", project.id),
                       categories,
                       categoryFilter,
                       onCategoryFilterChange: setCategoryFilter,
@@ -1320,71 +1320,71 @@ export default function App() {
                       actorFilter,
                       onActorFilterChange: setActorFilter,
                     }}
-                    taches={{
+                    tasks={{
                       boardId,
-                      boards: tableauxAffiches ?? [],
-                      lists: tachesVues ?? [],
-                      loading: chargement,
+                      boards: displayedBoards ?? [],
+                      lists: visibleTasks ?? [],
+                      loading: loading,
                       onListsChanged: loadTaskLists,
                       labels,
                       users,
                       onLabelsChanged: loadLabels,
                       follows,
-                      onToggleFollow: basculerSuivi,
-                      carteAOuvrir,
-                      onCarteOuverte: handleCarteOuverte,
+                      onToggleFollow: toggleFollow,
+                      cardToOpen,
+                      onCardOpened: handleCardOpened,
                     }}
                     support={{
-                      requests: demandesVues,
-                      loading: chargement,
+                      requests: visibleRequests,
+                      loading: loading,
                       users,
-                      onOpenRequest: (demande) => {
-                        setEditedSupportRequest(demande);
+                      onOpenRequest: (request) => {
+                        setEditedSupportRequest(request);
                         setSupportDrawerOpened(true);
                       },
-                      onAddRequest: peut("support", "create") ? openNewSupportRequest : undefined,
-                      onCreateTask: creerTache
-                        ? (demande) => setTacheSource(sourceDemande(demande))
+                      onAddRequest: can("support", "create") ? openNewSupportRequest : undefined,
+                      onCreateTask: createTask
+                        ? (request) => setSourceTask(requestSource(request))
                         : undefined,
                       onRequestsChanged: loadSupportRequests,
                       followedIds: follows.support,
-                      onToggleFollow: (demande) => basculerSuivi("support", demande.id),
+                      onToggleFollow: (request) => toggleFollow("support", request.id),
                     }}
                     assets={{
-                      assets: postesVus,
-                      loading: chargement,
-                      onOpenAsset: (poste) => {
-                        setOpenedAsset(poste);
+                      assets: viewedWorkstations,
+                      loading: loading,
+                      onOpenAsset: (workstation) => {
+                        setOpenedAsset(workstation);
                         setAssetDrawerOpened(true);
                       },
-                      onCreateTask: creerTache
-                        ? (poste) => setTacheSource(sourcePoste(poste))
+                      onCreateTask: createTask
+                        ? (workstation) => setSourceTask(workstationSource(workstation))
                         : undefined,
-                      onCreateSupportRequest: creerDemande
+                      onCreateSupportRequest: createRequest
                         ? openSupportRequestFromAsset
                         : undefined,
                     }}
                     onCreateTaskFromLink={
-                      creerTache && board
-                        ? (widget) => setTacheSource(sourceAcces(widget, board.id, board.name))
+                      createTask && board
+                        ? (widget) => setSourceTask(accessSource(widget, board.id, board.name))
                         : undefined
                     }
                     onCreateSupportFromLink={
-                      creerDemande ? openSupportRequestFromLink : undefined
+                      createRequest ? openSupportRequestFromLink : undefined
                     }
-                    loading={chargement}
+                    loading={loading}
                     account={account}
                   />
                 )}
               </Box>
 
-              {menuFond && (
-                <PointMenu position={menuFond} onClose={() => setMenuFond(null)}>
+              {backgroundMenu && (
+                <PointMenu position={backgroundMenu} onClose={() => setBackgroundMenu(null)}>
                   <Menu.Item
                     leftSection={
                       enModification ? <IconCheck size={16} /> : <IconLayoutDashboard size={16} />
                     }
-                    onClick={basculerModification}
+                    onClick={toggleEdit}
                   >
                     {enModification ? "Terminer la modification" : "Modifier l’interface"}
                   </Menu.Item>
@@ -1394,14 +1394,14 @@ export default function App() {
                       <Menu.Item
                         leftSection={<IconFileExport size={16} />}
                         disabled={!sections?.length}
-                        onClick={() => setDisposition("export")}
+                        onClick={() => setLayout("export")}
                       >
                         Exporter la disposition
                       </Menu.Item>
                       <Menu.Item
                         leftSection={<IconFileImport size={16} />}
-                        disabled={!dispositionModifiable}
-                        onClick={() => setDisposition("import")}
+                        disabled={!editableLayout}
+                        onClick={() => setLayout("import")}
                       >
                         Importer la disposition
                       </Menu.Item>
@@ -1410,25 +1410,25 @@ export default function App() {
                 </PointMenu>
               )}
 
-              <DispositionModal
-                mode={disposition}
-                onClose={() => setDisposition(null)}
+              <LayoutModal
+                mode={layout}
+                onClose={() => setLayout(null)}
                 sections={sections ?? []}
                 widgets={widgets}
-                onImport={async (recue) => {
+                onImport={async (received) => {
                   if (!board) return;
                   try {
-                    const fait = await api.boardSections(board.id).importer(recue);
+                    const done = await api.boardSections(board.id).importSections(received);
                     const notes = [
-                      fait.ecartes > 0 &&
-                        `${fait.ecartes} widget${fait.ecartes > 1 ? "s" : ""} écarté${fait.ecartes > 1 ? "s" : ""}`,
-                      fait.gardes > 0 &&
-                        `${fait.gardes} widget${fait.gardes > 1 ? "s" : ""} hors de vos droits conservé${fait.gardes > 1 ? "s" : ""}`,
+                      done.discarded > 0 &&
+                        `${done.discarded} widget${done.discarded > 1 ? "s" : ""} écarté${done.discarded > 1 ? "s" : ""}`,
+                      done.keptCount > 0 &&
+                        `${done.keptCount} widget${done.keptCount > 1 ? "s" : ""} hors de vos droits conservé${done.keptCount > 1 ? "s" : ""}`,
                     ].filter(Boolean);
                     notifications.show({
                       title: "Disposition importée",
                       color: "teal",
-                      message: `${fait.poses} widget${fait.poses > 1 ? "s" : ""} posé${fait.poses > 1 ? "s" : ""}${notes.length ? ` · ${notes.join(" · ")}` : ""}.`,
+                      message: `${done.placed} widget${done.placed > 1 ? "s" : ""} posé${done.placed > 1 ? "s" : ""}${notes.length ? ` · ${notes.join(" · ")}` : ""}.`,
                     });
                   } finally {
                     await loadWidgets();
@@ -1442,15 +1442,15 @@ export default function App() {
                 }}
               />
 
-              {copieContextes !== null && (
+              {contextsCopy !== null && (
                 <CopyToBoardModal
                   opened
-                  onClose={() => setCopieContextes(null)}
-                  chose="contexts"
-                  sourceId={copieContextes}
+                  onClose={() => setCopiedContexts(null)}
+                  item="contexts"
+                  sourceId={contextsCopy}
                   viewId={viewId}
-                  onCopy={(cible, remplacer, renommer) =>
-                    api.copyContexts(copieContextes, cible, remplacer, renommer)
+                  onCopy={(target, replaceExisting, rename) =>
+                    api.copyContexts(contextsCopy, target, replaceExisting, rename)
                   }
                 />
               )}
@@ -1467,15 +1467,15 @@ export default function App() {
                 request={editedSupportRequest}
                 // Le contexte proposé à la création : celui qu'on regarde, ou le
                 // premier du tableau.
-                contexts={contextes}
+                contexts={contexts}
                 contextId={
-                  contexteChoisi !== "all" ? contexteChoisi : String(contextes[0]?.id ?? "")
+                  selectedContext !== "all" ? selectedContext : String(contexts[0]?.id ?? "")
                 }
                 boardId={board?.id ?? null}
-                listKey={listeDeLAjout}
+                listKey={addTargetList}
                 defaultStatus={DEFAULT_SUPPORT_STATUS}
-                defaultSubject={objetDemandeAcces ?? ""}
-                assignCurrentUser={objetDemandeAcces === null}
+                defaultSubject={accessRequestSubject ?? ""}
+                assignCurrentUser={accessRequestSubject === null}
                 users={users}
                 currentUser={user}
                 // Le tiroir se ferme lui-même après une création ; une mise à
@@ -1485,11 +1485,11 @@ export default function App() {
                   setSupportDrawerOpened(false);
                   await loadSupportRequests();
                 }}
-                suivi={
+                following={
                   editedSupportRequest !== null && follows.support.includes(editedSupportRequest.id)
                 }
                 onToggleFollow={() => {
-                  if (editedSupportRequest) basculerSuivi("support", editedSupportRequest.id);
+                  if (editedSupportRequest) toggleFollow("support", editedSupportRequest.id);
                 }}
               />
 
@@ -1499,11 +1499,11 @@ export default function App() {
                 projectId={selectedProjectId}
                 boardId={boardId}
                 categories={categories}
-                contexts={contextes}
+                contexts={contexts}
                 contextId={
-                  contexteChoisi !== "all" ? contexteChoisi : String(contextes[0]?.id ?? "")
+                  selectedContext !== "all" ? selectedContext : String(contexts[0]?.id ?? "")
                 }
-                listKey={listeDeLAjout}
+                listKey={addTargetList}
                 milestoneTypes={milestoneTypes}
                 users={users}
                 labels={projectLabels}
@@ -1513,9 +1513,9 @@ export default function App() {
                 onLabelsChanged={loadProjectLabels}
                 onSaved={handleSaved}
                 onDeleted={handleSaved}
-                suivi={selectedProjectId !== null && follows.project.includes(selectedProjectId)}
+                following={selectedProjectId !== null && follows.project.includes(selectedProjectId)}
                 onToggleFollow={() => {
-                  if (selectedProjectId !== null) basculerSuivi("project", selectedProjectId);
+                  if (selectedProjectId !== null) toggleFollow("project", selectedProjectId);
                 }}
               />
 
@@ -1547,34 +1547,34 @@ export default function App() {
               <ViewSwitch
                 views={views ?? []}
                 value={viewId}
-                onChange={changerDeVue}
+                onChange={changeView}
                 onReorder={
-                  ongletsFiges ? undefined : (ids) => ecrire(() => api.reorderViews(ids), loadViews)
+                  tabsLocked ? undefined : (ids) => write(() => api.reorderViews(ids), loadViews)
                 }
-                onCreate={peutOrganiser && !ongletsFiges ? creerVue : undefined}
-                aRenommer={vueARenommer}
-                onRenommageOuvert={() => setVueARenommer(null)}
+                onCreate={canArrange && !tabsLocked ? createView : undefined}
+                toRename={viewToRename}
+                onRenameOpened={() => setViewToRename(null)}
                 // Renommer, supprimer, rendre privée : en modification seulement.
                 onRename={
-                  peutOrganiser && enModification
-                    ? (id, name) => ecrire(() => api.updateView(id, { name }), loadViews)
+                  canArrange && enModification
+                    ? (id, name) => write(() => api.updateView(id, { name }), loadViews)
                     : undefined
                 }
                 onTogglePrivate={
-                  peutOrganiser && enModification
+                  canArrange && enModification
                     ? (id) =>
-                        ecrire(
+                        write(
                           () =>
                             api.updateView(id, {
-                              is_private: !vueDe(id)?.is_private,
+                              is_private: !viewOf(id)?.is_private,
                             }),
                           loadViews,
                         )
                     : undefined
                 }
                 onDelete={
-                  peutOrganiser && enModification
-                    ? (id) => ecrire(() => api.deleteView(id), loadViews)
+                  canArrange && enModification
+                    ? (id) => write(() => api.deleteView(id), loadViews)
                     : undefined
                 }
               />
@@ -1582,7 +1582,7 @@ export default function App() {
                 projets={widgets.some((w) => w.type === "project.list")}
                 demandes={widgets.some((w) => w.type === "support.list")}
               />
-              <CodeKonami
+              <KonamiCode
                 enModification={enModification}
                 onQuitterModification={() => setEnModification(false)}
               />
@@ -1590,19 +1590,19 @@ export default function App() {
               {/* « Créer une tâche » : la fiche d'une carte, vide, qui choisit où
                 elle va. On reste où l'on est ; la notification mène à la tâche. */}
               <CardDrawer
-                opened={tacheSource !== null}
-                onClose={() => setTacheSource(null)}
+                opened={sourceTask !== null}
+                onClose={() => setSourceTask(null)}
                 card={null}
-                source={tacheSource}
+                source={sourceTask}
                 // Depuis un lien, la tâche naît sans membre : on la signale sans
                 // s'en charger.
-                currentUserId={tacheSource?.kind === "access" ? undefined : user?.id}
+                currentUserId={sourceTask?.kind === "access" ? undefined : user?.id}
                 labels={[]}
                 users={users}
                 boardId={null}
                 onLabelsChanged={() => {}}
                 onSaved={() => {}}
-                suivie={false}
+                followed={false}
                 onToggleFollow={() => {}}
                 onCreated={(id) =>
                   notifications.show({
@@ -1610,7 +1610,7 @@ export default function App() {
                     color: "teal",
                     autoClose: 6000,
                     message: (
-                      <Anchor size="sm" onClick={() => void ouvrirCible({ kind: "card", id })}>
+                      <Anchor size="sm" onClick={() => void openTarget({ kind: "card", id })}>
                         Ouvrir la tâche
                       </Anchor>
                     ),
@@ -1625,7 +1625,7 @@ export default function App() {
                 onOpen={(notification) => {
                   if (notification.deleted) return;
                   setNotificationsOpened(false);
-                  void ouvrirCible({
+                  void openTarget({
                     kind: notification.kind,
                     id: notification.target_id,
                   });
@@ -1655,9 +1655,9 @@ export default function App() {
                 onUserChange={setUser}
               />
             </Stack>
-          </CopierCollerContext.Provider>
+          </CopyPasteContext.Provider>
         </ReferencesContext.Provider>
-      </EditionContext.Provider>
-    </DroitsProvider>
+      </EditingContext.Provider>
+    </RightsProvider>
   );
 }

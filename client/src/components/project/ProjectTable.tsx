@@ -29,20 +29,20 @@ import dayjs from "dayjs";
 import { RED, STRONG_TEXT } from "../../themes/colors";
 import ActorAvatars, { ACTOR_AVATAR_SIZE } from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
-import { colonnesGardees, largeursParDefaut } from "../ui/ChampsColonnes";
+import { keptColumns, defaultWidths } from "../ui/ChampsColonnes";
 import EmptyPanel from "../ui/EmptyPanel";
-import GrilleScroll from "../ui/GrilleScroll";
+import GridScroll from "../ui/GrilleScroll";
 import LabelChip from "../ui/LabelChip";
-import { positionDuMenu } from "../ui/PointMenu";
+import { menuPosition } from "../ui/PointMenu";
 import { ReferenceTag } from "../ui/ReferenceTag";
-import { useColonnesRedimensionnables } from "../ui/useColonnesRedimensionnables";
-import { cleDeListe, projectReference } from "@milo/shared";
-import { deLaListe } from "../../lib/listes";
+import { useResizableColumns } from "../ui/useColonnesRedimensionnables";
+import { listKey, projectReference } from "@milo/shared";
+import { inList } from "../../lib/listes";
 import type { ReactNode } from "react";
 import type { Category, Project, PublicUser } from "@milo/shared";
 import type { ProjectAction } from "./MoveOrCopyProjectModal";
-import { useDroits } from "../../lib/droits";
-import { useEnModification } from "../../lib/edition";
+import { useRights } from "../../lib/droits";
+import { useIsEditing } from "../../lib/edition";
 
 /** Une option d'entonnoir : « all » vaut « pas de filtre ». */
 interface FilterOption {
@@ -105,7 +105,7 @@ const STATUS_GAP = 10;
 const STATUS_WIDTH = PROGRESS_WIDTH + PERCENT_WIDTH + STATUS_GAP;
 
 // La référence la plus longue qu'on attend : le tag en prend la largeur.
-const REFERENCE_GABARIT = projectReference(999);
+const REFERENCE_TEMPLATE = projectReference(999);
 
 const formatDate = (value: string): string =>
   dayjs(value).format("DD/MM/YYYY HH:mm");
@@ -134,10 +134,10 @@ function LabelsCell({ labels }: { labels: Project["labels"] }) {
 
   // Les plus lourdes devant : le serveur les range ainsi, la saisie du tiroir
   // non.
-  const montrees = [...labels]
+  const shown = [...labels]
     .sort((a, b) => b.weight - a.weight)
     .slice(0, LABELS_SHOWN);
-  const restantes = labels.length - montrees.length;
+  const remaining = labels.length - shown.length;
 
   return (
     // Même boîte de hauteur fixe que les acteurs : sans elle, la line-box
@@ -151,7 +151,7 @@ function LabelsCell({ labels }: { labels: Project["labels"] }) {
       }}
     >
       <Group gap={4} wrap="nowrap">
-        {montrees.map((label) => (
+        {shown.map((label) => (
           <LabelChip
             key={label.id}
             label={label}
@@ -159,9 +159,9 @@ function LabelsCell({ labels }: { labels: Project["labels"] }) {
             height={LABEL_HEIGHT}
           />
         ))}
-        {restantes > 0 && (
+        {remaining > 0 && (
           <Text size="xs" c="dimmed">
-            +{restantes}
+            +{remaining}
           </Text>
         )}
       </Group>
@@ -222,14 +222,14 @@ const COLUMNS: Column[] = [
  * Les colonnes que le widget liste propose de montrer (Display dans
  * project-indicators/liste.tsx).
  */
-export const COLONNES_PROJETS: { key: ColumnKey; label: string }[] = COLUMNS.map(
+export const PROJECT_COLUMNS: { key: ColumnKey; label: string }[] = COLUMNS.map(
   ({ key, label }) => ({ key, label: key === "number" ? "Référence" : label }),
 );
 
 // Au-delà de dix options — les acteurs, vite nombreux —, la liste défile.
 // Une ligne de menu : sa ligne de texte, et son retrait dessus et dessous.
-const FILTRE_LIGNES_VISIBLES = 10;
-const FILTRE_HAUTEUR_LIGNE =
+const FILTER_VISIBLE_ROWS = 10;
+const FILTER_ROW_HEIGHT =
   "(var(--mantine-font-size-sm) * var(--mantine-line-height) + var(--mantine-spacing-xs) / 1.5 * 2)";
 
 // Filtre d'une colonne. L'entonnoir se colore tant qu'une valeur est retenue,
@@ -242,14 +242,14 @@ interface ColumnFilterProps {
 }
 
 function ColumnFilter({ label, options, value, onChange }: ColumnFilterProps) {
-  const actif = value !== "all";
+  const active = value !== "all";
 
   return (
     <Menu position="bottom-end" withinPortal shadow="md">
       <Menu.Target>
         <ActionIcon
-          variant={actif ? "light" : "subtle"}
-          color={actif ? "teal" : "gray"}
+          variant={active ? "light" : "subtle"}
+          color={active ? "teal" : "gray"}
           size="sm"
           aria-label={`Filtrer par ${label}`}
         >
@@ -258,7 +258,7 @@ function ColumnFilter({ label, options, value, onChange }: ColumnFilterProps) {
       </Menu.Target>
       <Menu.Dropdown>
         <ScrollArea.Autosize
-          mah={`calc(${FILTRE_LIGNES_VISIBLES} * ${FILTRE_HAUTEUR_LIGNE})`}
+          mah={`calc(${FILTER_VISIBLE_ROWS} * ${FILTER_ROW_HEIGHT})`}
           type="auto"
           scrollbars="y"
           scrollbarSize={2}
@@ -291,9 +291,9 @@ interface SortableThProps {
   sort: Sort;
   onSort: (key: ColumnKey) => void;
   filter: ReactNode;
-  poignee: ReactNode;
+  handle: ReactNode;
   /** Les largeurs sont figées par un redimensionnement. */
-  fige: boolean;
+  frozen: boolean;
 }
 
 function SortableTh({
@@ -301,8 +301,8 @@ function SortableTh({
   sort,
   onSort,
   filter,
-  poignee,
-  fige,
+  handle,
+  frozen,
 }: SortableThProps) {
   const active = sort.key === column.key;
   const Icon = !active
@@ -316,7 +316,7 @@ function SortableTh({
       {/* En mise en page naturelle, la largeur d'une cellule n'est qu'un
           souhait : une grille à l'étroit la ramène à celle de son contenu.
           Le minimum posé sur le contenu la tient. */}
-      <Group gap={4} wrap="nowrap" miw={fige ? undefined : column.width}>
+      <Group gap={4} wrap="nowrap" miw={frozen ? undefined : column.width}>
         <UnstyledButton
           onClick={() => onSort(column.key)}
           style={{ flex: 1, minWidth: 0 }}
@@ -332,7 +332,7 @@ function SortableTh({
         </UnstyledButton>
         {filter}
       </Group>
-      {poignee}
+      {handle}
     </Table.Th>
   );
 }
@@ -348,7 +348,7 @@ interface ProjectContextMenuProps {
   onDelete: (project: Project) => void;
   onCreateTask: (project: Project) => void;
   /** La personne suit ce projet : elle est prévenue de chaque modification. */
-  suivi: boolean;
+  following: boolean;
   onToggleFollow: (project: Project) => void;
 }
 
@@ -360,26 +360,26 @@ function ProjectContextMenu({
   onDuplicate,
   onDelete,
   onCreateTask,
-  suivi,
+  following,
   onToggleFollow,
 }: ProjectContextMenuProps) {
   const { project, x, y } = target;
   // Ce que le menu propose suit les droits du compte dans la société du
   // projet : qui ne fait que lire n'y trouve que « Suivre ».
-  const peut = useDroits();
-  const modifier = peut("projects", "update");
-  const ajouter = peut("projects", "create");
-  const supprimer = peut("projects", "delete");
-  const creerTache = peut("tasks", "create");
-  const enModification = useEnModification();
+  const can = useRights();
+  const updateStatement = can("projects", "update");
+  const add = can("projects", "create");
+  const canDelete = can("projects", "delete");
+  const createTask = can("tasks", "create");
+  const isEditing = useIsEditing();
 
   // En modification, le menu ne propose que « Copier », qui s'y fait
   // seulement : le reste attend qu'on la quitte.
-  if (enModification)
+  if (isEditing)
     return (
       <Menu
         opened
-        onChange={(ouvert) => !ouvert && onClose()}
+        onChange={(isOpen) => !isOpen && onClose()}
         position="bottom-start"
         withinPortal
         shadow="md"
@@ -398,7 +398,7 @@ function ProjectContextMenu({
   return (
     <Menu
       opened
-      onChange={(ouvert) => !ouvert && onClose()}
+      onChange={(isOpen) => !isOpen && onClose()}
       position="bottom-start"
       withinPortal
       shadow="md"
@@ -413,14 +413,14 @@ function ProjectContextMenu({
             se referme pas, pour qu'on voie la coche changer. */}
         <Menu.Item
           leftSection={<IconEye size={16} />}
-          rightSection={suivi ? <IconCheck size={14} /> : null}
+          rightSection={following ? <IconCheck size={14} /> : null}
           onClick={() => onToggleFollow(project)}
           closeMenuOnClick={false}
         >
           Suivre
         </Menu.Item>
-        {(modifier || ajouter) && <Menu.Divider />}
-        {modifier && (
+        {(updateStatement || add) && <Menu.Divider />}
+        {updateStatement && (
           <Menu.Item
             leftSection={<IconPencil size={16} />}
             onClick={() => onEdit(project)}
@@ -430,7 +430,7 @@ function ProjectContextMenu({
         )}
         {/* Sur place, sans question : la copie s'ouvre aussitôt dans le
             tiroir, pour servir de base à un autre projet. */}
-        {ajouter && (
+        {add && (
           <Menu.Item
             leftSection={<IconCopyPlus size={16} />}
             onClick={() => onDuplicate(project)}
@@ -438,7 +438,7 @@ function ProjectContextMenu({
             Dupliquer
           </Menu.Item>
         )}
-        {modifier && (
+        {updateStatement && (
           <Menu.Item
             leftSection={<IconFolderSymlink size={16} />}
             onClick={() => onMove(project, "move")}
@@ -446,7 +446,7 @@ function ProjectContextMenu({
             Déplacer
           </Menu.Item>
         )}
-        {creerTache && (
+        {createTask && (
           <>
             <Menu.Divider />
             <Menu.Item
@@ -457,7 +457,7 @@ function ProjectContextMenu({
             </Menu.Item>
           </>
         )}
-        {supprimer && (
+        {canDelete && (
           <>
             <Menu.Divider />
             <Menu.Item
@@ -485,20 +485,20 @@ interface ProjectRowProps {
   project: Project;
   active: boolean;
   /** Les colonnes montrées, dans l'ordre que le widget a réglé. */
-  colonnes: (Column & { id: string })[];
+  columns: (Column & { id: string })[];
   onEdit: (project: Project) => void;
   onContextMenu?: (project: Project, x: number, y: number) => void;
 }
 
 // Le contenu de chaque cellule, par colonne : la ligne les pose dans l'ordre
 // des colonnes montrées.
-const CELLULES: Record<ColumnKey, (project: Project) => ReactNode> = {
+const CELLS: Record<ColumnKey, (project: Project) => ReactNode> = {
   number: (project) => (
     <Table.Td style={{ whiteSpace: "nowrap" }}>
       {project.number > 0 && (
         <ReferenceTag
           reference={projectReference(project.number)}
-          gabarit={REFERENCE_GABARIT}
+          template={REFERENCE_TEMPLATE}
         />
       )}
     </Table.Td>
@@ -542,7 +542,7 @@ const CELLULES: Record<ColumnKey, (project: Project) => ReactNode> = {
 function ProjectRow({
   project,
   active,
-  colonnes,
+  columns,
   onEdit,
   onContextMenu,
 }: ProjectRowProps) {
@@ -555,7 +555,7 @@ function ProjectRow({
         if (!onContextMenu) return;
         // À la place du menu du navigateur, et de celui du widget qui porte
         // la liste.
-        const { x, y } = positionDuMenu(e);
+        const { x, y } = menuPosition(e);
         onContextMenu(project, x, y);
       }}
       style={{
@@ -563,8 +563,8 @@ function ProjectRow({
         backgroundColor: active ? "var(--tr-hover-bg)" : undefined,
       }}
     >
-      {colonnes.map((column) => (
-        <Fragment key={column.id}>{CELLULES[column.key](project)}</Fragment>
+      {columns.map((column) => (
+        <Fragment key={column.id}>{CELLS[column.key](project)}</Fragment>
       ))}
     </Table.Tr>
   );
@@ -614,21 +614,21 @@ export default function ProjectTable({
   // Les colonnes que le widget montre, dans l'ordre réglé ; sans réglage,
   // toutes.
   // Une colonne peut revenir : « id » distingue chaque occurrence.
-  const colonnes = colonnesGardees(COLONNES_PROJETS, config).flatMap((c) => {
+  const columns = keptColumns(PROJECT_COLUMNS, config).flatMap((c) => {
     const column = COLUMNS.find((col) => col.key === c.key);
     return column ? [{ ...column, id: c.id }] : [];
   });
   // Les largeurs par défaut du widget, tant que personne n'a tiré les
   // colonnes.
-  const redim = useColonnesRedimensionnables(
+  const resize = useResizableColumns(
     "projets",
-    colonnes.map((c) => c.id),
-    largeursParDefaut(COLONNES_PROJETS, config),
+    columns.map((c) => c.id),
+    defaultWidths(PROJECT_COLUMNS, config),
   );
   // Projet visé par le clic droit, et le point où le menu doit s'ouvrir.
   const [contextMenu, setContextMenu] = useState<ContextTarget | null>(null);
-  const enModification = useEnModification();
-  const peutCopier = useDroits()("projects", "create");
+  const isEditing = useIsEditing();
+  const canCopy = useRights()("projects", "create");
 
   const actorOptions: FilterOption[] = [
     { value: "all", label: "Tous" },
@@ -722,9 +722,9 @@ export default function ProjectTable({
   return (
     <>
       {/* Une section plus étroite que la liste la fait défiler de côté. */}
-      <GrilleScroll>
+      <GridScroll>
         <Table
-          {...redim.tableProps}
+          {...resize.tableProps}
           highlightOnHover
           verticalSpacing={0}
           // Les lignes font exactement la hauteur d'une pastille d'acteur, qu'il y
@@ -748,18 +748,18 @@ export default function ProjectTable({
             },
           }}
         >
-          {redim.colgroup}
+          {resize.colgroup}
           <Table.Thead>
             <Table.Tr>
-              {colonnes.map((column) => (
+              {columns.map((column) => (
                 <SortableTh
                   key={column.id}
                   column={column}
                   sort={sort}
                   onSort={handleSort}
                   filter={filterFor(column.key)}
-                  poignee={redim.poignee(column.id)}
-                  fige={redim.colgroup !== null}
+                  handle={resize.handle(column.id)}
+                  frozen={resize.colgroup !== null}
                 />
               ))}
             </Table.Tr>
@@ -770,12 +770,12 @@ export default function ProjectTable({
                 key={project.id}
                 project={project}
                 active={contextMenu?.project.id === project.id}
-                colonnes={colonnes}
+                columns={columns}
                 onEdit={onRowClick}
                 onContextMenu={
-                  enModification && !peutCopier
+                  isEditing && !canCopy
                     ? undefined
-                    : (projet, x, y) => setContextMenu({ project: projet, x, y })
+                    : (project, x, y) => setContextMenu({ project: project, x, y })
                 }
               />
             ))}
@@ -788,14 +788,14 @@ export default function ProjectTable({
                 variante « transparent » du bouton n'a pas de fond au survol. */}
             {onAddProject && (
               <Table.Tr style={{ backgroundColor: "transparent" }}>
-                <Table.Td colSpan={colonnes.length}>
+                <Table.Td colSpan={columns.length}>
                   <AddButton label="Ajouter un projet" onClick={onAddProject} />
                 </Table.Td>
               </Table.Tr>
             )}
           </Table.Tbody>
         </Table>
-      </GrilleScroll>
+      </GridScroll>
 
       {contextMenu && (
         <ProjectContextMenu
@@ -806,7 +806,7 @@ export default function ProjectTable({
           onDuplicate={onDuplicateProject}
           onDelete={onDeleteProject}
           onCreateTask={onCreateTask}
-          suivi={followedIds.includes(contextMenu.project.id)}
+          following={followedIds.includes(contextMenu.project.id)}
           onToggleFollow={onToggleFollow}
         />
       )}
@@ -815,7 +815,7 @@ export default function ProjectTable({
 }
 
 /** Ce que la page donne à la liste, hors de la configuration du widget. */
-export type ProjetsListe = Omit<ProjectTableProps, "config" | "projects" | "onAddProject"> & {
+export type ProjectsList = Omit<ProjectTableProps, "config" | "projects" | "onAddProject"> & {
   /** « null » tant que les projets du tableau ne sont pas lus. */
   projects: Project[] | null;
   /** Un projet ajouté depuis un widget : sa clé de liste dit lequel. */
@@ -827,25 +827,25 @@ export type ProjetsListe = Omit<ProjectTableProps, "config" | "projects" | "onAd
  * le widget liste (project-indicators/liste.tsx) la lit ici, où qu'il soit
  * posé dans les sections.
  */
-export const ProjetsListeContext = createContext<ProjetsListe | null>(null);
+export const ProjectsListContext = createContext<ProjectsList | null>(null);
 
 /**
  * La liste des projets en widget : ses colonnes viennent de sa configuration,
  * et elle ne montre que ses projets (lib/listes.ts). Un projet ajouté ici est
  * le sien.
  */
-export function ProjetsListeWidget({ config }: { config: unknown }) {
-  const liste = useContext(ProjetsListeContext);
-  const tous = liste?.projects ?? null;
-  const projets = useMemo(() => tous?.filter(deLaListe(config)) ?? null, [tous, config]);
-  if (!liste || !projets) return null;
-  const { onAddProject } = liste;
+export function ProjectsListWidget({ config }: { config: unknown }) {
+  const list = useContext(ProjectsListContext);
+  const all = list?.projects ?? null;
+  const projects = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
+  if (!list || !projects) return null;
+  const { onAddProject } = list;
   return (
     <ProjectTable
-      {...liste}
-      projects={projets}
+      {...list}
+      projects={projects}
       config={config}
-      onAddProject={onAddProject && (() => onAddProject(cleDeListe(config)))}
+      onAddProject={onAddProject && (() => onAddProject(listKey(config)))}
     />
   );
 }

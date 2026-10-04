@@ -16,24 +16,24 @@ export const ECART_FIELD_WIDTH = 36;
 /** Sa hauteur, celle que la feuille de style lui donne : il tient dans la bande des poignées. */
 export const ECART_FIELD_HEIGHT = 18;
 
-interface EcartFieldProps {
+interface GapFieldProps {
   /** L'écart en vigueur, en pixels. */
   value: number;
   onChange: (gap: number) => void | Promise<void>;
   style: CSSProperties;
 }
 
-export default function EcartField({ value, onChange, style }: EcartFieldProps) {
+export default function GapField({ value, onChange, style }: GapFieldProps) {
   /** Ce qui est tapé ; « null » tant qu'on n'y a pas touché. */
-  const [saisie, setSaisie] = useState<number | string | null>(null);
+  const [input, setInput] = useState<number | string | null>(null);
 
-  const valider = () => {
-    if (saisie === null) return;
-    const nombre = Number(saisie);
-    setSaisie(null);
-    if (saisie === "" || !Number.isFinite(nombre)) return;
-    const ecart = Math.min(Math.max(Math.round(nombre), 0), SECTIONS_GAP_MAX);
-    if (ecart !== value) void onChange(ecart);
+  const validate = () => {
+    if (input === null) return;
+    const count = Number(input);
+    setInput(null);
+    if (input === "" || !Number.isFinite(count)) return;
+    const gap = Math.min(Math.max(Math.round(count), 0), SECTIONS_GAP_MAX);
+    if (gap !== value) void onChange(gap);
   };
 
   return (
@@ -45,17 +45,17 @@ export default function EcartField({ value, onChange, style }: EcartFieldProps) 
       allowDecimal={false}
       allowNegative={false}
       hideControls
-      value={saisie ?? value}
-      onChange={setSaisie}
-      onBlur={valider}
+      value={input ?? value}
+      onChange={setInput}
+      onBlur={validate}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
-          valider();
+          validate();
           e.currentTarget.blur();
         }
         if (e.key === "Escape") {
-          setSaisie(null);
+          setInput(null);
           e.currentTarget.blur();
         }
       }}

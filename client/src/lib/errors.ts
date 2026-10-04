@@ -6,7 +6,7 @@ import { RED } from "../themes/colors";
  * forcément une `Error`, et lire « .message » dessus n'est pas sûr. Une seule
  * fonction le fait, partout.
  */
-export const messageErreur = (e: unknown): string =>
+export const errorMessage = (e: unknown): string =>
   e instanceof Error ? e.message : String(e);
 
 /**
@@ -18,11 +18,11 @@ export const messageErreur = (e: unknown): string =>
  * fermée, ne s'empile pas (Mantine ignore un identifiant déjà affiché). Sa
  * priorité la fait passer devant les avis de suivi quand la pile est pleine.
  */
-export const notifierErreur = (message: string, titre = "Erreur"): void => {
+export const notifyError = (message: string, title = "Erreur"): void => {
   notifications.show({
     id: `erreur:${message}`,
     color: RED,
-    title: titre,
+    title: title,
     message,
     autoClose: false,
     priority: 1,

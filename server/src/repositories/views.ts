@@ -8,7 +8,7 @@ import { mutation, scalar, selection } from "../db/query.js";
 import type { NextRow, UserRow, ViewRow } from "../db/rows.js";
 import { HttpError } from "../lib/http.js";
 
-export const VUE_INTROUVABLE = "Vue introuvable";
+export const VIEW_NOT_FOUND = "Vue introuvable";
 
 export const views = {
   byId: selection<ViewRow>("SELECT * FROM views WHERE id = ?"),
@@ -32,20 +32,20 @@ export const views = {
  * Une vue se voit depuis son workspace seulement. Privée, elle n'est qu'à son
  * auteur ; sans auteur, elle est ouverte à tous.
  */
-export const vueLisible = (vue: ViewRow | undefined, user: UserRow): boolean =>
-  Boolean(vue) &&
-  vue?.workspace_id === user.workspace_id &&
-  (!vue?.is_private || vue.owner_id === user.id);
+export const isViewVisible = (view: ViewRow | undefined, user: UserRow): boolean =>
+  Boolean(view) &&
+  view?.workspace_id === user.workspace_id &&
+  (!view?.is_private || view.owner_id === user.id);
 
 /**
  * La vue demandée, si elle existe et que cette personne peut la voir. Sinon
  * « introuvable » : dire « interdit » reviendrait à confirmer son existence.
  */
-export const vueOuverte = (id: unknown, user: UserRow): ViewRow => {
-  const vue = views.byId.get(id);
-  if (!vueLisible(vue, user) || !vue) throw new HttpError(404, VUE_INTROUVABLE);
-  return vue;
+export const openView = (id: unknown, user: UserRow): ViewRow => {
+  const view = views.byId.get(id);
+  if (!isViewVisible(view, user) || !view) throw new HttpError(404, VIEW_NOT_FOUND);
+  return view;
 };
 
 /** L'identifiant d'une vue que ce compte voit, ou « null ». */
-export const vueVisible = (id: Id, user: UserRow): boolean => vueLisible(views.byId.get(id), user);
+export const visibleView = (id: Id, user: UserRow): boolean => isViewVisible(views.byId.get(id), user);

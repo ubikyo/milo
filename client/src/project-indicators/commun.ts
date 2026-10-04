@@ -3,8 +3,8 @@
 
 import type { Project } from "@milo/shared";
 
-export { ChampNom, NOM, Rien, TitreIndicateur, ValeurIndicateur } from "../indicators/commun";
-export { BarresEtiquettes, type Barre } from "../indicators/etiquettes";
+export { NameField, NAME, Nothing, TitreIndicateur, IndicatorValue } from "../indicators/commun";
+export { LabelBars, type Bar } from "../indicators/etiquettes";
 
 /** Un projet à 100 % est terminé ; en deçà, il est en cours. */
-export const termine = (p: Project): boolean => p.status >= 100;
+export const isFinished = (p: Project): boolean => p.status >= 100;

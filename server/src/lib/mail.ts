@@ -3,19 +3,19 @@
 // (lib/entra.ts), et part toujours de la boîte de support d'une société :
 // celle de l'élément dont il parle.
 
-import { adresseDEnvoi, entraConfiguree, envoyerParGraph } from "./entra.js";
+import { sendingAddress, entraConfigured, sendViaGraph } from "./entra.js";
 import { badRequest, fail } from "./http.js";
-import { gabarit } from "./mail-template.js";
-import type { PieceJointe } from "./mail-template.js";
+import { template } from "./mail-template.js";
+import type { MailAttachment } from "./mail-template.js";
 
 /**
  * Vrai quand la messagerie a de quoi envoyer. Les notifications de suivi le
  * demandent avant d'essayer : sans cela, chaque modification tenterait un
  * envoi voué à l'échec et emplirait le journal.
  */
-export const messagerieConfiguree = (): boolean => entraConfiguree();
+export const mailboxConfigured = (): boolean => entraConfigured();
 
-export interface Courrier {
+export interface Mail {
   /** La boîte qui expédie : celle du support d'une société. */
   from: string;
   to: string;
@@ -24,7 +24,7 @@ export interface Courrier {
   /** La version mise en forme. Les clients en mode texte lisent `text`. */
   html?: string;
   /** Ce que le HTML cite en « cid: » — le logo de l'entête. */
-  attachments?: PieceJointe[];
+  attachments?: MailAttachment[];
 }
 
 /**
@@ -33,28 +33,28 @@ export interface Courrier {
  * ne dirait rien. À l'appelant de décider s'il le remonte à l'écran ou s'il se
  * contente de le tracer.
  */
-export const envoyerCourrier = (courrier: Courrier): Promise<void> => envoyerParGraph(courrier);
+export const sendMail = (mail: Mail): Promise<void> => sendViaGraph(mail);
 
 /**
  * Le message d'essai, parti de l'adresse d'envoi. Son échec se lit dans la
  * fenêtre qui l'a demandé.
  */
-export const envoyerLeTest = async (destinataire: string): Promise<void> => {
-  const expediteur = adresseDEnvoi();
-  if (!expediteur) badRequest("Renseignez l'adresse d'envoi dans Paramétrage → Entra");
+export const sendTest = async (recipient: string): Promise<void> => {
+  const sender = sendingAddress();
+  if (!sender) badRequest("Renseignez l'adresse d'envoi dans Paramétrage → Entra");
 
   try {
-    await envoyerCourrier({
-      from: expediteur,
-      to: destinataire,
+    await sendMail({
+      from: sender,
+      to: recipient,
       subject: "Milo — Message de test",
-      ...gabarit({
-        titre: "Message de test",
-        intro: `Ce message confirme l'envoi par Milo depuis ${expediteur}.`,
-        pied: "Envoyé depuis Paramétrage → Entra.",
+      ...template({
+        title: "Message de test",
+        intro: `Ce message confirme l'envoi par Milo depuis ${sender}.`,
+        footer: "Envoyé depuis Paramétrage → Entra.",
       }),
     });
-  } catch (erreur) {
-    fail(400, erreur instanceof Error ? erreur.message : "L'envoi a échoué");
+  } catch (error) {
+    fail(400, error instanceof Error ? error.message : "L'envoi a échoué");
   }
 };

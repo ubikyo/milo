@@ -1,25 +1,25 @@
 import { Stack } from "@mantine/core";
 import { IconUsers } from "@tabler/icons-react";
-import { AnneauxActeurs } from "../indicators/acteurs";
-import { NOM, TitreIndicateur, tachesDe } from "./commun";
+import { ActorRings } from "../indicators/acteurs";
+import { NAME, TitreIndicateur, tasksOf } from "./commun";
 import type { TaskIndicatorWidget } from "./types";
 
 // La part de chaque membre dans les cartes du tableau ouvert, en barres
 // radiales, comme les acteurs du Support.
 
-const LIBELLE = "Acteurs";
+const LABEL = "Acteurs";
 
-export const membresIndicator: TaskIndicatorWidget = {
+export const membersIndicator: TaskIndicatorWidget = {
   type: "members",
   kind: "task",
-  label: LIBELLE,
+  label: LABEL,
   icon: IconUsers,
-  defaultConfig: { [NOM]: "" },
+  defaultConfig: { [NAME]: "" },
 
   Display: ({ config, lists }) => (
     <Stack gap={4} style={{ flex: 1 }}>
-      <TitreIndicateur config={config} defaut={LIBELLE} />
-      <AnneauxActeurs acteurs={tachesDe(lists).map((c) => c.members)} unite="cartes" />
+      <TitreIndicateur config={config} defaultValue={LABEL} />
+      <ActorRings actors={tasksOf(lists).map((c) => c.members)} unit="cartes" />
     </Stack>
   ),
 };

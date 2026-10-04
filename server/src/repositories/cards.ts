@@ -20,7 +20,7 @@ import { actorOf } from "./users.js";
 
 // --- Membres et étiquettes d'une carte -------------------------------------
 
-const membresDeLaCarte = selection<{ id: Id; name: string; email: string }>(
+const cardMembers = selection<{ id: Id; name: string; email: string }>(
   `SELECT users.id, users.name, users.email
    FROM card_members
    JOIN users ON users.id = card_members.user_id
@@ -28,15 +28,15 @@ const membresDeLaCarte = selection<{ id: Id; name: string; email: string }>(
    ORDER BY users.name`,
 );
 
-export const membersOf = (cardId: Id): Actor[] => membresDeLaCarte.all(cardId).map(actorOf);
+export const membersOf = (cardId: Id): Actor[] => cardMembers.all(cardId).map(actorOf);
 
-const supprimerMembres = mutation("DELETE FROM card_members WHERE card_id = ?");
-const ajouterMembre = mutation(
+const deleteMembers = mutation("DELETE FROM card_members WHERE card_id = ?");
+const addMember = mutation(
   `INSERT OR IGNORE INTO card_members (card_id, user_id)
    SELECT ?, id FROM users WHERE id = ?`,
 );
 
-const idsDesMembres = selection<{ user_id: Id }>(
+const memberIds = selection<{ user_id: Id }>(
   "SELECT user_id FROM card_members WHERE card_id = ?",
 );
 
@@ -44,7 +44,7 @@ const idsDesMembres = selection<{ user_id: Id }>(
 // ne garde pas une part d'une tâche à qui n'y prend plus part. Seuls ceux qu'on
 // retire ici sont touchés — une personne posée sur un élément sans être acteur
 // de la carte y reste.
-const retirerDesElements = mutation(
+const removeFromChecklistItems = mutation(
   `DELETE FROM checklist_item_members
    WHERE user_id = ?
      AND item_id IN (
@@ -56,16 +56,16 @@ const retirerDesElements = mutation(
 );
 
 export const replaceCardMembers = transaction((cardId: Id, userIds: Id[]) => {
-  const retires = idsDesMembres
+  const removed = memberIds
     .all(cardId)
     .map((m) => m.user_id)
     .filter((id) => !userIds.includes(id));
-  supprimerMembres.run(cardId);
-  for (const userId of userIds) ajouterMembre.run(cardId, userId);
-  for (const userId of retires) retirerDesElements.run(userId, cardId);
+  deleteMembers.run(cardId);
+  for (const userId of userIds) addMember.run(cardId, userId);
+  for (const userId of removed) removeFromChecklistItems.run(userId, cardId);
 });
 
-const etiquettesDeLaCarte = selection<LabelRow>(
+const cardLabels = selection<LabelRow>(
   `SELECT labels.*
    FROM card_labels
    JOIN labels ON labels.id = card_labels.label_id
@@ -73,10 +73,10 @@ const etiquettesDeLaCarte = selection<LabelRow>(
    ORDER BY labels.position, labels.id`,
 );
 
-export const labelsOf = (cardId: Id): Label[] => etiquettesDeLaCarte.all(cardId);
+export const labelsOf = (cardId: Id): Label[] => cardLabels.all(cardId);
 
-const supprimerEtiquettes = mutation("DELETE FROM card_labels WHERE card_id = ?");
-const ajouterEtiquette = mutation(
+const deleteLabels = mutation("DELETE FROM card_labels WHERE card_id = ?");
+const addLabel = mutation(
   `INSERT OR IGNORE INTO card_labels (card_id, label_id)
    SELECT ?, id FROM labels WHERE id = ? AND board_id = ?`,
 );
@@ -86,8 +86,8 @@ const ajouterEtiquette = mutation(
  * autre sont ignorées plutôt que refusées, comme pour les membres.
  */
 export const replaceCardLabels = transaction((cardId: Id, labelIds: Id[], boardId: Id) => {
-  supprimerEtiquettes.run(cardId);
-  for (const labelId of labelIds) ajouterEtiquette.run(cardId, labelId, boardId);
+  deleteLabels.run(cardId);
+  for (const labelId of labelIds) addLabel.run(cardId, labelId, boardId);
 });
 
 // --- Checklists ------------------------------------------------------------
@@ -121,47 +121,47 @@ export const checklistItems = {
   remove: mutation("DELETE FROM checklist_items WHERE id = ?"),
 };
 
-const reordonnerChecklists = mutation(
+const updateChecklistPositions = mutation(
   "UPDATE card_checklists SET position = ? WHERE id = ? AND card_id = ?",
 );
 export const reorderChecklists = transaction((cardId: Id, ids: Id[]) => {
-  ids.forEach((id, index) => reordonnerChecklists.run(index, id, cardId));
+  ids.forEach((id, index) => updateChecklistPositions.run(index, id, cardId));
 });
 
-const reordonnerElements = mutation(
+const updateItemPositions = mutation(
   "UPDATE checklist_items SET position = ? WHERE id = ? AND checklist_id = ?",
 );
 export const reorderChecklistItems = transaction((checklistId: Id, ids: Id[]) => {
-  ids.forEach((id, index) => reordonnerElements.run(index, id, checklistId));
+  ids.forEach((id, index) => updateItemPositions.run(index, id, checklistId));
 });
 
-const supprimerMembresElement = mutation("DELETE FROM checklist_item_members WHERE item_id = ?");
-const ajouterMembreElement = mutation(
+const deleteElementMembers = mutation("DELETE FROM checklist_item_members WHERE item_id = ?");
+const addMemberItem = mutation(
   `INSERT OR IGNORE INTO checklist_item_members (item_id, user_id)
    SELECT ?, id FROM users WHERE id = ?`,
 );
 
-const membresDeLElement = selection<{ user_id: Id }>(
+const itemMembers = selection<{ user_id: Id }>(
   "SELECT user_id FROM checklist_item_members WHERE item_id = ?",
 );
 
-export const idsMembresElement = (itemId: Id): Id[] =>
-  membresDeLElement.all(itemId).map((m) => m.user_id);
+export const itemMemberIds = (itemId: Id): Id[] =>
+  itemMembers.all(itemId).map((m) => m.user_id);
 
 export const replaceChecklistItemMembers = transaction((itemId: Id, userIds: Id[]) => {
-  supprimerMembresElement.run(itemId);
-  for (const userId of userIds) ajouterMembreElement.run(itemId, userId);
+  deleteElementMembers.run(itemId);
+  for (const userId of userIds) addMemberItem.run(itemId, userId);
 });
 
 // Les éléments d'une checklist et leurs membres : deux requêtes pour toute la
 // checklist, au lieu d'une par élément — c'est ce que faisait la lecture d'une
 // fiche, une requête par ligne de chaque checklist.
 
-const elementsDeLaChecklist = selection<ChecklistItemRow>(
+const selectItemsOfChecklist = selection<ChecklistItemRow>(
   "SELECT * FROM checklist_items WHERE checklist_id = ? ORDER BY position, id",
 );
 
-const membresDesElements = selection<{ item_id: Id; id: Id; name: string; email: string }>(
+const membersByItem = selection<{ item_id: Id; id: Id; name: string; email: string }>(
   `SELECT checklist_item_members.item_id, users.id, users.name, users.email
    FROM checklist_item_members
    JOIN checklist_items ON checklist_items.id = checklist_item_members.item_id
@@ -171,16 +171,16 @@ const membresDesElements = selection<{ item_id: Id; id: Id; name: string; email:
 );
 
 export const itemsOfChecklist = (checklistId: Id): ChecklistItem[] => {
-  const parElement = new Map<Id, Actor[]>();
-  for (const row of membresDesElements.all(checklistId)) {
-    const deja = parElement.get(row.item_id);
-    if (deja) deja.push(actorOf(row));
-    else parElement.set(row.item_id, [actorOf(row)]);
+  const byItem = new Map<Id, Actor[]>();
+  for (const row of membersByItem.all(checklistId)) {
+    const already = byItem.get(row.item_id);
+    if (already) already.push(actorOf(row));
+    else byItem.set(row.item_id, [actorOf(row)]);
   }
 
-  return elementsDeLaChecklist.all(checklistId).map((item) => ({
+  return selectItemsOfChecklist.all(checklistId).map((item) => ({
     ...item,
-    members: parElement.get(item.id) ?? [],
+    members: byItem.get(item.id) ?? [],
   }));
 };
 

@@ -1,53 +1,53 @@
 import { Checkbox, Stack } from "@mantine/core";
 import { IconCategory } from "@tabler/icons-react";
-import { avec } from "../widgets/types";
-import { BarresEtiquettes, ChampNom, NOM, Rien, TitreIndicateur, termine } from "./commun";
-import type { Barre } from "./commun";
+import { withField } from "../widgets/types";
+import { LabelBars, NameField, NAME, Nothing, TitreIndicateur, isFinished } from "./commun";
+import type { Bar } from "./commun";
 import type { ProjectIndicatorWidget } from "./types";
 
 // Les catégories du tableau ouvert, par nombre de projets : où se porte le
 // travail. Les projets terminés n'y comptent que si on le demande.
 
-const LIBELLE = "Catégories";
-const TOUS = "tous";
+const LABEL = "Catégories";
+const ALL = "tous";
 
-const tousLesProjets = (config: unknown) =>
-  Boolean((config as Record<string, unknown> | null)?.[TOUS]);
+const allProjects = (config: unknown) =>
+  Boolean((config as Record<string, unknown> | null)?.[ALL]);
 
 export const categoriesIndicator: ProjectIndicatorWidget = {
   type: "categories",
   kind: "project",
-  label: LIBELLE,
+  label: LABEL,
   icon: IconCategory,
-  defaultConfig: { [NOM]: "", [TOUS]: false },
+  defaultConfig: { [NAME]: "", [ALL]: false },
 
   Display: ({ config, projects }) => {
-    const comptes = tousLesProjets(config) ? projects : projects.filter((p) => !termine(p));
-    const parCategorie = new Map<string, Barre>();
-    for (const projet of comptes) {
-      const deja = parCategorie.get(projet.category_name);
-      if (deja) deja.value += 1;
-      else parCategorie.set(projet.category_name, { name: projet.category_name, value: 1, color: "teal.6" });
+    const accounts = allProjects(config) ? projects : projects.filter((p) => !isFinished(p));
+    const byCategory = new Map<string, Bar>();
+    for (const project of accounts) {
+      const already = byCategory.get(project.category_name);
+      if (already) already.value += 1;
+      else byCategory.set(project.category_name, { name: project.category_name, value: 1, color: "teal.6" });
     }
-    const data = [...parCategorie.values()].sort(
+    const data = [...byCategory.values()].sort(
       (a, b) => b.value - a.value || a.name.localeCompare(b.name),
     );
 
     return (
       <Stack gap="xs" style={{ flex: 1 }}>
-        <TitreIndicateur config={config} defaut={LIBELLE} />
-        {data.length === 0 ? <Rien>Aucun projet</Rien> : <BarresEtiquettes data={data} />}
+        <TitreIndicateur config={config} defaultValue={LABEL} />
+        {data.length === 0 ? <Nothing>Aucun projet</Nothing> : <LabelBars data={data} />}
       </Stack>
     );
   },
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
-      <ChampNom config={config} onChange={onChange} defaut={LIBELLE} />
+      <NameField config={config} onChange={onChange} defaultValue={LABEL} />
       <Checkbox
         label="Compter aussi les projets terminés"
-        checked={tousLesProjets(config)}
-        onChange={(e) => onChange(avec(config, TOUS, e.currentTarget.checked))}
+        checked={allProjects(config)}
+        onChange={(e) => onChange(withField(config, ALL, e.currentTarget.checked))}
         color="teal"
       />
     </Stack>

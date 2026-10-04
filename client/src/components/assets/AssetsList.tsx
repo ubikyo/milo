@@ -29,14 +29,14 @@ import {
   type ReactNode,
 } from "react";
 import { OsLogo, ProtectionLogo } from "./AssetLogos";
-import { colonnesGardees, largeursParDefaut } from "../ui/ChampsColonnes";
+import { keptColumns, defaultWidths } from "../ui/ChampsColonnes";
 import EmptyPanel from "../ui/EmptyPanel";
-import GrilleScroll from "../ui/GrilleScroll";
-import PointMenu, { positionDuMenu, type PointMenuPosition } from "../ui/PointMenu";
-import { useColonnesRedimensionnables } from "../ui/useColonnesRedimensionnables";
-import { useEnModification } from "../../lib/edition";
-import { deLaListe } from "../../lib/listes";
-import { DISQUE_PLEIN, diskUsage, libelleOs } from "../../lib/poste";
+import GridScroll from "../ui/GrilleScroll";
+import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
+import { useResizableColumns } from "../ui/useColonnesRedimensionnables";
+import { useIsEditing } from "../../lib/edition";
+import { inList } from "../../lib/listes";
+import { DISK_FULL, diskUsage, osLabel } from "../../lib/poste";
 import { RED, STRONG_TEXT } from "../../themes/colors";
 import type { Asset } from "@milo/shared";
 
@@ -58,7 +58,7 @@ const ROW_HEIGHT = 28;
 const TAG_HEIGHT = 20;
 
 /** Une valeur que l'agent n'a pas su donner se lit pareil partout. */
-const VIDE = "—";
+const EMPTY = "—";
 
 // La colonne « Disque » est taillée comme la progression d'un projet : la
 // barre, le pourcentage, et l'espace qui les sépare.
@@ -73,7 +73,7 @@ const DISK_GAP = 10;
 export type ColumnKey = "name" | "os" | "user" | "protection" | "encrypted" | "disk" | "inventory";
 
 /** Le rang d'une protection au tri : les postes sans protection d'abord. */
-const RANG_PROTECTION: Record<Asset["protection"]["state"], number> = {
+const PROTECTION_RANK: Record<Asset["protection"]["state"], number> = {
   none: 0,
   inactive: 1,
   active: 2,
@@ -86,16 +86,16 @@ interface Sort {
 }
 
 /** La valeur sur laquelle chaque colonne se trie ; « null » passe en bas. */
-const VALEURS: Record<ColumnKey, (a: Asset) => string | number | null> = {
+const VALUES: Record<ColumnKey, (a: Asset) => string | number | null> = {
   name: (a) => a.name || null,
   // Le nom puis la version, lue comme un nombre : « 10 » vient après « 9 ».
-  os: (a) => (a.os ? libelleOs(a.os) : null),
+  os: (a) => (a.os ? osLabel(a.os) : null),
   user: (a) => a.user || null,
   // L'état d'abord, puis l'éditeur : les postes à surveiller se regroupent.
   protection: (a) =>
     a.protection.state === "unknown"
       ? null
-      : `${RANG_PROTECTION[a.protection.state]} ${a.protection.name}`,
+      : `${PROTECTION_RANK[a.protection.state]} ${a.protection.name}`,
   encrypted: (a) => (a.system_disk_encrypted == null ? null : a.system_disk_encrypted ? 1 : 0),
   disk: (a) => diskUsage(a.system_disk),
   inventory: (a) => dayjs(a.last_inventory).valueOf(),
@@ -107,14 +107,14 @@ function SortableTh({
   sort,
   onSort,
   style,
-  poignee,
+  handle,
 }: {
   label: string;
   column: ColumnKey;
   sort: Sort;
   onSort: (key: ColumnKey) => void;
   style?: CSSProperties;
-  poignee: ReactNode;
+  handle: ReactNode;
 }) {
   const active = sort.key === column;
   const Icon = !active ? IconSelector : sort.direction === "asc" ? IconChevronUp : IconChevronDown;
@@ -130,7 +130,7 @@ function SortableTh({
           </Center>
         </Group>
       </UnstyledButton>
-      {poignee}
+      {handle}
     </Table.Th>
   );
 }
@@ -140,7 +140,7 @@ function OsCell({ os }: { os: Asset["os"] }) {
   if (!os) {
     return (
       <Text size="sm" c="dimmed">
-        {VIDE}
+        {EMPTY}
       </Text>
     );
   }
@@ -148,7 +148,7 @@ function OsCell({ os }: { os: Asset["os"] }) {
     <Group gap={6} wrap="nowrap">
       <OsLogo os={os} />
       <Text size="sm" truncate>
-        {libelleOs(os) || VIDE}
+        {osLabel(os) || EMPTY}
       </Text>
     </Group>
   );
@@ -163,7 +163,7 @@ function ProtectionCell({ protection }: { protection: Asset["protection"] }) {
   if (protection.state === "unknown") {
     return (
       <Text size="sm" c="dimmed">
-        {VIDE}
+        {EMPTY}
       </Text>
     );
   }
@@ -194,7 +194,7 @@ function EncryptionCell({ encrypted }: { encrypted: boolean | null }) {
   if (encrypted == null) {
     return (
       <Text size="sm" c="dimmed">
-        {VIDE}
+        {EMPTY}
       </Text>
     );
   }
@@ -213,7 +213,7 @@ function EncryptionCell({ encrypted }: { encrypted: boolean | null }) {
  * 70 à 85 %, rouge au-delà.
  */
 export const diskColor = (occupe: number): string => {
-  if (occupe > DISQUE_PLEIN) return RED;
+  if (occupe > DISK_FULL) return RED;
   if (occupe >= 70) return "orange";
   return "teal";
 };
@@ -224,7 +224,7 @@ function DiskCell({ disk }: { disk: Asset["system_disk"] }) {
   if (occupe == null) {
     return (
       <Text size="sm" c="dimmed">
-        {VIDE}
+        {EMPTY}
       </Text>
     );
   }
@@ -239,7 +239,7 @@ function DiskCell({ disk }: { disk: Asset["system_disk"] }) {
 }
 
 /** Les colonnes que la liste sait montrer, dans l'ordre. */
-export const COLONNES_ASSETS: { key: ColumnKey; label: string }[] = [
+export const ASSET_COLUMNS: { key: ColumnKey; label: string }[] = [
   { key: "name", label: "Asset" },
   { key: "os", label: "Système" },
   { key: "user", label: "Dernier utilisateur connecté" },
@@ -250,7 +250,7 @@ export const COLONNES_ASSETS: { key: ColumnKey; label: string }[] = [
 ];
 
 /** Ce que la page donne à la liste. */
-export interface AssetsListe {
+export interface AssetsListHandle {
   /** « null » tant que les postes ne sont pas lus. */
   assets: Asset[] | null;
   loading: boolean;
@@ -261,46 +261,46 @@ export interface AssetsListe {
   onCreateSupportRequest?: (asset: Asset) => void;
 }
 
-export const AssetsListeContext = createContext<AssetsListe | null>(null);
+export const AssetsListContext = createContext<AssetsListHandle | null>(null);
 
 /** La clé des tags GLPI reçus, dans la configuration de la liste : chacun vers un contexte. */
 export const TAGS = "tags";
 
 export default function AssetsList({ config }: { config: unknown }) {
-  const liste = useContext(AssetsListeContext);
+  const list = useContext(AssetsListContext);
   // Les postes du tableau, du contexte choisi, que la page a lus — ceux de
   // ce widget seulement : ceux dont il reçoit le tag (lib/listes.ts).
-  const tous = liste?.assets ?? null;
-  const assets = useMemo(() => tous?.filter(deLaListe(config)) ?? null, [tous, config]);
+  const all = list?.assets ?? null;
+  const assets = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
   const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
-  const enModification = useEnModification();
-  const avecMenu = Boolean(liste?.onCreateTask || liste?.onCreateSupportRequest);
+  const isEditing = useIsEditing();
+  const withMenu = Boolean(list?.onCreateTask || list?.onCreateSupportRequest);
   /** Le poste dont le menu du clic droit est ouvert, et où il s'ouvre. */
-  const [contexte, setContexte] = useState<{ poste: Asset; position: PointMenuPosition } | null>(
+  const [context, setContext] = useState<{ workstation: Asset; position: PointMenuPosition } | null>(
     null,
   );
 
-  const montres = useMemo(() => {
-    const valeur = VALEURS[sort.key];
-    const facteur = sort.direction === "asc" ? 1 : -1;
+  const shown = useMemo(() => {
+    const value = VALUES[sort.key];
+    const factor = sort.direction === "asc" ? 1 : -1;
     return [...(assets ?? [])].sort((a, b) => {
-      const gauche = valeur(a);
-      const droite = valeur(b);
-      if (gauche == null && droite == null) return 0;
-      if (gauche == null) return 1;
-      if (droite == null) return -1;
-      if (typeof gauche === "number" && typeof droite === "number")
-        return (gauche - droite) * facteur;
-      return String(gauche).localeCompare(String(droite), "fr", { numeric: true }) * facteur;
+      const left = value(a);
+      const rightHand = value(b);
+      if (left == null && rightHand == null) return 0;
+      if (left == null) return 1;
+      if (rightHand == null) return -1;
+      if (typeof left === "number" && typeof rightHand === "number")
+        return (left - rightHand) * factor;
+      return String(left).localeCompare(String(rightHand), "fr", { numeric: true }) * factor;
     });
   }, [assets, sort]);
 
   // Les textes montent d'abord ; le disque et la date commencent par le plus
   // plein et le plus récent.
-  const trier = (key: ColumnKey) =>
-    setSort((courant) =>
-      courant.key === key
-        ? { key, direction: courant.direction === "asc" ? "desc" : "asc" }
+  const sortBy = (key: ColumnKey) =>
+    setSort((current) =>
+      current.key === key
+        ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
         : {
             key,
             // La protection et le chiffrement montent aussi : ce qui manque
@@ -318,11 +318,11 @@ export default function AssetsList({ config }: { config: unknown }) {
 
   // Les colonnes montrées, dans l'ordre que la configuration règle.
   // Une colonne peut revenir : « id » distingue chaque occurrence.
-  const colonnes = colonnesGardees(COLONNES_ASSETS, config);
-  const redim = useColonnesRedimensionnables(
+  const columns = keptColumns(ASSET_COLUMNS, config);
+  const resize = useResizableColumns(
     "assets",
-    colonnes.map((c) => c.id),
-    largeursParDefaut(COLONNES_ASSETS, config),
+    columns.map((c) => c.id),
+    defaultWidths(ASSET_COLUMNS, config),
   );
 
   const th = (id: string, label: string, column: ColumnKey, style?: CSSProperties) => (
@@ -331,14 +331,14 @@ export default function AssetsList({ config }: { config: unknown }) {
       label={label}
       column={column}
       sort={sort}
-      onSort={trier}
+      onSort={sortBy}
       style={style}
-      poignee={redim.poignee(id)}
+      handle={resize.handle(id)}
     />
   );
 
   /** L'en-tête de chaque colonne. */
-  const entetes: Record<ColumnKey, (id: string) => ReactNode> = {
+  const headers: Record<ColumnKey, (id: string) => ReactNode> = {
     name: (id) => th(id, "Asset", "name"),
     os: (id) => th(id, "Système", "os"),
     user: (id) => th(id, "Dernier utilisateur connecté", "user"),
@@ -351,51 +351,51 @@ export default function AssetsList({ config }: { config: unknown }) {
   };
 
   /** La case de chaque colonne, pour un poste. */
-  const cases: Record<ColumnKey, (poste: Asset) => ReactNode> = {
-    name: (poste) => (
+  const cells: Record<ColumnKey, (workstation: Asset) => ReactNode> = {
+    name: (workstation) => (
       <Table.Td key="name" style={{ whiteSpace: "nowrap" }}>
         <Badge color="green" variant="filled" radius="sm" h={TAG_HEIGHT} tt="uppercase">
-          {poste.name}
+          {workstation.name}
         </Badge>
       </Table.Td>
     ),
-    os: (poste) => (
+    os: (workstation) => (
       <Table.Td key="os">
-        <OsCell os={poste.os} />
+        <OsCell os={workstation.os} />
       </Table.Td>
     ),
-    user: (poste) => (
+    user: (workstation) => (
       <Table.Td key="user">
-        <Text size="sm" c={poste.user ? undefined : "dimmed"}>
-          {poste.user || VIDE}
+        <Text size="sm" c={workstation.user ? undefined : "dimmed"}>
+          {workstation.user || EMPTY}
         </Text>
       </Table.Td>
     ),
-    protection: (poste) => (
+    protection: (workstation) => (
       <Table.Td key="protection">
-        <ProtectionCell protection={poste.protection} />
+        <ProtectionCell protection={workstation.protection} />
       </Table.Td>
     ),
-    encrypted: (poste) => (
+    encrypted: (workstation) => (
       <Table.Td key="encrypted">
-        <EncryptionCell encrypted={poste.system_disk_encrypted} />
+        <EncryptionCell encrypted={workstation.system_disk_encrypted} />
       </Table.Td>
     ),
-    disk: (poste) => (
+    disk: (workstation) => (
       <Table.Td key="disk">
-        <DiskCell disk={poste.system_disk} />
+        <DiskCell disk={workstation.system_disk} />
       </Table.Td>
     ),
-    inventory: (poste) => (
+    inventory: (workstation) => (
       <Table.Td key="inventory">
-        <Text size="sm">{dayjs(poste.last_inventory).format("DD/MM/YYYY HH:mm")}</Text>
+        <Text size="sm">{dayjs(workstation.last_inventory).format("DD/MM/YYYY HH:mm")}</Text>
       </Table.Td>
     ),
   };
 
   const table = (
     <Table
-      {...redim.tableProps}
+      {...resize.tableProps}
       highlightOnHover
       verticalSpacing={0}
       styles={{
@@ -414,29 +414,29 @@ export default function AssetsList({ config }: { config: unknown }) {
         },
       }}
     >
-      {redim.colgroup}
+      {resize.colgroup}
       <Table.Thead>
-        <Table.Tr>{colonnes.map((c) => entetes[c.key](c.id))}</Table.Tr>
+        <Table.Tr>{columns.map((c) => headers[c.key](c.id))}</Table.Tr>
       </Table.Thead>
       <Table.Tbody>
-        {montres.map((poste) => (
+        {shown.map((workstation) => (
           <Table.Tr
-            key={poste.id}
-            onClick={() => liste?.onOpenAsset(poste)}
+            key={workstation.id}
+            onClick={() => list?.onOpenAsset(workstation)}
             // En modification, le clic droit revient au menu du widget.
             onContextMenu={(e) => {
-              if (enModification || !avecMenu) return;
-              setContexte({ poste, position: positionDuMenu(e) });
+              if (isEditing || !withMenu) return;
+              setContext({ workstation, position: menuPosition(e) });
             }}
             style={{
               cursor: "pointer",
               // La ligne dont le menu est ouvert garde le fond du survol.
               backgroundColor:
-                contexte?.poste.id === poste.id ? "var(--table-hover-color)" : undefined,
+                context?.workstation.id === workstation.id ? "var(--table-hover-color)" : undefined,
             }}
           >
-            {colonnes.map((c) => (
-              <Fragment key={c.id}>{cases[c.key](poste)}</Fragment>
+            {columns.map((c) => (
+              <Fragment key={c.id}>{cells[c.key](workstation)}</Fragment>
             ))}
           </Table.Tr>
         ))}
@@ -444,11 +444,11 @@ export default function AssetsList({ config }: { config: unknown }) {
     </Table>
   );
 
-  if (!liste || !assets) return null;
+  if (!list || !assets) return null;
   // Sans poste à montrer, la liste le dit, sans rien proposer : rien ne
   // s'ajoute d'ici, tout vient des agents.
   if (assets.length === 0) {
-    return liste.loading ? null : (
+    return list.loading ? null : (
       <EmptyPanel icon={IconDeviceDesktop} message="Aucun poste" size="md" />
     );
   }
@@ -456,22 +456,22 @@ export default function AssetsList({ config }: { config: unknown }) {
   return (
     <>
       {/* Une section plus étroite que la liste la fait défiler de côté. */}
-      <GrilleScroll>{table}</GrilleScroll>
+      <GridScroll>{table}</GridScroll>
 
-      {contexte && (
-        <PointMenu position={contexte.position} onClose={() => setContexte(null)}>
-          {liste.onCreateTask && (
+      {context && (
+        <PointMenu position={context.position} onClose={() => setContext(null)}>
+          {list.onCreateTask && (
             <Menu.Item
               leftSection={<IconSquarePlus size={16} />}
-              onClick={() => liste.onCreateTask?.(contexte.poste)}
+              onClick={() => list.onCreateTask?.(context.workstation)}
             >
               Créer une tâche
             </Menu.Item>
           )}
-          {liste.onCreateSupportRequest && (
+          {list.onCreateSupportRequest && (
             <Menu.Item
               leftSection={<IconHeadset size={16} />}
-              onClick={() => liste.onCreateSupportRequest?.(contexte.poste)}
+              onClick={() => list.onCreateSupportRequest?.(context.workstation)}
             >
               Créer un ticket
             </Menu.Item>

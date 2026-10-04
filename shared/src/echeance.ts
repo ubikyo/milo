@@ -11,22 +11,22 @@ export const ROTATIONS_COUVERTURE = [
   { value: 60, label: "1min" },
 ] as const;
 
-export const isRotationCouverture = (valeur: unknown): valeur is number =>
-  ROTATIONS_COUVERTURE.some((r) => r.value === valeur);
+export const isCoverRotation = (value: unknown): value is number =>
+  ROTATIONS_COUVERTURE.some((r) => r.value === value);
 
 /**
  * La forme d'une échéance : une date seule (« Du »), ou une période (« Du /
  * au »), qui porte en plus un début.
  */
-export const FORMES_ECHEANCE = [
+export const DUE_SHAPES = [
   { value: "date", label: "Du" },
   { value: "periode", label: "Du / au" },
 ] as const;
 
-export type FormeEcheance = (typeof FORMES_ECHEANCE)[number]["value"];
+export type DueShape = (typeof DUE_SHAPES)[number]["value"];
 
-export const isFormeEcheance = (valeur: unknown): valeur is FormeEcheance =>
-  FORMES_ECHEANCE.some((f) => f.value === valeur);
+export const isDueForm = (value: unknown): value is DueShape =>
+  DUE_SHAPES.some((f) => f.value === value);
 
 /** La récurrence d'une échéance ; vide pour « Jamais ». */
 export const RECURRENCES = [
@@ -40,14 +40,14 @@ export const RECURRENCES = [
 
 export type Recurrence = (typeof RECURRENCES)[number]["value"];
 
-export const isRecurrence = (valeur: unknown): valeur is Recurrence =>
-  RECURRENCES.some((r) => r.value === valeur);
+export const isRecurrence = (value: unknown): value is Recurrence =>
+  RECURRENCES.some((r) => r.value === value);
 
 /**
  * Le rappel d'une échéance, en avance sur elle ; vide pour « Aucun ». Un mois
  * n'a pas de durée fixe : il se compte au calendrier (`instantDuRappel`).
  */
-export const RAPPELS = [
+export const REMINDERS = [
   { value: "", label: "Aucun" },
   { value: "5m", label: "5 min" },
   { value: "10m", label: "10 min" },
@@ -61,13 +61,13 @@ export const RAPPELS = [
   { value: "1M", label: "1 mois" },
 ] as const;
 
-export type Rappel = (typeof RAPPELS)[number]["value"];
+export type Reminder = (typeof REMINDERS)[number]["value"];
 
-export const isRappel = (valeur: unknown): valeur is Rappel =>
-  RAPPELS.some((r) => r.value === valeur);
+export const isReminder = (value: unknown): value is Reminder =>
+  REMINDERS.some((r) => r.value === value);
 
 const MINUTE = 60 * 1000;
-const AVANCES: Record<Exclude<Rappel, "" | "1M">, number> = {
+const ADVANCED: Record<Exclude<Reminder, "" | "1M">, number> = {
   "5m": 5 * MINUTE,
   "10m": 10 * MINUTE,
   "15m": 15 * MINUTE,
@@ -80,12 +80,12 @@ const AVANCES: Record<Exclude<Rappel, "" | "1M">, number> = {
 };
 
 /** L'instant où le rappel part, pour une échéance ISO ; null sans rappel. */
-export const instantDuRappel = (echeance: string, rappel: Rappel): Date | null => {
-  const date = new Date(echeance);
-  if (!rappel || Number.isNaN(date.getTime())) return null;
-  if (rappel === "1M") {
+export const reminderInstant = (due: string, reminder: Reminder): Date | null => {
+  const date = new Date(due);
+  if (!reminder || Number.isNaN(date.getTime())) return null;
+  if (reminder === "1M") {
     date.setMonth(date.getMonth() - 1);
     return date;
   }
-  return new Date(date.getTime() - AVANCES[rappel]);
+  return new Date(date.getTime() - ADVANCED[reminder]);
 };

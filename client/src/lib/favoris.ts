@@ -10,38 +10,38 @@ import { api } from "../api";
 import type { Id } from "@milo/shared";
 
 let favoris: Id[] = [];
-let lus = false;
-const abonnes = new Set<() => void>();
+let readItems = false;
+const subscribers = new Set<() => void>();
 
-const publier = (suivants: Id[]) => {
-  favoris = suivants;
-  for (const abonne of abonnes) abonne();
+const publish = (nextItems: Id[]) => {
+  favoris = nextItems;
+  for (const subscriber of subscribers) subscriber();
 };
 
-const s_abonner = (abonne: () => void) => {
-  abonnes.add(abonne);
-  return () => abonnes.delete(abonne);
+const subscribe = (subscriber: () => void) => {
+  subscribers.add(subscriber);
+  return () => subscribers.delete(subscriber);
 };
 
-const lire = () => {
-  if (lus) return;
-  lus = true;
+const read = () => {
+  if (readItems) return;
+  readItems = true;
   api
     .getFavorites()
-    .then(publier)
+    .then(publish)
     .catch(() => {
       // Sans favoris, les listes restent simplement dans l'ordre alphabétique.
-      lus = false;
+      readItems = false;
     });
 };
 
-export function useFavoris() {
-  const actuels = useSyncExternalStore(s_abonner, () => favoris);
-  useEffect(lire, []);
+export function useFavorites() {
+  const current = useSyncExternalStore(subscribe, () => favoris);
+  useEffect(read, []);
 
-  const basculer = async (id: Id) => {
-    publier(await (actuels.includes(id) ? api.removeFavorite(id) : api.addFavorite(id)));
+  const toggle = async (id: Id) => {
+    publish(await (current.includes(id) ? api.removeFavorite(id) : api.addFavorite(id)));
   };
 
-  return { favoris: actuels, basculer };
+  return { favoris: current, toggle };
 }

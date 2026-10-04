@@ -43,8 +43,8 @@ export const transaction = <Args extends unknown[], Result>(
  * MAX. Évite d'avoir à traiter un `undefined` qui ne viendra jamais.
  */
 export const scalar = <Row>(sql: string) => {
-  const requete = db.prepare(sql) as unknown as Selection<Row>;
-  return (...params: unknown[]): Row => requete.get(...params) as Row;
+  const query = db.prepare(sql) as unknown as Selection<Row>;
+  return (...params: unknown[]): Row => query.get(...params) as Row;
 };
 
 export { default as db } from "./index.js";

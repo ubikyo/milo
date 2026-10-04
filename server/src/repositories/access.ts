@@ -18,7 +18,7 @@ export const accessFeeds = {
     "SELECT config FROM board_widgets WHERE type = 'rss'",
   ),
   /** Une relève réussie : les articles remplacent ceux d'avant. */
-  ranger: mutation(
+  store: mutation(
     `INSERT INTO access_feeds (url, articles, quantity, fetched_at, tried_at, error)
      VALUES (?, ?, ?, ?, ?, '')
      ON CONFLICT(url) DO UPDATE SET
@@ -26,7 +26,7 @@ export const accessFeeds = {
        fetched_at = excluded.fetched_at, tried_at = excluded.tried_at, error = ''`,
   ),
   /** Une relève manquée : les articles d'avant restent, l'erreur s'ajoute. */
-  echouer: mutation(
+  fail: mutation(
     `INSERT INTO access_feeds (url, tried_at, error) VALUES (?, ?, ?)
      ON CONFLICT(url) DO UPDATE SET tried_at = excluded.tried_at, error = excluded.error`,
   ),

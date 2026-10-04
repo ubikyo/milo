@@ -5,7 +5,7 @@ import type { Actor, Id, SqliteBool } from "@milo/shared";
 import { MILO_ACTOR } from "@milo/shared";
 import type { WithAuthorColumns } from "../db/rows.js";
 import { gravatarUrl } from "../lib/auth.js";
-import { horodatage } from "../lib/time.js";
+import { timestamp } from "../lib/time.js";
 import { users } from "./users.js";
 
 /**
@@ -36,15 +36,15 @@ export const withAuthor = <T extends { user_id: number | null; system: SqliteBoo
 };
 
 /** Les mots que l'application écrit elle-même : ni retouchés, ni effacés. */
-export const COMMENTAIRE_SYSTEME = "Ce commentaire est écrit par l'application";
+export const SYSTEM_COMMENT = "Ce commentaire est écrit par l'application";
 
 /**
  * Le mot qui ouvre un fil, signé Milo : ce qui a été créé, quand, et par qui.
  * Le créateur n'en est pas l'auteur — c'est Milo qui le dit —, son nom tient
  * donc dans le texte. Un compte sans nom se reconnaît à son adresse.
  */
-export const motDeCreation = (cree: string, quand: string, par: Id): string => {
-  const createur = users.byId.get(par);
-  const nom = createur?.name || createur?.email;
-  return `${cree} le ${horodatage(quand)}${nom ? ` par ${nom}` : ""}`;
+export const creationNote = (created: string, whenLabel: string, by: Id): string => {
+  const creator = users.byId.get(by);
+  const name = creator?.name || creator?.email;
+  return `${created} le ${timestamp(whenLabel)}${name ? ` par ${name}` : ""}`;
 };

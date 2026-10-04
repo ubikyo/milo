@@ -1,12 +1,12 @@
 import { Stack } from "@mantine/core";
-import { categorieWidget } from "./categorie";
-import { horlogeWidget } from "./horloge";
-import { lienWidget } from "./lien";
-import { margesDe } from "./marges";
-import { numeroWidget } from "./numero";
-import { sousCategorieWidget } from "./sous-categorie";
+import { categoryWidget } from "./categorie";
+import { clockWidget } from "./horloge";
+import { linkWidget } from "./lien";
+import { marginsOf } from "./marges";
+import { numberWidget } from "./numero";
+import { subcategoryWidget } from "./sous-categorie";
 import type { IndicatorConfigProps } from "../indicators/types";
-import type { AccessWidget, Marges } from "./types";
+import type { AccessWidget, Margins } from "./types";
 import type { ComponentType } from "react";
 import type { AccessBlockType } from "@milo/shared";
 
@@ -18,14 +18,14 @@ import type { AccessBlockType } from "@milo/shared";
 // clic droit, sans les marges réglables, qui n'appartiennent qu'au mode Accès.
 
 /** Ce que les sections des autres modes passent à un widget d'accès. */
-export interface AffichageAcces {
+export interface AccessDisplay {
   config: unknown;
   onChange?: (config: Record<string, unknown>) => void | Promise<void>;
   locked?: boolean;
 }
 
 /** Un widget du mode Accès, en widget des sections d'un autre mode. */
-export interface WidgetEnSection<Type extends string, P extends AffichageAcces> {
+export interface SectionWidget<Type extends string, P extends AccessDisplay> {
   type: Type;
   kind: AccessWidget["kind"];
   label: string;
@@ -41,39 +41,39 @@ export interface WidgetEnSection<Type extends string, P extends AffichageAcces> 
    */
   ownClicks: true;
   inlineEdit?: true;
-  marges: (config: unknown, previousType: string | null, nextType: string | null) => Marges;
+  margins: (config: unknown, previousType: string | null, nextType: string | null) => Margins;
   hidden?: (config: unknown, locked: boolean) => boolean;
 }
 
 /** Les champs du tiroir d'accès, ceux du bas compris : l'interrupteur d'un lien. */
-const champsDe = (widget: AccessWidget): ComponentType<IndicatorConfigProps> => {
-  const { Config, ConfigFin } = widget;
-  if (!ConfigFin) return Config;
-  return function Champs(props: IndicatorConfigProps) {
+const fieldsOf = (widget: AccessWidget): ComponentType<IndicatorConfigProps> => {
+  const { Config, ConfigEnd } = widget;
+  if (!ConfigEnd) return Config;
+  return function Fields(props: IndicatorConfigProps) {
     return (
       <Stack gap="xl">
         <Config {...props} />
-        <ConfigFin {...props} />
+        <ConfigEnd {...props} />
       </Stack>
     );
   };
 };
 
-const enSection = <Type extends string, P extends AffichageAcces>(
+const inSection = <Type extends string, P extends AccessDisplay>(
   widget: AccessWidget,
-): WidgetEnSection<Type, P> => ({
+): SectionWidget<Type, P> => ({
   type: widget.type as Type,
   kind: widget.kind,
   label: widget.label,
   icon: widget.icon,
   defaultConfig: widget.defaultConfig,
-  Config: champsDe(widget),
+  Config: fieldsOf(widget),
   ownClicks: true,
   ...(widget.inlineEdit ? { inlineEdit: true as const } : {}),
   // Les types des autres modes ne sont pas ceux de l'accès, mais les titres
   // et les attributs y portent le même nom : l'air se décide pareil.
-  marges: (config, previousType, nextType) =>
-    margesDe(widget, config, {
+  margins: (config, previousType, nextType) =>
+    marginsOf(widget, config, {
       previousType: previousType as AccessBlockType | null,
       nextType: nextType as AccessBlockType | null,
     }),
@@ -90,10 +90,10 @@ const enSection = <Type extends string, P extends AffichageAcces>(
 });
 
 /** Dans l'ordre du tiroir des widgets : les titres, le lien, les attributs, l'horloge. */
-export const widgetsDAcces = <Type extends string, P extends AffichageAcces>(): WidgetEnSection<
+export const accessWidgets = <Type extends string, P extends AccessDisplay>(): SectionWidget<
   Type,
   P
 >[] =>
-  [categorieWidget, sousCategorieWidget, lienWidget, numeroWidget, horlogeWidget].map((w) =>
-    enSection<Type, P>(w),
+  [categoryWidget, subcategoryWidget, linkWidget, numberWidget, clockWidget].map((w) =>
+    inSection<Type, P>(w),
   );

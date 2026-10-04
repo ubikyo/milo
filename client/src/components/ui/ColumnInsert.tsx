@@ -25,15 +25,15 @@ interface ColumnInsertProps {
 }
 
 export default function ColumnInsert({ style, onClick, label, onResizeStart }: ColumnInsertProps) {
-  const [survole, setSurvole] = useState(false);
-  const trait = { flex: 1, borderLeft: `1px dashed ${INSERT_LINE}` };
+  const [hovering, setHovered] = useState(false);
+  const line = { flex: 1, borderLeft: `1px dashed ${INSERT_LINE}` };
   return (
     <div
       // Ni la liste voisine ni la rangée ne doivent prendre cet appui pour
       // un glisser.
       data-no-list-drag="true"
-      onMouseEnter={() => setSurvole(true)}
-      onMouseLeave={() => setSurvole(false)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       onClick={onClick}
       onPointerDown={onResizeStart}
       aria-label={label}
@@ -50,15 +50,15 @@ export default function ColumnInsert({ style, onClick, label, onResizeStart }: C
         cursor: onResizeStart ? "col-resize" : "pointer",
         touchAction: onResizeStart ? "none" : undefined,
         color: INSERT_LINE,
-        opacity: survole ? 0.8 : 0,
+        opacity: hovering ? 0.8 : 0,
         transition: "opacity 120ms",
         zIndex: 1,
         ...style,
       }}
     >
-      <span style={trait} />
+      <span style={line} />
       <IconPlus size={PLUS_SIZE} style={{ flexShrink: 0 }} />
-      <span style={trait} />
+      <span style={line} />
     </div>
   );
 }

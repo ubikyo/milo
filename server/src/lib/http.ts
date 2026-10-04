@@ -37,22 +37,22 @@ export const notFound = (message: string): never => fail(404, message);
  * rôle — ne se supprime pas tant que quelque chose le porte : la suppression
  * est refusée, et le message dit combien de ressources l'utilisent.
  */
-export const refuserSiUtilise = (nom: string, utilisations: number): void => {
-  if (utilisations <= 0) return;
+export const refuseIfUsed = (name: string, uses: number): void => {
+  if (uses <= 0) return;
   conflict(
-    `Impossible de supprimer « ${nom} » : cet élément est utilisé dans ${utilisations} ressource${
-      utilisations > 1 ? "s" : ""
+    `Impossible de supprimer « ${name} » : cet élément est utilisé dans ${uses} ressource${
+      uses > 1 ? "s" : ""
     }.`,
   );
 };
 
 /** Un texte obligatoire, débarrassé de ses espaces. */
-export const requireText = (valeur: unknown, message: string): string => {
-  const texte = String(valeur ?? "").trim();
-  if (!texte) badRequest(message);
-  return texte;
+export const requireText = (value: unknown, message: string): string => {
+  const text = String(value ?? "").trim();
+  if (!text) badRequest(message);
+  return text;
 };
 
 /** Une liste d'identifiants reçue du client, quel que soit le type des valeurs. */
-export const toIds = (valeur: unknown): number[] =>
-  Array.isArray(valeur) ? valeur.map(Number).filter(Number.isFinite) : [];
+export const toIds = (value: unknown): number[] =>
+  Array.isArray(value) ? value.map(Number).filter(Number.isFinite) : [];

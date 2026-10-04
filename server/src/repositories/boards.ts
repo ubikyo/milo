@@ -9,11 +9,11 @@ import type { Request } from "express";
 import type { Id, Right } from "@milo/shared";
 import { mutation, scalar, selection } from "../db/query.js";
 import type { BoardRow, NextRow, UserRow } from "../db/rows.js";
-import { exiger } from "../lib/droits.js";
+import { require } from "../lib/droits.js";
 import { HttpError } from "../lib/http.js";
-import { views, vueLisible } from "./views.js";
+import { views, isViewVisible } from "./views.js";
 
-export const BOARD_INTROUVABLE = "Tableau introuvable";
+export const BOARD_NOT_FOUND = "Tableau introuvable";
 
 export const boards = {
   byId: selection<BoardRow>("SELECT * FROM boards WHERE id = ?"),
@@ -41,19 +41,19 @@ export const boards = {
  * Un tableau se voit si sa vue se voit et qu'il n'est pas privé — ou que
  * cette personne en est l'auteur.
  */
-export const boardLisible = (board: BoardRow | undefined, user: UserRow): boolean =>
+export const readableBoard = (board: BoardRow | undefined, user: UserRow): boolean =>
   Boolean(board) &&
   (!board?.is_private || board.owner_id === user.id) &&
-  vueLisible(views.byId.get(board!.view_id), user);
+  isViewVisible(views.byId.get(board!.view_id), user);
 
 /**
  * Le tableau demandé, s'il existe et que cette personne peut le voir. Sinon
  * « introuvable », car un tableau privé ne se laisse pas même deviner — dire
  * « interdit » reviendrait à confirmer qu'il existe.
  */
-export const tableauOuvert = (id: unknown, user: UserRow): BoardRow => {
+export const openBoard = (id: unknown, user: UserRow): BoardRow => {
   const board = boards.byId.get(id);
-  if (!boardLisible(board, user) || !board) throw new HttpError(404, BOARD_INTROUVABLE);
+  if (!readableBoard(board, user) || !board) throw new HttpError(404, BOARD_NOT_FOUND);
   return board;
 };
 
@@ -61,10 +61,10 @@ export const tableauOuvert = (id: unknown, user: UserRow): BoardRow => {
  * Le tableau demandé, pour ses tâches : il faut aussi le droit de voir les
  * tâches, et `droit` en plus quand on y écrit. Tout ce qui pend aux listes — cartes, étiquettes — passe par ici.
  */
-export const boardOuvert = (id: unknown, req: Request, droit: Right = "view"): BoardRow => {
-  const board = tableauOuvert(id, req.user);
-  exiger(req, "tasks", "view", BOARD_INTROUVABLE);
-  if (droit !== "view") exiger(req, "tasks", droit);
+export const openTaskBoard = (id: unknown, req: Request, right: Right = "view"): BoardRow => {
+  const board = openBoard(id, req.user);
+  require(req, "tasks", "view", BOARD_NOT_FOUND);
+  if (right !== "view") require(req, "tasks", right);
   return board;
 };
 
@@ -72,12 +72,12 @@ export const boardOuvert = (id: unknown, req: Request, droit: Right = "view"): B
  * La clause qui, dans une requête, ne garde que les tableaux que « @me » voit,
  * dans son workspace (requireAuth l'a enregistré).
  */
-export const CLAUSE_TABLEAUX_VISIBLES = (colonne: string): string =>
-  `${colonne} IN (
+export const VISIBLE_BOARDS_CLAUSE = (column: string): string =>
+  `${column} IN (
      SELECT b.id FROM boards b JOIN views v ON v.id = b.view_id
      WHERE (b.is_private = 0 OR b.owner_id = @me) AND (v.is_private = 0 OR v.owner_id = @me)
        AND v.workspace_id = (SELECT workspace_id FROM users WHERE id = @me)
    )`;
 
 /** Les identifiants des tableaux d'une vue. */
-export const tableauxDeLaVue = selection<{ id: Id }>("SELECT id FROM boards WHERE view_id = ?");
+export const viewBoards = selection<{ id: Id }>("SELECT id FROM boards WHERE view_id = ?");

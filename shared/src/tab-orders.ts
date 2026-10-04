@@ -22,9 +22,9 @@ export const emptyTabOrders = (): TabOrders =>
  * ajouté depuis — gardent leur rang par défaut, à la suite des autres ; ceux
  * qu'il cite et qui n'existent plus sont ignorés.
  */
-export const ordonnerOnglets = <T extends { value: string }>(onglets: T[], ordre: string[]): T[] => {
-  const rang = new Map(ordre.map((v, i) => [v, i]));
-  return [...onglets].sort(
-    (a, b) => (rang.get(a.value) ?? Infinity) - (rang.get(b.value) ?? Infinity),
+export const orderTabs = <T extends { value: string }>(tabs: T[], order: string[]): T[] => {
+  const rank = new Map(order.map((v, i) => [v, i]));
+  return [...tabs].sort(
+    (a, b) => (rank.get(a.value) ?? Infinity) - (rank.get(b.value) ?? Infinity),
   );
 };

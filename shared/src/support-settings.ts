@@ -101,37 +101,37 @@ export const SUPPORT_REPLY_VARIABLES = [
  * ou, à défaut, ce qu'en sait Milo — son nom, son adresse.
  */
 export interface SupportPerson {
-  prenom: string;
-  nom: string;
-  nom_complet: string;
+  firstName: string;
+  name: string;
+  full_name: string;
   email: string;
   telephone: string;
   mobile: string;
-  poste: string;
+  jobTitle: string;
   service: string;
-  entreprise: string;
-  adresse: string;
-  ville: string;
-  departement: string;
-  code_postal: string;
-  pays: string;
+  company: string;
+  address: string;
+  city: string;
+  department: string;
+  postal_code: string;
+  country: string;
 }
 
 export const emptySupportPerson = (): SupportPerson => ({
-  prenom: "",
-  nom: "",
-  nom_complet: "",
+  firstName: "",
+  name: "",
+  full_name: "",
   email: "",
   telephone: "",
   mobile: "",
-  poste: "",
+  jobTitle: "",
   service: "",
-  entreprise: "",
-  adresse: "",
-  ville: "",
-  departement: "",
-  code_postal: "",
-  pays: "",
+  company: "",
+  address: "",
+  city: "",
+  department: "",
+  postal_code: "",
+  country: "",
 });
 
 /**
@@ -139,21 +139,21 @@ export const emptySupportPerson = (): SupportPerson => ({
  * que porte son e-mail. Les mots tout en capitales sont le nom (« QUINTARD
  * Jérôme ») ; sinon, le premier mot est le prénom et la suite le nom.
  */
-export const splitPersonName = (complet: string): { prenom: string; nom: string } => {
-  const mots = complet.trim().split(/\s+/).filter(Boolean);
-  const capitales = (mot: string) =>
-    /\p{L}{2}/u.test(mot) && mot === mot.toLocaleUpperCase("fr");
-  if (mots.some(capitales) && !mots.every(capitales)) {
+export const splitPersonName = (full: string): { firstName: string; name: string } => {
+  const words = full.trim().split(/\s+/).filter(Boolean);
+  const isUppercase = (word: string) =>
+    /\p{L}{2}/u.test(word) && word === word.toLocaleUpperCase("fr");
+  if (words.some(isUppercase) && !words.every(isUppercase)) {
     return {
-      prenom: mots.filter((m) => !capitales(m)).join(" "),
-      nom: mots.filter(capitales).join(" "),
+      firstName: words.filter((m) => !isUppercase(m)).join(" "),
+      name: words.filter(isUppercase).join(" "),
     };
   }
-  return { prenom: mots[0] ?? "", nom: mots.slice(1).join(" ") };
+  return { firstName: words[0] ?? "", name: words.slice(1).join(" ") };
 };
 
 /** Ce qu'il faut savoir d'une demande pour en remplir les variables. */
-export interface DemandeAVariables {
+export interface RequestWithVariables {
   /** Zéro : la demande n'est pas encore créée, elle n'a pas de numéro. */
   number: number;
   subject: string;
@@ -166,30 +166,30 @@ export interface DemandeAVariables {
  * une réponse partie d'office — laisse ses variables vides.
  */
 export const supportReplyValues = ({
-  utilisateur,
-  expediteur,
-  demande,
+  user,
+  sender,
+  request,
 }: {
-  utilisateur?: SupportPerson | null;
-  expediteur?: SupportPerson | null;
-  demande: DemandeAVariables;
+  user?: SupportPerson | null;
+  sender?: SupportPerson | null;
+  request: RequestWithVariables;
 }): Record<string, string> => {
-  const valeurs: Record<string, string> = {
-    "demande.numero": demande.number ? supportTicketRef(demande.number) : "",
-    "demande.objet": demande.subject,
-    "demande.statut": supportStatusLabel(demande.status),
+  const values: Record<string, string> = {
+    "demande.numero": request.number ? supportTicketRef(request.number) : "",
+    "demande.objet": request.subject,
+    "demande.statut": supportStatusLabel(request.status),
   };
-  const personnes = { utilisateur, expediteur };
+  const people = { user, sender };
   for (const v of SUPPORT_REPLY_VARIABLES) {
-    const [qui, champ] = v.key.split(".") as [string, keyof SupportPerson];
-    if (qui === "demande") continue;
-    valeurs[v.key] = personnes[qui as keyof typeof personnes]?.[champ] ?? "";
+    const [who, field] = v.key.split(".") as [string, keyof SupportPerson];
+    if (who === "demande") continue;
+    values[v.key] = people[who as keyof typeof people]?.[field] ?? "";
   }
-  return valeurs;
+  return values;
 };
 
-const echapperHtml = (texte: string): string =>
-  texte
+const escapeHtml = (text: string): string =>
+  text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -199,9 +199,9 @@ const echapperHtml = (texte: string): string =>
  * Un modèle HTML dont « {{demande.numero}} » est remplacé par sa valeur,
  * échappée ; une variable inconnue reste telle quelle.
  */
-export const fillSupportTemplate = (modele: string, valeurs: Record<string, string>): string =>
-  modele.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (tout, cle: string) =>
-    cle in valeurs ? echapperHtml(valeurs[cle]!) : tout,
+export const fillSupportTemplate = (template: string, values: Record<string, string>): string =>
+  template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (match, key: string) =>
+    key in values ? escapeHtml(values[key]!) : match,
   );
 
 export interface SupportSettings {
@@ -235,21 +235,21 @@ export const emptySupportSettings = (): SupportSettings => ({
 });
 
 /** Une date du calendrier, sans heure ni fuseau. */
-export interface JourCalendrier {
-  annee: number;
+export interface CalendarDay {
+  year: number;
   /** De 1 à 12. */
-  mois: number;
-  jour: number;
+  months: number;
+  day: number;
 }
 
-const cle = (annee: number, mois: number, jour: number): string =>
-  `${annee}-${String(mois).padStart(2, "0")}-${String(jour).padStart(2, "0")}`;
+const key = (year: number, months: number, day: number): string =>
+  `${year}-${String(months).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
 /** Le dimanche de Pâques (algorithme grégorien anonyme). */
-const paques = (annee: number): Date => {
-  const a = annee % 19;
-  const b = Math.floor(annee / 100);
-  const c = annee % 100;
+const easter = (year: number): Date => {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
   const d = Math.floor(b / 4);
   const e = b % 4;
   const f = Math.floor((b + 8) / 25);
@@ -259,37 +259,37 @@ const paques = (annee: number): Date => {
   const k = c % 4;
   const l = (32 + 2 * e + 2 * i - h - k) % 7;
   const m = Math.floor((a + 11 * h + 22 * l) / 451);
-  const mois = Math.floor((h + l - 7 * m + 114) / 31);
-  const jour = ((h + l - 7 * m + 114) % 31) + 1;
-  return new Date(Date.UTC(annee, mois - 1, jour));
+  const months = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(Date.UTC(year, months - 1, day));
 };
 
-const feries = new Map<number, Set<string>>();
+const holidays = new Map<number, Set<string>>();
 
 /** Les jours fériés de France métropolitaine, pour une année. */
-const feriesDe = (annee: number): Set<string> => {
-  const deja = feries.get(annee);
-  if (deja) return deja;
-  const dimanche = paques(annee);
-  const apresPaques = (n: number) => {
-    const date = new Date(dimanche.getTime() + n * 86_400_000);
-    return cle(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
+const holidaysOf = (year: number): Set<string> => {
+  const already = holidays.get(year);
+  if (already) return already;
+  const sunday = easter(year);
+  const afterEaster = (n: number) => {
+    const date = new Date(sunday.getTime() + n * 86_400_000);
+    return key(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
   };
-  const jours = new Set([
-    cle(annee, 1, 1),
-    apresPaques(1), // lundi de Pâques
-    cle(annee, 5, 1),
-    cle(annee, 5, 8),
-    apresPaques(39), // Ascension
-    apresPaques(50), // lundi de Pentecôte
-    cle(annee, 7, 14),
-    cle(annee, 8, 15),
-    cle(annee, 11, 1),
-    cle(annee, 11, 11),
-    cle(annee, 12, 25),
+  const days = new Set([
+    key(year, 1, 1),
+    afterEaster(1), // lundi de Pâques
+    key(year, 5, 1),
+    key(year, 5, 8),
+    afterEaster(39), // Ascension
+    afterEaster(50), // lundi de Pentecôte
+    key(year, 7, 14),
+    key(year, 8, 15),
+    key(year, 11, 1),
+    key(year, 11, 11),
+    key(year, 12, 25),
   ]);
-  feries.set(annee, jours);
-  return jours;
+  holidays.set(year, days);
+  return days;
 };
 
 /**
@@ -297,15 +297,15 @@ const feriesDe = (annee: number): Set<string> => {
  * dimanche, ni jour férié. Le jour de départ ne compte pas — reçu un vendredi,
  * « un jour » tombe le lundi.
  */
-export const ajouterJoursOuvres = (depart: JourCalendrier, n: number): JourCalendrier => {
-  const date = new Date(Date.UTC(depart.annee, depart.mois - 1, depart.jour));
-  let restants = Math.max(0, Math.floor(n));
-  while (restants > 0) {
+export const addBusinessDays = (start: CalendarDay, n: number): CalendarDay => {
+  const date = new Date(Date.UTC(start.year, start.months - 1, start.day));
+  let remaining = Math.max(0, Math.floor(n));
+  while (remaining > 0) {
     date.setUTCDate(date.getUTCDate() + 1);
-    const semaine = date.getUTCDay();
-    const annee = date.getUTCFullYear();
-    const ferie = feriesDe(annee).has(cle(annee, date.getUTCMonth() + 1, date.getUTCDate()));
-    if (semaine !== 0 && semaine !== 6 && !ferie) restants -= 1;
+    const week = date.getUTCDay();
+    const year = date.getUTCFullYear();
+    const holiday = holidaysOf(year).has(key(year, date.getUTCMonth() + 1, date.getUTCDate()));
+    if (week !== 0 && week !== 6 && !holiday) remaining -= 1;
   }
-  return { annee: date.getUTCFullYear(), mois: date.getUTCMonth() + 1, jour: date.getUTCDate() };
+  return { year: date.getUTCFullYear(), months: date.getUTCMonth() + 1, day: date.getUTCDate() };
 };

@@ -14,10 +14,10 @@ import dayjs from "dayjs";
  * - `bientot` : elle tombe dans les trois jours. Un avertissement.
  * - `aucun` : elle est assez loin pour ne rien signaler.
  */
-export type EtatEcheance = "retard" | "bientot" | "aucun";
+export type DueState = "retard" | "bientot" | "aucun";
 
 /** Le délai en deçà duquel une échéance est « bientôt ». */
-export const JOURS_AVANT_ECHEANCE = 3;
+export const DAYS_BEFORE_DUE = 3;
 
 /**
  * Où en est cette échéance. `maintenant` se passe pour pouvoir éprouver la
@@ -31,21 +31,21 @@ export const JOURS_AVANT_ECHEANCE = 3;
  * Une échéance dépassée est « en retard », pas « bientôt » : le retard est un
  * constat, il prime sur l'avertissement.
  */
-export const etatEcheance = (
+export const dueState = (
   due: string | null | undefined,
-  maintenant: Date = new Date(),
-): EtatEcheance => {
+  currentTime: Date = new Date(),
+): DueState => {
   if (!due) return "aucun";
-  const echeance = dayjs(due);
-  if (!echeance.isValid()) return "aucun";
+  const dueDay = dayjs(due);
+  if (!dueDay.isValid()) return "aucun";
 
-  const jours = echeance.startOf("day").diff(dayjs(maintenant).startOf("day"), "day");
-  if (jours < 0) return "retard";
-  return jours <= JOURS_AVANT_ECHEANCE ? "bientot" : "aucun";
+  const days = dueDay.startOf("day").diff(dayjs(currentTime).startOf("day"), "day");
+  if (days < 0) return "retard";
+  return days <= DAYS_BEFORE_DUE ? "bientot" : "aucun";
 };
 
 /** Ce que dit la bulle : « En retard », « Bientôt », ou rien. */
-export const MOT_ECHEANCE: Record<EtatEcheance, string> = {
+export const DUE_WORD: Record<DueState, string> = {
   retard: "En retard",
   bientot: "Bientôt",
   aucun: "",
@@ -56,7 +56,7 @@ export const MOT_ECHEANCE: Record<EtatEcheance, string> = {
  * erreurs — c'est le même signal ; l'orange de « bientôt » est celui de
  * l'avancement à mi-chemin (themes/colors.ts).
  */
-export const COULEUR_ECHEANCE: Record<EtatEcheance, string | undefined> = {
+export const DUE_COLOR: Record<DueState, string | undefined> = {
   retard: "red",
   bientot: "orange",
   aucun: undefined,
@@ -65,13 +65,13 @@ export const COULEUR_ECHEANCE: Record<EtatEcheance, string | undefined> = {
 // Le serveur refuse une date qu'il ne comprend pas ; une valeur illisible ne
 // devrait donc jamais arriver ici. Si l'une passait tout de même, mieux vaut
 // n'afficher rien qu'un « Invalid Date » au milieu d'une carte.
-const formate = (due: string | null | undefined, motif: string): string => {
+const formate = (due: string | null | undefined, pattern: string): string => {
   const date = dayjs(due ?? "");
-  return due && date.isValid() ? date.locale("fr").format(motif) : "";
+  return due && date.isValid() ? date.locale("fr").format(pattern) : "";
 };
 
 /** Court, pour une carte du tableau : « 5 oct. ». */
-export const dateCourte = (due: string | null | undefined): string => formate(due, "D MMM");
+export const shortDate = (due: string | null | undefined): string => formate(due, "D MMM");
 
 /**
  * Une échéance sans heure. L'heure est facultative : laissée vide, le
@@ -80,7 +80,7 @@ export const dateCourte = (due: string | null | undefined): string => formate(du
  * journée entière, ce qui revient au même : la règle des états compare les
  * jours, pas les heures.
  */
-export const sansHeure = (due: string | null | undefined): boolean => {
+export const withoutTime = (due: string | null | undefined): boolean => {
   const date = dayjs(due ?? "");
   return date.isValid() && date.hour() === 0 && date.minute() === 0 && date.second() === 0;
 };

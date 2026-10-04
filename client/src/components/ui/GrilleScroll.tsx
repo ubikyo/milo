@@ -13,28 +13,28 @@ import classes from "../../assets/styles/GrilleScroll.module.css";
  * il épouserait la grille et ses « 100 % » ne vaudraient plus la largeur de
  * la section (useColonnesRedimensionnables).
  */
-export default function GrilleScroll({ children }: { children: ReactNode }) {
+export default function GridScroll({ children }: { children: ReactNode }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   // Le bas de la ligne d'entête, depuis le haut de la zone : le filet en
   // occupe le dernier pixel.
-  const [filet, setFilet] = useState<number | null>(null);
+  const [rule, setDivider] = useState<number | null>(null);
 
   // L'entête change de hauteur avec ses libellés, et la grille elle-même peut
   // être remplacée : on la retrouve à chaque rendu, et on la suit tant
   // qu'elle est là.
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
-    const entete = viewport?.querySelector("thead");
-    if (!viewport || !entete) {
-      setFilet(null);
+    const header = viewport?.querySelector("thead");
+    if (!viewport || !header) {
+      setDivider(null);
       return;
     }
-    const mesurer = () =>
-      setFilet(entete.getBoundingClientRect().bottom - viewport.getBoundingClientRect().top);
-    mesurer();
-    const observateur = new ResizeObserver(mesurer);
-    observateur.observe(entete);
-    return () => observateur.disconnect();
+    const measure = () =>
+      setDivider(header.getBoundingClientRect().bottom - viewport.getBoundingClientRect().top);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => observer.disconnect();
   });
 
   return (
@@ -44,7 +44,7 @@ export default function GrilleScroll({ children }: { children: ReactNode }) {
       viewportRef={viewportRef}
       classNames={{ scrollbar: classes.scrollbar, thumb: classes.thumb }}
       styles={{ content: { display: "block" } }}
-      style={filet === null ? undefined : ({ "--grille-filet": `${filet}px` } as CSSProperties)}
+      style={rule === null ? undefined : ({ "--grille-filet": `${rule}px` } as CSSProperties)}
     >
       {children}
     </ScrollArea>

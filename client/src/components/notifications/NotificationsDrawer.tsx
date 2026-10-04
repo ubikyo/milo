@@ -22,7 +22,7 @@ import { useEffect, useState } from "react";
 import type { ComponentType, CSSProperties } from "react";
 import type { Notification, NotificationKind } from "@milo/shared";
 import { api } from "../../api";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import { RED } from "../../themes/colors";
 import {
   ACTIONS_BUTTON_STYLE,
@@ -39,7 +39,7 @@ import DrawerScrollArea, {
   DRAWER_TABS_STYLES,
 } from "../ui/DrawerScroll";
 import EmptyPanel from "../ui/EmptyPanel";
-import BoutonFermer from "../ui/BoutonFermer";
+import CloseButton from "../ui/BoutonFermer";
 
 // Les dernières notifications reçues, ouvertes depuis le menu du compte. À
 // l'écran, une notification passe et s'efface ; ici, elle reste jusqu'à ce
@@ -47,20 +47,20 @@ import BoutonFermer from "../ui/BoutonFermer";
 // « Actions ». Un clic sur une ligne ouvre l'élément dont elle parle ; celle
 // qui annonce une suppression n'ouvre rien, et porte une corbeille.
 
-const ICONES: Record<NotificationKind, ComponentType<{ size?: number }>> = {
+const ICONS: Record<NotificationKind, ComponentType<{ size?: number }>> = {
   project: IconFolder,
   card: IconLayoutKanban,
   support: IconHeadset,
   access: IconHeartbeat,
 };
 
-const JOUR = new Intl.DateTimeFormat("fr-FR", {
+const DAY = new Intl.DateTimeFormat("fr-FR", {
   day: "numeric",
   month: "short",
   hour: "2-digit",
   minute: "2-digit",
 });
-const JOUR_ANNEE = new Intl.DateTimeFormat("fr-FR", {
+const DAY_WITH_YEAR = new Intl.DateTimeFormat("fr-FR", {
   day: "numeric",
   month: "short",
   year: "numeric",
@@ -69,11 +69,11 @@ const JOUR_ANNEE = new Intl.DateTimeFormat("fr-FR", {
 });
 
 /** La date et l'heure, avec l'année si ce n'est pas la même. */
-const quand = (iso: string): string => {
+const whenLabel = (iso: string): string => {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  if (date.getFullYear() === new Date().getFullYear()) return JOUR.format(date);
-  return JOUR_ANNEE.format(date);
+  if (date.getFullYear() === new Date().getFullYear()) return DAY.format(date);
+  return DAY_WITH_YEAR.format(date);
 };
 
 interface NotificationsDrawerProps {
@@ -94,41 +94,41 @@ export default function NotificationsDrawer({
   onOpen,
   revision,
 }: NotificationsDrawerProps) {
-  const [liste, setListe] = useState<Notification[] | null>(null);
-  const [confirmer, setConfirmer] = useState(false);
+  const [list, setList] = useState<Notification[] | null>(null);
+  const [confirm, setConfirm] = useState(false);
 
   useEffect(() => {
     if (!opened) return;
-    let actif = true;
+    let active = true;
     api
       .getNotifications()
-      .then((lues) => actif && setListe(lues))
-      .catch((e) => actif && notifierErreur(messageErreur(e)));
+      .then((fetched) => active && setList(fetched))
+      .catch((e) => active && notifyError(errorMessage(e)));
     return () => {
-      actif = false;
+      active = false;
     };
   }, [opened, revision]);
 
   // Chaque suppression part aussitôt ; la ligne s'en va sans attendre la
   // réponse, et revient si le serveur refuse.
   const supprimer = async (notification: Notification) => {
-    const avant = liste;
-    setListe((l) => l?.filter((n) => n.id !== notification.id) ?? null);
+    const before = list;
+    setList((l) => l?.filter((n) => n.id !== notification.id) ?? null);
     try {
       await api.deleteNotification(notification.id);
     } catch (e) {
-      setListe(avant);
-      notifierErreur(messageErreur(e));
+      setList(before);
+      notifyError(errorMessage(e));
     }
   };
 
-  const toutSupprimer = async () => {
-    setConfirmer(false);
+  const deleteAll = async () => {
+    setConfirm(false);
     try {
       await api.clearNotifications();
-      setListe([]);
+      setList([]);
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   };
 
@@ -192,8 +192,8 @@ export default function NotificationsDrawer({
                 <Menu.Item
                   color={RED}
                   leftSection={<IconTrash size={16} />}
-                  disabled={!liste || liste.length === 0}
-                  onClick={() => setConfirmer(true)}
+                  disabled={!list || list.length === 0}
+                  onClick={() => setConfirm(true)}
                 >
                   Supprimer les notifications
                 </Menu.Item>
@@ -204,27 +204,27 @@ export default function NotificationsDrawer({
           <Tabs.Panel value="notifications" style={DRAWER_PANEL_STYLE}>
             <DrawerScrollArea fill>
               <Stack gap={30} style={{ flex: 1, minHeight: 0 }}>
-                {liste && liste.length === 0 && (
+                {list && list.length === 0 && (
                   <EmptyPanel icon={IconBell} message="Aucune notification" />
                 )}
 
-                {liste?.map((notification) => {
-                  const Icone = notification.deleted
+                {list?.map((notification) => {
+                  const Icon = notification.deleted
                     ? IconTrash
-                    : (ICONES[notification.kind] ?? IconBell);
-                  const ouvrable = !notification.deleted;
+                    : (ICONS[notification.kind] ?? IconBell);
+                  const openable = !notification.deleted;
                   return (
                     <div
                       key={notification.id}
                       className={classes.ligne}
-                      data-ouvrable={ouvrable || undefined}
-                      role={ouvrable ? "button" : undefined}
-                      tabIndex={ouvrable ? 0 : undefined}
+                      data-ouvrable={openable || undefined}
+                      role={openable ? "button" : undefined}
+                      tabIndex={openable ? 0 : undefined}
                       onClick={
-                        ouvrable ? () => onOpen(notification) : undefined
+                        openable ? () => onOpen(notification) : undefined
                       }
                       onKeyDown={
-                        ouvrable
+                        openable
                           ? (event) => {
                               if (event.key === "Enter") onOpen(notification);
                             }
@@ -232,7 +232,7 @@ export default function NotificationsDrawer({
                       }
                     >
                       <Group className={classes.entete} gap="sm" wrap="nowrap">
-                        <Icone size={16} />
+                        <Icon size={16} />
                         <Text
                           size="sm"
                           fw={600}
@@ -243,7 +243,7 @@ export default function NotificationsDrawer({
                         </Text>
                         <Group gap={0} wrap="nowrap">
                           <Text size="xs" className={classes.date}>
-                            {quand(notification.created_at)}
+                            {whenLabel(notification.created_at)}
                           </Text>
                           <div className={classes.croix}>
                             <ActionIcon
@@ -275,14 +275,14 @@ export default function NotificationsDrawer({
         </Tabs>
 
         <Group justify="flex-end" pt="md">
-          <BoutonFermer onClick={onClose} />
+          <CloseButton onClick={onClose} />
         </Group>
       </Drawer>
 
       <DeleteConfirmModal
-        opened={confirmer}
-        onClose={() => setConfirmer(false)}
-        onConfirm={toutSupprimer}
+        opened={confirm}
+        onClose={() => setConfirm(false)}
+        onConfirm={deleteAll}
         title="Supprimer les notifications"
         message={
           <>

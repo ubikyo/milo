@@ -1,21 +1,21 @@
 // Ce que les widgets des Assets partagent : les règles qui disent qu'un poste
 // demande de l'attention. Le titre et le champ « Nom » sont ceux du Support.
 
-import { DISQUE_PLEIN, diskUsage, joursDepuisInventaire, JOURS_SANS_INVENTAIRE } from "../lib/poste";
+import { DISK_FULL, diskUsage, daysSinceInventory, DAYS_WITHOUT_INVENTORY } from "../lib/poste";
 import type { Asset } from "@milo/shared";
 
-export { ChampNom, NOM, Rien, TitreIndicateur, ValeurIndicateur } from "../indicators/commun";
+export { NameField, NAME, Nothing, TitreIndicateur, IndicatorValue } from "../indicators/commun";
 
 /** Un volume système dont on sait qu'il n'est pas chiffré. */
-export const nonChiffre = (a: Asset): boolean => a.system_disk_encrypted === false;
+export const notEncrypted = (a: Asset): boolean => a.system_disk_encrypted === false;
 
 /** Un poste Windows sans protection, ou dont la protection est désactivée. */
-export const sansProtection = (a: Asset): boolean =>
+export const unprotected = (a: Asset): boolean =>
   a.protection.state === "none" || a.protection.state === "inactive";
 
-export const disquePlein = (a: Asset): boolean => (diskUsage(a.system_disk) ?? 0) > DISQUE_PLEIN;
+export const diskFull = (a: Asset): boolean => (diskUsage(a.system_disk) ?? 0) > DISK_FULL;
 
-export const silencieux = (a: Asset): boolean => joursDepuisInventaire(a) > JOURS_SANS_INVENTAIRE;
+export const silent = (a: Asset): boolean => daysSinceInventory(a) > DAYS_WITHOUT_INVENTORY;
 
 /**
  * Windows 10 n'a plus de mises à jour de sécurité depuis le 14 octobre 2025 :

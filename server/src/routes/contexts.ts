@@ -11,36 +11,36 @@ import { Router } from "express";
 import type { Request } from "express";
 import { mutation } from "../db/query.js";
 import type { ContextRow } from "../db/rows.js";
-import { exigerOrganiser } from "../lib/droits.js";
+import { requireOrganize } from "../lib/droits.js";
 import { badRequest, notFound, requireText } from "../lib/http.js";
 import { touch, touchNow } from "../middleware/events.js";
-import { boards, boardLisible, tableauOuvert } from "../repositories/boards.js";
+import { boards, readableBoard, openBoard } from "../repositories/boards.js";
 import {
-  ajouterContexte,
-  contexteDuTableau,
+  addContext,
+  boardContext,
   contexts,
-  copierContextes,
+  copyContexts,
 } from "../repositories/contexts.js";
-import { rangerContextes, ordreRecu } from "../repositories/reorder.js";
-import { suivreLesListes } from "./board-widgets.js";
-import { tableauPourCompte } from "./boards.js";
+import { arrangeContexts, receivedOrder } from "../repositories/reorder.js";
+import { followLists } from "./board-widgets.js";
+import { boardForAccount } from "./boards.js";
 
-const CONTEXTE_INTROUVABLE = "Contexte introuvable";
+const CONTEXT_NOT_FOUND = "Contexte introuvable";
 
 /** Le libellé de « Tous les contextes » d'un tableau. */
-const renommerTous = mutation("UPDATE boards SET all_contexts_label = ? WHERE id = ?");
+const renameAll = mutation("UPDATE boards SET all_contexts_label = ? WHERE id = ?");
 
 /** Le tableau de la route, tel que ce compte le voit. */
-const rendu = (req: Request, boardId: number) =>
-  tableauPourCompte(boards.byId.get(boardId)!, req.user.id);
+const render = (req: Request, boardId: number) =>
+  boardForAccount(boards.byId.get(boardId)!, req.user.id);
 
 /** Un contexte d'un tableau que ce compte voit. */
-const contexteOuvert = (id: unknown, req: Request): ContextRow => {
-  const contexte = contexts.byId.get(id);
-  if (!contexte || !boardLisible(boards.byId.get(contexte.board_id), req.user)) {
-    return notFound(CONTEXTE_INTROUVABLE);
+const openContext = (id: unknown, req: Request): ContextRow => {
+  const context = contexts.byId.get(id);
+  if (!context || !readableBoard(boards.byId.get(context.board_id), req.user)) {
+    return notFound(CONTEXT_NOT_FOUND);
   }
-  return contexte;
+  return context;
 };
 
 /** Monté sous /api/boards/:id/contexts. */
@@ -49,24 +49,24 @@ export const boardContextRoutes = Router({ mergeParams: true });
 // Choisir le contexte qu'on regarde : nul pour tous. Déclaré avant le reste,
 // qui touche la structure commune.
 boardContextRoutes.put("/selected", (req, res) => {
-  const board = tableauOuvert((req.params as { id: string }).id, req.user);
-  const valeur = req.body.context_id;
-  const choisi =
-    valeur === null || valeur === undefined || valeur === "" || valeur === "all"
+  const board = openBoard((req.params as { id: string }).id, req.user);
+  const value = req.body.context_id;
+  const selected =
+    value === null || value === undefined || value === "" || value === "all"
       ? null
-      : contexteDuTableau(board.id, valeur);
-  contexts.choisir.run(req.user.id, board.id, choisi);
-  res.json(rendu(req, board.id));
+      : boardContext(board.id, value);
+  contexts.select.run(req.user.id, board.id, selected);
+  res.json(render(req, board.id));
 });
 
 boardContextRoutes.use(touch("boards"));
 
 boardContextRoutes.post("/", (req, res) => {
-  exigerOrganiser(req);
-  const board = tableauOuvert((req.params as { id: string }).id, req.user);
+  requireOrganize(req);
+  const board = openBoard((req.params as { id: string }).id, req.user);
   const name = requireText(req.body.name, "Le nom du contexte est requis");
-  ajouterContexte(board.id, name);
-  res.status(201).json(rendu(req, board.id));
+  addContext(board.id, name);
+  res.status(201).json(render(req, board.id));
 });
 
 // Copier les contextes du tableau vers un autre, à la suite des siens. Ceux
@@ -76,40 +76,40 @@ boardContextRoutes.post("/", (req, res) => {
 // « rename_all » : l'accueil reprend aussi le libellé de « Tous les
 // contextes », le sélecteur global.
 boardContextRoutes.post("/copy", (req, res) => {
-  exigerOrganiser(req);
-  const source = tableauOuvert((req.params as { id: string }).id, req.user);
+  requireOrganize(req);
+  const source = openBoard((req.params as { id: string }).id, req.user);
   if (!req.body.to_board) badRequest("Le tableau de destination est requis");
-  const cible = tableauOuvert(req.body.to_board, req.user);
-  if (source.id === cible.id) badRequest("Choisissez un autre tableau que celui-ci");
-  const remplacer = req.body.replace === true;
-  if (remplacer) touchNow(res, "projects", "task-lists", "support-requests", "assets");
-  const resultat = copierContextes(source.id, cible.id, remplacer);
-  if (req.body.rename_all === true) renommerTous.run(source.all_contexts_label, cible.id);
-  res.json(resultat);
+  const target = openBoard(req.body.to_board, req.user);
+  if (source.id === target.id) badRequest("Choisissez un autre tableau que celui-ci");
+  const replaceExisting = req.body.replace === true;
+  if (replaceExisting) touchNow(res, "projects", "task-lists", "support-requests", "assets");
+  const result = copyContexts(source.id, target.id, replaceExisting);
+  if (req.body.rename_all === true) renameAll.run(source.all_contexts_label, target.id);
+  res.json(result);
 });
 
 boardContextRoutes.put("/reorder", (req, res) => {
-  exigerOrganiser(req);
-  const board = tableauOuvert((req.params as { id: string }).id, req.user);
-  const ordre = ordreRecu(
+  requireOrganize(req);
+  const board = openBoard((req.params as { id: string }).id, req.user);
+  const order = receivedOrder(
     req.body.ids,
     contexts.ofBoard.all(board.id),
     "La liste des identifiants ne correspond pas aux contextes de ce tableau",
   );
-  rangerContextes(ordre, board.id);
-  res.json(rendu(req, board.id));
+  arrangeContexts(order, board.id);
+  res.json(render(req, board.id));
 });
 
 /** Monté sous /api/contexts. */
 export const contextRoutes = Router();
 
-contextRoutes.use(suivreLesListes);
+contextRoutes.use(followLists);
 
 contextRoutes.put("/:id", touch("boards"), (req, res) => {
-  exigerOrganiser(req);
-  const contexte = contexteOuvert(req.params.id, req);
-  contexts.rename.run(requireText(req.body.name, "Le nom du contexte est requis"), contexte.id);
-  res.json(rendu(req, contexte.board_id));
+  requireOrganize(req);
+  const context = openContext(req.params.id, req);
+  contexts.rename.run(requireText(req.body.name, "Le nom du contexte est requis"), context.id);
+  res.json(render(req, context.board_id));
 });
 
 // Supprimer un contexte emporte, par clé étrangère, ses projets, ses cartes,
@@ -118,9 +118,9 @@ contextRoutes.delete(
   "/:id",
   touch("boards", "projects", "task-lists", "support-requests", "assets"),
   (req, res) => {
-    exigerOrganiser(req);
-    const contexte = contexteOuvert(req.params.id, req);
-    contexts.remove.run(contexte.id);
-    res.json(rendu(req, contexte.board_id));
+    requireOrganize(req);
+    const context = openContext(req.params.id, req);
+    contexts.remove.run(context.id);
+    res.json(render(req, context.board_id));
   },
 );

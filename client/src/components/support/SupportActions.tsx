@@ -12,11 +12,11 @@ import {
   IconTrash,
   IconUserPlus,
 } from "@tabler/icons-react";
-import { useDroits } from "../../lib/droits";
+import { useRights } from "../../lib/droits";
 import { useCallback, useEffect, useState } from "react";
 import LabelsManager from "../board/LabelsManager";
 import { api } from "../../api";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import { RED } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import {
@@ -29,10 +29,10 @@ import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import PointMenu, { type PointMenuPosition } from "../ui/PointMenu";
 import { supportTicketRef } from "@milo/shared";
 import type { PublicUser, SupportLabel, SupportRequest } from "@milo/shared";
-import BoutonFermer from "../ui/BoutonFermer";
+import CloseButton from "../ui/BoutonFermer";
 
 /** L'action qui attend sa confirmation. */
-type AConfirmer = "merge" | "close" | "delete" | null;
+type ToConfirm = "merge" | "close" | "delete" | null;
 
 interface SupportActionsProps {
   /** Les demandes cochées, dans l'ordre de la liste. */
@@ -50,16 +50,16 @@ interface SupportActionsProps {
    * Le clic droit sur une ligne : son menu s'ouvre au point cliqué, et ses
    * gestes ne portent que sur cette demande, cochée ou non.
    */
-  contexte?: { demande: SupportRequest; position: PointMenuPosition } | null;
-  onContexteClose?: () => void;
+  context?: { request: SupportRequest; position: PointMenuPosition } | null;
+  onContextClose?: () => void;
   /** Les demandes que la personne suit, pour la coche de « Suivre ». */
   followedIds?: number[];
   onToggleFollow?: (request: SupportRequest) => void;
 }
 
 /** « HLP-3, HLP-5 et HLP-8 » : les tickets visés, tels qu'on les cite. */
-const citer = (demandes: SupportRequest[]): string => {
-  const refs = demandes.map((d) => supportTicketRef(d.number));
+const cite = (requests: SupportRequest[]): string => {
+  const refs = requests.map((d) => supportTicketRef(d.number));
   return refs.length < 2
     ? (refs[0] ?? "")
     : `${refs.slice(0, -1).join(", ")} et ${refs.at(-1)}`;
@@ -78,134 +78,134 @@ export default function SupportActions({
   onCreateTask,
   onDone,
   onRefresh,
-  contexte = null,
-  onContexteClose,
+  context = null,
+  onContextClose,
   followedIds = [],
   onToggleFollow,
 }: SupportActionsProps) {
-  const [aConfirmer, setAConfirmer] = useState<AConfirmer>(null);
+  const [toConfirm, setToConfirm] = useState<ToConfirm>(null);
   /** La gestion des étiquettes : communes à tout le support. */
-  const [gereEtiquettes, setGereEtiquettes] = useState(false);
-  const [etiquettes, setEtiquettes] = useState<SupportLabel[]>([]);
-  const ouvrirEtiquettes = () => setGereEtiquettes(true);
-  const relireEtiquettes = useCallback(async () => {
+  const [managesLabels, setManagingLabels] = useState(false);
+  const [labels, setLabels] = useState<SupportLabel[]>([]);
+  const openLabels = () => setManagingLabels(true);
+  const reloadLabels = useCallback(async () => {
     try {
-      setEtiquettes(await api.getSupportLabels());
+      setLabels(await api.getSupportLabels());
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   }, []);
   useEffect(() => {
-    if (gereEtiquettes) void relireEtiquettes();
-  }, [gereEtiquettes, relireEtiquettes]);
-  const [assignation, setAssignation] = useState(false);
-  const [acteurs, setActeurs] = useState<string[]>([]);
-  const [enCours, setEnCours] = useState(false);
+    if (managesLabels) void reloadLabels();
+  }, [managesLabels, reloadLabels]);
+  const [assignment, setAssignment] = useState(false);
+  const [actors, setActors] = useState<string[]>([]);
+  const [ongoing, setInProgress] = useState(false);
 
   /**
    * La demande visée par le clic droit, le temps que sa confirmation ou son
    * assignation aboutisse : elle remplace alors les demandes cochées.
    */
-  const [cibles, setCibles] = useState<SupportRequest[] | null>(null);
-  const vises = cibles ?? selected;
-  const ids = vises.map((d) => d.id);
-  const n = vises.length;
+  const [targets, setTargets] = useState<SupportRequest[] | null>(null);
+  const targetedItems = targets ?? selected;
+  const ids = targetedItems.map((d) => d.id);
+  const n = targetedItems.length;
   // La fusion garde la plus récente : c'est elle qu'on annonce.
-  const gardee = [...vises].sort((a, b) =>
+  const keptByKey = [...targetedItems].sort((a, b) =>
     a.created_at === b.created_at
       ? b.id - a.id
       : a.created_at < b.created_at
         ? 1
         : -1,
   )[0];
-  const autres = vises.filter((d) => d !== gardee);
+  const others = targetedItems.filter((d) => d !== keptByKey);
 
   // Les gestes suivent les droits du compte sur le support.
-  const peut = useDroits();
-  const peutSur = (demandes: SupportRequest[], droit: "update" | "delete") =>
-    demandes.length > 0 && peut("support", droit);
-  const modifierCochees = peutSur(selected, "update");
-  const supprimerCochees = peutSur(selected, "delete");
-  const modifierVisee = contexte
-    ? peutSur([contexte.demande], "update")
+  const can = useRights();
+  const canForRequests = (requests: SupportRequest[], right: "update" | "delete") =>
+    requests.length > 0 && can("support", right);
+  const editChecked = canForRequests(selected, "update");
+  const deleteChecked = canForRequests(selected, "delete");
+  const targetEdit = context
+    ? canForRequests([context.request], "update")
     : false;
-  const supprimerVisee = contexte
-    ? peutSur([contexte.demande], "delete")
+  const deleteTargeted = context
+    ? canForRequests([context.request], "delete")
     : false;
 
-  const executer = async (action: () => Promise<unknown>, succes: string) => {
-    setEnCours(true);
+  const execute = async (action: () => Promise<unknown>, success: string) => {
+    setInProgress(true);
     try {
       await action();
-      notifications.show({ color: "teal", message: succes });
+      notifications.show({ color: "teal", message: success });
       await onDone();
     } catch (e) {
-      notifierErreur(messageErreur(e), "Action impossible");
+      notifyError(errorMessage(e), "Action impossible");
     } finally {
-      setEnCours(false);
-      setAConfirmer(null);
-      setCibles(null);
+      setInProgress(false);
+      setToConfirm(null);
+      setTargets(null);
     }
   };
 
-  const confirmer = () => {
-    if (aConfirmer === "merge") {
-      void executer(
+  const confirm = () => {
+    if (toConfirm === "merge") {
+      void execute(
         () => api.mergeSupportRequests(ids),
-        `${citer(autres)} ${autres.length > 1 ? "fusionnées" : "fusionnée"} dans ${citer(gardee ? [gardee] : [])}`,
+        `${cite(others)} ${others.length > 1 ? "fusionnées" : "fusionnée"} dans ${cite(keptByKey ? [keptByKey] : [])}`,
       );
-    } else if (aConfirmer === "close") {
-      void executer(
+    } else if (toConfirm === "close") {
+      void execute(
         () => api.closeSupportRequests(ids),
         n > 1 ? `${n} demandes fermées` : "Demande fermée",
       );
-    } else if (aConfirmer === "delete") {
-      void executer(
+    } else if (toConfirm === "delete") {
+      void execute(
         () => api.deleteSupportRequests(ids),
         n > 1 ? `${n} demandes supprimées` : "Demande supprimée",
       );
     }
   };
 
-  const assigner = async () => {
-    if (!acteurs.length) return;
-    await executer(
-      () => api.assignSupportRequests(ids, acteurs.map(Number)),
+  const assign = async () => {
+    if (!actors.length) return;
+    await execute(
+      () => api.assignSupportRequests(ids, actors.map(Number)),
       n > 1 ? `${n} demandes assignées` : "Demande assignée",
     );
-    setAssignation(false);
+    setAssignment(false);
   };
 
-  const textes: Record<
-    Exclude<AConfirmer, null>,
-    { titre: string; message: string; bouton: string; couleur: string }
+  const texts: Record<
+    Exclude<ToConfirm, null>,
+    { title: string; message: string; button: string; color: string }
   > = {
     merge: {
-      titre: "Fusionner les demandes",
-      message: `${citer(autres)} ${autres.length > 1 ? "seront fusionnées" : "sera fusionnée"} dans ${citer(
-        gardee ? [gardee] : [],
+      title: "Fusionner les demandes",
+      message: `${cite(others)} ${others.length > 1 ? "seront fusionnées" : "sera fusionnée"} dans ${cite(
+        keptByKey ? [keptByKey] : [],
       )}, la plus récente : ses échanges, ses acteurs et ses étiquettes y seront repris, puis ${
-        autres.length > 1 ? "elles seront fermées" : "elle sera fermée"
+        others.length > 1 ? "elles seront fermées" : "elle sera fermée"
       }.`,
-      bouton: "Fusionner",
-      couleur: "teal",
+      button: "Fusionner",
+      color: "teal",
     },
     close: {
-      titre: n > 1 ? "Fermer les demandes" : "Fermer la demande",
-      message: `${citer(vises)} ${n > 1 ? "passeront" : "passera"} au statut « Fermé ».`,
-      bouton: "Fermer",
-      couleur: "teal",
+      title: n > 1 ? "Fermer les demandes" : "Fermer la demande",
+      message: `${cite(targetedItems)} ${n > 1 ? "passeront" : "passera"} au statut « Fermé ».`,
+      button: "Fermer",
+      color: "teal",
     },
     delete: {
-      titre: n > 1 ? "Supprimer les demandes" : "Supprimer la demande",
-      message: `${citer(vises)} ${
+      title: n > 1 ? "Supprimer les demandes" : "Supprimer la demande",
+      message: `${cite(targetedItems)} ${
         n > 1 ? "seront supprimées" : "sera supprimée"
       }, avec leurs échanges. Cette action est irréversible.`,
-      bouton: "Supprimer",
-      couleur: RED,
+      button: "Supprimer",
+      color: RED,
     },
   };
-  const texte = aConfirmer ? textes[aConfirmer] : null;
+  const text = toConfirm ? texts[toConfirm] : null;
 
   return (
     <>
@@ -235,32 +235,32 @@ export default function SupportActions({
               qui s'ouvre. */}
             <Menu.Item
               leftSection={<IconPencil size={16} />}
-              disabled={n !== 1 || !modifierCochees}
+              disabled={n !== 1 || !editChecked}
               onClick={() => selected[0] && onEdit(selected[0])}
             >
               Modifier
             </Menu.Item>
             <Menu.Item
               leftSection={<IconUserPlus size={16} />}
-              disabled={n === 0 || !modifierCochees}
+              disabled={n === 0 || !editChecked}
               onClick={() => {
-                setActeurs([]);
-                setAssignation(true);
+                setActors([]);
+                setAssignment(true);
               }}
             >
               Assigner à
             </Menu.Item>
             <Menu.Item
               leftSection={<IconArrowMerge size={16} />}
-              disabled={n < 2 || !modifierCochees}
-              onClick={() => setAConfirmer("merge")}
+              disabled={n < 2 || !editChecked}
+              onClick={() => setToConfirm("merge")}
             >
               Fusionner
             </Menu.Item>
             <Menu.Item
               leftSection={<IconCircleX size={16} />}
-              disabled={n === 0 || !modifierCochees}
-              onClick={() => setAConfirmer("close")}
+              disabled={n === 0 || !editChecked}
+              onClick={() => setToConfirm("close")}
             >
               Fermer
             </Menu.Item>
@@ -269,8 +269,8 @@ export default function SupportActions({
               demandes cochées : ce geste n'en demande aucune. */}
             <Menu.Item
               leftSection={<IconTags size={16} />}
-              disabled={!peut("support", "update")}
-              onClick={ouvrirEtiquettes}
+              disabled={!can("support", "update")}
+              onClick={openLabels}
             >
               Étiquettes
             </Menu.Item>
@@ -278,8 +278,8 @@ export default function SupportActions({
             <Menu.Item
               color={RED}
               leftSection={<IconTrash size={16} />}
-              disabled={n === 0 || !supprimerCochees}
-              onClick={() => setAConfirmer("delete")}
+              disabled={n === 0 || !deleteChecked}
+              onClick={() => setToConfirm("delete")}
             >
               Supprimer
             </Menu.Item>
@@ -288,10 +288,10 @@ export default function SupportActions({
       )}
 
       {/* Le clic droit sur une ligne : ses gestes, pour elle seule. */}
-      {contexte && (
+      {context && (
         <PointMenu
-          position={contexte.position}
-          onClose={() => onContexteClose?.()}
+          position={context.position}
+          onClose={() => onContextClose?.()}
         >
           {/* Suivre vient en tête, comme dans le tiroir de la demande. Le
               menu ne se referme pas, pour qu'on voie la coche changer. */}
@@ -300,11 +300,11 @@ export default function SupportActions({
               <Menu.Item
                 leftSection={<IconEye size={16} />}
                 rightSection={
-                  followedIds.includes(contexte.demande.id) ? (
+                  followedIds.includes(context.request.id) ? (
                     <IconCheck size={14} />
                   ) : null
                 }
-                onClick={() => onToggleFollow(contexte.demande)}
+                onClick={() => onToggleFollow(context.request)}
                 closeMenuOnClick={false}
               >
                 Suivre
@@ -314,20 +314,20 @@ export default function SupportActions({
           )}
           {/* Sans le droit de modifier, la demande s'ouvre encore d'un clic
               sur sa ligne, pour être lue. */}
-          {modifierVisee && (
+          {targetEdit && (
             <>
               <Menu.Item
                 leftSection={<IconPencil size={16} />}
-                onClick={() => onEdit(contexte.demande)}
+                onClick={() => onEdit(context.request)}
               >
                 Modifier
               </Menu.Item>
               <Menu.Item
                 leftSection={<IconUserPlus size={16} />}
                 onClick={() => {
-                  setCibles([contexte.demande]);
-                  setActeurs([]);
-                  setAssignation(true);
+                  setTargets([context.request]);
+                  setActors([]);
+                  setAssignment(true);
                 }}
               >
                 Assigner à
@@ -337,20 +337,20 @@ export default function SupportActions({
           {onCreateTask && (
             <Menu.Item
               leftSection={<IconSquarePlus size={16} />}
-              onClick={() => onCreateTask(contexte.demande)}
+              onClick={() => onCreateTask(context.request)}
             >
               Créer une tâche
             </Menu.Item>
           )}
-          {supprimerVisee && (
+          {deleteTargeted && (
             <>
               <Menu.Divider />
               <Menu.Item
                 color={RED}
                 leftSection={<IconTrash size={16} />}
                 onClick={() => {
-                  setCibles([contexte.demande]);
-                  setAConfirmer("delete");
+                  setTargets([context.request]);
+                  setToConfirm("delete");
                 }}
               >
                 Supprimer
@@ -361,23 +361,23 @@ export default function SupportActions({
       )}
 
       <DeleteConfirmModal
-        opened={texte !== null}
+        opened={text !== null}
         onClose={() => {
-          if (enCours) return;
-          setAConfirmer(null);
-          setCibles(null);
+          if (ongoing) return;
+          setToConfirm(null);
+          setTargets(null);
         }}
-        onConfirm={confirmer}
-        title={texte?.titre}
-        message={texte?.message}
-        confirmLabel={texte?.bouton}
+        onConfirm={confirm}
+        title={text?.title}
+        message={text?.message}
+        confirmLabel={text?.button}
         cancelLabel="Annuler"
-        confirmColor={texte?.couleur}
+        confirmColor={text?.color}
       />
 
       <Modal
-        opened={gereEtiquettes}
-        onClose={() => setGereEtiquettes(false)}
+        opened={managesLabels}
+        onClose={() => setManagingLabels(false)}
         title="Étiquettes"
         withCloseButton={false}
         centered
@@ -387,25 +387,25 @@ export default function SupportActions({
       >
         <Stack gap="md">
           <LabelsManager
-            labels={etiquettes}
+            labels={labels}
             emptyText="Aucune étiquette"
-            porteurs="des demandes qui la portent"
-            avecPoids
-            onCreate={async (nom, couleur, poids) => {
-              await api.createSupportLabel(nom, couleur, poids);
-              await relireEtiquettes();
+            carriers="des demandes qui la portent"
+            withWeight
+            onCreate={async (name, color, weight) => {
+              await api.createSupportLabel(name, color, weight);
+              await reloadLabels();
             }}
             onUpdate={async (id, data) => {
               await api.updateSupportLabel(id, data);
-              await relireEtiquettes();
+              await reloadLabels();
             }}
             onReorder={async (ids) => {
               await api.reorderSupportLabels(ids);
-              await relireEtiquettes();
+              await reloadLabels();
             }}
             onDelete={async (id) => {
               await api.deleteSupportLabel(id);
-              await relireEtiquettes();
+              await reloadLabels();
             }}
           />
           {/* Chaque geste sur une étiquette part aussitôt au serveur :
@@ -413,11 +413,11 @@ export default function SupportActions({
               demandes montrent les étiquettes telles qu'on vient de les
               laisser. « Fermer » referme simplement. */}
           <Group justify="flex-end" mt={MODAL_PADDING - 16}>
-            <BoutonFermer onClick={() => setGereEtiquettes(false)} />
+            <CloseButton onClick={() => setManagingLabels(false)} />
             <Button
               color="teal"
               onClick={async () => {
-                setGereEtiquettes(false);
+                setManagingLabels(false);
                 await onRefresh();
               }}
             >
@@ -428,13 +428,13 @@ export default function SupportActions({
       </Modal>
 
       <Modal
-        opened={assignation}
+        opened={assignment}
         onClose={() => {
-          if (enCours) return;
-          setAssignation(false);
-          setCibles(null);
+          if (ongoing) return;
+          setAssignment(false);
+          setTargets(null);
         }}
-        title={n > 1 ? `Assigner ${n} demandes` : `Assigner ${citer(vises)}`}
+        title={n > 1 ? `Assigner ${n} demandes` : `Assigner ${cite(targetedItems)}`}
         centered
         padding={MODAL_PADDING}
         withCloseButton={false}
@@ -461,22 +461,22 @@ export default function SupportActions({
           <ActorPicker
             label="Acteurs"
             users={users}
-            value={acteurs}
-            onChange={setActeurs}
+            value={actors}
+            onChange={setActors}
           />
           <Group justify="flex-end" mt={MODAL_PADDING - 16}>
-            <BoutonFermer
+            <CloseButton
               onClick={() => {
-                setAssignation(false);
-                setCibles(null);
+                setAssignment(false);
+                setTargets(null);
               }}
-              disabled={enCours}
+              disabled={ongoing}
             />
             <Button
               color="teal"
-              onClick={assigner}
-              loading={enCours}
-              disabled={!acteurs.length}
+              onClick={assign}
+              loading={ongoing}
+              disabled={!actors.length}
             >
               Assigner
             </Button>

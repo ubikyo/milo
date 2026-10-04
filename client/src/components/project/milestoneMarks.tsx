@@ -3,19 +3,19 @@ import type { Milestone } from "@milo/shared";
 // Le retrait du rail dans le curseur de Mantine (« padding-inline » de sa
 // racine, qui vaut la taille « md » du curseur) : les libellés s'alignent sur
 // le rail, pas sur la boîte.
-const RETRAIT_RAIL = 8;
+const RAIL_INSET = 8;
 
 // Hauteur de la rangée des libellés, et leur taille.
-const HAUTEUR_LIBELLES = 16;
-const TAILLE_LIBELLE = 10;
+const LABELS_HEIGHT = 16;
+const LABEL_SIZE = 10;
 
 /**
  * Les marques d'un curseur d'avancement, tirées des jalons : les points
  * seulement. Les libellés s'écrivent à part (MilestoneLabels), Mantine ne
  * sachant que les centrer sur leur marque.
  */
-export const marquesJalons = (jalons: Milestone[]) =>
-  jalons.filter((j) => j.label).map((j) => ({ value: j.value }));
+export const milestoneMarks = (milestones: Milestone[]) =>
+  milestones.filter((j) => j.label).map((j) => ({ value: j.value }));
 
 /**
  * Les libellés des jalons, sous le curseur. Chacun part de sa marque vers la
@@ -29,20 +29,20 @@ export const marquesJalons = (jalons: Milestone[]) =>
  * alignement pour celui du début de la rangée — la droite : le texte finit au
  * bout du rail et dépasse vers la gauche.
  */
-export function MilestoneLabels({ jalons }: { jalons: Milestone[] }) {
-  const ecrits = jalons.filter((j) => j.label);
-  if (ecrits.length === 0) return null;
+export function MilestoneLabels({ milestones }: { milestones: Milestone[] }) {
+  const written = milestones.filter((j) => j.label);
+  if (written.length === 0) return null;
 
   return (
     <div
       style={{
         position: "relative",
-        height: HAUTEUR_LIBELLES,
-        marginInline: RETRAIT_RAIL,
+        height: LABELS_HEIGHT,
+        marginInline: RAIL_INSET,
         marginTop: 4,
       }}
     >
-      {ecrits.map((j) => (
+      {written.map((j) => (
         <div
           key={j.value}
           style={{
@@ -59,8 +59,8 @@ export function MilestoneLabels({ jalons }: { jalons: Milestone[] }) {
             style={{
               flexShrink: 0,
               whiteSpace: "nowrap",
-              fontSize: TAILLE_LIBELLE,
-              lineHeight: `${HAUTEUR_LIBELLES}px`,
+              fontSize: LABEL_SIZE,
+              lineHeight: `${LABELS_HEIGHT}px`,
               color: "var(--mantine-color-dimmed)",
             }}
           >

@@ -59,7 +59,7 @@ export interface SupportIndicatorWidget {
   /** Vrai quand le widget prend ses clics en charge : voir IndicatorWidgetBase. */
   ownClicks?: boolean;
   /** Vrai quand il montre une valeur : voir IndicatorWidgetBase. */
-  avecValeur?: boolean;
+  withValue?: boolean;
   /** Vrai quand il occupe toute la hauteur de sa section : voir IndicatorWidgetBase. */
   fill?: boolean;
   /** Vrai quand il se nomme sur place : voir IndicatorWidgetBase. */
@@ -67,7 +67,7 @@ export interface SupportIndicatorWidget {
   /** La largeur de son tiroir : voir IndicatorWidgetBase. */
   drawerSize?: number;
   /** L'air qu'il laisse autour de lui : voir IndicatorWidgetBase. */
-  marges?: IndicatorWidgetBase<SupportIndicatorType>["marges"];
+  margins?: IndicatorWidgetBase<SupportIndicatorType>["margins"];
   /** Vrai quand il ne doit pas paraître : voir IndicatorWidgetBase. */
   hidden?: IndicatorWidgetBase<SupportIndicatorType>["hidden"];
 }

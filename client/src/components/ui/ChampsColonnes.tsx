@@ -4,19 +4,19 @@ import { useState } from "react";
 import type { DragEvent } from "react";
 import classes from "../../assets/styles/ChampsColonnes.module.css";
 import { RED } from "../../themes/colors";
-import { avec } from "../../widgets/types";
+import { withField } from "../../widgets/types";
 import type { IndicatorConfigProps } from "../../indicators/types";
 import AddButton from "./AddButton";
 import {
-  ARRONDI,
-  FOND_SAISIE,
-  Poignee,
-  RETRAIT_NOM,
-  STYLE_SAISIE,
-  deplacer,
-  styleLigne,
+  ROUNDING,
+  INPUT_BACKGROUND,
+  Handle,
+  NAME_INSET,
+  INPUT_STYLE,
+  move,
+  rowStyle,
 } from "./LignesDuTiroir";
-import PointMenu, { positionDuMenu, type PointMenuPosition } from "./PointMenu";
+import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
 
 // Les colonnes d'un widget liste — les projets, les demandes du Support, les
 // postes des Assets : lesquelles il montre, dans quel ordre, et à quelle
@@ -34,24 +34,24 @@ import PointMenu, { positionDuMenu, type PointMenuPosition } from "./PointMenu";
 // une poignée de la grille y ramène. Vide, la colonne prend la largeur de son
 // contenu.
 
-export interface ColonneDeListe {
+export interface ListColumn {
   key: string;
   label: string;
 }
 
 /** Une colonne montrée : « id » la distingue de ses doubles, dans la grille. */
-export type ColonneMontree<C extends ColonneDeListe> = C & { id: string; largeur?: number };
+export type ShownColumn<C extends ListColumn> = C & { id: string; largeur?: number };
 
 /** Les colonnes montrées, dans l'ordre : une entrée par ligne de la liste. */
-export const LISTE_COLONNES = "liste_colonnes";
+export const LIST_COLUMNS = "liste_colonnes";
 
 // Les réglages d'avant la liste : un booléen par colonne, leur ordre, leurs
 // largeurs. Relus tant que la liste n'a pas été enregistrée.
-const COLONNES = "colonnes";
-const ORDRE_COLONNES = "ordre_colonnes";
-const LARGEURS_COLONNES = "largeurs_colonnes";
+const COLUMNS = "colonnes";
+const COLUMNS_ORDER = "ordre_colonnes";
+const COLUMN_WIDTHS = "largeurs_colonnes";
 
-interface Entree {
+interface Entry {
   key: string;
   largeur?: number;
 }
@@ -61,76 +61,76 @@ interface Entree {
  * une option de taille « sm » mesure 33,6875 px.
  */
 const OPTIONS_VISIBLES = 5;
-const HAUTEUR_OPTION = 33.6875;
+const OPTION_HEIGHT = 33.6875;
 
 /** En deçà, la colonne ne montrerait plus qu'une ellipse — comme dans la grille. */
-const LARGEUR_MIN = 40;
+const WIDTH_MIN = 40;
 
-const champ = (config: unknown, cle: string): unknown =>
-  (config as Record<string, unknown> | null)?.[cle];
+const field = (config: unknown, key: string): unknown =>
+  (config as Record<string, unknown> | null)?.[key];
 
-const objet = (config: unknown, cle: string): Record<string, unknown> => {
-  const valeur = champ(config, cle);
-  return valeur && typeof valeur === "object" && !Array.isArray(valeur)
-    ? (valeur as Record<string, unknown>)
+const subject = (config: unknown, key: string): Record<string, unknown> => {
+  const value = field(config, key);
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
     : {};
 };
 
-const largeurLue = (valeur: unknown): number | undefined =>
-  typeof valeur === "number" && valeur >= LARGEUR_MIN ? valeur : undefined;
+const readWidth = (value: unknown): number | undefined =>
+  typeof value === "number" && value >= WIDTH_MIN ? value : undefined;
 
 /** Les entrées d'avant la liste : les colonnes non masquées, dans l'ordre réglé. */
-const entreesAnciennes = (colonnes: ColonneDeListe[], config: unknown): Entree[] => {
-  const brut = champ(config, ORDRE_COLONNES);
-  const ordre = Array.isArray(brut) ? brut.filter((k): k is string => typeof k === "string") : [];
-  const rang = (c: ColonneDeListe) => {
-    const i = ordre.indexOf(c.key);
-    return i === -1 ? ordre.length + colonnes.indexOf(c) : i;
+const legacyEntries = (columns: ListColumn[], config: unknown): Entry[] => {
+  const raw = field(config, COLUMNS_ORDER);
+  const order = Array.isArray(raw) ? raw.filter((k): k is string => typeof k === "string") : [];
+  const rank = (c: ListColumn) => {
+    const i = order.indexOf(c.key);
+    return i === -1 ? order.length + columns.indexOf(c) : i;
   };
-  const masquees = objet(config, COLONNES);
-  const largeurs = objet(config, LARGEURS_COLONNES);
-  return [...colonnes]
-    .sort((a, b) => rang(a) - rang(b))
-    .filter((c) => masquees[c.key] !== false)
-    .map((c) => ({ key: c.key, largeur: largeurLue(largeurs[c.key]) }));
+  const hiddenItems = subject(config, COLUMNS);
+  const widths = subject(config, COLUMN_WIDTHS);
+  return [...columns]
+    .sort((a, b) => rank(a) - rank(b))
+    .filter((c) => hiddenItems[c.key] !== false)
+    .map((c) => ({ key: c.key, largeur: readWidth(widths[c.key]) }));
 };
 
 /**
  * Les entrées de la configuration, connues seulement. Sans liste — ou sans
  * aucune colonne connue —, toutes les colonnes.
  */
-const entrees = (colonnes: ColonneDeListe[], config: unknown): Entree[] => {
-  const brut = champ(config, LISTE_COLONNES);
-  const lues: Entree[] = Array.isArray(brut)
-    ? brut
+const entries = (columns: ListColumn[], config: unknown): Entry[] => {
+  const raw = field(config, LIST_COLUMNS);
+  const readItems: Entry[] = Array.isArray(raw)
+    ? raw
         .filter(
-          (e): e is Entree =>
-            Boolean(e) && typeof e === "object" && colonnes.some((c) => c.key === e.key),
+          (e): e is Entry =>
+            Boolean(e) && typeof e === "object" && columns.some((c) => c.key === e.key),
         )
-        .map((e) => ({ key: e.key, largeur: largeurLue(e.largeur) }))
-    : entreesAnciennes(colonnes, config);
-  return lues.length > 0 ? lues : colonnes.map((c) => ({ key: c.key }));
+        .map((e) => ({ key: e.key, largeur: readWidth(e.largeur) }))
+    : legacyEntries(columns, config);
+  return readItems.length > 0 ? readItems : columns.map((c) => ({ key: c.key }));
 };
 
 /** L'identifiant de chaque entrée : sa clé, suivie de son rang pour un double. */
-const identifiants = (liste: Entree[]): string[] => {
-  const vues = new Map<string, number>();
-  return liste.map(({ key }) => {
-    const n = (vues.get(key) ?? 0) + 1;
-    vues.set(key, n);
+const identifiers = (list: Entry[]): string[] => {
+  const views = new Map<string, number>();
+  return list.map(({ key }) => {
+    const n = (views.get(key) ?? 0) + 1;
+    views.set(key, n);
     return n === 1 ? key : `${key}~${n}`;
   });
 };
 
 /** Les colonnes que la configuration montre, dans son ordre ; sans réglage, toutes. */
-export const colonnesGardees = <C extends ColonneDeListe>(
-  colonnes: C[],
+export const keptColumns = <C extends ListColumn>(
+  columns: C[],
   config: unknown,
-): ColonneMontree<C>[] => {
-  const liste = entrees(colonnes, config);
-  const ids = identifiants(liste);
-  return liste.map((e, i) => ({
-    ...colonnes.find((c) => c.key === e.key)!,
+): ShownColumn<C>[] => {
+  const list = entries(columns, config);
+  const ids = identifiers(list);
+  return list.map((e, i) => ({
+    ...columns.find((c) => c.key === e.key)!,
     id: ids[i]!,
     largeur: e.largeur,
   }));
@@ -141,125 +141,125 @@ export const colonnesGardees = <C extends ColonneDeListe>(
  * la grille (useColonnesRedimensionnables) ; « undefined » quand elle n'en
  * donne aucune — la grille garde alors sa mise en page naturelle.
  */
-export const largeursParDefaut = (
-  colonnes: ColonneDeListe[],
+export const defaultWidths = (
+  columns: ListColumn[],
   config: unknown,
 ): Record<string, number> | undefined => {
-  const largeurs = Object.fromEntries(
-    colonnesGardees(colonnes, config)
+  const widths = Object.fromEntries(
+    keptColumns(columns, config)
       .filter((c) => c.largeur !== undefined)
       .map((c) => [c.id, c.largeur!]),
   );
-  return Object.keys(largeurs).length > 0 ? largeurs : undefined;
+  return Object.keys(widths).length > 0 ? widths : undefined;
 };
 
-export default function ChampsColonnes({
-  colonnes,
+export default function ColumnFields({
+  columns,
   config,
   onChange,
-}: IndicatorConfigProps & { colonnes: ColonneDeListe[] }) {
-  const liste = entrees(colonnes, config);
-  const ids = identifiants(liste);
+}: IndicatorConfigProps & { columns: ListColumn[] }) {
+  const list = entries(columns, config);
+  const ids = identifiers(list);
   /** Le rang de la ligne qu'on glisse. */
-  const [tenue, setTenue] = useState<number | null>(null);
+  const [held, setHeld] = useState<number | null>(null);
   /** Vrai pendant qu'une ligne ajoutée attend sa colonne, au bout de la liste. */
-  const [enAjout, setEnAjout] = useState(false);
+  const [adding, setAdding] = useState(false);
   /** Le rang de la ligne dont la liste des colonnes est ouverte. */
-  const [ouverte, setOuverte] = useState<number | null>(null);
+  const [isOpen, setOpened] = useState<number | null>(null);
   /** Le rang de la ligne dont la largeur a le focus : son champ prend le fond du tiroir. */
-  const [saisie, setSaisie] = useState<number | null>(null);
+  const [input, setInput] = useState<number | null>(null);
   /** Le menu du clic droit, et le rang de la ligne qu'il vise. */
-  const [menu, setMenu] = useState<{ rang: number; position: PointMenuPosition } | null>(null);
+  const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
 
   /** Les lignes affichées : la liste, et au bout celle qu'on ajoute. */
-  const lignes = enAjout ? [...liste, { key: "" }] : liste;
-  const colonneDe = (key: string) => colonnes.find((c) => c.key === key);
-  const ranger = (suivante: Entree[]) => onChange(avec(config, LISTE_COLONNES, suivante));
+  const rows = adding ? [...list, { key: "" }] : list;
+  const columnOf = (key: string) => columns.find((c) => c.key === key);
+  const store = (next: Entry[]) => onChange(withField(config, LIST_COLUMNS, next));
 
   // La dernière colonne qui reste ne se retire pas : la liste en montre au
   // moins une.
-  const derniere = liste.length === 1;
+  const last = list.length === 1;
 
-  const retirer = (rang: number) => ranger(liste.filter((_, i) => i !== rang));
+  const remove = (rank: number) => store(list.filter((_, i) => i !== rank));
 
   // La nouvelle ligne se pose au bout, vide : c'est là qu'on dit quelle
   // colonne on voulait. Elle n'entre dans la configuration qu'une colonne
   // choisie ; quittée sans choix, elle s'efface.
-  const ajouter = () => setEnAjout(true);
+  const add = () => setAdding(true);
 
   // Une autre colonne à la même place : sa largeur repart de zéro. Sur la
   // ligne ajoutée, la colonne choisie rejoint la liste.
-  const remplacer = (rang: number, key: string | null) => {
-    setEnAjout(false);
+  const replaceExisting = (rank: number, key: string | null) => {
+    setAdding(false);
     if (!key) return;
-    if (rang === liste.length) return ranger([...liste, { key }]);
-    if (key === liste[rang]?.key) return;
-    ranger(liste.map((e, i) => (i === rang ? { key } : e)));
+    if (rank === list.length) return store([...list, { key }]);
+    if (key === list[rank]?.key) return;
+    store(list.map((e, i) => (i === rank ? { key } : e)));
   };
 
-  const changerLargeur = (rang: number, valeur: string | number) =>
-    ranger(liste.map((e, i) => (i === rang ? { key: e.key, largeur: largeurLue(valeur) } : e)));
+  const changeWidth = (rank: number, value: string | number) =>
+    store(list.map((e, i) => (i === rank ? { key: e.key, largeur: readWidth(value) } : e)));
 
   // La ligne tenue prend la place de celle qu'elle survole : la liste se
   // range sous le pointeur, et la configuration suit.
-  const survoler = (e: DragEvent<HTMLElement>, rang: number) => {
-    if (tenue === null) return;
+  const dragHover = (e: DragEvent<HTMLElement>, rank: number) => {
+    if (held === null) return;
     e.preventDefault();
-    const suivante = deplacer(liste, tenue, rang);
-    if (!suivante) return;
-    setTenue(rang);
-    ranger(suivante);
+    const next = move(list, held, rank);
+    if (!next) return;
+    setHeld(rank);
+    store(next);
   };
 
-  const options = colonnes.map((c) => ({ value: c.key, label: c.label }));
+  const options = columns.map((c) => ({ value: c.key, label: c.label }));
 
   return (
     <Input.Wrapper label="Colonnes">
       {/* Le même écart sous le libellé que celui des autres champs. */}
       <Stack gap={1}>
-        {lignes.map((entree, rang) => {
+        {rows.map((entry, rank) => {
           // La ligne ajoutée n'a pas encore de colonne.
-          const colonne = colonneDe(entree.key) ?? { key: "", label: "" };
-          const nouvelle = rang === liste.length;
+          const column = columnOf(entry.key) ?? { key: "", label: "" };
+          const newRow = rank === list.length;
           return (
             <Group
-              key={nouvelle ? "nouvelle" : ids[rang]}
+              key={newRow ? "nouvelle" : ids[rank]}
               gap="sm"
               wrap="nowrap"
-              onDragOver={(e) => survoler(e, rang)}
+              onDragOver={(e) => dragHover(e, rank)}
               onDrop={(e) => e.preventDefault()}
               onContextMenu={(e) => {
-                if (nouvelle || derniere) return;
-                setMenu({ rang, position: positionDuMenu(e) });
+                if (newRow || last) return;
+                setMenu({ rank, position: menuPosition(e) });
               }}
-              style={styleLigne(rang, lignes.length, tenue === rang)}
+              style={rowStyle(rank, rows.length, held === rank)}
             >
-              <Poignee
-                label={`Déplacer la colonne ${colonne.label}`}
+              <Handle
+                label={`Déplacer la colonne ${column.label}`}
                 // La ligne ajoutée ne bouge ni ne se règle tant qu'elle n'a
                 // pas de colonne.
-                active={!nouvelle}
-                onDragStart={() => setTenue(rang)}
-                onDragEnd={() => setTenue(null)}
+                active={!newRow}
+                onDragStart={() => setHeld(rank)}
+                onDragEnd={() => setHeld(null)}
               />
               <Select
                 // Le texte a la taille des noms.
                 size="sm"
-                radius={ARRONDI}
+                radius={ROUNDING}
                 // Le champ garde le même retrait que celui de la largeur, en
                 // haut et en bas, et s'avance sur son retrait de gauche : le
                 // nom reste aligné sur la poignée.
-                style={{ flex: 1, marginLeft: -RETRAIT_NOM }}
+                style={{ flex: 1, marginLeft: -NAME_INSET }}
                 data={options}
-                value={entree.key || null}
+                value={entry.key || null}
                 placeholder="Choisir une colonne"
-                onChange={(valeur) => remplacer(rang, valeur)}
+                onChange={(value) => replaceExisting(rank, value)}
                 // La ligne ajoutée, quittée sans colonne, s'efface.
-                onBlur={() => nouvelle && setEnAjout(false)}
-                onDropdownOpen={() => setOuverte(rang)}
-                onDropdownClose={() => setOuverte(null)}
+                onBlur={() => newRow && setAdding(false)}
+                onDropdownOpen={() => setOpened(rank)}
+                onDropdownClose={() => setOpened(null)}
                 allowDeselect={false}
-                autoFocus={nouvelle}
+                autoFocus={newRow}
                 // Un select classique : le chevron toujours là, la liste
                 // ouverte au clic.
                 rightSection={<IconChevronDown size={14} />}
@@ -267,7 +267,7 @@ export default function ChampsColonnes({
                 // La liste se présente comme la palette des couleurs d'une
                 // étiquette : un panneau flottant de Mantine, cerné et ombré.
                 comboboxProps={{ shadow: "md" }}
-                maxDropdownHeight={OPTIONS_VISIBLES * HAUTEUR_OPTION}
+                maxDropdownHeight={OPTIONS_VISIBLES * OPTION_HEIGHT}
                 styles={{
                   // Le champ se présente comme celui de la largeur : son fond,
                   // et celui du tiroir tant que la liste est ouverte.
@@ -276,31 +276,31 @@ export default function ChampsColonnes({
                     minHeight: "var(--input-height-xs)",
                     // Sans bordure, le texte s'aligne sur les autres noms.
                     borderWidth: 0,
-                    paddingLeft: RETRAIT_NOM,
+                    paddingLeft: NAME_INSET,
                     cursor: "pointer",
-                    ...(ouverte === rang ? { backgroundColor: FOND_SAISIE } : {}),
+                    ...(isOpen === rank ? { backgroundColor: INPUT_BACKGROUND } : {}),
                   },
                 }}
                 classNames={{ option: classes.option }}
-                aria-label={nouvelle ? "Colonne à ajouter" : `Colonne ${colonne.label}`}
+                aria-label={newRow ? "Colonne à ajouter" : `Colonne ${column.label}`}
               />
               <NumberInput
                 size="xs"
-                radius={ARRONDI}
-                disabled={nouvelle}
+                radius={ROUNDING}
+                disabled={newRow}
                 w={100}
                 placeholder="Auto"
                 suffix=" px"
-                min={LARGEUR_MIN}
+                min={WIDTH_MIN}
                 max={1200}
                 allowDecimal={false}
                 allowNegative={false}
-                aria-label={`Largeur de la colonne ${colonne.label}`}
-                value={entree.largeur ?? ""}
-                onChange={(valeur) => changerLargeur(rang, valeur)}
-                onFocus={() => setSaisie(rang)}
-                onBlur={() => setSaisie(null)}
-                styles={saisie === rang ? { input: STYLE_SAISIE } : undefined}
+                aria-label={`Largeur de la colonne ${column.label}`}
+                value={entry.largeur ?? ""}
+                onChange={(value) => changeWidth(rank, value)}
+                onFocus={() => setInput(rank)}
+                onBlur={() => setInput(null)}
+                styles={input === rank ? { input: INPUT_STYLE } : undefined}
               />
             </Group>
           );
@@ -308,14 +308,14 @@ export default function ChampsColonnes({
       </Stack>
 
       {/* Au plus près de la liste qu'il allonge. */}
-      <AddButton label="Ajouter une colonne" onClick={ajouter} mt={4} />
+      <AddButton label="Ajouter une colonne" onClick={add} mt={4} />
 
       {menu && (
         <PointMenu position={menu.position} onClose={() => setMenu(null)}>
           <Menu.Item
             color={RED}
             leftSection={<IconTrash size={16} />}
-            onClick={() => retirer(menu.rang)}
+            onClick={() => remove(menu.rank)}
           >
             Supprimer
           </Menu.Item>

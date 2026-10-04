@@ -4,10 +4,10 @@
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../env.js";
 import {
-  aAcces,
-  dansSonWorkspace,
-  droitsParametrage,
-  peutGererWorkspaces,
+  hasAccess,
+  inOwnWorkspace,
+  settingsRights,
+  canManageWorkspaces,
   sessions,
   users,
 } from "../repositories/users.js";
@@ -27,13 +27,13 @@ declare global {
   }
 }
 
-const jetonDe = (req: Request): string | null => {
+const tokenOf = (req: Request): string | null => {
   const header = req.get("authorization") ?? "";
   return header.startsWith("Bearer ") ? header.slice(7) : null;
 };
 
 export const requireAuth = (req: Request, _res: Response, next: NextFunction): void => {
-  const token = jetonDe(req);
+  const token = tokenOf(req);
   const session = token ? sessions.byToken.get(token) : undefined;
 
   if (!session || !token) throw new HttpError(401, "Authentification requise");
@@ -41,17 +41,17 @@ export const requireAuth = (req: Request, _res: Response, next: NextFunction): v
   // Une session oubliée finit par se fermer. « expires_at » est vide pour
   // celles ouvertes avant que les sessions expirent : la migration les a
   // laissées telles quelles, la première utilisation leur donne une date.
-  const maintenant = Date.now();
-  if (session.expires_at && Date.parse(session.expires_at) < maintenant) {
+  const currentTime = Date.now();
+  if (session.expires_at && Date.parse(session.expires_at) < currentTime) {
     sessions.close.run(token);
     throw new HttpError(401, "Session expirée");
   }
 
-  const compte = users.byId.get(session.user_id);
-  if (!compte) throw new HttpError(401, "Authentification requise");
+  const account = users.byId.get(session.user_id);
+  if (!account) throw new HttpError(401, "Authentification requise");
   // Un accès retiré depuis la connexion ferme la session à la requête
   // suivante, sans attendre qu'elle expire.
-  if (!aAcces(compte)) {
+  if (!hasAccess(account)) {
     sessions.close.run(token);
     throw new HttpError(401, "Votre accès à Milo a été retiré");
   }
@@ -59,18 +59,18 @@ export const requireAuth = (req: Request, _res: Response, next: NextFunction): v
   // Fenêtre glissante : la session repart pour un tour à chaque usage. On ne
   // réécrit pas la ligne à chaque requête — une fois par heure suffit à tenir
   // la fenêtre, et l'écriture est ce qui coûte.
-  const vuIlYA = session.last_seen_at ? maintenant - Date.parse(session.last_seen_at) : Infinity;
-  if (vuIlYA > 3_600_000) {
+  const seenAgo = session.last_seen_at ? currentTime - Date.parse(session.last_seen_at) : Infinity;
+  if (seenAgo > 3_600_000) {
     sessions.touch.run(
-      new Date(maintenant).toISOString(),
-      new Date(maintenant + env.sessionMaxIdleMs).toISOString(),
+      new Date(currentTime).toISOString(),
+      new Date(currentTime + env.sessionMaxIdleMs).toISOString(),
       token,
     );
   }
 
   // Ce qu'il voit et ce qu'il peut faire suivent son workspace : il doit en
   // être un qu'il a encore.
-  req.user = dansSonWorkspace(compte);
+  req.user = inOwnWorkspace(account);
   req.token = token;
   next();
 };
@@ -81,9 +81,9 @@ export const requireAuth = (req: Request, _res: Response, next: NextFunction): v
  * Paramétrage, y écrire le droit « Modifier ». Posé après `requireAuth`.
  */
 export const requireSettings = (req: Request, _res: Response, next: NextFunction): void => {
-  const droits = droitsParametrage(req.user);
-  if (!droits.view) throw new HttpError(403, "Réservé à qui peut voir le Paramétrage");
-  if (req.method !== "GET" && !droits.update) {
+  const rights = settingsRights(req.user);
+  if (!rights.view) throw new HttpError(403, "Réservé à qui peut voir le Paramétrage");
+  if (req.method !== "GET" && !rights.update) {
     throw new HttpError(403, "Réservé à qui peut modifier le Paramétrage");
   }
   next();
@@ -106,7 +106,7 @@ export const requireSettingsToWrite = (req: Request, res: Response, next: NextFu
  * porte toute la base, secret d'application compris.
  */
 export const requireSettingsUpdate = (req: Request, _res: Response, next: NextFunction): void => {
-  if (!droitsParametrage(req.user).update) {
+  if (!settingsRights(req.user).update) {
     throw new HttpError(403, "Réservé à qui peut modifier le Paramétrage");
   }
   next();
@@ -117,7 +117,7 @@ export const requireSettingsUpdate = (req: Request, _res: Response, next: NextFu
  * un workspace. Posé après `requireAuth`.
  */
 export const requireWorkspaces = (req: Request, _res: Response, next: NextFunction): void => {
-  if (!peutGererWorkspaces(req.user)) {
+  if (!canManageWorkspaces(req.user)) {
     throw new HttpError(403, "Réservé à qui peut gérer les workspaces");
   }
   next();

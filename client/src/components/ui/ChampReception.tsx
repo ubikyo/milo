@@ -4,19 +4,19 @@ import { useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import { useReferences } from "../../lib/references";
 import { RED } from "../../themes/colors";
-import { avec } from "../../widgets/types";
+import { withField } from "../../widgets/types";
 import type { IndicatorConfigProps } from "../../indicators/types";
 import type { Id } from "@milo/shared";
 import AddButton from "./AddButton";
 import {
-  ARRONDI,
-  ListeVide,
-  RETRAIT_LIGNE,
-  RETRAIT_NOM,
-  STYLE_SAISIE,
-  styleLigne,
+  ROUNDING,
+  EmptyList,
+  ROW_INSET,
+  NAME_INSET,
+  INPUT_STYLE,
+  rowStyle,
 } from "./LignesDuTiroir";
-import PointMenu, { positionDuMenu, type PointMenuPosition } from "./PointMenu";
+import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
 
 // Ce qu'une liste reçoit du dehors : les adresses e-mail d'où arrivent ses
 // tickets, les tags d'agent GLPI d'où arrivent ses postes. Chacun va à l'un
@@ -30,38 +30,38 @@ import PointMenu, { positionDuMenu, type PointMenuPosition } from "./PointMenu";
 // listes vides (ListeVide).
 
 /** Une réception : la valeur reçue, et le contexte où elle se range. */
-type Reception = Record<string, unknown> & { contexte?: number | null };
+type Inbox = Record<string, unknown> & { context?: number | null };
 
 /** La largeur du choix du contexte. */
-const LARGEUR_CONTEXTE = 170;
+const CONTEXT_WIDTH = 170;
 
-interface ChampReceptionProps extends IndicatorConfigProps {
+interface ReceptionFieldProps extends IndicatorConfigProps {
   /** La clé de la configuration qui garde la liste : « boites », « tags ». */
-  cle: string;
+  key: string;
   /** Le champ de chaque entrée qui porte la valeur reçue : « email », « tag ». */
-  champ: string;
+  field: string;
   label: string;
   /** Ce que le libellé explique, dessous. */
   description?: ReactNode;
   /** L'invite du champ de saisie : « Adresse e-mail », « Tag de l'agent ». */
   placeholder: string;
   /** Le libellé du bouton d'ajout : « Ajouter une adresse e-mail ». */
-  ajouter: string;
+  add: string;
   /** L'icône et le message de la liste vide. */
-  icone: ComponentType<{ size?: number; color?: string }>;
-  vide: string;
+  icon: ComponentType<{ size?: number; color?: string }>;
+  empty: string;
   /** Les valeurs déjà connues, proposées à la saisie. */
   suggestions?: string[];
   /** Ce que la ligne montre au bout, d'après sa valeur — l'état d'une adresse. */
-  etat?: (valeur: string) => ReactNode;
+  state?: (value: string) => ReactNode;
   /** La valeur telle qu'elle se range : une adresse sans espaces, par exemple. */
-  normaliser?: (valeur: string) => string;
+  normalizeValue?: (value: string) => string;
 }
 
 /** Les réceptions que la configuration garde. */
-export const receptionsDe = (config: unknown, cle: string): Reception[] => {
-  const liste = (config as Record<string, unknown> | null)?.[cle];
-  return Array.isArray(liste) ? (liste as Reception[]) : [];
+export const inboxesOf = (config: unknown, key: string): Inbox[] => {
+  const list = (config as Record<string, unknown> | null)?.[key];
+  return Array.isArray(list) ? (list as Inbox[]) : [];
 };
 
 /**
@@ -71,19 +71,19 @@ export const receptionsDe = (config: unknown, cle: string): Reception[] => {
  * boîte), et, dans un tableau qui a des contextes, un contexte qui existe
  * toujours — pas un ajouté depuis, ni un supprimé.
  */
-export const receptionsAProbleme = (
+export const inboxesWithProblem = (
   config: unknown,
-  cle: string,
-  champ: string,
-  contextes: Id[],
-  valide: (valeur: string) => boolean = (valeur) => valeur !== "",
+  key: string,
+  field: string,
+  contextOptions: Id[],
+  isValid: (value: string) => boolean = (value) => value !== "",
 ): boolean => {
-  const lignes = receptionsDe(config, cle);
-  if (lignes.length === 0) return true;
-  return lignes.some((l) => {
-    const valeur = typeof l[champ] === "string" ? (l[champ] as string).trim() : "";
-    if (!valide(valeur)) return true;
-    return contextes.length > 0 && (!l.contexte || !contextes.includes(l.contexte as Id));
+  const rows = inboxesOf(config, key);
+  if (rows.length === 0) return true;
+  return rows.some((l) => {
+    const value = typeof l[field] === "string" ? (l[field] as string).trim() : "";
+    if (!isValid(value)) return true;
+    return contextOptions.length > 0 && (!l.context || !contextOptions.includes(l.context as Id));
   });
 };
 
@@ -92,46 +92,46 @@ export const receptionsAProbleme = (
  * avec le contexte qui la reçoit. Se règle quand on pose la liste, et se
  * change ensuite dans son tiroir.
  */
-export default function ChampReception({
-  cle,
-  champ,
+export default function ReceptionField({
+  key,
+  field,
   label,
   description,
   placeholder,
-  ajouter,
-  icone,
-  vide,
+  add,
+  icon,
+  empty,
   suggestions = [],
-  etat,
-  normaliser = (valeur) => valeur,
+  state,
+  normalizeValue = (value) => value,
   config,
   onChange,
-}: ChampReceptionProps) {
+}: ReceptionFieldProps) {
   const { contexts } = useReferences();
-  const lignes = receptionsDe(config, cle);
-  const contextes = contexts.map((c) => ({ value: String(c.id), label: c.name }));
+  const rows = inboxesOf(config, key);
+  const contextOptions = contexts.map((c) => ({ value: String(c.id), label: c.name }));
   /** Le champ qui a le focus : il prend le fond du tiroir. */
-  const [saisie, setSaisie] = useState<string | null>(null);
+  const [input, setInput] = useState<string | null>(null);
   /** La ligne qu'on vient d'ajouter : sa valeur prend le focus. */
-  const [aRemplir, setARemplir] = useState<number | null>(null);
+  const [toFill, setToFill] = useState<number | null>(null);
   /**
    * La ligne dont les suggestions sont ouvertes. Elles attendent qu'on tape ou
    * qu'on clique dans le champ : la ligne ajoutée prend le focus sans les
    * déplier.
    */
-  const [suggere, setSuggere] = useState<number | null>(null);
-  const [menu, setMenu] = useState<{ rang: number; position: PointMenuPosition } | null>(null);
+  const [suggested, setSuggested] = useState<number | null>(null);
+  const [menu, setMenu] = useState<{ rank: number; position: PointMenuPosition } | null>(null);
 
-  const valeurDe = (l: Reception) => (typeof l[champ] === "string" ? (l[champ] as string) : "");
-  const poser = (suivantes: Reception[]) => onChange(avec(config, cle, suivantes));
-  const changer = (rang: number, modif: Partial<Reception>) =>
-    poser(lignes.map((l, i) => (i === rang ? { ...l, ...modif } : l)));
-  const retirer = (rang: number) => poser(lignes.filter((_, i) => i !== rang));
+  const valueFor = (l: Inbox) => (typeof l[field] === "string" ? (l[field] as string) : "");
+  const insertRow = (nextItems: Inbox[]) => onChange(withField(config, key, nextItems));
+  const change = (rank: number, change: Partial<Inbox>) =>
+    insertRow(rows.map((l, i) => (i === rank ? { ...l, ...change } : l)));
+  const remove = (rank: number) => insertRow(rows.filter((_, i) => i !== rank));
 
   // La ligne neuve va au premier contexte : on le change sur la ligne.
-  const ajouterLigne = () => {
-    poser([...lignes, { [champ]: "", contexte: contexts[0]?.id ?? null }]);
-    setARemplir(lignes.length);
+  const addRow = () => {
+    insertRow([...rows, { [field]: "", context: contexts[0]?.id ?? null }]);
+    setToFill(rows.length);
   };
 
   return (
@@ -140,84 +140,84 @@ export default function ChampReception({
       description={description}
       styles={description ? { description: { paddingBottom: 10 } } : undefined}
     >
-      {lignes.length === 0 ? (
-        <ListeVide icon={icone} message={vide} />
+      {rows.length === 0 ? (
+        <EmptyList icon={icon} message={empty} />
       ) : (
         <Stack gap={1}>
-          {lignes.map((ligne, rang) => (
+          {rows.map((row, rank) => (
             <Group
-              key={rang}
+              key={rank}
               gap="sm"
               wrap="nowrap"
-              onContextMenu={(e) => setMenu({ rang, position: positionDuMenu(e) })}
+              onContextMenu={(e) => setMenu({ rank, position: menuPosition(e) })}
               // Sans poignée, la valeur se cale à gauche comme le contexte à
               // droite : à RETRAIT_LIGNE du bord de la ligne.
-              style={{ ...styleLigne(rang, lignes.length, false), paddingLeft: RETRAIT_LIGNE }}
+              style={{ ...rowStyle(rank, rows.length, false), paddingLeft: ROW_INSET }}
             >
               <Autocomplete
                 size="sm"
-                radius={ARRONDI}
+                radius={ROUNDING}
                 style={{ flex: 1, minWidth: 0 }}
                 styles={{
                   input: {
                     height: "var(--input-height-xs)",
                     minHeight: "var(--input-height-xs)",
-                    paddingLeft: RETRAIT_NOM,
+                    paddingLeft: NAME_INSET,
                     borderWidth: 0,
-                    ...(saisie === `${rang}-valeur`
-                      ? STYLE_SAISIE
+                    ...(input === `${rank}-valeur`
+                      ? INPUT_STYLE
                       : { backgroundColor: "transparent" }),
                   },
                 }}
                 placeholder={placeholder}
                 aria-label={placeholder}
                 data={suggestions}
-                value={valeurDe(ligne)}
-                onChange={(valeur) => {
-                  changer(rang, { [champ]: normaliser(valeur) });
-                  setSuggere(rang);
+                value={valueFor(row)}
+                onChange={(value) => {
+                  change(rank, { [field]: normalizeValue(value) });
+                  setSuggested(rank);
                 }}
-                dropdownOpened={suggere === rang}
-                onClick={() => setSuggere(rang)}
-                onOptionSubmit={() => setSuggere(null)}
-                onDropdownClose={() => setSuggere(null)}
-                autoFocus={aRemplir === rang}
-                onFocus={() => setSaisie(`${rang}-valeur`)}
+                dropdownOpened={suggested === rank}
+                onClick={() => setSuggested(rank)}
+                onOptionSubmit={() => setSuggested(null)}
+                onDropdownClose={() => setSuggested(null)}
+                autoFocus={toFill === rank}
+                onFocus={() => setInput(`${rank}-valeur`)}
                 onBlur={() => {
-                  setSaisie(null);
-                  setARemplir(null);
-                  setSuggere(null);
+                  setInput(null);
+                  setToFill(null);
+                  setSuggested(null);
                   // Une ligne quittée sans valeur s'efface.
-                  if (!valeurDe(ligne).trim()) retirer(rang);
+                  if (!valueFor(row).trim()) remove(rank);
                 }}
               />
               {/* Un tableau sans contexte reçoit sans contexte : rien à choisir. */}
-              {contextes.length > 0 && (
+              {contextOptions.length > 0 && (
                 <Select
                   size="xs"
-                  radius={ARRONDI}
-                  w={LARGEUR_CONTEXTE}
+                  radius={ROUNDING}
+                  w={CONTEXT_WIDTH}
                   style={{ flexShrink: 0 }}
                   placeholder="Contexte"
                   aria-label="Contexte"
-                  data={contextes}
-                  value={ligne.contexte ? String(ligne.contexte) : null}
-                  onChange={(valeur) => changer(rang, { contexte: valeur ? Number(valeur) : null })}
+                  data={contextOptions}
+                  value={row.context ? String(row.context) : null}
+                  onChange={(value) => change(rank, { context: value ? Number(value) : null })}
                   allowDeselect={false}
                   comboboxProps={{ withinPortal: true }}
-                  onFocus={() => setSaisie(`${rang}-contexte`)}
-                  onBlur={() => setSaisie(null)}
-                  styles={saisie === `${rang}-contexte` ? { input: STYLE_SAISIE } : undefined}
+                  onFocus={() => setInput(`${rank}-contexte`)}
+                  onBlur={() => setInput(null)}
+                  styles={input === `${rank}-contexte` ? { input: INPUT_STYLE } : undefined}
                 />
               )}
-              {etat?.(valeurDe(ligne))}
+              {state?.(valueFor(row))}
             </Group>
           ))}
         </Stack>
       )}
 
       {/* Au plus près de la liste qu'il allonge. */}
-      <AddButton label={ajouter} onClick={ajouterLigne} mt={4} />
+      <AddButton label={add} onClick={addRow} mt={4} />
 
       {menu && (
         <PointMenu position={menu.position} onClose={() => setMenu(null)}>
@@ -225,7 +225,7 @@ export default function ChampReception({
             color={RED}
             leftSection={<IconTrash size={16} />}
             onClick={() => {
-              retirer(menu.rang);
+              remove(menu.rank);
               setMenu(null);
             }}
           >

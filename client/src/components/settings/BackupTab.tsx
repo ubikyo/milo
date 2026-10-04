@@ -6,26 +6,26 @@ import { backupFileName } from "@milo/shared";
 import { api } from "../../api";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import SuccessAlert from "../ui/SuccessAlert";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import type { BackupInfo, RestoreResult } from "@milo/shared";
 
 // Même colonne de libellés que les autres onglets des réglages.
 const LABEL_WIDTH = 170;
 
 /** Une taille en octets, dite comme on la lit : « 14,6 Mo ». */
-const poids = (octets: number): string => {
-  if (octets < 1024) return `${octets} o`;
-  const ko = octets / 1024;
-  if (ko < 1024) return `${ko.toFixed(0)} Ko`;
-  return `${(ko / 1024).toFixed(1).replace(".", ",")} Mo`;
+const weight = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} o`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(0)} Ko`;
+  return `${(kb / 1024).toFixed(1).replace(".", ",")} Mo`;
 };
 
-const ligne = (libelle: string, valeur: string) => (
+const row = (label: string, value: string) => (
   <Group gap="md" wrap="nowrap" align="baseline">
     <Text size="sm" fw={500} c="dimmed" w={LABEL_WIDTH} style={{ flexShrink: 0 }}>
-      {libelle}
+      {label}
     </Text>
-    <Text size="sm">{valeur}</Text>
+    <Text size="sm">{value}</Text>
   </Group>
 );
 
@@ -39,11 +39,11 @@ const ligne = (libelle: string, valeur: string) => (
  */
 export default function BackupTab() {
   const [info, setInfo] = useState<BackupInfo | null>(null);
-  const [aRestaurer, setARestaurer] = useState<File | null>(null);
-  const [resultat, setResultat] = useState<RestoreResult | null>(null);
+  const [toRestore, setToRestore] = useState<File | null>(null);
+  const [result, setResult] = useState<RestoreResult | null>(null);
   // Laquelle des deux opérations est en cours : chacune a son bouton, et
   // aucune des deux ne doit laisser croire que l'autre travaille.
-  const [enCours, setEnCours] = useState<
+  const [ongoing, setInProgress] = useState<
     "telechargement" | "restauration" | null
   >(null);
 
@@ -51,7 +51,7 @@ export default function BackupTab() {
     try {
       setInfo(await api.getBackupInfo());
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     }
   }, []);
 
@@ -59,38 +59,38 @@ export default function BackupTab() {
     reload();
   }, [reload]);
 
-  const telecharger = async () => {
-    setEnCours("telechargement");
+  const download = async () => {
+    setInProgress("telechargement");
     try {
       const archive = await api.downloadBackup();
       // Le navigateur n'enregistre un fichier que si un lien est cliqué : on
       // en fabrique un le temps du clic, et l'adresse est rendue ensuite.
       const url = URL.createObjectURL(archive);
-      const lien = document.createElement("a");
-      lien.href = url;
-      lien.download = backupFileName();
-      lien.click();
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = backupFileName();
+      link.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
-      setEnCours(null);
+      setInProgress(null);
     }
   };
 
-  const restaurer = async () => {
-    if (!aRestaurer) return;
-    const archive = aRestaurer;
-    setARestaurer(null);
-    setResultat(null);
-    setEnCours("restauration");
+  const restore = async () => {
+    if (!toRestore) return;
+    const archive = toRestore;
+    setToRestore(null);
+    setResult(null);
+    setInProgress("restauration");
     try {
-      setResultat(await api.restoreBackup(archive));
+      setResult(await api.restoreBackup(archive));
       await reload();
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
-      setEnCours(null);
+      setInProgress(null);
     }
   };
 
@@ -100,12 +100,12 @@ export default function BackupTab() {
       <Stack gap="xs">
         {info && (
           <>
-            {ligne("Base de données", poids(info.database_size))}
-            {ligne(
+            {row("Base de données", weight(info.database_size))}
+            {row(
               "Fichiers déposés",
-              `${info.media_count} fichier${info.media_count > 1 ? "s" : ""} — ${poids(info.media_size)}`,
+              `${info.media_count} fichier${info.media_count > 1 ? "s" : ""} — ${weight(info.media_size)}`,
             )}
-            {ligne(
+            {row(
               "Dernière restauration",
               info.last_restore
                 ? dayjs(info.last_restore).format("DD/MM/YYYY HH:mm")
@@ -118,9 +118,9 @@ export default function BackupTab() {
           <Button
             color="teal"
             leftSection={<IconDownload size={16} />}
-            onClick={telecharger}
-            loading={enCours === "telechargement"}
-            disabled={enCours === "restauration"}
+            onClick={download}
+            loading={ongoing === "telechargement"}
+            disabled={ongoing === "restauration"}
           >
             Télécharger la sauvegarde
           </Button>
@@ -135,16 +135,16 @@ export default function BackupTab() {
         </Title>
 
         <Group mt="xs">
-          <FileButton onChange={setARestaurer} accept=".gz,application/gzip">
+          <FileButton onChange={setToRestore} accept=".gz,application/gzip">
             {(props) => (
               <Button
                 {...props}
                 variant="default"
                 leftSection={<IconUpload size={16} />}
-                loading={enCours === "restauration"}
-                disabled={enCours === "telechargement"}
+                loading={ongoing === "restauration"}
+                disabled={ongoing === "telechargement"}
               >
-                {enCours === "restauration"
+                {ongoing === "restauration"
                   ? "Restauration en cours…"
                   : "Choisir une sauvegarde…"}
               </Button>
@@ -152,12 +152,12 @@ export default function BackupTab() {
           </FileButton>
         </Group>
 
-        {resultat && (
+        {result && (
           <SuccessAlert mt="xs">
             <Text size="sm">
-              Restauration effectuée : {resultat.tables} tables, {resultat.rows}{" "}
-              lignes et {resultat.medias} fichier
-              {resultat.medias > 1 ? "s" : ""} remis en place.
+              Restauration effectuée : {result.tables} tables, {result.rows}{" "}
+              lignes et {result.media} fichier
+              {result.media > 1 ? "s" : ""} remis en place.
             </Text>
             <Button size="xs" mt="sm" onClick={() => window.location.reload()}>
               Recharger Milo
@@ -167,13 +167,13 @@ export default function BackupTab() {
       </Stack>
 
       <DeleteConfirmModal
-        opened={aRestaurer !== null}
-        onClose={() => setARestaurer(null)}
-        onConfirm={restaurer}
+        opened={toRestore !== null}
+        onClose={() => setToRestore(null)}
+        onConfirm={restore}
         title="Restaurer la sauvegarde"
         message={
           <>
-            « {aRestaurer?.name} » va remplacer l'intégralité du contenu de
+            « {toRestore?.name} » va remplacer l'intégralité du contenu de
             Milo. Tout ce qui a été créé ou modifié depuis cette sauvegarde sera
             perdu, pour vous comme pour les autres personnes connectées. Cette
             action est irréversible.

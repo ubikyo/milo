@@ -9,43 +9,43 @@ import {
 } from "@mantine/core";
 import { IconAlertTriangle, IconCheck, IconCopy } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
-import { widgetDeTableau } from "../../board-widgets";
-import { useAccesWidget } from "../../lib/droits";
+import { boardWidget } from "../../board-widgets";
+import { useWidgetAccess } from "../../lib/droits";
 import {
-  apercu,
-  decoder,
-  dispositionDe,
+  preview,
+  decode,
+  layoutOf,
   encoder,
-  type ApercuImport,
+  type ImportPreview,
 } from "../../lib/disposition";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import { RED } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
-import BoutonFermer from "./BoutonFermer";
+import CloseButton from "./BoutonFermer";
 import type {
   BoardWidget,
-  DispositionExportee,
+  ExportedLayout,
   IndicatorSection,
 } from "@milo/shared";
 
-interface DispositionModalProps {
+interface LayoutModalProps {
   /** « export » montre le texte à transmettre, « import » attend celui qu'on a reçu. */
   mode: "export" | "import" | null;
   onClose: () => void;
   /** La structure regardée : ce qui s'exporte, ce que l'import remplace. */
   sections: IndicatorSection[];
   widgets: BoardWidget[];
-  onImport: (disposition: DispositionExportee) => Promise<void>;
+  onImport: (layout: ExportedLayout) => Promise<void>;
 }
 
 /** L'export et l'import de la disposition du tableau ouvert. */
-export default function DispositionModal({
+export default function LayoutModal({
   mode,
   onClose,
   sections,
   widgets,
   onImport,
-}: DispositionModalProps) {
+}: LayoutModalProps) {
   return (
     <Modal
       opened={mode !== null}
@@ -80,22 +80,22 @@ function Export({
   widgets: BoardWidget[];
   onClose: () => void;
 }) {
-  const [texte, setTexte] = useState("");
-  const [copie, setCopie] = useState(false);
+  const [text, setText] = useState("");
+  const [copy, setCopied] = useState(false);
 
   useEffect(() => {
-    let actif = true;
-    void encoder(dispositionDe(sections, widgets)).then(
-      (t) => actif && setTexte(t),
+    let active = true;
+    void encoder(layoutOf(sections, widgets)).then(
+      (t) => active && setText(t),
     );
     return () => {
-      actif = false;
+      active = false;
     };
   }, [sections, widgets]);
 
-  const copier = async () => {
-    await navigator.clipboard.writeText(texte);
-    setCopie(true);
+  const copyLayout = async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
   };
 
   return (
@@ -108,7 +108,7 @@ function Export({
           {widgets.length > 1 ? "s" : ""}.
         </Text>
         <Textarea
-          value={texte}
+          value={text}
           readOnly
           // La même hauteur à l'export et à l'import : la fenêtre ne change pas
           // de taille d'un geste à l'autre.
@@ -124,14 +124,14 @@ function Export({
       </Stack>
       {/* Le même écart avant les boutons que dans les autres fenêtres. */}
       <Group justify="flex-end" mt={MODAL_PADDING}>
-        <BoutonFermer onClick={onClose} />
+        <CloseButton onClick={onClose} />
         <Button
           color="teal"
-          leftSection={copie ? <IconCheck size={16} /> : <IconCopy size={16} />}
-          onClick={() => void copier()}
-          disabled={!texte}
+          leftSection={copy ? <IconCheck size={16} /> : <IconCopy size={16} />}
+          onClick={() => void copyLayout()}
+          disabled={!text}
         >
-          {copie ? "Copié" : "Copier"}
+          {copy ? "Copié" : "Copier"}
         </Button>
       </Group>
     </>
@@ -144,53 +144,53 @@ function Import({
   onClose,
 }: {
   widgets: BoardWidget[];
-  onImport: (disposition: DispositionExportee) => Promise<void>;
+  onImport: (layout: ExportedLayout) => Promise<void>;
   onClose: () => void;
 }) {
-  const acces = useAccesWidget();
-  const [texte, setTexte] = useState("");
-  const [lu, setLu] = useState<
-    { apercu: ApercuImport } | { erreur: string } | null
+  const access = useWidgetAccess();
+  const [text, setText] = useState("");
+  const [readValue, setRead] = useState<
+    { apercu: ImportPreview } | { erreur: string } | null
   >(null);
-  const [envoi, setEnvoi] = useState(false);
+  const [sending, setSending] = useState(false);
 
   // Le texte collé se lit aussitôt : ce que l'import fera se dit avant.
   useEffect(() => {
-    if (!texte.trim()) return setLu(null);
-    let actif = true;
-    decoder(texte)
+    if (!text.trim()) return setRead(null);
+    let active = true;
+    decode(text)
       .then((d) => {
-        if (actif) {
-          setLu({
-            apercu: apercu(
+        if (active) {
+          setRead({
+            apercu: preview(
               d,
               widgets,
-              widgetDeTableau,
-              (w) => acces(w.kind) === "update",
+              boardWidget,
+              (w) => access(w.kind) === "update",
             ),
           });
         }
       })
-      .catch((e: unknown) => actif && setLu({ erreur: messageErreur(e) }));
+      .catch((e: unknown) => active && setRead({ erreur: errorMessage(e) }));
     return () => {
-      actif = false;
+      active = false;
     };
     // « acces » change à chaque rendu ; les droits, eux, ne bougent pas ici.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [texte, widgets]);
+  }, [text, widgets]);
 
-  const resultat = lu && "apercu" in lu ? lu.apercu : null;
+  const result = readValue && "apercu" in readValue ? readValue.apercu : null;
 
-  const importer = async () => {
-    if (!resultat) return;
-    setEnvoi(true);
+  const importSections = async () => {
+    if (!result) return;
+    setSending(true);
     try {
-      await onImport(resultat.disposition);
+      await onImport(result.layout);
       onClose();
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
-      setEnvoi(false);
+      setSending(false);
     }
   };
 
@@ -202,8 +202,8 @@ function Import({
           seront remplacés par cette nouvelle configuration.
         </Text>
         <Textarea
-          value={texte}
-          onChange={(e) => setTexte(e.currentTarget.value)}
+          value={text}
+          onChange={(e) => setText(e.currentTarget.value)}
           // La même hauteur à l'export et à l'import : la fenêtre ne change pas
           // de taille d'un geste à l'autre.
           rows={10}
@@ -215,36 +215,36 @@ function Import({
               fontSize: 12,
             },
           }}
-          error={lu && "erreur" in lu ? lu.erreur : undefined}
+          error={readValue && "erreur" in readValue ? readValue.erreur : undefined}
         />
-        {resultat && (
+        {result && (
           <Text size="sm">
-            {resultat.sections} section{resultat.sections > 1 ? "s" : ""} et{" "}
-            {resultat.widgets} widget{resultat.widgets > 1 ? "s" : ""} seront
+            {result.sections} section{result.sections > 1 ? "s" : ""} et{" "}
+            {result.widgets} widget{result.widgets > 1 ? "s" : ""} seront
             posés.
-            {resultat.ecartes > 0 &&
-              ` ${resultat.ecartes} widget${resultat.ecartes > 1 ? "s" : ""} de la disposition ne ${
-                resultat.ecartes > 1 ? "seront" : "sera"
-              } pas repris : inconnu${resultat.ecartes > 1 ? "s" : ""} de cette version, ou hors de vos droits.`}
+            {result.discarded > 0 &&
+              ` ${result.discarded} widget${result.discarded > 1 ? "s" : ""} de la disposition ne ${
+                result.discarded > 1 ? "seront" : "sera"
+              } pas repris : inconnu${result.discarded > 1 ? "s" : ""} de cette version, ou hors de vos droits.`}
           </Text>
         )}
-        {resultat && resultat.listesPerdues.length > 0 && (
+        {result && result.lostLists.length > 0 && (
           <Alert color={RED} icon={<IconAlertTriangle size={18} />} p="sm">
             <Text size="sm">
-              {resultat.listesPerdues.length} liste
-              {resultat.listesPerdues.length > 1 ? "s" : ""} de ce tableau (
+              {result.lostLists.length} liste
+              {result.lostLists.length > 1 ? "s" : ""} de ce tableau (
               {[
                 ...new Set(
-                  resultat.listesPerdues.map(
-                    (w) => widgetDeTableau(w.type)?.label,
+                  result.lostLists.map(
+                    (w) => boardWidget(w.type)?.label,
                   ),
                 ),
               ]
                 .filter(Boolean)
                 .join(", ")}
-              ) disparaîtr{resultat.listesPerdues.length > 1 ? "ont" : "a"} :
+              ) disparaîtr{result.lostLists.length > 1 ? "ont" : "a"} :
               les éléments qu'
-              {resultat.listesPerdues.length > 1
+              {result.lostLists.length > 1
                 ? "elles montrent"
                 : "elle montre"}{" "}
               seront supprimés s'ils ne paraissent dans aucune autre structure
@@ -255,12 +255,12 @@ function Import({
       </Stack>
       {/* Le même écart avant les boutons que dans les autres fenêtres. */}
       <Group justify="flex-end" mt={MODAL_PADDING}>
-        <BoutonFermer onClick={onClose}>Annuler</BoutonFermer>
+        <CloseButton onClick={onClose}>Annuler</CloseButton>
         <Button
-          color={resultat?.listesPerdues.length ? RED : "teal"}
-          onClick={() => void importer()}
-          disabled={!resultat}
-          loading={envoi}
+          color={result?.lostLists.length ? RED : "teal"}
+          onClick={() => void importSections()}
+          disabled={!result}
+          loading={sending}
         >
           Importer
         </Button>

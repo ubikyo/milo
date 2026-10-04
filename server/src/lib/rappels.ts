@@ -13,43 +13,43 @@
 // dans le passé — est marqué sans être signalé, pour ne pas déverser d'un coup
 // des alertes périmées.
 
-import { instantDuRappel } from "@milo/shared";
-import type { Id, Rappel } from "@milo/shared";
+import { reminderInstant } from "@milo/shared";
+import type { Id, Reminder } from "@milo/shared";
 import type { Recurrence } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
-import { signalerEcriture } from "../middleware/events.js";
-import { heureDeParis } from "./time.js";
+import { signalWrite } from "../middleware/events.js";
+import { parisTime } from "./time.js";
 import { env } from "../env.js";
-import { notifierRappel } from "./notify.js";
+import { notifyReminder } from "./notify.js";
 
 /** La relève de fond regarde chaque minute : c'est le pas du plus court rappel. */
-export const INTERVALLE_RAPPELS = 60 * 1000;
+export const REMINDERS_INTERVAL = 60 * 1000;
 
-const enAttente = selection<{
+const pending = selection<{
   id: Id;
   text: string;
   due_date: string;
-  reminder: Rappel;
+  reminder: Reminder;
 }>(
   `SELECT id, text, due_date, reminder FROM task_cards
    WHERE kind = 'card' AND due_date != '' AND reminder != '' AND reminded_for != due_date`,
 );
 
-const acteurs = selection<{ user_id: Id }>(
+const actors = selection<{ user_id: Id }>(
   "SELECT user_id FROM card_members WHERE card_id = ?",
 );
 
-const marquer = mutation("UPDATE task_cards SET reminded_for = ? WHERE id = ?");
+const mark = mutation("UPDATE task_cards SET reminded_for = ? WHERE id = ?");
 
-const cartesEchues = selection<{ id: Id; text: string; due_date: string }>(
+const overdueCards = selection<{ id: Id; text: string; due_date: string }>(
   `SELECT id, text, due_date FROM task_cards
    WHERE kind = 'card' AND due_date != '' AND overdue_for != due_date`,
 );
-const marquerCarte = mutation(
+const markCard = mutation(
   "UPDATE task_cards SET overdue_for = ? WHERE id = ?",
 );
 
-const elementsEchus = selection<{
+const overdueItems = selection<{
   id: Id;
   text: string;
   due_date: string;
@@ -64,21 +64,21 @@ const elementsEchus = selection<{
    WHERE checklist_items.done = 0 AND checklist_items.due_date != ''
      AND checklist_items.overdue_for != checklist_items.due_date`,
 );
-const membresElement = selection<{ user_id: Id }>(
+const itemMember = selection<{ user_id: Id }>(
   "SELECT user_id FROM checklist_item_members WHERE item_id = ?",
 );
-const marquerElement = mutation(
+const markItem = mutation(
   "UPDATE checklist_items SET overdue_for = ? WHERE id = ?",
 );
 
 /** Au-delà, un dépassement n'est plus une nouvelle : il est marqué sans être signalé. */
-const PEREMPTION = 24 * 60 * 60 * 1000;
-const JOUR = 24 * 60 * 60 * 1000;
+const EXPIRY = 24 * 60 * 60 * 1000;
+const DAY = 24 * 60 * 60 * 1000;
 
 /** Minuit à Paris, le lendemain de ce jour (« AAAA-MM-JJ »). */
-const lendemainAParis = (jour: string): Date | null => {
-  const minuit = heureDeParis(`${jour} 00:00`);
-  return minuit ? new Date(new Date(minuit).getTime() + JOUR) : null;
+const tomorrowInParis = (day: string): Date | null => {
+  const midnight = parisTime(`${day} 00:00`);
+  return midnight ? new Date(new Date(midnight).getTime() + DAY) : null;
 };
 
 /**
@@ -86,92 +86,92 @@ const lendemainAParis = (jour: string): Date | null => {
  * du client) : une échéance avec une heure l'est à cette heure ; sans heure —
  * minuit à Paris —, le jour entier compte, et elle ne l'est que le lendemain.
  */
-const depassementDeCarte = (iso: string): Date | null => {
+const cardOverdueAt = (iso: string): Date | null => {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
-  const heure = new Intl.DateTimeFormat("fr-FR", {
+  const hour = new Intl.DateTimeFormat("fr-FR", {
     timeZone: "Europe/Paris",
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
-  return heure === "00:00" ? new Date(date.getTime() + JOUR) : date;
+  return hour === "00:00" ? new Date(date.getTime() + DAY) : date;
 };
 
 /** « du 5 octobre 2026 », pour une date seule. */
-const leJour = (jour: string): string => {
-  const date = new Date(`${jour}T12:00:00Z`);
+const dayLabel = (day: string): string => {
+  const date = new Date(`${day}T12:00:00Z`);
   return `du ${new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" }).format(date)}`;
 };
 
 /** « le 5 octobre à 17:00 », à l'heure de Paris ; la date seule à minuit. */
-const quand = (iso: string): string => {
+const whenLabel = (iso: string): string => {
   const date = new Date(iso);
-  const partie = (options: Intl.DateTimeFormatOptions) =>
+  const part = (options: Intl.DateTimeFormatOptions) =>
     new Intl.DateTimeFormat("fr-FR", {
       timeZone: "Europe/Paris",
       ...options,
     }).format(date);
-  const heure = partie({ hour: "2-digit", minute: "2-digit" });
-  const jour = partie({ day: "numeric", month: "long", year: "numeric" });
-  return heure === "00:00" ? `du ${jour}` : `du ${jour} à ${heure}`;
+  const hour = part({ hour: "2-digit", minute: "2-digit" });
+  const day = part({ day: "numeric", month: "long", year: "numeric" });
+  return hour === "00:00" ? `du ${day}` : `du ${day} à ${hour}`;
 };
 
-export const envoyerLesRappels = (maintenant: Date = new Date()): void => {
-  for (const carte of enAttente.all()) {
-    const instant = instantDuRappel(carte.due_date, carte.reminder);
-    if (!instant || instant > maintenant) continue;
+export const sendReminders = (currentTime: Date = new Date()): void => {
+  for (const card of pending.all()) {
+    const instant = reminderInstant(card.due_date, card.reminder);
+    if (!instant || instant > currentTime) continue;
     // Une échéance déjà passée ne se rappelle plus : le rappel serait faux.
     // Elle est tout de même marquée, pour ne plus être relue.
-    if (new Date(carte.due_date) > maintenant) {
-      notifierRappel({
-        carte,
-        message: `vous rappelle l'échéance ${quand(carte.due_date)}`,
-        destinataires: acteurs.all(carte.id).map((a) => a.user_id),
+    if (new Date(card.due_date) > currentTime) {
+      notifyReminder({
+        card,
+        message: `vous rappelle l'échéance ${whenLabel(card.due_date)}`,
+        recipients: actors.all(card.id).map((a) => a.user_id),
         base: env.publicUrl,
       });
     }
-    marquer.run(carte.due_date, carte.id);
+    mark.run(card.due_date, card.id);
   }
 
-  for (const carte of cartesEchues.all()) {
-    const depasse = depassementDeCarte(carte.due_date);
-    if (!depasse || depasse > maintenant) continue;
-    if (maintenant.getTime() - depasse.getTime() < PEREMPTION) {
-      notifierRappel({
-        carte,
-        message: `signale que l'échéance ${quand(carte.due_date)} est dépassée`,
-        destinataires: acteurs.all(carte.id).map((a) => a.user_id),
+  for (const card of overdueCards.all()) {
+    const overdueAt = cardOverdueAt(card.due_date);
+    if (!overdueAt || overdueAt > currentTime) continue;
+    if (currentTime.getTime() - overdueAt.getTime() < EXPIRY) {
+      notifyReminder({
+        card,
+        message: `signale que l'échéance ${whenLabel(card.due_date)} est dépassée`,
+        recipients: actors.all(card.id).map((a) => a.user_id),
         base: env.publicUrl,
       });
     }
-    marquerCarte.run(carte.due_date, carte.id);
+    markCard.run(card.due_date, card.id);
   }
 
-  avancerLesRecurrences(maintenant);
+  advanceRecurrences(currentTime);
 
   // Un élément prévient ses personnes ; sans personne, les acteurs de la carte.
-  for (const element of elementsEchus.all()) {
-    const depasse = lendemainAParis(element.due_date);
-    if (!depasse || depasse > maintenant) continue;
-    if (maintenant.getTime() - depasse.getTime() < PEREMPTION) {
-      const siennes = membresElement.all(element.id).map((m) => m.user_id);
-      const nom = element.text ? `« ${element.text} »` : "sans libellé";
-      notifierRappel({
-        carte: { id: element.card_id, text: element.card_text },
-        message: `signale que l'élément ${nom} d'une checklist a dépassé sa date ${leJour(element.due_date)}`,
-        destinataires: siennes.length
-          ? siennes
-          : acteurs.all(element.card_id).map((a) => a.user_id),
+  for (const element of overdueItems.all()) {
+    const overdueAt = tomorrowInParis(element.due_date);
+    if (!overdueAt || overdueAt > currentTime) continue;
+    if (currentTime.getTime() - overdueAt.getTime() < EXPIRY) {
+      const ownIds = itemMember.all(element.id).map((m) => m.user_id);
+      const name = element.text ? `« ${element.text} »` : "sans libellé";
+      notifyReminder({
+        card: { id: element.card_id, text: element.card_text },
+        message: `signale que l'élément ${name} d'une checklist a dépassé sa date ${dayLabel(element.due_date)}`,
+        recipients: ownIds.length
+          ? ownIds
+          : actors.all(element.card_id).map((a) => a.user_id),
         base: env.publicUrl,
       });
     }
-    marquerElement.run(element.due_date, element.id);
+    markItem.run(element.due_date, element.id);
   }
 };
 
 // --- Récurrence --------------------------------------------------------------
 
-const recurrentes = selection<{
+const recurring = selection<{
   id: Id;
   due_date: string;
   start_date: string;
@@ -180,21 +180,21 @@ const recurrentes = selection<{
   `SELECT id, due_date, start_date, recurrence FROM task_cards
    WHERE kind = 'card' AND due_date != '' AND recurrence != ''`,
 );
-const reporter = mutation(
+const postpone = mutation(
   "UPDATE task_cards SET due_date = ?, start_date = ? WHERE id = ?",
 );
 
 /** Une heure de Paris, lue comme des chiffres : on compte au calendrier, pas en millisecondes. */
-interface Horloge {
+interface Clock {
   an: number;
-  mois: number;
-  jour: number;
-  heure: number;
+  months: number;
+  day: number;
+  hour: number;
   minute: number;
 }
 
-const horlogeDeParis = (iso: string): Horloge => {
-  const parties = Object.fromEntries(
+const parisClock = (iso: string): Clock => {
+  const dateParts = Object.fromEntries(
     new Intl.DateTimeFormat("en-GB", {
       timeZone: "Europe/Paris",
       year: "numeric",
@@ -208,64 +208,64 @@ const horlogeDeParis = (iso: string): Horloge => {
       .map((p) => [p.type, Number(p.value)]),
   );
   return {
-    an: parties["year"]!,
-    mois: parties["month"]!,
-    jour: parties["day"]!,
-    heure: parties["hour"]!,
-    minute: parties["minute"]!,
+    an: dateParts["year"]!,
+    months: dateParts["month"]!,
+    day: dateParts["day"]!,
+    hour: dateParts["hour"]!,
+    minute: dateParts["minute"]!,
   };
 };
 
 const deux = (n: number) => String(n).padStart(2, "0");
 
 /** Le jour d'une horloge, décalé au calendrier ; un 31 qui n'existe pas tombe au dernier du mois. */
-const decaler = (h: Horloge, jours: number, mois: number): Horloge => {
-  const cible = new Date(Date.UTC(h.an, h.mois - 1 + mois, 1));
-  const dernier = new Date(
-    Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth() + 1, 0),
+const shift = (h: Clock, days: number, months: number): Clock => {
+  const target = new Date(Date.UTC(h.an, h.months - 1 + months, 1));
+  const last = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
   ).getUTCDate();
   const d = new Date(
     Date.UTC(
-      cible.getUTCFullYear(),
-      cible.getUTCMonth(),
-      Math.min(h.jour, dernier) + jours,
+      target.getUTCFullYear(),
+      target.getUTCMonth(),
+      Math.min(h.day, last) + days,
     ),
   );
   return {
     ...h,
     an: d.getUTCFullYear(),
-    mois: d.getUTCMonth() + 1,
-    jour: d.getUTCDate(),
+    months: d.getUTCMonth() + 1,
+    day: d.getUTCDate(),
   };
 };
 
 /** Le pas d'une récurrence depuis ce jour : en jours, ou en mois. */
 const pas = (
   recurrence: Recurrence,
-  h: Horloge,
-): { jours: number; mois: number } => {
+  h: Clock,
+): { days: number; months: number } => {
   switch (recurrence) {
     case "daily":
-      return { jours: 1, mois: 0 };
+      return { days: 1, months: 0 };
     case "weekdays": {
       // Le vendredi mène au lundi, le samedi aussi.
-      const semaine = new Date(Date.UTC(h.an, h.mois - 1, h.jour)).getUTCDay();
-      return { jours: semaine === 5 ? 3 : semaine === 6 ? 2 : 1, mois: 0 };
+      const week = new Date(Date.UTC(h.an, h.months - 1, h.day)).getUTCDay();
+      return { days: week === 5 ? 3 : week === 6 ? 2 : 1, months: 0 };
     }
     case "weekly":
-      return { jours: 7, mois: 0 };
+      return { days: 7, months: 0 };
     case "monthly":
-      return { jours: 0, mois: 1 };
+      return { days: 0, months: 1 };
     case "yearly":
-      return { jours: 0, mois: 12 };
+      return { days: 0, months: 12 };
     default:
-      return { jours: 0, mois: 0 };
+      return { days: 0, months: 0 };
   }
 };
 
-const enIso = (h: Horloge): string | null =>
-  heureDeParis(
-    `${h.an}-${deux(h.mois)}-${deux(h.jour)} ${deux(h.heure)}:${deux(h.minute)}`,
+const toIso = (h: Clock): string | null =>
+  parisTime(
+    `${h.an}-${deux(h.months)}-${deux(h.day)} ${deux(h.hour)}:${deux(h.minute)}`,
   );
 
 /**
@@ -275,43 +275,43 @@ const enIso = (h: Horloge): string | null =>
  * longueur. Le jour d'origine est gardé : un « tous les mois » du 31 revient au
  * 31 quand le mois l'a.
  */
-const avancerLesRecurrences = (maintenant: Date): void => {
-  let avancees = 0;
-  for (const carte of recurrentes.all()) {
-    const depasse = depassementDeCarte(carte.due_date);
-    if (!depasse || depasse > maintenant) continue;
+const advanceRecurrences = (currentTime: Date): void => {
+  let advanced = 0;
+  for (const card of recurring.all()) {
+    const overdueAt = cardOverdueAt(card.due_date);
+    if (!overdueAt || overdueAt > currentTime) continue;
 
-    const origine = horlogeDeParis(carte.due_date);
-    const debut = carte.start_date
-      ? horlogeDeParis(`${carte.start_date}T12:00:00Z`)
+    const origin = parisClock(card.due_date);
+    const start = card.start_date
+      ? parisClock(`${card.start_date}T12:00:00Z`)
       : null;
-    let fin = origine;
-    let jours = 0;
-    let mois = 0;
-    let suivante: string | null = carte.due_date;
+    let end = origin;
+    let days = 0;
+    let months = 0;
+    let nextDueDate: string | null = card.due_date;
     // Mille pas au plus : une date absurde ne fait pas tourner la boucle sans fin.
     for (let i = 0; i < 1000; i += 1) {
-      const p = pas(carte.recurrence, fin);
-      if (!p.jours && !p.mois) break;
-      jours += p.jours;
-      mois += p.mois;
-      fin = decaler(origine, jours, mois);
-      suivante = enIso(fin);
-      const prochain = suivante ? depassementDeCarte(suivante) : null;
-      if (!prochain || prochain > maintenant) break;
+      const p = pas(card.recurrence, end);
+      if (!p.days && !p.months) break;
+      days += p.days;
+      months += p.months;
+      end = shift(origin, days, months);
+      nextDueDate = toIso(end);
+      const next = nextDueDate ? cardOverdueAt(nextDueDate) : null;
+      if (!next || next > currentTime) break;
     }
-    if (!suivante || suivante === carte.due_date) continue;
+    if (!nextDueDate || nextDueDate === card.due_date) continue;
 
-    const nouveauDebut = debut ? decaler(debut, jours, mois) : null;
-    reporter.run(
-      suivante,
-      nouveauDebut
-        ? `${nouveauDebut.an}-${deux(nouveauDebut.mois)}-${deux(nouveauDebut.jour)}`
+    const newStart = start ? shift(start, days, months) : null;
+    postpone.run(
+      nextDueDate,
+      newStart
+        ? `${newStart.an}-${deux(newStart.months)}-${deux(newStart.day)}`
         : "",
-      carte.id,
+      card.id,
     );
-    avancees += 1;
+    advanced += 1;
   }
   // Les tableaux ouverts montrent la nouvelle date sans attendre.
-  if (avancees) signalerEcriture("task-lists");
+  if (advanced) signalWrite("task-lists");
 };

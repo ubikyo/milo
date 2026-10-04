@@ -13,10 +13,10 @@ import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
 import { initialsOf } from "../ui/ActorAvatars";
-import { messageErreur, notifierErreur } from "../../lib/errors";
+import { errorMessage, notifyError } from "../../lib/errors";
 import type { PublicUser, View } from "@milo/shared";
 import type { ComponentType } from "react";
-import BoutonFermer from "../ui/BoutonFermer";
+import CloseButton from "../ui/BoutonFermer";
 
 type Scheme = "auto" | "light" | "dark";
 
@@ -88,30 +88,30 @@ export default function PreferencesModal({
 }: PreferencesModalProps) {
   const { colorScheme, setColorScheme } = useMantineColorScheme();
   // La vue d'ouverture ; vide, la première.
-  const [vue, setVue] = useState("");
+  const [view, setView] = useState("");
   const [theme, setTheme] = useState<Scheme>("auto");
   const [busy, setBusy] = useState(false);
 
   // Chaque ouverture repart de ce qui est en place.
   useEffect(() => {
     if (!opened) return;
-    setVue(user?.default_view ?? "");
+    setView(user?.default_view ?? "");
     setTheme((colorScheme ?? "auto") as Scheme);
     // Le thème n'est relu qu'à l'ouverture : le relire pendant qu'on choisit
     // effacerait le choix en cours.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, user]);
 
-  const enregistrer = async () => {
+  const save = async () => {
     setBusy(true);
     try {
       // La vue appartient au compte, et part au serveur ; le thème est celui
       // du navigateur, que Mantine mémorise.
-      if (vue !== (user?.default_view ?? "")) onUpdated(await api.updateMe({ default_view: vue }));
+      if (view !== (user?.default_view ?? "")) onUpdated(await api.updateMe({ default_view: view }));
       setColorScheme(theme);
       onClose();
     } catch (e) {
-      notifierErreur(messageErreur(e));
+      notifyError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -166,8 +166,8 @@ export default function PreferencesModal({
                 { value: "premiere", label: "La première" },
                 ...views.map((v) => ({ value: String(v.id), label: v.name })),
               ]}
-              value={views.some((v) => String(v.id) === vue) ? vue : "premiere"}
-              onChange={(value) => value && setVue(value === "premiere" ? "" : value)}
+              value={views.some((v) => String(v.id) === view) ? view : "premiere"}
+              onChange={(value) => value && setView(value === "premiere" ? "" : value)}
               allowDeselect={false}
               w={FIELD_WIDTH}
             />
@@ -202,8 +202,8 @@ export default function PreferencesModal({
         </Stack>
 
         <Group justify="flex-end" mt="md">
-          <BoutonFermer onClick={onClose} />
-          <Button color="teal" onClick={enregistrer} loading={busy}>
+          <CloseButton onClick={onClose} />
+          <Button color="teal" onClick={save} loading={busy}>
             Enregistrer
           </Button>
         </Group>

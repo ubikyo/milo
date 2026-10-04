@@ -25,77 +25,77 @@ import type {
 } from "../db/rows.js";
 import { now } from "../lib/time.js";
 import { cardComments } from "./cards.js";
-import { motDeCreation } from "./comments.js";
-import { prochaineReference } from "./references.js";
-import { contexteDuTableau, contexts } from "./contexts.js";
-import { cleDansLeTableau } from "./listes.js";
+import { creationNote } from "./comments.js";
+import { nextReference } from "./references.js";
+import { boardContext, contexts } from "./contexts.js";
+import { keyInBoard } from "./listes.js";
 import { reorderTaskCards, taskCards, taskLists } from "./tasks.js";
 
 // --- Lectures de la source -------------------------------------------------
 
-const cartesDeLaListe = selection<TaskCardRow>(
+const cardsOfList = selection<TaskCardRow>(
   "SELECT * FROM task_cards WHERE list_id = ? ORDER BY position, id",
 );
-const membresDeLaCarte = selection<{ user_id: Id }>(
+const cardMembers = selection<{ user_id: Id }>(
   "SELECT user_id FROM card_members WHERE card_id = ?",
 );
-const etiquettesDeLaCarte = selection<LabelRow>(
+const cardLabels = selection<LabelRow>(
   `SELECT labels.*
    FROM card_labels
    JOIN labels ON labels.id = card_labels.label_id
    WHERE card_labels.card_id = ?
    ORDER BY labels.position, labels.id`,
 );
-const checklistsDeLaCarte = selection<ChecklistRow>(
+const checklistsOfCard = selection<ChecklistRow>(
   "SELECT * FROM card_checklists WHERE card_id = ? ORDER BY position, id",
 );
-const elementsDeLaChecklist = selection<ChecklistItemRow>(
+const checklistItems = selection<ChecklistItemRow>(
   "SELECT * FROM checklist_items WHERE checklist_id = ? ORDER BY position, id",
 );
-const membresDeLElement = selection<{ user_id: Id }>(
+const itemMembers = selection<{ user_id: Id }>(
   "SELECT user_id FROM checklist_item_members WHERE item_id = ?",
 );
-const piecesDeLaCarte = selection<AttachmentRow>(
+const cardAttachments = selection<AttachmentRow>(
   "SELECT * FROM card_attachments WHERE card_id = ? ORDER BY position, id",
 );
 
 // --- Écritures de la copie -------------------------------------------------
 
-const creerListe = mutation(
+const createList = mutation(
   `INSERT INTO task_lists (board_id, name, position, color, list_key, created_at)
    VALUES (?, ?, ?, ?, ?, ?)`,
 );
 // Ni l'une ni l'autre ne passe par `taskCards.create`, qui ne les prend pas :
 // elles se posent juste après l'insertion.
-const poserDescription = mutation("UPDATE task_cards SET description = ? WHERE id = ?");
-const poserEcheance = mutation(
+const setDescription = mutation("UPDATE task_cards SET description = ? WHERE id = ?");
+const setDue = mutation(
   `UPDATE task_cards SET due_date = ?, start_date = ?, due_form = ?, recurrence = ?, reminder = ?
    WHERE id = ?`,
 );
-const lierMembre = mutation("INSERT OR IGNORE INTO card_members (card_id, user_id) VALUES (?, ?)");
-const lierEtiquette = mutation(
+const linkMember = mutation("INSERT OR IGNORE INTO card_members (card_id, user_id) VALUES (?, ?)");
+const linkLabel = mutation(
   "INSERT OR IGNORE INTO card_labels (card_id, label_id) VALUES (?, ?)",
 );
-const creerChecklist = mutation(
+const createChecklist = mutation(
   "INSERT INTO card_checklists (card_id, title, position, created_at) VALUES (?, ?, ?, ?)",
 );
-const creerElement = mutation(
+const createItem = mutation(
   `INSERT INTO checklist_items (checklist_id, text, done, due_date, position, created_at)
    VALUES (?, ?, ?, ?, ?, ?)`,
 );
-const lierMembreElement = mutation(
+const linkItemMember = mutation(
   "INSERT OR IGNORE INTO checklist_item_members (item_id, user_id) VALUES (?, ?)",
 );
 // La copie cite le même fichier que l'original : rien n'est recopié sur le
 // disque, et le fichier ne s'en va qu'avec la dernière ligne qui le cite
 // (repositories/attachments.ts).
 // Les couvertures se recopient de même, dans leur ordre.
-const poserRotation = mutation("UPDATE task_cards SET cover_interval = ? WHERE id = ?");
-const reprendreCouvertures = mutation(
+const setRotation = mutation("UPDATE task_cards SET cover_interval = ? WHERE id = ?");
+const carryCovers = mutation(
   `INSERT INTO card_covers (card_id, file, name, size, position, created_at)
    SELECT ?, file, name, size, position, ? FROM card_covers WHERE card_id = ?`,
 );
-const reprendrePiece = mutation(
+const carryAttachment = mutation(
   `INSERT INTO card_attachments (card_id, file, name, mime, size, user_id, created_at, position)
    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 );
@@ -106,15 +106,15 @@ const reprendrePiece = mutation(
 // au nom et à la couleur, et on la crée si elle manque. Sans cela, les cartes
 // arriveraient nues et on ne saurait plus ce qu'elles portaient.
 
-const etiquetteJumelle = selection<LabelRow>(
+const twinLabel = selection<LabelRow>(
   `SELECT * FROM labels
    WHERE board_id = ? AND name = ? COLLATE NOCASE AND color = ?
    ORDER BY position, id`,
 );
-const rangEtiquetteSuivant = scalar<{ next: number }>(
+const nextLabelRank = scalar<{ next: number }>(
   "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM labels WHERE board_id = ?",
 );
-const creerEtiquette = mutation(
+const createLabel = mutation(
   "INSERT INTO labels (board_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?)",
 );
 
@@ -122,26 +122,26 @@ const creerEtiquette = mutation(
  * L'étiquette du tableau d'accueil qui correspond à celle-ci. Dans le tableau
  * d'origine, c'est elle-même ; ailleurs, sa jumelle, créée au besoin.
  */
-const etiquetteCorrespondante = (
+const matchingLabel = (
   label: LabelRow,
-  boardCible: Id,
+  targetBoard: Id,
   cache: Map<Id, Id>,
   timestamp: string,
 ): Id => {
-  if (label.board_id === boardCible) return label.id;
+  if (label.board_id === targetBoard) return label.id;
 
-  const deja = cache.get(label.id);
-  if (deja !== undefined) return deja;
+  const already = cache.get(label.id);
+  if (already !== undefined) return already;
 
-  const jumelle = etiquetteJumelle.get(boardCible, label.name, label.color);
+  const twin = twinLabel.get(targetBoard, label.name, label.color);
   const id =
-    jumelle?.id ??
+    twin?.id ??
     Number(
-      creerEtiquette.run(
-        boardCible,
+      createLabel.run(
+        targetBoard,
         label.name,
         label.color,
-        rangEtiquetteSuivant(boardCible).next,
+        nextLabelRank(targetBoard).next,
         timestamp,
       ).lastInsertRowid,
     );
@@ -153,93 +153,93 @@ const etiquetteCorrespondante = (
 // --- Une carte --------------------------------------------------------------
 
 /** Où va la copie d'une carte, et ce qui l'accompagne. */
-interface CopieDeCarte {
-  listeId: Id;
-  rang: number;
+interface CardCopy {
+  listId: Id;
+  rank: number;
   /** Le tableau de la liste d'accueil : il tient les étiquettes. */
   boardId: Id;
   text: string;
   userId: Id;
   timestamp: string;
   /** Les étiquettes déjà appariées d'un tableau à l'autre. */
-  etiquettes: Map<Id, Id>;
+  labels: Map<Id, Id>;
 }
 
 /** Recopie une carte et tout ce qu'elle porte ; rend l'identifiant de la copie. */
-const copierCarte = (carte: TaskCardRow, copie: CopieDeCarte): Id => {
-  const { listeId, rang, boardId, text, userId, timestamp, etiquettes } = copie;
-  const separateur = carte.kind === "separator";
+const copyCard = (card: TaskCardRow, copy: CardCopy): Id => {
+  const { listId, rank, boardId, text, userId, timestamp, labels } = copy;
+  const separator = card.kind === "separator";
 
   // La référence n'est pas celle de l'original : deux cartes ne peuvent pas
   // porter le même repère. Un séparateur n'en a pas.
-  const numero = separateur ? 0 : prochaineReference();
-  const carteId = Number(
+  const phoneNumber = separator ? 0 : nextReference();
+  const cardId = Number(
     taskCards.create
       .run(
-        listeId,
+        listId,
         text,
-        rang,
-        numero,
-        carte.kind,
+        rank,
+        phoneNumber,
+        card.kind,
         // Dans son tableau, la copie garde le contexte de l'original ; ailleurs,
         // elle prend le premier du tableau d'accueil.
-        contexteDuTableau(
+        boardContext(
           boardId,
           undefined,
-          contexts.byId.get(carte.context_id)?.board_id === boardId ? carte.context_id : null,
+          contexts.byId.get(card.context_id)?.board_id === boardId ? card.context_id : null,
         ),
         timestamp,
       ).lastInsertRowid,
   );
 
-  if (carte.description) poserDescription.run(carte.description, carteId);
+  if (card.description) setDescription.run(card.description, cardId);
   // L'échéance suit la carte : une copie a la même date à tenir.
-  if (carte.due_date) {
-    poserEcheance.run(
-      carte.due_date,
-      carte.start_date,
-      carte.due_form,
-      carte.recurrence,
-      carte.reminder,
-      carteId,
+  if (card.due_date) {
+    setDue.run(
+      card.due_date,
+      card.start_date,
+      card.due_form,
+      card.recurrence,
+      card.reminder,
+      cardId,
     );
   }
-  poserRotation.run(carte.cover_interval, carteId);
+  setRotation.run(card.cover_interval, cardId);
 
-  for (const { user_id } of membresDeLaCarte.all(carte.id)) {
-    lierMembre.run(carteId, user_id);
+  for (const { user_id } of cardMembers.all(card.id)) {
+    linkMember.run(cardId, user_id);
   }
 
-  for (const label of etiquettesDeLaCarte.all(carte.id)) {
-    lierEtiquette.run(carteId, etiquetteCorrespondante(label, boardId, etiquettes, timestamp));
+  for (const label of cardLabels.all(card.id)) {
+    linkLabel.run(cardId, matchingLabel(label, boardId, labels, timestamp));
   }
 
-  reprendreCouvertures.run(carteId, timestamp, carte.id);
+  carryCovers.run(cardId, timestamp, card.id);
 
-  for (const piece of piecesDeLaCarte.all(carte.id)) {
-    reprendrePiece.run(
-      carteId,
-      piece.file,
-      piece.name,
-      piece.mime,
-      piece.size,
+  for (const attachment of cardAttachments.all(card.id)) {
+    carryAttachment.run(
+      cardId,
+      attachment.file,
+      attachment.name,
+      attachment.mime,
+      attachment.size,
       // La copie est déposée par celui qui copie, maintenant : c'est lui qui
       // l'apporte dans cette liste-ci.
       userId,
       timestamp,
-      piece.position,
+      attachment.position,
     );
   }
 
-  for (const checklist of checklistsDeLaCarte.all(carte.id)) {
+  for (const checklist of checklistsOfCard.all(card.id)) {
     const checklistId = Number(
-      creerChecklist.run(carteId, checklist.title, checklist.position, timestamp)
+      createChecklist.run(cardId, checklist.title, checklist.position, timestamp)
         .lastInsertRowid,
     );
 
-    for (const element of elementsDeLaChecklist.all(checklist.id)) {
-      const elementId = Number(
-        creerElement.run(
+    for (const element of checklistItems.all(checklist.id)) {
+      const itemId = Number(
+        createItem.run(
           checklistId,
           element.text,
           element.done,
@@ -248,8 +248,8 @@ const copierCarte = (carte: TaskCardRow, copie: CopieDeCarte): Id => {
           timestamp,
         ).lastInsertRowid,
       );
-      for (const { user_id } of membresDeLElement.all(element.id)) {
-        lierMembreElement.run(elementId, user_id);
+      for (const { user_id } of itemMembers.all(element.id)) {
+        linkItemMember.run(itemId, user_id);
       }
     }
   }
@@ -257,22 +257,22 @@ const copierCarte = (carte: TaskCardRow, copie: CopieDeCarte): Id => {
   // Le fil s'ouvre comme celui de n'importe quelle carte neuve : la copie a
   // bien été créée maintenant. Un séparateur n'a pas de fiche, donc pas de
   // fil.
-  if (!separateur) {
+  if (!separator) {
     cardComments.createSystem.run(
-      carteId,
+      cardId,
       null,
-      motDeCreation("Carte créée", timestamp, userId),
+      creationNote("Carte créée", timestamp, userId),
       timestamp,
       timestamp,
     );
   }
 
-  return carteId;
+  return cardId;
 };
 
 // --- La copie ---------------------------------------------------------------
 
-export interface CopieDeListe {
+export interface ListCopy {
   /** La liste d'origine. */
   sourceId: Id;
   /** Le tableau d'accueil ; ce peut être celui de la liste d'origine. */
@@ -289,8 +289,8 @@ export interface CopieDeListe {
  * Copie la liste et rend l'identifiant de la copie. Tout passe ou rien : une
  * erreur au milieu ne doit pas laisser une liste à moitié garnie.
  */
-export const copyTaskList = transaction((copie: CopieDeListe): Id => {
-  const { sourceId, boardId, name, color, userId } = copie;
+export const copyTaskList = transaction((copy: ListCopy): Id => {
+  const { sourceId, boardId, name, color, userId } = copy;
   const timestamp = now();
 
   // La copie se range à la fin du tableau d'accueil, comme une liste qu'on
@@ -299,24 +299,24 @@ export const copyTaskList = transaction((copie: CopieDeListe): Id => {
   // Dans son tableau, la copie reste dans le widget de l'original ; ailleurs,
   // elle va au premier widget « Tâches » du tableau d'accueil.
   const source = taskLists.byId.get(sourceId);
-  const cle = cleDansLeTableau(
+  const key = keyInBoard(
     boardId,
     "task.list",
     source?.board_id === boardId ? source.list_key : undefined,
   );
-  const listeId = Number(
-    creerListe.run(boardId, name, next, color, cle, timestamp).lastInsertRowid,
+  const listId = Number(
+    createList.run(boardId, name, next, color, key, timestamp).lastInsertRowid,
   );
 
   // Les étiquettes déjà appariées d'un tableau à l'autre, pour ne les chercher
   // — et ne les créer — qu'une fois par liste copiée.
-  const etiquettes = new Map<Id, Id>();
+  const labels = new Map<Id, Id>();
 
-  for (const [rang, carte] of cartesDeLaListe.all(sourceId).entries()) {
-    copierCarte(carte, { listeId, rang, boardId, text: carte.text, userId, timestamp, etiquettes });
+  for (const [rank, card] of cardsOfList.all(sourceId).entries()) {
+    copyCard(card, { listId, rank, boardId, text: card.text, userId, timestamp, labels });
   }
 
-  return listeId;
+  return listId;
 });
 
 /**
@@ -324,30 +324,30 @@ export const copyTaskList = transaction((copie: CopieDeListe): Id => {
  * l'identifiant de la copie : une base pour une carte voisine.
  */
 export const duplicateTaskCard = transaction((cardId: Id, userId: Id): Id => {
-  const carte = taskCards.byId.get(cardId);
-  if (!carte) throw new Error(`Carte ${cardId} introuvable`);
-  const liste = taskLists.byId.get(carte.list_id);
-  if (!liste) throw new Error(`Carte ${cardId} sans liste`);
+  const card = taskCards.byId.get(cardId);
+  if (!card) throw new Error(`Carte ${cardId} introuvable`);
+  const list = taskLists.byId.get(card.list_id);
+  if (!list) throw new Error(`Carte ${cardId} sans liste`);
 
-  const separateur = carte.kind === "separator";
-  const copieId = copierCarte(carte, {
-    listeId: liste.id,
-    rang: taskCards.nextPosition(liste.id).next,
-    boardId: liste.board_id,
+  const separator = card.kind === "separator";
+  const copyId = copyCard(card, {
+    listId: list.id,
+    rank: taskCards.nextPosition(list.id).next,
+    boardId: list.board_id,
     // Un séparateur tranche toujours au même endroit : son libellé reste.
-    text: separateur ? carte.text : `${carte.text} (copie)`,
+    text: separator ? card.text : `${card.text} (copie)`,
     userId,
     timestamp: now(),
-    etiquettes: new Map(),
+    labels: new Map(),
   });
 
   // La copie se range juste sous l'original, pas au bout de la liste.
-  const ordre = cartesDeLaListe
-    .all(liste.id)
+  const order = cardsOfList
+    .all(list.id)
     .map((c) => c.id)
-    .filter((id) => id !== copieId);
-  ordre.splice(ordre.indexOf(carte.id) + 1, 0, copieId);
-  reorderTaskCards(liste.id, ordre);
+    .filter((id) => id !== copyId);
+  order.splice(order.indexOf(card.id) + 1, 0, copyId);
+  reorderTaskCards(list.id, order);
 
-  return copieId;
+  return copyId;
 });

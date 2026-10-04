@@ -6,10 +6,10 @@ import { useState } from "react";
 import type { ComponentPropsWithoutRef, DragEvent, ReactNode } from "react";
 import { FIELD_ICON, RED } from "../../themes/colors";
 import AddButton from "../ui/AddButton";
-import { Poignee, deplacer } from "../ui/LignesDuTiroir";
+import { Handle, move } from "../ui/LignesDuTiroir";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import PointMenu, {
-  positionDuMenu,
+  menuPosition,
   type PointMenuPosition,
 } from "../ui/PointMenu";
 import type { Attachment, Id } from "@milo/shared";
@@ -23,13 +23,13 @@ dayjs.extend(relativeTime);
 // L'encart de gauche : la photo, ou l'extension. Assez large pour qu'une
 // vignette se reconnaisse, assez bas pour que deux lignes de texte tiennent à
 // côté sans que la ligne ne s'étire.
-const VIGNETTE_L = 64;
-const VIGNETTE_H = 48;
+const THUMBNAIL_W = 64;
+const THUMBNAIL_H = 48;
 
 /** L'extension d'un nom de fichier, en capitales : « CER », « PDF », « ZIP ». */
-const extension = (nom: string): string => {
-  const trouve = /\.([A-Za-z0-9]{1,5})$/.exec(nom.trim());
-  return trouve ? trouve[1]!.toUpperCase() : "FIC";
+const extension = (name: string): string => {
+  const found = /\.([A-Za-z0-9]{1,5})$/.exec(name.trim());
+  return found ? found[1]!.toUpperCase() : "FIC";
 };
 
 /**
@@ -37,54 +37,54 @@ const extension = (nom: string): string => {
  * que « il y a quelques secondes » ; passé une semaine, le relatif ne dit plus
  * rien d'utile et la date reprend la main.
  */
-const depuis = (iso: string): string => {
+const since = (iso: string): string => {
   const date = dayjs(iso);
   if (!date.isValid()) return "";
 
-  const secondes = dayjs().diff(date, "second");
-  if (secondes < 60) return "à l'instant";
-  if (secondes < 7 * 24 * 3600) return date.locale("fr").fromNow();
+  const seconds = dayjs().diff(date, "second");
+  if (seconds < 60) return "à l'instant";
+  if (seconds < 7 * 24 * 3600) return date.locale("fr").fromNow();
   return date.locale("fr").format("DD/MM/YYYY [à] HH:mm");
 };
 
 /** Une taille de fichier, à l'unité qui se lit : « 240 Ko », « 3,1 Mo ». */
-const taille = (octets: number): string => {
-  if (octets < 1024) return `${octets} o`;
-  if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} Ko`;
-  return `${(octets / (1024 * 1024)).toFixed(1).replace(".", ",")} Mo`;
+const size = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} Mo`;
 };
 
 /** Ce qu'une ligne montre d'un fichier : une pièce jointe, une couverture. */
-export type Fichier = Pick<Attachment, "url" | "name" | "created_at" | "size" | "is_image">;
+export type File = Pick<Attachment, "url" | "name" | "created_at" | "size" | "is_image">;
 
 // Toute la ligne ouvre le fichier dans un nouvel onglet ; « Supprimer » est
 // dans son menu contextuel, au clic droit, comme pour les checklists et les
 // cartes du tableau. Les images de couverture (CardCovers) se montrent sur la
 // même ligne, une poignée devant pour les ranger.
-interface LigneProps extends Omit<ComponentPropsWithoutRef<"a">, "onContextMenu"> {
-  piece: Fichier;
+interface RowProps extends Omit<ComponentPropsWithoutRef<"a">, "onContextMenu"> {
+  attachment: File;
   onContextMenu: (position: PointMenuPosition) => void;
   /** Posé avant la vignette : la poignée qui range les couvertures. */
-  poignee?: ReactNode;
+  handle?: ReactNode;
 }
 
-export function LigneFichier({ piece, onContextMenu, poignee, ...props }: LigneProps) {
+export function FileRow({ attachment, onContextMenu, handle, ...props }: RowProps) {
   return (
     <a
-      href={piece.url}
+      href={attachment.url}
       target="_blank"
       rel="noreferrer"
       className={classes.ligne}
-      aria-label={`Ouvrir ${piece.name}`}
-      onContextMenu={(e) => onContextMenu(positionDuMenu(e))}
+      aria-label={`Ouvrir ${attachment.name}`}
+      onContextMenu={(e) => onContextMenu(menuPosition(e))}
       {...props}
     >
       <Group gap="sm" wrap="nowrap" align="center">
-        {poignee}
+        {handle}
         {/* L'encart : la photo si c'en est une, sinon son extension au centre. */}
         <Box
-          w={VIGNETTE_L}
-          h={VIGNETTE_H}
+          w={THUMBNAIL_W}
+          h={THUMBNAIL_H}
           className={classes.vignette}
           style={{
             flexShrink: 0,
@@ -95,10 +95,10 @@ export function LigneFichier({ piece, onContextMenu, poignee, ...props }: LigneP
             justifyContent: "center",
           }}
         >
-          {piece.is_image ? (
+          {attachment.is_image ? (
             <img
-              src={piece.url}
-              alt={piece.name}
+              src={attachment.url}
+              alt={attachment.name}
               // Décodée à part : une grande photo ne fige pas la fiche.
               decoding="async"
               loading="lazy"
@@ -106,7 +106,7 @@ export function LigneFichier({ piece, onContextMenu, poignee, ...props }: LigneP
             />
           ) : (
             <Text size="sm" fw={700} c="dimmed">
-              {extension(piece.name)}
+              {extension(attachment.name)}
             </Text>
           )}
         </Box>
@@ -114,10 +114,10 @@ export function LigneFichier({ piece, onContextMenu, poignee, ...props }: LigneP
         {/* Le nom, et dessous le moment du dépôt. */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <Text size="sm" fw={500} truncate>
-            {piece.name}
+            {attachment.name}
           </Text>
           <Text size="xs" c="dimmed">
-            {depuis(piece.created_at)} · {taille(piece.size)}
+            {since(attachment.created_at)} · {size(attachment.size)}
           </Text>
         </div>
 
@@ -136,48 +136,48 @@ export function LigneFichier({ piece, onContextMenu, poignee, ...props }: LigneP
  * couvertures. L'ordre bouge à l'écran pendant le glisser et ne part qu'au
  * lâcher, s'il a changé. Rend ce qu'il faut poser sur chaque ligne.
  */
-export function useFichiersRanges<T extends { id: Id; name: string }>(
-  fichiers: T[],
+export function useOrderedFiles<T extends { id: Id; name: string }>(
+  files: T[],
   onReorder: (ids: Id[]) => void | Promise<void>,
-  actif: boolean,
+  active: boolean,
 ) {
-  const [ordre, setOrdre] = useState<T[] | null>(null);
-  const [tenue, setTenue] = useState<number | null>(null);
+  const [order, setOrder] = useState<T[] | null>(null);
+  const [held, setHeld] = useState<number | null>(null);
 
-  const lacher = () => {
-    const fin = ordre;
-    setTenue(null);
-    setOrdre(null);
-    if (fin && fin.some((f, i) => f.id !== fichiers[i]?.id)) void onReorder(fin.map((f) => f.id));
+  const release = () => {
+    const end = order;
+    setHeld(null);
+    setOrder(null);
+    if (end && end.some((f, i) => f.id !== files[i]?.id)) void onReorder(end.map((f) => f.id));
   };
 
-  const ligne = (fichier: T, rang: number) => ({
+  const row = (file: T, rank: number) => ({
     onDragOver: (e: DragEvent<HTMLAnchorElement>) => {
-      if (tenue === null || !ordre) return;
+      if (held === null || !order) return;
       e.preventDefault();
-      const suivant = deplacer(ordre, tenue, rang);
-      if (!suivant) return;
-      setTenue(rang);
-      setOrdre(suivant);
+      const next = move(order, held, rank);
+      if (!next) return;
+      setHeld(rank);
+      setOrder(next);
     },
     onDrop: (e: DragEvent<HTMLAnchorElement>) => e.preventDefault(),
-    style: { opacity: tenue === rang ? 0.5 : 1 },
-    poignee: actif && (
+    style: { opacity: held === rank ? 0.5 : 1 },
+    handle: active && (
       // Un clic sur la poignée ne doit pas ouvrir le fichier.
       <span onClick={(e) => e.preventDefault()} style={{ display: "flex" }}>
-        <Poignee
-          label={`Déplacer ${fichier.name || "le fichier"}`}
+        <Handle
+          label={`Déplacer ${file.name || "le fichier"}`}
           onDragStart={() => {
-            setTenue(rang);
-            setOrdre(fichiers);
+            setHeld(rank);
+            setOrder(files);
           }}
-          onDragEnd={lacher}
+          onDragEnd={release}
         />
       </span>
     ),
   });
 
-  return { affiches: ordre ?? fichiers, ligne };
+  return { displayed: order ?? files, row };
 }
 
 /**
@@ -195,7 +195,7 @@ interface CardAttachmentsProps {
   onPick: () => void;
   /** L'ordre complet, au lâcher d'une poignée. */
   onReorder: (ids: Id[]) => void | Promise<void>;
-  onDelete: (piece: Attachment) => void | Promise<void>;
+  onDelete: (attachment: Attachment) => void | Promise<void>;
 }
 
 export default function CardAttachments({
@@ -204,15 +204,15 @@ export default function CardAttachments({
   onReorder,
   onDelete,
 }: CardAttachmentsProps) {
-  const [aSupprimer, setASupprimer] = useState<Attachment | null>(null);
+  const [toDelete, setToDelete] = useState<Attachment | null>(null);
   const [menu, setMenu] = useState<{
-    piece: Attachment;
+    attachment: Attachment;
     position: PointMenuPosition;
   } | null>(null);
 
-  const pieces = attachments || [];
-  const { affiches, ligne } = useFichiersRanges(pieces, onReorder, true);
-  if (pieces.length === 0) return null;
+  const attachmentList = attachments || [];
+  const { displayed, row } = useOrderedFiles(attachmentList, onReorder, true);
+  if (attachmentList.length === 0) return null;
 
   return (
     // Le bloc porte son intitulé comme les autres champs de la fiche — le
@@ -223,12 +223,12 @@ export default function CardAttachments({
           tiroir se montre entre deux pièces. */}
       <Box>
         <Stack gap={2}>
-          {affiches.map((piece, rang) => (
-            <LigneFichier
-              key={piece.id}
-              piece={piece}
-              onContextMenu={(position) => setMenu({ piece, position })}
-              {...ligne(piece, rang)}
+          {displayed.map((attachment, rank) => (
+            <FileRow
+              key={attachment.id}
+              attachment={attachment}
+              onContextMenu={(position) => setMenu({ attachment, position })}
+              {...row(attachment, rank)}
             />
           ))}
         </Stack>
@@ -241,7 +241,7 @@ export default function CardAttachments({
             <Menu.Item
               color={RED}
               leftSection={<IconTrash size={16} />}
-              onClick={() => setASupprimer(menu.piece)}
+              onClick={() => setToDelete(menu.attachment)}
             >
               Supprimer
             </Menu.Item>
@@ -249,15 +249,15 @@ export default function CardAttachments({
         )}
 
         <DeleteConfirmModal
-          opened={aSupprimer !== null}
-          onClose={() => setASupprimer(null)}
+          opened={toDelete !== null}
+          onClose={() => setToDelete(null)}
           onConfirm={() => {
-            const piece = aSupprimer;
-            setASupprimer(null);
-            if (piece) void onDelete(piece);
+            const attachment = toDelete;
+            setToDelete(null);
+            if (attachment) void onDelete(attachment);
           }}
           title="Supprimer la pièce jointe"
-          message={<>Voulez-vous vraiment supprimer « {aSupprimer?.name} » ?</>}
+          message={<>Voulez-vous vraiment supprimer « {toDelete?.name} » ?</>}
         />
       </Box>
     </Input.Wrapper>

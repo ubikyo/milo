@@ -6,15 +6,15 @@ import type { InputHTMLAttributes } from "react";
 // lettres. Ici, un double invisible du texte, posé dans la même case de
 // grille, donne sa largeur au champ.
 
-type SaisieAjusteeProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value"> & {
+type AdjustedInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value"> & {
   value: string;
 };
 
-export default function SaisieAjustee({ value, style, ...props }: SaisieAjusteeProps) {
-  const commun = { gridArea: "1 / 1", font: "inherit", padding: 0, margin: 0 } as const;
+export default function AdjustedInput({ value, style, ...props }: AdjustedInputProps) {
+  const common = { gridArea: "1 / 1", font: "inherit", padding: 0, margin: 0 } as const;
   return (
     <span style={{ display: "inline-grid", verticalAlign: "top" }}>
-      <span aria-hidden style={{ ...commun, visibility: "hidden", whiteSpace: "pre" }}>
+      <span aria-hidden style={{ ...common, visibility: "hidden", whiteSpace: "pre" }}>
         {value || " "}
       </span>
       {/* « size » à 1 : sans lui, le champ réclame d'office la place de
@@ -24,7 +24,7 @@ export default function SaisieAjustee({ value, style, ...props }: SaisieAjusteeP
         size={1}
         value={value}
         style={{
-          ...commun,
+          ...common,
           width: "100%",
           minWidth: 0,
           color: "inherit",

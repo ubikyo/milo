@@ -11,10 +11,10 @@ import { badRequest } from "./http.js";
  * en silence : elle serait rangée telle quelle et la colonne n'aurait plus de
  * largeur lisible.
  */
-export const uniteLargeur = (valeur: unknown, defaut: SectionWidthUnit): SectionWidthUnit => {
-  if (valeur === undefined) return defaut;
-  if (!isSectionWidthUnit(valeur)) badRequest("Largeur inconnue");
-  return valeur as SectionWidthUnit;
+export const widthUnit = (value: unknown, defaultValue: SectionWidthUnit): SectionWidthUnit => {
+  if (value === undefined) return defaultValue;
+  if (!isSectionWidthUnit(value)) badRequest("Largeur inconnue");
+  return value as SectionWidthUnit;
 };
 
 /**
@@ -22,18 +22,18 @@ export const uniteLargeur = (valeur: unknown, defaut: SectionWidthUnit): Section
  * nombre positif sinon. Les pour-cent s'arrêtent à 100 — au-delà, la colonne
  * déborderait de la rangée.
  */
-export const valeurLargeur = (unite: SectionWidthUnit, valeur: unknown): number | null => {
-  if (unite === "auto") return null;
-  const nombre = Number(valeur);
-  if (!Number.isFinite(nombre) || nombre <= 0) badRequest("La largeur est requise");
-  if (unite === "percent" && nombre > 100) badRequest("Une largeur en % ne dépasse pas 100");
-  return nombre;
+export const widthValue = (unit: SectionWidthUnit, value: unknown): number | null => {
+  if (unit === "auto") return null;
+  const count = Number(value);
+  if (!Number.isFinite(count) || count <= 0) badRequest("La largeur est requise");
+  if (unit === "percent" && count > 100) badRequest("Une largeur en % ne dépasse pas 100");
+  return count;
 };
 
 /** Le rang demandé à la création d'une section, s'il est lisible. */
-export const rangDemande = (valeur: unknown): number | null => {
-  const rang = Number(valeur);
-  return valeur !== undefined && Number.isInteger(rang) && rang >= 0 ? rang : null;
+export const requestedRank = (value: unknown): number | null => {
+  const rank = Number(value);
+  return value !== undefined && Number.isInteger(rank) && rank >= 0 ? rank : null;
 };
 
 /**
@@ -41,11 +41,11 @@ export const rangDemande = (valeur: unknown): number | null => {
  * reste. Un nombre hors des bornes est refusé plutôt que ramené en silence :
  * ramené, le champ afficherait autre chose que ce qui vient d'être saisi.
  */
-export const ecartColonnes = (valeur: unknown, defaut: number): number => {
-  if (valeur === undefined || valeur === null || valeur === "") return defaut;
-  const nombre = Number(valeur);
-  if (!Number.isFinite(nombre) || nombre < 0 || nombre > SECTIONS_GAP_MAX) {
+export const columnsGap = (value: unknown, defaultValue: number): number => {
+  if (value === undefined || value === null || value === "") return defaultValue;
+  const count = Number(value);
+  if (!Number.isFinite(count) || count < 0 || count > SECTIONS_GAP_MAX) {
     badRequest(`L'écart des colonnes va de 0 à ${SECTIONS_GAP_MAX} pixels`);
   }
-  return Math.round(nombre);
+  return Math.round(count);
 };
