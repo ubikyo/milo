@@ -18,6 +18,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import sharp from "sharp";
 import { env } from "../env.js";
 
 /** Beyond this, the upload is refused. Stated in bytes, and in plain words for the message. */
@@ -63,6 +64,12 @@ export const isMediaAddress = (src: unknown): boolean =>
 // have to wonder whether it exists.
 fs.mkdirSync(env.mediaPath, { recursive: true });
 
+// The reduced copies of the images, made on demand (resizedMedia). They live
+// apart, in a subfolder: the orphan cleanup walks the media folder by name
+// and must not take one for an original.
+const VARIANTS = path.join(env.mediaPath, "variants");
+fs.mkdirSync(VARIANTS, { recursive: true });
+
 /** The extension of a received name, in lowercase, or nothing if it does not look like one. */
 const extensionOf = (name: string): string => {
   const found = /\.([A-Za-z0-9]{1,12})$/.exec(name.trim());
@@ -82,7 +89,84 @@ export const writeMedia = (content: Buffer, originalName: string): string => {
 
 export const deleteMedia = (file: string): void => {
   const relativePath = mediaPath(file);
-  if (relativePath) fs.rmSync(relativePath, { force: true });
+  if (!relativePath) return;
+  fs.rmSync(relativePath, { force: true });
+  deleteVariants(file);
+};
+
+/** The reduced copies of an original, which leave with it. */
+const deleteVariants = (file: string): void => {
+  for (const variant of fs.readdirSync(VARIANTS)) {
+    if (variant.startsWith(`${file}@`)) fs.rmSync(path.join(VARIANTS, variant), { force: true });
+  }
+};
+
+/**
+ * The widths a reduced copy can take. The width a page asks for is rounded
+ * up to one of them: a section resized pixel by pixel does not leave a new
+ * file on disk at each step, and two sections of nearly the same width share
+ * theirs.
+ */
+export const VARIANT_WIDTHS = [320, 480, 640, 800, 1024, 1280, 1600, 1920, 2560] as const;
+
+// The formats sharp rewrites without loss of meaning. A GIF would lose its
+// animation, a BMP is not read: they go out as is.
+const RESIZED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+
+/** The quality of the reduced copies, in WebP: invisible at screen size. */
+const VARIANT_QUALITY = 82;
+
+/** The copies being made: two requests for the same one wait for the same work. */
+const inProgress = new Map<string, Promise<string>>();
+
+/** The copies found useless — an original already narrow enough —: not measured again. */
+const asIs = new Set<string>();
+
+/**
+ * The path of a copy of an image reduced to the given width — rounded up to
+ * one of VARIANT_WIDTHS —, made on first request and kept. The original is
+ * never touched. Comes back null when the original should be served as is:
+ * a format not rewritten, a width it does not exceed, a file that cannot be
+ * read.
+ */
+export const resizedMedia = async (file: string, width: number): Promise<string | null> => {
+  const original = mediaPath(file);
+  if (!original || !RESIZED_TYPES.includes(inlineType(file) ?? "")) return null;
+  const step = VARIANT_WIDTHS.find((w) => w >= width) ?? VARIANT_WIDTHS[VARIANT_WIDTHS.length - 1]!;
+
+  const variant = path.join(VARIANTS, `${file}@${step}.webp`);
+  if (asIs.has(variant)) return null;
+  if (fs.existsSync(variant)) return variant;
+
+  let work = inProgress.get(variant);
+  if (!work) {
+    work = (async () => {
+      const image = sharp(original, { animated: true });
+      const { width: originalWidth } = await image.metadata();
+      // An image narrower than the step is already light enough: no copy.
+      if (!originalWidth || originalWidth <= step) {
+        asIs.add(variant);
+        return "";
+      }
+      // Written under a temporary name, then renamed: a request arriving
+      // in the meantime never reads a half-written file.
+      const temporary = `${variant}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+      await image
+        .rotate()
+        .resize({ width: step, withoutEnlargement: true })
+        .webp({ quality: VARIANT_QUALITY })
+        .toFile(temporary);
+      fs.renameSync(temporary, variant);
+      return variant;
+    })().finally(() => inProgress.delete(variant));
+    inProgress.set(variant, work);
+  }
+
+  try {
+    return (await work) || null;
+  } catch {
+    return null;
+  }
 };
 
 /** The public address of a media file. A single spelling, read on both sides. */
@@ -123,6 +207,12 @@ export const deleteOrphans = (cited: Set<string>): number => {
     if (fs.statSync(relativePath).mtimeMs > cutoff) continue;
     fs.rmSync(relativePath, { force: true });
     deleted += 1;
+  }
+
+  // The copies whose original is gone, by whatever path it left.
+  for (const variant of fs.readdirSync(VARIANTS)) {
+    const original = mediaPath(variant.split("@")[0]!);
+    if (!original || !fs.existsSync(original)) fs.rmSync(path.join(VARIANTS, variant), { force: true });
   }
 
   return deleted;

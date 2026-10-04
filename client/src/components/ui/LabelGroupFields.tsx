@@ -4,7 +4,7 @@ import { CopyPasteContext } from "./CopyPasteActions";
 import { DrawerRegistrationsContext } from "./IndicatorDrawer";
 import LabelGroupsEditor from "./LabelGroupsEditor";
 
-// The open board's labels, in the drawer of a "Tâches" or "Projets" widget —
+// The open board's labels, in the drawer of a "Tâches", "Projets" or "Assets" widget —
 // or Support's, shared by all, in that of the "Tickets" widget —, gathered in
 // their groups (LabelGroupsEditor). They are not widget settings
 // but board data: they go with "Sauvegarder", like the categories
@@ -20,6 +20,11 @@ const KINDS = {
     base: "/project-labels",
     scope:
       "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type projet, du tableau actuel et uniquement pour ce tableau.",
+  },
+  "asset-labels": {
+    base: "/asset-labels",
+    scope:
+      "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type asset, du tableau actuel. Chacune porte le nom d'un tag de l'agent GLPI : les postes de ce tag apparaissent dans le tableau.",
   },
   "support-labels": {
     base: "/support-labels",

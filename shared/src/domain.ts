@@ -129,18 +129,10 @@ export const MILO_ACTOR: Actor = { id: MILO_ACTOR_ID, name: "Milo", email: "", g
 // --- Contexts --------------------------------------------------------------
 
 /**
- * A context of a board: what the list at the top left offers. The
- * projects, cards, requests and machines of the board each
- * belong to one of its contexts, and leave with it. A board may have
- * none: its items have none either.
+ * A board's contexts are labels: the board chooses one label group by its
+ * name (shared, contexts.ts). Its tab offers the labels of that group;
+ * choosing one shows, in each list, what carries the label of that name.
  */
-export interface Context {
-  id: Id;
-  board_id: Id;
-  name: string;
-  position: number;
-  created_at: string;
-}
 
 /** What the context list shows for a board that has none. */
 export const NO_CONTEXT = "Aucun contexte";
@@ -216,12 +208,29 @@ export interface Board {
   id: Id;
   view_id: Id;
   name: string;
-  /** Its contexts, in order. */
-  contexts: Context[];
+  /**
+   * The label group that gives its contexts, by its name — or all of them
+   * (ALL_CONTEXT_GROUPS); null for none.
+   */
+  context_group: string | null;
+  /** The label groups it can choose: their names, each once, in order. */
+  context_group_options: string[];
+  /**
+   * Its contexts: the names of the labels of its context group, in order,
+   * each name once.
+   */
+  contexts: string[];
+  /**
+   * The same contexts under the name of their group, groups in order: what
+   * the list shows when the board takes all groups.
+   */
+  context_sections: { group: string; contexts: string[] }[];
+  /** The context groups of each of its lists, by list key; absent: none. */
+  context_groups: Record<string, Id[]>;
   /** The label of the "Tous les contextes" entry, which can be renamed. */
   all_contexts_label: string;
-  /** The context this account chose in this board; null for all. */
-  context_id: Id | null;
+  /** The context this account chose in this board — a label name; null for all. */
+  context: string | null;
   position: number;
   show_card_numbers: SqliteBool;
   /** Locked in this window: the client sets it, the server does not keep it. */
@@ -335,8 +344,6 @@ export interface Project {
   description: string;
   board_id: Id;
   category_id: Id;
-  /** The context of the board it belongs to; null if the board has none. */
-  context_id: Id | null;
   /** The list — the "Projets" widget — that shows it (shared, LIST_KEY). */
   list_key: string;
   /** The milestone type of its slider; none, the slider stays bare. */
@@ -346,7 +353,6 @@ export interface Project {
   created_at: string;
   updated_at: string;
   category_name: string;
-  context_name: string | null;
   actors: Actor[];
   labels: ProjectLabel[];
 }
@@ -430,8 +436,6 @@ export interface TaskCard {
    */
   number: number;
   kind: CardKind;
-  /** The context of the board it belongs to. */
-  context_id: Id | null;
   /**
    * Due date, in ISO 8601 with the time, or empty. Unlike that of a
    * checklist item, it carries a time: a card is due at
@@ -544,7 +548,6 @@ export interface TaskCardDetail {
   position: number;
   number: number;
   kind: CardKind;
-  context_id: Id | null;
   /** ISO 8601 with the time, or empty. See `TaskCard.due_date`. */
   due_date: string;
   /** See `TaskCard.start_date`. */
@@ -779,8 +782,6 @@ export interface SupportRequest {
   number: number;
   /** The board that shows it. */
   board_id: Id;
-  /** The context of the board it belongs to; null if the board has none. */
-  context_id: Id | null;
   /** The "Tickets" widget that shows it (shared, LIST_KEY). */
   list_key: string;
   /**
@@ -983,6 +984,8 @@ export const ACCESS_BLOCK_TYPES = [
   "link",
   "number",
   "clock",
+  "date",
+  "quote",
   "rss",
   "image",
   "weather",
@@ -1098,6 +1101,34 @@ export interface AccessWeather {
   daily: WeatherPoint[];
 }
 
+/**
+ * Where a Citation widget takes what it shows: quotes, or jokes. Each value
+ * is stored in the widget's configuration, so it never changes.
+ */
+export const QUOTE_SOURCES = [
+  { value: "quote", label: "Citation" },
+  { value: "joke", label: "Blague" },
+] as const;
+
+export type QuoteSource = (typeof QUOTE_SOURCES)[number]["value"];
+
+export const isQuoteSource = (value: unknown): value is QuoteSource =>
+  QUOTE_SOURCES.some((s) => s.value === value);
+
+/**
+ * What a Citation widget shows, as the server keeps it for the interval the
+ * widget sets: a quote with its author and its work, or a joke — its question
+ * in "text", its answer in "answer" when it comes in two parts.
+ */
+export interface AccessQuote {
+  source: QuoteSource;
+  text: string;
+  answer?: string;
+  author?: string;
+  /** The book, the film… with its year when known. */
+  work?: string;
+}
+
 /** An appointment of the person's Outlook calendar, read through Graph. */
 export interface AccessCalendarEvent {
   id: string;
@@ -1111,6 +1142,25 @@ export interface AccessCalendarEvent {
   show_as: string;
   /** The address of the appointment in Outlook. */
   url: string;
+  /** Whose calendar it comes from: their address; empty, the viewer's own. */
+  owner: string;
+}
+
+/** One of a person's Outlook calendars, as the Calendar widget offers it. */
+export interface AccessCalendarChoice {
+  id: string;
+  name: string;
+  /** Their main calendar. */
+  is_default: boolean;
+}
+
+/**
+ * What a Calendar widget shows over a period: the appointments of the
+ * calendars that could be read, and why the others could not.
+ */
+export interface AccessCalendar {
+  events: AccessCalendarEvent[];
+  errors: { owner: string; message: string }[];
 }
 
 /** An email address: its name and its address. */
@@ -1124,6 +1174,7 @@ export interface AccessMail {
   id: string;
   subject: string;
   from: MailAddress;
+  to: MailAddress[];
   /** ISO 8601, in UTC. */
   received_at: string;
   preview: string;
@@ -1131,15 +1182,37 @@ export interface AccessMail {
   has_attachments: boolean;
   /** "low", "normal" or "high". */
   importance: string;
+  /** Its Outlook categories. */
+  categories: string[];
+  /** Whose mailbox it comes from: their address; empty, the viewer's own. */
+  owner: string;
+  /** The name of the folder it sits in. */
+  folder: string;
 }
 
-/** A page of the inbox. */
+/**
+ * A page of the mailboxes a Mail widget reads, merged from most recent to
+ * oldest.
+ */
 export interface AccessMailPage {
   messages: AccessMail[];
-  /** True when the mailbox has more beyond this page. */
+  /** True when the mailboxes have more beyond this page. */
   more: boolean;
-  /** The unread ones of the inbox, given with the first page only. */
+  /** Where the next page starts: to send back as is. */
+  cursor: string;
+  /** The unread ones of the folders read, given with the first page only. */
   unread?: number;
+  /** The mailboxes that could not be read, and why — the others still are. */
+  errors: { owner: string; message: string }[];
+}
+
+/** One of a person's Outlook mail folders, as the Mail widget offers it. */
+export interface AccessMailFolder {
+  id: string;
+  /** Its path: "Boîte de réception / Clients". */
+  name: string;
+  /** Their inbox. */
+  is_default: boolean;
 }
 
 /** An attachment of an opened email: its content is requested separately. */
@@ -1151,7 +1224,6 @@ export interface AccessMailAttachment {
 
 /** An email opened in the drawer: its body, cleaned by the server, and the rest. */
 export interface AccessMailDetail extends AccessMail {
-  to: MailAddress[];
   cc: MailAddress[];
   /** The body, as cleaned HTML: embedded images are already in it. */
   html: string;
@@ -1184,14 +1256,17 @@ export interface Asset {
   id: Id;
   /** What the machine says about itself (HARDWARE/NAME). */
   name: string;
-  /** The board a machine list gets its tag from; null otherwise. */
+  /** The board whose asset labels name its tag; null otherwise. */
   board_id: Id | null;
-  /** The context that list gives it; null if it gives it none. */
-  context_id: Id | null;
   /** The "Assets" widget that shows it, the one that receives its tag; empty otherwise. */
   list_key: string;
-  /** The GLPI agent tag: what a machine list receives (widgets/asset/list.tsx). */
+  /**
+   * The GLPI agent tag: a board's asset label of the same name — case aside —
+   * brings the machine into its "Assets" list.
+   */
   tag: string;
+  /** The asset labels of its board named as its tag. */
+  labels: Label[];
   /**
    * The last person signed in on the machine, as the agent saw it:
    * the session open at the time of the inventory, or failing that the last

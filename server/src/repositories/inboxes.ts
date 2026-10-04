@@ -1,17 +1,16 @@
 // What widgets receive from outside: the support inboxes of a request list,
-// the agent tags of a workstation list. Each widget associates what it
-// receives with one of its board's contexts, in its configuration:
+// the agent tags of a workstation list. A request list states its inboxes in
+// its configuration, each with the Support label it sets on what arrives:
 //
-//   support.list : { "mailboxes": [{ "email": "support@…", "context_id": 12 }] }
-//   asset.list   : { "tags":      [{ "tag": "Arco Marketing", "context_id": 12 }] }
+//   support.list : { "mailboxes": [{ "email": "support@…", "label_id": 12 }] }
 //
-// An inbox received by two widgets goes to the first: the public structure's
-// first, the oldest next.
+// A workstation list receives the tags its board's asset labels name.
+//
+// An inbox received by two widgets goes to the first: the oldest.
 
 import { listKey } from "@milo/shared";
 import type { Id } from "@milo/shared";
 import { selection } from "../db/query.js";
-import { contexts } from "./contexts.js";
 import { optins, pair } from "./optins.js";
 
 interface ReceiverWidget {
@@ -26,17 +25,17 @@ const receivers = selection<ReceiverWidget>(
    ORDER BY w.id`,
 );
 
-/** What a widget receives, and the context where it files it. */
+/** What a widget receives, and the label it sets on it. */
 export interface Inbox {
   /** The address or tag, as the widget states it. */
   value: string;
   /** The board of the widget that receives it. */
   board_id: Id;
-  /** The context it gives it; null if it gives none. */
-  context_id: Id | null;
+  /** The Support label an inbox sets on its requests; null if it sets none. */
+  label_id: Id | null;
   /** The list key of the widget that receives it: its items carry it. */
   list: string;
-  /** The context's name, and its board's: where the inbox shows up. */
+  /** The label's name, and its board's: where the inbox shows up. */
   usage: string;
   /**
    * True when the widget wants the polled e-mails to leave the inbox (a
@@ -49,11 +48,26 @@ export interface Inbox {
 export const DELETION = "delete_after_import";
 
 const boardOf = selection<{ name: string }>("SELECT name FROM boards WHERE id = ?");
+const supportLabel = selection<{ id: Id; name: string }>(
+  "SELECT id, name FROM support_labels WHERE id = ?",
+);
+const assetLabelsOf = selection<{ name: string }>(
+  "SELECT name FROM asset_labels WHERE board_id = ? ORDER BY position, id",
+);
+
+/** A widget's configuration; null when it is unreadable. */
+const parsed = (config: string): Record<string, unknown> | null => {
+  try {
+    return JSON.parse(config) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+};
 
 /**
- * The inboxes of all widgets of a type, one per value — case does not matter.
- * Without a context — the board has none, or the one named no longer exists —,
- * what arrives has none either.
+ * The inboxes of all request lists, one per value — case does not matter.
+ * Without a label — none chosen, or the one named no longer exists —, what
+ * arrives receives none.
  */
 const inboxes = (
   type: string,
@@ -67,25 +81,20 @@ const inboxes = (
   const views = new Map<string, Inbox>();
   const all: Inbox[] = [];
   for (const widget of receivers.all(type)) {
-    let config: Record<string, unknown>;
-    try {
-      config = JSON.parse(widget.config) as Record<string, unknown>;
-    } catch {
-      continue;
-    }
+    const config = parsed(widget.config);
+    if (!config) continue;
     const list = Array.isArray(config[field]) ? (config[field] as Record<string, unknown>[]) : [];
     for (const entry of list) {
       const value = typeof entry?.[key] === "string" ? (entry[key] as string).trim() : "";
       if (!value || (uniquePerValue && views.has(value.toLowerCase()))) continue;
-      const found = entry.context_id ? contexts.byId.get(entry.context_id) : undefined;
-      const context = found?.board_id === widget.board_id ? found : undefined;
+      const label = entry.label_id ? supportLabel.get(entry.label_id) : undefined;
       const board = boardOf.get(widget.board_id)?.name ?? "";
       const inbox: Inbox = {
         value,
         board_id: widget.board_id,
-        context_id: context?.id ?? null,
+        label_id: label?.id ?? null,
         list: listKey(config),
-        usage: context ? `${context.name} (${board})` : board,
+        usage: label ? `${label.name} (${board})` : board,
         remove: config[DELETION] === true,
       };
       if (!keep(inbox)) continue;
@@ -125,9 +134,32 @@ export const receivedMailboxes = (): (Inbox & { confirmed_at: string })[] => {
   );
 };
 
-/** The agent tags that workstation lists receive. */
-export const receivedTags = (): Inbox[] => inboxes("asset.list", "tags", "tag");
+/**
+ * The agent tags that workstation lists receive: the names of their board's
+ * asset labels. A tag named on two boards goes to the oldest list.
+ */
+export const receivedTags = (): Inbox[] => {
+  const views = new Map<string, Inbox>();
+  for (const widget of receivers.all("asset.list")) {
+    const config = parsed(widget.config);
+    if (!config) continue;
+    const board = boardOf.get(widget.board_id)?.name ?? "";
+    for (const { name } of assetLabelsOf.all(widget.board_id)) {
+      const value = name.trim();
+      if (!value || views.has(value.toLowerCase())) continue;
+      views.set(value.toLowerCase(), {
+        value,
+        board_id: widget.board_id,
+        label_id: null,
+        list: listKey(config),
+        usage: board,
+        remove: false,
+      });
+    }
+  }
+  return [...views.values()];
+};
 
-/** The list and the context where a workstation of this tag goes; null if no list receives it. */
+/** The list where a workstation of this tag goes; null if no list receives it. */
 export const tagInbox = (tag: string): Inbox | null =>
   receivedTags().find((t) => t.value.toLowerCase() === tag.trim().toLowerCase()) ?? null;

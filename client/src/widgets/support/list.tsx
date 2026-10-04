@@ -6,7 +6,6 @@ import { useConfirmations } from "../../lib/confirmations";
 import { listKey } from "@milo/shared";
 import ConfigurationProblem from "../../components/ui/ConfigurationProblem";
 import { DRAWER_WIDTH } from "../../components/ui/IndicatorDrawer";
-import { useReferences } from "../../lib/references";
 import ColumnFields from "../../components/ui/ColumnFields";
 import LabelGroupFields from "../../components/ui/LabelGroupFields";
 import SupportRequestsList, {
@@ -16,9 +15,10 @@ import SupportRequestsList, {
 import type { IndicatorConfigProps, SupportIndicatorWidget } from "./types";
 
 /**
- * The list's settings: the addresses it receives requests from,
- * each to a board context and confirmed by its inbox, what it
- * does with the retrieved e-mails, then its columns, and Support's labels.
+ * The list's settings: the addresses it receives requests from, each with
+ * the label it sets and confirmed by its inbox,
+ * what it does with the retrieved e-mails, then its columns, and Support's
+ * labels.
  */
 function ListFields(props: IndicatorConfigProps) {
   return (
@@ -33,15 +33,12 @@ function ListFields(props: IndicatorConfigProps) {
 
 /** The list, or the prompt to review its settings when its inboxes do not hold. */
 function ListIndicator({ config }: { config: unknown }) {
-  const { contexts } = useReferences();
-  const ids = contexts.map((c) => c.id);
   const emails = inboxesOf(config, MAILBOXES).map((b) =>
     typeof b.email === "string" ? b.email : "",
   );
   const { isRead, confirmed } = useConfirmations(listKey(config), emails);
-  // Each inbox must have a readable e-mail address, its context, and
-  // be confirmed.
-  if (inboxesWithProblem(config, MAILBOXES, "email", ids, looksLikeAddress)) {
+  // Each inbox must have a readable e-mail address, and be confirmed.
+  if (inboxesWithProblem(config, MAILBOXES, "email", looksLikeAddress)) {
     return <ConfigurationProblem widget={listIndicator.label} />;
   }
   // As long as the confirmations are not read, nothing shows: the list
@@ -67,7 +64,7 @@ export const listIndicator: SupportIndicatorWidget = {
   ownClicks: true,
   fill: true,
   Display: ({ config }) => <ListIndicator config={config} />,
-  // Inboxes carry their context and state on the row.
+  // Inboxes carry their label and state on the row.
   drawerSize: DRAWER_WIDTH + 100,
   Config: ListFields,
 };

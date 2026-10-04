@@ -39,8 +39,24 @@ export interface Notification {
  * by their shape rather than by a "type" field: the versions payload
  * existed before, and did not have to change.
  */
-export type FeedMessage = VersionPayload | { notification: Notification };
+export type FeedMessage =
+  | VersionPayload
+  | { notification: Notification }
+  | { m365: M365Change };
 
 export const isNotification = (
   message: FeedMessage,
 ): message is { notification: Notification } => "notification" in message;
+
+/**
+ * What Graph says changed in what one of the person's widgets reads (server,
+ * lib/m365-webhooks.ts): an e-mail arrived for a Mail widget, an appointment
+ * moved for a Calendar one. The widgets reread without waiting.
+ */
+export type M365Change = "mail" | "calendar";
+
+export const isM365Change = (message: FeedMessage): message is { m365: M365Change } =>
+  "m365" in message;
+
+/** The window event the client relays it as, which the widgets of that kind listen to. */
+export const m365Event = (kind: M365Change): string => `milo:m365-${kind}`;

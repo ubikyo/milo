@@ -9,6 +9,7 @@
 
 import { randomInt } from "node:crypto";
 import { optins, pair } from "../repositories/optins.js";
+import type { OptinTable } from "../repositories/optins.js";
 import { listMailboxes } from "../repositories/inboxes.js";
 import { sendingAddress, entraConfigured } from "./entra.js";
 import { fail } from "./http.js";
@@ -21,7 +22,7 @@ import { template } from "./mail-template.js";
  */
 export const CONFIRMATION_SUBJECT = "Milo — Confirmez la réception des tickets";
 
-const newCode = (): string => String(randomInt(0, 10_000)).padStart(4, "0");
+export const newCode = (): string => String(randomInt(0, 10_000)).padStart(4, "0");
 
 /** Beyond this, the code is no longer valid: four digits could be guessed. */
 const ATTEMPTS_MAX = 5;
@@ -30,7 +31,7 @@ const ATTEMPTS_MAX = 5;
  * What is missing to send the code, reported to whoever resends; empty when
  * everything is there.
  */
-const missingLabel = (): string => {
+export const missingLabel = (): string => {
   if (!entraConfigured()) return "La messagerie n'est pas configurée (Paramétrage → Entra)";
   if (!sendingAddress()) return "Renseignez l'adresse d'envoi dans Paramétrage → Entra";
   return "";
@@ -79,17 +80,18 @@ export const askForConfirmations = (): void => {
 };
 
 /**
- * Sends a new code to the listed addresses that are still pending. Returns the
- * number of e-mails sent; throws when none could be sent.
+ * Sends a new code, through "send", to those of the owner's addresses that are
+ * still pending — in "table". Returns the number of e-mails sent; throws when
+ * none could be sent.
  */
-export const retry = async (list: string, emails: string[]): Promise<number> => {
+export const resendCodes = async (
+  table: OptinTable,
+  owner: string,
+  emails: string[],
+  send: (email: string) => Promise<void>,
+): Promise<number> => {
   const pending = [...new Set(emails.map((e) => e.trim().toLowerCase()))].filter(
-    (e) => optins.de(list, e)?.confirmed_at === "",
-  );
-  const usages = new Map(
-    listMailboxes()
-      .filter((b) => b.list === list)
-      .map((b) => [b.value.toLowerCase(), b.usage]),
+    (e) => table.de(owner, e)?.confirmed_at === "",
   );
   const reason = missingLabel();
   if (reason && pending.length) fail(400, reason);
@@ -97,7 +99,7 @@ export const retry = async (list: string, emails: string[]): Promise<number> => 
   let last = "";
   for (const email of pending) {
     try {
-      await send(list, email, usages.get(email));
+      await send(email);
       sent += 1;
     } catch (error) {
       last = error instanceof Error ? error.message : String(error);
@@ -109,21 +111,39 @@ export const retry = async (list: string, emails: string[]): Promise<number> => 
 };
 
 /**
- * Confirms an inbox with the code from its e-mail. Throws when the code is
- * wrong; after ATTEMPTS_MAX attempts, it is no longer valid and a resend is needed.
+ * Sends a new code to the listed addresses that are still pending. Returns the
+ * number of e-mails sent; throws when none could be sent.
  */
-export const confirmByCode = (list: string, email: string, code: string): void => {
-  const row = optins.de(list, email);
+export const retry = (list: string, emails: string[]): Promise<number> => {
+  const usages = new Map(
+    listMailboxes()
+      .filter((b) => b.list === list)
+      .map((b) => [b.value.toLowerCase(), b.usage]),
+  );
+  return resendCodes(optins, list, emails, (email) => send(list, email, usages.get(email)));
+};
+
+/**
+ * Confirms an owner's address — in "table" — with the code from its e-mail.
+ * Throws when the code is wrong; after ATTEMPTS_MAX attempts, it is no longer
+ * valid and a resend is needed.
+ */
+export const checkCode = (table: OptinTable, owner: string, email: string, code: string): void => {
+  const row = table.de(owner, email);
   if (!row) fail(404, "Adresse inconnue : enregistrez d'abord le widget");
   if (row!.confirmed_at) return;
   if (!row!.code) fail(400, "Aucun code en cours : relancez la confirmation");
   if (code.trim() !== row!.code) {
-    optins.attempt(list, email);
+    table.attempt(owner, email);
     if (row!.attempts + 1 >= ATTEMPTS_MAX) {
-      optins.forgetCode(list, email);
+      table.forgetCode(owner, email);
       fail(400, "Code incorrect. Trop d'essais : relancez la confirmation pour en recevoir un neuf");
     }
     fail(400, "Code incorrect");
   }
-  optins.confirm(list, email);
+  table.confirm(owner, email);
 };
+
+/** Confirms an inbox with the code from its e-mail (checkCode). */
+export const confirmByCode = (list: string, email: string, code: string): void =>
+  checkCode(optins, list, email, code);

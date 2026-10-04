@@ -263,13 +263,10 @@ export interface AssetsListHandle {
 
 export const AssetsListContext = createContext<AssetsListHandle | null>(null);
 
-/** The key of the received GLPI tags, in the list configuration: each mapped to a context. */
-export const TAGS = "tags";
-
 export default function AssetsList({ config }: { config: unknown }) {
   const list = useContext(AssetsListContext);
   // The board's workstations, of the chosen context, that the page read — those of
-  // this widget only: those whose tag it receives (lib/lists.ts).
+  // this widget only: those whose tag its board's labels name (lib/lists.ts).
   const all = list?.assets ?? null;
   const assets = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
   const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });

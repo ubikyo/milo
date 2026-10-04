@@ -26,8 +26,8 @@ import { alignmentProps, isVerticallyAligned } from "../../widgets/alignment";
 /** The gap between two indicators of a section. */
 export const GAP = 20;
 
-/** A framed card's padding while nothing is set ("spacing md"). */
-export const CARD_PADDING = 16;
+/** A framed card's padding — a chart, an indicator — while nothing is set. */
+export const CARD_PADDING = 15;
 
 /** An indicator's height: its name at the top, the quantity at the bottom. */
 const HEIGHT = 120;

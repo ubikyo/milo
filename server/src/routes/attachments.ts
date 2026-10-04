@@ -15,6 +15,7 @@ import {
   writeMedia,
   inlineType,
   mediaUrl,
+  resizedMedia,
 } from "../lib/media.js";
 import { concerned, notify, notifyDeletion, root } from "../lib/notify.js";
 import { now } from "../lib/time.js";
@@ -212,8 +213,30 @@ export const mediaRoutes = Router();
 
 mediaRoutes.get("/:file", (req, res, next) => {
   const file = String(req.params["file"] ?? "");
-  const path = orNotFound(mediaPath(file), FILE_NOT_FOUND);
-  const type = inlineType(file);
+  const original = orNotFound(mediaPath(file), FILE_NOT_FOUND);
+
+  // "?w=": the image reduced to the width where it is shown (an Image
+  // widget's section), rather than its original. The original stays on disk,
+  // untouched; failing a copy, it is the one that goes out.
+  const width = Number(req.query["w"]);
+  if (Number.isInteger(width) && width > 0) {
+    resizedMedia(file, width)
+      .then((variant) => send(res, next, file, variant ?? original, variant ? "image/webp" : null))
+      .catch(next);
+    return;
+  }
+  send(res, next, file, original, null);
+});
+
+/** Returns a media file — or its reduced copy, of the given type. */
+const send = (
+  res: express.Response,
+  next: express.NextFunction,
+  file: string,
+  path: string,
+  copyType: string | null,
+) => {
+  const type = copyType ?? inlineType(file);
 
   // The original name, for an attachment: it is the one it should be saved
   // under, not the sixteen random bytes. An image pasted into a description
@@ -239,7 +262,7 @@ mediaRoutes.get("/:file", (req, res, next) => {
   res.sendFile(path, (error) => {
     if (error && !res.headersSent) next(new HttpError(404, FILE_NOT_FOUND));
   });
-});
+};
 
 /**
  * Mounted under `/api/ticket-files`, like media before the session

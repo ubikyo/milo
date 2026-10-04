@@ -14,6 +14,7 @@ import {
   IconDeviceLaptop,
   IconBrandWindows,
   IconHeadset,
+  IconLayoutNavbar,
   IconShieldLock,
   IconStack2,
 } from "@tabler/icons-react";
@@ -32,6 +33,7 @@ import { tabStyle } from "../../themes/tabs";
 import BackupTab from "./BackupTab";
 import EntraTab from "./EntraTab";
 import NotificationsTab from "./NotificationsTab";
+import DisplayTab from "./DisplayTab";
 import SupportTab from "./SupportTab";
 import AssetsTab from "./AssetsTab";
 import WorkspacesTab from "./WorkspacesTab";
@@ -49,6 +51,7 @@ const TABS: {
   { value: "administration", label: "Administration", icon: IconShieldLock },
   { value: "entra", label: "Entra", icon: IconBrandWindows },
   { value: "notifications", label: "Notifications", icon: IconBell },
+  { value: "display", label: "Affichage", icon: IconLayoutNavbar },
   // Settings specific to a mode: Support, Assets.
   { value: "support", label: "Support", icon: IconHeadset },
   { value: "assets", label: "Assets", icon: IconDeviceLaptop },
@@ -347,6 +350,8 @@ export default function SettingsModal({
         {panel("backup", <BackupTab />)}
 
         {panel("notifications", <NotificationsTab canEdit={canEdit} />)}
+
+        {panel("display", <DisplayTab canEdit={canEdit} />)}
       </Tabs>
 
       <Group justify="flex-end" mt={40}>

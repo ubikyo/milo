@@ -1,80 +1,54 @@
-import {
-  ActionIcon,
-  Anchor,
-  Button,
-  Center,
-  Divider,
-  Group,
-  Popover,
-  Text,
-  getDefaultZIndex,
-} from "@mantine/core";
-import {
-  IconCategory,
-  IconChevronDown,
-  IconGripVertical,
-  IconPlus,
-  IconTrash,
-} from "@tabler/icons-react";
+import { Button, Divider, Popover, Text } from "@mantine/core";
+import { IconChevronDown } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, DragEvent, MouseEvent } from "react";
-import { ADD_ACTION, NEUTRAL_HOVER, RED } from "../../themes/colors";
+import type { CSSProperties, MouseEvent } from "react";
+import { NEUTRAL_HOVER } from "../../themes/colors";
 import { ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
-import { PLUS_GAP, PLUS_SIZE } from "../../themes/plus";
 import classes from "../../assets/styles/ContextsMenu.module.css";
-import DeleteConfirmModal from "./DeleteConfirmModal";
-import { NO_CONTEXT } from "@milo/shared";
-import type { Context, Id } from "@milo/shared";
+import { ALL_CONTEXTS, ALL_CONTEXT_GROUPS, NO_CONTEXT } from "@milo/shared";
 
-// The contexts of the open board: the list at the end of the row. At the top,
-// "Tous les contextes", which cannot be reordered or deleted but can be
-// renamed; then the contexts, which a double click renames, which can be
-// dragged to reorder them, and which the trash can deletes — along with
-// everything that belongs to them. At the end, "Ajouter un contexte".
+// The contexts of the open board: the list in its tab. In interface editing,
+// it chooses the board's context group — "Aucun", "Tous les contextes" — all
+// its labels, whatever their group —, or one of its label groups, by name:
+// "Société", "Priorité" (shared, contexts.ts) —, and a double click
+// renames "Tous les contextes". Outside editing, it offers "Tous les
+// contextes", then the labels of that group.
 //
 // A click immediately selects the context being viewed. The list itself waits a
 // moment before closing, so that a double click can still rename; without the
 // right to rename, it closes right away.
 
-/** The background of the icon badge, with no context: a neutral gray, not bluish. */
-const DOT = "light-dark(#ededed, var(--mantine-color-dark-4))";
-
 /** The bounds of the list width. */
 const WIDTH_MIN = 240;
 const WIDTH_MAX = 320;
 
-/** The value of "Tous les contextes". */
-export const ALL = "all";
+/** What the list calls a context group: all of them, or its name. */
+const groupName = (group: string) => (group === ALL_CONTEXT_GROUPS ? ALL_CONTEXTS : group);
 
 /** How long a click waits before selecting: a double click beats it. */
 const DOUBLE_CLICK_THRESHOLD = 250;
 
-/** The name of a context that was just added, immediately in edit mode. */
-const NEW_CONTEXT = "Nouveau contexte";
-
-/**
- * What may be done with the contexts, each one according to its right
- * (Accès): add one ("Créer"), delete one ("Supprimer"), rename and reorder
- * them (modifying the interface). Missing, the action is not offered.
- */
-export interface ContextManagement {
-  onAdd?: (name: string) => Promise<void>;
-  onRename?: (id: Id, name: string) => Promise<void>;
-  /** Rename "Tous les contextes". */
-  onRenameAll?: (name: string) => Promise<void>;
-  onDelete?: (id: Id) => Promise<void>;
-  onReorder?: (ids: Id[]) => Promise<void>;
-}
-
 export interface ContextsMenuProps {
-  items: Context[];
+  /** The board's contexts: label names, in order. */
+  items: string[];
   /** The label of "Tous les contextes", as the board carries it. */
   all: string;
-  /** The context being viewed, or "all". */
-  value: string;
-  onChange: (value: string) => void;
-  /** Without it — without the right to organize boards —, the list only selects. */
-  management?: ContextManagement;
+  /** The context being viewed, or null for all. */
+  value: string | null;
+  onChange: (value: string | null) => void;
+  /** Rename "Tous les contextes". Without it, the list only selects. */
+  onRenameAll?: (name: string) => Promise<void>;
+  /** The board's context group, by its name; null for none. */
+  group?: string | null;
+  /** The label groups the board can choose. */
+  groupOptions?: string[];
+  /** The contexts under the name of their group: shown so with all groups. */
+  sections?: { group: string; contexts: string[] }[];
+  /**
+   * Choose the context group: in interface editing, for whoever may change the
+   * board. With it, the list offers the groups instead of the contexts.
+   */
+  onChangeGroup?: (name: string | null) => Promise<void>;
   visibleFrom?: string;
   /**
    * Placed in the board's tab, to the right of its name: the tab is already a
@@ -83,15 +57,16 @@ export interface ContextsMenuProps {
   inTab?: boolean;
 }
 
-/** What is being renamed: a context, or "Tous les contextes". */
-type Renamed = { id: Id | typeof ALL; name: string };
-
 export default function ContextsMenu({
-  items: received,
+  items,
   all: receivedAll,
   value,
   onChange,
-  management,
+  onRenameAll,
+  group = null,
+  groupOptions = [],
+  sections = [],
+  onChangeGroup,
   visibleFrom,
   inTab = false,
 }: ContextsMenuProps) {
@@ -147,157 +122,95 @@ export default function ContextsMenu({
       band?.removeAttribute("data-contexts-open");
     };
   }, [inTab, isOpen]);
-  const [renamed, setRenamed] = useState<Renamed | null>(null);
+  /** "Tous les contextes" being renamed: the name in its field. */
+  const [renamed, setRenamed] = useState<string | null>(null);
   // The validated name, shown while the server responds and the board comes
   // back re-read: without it, the old name would briefly reappear.
-  const [provisional, setProvisional] = useState<Renamed | null>(null);
-  const items = provisional
-    ? received.map((c) => (c.id === provisional.id ? { ...c, name: provisional.name } : c))
-    : received;
-  const all = provisional?.id === ALL ? provisional.name : receivedAll;
-  const [toDelete, setToDelete] = useState<Context | null>(null);
-  /** The held context, and the rank where it would land. */
-  const [dragging, setDragged] = useState<{ id: Id; target: number } | null>(null);
-  /** The new order, shown without waiting for the server; cleared as soon as it responds. */
-  const [localOrder, setLocalOrder] = useState<Id[] | null>(null);
-  /** True between the add and the arrival of the added context: it then goes into edit mode. */
-  const [addInProgress, setAddInProgress] = useState<number | null>(null);
+  const [provisional, setProvisional] = useState<string | null>(null);
+  // With all groups, "Tous les contextes" says it as it is: the board's
+  // label names one group's.
+  const allGroups = group === ALL_CONTEXT_GROUPS;
+  const all = allGroups ? ALL_CONTEXTS : (provisional ?? receivedAll);
   const click = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const finished = useRef(false);
 
-  useEffect(() => setLocalOrder(null), [received]);
   useEffect(() => () => clearTimeout(click.current), []);
 
-  // The context that was just added goes into name edit mode as soon as it
-  // appears, at the end of the list.
-  useEffect(() => {
-    if (addInProgress === null || items.length <= addInProgress) return;
-    const last = items[items.length - 1];
-    setAddInProgress(null);
-    if (last) openRename({ id: last.id, name: last.name });
-  }, [items, addInProgress]);
-
-  const ordered = localOrder
-    ? localOrder
-        .map((id) => items.find((c) => c.id === id))
-        .filter((c): c is Context => c !== undefined)
-    : items;
-
-  // With no context, the list says so instead of offering "Tous" out of
-  // nothing.
-  const current =
-    items.length === 0
+  // Choosing the group, the target names it. Otherwise, with no context, the
+  // list says so instead of offering "Tous" out of nothing.
+  const current = onChangeGroup
+    ? group === null
       ? NO_CONTEXT
-      : value === ALL
-        ? all
-        : (items.find((c) => String(c.id) === value)?.name ?? all);
+      : groupName(group)
+    : items.length === 0
+      ? NO_CONTEXT
+      : (value ?? all);
 
-  const select = (picked: string) => {
+  /** A group row: "Aucun" (null), all groups, or a group name. */
+  const groupRow = (name: string | null) => {
+    const selected = (group ?? null) === name;
+    return (
+      <div
+        key={name ?? ""}
+        className={classes.row}
+        onClick={() => {
+          setOpened(false);
+          if (!selected) void onChangeGroup?.(name);
+        }}
+        style={{ display: "flex", alignItems: "center", padding: "4px 8px", minHeight: 32 }}
+      >
+        <Text size="sm" fw={selected ? 600 : undefined} style={{ flex: 1, minWidth: 0 }} truncate>
+          {name === null ? "Aucun" : groupName(name)}
+        </Text>
+      </div>
+    );
+  };
+
+  const select = (picked: string | null) => {
     clearTimeout(click.current);
     if (picked !== value) onChange(picked);
-    if (!management) return setOpened(false);
+    if (!onRenameAll) return setOpened(false);
     click.current = setTimeout(() => setOpened(false), DOUBLE_CLICK_THRESHOLD);
   };
 
-  function openRename(target: Renamed) {
-    if (!management?.onRename) return;
+  const openRename = () => {
+    if (!onRenameAll) return;
     clearTimeout(click.current);
     finished.current = false;
-    setRenamed(target);
-  }
+    setRenamed(all);
+  };
 
   const finishRename = async (validate: boolean) => {
-    if (!renamed || finished.current || !management) return;
+    if (renamed === null || finished.current || !onRenameAll) return;
     finished.current = true;
-    const { id, name } = renamed;
+    const trimmedName = renamed.trim();
     setRenamed(null);
-    const trimmedName = name.trim();
-    if (!validate || !trimmedName) return;
-    if (id === ALL ? trimmedName === all : trimmedName === items.find((c) => c.id === id)?.name) return;
-    setProvisional({ id, name: trimmedName });
+    if (!validate || !trimmedName || trimmedName === all) return;
+    setProvisional(trimmedName);
     try {
-      if (id === ALL) await management.onRenameAll?.(trimmedName);
-      else await management.onRename?.(id, trimmedName);
+      await onRenameAll(trimmedName);
     } finally {
       setProvisional(null);
     }
   };
 
-  const add = async () => {
-    if (!management?.onAdd) return;
-    setAddInProgress(items.length);
-    await management.onAdd(NEW_CONTEXT);
-  };
-
-  // --- Drag and drop: the targeted row is read from the pointer's height.
-  const targetRank = (e: DragEvent<HTMLElement>, index: number): number => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    return e.clientY < rect.top + rect.height / 2 ? index : index + 1;
-  };
-
-  const drop = async () => {
-    if (!dragging || !management?.onReorder) return;
-    const start = ordered.findIndex((c) => c.id === dragging.id);
-    setDragged(null);
-    const target = dragging.target > start ? dragging.target - 1 : dragging.target;
-    if (start < 0 || target === start) return;
-    const order = ordered.map((c) => c.id).filter((id) => id !== dragging.id);
-    order.splice(target, 0, dragging.id);
-    setLocalOrder(order);
-    try {
-      await management.onReorder(order);
-    } catch {
-      setLocalOrder(null);
-    }
-  };
-
-  /** A row: its name — or its input —, and what completes it. */
-  const row = (
-    key: string,
-    trimmedName: string,
-    target: Renamed,
-    extras: { handle?: boolean; trash?: () => void; style?: CSSProperties } = {},
-  ) => {
+  /** A row: its name — or, for "Tous" being renamed, its input. */
+  const row = (key: string | null, name: string) => {
     const selected = value === key;
-    const inInput = renamed?.id === target.id;
+    const inInput = key === null && renamed !== null;
     return (
-      <Group
-        gap={4}
-        wrap="nowrap"
+      <div
+        key={key ?? ""}
         className={classes.row}
         data-editing={inInput || undefined}
         onClick={() => !inInput && select(key)}
-        onDoubleClick={() => openRename(target)}
-        style={{
-          padding: management ? "4px 8px 4px 4px" : "4px 8px",
-          minHeight: 32,
-          ...extras.style,
-        }}
+        onDoubleClick={() => key === null && openRename()}
+        style={{ display: "flex", alignItems: "center", padding: "4px 8px", minHeight: 32 }}
       >
-        {/* The handle keeps its place on every row, "Tous" included: the names
-            stay aligned. Without management — locked, or without the right —,
-            nothing can be dragged: the names take its place. */}
-        {management && (
-          <div
-            className={extras.handle ? classes.reveal : undefined}
-            style={{
-              width: 16,
-              flexShrink: 0,
-              display: "flex",
-              color: "var(--mantine-color-dimmed)",
-              cursor: extras.handle ? "grab" : undefined,
-            }}
-          >
-            {extras.handle && <IconGripVertical size={14} />}
-          </div>
-        )}
         {inInput ? (
           <input
-            value={renamed.name}
-            onChange={(e) => {
-              const name = e.currentTarget.value;
-              setRenamed((r) => (r ? { ...r, name } : r));
-            }}
+            value={renamed}
+            onChange={(e) => setRenamed(e.currentTarget.value)}
             onKeyDown={(e) => {
               e.stopPropagation();
               if (e.key === "Enter") {
@@ -314,7 +227,7 @@ export default function ContextsMenu({
             onDoubleClick={(e) => e.stopPropagation()}
             onFocus={(e) => e.currentTarget.select()}
             autoFocus
-            aria-label={`Renommer ${trimmedName}`}
+            aria-label={`Renommer ${name}`}
             // "size" at 1: without it, the field claims room for twenty
             // characters outright, and the list would widen accordingly. It
             // fills the row through "flex".
@@ -333,47 +246,12 @@ export default function ContextsMenu({
           />
         ) : (
           <Text size="sm" fw={selected ? 600 : undefined} style={{ flex: 1, minWidth: 0 }} truncate>
-            {trimmedName}
+            {name}
           </Text>
         )}
-        {extras.trash && (
-          // The trash only appears on hover, but keeps its place: the row does
-          // not move when the mouse crosses it.
-          <ActionIcon
-            variant="subtle"
-            color={RED}
-            size="sm"
-            className={classes.reveal}
-            style={{ flexShrink: 0 }}
-            onClick={(e) => {
-              e.stopPropagation();
-              clearTimeout(click.current);
-              extras.trash?.();
-            }}
-            onDoubleClick={(e) => e.stopPropagation()}
-            aria-label={`Supprimer ${trimmedName}`}
-          >
-            <IconTrash size={14} />
-          </ActionIcon>
-        )}
-      </Group>
+      </div>
     );
   };
-
-  /** The line that says where the held context will land. */
-  const line = (
-    <div style={{ height: 0, position: "relative" }}>
-      <div
-        style={{
-          position: "absolute",
-          left: 4,
-          right: 4,
-          top: -1,
-          borderTop: "2px solid var(--mantine-color-teal-5)",
-        }}
-      />
-    </div>
-  );
 
   return (
     <>
@@ -399,10 +277,6 @@ export default function ContextsMenu({
               }
             : TAB_MENU_STYLES
         }
-        // The confirmation window counts as a click "outside": the list would
-        // go away, and you would come back to it as soon as the question is
-        // answered.
-        closeOnClickOutside={toDelete === null}
       >
         <Popover.Target>
           {/* The same button as the "Actions" menu of the row. */}
@@ -443,108 +317,43 @@ export default function ContextsMenu({
             ? { miw: tabWidth, maw: Math.max(WIDTH_MAX, tabWidth) }
             : { miw: WIDTH_MIN, maw: WIDTH_MAX })}
         >
-          {/* With no context, only the add remains. */}
-          {items.length > 0 && (
+          {onChangeGroup ? (
             <>
-              {row(ALL, all, { id: ALL, name: all })}
-              <Divider my={4} />
+              {groupRow(null)}
+              {groupOptions.length > 0 && groupRow(ALL_CONTEXT_GROUPS)}
+              {groupOptions.length > 0 && <Divider my={4} />}
+              {groupOptions.map((name) => groupRow(name))}
+              {/* "Tous les …", which a double click renames, once a group gives
+                  contexts. */}
+              {group !== null && !allGroups && onRenameAll && (
+                <>
+                  <Divider my={4} label="Libellé de « Tous »" labelPosition="left" />
+                  {row(null, all)}
+                </>
+              )}
             </>
-          )}
-          <div
-            onDragOver={(e) => {
-              if (dragging) e.preventDefault();
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              void drop();
-            }}
-          >
-            {ordered.map((context, index) => (
-              <div
-                key={context.id}
-                draggable={Boolean(management?.onReorder) && renamed?.id !== context.id}
-                onDragStart={(e) => {
-                  e.dataTransfer.effectAllowed = "move";
-                  e.dataTransfer.setData("text/plain", String(context.id));
-                  setDragged({ id: context.id, target: index });
-                }}
-                onDragOver={(e) => {
-                  if (!dragging) return;
-                  e.preventDefault();
-                  const target = targetRank(e, index);
-                  if (target !== dragging.target) setDragged({ ...dragging, target });
-                }}
-                onDragEnd={() => setDragged(null)}
-              >
-                {dragging?.target === index && line}
-                {row(
-                  String(context.id),
-                  context.name,
-                  { id: context.id, name: context.name },
-                  {
-                    handle: Boolean(management?.onReorder),
-                    trash: management?.onDelete ? () => setToDelete(context) : undefined,
-                    style: dragging?.id === context.id ? { opacity: 0.4 } : undefined,
-                  },
-                )}
-                {index === ordered.length - 1 && dragging?.target === ordered.length && line}
-              </div>
-            ))}
-          </div>
-          {/* With no context: a space, the contexts icon in the middle, above
-              the add. */}
-          {management?.onAdd && items.length === 0 && (
-            <Center py="md">
-              <Center
-                w={40}
-                h={40}
-                style={{ borderRadius: "50%", background: DOT }}
-              >
-                <IconCategory size={20} color="var(--mantine-color-dimmed)" />
-              </Center>
-            </Center>
-          )}
-          {management?.onAdd && (
+          ) : (
             <>
-              {items.length > 0 && <Divider my={4} />}
-              <Anchor
-                component="button"
-                type="button"
-                size="sm"
-                c={ADD_ACTION.color}
-                onClick={() => void add()}
-                px={8}
-                py={6}
-              >
-                <Group gap={PLUS_GAP} wrap="nowrap">
-                  <IconPlus size={PLUS_SIZE} />
-                  <span>Ajouter un contexte</span>
-                </Group>
-              </Anchor>
+              {row(null, all)}
+              {allGroups
+                ? // Under the name of their group.
+                  sections.map((section) => (
+                    <div key={section.group}>
+                      <Divider my={4} />
+                      {/* At the rows' inset: the name lines up with its labels. */}
+                      <Text size="xs" c="dimmed" fw={600} px={8} pt={4} pb={2} truncate>
+                        {section.group}
+                      </Text>
+                      {section.contexts.map((name) => row(name, name))}
+                    </div>
+                  ))
+                : items.length > 0 && <Divider my={4} />}
+              {!allGroups && items.map((name) => row(name, name))}
             </>
           )}
         </Popover.Dropdown>
       </Popover>
 
-      {/* Placed outside the list, which would take it along when closing. */}
-      <DeleteConfirmModal
-        // The list stays open during the question: the window goes in front.
-        zIndex={getDefaultZIndex("popover") + 1}
-        opened={toDelete !== null}
-        onClose={() => setToDelete(null)}
-        onConfirm={() => {
-          const context = toDelete;
-          setToDelete(null);
-          if (context) void management?.onDelete?.(context.id);
-        }}
-        title="Supprimer le contexte"
-        message={
-          <>
-            Voulez-vous vraiment supprimer « {toDelete?.name} » ? Ses projets, ses tâches, ses
-            tickets et ses assets seront supprimés. Cette action est irréversible.
-          </>
-        }
-      />
     </>
   );
 }

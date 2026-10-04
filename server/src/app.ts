@@ -34,7 +34,7 @@ import {
 import { viewRoutes } from "./routes/views.js";
 import { cardChecklistRoutes, checklistItemRoutes, checklistRoutes } from "./routes/checklists.js";
 import { commentRoutes, projectCommentRoutes } from "./routes/comments.js";
-import { boardContextRoutes, contextRoutes } from "./routes/contexts.js";
+import { boardContextRoutes } from "./routes/contexts.js";
 import { searchRoutes } from "./routes/search.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { supportSettingsRoutes } from "./routes/support-settings.js";
@@ -43,7 +43,7 @@ import { supportReplyRoutes } from "./routes/support-replies.js";
 import { assetSettingsRoutes } from "./routes/asset-settings.js";
 import { milestoneTypeRoutes } from "./routes/milestone-types.js";
 import { followRoutes } from "./routes/follows.js";
-import { labelRoutes, projectLabelRoutes } from "./routes/labels.js";
+import { assetLabelRoutes, labelRoutes, projectLabelRoutes } from "./routes/labels.js";
 import { cardLinkRoutes, linkRoutes } from "./routes/links.js";
 import { entraRoutes } from "./routes/entra.js";
 import { administrationRoutes, assignmentRoutes } from "./routes/assignments.js";
@@ -59,8 +59,11 @@ import { taskCardRoutes, cardCommentRoutes } from "./routes/task-cards.js";
 import { taskListRoutes } from "./routes/task-lists.js";
 import { userRoutes } from "./routes/users.js";
 import { notificationSettingsRoutes } from "./routes/notification-settings.js";
+import { displaySettingsRoutes } from "./routes/display-settings.js";
 import { supportMailRoutes } from "./routes/support-mail.js";
+import { m365WebhookRoutes } from "./routes/m365-webhooks.js";
 import { optinRoutes } from "./routes/optins.js";
+import { calendarOptinRoutes, mailOptinRoutes } from "./routes/widget-optins.js";
 
 export const createApp = (): express.Express => {
   const app = express();
@@ -107,6 +110,8 @@ export const createApp = (): express.Express => {
   // Microsoft notifies Milo here of an email arriving in a support mailbox.
   // The subscription's secret serves as authentication.
   app.use("/api/support-mail", supportMailRoutes);
+  // And here of what changes in what a Mail or Calendar widget reads.
+  app.use("/api/m365", m365WebhookRoutes);
 
   // --- Everything else requires a session -----------------------------------
   app.use("/api/auth", authRoutes);
@@ -137,7 +142,6 @@ export const createApp = (): express.Express => {
   // What a board carries follows the permissions of each widget type.
   app.use("/api/views", viewRoutes);
   app.use("/api/boards/:id/contexts", boardContextRoutes);
-  app.use("/api/contexts", contextRoutes);
   app.use("/api/boards/:id", boardContentRoutes);
   app.use("/api/boards", boardRoutes);
   app.use("/api/board-sections", boardSectionRoutes);
@@ -163,12 +167,15 @@ export const createApp = (): express.Express => {
   app.use("/api/card-links", linkRoutes);
   app.use("/api/labels", labelRoutes);
 
+  app.use("/api/asset-labels", assetLabelRoutes);
   app.use("/api/assets", assetRoutes);
   // The templates table: read everywhere, written from Settings.
   app.use("/api/asset-settings", requireSettingsToWrite, assetSettingsRoutes);
 
   app.use("/api/support-requests", supportRequestRoutes);
   app.use("/api/mailbox-optins", optinRoutes);
+  app.use("/api/calendar-optins", calendarOptinRoutes);
+  app.use("/api/mail-optins", mailOptinRoutes);
   app.use("/api/support-comments", supportCommentRoutes);
   app.use("/api/support-labels", supportLabelRoutes);
   // The default due date: read everywhere, written from Settings.
@@ -181,6 +188,7 @@ export const createApp = (): express.Express => {
   // Read by everyone — they set everyone's interface —, written from
   // Settings only.
   app.use("/api/notification-settings", requireSettingsToWrite, notificationSettingsRoutes);
+  app.use("/api/display-settings", requireSettingsToWrite, displaySettingsRoutes);
 
   app.use("/api", notFoundHandler);
   app.use(errorHandler);

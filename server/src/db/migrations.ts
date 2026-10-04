@@ -276,6 +276,11 @@ export const migrate = (db: Database): void => {
   // Last: values stored in French, translated once the earlier catch-ups,
   // which read them, have run.
   englishValues(db);
+  // After the label groups, and once widget configurations carry their
+  // English keys: contexts become labels.
+  labelContexts(db);
+  // Then the context group goes from the lists to their board.
+  boardContextGroups(db);
 };
 
 /**
@@ -2758,5 +2763,305 @@ const englishValues = (db: Database): void => {
     }
 
     writeSetting(db, ENGLISH_VALUES, true);
+  })();
+};
+
+/** Set once the boards' contexts have become labels. */
+const LABEL_CONTEXTS = "contexts_as_labels";
+
+/** The group the former contexts go into, in each set of labels. */
+const CONTEXTS_GROUP = "Contextes";
+
+/** The colors the former contexts take, one after the other. */
+const CONTEXT_HUES = ["blue", "teal", "orange", "grape", "green", "red", "yellow", "gray"];
+
+/** What a kind of list carries, and where its labels live. */
+interface ContextKind {
+  type: string;
+  labels: string;
+  groups: string;
+  /** False for Support: its labels belong to no board. */
+  scoped: boolean;
+  /** The items of the board with a context, and the label to set on each. */
+  items: string;
+  link: string;
+}
+
+const CONTEXT_KINDS: ContextKind[] = [
+  {
+    type: "project.list",
+    labels: "project_labels",
+    groups: "project_label_groups",
+    scoped: true,
+    items: "SELECT id, context_id FROM projects WHERE board_id = ? AND context_id IS NOT NULL",
+    link: "INSERT OR IGNORE INTO project_label_links (project_id, label_id) VALUES (?, ?)",
+  },
+  {
+    type: "task.list",
+    labels: "labels",
+    groups: "label_groups",
+    scoped: true,
+    items: `SELECT c.id, c.context_id FROM task_cards c JOIN task_lists l ON l.id = c.list_id
+            WHERE l.board_id = ? AND c.context_id IS NOT NULL AND c.kind = 'card'`,
+    link: "INSERT OR IGNORE INTO card_labels (card_id, label_id) VALUES (?, ?)",
+  },
+  {
+    type: "support.list",
+    labels: "support_labels",
+    groups: "support_label_groups",
+    scoped: false,
+    items:
+      "SELECT id, context_id FROM support_requests WHERE board_id = ? AND context_id IS NOT NULL",
+    link: "INSERT OR IGNORE INTO support_request_labels (request_id, label_id) VALUES (?, ?)",
+  },
+];
+
+/**
+ * A board's contexts become labels (shared, contexts.ts). In each set of labels
+ * the board uses — those of its projects, cards, Support —, a "Contextes" group
+ * receives one label per context, set on what belonged to it; the board's lists
+ * of that kind take the group as their context. A label already bearing the
+ * name moves into the group rather than being duplicated.
+ *
+ * Support inboxes give the label of their former context. Assets lists, which
+ * received GLPI tags, receive a "Contextes" group of asset labels named as
+ * those tags. The context each person chose is kept by its name. Last, the
+ * former contexts are detached from everything, then deleted: they would take
+ * along what belonged to them.
+ */
+export const labelContexts = (db: Database): void => {
+  if (readSetting(db, LABEL_CONTEXTS)) return;
+  if (!columns(db, "user_board_contexts").includes("context_name")) {
+    db.exec("ALTER TABLE user_board_contexts ADD COLUMN context_name TEXT NOT NULL DEFAULT ''");
+  }
+  const instant = new Date().toISOString();
+  const contextsOf = db.prepare(
+    "SELECT id, name FROM contexts WHERE board_id = ? ORDER BY position, id",
+  );
+  const widgetsOf = db.prepare(
+    `SELECT w.id, w.type, w.config FROM board_widgets w
+     JOIN board_sections s ON s.id = w.section_id WHERE s.board_id = ? ORDER BY w.id`,
+  );
+  const saveConfig = db.prepare("UPDATE board_widgets SET config = ? WHERE id = ?");
+  const parse = (config: string): Record<string, unknown> => {
+    try {
+      const value = JSON.parse(config) as unknown;
+      return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  };
+
+  /** A group of a set, after the others, and a way to fill it. */
+  const groupIn = (kind: Pick<ContextKind, "labels" | "groups" | "scoped">, board: number) => {
+    const scope = kind.scoped ? " WHERE board_id = ?" : "";
+    const and = kind.scoped ? " AND board_id = ?" : "";
+    const params = kind.scoped ? [board] : [];
+    const { next } = db
+      .prepare(`SELECT COALESCE(MAX(position), -1) + 1 AS next FROM ${kind.groups}${scope}`)
+      .get(...params) as { next: number };
+    const group = Number(
+      (kind.scoped
+        ? db
+            .prepare(
+              `INSERT INTO ${kind.groups} (board_id, name, position, created_at) VALUES (?, ?, ?, ?)`,
+            )
+            .run(board, CONTEXTS_GROUP, next, instant)
+        : db
+            .prepare(`INSERT INTO ${kind.groups} (name, position, created_at) VALUES (?, ?, ?)`)
+            .run(CONTEXTS_GROUP, next, instant)
+      ).lastInsertRowid,
+    );
+    const named = db.prepare(
+      `SELECT id FROM ${kind.labels} WHERE name = ? COLLATE NOCASE${and} ORDER BY id LIMIT 1`,
+    );
+    const move = db.prepare(`UPDATE ${kind.labels} SET group_id = ?, position = ? WHERE id = ?`);
+    const create = db.prepare(
+      kind.scoped
+        ? `INSERT INTO ${kind.labels} (board_id, group_id, name, color, position, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        : `INSERT INTO ${kind.labels} (group_id, name, color, position, created_at)
+           VALUES (?, ?, ?, ?, ?)`,
+    );
+    let rank = 0;
+    /** The label of this name, in the group: moved there, or created. */
+    const label = (name: string): number => {
+      const place = rank++;
+      const existing = named.get(name, ...params) as { id: number } | undefined;
+      if (existing) {
+        move.run(group, place, existing.id);
+        return existing.id;
+      }
+      const color = `${CONTEXT_HUES[place % CONTEXT_HUES.length]}.6`;
+      return Number(
+        (kind.scoped
+          ? create.run(board, group, name, color, place, instant)
+          : create.run(group, name, color, place, instant)
+        ).lastInsertRowid,
+      );
+    };
+    /** The labels' positions, renumbered group after group. */
+    const renumber = () => {
+      const order = db
+        .prepare(
+          `SELECT l.id FROM ${kind.labels} l JOIN ${kind.groups} g ON g.id = l.group_id
+           ${kind.scoped ? "WHERE l.board_id = ?" : ""}
+           ORDER BY g.position, g.id, l.position, l.id`,
+        )
+        .all(...params) as { id: number }[];
+      const place = db.prepare(`UPDATE ${kind.labels} SET position = ? WHERE id = ?`);
+      order.forEach(({ id }, r) => place.run(r, id));
+    };
+    return { group, label, renumber };
+  };
+
+  db.transaction(() => {
+    const boards = db.prepare("SELECT id FROM boards ORDER BY id").all() as { id: number }[];
+    // Support's labels are shared: a single "Contextes" group, and one label per name.
+    let support: ReturnType<typeof groupIn> | null = null;
+    const supportLabels = new Map<string, number>();
+
+    for (const { id: board } of boards) {
+      const contexts = contextsOf.all(board) as { id: number; name: string }[];
+      const widgets = (widgetsOf.all(board) as { id: number; type: string; config: string }[]).map(
+        (w) => ({ ...w, parsed: parse(w.config) }),
+      );
+
+      for (const kind of CONTEXT_KINDS) {
+        const lists = widgets.filter((w) => w.type === kind.type);
+        const items = db.prepare(kind.items).all(board) as { id: number; context_id: number }[];
+        if (contexts.length === 0 || (lists.length === 0 && items.length === 0)) continue;
+        let target: ReturnType<typeof groupIn>;
+        const byContext = new Map<number, number>();
+        if (kind.scoped) {
+          target = groupIn(kind, board);
+          for (const c of contexts) byContext.set(c.id, target.label(c.name));
+        } else {
+          support ??= groupIn(kind, board);
+          target = support;
+          for (const c of contexts) {
+            const key = c.name.trim().toLowerCase();
+            if (!supportLabels.has(key)) supportLabels.set(key, target.label(c.name));
+            byContext.set(c.id, supportLabels.get(key)!);
+          }
+        }
+        const link = db.prepare(kind.link);
+        for (const item of items) {
+          const label = byContext.get(item.context_id);
+          if (label) link.run(item.id, label);
+        }
+        target.renumber();
+        for (const list of lists) {
+          list.parsed.context_group = target.group;
+          // The inboxes of a request list give the label of their context.
+          if (Array.isArray(list.parsed.mailboxes)) {
+            list.parsed.mailboxes = (list.parsed.mailboxes as Record<string, unknown>[]).map(
+              (m) => {
+                const { context_id, ...rest } = m ?? {};
+                const label = typeof context_id === "number" ? byContext.get(context_id) : undefined;
+                return { ...rest, label_id: label ?? null };
+              },
+            );
+          }
+        }
+      }
+
+      // Assets lists: their GLPI tags become the board's asset labels.
+      const assetLists = widgets.filter((w) => w.type === "asset.list");
+      if (assetLists.length > 0) {
+        const tags = assetLists.flatMap((w) =>
+          Array.isArray(w.parsed.tags)
+            ? (w.parsed.tags as Record<string, unknown>[])
+                .map((t) => (typeof t?.tag === "string" ? t.tag.trim() : ""))
+                .filter(Boolean)
+            : [],
+        );
+        const unique = [...new Map(tags.map((t) => [t.toLowerCase(), t])).values()];
+        if (unique.length > 0) {
+          const target = groupIn(
+            { labels: "asset_labels", groups: "asset_label_groups", scoped: true },
+            board,
+          );
+          for (const tag of unique) target.label(tag);
+          target.renumber();
+          for (const list of assetLists) list.parsed.context_group = target.group;
+        }
+        for (const list of assetLists) delete list.parsed.tags;
+      }
+
+      for (const w of widgets) {
+        const config = JSON.stringify(w.parsed);
+        if (config !== w.config) saveConfig.run(config, w.id);
+      }
+    }
+
+    db.exec(
+      `UPDATE user_board_contexts SET context_name = COALESCE(
+         (SELECT name FROM contexts WHERE id = user_board_contexts.context_id), '')
+       WHERE context_id IS NOT NULL`,
+    );
+    for (const table of ["projects", "task_cards", "support_requests", "assets", "user_board_contexts"]) {
+      if (columns(db, table).includes("context_id")) {
+        db.exec(`UPDATE ${table} SET context_id = NULL WHERE context_id IS NOT NULL`);
+      }
+    }
+    db.exec("DELETE FROM contexts");
+    writeSetting(db, LABEL_CONTEXTS, true);
+  })();
+};
+
+/** Set once the context group moved from the lists to their board. */
+const BOARD_CONTEXT_GROUP = "context_group_by_board";
+
+/** The groups table of each kind of list. */
+const CONTEXT_GROUP_TABLES: Record<string, string> = {
+  "project.list": "project_label_groups",
+  "task.list": "label_groups",
+  "support.list": "support_label_groups",
+  "asset.list": "asset_label_groups",
+};
+
+/**
+ * The context group is chosen on the board, by its name, rather than by each
+ * of its lists: a board takes the name of the group its first list had
+ * chosen, and the lists forget theirs.
+ */
+export const boardContextGroups = (db: Database): void => {
+  if (!columns(db, "boards").includes("context_group")) {
+    db.exec("ALTER TABLE boards ADD COLUMN context_group TEXT NOT NULL DEFAULT ''");
+  }
+  if (readSetting(db, BOARD_CONTEXT_GROUP)) return;
+  const widgets = db
+    .prepare(
+      `SELECT w.id, w.type, w.config, s.board_id FROM board_widgets w
+       JOIN board_sections s ON s.id = w.section_id
+       ORDER BY s.board_id, s.position, s.id, w.position, w.id`,
+    )
+    .all() as { id: number; type: string; config: string; board_id: number }[];
+  const setGroup = db.prepare(
+    "UPDATE boards SET context_group = ? WHERE id = ? AND context_group = ''",
+  );
+  const saveConfig = db.prepare("UPDATE board_widgets SET config = ? WHERE id = ?");
+  db.transaction(() => {
+    for (const widget of widgets) {
+      let config: Record<string, unknown>;
+      try {
+        config = JSON.parse(widget.config) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      if (!config || typeof config !== "object" || !("context_group" in config)) continue;
+      const table = CONTEXT_GROUP_TABLES[widget.type];
+      const group = config.context_group;
+      if (table && typeof group === "number") {
+        const found = db.prepare(`SELECT name FROM ${table} WHERE id = ?`).get(group) as
+          | { name: string }
+          | undefined;
+        if (found) setGroup.run(found.name, widget.board_id);
+      }
+      delete config.context_group;
+      saveConfig.run(JSON.stringify(config), widget.id);
+    }
+    writeSetting(db, BOARD_CONTEXT_GROUP, true);
   })();
 };

@@ -28,6 +28,7 @@ import {
   membersOf,
   replaceCardLabels,
   replaceCardMembers,
+  addCardLabel,
 } from "../repositories/cards.js";
 import { SYSTEM_COMMENT, creationNote, withAuthor } from "../repositories/comments.js";
 import { duplicateTaskCard } from "../repositories/copy-list.js";
@@ -39,7 +40,7 @@ import {
   taskCards,
   taskLists,
 } from "../repositories/tasks.js";
-import { boardContext, contexts } from "../repositories/contexts.js";
+import { contextLabel } from "../repositories/contexts.js";
 
 const CARD_NOT_FOUND = "Carte introuvable";
 const COMMENT_NOT_FOUND = "Commentaire introuvable";
@@ -49,10 +50,6 @@ const photo = (id: Id): Field[] => {
   const card = taskCards.byId.get(id)!;
   return [
     { label: "Titre", value: quote(card.text) },
-    {
-      label: "Contexte",
-      value: quote(card.context_id ? contexts.byId.get(card.context_id)?.name : null),
-    },
     { label: "Description", value: card.description ?? "", opaque: true },
     { label: "Début", value: card.start_date ? date(card.start_date) : "—" },
     { label: "Échéance", value: date(card.due_date) },
@@ -117,8 +114,6 @@ taskCardRoutes.post("/", (req, res) => {
 
   const list = orNotFound(taskLists.byId.get(listId), "Liste introuvable");
   openTaskBoard(list.board_id, req, "create");
-  // The given context, failing that the board's first.
-  const context = boardContext(list.board_id, req.body.context_id);
 
   // New card added at the end of its list.
   const { next } = taskCards.nextPosition(list.id);
@@ -131,9 +126,15 @@ taskCardRoutes.post("/", (req, res) => {
     // A separator carries no reference, and so consumes none.
     kind === "separator" ? 0 : nextReference(),
     kind,
-    context,
     timestamp,
   );
+
+  // Created in a context, a card receives its label: it stays in sight.
+  const label =
+    kind === "separator"
+      ? null
+      : contextLabel("task.list", list.board_id, req.body.context);
+  if (label !== null) addCardLabel(Number(lastInsertRowid), label, list.board_id);
 
   // A card created from another mode ("Créer une tâche") arrives with its
   // description: the link to the item it comes from. A separator has no
@@ -299,11 +300,6 @@ taskCardRoutes.put("/:id", (req, res) => {
   // A separator has no record, hence no thread to note what changes.
   const before = existing.kind === "separator" ? null : photo(existing.id);
 
-  const context =
-    req.body.context_id === undefined
-      ? existing.context_id
-      : boardContext(boardOfCard(existing), req.body.context_id);
-
   taskCards.update.run({
     id: existing.id,
     text,
@@ -313,7 +309,6 @@ taskCardRoutes.put("/:id", (req, res) => {
     due_form: shape,
     recurrence,
     reminder,
-    context_id: context,
     cover_interval: numberChoice(req.body.cover_interval, existing.cover_interval, isCoverRotation),
   });
 

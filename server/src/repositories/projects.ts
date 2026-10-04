@@ -8,10 +8,9 @@ import { projectLabelGroups } from "./label-groups.js";
 import { actorOf } from "./users.js";
 
 export const PROJECT_SELECT = `
-  SELECT projects.*, categories.name AS category_name, contexts.name AS context_name
+  SELECT projects.*, categories.name AS category_name
   FROM projects
   JOIN categories ON categories.id = projects.category_id
-  LEFT JOIN contexts ON contexts.id = projects.context_id
 `;
 
 export const projects = {
@@ -19,14 +18,14 @@ export const projects = {
   joined: selection<ProjectJoinedRow>(`${PROJECT_SELECT} WHERE projects.id = ?`),
   exists: selection<IdRow>("SELECT id FROM projects WHERE id = ?"),
   create: mutation(
-    `INSERT INTO projects (number, name, description, board_id, category_id, context_id, list_key,
+    `INSERT INTO projects (number, name, description, board_id, category_id, list_key,
        milestone_type_id, status, created_at, updated_at)
-     VALUES (@number, @name, @description, @board_id, @category_id, @context_id, @list_key,
+     VALUES (@number, @name, @description, @board_id, @category_id, @list_key,
        @milestone_type_id, @status, @created_at, @updated_at)`,
   ),
   update: mutation(
     `UPDATE projects SET name = @name, description = @description, board_id = @board_id,
-       category_id = @category_id, context_id = @context_id, list_key = @list_key,
+       category_id = @category_id, list_key = @list_key,
        milestone_type_id = @milestone_type_id, status = @status,
        updated_at = @updated_at
      WHERE id = @id`,

@@ -1,6 +1,6 @@
 // Polling of the support inboxes: every e-mail received in an inbox that a
-// request list receives (repositories/inboxes.ts) becomes a request in the
-// context the list associates with it.
+// request list receives (repositories/inboxes.ts) becomes a request of that
+// list, with the label the list associates with the inbox.
 //
 // Nothing is removed from the inboxes: messages stay there as they are, neither
 // deleted, nor moved, nor marked as read. It is the Internet identifier of
@@ -259,7 +259,7 @@ interface FollowUp {
 
 /**
  * An e-mail joins the thread of the request it replies to, or becomes a
- * request of the context that receives the inbox: its subject, its sender as
+ * request of the list that receives the inbox: its subject, its sender as
  * actor — the account carrying its address, if there is one —, and its
  * content as first message. Nothing if the message was already there.
  */
@@ -325,7 +325,6 @@ const importSections = transaction(
     const { changes, lastInsertRowid } = supportRequests.createFromMail.run(
       nextTicketNumber(),
       inbox.board_id,
-      inbox.context_id,
       inbox.list,
       inbox.value,
       mail.subject.trim(),
@@ -343,7 +342,12 @@ const importSections = transaction(
     if (account) replaceSupportActors(lastInsertRowid as Id, [account.id]);
     // Every e-mail arrives with the Settings labels (Support): it is up to
     // whoever reads it to judge otherwise.
-    replaceSupportLabels(lastInsertRowid as Id, supportSettings().default_label_ids);
+    // And with the label of its inbox (repositories/inboxes.ts): its context.
+    const labels = supportSettings().default_label_ids;
+    replaceSupportLabels(
+      lastInsertRowid as Id,
+      inbox.label_id === null || labels.includes(inbox.label_id) ? labels : [...labels, inbox.label_id],
+    );
     message(lastInsertRowid as Id, false);
     followUp.created = lastInsertRowid as Id;
     return true;

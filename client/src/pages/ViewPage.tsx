@@ -56,7 +56,6 @@ interface ViewPageProps {
   onRenameEnded?: (id: number, abandoned: boolean) => void;
   /** The empty view's "Créer un tableau": available outside interface editing too. */
   onCreateFirstBoard?: () => void;
-  onCopyContexts?: (id: number) => void;
   /** The open board's sections; "null" until they are read. */
   sections: IndicatorSection[] | null;
   widgets: BoardWidget[];
@@ -100,7 +99,6 @@ export default function ViewPage({
   onRenameOpened,
   onRenameEnded,
   onCreateFirstBoard,
-  onCopyContexts,
   sections,
   widgets,
   onWidgetsChanged,
@@ -193,7 +191,6 @@ export default function ViewPage({
         onDelete={onDeleteBoard}
         onReorder={onReorderBoards}
         onToggleHidden={onToggleBoardHidden}
-        onCopyContexts={onCopyContexts}
         deleteWarning="Ses projets, ses listes de tâches et ses widgets seront supprimés."
         toRename={toRename}
         onRenameOpened={onRenameOpened}

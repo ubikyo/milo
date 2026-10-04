@@ -66,16 +66,13 @@ export interface ViewSharesInput {
   shares: { principal: EntraPrincipal; permissions: Record<string, string> }[];
 }
 
-/** A context: its name. */
-export interface ContextInput {
-  name?: string;
-}
-
 /** A board: its name, its settings, the label of "Tous les contextes". */
 export interface BoardInput {
   view_id?: Id;
   name?: string;
   all_contexts_label?: string;
+  /** The label group that gives its contexts, by its name; empty for none. */
+  context_group?: string;
   show_card_numbers?: boolean;
 }
 
@@ -148,7 +145,11 @@ export interface TaskCardInput {
   list_id?: Id;
   text?: string;
   kind?: CardKind;
-  context_id?: Id;
+  /**
+   * On creation: the context being viewed — a label name. The item receives
+   * the label of that name from its list's context group, if there is one.
+   */
+  context?: string;
   description?: string;
   /** ISO 8601 with the time, or empty to remove the due date. */
   due_date?: string;
@@ -183,7 +184,11 @@ export interface ProjectInput {
   description?: string;
   board_id?: Id;
   category_id?: Id;
-  context_id?: Id;
+  /**
+   * On creation: the context being viewed — a label name. The item receives
+   * the label of that name from its list's context group, if there is one.
+   */
+  context?: string;
   /** On creation: the "Projets" widget that shows it. */
   list_key?: string;
   milestone_type_id?: Id | null;
@@ -209,7 +214,6 @@ export type FilterValue = string | "all" | null | undefined;
 export interface ProjectFilters {
   board?: FilterValue;
   category?: FilterValue;
-  context?: FilterValue;
   status?: FilterValue;
   actor?: FilterValue;
 }
@@ -241,14 +245,16 @@ export interface CopyResult {
   kept?: number;
 }
 
-/**
- * The drawer of a ticket: its context, which can be changed to
- * another of the same board.
- */
+/** The drawer of a ticket. */
 export interface SupportRequestInput {
-  context_id?: Id;
-  /** On creation without a context: the board, whose first one it takes. */
+  /** On creation: the board that shows it. */
   board_id?: Id;
+  /**
+   * On creation: the context being viewed — a label name. The item receives
+   * the label of that name from its list's context group, if there is one.
+   */
+  context?: string;
+
   /** On creation: the "Tickets" widget that shows it. */
   list_key?: string;
   subject?: string;
@@ -280,7 +286,7 @@ export interface SupportLabelInput {
 }
 
 /** The routes of a kind of labels: those of cards, of projects, of Support. */
-export type LabelsBase = "/labels" | "/project-labels" | "/support-labels";
+export type LabelsBase = "/labels" | "/project-labels" | "/support-labels" | "/asset-labels";
 
 /**
  * The confirmation of a support mailbox: while it is pending, nothing is

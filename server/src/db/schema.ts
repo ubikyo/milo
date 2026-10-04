@@ -109,8 +109,7 @@ export const SCHEMA = `
     description TEXT NOT NULL DEFAULT '',
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     category_id INTEGER NOT NULL REFERENCES categories(id),
-    -- Le contexte du tableau auquel il appartient : il part avec lui. Nul
-    -- quand le tableau n'en a pas.
+    -- No longer used: contexts are labels now (shared, contexts.ts).
     context_id INTEGER REFERENCES contexts(id) ON DELETE CASCADE,
     -- Le widget « Projets » qui le montre : la clé de liste de sa
     -- configuration. Il part avec le dernier widget qui la tient.
@@ -261,6 +260,9 @@ export const SCHEMA = `
     view_id INTEGER NOT NULL REFERENCES views(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     all_contexts_label TEXT NOT NULL DEFAULT 'Tous les contextes',
+    -- The label group that gives the board its contexts, by its name — the
+    -- same name in each kind of labels its lists use; empty: none.
+    context_group TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL DEFAULT 0,
     show_card_numbers INTEGER NOT NULL DEFAULT 1,
     owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -284,9 +286,9 @@ export const SCHEMA = `
     PRIMARY KEY (board_id, principal_type, principal_id)
   );
 
-  -- Les contextes d'un tableau : la liste en haut à gauche. Ses projets, ses
-  -- cartes, les demandes et les postes que ses widgets reçoivent appartiennent
-  -- chacun à l'un d'eux, et partent avec lui.
+  -- No longer used: a board's contexts are the labels of the groups its
+  -- lists choose (shared, contexts.ts). Emptied once its contexts became
+  -- labels (migrations.ts, labelContexts).
   CREATE TABLE IF NOT EXISTS contexts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
@@ -295,12 +297,13 @@ export const SCHEMA = `
     created_at TEXT NOT NULL
   );
 
-  -- Le contexte que chacun a choisi dans un tableau. Sans ligne, ou nul :
-  -- tous les contextes.
+  -- The context each person chose in a board: a label name. Without a row,
+  -- or empty: all contexts. "context_id" is no longer used.
   CREATE TABLE IF NOT EXISTS user_board_contexts (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     context_id INTEGER REFERENCES contexts(id) ON DELETE SET NULL,
+    context_name TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (user_id, board_id)
   );
 
@@ -355,7 +358,7 @@ export const SCHEMA = `
     -- tableau, pas sur l'identifiant global. Un séparateur n'en porte pas :
     -- il reste à zéro.
     number INTEGER NOT NULL DEFAULT 0,
-    -- Le contexte du tableau auquel elle appartient : elle part avec lui.
+    -- No longer used: contexts are labels now.
     context_id INTEGER REFERENCES contexts(id) ON DELETE CASCADE,
     -- « card » pour une carte, « separator » pour un séparateur : un simple
     -- intitulé posé entre deux cartes, qui se déplace comme elles.
@@ -416,6 +419,27 @@ export const SCHEMA = `
     group_id INTEGER REFERENCES label_groups(id),
     name TEXT NOT NULL,
     -- « teinte.nuance » de la palette Mantine, par exemple « red.6 ».
+    color TEXT NOT NULL DEFAULT 'blue.6',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  -- Labels of a board's assets, in their groups, like those of projects. They
+  -- are set on no machine: a machine carries the label named as its GLPI
+  -- agent tag, case aside (repositories/assets.ts).
+  CREATE TABLE IF NOT EXISTS asset_label_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS asset_labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    group_id INTEGER REFERENCES asset_label_groups(id),
+    name TEXT NOT NULL,
     color TEXT NOT NULL DEFAULT 'blue.6',
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
@@ -531,14 +555,12 @@ export const SCHEMA = `
 
 
 
-  -- Les tickets. Chacun appartient à un contexte d'un tableau :
-  -- celui que la liste des tickets associe à la boîte où il est arrivé,
-  -- ou celui qu'on a choisi en le saisissant.
+  -- Les tickets. The inbox they arrived in may give them a label: the one its
+  -- request list associates with it.
   CREATE TABLE IF NOT EXISTS support_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    -- Le tableau qui la montre, et le contexte auquel elle appartient :
-    -- celui que le widget de la boîte associe à son adresse, ou celui qu'on a
-    -- choisi ; nul quand le tableau n'en a pas.
+    -- The board that shows it. "context_id" is no longer used: contexts are
+    -- labels now.
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     context_id INTEGER REFERENCES contexts(id) ON DELETE CASCADE,
     -- La boîte où elle est arrivée, d'où partent les réponses ; vide pour une
@@ -718,6 +740,35 @@ export const SCHEMA = `
     PRIMARY KEY (list_key, email)
   );
 
+  -- The consent of the people whose Outlook calendar a Calendar widget shows
+  -- (lib/calendar-optin.ts): an address set in the widget is only read once
+  -- its owner has passed on the code their inbox received. One row per widget
+  -- — its key (CALENDAR_KEY), which its personal copy keeps — and per
+  -- address, in lowercase. The columns are those of list_mailbox_optins.
+  CREATE TABLE IF NOT EXISTS calendar_optins (
+    calendar_key TEXT NOT NULL,
+    email TEXT NOT NULL,
+    code TEXT NOT NULL DEFAULT '',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    sent_at TEXT NOT NULL DEFAULT '',
+    confirmed_at TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (calendar_key, email)
+  );
+
+  -- The same, for the people whose mailbox a Mail widget reads
+  -- (lib/mail-optin.ts), by its key (MAIL_KEY).
+  CREATE TABLE IF NOT EXISTS mail_optins (
+    mail_key TEXT NOT NULL,
+    email TEXT NOT NULL,
+    code TEXT NOT NULL DEFAULT '',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    sent_at TEXT NOT NULL DEFAULT '',
+    confirmed_at TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (mail_key, email)
+  );
+
   -- Les flux des widgets RSS, tels que la dernière relève les a laissés. Un
   -- flux se range par son adresse, pas par élément : deux éléments qui suivent
   -- la même source n'en font qu'une relève. « articles » est la liste déjà
@@ -788,6 +839,8 @@ export const INDEXES = `
 
   CREATE INDEX IF NOT EXISTS idx_card_members_user ON card_members(user_id);
   CREATE INDEX IF NOT EXISTS idx_labels_board ON labels(board_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_asset_labels_board ON asset_labels(board_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_asset_labels_group ON asset_labels(group_id);
   CREATE INDEX IF NOT EXISTS idx_labels_group ON labels(group_id);
   CREATE INDEX IF NOT EXISTS idx_label_groups_board ON label_groups(board_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_card_labels_label ON card_labels(label_id);
@@ -817,13 +870,11 @@ export const INDEXES = `
     -- change quand on renomme la machine.
     deviceid TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL DEFAULT '',
-    -- Le « tag » passé à l'agent (option « tag »). C'est par lui que le poste
-    -- se rattache à un contexte : une liste de postes associe chaque tag
-    -- qu'elle reçoit à l'un des contextes de son tableau.
+    -- The "tag" given to the agent (its "tag" option). Through it the
+    -- machine joins a board: the one with an asset label of the same name.
     tag TEXT NOT NULL DEFAULT '',
-    -- Le tableau dont une liste de postes reçoit son tag, et le contexte
-    -- qu'elle lui donne. Nul tant qu'aucune liste ne reçoit son tag : il ne
-    -- se montre alors nulle part. Il part avec son contexte.
+    -- The board whose asset label names its tag. Null as long as none does:
+    -- it then shows nowhere. "context_id" is no longer used.
     board_id INTEGER REFERENCES boards(id) ON DELETE CASCADE,
     context_id INTEGER REFERENCES contexts(id) ON DELETE CASCADE,
     -- Le widget « Assets » qui reçoit son tag ; vide s'il n'y en a aucun.

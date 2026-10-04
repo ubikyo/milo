@@ -13,22 +13,40 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconExternalLink, IconMail, IconPaperclip } from "@tabler/icons-react";
+import { IconExternalLink, IconMail, IconMailbox, IconPaperclip } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { api } from "../../api";
+import ConfigurationProblem from "../../components/ui/ConfigurationProblem";
 import { Frame } from "../margins";
 import EmailFrame from "../../components/support/EmailFrame";
+import {
+  ConfirmationActions,
+  State as OptinState,
+  looksLikeAddress,
+} from "../../components/support/Inboxes";
+import ChoicePicker, { FOLDER_NOUN, foldersOf } from "../../components/ui/ChoicePicker";
+import ColumnFields, { LIST_COLUMNS, keptColumns } from "../../components/ui/ColumnFields";
+import type { ListColumn } from "../../components/ui/ColumnFields";
+import ReceptionField, { inboxesOf } from "../../components/ui/ReceptionField";
+import { useConfirmations } from "../../lib/confirmations";
+import { notifyError } from "../../lib/errors";
 import { NEUTRAL_HOVER } from "../../themes/colors";
 import { withField, count } from "../types";
-import type { AccessWidget } from "../types";
+import type { AccessWidget, WidgetConfigProps } from "../types";
+import { MAIL_PEOPLE, SHOWN_FOLDERS, m365Event, mailKey, shownFoldersOf } from "@milo/shared";
 import type { AccessMail, AccessMailDetail, Id, MailAddress } from "@milo/shared";
 
-// Mail: the viewer's inbox, as a grid — everyone sees their own, whatever the
-// board. It is read from Entra by the server (server/src/lib/entra.ts, Mail.Read
-// application permission), page by page: the next one arrives when scrolling
-// down to the bottom of the grid. A click on a row opens the email in a
+// Mail: the viewer's inbox, if the drawer asks for it, as a grid — everyone sees their own, whatever the
+// board —, and the mailboxes of the people the widget names. Each of these
+// receives a code by e-mail when the widget is saved, and their mailbox is
+// only read once that code, passed on, is entered from the "Actions" menu
+// (server, lib/mail-optin.ts); the drawer then chooses, to the right of the
+// address, which of their folders are read — none chosen, their inbox.
+// Everything is read from Entra by the server (server/src/lib/entra.ts,
+// Mail.Read application permission), merged from most recent to oldest, page
+// by page: the next one arrives when scrolling down to the bottom of the grid. A click on a row opens the email in a
 // drawer, as the sender wrote it (EmailFrame, the Support one), with its
 // attachments.
 //
@@ -36,10 +54,13 @@ import type { AccessMail, AccessMailDetail, Id, MailAddress } from "@milo/shared
 
 const QUANTITY = "count";
 const HEIGHT = "height";
-const COLUMNS = "columns";
 const UNREAD = "unreadOnly";
 const HEADER = "header";
 const FRAMED = "framed";
+/** Whether a new e-mail, seen when the page rereads the mailboxes, shows a notification. */
+const NOTIFY = "notifyNew";
+/** Whether the viewer's own inbox is read (server, routes/board-widgets.ts). */
+const OWN_INBOX = "ownInbox";
 
 /** The emails of a page: those the grid requests at once. */
 const QUANTITY_DEFAULT = 15;
@@ -51,30 +72,108 @@ const DEFAULT_HEIGHT = 360;
 const HEIGHT_MIN = 120;
 const HEIGHT_MAX = 1600;
 
-/** The page rereads the mailbox at this rate: new emails are placed at the top. */
+/**
+ * The page rereads the mailboxes at this rate: new emails are placed at the
+ * top. When Graph notifies the server (lib/m365-webhooks.ts), it rereads at once.
+ */
 const RELOAD_INTERVAL = 2 * 60_000;
 
-const PROPOSED_COLUMNS = [
-  { value: "sender", label: "Expéditeur" },
-  { value: "subject", label: "Objet" },
-  { value: "preview", label: "Aperçu" },
-  { value: "date", label: "Reçu le" },
-  { value: "attachments", label: "Pièces jointes" },
+/** Graph sends several notifications for one arrival: a single reread follows them. */
+const NOTIFICATION_DELAY = 1_000;
+
+/** The grid's columns, set in the drawer like a list's (ColumnFields). */
+const MAIL_COLUMNS: ListColumn[] = [
+  { key: "sender", label: "Expéditeur" },
+  { key: "to", label: "Destinataires" },
+  { key: "subject", label: "Objet" },
+  { key: "preview", label: "Aperçu" },
+  { key: "date", label: "Date de réception" },
+  { key: "attachments", label: "Pièces jointes" },
+  { key: "importance", label: "Importance" },
+  { key: "status", label: "État" },
+  { key: "categories", label: "Catégories" },
+  { key: "mailbox", label: "Boîte" },
+  { key: "folder", label: "Dossier" },
 ];
 
-const DEFAULT_COLUMNS = ["sender", "subject", "date"];
+const DEFAULT_COLUMNS = [{ key: "sender" }, { key: "subject" }, { key: "date" }];
+
+/** A column's width when the drawer sets none: the narrow ones keep theirs. */
+const NATURAL_WIDTHS: Record<string, number | string> = {
+  sender: "30%",
+  date: 80,
+  attachments: 32,
+  importance: 90,
+  status: 70,
+};
 
 const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean => {
   const value = (config as Record<string, unknown> | null)?.[key];
   return value === undefined ? defaultValue : Boolean(value);
 };
 
-/** The stored columns, in the grid's order, without whatever is not one. */
-const columnsOf = (config: unknown): string[] => {
-  const value = (config as Record<string, unknown> | null)?.[COLUMNS];
-  if (!Array.isArray(value)) return DEFAULT_COLUMNS;
-  return PROPOSED_COLUMNS.map((c) => c.value).filter((c) => value.includes(c));
+/**
+ * The configuration as the column list reads it. The first widgets kept their
+ * columns as bare keys: they become rows; without any, the default ones.
+ */
+const withColumns = (config: unknown): Record<string, unknown> => {
+  const base = (config as Record<string, unknown> | null) ?? {};
+  const value = base[LIST_COLUMNS];
+  if (!Array.isArray(value)) return { ...base, [LIST_COLUMNS]: DEFAULT_COLUMNS };
+  if (value.every((v) => typeof v === "string")) {
+    const keys = value as string[];
+    return { ...base, [LIST_COLUMNS]: keys.length ? keys.map((key) => ({ key })) : DEFAULT_COLUMNS };
+  }
+  return base;
 };
+
+/** The addresses of the people the widget names, in lowercase. */
+const peopleOf = (config: unknown): string[] => [
+  ...new Set(
+    inboxesOf(config, MAIL_PEOPLE)
+      .map((r) => (typeof r.email === "string" ? r.email.trim().toLowerCase() : ""))
+      .filter(looksLikeAddress),
+  ),
+];
+
+/** A mailbox's name: the start of its address, the viewer's own being "Moi". */
+const ownerName = (owner: string) => (owner ? owner.split("@")[0]! : "Moi");
+
+/**
+ * A mailbox that cannot be read — Graph's "Access denied" — says why in a
+ * notification, without hiding the others; its id is its message: the
+ * rereads do not stack it. "several": the message says whose.
+ */
+const report = (errors: { owner: string; message: string }[], several: boolean) => {
+  for (const e of errors) {
+    notifyError(`${several ? `${ownerName(e.owner)} : ` : ""}${e.message}`, "Boîte illisible");
+  }
+};
+
+/**
+ * The e-mails arrived since the last reading, in a notification — one each,
+ * beyond three a single one that counts them.
+ */
+const announce = (fresh: AccessMail[]) => {
+  if (fresh.length > 3) {
+    notifications.show({
+      title: "Nouveaux e-mails",
+      message: `${fresh.length} nouveaux e-mails`,
+      icon: <IconMail size={16} />,
+    });
+    return;
+  }
+  for (const m of fresh) {
+    notifications.show({
+      title: nameOf(m.from),
+      message: m.subject || "Sans objet",
+      icon: <IconMail size={16} />,
+    });
+  }
+};
+
+/** What designates an e-mail: two mailboxes may give the same id. */
+const mailKeyOf = (m: AccessMail) => `${m.owner}|${m.id}`;
 
 const bound = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -111,15 +210,15 @@ function Reader({
 
   useEffect(() => {
     if (!header) return;
-    const known = alreadyOpened.get(header.id);
+    const known = alreadyOpened.get(mailKeyOf(header));
     setDetail(known ?? null);
     setError("");
     if (known) return;
     let active = true;
     api
-      .getAccessMail(blockId, header.id)
+      .getAccessMail(blockId, header.id, header.owner)
       .then((d) => {
-        alreadyOpened.set(d.id, d);
+        alreadyOpened.set(mailKeyOf(header), d);
         if (active) setDetail(d);
       })
       .catch((e: Error) => active && setError(e.message));
@@ -131,7 +230,7 @@ function Reader({
   const download = async (attachmentId: string, name: string) => {
     if (!header) return;
     try {
-      const file = await api.downloadAccessMailAttachment(blockId, header.id, attachmentId);
+      const file = await api.downloadAccessMailAttachment(blockId, header.id, attachmentId, header.owner);
       const url = URL.createObjectURL(file);
       const link = document.createElement("a");
       link.href = url;
@@ -245,44 +344,80 @@ function Reader({
 
 type State =
   | { phase: "loading" }
-  | { phase: "ready"; messages: AccessMail[]; more: boolean; unread: number | null }
+  | {
+      phase: "ready";
+      messages: AccessMail[];
+      more: boolean;
+      /** Where the next page starts. */
+      cursor: string;
+      unread: number | null;
+    }
   | { phase: "error"; message: string };
 
 function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
   const quantity = bound(count(config, QUANTITY, QUANTITY_DEFAULT), QUANTITY_MIN, QUANTITY_MAX);
   const height = bound(count(config, HEIGHT, DEFAULT_HEIGHT), HEIGHT_MIN, HEIGHT_MAX);
   const unreadOnly = isChecked(config, UNREAD, false);
-  const columns = columnsOf(config);
+  const columns = keptColumns(MAIL_COLUMNS, withColumns(config));
+  const own = isChecked(config, OWN_INBOX, false);
+  const shown = [...shownFoldersOf(config)];
+  // The mailboxes read: the page reads them again when they change.
+  const sourcesKey = `${own}|${shown.map(([email, ids]) => `${email}:${ids.join("+")}`).join(",")}`;
+  // Only the viewer's inbox: the header names it.
+  const onlyOwn = own && shown.length === 0;
   const [state, setState] = useState<State>({ phase: "loading" });
   const [more, setMore] = useState(false);
   const [isOpen, setOpened] = useState<AccessMail | null>(null);
   // The next page is requested only one at a time, even if the bottom of the
   // grid is reached several times while it arrives.
   const ongoing = useRef(false);
+  // The e-mails already shown: those a reread brings besides are new. The
+  // setting is read through a ref, so that changing it does not reread everything.
+  const seen = useRef(new Set<string>());
+  const notify = useRef(false);
+  notify.current = isChecked(config, NOTIFY, false);
+  useEffect(() => {
+    if (state.phase === "ready") seen.current = new Set(state.messages.map(mailKeyOf));
+  }, [state]);
+
+  // Several mailboxes: an error says whose.
+  const several = shown.length > 0;
+  // No mailbox to read: nothing is requested, the widget asks for its settings.
+  const nothingToRead = !own && shown.length === 0;
 
   // The first page, reread at an interval: what has arrived since is placed at
   // the top, and the emails already there resume their state — read elsewhere, for example.
   useEffect(() => {
-    if (!blockId) return;
+    if (!blockId || nothingToRead) return;
     let active = true;
     setState({ phase: "loading" });
     const read = (first: boolean) =>
       api
-        .getAccessMails(blockId, 0, quantity, unreadOnly)
+        .getAccessMails(blockId, "", quantity, unreadOnly)
         .then((page) => {
           if (!active) return;
+          report(page.errors, several);
+          if (!first && notify.current) {
+            announce(page.messages.filter((m) => !seen.current.has(mailKeyOf(m))));
+          }
           setState((before) => {
             if (first || before.phase !== "ready") {
-              return { phase: "ready", messages: page.messages, more: page.more, unread: page.unread ?? null };
+              return {
+                phase: "ready",
+                messages: page.messages,
+                more: page.more,
+                cursor: page.cursor,
+                unread: page.unread ?? null,
+              };
             }
-            const fresh = new Map(page.messages.map((m) => [m.id, m]));
-            const known = new Set(before.messages.map((m) => m.id));
+            const fresh = new Map(page.messages.map((m) => [mailKeyOf(m), m]));
+            const known = new Set(before.messages.map(mailKeyOf));
             return {
               ...before,
               unread: page.unread ?? before.unread,
               messages: [
-                ...page.messages.filter((m) => !known.has(m.id)),
-                ...before.messages.map((m) => fresh.get(m.id) ?? m),
+                ...page.messages.filter((m) => !known.has(mailKeyOf(m))),
+                ...before.messages.map((m) => fresh.get(mailKeyOf(m)) ?? m),
               ],
             };
           });
@@ -290,26 +425,35 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
         .catch((e: Error) => active && first && setState({ phase: "error", message: e.message }));
     read(true);
     const heartbeat = setInterval(() => read(false), RELOAD_INTERVAL);
+    let pending: ReturnType<typeof setTimeout> | undefined;
+    const onNewMail = () => {
+      clearTimeout(pending);
+      pending = setTimeout(() => read(false), NOTIFICATION_DELAY);
+    };
+    window.addEventListener(m365Event("mail"), onNewMail);
     return () => {
       active = false;
       clearInterval(heartbeat);
+      clearTimeout(pending);
+      window.removeEventListener(m365Event("mail"), onNewMail);
     };
-  }, [blockId, quantity, unreadOnly]);
+  }, [blockId, quantity, unreadOnly, sourcesKey, several, nothingToRead]);
 
   const loadMore = useCallback(() => {
     if (state.phase !== "ready" || !state.more || ongoing.current) return;
     ongoing.current = true;
     setMore(true);
     api
-      .getAccessMails(blockId, state.messages.length, quantity, unreadOnly)
+      .getAccessMails(blockId, state.cursor, quantity, unreadOnly)
       .then((page) =>
         setState((before) => {
           if (before.phase !== "ready") return before;
-          const known = new Set(before.messages.map((m) => m.id));
+          const known = new Set(before.messages.map(mailKeyOf));
           return {
             ...before,
             more: page.more,
-            messages: [...before.messages, ...page.messages.filter((m) => !known.has(m.id))],
+            cursor: page.cursor,
+            messages: [...before.messages, ...page.messages.filter((m) => !known.has(mailKeyOf(m)))],
           };
         }),
       )
@@ -320,12 +464,14 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
       });
   }, [state, blockId, quantity, unreadOnly]);
 
+  if (nothingToRead) return <ConfigurationProblem widget={mailWidget.label} />;
+
   const content = (() => {
     if (state.phase === "loading") {
       return (
         <Group gap="xs" c="dimmed">
           <Loader size="xs" color="gray" />
-          <Text size="sm">Chargement de la boîte de réception…</Text>
+          <Text size="sm">Chargement des e-mails…</Text>
         </Group>
       );
     }
@@ -340,13 +486,83 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
       );
     }
 
+    const cell = (key: string, m: AccessMail) => {
+      const weight = m.is_read ? 400 : 600;
+      switch (key) {
+        case "sender":
+          return (
+            <Text size="sm" fw={weight} truncate title={m.from.email}>
+              {nameOf(m.from)}
+            </Text>
+          );
+        case "to":
+          return (
+            <Text size="sm" c="dimmed" truncate title={m.to.map((a) => a.email).join(", ")}>
+              {m.to.map(nameOf).join(", ")}
+            </Text>
+          );
+        case "subject":
+          return (
+            <Text size="sm" fw={weight} truncate c={m.importance === "high" ? "red" : undefined}>
+              {m.subject || "Sans objet"}
+            </Text>
+          );
+        case "preview":
+          return (
+            <Text size="sm" c="dimmed" truncate>
+              {m.preview}
+            </Text>
+          );
+        case "date":
+          return (
+            <Text size="xs" c="dimmed" fw={weight} ta="right" style={{ whiteSpace: "nowrap" }}>
+              {whenLabel(m.received_at)}
+            </Text>
+          );
+        case "attachments":
+          return m.has_attachments ? <IconPaperclip size={12} color="var(--mantine-color-dimmed)" /> : null;
+        case "importance":
+          return m.importance === "normal" ? null : (
+            <Text size="xs" c={m.importance === "high" ? "red" : "dimmed"} truncate>
+              {m.importance === "high" ? "Haute" : "Basse"}
+            </Text>
+          );
+        case "status":
+          return (
+            <Text size="xs" c={m.is_read ? "dimmed" : undefined} fw={weight} truncate>
+              {m.is_read ? "Lu" : "Non lu"}
+            </Text>
+          );
+        case "categories":
+          return (
+            <Text size="xs" c="dimmed" truncate title={m.categories.join(", ")}>
+              {m.categories.join(", ")}
+            </Text>
+          );
+        case "mailbox":
+          return (
+            <Text size="xs" c="dimmed" truncate title={m.owner || undefined}>
+              {ownerName(m.owner)}
+            </Text>
+          );
+        case "folder":
+          return (
+            <Text size="xs" c="dimmed" truncate>
+              {m.folder}
+            </Text>
+          );
+        default:
+          return null;
+      }
+    };
+
     return (
       <Stack gap={6}>
         {isChecked(config, HEADER, true) && (
           <Group gap={6} c="dimmed">
             <IconMail size={14} />
             <Text size="xs">
-              Boîte de réception
+              {onlyOwn ? "Boîte de réception" : "E-mails"}
               {state.unread !== null && ` · ${state.unread} non lu${state.unread > 1 ? "s" : ""}`}
             </Text>
           </Group>
@@ -369,65 +585,27 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
                 <Table.Tr>
                   {columns.map((c) => (
                     <Table.Th
-                      key={c}
+                      key={c.id}
                       fz="xs"
                       c="dimmed"
                       fw={500}
-                      w={c === "date" ? 72 : c === "attachments" ? 28 : c === "sender" ? "30%" : undefined}
-                      ta={c === "date" ? "right" : undefined}
+                      w={c.width ?? NATURAL_WIDTHS[c.key]}
+                      ta={c.key === "date" ? "right" : undefined}
+                      style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
                     >
-                      {c === "attachments" ? <IconPaperclip size={12} /> : PROPOSED_COLUMNS.find((p) => p.value === c)?.label}
+                      {c.key === "attachments" ? <IconPaperclip size={12} /> : c.label}
                     </Table.Th>
                   ))}
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
                 {state.messages.map((m) => (
-                  <Table.Tr key={m.id} onClick={() => setOpened(m)} style={{ cursor: "pointer" }}>
-                    {columns.map((c) => {
-                      const weight = m.is_read ? 400 : 600;
-                      if (c === "sender") {
-                        return (
-                          <Table.Td key={c}>
-                            <Text size="sm" fw={weight} truncate title={m.from.email}>
-                              {nameOf(m.from)}
-                            </Text>
-                          </Table.Td>
-                        );
-                      }
-                      if (c === "subject") {
-                        return (
-                          <Table.Td key={c}>
-                            <Text size="sm" fw={weight} truncate c={m.importance === "high" ? "red" : undefined}>
-                              {m.subject || "Sans objet"}
-                            </Text>
-                          </Table.Td>
-                        );
-                      }
-                      if (c === "preview") {
-                        return (
-                          <Table.Td key={c}>
-                            <Text size="sm" c="dimmed" truncate>
-                              {m.preview}
-                            </Text>
-                          </Table.Td>
-                        );
-                      }
-                      if (c === "date") {
-                        return (
-                          <Table.Td key={c} ta="right">
-                            <Text size="xs" c="dimmed" fw={weight} style={{ whiteSpace: "nowrap" }}>
-                              {whenLabel(m.received_at)}
-                            </Text>
-                          </Table.Td>
-                        );
-                      }
-                      return (
-                        <Table.Td key={c} c="dimmed">
-                          {m.has_attachments && <IconPaperclip size={12} />}
-                        </Table.Td>
-                      );
-                    })}
+                  <Table.Tr key={mailKeyOf(m)} onClick={() => setOpened(m)} style={{ cursor: "pointer" }}>
+                    {columns.map((c) => (
+                      <Table.Td key={c.id} ta={c.key === "date" ? "right" : undefined}>
+                        {cell(c.key, m)}
+                      </Table.Td>
+                    ))}
                   </Table.Tr>
                 ))}
               </Table.Tbody>
@@ -459,34 +637,81 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
   );
 }
 
-export const mailWidget: AccessWidget = {
-  type: "mail",
-  kind: "m365",
-  label: "Mail",
-  icon: IconMail,
-  defaultConfig: {
-    [QUANTITY]: QUANTITY_DEFAULT,
-    [HEIGHT]: DEFAULT_HEIGHT,
-    [COLUMNS]: DEFAULT_COLUMNS,
-    [UNREAD]: false,
-    [HEADER]: true,
-    [FRAMED]: false,
-  },
-  // Each row opens its email.
-  ownClicks: true,
+/**
+ * The drawer: the viewer's own inbox, the people whose mailbox may be read —
+ * each with its consent state, then the folders read —, the grid's columns
+ * and its settings.
+ */
+function MailConfig({ config, onChange }: WidgetConfigProps) {
+  // The widget's key: a widget not yet saved has none — everything waits.
+  const key = mailKey(config);
+  const people = peopleOf(config);
+  const { confirmed } = useConfirmations(key, people, "mail");
+  const pending = people.filter((e) => !confirmed(e));
+  // A person removed from the list, or not yet confirmed, is no longer read.
+  const shown = new Map([...shownFoldersOf(config)].filter(([e]) => people.includes(e) && confirmed(e)));
 
-  Display: Mail,
+  /** A person's folders, chosen; null: none of them is read any more. */
+  const choose = (email: string, ids: string[] | null) => {
+    const next = new Map(shown);
+    if (ids) next.set(email, ids);
+    else next.delete(email);
+    onChange(
+      withField(
+        config,
+        SHOWN_FOLDERS,
+        [...next].map(([e, folders]) => ({ email: e, folders })),
+      ),
+    );
+  };
 
-  margins: () => ({ top: 0, bottom: 15 }),
-
-  // It draws its own frame, set in the drawer's "Apparence" block.
-  ownFrame: true,
-
-  Config: ({ config, onChange }) => (
+  return (
     <Stack gap="xl">
-      <Text size="sm" c="dimmed">
-        Chacun voit sa propre boîte de réception, lue dans Entra (permission Mail.Read).
-      </Text>
+      <ConfirmationActions scope="mail" owner={key} pending={pending} />
+      <Checkbox
+        label="Afficher ma boîte de réception"
+        description="Chacun voit la sienne, lue dans Entra (permission Mail.Read)."
+        checked={isChecked(config, OWN_INBOX, false)}
+        onChange={(e) => onChange(withField(config, OWN_INBOX, e.currentTarget.checked))}
+        color="teal"
+      />
+      <ReceptionField
+        configKey={MAIL_PEOPLE}
+        field="email"
+        label="Boîtes aux lettres"
+        description={
+          <>
+            Chaque adresse ajoutée reçoit, à l'enregistrement, un code à quatre chiffres : son
+            titulaire vous le communique s'il accepte que ses e-mails soient affichés. Saisissez-le
+            depuis le menu « Actions », puis « Confirmer une adresse ». Une fois l'adresse
+            confirmée, choisissez à sa droite les dossiers à lire. Tous ceux qui voient ce tableau
+            pourront lire ces e-mails.
+          </>
+        }
+        placeholder="Adresse e-mail"
+        add="Ajouter une adresse e-mail"
+        icon={IconMailbox}
+        empty="Aucune boîte aux lettres"
+        normalizeValue={(value) => value.trim()}
+        // Confirmed, the address offers its folders; until then, it waits.
+        state={(value) => {
+          const email = value.trim().toLowerCase();
+          if (!email) return null;
+          if (!looksLikeAddress(email) || !confirmed(email)) return <OptinState confirmed={false} />;
+          return (
+            <ChoicePicker
+              load={foldersOf(key, email)}
+              chosen={shown.get(email)}
+              onChange={(ids) => choose(email, ids)}
+              noun={FOLDER_NOUN}
+              errorTitle="Dossiers illisibles"
+            />
+          );
+        }}
+        config={config}
+        onChange={onChange}
+      />
+      <ColumnFields columns={MAIL_COLUMNS} config={withColumns(config)} onChange={onChange} />
       <Group align="flex-start">
         {/* A field emptied while typing stores the default value. */}
         <NumberInput
@@ -511,22 +736,18 @@ export const mailWidget: AccessWidget = {
           w={150}
         />
       </Group>
-      <Checkbox.Group
-        label="Colonnes"
-        value={columnsOf(config)}
-        onChange={(values) => values.length && onChange(withField(config, COLUMNS, values))}
-      >
-        <Stack gap="xs" mt={6}>
-          {PROPOSED_COLUMNS.map((c) => (
-            <Checkbox key={c.value} value={c.value} label={c.label} color="teal" />
-          ))}
-        </Stack>
-      </Checkbox.Group>
       <Stack gap="sm">
         <Checkbox
           label="Non lus uniquement"
           checked={isChecked(config, UNREAD, false)}
           onChange={(e) => onChange(withField(config, UNREAD, e.currentTarget.checked))}
+          color="teal"
+        />
+        <Checkbox
+          label="Notifier les nouveaux e-mails"
+          description="Une notification s'affiche dans la page à l'arrivée d'un e-mail."
+          checked={isChecked(config, NOTIFY, false)}
+          onChange={(e) => onChange(withField(config, NOTIFY, e.currentTarget.checked))}
           color="teal"
         />
         <Checkbox
@@ -537,6 +758,33 @@ export const mailWidget: AccessWidget = {
         />
       </Stack>
     </Stack>
-  ),
+  );
+}
 
+export const mailWidget: AccessWidget = {
+  type: "mail",
+  kind: "m365",
+  label: "Mail",
+  icon: IconMail,
+  defaultConfig: {
+    [QUANTITY]: QUANTITY_DEFAULT,
+    [HEIGHT]: DEFAULT_HEIGHT,
+    [LIST_COLUMNS]: DEFAULT_COLUMNS,
+    [UNREAD]: false,
+    [HEADER]: true,
+    [FRAMED]: false,
+    [OWN_INBOX]: false,
+    [NOTIFY]: false,
+  },
+  // Each row opens its email.
+  ownClicks: true,
+
+  Display: Mail,
+
+  margins: () => ({ top: 0, bottom: 15 }),
+
+  // It draws its own frame, set in the drawer's "Apparence" block.
+  ownFrame: true,
+
+  Config: MailConfig,
 };

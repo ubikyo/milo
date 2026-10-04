@@ -2,6 +2,7 @@
 
 import { Router } from "express";
 import type { Request } from "express";
+import { inContext } from "@milo/shared";
 import type { Id, Project } from "@milo/shared";
 import { selection, transaction } from "../db/query.js";
 import type { ProjectJoinedRow, ProjectRow } from "../db/rows.js";
@@ -14,7 +15,7 @@ import { concerned, notify, notifyLinked, notifyDeletion, root } from "../lib/no
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { categories } from "../repositories/project-boards.js";
-import { boardContext } from "../repositories/contexts.js";
+import { contextGroups, contextLabel } from "../repositories/contexts.js";
 import { keyInBoard } from "../repositories/lists.js";
 import {
   VISIBLE_BOARDS_CLAUSE as visibleBoardsClause,
@@ -48,7 +49,6 @@ const photo = (p: Project): Field[] => [
   { label: "Description", value: p.description, opaque: true },
   { label: "Tableau", value: quote(boards.byId.get(p.board_id)?.name) },
   { label: "Catégorie", value: quote(p.category_name) },
-  { label: "Contexte", value: quote(p.context_name) },
   {
     label: "Type de jalons",
     value: quote(p.milestone_type_id ? milestoneTypes.byId.get(p.milestone_type_id)?.name : null),
@@ -117,7 +117,6 @@ projectRoutes.use(touch("projects"));
 const CLAUSES: Record<string, string> = {
   board: "projects.board_id = @board",
   category: "projects.category_id = @category",
-  context: "projects.context_id = @context",
   actor: "projects.id IN (SELECT project_id FROM project_actors WHERE user_id = @actor)",
 };
 
@@ -168,22 +167,24 @@ const projectActors = selection<{ user_id: Id }>(
   `SELECT DISTINCT project_actors.user_id FROM project_actors
      JOIN projects ON projects.id = project_actors.project_id
     WHERE ${VISIBLE_BOARDS_CLAUSE}
-      AND (@board IS NULL OR projects.board_id = @board)
-      AND (@context IS NULL OR projects.context_id = @context)`,
+      AND (@board IS NULL OR projects.board_id = @board)`,
 );
 
 projectRoutes.get("/actors", (req, res) => {
   if (!requestCan(req, "projects", "view")) return void res.json([]);
   const filter = (value: unknown) => (value && value !== "all" ? String(value) : null);
-  res.json(
-    projectActors
-      .all({
-        me: req.user.id,
-        board: filter(req.query["board"]),
-        context: filter(req.query["context"]),
-      })
-      .map((l) => l.user_id),
-  );
+  const board = filter(req.query["board"]);
+  const context = filter(req.query["context"]);
+  if (!board || !context) {
+    return void res.json(projectActors.all({ me: req.user.id, board }).map((l) => l.user_id));
+  }
+  // A context is a label (shared, contexts.ts): the board's projects are
+  // read with theirs, and those of the context keep their actors.
+  const groups = contextGroups(Number(board));
+  const viewed = withRelations(
+    queryFor([VISIBLE_BOARDS_CLAUSE, CLAUSES.board!]).all({ me: req.user.id, board }),
+  ).filter((p) => inContext(p.labels, groups[p.list_key], context));
+  res.json([...new Set(viewed.flatMap((p) => p.actors.map((a) => a.id)))]);
 });
 
 projectRoutes.get("/:id", (req, res) => {
@@ -221,7 +222,7 @@ projectRoutes.post("/", (req, res) => {
     description = "",
     board_id,
     category_id,
-    context_id,
+    context,
     milestone_type_id = null,
     status = 0,
     actor_ids = [],
@@ -234,8 +235,11 @@ projectRoutes.post("/", (req, res) => {
   const board = projectBoardOpen(board_id, req.user);
   require(req, "projects", "create");
   verifyCategory(category_id, board_id);
-  const context = boardContext(board.id, context_id);
   const milestoneType = milestoneTypeFrom(milestone_type_id);
+  // The "Projets" widget it is created from, failing that the first.
+  const list = keyInBoard(board.id, "project.list", req.body.list_key);
+  // Created in a context, it receives its label: it stays in sight.
+  const label = contextLabel("project.list", board.id, context);
 
   const timestamp = now();
 
@@ -249,9 +253,7 @@ projectRoutes.post("/", (req, res) => {
       description: cleanDescription(description),
       board_id,
       category_id,
-      context_id: context,
-      // The "Projets" widget it is created from, failing that the first.
-      list_key: keyInBoard(board.id, "project.list", req.body.list_key),
+      list_key: list,
       milestone_type_id: milestoneType,
       status,
       created_at: timestamp,
@@ -260,7 +262,9 @@ projectRoutes.post("/", (req, res) => {
     const projectId = Number(lastInsertRowid);
 
     replaceActors(projectId, toIds(actor_ids));
-    replaceProjectLabels(projectId, toIds(label_ids), Number(board_id));
+    const labelIds = toIds(label_ids);
+    if (label !== null && !labelIds.includes(label)) labelIds.push(label);
+    replaceProjectLabels(projectId, labelIds, Number(board_id));
 
     // The thread opens on the creation, dated and signed Milo. Comments
     // written afterwards follow.
@@ -309,13 +313,6 @@ projectRoutes.post("/:id/copy", (req, res) => {
       description: source.description,
       board_id: board.id,
       category_id: Number(categoryId),
-      // Another board has other contexts: the copy takes the one specified,
-      // or the first.
-      context_id: boardContext(
-        board.id,
-        req.body.context_id,
-        board.id === source.board_id ? source.context_id : null,
-      ),
       list_key: keyInBoard(
         board.id,
         "project.list",
@@ -375,7 +372,6 @@ projectRoutes.put("/:id", (req, res) => {
     description = existing.description,
     board_id = existing.board_id,
     category_id = existing.category_id,
-    context_id,
     milestone_type_id = existing.milestone_type_id,
     status = existing.status,
     actor_ids,
@@ -384,13 +380,6 @@ projectRoutes.put("/:id", (req, res) => {
 
   // A project does not leave a board one does not see, nor enter one.
   const board = projectBoardOpen(board_id, req.user);
-  // The context must belong to the project's board: moved to another board,
-  // the project takes the one specified, or the new board's first.
-  const context = boardContext(
-    board.id,
-    context_id,
-    board.id === existing.board_id ? existing.context_id : null,
-  );
   verifyCategory(category_id, board_id);
   const milestoneType = milestoneTypeFrom(milestone_type_id);
 
@@ -406,7 +395,6 @@ projectRoutes.put("/:id", (req, res) => {
     sameDescription(clean, existing.description) &&
     sameValue(board_id, existing.board_id) &&
     sameValue(category_id, existing.category_id) &&
-    sameValue(context, existing.context_id) &&
     sameValue(milestoneType, existing.milestone_type_id) &&
     sameValue(status, existing.status) &&
     sameIds(actor_ids, actorsOf(existing.id)) &&
@@ -419,7 +407,6 @@ projectRoutes.put("/:id", (req, res) => {
       description: clean,
       board_id,
       category_id,
-      context_id: context,
       // Moved to another board, it goes to the new board's first "Projets" widget.
       list_key:
         board.id === existing.board_id

@@ -7,6 +7,7 @@ import type { Request, Router } from "express";
 import type { Id, Right } from "@milo/shared";
 import { conflict, orNotFound, requireText } from "../lib/http.js";
 import type { LabelGroupStore } from "../repositories/label-groups.js";
+import { renameContextGroup } from "../repositories/contexts.js";
 
 const GROUP_NOT_FOUND = "Groupe introuvable";
 
@@ -35,7 +36,10 @@ export const mountLabelGroups = (
   routes.put("/groups/:id", (req, res) => {
     const existing = orNotFound(groups.byId(req.params.id), GROUP_NOT_FOUND);
     scopeOf(req, existing.board_id, "update");
-    groups.rename(existing.id, requireText(req.body.name, "Le nom du groupe est requis"));
+    const name = requireText(req.body.name, "Le nom du groupe est requis");
+    groups.rename(existing.id, name);
+    // A board's context group is named: it follows the rename.
+    renameContextGroup(existing.board_id, existing.name, name);
     res.json(groups.byId(existing.id));
   });
 

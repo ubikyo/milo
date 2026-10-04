@@ -22,7 +22,7 @@ import {
 } from "../../themes/menus";
 import type { CopyResult, Id } from "@milo/shared";
 import CloseButton from "./CloseButton";
-import { report } from "./CopyToBoardModal";
+import { report } from "./copyReport";
 import { DrawerActionsContext } from "./IndicatorDrawer";
 
 // The "Actions" menu of a "Projets" or "Tâches" widget drawer: copy the labels

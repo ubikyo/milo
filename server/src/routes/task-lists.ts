@@ -133,7 +133,6 @@ taskListRoutes.put("/:id", (req, res) => {
       ? keyInBoard(Number(boardId), "task.list", undefined)
       : existing.list_key;
     taskLists.update.run(boardId, name, position, color, key, existing.id);
-    if (change) taskCards.reassignContext.run(boardId, existing.id);
   })();
   res.json(taskLists.byId.get(existing.id));
 });

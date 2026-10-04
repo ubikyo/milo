@@ -26,16 +26,53 @@ export const seedIfEmpty = (db: Database): void => {
     categoryIds[name] = insertCategory.run(boardId, name).lastInsertRowid;
   }
 
-  // The board's contexts replace its "Contexte par défaut".
-  db.prepare("DELETE FROM contexts WHERE board_id = ?").run(boardId);
-  const insertContext = db.prepare(
-    "INSERT INTO contexts (board_id, name, position, created_at) VALUES (?, ?, ?, ?)",
+  // The board's contexts: the labels of a "Contextes" group, which its
+  // projects lists choose (shared, contexts.ts).
+  const created = new Date().toISOString();
+  const group = db
+    .prepare(
+      `INSERT INTO project_label_groups (board_id, name, position, created_at)
+       VALUES (?, 'Contextes', (SELECT COALESCE(MAX(position), -1) + 1
+                                FROM project_label_groups WHERE board_id = ?), ?)`,
+    )
+    .run(boardId, boardId, created).lastInsertRowid;
+  const insertLabel = db.prepare(
+    `INSERT INTO project_labels (board_id, group_id, name, color, position, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   );
   const contextIds: Record<string, number | bigint> = {};
-  ["Arco Marketing", "Arco Digital", "Arco Studio"].forEach((name, position) => {
-    contextIds[name] = insertContext.run(boardId, name, position, new Date().toISOString())
+  (
+    [
+      ["Arco Marketing", "blue.6"],
+      ["Arco Digital", "teal.6"],
+      ["Arco Studio", "orange.6"],
+    ] as const
+  ).forEach(([name, color], position) => {
+    contextIds[name] = insertLabel.run(boardId, group, name, color, position, created)
       .lastInsertRowid;
   });
+  const lists = db
+    .prepare(
+      `SELECT w.id, w.config FROM board_widgets w
+       JOIN board_sections s ON s.id = w.section_id
+       WHERE s.board_id = ? AND w.type = 'project.list'`,
+    )
+    .all(boardId) as { id: number; config: string }[];
+  for (const list of lists) {
+    let config: Record<string, unknown> = {};
+    try {
+      config = JSON.parse(list.config) as Record<string, unknown>;
+    } catch {
+      // An unreadable configuration starts over.
+    }
+    db.prepare("UPDATE board_widgets SET config = ? WHERE id = ?").run(
+      JSON.stringify({ ...config, context_group: Number(group) }),
+      list.id,
+    );
+  }
+  const insertLink = db.prepare(
+    "INSERT INTO project_label_links (project_id, label_id) VALUES (?, ?)",
+  );
 
   const now = new Date();
   const iso = (daysAgo: number): string => {
@@ -45,8 +82,8 @@ export const seedIfEmpty = (db: Database): void => {
   };
 
   const insertProject = db.prepare(`
-    INSERT INTO projects (name, description, board_id, category_id, context_id, status, created_at, updated_at)
-    VALUES (@name, @description, @board_id, @category_id, @context_id, @status, @created_at, @updated_at)
+    INSERT INTO projects (name, description, board_id, category_id, status, created_at, updated_at)
+    VALUES (@name, @description, @board_id, @category_id, @status, @created_at, @updated_at)
   `);
   const insertComment = db.prepare(`
     INSERT INTO comments (project_id, text, created_at, updated_at)
@@ -58,11 +95,11 @@ export const seedIfEmpty = (db: Database): void => {
     board_id: boardId,
     description: "Nouvelle version du site institutionnel avec Mantine.",
     category_id: categoryIds["Web"],
-    context_id: contextIds["Arco Marketing"],
     status: 65,
     created_at: iso(20),
     updated_at: iso(2),
   });
+  insertLink.run(p1.lastInsertRowid, contextIds["Arco Marketing"]);
   insertComment.run({
     project_id: p1.lastInsertRowid,
     text: "Maquettes validées par le client.",
@@ -81,11 +118,11 @@ export const seedIfEmpty = (db: Database): void => {
     board_id: boardId,
     description: "App interne de gestion des congés.",
     category_id: categoryIds["Mobile"],
-    context_id: contextIds["Arco Digital"],
     status: 100,
     created_at: iso(45),
     updated_at: iso(5),
   });
+  insertLink.run(p2.lastInsertRowid, contextIds["Arco Digital"]);
   insertComment.run({
     project_id: p2.lastInsertRowid,
     text: "Mise en production effectuée.",
@@ -93,14 +130,14 @@ export const seedIfEmpty = (db: Database): void => {
     updated_at: iso(5),
   });
 
-  insertProject.run({
+  const p3 = insertProject.run({
     name: "Migration serveurs internes",
     board_id: boardId,
     description: "Bascule des serveurs sur la nouvelle infra.",
     category_id: categoryIds["Interne"],
-    context_id: contextIds["Arco Studio"],
     status: 10,
     created_at: iso(3),
     updated_at: iso(3),
   });
+  insertLink.run(p3.lastInsertRowid, contextIds["Arco Studio"]);
 };

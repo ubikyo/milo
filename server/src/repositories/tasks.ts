@@ -38,27 +38,18 @@ export const taskCards = {
     "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM task_cards WHERE list_id = ?",
   ),
   create: mutation(
-    `INSERT INTO task_cards (list_id, text, position, number, kind, context_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO task_cards (list_id, text, position, number, kind, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   ),
   update: mutation(
     `UPDATE task_cards
      SET text = @text, description = @description, due_date = @due_date,
          start_date = @start_date, due_form = @due_form, recurrence = @recurrence, reminder = @reminder,
-         context_id = @context_id, cover_interval = @cover_interval,
+         cover_interval = @cover_interval,
          -- Une échéance ou un rappel qui change rouvre le rappel.
          reminded_for = CASE WHEN due_date = @due_date AND reminder = @reminder
                              THEN reminded_for ELSE '' END
      WHERE id = @id`,
-  ),
-  /**
-   * The cards of a list moved to another board take the first of its
-   * contexts: those of the old one don't apply there.
-   */
-  reassignContext: mutation(
-    `UPDATE task_cards SET context_id =
-       (SELECT id FROM contexts WHERE board_id = ? ORDER BY position, id LIMIT 1)
-     WHERE list_id = ?`,
   ),
   /** The description alone: the one a card gets as soon as it is created. */
   describe: mutation("UPDATE task_cards SET description = ? WHERE id = ?"),

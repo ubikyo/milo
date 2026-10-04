@@ -5,7 +5,6 @@ import {
   Input,
   Menu,
   ScrollArea,
-  Select,
   Stack,
   Tabs,
   Text,
@@ -60,7 +59,6 @@ import type {
   CardCover,
   CardComment,
   CardLink,
-  Context,
   Checklist,
   Id,
   Label,
@@ -100,8 +98,6 @@ interface CardDrawerProps {
   labels: Label[];
   users: PublicUser[];
   boardId: string | null;
-  /** The board's contexts: the card belongs to one of them. */
-  contexts?: Context[];
   onLabelsChanged: (patch?: {
     id: number;
     data: Partial<Label>;
@@ -130,7 +126,6 @@ export default function CardDrawer({
   labels,
   users,
   boardId,
-  contexts = [],
   onLabelsChanged,
   onSaved,
   followed,
@@ -156,8 +151,6 @@ export default function CardDrawer({
    */
   const [removedActors, setRemovedActors] = useState<string[]>([]);
   const [labelIds, setLabelIds] = useState<string[]>([]);
-  /** The card's context; empty until it is read. */
-  const [context, setContext] = useState("");
   const [comments, setComments] = useState<CardComment[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -246,7 +239,6 @@ export default function CardDrawer({
       .then((record) => {
         setText(record.text);
         setNumber(record.number);
-        setContext(record.context_id ? String(record.context_id) : "");
         setDue({
           shape: record.due_form || "date",
           start: record.start_date || "",
@@ -481,7 +473,6 @@ export default function CardDrawer({
         label_ids: labelIds.map(Number),
         ...dueFields,
         cover_interval: rotation,
-        ...(context ? { context_id: Number(context) } : {}),
       });
       await onSaved();
       onClose();
@@ -837,31 +828,13 @@ export default function CardDrawer({
                     />
                   )}
 
-                  {/* The title, and the card's context beside it: two parts
-                      for the title, one for the context. */}
-                  <Group align="flex-start" gap="md" wrap="nowrap">
-                    <TextInput
-                      label="Titre"
-                      placeholder="Titre de la carte"
-                      value={text}
-                      onChange={(e) => setText(e.currentTarget.value)}
-                      required
-                      style={{ flex: "2 1 0", minWidth: 0 }}
-                    />
-                    {card && contexts.length > 0 && (
-                      <Select
-                        label="Contexte"
-                        data={contexts.map((c) => ({
-                          value: String(c.id),
-                          label: c.name,
-                        }))}
-                        value={context || null}
-                        onChange={(value) => value && setContext(value)}
-                        allowDeselect={false}
-                        style={{ flex: "1 1 0", minWidth: 0 }}
-                      />
-                    )}
-                  </Group>
+                  <TextInput
+                    label="Titre"
+                    placeholder="Titre de la carte"
+                    value={text}
+                    onChange={(e) => setText(e.currentTarget.value)}
+                    required
+                  />
 
                   {/* The due date follows what names the card. As long as there is none,
                       nothing is shown — the form does not carry one more empty

@@ -1,93 +1,184 @@
-// A board's contexts: the list at the top left. Everything the board
-// carries — projects, cards, requests, workstations — belongs to one of them,
-// and goes with it (ON DELETE CASCADE). Each person chooses, board by board,
-// which one they look at; with no choice, they look at all of them.
+// A board's contexts are labels (shared, contexts.ts): the board chooses one
+// label group by its name. In each kind of labels its lists use — projects',
+// cards', tickets', assets' — the group of that name gives the list its
+// contexts. The board's contexts are the names of those groups' labels; each
+// person chooses, board by board, the one they look at — by its name —, and
+// with no choice looks at all of them.
 
-import type { Context, CopyResult, Id } from "@milo/shared";
-import { mutation, scalar, selection, transaction } from "../db/query.js";
-import type { ContextRow, NextRow } from "../db/rows.js";
-import { badRequest } from "../lib/http.js";
-import { now } from "../lib/time.js";
+import { ALL_CONTEXT_GROUPS, contextKey, isContextList, listKey } from "@milo/shared";
+import type { ContextList, Id } from "@milo/shared";
+import { mutation, selection } from "../db/query.js";
+import type { Selection } from "../db/query.js";
 
-export const contexts = {
-  ofBoard: selection<ContextRow>(
-    "SELECT * FROM contexts WHERE board_id = ? ORDER BY position, id",
-  ),
-  byId: selection<ContextRow>("SELECT * FROM contexts WHERE id = ?"),
-  nextPosition: scalar<NextRow>(
-    "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM contexts WHERE board_id = ?",
-  ),
-  create: mutation(
-    "INSERT INTO contexts (board_id, name, position, created_at) VALUES (?, ?, ?, ?)",
-  ),
-  rename: mutation("UPDATE contexts SET name = ? WHERE id = ?"),
-  remove: mutation("DELETE FROM contexts WHERE id = ?"),
-  /** The context this account looks at in this board; null for all. */
-  selected: selection<{ context_id: Id | null }>(
-    "SELECT context_id FROM user_board_contexts WHERE user_id = ? AND board_id = ?",
-  ),
-  select: mutation(
-    `INSERT INTO user_board_contexts (user_id, board_id, context_id) VALUES (?, ?, ?)
-     ON CONFLICT(user_id, board_id) DO UPDATE SET context_id = excluded.context_id`,
-  ),
+/** Where each kind of list keeps its labels. Table names never come from a request. */
+const TABLES: Record<ContextList, { labels: string; groups: string; scoped: boolean }> = {
+  "project.list": { labels: "project_labels", groups: "project_label_groups", scoped: true },
+  "task.list": { labels: "labels", groups: "label_groups", scoped: true },
+  "asset.list": { labels: "asset_labels", groups: "asset_label_groups", scoped: true },
+  // Support's labels belong to no board.
+  "support.list": { labels: "support_labels", groups: "support_label_groups", scoped: false },
 };
 
-/**
- * A board's contexts, copied after those of another, in their order. A name
- * the destination board already has — case aside — is not duplicated: it is
- * counted separately. "replaceExisting": those of the destination board go
- * away first, with their projects, cards, requests and workstations (ON DELETE
- * CASCADE).
- */
-export const copyContexts = transaction(
-  (since: Id, to: Id, replaceExisting: boolean): CopyResult => {
-    const removed = replaceExisting ? clearContexts.run(to).changes : 0;
-    const already = new Set(contexts.ofBoard.all(to).map((c) => c.name.trim().toLowerCase()));
-    let copied = 0;
-    let skipped = 0;
-    for (const { name } of contexts.ofBoard.all(since)) {
-      const key = name.trim().toLowerCase();
-      if (already.has(key)) {
-        skipped += 1;
-        continue;
-      }
-      addContext(to, name);
-      already.add(key);
-      copied += 1;
-    }
-    return { copied, skipped, removed };
-  },
+const byKind = <Row>(sql: (t: (typeof TABLES)[ContextList]) => string) =>
+  Object.fromEntries(
+    Object.entries(TABLES).map(([type, t]) => [type, selection<Row>(sql(t))]),
+  ) as Record<ContextList, Selection<Row>>;
+
+/** The groups of a kind, in order: a board's — or Support's, all of them. */
+const groupsOf = byKind<{ id: Id; name: string }>(
+  (t) =>
+    `SELECT id, name FROM ${t.groups}${t.scoped ? " WHERE board_id = @board" : ""}
+     ORDER BY position, id`,
 );
 
-const clearContexts = mutation("DELETE FROM contexts WHERE board_id = ?");
+const labelsOfGroup = byKind<{ id: Id; name: string }>(
+  (t) => `SELECT id, name FROM ${t.labels} WHERE group_id = ? ORDER BY position, id`,
+);
 
-/** A context after the others. */
-export const addContext = (boardId: Id, name: string): Id => {
-  const { next } = contexts.nextPosition(boardId);
-  return Number(contexts.create.run(boardId, name, next, now()).lastInsertRowid);
-};
+const listsOf = selection<{ type: string; config: string }>(
+  `SELECT w.type, w.config FROM board_widgets w
+   JOIN board_sections s ON s.id = w.section_id
+   WHERE s.board_id = ?
+   ORDER BY s.position, s.id, w.position, w.id`,
+);
 
-export const contextOf = (row: ContextRow): Context => ({ ...row });
+const groupNameOf = selection<{ context_group: string }>(
+  "SELECT context_group FROM boards WHERE id = ?",
+);
+
+/** The board's lists whose labels can give it contexts, in the board's order. */
+const contextListsOf = (boardId: Id): { type: ContextList; list: string }[] =>
+  listsOf.all(boardId).flatMap((w) => {
+    if (!isContextList(w.type)) return [];
+    let config: unknown;
+    try {
+      config = JSON.parse(w.config);
+    } catch {
+      config = {};
+    }
+    return [{ type: w.type, list: listKey(config) }];
+  });
+
+/** The kinds of labels the board's lists use, each once. */
+const kindsOf = (boardId: Id): Set<ContextList> =>
+  new Set(contextListsOf(boardId).map((l) => l.type));
 
 /**
- * The context received for an item of this board: it must belong to it. When
- * absent, it is `defaultValue` — or, failing that, the board's first; null
- * when the board has none.
+ * The groups of this name among a kind's groups for this board — all of them
+ * for ALL_CONTEXT_GROUPS; empty if there is none.
  */
-export const boardContext = (
-  boardId: Id,
-  value: unknown,
-  defaultValue?: Id | null,
-): Id | null => {
-  if (value === undefined || value === null || value === "") {
-    if (defaultValue) return defaultValue;
-    return contexts.ofBoard.all(boardId)[0]?.id ?? null;
-  }
-  const context = contexts.byId.get(value);
-  if (!context || context.board_id !== boardId) badRequest("Contexte introuvable");
-  return context!.id;
+const groupsNamed = (type: ContextList, boardId: Id, name: string): Id[] =>
+  groupsOf[type]
+    .all({ board: boardId })
+    .filter((g) => name === ALL_CONTEXT_GROUPS || contextKey(g.name) === contextKey(name))
+    .map((g) => g.id);
+
+/** The board's context group, by its name; null for none. */
+export const boardGroup = (boardId: Id): string | null => {
+  const name = groupNameOf.get(boardId)?.context_group.trim() ?? "";
+  return name ? name : null;
 };
 
-/** The context this account looks at in this board; null for all. */
-export const selectedContext = (userId: Id, boardId: Id): Id | null =>
-  contexts.selected.get(userId, boardId)?.context_id ?? null;
+/** The groups the board can choose: those of the kinds its lists use, each name once. */
+export const contextGroupOptions = (boardId: Id): string[] => {
+  const names = new Map<string, string>();
+  for (const type of kindsOf(boardId)) {
+    for (const { name } of groupsOf[type].all({ board: boardId })) {
+      const key = contextKey(name);
+      if (key && !names.has(key)) names.set(key, name.trim());
+    }
+  }
+  return [...names.values()];
+};
+
+/** The context groups of each list of the board, by list key. */
+export const contextGroups = (boardId: Id): Record<string, Id[]> => {
+  const name = boardGroup(boardId);
+  if (name === null) return {};
+  return Object.fromEntries(
+    contextListsOf(boardId).flatMap(({ type, list }) => {
+      const groups = groupsNamed(type, boardId, name);
+      return groups.length === 0 ? [] : [[list, groups]];
+    }),
+  );
+};
+
+/**
+ * The board's contexts under the name of their group: the labels of its
+ * context groups, each name once — in the first group that has it —, groups
+ * of the same name together, in order.
+ */
+export const boardContextSections = (boardId: Id): { group: string; contexts: string[] }[] => {
+  const name = boardGroup(boardId);
+  if (name === null) return [];
+  const seen = new Set<string>();
+  const sections = new Map<string, { group: string; contexts: string[] }>();
+  for (const type of kindsOf(boardId)) {
+    for (const group of groupsOf[type].all({ board: boardId })) {
+      if (name !== ALL_CONTEXT_GROUPS && contextKey(group.name) !== contextKey(name)) continue;
+      const groupKey = contextKey(group.name);
+      const section = sections.get(groupKey) ?? { group: group.name.trim(), contexts: [] };
+      sections.set(groupKey, section);
+      for (const label of labelsOfGroup[type].all(group.id)) {
+        const key = contextKey(label.name);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        section.contexts.push(label.name.trim());
+      }
+    }
+  }
+  return [...sections.values()].filter((s) => s.contexts.length > 0);
+};
+
+/** The board's contexts: the names of its context groups' labels, each once, in order. */
+export const boardContexts = (boardId: Id): string[] =>
+  boardContextSections(boardId).flatMap((s) => s.contexts);
+
+/**
+ * The label to set, on creation, on an item of this kind so that it belongs
+ * to the context being viewed: that of this name in the board's context group.
+ * Null with no context, no group, or no label of that name.
+ */
+export const contextLabel = (type: ContextList, boardId: Id, context: unknown): Id | null => {
+  if (typeof context !== "string" || !contextKey(context)) return null;
+  const name = boardGroup(boardId);
+  const groups = name === null ? [] : groupsNamed(type, boardId, name);
+  const label = groups
+    .flatMap((group) => labelsOfGroup[type].all(group))
+    .find((l) => contextKey(l.name) === contextKey(context));
+  return label?.id ?? null;
+};
+
+const renameInBoard = mutation(
+  "UPDATE boards SET context_group = ? WHERE id = ? AND lower(trim(context_group)) = ?",
+);
+const renameEverywhere = mutation(
+  "UPDATE boards SET context_group = ? WHERE lower(trim(context_group)) = ?",
+);
+
+/**
+ * A label group renamed: the boards that chose it by its former name follow
+ * it — the board's own (scope), or all of them for Support's groups.
+ */
+export const renameContextGroup = (scope: Id | undefined, before: string, after: string): void => {
+  if (scope === undefined) renameEverywhere.run(after.trim(), contextKey(before));
+  else renameInBoard.run(after.trim(), scope, contextKey(before));
+};
+
+const selected = selection<{ context_name: string }>(
+  "SELECT context_name FROM user_board_contexts WHERE user_id = ? AND board_id = ?",
+);
+
+export const selectContext = mutation(
+  `INSERT INTO user_board_contexts (user_id, board_id, context_name) VALUES (?, ?, ?)
+   ON CONFLICT(user_id, board_id) DO UPDATE SET context_name = excluded.context_name`,
+);
+
+/**
+ * The context this account looks at in this board; null for all — or when
+ * the board no longer offers it.
+ */
+export const selectedContext = (userId: Id, boardId: Id, contexts: string[]): string | null => {
+  const name = selected.get(userId, boardId)?.context_name ?? "";
+  return contexts.find((c) => contextKey(c) === contextKey(name)) ?? null;
+};

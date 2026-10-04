@@ -1,6 +1,6 @@
 // The boards of a view: its tabs. A board contains its projects and task
-// lists, and its widget sections (routes/board-widgets.ts). Everything it
-// shows belongs to one of its contexts (routes/contexts.ts).
+// lists, and its widget sections (routes/board-widgets.ts). Its contexts are
+// the labels of the groups its lists choose (repositories/contexts.ts).
 
 import { Router } from "express";
 import type { Request } from "express";
@@ -22,9 +22,11 @@ import {
   requireBoardOwner,
 } from "../repositories/boards.js";
 import {
+  boardContextSections,
+  boardGroup,
+  contextGroupOptions,
+  contextGroups,
   selectedContext,
-  contextOf,
-  contexts,
 } from "../repositories/contexts.js";
 import { receivedOrder } from "../repositories/reorder.js";
 import { hiddenTabs, inOrderOf, userTabOrders, withHidden } from "../repositories/tab-orders.js";
@@ -46,10 +48,16 @@ const viewScope = (viewId: Id) => `boards:${viewId}`;
 export const boardForAccount = (board: BoardRow, user: UserRow): Board => {
   const readsContexts = structureRights(user).contexts.view;
   const { is_private: _unused, ...rest } = board;
+  const sections = readsContexts ? boardContextSections(board.id) : [];
+  const contexts = sections.flatMap((s) => s.contexts);
   return {
     ...rest,
-    contexts: readsContexts ? contexts.ofBoard.all(board.id).map(contextOf) : [],
-    context_id: readsContexts ? selectedContext(user.id, board.id) : null,
+    context_group: readsContexts ? boardGroup(board.id) : null,
+    context_group_options: readsContexts ? contextGroupOptions(board.id) : [],
+    contexts,
+    context_sections: sections,
+    context_groups: readsContexts ? contextGroups(board.id) : {},
+    context: readsContexts ? selectedContext(user.id, board.id, contexts) : null,
     is_locked: 0,
     access: boardAccess(board, user) ?? "read",
     is_hidden: hiddenTabs.of(user.id, viewScope(board.view_id)).has(String(board.id)),
@@ -121,8 +129,7 @@ export const deleteBoard = (board: BoardRow, req: Request): void => {
 };
 
 /**
- * A new board in a view, after the others, with no context: they are added
- * from its list. It belongs to its creator. With no first widget, it is born
+ * A new board in a view, after the others. It belongs to its creator. With no first widget, it is born
  * with no section: its empty screen offers to create one.
  */
 export const createBoard = transaction(
@@ -210,9 +217,12 @@ boardRoutes.put("/:id", (req, res) => {
     req.body.all_contexts_label ?? existing.all_contexts_label,
     "Le libellé de « Tous les contextes » est requis",
   );
+  // The label group that gives its contexts, by its name; empty for none.
+  const group = req.body.context_group;
   boards.update.run(
     name,
     all,
+    group === undefined ? existing.context_group : typeof group === "string" ? group.trim() : "",
     flag(req.body.show_card_numbers, existing.show_card_numbers),
     existing.id,
   );

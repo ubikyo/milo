@@ -27,7 +27,6 @@ import {
   contentUser,
 } from "../repositories/assets.js";
 import { readableBoard, boards, openBoard } from "../repositories/boards.js";
-import { boardContext } from "../repositories/contexts.js";
 import { tagInbox } from "../repositories/inboxes.js";
 
 /**
@@ -116,7 +115,7 @@ inventoryRoutes.post("/", agentBody, (req: Request, res) => {
   // old. It is in the workstation's local time, assumed to be Paris time.
   const timestamp = parisTime(textOf(content, "ACCESSLOG", "LOGDATE")) ?? now();
   const existing = assets.byDeviceId.get(deviceid);
-  // The workstation list that receives its tag, and the context it gives it.
+  // The workstation list that receives its tag.
   const inbox = tagInbox(tag);
   const json = JSON.stringify(content);
   const user = contentUser(content);
@@ -126,7 +125,6 @@ inventoryRoutes.post("/", agentBody, (req: Request, res) => {
       name,
       tag,
       inbox?.board_id ?? null,
-      inbox?.context_id ?? null,
       inbox?.list ?? "",
       json,
       user,
@@ -139,7 +137,6 @@ inventoryRoutes.post("/", agentBody, (req: Request, res) => {
       name,
       tag,
       inbox?.board_id ?? null,
-      inbox?.context_id ?? null,
       inbox?.list ?? "",
       json,
       user,
@@ -157,7 +154,7 @@ export const assetRoutes = Router();
 
 assetRoutes.use(touch("assets"));
 
-/** The workstation, if the user sees the assets and the board of its context. */
+/** The workstation, if the user sees the assets and its board. */
 const visibleWorkstation = (req: Request, id: unknown) => {
   const workstation = orNotFound(assets.byId.get(id), WORKSTATION_NOT_FOUND);
   require(req, "assets", "view", WORKSTATION_NOT_FOUND);
@@ -166,21 +163,13 @@ const visibleWorkstation = (req: Request, id: unknown) => {
 };
 
 /**
- * The workstations of a board: of one of its contexts, or of all. A
- * workstation whose tag is received by no list shows up nowhere.
+ * The workstations of a board. A workstation whose tag no asset label names
+ * shows up nowhere.
  */
 assetRoutes.get("/", (req, res) => {
   if (!requestCan(req, "assets", "view")) return void res.json([]);
   const board = openBoard(req.query.board, req.user);
-  const context = req.query.context;
-  res.json(
-    assets.ofBoard
-      .all({
-        board: board.id,
-        context: context && context !== "all" ? boardContext(board.id, context) : null,
-      })
-      .map((row) => assetOf(row)),
-  );
+  res.json(assets.ofBoard.all(board.id).map((row) => assetOf(row)));
 });
 
 /**

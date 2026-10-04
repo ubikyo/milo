@@ -12,9 +12,13 @@ import express, { Router } from "express";
 import type { NextFunction, Request, Response } from "express";
 import {
   LIST_KEY,
+  shownCalendarsOf,
   SECTIONS_GAP_DEFAULT,
   SECTIONS_GAP_MAX,
   accessIncludes,
+  calendarKey,
+  mailKey,
+  shownFoldersOf,
   canUpdate,
   listKey,
   isBoardWidgetType,
@@ -22,30 +26,42 @@ import {
   isSectionWidthUnit,
   migrateWidgetConfig,
 } from "@milo/shared";
-import type { AccessMailDetail, Resource, ImportResult } from "@milo/shared";
+import type {
+  AccessCalendar,
+  AccessCalendarEvent,
+  AccessMail,
+  AccessMailDetail,
+  AccessMailPage,
+  Resource,
+  ImportResult,
+} from "@milo/shared";
 import type { BoardRow, BoardWidgetRow } from "../db/rows.js";
 import { widgetAccess, requireLayout, requireOrganize, requireWidget } from "../lib/rights.js";
 import {
   entraAgenda,
   mailOfMailbox,
   entraConfigured,
-  mailboxPage,
+  folderPage,
   mailboxAttachment,
 } from "../lib/entra.js";
 import { cleanEmail } from "../lib/html.js";
 import { feedOf, feedSettings, probeFeed } from "../lib/feed.js";
 import { askForConfirmations } from "../lib/optin.js";
+import { askForCalendarConfirmations, confirmedCalendars } from "../lib/calendar-optin.js";
+import { mailOptin } from "../lib/mail-optin.js";
 import { badRequest, orNotFound, toIds } from "../lib/http.js";
 import { SIZE_MAX, writeMedia, inlineType, mediaUrl } from "../lib/media.js";
 import { searchPlace, weatherCoordinates, weatherOf } from "../lib/weather.js";
+import { quoteOf, quoteSettings } from "../lib/quotes.js";
 import { columnsGap, requestedRank, widthUnit, widthValue } from "../lib/sections.js";
 import { signalWrite, touch, touchNow } from "../middleware/events.js";
 import { ensureDefaultType } from "./milestone-types.js";
-import { reassignWorkstationContexts } from "../repositories/assets.js";
+import { reassignWorkstations } from "../repositories/assets.js";
 import { withNewKey, keyInBoard, keepKey, cleanLists } from "../repositories/lists.js";
 import { receivedTags } from "../repositories/inboxes.js";
 import { boardSections, boardWidgets, renderedWidget } from "../repositories/board-widgets.js";
 import { openBoard, requireBoardControl } from "../repositories/boards.js";
+import { calendarResource, folderResource, watch } from "../lib/m365-webhooks.js";
 
 const SECTION_NOT_FOUND = "Section introuvable";
 const WIDGET_NOT_FOUND = "Widget introuvable";
@@ -109,19 +125,24 @@ const configuration = (type: string, value: unknown, defaultValue: string): stri
  * list's last widget — alone, with its section, its personal structure or
  * its board — takes its items with it. Workstations also follow the tags
  * that workstation lists receive (repositories/inboxes.ts): a widget
- * configured, placed or removed files them again.
+ * configured, placed or removed files them again. And the board's contexts
+ * follow the context groups its lists choose (repositories/contexts.ts): the
+ * boards are re-read.
  */
 export const followLists = (req: Request, res: Response, next: NextFunction): void => {
   if (req.method === "GET") return next();
   const before = JSON.stringify(receivedTags());
   res.on("finish", () => {
     if (res.statusCode >= 400) return;
-    const touchedResources: Resource[] = cleanLists();
+    const touchedResources: Resource[] = [...cleanLists(), "boards"];
     // A new receiving address awaits its confirmation: its inbox receives
-    // the link (lib/optin.ts).
+    // the code (lib/optin.ts) — as does a person a calendar or a Mail widget
+    // names (lib/widget-optin.ts).
     askForConfirmations();
+    askForCalendarConfirmations(req.user.name);
+    mailOptin.askForConfirmations(req.user.name);
     if (JSON.stringify(receivedTags()) !== before) {
-      reassignWorkstationContexts();
+      reassignWorkstations();
       touchedResources.push("assets");
     }
     signalWrite(...touchedResources);
@@ -224,7 +245,11 @@ boardContentRoutes.post("/import", (req, res) => {
       }
       // A layout exported before the keys were translated can still be read.
       const config = migrateWidgetConfig(type, widget!.config);
-      if (!isListWidgetType(type)) return [{ type, config: JSON.stringify(config) }];
+      // A calendar's consents stay with the widget they were given to: an
+      // imported one receives a new key, without them.
+      if (!isListWidgetType(type)) {
+        return [{ type, config: withNewKey(type, JSON.stringify(config)) }];
+      }
       const key = listKey(config);
       const keyHeld = key !== "" && !takenKeys.has(key) && keyInBoard(board.id, type, key) === key;
       if (keyHeld) {
@@ -421,13 +446,40 @@ boardWidgetRoutes.get("/:id/weather", (req, res, next) => {
     .catch(next);
 });
 
+/**
+ * A Citation widget's quote or joke (lib/quotes.ts), kept by the server for
+ * the interval the widget sets. "renew" draws another one: everyone in front
+ * of the board then reads it, so it takes being able to modify the widget.
+ */
+boardWidgetRoutes.get("/:id/quote", (req, res, next) => {
+  const { widget } = openWidget(req.params.id, req);
+  if (widget.type !== "quote") badRequest("Ce widget n'est pas un widget Citation");
+  const renew = req.query["renew"] === "1";
+  if (renew) requireWidget(req, "quote", "update");
+  quoteOf(String(widget.id), quoteSettings(renderedWidget(widget).config), renew)
+    .then((quote) => res.json(quote))
+    .catch(next);
+});
+
 /** The longest period a calendar requests: six weeks, and some margin. */
 const PERIOD_MAX = 62 * 24 * 60 * 60 * 1000;
 
+/** A widget's configuration, read; empty if unreadable. */
+const readConfig = (config: string): Record<string, unknown> => {
+  try {
+    const value = JSON.parse(config) as unknown;
+    return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+};
+
 /**
- * The viewer's appointments, between "start" and "end": everyone sees their
- * own, whatever the board. They come from their Outlook calendar, through
- * Graph (lib/entra.ts); a local account has none.
+ * The appointments a Calendar widget shows between "start" and "end": the
+ * viewer's own, if it marks them — from their Outlook calendar, through Graph
+ * (lib/entra.ts); a local account has none —, and those of the people it
+ * names who have consented (lib/calendar-optin.ts). A calendar that cannot be
+ * read says why, without hiding the others.
  */
 boardWidgetRoutes.get("/:id/calendar", (req, res, next) => {
   const { widget } = openWidget(req.params.id, req);
@@ -438,8 +490,53 @@ boardWidgetRoutes.get("/:id/calendar", (req, res, next) => {
     badRequest("Période invalide");
   }
   if (end.getTime() - start.getTime() > PERIOD_MAX) badRequest("Période trop longue");
-  entraAgenda(entraAccount(req), start, end)
-    .then((appointments) => res.json(appointments))
+  if (!entraConfigured()) badRequest("Milo n'est pas connecté à Entra");
+
+  const config = readConfig(widget.config);
+  const confirmed = confirmedCalendars(calendarKey(config));
+  // Each calendar chosen for a person who consented; none chosen, their main one.
+  const calendars: { owner: string; resource: string; read: () => Promise<AccessCalendarEvent[]> }[] = [
+    ...shownCalendarsOf(config),
+  ]
+    .filter(([email]) => confirmed.has(email))
+    .flatMap(([email, ids]) =>
+      (ids.length ? ids : [""]).map((id) => ({
+        owner: email,
+        resource: calendarResource(email, id),
+        read: () => entraAgenda(email, start, end, email, id),
+      })),
+    );
+  if (config["showEvents"] === true) {
+    const own = req.user.entra_id;
+    calendars.unshift({
+      owner: "",
+      resource: own ? calendarResource(own) : "",
+      read: () =>
+        own
+          ? entraAgenda(own, start, end)
+          : Promise.reject(new Error("Votre compte n'est pas relié à Entra")),
+    });
+  }
+
+  // The calendar is reread regularly: the viewer keeps being told of what
+  // changes in these calendars (lib/m365-webhooks.ts).
+  for (const c of calendars) if (c.resource) watch(req.user.id, "calendar", c.resource);
+
+  Promise.allSettled(calendars.map((c) => c.read()))
+    .then((results) => {
+      const calendar: AccessCalendar = { events: [], errors: [] };
+      results.forEach((r, i) => {
+        if (r.status === "fulfilled") calendar.events.push(...r.value);
+        // One reason per person, even when several of their calendars fail.
+        else if (!calendar.errors.some((e) => e.owner === calendars[i]!.owner)) {
+          calendar.errors.push({
+            owner: calendars[i]!.owner,
+            message: r.reason instanceof Error ? r.reason.message : String(r.reason),
+          });
+        }
+      });
+      res.json(calendar);
+    })
     .catch(next);
 });
 
@@ -453,34 +550,139 @@ const entraAccount = (req: Request): string => {
   return req.user.entra_id;
 };
 
-/** The targeted Mail widget, and the account whose inbox it reads. */
+/** The configuration key telling whether a Mail widget reads the viewer's own inbox. */
+const OWN_INBOX = "ownInbox";
+
+/** A folder a Mail widget reads: whose, in which mailbox, and under which name. */
+interface MailSource {
+  /** What designates it in the cursor. */
+  id: string;
+  /** The mailbox read: an Entra id or an address. */
+  user: string;
+  /** "inbox", or a folder's id. */
+  folder: string;
+  /** Whose e-mails they are: an address; empty, the viewer's own. */
+  owner: string;
+}
+
+/**
+ * The targeted Mail widget and what it reads: the viewer's own inbox, if it
+ * shows it — everyone sees their own —, and the folders chosen of the people
+ * it names who have consented (lib/mail-optin.ts) — none chosen, their inbox.
+ */
 const openMailbox = (req: Request) => {
   const { widget } = openWidget(req.params.id, req);
   if (widget.type !== "mail") badRequest("Ce widget n'est pas un widget Mail");
-  return entraAccount(req);
+  if (!entraConfigured()) badRequest("Milo n'est pas connecté à Entra");
+  const config = readConfig(widget.config);
+  const confirmed = mailOptin.confirmed(mailKey(config));
+  const others = [...shownFoldersOf(config)].filter(([email]) => confirmed.has(email));
+  const sources: MailSource[] = others.flatMap(([email, ids]) =>
+    (ids.length ? ids : ["inbox"]).map((folder) => ({
+      id: `${email}|${folder}`,
+      user: email,
+      folder,
+      owner: email,
+    })),
+  );
+  const own = config[OWN_INBOX] === true;
+  if (own) sources.unshift({ id: "|inbox", user: req.user.entra_id ?? "", folder: "inbox", owner: "" });
+  return { sources, people: new Set(others.map(([email]) => email)), own };
+};
+
+/**
+ * The mailbox an opened e-mail comes from: the viewer's own, or that of a
+ * person the widget reads — only if they consented.
+ */
+const mailboxOf = (req: Request): { user: string; owner: string } => {
+  const { people } = openMailbox(req);
+  const owner = String(req.query["owner"] ?? "").trim().toLowerCase();
+  if (owner) {
+    if (!people.has(owner)) badRequest("Cette boîte n'est pas lue par ce widget");
+    return { user: owner, owner };
+  }
+  return { user: entraAccount(req), owner: "" };
 };
 
 /** At most, one page of e-mails: Graph does not return more at once. */
 const PAGE_MAX = 100;
 
+/** Where each folder's next page starts, as the client sends it back. */
+const readCursor = (raw: unknown): Record<string, number> => {
+  try {
+    const value = JSON.parse(Buffer.from(String(raw ?? ""), "base64url").toString("utf8")) as unknown;
+    return value && typeof value === "object" ? (value as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+};
+
 /**
- * A page of the viewer's inbox (lib/entra.ts): everyone sees their own,
- * whatever the board. "skip" says where it starts — the grid asks for the
- * next one when reaching the bottom of the list.
+ * A page of the folders a Mail widget reads (lib/entra.ts), merged from most
+ * recent to oldest. Each folder gives the first "top" of what it has left;
+ * the most recent "top" of them all make the page, and the cursor says where
+ * each folder resumes — the grid asks for the next page when reaching the
+ * bottom of the list. A mailbox that cannot be read says why, without hiding
+ * the others.
  */
 boardWidgetRoutes.get("/:id/mails", (req, res, next) => {
-  const oid = openMailbox(req);
-  const offset = Math.max(0, Math.floor(Number(req.query["skip"]) || 0));
+  const { sources } = openMailbox(req);
   const howMany = Math.min(PAGE_MAX, Math.max(1, Math.floor(Number(req.query["top"]) || 10)));
-  mailboxPage(oid, offset, howMany, req.query["unread"] === "1")
-    .then((page) => res.json(page))
+  const unreadOnly = req.query["unread"] === "1";
+  const first = !req.query["cursor"];
+  const cursor = readCursor(req.query["cursor"]);
+  const skipOf = (s: MailSource) => Math.max(0, Math.floor(Number(cursor[s.id]) || 0));
+  // The first page is reread regularly: the viewer keeps being told what
+  // arrives in these folders (lib/m365-webhooks.ts).
+  if (first) {
+    for (const s of sources) if (s.user) watch(req.user.id, "mail", folderResource(s.user, s.folder));
+  }
+
+  Promise.allSettled(
+    sources.map((s) => {
+      if (s.owner === "" && !s.user) {
+        return Promise.reject(new Error("Votre compte n'est pas relié à Entra"));
+      }
+      return folderPage(s.user, s.folder, skipOf(s), howMany, unreadOnly, s.owner);
+    }),
+  )
+    .then((results) => {
+      const page: AccessMailPage = { messages: [], more: false, cursor: "", errors: [] };
+      const candidates: { message: AccessMail; source: number }[] = [];
+      let unread = 0;
+      results.forEach((r, i) => {
+        if (r.status === "fulfilled") {
+          candidates.push(...r.value.messages.map((message) => ({ message, source: i })));
+          unread += r.value.unread;
+          if (r.value.more) page.more = true;
+        } else if (!page.errors.some((e) => e.owner === sources[i]!.owner)) {
+          // One reason per person, even when several of their folders fail.
+          page.errors.push({
+            owner: sources[i]!.owner,
+            message: r.reason instanceof Error ? r.reason.message : String(r.reason),
+          });
+        }
+      });
+      candidates.sort((a, b) => b.message.received_at.localeCompare(a.message.received_at));
+      const taken = candidates.slice(0, howMany);
+      // What was read but not taken comes back on the next page.
+      if (candidates.length > taken.length) page.more = true;
+      const next: Record<string, number> = {};
+      sources.forEach((s, i) => {
+        next[s.id] = skipOf(s) + taken.filter((t) => t.source === i).length;
+      });
+      page.messages = taken.map((t) => t.message);
+      page.cursor = Buffer.from(JSON.stringify(next), "utf8").toString("base64url");
+      if (first) page.unread = unread;
+      res.json(page);
+    })
     .catch(next);
 });
 
-/** An e-mail from the inbox, its body cleaned like that of a received request (lib/html.ts). */
+/** An e-mail from a mailbox, its body cleaned like that of a received request (lib/html.ts). */
 boardWidgetRoutes.get("/:id/mails/:mail", (req, res, next) => {
-  const oid = openMailbox(req);
-  mailOfMailbox(oid, String(req.params.mail))
+  const { user, owner } = mailboxOf(req);
+  mailOfMailbox(user, String(req.params.mail), owner)
     .then((c) => {
       const detail: AccessMailDetail = {
         ...c.header,
@@ -496,12 +698,12 @@ boardWidgetRoutes.get("/:id/mails/:mail", (req, res, next) => {
 });
 
 /**
- * An attachment of an e-mail from the inbox, always as a download: a
+ * An attachment of an e-mail from a mailbox, always as a download: a
  * received file never runs on Milo's origin.
  */
 boardWidgetRoutes.get("/:id/mails/:mail/attachments/:attachment", (req, res, next) => {
-  const oid = openMailbox(req);
-  mailboxAttachment(oid, String(req.params.mail), String(req.params.attachment))
+  const { user } = mailboxOf(req);
+  mailboxAttachment(user, String(req.params.mail), String(req.params.attachment))
     .then(({ name, content }) => {
       res.type("application/octet-stream");
       res.setHeader("X-Content-Type-Options", "nosniff");

@@ -93,6 +93,12 @@ const ROUTES: Record<LabelsBase, LabelRoutes> = {
     remove: (id) => api.deleteSupportLabel(id),
     read: () => api.getSupportLabels(),
   },
+  "/asset-labels": {
+    create: (boardId, l, groupId) => api.createAssetLabel(boardId!, l.name, l.color, groupId),
+    update: (id, data) => api.updateAssetLabel(id, data),
+    remove: (id) => api.deleteAssetLabel(id),
+    read: (boardId) => api.getAssetLabels(boardId!),
+  },
 };
 
 // Height of the "Ajouter" buttons: that of their text line. An "xs" button's

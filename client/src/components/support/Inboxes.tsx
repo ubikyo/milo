@@ -26,6 +26,7 @@ import {
   signalConfirmation,
   useConfirmations,
 } from "../../lib/confirmations";
+import type { ConfirmationScope } from "../../lib/confirmations";
 import { RED } from "../../themes/colors";
 import {
   ACTIONS_BUTTON_STYLE,
@@ -41,25 +42,26 @@ import ReceptionField, { inboxesOf } from "../ui/ReceptionField";
 import { MAILBOXES } from "./SupportRequestsList";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
 import { listKey } from "@milo/shared";
+import type { SupportLabel } from "@milo/shared";
 
 // The inboxes from which a ticket list receives its tickets, in rows like the
-// GLPI agent's tags (ReceptionField): one row per address, with the
-// context where its tickets go and its confirmation state. A new address
+// list's columns (ReceptionField): one row per address, with the label its
+// tickets receive — their context —, and its confirmation state. A new address
 // receives a four-digit code when the widget is saved, and is only polled
 // once that code is entered via the "Actions" menu, which also resends it to
 // the addresses that are waiting (server, lib/optin.ts).
 
-/** An inbox: its address, and the context of its requests. */
+/** An inbox: its address, and the label of its requests. */
 interface Mailbox {
   email: string;
-  context_id: number | null;
+  label_id: number | null;
 }
 
 /** The config key telling whether to delete the polled e-mails (server, inboxes.ts). */
 const DELETION = "delete_after_import";
 
 /** The state's slot, at the end of the row: the badges line up. */
-const STATE_WIDTH = 76;
+const STATE_WIDTH = 96;
 
 export const looksLikeAddress = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -67,11 +69,11 @@ export const looksLikeAddress = (email: string) =>
 const mailboxesOf = (config: unknown): Mailbox[] =>
   inboxesOf(config, MAILBOXES).map((r) => ({
     email: typeof r.email === "string" ? r.email : "",
-    context_id: typeof r.context_id === "number" ? r.context_id : null,
+    label_id: typeof r.label_id === "number" ? r.label_id : null,
   }));
 
 /** An address's state: confirmed, or pending — an address not yet saved too. */
-function State({ confirmed }: { confirmed: boolean }) {
+export function State({ confirmed }: { confirmed: boolean }) {
   return (
     <Box
       style={{
@@ -109,9 +111,20 @@ export default function Inboxes({
   // The list the widget designates: its confirmations are its own. A
   // widget not yet saved has none — everything waits there.
   const list = listKey(config);
-  const [retrying, setRetry] = useState(false);
-  const [toConfirm, setToConfirm] = useState(false);
-  const targetActions = useContext(DrawerActionsContext);
+  // The labels an inbox may set: Support's, by group.
+  const [supportLabels, setSupportLabels] = useState<SupportLabel[]>([]);
+  useEffect(() => {
+    api
+      .getSupportLabels()
+      .then(setSupportLabels)
+      .catch((e) => notifyError(errorMessage(e)));
+  }, []);
+  const labels = [...new Set(supportLabels.map((l) => l.group_name ?? ""))].map((group) => ({
+    group,
+    items: supportLabels
+      .filter((l) => (l.group_name ?? "") === group)
+      .map((l) => ({ value: String(l.id), label: l.name })),
+  }));
 
   // The confirmation states, re-read regularly: the inbox may confirm
   // while the drawer is open.
@@ -122,10 +135,82 @@ export default function Inboxes({
 
   const pending = [...new Set(addresses)].filter((e) => !confirmed(e));
 
+  return (
+    <Stack gap="xs">
+      <ConfirmationActions scope="mailbox" owner={list} pending={pending} />
+      <ReceptionField
+        configKey={MAILBOXES}
+        field="email"
+        label="Adresses de réception"
+        description={
+          <>
+            Une fois une adresse ajoutée, cliquer sur le menu « Actions », puis «
+            Confirmer une adresse » et saisir le code reçu sur l'adresse e-mail.
+            En cas de non réception du code, relancer la nouvelle confirmation
+            depuis le menu « Actions ».
+          </>
+        }
+        placeholder="Adresse e-mail"
+        add="Ajouter une adresse e-mail"
+        icon={IconMail}
+        empty="Aucune adresse e-mail"
+        normalizeValue={(value) => value.trim()}
+        // An address not yet readable has no state to show.
+        state={(email) => (email.trim() ? <State confirmed={confirmed(email)} /> : null)}
+        labels={labels}
+        config={config}
+        onChange={onChange}
+      />
+      <Switch
+        mt="xs"
+        color="teal"
+        label="Supprimer les e-mails relevés de la boîte"
+        checked={
+          (config as Record<string, unknown> | null)?.[DELETION] === true
+        }
+        onChange={(e) =>
+          onChange(withField(config, DELETION, e.currentTarget.checked))
+        }
+      />
+    </Stack>
+  );
+}
+
+const resenders = {
+  mailbox: api.resendMailboxOptins,
+  calendar: api.resendCalendarOptins,
+  mail: api.resendMailOptins,
+};
+
+const confirmers = {
+  mailbox: api.confirmMailboxOptin,
+  calendar: api.confirmCalendarOptin,
+  mail: api.confirmMailOptin,
+};
+
+/**
+ * The "Actions" menu of addresses awaiting their code — a list's inboxes, a
+ * calendar's or a Mail widget's people (scope) —, at the end of the drawer's tab row: entering
+ * the code, and resending it to the "pending" addresses of "owner".
+ */
+export function ConfirmationActions({
+  scope,
+  owner,
+  pending,
+}: {
+  scope: ConfirmationScope;
+  /** The list's key, or the calendar's. */
+  owner: string;
+  pending: string[];
+}) {
+  const [retrying, setRetry] = useState(false);
+  const [toConfirm, setToConfirm] = useState(false);
+  const targetActions = useContext(DrawerActionsContext);
+
   const retry = async () => {
     setRetry(true);
     try {
-      const { sent } = await api.resendMailboxOptins(list, pending);
+      const { sent } = await resenders[scope](owner, pending);
       notifications.show({
         color: sent ? "teal" : "gray",
         title: sent ? "Confirmation relancée" : "Rien n'est parti",
@@ -141,8 +226,7 @@ export default function Inboxes({
   };
 
   return (
-    <Stack gap="xs">
-      {/* The "Actions" menu sits at the end of the drawer's tab row. */}
+    <>
       {targetActions &&
         createPortal(
           <Menu
@@ -184,46 +268,14 @@ export default function Inboxes({
           </Menu>,
           targetActions,
         )}
-      <ReceptionField
-        key={MAILBOXES}
-        field="email"
-        label="Adresses de réception"
-        description={
-          <>
-            Une fois une adresse ajoutée, cliquer sur le menu « Actions », puis «
-            Confirmer une adresse » et saisir le code reçu sur l'adresse e-mail.
-            En cas de non réception du code, relancer la nouvelle confirmation
-            depuis le menu « Actions ».
-          </>
-        }
-        placeholder="Adresse e-mail"
-        add="Ajouter une adresse e-mail"
-        icon={IconMail}
-        empty="Aucune adresse e-mail"
-        normalizeValue={(value) => value.trim()}
-        // An address not yet readable has no state to show.
-        state={(email) => (email.trim() ? <State confirmed={confirmed(email)} /> : null)}
-        config={config}
-        onChange={onChange}
-      />
       <ConfirmModal
-        list={list}
+        scope={scope}
+        list={owner}
         opened={toConfirm}
         addresses={pending}
         onClose={() => setToConfirm(false)}
       />
-      <Switch
-        mt="xs"
-        color="teal"
-        label="Supprimer les e-mails relevés de la boîte"
-        checked={
-          (config as Record<string, unknown> | null)?.[DELETION] === true
-        }
-        onChange={(e) =>
-          onChange(withField(config, DELETION, e.currentTarget.checked))
-        }
-      />
-    </Stack>
+    </>
   );
 }
 
@@ -232,11 +284,13 @@ export default function Inboxes({
  * Several addresses are waiting: first choose which one.
  */
 function ConfirmModal({
+  scope,
   list,
   opened,
   addresses,
   onClose,
 }: {
+  scope: ConfirmationScope;
   list: string;
   opened: boolean;
   addresses: string[];
@@ -261,7 +315,7 @@ function ConfirmModal({
     setSending(true);
     setError(null);
     try {
-      await api.confirmMailboxOptin(list, email, entered);
+      await confirmers[scope](list, email, entered);
       notifications.show({
         color: "teal",
         title: "Adresse confirmée",

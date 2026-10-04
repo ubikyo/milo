@@ -34,7 +34,8 @@ export const boards = {
      VALUES (?, ?, ?, ?, ?, ?)`,
   ),
   update: mutation(
-    "UPDATE boards SET name = ?, all_contexts_label = ?, show_card_numbers = ? WHERE id = ?",
+    `UPDATE boards SET name = ?, all_contexts_label = ?, context_group = ?, show_card_numbers = ?
+     WHERE id = ?`,
   ),
   remove: mutation("DELETE FROM boards WHERE id = ?"),
 };

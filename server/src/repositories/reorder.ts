@@ -1,4 +1,4 @@
-// Shared ordering of a table: a board's contexts, categories. Labels are
+// Shared ordering of a table: a board's categories. Labels are
 // ordered with their groups (repositories/label-groups.ts). Tabs — boards, access
 // categories — are ordered, for their part, account by account
 // (repositories/tab-orders.ts); "receivedOrder" still serves them to validate
@@ -44,9 +44,6 @@ const arrangement = (table: string, scope?: string) => {
     final.forEach((id, place) => insertRow.run(place, id));
   });
 };
-
-/** A board's contexts: a shared order, board by board. */
-export const arrangeContexts = arrangement("contexts", "board_id");
 
 /** The categories of a projects board. */
 export const arrangeCategories = arrangement("categories", "board_id");

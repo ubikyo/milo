@@ -9,7 +9,7 @@
 // causes a full reload on connected clients.
 
 import type { NextFunction, Request, Response } from "express";
-import type { Id, Notification, Resource, ResourceVersions, VersionPayload } from "@milo/shared";
+import type { Id, M365Change, Notification, Resource, ResourceVersions, VersionPayload } from "@milo/shared";
 import { emptyVersions } from "@milo/shared";
 
 const versions: ResourceVersions = emptyVersions();
@@ -48,6 +48,18 @@ export const pushNotification = (userId: Id, notification: Notification): void =
   const data = `data: ${JSON.stringify({ notification })}\n\n`;
   for (const [client, id] of clients) {
     if (id === userId) write(client, data);
+  }
+};
+
+/**
+ * Tells these people's open tabs that something their Mail or Calendar
+ * widgets read has changed at Microsoft.
+ */
+export const pushM365Change = (userIds: Iterable<Id>, kind: M365Change): void => {
+  const recipients = new Set(userIds);
+  const data = `data: ${JSON.stringify({ m365: kind })}\n\n`;
+  for (const [client, id] of clients) {
+    if (recipients.has(id)) write(client, data);
   }
 };
 

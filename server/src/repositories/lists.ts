@@ -7,7 +7,7 @@
 // last widget holding their key.
 
 import { randomUUID } from "node:crypto";
-import { LIST_KEY, listKey, isListWidgetType } from "@milo/shared";
+import { CALENDAR_KEY, LIST_KEY, MAIL_KEY, isListWidgetType } from "@milo/shared";
 import type { Id } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 
@@ -20,17 +20,32 @@ const read = (config: string): Record<string, unknown> => {
   }
 };
 
-/** A new widget's configuration: a list widget receives its key there. */
-export const withNewKey = (type: string, config: string): string =>
+/**
+ * The key a widget of this type carries, if it carries one: a list's, or a
+ * Calendar or Mail widget's (CALENDAR_KEY, MAIL_KEY), whose consents are its
+ * own.
+ */
+const keyFieldOf = (type: string): string | null =>
   isListWidgetType(type)
-    ? JSON.stringify({ ...read(config), [LIST_KEY]: randomUUID() })
-    : config;
+    ? LIST_KEY
+    : type === "calendar"
+      ? CALENDAR_KEY
+      : type === "mail"
+        ? MAIL_KEY
+        : null;
+
+/** A new widget's configuration: a list widget, or a calendar, receives its key there. */
+export const withNewKey = (type: string, config: string): string => {
+  const field = keyFieldOf(type);
+  return field ? JSON.stringify({ ...read(config), [field]: randomUUID() }) : config;
+};
 
 /** A modified configuration keeps the old one's key: it cannot be changed. */
 export const keepKey = (type: string, before: string, after: string): string => {
-  if (!isListWidgetType(type)) return after;
-  const key = listKey(read(before));
-  return JSON.stringify({ ...read(after), [LIST_KEY]: key || randomUUID() });
+  const field = keyFieldOf(type);
+  if (!field) return after;
+  const key = read(before)[field];
+  return JSON.stringify({ ...read(after), [field]: typeof key === "string" && key ? key : randomUUID() });
 };
 
 const boardKeys = selection<{ key: string | null }>(

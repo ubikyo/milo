@@ -1832,15 +1832,8 @@ export default function TaskBoard({
     try {
       // The server always adds the card at the end: if it is inserted higher
       // up, the list's order follows right after.
-      // It is born in the context being viewed; under "Tous", in the
-      // board's first one.
-      const created = await api.createTaskCard(
-        list.id,
-        text,
-        kind,
-        undefined,
-        board?.context_id ?? null,
-      );
+      // It is born in the context being viewed: it receives its label.
+      const created = await api.createTaskCard(list.id, text, kind, undefined, board?.context);
       if (index < cards.length) {
         await api.reorderTaskCards(
           list.id,
@@ -2611,7 +2604,6 @@ export default function TaskBoard({
         labels={labels ?? []}
         users={users ?? []}
         boardId={boardId}
-        contexts={board?.contexts}
         onLabelsChanged={onLabelsChanged}
         onSaved={onListsChanged}
         readOnly={!rights.updateStatement}

@@ -132,6 +132,16 @@ const fromAccess = (widget: AccessWidget): BoardWidgetDefinition => ({
 const MARGINS_INDICATOR = { top: GAP / 2, bottom: GAP / 2 };
 
 /**
+ * A card's — a chart, an indicator —: tight against what precedes it, apart
+ * from what follows.
+ */
+const MARGINS_CARD = { top: 0, bottom: 15 };
+
+/** The spacing of a widget while nothing is set: a card's, or a list's. */
+const regularMargins = (w: IndicatorWidgetBase<string>) =>
+  w.ownClicks ? MARGINS_INDICATOR : MARGINS_CARD;
+
+/**
  * The "Apparence" block of an indicator: its card — title, value, background —
  * if it has one, its frame, its margins, its alignment. A card is framed as long as nothing
  * is set; a list, which keeps its clicks, is not.
@@ -146,7 +156,7 @@ const appearanceOf = (w: IndicatorWidgetBase<string>): ComponentType<IndicatorCo
           ...(card ? appearanceRows(config, onChange, w.withValue) : []),
           frameRow(config, onChange, FRAMED, isFramed(config, card), card),
           ...spacingRows(
-            MARGINS_INDICATOR,
+            regularMargins(w),
             isFramed(config, card) ? (card ? CARD_PADDING : FRAME_PADDING) : 0,
             config,
             onChange,
@@ -176,7 +186,7 @@ const prefixed = <W extends IndicatorWidgetBase<string>>(
       // is already framed by the panel (IndicatorsPanel); a list is
       // here, on request.
       Appearance: appearanceOf(w),
-      margins: (config) => configuredMargins(config, MARGINS_INDICATOR),
+      margins: (config) => configuredMargins(config, regularMargins(w)),
       // A card has its padding from the panel (IndicatorsPanel).
       show: (data, config, render) =>
         w.ownClicks ? (

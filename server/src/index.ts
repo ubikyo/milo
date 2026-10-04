@@ -8,6 +8,7 @@ import { FEED_POLL_INTERVAL, pollAllFeeds } from "./lib/feed.js";
 import { REMINDERS_INTERVAL, sendReminders } from "./lib/reminders.js";
 import { POLL_INTERVAL, pollMailboxes } from "./lib/support-mail.js";
 import { MAINTENANCE_INTERVAL, maintainSubscriptions } from "./lib/support-webhooks.js";
+import { M365_MAINTENANCE_INTERVAL, maintainM365Subscriptions } from "./lib/m365-webhooks.js";
 import { mediaCleanup } from "./repositories/attachments.js";
 import { sessions } from "./repositories/users.js";
 
@@ -70,6 +71,13 @@ const maintain = () => {
   );
 };
 setInterval(maintain, MAINTENANCE_INTERVAL).unref();
+
+// Mail and Calendar widgets subscribe to what they read as they read it:
+// maintenance only extends and drops. Not at startup — nobody has read
+// anything yet, everything would go.
+setInterval(() => {
+  maintainM365Subscriptions().catch((error) => console.error("Mail and Calendar subscriptions:", error));
+}, M365_MAINTENANCE_INTERVAL).unref();
 
 // A clean shutdown closes ongoing connections rather than cutting them off
 // abruptly: this is what systemd asks for before killing the process.

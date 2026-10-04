@@ -6,6 +6,7 @@ import Logo from "./Logo";
 import logoClasses from "../../assets/styles/Logo.module.css";
 import SearchBox from "./SearchBox";
 import { TAB_ROW_HEIGHT } from "../../themes/tabs";
+import { useDisplaySettings } from "../../lib/displaySettings";
 
 // The first line of the screen, in all modes: the logo, the mode's tabs, then
 // the company and the account.
@@ -41,6 +42,8 @@ export default function ModeBar({
   actions,
   account,
 }: ModeBarProps) {
+  // The logo can be hidden from the Settings ("Affichage").
+  const { settings: display } = useDisplaySettings();
   return (
     // Tabs stay on a single line, whatever the window width: it is the search
     // that gives way, not the row that wraps. Each tab keeps its whole name, on
@@ -59,16 +62,18 @@ export default function ModeBar({
       <Tabs.List mih={TAB_ROW_HEIGHT}>
         {/* RESPONSIVE — the logo is the first thing that can give up its place
             on a narrow screen: it brings nothing the page does not already say. */}
-        <Box
-          pl={LOGO_PADDING_LEFT}
-          pr="md"
-          className={logoClasses.brand}
-          style={{ alignSelf: "center", display: "flex", flexShrink: 0 }}
-        >
-          <Logo variant={2} h={LOGO_HEIGHT} />
-          {/* The version number, under the logo, for those who linger. */}
-          <span className={logoClasses.version}>{__APP_VERSION__}</span>
-        </Box>
+        {!display.hideLogo && (
+          <Box
+            pl={LOGO_PADDING_LEFT}
+            pr="md"
+            className={logoClasses.brand}
+            style={{ alignSelf: "center", display: "flex", flexShrink: 0 }}
+          >
+            <Logo variant={2} h={LOGO_HEIGHT} />
+            {/* The version number, under the logo, for those who linger. */}
+            <span className={logoClasses.version}>{__APP_VERSION__}</span>
+          </Box>
+        )}
 
         {children}
 

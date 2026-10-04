@@ -68,7 +68,6 @@ export interface ProjectFiltersProps {
 type ColumnKey =
   | "number"
   | "name"
-  | "context_name"
   | "category_name"
   | "actors"
   | "created_at"
@@ -195,7 +194,6 @@ function StatusCell({ status }: { status: number }) {
 const COLUMNS: Column[] = [
   { key: "number", label: "Réf.", value: (p) => p.number || null, width: 65 },
   { key: "name", label: "Projet", value: (p) => p.name },
-  { key: "context_name", label: "Contexte", value: (p) => p.context_name },
   { key: "category_name", label: "Catégorie", value: (p) => p.category_name },
   {
     key: "actors",
@@ -519,15 +517,6 @@ const CELLS: Record<ColumnKey, (project: Project) => ReactNode> = {
       {/* Same size as the rest of the row: a "Text" without a size takes
           Mantine's "md", whereas the table is "sm". */}
       <Text size="sm">{project.name}</Text>
-    </Table.Td>
-  ),
-  context_name: (project) => (
-    <Table.Td>
-      {project.context_name ?? (
-        <Text size="sm" c="dimmed">
-          —
-        </Text>
-      )}
     </Table.Td>
   ),
   category_name: (project) => <Table.Td>{project.category_name}</Table.Td>,

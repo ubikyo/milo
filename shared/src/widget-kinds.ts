@@ -93,7 +93,7 @@ export const MODE_KINDS: Record<Mode, readonly WidgetKind[]> = {
 
 /**
  * The widgets common to all views, without a prefix: the titles, the link,
- * the attributes, the clock, the RSS feed, the images, the weather, the
+ * the attributes, the clock, the date, the quote, the RSS feed, the images, the weather, the
  * to-do list — and those of Microsoft 365 (WIDGETS_365), the calendar and
  * the mail.
  */
@@ -103,6 +103,8 @@ export const COMMON_WIDGET_TYPES = [
   "link",
   "number",
   "clock",
+  "date",
+  "quote",
   "rss",
   "image",
   "weather",
@@ -169,6 +171,90 @@ export const listKey = (config: unknown): string => {
   const value = (config as Record<string, unknown> | null)?.[LIST_KEY];
   return typeof value === "string" ? value : "";
 };
+
+/**
+ * The configuration key of a Calendar widget that designates it: the consents
+ * of the people whose calendar it shows are its own (server,
+ * lib/calendar-optin.ts). Born with the widget, it never changes, and its
+ * personal copy keeps it.
+ */
+export const CALENDAR_KEY = "calendar_key";
+
+/** The calendar key of a configuration; empty if it carries none. */
+export const calendarKey = (config: unknown): string => {
+  const value = (config as Record<string, unknown> | null)?.[CALENDAR_KEY];
+  return typeof value === "string" ? value : "";
+};
+
+/**
+ * The Calendar widget's other people: their addresses, as rows
+ * ({ "email": … }), and those whose appointments it shows — with, for each,
+ * the Outlook calendars read ({ "email": …, "calendars": [ids] }).
+ */
+export const CALENDAR_PEOPLE = "calendars";
+export const SHOWN_CALENDARS = "shown_calendars";
+
+/**
+ * The calendars read, by person's address in lowercase. An empty list stands
+ * for the person's main calendar: that is how the first widgets kept it, a
+ * bare address.
+ */
+export const shownCalendarsOf = (config: unknown): Map<string, string[]> =>
+  choicesByPerson(config, SHOWN_CALENDARS, "calendars");
+
+/**
+ * What a widget reads of each person who consented — their calendars, their
+ * mail folders —, by address in lowercase: the entries { email, [field]: ids }
+ * of the configuration key "key". A bare address counts as an empty choice.
+ */
+export const choicesByPerson = (
+  config: unknown,
+  key: string,
+  field: string,
+): Map<string, string[]> => {
+  const value = (config as Record<string, unknown> | null)?.[key];
+  const shown = new Map<string, string[]>();
+  if (!Array.isArray(value)) return shown;
+  for (const entry of value as unknown[]) {
+    if (typeof entry === "string") {
+      if (entry.trim()) shown.set(entry.trim().toLowerCase(), []);
+      continue;
+    }
+    const record = (entry ?? {}) as Record<string, unknown>;
+    const email = record.email;
+    if (typeof email !== "string" || !email.trim()) continue;
+    const chosen = record[field];
+    const ids = Array.isArray(chosen)
+      ? chosen.filter((c): c is string => typeof c === "string" && c !== "")
+      : [];
+    shown.set(email.trim().toLowerCase(), ids);
+  }
+  return shown;
+};
+
+/**
+ * The configuration key of a Mail widget that designates it: like a
+ * calendar's (CALENDAR_KEY), the consents of the people whose mailbox it
+ * reads are its own (server, lib/mail-optin.ts).
+ */
+export const MAIL_KEY = "mail_key";
+
+/** The mail key of a configuration; empty if it carries none. */
+export const mailKey = (config: unknown): string => {
+  const value = (config as Record<string, unknown> | null)?.[MAIL_KEY];
+  return typeof value === "string" ? value : "";
+};
+
+/**
+ * The Mail widget's other people: their addresses, as rows ({ "email": … }),
+ * and, for those who consented, the folders read ({ "email": …, "folders":
+ * [ids] }) — none chosen, their inbox.
+ */
+export const MAIL_PEOPLE = "mail_people";
+export const SHOWN_FOLDERS = "shown_folders";
+
+export const shownFoldersOf = (config: unknown): Map<string, string[]> =>
+  choicesByPerson(config, SHOWN_FOLDERS, "folders");
 
 /**
  * The widgets that read Microsoft 365, through Entra: the calendar (the

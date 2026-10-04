@@ -19,9 +19,10 @@
 
 import type {
   AccessCalendarEvent,
+  AccessCalendarChoice,
   AccessMail,
   AccessMailAttachment,
-  AccessMailPage,
+  AccessMailFolder,
   MailAddress,
   EntraPrincipal,
   EntraSettings,
@@ -449,6 +450,7 @@ interface GraphAppointment {
   location?: { displayName?: string | null } | null;
   showAs?: string | null;
   webLink?: string | null;
+  sensitivity?: string | null;
 }
 
 /** A date that Graph returns in UTC without saying so: we make it say so. */
@@ -461,25 +463,54 @@ const toUtc = (value: string | undefined): string => {
 const APPOINTMENTS_MAX = 500;
 
 /**
- * The appointments in the user's main calendar between two instants,
- * occurrences of series included (calendarView). Requires the Calendars.Read
- * application permission; cancelled appointments are not there.
+ * A user's Outlook calendars — their main one, and those they created or that
+ * were shared with them —, the main one first. Same permission as their
+ * appointments (Calendars.Read).
+ */
+export const entraCalendars = async (user: string): Promise<AccessCalendarChoice[]> => {
+  const calendars: AccessCalendarChoice[] = [];
+  let nextPage: string | undefined =
+    `/users/${encodeURIComponent(user)}/calendars?$select=id,name,isDefaultCalendar&$top=100`;
+  while (nextPage) {
+    const page: Page<{ id: string; name?: string | null; isDefaultCalendar?: boolean }> =
+      await graph(nextPage);
+    calendars.push(
+      ...page.value.map((c) => ({
+        id: c.id,
+        name: c.name || "Calendrier",
+        is_default: c.isDefaultCalendar === true,
+      })),
+    );
+    nextPage = page["@odata.nextLink"];
+  }
+  return calendars.sort((a, b) => Number(b.is_default) - Number(a.is_default));
+};
+
+/**
+ * The appointments in a user's calendar between two instants — their main
+ * one, or the one "calendar" names —, occurrences of series included
+ * (calendarView). Requires the Calendars.Read application permission;
+ * cancelled appointments are not there. "user" is their Entra id or their
+ * address; "owner" says whose they are — empty, the viewer's own. Someone
+ * else's private appointments only show their times.
  */
 export const entraAgenda = async (
-  oid: string,
+  user: string,
   start: Date,
   end: Date,
+  owner = "",
+  calendar = "",
 ): Promise<AccessCalendarEvent[]> => {
   const searchParams = new URLSearchParams({
     startDateTime: start.toISOString(),
     endDateTime: end.toISOString(),
-    $select: "id,subject,start,end,isAllDay,isCancelled,location,showAs,webLink",
+    $select: "id,subject,start,end,isAllDay,isCancelled,location,showAs,webLink,sensitivity",
     $orderby: "start/dateTime",
     $top: "100",
   });
   const appointments: GraphAppointment[] = [];
   let nextPage: string | undefined =
-    `/users/${encodeURIComponent(oid)}/calendarView?${searchParams.toString()}`;
+    `/users/${encodeURIComponent(user)}${calendar ? `/calendars/${encodeURIComponent(calendar)}` : ""}/calendarView?${searchParams.toString()}`;
   while (nextPage && appointments.length < APPOINTMENTS_MAX) {
     const page: Page<GraphAppointment> = await graph<Page<GraphAppointment>>(nextPage, {
       headers: { Prefer: 'outlook.timezone="UTC"' },
@@ -489,16 +520,21 @@ export const entraAgenda = async (
   }
   return appointments
     .filter((r) => !r.isCancelled)
-    .map((r) => ({
-      id: r.id,
-      subject: r.subject ?? "",
-      start: toUtc(r.start?.dateTime),
-      end: toUtc(r.end?.dateTime),
-      all_day: r.isAllDay === true,
-      location: r.location?.displayName ?? "",
-      show_as: r.showAs ?? "",
-      url: r.webLink ?? "",
-    }));
+    .map((r) => {
+      const hidden = owner !== "" && (r.sensitivity === "private" || r.sensitivity === "confidential");
+      return {
+        id: r.id,
+        subject: hidden ? "Privé" : (r.subject ?? ""),
+        start: toUtc(r.start?.dateTime),
+        end: toUtc(r.end?.dateTime),
+        all_day: r.isAllDay === true,
+        location: hidden ? "" : (r.location?.displayName ?? ""),
+        show_as: r.showAs ?? "",
+        // Someone else's appointment does not open in the viewer's Outlook.
+        url: owner ? "" : (r.webLink ?? ""),
+        owner,
+      };
+    });
 };
 
 // --- Personal mailbox -------------------------------------------------------
@@ -516,6 +552,8 @@ interface GraphHeader {
   id: string;
   subject?: string | null;
   from?: GraphAddress | null;
+  toRecipients?: GraphAddress[];
+  categories?: string[];
   receivedDateTime?: string;
   bodyPreview?: string;
   isRead?: boolean;
@@ -523,17 +561,23 @@ interface GraphHeader {
   importance?: string;
 }
 
-const HEADER_FIELDS = "id,subject,from,receivedDateTime,bodyPreview,isRead,hasAttachments,importance";
+const HEADER_FIELDS =
+  "id,subject,from,toRecipients,receivedDateTime,bodyPreview,isRead,hasAttachments,importance,categories";
 
 const toAddress = (a: GraphAddress | null | undefined): MailAddress => ({
   name: a?.emailAddress?.name ?? "",
   email: a?.emailAddress?.address ?? "",
 });
 
-const toHeader = (m: GraphHeader): AccessMail => ({
+/** "owner" says whose mailbox it comes from — empty, the viewer's —, "folder" where it sits. */
+const toHeader = (m: GraphHeader, owner = "", folder = ""): AccessMail => ({
   id: m.id,
   subject: m.subject ?? "",
   from: toAddress(m.from),
+  to: (m.toRecipients ?? []).map(toAddress),
+  categories: m.categories ?? [],
+  owner,
+  folder,
   received_at: m.receivedDateTime ?? "",
   preview: m.bodyPreview ?? "",
   is_read: m.isRead !== false,
@@ -542,16 +586,20 @@ const toHeader = (m: GraphHeader): AccessMail => ({
 });
 
 /**
- * A page of the inbox, from most recent to oldest. "unreadOnly" keeps only
- * unread ones: Graph then wants the sort to cover the filter too, in the same
- * order — hence the date at the head of the filter.
+ * A page of a mail folder — "inbox", or a folder's id — of a user's mailbox,
+ * from most recent to oldest. "unreadOnly" keeps only unread ones: Graph then
+ * wants the sort to cover the filter too, in the same order — hence the date
+ * at the head of the filter. "owner" marks the e-mails: whose they are, empty
+ * for the viewer's own. The folder's name and unread count come with them.
  */
-export const mailboxPage = async (
-  oid: string,
+export const folderPage = async (
+  user: string,
+  folder: string,
   offset: number,
   howMany: number,
   unreadOnly: boolean,
-): Promise<AccessMailPage> => {
+  owner = "",
+): Promise<{ messages: AccessMail[]; more: boolean; unread: number; name: string }> => {
   const searchParams = new URLSearchParams({
     $top: String(howMany),
     $skip: String(offset),
@@ -559,18 +607,61 @@ export const mailboxPage = async (
     $orderby: "receivedDateTime desc",
   });
   if (unreadOnly) searchParams.set("$filter", "receivedDateTime ge 1900-01-01T00:00:00Z and isRead eq false");
-  const mailbox = `/users/${encodeURIComponent(oid)}/mailFolders/inbox`;
-  const [page, folder] = await Promise.all([
-    graph<Page<GraphHeader>>(`${mailbox}/messages?${searchParams.toString()}`),
-    offset === 0
-      ? graph<{ unreadItemCount?: number }>(`${mailbox}?$select=unreadItemCount`)
-      : Promise.resolve(null),
+  const path = `/users/${encodeURIComponent(user)}/mailFolders/${encodeURIComponent(folder)}`;
+  const [page, details] = await Promise.all([
+    graph<Page<GraphHeader>>(`${path}/messages?${searchParams.toString()}`),
+    graph<{ displayName?: string; unreadItemCount?: number }>(
+      `${path}?$select=displayName,unreadItemCount`,
+    ),
   ]);
+  const name = details.displayName ?? "";
   return {
-    messages: page.value.map(toHeader),
+    messages: page.value.map((m) => toHeader(m, owner, name)),
     more: Boolean(page["@odata.nextLink"]),
-    ...(folder ? { unread: folder.unreadItemCount ?? 0 } : {}),
+    unread: details.unreadItemCount ?? 0,
+    name,
   };
+};
+
+interface GraphFolder {
+  id: string;
+  displayName?: string;
+  childFolderCount?: number;
+}
+
+/** How deep the folder tree is walked: beyond, a folder is rarely one to show. */
+const FOLDER_DEPTH = 3;
+
+/**
+ * A user's mail folders, their subfolders under their path ("Boîte de
+ * réception / Clients"), the inbox first. Same permission as their e-mails
+ * (Mail.Read).
+ */
+export const entraMailFolders = async (user: string): Promise<AccessMailFolder[]> => {
+  const base = `/users/${encodeURIComponent(user)}/mailFolders`;
+  const [inbox, roots] = await Promise.all([
+    graph<{ id: string }>(`${base}/inbox?$select=id`),
+    allPages<GraphFolder>(`${base}?$select=id,displayName,childFolderCount&$top=100`),
+  ]);
+  const folders: AccessMailFolder[] = [];
+  const walk = async (level: GraphFolder[], path: string, depth: number): Promise<void> => {
+    for (const f of level) {
+      const name = path ? `${path} / ${f.displayName ?? ""}` : (f.displayName ?? "");
+      folders.push({ id: f.id, name, is_default: f.id === inbox.id });
+      if ((f.childFolderCount ?? 0) > 0 && depth < FOLDER_DEPTH) {
+        const children = await allPages<GraphFolder>(
+          `${base}/${encodeURIComponent(f.id)}/childFolders?$select=id,displayName,childFolderCount&$top=100`,
+        );
+        await walk(children, name, depth + 1);
+      }
+    }
+  };
+  await walk(roots, "", 1);
+  // The inbox and what it holds first, then the rest in Outlook's order.
+  const inboxName = folders.find((f) => f.is_default)?.name ?? "";
+  const underInbox = (f: AccessMailFolder) =>
+    f.is_default || (inboxName !== "" && f.name.startsWith(`${inboxName} / `));
+  return [...folders.filter(underInbox), ...folders.filter((f) => !underInbox(f))];
 };
 
 /** Beyond this, an embedded image is not fetched: it would make the body too heavy. */
@@ -584,6 +675,7 @@ const EMBEDDED_IMAGE_MAX = 2 * 1024 * 1024;
 export const mailOfMailbox = async (
   oid: string,
   id: string,
+  owner = "",
 ): Promise<{
   header: AccessMail;
   to: MailAddress[];
@@ -602,7 +694,7 @@ export const mailOfMailbox = async (
       body?: { content?: string; contentType?: string };
       webLink?: string;
     }
-  >(`${base}?$select=${HEADER_FIELDS},toRecipients,ccRecipients,body,webLink`);
+  >(`${base}?$select=${HEADER_FIELDS},ccRecipients,body,webLink`);
 
   const images = new Map<string, string>();
   const attachments: AccessMailAttachment[] = [];
@@ -628,12 +720,13 @@ export const mailOfMailbox = async (
   }
 
   return {
-    header: toHeader(message),
+    header: toHeader(message, owner),
     to: (message.toRecipients ?? []).map(toAddress),
     cc: (message.ccRecipients ?? []).map(toAddress),
     body: message.body?.content ?? "",
     body_type: (message.body?.contentType ?? "").toLowerCase() === "text" ? "text" : "html",
-    url: message.webLink ?? "",
+    // Someone else's e-mail does not open in the viewer's Outlook.
+    url: owner ? "" : (message.webLink ?? ""),
     images,
     attachments,
   };
@@ -1055,26 +1148,36 @@ export interface Subscription {
 }
 
 /**
- * Asks Graph to notify Milo of every e-mail that arrives in the inbox.
- * Graph checks the address before accepting: Milo must already be listening,
- * and answer its validation.
+ * Asks Graph to notify Milo of the changes to a resource — the messages of a
+ * folder, the events of a calendar. Graph checks the address before
+ * accepting: Milo must already be listening, and answer its validation.
  */
-export const createSubscription = (
-  mailbox: string,
+export const subscribeTo = (
+  resource: string,
+  changeType: string,
   notificationUrl: string,
   clientState: string,
   expiration: string,
 ): Promise<Subscription> =>
   graph<Subscription>("/subscriptions", {
     method: "POST",
-    body: {
-      changeType: "created",
-      notificationUrl,
-      resource: `users/${mailbox}/mailFolders('inbox')/messages`,
-      expirationDateTime: expiration,
-      clientState,
-    },
+    body: { changeType, notificationUrl, resource, expirationDateTime: expiration, clientState },
   });
+
+/** Asks Graph to notify Milo of every e-mail that arrives in the inbox. */
+export const createSubscription = (
+  mailbox: string,
+  notificationUrl: string,
+  clientState: string,
+  expiration: string,
+): Promise<Subscription> =>
+  subscribeTo(
+    `users/${mailbox}/mailFolders('inbox')/messages`,
+    "created",
+    notificationUrl,
+    clientState,
+    expiration,
+  );
 
 export const renewSubscription = (id: string, expiration: string): Promise<Subscription> =>
   graph<Subscription>(`/subscriptions/${encodeURIComponent(id)}`, {

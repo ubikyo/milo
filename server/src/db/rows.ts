@@ -42,15 +42,6 @@ export interface SessionRow {
   expires_at: string;
 }
 
-/** A context of a board. */
-export interface ContextRow {
-  id: Id;
-  board_id: Id;
-  name: string;
-  position: number;
-  created_at: string;
-}
-
 
 /** A view of the bottom selector. */
 export interface WorkspaceRow {
@@ -153,7 +144,6 @@ export interface ProjectRow {
   description: string;
   board_id: Id;
   category_id: Id;
-  context_id: Id | null;
   list_key: string;
   milestone_type_id: Id | null;
   status: number;
@@ -164,7 +154,6 @@ export interface ProjectRow {
 /** A project row joined to its reference tables. */
 export interface ProjectJoinedRow extends ProjectRow {
   category_name: string;
-  context_name: string | null;
 }
 
 /** A board of a view. */
@@ -173,6 +162,7 @@ export interface BoardRow {
   view_id: Id;
   name: string;
   all_contexts_label: string;
+  context_group: string;
   position: number;
   show_card_numbers: SqliteBool;
   is_private: SqliteBool;
@@ -202,7 +192,6 @@ export interface TaskCardRow {
   position: number;
   number: number;
   kind: CardKind;
-  context_id: Id | null;
   description: string;
   due_date: string;
   start_date: string;
@@ -287,12 +276,11 @@ export type WithAuthorColumns<T> = T & {
   author_email: string | null;
 };
 
-/** A ticket: it hangs off a context. */
+/** A ticket: it hangs off a board. */
 export interface SupportRequestRow {
   id: Id;
   number: number;
   board_id: Id;
-  context_id: Id | null;
   list_key: string;
   /** The mailbox it arrived in; empty for a request entered by hand. */
   mailbox: string;
@@ -391,7 +379,6 @@ export interface AssetRow {
   name: string;
   tag: string;
   board_id: Id | null;
-  context_id: Id | null;
   list_key: string;
   content: string;
   last_user: string;

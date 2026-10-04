@@ -1,7 +1,7 @@
 // Label groups: every label belongs to one, and the groups are ordered among
-// themselves. The three kinds of labels — those of cards, of projects, of
-// Support — each have their own groups table; the first two are bounded by
-// their board, Support's form a single set.
+// themselves. The four kinds of labels — those of cards, of projects, of
+// assets, of Support — each have their own groups table; the first three are
+// bounded by their board, Support's form a single set.
 //
 // The labels' "position" orders the whole set, group after group: it is
 // renumbered whenever a group moves or a label changes group. Every query that
@@ -18,8 +18,8 @@ import { receivedOrder } from "./reorder.js";
 
 interface Tables {
   /** The labels table. Table names come from here, never from a request. */
-  labels: "labels" | "project_labels" | "support_labels";
-  groups: "label_groups" | "project_label_groups" | "support_label_groups";
+  labels: "labels" | "project_labels" | "support_labels" | "asset_labels";
+  groups: "label_groups" | "project_label_groups" | "support_label_groups" | "asset_label_groups";
   /** True when the set is bounded by a board ("board_id"). */
   scoped: boolean;
 }
@@ -156,6 +156,13 @@ export const boardLabelGroups = store({ labels: "labels", groups: "label_groups"
 export const projectLabelGroups = store({
   labels: "project_labels",
   groups: "project_label_groups",
+  scoped: true,
+});
+
+/** The groups of a board's asset labels. */
+export const assetLabelGroups = store({
+  labels: "asset_labels",
+  groups: "asset_label_groups",
   scoped: true,
 });
 

@@ -58,10 +58,9 @@ interface FoundProject {
 }
 
 const foundProjects = selection<FoundProject>(
-  `SELECT p.id, p.number, p.name, b.name AS board, c.name AS context
+  `SELECT p.id, p.number, p.name, b.name AS board, NULL AS context
      FROM projects p
      JOIN boards b ON b.id = p.board_id
-     LEFT JOIN contexts c ON c.id = p.context_id
     WHERE ${VISIBLE_BOARDS_CLAUSE("p.board_id")}
       AND (${contains("p.name")} OR ${contains("p.description")} OR ${matchesReference("p.number", PROJECT_REFERENCE_PREFIX)})
     ORDER BY p.updated_at DESC
@@ -78,11 +77,10 @@ interface FoundCard {
 }
 
 const foundCards = selection<FoundCard>(
-  `SELECT tc.id, tc.number, tc.text, tl.name AS list, b.name AS board, c.name AS context
+  `SELECT tc.id, tc.number, tc.text, tl.name AS list, b.name AS board, NULL AS context
      FROM task_cards tc
      JOIN task_lists tl ON tl.id = tc.list_id
      JOIN boards b ON b.id = tl.board_id
-     LEFT JOIN contexts c ON c.id = tc.context_id
     WHERE tc.kind = 'card'
       AND ${VISIBLE_BOARDS_CLAUSE("b.id")}
       AND (${contains("tc.text")} OR ${contains("tc.description")} OR ${matchesReference("tc.number", TASK_REFERENCE_PREFIX)})
@@ -100,10 +98,9 @@ interface FoundRequest {
 }
 
 const foundRequests = selection<FoundRequest>(
-  `SELECT sr.id, sr.number, sr.subject, sr.status, c.name AS context, b.name AS board
+  `SELECT sr.id, sr.number, sr.subject, sr.status, NULL AS context, b.name AS board
      FROM support_requests sr
      JOIN boards b ON b.id = sr.board_id
-     LEFT JOIN contexts c ON c.id = sr.context_id
     WHERE ${VISIBLE_BOARDS_CLAUSE("b.id")}
       AND (${contains("sr.subject")}
        OR ${contains("sr.sender_name")}
@@ -121,9 +118,9 @@ interface FoundWorkstation {
 }
 
 const foundWorkstations = selection<FoundWorkstation>(
-  `SELECT a.id, a.name, a.last_user, c.name AS context
+  `SELECT a.id, a.name, a.last_user, b.name AS context
      FROM assets a
-     LEFT JOIN contexts c ON c.id = a.context_id
+     JOIN boards b ON b.id = a.board_id
     WHERE a.board_id IS NOT NULL AND ${VISIBLE_BOARDS_CLAUSE("a.board_id")}
       AND (${contains("a.name")} OR ${contains("a.last_user")} OR ${contains("a.tag")})
     ORDER BY a.name

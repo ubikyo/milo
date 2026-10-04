@@ -55,7 +55,6 @@ import {
 } from "@milo/shared";
 import type { CSSProperties } from "react";
 import type {
-  Context,
   Id,
   PublicUser,
   SupportContent,
@@ -127,15 +126,9 @@ interface SupportRequestDrawerProps {
   onClose: () => void;
   /** "null" on creation, the targeted request otherwise. */
   request: SupportRequest | null;
-  /**
-   * The context proposed on creation: the one being viewed, or the first of the
-   * board under "Tous les contextes". An already open request keeps its
-   * own, whatever this value.
-   */
-  contextId: string;
-  /** The board's contexts: a request can move from one to another. */
-  contexts: Context[];
-  /** The open board: a request entered without a context takes its first one. */
+  /** The context being viewed: a new request receives its label. */
+  context: string | null;
+  /** The open board: a new request goes there. */
   boardId: Id | null;
   /** On creation: the "Tickets" widget it is entered from. */
   listKey?: string;
@@ -161,8 +154,7 @@ export default function SupportRequestDrawer({
   opened,
   onClose,
   request,
-  contextId,
-  contexts,
+  context,
   boardId,
   listKey,
   defaultStatus,
@@ -177,13 +169,7 @@ export default function SupportRequestDrawer({
 }: SupportRequestDrawerProps) {
   const [subject, setSubject] = useState("");
   const [status, setStatus] = useState<SupportStatus>(DEFAULT_SUPPORT_STATUS);
-  /**
-   * The request's context. On creation it is proposed — the one being
-   * viewed, or the first —, and remains editable: this is how a request
-   * opened in the wrong place is fixed.
-   */
-  const [activeContextId, setActiveContextId] = useState(contextId);
-  /** The support labels, shared by all contexts. */
+  /** The support labels, shared by all boards. */
   const [labels, setLabels] = useState<SupportLabel[]>([]);
   /** The retained actors, as strings: those who handle the request. */
   const [actorIds, setActorIds] = useState<string[]>([]);
@@ -213,7 +199,6 @@ export default function SupportRequestDrawer({
     setActiveTab("settings");
 
     if (!request) {
-      setActiveContextId(contextId);
       setSubject(defaultSubject);
       setStatus(defaultStatus);
       // Whoever creates the request handles it, until decided otherwise.
@@ -224,7 +209,6 @@ export default function SupportRequestDrawer({
       return;
     }
 
-    setActiveContextId(String(request.context_id));
     setSubject(request.subject);
     setStatus(request.status);
     setActorIds(request.actors.map((a) => String(a.id)));
@@ -239,7 +223,6 @@ export default function SupportRequestDrawer({
     request,
     defaultStatus,
     defaultSubject,
-    contextId,
     assignCurrentUser,
     currentUser.id,
   ]);
@@ -311,7 +294,6 @@ export default function SupportRequestDrawer({
    * without a subject is read through its thread.
    */
   const input = (): SupportRequestInput => ({
-    context_id: activeContextId ? Number(activeContextId) : undefined,
     subject: subject.trim(),
     status,
     actor_ids: actorIds.map(Number),
@@ -363,6 +345,8 @@ export default function SupportRequestDrawer({
         const created = await api.createSupportRequest({
           ...input(),
           board_id: boardId ?? undefined,
+          // Created in a context, it receives its label (server).
+          context: context ?? undefined,
           list_key: listKey || undefined,
         });
         // The exchanges held before creation follow it.
@@ -610,14 +594,14 @@ export default function SupportRequestDrawer({
                         />
                       </div>
                       <div style={{ flex: "7 1 0", minWidth: 0 }}>
-                        {/* Labels are shared by all contexts: renaming
+                        {/* Labels are shared by all boards: renaming
                           or recoloring them affects all requests. */}
                         <LabelPicker
                           chipHeight={CHIP_HEIGHT}
                           labels={labels}
                           value={labelIds}
                           onChange={setLabelIds}
-                          boardId={activeContextId}
+                          boardId={boardId ?? ""}
                           onLabelsChanged={reloadLabels}
                           labelsApi={SUPPORT_LABELS_API}
                           emptyText="Aucune étiquette"
@@ -638,46 +622,20 @@ export default function SupportRequestDrawer({
                       )}
                     </Group>
 
-                    {/* The subject and the context, side by side. The subject ends flush with
-                      the due date below; the context takes the rest. */}
-                    <Group align="flex-start" gap="md" wrap="nowrap">
-                      <div
-                        style={{
-                          width: `calc(${STATUS_WIDTH + DUE_WIDTH}px + var(--mantine-spacing-md))`,
-                          flexShrink: 0,
-                        }}
-                      >
-                        {/* The e-mail's for a received request, and which stays
-                          editable. */}
-                        <TextInput
-                          label="Objet"
-                          value={subject}
-                          onChange={(e) => setSubject(e.currentTarget.value)}
-                        />
-                      </div>
-                      {/* The context the request belongs to. Under "Tous les
-                        contextes", a new request goes into the first one: this is
-                        where it is put back where it belongs. Its labels, shared by
-                        all contexts, follow it. A board without contexts
-                        has nothing to offer. */}
-                      {contexts.length > 0 && (
-                        <div style={{ flex: "1 1 0", minWidth: 0 }}>
-                          <Select
-                            label="Contexte"
-                            data={contexts.map((c) => ({
-                              value: String(c.id),
-                              label: c.name,
-                            }))}
-                            value={activeContextId || null}
-                            onChange={(value) => {
-                              if (!value || value === activeContextId) return;
-                              setActiveContextId(value);
-                            }}
-                            allowDeselect={false}
-                          />
-                        </div>
-                      )}
-                    </Group>
+                    {/* The subject: the e-mail's for a received request, and
+                      which stays editable. It ends flush with the due date below. */}
+                    <div
+                      style={{
+                        width: `calc(${STATUS_WIDTH + DUE_WIDTH}px + var(--mantine-spacing-md))`,
+                        maxWidth: "100%",
+                      }}
+                    >
+                      <TextInput
+                        label="Objet"
+                        value={subject}
+                        onChange={(e) => setSubject(e.currentTarget.value)}
+                      />
+                    </div>
 
                     {/* The status and due date, on their own row. */}
                     <Group align="flex-start" gap="md" wrap="nowrap">

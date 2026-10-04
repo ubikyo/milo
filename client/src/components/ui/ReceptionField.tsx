@@ -1,10 +1,8 @@
 import { Autocomplete, Group, Input, Select, Stack } from "@mantine/core";
 import { useState } from "react";
 import type { ComponentType, ReactNode } from "react";
-import { useReferences } from "../../lib/references";
 import { withField } from "../../widgets/types";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
-import type { Id } from "@milo/shared";
 import {
   ROUNDING,
   EmptyList,
@@ -18,25 +16,27 @@ import {
 } from "./DrawerRows";
 
 // What a list receives from outside: the e-mail addresses its tickets arrive
-// from, the GLPI agent tags its positions arrive from. Each goes to one of the
-// board's contexts; the server re-reads this configuration (server,
+// from. Each may set a label on what arrives — its context; the server re-reads this configuration (server,
 // repositories/inboxes.ts).
 //
 // They look like a list's columns (ColumnFields): one row per reception, its
-// value on the row itself, its context on the right. Its box, at the start,
+// value on the row itself, its label on the right. Its box, at the start,
 // selects it: the checked rows are removed together, from the button that takes
 // the place of "Ajouter" meanwhile. "Ajouter" adds an empty row at the end,
 // which disappears if left without anything written in it. With no reception, the empty-list prompt (EmptyList).
 
-/** A reception: the received value, and the context where it is filed. */
-type Inbox = Record<string, unknown> & { context_id?: number | null };
+/** A reception: the received value, and the label it sets. */
+type Inbox = Record<string, unknown> & { label_id?: number | null };
 
-/** The width of the context choice. */
-const CONTEXT_WIDTH = 170;
+/** The width of the label choice. */
+const LABEL_WIDTH = 170;
 
 interface ReceptionFieldProps extends IndicatorConfigProps {
-  /** The configuration key that holds the list: "mailboxes", "tags". */
-  key: string;
+  /**
+   * The configuration key that holds the list: "mailboxes", "calendars". Not
+   * "key": React keeps that one for itself and never passes it on.
+   */
+  configKey: string;
   /** The field of each entry that carries the received value: "email", "tag". */
   field: string;
   label: string;
@@ -55,6 +55,8 @@ interface ReceptionFieldProps extends IndicatorConfigProps {
   state?: (value: string) => ReactNode;
   /** The value as it is stored: an address without spaces, for example. */
   normalizeValue?: (value: string) => string;
+  /** The labels a reception may set, by group; none, the choice is not offered. */
+  labels?: { group: string; items: { value: string; label: string }[] }[];
 }
 
 /** The receptions the configuration holds. */
@@ -66,33 +68,25 @@ export const inboxesOf = (config: unknown, key: string): Inbox[] => {
 /**
  * True when a widget's receptions do not hold up: no reception — the list would
  * receive nothing —, or a single one that is incomplete. Each must have its
- * value, readable ("valid": an e-mail address for a mailbox), and, in a board
- * that has contexts, a context that still exists — not one added since, nor a
- * deleted one.
+ * value, readable ("valid": an e-mail address for a mailbox).
  */
 export const inboxesWithProblem = (
   config: unknown,
   key: string,
   field: string,
-  contextOptions: Id[],
   isValid: (value: string) => boolean = (value) => value !== "",
 ): boolean => {
   const rows = inboxesOf(config, key);
   if (rows.length === 0) return true;
-  return rows.some((l) => {
-    const value = typeof l[field] === "string" ? (l[field] as string).trim() : "";
-    if (!isValid(value)) return true;
-    return contextOptions.length > 0 && (!l.context_id || !contextOptions.includes(l.context_id as Id));
-  });
+  return rows.some((l) => !isValid(typeof l[field] === "string" ? (l[field] as string).trim() : ""));
 };
 
 /**
- * A widget's list of receptions: one row per address, or per tag, with the
- * context that receives it. Set when the list is placed, and changed afterwards
- * in its drawer.
+ * A widget's list of receptions: one row per address, with the label it sets.
+ * Set when the list is placed, and changed afterwards in its drawer.
  */
 export default function ReceptionField({
-  key,
+  configKey,
   field,
   label,
   description,
@@ -103,12 +97,12 @@ export default function ReceptionField({
   suggestions = [],
   state,
   normalizeValue = (value) => value,
+  labels = [],
   config,
   onChange,
 }: ReceptionFieldProps) {
-  const { contexts } = useReferences();
-  const rows = inboxesOf(config, key);
-  const contextOptions = contexts.map((c) => ({ value: String(c.id), label: c.name }));
+  const rows = inboxesOf(config, configKey);
+  const labelValues = new Set(labels.flatMap((g) => g.items.map((l) => l.value)));
   /** The field that has focus: it takes the drawer's background. */
   const [input, setInput] = useState<string | null>(null);
   /** The row that was just added: its value takes focus. */
@@ -121,7 +115,7 @@ export default function ReceptionField({
   const selection = useRowSelection(rows.map((_, rank) => rank));
 
   const valueFor = (l: Inbox) => (typeof l[field] === "string" ? (l[field] as string) : "");
-  const insertRow = (nextItems: Inbox[]) => onChange(withField(config, key, nextItems));
+  const insertRow = (nextItems: Inbox[]) => onChange(withField(config, configKey, nextItems));
   const change = (rank: number, change: Partial<Inbox>) =>
     insertRow(rows.map((l, i) => (i === rank ? { ...l, ...change } : l)));
   // Rows are known by their rank: those after the removed one move up, their
@@ -135,9 +129,9 @@ export default function ReceptionField({
     selection.reset();
   };
 
-  // The new row goes to the first context: it is changed on the row.
+  // The new row sets no label: it is chosen on the row.
   const addRow = () => {
-    insertRow([...rows, { [field]: "", context_id: contexts[0]?.id ?? null }]);
+    insertRow([...rows, { [field]: "", label_id: null }]);
     setToFill(rows.length);
   };
 
@@ -202,23 +196,28 @@ export default function ReceptionField({
                   if (!valueFor(row).trim()) remove(rank);
                 }}
               />
-              {/* A board without contexts receives without context: nothing to choose. */}
-              {contextOptions.length > 0 && (
+              {/* Without labels, nothing to choose. */}
+              {labelValues.size > 0 && (
                 <Select
                   size="xs"
                   radius={ROUNDING}
-                  w={CONTEXT_WIDTH}
+                  w={LABEL_WIDTH}
                   style={{ flexShrink: 0 }}
                   placeholder="Contexte"
                   aria-label="Contexte"
-                  data={contextOptions}
-                  value={row.context_id ? String(row.context_id) : null}
-                  onChange={(value) => change(rank, { context_id: value ? Number(value) : null })}
-                  allowDeselect={false}
+                  data={labels}
+                  // A label deleted since then matches no option: none shows.
+                  value={
+                    row.label_id && labelValues.has(String(row.label_id))
+                      ? String(row.label_id)
+                      : null
+                  }
+                  onChange={(value) => change(rank, { label_id: value ? Number(value) : null })}
+                  clearable
                   comboboxProps={{ withinPortal: true }}
-                  onFocus={() => setInput(`${rank}-contexte`)}
+                  onFocus={() => setInput(`${rank}-label`)}
                   onBlur={() => setInput(null)}
-                  styles={input === `${rank}-contexte` ? { input: INPUT_STYLE } : undefined}
+                  styles={input === `${rank}-label` ? { input: INPUT_STYLE } : undefined}
                 />
               )}
               {state?.(valueFor(row))}

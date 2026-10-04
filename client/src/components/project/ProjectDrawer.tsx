@@ -58,7 +58,6 @@ import LabelPicker, { PROJECT_LABELS_API } from "../ui/LabelPicker";
 import { errorMessage, notifyError } from "../../lib/errors";
 import type {
   Category,
-  Context,
   MilestoneType,
   ProjectBoard,
   ProjectInput,
@@ -73,7 +72,6 @@ import CloseButton from "../ui/CloseButton";
 interface Form {
   name: string;
   category_id: string;
-  context_id: string;
   /** The slider's milestone type; empty, the slider stays bare. */
   milestone_type_id: string;
   status: number;
@@ -95,7 +93,6 @@ const CHIP_HEIGHT = 30;
 const emptyForm: Form = {
   name: "",
   category_id: "",
-  context_id: "",
   milestone_type_id: "",
   status: 0,
   actor_ids: [],
@@ -109,10 +106,8 @@ interface ProjectDrawerProps {
   projectId: number | null;
   boardId: string | null;
   categories: Category[];
-  /** The board's contexts: the project belongs to one of them. */
-  contexts: Context[];
-  /** The context offered on creation: the one being viewed, or the first. */
-  contextId: string;
+  /** The context being viewed: a new project receives its label. */
+  context: string | null;
   /** On creation: the "Projets" widget it is added from. */
   listKey?: string;
   /** The milestone types from the settings: the slider picks one. */
@@ -140,8 +135,7 @@ export default function ProjectDrawer({
   projectId,
   boardId,
   categories,
-  contexts,
-  contextId,
+  context,
   listKey,
   milestoneTypes,
   users,
@@ -192,10 +186,10 @@ export default function ProjectDrawer({
   // The lists only serve to compute default values: they are read
   // via a ref so that their reload (creating a category from this
   // drawer, for example) does not reset the input in progress.
-  const lookupsRef = useRef({ categories, contextId, milestoneTypes });
+  const lookupsRef = useRef({ categories, milestoneTypes });
   useEffect(() => {
-    lookupsRef.current = { categories, contextId, milestoneTypes };
-  }, [categories, contextId, milestoneTypes]);
+    lookupsRef.current = { categories, milestoneTypes };
+  }, [categories, milestoneTypes]);
 
   useEffect(() => {
     if (!opened) return;
@@ -204,17 +198,12 @@ export default function ProjectDrawer({
     setMove(null);
 
     if (!projectId) {
-      const {
-        categories: cats,
-        contextId: proposed,
-        milestoneTypes: types,
-      } = lookupsRef.current;
+      const { categories: cats, milestoneTypes: types } = lookupsRef.current;
       // A new project takes the "Défaut" type, set with the widget.
       const defaultValue = types.find((t) => t.name === DEFAULT_MILESTONE_TYPE);
       setForm({
         ...emptyForm,
         category_id: cats[0] ? String(cats[0].id) : "",
-        context_id: proposed,
         milestone_type_id: defaultValue ? String(defaultValue.id) : "",
       });
       setComments([]);
@@ -226,7 +215,6 @@ export default function ProjectDrawer({
       setForm({
         name: project.name,
         category_id: String(project.category_id),
-        context_id: project.context_id ? String(project.context_id) : "",
         milestone_type_id: project.milestone_type_id
           ? String(project.milestone_type_id)
           : "",
@@ -255,7 +243,8 @@ export default function ProjectDrawer({
       description: editor?.getHTML() ?? "",
       board_id: Number(boardId),
       category_id: Number(form.category_id),
-      context_id: form.context_id ? Number(form.context_id) : undefined,
+      // Created in a context, it receives its label (server).
+      context: isEditing ? undefined : (context ?? undefined),
       milestone_type_id: form.milestone_type_id
         ? Number(form.milestone_type_id)
         : null,
@@ -369,10 +358,6 @@ export default function ProjectDrawer({
   };
 
   const categoryOptions = categories.map((c) => ({
-    value: String(c.id),
-    label: c.name,
-  }));
-  const contextOptions = contexts.map((c) => ({
     value: String(c.id),
     label: c.name,
   }));
@@ -528,21 +513,6 @@ export default function ProjectDrawer({
                     required
                   />
                   <RichTextField editor={editor} label="Description" />
-                  {/* A board with no context has nothing to offer. */}
-                  {contextOptions.length > 0 && (
-                    <Select
-                      label="Contexte"
-                      data={contextOptions}
-                      value={form.context_id || null}
-                      onChange={(value) =>
-                        setForm((f) => ({
-                          ...f,
-                          context_id: value ?? f.context_id,
-                        }))
-                      }
-                      allowDeselect={false}
-                    />
-                  )}
                   <Group gap="xs" align="flex-end" wrap="nowrap">
                     <Select
                       label="Catégorie"

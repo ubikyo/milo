@@ -1,8 +1,8 @@
 // Workstations of Assets mode: what the inventory agents report.
 //
-// A workstation belongs to no board: it is attached to a company by the "tag"
-// its agent carries, and to nothing at all when that tag designates no known
-// company. The inventory itself is kept whole, as JSON: the drawer is what
+// A workstation belongs to no board by itself: it joins the one whose asset
+// label bears the name of the "tag" its agent carries, and nothing at all when
+// no label names it. The inventory itself is kept whole, as JSON: the drawer is what
 // unrolls it, and nobody has yet decided what would be kept of it.
 
 import type {
@@ -15,6 +15,7 @@ import type {
   AssetSection,
   AssetSummary,
   AssetVlan,
+  Label,
 } from "@milo/shared";
 import { mutation, selection, transaction } from "../db/query.js";
 import type { AssetRow } from "../db/rows.js";
@@ -33,48 +34,47 @@ export const assets = {
   // name — an agent that could not tell it — go at the end, by their
   // identifier.
   all: selection<AssetRow>("SELECT * FROM assets ORDER BY name = '', name, deviceid"),
-  /** Those of a board: from one of its contexts, or from all. */
+  /** Those of a board. */
   ofBoard: selection<AssetRow>(
-    `SELECT * FROM assets
-     WHERE board_id = @board AND (@context IS NULL OR context_id = @context)
-     ORDER BY name = '', name, deviceid`,
+    `SELECT * FROM assets WHERE board_id = ? ORDER BY name = '', name, deviceid`,
   ),
   create: mutation(
     `INSERT INTO assets
-       (deviceid, name, tag, board_id, context_id, list_key, content, last_user, last_inventory, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (deviceid, name, tag, board_id, list_key, content, last_user, last_inventory, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ),
   update: mutation(
     `UPDATE assets
-     SET name = ?, tag = ?, board_id = ?, context_id = ?, list_key = ?, content = ?, last_user = ?, last_inventory = ?
+     SET name = ?, tag = ?, board_id = ?, list_key = ?, content = ?, last_user = ?, last_inventory = ?
      WHERE id = ?`,
   ),
   remove: mutation("DELETE FROM assets WHERE id = ?"),
 };
 
-const setContext = mutation(
-  "UPDATE assets SET board_id = ?, context_id = ?, list_key = ? WHERE lower(trim(tag)) = ?",
+const setList = mutation(
+  "UPDATE assets SET board_id = ?, list_key = ? WHERE lower(trim(tag)) = ?",
 );
-const withoutReceipt = mutation(
-  "UPDATE assets SET board_id = NULL, context_id = NULL, list_key = ''",
-);
+const withoutReceipt = mutation("UPDATE assets SET board_id = NULL, list_key = ''");
 
 /**
- * Workstations follow the workstation lists: each goes to the context that
- * receives its tag, or nowhere. Redone when a workstation list changes what it
- * receives.
+ * Workstations follow the workstation lists: each goes to the list whose
+ * board names its tag with an asset label, or nowhere. Redone when a
+ * workstation list or an asset label changes.
  */
-export const reassignWorkstationContexts = transaction((): void => {
+export const reassignWorkstations = transaction((): void => {
   withoutReceipt.run();
   for (const inbox of receivedTags()) {
-    setContext.run(
-      inbox.board_id,
-      inbox.context_id,
-      inbox.list,
-      inbox.value.trim().toLowerCase(),
-    );
+    setList.run(inbox.board_id, inbox.list, inbox.value.trim().toLowerCase());
   }
 });
+
+/** The asset labels of a board named as a tag, case aside. */
+const labelsOfTag = selection<Label>(
+  `SELECT l.*, g.name AS group_name FROM asset_labels l
+   LEFT JOIN asset_label_groups g ON g.id = l.group_id
+   WHERE l.board_id = ? AND lower(trim(l.name)) = lower(trim(?))
+   ORDER BY l.position, l.id`,
+);
 
 /** The content kept in the database, or nothing when it is unreadable. */
 const contentOf = (row: AssetRow): Tree => {
@@ -247,9 +247,9 @@ export const assetOf = (row: AssetRow, content: Tree = contentOf(row)): Asset =>
   id: row.id,
   name: row.name,
   board_id: row.board_id,
-  context_id: row.context_id,
   list_key: row.list_key,
   tag: row.tag,
+  labels: row.board_id === null || !row.tag.trim() ? [] : labelsOfTag.all(row.board_id, row.tag),
   user: row.last_user,
   last_inventory: row.last_inventory,
   system_disk: systemDisk(content),

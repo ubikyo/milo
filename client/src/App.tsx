@@ -29,18 +29,19 @@ import {
   RESOURCES,
   canUpdate,
   emptyFollows,
+  inContext,
+  isM365Change,
   isNotification,
+  m365Event,
 } from "@milo/shared";
 import { RightsProvider, canFrom } from "./lib/rights";
 import { errorMessage, notifyError } from "./lib/errors";
-import { ReferencesContext } from "./lib/references";
 import { EditingContext } from "./lib/editing";
 import { addressTarget, noteInAddress } from "./lib/follow";
 import type { Target } from "./lib/follow";
 import AssetDrawer from "./components/assets/AssetDrawer";
 import SupportRequestDrawer from "./components/support/SupportRequestDrawer";
 import PreferencesModal from "./components/settings/PreferencesModal";
-import CopyToBoardModal from "./components/ui/CopyToBoardModal";
 import { CopyPasteContext } from "./components/ui/CopyPasteActions";
 import type { Clipboard } from "./components/ui/CopyPasteActions";
 import type { AccountSlot } from "./components/ui/AccountControls";
@@ -60,6 +61,7 @@ import type {
   Asset,
   AuthResult,
   Board,
+  BoardInput,
   BoardWidget,
   Category,
   FeedMessage,
@@ -97,13 +99,18 @@ interface LoadedFor<T> {
 const withPrefix = (widgets: BoardWidget[], prefix: string) =>
   widgets.some((w) => w.type.startsWith(`${prefix}.`));
 
-/** The items of a context, or all of them ("all"); "null" while they aren't read. */
-const inContext = <T extends { context_id: Id | null }>(
+/**
+ * The items of a context, or all of them (null); "null" while they aren't
+ * read. An item belongs to it when it carries the label of that name in its
+ * list's context group (shared, contexts.ts).
+ */
+const ofContext = <T extends { list_key: string; labels: { group_id: Id; name: string }[] }>(
   items: T[] | null,
-  context: string,
+  context: string | null,
+  groups: Record<string, Id[]>,
 ): T[] | null =>
-  items && context !== "all"
-    ? items.filter((e) => String(e.context_id) === context)
+  items && context !== null
+    ? items.filter((e) => inContext(e.labels, groups[e.list_key], context))
     : items;
 
 export default function App() {
@@ -236,43 +243,47 @@ export default function App() {
   const tasksNeed = withPrefix(widgets, "task");
   const supportNeed = withPrefix(widgets, "support");
   const assetsNeed = withPrefix(widgets, "asset");
-  // The context this account views in the open board, or "all".
-  const selectedContext = board?.context_id ? String(board.context_id) : "all";
-  const contexts = board?.contexts ?? [];
+  // The context this account views in the open board — a label name —, or
+  // null for all; and the context group of each of its lists.
+  const selectedContext = board?.context ?? null;
+  const contexts = useMemo(() => board?.contexts ?? [], [board?.contexts]);
+  const contextGroups = useMemo(() => board?.context_groups ?? {}, [board?.context_groups]);
   // The cards of the chosen context; the separators, which decide for everyone,
   // stay. Kept from one render to the next: the task board forgets its
   // provisional order when its lists change.
   const visibleTasks = useMemo(
     () =>
-      taskLists && selectedContext !== "all"
+      taskLists && selectedContext !== null
         ? taskLists.map((l) => ({
             ...l,
             cards: l.cards.filter(
-              (c) => c.kind === "separator" || String(c.context_id) === selectedContext,
+              (c) =>
+                c.kind === "separator" ||
+                inContext(c.labels, contextGroups[l.list_key], selectedContext),
             ),
           }))
         : taskLists,
-    [taskLists, selectedContext],
+    [taskLists, selectedContext, contextGroups],
   );
   // The projects, requests and workstations of the chosen context, filtered here:
   // the page read them for the whole board.
   const viewedProjects = useMemo(
-    () => inContext(projects, selectedContext),
-    [projects, selectedContext],
+    () => ofContext(projects, selectedContext, contextGroups),
+    [projects, selectedContext, contextGroups],
   );
   const visibleRequests = useMemo(
-    () => inContext(supportRequests, selectedContext),
-    [supportRequests, selectedContext],
+    () => ofContext(supportRequests, selectedContext, contextGroups),
+    [supportRequests, selectedContext, contextGroups],
   );
-  const viewedWorkstations = useMemo(() => inContext(assets, selectedContext), [assets, selectedContext]);
+  const viewedWorkstations = useMemo(
+    () => ofContext(assets, selectedContext, contextGroups),
+    [assets, selectedContext, contextGroups],
+  );
 
   const [drawerOpened, setDrawerOpened] = useState(false);
   /** The list widget from which a project or request is added; empty otherwise. */
   const [addTargetList, setNewListName] = useState("");
   // The board whose categories are managed, and the milestone types window.
-  // The board whose contexts are copied to another, from its tab's
-  // menu.
-  const [contextsCopy, setCopiedContexts] = useState<Id | null>(null);
   // The labels and categories copied from a board widget's "Actions" menu,
   // waiting to be pasted into another.
   const [clipboard, setClipboard] = useState<Clipboard>({});
@@ -508,14 +519,14 @@ export default function App() {
   // status.
   const loadSupportRequests = useCallback(async () => {
     if (!boardId || !supportNeed) return setSupportRead(null);
-    const items = await read(() => api.getSupportRequests(Number(boardId), "all"));
+    const items = await read(() => api.getSupportRequests(Number(boardId)));
     setSupportRead({ key: boardId, items });
   }, [boardId, supportNeed, read]);
 
   // The board's workstations, of the chosen context.
   const loadAssets = useCallback(async () => {
     if (!boardId || !assetsNeed) return setAssetsRead(null);
-    const items = await read(() => api.getAssets(Number(boardId), "all"));
+    const items = await read(() => api.getAssets(Number(boardId)));
     setAssetsRead({ key: boardId, items });
   }, [boardId, assetsNeed, read]);
 
@@ -772,6 +783,11 @@ export default function App() {
         setNotificationsRevision((r) => r + 1);
         return;
       }
+      // What a Mail or Calendar widget reads has changed: the widgets reread.
+      if (isM365Change(message)) {
+        window.dispatchEvent(new Event(m365Event(message.m365)));
+        return;
+      }
       const { versions } = message;
       // First message: the counters serve as a reference, with nothing re-read.
       const known = knownVersions.current;
@@ -952,64 +968,31 @@ export default function App() {
 
   // The context viewed in the open board: chosen for oneself, it is
   // seen at once and found again on the next visit.
-  const changeContext = (value: string) => {
+  const changeContext = (value: string | null) => {
     if (!board) return;
-    const contextId = value === "all" ? null : Number(value);
-    setBoard({ ...board, context_id: contextId });
-    void write(() => api.selectContext(board.id, contextId), loadBoards);
+    setBoard({ ...board, context: value });
+    void write(() => api.selectContext(board.id, value), loadBoards);
   };
 
-  // The open board's contexts: each write returns the updated board.
-  const writeContexts = (writing: () => Promise<Board>) =>
-    write(
-      async () => setBoard(await writing()),
-      async () => {
-        await loadBoards();
-      },
-    );
-  // Each action according to its right (Accès): adding ("Créer"), deleting
-  // ("Supprimer"), renaming and reordering (organizing the interface). A
-  // board shared read-only keeps its contexts as they are.
-  const contextRights = user?.structure.contexts;
-  const contextManagement =
-    board &&
-    board.access !== "read" &&
-    (contextRights?.create || contextRights?.delete || canArrange)
-      ? {
-          onAdd: contextRights?.create
-            ? (name: string) => writeContexts(() => api.addContext(board.id, name))
-            : undefined,
-          onRename: canArrange
-            ? (id: Id, name: string) => writeContexts(() => api.renameContext(id, name))
-            : undefined,
-          onRenameAll: canArrange
-            ? (name: string) =>
-                writeContexts(() => api.updateBoard(board.id, { all_contexts_label: name }))
-            : undefined,
-          onDelete: contextRights?.delete
-            ? async (id: Id) => {
-                await writeContexts(() => api.deleteContext(id));
-                await Promise.all([
-                  loadProjects(),
-                  loadTaskLists(),
-                  loadSupportRequests(),
-                  loadAssets(),
-                ]);
-              }
-            : undefined,
-          onReorder: canArrange
-            ? (ids: Id[]) => {
-                setBoard({
-                  ...board,
-                  contexts: ids
-                    .map((id) => board.contexts.find((c) => c.id === id))
-                    .filter((c): c is NonNullable<typeof c> => Boolean(c)),
-                });
-                return writeContexts(() => api.reorderContexts(board.id, ids));
-              }
-            : undefined,
-        }
-      : undefined;
+  // The contexts are the labels of the board's context group: whoever
+  // organizes the interface chooses that group, and renames "Tous les
+  // contextes". A board shared read-only keeps them as they are.
+  const changeable = board && board.access !== "read" && canArrange ? board : null;
+  const writeBoard = (data: BoardInput) =>
+    changeable
+      ? write(
+          async () => setBoard(await api.updateBoard(changeable.id, data)),
+          async () => {
+            await loadBoards();
+          },
+        )
+      : Promise.resolve();
+  const renameAllContexts = changeable
+    ? (name: string) => writeBoard({ all_contexts_label: name })
+    : undefined;
+  const changeContextGroup = changeable
+    ? (name: string | null) => writeBoard({ context_group: name ?? "" })
+    : undefined;
 
   // A project, a request: added from a list widget, they are the
   // widget's own (lib/lists.ts); without a designated widget, the server gives them to the
@@ -1077,8 +1060,8 @@ export default function App() {
 
       if (event.code === "KeyC" && contexts.length > 0) {
         event.preventDefault();
-        const values = ["all", ...contexts.map((c) => String(c.id))];
-        changeContext(values[(values.indexOf(selectedContext) + 1) % values.length]!);
+        const values = [null, ...contexts];
+        changeContext(values[(values.indexOf(selectedContext) + 1) % values.length] ?? null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1200,9 +1183,13 @@ export default function App() {
           all: board.all_contexts_label,
           value: selectedContext,
           onChange: changeContext,
-          // Outside edit mode, the board keeps its contexts: they are only chosen,
-          // not added, renamed, ordered or deleted.
-          management: isEditing ? contextManagement : undefined,
+          // Outside edit mode, the contexts are only chosen; in edit mode, the
+          // list chooses their group instead.
+          onRenameAll: isEditing ? renameAllContexts : undefined,
+          group: board.context_group,
+          groupOptions: board.context_group_options,
+          sections: board.context_sections,
+          onChangeGroup: isEditing ? changeContextGroup : undefined,
         }
       : undefined,
     onOpenSettings: () => setSettingsOpened(true),
@@ -1241,12 +1228,6 @@ export default function App() {
   return (
     <RightsProvider rights={user.rights} widgets={user.widgets} canEditSettings={user.settings.update}>
       <EditingContext.Provider value={isEditing}>
-        <ReferencesContext.Provider
-          value={{
-            contexts: contexts,
-            assetTags: [...new Set((assets ?? []).map((a) => a.tag).filter(Boolean))].sort(),
-          }}
-        >
           {/* The clipboard of labels and categories, which the "Actions"
             menu of a widget drawer fills and empties in another. */}
           <CopyPasteContext.Provider
@@ -1335,12 +1316,6 @@ export default function App() {
                       tabsLocked || !viewId
                         ? undefined
                         : (ids) => write(() => api.reorderBoards(viewId, ids), loadBoards)
-                    }
-                    // Contexts are the board's common structure: copying
-                    // them requires the right to create them, and edit mode
-                    // — like adding them.
-                    onCopyContexts={
-                      contextRights?.create && isEditing ? setCopiedContexts : undefined
                     }
                     sections={sections}
                     widgets={widgets}
@@ -1504,19 +1479,6 @@ export default function App() {
                 }}
               />
 
-              {contextsCopy !== null && (
-                <CopyToBoardModal
-                  opened
-                  onClose={() => setCopiedContexts(null)}
-                  item="contexts"
-                  sourceId={contextsCopy}
-                  viewId={viewId}
-                  onCopy={(target, replaceExisting, rename) =>
-                    api.copyContexts(contextsCopy, target, replaceExisting, rename)
-                  }
-                />
-              )}
-
               <AssetDrawer
                 opened={assetDrawerOpened}
                 onClose={() => setAssetDrawerOpened(false)}
@@ -1527,12 +1489,8 @@ export default function App() {
                 opened={supportDrawerOpened}
                 onClose={() => setSupportDrawerOpened(false)}
                 request={editedSupportRequest}
-                // The context offered at creation: the one being viewed, or the
-                // board's first.
-                contexts={contexts}
-                contextId={
-                  selectedContext !== "all" ? selectedContext : String(contexts[0]?.id ?? "")
-                }
+                // The context being viewed: a new request receives its label.
+                context={selectedContext}
                 boardId={board?.id ?? null}
                 listKey={addTargetList}
                 defaultStatus={DEFAULT_SUPPORT_STATUS}
@@ -1561,10 +1519,8 @@ export default function App() {
                 projectId={selectedProjectId}
                 boardId={boardId}
                 categories={categories}
-                contexts={contexts}
-                contextId={
-                  selectedContext !== "all" ? selectedContext : String(contexts[0]?.id ?? "")
-                }
+                // The context being viewed: a new project receives its label.
+                context={selectedContext}
                 listKey={addTargetList}
                 milestoneTypes={milestoneTypes}
                 users={users}
@@ -1717,7 +1673,6 @@ export default function App() {
               />
             </Stack>
           </CopyPasteContext.Provider>
-        </ReferencesContext.Provider>
       </EditingContext.Provider>
     </RightsProvider>
   );

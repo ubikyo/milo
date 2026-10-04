@@ -1,5 +1,4 @@
-// Tickets: their context, actors, labels and thread. Labels, however, are
-// shared across all contexts.
+// Tickets: their actors, labels and thread. Labels are shared by all boards.
 //
 // A request hangs off a context of a board: the one the request list ties to
 // the inbox it arrived in, or the one chosen when entering it. Its actors and
@@ -39,31 +38,26 @@ export const SUPPORT_LABEL_NOT_FOUND = "Étiquette introuvable";
 
 export const supportRequests = {
   byId: selection<SupportRequestRow>("SELECT * FROM support_requests WHERE id = ?"),
-  /**
-   * The requests of a board — of one of its contexts, or of all —, from
-   * newest to oldest.
-   */
+  /** The requests of a board, from newest to oldest. */
   ofBoard: selection<SupportRequestRow>(
-    `SELECT * FROM support_requests
-     WHERE board_id = @board AND (@context IS NULL OR context_id = @context)
-     ORDER BY created_at DESC, id DESC`,
+    `SELECT * FROM support_requests WHERE board_id = ? ORDER BY created_at DESC, id DESC`,
   ),
   all: selection<SupportRequestRow>(
     "SELECT * FROM support_requests ORDER BY created_at DESC, id DESC",
   ),
   create: mutation(
     `INSERT INTO support_requests
-       (number, board_id, context_id, list_key, subject, status, due_date, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (number, board_id, list_key, subject, status, due_date, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ),
   // A request born from an e-mail: it keeps the inbox, the sender and the
   // id. "OR IGNORE": an already imported message — two crossing polls — does
   // not make a second request.
   createFromMail: mutation(
     `INSERT OR IGNORE INTO support_requests
-       (number, board_id, context_id, list_key, mailbox, subject, status, due_date,
+       (number, board_id, list_key, mailbox, subject, status, due_date,
         sender_name, sender_email, mail_id, conversation_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ),
   // An inbox received by several lists makes one request per list: what we
   // look up for an e-mail is looked up in its inbox and in its list.
@@ -119,10 +113,8 @@ export const supportRequests = {
     `UPDATE support_requests SET status = ?, updated_at = ?
      WHERE id = ? AND status IN ('resolved', 'closed')`,
   ),
-  // The context is part of it: it can be changed from the detail view, to
-  // another one of the same board.
   update: mutation(
-    `UPDATE support_requests SET context_id = ?, subject = ?, status = ?, due_date = ?, updated_at = ?
+    `UPDATE support_requests SET subject = ?, status = ?, due_date = ?, updated_at = ?
      WHERE id = ?`,
   ),
   remove: mutation("DELETE FROM support_requests WHERE id = ?"),
@@ -258,6 +250,11 @@ export const replaceSupportLabels = transaction((requestId: Id, labelIds: Id[]) 
   deleteLabels.run(requestId);
   for (const labelId of labelIds) addLabel.run(requestId, labelId);
 });
+
+/** One more label on a request: the context it was created in. */
+export const addSupportLabel = (requestId: Id, labelId: Id): void => {
+  addLabel.run(requestId, labelId);
+};
 
 // --- Reading a batch -------------------------------------------------------
 // Actors, labels and the number of exchanges are read for the whole batch in

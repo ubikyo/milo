@@ -3,12 +3,15 @@
 
 import type {
   DirectoryUser,
-  AccessCalendarEvent,
+  AccessCalendar,
+  AccessCalendarChoice,
   AccessFeed,
   AccessFeedProbe,
   AccessMailDetail,
+  AccessMailFolder,
   AccessMailPage,
   AccessWeather,
+  AccessQuote,
   WeatherPlace,
   ApiError,
   Asset,
@@ -25,7 +28,6 @@ import type {
   BackupInfo,
   Board,
   BoardInput,
-  ContextInput,
   BoardWidget,
   BoardWidgetInput,
   View,
@@ -88,6 +90,7 @@ import type {
   TaskList,
   TaskListCopyInput,
   NotificationSettings,
+  DisplaySettings,
   SupportContent,
   SupportContentEvent,
   SupportPerson,
@@ -366,17 +369,9 @@ export const api = {
   /** "Masquer" for this account; returns the boards of its view. */
   hideBoard: (id: Id, hidden: boolean) => put<Board[]>(`/boards/${id}/hidden`, { hidden }),
 
-  // A board's contexts: each write returns the updated board.
-  addContext: (boardId: Id, name: string) =>
-    post<Board>(`/boards/${boardId}/contexts`, { name } satisfies ContextInput),
-  renameContext: (id: Id, name: string) =>
-    put<Board>(`/contexts/${id}`, { name } satisfies ContextInput),
-  deleteContext: (id: Id) => request<Board>(`/contexts/${id}`, { method: "DELETE" }),
-  reorderContexts: (boardId: Id, ids: Id[]) =>
-    put<Board>(`/boards/${boardId}/contexts/reorder`, { ids }),
-  /** The context this account views in this board; null for all. */
-  selectContext: (boardId: Id, contextId: Id | null) =>
-    put<Board>(`/boards/${boardId}/contexts/selected`, { context_id: contextId }),
+  /** The context this account views in this board — a label name; null for all. */
+  selectContext: (boardId: Id, context: string | null) =>
+    put<Board>(`/boards/${boardId}/contexts/selected`, { context }),
   reorderBoards: (view_id: Id | string, ids: Id[]) =>
     put<Board[]>("/boards/reorder", { view_id, ids }),
 
@@ -406,6 +401,34 @@ export const api = {
   /** The four-digit code from the e-mail, in place of the link. */
   confirmMailboxOptin: (list: string, email: string, code: string) =>
     post<MailboxOptinState>("/mailbox-optins/confirm", { list_key: list, email, code }),
+  // The consent of the people whose calendar a Calendar widget shows, by its key.
+  getCalendarOptins: (key: string, emails: string[]) =>
+    get<MailboxOptinState[]>(
+      `/calendar-optins?calendar_key=${encodeURIComponent(key)}&emails=${encodeURIComponent(emails.join(","))}`,
+    ),
+  resendCalendarOptins: (key: string, emails: string[]) =>
+    post<{ sent: number }>("/calendar-optins/resend", { calendar_key: key, emails }),
+  confirmCalendarOptin: (key: string, email: string, code: string) =>
+    post<MailboxOptinState>("/calendar-optins/confirm", { calendar_key: key, email, code }),
+  // The Outlook calendars of a person who consented: those the widget may read.
+  getPersonCalendars: (key: string, email: string) =>
+    get<AccessCalendarChoice[]>(
+      `/calendar-optins/calendars?calendar_key=${encodeURIComponent(key)}&email=${encodeURIComponent(email)}`,
+    ),
+  // The consent of the people whose mailbox a Mail widget reads, by its key.
+  getMailOptins: (key: string, emails: string[]) =>
+    get<MailboxOptinState[]>(
+      `/mail-optins?mail_key=${encodeURIComponent(key)}&emails=${encodeURIComponent(emails.join(","))}`,
+    ),
+  resendMailOptins: (key: string, emails: string[]) =>
+    post<{ sent: number }>("/mail-optins/resend", { mail_key: key, emails }),
+  confirmMailOptin: (key: string, email: string, code: string) =>
+    post<MailboxOptinState>("/mail-optins/confirm", { mail_key: key, email, code }),
+  // The Outlook mail folders of a person who consented: those the widget may read.
+  getPersonFolders: (key: string, email: string) =>
+    get<AccessMailFolder[]>(
+      `/mail-optins/folders?mail_key=${encodeURIComponent(key)}&email=${encodeURIComponent(email)}`,
+    ),
   // An RSS widget's feed, as the database keeps it: the server fetches
   // the source itself, at the interval the widget sets.
   getAccessFeed: (widgetId: Id) => get<AccessFeed>(`/board-widgets/${widgetId}/feed`),
@@ -413,23 +436,30 @@ export const api = {
     get<AccessFeedProbe>(`/board-widgets/feed/probe?url=${encodeURIComponent(url)}`),
   // The weather of a Météo widget's location, and the location search to set it.
   getAccessWeather: (widgetId: Id) => get<AccessWeather>(`/board-widgets/${widgetId}/weather`),
+  // A Citation widget's quote or joke; "renew" draws another one.
+  getAccessQuote: (widgetId: Id, renew = false) =>
+    get<AccessQuote>(`/board-widgets/${widgetId}/quote${renew ? "?renew=1" : ""}`),
   searchWeatherPlaces: (q: string) =>
     get<WeatherPlace[]>(`/board-widgets/weather/places?q=${encodeURIComponent(q)}`),
-  // The Outlook appointments of the viewer, between two instants.
+  // The Outlook appointments a Calendar widget shows, between two instants.
   getAccessCalendar: (widgetId: Id, start: Date, end: Date) =>
-    get<AccessCalendarEvent[]>(
+    get<AccessCalendar>(
       `/board-widgets/${widgetId}/calendar?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`,
     ),
-  // The viewer's inbox, page by page, an opened e-mail and its attachments.
-  getAccessMails: (widgetId: Id, skip: number, top: number, unread: boolean) =>
+  // The mailboxes a Mail widget reads, page by page — "cursor", the previous
+  // page's, says where the next one starts —, an opened e-mail and its
+  // attachments; "owner" says whose mailbox, empty for the viewer's own.
+  getAccessMails: (widgetId: Id, cursor: string, top: number, unread: boolean) =>
     get<AccessMailPage>(
-      `/board-widgets/${widgetId}/mails?skip=${skip}&top=${top}${unread ? "&unread=1" : ""}`,
+      `/board-widgets/${widgetId}/mails?top=${top}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}${unread ? "&unread=1" : ""}`,
     ),
-  getAccessMail: (widgetId: Id, mailId: string) =>
-    get<AccessMailDetail>(`/board-widgets/${widgetId}/mails/${encodeURIComponent(mailId)}`),
-  downloadAccessMailAttachment: (widgetId: Id, mailId: string, attachmentId: string) =>
+  getAccessMail: (widgetId: Id, mailId: string, owner: string) =>
+    get<AccessMailDetail>(
+      `/board-widgets/${widgetId}/mails/${encodeURIComponent(mailId)}?owner=${encodeURIComponent(owner)}`,
+    ),
+  downloadAccessMailAttachment: (widgetId: Id, mailId: string, attachmentId: string, owner: string) =>
     download(
-      `/board-widgets/${widgetId}/mails/${encodeURIComponent(mailId)}/attachments/${encodeURIComponent(attachmentId)}`,
+      `/board-widgets/${widgetId}/mails/${encodeURIComponent(mailId)}/attachments/${encodeURIComponent(attachmentId)}?owner=${encodeURIComponent(owner)}`,
     ),
   // An image uploaded for an Image widget: the widget stores its URL.
   uploadWidgetImage: (file: File) => upload<{ url: string }>("/widget-images", file),
@@ -476,6 +506,14 @@ export const api = {
     put<ProjectLabel>(`/project-labels/${id}`, data),
   deleteProjectLabel: (id: Id) => del(`/project-labels/${id}`),
 
+  // A board's asset labels: each names the GLPI tag of the machines it brings.
+  getAssetLabels: (boardId: string | Id) =>
+    get<Label[]>(`/asset-labels${queryString({ board: boardId })}`),
+  createAssetLabel: (board_id: Id | string, name: string, color: string, group_id?: Id) =>
+    post<Label>("/asset-labels", { board_id, name, color, group_id }),
+  updateAssetLabel: (id: Id, data: LabelInput) => put<Label>(`/asset-labels/${id}`, data),
+  deleteAssetLabel: (id: Id) => del(`/asset-labels/${id}`),
+
   // The groups of a kind of labels: those of a board ("board_id"), or of
   // Support, which belong to none.
   getLabelGroups: (base: LabelsBase, board?: Id | string) =>
@@ -493,8 +531,8 @@ export const api = {
     get<Project[]>(
       `/projects${queryString(filters as Record<string, unknown>)}`,
     ),
-  /** The actor accounts of at least one project of the board (and of the company). */
-  getProjectActorIds: (filters: Pick<ProjectFilters, "board" | "context">) =>
+  /** The actor accounts of at least one project of the board (and of the context). */
+  getProjectActorIds: (filters: Pick<ProjectFilters, "board"> & { context: string | null }) =>
     get<Id[]>(`/projects/actors${queryString(filters as Record<string, unknown>)}`),
   getProject: (id: Id) => get<ProjectDetail>(`/projects/${id}`),
   createProject: (data: ProjectInput) => post<Project>("/projects", data),
@@ -553,15 +591,15 @@ export const api = {
     text: string,
     kind: "card" | "separator" = "card",
     description?: string,
-    /** The card's context; by default, the board's first. */
-    context_id?: Id | null,
+    /** The context being viewed: the card receives its label. */
+    context?: string | null,
   ) =>
     post<TaskCardRow>("/task-cards", {
       list_id,
       text,
       kind,
       description,
-      context_id: context_id ?? undefined,
+      context: context ?? undefined,
     }),
   updateTaskCard: (id: Id, text: string) =>
     put<TaskCardDetail>(`/task-cards/${id}`, { text }),
@@ -641,9 +679,8 @@ export const api = {
   // The workstations reported by the inventory agents. The list only carries the
   // name: everything else waits until the workstation is opened, and so only travels
   // for the one being viewed.
-  /** A board's workstations: of one context, or of all ("all"). */
-  getAssets: (boardId: Id, context: string | Id) =>
-    get<Asset[]>(`/assets${queryString({ board: boardId, context })}`),
+  /** A board's workstations. */
+  getAssets: (boardId: Id) => get<Asset[]>(`/assets${queryString({ board: boardId })}`),
   getAsset: (id: Id) => get<AssetDetail>(`/assets/${id}`),
 
   // The notifications received, for the "Notifications" drawer.
@@ -691,6 +728,9 @@ export const api = {
   getNotificationSettings: () => get<NotificationSettings>("/notification-settings"),
   updateNotificationSettings: (data: Partial<NotificationSettings>) =>
     put<NotificationSettings>("/notification-settings", data),
+  getDisplaySettings: () => get<DisplaySettings>("/display-settings"),
+  updateDisplaySettings: (data: Partial<DisplaySettings>) =>
+    put<DisplaySettings>("/display-settings", data),
   // "Inventorie-toi maintenant": the server calls the agent on the workstation.
   // Nothing comes back — the inventory arrives later through the agents' door,
   // and the event stream notifies.
@@ -698,9 +738,9 @@ export const api = {
   deleteAsset: (id: Id) => del(`/assets/${id}`),
   // --- Support mode --------------------------------------------------------
 
-  /** A board's requests: of one context, or of all ("all"). */
-  getSupportRequests: (boardId: Id, context: string | Id) =>
-    get<SupportRequest[]>(`/support-requests${queryString({ board: boardId, context })}`),
+  /** A board's requests. */
+  getSupportRequests: (boardId: Id) =>
+    get<SupportRequest[]>(`/support-requests${queryString({ board: boardId })}`),
   getSupportRequest: (id: Id) =>
     get<SupportRequestDetail>(`/support-requests/${id}`),
   createSupportRequest: (data: SupportRequestInput) =>
@@ -754,12 +794,6 @@ export const api = {
     get<Label[]>(`/labels${queryString({ board: boardId })}`),
   createLabel: (board_id: Id | string, name: string, color: string, group_id?: Id) =>
     post<Label>("/labels", { board_id, name, color, group_id }),
-  // A board's contexts, copied into another: their names only.
-  // "replace": those of the destination board go first, with what
-  // they contain.
-  // "rename_all": the board also takes the label of "Tous les …".
-  copyContexts: (from_board: Id, to_board: Id, replace = false, rename_all = false) =>
-    post<CopyResult>(`/boards/${from_board}/contexts/copy`, { to_board, replace, rename_all }),
   copyLabels: (from_board: Id, to_board: Id, replace = false) =>
     post<CopyResult>("/labels/copy", { from_board, to_board, replace }),
   updateLabel: (id: Id, data: LabelInput) => put<Label>(`/labels/${id}`, data),

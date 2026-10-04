@@ -31,7 +31,7 @@ import type { Id, Right, SupportStatus } from "@milo/shared";
 import { transaction } from "../db/query.js";
 import type { SupportRequestRow, UserRow } from "../db/rows.js";
 import { readableBoard, boards, openBoard } from "../repositories/boards.js";
-import { boardContext, contexts } from "../repositories/contexts.js";
+import { contextLabel } from "../repositories/contexts.js";
 import { keyInBoard } from "../repositories/lists.js";
 import {
   concerned,
@@ -82,6 +82,7 @@ import {
   oneWithRelations,
   nextTicketNumber,
   replaceSupportActors,
+  addSupportLabel,
   replaceSupportLabels,
   updateSupportLabel,
   supportCommentOf,
@@ -111,7 +112,7 @@ supportRequestRoutes.use(touch("support-requests"));
 const request = (id: unknown) => orNotFound(supportRequests.byId.get(id), REQUEST_NOT_FOUND);
 
 /**
- * The request, if one sees the support and the board of its context — and
+ * The request, if one sees the support and its board — and
  * has `right` there when writing to it. Replying, commenting, assigning,
  * closing: that is editing it.
  */
@@ -150,10 +151,6 @@ const statusLabel = (value: string): string =>
 const photo = (requestId: Id): Field[] => {
   const d = oneWithRelations(request(requestId));
   return [
-    {
-      label: "Contexte",
-      value: quote(d.context_id ? contexts.byId.get(d.context_id)?.name : null),
-    },
     { label: "Objet", value: quote(d.subject) },
     { label: "Statut", value: statusLabel(d.status) },
     { label: "Échéance", value: date(d.due_date) },
@@ -183,20 +180,12 @@ const announceDeletions = (req: Request, requests: SupportRequestRow[]): (() => 
   };
 };
 
-// The requests of a board — of one of its contexts, or of all —, whatever
-// their status.
+// The requests of a board, whatever their status: the page filters them by
+// context.
 supportRequestRoutes.get("/", (req, res) => {
   if (!requestCan(req, "support", "view")) return void res.json([]);
   const board = openBoard(req.query.board, req.user);
-  const context = req.query.context;
-  res.json(
-    withRelations(
-      supportRequests.ofBoard.all({
-        board: board.id,
-        context: context && context !== "all" ? boardContext(board.id, context) : null,
-      }),
-    ),
-  );
+  res.json(withRelations(supportRequests.ofBoard.all(board.id)));
 });
 
 // Polling the support inboxes, on demand: the mode opens on it, without
@@ -226,13 +215,13 @@ const checked = (req: Request, value: unknown, right: Right): SupportRequestRow[
 };
 
 // Merge: the most recent stays and receives the exchanges of the others,
-// which are closed. They must belong to the same context — a request does
-// not change context behind the scenes.
+// which are closed. They must belong to the same board — a request does not
+// change board behind the scenes.
 supportRequestRoutes.post("/merge", (req, res) => {
   const requests = checked(req, req.body.ids, "update");
   if (requests.length < 2) badRequest("Sélectionnez au moins deux demandes à fusionner");
-  if (new Set(requests.map((d) => d.context_id)).size > 1) {
-    badRequest("Seules des demandes d'un même contexte peuvent être fusionnées");
+  if (new Set(requests.map((d) => d.board_id)).size > 1) {
+    badRequest("Seules des demandes d'un même tableau peuvent être fusionnées");
   }
 
   const [keptRequest, ...others] = [...requests].sort((a, b) =>
@@ -336,10 +325,9 @@ supportRequestRoutes.post("/assign", (req, res) => {
 
 supportRequestRoutes.post("/", (req, res) => {
   require(req, "support", "create");
-  // The given context, or the given board's first.
-  const received = req.body.context_id ? contexts.byId.get(req.body.context_id) : undefined;
-  const board = openBoard(received?.board_id ?? req.body.board_id, req.user);
-  const context = boardContext(board.id, received?.id);
+  const board = openBoard(req.body.board_id, req.user);
+  // The "Tickets" widget it is entered from, failing that the board's first.
+  const list = keyInBoard(board.id, "support.list", req.body.list_key);
 
   // Read before taking a number: a rejected entry does not consume one.
   const status = requestedStatus(req.body.status, DEFAULT_SUPPORT_STATUS);
@@ -349,10 +337,7 @@ supportRequestRoutes.post("/", (req, res) => {
   const { lastInsertRowid } = supportRequests.create.run(
     nextTicketNumber(),
     board.id,
-    context,
-    // The "Tickets" widget it is entered from, failing that the board's
-    // first.
-    keyInBoard(board.id, "support.list", req.body.list_key),
+    list,
     String(req.body.subject ?? "").trim(),
     status,
     dueDate,
@@ -377,6 +362,9 @@ supportRequestRoutes.post("/", (req, res) => {
   if (Array.isArray(req.body.label_ids)) {
     replaceSupportLabels(created.id, toIds(req.body.label_ids));
   }
+  // Entered in a context, it receives its label: it stays in sight.
+  const label = contextLabel("support.list", board.id, req.body.context);
+  if (label !== null) addSupportLabel(created.id, label);
 
   res.status(201).json(supportRequestDetail(created));
 });
@@ -396,19 +384,13 @@ supportRequestRoutes.get("/:id", (req, res) => {
   res.json(supportRequestDetail(requestFor(req, req.params.id)));
 });
 
-// Each field absent from the body stays as is. The context can be changed,
-// to another one of the same board.
+// Each field absent from the body stays as is.
 supportRequestRoutes.put("/:id", (req, res, next) => {
   const existing = requestFor(req, req.params.id, "update");
   const before = currentActors(existing.id);
   const photoBefore = photo(existing.id);
-  const context =
-    req.body.context_id === undefined
-      ? existing.context_id
-      : boardContext(existing.board_id, req.body.context_id);
 
   supportRequests.update.run(
-    context,
     req.body.subject === undefined ? existing.subject : String(req.body.subject ?? "").trim(),
     requestedStatus(req.body.status, existing.status),
     due(req.body.due_date, existing.due_date),
@@ -421,7 +403,6 @@ supportRequestRoutes.put("/:id", (req, res, next) => {
     replaceSupportActors(existing.id, toIds(req.body.actor_ids));
     assigned = notifyNewActors(req, existing.id, before);
   }
-  // Labels are shared: a request that changes context keeps them.
   if (Array.isArray(req.body.label_ids)) {
     replaceSupportLabels(existing.id, toIds(req.body.label_ids));
   }
@@ -658,7 +639,7 @@ supportCommentRoutes.delete("/:id", (req, res) => {
 
 export const supportLabelRoutes = Router();
 
-supportLabelRoutes.use(touch("support-labels", "support-requests"));
+supportLabelRoutes.use(touch("boards", "support-labels", "support-requests"));
 
 // Shared across all companies, they follow the support rights in any of
 // them.

@@ -1,6 +1,8 @@
-// Labels: those of a task board, set on its cards, and their twins of a
-// project board, set on its projects. Same rules, two tables: the two modes
-// do not share their labels.
+// Labels: those of a task board, set on its cards, their twins of a project
+// board, set on its projects, and those of a board's assets, which name the
+// GLPI tags of its machines. Same rules, three tables: the modes do not share
+// their labels. Labels are a board's contexts (repositories/contexts.ts): any
+// change re-reads the boards.
 //
 // One router serves both. They used to be two twin blocks of code in the old
 // file; since both kinds of boards can be out of sight, only the table being
@@ -8,25 +10,42 @@
 
 import { Router } from "express";
 import type { Request } from "express";
-import type { CopyResult, Id, Resource, Right } from "@milo/shared";
-import { DEFAULT_LABEL_COLOR, DEFAULT_LABEL_GROUP, isLabelColor } from "@milo/shared";
+import type { CopyResult, Id, Resource, Right, WidgetAccess } from "@milo/shared";
+import {
+  DEFAULT_LABEL_COLOR,
+  DEFAULT_LABEL_GROUP,
+  accessIncludes,
+  isLabelColor,
+} from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { LabelRow, NextRow } from "../db/rows.js";
 import { require } from "../lib/rights.js";
-import { badRequest, orNotFound, refuseIfUsed, requireText } from "../lib/http.js";
+import { widgetRights } from "../repositories/users.js";
+import { HttpError, badRequest, orNotFound, refuseIfUsed, requireText } from "../lib/http.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { openTaskBoard } from "../repositories/boards.js";
 import { openBoard } from "../repositories/boards.js";
-import { boardLabelGroups, projectLabelGroups } from "../repositories/label-groups.js";
+import {
+  assetLabelGroups,
+  boardLabelGroups,
+  projectLabelGroups,
+} from "../repositories/label-groups.js";
+import { reassignWorkstations } from "../repositories/assets.js";
 import type { LabelGroupStore } from "../repositories/label-groups.js";
 import { mountLabelGroups } from "./label-groups.js";
 
 const LABEL_NOT_FOUND = "Étiquette introuvable";
 
+const GROUP_TABLES = {
+  labels: "label_groups",
+  project_labels: "project_label_groups",
+  asset_labels: "asset_label_groups",
+} as const;
+
 interface LabelTable {
   /** The table name. It only enters the SQL here, never from a request. */
-  table: "labels" | "project_labels";
+  table: "labels" | "project_labels" | "asset_labels";
   /** What the event stream must signal when these labels change. */
   touched: Resource[];
   /**
@@ -37,6 +56,8 @@ interface LabelTable {
   verifyBoard: (boardId: unknown, req: Request, right: Right) => Id;
   /** The groups of these labels (repositories/label-groups.ts). */
   groups: LabelGroupStore;
+  /** What follows a change of these labels, once written. */
+  changed?: () => void;
 }
 
 const createRoutes = ({
@@ -44,8 +65,9 @@ const createRoutes = ({
   touched,
   verifyBoard,
   groups,
+  changed = () => undefined,
 }: LabelTable): Router => {
-  const groupTable = table === "labels" ? "label_groups" : "project_label_groups";
+  const groupTable = GROUP_TABLES[table];
   // With the name of their group: the lists title them by it.
   const byId = selection<LabelRow>(
     `SELECT l.*, g.name AS group_name FROM ${table} l
@@ -79,11 +101,14 @@ const createRoutes = ({
     `SELECT * FROM ${table} WHERE board_id = ? AND name = ? COLLATE NOCASE LIMIT 1`,
   );
   const remove = mutation(`DELETE FROM ${table} WHERE id = ?`);
-  // What carries the label: cards, or projects.
+  // What carries the label: cards, or projects. An asset label is carried by
+  // no link: it only names a tag, and may always go.
   const uses = scalar<{ count: number }>(
     table === "labels"
       ? "SELECT COUNT(*) AS count FROM card_labels WHERE label_id = ?"
-      : "SELECT COUNT(*) AS count FROM project_label_links WHERE label_id = ?",
+      : table === "project_labels"
+        ? "SELECT COUNT(*) AS count FROM project_label_links WHERE label_id = ?"
+        : "SELECT 0 AS count",
   );
 
   const clearFromBoard = mutation(`DELETE FROM ${table} WHERE board_id = ?`);
@@ -121,7 +146,7 @@ const createRoutes = ({
   });
 
   const routes = Router();
-  routes.use(touch(...touched));
+  routes.use(touch("boards", ...touched));
   mountLabelGroups(routes, groups, (req, boardId, right) => verifyBoard(boardId, req, right));
 
   routes.get("/", (req, res) => {
@@ -143,6 +168,7 @@ const createRoutes = ({
     const { next } = nextRank(board);
     const { lastInsertRowid } = create.run(board, group, name, color, next, now());
     groups.renumber(board);
+    changed();
     res.status(201).json(byId.get(lastInsertRowid));
   });
 
@@ -161,7 +187,9 @@ const createRoutes = ({
     if (replaceExisting) verifyBoard(to_board, req, "delete");
     if (source === target) badRequest("Choisissez un autre tableau que celui-ci");
 
-    res.json(copy(source, target, replaceExisting));
+    const result = copy(source, target, replaceExisting);
+    changed();
+    res.json(result);
   });
 
   routes.put("/:id", (req, res) => {
@@ -179,6 +207,7 @@ const createRoutes = ({
         : groups.groupFor(existing.board_id, req.body.group_id);
 
     update(existing, { name, color, group });
+    changed();
     res.json(byId.get(existing.id));
   });
 
@@ -188,6 +217,7 @@ const createRoutes = ({
     refuseIfUsed(existing.name, uses(existing.id).count);
 
     remove.run(existing.id);
+    changed();
     res.status(204).end();
   });
 
@@ -214,4 +244,34 @@ export const projectLabelRoutes = createRoutes({
     return openBoard(boardId, req.user).id;
   },
   groups: projectLabelGroups,
+});
+
+/** The permission on the Asset widget type that each right on asset labels needs. */
+const ASSET_LABEL_ACCESS: Record<Right, WidgetAccess> = {
+  view: "view",
+  create: "update",
+  update: "update",
+  delete: "delete",
+};
+
+/**
+ * Labels of a board's assets: each brings into the board the machines whose
+ * GLPI tag bears its name. The Assets mode is read-only — machines come from
+ * the inventory —, but its labels are the board's settings: they follow the
+ * permission on the Asset widget type.
+ */
+export const assetLabelRoutes = createRoutes({
+  table: "asset_labels",
+  touched: ["assets"],
+  verifyBoard: (boardId, req, right) => {
+    if (!accessIncludes(widgetRights(req.user).asset, ASSET_LABEL_ACCESS[right])) {
+      throw right === "view"
+        ? new HttpError(404, "Introuvable")
+        : new HttpError(403, "Vous n'avez pas le droit de modifier ici");
+    }
+    return openBoard(boardId, req.user).id;
+  },
+  groups: assetLabelGroups,
+  // A label renamed, deleted or added changes the machines it brings.
+  changed: () => reassignWorkstations(),
 });

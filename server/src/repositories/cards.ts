@@ -90,6 +90,11 @@ export const replaceCardLabels = transaction((cardId: Id, labelIds: Id[], boardI
   for (const labelId of labelIds) addLabel.run(cardId, labelId, boardId);
 });
 
+/** One more label on a card: the context it was created in. */
+export const addCardLabel = (cardId: Id, labelId: Id, boardId: Id): void => {
+  addLabel.run(cardId, labelId, boardId);
+};
+
 // --- Checklists ------------------------------------------------------------
 
 export const checklists = {

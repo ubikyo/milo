@@ -9,6 +9,8 @@
 import { calendarWidget } from "../m365/calendar";
 import { categoryWidget } from "./category";
 import { clockWidget } from "./clock";
+import { dateWidget } from "./date";
+import { quoteWidget } from "./quote";
 import { imageWidget } from "./image";
 import { linkWidget } from "./link";
 import { mailWidget } from "../m365/mail";
@@ -27,6 +29,8 @@ export const WIDGETS: AccessWidget[] = [
   linkWidget,
   numberWidget,
   clockWidget,
+  dateWidget,
+  quoteWidget,
   imageWidget,
   weatherWidget,
   calendarWidget,

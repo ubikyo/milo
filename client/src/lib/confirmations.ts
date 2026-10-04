@@ -1,6 +1,7 @@
 // The confirmation state of a requests list's inboxes (server,
-// lib/optin.ts), read for its addresses and re-read regularly: an address
-// can be confirmed from another screen at any time. The list's drawer
+// lib/optin.ts) — or of the people a Calendar widget names
+// (lib/calendar-optin.ts) —, read for its addresses and re-read regularly: an
+// address can be confirmed from another screen at any time. The list's drawer
 // and the list itself read it; a confirmation made in Milo
 // notifies the other readers (signalConfirmation) without waiting.
 
@@ -25,16 +26,30 @@ export const signalConfirmation = (): void => {
   window.dispatchEvent(new Event(EVENT));
 };
 
+/** Whose confirmations: a request list's inboxes, a calendar's or a Mail widget's people. */
+export type ConfirmationScope = "mailbox" | "calendar" | "mail";
+
+const readers = {
+  mailbox: api.getMailboxOptins,
+  calendar: api.getCalendarOptins,
+  mail: api.getMailOptins,
+};
+
 /**
- * The states of the addresses of list "list", by lowercase address.
+ * The states of the addresses of list "list" — or of calendar "list", for the
+ * "calendar" scope —, by lowercase address.
  * "isRead" stays false until the first response: nothing is concluded before.
  * Without a list — a widget not yet saved —, there is nothing to read.
  */
-export const useConfirmations = (list: string, emails: string[]) => {
+export const useConfirmations = (
+  list: string,
+  emails: string[],
+  scope: ConfirmationScope = "mailbox",
+) => {
   const key = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))]
     .sort()
     .join(",");
-  const memo = `${list}|${key}`;
+  const memo = `${scope}|${list}|${key}`;
   const [states, setStates] = useState<Map<string, MailboxOptinState>>(
     () => remembered.get(memo) ?? new Map(),
   );
@@ -51,8 +66,7 @@ export const useConfirmations = (list: string, emails: string[]) => {
     setLoaded(Boolean(known));
     let active = true;
     const read = () =>
-      api
-        .getMailboxOptins(list, key.split(","))
+      readers[scope](list, key.split(","))
         .then((response) => {
           const received = new Map(response.map((e) => [e.email.toLowerCase(), e]));
           remembered.set(memo, received);
@@ -73,7 +87,7 @@ export const useConfirmations = (list: string, emails: string[]) => {
       clearInterval(interval);
       window.removeEventListener(EVENT, read);
     };
-  }, [key, list, memo]);
+  }, [key, list, memo, scope]);
 
   const confirmed = (email: string) =>
     states.get(email.trim().toLowerCase())?.status === "confirmed";

@@ -26,7 +26,6 @@ import { now } from "../lib/time.js";
 import { cardComments } from "./cards.js";
 import { creationNote } from "./comments.js";
 import { nextReference } from "./references.js";
-import { boardContext, contexts } from "./contexts.js";
 import { boardLabelGroups } from "./label-groups.js";
 import { keyInBoard } from "./lists.js";
 import { reorderTaskCards, taskCards, taskLists } from "./tasks.js";
@@ -188,13 +187,6 @@ const copyCard = (card: TaskCardRow, copy: CardCopy): Id => {
         rank,
         phoneNumber,
         card.kind,
-        // Within its board, the copy keeps the original's context; elsewhere,
-        // it takes the destination board's first.
-        boardContext(
-          boardId,
-          undefined,
-          contexts.byId.get(card.context_id)?.board_id === boardId ? card.context_id : null,
-        ),
         timestamp,
       ).lastInsertRowid,
   );

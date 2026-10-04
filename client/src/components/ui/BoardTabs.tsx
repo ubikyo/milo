@@ -1,6 +1,5 @@
 import { ActionIcon, Menu, Tabs } from "@mantine/core";
 import {
-  IconCategory,
   IconEye,
   IconEyeOff,
   IconPencil,
@@ -34,8 +33,6 @@ interface Tab {
   access?: BoardAccess;
   /** Hidden by the account: greyed, only shown in interface editing. */
   is_hidden?: boolean;
-  /** Its contexts: without them, nothing to copy. */
-  contexts?: readonly unknown[];
 }
 
 // A mode's boards, as tabs. Used for the Task mode, the Project mode and the
@@ -72,8 +69,6 @@ interface BoardTabsProps {
    * The last one shown cannot be hidden. Without it, the menu does not offer it.
    */
   onToggleHidden?: (id: number, hidden: boolean) => void | Promise<void>;
-  /** Copy the tab's contexts to another. Without it, the menu does not offer it. */
-  onCopyContexts?: (id: number) => void;
   /**
    * The tabs' order, once the tab is dropped. It applies to everyone
    * and not only to the browser that changed it: it is the mode that is
@@ -116,7 +111,6 @@ export default function BoardTabs({
   onRename,
   onDelete,
   onToggleHidden,
-  onCopyContexts,
   onReorder,
   deleteWarning,
   deleteTitle = "Supprimer le tableau",
@@ -200,16 +194,9 @@ export default function BoardTabs({
   const usefulMenu = (tab: Tab) =>
     editable(tab) ||
     deletable(tab) ||
-    Boolean(onToggleHidden) ||
-    (Boolean(onCopyContexts) && changeable(tab));
+    Boolean(onToggleHidden);
   // The last tab shown stays: it cannot be hidden.
   const lastShown = (tab: Tab) => !tab.is_hidden && boards.filter((b) => !b.is_hidden).length <= 1;
-
-  // Copy the targeted tab's contexts: only if it has at least one.
-  const copyContexts =
-    Boolean(onCopyContexts) &&
-    Boolean(menu && changeable(menu.tab)) &&
-    (menu?.tab.contexts?.length ?? 0) > 0;
 
   return (
     <>
@@ -276,13 +263,14 @@ export default function BoardTabs({
                   board.name
                 )}
                 {/* The open board's contexts, to the right of its name — without
-                    contexts and without the ability to add any, the list has nothing to
-                    offer. What happens in it stays with the list: otherwise,
+                    contexts, and outside the choice of its group, the list
+                    has nothing to offer. What happens in it stays with the
+                    list: otherwise,
                     the tab would drag, rename on double click, or
                     open its menu. */}
                 {value === String(board.id) &&
                   contexts &&
-                  (contexts.items.length > 0 || contexts.management) && (
+                  (contexts.items.length > 0 || contexts.onChangeGroup) && (
                     <span
                       style={{ display: "inline-flex", marginLeft: 12 }}
                       // Stopped here, the press does not reach what closes
@@ -356,18 +344,6 @@ export default function BoardTabs({
               {menu.tab.is_hidden ? "Afficher" : "Masquer"}
             </Menu.Item>
           )}
-          {/* What the tab carries, carried over to another: apart from the rest. */}
-          {copyContexts && <Menu.Divider />}
-          {/* A board without contexts has none to copy. */}
-          {copyContexts && onCopyContexts && (
-            <Menu.Item
-              leftSection={<IconCategory size={16} />}
-              onClick={() => onCopyContexts(menu.tab.id)}
-            >
-              Copier les contextes
-            </Menu.Item>
-          )}
-
           {deletable(menu.tab) && (
             <>
               <Menu.Divider />
