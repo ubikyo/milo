@@ -16,6 +16,7 @@ import type { Indicator, IndicatorWidgetBase, IndicatorsApi } from "./Indicators
 import { widgetReference } from "@milo/shared";
 import type { Id } from "@milo/shared";
 import { ReferenceTag } from "./ReferenceTag";
+import type { IndicatorConfigProps } from "../../widgets/support/types";
 
 /**
  * The location of a widget's "Actions" menu, at the end of the drawer's tab row
@@ -54,6 +55,8 @@ interface IndicatorDrawerProps<Type extends string, P extends IndicatorWidgetBas
   widgetOf: (type: Type) => P | undefined;
   api: IndicatorsApi<Type>;
   onSaved: () => void | Promise<void>;
+  /** The types around the widget in its section: its usual margins depend on them. */
+  neighbors?: IndicatorConfigProps["neighbors"];
 }
 
 export default function IndicatorDrawer<Type extends string, P extends IndicatorWidgetBase<Type>>({
@@ -65,6 +68,7 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
   widgetOf,
   api,
   onSaved,
+  neighbors,
 }: IndicatorDrawerProps<Type, P>) {
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [confirmDeleteOpened, setConfirmDeleteOpened] = useState(false);
@@ -157,7 +161,7 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
                   (widget.Config ? (
                     <DrawerActionsContext.Provider value={actions}>
                       <DrawerRegistrationsContext.Provider value={register}>
-                        <widget.Config config={config} onChange={setConfig} />
+                        <widget.Config config={config} onChange={setConfig} neighbors={neighbors} />
                       </DrawerRegistrationsContext.Provider>
                     </DrawerActionsContext.Provider>
                   ) : (
@@ -165,7 +169,9 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
                   ))}
                 {/* The "Apparence" block, common to all widgets
                     (board-widgets). */}
-                {widget?.Appearance && <widget.Appearance config={config} onChange={setConfig} />}
+                {widget?.Appearance && (
+                  <widget.Appearance config={config} onChange={setConfig} neighbors={neighbors} />
+                )}
               </Stack>
             </DrawerScrollArea>
           </Tabs.Panel>

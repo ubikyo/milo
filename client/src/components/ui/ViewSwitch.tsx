@@ -266,7 +266,8 @@ export default function ViewSwitch({
               // Mantine trims 4px off the radius of the indicator and cells, so
               // they fit in the frame's inner margin, removed
               // here: all take the frame's radius.
-              indicator: { borderRadius: RADIUS },
+              // Without shadow: the open view lies flat on the page.
+              indicator: { borderRadius: RADIUS, boxShadow: "none" },
               label: { borderRadius: RADIUS },
               control: { borderRadius: RADIUS },
               // Mantine positions the label's wrapper: the insertion

@@ -57,6 +57,8 @@ interface StoredImage {
   name: string;
   size: number;
   created_at: string;
+  /** Width over height, read at upload: the frame holds its height before the file arrives. */
+  ratio?: number;
 }
 
 /** An image of the list, numbered by its rank: what the drawer rows reorder. */
@@ -81,6 +83,7 @@ const imagesOf = (config: unknown): StoredImage[] => {
         name: typeof image.name === "string" ? image.name : "Image",
         size: typeof image.size === "number" ? image.size : 0,
         created_at: typeof image.created_at === "string" ? image.created_at : "",
+        ...(typeof image.ratio === "number" && image.ratio > 0 ? { ratio: image.ratio } : {}),
       },
     ];
   });
@@ -96,8 +99,21 @@ const intervalOf = (config: unknown): number => {
   );
 };
 
+/** An image file's width over height; unreadable, nothing. */
+const ratioOf = async (file: File): Promise<number | undefined> => {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const ratio = bitmap.height ? bitmap.width / bitmap.height : undefined;
+    bitmap.close();
+    return ratio;
+  } catch {
+    return undefined;
+  }
+};
+
 function Slideshow({ config }: { config: unknown }) {
-  const urls = imagesOf(config).map((i) => i.url);
+  const images = imagesOf(config);
+  const urls = images.map((i) => i.url);
   const interval = intervalOf(config);
   const [rank, setRank] = useState(0);
   const [pause, setPaused] = useState(false);
@@ -151,6 +167,7 @@ function Slideshow({ config }: { config: unknown }) {
         <ResizedImage
           key={`${src}-${i}`}
           src={src}
+          ratio={i === 0 ? images[0]?.ratio : undefined}
           style={{
             position: i === 0 ? "relative" : "absolute",
             inset: i === 0 ? undefined : 0,
@@ -217,8 +234,14 @@ function Fields({ config, onChange }: WidgetConfigProps) {
     const added: StoredImage[] = [];
     try {
       for (const file of pictures) {
-        const { url } = await api.uploadWidgetImage(file);
-        added.push({ url, name: file.name, size: file.size, created_at: new Date().toISOString() });
+        const [{ url }, ratio] = await Promise.all([api.uploadWidgetImage(file), ratioOf(file)]);
+        added.push({
+          url,
+          name: file.name,
+          size: file.size,
+          created_at: new Date().toISOString(),
+          ...(ratio ? { ratio } : {}),
+        });
       }
     } catch (e) {
       notifications.show({ color: "red", message: (e as Error).message });

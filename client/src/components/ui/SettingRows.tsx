@@ -37,6 +37,19 @@ const NAME_GAP = 10;
 const SIZE_WIDTH = 80;
 const COLOR_WIDTH = 120;
 
+/** The width of a row's color field: column headers line up with it. */
+export const COLOR_FIELD_WIDTH = COLOR_WIDTH;
+
+type ColorFormat = "hex" | "hexa";
+
+/**
+ * A value worth passing on while it is being typed: a complete color.
+ * "#fff" already is one; "rgba(12, 3" is not yet.
+ */
+const isCompleteColor = (value: string) =>
+  /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value.trim()) ||
+  /^rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*(,\s*[\d.]+%?\s*)?\)$/i.test(value.trim());
+
 /**
  * Mantine's heights, which it only defines inside its components: a format
  * button's (ActionIcon "md") and an "xs" field's.
@@ -99,7 +112,17 @@ export interface SettingRow {
    * Several colors side by side, aligned right — a theme color's dark and
    * light values —, each told apart by what its label says.
    */
-  colors?: { value: string; onChange: (value: string) => void; alpha?: boolean; what: string }[];
+  colors?: {
+    value: string;
+    onChange: (value: string) => void;
+    alpha?: boolean;
+    what: string;
+    /** "hexa": the value is shown and given as #rrggbbaa — the themes' colors. */
+    format?: ColorFormat;
+    /** Swatches other than the usual shades. */
+    swatches?: string[];
+    swatchesPerRow?: number;
+  }[];
   /** A line under the name: what the setting applies to. */
   hint?: string;
   size?: SizeSetting;
@@ -160,35 +183,52 @@ export function Reset({
   );
 }
 
-/** A row's color, with the usual shades (field styles). */
+/**
+ * A row's color, with the usual shades (field styles). It can be typed: what
+ * is being written stays in the field, and only a complete color is passed
+ * on; leaving the field brings back the last one.
+ */
 function Color({
   value,
   onChange,
   label,
   alpha = false,
+  format,
+  swatches = SHADES,
+  swatchesPerRow = SHADES_PER_ROW,
 }: {
   value: string;
   onChange: (value: string) => void;
   label: string;
   alpha?: boolean;
+  format?: ColorFormat;
+  swatches?: string[];
+  swatchesPerRow?: number;
 }) {
   const [input, setInput] = useState(false);
+  const [draft, setDraft] = useState<string | null>(null);
   return (
     <ColorInput
       size="xs"
       radius={ROUNDING}
       w={COLOR_WIDTH}
       placeholder="Par défaut"
-      value={value}
-      onChange={(v) => onChange(v.toLowerCase())}
-      format={alpha ? "hexa" : "hex"}
-      swatches={SHADES}
-      swatchesPerRow={SHADES_PER_ROW}
+      value={draft ?? value}
+      onChange={(v) => {
+        setDraft(v);
+        if (isCompleteColor(v)) onChange(v.toLowerCase());
+      }}
+      format={format ?? (alpha ? "hexa" : "hex")}
+      swatches={swatches}
+      swatchesPerRow={swatchesPerRow}
       withEyeDropper={false}
       popoverProps={{ withinPortal: true }}
       aria-label={label}
       onFocus={() => setInput(true)}
-      onBlur={() => setInput(false)}
+      onBlur={() => {
+        setInput(false);
+        setDraft(null);
+      }}
       styles={input ? { input: INPUT_STYLE } : undefined}
     />
   );
@@ -229,9 +269,6 @@ function Size({
     />
   );
 }
-
-/** The width of a row's color field: column headers line up with it. */
-export const COLOR_FIELD_WIDTH = COLOR_WIDTH;
 
 export default function SettingRows({
   label,
@@ -304,6 +341,9 @@ export default function SettingRows({
                     value={c.value}
                     onChange={c.onChange}
                     alpha={c.alpha}
+                    format={c.format}
+                    swatches={c.swatches}
+                    swatchesPerRow={c.swatchesPerRow}
                     label={`Couleur ${c.what}`}
                   />
                 ))}

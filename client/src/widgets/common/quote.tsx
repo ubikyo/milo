@@ -1,8 +1,8 @@
-import { ActionIcon, Box, Group, Loader, Select, Stack, Switch, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Box, Group, Loader, Select, Stack, Switch, Text } from "@mantine/core";
 import { IconQuote, IconRefresh } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { QUOTE_SOURCES } from "@milo/shared";
-import type { AccessQuote, Id, QuoteSource } from "@milo/shared";
+import type { AccessQuote, QuoteSource } from "@milo/shared";
 import { api } from "../../api";
 import { Frame } from "../margins";
 import { insertRow } from "../../components/ui/SettingRows";
@@ -11,6 +11,7 @@ import type { TextFormat } from "../text-format";
 import { withField, count, text } from "../types";
 import type { AccessWidget, Padding, WidgetDisplayProps } from "../types";
 import { themeColor } from "../../lib/themeColors";
+import { lastRead } from "../../lib/lastRead";
 
 // A quote, or a joke, renewed at the interval chosen in its drawer. Several
 // sources can be switched on: each renewal draws one of them at random.
@@ -82,8 +83,8 @@ const isFramed = (config: unknown): boolean =>
 
 const paddingOf = (): Padding => PADDING;
 
-/** The last quote read for each widget: back on the board, it shows at once. */
-const alreadyRead = new Map<Id, AccessQuote>();
+/** The last quote read for each widget: back on the board, it shows at once (lib/lastRead.ts). */
+const alreadyRead = lastRead<AccessQuote>("quote");
 
 type State =
   | { phase: "loading" }
@@ -190,23 +191,21 @@ function QuoteDisplay({ blockId, config, locked }: WidgetDisplayProps) {
       >
         {content}
         {!locked && (hovered || renewing) && (
-          <Tooltip label="Une autre" withArrow>
-            <ActionIcon
-              data-no-widget-drag
-              variant="subtle"
-              color="gray"
-              size="sm"
-              loading={renewing}
-              onClick={(e) => {
-                e.stopPropagation();
-                renew();
-              }}
-              style={{ position: "absolute", top: -4, right: -4 }}
-              aria-label="Une autre"
-            >
-              <IconRefresh size={14} />
-            </ActionIcon>
-          </Tooltip>
+          <ActionIcon
+            data-no-widget-drag
+            variant="subtle"
+            color="gray"
+            size="sm"
+            loading={renewing}
+            onClick={(e) => {
+              e.stopPropagation();
+              renew();
+            }}
+            style={{ position: "absolute", top: -4, right: -9 }}
+            aria-label="Une autre"
+          >
+            <IconRefresh size={14} />
+          </ActionIcon>
         )}
       </Box>
     </Frame>

@@ -32,3 +32,16 @@ export const SHADES = [
 
 /** The number of shades per row. */
 export const SHADES_PER_ROW = 6;
+
+/**
+ * The themes' palette (Paramétrage > Thèmes): Mantine's ten grays and ten
+ * darks, the scale's defaults, then the usual shades.
+ */
+export const THEME_SHADES = [
+  "#f8f9fa", "#f1f3f5", "#e9ecef", "#dee2e6", "#ced4da", "#adb5bd", "#868e96", "#495057", "#343a40", "#212529",
+  "#c9c9c9", "#b8b8b8", "#828282", "#696969", "#424242", "#3b3b3b", "#2e2e2e", "#242424", "#1f1f1f", "#141414",
+  ...SHADES,
+];
+
+/** Ten per row: a row for the grays, one for the darks. */
+export const THEME_SHADES_PER_ROW = 10;

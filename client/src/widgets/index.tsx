@@ -63,22 +63,30 @@ const COMMON = new Set<string>(COMMON_WIDGET_TYPES);
  * The fields of an Access mode widget: its own, then the
  * "Apparence" block — its own rows, its frame and its margins, common to
  * all — and its alignment, then those it places at the very bottom — a link's switch.
- * The drawer doesn't know its neighbors: the default proposed margins are
- * those of a widget alone in its column.
+ * The default proposed margins are those it has between its neighbors; when
+ * the drawer doesn't know them, those of a widget alone in its column.
  */
 const fieldsOf = (widget: AccessWidget): ComponentType<IndicatorConfigProps> =>
-  function Fields({ config, onChange }: IndicatorConfigProps) {
+  function Fields({ config, onChange, neighbors }: IndicatorConfigProps) {
     // Its appearance rows, then the frame and the margins: on its own
     // configuration, or on its style's (TitleStyleField).
     const rows = (c: unknown, change: (config: Record<string, unknown>) => void) => [
       ...(widget.appearance?.(c, change) ?? []),
       frameRow(c, change, FRAMED, isFramed(c, widget.defaultFrame), widget.defaultFrame ?? false),
-      // A title shows the space it leaves after an element — the one it
+      // The space it really leaves between its neighbors. Without them, a
+      // title shows the space it leaves after an element — the one it
       // usually has; at the head of a column, it leaves none above.
-      ...marginRows(widget, (c ?? {}) as Record<string, unknown>, change, {
-        previousType: widget.styled ? "link" : null,
-        nextType: null,
-      }),
+      ...marginRows(
+        widget,
+        (c ?? {}) as Record<string, unknown>,
+        change,
+        neighbors
+          ? {
+              previousType: neighbors.previousType as AccessBlockType | null,
+              nextType: neighbors.nextType as AccessBlockType | null,
+            }
+          : { previousType: widget.styled ? "link" : null, nextType: null },
+      ),
     ];
     // Its height, then its alignment in it: its own configuration's, never
     // its style's.

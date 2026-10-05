@@ -86,16 +86,14 @@ const store = (config: unknown, list: Row[]): Record<string, unknown> => withFie
 const TITLES: AccessBlockType[] = ["category"];
 
 /**
- * The space around the inset: that of an "H2" title, at the top as at the
- * bottom. Nothing at the head or end of a column. Nothing either against a
- * title, which already leaves its own — the two would add up, the column being
- * a flex one, where margins do not collapse. And between two insets, only the
- * first sets it, for the same reason.
+ * The space around the inset: that of an "H2" title, at the bottom. Nothing
+ * at the head or end of a column, nor against a title, which already leaves
+ * its own — the two would add up, the column being a flex one, where margins
+ * do not collapse. Above, only after a link, which leaves none below itself:
+ * the other widgets already leave theirs.
  */
 const highMargin = (previous: AccessBlockType | null): number =>
-  previous === null || previous === "number" || TITLES.includes(previous)
-    ? 0
-    : H2_GAP;
+  previous === "link" ? H2_GAP : 0;
 const lowMargin = (next: AccessBlockType | null): number =>
   next === null || TITLES.includes(next) ? 0 : H2_GAP;
 

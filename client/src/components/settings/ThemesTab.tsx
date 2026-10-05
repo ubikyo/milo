@@ -1,14 +1,16 @@
 import { Button, Group, Stack, Text } from "@mantine/core";
-import { THEME_COLOR_GROUPS, THEME_COLORS, isThemeHex } from "@milo/shared";
+import { THEME_COLOR_GROUPS, THEME_COLORS, hexaString, parseThemeColor } from "@milo/shared";
 import type { ThemeColors } from "@milo/shared";
 import { errorMessage, notifyError } from "../../lib/errors";
 import {
-  themeColorOf,
+  defaultHexaOf,
+  themeHexaOf,
   updateThemeColors,
   useThemeColors,
   type Scheme,
 } from "../../lib/themeColors";
 import SettingRows, { COLOR_FIELD_WIDTH } from "../ui/SettingRows";
+import { THEME_SHADES, THEME_SHADES_PER_ROW } from "../../widgets/style-fields";
 import type { SettingRow } from "../ui/SettingRows";
 
 // The "Thèmes" section of Settings ("Paramétrage"): each color of the
@@ -32,29 +34,21 @@ const onError = (e: unknown) => notifyError(errorMessage(e));
 export default function ThemesTab({ canEdit }: ThemesTabProps) {
   const colors = useThemeColors();
 
-  /** Sets one theme's value; brought back to its default, it is no longer stored. */
+  /**
+   * Sets one theme's value, as #rrggbbaa whatever its writing; brought back to
+   * its default, it is no longer stored.
+   */
   const change = (key: string, scheme: Scheme, value: string) => {
-    if (!canEdit || !isThemeHex(value)) return;
-    const definition = THEME_COLORS.find((c) => c.key === key)!;
+    const parsed = parseThemeColor(value);
+    if (!canEdit || !parsed) return;
+    const hexa = hexaString(parsed);
     const own = { ...colors[key] };
-    if (value === themeColorOfDefault(definition[scheme])) delete own[scheme];
-    else own[scheme] = value;
+    if (hexa === defaultHexaOf(key, scheme)) delete own[scheme];
+    else own[scheme] = hexa;
     const next: ThemeColors = { ...colors };
     if (own.light || own.dark) next[key] = own;
     else delete next[key];
     updateThemeColors(next, onError);
-  };
-
-  /**
-   * The hexadecimal value of a default: a shade's is the scale's current
-   * one, so that choosing it again means "the default".
-   */
-  const themeColorOfDefault = (value: string): string => {
-    if (value === "white") return "#ffffff";
-    if (value === "black") return "#000000";
-    const shade = /^(gray|dark)\.(\d)$/.exec(value);
-    if (shade) return themeColorOf(`shade-${shade[2]}`, shade[1] === "gray" ? "light" : "dark");
-    return value.toLowerCase();
   };
 
   const reset = (key: string) => {
@@ -69,9 +63,11 @@ export default function ThemesTab({ canEdit }: ThemesTabProps) {
       hint: c.hint,
       what: `« ${c.label} »`,
       colors: SCHEMES.map(({ scheme, label }) => ({
-        value: themeColorOf(c.key, scheme),
+        value: themeHexaOf(c.key, scheme),
         onChange: (v: string) => change(c.key, scheme, v),
-        alpha: c.alpha,
+        format: "hexa" as const,
+        swatches: THEME_SHADES,
+        swatchesPerRow: THEME_SHADES_PER_ROW,
         what: `« ${c.label} » (${label.toLowerCase()})`,
       })),
       modified: Boolean(colors[c.key]),
@@ -84,8 +80,10 @@ export default function ThemesTab({ canEdit }: ThemesTabProps) {
     <Stack gap="lg">
       <Group justify="space-between" wrap="nowrap">
         <Text size="sm" c="dimmed">
-          Chaque couleur a sa valeur sur le thème sombre et sur le thème clair.
-          Une couleur modifiée s'applique aussitôt à toute l'application.
+          Chaque couleur a sa valeur sur le thème sombre et sur le thème clair,
+          au format #RRGGBBAA : choisie dans la palette ou saisie, en
+          hexadécimal ou en rgba(). Une couleur modifiée s'applique aussitôt à
+          toute l'application.
         </Text>
         {canEdit && (
           <Button

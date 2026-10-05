@@ -33,6 +33,7 @@ import ConfigurationProblem from "../../components/ui/ConfigurationProblem";
 import EmptyPanel from "../../components/ui/EmptyPanel";
 import { insertRow } from "../../components/ui/SettingRows";
 import { RED } from "../../themes/colors";
+import { lastRead } from "../../lib/lastRead";
 import { withField, count, text } from "../types";
 import type { AccessWidget, WidgetConfigProps, WidgetDisplayProps } from "../types";
 import {
@@ -234,13 +235,13 @@ const quantityOf = (config: unknown): number =>
   );
 
 /**
- * The latest articles shown by each element, for the duration of the page.
+ * The latest feed read by each element, kept in the browser (lib/lastRead.ts).
  * Back on the category, or switched from one mode to another, the element
  * remounts: it immediately resumes what it was showing, and the reread
  * updates it without making anything jump. The key carries the address: a
  * changed feed does not show the old one's articles.
  */
-const alreadyRead = new Map<string, Source[]>();
+const alreadyRead = lastRead<AccessFeed>("rss");
 const keyOf = (blockId: Id, urls: string[]) => `${blockId}|${urls.join("\n")}`;
 
 /** A feed address the server can fetch: over http or https. */
@@ -287,8 +288,8 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
   const grouped = isGrouped(config) && urls.length > 1;
   const allReadable = urls.length > 0 && urls.every(readableAddress);
   const [state, setState] = useState<State>(() => {
-    const sources = alreadyRead.get(key);
-    return sources ? { phase: "ready", sources } : { phase: "loading" };
+    const feed = alreadyRead.get(key);
+    return feed ? { phase: "ready", sources: sourcesRead(feed) } : { phase: "loading" };
   });
 
   // The addresses and the quantity are those the server reads in the stored
@@ -303,13 +304,13 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
         .getAccessFeed(blockId)
         .then((feed) => {
           const sources = sourcesRead(feed);
-          alreadyRead.set(key, sources);
+          alreadyRead.set(key, feed);
           if (active) setState({ phase: "ready", sources });
         })
         .catch((e: Error) => active && setState({ phase: "error", message: e.message }));
     // Already read, the articles stay on screen during the reread.
     const known = alreadyRead.get(key);
-    setState(known ? { phase: "ready", sources: known } : { phase: "loading" });
+    setState(known ? { phase: "ready", sources: sourcesRead(known) } : { phase: "loading" });
     read();
     const heartbeat = setInterval(read, RELOAD_INTERVAL);
     return () => {
@@ -361,8 +362,7 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
     );
   }
 
-  const withSource = state.sources.length > 1;
-  const link = (a: Article, i: number, source?: string) => {
+  const link = (a: Article, i: number) => {
     const title = clean(a.title) || "Sans titre";
     return (
       <Anchor
@@ -376,8 +376,6 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
         c={text(config, COLOR) || DEFAULT_INK}
         underline="never"
         className={classes.link}
-        // Merged, the articles of several sources state their own on hover.
-        title={source ? `${title} — ${source}` : title}
       >
         {dates && a.date && (
           <Text span size="xs" c={text(config, DATE_COLOR) || "var(--milo-widget-dimmed)"} style={DATE_COLUMN}>
@@ -407,7 +405,6 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
               c="dimmed"
               fw={600}
               lineClamp={1}
-              title={s.url}
               mt={g === 0 ? 0 : 6}
               mb={2}
             >
@@ -422,12 +419,9 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
 
   const articles = merged(state.sources, quantity);
   if (!articles.length) return <NoArticle />;
-  const sourceOf = new Map(
-    state.sources.flatMap((s) => s.articles.map((a) => [a, nameOf(s.url)] as const)),
-  );
   return (
     <Stack gap={0}>
-      {articles.map((a, i) => link(a, i, withSource ? sourceOf.get(a) : undefined))}
+      {articles.map((a, i) => link(a, i))}
     </Stack>
   );
 }

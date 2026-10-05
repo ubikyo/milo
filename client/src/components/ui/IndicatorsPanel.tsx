@@ -318,6 +318,29 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
     setDrawerOpened(true);
   };
 
+  /**
+   * The types around the widget in the drawer, as its section shows them — a
+   * hidden widget, unknown or unreadable, neither precedes nor follows anyone
+   * (SectionIndicators): the margins it proposes are those it really has. A
+   * widget being created takes the place where it was dropped.
+   */
+  const drawerNeighbors = (() => {
+    const sectionId = modified?.section_id ?? created?.sectionId;
+    if (sectionId === undefined) return undefined;
+    const inSection = indicators.filter((i) => i.section_id === sectionId);
+    const visible = (i: Indicator<Type>) => {
+      const widget = widgetOf(i.type);
+      return Boolean(widget) && access(widget!.kind) !== "" && !widget!.hidden?.(i.config, locked);
+    };
+    const rank = modified ? inSection.findIndex((i) => i.id === modified.id) : created!.index;
+    const before = inSection.slice(0, Math.max(0, rank)).filter(visible);
+    const after = inSection.slice(modified ? rank + 1 : rank).filter(visible);
+    return {
+      previousType: before[before.length - 1]?.type ?? null,
+      nextType: after[0]?.type ?? null,
+    };
+  })();
+
   // A widget with no fields of its own is born without a drawer (drop), but has
   // one afterwards: its appearance — frame, margins — is set like everyone
   // else's. Only a widget with neither has none.
@@ -521,6 +544,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
         creating={created?.widget ?? null}
         sectionId={created?.sectionId ?? null}
         widgetOf={widgetOf}
+        neighbors={drawerNeighbors}
         // Creation goes through the targeted place.
         api={{ ...api, create: (data) => createAt(data, created?.index ?? Number.MAX_SAFE_INTEGER) }}
         onSaved={async () => {

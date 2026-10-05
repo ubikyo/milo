@@ -25,6 +25,7 @@ import { withField, count, text } from "../types";
 import type { AccessWidget, WidgetConfigProps } from "../types";
 import type { AccessWeather, Id, WeatherPlace } from "@milo/shared";
 import { themeColor } from "../../lib/themeColors";
+import { lastRead } from "../../lib/lastRead";
 
 // The weather of a place: the temperature, a pictogram of the sky's state,
 // and optionally the feels-like temperature, humidity and wind, then the
@@ -69,6 +70,13 @@ const RELOAD_INTERVAL = 15 * 60_000;
 
 /** The height of a forecast chart. */
 const CHART_HEIGHT = 110;
+
+/** The height of the week's forecasts: the day, the pictogram, the high and the low. */
+const WEEK_HEIGHT = 84;
+
+/** A line of "xs" text, and the "xs" gap between the rows. */
+const SMALL_LINE = 19;
+const ROW_GAP = 10;
 
 const SUGGESTED_FORECASTS = [
   { value: "none", label: "Aucune" },
@@ -131,8 +139,8 @@ const hasLocation = (config: unknown): boolean => {
   return typeof c[LATITUDE] === "number" && typeof c[LONGITUDE] === "number";
 };
 
-/** The latest forecasts of each element, for the duration of the page. */
-const alreadyRead = new Map<string, AccessWeather>();
+/** The latest forecasts of each element, kept in the browser (lib/lastRead.ts). */
+const alreadyRead = lastRead<AccessWeather>("weather");
 
 type State =
   | { phase: "loading" }
@@ -256,8 +264,22 @@ function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
       );
     }
     if (state.phase === "loading") {
+      // The height the weather will take, row by row: it does not grow on
+      // arrival and push what follows.
+      const caption = (isChecked(config, SHOW_LOCATION, false) && place) || isChecked(config, SHOW_SKY, false);
+      const rows = [
+        isChecked(config, SHOW_ICON, true) || isChecked(config, SHOW_TEMPERATURE, true) || caption
+          ? Math.max(
+              isChecked(config, SHOW_ICON, true) ? Math.round(size * 1.3) : 0,
+              (isChecked(config, SHOW_TEMPERATURE, true) ? size * 1.1 : 0) + (caption ? SMALL_LINE : 0),
+            )
+          : 0,
+        isChecked(config, DETAILS, false) ? SMALL_LINE : 0,
+        forecasts === "week" ? WEEK_HEIGHT : forecasts !== "none" ? CHART_HEIGHT : 0,
+      ].filter((h) => h > 0);
+      const height = rows.reduce((sum, h) => sum + h, 0) + ROW_GAP * Math.max(0, rows.length - 1);
       return (
-        <Group gap="xs" c="dimmed" h={size * 1.4}>
+        <Group gap="xs" c="dimmed" h={Math.max(height, SMALL_LINE)} justify="center">
           <Loader size="xs" color="gray" />
           <Text size="sm">Météo{place ? ` de ${place}` : ""}…</Text>
         </Group>

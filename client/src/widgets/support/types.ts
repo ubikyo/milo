@@ -21,6 +21,11 @@ import type { Id, SupportIndicatorType, SupportRequest } from "@milo/shared";
 export interface IndicatorConfigProps {
   config: unknown;
   onChange: (config: Record<string, unknown>) => void;
+  /**
+   * The types around the widget in its section, as it shows them: its usual
+   * margins depend on them. Unknown, those of a widget alone in its column.
+   */
+  neighbors?: { previousType: string | null; nextType: string | null };
 }
 
 /** What the panel passes to a widget's display. */

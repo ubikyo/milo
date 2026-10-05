@@ -46,6 +46,8 @@
 }
 
 :global([role="tab"][data-contexts-open][data-contexts-open]) {
+  /* The view tab sets its background inline (BoardTabs): it reads this one. */
+  --contexts-tab-bg: var(--contexts-bg);
   background-color: var(--contexts-bg);
   border-color: var(--contexts-border);
   border-bottom-color: var(--contexts-bg);

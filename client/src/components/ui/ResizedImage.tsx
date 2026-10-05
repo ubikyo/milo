@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { lastRead } from "../../lib/lastRead";
 
 // An image shown at the size of where it sits, without downloading its
 // original: for one of our media files, the server returns a copy reduced to
@@ -19,6 +20,12 @@ const STEPS = [320, 480, 640, 800, 1024, 1280, 1600, 1920, 2560];
 /** Our media addresses, the only ones the server can reduce. */
 const isMedia = (src: string) => /^\/api\/medias?\/[0-9a-f]{32}(\.[a-z0-9]{1,12})?$/.test(src);
 
+/**
+ * Each image's width over height, once read: shown again, it takes its frame
+ * at once instead of growing from nothing when the file arrives.
+ */
+const knownRatios = lastRead<number>("imageRatio");
+
 const stepFor = (pixels: number) => STEPS.find((s) => s >= pixels) ?? STEPS[STEPS.length - 1]!;
 
 interface ResizedImageProps {
@@ -28,14 +35,16 @@ interface ResizedImageProps {
   fit?: "cover" | "contain";
   /** The fixed height, in pixels; nothing: the one its width gives it. */
   height?: number;
+  /** Width over height when known beforehand: the frame holds before loading. */
+  ratio?: number;
   style?: CSSProperties;
 }
 
-export default function ResizedImage({ src, alt = "", fit = "cover", height, style }: ResizedImageProps) {
+export default function ResizedImage({ src, alt = "", fit = "cover", height, ratio: knownRatio, style }: ResizedImageProps) {
   const ref = useRef<HTMLImageElement>(null);
   const [width, setWidth] = useState(0);
   /** Width over height, once the image is read: what a crop needs. */
-  const [ratio, setRatio] = useState(0);
+  const [ratio, setRatio] = useState(() => knownRatio || knownRatios.get(src) || 0);
   const reducible = isMedia(src);
 
   useEffect(() => {
@@ -69,12 +78,16 @@ export default function ResizedImage({ src, alt = "", fit = "cover", height, sty
       draggable={false}
       onLoad={(e) => {
         const { naturalWidth, naturalHeight } = e.currentTarget;
-        if (naturalWidth && naturalHeight) setRatio(naturalWidth / naturalHeight);
+        if (!naturalWidth || !naturalHeight) return;
+        knownRatios.set(src, naturalWidth / naturalHeight);
+        setRatio(naturalWidth / naturalHeight);
       }}
       style={{
         display: "block",
         width: "100%",
         height: height || "auto",
+        // Without a fixed height, the known ratio holds the frame before loading.
+        aspectRatio: !height && ratio ? ratio : undefined,
         objectFit: fit,
         ...style,
       }}

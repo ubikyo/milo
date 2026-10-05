@@ -206,7 +206,14 @@ export default function BoardTabs({
             {insertAt(index) && <InsertLine />}
             <Tabs.Tab
               value={String(board.id)}
-              {...tabProps(board.id, index, tabStyle(value === String(board.id)))}
+              {...tabProps(board.id, index, {
+                ...tabStyle(value === String(board.id)),
+                // The open tab's background (Paramétrage > Thèmes) — unless
+                // the contexts list, open under it, gives it its own.
+                ...(value === String(board.id) && {
+                  backgroundColor: "var(--contexts-tab-bg, var(--milo-view-tab-active))",
+                }),
+              })}
               onContextMenu={(e) => {
                 // The tab's menu hangs under it, like a row's.
                 if (usefulMenu(board)) setMenu({ tab: board, position: menuAnchor(e) });

@@ -8,7 +8,7 @@
 // its picker shows — asks themeColor(), in the current theme.
 
 import { useSyncExternalStore } from "react";
-import { MANTINE_COLOR_KEYS, SHADE_KEYS, THEME_COLORS } from "@milo/shared";
+import { MANTINE_COLOR_KEYS, SHADE_KEYS, THEME_COLORS, hexString, hexaString, parseThemeColor } from "@milo/shared";
 import type { ThemeColors } from "@milo/shared";
 import { api } from "../api";
 
@@ -31,17 +31,38 @@ export const writtenColor = (key: string, scheme: Scheme): string =>
 
 const SHADE = /^(gray|dark)\.(\d)$/;
 
-/** A value in hexadecimal: a shade is that of the scale, in its own theme. */
-const toHex = (value: string): string => {
+/** Another color of the themes, whose value a default takes: "@body". */
+const REFERENCE = /^@([a-z0-9-]+)$/;
+
+/**
+ * A value in hexadecimal — 8 digits when translucent: a shade is that of
+ * the scale, in its own theme; a reference is that color's, in the given
+ * theme; a stored value is brought back to 6 digits when opaque.
+ */
+const toHex = (value: string, scheme: Scheme): string => {
+  const reference = REFERENCE.exec(value);
+  if (reference) return themeColorOf(reference[1]!, scheme);
   if (value === "white") return "#ffffff";
   if (value === "black") return "#000000";
   const shade = SHADE.exec(value);
   if (shade) return themeColorOf(`shade-${shade[2]}`, shade[1] === "gray" ? "light" : "dark");
-  return value.toLowerCase();
+  const parsed = parseThemeColor(value);
+  return parsed ? hexString(parsed) : value.toLowerCase();
 };
 
-/** A value as CSS: a shade stays a variable, so that a change of the scale carries over. */
+/** A value as #rrggbbaa, the form the Settings show. */
+const toHexa = (hex: string): string => {
+  const parsed = parseThemeColor(hex);
+  return parsed ? hexaString(parsed) : hex;
+};
+
+/**
+ * A value as CSS: a shade or a reference stays a variable, so that a change
+ * of the scale or of that color carries over.
+ */
 const toCss = (value: string): string => {
+  const reference = REFERENCE.exec(value);
+  if (reference) return themeVar(reference[1]!);
   if (value === "white" || value === "black") return `var(--mantine-color-${value})`;
   const shade = SHADE.exec(value);
   if (shade) return `var(--mantine-color-${shade[1]}-${shade[2]})`;
@@ -49,10 +70,17 @@ const toCss = (value: string): string => {
 };
 
 /** The color in hexadecimal, in the given theme. */
-export const themeColorOf = (key: string, scheme: Scheme): string => toHex(writtenColor(key, scheme));
+export const themeColorOf = (key: string, scheme: Scheme): string => toHex(writtenColor(key, scheme), scheme);
 
 export const currentScheme = (): Scheme =>
   document.documentElement.getAttribute("data-mantine-color-scheme") === "dark" ? "dark" : "light";
+
+/** The color as #rrggbbaa, in the given theme. */
+export const themeHexaOf = (key: string, scheme: Scheme): string => toHexa(themeColorOf(key, scheme));
+
+/** The color's default as #rrggbbaa: a shade's is the scale's current value. */
+export const defaultHexaOf = (key: string, scheme: Scheme): string =>
+  toHexa(toHex(DEFINITIONS.get(key)?.[scheme] ?? "#000000", scheme));
 
 /** The color in hexadecimal, in the current theme. */
 export const themeColor = (key: string): string => themeColorOf(key, currentScheme());
