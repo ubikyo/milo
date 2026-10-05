@@ -4,10 +4,10 @@
 .variable {
   padding: 2px 6px;
   border-radius: var(--mantine-radius-sm);
-  background-color: light-dark(#ececec, #2e2e2e);
+  background-color: var(--milo-sunken-bg);
   /* White on the dark theme; black on light, where white would not read
      on the gray. */
-  color: light-dark(var(--mantine-color-black), var(--mantine-color-white));
+  color: var(--milo-strong-text);
   font-family: var(--mantine-font-family-monospace);
   font-size: var(--mantine-font-size-xs);
   white-space: nowrap;
@@ -16,7 +16,7 @@
 }
 
 .variable:hover:not(:disabled) {
-  background-color: light-dark(#d9d9d9, #3d3d3d);
+  background-color: var(--milo-header-bg);
 }
 
 .variable:disabled {

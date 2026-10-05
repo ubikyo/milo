@@ -5,7 +5,7 @@ import SectionRights from "./SectionRights";
 import type { SectionPermissions } from "./SectionRights";
 import { usePermissionsDraft } from "./usePermissionsDraft";
 import type { SaveRef } from "./usePermissionsDraft";
-import { pluralize } from "../ui/DrawerRows";
+import { pluralize, ROW_BACKGROUND } from "../ui/DrawerRows";
 import { ADMIN_SECTIONS, defaultAdminPermissions, validAdminPermissions } from "@milo/shared";
 import type { AdminPermissions, WorkspaceRights } from "@milo/shared";
 
@@ -61,6 +61,8 @@ export default function AdministrationTab({
       remove={draft.remove}
       empty={defaultAdminPermissions}
       summary={summary}
+      // The rows of the workspaces' list (WorkspacesTab).
+      headerBackground={ROW_BACKGROUND}
       details={(permissions, change, entry) => (
         <SectionRights
           sections={ADMIN_SECTIONS}

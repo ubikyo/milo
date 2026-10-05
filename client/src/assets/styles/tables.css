@@ -2,10 +2,6 @@
    Mantine's in both themes: gray-1 → gray-2 on light, dark-5 → dark-6 on
    dark. The row whose context menu is open uses the same variable, so it
    follows. */
-[data-mantine-color-scheme="light"] .mantine-Table-table {
-  --table-hover-color: var(--mantine-color-gray-2);
-}
-
-[data-mantine-color-scheme="dark"] .mantine-Table-table {
-  --table-hover-color: var(--mantine-color-dark-6);
+.mantine-Table-table.mantine-Table-table {
+  --table-hover-color: var(--milo-row-hover);
 }

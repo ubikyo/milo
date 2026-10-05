@@ -180,7 +180,7 @@ export function SenderAvatar({ person, size = ACTOR_AVATAR_SIZE }: { person: Act
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "var(--mantine-color-gray-7)",
+          backgroundColor: "var(--milo-badge-bg)",
           border: "1px solid var(--mantine-color-black)",
           boxSizing: "border-box",
           color: "var(--mantine-color-white)",

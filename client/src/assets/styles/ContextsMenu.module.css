@@ -1,21 +1,12 @@
-/* A row of the contexts menu: the application's neutral gray on hover
-   (themes/colors.ts, NEUTRAL_HOVER), and the handle and trash, which only
-   appear then. */
+/* A row of the contexts menu: the themes' menu hover (lib/themeColors.ts),
+   and the handle and trash, which only appear then. */
 .row {
   border-radius: 4px;
   cursor: pointer;
 }
 
-/* Set per theme, like Mantine's menu hover: without light-dark(), which not
-   every browser reads. */
-:where([data-mantine-color-scheme="light"]) .row:hover:not([data-editing]) {
-  background-color: #ececec;
-}
-
-/* On dark, the application's neutral gray is the menu background itself
-   (dark-6): the hover takes Mantine's menu hover instead. */
-:where([data-mantine-color-scheme="dark"]) .row:hover:not([data-editing]) {
-  background-color: var(--mantine-color-dark-4);
+.row:hover:not([data-editing]) {
+  background-color: var(--milo-menu-hover);
 }
 
 .reveal {
@@ -31,20 +22,12 @@
    class is doubled: Mantine sets the button color through its own class,
    which must be beaten whatever the stylesheet order. */
 .tabTarget.tabTarget {
-  color: var(--mantine-color-gray-6);
+  color: var(--mantine-color-dimmed);
   transition: color 120ms ease;
 }
 
 .tabTarget.tabTarget:hover {
-  color: var(--mantine-color-gray-9);
-}
-
-:where([data-mantine-color-scheme="dark"]) .tabTarget.tabTarget {
-  color: var(--mantine-color-dark-2);
-}
-
-:where([data-mantine-color-scheme="dark"]) .tabTarget.tabTarget:hover {
-  color: var(--mantine-color-dark-0);
+  color: var(--mantine-color-text);
 }
 
 /* Trial: with the list open, the tab holding it takes its background, and
@@ -53,14 +36,9 @@
    follow on from each other. The attribute is set by ContextsMenu, on the tab
    and on its row; doubled to win over Mantine's rules. The bottom of the tab
    takes the background: it joins the list. */
-:where([data-mantine-color-scheme="light"]) {
-  --contexts-border: var(--mantine-color-gray-4);
-  --contexts-bg: var(--mantine-color-white);
-}
-
-:where([data-mantine-color-scheme="dark"]) {
-  --contexts-border: var(--mantine-color-dark-3);
-  --contexts-bg: var(--mantine-color-dark-6);
+:root {
+  --contexts-border: var(--milo-strong-border);
+  --contexts-bg: var(--mantine-color-default);
 }
 
 :global([role="tablist"][data-contexts-open][data-contexts-open]) {

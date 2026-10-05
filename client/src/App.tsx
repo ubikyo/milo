@@ -9,6 +9,7 @@ import {
   PAGE_GUTTER,
 } from "./themes/layout";
 import LoginPage from "./pages/LoginPage";
+import { loadThemeColors, useThemeColors } from "./lib/themeColors";
 import ViewPage from "./pages/ViewPage";
 import NotificationsDrawer from "./components/notifications/NotificationsDrawer";
 import CardDrawer from "./components/board/CardDrawer";
@@ -116,6 +117,12 @@ const ofContext = <T extends { list_key: string; labels: { group_id: Id; name: s
 
 export default function App() {
   const [user, setUser] = useState<PublicUser | null>(null);
+  // The themes' colors, read once signed in. Subscribed: a color changed in
+  // the Settings redraws the widgets whose default colors follow it.
+  useThemeColors();
+  useEffect(() => {
+    if (user) loadThemeColors();
+  }, [user]);
   const [authChecked, setAuthChecked] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
   // Microsoft sign-in is possible: the Entra application is configured.

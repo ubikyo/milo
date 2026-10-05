@@ -13,6 +13,7 @@ import {
   IconDatabaseExport,
   IconBrandWindows,
   IconLayoutNavbar,
+  IconPalette,
   IconShieldLock,
   IconStack2,
 } from "@tabler/icons-react";
@@ -32,6 +33,7 @@ import BackupTab from "./BackupTab";
 import EntraTab from "./EntraTab";
 import NotificationsTab from "./NotificationsTab";
 import DisplayTab from "./DisplayTab";
+import ThemesTab from "./ThemesTab";
 import WorkspacesTab from "./WorkspacesTab";
 import AdministrationTab from "./AdministrationTab";
 import type { ComponentType, ReactNode } from "react";
@@ -48,6 +50,7 @@ const TABS: {
   { value: "entra", label: "Entra", icon: IconBrandWindows },
   { value: "notifications", label: "Notifications", icon: IconBell },
   { value: "display", label: "Affichage", icon: IconLayoutNavbar },
+  { value: "themes", label: "Thèmes", icon: IconPalette },
   // The backup at the very bottom: it covers the whole database, not a setting.
   { value: "backup", label: "Sauvegarde", icon: IconDatabaseExport },
 ];
@@ -335,6 +338,8 @@ export default function SettingsModal({
         {panel("notifications", <NotificationsTab canEdit={canEdit} />)}
 
         {panel("display", <DisplayTab canEdit={canEdit} />)}
+
+        {panel("themes", <ThemesTab canEdit={canEdit} />)}
       </Tabs>
 
       <Group justify="flex-end" mt={40}>

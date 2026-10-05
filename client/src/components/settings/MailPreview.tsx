@@ -39,13 +39,13 @@ export const paneStyle = (side?: "left" | "right") => {
 };
 
 // The handles and the preview's frame: a neutral gray — Mantine's leans blue.
-export const HANDLE_COLOR = "light-dark(#dcdcdc, #3d3d3d)";
+export const HANDLE_COLOR = "var(--milo-header-bg)";
 
 /** The handles above the panes, which are isolated (paneStyle). */
 export const SPLITTER_STYLES = { handle: { zIndex: 1 } };
 
 // The preview sits on the background of the theme it shows, in a gray frame.
-const PREVIEW_BG = { light: "var(--mantine-color-white)", dark: "var(--mantine-color-dark-7)" };
+const PREVIEW_BG = { light: "var(--mantine-color-body)", dark: "var(--mantine-color-body)" };
 
 /**
  * The e-mail, transparent over the preview's background. The dark preview

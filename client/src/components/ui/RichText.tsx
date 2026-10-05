@@ -14,7 +14,7 @@ import classes from "../../assets/styles/RichText.module.css";
 // fields on the dark theme. We give it back the other fields' background: that
 // of an "input" of "default" variant. The toolbar takes the same, and a line
 // separates it from the input area.
-export const FIELD_BG = "light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))";
+export const FIELD_BG = "var(--mantine-color-default)";
 
 // The trash icon of the button that removes an image: Tabler's icon, copied as
 // is. The view below is in DOM and not in React (see why just below): it
@@ -244,7 +244,7 @@ export default function RichTextField({
           backgroundColor: FIELD_BG,
           ...(fill && { borderRadius: 0 }),
           borderBottom:
-            "1px solid light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-4))",
+            "1px solid var(--mantine-color-default-border)",
         },
       }}
     >

@@ -10,6 +10,7 @@ import { formatOf, formatReset, formatRow, formatStyle, NO_FORMAT } from "../tex
 import type { TextFormat } from "../text-format";
 import { withField, count, text } from "../types";
 import type { AccessWidget, Padding, WidgetDisplayProps } from "../types";
+import { themeColor } from "../../lib/themeColors";
 
 // A quote, or a joke, renewed at the interval chosen in its drawer. Several
 // sources can be switched on: each renewal draws one of them at random.
@@ -59,7 +60,7 @@ const SIZE_MAX = 48;
 const PADDING = 20;
 const LOW_MARGIN = 15;
 
-const DEFAULT_INK = "var(--mantine-color-text)";
+const DEFAULT_INK = "var(--milo-widget-text)";
 
 /** The sources switched on; none readable, the quotes. */
 const sourcesOf = (config: unknown): QuoteSource[] => {
@@ -112,7 +113,7 @@ function QuoteText({ quote, config }: { quote: AccessQuote; config: unknown }) {
       {quote.source === "quote" && byline && isChecked(config, AUTHOR, true) && (
         <Text
           fz={Math.max(SIZE_MIN, size - 3)}
-          c={text(config, AUTHOR_COLOR) || "dimmed"}
+          c={text(config, AUTHOR_COLOR) || "var(--milo-widget-dimmed)"}
           ta="right"
           style={formatStyle(formatOf(config, NO_FORMAT, AUTHOR_FORMAT), BOLD_WEIGHT)}
         >
@@ -238,9 +239,8 @@ export const quoteWidget: AccessWidget = {
   // following the scheme.
   appearance: (config, onChange) => {
     const size = count(config, SIZE, DEFAULT_SIZE);
-    const dark = document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
-    const defaultColor = dark ? "#c9c9c9" : "#000000";
-    const dimmed = dark ? "#828282" : "#868e96";
+    const defaultColor = themeColor("widget-text");
+    const dimmed = themeColor("widget-dimmed");
     const color = text(config, COLOR);
     const authorColor = text(config, AUTHOR_COLOR);
     // The author's row, while quotes are drawn and their author shown.

@@ -1,6 +1,7 @@
 import { insertRow, type SettingRow } from "../components/ui/SettingRows";
 import { BLUE, ORANGE, PALETTE_GREEN, PALETTE_RED } from "../themes/colors";
 import { text } from "./types";
+import { themeColor } from "../lib/themeColors";
 
 // The colors of the indicators' charts, set in the "Apparence du graphique"
 // block of their drawer (chartAppearance). Each field shows its default in
@@ -31,25 +32,24 @@ export const CHART_COLORS = {
   gray6: "#868e96",
 };
 
-const isDark = () => document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
 
 /** Mantine's dimmed: the axes of a bar chart. */
-export const defaultAxes = () => (isDark() ? "#828282" : "#868e96");
+export const defaultAxes = () => themeColor("widget-dimmed");
 
 /** Mantine's text: a ring's legend and the figure at its center. */
-export const defaultText = () => (isDark() ? "#c9c9c9" : "#000000");
+export const defaultText = () => themeColor("widget-text");
 
 /** The page's background: the line between a ring's parts. */
-export const defaultSeparator = () => (isDark() ? "#242424" : "#ffffff");
+export const defaultSeparator = () => themeColor("chart-separator");
 
 /** A bar chart's grid, translucent. */
-export const defaultGrid = () => (isDark() ? "#69696999" : "#adb5bd99");
+export const defaultGrid = () => themeColor("chart-grid");
 
 /** The band under the hovered bar, barely visible. */
-export const defaultHover = () => (isDark() ? "#69696926" : "#adb5bd26");
+export const defaultHover = () => themeColor("chart-hover");
 
 /** The empty part of a radial bar's ring. */
-export const defaultTrack = () => (isDark() ? "#2e2e2e" : "#f1f3f5");
+export const defaultTrack = () => themeColor("chart-track");
 
 /** The stored color, or the default. */
 export const colorOf = (config: unknown, key: string, defaultColor: string) => text(config, key) || defaultColor;

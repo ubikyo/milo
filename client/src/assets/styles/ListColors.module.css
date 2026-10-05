@@ -49,5 +49,5 @@
 }
 
 .animation[aria-pressed="true"] {
-  background-color: light-dark(#ededed, var(--mantine-color-dark-4));
+  background-color: var(--milo-menu-hover);
 }

@@ -87,8 +87,7 @@ const MESSAGES_GAP = 30;
 const MARGIN_MESSAGE = 30;
 
 /** A message's background, received or sent: its position says who it comes from. */
-const MESSAGE_BACKGROUND =
-  "light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7))";
+const MESSAGE_BACKGROUND = "var(--milo-message-bg)";
 
 /** "1,2 Mo": an attachment's size. */
 const readableSize = (bytes: number): string => {
@@ -283,7 +282,7 @@ export function ReceivedEmail({
             white would not read on the header's gray. */}
         <Text
           size="xs"
-          c="light-dark(var(--mantine-color-text), var(--mantine-color-white))"
+          c="var(--milo-strong-text)"
           style={{ flexShrink: 0 }}
         >
           {formatDate(date)}
@@ -695,10 +694,10 @@ export function SupportReply({
   // field; hover darkens by the same amount.
   const corner = "calc(var(--mantine-radius-default) - 1px)";
   const gray = {
-    "--button-bg": "light-dark(var(--mantine-color-dark-6), var(--mantine-color-dark-4))",
-    "--button-hover": "light-dark(var(--mantine-color-dark-7), var(--mantine-color-dark-5))",
-    "--ai-bg": "light-dark(var(--mantine-color-dark-6), var(--mantine-color-dark-4))",
-    "--ai-hover": "light-dark(var(--mantine-color-dark-7), var(--mantine-color-dark-5))",
+    "--button-bg": "var(--milo-dark-button)",
+    "--button-hover": "var(--milo-dark-button-hover)",
+    "--ai-bg": "var(--milo-dark-button)",
+    "--ai-hover": "var(--milo-dark-button-hover)",
   } as CSSProperties;
   const buttons = (
     <Group gap={1} wrap="nowrap" style={{ flex: 1 }}>

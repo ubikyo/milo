@@ -16,15 +16,18 @@ import {
   useRowSelection,
   editKeys,
 } from "../../components/ui/DrawerRows";
-import { STRONG_TEXT } from "../../themes/colors";
 import { insertRow, type SettingRow } from "../../components/ui/SettingRows";
-import { H2_COLOR, H2_GAP } from "./h2";
+import { H2_GAP } from "./h2";
+
+/** The attributes' color while none is chosen. */
+const LABEL_INK = "var(--milo-widget-label)";
 import { Frame } from "../margins";
 import { formatOf, formatReset, formatRow, formatStyle, NO_FORMAT } from "../text-format";
 import type { TextFormat } from "../text-format";
 import { isFramed, text, withField } from "../types";
 import type { AccessWidget, WidgetConfigProps } from "../types";
 import type { AccessBlockType } from "@milo/shared";
+import { themeColor } from "../../lib/themeColors";
 
 // Numbers: references that people come to read — a phone line, a contract,
 // an extension. Each row carries a label, which says which one, and the
@@ -291,19 +294,19 @@ export const numberWidget: AccessWidget = {
     return (
       <Frame config={config} framed={isFramed(config, true)}>
         {list.length === 0 ? (
-          <Text size="sm" c={H2_COLOR}>
+          <Text size="sm" c={LABEL_INK}>
             Attributs
           </Text>
         ) : (
           <div className={classes.grid}>
             {list.map((l, i) => (
               <Fragment key={i}>
-                <Text size="sm" c={text(config, LABEL_COLOR) || H2_COLOR} style={{ ...labelStyle, textAlign: labelAlign }} truncate>
+                <Text size="sm" c={text(config, LABEL_COLOR) || LABEL_INK} style={{ ...labelStyle, textAlign: labelAlign }} truncate>
                   {l.label || "Attribut"}
                 </Text>
                 {/* White on the dark theme; on the light one, whose inset is
                     pale gray, white would not be legible: near-black. */}
-                <Text size="sm" c={text(config, VALUE_COLOR) || STRONG_TEXT} style={{ ...valueStyle, textAlign: valueAlign }} className={classes.number}>
+                <Text size="sm" c={text(config, VALUE_COLOR) || "var(--milo-widget-value)"} style={{ ...valueStyle, textAlign: valueAlign }} className={classes.number}>
                   {l.number || "—"}
                 </Text>
               </Fragment>
@@ -320,7 +323,6 @@ export const numberWidget: AccessWidget = {
   // following the scheme. The format sits beside the color, on the same row:
   // its button resets both.
   appearance: (config, onChange) => {
-    const dark = document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
     const textRow = (
       name: string,
       what: string,
@@ -359,8 +361,8 @@ export const numberWidget: AccessWidget = {
       };
     };
     return [
-      textRow("Attribut", "des attributs", LABEL_COLOR, "#dcdcdc", LABEL, NO_FORMAT),
-      textRow("Valeur", "des valeurs", VALUE_COLOR, dark ? "#ffffff" : "#000000", VALUE, VALUE_FORMAT),
+      textRow("Attribut", "des attributs", LABEL_COLOR, themeColor("widget-label"), LABEL, NO_FORMAT),
+      textRow("Valeur", "des valeurs", VALUE_COLOR, themeColor("widget-value"), VALUE, VALUE_FORMAT),
       alignRow("Attribut", "de l'alignement des attributs", LABEL_ALIGN, "left"),
       alignRow("Valeur", "de l'alignement des valeurs", VALUE_ALIGN, "right"),
     ];

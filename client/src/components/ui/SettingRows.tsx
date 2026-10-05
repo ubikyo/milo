@@ -45,7 +45,7 @@ const BUTTON_HEIGHT = "calc(1.75rem * var(--mantine-scale))";
 const FIELD_HEIGHT = "calc(1.875rem * var(--mantine-scale))";
 
 /** The button's background, darker than the row's (ROW_BACKGROUND). */
-const BUTTON_BACKGROUND = "light-dark(#d4d4d4, var(--mantine-color-dark-4))";
+const BUTTON_BACKGROUND = "var(--milo-control-bg)";
 
 type Config = Record<string, unknown>;
 
@@ -95,6 +95,13 @@ export interface SettingRow {
   what: string;
   /** "alpha": the color carries its transparency — a chart's fill. */
   color?: { value: string; onChange: (value: string) => void; alpha?: boolean };
+  /**
+   * Several colors side by side, aligned right — a theme color's dark and
+   * light values —, each told apart by what its label says.
+   */
+  colors?: { value: string; onChange: (value: string) => void; alpha?: boolean; what: string }[];
+  /** A line under the name: what the setting applies to. */
+  hint?: string;
   size?: SizeSetting;
   /** Several sizes side by side, aligned right — a padding's top and bottom. */
   sizes?: SizeSetting[];
@@ -223,15 +230,23 @@ function Size({
   );
 }
 
+/** The width of a row's color field: column headers line up with it. */
+export const COLOR_FIELD_WIDTH = COLOR_WIDTH;
+
 export default function SettingRows({
   label,
+  description,
   rows,
+  nameWidth = NAME_WIDTH,
 }: {
   label: string;
+  description?: string;
   rows: SettingRow[];
+  /** The width of the names, when they are longer than a widget's. */
+  nameWidth?: number;
 }) {
   return (
-    <Input.Wrapper label={label}>
+    <Input.Wrapper label={label} description={description} inputWrapperOrder={["label", "description", "input"]}>
       <Stack gap={1}>
         {rows.map((l, rank) => (
           <Group
@@ -258,14 +273,20 @@ export default function SettingRows({
               onClick={l.reset}
             />
             <Text
+              component="div"
               size="sm"
-              w={NAME_WIDTH}
+              w={nameWidth}
               style={{
                 flexShrink: 0,
                 marginLeft: `calc(${NAME_GAP}px - var(--mantine-spacing-sm))`,
               }}
             >
               {l.name}
+              {l.hint && (
+                <Text size="xs" c="dimmed">
+                  {l.hint}
+                </Text>
+              )}
             </Text>
             {l.color && (
               <Color
@@ -274,6 +295,19 @@ export default function SettingRows({
                 alpha={l.color.alpha}
                 label={`Couleur ${l.what}`}
               />
+            )}
+            {l.colors && (
+              <Group gap="sm" wrap="nowrap" style={{ marginLeft: "auto" }}>
+                {l.colors.map((c) => (
+                  <Color
+                    key={c.what}
+                    value={c.value}
+                    onChange={c.onChange}
+                    alpha={c.alpha}
+                    label={`Couleur ${c.what}`}
+                  />
+                ))}
+              </Group>
             )}
             {l.size && (
               <Size size={l.size} label={`Taille ${l.what}`} />

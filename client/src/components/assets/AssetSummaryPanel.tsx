@@ -141,7 +141,7 @@ const TAG_TITLE = {
 const TAG_ASSET = { ...TAG_TITLE, "--badge-height": "44px" } as CSSProperties;
 
 /** The ring's free part: a light neutral gray, not Mantine's, which leans blue. */
-const RING_BACKGROUND = "light-dark(#e0e0e0, var(--mantine-color-dark-4))";
+const RING_BACKGROUND = "var(--milo-control-bg)";
 
 export { CARD_BACKGROUND };
 

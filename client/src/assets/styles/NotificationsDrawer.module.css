@@ -7,7 +7,7 @@
 .row {
   border-radius: 6px;
   overflow: hidden;
-  background-color: light-dark(#ececec, #2e2e2e);
+  background-color: var(--milo-sunken-bg);
 }
 
 .row[data-openable] {
@@ -25,7 +25,7 @@
 }
 
 .row:hover {
-  background-color: light-dark(#e2e2e2, #353535);
+  background-color: var(--milo-sunken-hover);
 }
 
 .row:hover .header {

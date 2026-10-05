@@ -5,7 +5,7 @@
 .row {
   position: relative;
   padding: 10px;
-  background-color: light-dark(#ededed, var(--mantine-color-dark-6));
+  background-color: var(--milo-sunken-bg);
 }
 
 /* The link that opens the file: its content is the thumbnail, the name and
@@ -46,7 +46,7 @@
 }
 
 .row:hover {
-  background-color: light-dark(#e2e2e2, var(--mantine-color-dark-5));
+  background-color: var(--milo-sunken-hover);
 }
 
 /* The left thumbnail: it stands out from the row's gray — white on light;

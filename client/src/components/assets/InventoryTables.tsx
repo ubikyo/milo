@@ -910,7 +910,7 @@ function PowerSupply({ section }: { section: AssetSection }) {
 // --- Processors, memory, controllers ---------------------------------------
 
 /** The background of each row's number: a dark, neutral gray. */
-const NUMBER_BACKGROUND = "#4a4a4a";
+const NUMBER_BACKGROUND = "var(--milo-badge-bg)";
 
 /** The minimum width of the number's rectangle. */
 const NUMBER_WIDTH = 32;
@@ -1465,7 +1465,7 @@ const STORAGE_FIELDS: Fields = [
 ];
 
 /** The ring's free part: a light neutral gray, not Mantine's, which leans blue. */
-const RING_BACKGROUND = "light-dark(#e0e0e0, var(--mantine-color-dark-4))";
+const RING_BACKGROUND = "var(--milo-control-bg)";
 
 /**
  * A disk's capacity in a ring: its share of the workstation's total

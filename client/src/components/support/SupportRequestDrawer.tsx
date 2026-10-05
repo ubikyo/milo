@@ -701,7 +701,7 @@ export default function SupportRequestDrawer({
                   {/* The background of Mantine's fields ("default" variant):
                     the panel reads like a form field. */}
                   <Paper
-                    bg="light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))"
+                    bg="var(--mantine-color-default)"
                     style={{
                       flex: 1,
                       minHeight: 0,

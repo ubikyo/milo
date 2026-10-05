@@ -67,7 +67,7 @@
   justify-content: center;
 
   color: var(--mantine-color-teal-6);
-  background-color: light-dark(rgba(255, 255, 255, 0.9), rgba(26, 27, 30, 0.9));
+  background-color: color-mix(in srgb, var(--mantine-color-body) 90%, transparent);
   border: 2px dashed var(--mantine-color-teal-6);
   border-radius: var(--mantine-radius-md);
 }

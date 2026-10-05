@@ -209,8 +209,7 @@ const DOUBLE_CLICK_DELAY = 250;
 
 // Neutral board background: the list stands out from the page background, the card stays
 // dark to stand out from the list that carries it.
-const LIST_BG =
-  "light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5))";
+const LIST_BG = "var(--milo-board-list-bg)";
 
 // Colors offered in a list's menu: the projects' red, orange, green
 // and blue, yellow and violet (shade 8), then two lighter
@@ -301,8 +300,7 @@ export function useListColors() {
 
 // Background of a card's drop placeholder: recessed under the cards of its
 // list. A list's own no longer needs one: it recalls itself there.
-const CARD_PLACEHOLDER_BG =
-  "light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-9))";
+const CARD_PLACEHOLDER_BG = "var(--milo-drop-bg)";
 
 // Card radius: the same for the card, its drop placeholder, the copy
 // following the pointer and the input field that replaces it when editing.

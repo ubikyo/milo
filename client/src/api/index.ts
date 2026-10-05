@@ -97,6 +97,7 @@ import type {
   MailTemplateKey,
   MailTemplatePreview,
   DisplaySettings,
+  ThemeColors,
   TitleStyle,
   SupportContent,
   SupportContentEvent,
@@ -774,6 +775,8 @@ export const api = {
   getDisplaySettings: () => get<DisplaySettings>("/display-settings"),
   updateDisplaySettings: (data: Partial<DisplaySettings>) =>
     put<DisplaySettings>("/display-settings", data),
+  getThemeColors: () => get<ThemeColors>("/theme-colors"),
+  updateThemeColors: (colors: ThemeColors) => put<ThemeColors>("/theme-colors", colors),
   getTitleStyles: () => get<TitleStyle[]>("/title-styles"),
   updateTitleStyles: (styles: TitleStyle[]) =>
     put<TitleStyle[]>("/title-styles", styles),

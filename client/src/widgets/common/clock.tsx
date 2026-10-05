@@ -9,6 +9,7 @@ import type { TextFormat } from "../text-format";
 import { withField, count, text } from "../types";
 import { SEGMENTS_BG } from "../../themes/colors";
 import type { AccessWidget, Padding } from "../types";
+import { themeColor } from "../../lib/themeColors";
 
 // A clock: the time it is elsewhere. Useful when calling a site in another
 // time zone — you see at a glance whether it is open.
@@ -41,14 +42,14 @@ const SECONDS_COLOR_KEY = "secondsColor";
  * would vanish there in the light theme —; the second hand is the
  * application's green (Mantine's teal 6).
  */
-const DEFAULT_FACE = "#2e2e2e";
-const DEFAULT_STROKE = "#4d4d4d";
-const DEFAULT_NUMERALS = "#c4c4c4";
-const DEFAULT_HANDS = "#ededed";
-const DEFAULT_SECONDS = "#12b886";
+const defaultFace = () => themeColor("clock-face");
+const defaultStroke = () => themeColor("clock-stroke");
+const defaultNumerals = () => themeColor("clock-numerals");
+const defaultHands = () => themeColor("clock-hands");
+const defaultSeconds = () => themeColor("clock-seconds");
 
 /** The colors that follow the text's while none is chosen, depending on the theme. */
-const DEFAULT_INK = "var(--mantine-color-text)";
+const DEFAULT_INK = "var(--milo-widget-text)";
 
 /** The time's own format, in digits: bold, at its weight below. */
 const DEFAULT_TEXT_FORMAT: TextFormat = { bold: true, italic: false, underline: false };
@@ -321,11 +322,11 @@ function Clock({ config }: { config: unknown }) {
       elapsed={elapsedIn(timezone, currentTime)}
       seconds={seconds}
       digits={isChecked(config, DIGITS, false)}
-      face={text(config, DIAL_COLOR) || DEFAULT_FACE}
-      stroke={text(config, STROKE_COLOR) || DEFAULT_STROKE}
-      numerals={text(config, NUMERALS_COLOR) || DEFAULT_NUMERALS}
-      hands={text(config, HANDS_COLOR) || DEFAULT_HANDS}
-      secondsColor={text(config, SECONDS_COLOR_KEY) || DEFAULT_SECONDS}
+      face={text(config, DIAL_COLOR) || defaultFace()}
+      stroke={text(config, STROKE_COLOR) || defaultStroke()}
+      numerals={text(config, NUMERALS_COLOR) || defaultNumerals()}
+      hands={text(config, HANDS_COLOR) || defaultHands()}
+      secondsColor={text(config, SECONDS_COLOR_KEY) || defaultSeconds()}
     />
   ) : (
     // Centered in the column, whatever its width: the time is short, and
@@ -402,7 +403,7 @@ export const clockWidget: AccessWidget = {
         {
           name: "Cadran",
           what: "du cadran",
-          color: colorOf(DIAL_COLOR, DEFAULT_FACE),
+          color: colorOf(DIAL_COLOR, defaultFace()),
           size: {
             value: count(config, SIZE, DEFAULT_DIAMETER),
             defaultValue: DEFAULT_DIAMETER,
@@ -412,13 +413,13 @@ export const clockWidget: AccessWidget = {
               onChange(insertRow(config, { [SIZE]: v === DEFAULT_DIAMETER ? "" : v })),
           },
           modified:
-            isSet(DIAL_COLOR, DEFAULT_FACE) || count(config, SIZE, DEFAULT_DIAMETER) !== DEFAULT_DIAMETER,
+            isSet(DIAL_COLOR, defaultFace()) || count(config, SIZE, DEFAULT_DIAMETER) !== DEFAULT_DIAMETER,
           reset: () => onChange(insertRow(config, { [DIAL_COLOR]: "", [SIZE]: "" })),
         },
-        colorRow("Trait", "du trait du cadran", STROKE_COLOR, DEFAULT_STROKE),
-        colorRow("Chiffres", "des chiffres", NUMERALS_COLOR, DEFAULT_NUMERALS),
-        colorRow("Aiguilles", "des aiguilles", HANDS_COLOR, DEFAULT_HANDS),
-        colorRow("Trotteuse", "de la trotteuse", SECONDS_COLOR_KEY, DEFAULT_SECONDS),
+        colorRow("Trait", "du trait du cadran", STROKE_COLOR, defaultStroke()),
+        colorRow("Chiffres", "des chiffres", NUMERALS_COLOR, defaultNumerals()),
+        colorRow("Aiguilles", "des aiguilles", HANDS_COLOR, defaultHands()),
+        colorRow("Trotteuse", "de la trotteuse", SECONDS_COLOR_KEY, defaultSeconds()),
       ];
 
     // The size, brought back to the default, is no longer stored. The color
@@ -426,8 +427,7 @@ export const clockWidget: AccessWidget = {
     // the date's (widgets/common/date): brought back to it, it is no longer
     // stored, and the time keeps following the scheme.
     const size = count(config, SIZE, DEFAULT_SIZE);
-    const dark = document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
-    const defaultInk = dark ? "#c9c9c9" : "#000000";
+    const defaultInk = themeColor("widget-text");
     return [
       {
         name: "Texte",

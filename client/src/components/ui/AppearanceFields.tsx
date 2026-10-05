@@ -1,6 +1,7 @@
 import { count, text } from "../../widgets/types";
 import { insertRow, type SettingRow } from "./SettingRows";
 import { BACKGROUND, TITLE, VALUE, type CardText } from "./IndicatorTitle";
+import { themeColor } from "../../lib/themeColors";
 
 // The look of an indicator's card, as rows of the "Apparence" block
 // (SettingRows): the title and the value set their color and
@@ -14,13 +15,12 @@ import { BACKGROUND, TITLE, VALUE, type CardText } from "./IndicatorTitle";
 
 type Config = Record<string, unknown>;
 
-const isDark = () => document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
 
 /** Mantine's text color, in the current scheme. */
-const textColor = () => (isDark() ? "#c9c9c9" : "#000000");
+const textColor = () => themeColor("text");
 
 /** The inset's background (AccessNumber.module.css): dark-8 or gray-1. */
-const insetColor = () => (isDark() ? "#1f1f1f" : "#f1f3f5");
+const insetColor = () => themeColor("inset-bg");
 
 /** A color field showing its default; brought back to it, nothing is stored. */
 const colorOf = (

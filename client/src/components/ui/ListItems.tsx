@@ -31,14 +31,12 @@ export const ROW_PADDING = 10;
 
 // Background and rule of Mantine's input fields: the list reads like a field,
 // values are added and modified in it.
-const FIELD_BG =
-  "light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))";
+const FIELD_BG = "var(--mantine-color-default)";
 const FIELD_LINE = "1px solid var(--mantine-color-default-border)";
 
 // Background of the hovered row: one step above the field's background, to show
 // which row the menu applies to.
-const ROW_HOVER_BG =
-  "light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5))";
+const ROW_HOVER_BG = "var(--milo-field-hover)";
 
 // Size of the Enter symbol at the end of the add row: that of the "+" of the
 // add actions (themes/plus.ts), which it replaces here.

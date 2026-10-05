@@ -65,6 +65,7 @@ import { userRoutes } from "./routes/users.js";
 import { notificationSettingsRoutes } from "./routes/notification-settings.js";
 import { mailTemplateRoutes } from "./routes/mail-templates.js";
 import { displaySettingsRoutes } from "./routes/display-settings.js";
+import { themeColorRoutes } from "./routes/theme-colors.js";
 import { titleStyleRoutes } from "./routes/title-styles.js";
 import { supportMailRoutes } from "./routes/support-mail.js";
 import { m365WebhookRoutes } from "./routes/m365-webhooks.js";
@@ -196,6 +197,7 @@ export const createApp = (): express.Express => {
   app.use("/api/notification-settings", requireSettingsToWrite, notificationSettingsRoutes);
   app.use("/api/mail-templates", requireSettingsToWrite, mailTemplateRoutes);
   app.use("/api/display-settings", requireSettingsToWrite, displaySettingsRoutes);
+  app.use("/api/theme-colors", requireSettingsToWrite, themeColorRoutes);
   app.use("/api/title-styles", titleStyleRoutes);
 
   app.use("/api", notFoundHandler);

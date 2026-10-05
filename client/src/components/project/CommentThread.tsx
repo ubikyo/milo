@@ -124,7 +124,7 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
         bg={
           folded
             ? "var(--mantine-color-blue-filled)"
-            : "light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))"
+            : "var(--mantine-color-default)"
         }
         style={{
           borderRadius: "var(--mantine-radius-default)",
@@ -185,7 +185,7 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
                     folded
                       ? undefined
                       : ({
-                          "--ai-hover": "light-dark(#ececec, var(--mantine-color-dark-4))",
+                          "--ai-hover": "var(--milo-menu-hover)",
                         } as CSSProperties)
                   }
                 >

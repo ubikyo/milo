@@ -7,6 +7,7 @@ import { formatOf, formatRow, formatStyle } from "../text-format";
 import type { TextFormat } from "../text-format";
 import { withField, count, text } from "../types";
 import type { AccessWidget, Padding } from "../types";
+import { themeColor } from "../../lib/themeColors";
 
 // Today's date, in the format chosen in its drawer — spelled out with the
 // day's name, short in digits, ISO… Like the clock, it shows only the date,
@@ -47,7 +48,7 @@ const INSET = 5;
 const VERTICAL_PADDING = 20;
 const LOW_MARGIN = 15;
 
-const DEFAULT_INK = "var(--mantine-color-text)";
+const DEFAULT_INK = "var(--milo-widget-text)";
 
 /** The date's own format: bold, at its weight below. */
 const DEFAULT_TEXT_FORMAT: TextFormat = { bold: true, italic: false, underline: false };
@@ -147,8 +148,7 @@ export const dateWidget: AccessWidget = {
   // the scheme.
   appearance: (config, onChange) => {
     const size = count(config, SIZE, DEFAULT_SIZE);
-    const dark = document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
-    const defaultColor = dark ? "#c9c9c9" : "#000000";
+    const defaultColor = themeColor("widget-text");
     const color = text(config, COLOR);
     return [
       {

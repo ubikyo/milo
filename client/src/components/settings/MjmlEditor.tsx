@@ -19,7 +19,7 @@ const BUILDER_URL = "https://tools.puida.com/creative/visual/mjml-email-builder/
 const LINK_INSET = 2;
 
 // The gutter's line: a neutral gray, as around the preview — Mantine's leans blue.
-const BORDER = "light-dark(#dcdcdc, #3d3d3d)";
+const BORDER = "var(--milo-header-bg)";
 
 const MONOSPACE = {
   fontFamily: "var(--mantine-font-family-monospace)",

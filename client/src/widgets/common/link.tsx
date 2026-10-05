@@ -7,6 +7,7 @@ import { insertRow } from "../../components/ui/SettingRows";
 import { formatOf, formatRow, formatStyle } from "../text-format";
 import { withField, count, text } from "../types";
 import type { AccessWidget, WidgetDisplayProps } from "../types";
+import { themeColor } from "../../lib/themeColors";
 
 // A link: a service's address, the word that designates it, and the means to
 // switch it off without losing it.
@@ -45,7 +46,7 @@ const SIZE_MIN = 8;
 const SIZE_MAX = 64;
 
 /** The color of a link that has been given none: the text's, depending on the theme. */
-const DEFAULT_COLOR = "var(--mantine-color-text)";
+const DEFAULT_COLOR = "var(--milo-widget-text)";
 
 /**
  * Delay left to a second click before the first opens the address. Short
@@ -274,8 +275,7 @@ export const linkWidget: AccessWidget = {
   // is no longer stored either.
   appearance: (config, onChange) => {
     const size = count(config, SIZE, DEFAULT_SIZE);
-    const dark = document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
-    const defaultColor = dark ? "#c9c9c9" : "#000000";
+    const defaultColor = themeColor("widget-text");
     const color = text(config, COLOR);
     return [
       {

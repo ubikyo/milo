@@ -42,6 +42,7 @@ import {
   ACCESS_FEED_QUANTITY_MAX,
 } from "@milo/shared";
 import type { AccessFeed, AccessFeedProbe, Id } from "@milo/shared";
+import { themeColor } from "../../lib/themeColors";
 
 // An RSS feed: the latest articles from one or several sources, each linking
 // to its page. It is used to follow news — a publisher, a supplier, a service
@@ -75,7 +76,7 @@ const COLOR = "color";
 const DATE_COLOR = "dateColor";
 
 /** The titles' ink while the drawer's "Apparence" block sets none: the theme's text. */
-const DEFAULT_INK = "var(--mantine-color-text)";
+const DEFAULT_INK = "var(--milo-widget-text)";
 /** The space below the feed, by default: it keeps it off what follows. */
 const LOW_MARGIN = 15;
 
@@ -379,7 +380,7 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
         title={source ? `${title} — ${source}` : title}
       >
         {dates && a.date && (
-          <Text span size="xs" c={text(config, DATE_COLOR) || "dimmed"} style={DATE_COLUMN}>
+          <Text span size="xs" c={text(config, DATE_COLOR) || "var(--milo-widget-dimmed)"} style={DATE_COLUMN}>
             {formatDate(a.date)}
           </Text>
         )}
@@ -771,9 +772,8 @@ export const rssWidget: AccessWidget = {
   // the current scheme; brought back to them, they are no longer stored: the
   // display keeps following the scheme.
   appearance: (config, onChange) => {
-    const dark = document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
-    const defaultColor = dark ? "#c9c9c9" : "#000000";
-    const dimmed = dark ? "#828282" : "#868e96";
+    const defaultColor = themeColor("widget-text");
+    const dimmed = themeColor("widget-dimmed");
     const color = text(config, COLOR);
     const dateColor = text(config, DATE_COLOR);
     return [

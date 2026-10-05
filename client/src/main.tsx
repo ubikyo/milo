@@ -105,7 +105,7 @@ const theme = createTheme({
       vars: () => ({
         table: {
           "--table-border-color":
-            "light-dark(var(--mantine-color-gray-5), var(--mantine-color-dark-6))",
+            "var(--milo-table-border)",
         },
       }),
       // The rule under the headers keeps Mantine's color: it separates the
@@ -113,7 +113,7 @@ const theme = createTheme({
       styles: {
         thead: {
           "--table-border-color":
-            "light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))",
+            "var(--milo-divider)",
         } as React.CSSProperties,
       },
     },

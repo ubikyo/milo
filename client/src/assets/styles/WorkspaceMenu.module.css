@@ -1,13 +1,7 @@
 /* A workspace of the menu, on hover — or chosen with the arrows: the
    application's neutral gray, like the contexts menu (ContextsMenu.module.css).
-   Set per theme: on dark, the neutral gray is the menu background itself
-   (dark-6), the hover takes Mantine's menu hover instead. */
-:where([data-mantine-color-scheme="light"]) .item:hover,
-:where([data-mantine-color-scheme="light"]) .item[data-hovered] {
-  background-color: #ececec;
-}
-
-:where([data-mantine-color-scheme="dark"]) .item:hover,
-:where([data-mantine-color-scheme="dark"]) .item[data-hovered] {
-  background-color: var(--mantine-color-dark-4);
+   The themes' menu hover (lib/themeColors.ts). */
+.item:hover,
+.item[data-hovered] {
+  background-color: var(--milo-menu-hover);
 }

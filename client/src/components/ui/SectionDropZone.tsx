@@ -31,8 +31,7 @@ interface SectionDropZoneProps {
 }
 
 /** The dotted line's gray: the tab row's rule. The columns' frame uses it too. */
-export const DOTTED =
-  "light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))";
+export const DOTTED = "var(--milo-divider)";
 
 // Minimum height: an empty column must remain a zone, not a line.
 const MIN_HEIGHT = 120;

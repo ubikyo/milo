@@ -143,7 +143,7 @@ const hour = (iso: string) => dayjs(iso).format("HH:mm");
 const dayTitle = (day: string) => dayjs(day).locale("fr").format("dddd D MMMM");
 
 /** The appointments' gray, also under the list when the widget has a height of its own. */
-const APPOINTMENT_BACKGROUND = "light-dark(#c8c8c8, var(--mantine-color-dark-6))";
+const APPOINTMENT_BACKGROUND = "var(--milo-m365-appointment)";
 
 /** A day's date, in its own gray section, above its appointments. */
 function DaySection({ day, mt }: { day: string; mt?: number }) {
@@ -151,7 +151,7 @@ function DaySection({ day, mt }: { day: string; mt?: number }) {
     <Box
       p={20}
       mt={mt}
-      bg="light-dark(#333333, var(--mantine-color-dark-8))"
+      bg="var(--milo-m365-day)"
       c="white"
       style={{ borderRadius: "10px 10px 0 0" }}
     >

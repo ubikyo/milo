@@ -15,14 +15,14 @@ import { PLUS_SIZE } from "../../themes/plus";
  * A row's background, laid directly on the drawer: a neutral gray on white, and
  * on dark a gray lighter than the drawer.
  */
-export const ROW_BACKGROUND = "light-dark(#ededed, var(--mantine-color-dark-6))";
+export const ROW_BACKGROUND = "var(--milo-sunken-bg)";
 
 /**
  * A header row's background — a checklist's title, a user above their
  * permissions —: a darker neutral gray on light; on dark, one step further
  * from the drawer background.
  */
-export const HEADER_BACKGROUND = "light-dark(#dcdcdc, var(--mantine-color-dark-5))";
+export const HEADER_BACKGROUND = "var(--milo-header-bg)";
 
 /** The padding around a row's content, and to the left of its handle. */
 export const ROW_INSET = 4;

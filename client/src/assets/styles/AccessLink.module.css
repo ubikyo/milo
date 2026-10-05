@@ -22,5 +22,5 @@
 /* The grid row hover (assets/styles/tables.css): gray-2 on light, dark-6 on
    dark. */
 .link:hover {
-  background-color: light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-6));
+  background-color: var(--milo-row-hover);
 }

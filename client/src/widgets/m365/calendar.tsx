@@ -32,6 +32,7 @@ import {
   shownKeyOf,
   useChosenDay,
 } from "./agenda";
+import { themeColor } from "../../lib/themeColors";
 
 /** The template of the e-mail that carries the code. */
 const CALENDAR_TEMPLATES: readonly MailTemplateKey[] = ["calendar_confirmation"];
@@ -55,14 +56,13 @@ const FRAMED = "framed";
  * variable is absent and the calendar keeps Mantine's color, in the current
  * scheme. The defaults, in hexadecimal, are those the picker shows.
  */
-const isDark = () => document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
 const COLORS = [
   { key: "monthColor", name: "Mois", what: "du mois et des flèches", cssVar: "--calendar-month", defaultColor: defaultText },
   { key: "weekdaysColor", name: "Semaine", what: "des jours de la semaine", cssVar: "--calendar-weekdays", defaultColor: defaultAxes },
   { key: "daysColor", name: "Jours", what: "des jours", cssVar: "--calendar-days", defaultColor: defaultText },
   { key: "weekendColor", name: "Week-end", what: "des jours du week-end", cssVar: "--calendar-weekend", defaultColor: () => PALETTE_RED.toLowerCase() },
   { key: "outsideColor", name: "Hors mois", what: "des jours des mois voisins", cssVar: "--calendar-outside", defaultColor: defaultAxes },
-  { key: "todayColor", name: "Aujourd'hui", what: "du cadre d'aujourd'hui", cssVar: "--calendar-today", defaultColor: () => (isDark() ? "#424242" : "#ced4da") },
+  { key: "todayColor", name: "Aujourd'hui", what: "du cadre d'aujourd'hui", cssVar: "--calendar-today", defaultColor: () => themeColor("m365-today") },
   // Only with appointments: a day is chosen, and marked.
   { key: "selectedColor", name: "Sélection", what: "du jour choisi", cssVar: "--calendar-selected", defaultColor: () => BLUE.toLowerCase(), appointments: true },
   { key: "dotColor", name: "Rendez-vous", what: "du point des rendez-vous", cssVar: "", defaultColor: () => PALETTE_GREEN.toLowerCase(), appointments: true },

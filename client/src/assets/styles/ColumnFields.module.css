@@ -1,13 +1,7 @@
 /* An option of the column list (ColumnFields): the list takes the drawer
    background, which Mantine's hover repeats on dark (dark-7) and tints blue
-   on light (gray-0). The application's neutral gray instead, set per theme
-   like the menus'. The doubled class wins over Mantine's rule. */
-:where([data-mantine-color-scheme="light"])
-  .option.option:hover:where(:not([data-combobox-selected], [data-combobox-disabled])) {
-  background-color: #ececec;
-}
-
-:where([data-mantine-color-scheme="dark"])
-  .option.option:hover:where(:not([data-combobox-selected], [data-combobox-disabled])) {
-  background-color: var(--mantine-color-dark-4);
+   on light (gray-0). The themes' menu hover instead, like the menus'. The
+   doubled class wins over Mantine's rule. */
+.option.option:hover:where(:not([data-combobox-selected], [data-combobox-disabled])) {
+  background-color: var(--milo-menu-hover);
 }

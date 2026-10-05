@@ -46,7 +46,7 @@
 .calendar .day[data-today][data-highlight-today]:not([data-selected]) {
   border-color: var(
     --calendar-today,
-    light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-4))
+    var(--milo-m365-today)
   );
 }
 

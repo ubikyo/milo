@@ -6,6 +6,7 @@ import { insertRow, type SettingRow } from "../../components/ui/SettingRows";
 import { text } from "../types";
 import { NAME, IndicatorTitle } from "./common";
 import type { SupportIndicatorWidget } from "./types";
+import { themeColor } from "../../lib/themeColors";
 
 // The breakdown of the requests of the company being viewed by status, as a radar:
 // one branch per status, and its length says how many requests it holds.
@@ -25,18 +26,17 @@ const GRID_COLOR = "gridColor";
  * them: the application's green (Mantine's teal 6) for the outline, and the
  * same at 20 % for the fill.
  */
-const DEFAULT_COLOR = "#12b88633";
-const DEFAULT_STROKE = "#12b886";
+const defaultColor = () => themeColor("chart-status-fill");
+const defaultStroke = () => themeColor("chart-status-stroke");
 
-const isDark = () => document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
 
 /**
  * Mantine's own legend and grid colors (@mantine/charts), in the current
  * scheme: the dimmed text, and a translucent gray. While none is chosen, the
  * chart is given none, and keeps following the scheme.
  */
-const defaultLegend = () => (isDark() ? "#828282" : "#868e96");
-const defaultGrid = () => (isDark() ? "#69696999" : "#adb5bd99");
+const defaultLegend = () => themeColor("widget-dimmed");
+const defaultGrid = () => themeColor("chart-grid");
 
 export const statusesIndicator: SupportIndicatorWidget = {
   type: "status",
@@ -50,7 +50,7 @@ export const statusesIndicator: SupportIndicatorWidget = {
       status: label,
       tickets: requests.filter((d) => d.status === value).length,
     }));
-    const stroke = text(config, STROKE_COLOR) || DEFAULT_STROKE;
+    const stroke = text(config, STROKE_COLOR) || defaultStroke();
     return (
       <Stack gap={4} style={{ flex: 1 }}>
         <IndicatorTitle config={config} defaultValue={LABEL} />
@@ -64,7 +64,7 @@ export const statusesIndicator: SupportIndicatorWidget = {
             {
               name: "tickets",
               label: "Tickets",
-              color: text(config, COLOR) || DEFAULT_COLOR,
+              color: text(config, COLOR) || defaultColor(),
               strokeColor: stroke,
               opacity: 1,
             },
@@ -103,8 +103,8 @@ export const statusesIndicator: SupportIndicatorWidget = {
       };
     };
     return [
-      colorRow("Surface", "de la surface du graphique", COLOR, DEFAULT_COLOR, true),
-      colorRow("Trait", "du trait du graphique", STROKE_COLOR, DEFAULT_STROKE),
+      colorRow("Surface", "de la surface du graphique", COLOR, defaultColor(), true),
+      colorRow("Trait", "du trait du graphique", STROKE_COLOR, defaultStroke()),
       colorRow("Légendes", "des légendes", LEGEND_COLOR, defaultLegend()),
       colorRow("Grille", "de la grille", GRID_COLOR, defaultGrid(), true),
     ];

@@ -24,7 +24,7 @@ export const SHADES = [
   "#d6336c", // pink
   "#ffffff",
   "#ececec", // light neutral hover
-  "#c4c4c4", // dark neutral text
+  "#c9c9c9", // dark neutral text
   "#a6a6a6",
   "#4d4d4d", // light neutral text
   "#2e2e2e", // dark neutral hover

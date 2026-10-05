@@ -4,8 +4,8 @@
 .inset {
   padding: 10px;
   border-radius: 10px;
-  background-color: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8));
-  border: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-9));
+  background-color: var(--milo-inset-bg);
+  border: 1px solid var(--milo-inset-border);
 }
 
 /* Two columns: the label takes the remaining space, the number sits on the

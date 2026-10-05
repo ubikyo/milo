@@ -48,10 +48,10 @@ import { useWidgetAccess } from "../../lib/rights";
  * The message's background: a ticket's message's on the light theme; on dark,
  * a gray lighter than the drawer's, which would otherwise swallow it.
  */
-const MESSAGE_BACKGROUND = "light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))";
+const MESSAGE_BACKGROUND = "var(--milo-m365-message)";
 
 /** "À :" and "Cc :": white on the dark theme, the text's color on the light one. */
-const LABEL_COLOR = "light-dark(var(--mantine-color-text), var(--mantine-color-white))";
+const LABEL_COLOR = "var(--milo-strong-text)";
 
 /** The reader's width: a ticket's drawer's. */
 const DRAWER_WIDTH = 820;

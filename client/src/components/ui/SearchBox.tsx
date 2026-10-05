@@ -161,7 +161,7 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
               minHeight: ROW_CONTROL_HEIGHT,
               // A gray darker than that of the other fields, in both themes.
               "--input-placeholder-color":
-                "light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-4))",
+                "var(--milo-search-placeholder)",
             } as CSSProperties,
           }}
           onChange={(event) => {

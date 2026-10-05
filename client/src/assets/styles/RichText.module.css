@@ -126,12 +126,12 @@
 }
 
 .control:not([data-active]) {
-  background-color: light-dark(var(--mantine-color-white), var(--mantine-color-dark-6));
+  background-color: var(--mantine-color-default);
 }
 
 @media (hover: hover) {
   .control:not([data-active]):not([data-disabled]):hover {
-    background-color: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5));
+    background-color: var(--milo-field-hover);
   }
 }
 
@@ -151,6 +151,6 @@
    white, in both themes. Hover keeps it. */
 .control[data-active],
 .control[data-active]:hover {
-  background-color: light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-4));
+  background-color: var(--milo-dark-button);
   color: var(--mantine-color-white);
 }

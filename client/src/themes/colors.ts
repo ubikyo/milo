@@ -57,7 +57,7 @@ export const GREEN = PALETTE_GREEN;
 
 // Header of a confirmation we do not want to dramatize: dark gray
 // instead of red, the text staying white in both themes.
-export const DARK_HEADER = "var(--mantine-color-dark-6)";
+export const DARK_HEADER = "var(--milo-dark-header)";
 
 // Green of the "add" actions placed at the end of a list, and its shade on
 // hover: a tone darker, without background. Each theme has its pair, otherwise the
@@ -76,33 +76,30 @@ export const ADD_ACTION = {
 
 // White on a dark background, near-black on a light one: maximum contrast in
 // both themes. Used for modal titles and the active tab.
-export const STRONG_TEXT =
-  "light-dark(var(--mantine-color-black), var(--mantine-color-white))";
+export const STRONG_TEXT = "var(--milo-strong-text)";
 
 // Hover of a gray button: Mantine's grays lean blue, this one
 // is frankly neutral. Light gray on the light theme, dark gray on the
 // dark one.
-export const NEUTRAL_HOVER = "light-dark(#ececec, #2e2e2e)";
+export const NEUTRAL_HOVER = "var(--milo-sunken-bg)";
 
 // Text of a gray button without background — "Fermer": Mantine's gray leans
 // blue, this one is neutral. Dark on the light theme, light on the dark one.
-export const NEUTRAL_TEXT = "light-dark(#4d4d4d, #c4c4c4)";
+export const NEUTRAL_TEXT = "var(--milo-neutral-text)";
 
 // Behind the options of a segmented choice: a neutral gray, where Mantine's
 // leans blue. The chosen option stands on it in green.
-export const SEGMENTS_BG = "light-dark(#fafafa, var(--mantine-color-dark-5))";
+export const SEGMENTS_BG = "var(--milo-subtle-bg)";
 
 // The focus line: gray, never the blue of Mantine's primary color.
 // Two shades, one per theme — a dark gray would get lost on the dark background,
 // where a light gray stands out.
-export const FOCUS_BORDER =
-  "light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1))";
+export const FOCUS_BORDER = "var(--milo-field-icon)";
 
 // Icons placed in a field — the editor's bar, the end of a checklist
 // or attachment row: the gray of Mantine's toolbar,
 // dark on the light theme, light on the dark one.
-export const FIELD_ICON =
-  "light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1))";
+export const FIELD_ICON = "var(--milo-field-icon)";
 
 // Background of a "framed" element: it stands out from the page without a line or
 // shadow. It is the neutral hover gray above, set this time

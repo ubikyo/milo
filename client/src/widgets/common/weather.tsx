@@ -24,6 +24,7 @@ import { Frame } from "../margins";
 import { withField, count, text } from "../types";
 import type { AccessWidget, WidgetConfigProps } from "../types";
 import type { AccessWeather, Id, WeatherPlace } from "@milo/shared";
+import { themeColor } from "../../lib/themeColors";
 
 // The weather of a place: the temperature, a pictogram of the sky's state,
 // and optionally the feels-like temperature, humidity and wind, then the
@@ -90,12 +91,12 @@ const skyOf = (code: number, day = true): Sky => {
   if (code === 0) {
     return day
       ? { label: "Ensoleillé", icon: IconSun, color: "#fab005" }
-      : { label: "Ciel clair", icon: IconMoon, color: "#c4c4c4" };
+      : { label: "Ciel clair", icon: IconMoon, color: "#c9c9c9" };
   }
   if (code <= 2) {
     return day
       ? { label: "Éclaircies", icon: IconSunHigh, color: "#fab005" }
-      : { label: "Éclaircies", icon: IconSunMoon, color: "#c4c4c4" };
+      : { label: "Éclaircies", icon: IconSunMoon, color: "#c9c9c9" };
   }
   if (code === 3) return { label: "Couvert", icon: IconCloud, color: "#a6a6a6" };
   if (code === 45 || code === 48) return { label: "Brouillard", icon: IconCloudFog, color: "#a6a6a6" };
@@ -147,7 +148,7 @@ interface ForecastColors {
 }
 
 function Forecasts({ weather, what, colors }: { weather: AccessWeather; what: string; colors: ForecastColors }) {
-  const legend = colors.legend || "dimmed";
+  const legend = colors.legend || "var(--milo-widget-dimmed)";
   if (what === "temperature") {
     const data = weather.hourly.map((h) => ({ hour: `${h.time.slice(11, 13)} h`, temperature: h.temperature }));
     return (
@@ -308,7 +309,7 @@ function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
           </Group>
         )}
         {isChecked(config, DETAILS, false) && (
-          <Group gap="md" justify="center" c={text(config, DETAILS_COLOR) || "dimmed"}>
+          <Group gap="md" justify="center" c={text(config, DETAILS_COLOR) || "var(--milo-widget-dimmed)"}>
             <Group gap={4} title="Ressenti">
               <IconTemperature size={14} />
               <Text size="xs">{degrees(current.feelsLike)}</Text>
@@ -434,9 +435,8 @@ export const weatherWidget: AccessWidget = {
   // following the scheme. The pictogram has no color to set: it is the sky's,
   // which changes with the weather.
   appearance: (config, onChange) => {
-    const dark = document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
-    const textColor = dark ? "#c9c9c9" : "#000000";
-    const dimmed = dark ? "#828282" : "#868e96";
+    const textColor = themeColor("widget-text");
+    const dimmed = themeColor("widget-dimmed");
     const colorOf = (key: string, defaultColor = "") => ({
       value: text(config, key) || defaultColor,
       onChange: (v: string) => onChange(insertRow(config, { [key]: v === defaultColor ? "" : v })),

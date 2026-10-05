@@ -11,7 +11,7 @@ const TAG_HEIGHT = 20;
 const TAG_PADDING_X = 2;
 // A neutral tag's background: a gray lighter than the hover's (NEUTRAL_HOVER),
 // untinted — Mantine's leans blue.
-const NEUTRAL_BG = "light-dark(#f4f4f4, #3a3a3a)";
+const NEUTRAL_BG = "var(--milo-subtle-bg)";
 // The gap on either side of the separator, when the label is copyable.
 const SEPARATOR_GAP = 4;
 

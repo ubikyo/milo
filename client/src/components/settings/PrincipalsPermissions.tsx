@@ -32,7 +32,7 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import type { EntraPrincipal, PrincipalPermissions } from "@milo/shared";
 
 /** The background of a row's icon: a neutral gray, darker than the row. */
-const AVATAR_BACKGROUND = "light-dark(#d4d4d4, var(--mantine-color-dark-4))";
+const AVATAR_BACKGROUND = "var(--milo-control-bg)";
 
 /** The air added above and below a row: 10 px more height. */
 const EXTRA_PADDING = 5;
@@ -76,7 +76,7 @@ const ROUNDED_TOP = (({ borderTopLeftRadius, borderTopRightRadius }) => ({
 const UNFOLD_DURATION = 200;
 
 /** The chevron's background on hover: a neutral gray, darker than the header. */
-const CHEVRON_HOVER = "light-dark(#cdcdcd, var(--mantine-color-dark-4))";
+const CHEVRON_HOVER = "var(--milo-control-bg)";
 
 const key = (p: EntraPrincipal) => `${p.type}:${p.id}`;
 
@@ -119,6 +119,11 @@ interface PrincipalsPermissionsProps<T> {
    * — the administration. Otherwise they are only tagged.
    */
   protectOwn?: boolean;
+  /**
+   * The background of the principals' rows: the darker gray of a checklist's
+   * title by default; the administration takes that of the drawer lists.
+   */
+  headerBackground?: string;
 }
 
 /**
@@ -143,6 +148,7 @@ export default function PrincipalsPermissions<T>({
   removeDialog,
   readOnly = false,
   protectOwn = true,
+  headerBackground = HEADER_BACKGROUND,
   fillEmpty = false,
   candidates,
 }: PrincipalsPermissionsProps<T>) {
@@ -309,7 +315,7 @@ export default function PrincipalsPermissions<T>({
                       // A header above its permissions: the darker gray of a
                       // checklist's title, square at the bottom when they are
                       // unfolded against it.
-                      backgroundColor: HEADER_BACKGROUND,
+                      backgroundColor: headerBackground,
                       ...(open ? { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 } : null),
                       paddingLeft: NAME_INSET,
                       // On two lines, name and address: a bit more air.

@@ -1,7 +1,5 @@
 import { defineTitleLook } from "./titles";
-
-/** The gray that other elements reuse for their labels. */
-export const H2_COLOR = "rgb(220, 220, 220)";
+import { themeColor } from "../../lib/themeColors";
 
 /** The space an "H2" title leaves above and below itself, which other elements reuse. */
 export const H2_GAP = 15;
@@ -15,7 +13,9 @@ defineTitleLook("subcategory", {
   order: 2,
   size: 16,
   weight: 400,
-  color: "#ffffff",
+  get color() {
+    return themeColor("widget-h2");
+  },
   lowMargin: H2_GAP,
   highMargin: (previousType) => (previousType === "category" ? 20 : 30),
 });

@@ -70,7 +70,7 @@ export default function RecipientsInput({ label, value, onChange }: RecipientsIn
       // The background of the rest of the editor: the row is part of it.
       style={{
         backgroundColor: FIELD_BG,
-        borderBottom: "1px solid light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-4))",
+        borderBottom: "1px solid var(--mantine-color-default-border)",
       }}
     >
       <Text size="sm" fw={600} c="dimmed" w={LABEL_WIDTH} style={{ flexShrink: 0 }}>
