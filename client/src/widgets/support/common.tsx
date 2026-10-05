@@ -1,4 +1,5 @@
 import { Text, TextInput } from "@mantine/core";
+import { editKeys } from "../../components/ui/DrawerRows";
 import { NAME } from "../../components/ui/IndicatorTitle";
 import { withField, text } from "../types";
 import type { IndicatorConfigProps } from "./types";
@@ -22,6 +23,7 @@ export function NameField({ config, onChange, defaultValue }: IndicatorConfigPro
       placeholder={defaultValue}
       value={text(config, NAME)}
       onChange={(e) => onChange(withField(config, NAME, e.currentTarget.value))}
+      {...editKeys((value) => onChange(withField(config, NAME, value)))}
       autoFocus
     />
   );

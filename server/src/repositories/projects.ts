@@ -1,6 +1,6 @@
 // Projects, and what comes with them: their actors and labels.
 
-import { DEFAULT_LABEL_GROUP } from "@milo/shared";
+import { DEFAULT_LABEL_GROUP, PROJECT_PRIORITY_LABELS } from "@milo/shared";
 import type { Actor, Id, Project, ProjectLabel } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { IdRow, NextRow, ProjectJoinedRow, ProjectRow } from "../db/rows.js";
@@ -175,6 +175,28 @@ const fullLabels = selection<{
    WHERE project_label_links.project_id = ?
    ORDER BY project_labels.position, project_labels.id`,
 );
+
+const priorityGroup = selection<IdRow>(
+  `SELECT id FROM project_label_groups
+   WHERE board_id = ? AND name = ? COLLATE NOCASE LIMIT 1`,
+);
+
+/**
+ * A projects widget brings the "Priorités" group and its labels
+ * (PROJECT_PRIORITY_LABELS), when the board has no group of that name yet:
+ * the board's projects widgets share them. True when they were created.
+ */
+export const ensureProjectPriorities = transaction((boardId: Id): boolean => {
+  if (priorityGroup.get(boardId, DEFAULT_LABEL_GROUP)) return false;
+  const group = projectLabelGroups.create(boardId, DEFAULT_LABEL_GROUP);
+  const timestamp = new Date().toISOString();
+  let position = nextLabelRank(boardId).next;
+  for (const label of PROJECT_PRIORITY_LABELS) {
+    createLabel.run(boardId, group, label.name, label.color, position++, timestamp);
+  }
+  projectLabelGroups.renumber(boardId);
+  return true;
+});
 
 /** The twin, created in the group of the same name — itself created if needed. */
 const createTwin = (

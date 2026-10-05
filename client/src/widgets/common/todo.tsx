@@ -1,4 +1,4 @@
-import { ActionIcon, Checkbox, Group, Portal, Progress, Select, Stack, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Checkbox, Group, Portal, Progress, Select, Stack, Switch, Text, TextInput } from "@mantine/core";
 import { IconListCheck, IconTrash } from "@tabler/icons-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
@@ -413,19 +413,19 @@ function Fields({ config, onChange }: WidgetConfigProps) {
   return (
     <Stack gap="xl">
       <Stack gap="sm">
-        <Checkbox
+        <Switch
           label="Placer les éléments faits en bas de la liste"
           checked={isChecked(config, DONE_AT_BOTTOM, true)}
           onChange={(e) => onChange(withField(config, DONE_AT_BOTTOM, e.currentTarget.checked))}
           color="teal"
         />
-        <Checkbox
+        <Switch
           label="Masquer les éléments faits"
           checked={isChecked(config, HIDE_DONE, false)}
           onChange={(e) => onChange(withField(config, HIDE_DONE, e.currentTarget.checked))}
           color="teal"
         />
-        <Checkbox
+        <Switch
           label="Afficher la progression"
           checked={isChecked(config, PROGRESS, false)}
           onChange={(e) => onChange(withField(config, PROGRESS, e.currentTarget.checked))}

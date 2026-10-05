@@ -1,23 +1,42 @@
-// The "Assets" section of "Paramétrage": the models table (see
-// lib/asset-models.ts) and the VLAN table (lib/asset-vlans.ts).
+// The settings of a board's Asset widgets: the models table (see
+// lib/asset-models.ts) and the VLAN table (lib/asset-vlans.ts). They are not
+// a widget's configuration but the board's: every Asset widget of the board
+// shares them, as its asset labels. Like those, they follow the permission
+// on the Asset widget type.
 
 import { Router } from "express";
+import type { Request } from "express";
 import {
   ASSET_MODEL_MAX,
   VLAN_MAX,
   VLAN_MIN,
   VLAN_NAME_MAX,
+  accessIncludes,
 } from "@milo/shared";
-import type { AssetModel, AssetSettings, AssetVlan } from "@milo/shared";
+import type { AssetModel, AssetSettings, AssetVlan, Id } from "@milo/shared";
 import { saveTemplates, templates } from "../lib/asset-models.js";
 import { saveVlans, vlans } from "../lib/asset-vlans.js";
-import { badRequest } from "../lib/http.js";
+import { HttpError, badRequest } from "../lib/http.js";
 import { touchNow } from "../middleware/events.js";
+import { openBoard, requireBoardControl } from "../repositories/boards.js";
+import { widgetRights } from "../repositories/users.js";
 
-const assetSettings = (): AssetSettings => ({
-  models: templates(),
-  vlans: vlans(),
+const assetSettings = (boardId: Id): AssetSettings => ({
+  models: templates(boardId),
+  vlans: vlans(boardId),
 });
+
+/** The board named by "?board=", if this person may see — or change — its assets. */
+const verifyBoard = (req: Request, write: boolean): Id => {
+  if (!accessIncludes(widgetRights(req.user).asset, write ? "update" : "view")) {
+    throw write
+      ? new HttpError(403, "Vous n'avez pas le droit de modifier ici")
+      : new HttpError(404, "Introuvable");
+  }
+  const board = openBoard(req.query.board, req.user);
+  if (write) requireBoardControl(board, req.user);
+  return board.id;
+};
 
 /** An IPv4 subnet in CIDR notation: "10.1.106.0/24". */
 const CIDR = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/;
@@ -31,8 +50,8 @@ const isSubnet = (text: string): boolean => {
 
 export const assetSettingsRoutes = Router();
 
-assetSettingsRoutes.get("/", (_req, res) => {
-  res.json(assetSettings());
+assetSettingsRoutes.get("/", (req, res) => {
+  res.json(assetSettings(verifyBoard(req, false)));
 });
 
 /**
@@ -106,6 +125,7 @@ const readVlans = (received: unknown): AssetVlan[] => {
  * sent stays as it is.
  */
 assetSettingsRoutes.put("/", (req, res) => {
+  const boardId = verifyBoard(req, true);
   const body = req.body ?? {};
   if (body.models === undefined && body.vlans === undefined) {
     badRequest("Rien à enregistrer");
@@ -116,10 +136,10 @@ assetSettingsRoutes.put("/", (req, res) => {
     body.models === undefined ? null : readTemplates(body.models);
   const newVlans =
     body.vlans === undefined ? null : readVlans(body.vlans);
-  if (newTemplates) saveTemplates(newTemplates);
-  if (newVlans) saveVlans(newVlans);
+  if (newTemplates) saveTemplates(boardId, newTemplates);
+  if (newVlans) saveVlans(boardId, newVlans);
 
   // Open detail views display the name: let them re-read.
   touchNow(res, "assets");
-  res.json(assetSettings());
+  res.json(assetSettings(boardId));
 });

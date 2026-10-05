@@ -25,6 +25,8 @@ export const RESOURCES = [
   "support-labels",
   /** Machines: what the inventory agents report. */
   "assets",
+  /** The styles the titles share. */
+  "title-styles",
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];

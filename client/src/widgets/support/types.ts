@@ -13,6 +13,7 @@
 
 import type { WidgetKind } from "../kinds";
 import type { ComponentType } from "react";
+import type { SettingRow } from "../../components/ui/SettingRows";
 import type { IndicatorWidgetBase } from "../../components/ui/IndicatorsPanel";
 import type { Id, SupportIndicatorType, SupportRequest } from "@milo/shared";
 
@@ -34,6 +35,8 @@ export interface IndicatorDisplayProps {
    * title renamed on double-click. No effect once locked.
    */
   onChange?: (config: Record<string, unknown>) => void | Promise<void>;
+  /** Opens its drawer: an empty widget sends there to be set. */
+  onEdit?: () => void;
   /** The locked sections: the widget no longer offers anything that modifies. */
   locked?: boolean;
 }
@@ -56,6 +59,8 @@ export interface SupportIndicatorWidget {
    * at once, and its drawer only holds the name.
    */
   Config?: ComponentType<IndicatorConfigProps>;
+  /** The "Apparence du graphique" block: see IndicatorWidgetBase. */
+  chartAppearance?: (config: unknown, onChange: IndicatorConfigProps["onChange"]) => SettingRow[];
   /** True when the widget handles its own clicks: see IndicatorWidgetBase. */
   ownClicks?: boolean;
   /** True when it shows a value: see IndicatorWidgetBase. */

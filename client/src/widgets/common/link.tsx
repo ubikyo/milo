@@ -1,15 +1,18 @@
-import { Anchor, Stack, Switch, Text, TextInput } from "@mantine/core";
+import { Anchor, Select, Stack, Switch, Text, TextInput } from "@mantine/core";
 import { IconLink } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import classes from "../../assets/styles/AccessLink.module.css";
+import { editKeys } from "../../components/ui/DrawerRows";
 import { insertRow } from "../../components/ui/SettingRows";
+import { formatOf, formatRow, formatStyle } from "../text-format";
 import { withField, count, text } from "../types";
 import type { AccessWidget, WidgetDisplayProps } from "../types";
 
 // A link: a service's address, the word that designates it, and the means to
 // switch it off without losing it.
 //
-// A single click opens the address in another page; a double click renames
+// A single click opens the address — in the page, or in another one, as the
+// drawer says; a double click renames
 // the link in place, like a column title — it is the label most often
 // touched up, and the drawer no longer has to open for it. The rest — the
 // address, the switch — is set in the drawer, which a right click opens.
@@ -23,6 +26,15 @@ const URL = "url";
 const ACTIVE = "enabled";
 const COLOR = "color";
 const SIZE = "size";
+/** Where the address opens: "blank", another page (the default), or "self", the page itself. */
+const OPENING = "opening";
+
+const OPENINGS = [
+  { value: "self", label: "Dans la fenêtre" },
+  { value: "blank", label: "Dans une nouvelle fenêtre" },
+];
+
+const inNewWindow = (config: unknown): boolean => text(config, OPENING) !== "self";
 
 /**
  * The text size of a link that has been given none: Mantine's "sm", that of
@@ -107,6 +119,8 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
   const active = isActive(config);
   const color = text(config, COLOR) || DEFAULT_COLOR;
   const size = count(config, SIZE, DEFAULT_SIZE);
+  const format = formatStyle(formatOf(config));
+  const newWindow = inNewWindow(config);
 
   const click = () => {
     // The second click of a double click lands here: it triggers nothing, it
@@ -114,7 +128,9 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
     if (timer.current !== null) return;
     timer.current = window.setTimeout(() => {
       timer.current = null;
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
+      if (!url) return;
+      if (newWindow) window.open(url, "_blank", "noopener,noreferrer");
+      else window.location.assign(url);
     }, DOUBLE_CLICK_DELAY);
   };
 
@@ -160,6 +176,7 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
         styles={{
           input: {
             ...LINE_SPACING,
+            ...format,
             fontSize: size,
             color: color,
             height: "auto",
@@ -177,9 +194,8 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
   if (!active) {
     return (
       <Text
-        style={{ ...LINE_SPACING, fontSize: size }}
+        style={{ ...LINE_SPACING, ...format, fontSize: size, textDecoration: "line-through" }}
         c="dimmed"
-        td="line-through"
         onDoubleClick={doubleClick}
         lineClamp={1}
       >
@@ -193,7 +209,7 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
   if (!url) {
     return (
       <Text
-        style={{ ...LINE_SPACING, fontSize: size }}
+        style={{ ...LINE_SPACING, ...format, fontSize: size }}
         c={color}
         onDoubleClick={doubleClick}
         lineClamp={1}
@@ -204,16 +220,17 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
   }
 
   return (
-    // The address opens alongside. "href" is kept for what the right click and
-    // the keyboard do with it, but it is the handler that opens: without it,
-    // a double click would open two pages.
+    // The address opens in the page or alongside. "href" is kept for what the
+    // right click and the keyboard do with it, but it is the handler that
+    // opens: without it, a double click would open two pages.
     <Anchor
       href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      style={{ ...LINK_ROW, fontSize: size }}
+      target={newWindow ? "_blank" : undefined}
+      rel={newWindow ? "noopener noreferrer" : undefined}
+      style={{ ...LINK_ROW, ...format, fontSize: size }}
       lineClamp={1}
-      // Neither blue nor underlined: the link reads like the rest of the column.
+      // Neither blue nor underlined — unless the appearance asks for it: the
+      // link reads like the rest of the column.
       // The color is set here rather than in a stylesheet — it then wins for
       // sure over Mantine's, whatever the order of the sheets. The padding and
       // the hover background, on the other hand, have no inline equivalent
@@ -251,17 +268,22 @@ export const linkWidget: AccessWidget = {
   margins: () => ({ top: 0, bottom: 0 }),
 
   // With no chosen color, the link follows the text's: white on the dark
-  // theme, black on the light one.
-  // Its size, brought back to the default, is no longer stored.
+  // theme, black on the light one. The color field shows it, as the date's
+  // (widgets/common/date): brought back to it, it is no longer stored, and the
+  // link keeps following the scheme. Its size, brought back to the default,
+  // is no longer stored either.
   appearance: (config, onChange) => {
     const size = count(config, SIZE, DEFAULT_SIZE);
+    const dark = document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
+    const defaultColor = dark ? "#c9c9c9" : "#000000";
+    const color = text(config, COLOR);
     return [
       {
         name: "Texte",
         what: "du lien",
         color: {
-          value: text(config, COLOR),
-          onChange: (v) => onChange(insertRow(config, { [COLOR]: v })),
+          value: color || defaultColor,
+          onChange: (v) => onChange(insertRow(config, { [COLOR]: v === defaultColor ? "" : v })),
         },
         size: {
           value: size,
@@ -270,9 +292,10 @@ export const linkWidget: AccessWidget = {
           max: SIZE_MAX,
           onChange: (v) => onChange(insertRow(config, { [SIZE]: v === DEFAULT_SIZE ? "" : v })),
         },
-        modified: text(config, COLOR) !== "" || size !== DEFAULT_SIZE,
+        modified: (color !== "" && color !== defaultColor) || size !== DEFAULT_SIZE,
         reset: () => onChange(insertRow(config, { [COLOR]: "", [SIZE]: "" })),
       },
+      formatRow(config, onChange),
     ];
   },
 
@@ -283,6 +306,7 @@ export const linkWidget: AccessWidget = {
         placeholder="Nom du lien"
         value={text(config, LABEL)}
         onChange={(e) => onChange(withField(config, LABEL, e.currentTarget.value))}
+        {...editKeys((value) => onChange(withField(config, LABEL, value)))}
         autoFocus
       />
       <TextInput
@@ -290,6 +314,15 @@ export const linkWidget: AccessWidget = {
         placeholder="https://"
         value={text(config, URL)}
         onChange={(e) => onChange(withField(config, URL, e.currentTarget.value))}
+        {...editKeys((value) => onChange(withField(config, URL, value)))}
+      />
+      <Select
+        label="Ouverture"
+        data={OPENINGS}
+        value={inNewWindow(config) ? "blank" : "self"}
+        onChange={(v) => v && onChange(withField(config, OPENING, v))}
+        allowDeselect={false}
+        comboboxProps={{ withinPortal: true }}
       />
     </Stack>
   ),

@@ -11,9 +11,7 @@ import {
 import {
   IconBell,
   IconDatabaseExport,
-  IconDeviceLaptop,
   IconBrandWindows,
-  IconHeadset,
   IconLayoutNavbar,
   IconShieldLock,
   IconStack2,
@@ -34,8 +32,6 @@ import BackupTab from "./BackupTab";
 import EntraTab from "./EntraTab";
 import NotificationsTab from "./NotificationsTab";
 import DisplayTab from "./DisplayTab";
-import SupportTab from "./SupportTab";
-import AssetsTab from "./AssetsTab";
 import WorkspacesTab from "./WorkspacesTab";
 import AdministrationTab from "./AdministrationTab";
 import type { ComponentType, ReactNode } from "react";
@@ -52,9 +48,6 @@ const TABS: {
   { value: "entra", label: "Entra", icon: IconBrandWindows },
   { value: "notifications", label: "Notifications", icon: IconBell },
   { value: "display", label: "Affichage", icon: IconLayoutNavbar },
-  // Settings specific to a mode: Support, Assets.
-  { value: "support", label: "Support", icon: IconHeadset },
-  { value: "assets", label: "Assets", icon: IconDeviceLaptop },
   // The backup at the very bottom: it covers the whole database, not a setting.
   { value: "backup", label: "Sauvegarde", icon: IconDatabaseExport },
 ];
@@ -64,9 +57,6 @@ const TABS: {
  * granted to directory users and groups.
  */
 const WITH_ENTRA = new Set(["workspaces", "administration"]);
-
-/** The tabs that the "admin" account does not see. */
-const WITHOUT_ADMIN = new Set(["support", "assets"]);
 
 
 /** Entra is configured: the application is registered (ID, directory, secret). */
@@ -160,14 +150,11 @@ export default function SettingsModal({
   // are shown. The Entra tab informs the modal on each read and each
   // save; "null" as long as it has not said anything.
   const [entraReady, setEntraReady] = useState<boolean | null>(null);
-  // Support and Assets concern the modes' work: not the application's setup.
-  // The "admin" account does not see them (WITHOUT_ADMIN).
   // Whoever manages workspaces without seeing Settings only gets their tab;
   // they sign in through Microsoft: Entra is necessarily configured.
   const visible = (tab: string) =>
     (tab === "workspaces" ? management : true) &&
     (user.settings.view || tab === "workspaces") &&
-    !(standalone && WITHOUT_ADMIN.has(tab)) &&
     !(!canEdit && tab === "backup") &&
     (entraReady === true || !WITH_ENTRA.has(tab) || !user.settings.view);
 
@@ -332,10 +319,6 @@ export default function SettingsModal({
             onChange={() => void reloadAccount()}
           />,
         )}
-
-        {panel("support", <SupportTab canEdit={canEdit} />)}
-
-        {panel("assets", <AssetsTab />)}
 
         {panel(
           "entra",

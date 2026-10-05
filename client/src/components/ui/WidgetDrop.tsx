@@ -7,8 +7,9 @@ import type { Id } from "@milo/shared";
 // statistics panels (SectionsBoard).
 //
 // A widget is picked up and dropped elsewhere: higher, lower, or in another
-// section. One aims at a widget, not a gap: hovering its upper half
-// drops before it, its lower half after it, and a line says so.
+// section. What aims is the held widget's top edge, not the pointer: it is
+// what the eye follows. The line goes to the gap nearest to that edge —
+// above a widget while the edge is in its upper half, below it past that.
 //
 // This line is laid over, absolutely. A first version slid
 // real slots between the widgets: they added to the column's height and
@@ -38,42 +39,73 @@ export interface WidgetTarget {
 }
 
 /**
- * The drag gestures on a section's widgets. "propsOf" is put on
- * what wraps each widget; "index" is its place among those the
- * section holds — the one the drop expects.
+ * Where the held widget was grabbed, from its top edge: its top is the pointer
+ * minus this. Only one widget is held at a time, whatever its section. A
+ * widget coming from the drawer is held by its top: 0.
+ */
+let grabOffset = 0;
+
+/**
+ * The drag gestures on a section's widgets. "propsOf" is put on what wraps
+ * each widget — "index" is its place among those the section holds, the one
+ * the drop expects —, "stackProps" on what stacks them: the target is chosen
+ * there, from all the widgets, since the held widget's top edge is not always
+ * over the one under the pointer.
  */
 export const useWidgetDrop = (sectionId: Id, drag: WidgetDrag, locked: boolean) => {
-  const [target, setTarget] = useState<WidgetTarget | null>(null);
+  const [target, setTarget] = useState<(WidgetTarget & { index: number }) | null>(null);
 
   const propsOf = (id: Id, index: number) => ({
     draggable: !locked,
+    "data-widget-id": id,
+    "data-widget-index": index,
     onDragStart: (e: DragEvent<HTMLElement>) => {
       // Some browsers do not start the drag without a payload.
       e.dataTransfer.setData("text/plain", String(id));
       e.dataTransfer.effectAllowed = "move";
+      grabOffset = e.clientY - e.currentTarget.getBoundingClientRect().top;
       drag.onDragStart(id);
     },
     onDragEnd: () => {
+      grabOffset = 0;
       setTarget(null);
       drag.onDragEnd();
     },
+  });
+
+  const stackProps = {
     onDragOver: (e: DragEvent<HTMLElement>) => {
       if (drag.dragged === null || locked) return;
       e.preventDefault();
-      const frame = e.currentTarget.getBoundingClientRect();
-      setTarget({ id, before: e.clientY < frame.top + frame.height / 2 });
+      const top = e.clientY - grabOffset;
+      const widgets = [...e.currentTarget.querySelectorAll<HTMLElement>(":scope > [data-widget-id]")];
+      // The first widget whose middle is below the held one's top receives it
+      // before itself; none: it lands after the last.
+      const above = widgets.find((w) => {
+        const frame = w.getBoundingClientRect();
+        return top < frame.top + frame.height / 2;
+      });
+      const element = above ?? widgets[widgets.length - 1];
+      if (!element) return;
+      const id = Number(element.dataset.widgetId);
+      const index = Number(element.dataset.widgetIndex);
+      const before = Boolean(above);
+      setTarget((c) =>
+        c?.id === id && c.before === before ? c : { id, before, index: before ? index : index + 1 },
+      );
     },
-    onDragLeave: () => setTarget((c) => (c?.id === id ? null : c)),
+    onDragLeave: (e: DragEvent<HTMLElement>) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setTarget(null);
+    },
     onDrop: (e: DragEvent<HTMLElement>) => {
-      if (drag.dragged === null || locked) return;
+      if (drag.dragged === null || locked || !target) return;
       e.preventDefault();
-      const before = target?.before ?? true;
       setTarget(null);
-      drag.onDrop(sectionId, before ? index : index + 1);
+      drag.onDrop(sectionId, target.index);
     },
-  });
+  };
 
-  return { target, propsOf };
+  return { target, propsOf, stackProps };
 };
 
 /**

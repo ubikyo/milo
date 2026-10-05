@@ -28,6 +28,23 @@
   min-height: calc(var(--milo-rich-min-lines) * var(--milo-rich-line) + 2 * var(--milo-rich-padding));
 }
 
+/* A field over its parent's full height (RichTextField "fill"): the area
+   takes what the toolbar leaves, scrolls beyond, and a click anywhere in it
+   reaches the text. */
+.fill {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.fill.fill:has(img) {
+  max-height: none;
+}
+
+.fill :global(.ProseMirror) {
+  min-height: 100%;
+}
+
 /* Enter adds a line, not a detached paragraph: Mantine spaces paragraphs by
    7px, which would make the fifth line overflow the count above. The
    selector goes through the tiptap content to beat Mantine's, at equal rank

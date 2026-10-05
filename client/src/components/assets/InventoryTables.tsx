@@ -1103,7 +1103,7 @@ function Networks({ section }: { section: AssetSection }) {
               <Value label="IPv6" value={entry["IPADDRESS6"]} />
             </Box>
           )}
-          {/* 4th row: the Paramétrage VLAN that carries the card, its name
+          {/* 4th row: the board's VLAN that carries the card, its name
               then its number in a green tag, as in the Summary; hidden without a VLAN.
               VLAN and VLAN_NAME come from the server, not the agent. */}
           {entry["VLAN"] && (

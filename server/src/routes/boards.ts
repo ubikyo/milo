@@ -14,6 +14,8 @@ import { concerned, notifyDeletion } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { boardSections } from "../repositories/board-widgets.js";
+import { ensureSupportLabels } from "../repositories/support.js";
+import { ensureProjectPriorities } from "../repositories/projects.js";
 import { followLists } from "./board-widgets.js";
 import {
   boards,
@@ -68,7 +70,7 @@ export const boardForAccount = (board: BoardRow, user: UserRow): Board => {
  * The boards of a view that this account sees, in their own order — those it
  * hid at the end: none without "Lire" on boards.
  */
-const visibleBoards = (viewId: Id, user: UserRow): Board[] =>
+export const visibleBoards = (viewId: Id, user: UserRow): Board[] =>
   structureRights(user).boards.view
     ? withHidden(
         user.id,
@@ -137,6 +139,10 @@ export const createBoard = transaction(
     const { next } = boards.nextPosition(viewId);
     const id = Number(boards.create.run(viewId, name, next, 1, owner, now()).lastInsertRowid);
     if (firstWidget) boardSections.setFirst(id, firstWidget);
+    // A Support widget brings the default labels (repositories/support.ts).
+    if (firstWidget === "support.list") ensureSupportLabels(id);
+    // A projects widget brings the "Priorités" labels (repositories/projects.ts).
+    if (firstWidget === "project.list") ensureProjectPriorities(id);
     return id;
   },
 );

@@ -29,8 +29,7 @@ type AnyLabel = Label | ProjectLabel | SupportLabel;
  * What it takes to manage a set of labels. The routes change from one mode to
  * another, the actions do not.
  *
- * `parentId` is what the labels hang from: a board for cards and projects, a
- * company for tickets.
+ * `parentId` is what the labels hang from: their board.
  */
 export interface LabelsApi {
   /** Without a group, the label goes into the first one. */
@@ -119,10 +118,8 @@ export const PROJECT_LABELS_API: LabelsApi = {
   base: "/project-labels",
 };
 
-// Support ones are shared by all companies: they hang from nothing, and
-// "boardId" does not apply here.
 export const SUPPORT_LABELS_API: LabelsApi = {
-  create: (_boardId, name, color, groupId) => api.createSupportLabel(name, color, groupId),
+  create: api.createSupportLabel,
   update: api.updateSupportLabel,
   remove: api.deleteSupportLabel,
   carriers: "des demandes qui la portent",
@@ -143,7 +140,7 @@ interface LabelPickerProps {
   /** The selected identifiers, as strings. */
   value: string[];
   onChange: (value: string[]) => void;
-  /** What these labels hang from: a board, or a company in Support. */
+  /** The board these labels hang from. */
   boardId: string | number;
   /** Without argument: re-read. With a patch: apply it in place. */
   onLabelsChanged: (patch?: { id: number; data: Partial<AnyLabel> }) => void | Promise<void>;
@@ -185,16 +182,14 @@ export default function LabelPicker({
   const [groupToDelete, setGroupToDelete] = useState<LabelGroup | null>(null);
 
   // The groups: read here, since the labels alone do not name the empty ones.
-  // Support's belong to no board.
-  const board = labelsApi.base === "/support-labels" ? undefined : boardId;
   const [groups, setGroups] = useState<LabelGroup[]>([]);
   const readGroups = useCallback(async () => {
     try {
-      setGroups(await api.getLabelGroups(labelsApi.base, board));
+      setGroups(await api.getLabelGroups(labelsApi.base, boardId));
     } catch (e) {
       notifyError(errorMessage(e));
     }
-  }, [labelsApi.base, board]);
+  }, [labelsApi.base, boardId]);
   // Re-read whenever the labels change: a group may have come with them.
   useEffect(() => {
     void readGroups();
@@ -209,7 +204,7 @@ export default function LabelPicker({
   const arrange = async (next: LabelGroupLayout[]) => {
     setPlaced(next);
     try {
-      await api.arrangeLabels(labelsApi.base, next, board);
+      await api.arrangeLabels(labelsApi.base, next, boardId);
       await onLabelsChanged();
       await readGroups();
     } catch (e) {
@@ -330,7 +325,7 @@ export default function LabelPicker({
     setAddingGroup(null);
     if (!name) return;
     try {
-      const created = await api.createLabelGroup(labelsApi.base, name, board);
+      const created = await api.createLabelGroup(labelsApi.base, name, boardId);
       await readGroups();
       openAdd(created.id);
     } catch (e) {

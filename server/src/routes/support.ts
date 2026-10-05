@@ -4,9 +4,8 @@
 // not off a board: so nothing is private here, everyone sees the requests of
 // the companies they consult.
 //
-// Labels do not go through the "routes/labels.ts" factory: it only deals with
-// boards, and knows how to copy them from one to another. Support's labels
-// are shared across all companies and are not copied.
+// Their labels belong to the board, like those of cards and projects: the
+// "routes/labels.ts" factory serves them.
 
 import {
   SEND_SIZE_MAX,
@@ -23,8 +22,6 @@ import {
   DEFAULT_SUPPORT_STATUS,
   SUPPORT_STATUSES,
   isSupportStatus,
-  isLabelColor,
-  DEFAULT_LABEL_COLOR,
   supportTicketRef,
 } from "@milo/shared";
 import type { Id, Right, SupportStatus } from "@milo/shared";
@@ -43,11 +40,9 @@ import {
 } from "../lib/notify.js";
 import {
   badRequest,
-  conflict,
   forbidden,
   notFound,
   orNotFound,
-  refuseIfUsed,
   requireText,
   toIds,
 } from "../lib/http.js";
@@ -70,11 +65,8 @@ import { sendAutoReply, statusEvent } from "../lib/support-auto-reply.js";
 import { due, timestamp, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { SYSTEM_COMMENT, creationNote } from "../repositories/comments.js";
-import { supportLabelGroups } from "../repositories/label-groups.js";
-import { mountLabelGroups } from "./label-groups.js";
 import {
   REQUEST_NOT_FOUND,
-  SUPPORT_LABEL_NOT_FOUND,
   assignRequests,
   closeRequest,
   mergeRequests,
@@ -84,10 +76,8 @@ import {
   replaceSupportActors,
   addSupportLabel,
   replaceSupportLabels,
-  updateSupportLabel,
   supportCommentOf,
   supportComments,
-  supportLabels,
   supportRequestDetail,
   supportRequests,
   withRelations,
@@ -633,70 +623,3 @@ supportCommentRoutes.delete("/:id", (req, res) => {
   res.status(204).end();
 });
 
-// --- Labels ----------------------------------------------------------------
-// They are shared across all of support, whatever the company: renaming,
-// recoloring or deleting them touches every request that carries them.
-
-export const supportLabelRoutes = Router();
-
-supportLabelRoutes.use(touch("boards", "support-labels", "support-requests"));
-
-// Shared across all companies, they follow the support rights in any of
-// them.
-
-mountLabelGroups(supportLabelRoutes, supportLabelGroups, (req, _boardId, right) => {
-  require(req, "support", right);
-  return undefined;
-});
-
-supportLabelRoutes.get("/", (req, res) => {
-  if (!requestCan(req, "support", "view")) return void res.json([]);
-  res.json(supportLabels.all.all());
-});
-
-supportLabelRoutes.post("/", (req, res) => {
-  require(req, "support", "create");
-  const name = requireText(req.body.name, "Le nom de l'étiquette est requis");
-  // Shared across all companies: two with the same name could no longer be
-  // told apart in a list.
-  if (supportLabels.byName.get(name)) conflict("Cette étiquette existe déjà");
-  const color = req.body.color || DEFAULT_LABEL_COLOR;
-  if (!isLabelColor(color)) badRequest("Couleur inconnue");
-  const group = supportLabelGroups.groupFor(undefined, req.body.group_id);
-
-  const { next } = supportLabels.nextPosition();
-  const { lastInsertRowid } = supportLabels.create.run(group, name, color, next, now());
-  supportLabelGroups.renumber(undefined);
-  res.status(201).json(supportLabels.byId.get(lastInsertRowid));
-});
-
-supportLabelRoutes.put("/:id", (req, res) => {
-  require(req, "support", "update");
-  const existing = orNotFound(
-    supportLabels.byId.get(req.params.id),
-    SUPPORT_LABEL_NOT_FOUND,
-  );
-  const name = requireText(req.body.name ?? existing.name, "Le nom de l'étiquette est requis");
-  const namesake = supportLabels.byName.get(name);
-  if (namesake && namesake.id !== existing.id) conflict("Cette étiquette existe déjà");
-  const color = req.body.color ?? existing.color;
-  if (!isLabelColor(color)) badRequest("Couleur inconnue");
-  const group =
-    req.body.group_id === undefined
-      ? existing.group_id
-      : supportLabelGroups.groupFor(undefined, req.body.group_id);
-
-  updateSupportLabel(existing, { name, color, group });
-  res.json(supportLabels.byId.get(existing.id));
-});
-
-supportLabelRoutes.delete("/:id", (req, res) => {
-  require(req, "support", "delete");
-  const existing = orNotFound(
-    supportLabels.byId.get(req.params.id),
-    SUPPORT_LABEL_NOT_FOUND,
-  );
-  refuseIfUsed(existing.name, supportLabels.usage(existing.id).count);
-  supportLabels.remove.run(existing.id);
-  res.status(204).end();
-});

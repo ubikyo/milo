@@ -28,10 +28,18 @@ export default function DisplayTab({ canEdit }: DisplayTabProps) {
 
   return (
     <Stack gap="sm">
+      {/* Stored as "hideLogo": the switch shows the reverse. */}
       <Switch
-        label="Masquer le logo dans la barre d'onglets"
-        checked={settings.hideLogo}
-        onChange={(e) => change({ hideLogo: e.currentTarget.checked })}
+        label="Afficher le logo dans la barre d'onglets"
+        checked={!settings.hideLogo}
+        onChange={(e) => change({ hideLogo: !e.currentTarget.checked })}
+        disabled={!canEdit || ongoing}
+        color="teal"
+      />
+      <Switch
+        label="Afficher les gravatars"
+        checked={settings.showGravatars}
+        onChange={(e) => change({ showGravatars: e.currentTarget.checked })}
         disabled={!canEdit || ongoing}
         color="teal"
       />

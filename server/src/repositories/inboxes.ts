@@ -4,11 +4,14 @@
 //
 //   support.list : { "mailboxes": [{ "email": "support@…", "label_id": 12 }] }
 //
+// Its "new_message_label_ids" names the labels every incoming e-mail receives
+// besides (shared, NEW_MESSAGE_LABELS).
+//
 // A workstation list receives the tags its board's asset labels name.
 //
 // An inbox received by two widgets goes to the first: the oldest.
 
-import { listKey } from "@milo/shared";
+import { NEW_MESSAGE_LABELS, SUPPORT_NEW_MESSAGE_LABELS, listKey } from "@milo/shared";
 import type { Id } from "@milo/shared";
 import { selection } from "../db/query.js";
 import { optins, pair } from "./optins.js";
@@ -33,6 +36,8 @@ export interface Inbox {
   board_id: Id;
   /** The Support label an inbox sets on its requests; null if it sets none. */
   label_id: Id | null;
+  /** The labels every e-mail its list receives gets, besides that one. */
+  labels: Id[];
   /** The list key of the widget that receives it: its items carry it. */
   list: string;
   /** The label's name, and its board's: where the inbox shows up. */
@@ -49,8 +54,25 @@ export const DELETION = "delete_after_import";
 
 const boardOf = selection<{ name: string }>("SELECT name FROM boards WHERE id = ?");
 const supportLabel = selection<{ id: Id; name: string }>(
-  "SELECT id, name FROM support_labels WHERE id = ?",
+  "SELECT id, name FROM support_labels WHERE id = ? AND board_id = ?",
 );
+const boardSupportLabels = selection<{ id: Id; name: string }>(
+  "SELECT id, name FROM support_labels WHERE board_id = ? ORDER BY position, id",
+);
+
+/**
+ * The labels a list sets on every incoming e-mail: those it chose, among its
+ * board's; without a choice, those of its board bearing the default names.
+ */
+const newMessageLabels = (config: Record<string, unknown>, boardId: Id): Id[] => {
+  const labels = boardSupportLabels.all(boardId);
+  const chosen = config[NEW_MESSAGE_LABELS];
+  if (Array.isArray(chosen)) {
+    return chosen.map(Number).filter((id) => labels.some((l) => l.id === id));
+  }
+  const names = SUPPORT_NEW_MESSAGE_LABELS.map((n) => n.toLowerCase());
+  return labels.filter((l) => names.includes(l.name.toLowerCase())).map((l) => l.id);
+};
 const assetLabelsOf = selection<{ name: string }>(
   "SELECT name FROM asset_labels WHERE board_id = ? ORDER BY position, id",
 );
@@ -87,12 +109,13 @@ const inboxes = (
     for (const entry of list) {
       const value = typeof entry?.[key] === "string" ? (entry[key] as string).trim() : "";
       if (!value || (uniquePerValue && views.has(value.toLowerCase()))) continue;
-      const label = entry.label_id ? supportLabel.get(entry.label_id) : undefined;
+      const label = entry.label_id ? supportLabel.get(entry.label_id, widget.board_id) : undefined;
       const board = boardOf.get(widget.board_id)?.name ?? "";
       const inbox: Inbox = {
         value,
         board_id: widget.board_id,
         label_id: label?.id ?? null,
+        labels: type === "support.list" ? newMessageLabels(config, widget.board_id) : [],
         list: listKey(config),
         usage: label ? `${label.name} (${board})` : board,
         remove: config[DELETION] === true,
@@ -151,6 +174,7 @@ export const receivedTags = (): Inbox[] => {
         value,
         board_id: widget.board_id,
         label_id: null,
+        labels: [],
         list: listKey(config),
         usage: board,
         remove: false,

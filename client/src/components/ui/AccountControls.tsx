@@ -6,6 +6,7 @@ import {
   IconUserCog,
 } from "@tabler/icons-react";
 import { initialsOf } from "./ActorAvatars";
+import { useDisplaySettings } from "../../lib/displaySettings";
 import { ROW_CONTROL_HEIGHT, ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
 import type { ReactNode } from "react";
 import type { PublicUser, SearchResult } from "@milo/shared";
@@ -60,6 +61,7 @@ export default function AccountControls({
   onOpenNotifications,
   actions,
 }: AccountControlsProps) {
+  const { settings: display } = useDisplaySettings();
   return (
     <Group gap="xs" wrap="nowrap">
       {actions}
@@ -94,7 +96,7 @@ export default function AccountControls({
               radius="sm"
               color="teal"
               variant="filled"
-              src={user?.gravatar_url || null}
+              src={(display.showGravatars && user?.gravatar_url) || null}
             >
               {initialsOf(user?.name)}
             </Avatar>

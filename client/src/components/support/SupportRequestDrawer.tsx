@@ -169,7 +169,7 @@ export default function SupportRequestDrawer({
 }: SupportRequestDrawerProps) {
   const [subject, setSubject] = useState("");
   const [status, setStatus] = useState<SupportStatus>(DEFAULT_SUPPORT_STATUS);
-  /** The support labels, shared by all boards. */
+  /** The support labels of the request's board. */
   const [labels, setLabels] = useState<SupportLabel[]>([]);
   /** The retained actors, as strings: those who handle the request. */
   const [actorIds, setActorIds] = useState<string[]>([]);
@@ -227,14 +227,15 @@ export default function SupportRequestDrawer({
     currentUser.id,
   ]);
 
-  /** The support labels: shared by all companies. */
+  /** The support labels: those of the request's board. */
   const reloadLabels = useCallback(async () => {
+    if (boardId == null) return;
     try {
-      setLabels(await api.getSupportLabels());
+      setLabels(await api.getSupportLabels(boardId));
     } catch (e) {
       notifyError(errorMessage(e));
     }
-  }, []);
+  }, [boardId]);
 
   useEffect(() => {
     if (opened) void reloadLabels();
@@ -594,8 +595,8 @@ export default function SupportRequestDrawer({
                         />
                       </div>
                       <div style={{ flex: "7 1 0", minWidth: 0 }}>
-                        {/* Labels are shared by all boards: renaming
-                          or recoloring them affects all requests. */}
+                        {/* The board's labels: renaming or recoloring
+                          them affects all its requests. */}
                         <LabelPicker
                           chipHeight={CHIP_HEIGHT}
                           labels={labels}

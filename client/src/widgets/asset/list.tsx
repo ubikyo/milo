@@ -1,6 +1,7 @@
 import { Stack } from "@mantine/core";
 import { IconList } from "@tabler/icons-react";
 import AssetsList, { ASSET_COLUMNS } from "../../components/assets/AssetsList";
+import AssetTablesFields from "../../components/assets/AssetTablesFields";
 import ColumnFields from "../../components/ui/ColumnFields";
 import LabelGroupFields from "../../components/ui/LabelGroupFields";
 import type { IndicatorConfigProps } from "../support/types";
@@ -8,7 +9,8 @@ import type { AssetIndicatorWidget } from "./types";
 
 /**
  * The list settings: at the top, the board's asset labels — each names the
- * GLPI agent tag of the workstations it brings —, then its columns.
+ * GLPI agent tag of the workstations it brings —, then its columns, then the
+ * board's model and VLAN tables.
  */
 function ListFields(props: IndicatorConfigProps) {
   return (
@@ -16,6 +18,8 @@ function ListFields(props: IndicatorConfigProps) {
       {/* The board's labels: they go to saving. */}
       <LabelGroupFields kind="asset-labels" />
       <ColumnFields columns={ASSET_COLUMNS} {...props} />
+      {/* The board's models and VLANs: they go to saving too. */}
+      <AssetTablesFields />
     </Stack>
   );
 }

@@ -13,8 +13,9 @@ import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
 import { initialsOf } from "../ui/ActorAvatars";
+import { useDisplaySettings } from "../../lib/displaySettings";
 import { errorMessage, notifyError } from "../../lib/errors";
-import type { PublicUser, View } from "@milo/shared";
+import type { Id, OpeningView, PublicUser } from "@milo/shared";
 import type { ComponentType } from "react";
 import CloseButton from "../ui/CloseButton";
 
@@ -46,7 +47,7 @@ function SchemeIcon({ value, size = 16 }: { value: string; size?: number }) {
 }
 
 // Label width: the fields align on the same column.
-const LABEL_WIDTH = 120;
+const LABEL_WIDTH = 160;
 
 // Field width: that of a mode or theme name, and its icon.
 const FIELD_WIDTH = 200;
@@ -67,46 +68,88 @@ interface PreferencesModalProps {
   opened: boolean;
   onClose: () => void;
   user: PublicUser | null;
-  /** The views the account sees: the opening view is chosen among them. */
-  views: View[];
   onUpdated: (user: PublicUser) => void;
 }
 
 /**
  * The profile. Identity comes from Entra and is edited there: it is read here,
  * and re-read at each sign-in. The password is the Microsoft one. What remains
- * is what each person sets for themselves — the opening view, the theme —,
+ * is what each person sets for themselves — the opening workspace, view and
+ * board, the theme —,
  * which only apply on save: "Fermer" leaves them as they were.
  */
 export default function PreferencesModal({
   opened,
   onClose,
   user,
-  views,
   onUpdated,
 }: PreferencesModalProps) {
   const { colorScheme, setColorScheme } = useMantineColorScheme();
-  // The opening view; empty, the first one.
+  const { settings: display } = useDisplaySettings();
+  // The opening workspace, and in it the opening view and board; empty,
+  // or one that is gone, the first one.
+  const [workspace, setWorkspace] = useState<Id | null>(null);
   const [view, setView] = useState("");
+  const [board, setBoard] = useState("");
+  // The views of the chosen workspace, each with its boards; null until read.
+  const [views, setViews] = useState<OpeningView[] | null>(null);
   const [theme, setTheme] = useState<Scheme>("auto");
   const [busy, setBusy] = useState(false);
 
   // Each opening starts again from what is in place.
   useEffect(() => {
     if (!opened) return;
+    // None chosen yet: the first of the list, like the view and the board.
+    setWorkspace(user?.default_workspace ?? user?.workspaces[0]?.id ?? user?.workspace ?? null);
     setView(user?.default_view ?? "");
+    setBoard(user?.default_board ?? "");
     setTheme((colorScheme ?? "auto") as Scheme);
     // The theme is only re-read on opening: re-reading it while choosing
     // would wipe the choice in progress.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, user]);
 
+  // The views and boards on offer follow the chosen workspace.
+  useEffect(() => {
+    if (!opened || workspace === null) return;
+    let current = true;
+    setViews(null);
+    api
+      .getOpeningViews(workspace)
+      .then((read) => current && setViews(read))
+      .catch((e) => current && notifyError(errorMessage(e)));
+    return () => {
+      current = false;
+    };
+  }, [opened, workspace]);
+
+  // No view chosen, or one that is gone: the first is selected, and so is
+  // the board. They are saved as chosen.
+  const openingView = views?.find((v) => String(v.id) === view) ?? views?.[0];
+  const shownView = openingView ? String(openingView.id) : "";
+  const boards = openingView?.boards ?? [];
+  const openingBoard = boards.find((b) => String(b.id) === board) ?? boards[0];
+  const shownBoard = openingBoard ? String(openingBoard.id) : "";
+  const several = (user?.workspaces.length ?? 0) > 1;
+
   const save = async () => {
     setBusy(true);
     try {
-      // The view belongs to the account, and goes to the server; the theme is
-      // the browser's, which Mantine remembers.
-      if (view !== (user?.default_view ?? "")) onUpdated(await api.updateMe({ default_view: view }));
+      // The opening belongs to the account, and goes to the server; the theme
+      // is the browser's, which Mantine remembers. With a single workspace,
+      // none is chosen: it is the one they work in.
+      const opening = {
+        default_workspace: several ? workspace : null,
+        default_view: shownView,
+        default_board: shownBoard,
+      };
+      if (
+        views &&
+        (opening.default_workspace !== (user?.default_workspace ?? null) ||
+          opening.default_view !== (user?.default_view ?? "") ||
+          opening.default_board !== (user?.default_board ?? ""))
+      )
+        onUpdated(await api.updateMe(opening));
       setColorScheme(theme);
       onClose();
     } catch (e) {
@@ -134,7 +177,7 @@ export default function PreferencesModal({
             radius="sm"
             color="teal"
             variant="filled"
-            src={user?.gravatar_url || null}
+            src={(display.showGravatars && user?.gravatar_url) || null}
           >
             {initialsOf(user?.name)}
           </Avatar>
@@ -153,21 +196,63 @@ export default function PreferencesModal({
             Mantine's labels: both settings align on the same
             column. */}
         <Stack gap="md">
+          {/* Only for those who have several: the others' is the only one. */}
+          {several && (
+            <Group gap={GAP} wrap="nowrap" align="center">
+              <Text size="sm" fw={500} w={LABEL_WIDTH}>
+                Workspace par défaut
+              </Text>
+              <Select
+                aria-label="Workspace par défaut"
+                data={(user?.workspaces ?? []).map((w) => ({
+                  value: String(w.id),
+                  label: w.name,
+                }))}
+                value={workspace === null ? null : String(workspace)}
+                onChange={(value) => {
+                  if (!value) return;
+                  // Another workspace's views and boards are not these.
+                  setWorkspace(Number(value));
+                  setView("");
+                  setBoard("");
+                }}
+                allowDeselect={false}
+                w={FIELD_WIDTH}
+              />
+            </Group>
+          )}
+
           <Group gap={GAP} wrap="nowrap" align="center">
             <Text size="sm" fw={500} w={LABEL_WIDTH}>
               Vue par défaut
             </Text>
             <Select
               aria-label="Vue par défaut"
-              // "La première": the one that opens the selector, in the order
-              // each person arranged. A vanished view falls back to it too.
-              data={[
-                { value: "first", label: "La première" },
-                ...views.map((v) => ({ value: String(v.id), label: v.name })),
-              ]}
-              value={views.some((v) => String(v.id) === view) ? view : "first"}
-              onChange={(value) => value && setView(value === "first" ? "" : value)}
+              data={(views ?? []).map((v) => ({ value: String(v.id), label: v.name }))}
+              value={shownView || null}
+              onChange={(value) => {
+                if (!value) return;
+                // Another view's boards are not these: its first is selected.
+                setView(value);
+                setBoard("");
+              }}
               allowDeselect={false}
+              disabled={!views}
+              w={FIELD_WIDTH}
+            />
+          </Group>
+
+          <Group gap={GAP} wrap="nowrap" align="center">
+            <Text size="sm" fw={500} w={LABEL_WIDTH}>
+              Tableau par défaut
+            </Text>
+            <Select
+              aria-label="Tableau par défaut"
+              data={boards.map((b) => ({ value: String(b.id), label: b.name }))}
+              value={shownBoard || null}
+              onChange={(value) => value && setBoard(value)}
+              allowDeselect={false}
+              disabled={!views}
               w={FIELD_WIDTH}
             />
           </Group>

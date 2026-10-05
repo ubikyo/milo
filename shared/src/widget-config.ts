@@ -47,6 +47,8 @@ const LIST_KEYS = {
 /** The keys specific to each widget type. */
 const TYPE_KEYS: Record<string, Record<string, string>> = {
   category: TITLE_KEYS,
+  // The subcategory no longer exists, but a database from before is
+  // translated before its subcategories become titles (db/migrations.ts).
   subcategory: TITLE_KEYS,
   link: { libelle: "label", actif: "enabled", couleur: "color" },
   number: { lignes: "lines", libelle: "label", valeur: "value" },

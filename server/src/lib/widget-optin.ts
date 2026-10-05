@@ -15,6 +15,7 @@ import type { OptinTable } from "../repositories/optins.js";
 import { missingLabel, newCode, resendCodes } from "./optin.js";
 import { sendingAddress } from "./entra.js";
 import { sendMail } from "./mail.js";
+import type { MailTemplateKey } from "@milo/shared";
 import { template } from "./mail-template.js";
 
 interface WidgetOptinOptions {
@@ -30,6 +31,8 @@ interface WidgetOptinOptions {
   title: string;
   /** What will be shown, and to whom: "who" asks, on "board". */
   intro: (who: string, board: string) => string;
+  /** The template of the e-mail that carries the code. */
+  templateKey: MailTemplateKey;
   /** For the server's log: "Calendar", "Mail". */
   name: string;
 }
@@ -49,6 +52,7 @@ export const widgetOptin = ({
   subject,
   title,
   intro,
+  templateKey,
   name,
 }: WidgetOptinOptions) => {
   const widgets = selection<{ widget_key: string | null; email: string | null; board: string }>(
@@ -82,12 +86,12 @@ export const widgetOptin = ({
       from: sendingAddress(),
       to: email,
       subject,
-      ...template({
+      ...(await template(templateKey, {
         title,
         intro: intro(who, board),
         rows: [{ text: `Code de confirmation : ${code}`, repetitions: 1 }],
         footer: "Si vous n'êtes pas d'accord, ignorez ce message.",
-      }),
+      }, { email, code, requester: who, board })),
     });
     // Stored once sent: a failed send does not replace the previous code.
     table.sent(key, email, code);

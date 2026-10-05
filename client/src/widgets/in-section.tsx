@@ -1,10 +1,9 @@
 import { Stack } from "@mantine/core";
-import { categoryWidget } from "./common/category";
+import { titleWidget } from "./common/title";
 import { clockWidget } from "./common/clock";
 import { linkWidget } from "./common/link";
 import { marginsOf } from "./margins";
 import { numberWidget } from "./common/number";
-import { subcategoryWidget } from "./common/subcategory";
 import type { IndicatorConfigProps } from "./support/types";
 import type { AccessWidget, Margins } from "./types";
 import type { ComponentType } from "react";
@@ -95,6 +94,6 @@ export const accessWidgets = <Type extends string, P extends AccessDisplay>(): S
   Type,
   P
 >[] =>
-  [categoryWidget, subcategoryWidget, linkWidget, numberWidget, clockWidget].map((w) =>
+  [titleWidget, linkWidget, numberWidget, clockWidget].map((w) =>
     inSection<Type, P>(w),
   );

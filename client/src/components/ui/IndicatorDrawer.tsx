@@ -1,4 +1,4 @@
-import { Drawer, Stack, Tabs } from "@mantine/core";
+import { Drawer, Group, Stack, Tabs } from "@mantine/core";
 import { IconSettings } from "@tabler/icons-react";
 import { createContext, useCallback, useEffect, useRef, useState } from "react";
 import { NameField } from "../../widgets/support/common";
@@ -13,7 +13,9 @@ import DrawerScrollArea, {
   DRAWER_TABS_STYLES,
 } from "./DrawerScroll";
 import type { Indicator, IndicatorWidgetBase, IndicatorsApi } from "./IndicatorsPanel";
+import { widgetReference } from "@milo/shared";
 import type { Id } from "@milo/shared";
+import { ReferenceTag } from "./ReferenceTag";
 
 /**
  * The location of a widget's "Actions" menu, at the end of the drawer's tab row
@@ -77,6 +79,9 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
   }, []);
 
   const widget = indicator ? widgetOf(indicator.type) : creating;
+  // The identifier of a widget that owns its key — the lists, the calendar,
+  // the mail —, once saved.
+  const reference = indicator ? widgetReference(indicator.type, indicator.config) : "";
 
   useEffect(() => {
     if (!opened) return;
@@ -138,7 +143,11 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
             >
               {widget?.label ?? "Paramètres"}
             </Tabs.Tab>
-            <div ref={setActions} style={{ marginLeft: "auto", alignSelf: "center" }} />
+            {/* At the end of the row: the widget's "Actions" menu, then its identifier. */}
+            <Group gap={8} wrap="nowrap" style={{ marginLeft: "auto", alignSelf: "center" }}>
+              <div ref={setActions} />
+              {reference && <ReferenceTag reference={reference} template="#WWWW" neutral copyable />}
+            </Group>
           </Tabs.List>
 
           <Tabs.Panel value="settings" style={DRAWER_PANEL_STYLE}>

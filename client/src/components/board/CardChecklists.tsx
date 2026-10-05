@@ -16,7 +16,7 @@ import {
   IconUserPlus,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../api";
 import { FIELD_ICON } from "../../themes/colors";
 import { ACTOR_GAP, PersonAvatar } from "../ui/ActorAvatars";
@@ -242,6 +242,8 @@ interface ChecklistItemProps {
   onPointerDown: (event: ReactPointerEvent) => void;
   onToggle: (done: boolean) => void;
   onRename: (text: string) => void;
+  /** An item without a label, left empty or cancelled: it is deleted. */
+  onAbandon: () => void;
   onDate: (date: string) => void;
   onMembers: (ids: number[]) => void;
   /** Checked for deletion — or its whole checklist is ("locked"). */
@@ -263,6 +265,7 @@ function ChecklistItem({
   onPointerDown,
   onToggle,
   onRename,
+  onAbandon,
   onDate,
   onMembers,
   checked,
@@ -277,15 +280,32 @@ function ChecklistItem({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoEdit]);
 
+  // The input is closed once: a blur that follows Escape does nothing more.
+  const closed = useRef(false);
+  useEffect(() => {
+    if (edited !== null) closed.current = false;
+  }, [edited]);
+
   const closeInput = () => {
+    closed.current = true;
     setEdited(null);
     onEditDone?.();
   };
 
   const validate = () => {
+    if (closed.current) return;
     const text = (edited ?? "").trim();
     closeInput();
     if (text && text !== item.text) onRename(text);
+    // An item just added and left without a label disappears.
+    else if (!text && !item.text) onAbandon();
+  };
+
+  /** Escape: the label is not touched; an item without one disappears. */
+  const cancel = () => {
+    if (closed.current) return;
+    closeInput();
+    if (!item.text) onAbandon();
   };
 
   return (
@@ -342,8 +362,11 @@ function ChecklistItem({
               e.preventDefault();
               validate();
             }
-            if (e.key === "Escape") closeInput();
+            if (e.key === "Escape") cancel();
           }}
+          // Escape cancels the input alone: the card's drawer stays open
+          // (Mantine closes it from a window listener this attribute holds back).
+          data-mantine-stop-propagation
           size="sm"
           autoFocus
           placeholder="Libellé de l'élément"
@@ -444,6 +467,12 @@ function Checklist({
       setNewItem(created.id);
     });
 
+  const removeItem = (item: Element) =>
+    act(async () => {
+      await api.deleteChecklistItem(item.id);
+      await onChanged();
+    });
+
   const editItem = (item: Element, data: ChecklistItemInput) =>
     act(async () => {
       await api.updateChecklistItem(item.id, data);
@@ -519,6 +548,7 @@ function Checklist({
                 }
                 if (e.key === "Escape") setTitle(null);
               }}
+              data-mantine-stop-propagation
               size="sm"
               autoFocus
               // The title keeps its weight in edit mode: nothing changes to the eye
@@ -560,6 +590,7 @@ function Checklist({
               onPointerDown={onPointerDown(item.id, index)}
               onToggle={(done) => editItem(item, { done })}
               onRename={(text) => editItem(item, { text })}
+              onAbandon={() => removeItem(item)}
               onDate={(due_date) => editItem(item, { due_date })}
               onMembers={(member_ids) => {
                 onMembers?.(member_ids);

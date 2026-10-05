@@ -340,10 +340,10 @@ const importSections = transaction(
     if (!changes) return false;
 
     if (account) replaceSupportActors(lastInsertRowid as Id, [account.id]);
-    // Every e-mail arrives with the Settings labels (Support): it is up to
-    // whoever reads it to judge otherwise.
+    // Every e-mail arrives with its list's labels: it is up to whoever reads
+    // it to judge otherwise.
     // And with the label of its inbox (repositories/inboxes.ts): its context.
-    const labels = supportSettings().default_label_ids;
+    const labels = inbox.labels;
     replaceSupportLabels(
       lastInsertRowid as Id,
       inbox.label_id === null || labels.includes(inbox.label_id) ? labels : [...labels, inbox.label_id],

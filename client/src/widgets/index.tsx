@@ -18,6 +18,9 @@ import type { IndicatorConfigProps } from "./support/types";
 import { PROJECT_INDICATORS } from "./project";
 import { TASK_INDICATORS } from "./task";
 import { WIDGETS } from "./common";
+import { MAIL_COUNT_WIDGETS } from "./m365/mail-counts";
+import type { MailCountWidget } from "./m365/mail-counts";
+import { APPOINTMENT_WIDGETS } from "./m365/appointments";
 import {
   Frame,
   FRAME_PADDING,
@@ -28,7 +31,10 @@ import {
 } from "./margins";
 import { appearanceRows } from "../components/ui/AppearanceFields";
 import { alignmentRows } from "./alignment";
+import { FromListSource, ListSourceField } from "./list-source";
+import { heightRow } from "./height";
 import SettingRows, { frameRow } from "../components/ui/SettingRows";
+import { TitleStyleField } from "../components/ui/TitleStyles";
 import { FRAMED, isFramed, type AccessWidget } from "./types";
 import { CARD_PADDING, GAP } from "../components/ui/IndicatorsPanel";
 import type { IndicatorWidgetBase, WidgetRender } from "../components/ui/IndicatorsPanel";
@@ -62,26 +68,40 @@ const COMMON = new Set<string>(COMMON_WIDGET_TYPES);
  */
 const fieldsOf = (widget: AccessWidget): ComponentType<IndicatorConfigProps> =>
   function Fields({ config, onChange }: IndicatorConfigProps) {
-    const subject = (config ?? {}) as Record<string, unknown>;
+    // Its appearance rows, then the frame and the margins: on its own
+    // configuration, or on its style's (TitleStyleField).
+    const rows = (c: unknown, change: (config: Record<string, unknown>) => void) => [
+      ...(widget.appearance?.(c, change) ?? []),
+      frameRow(c, change, FRAMED, isFramed(c, widget.defaultFrame), widget.defaultFrame ?? false),
+      // A title shows the space it leaves after an element — the one it
+      // usually has; at the head of a column, it leaves none above.
+      ...marginRows(widget, (c ?? {}) as Record<string, unknown>, change, {
+        previousType: widget.styled ? "link" : null,
+        nextType: null,
+      }),
+    ];
+    // Its height, then its alignment in it: its own configuration's, never
+    // its style's.
+    const placement = [heightRow(config, onChange), ...alignmentRows(config, onChange)];
     return (
       <Stack gap="xl">
         <widget.Config config={config} onChange={onChange} />
-        {/* Its appearance rows, then the margins, in a single block. */}
-        <SettingRows
-          label="Apparence"
-          rows={[
-            ...(widget.appearance?.(config, onChange) ?? []),
-            frameRow(
-              config,
-              onChange,
-              FRAMED,
-              isFramed(config, widget.defaultFrame),
-              widget.defaultFrame ?? false,
-            ),
-            ...marginRows(widget, subject, onChange, { previousType: null, nextType: null }),
-            ...alignmentRows(config, onChange),
-          ]}
-        />
+        {/* In a single block, then its alignment, which stays its own. */}
+        {widget.styled ? (
+          <TitleStyleField
+            config={config}
+            onChange={onChange}
+            rows={rows}
+            after={placement}
+            defaultStyle={widget.defaultStyle}
+            type={widget.type}
+          />
+        ) : (
+          <SettingRows
+            label="Apparence"
+            rows={[...rows(config, onChange), ...placement]}
+          />
+        )}
         {widget.ConfigEnd && <widget.ConfigEnd config={config} onChange={onChange} />}
       </Stack>
     );
@@ -102,26 +122,34 @@ const fromAccess = (widget: AccessWidget): BoardWidgetDefinition => ({
   ...(widget.liveContent ? { liveContent: true } : {}),
   ...(widget.drawerSize ? { drawerSize: widget.drawerSize } : {}),
   ...(widget.hidden ? { hidden: widget.hidden } : {}),
+  ...(widget.styled ? { styled: widget.styled } : {}),
+  ...(widget.defaultStyle ? { defaultStyle: widget.defaultStyle } : {}),
   margins: (config, previousType, nextType) =>
     marginsOf(widget, config, {
       previousType: previousType as AccessBlockType | null,
       nextType: nextType as AccessBlockType | null,
     }),
-  show: (_data, config, { id, onChange, locked }) => {
+  show: (_data, config, { id, onChange, onEdit, locked }) => {
     const content = (
       <widget.Display
         blockId={id}
         config={config}
         onChange={onChange}
-        onEdit={() => {}}
+        onEdit={onEdit}
         locked={locked}
       />
     );
     // A widget that draws its own frame doesn't get a second one: its
     // padding is its own too.
     if (widget.ownFrame) return content;
+    // A title's frame and padding are its style's, when it has one.
+    const shown = widget.styled?.(config) ?? config;
     return (
-      <Frame config={config} framed={isFramed(config, widget.defaultFrame)}>
+      <Frame
+        config={shown}
+        framed={isFramed(shown, widget.defaultFrame)}
+        padding={widget.padding?.(shown)}
+      >
         {content}
       </Frame>
     );
@@ -143,74 +171,145 @@ const regularMargins = (w: IndicatorWidgetBase<string>) =>
 
 /**
  * The "Apparence" block of an indicator: its card — title, value, background —
- * if it has one, its frame, its margins, its alignment. A card is framed as long as nothing
- * is set; a list, which keeps its clicks, is not.
+ * if it has one, its frame, its margins, its height, its alignment. A card is framed as long as nothing
+ * is set; a list, which keeps its clicks, is not. A chart's colors follow, in
+ * their own block.
  */
 const appearanceOf = (w: IndicatorWidgetBase<string>): ComponentType<IndicatorConfigProps> =>
   function Appearance({ config, onChange }: IndicatorConfigProps) {
     const card = !w.ownClicks;
+    const chart = w.chartAppearance?.(config, onChange);
     return (
-      <SettingRows
-        label="Apparence"
-        rows={[
-          ...(card ? appearanceRows(config, onChange, w.withValue) : []),
-          frameRow(config, onChange, FRAMED, isFramed(config, card), card),
-          ...spacingRows(
-            regularMargins(w),
-            isFramed(config, card) ? (card ? CARD_PADDING : FRAME_PADDING) : 0,
-            config,
-            onChange,
-          ),
-          ...alignmentRows(config, onChange),
-        ]}
-      />
+      <Stack gap="xl">
+        <SettingRows
+          label="Apparence"
+          rows={[
+            ...(card ? appearanceRows(config, onChange, w.withValue) : []),
+            ...(w.frameless ? [] : [frameRow(config, onChange, FRAMED, isFramed(config, card), card)]),
+            ...spacingRows(
+              regularMargins(w),
+              isFramed(config, card) && !w.frameless ? (card ? CARD_PADDING : FRAME_PADDING) : 0,
+              config,
+              onChange,
+            ),
+            heightRow(config, onChange),
+            ...alignmentRows(config, onChange),
+          ]}
+        />
+        {chart && <SettingRows label="Apparence du graphique" rows={chart} />}
+      </Stack>
     );
   };
 
 /**
  * The widgets specific to a data type, under their prefix. The common widgets
  * that their registry took over from the Access mode aren't there: they
- * come once, from the Access mode itself.
+ * come once, from the Access mode itself. All but the list read all the
+ * board's lists, or the one their drawer names first (list-source.tsx).
  */
 const prefixed = <W extends IndicatorWidgetBase<string>>(
   prefix: string,
   widgets: W[],
+  /** The data, reduced to the items of a list widget — its list key. */
+  scope: (data: BoardData, key: string) => BoardData,
   show: (widget: W, data: BoardData, config: unknown, render: WidgetRender) => ReactNode,
 ): BoardWidgetDefinition[] =>
   widgets
     .filter((w) => !COMMON.has(w.type))
-    .map((w) => ({
-      ...w,
-      type: `${prefix}.${w.type}`,
-      // The frame and margins, as for all widgets: a card
-      // is already framed by the panel (IndicatorsPanel); a list is
-      // here, on request.
-      Appearance: appearanceOf(w),
-      margins: (config) => configuredMargins(config, regularMargins(w)),
-      // A card has its padding from the panel (IndicatorsPanel).
-      show: (data, config, render) =>
-        w.ownClicks ? (
-          <Frame config={config} framed={isFramed(config)}>
-            {show(w, data, config, render)}
-          </Frame>
+    .map((w) => {
+      const follows = w.type !== "list";
+      const content = (data: BoardData, config: unknown, render: WidgetRender) =>
+        follows ? (
+          <FromListSource prefix={prefix} config={config}>
+            {(key) => show(w, key ? scope(data, key) : data, config, render)}
+          </FromListSource>
         ) : (
           show(w, data, config, render)
-        ),
-    }));
+        );
+      const Own = w.Config;
+      return {
+        ...w,
+        type: `${prefix}.${w.type}`,
+        ...(follows && {
+          Config: ({ config, onChange }: IndicatorConfigProps) => (
+            <Stack gap="xl">
+              <ListSourceField prefix={prefix} config={config} onChange={onChange} />
+              {Own && <Own config={config} onChange={onChange} />}
+            </Stack>
+          ),
+        }),
+        // The frame and margins, as for all widgets: a card
+        // is already framed by the panel (IndicatorsPanel); a list is
+        // here, on request.
+        Appearance: appearanceOf(w),
+        margins: (config: unknown) => configuredMargins(config, regularMargins(w)),
+        // A card has its padding from the panel (IndicatorsPanel).
+        show: (data: BoardData, config: unknown, render: WidgetRender) =>
+          w.ownClicks ? (
+            <Frame config={config} framed={!w.frameless && isFramed(config)}>
+              {content(data, config, render)}
+            </Frame>
+          ) : (
+            content(data, config, render)
+          ),
+      };
+    });
+
+/**
+ * The Microsoft 365 widgets that follow another of their board — the mail
+ * counts (m365/mail-counts.tsx), the appointments (m365/appointments.tsx):
+ * cards like the indicators of a data type, or a list, but without a prefix —
+ * they read no board data.
+ */
+const followers = (widgets: MailCountWidget[]): BoardWidgetDefinition[] =>
+  widgets.map((w) => ({
+    ...w,
+    Appearance: appearanceOf(w),
+    margins: (config) => configuredMargins(config, regularMargins(w)),
+    // A list has its frame here, on request; a card, from the panel.
+    show: (_data, config, render) =>
+      w.ownClicks ? (
+        <Frame config={config} framed={!w.frameless && isFramed(config)}>
+          <w.Display config={config} {...render} />
+        </Frame>
+      ) : (
+        <w.Display config={config} {...render} />
+      ),
+  }));
+
+/** Each data type's items, reduced to those of one list widget. */
+const inProjects = (d: BoardData, key: string): BoardData => ({
+  ...d,
+  projects: d.projects.filter((p) => p.list_key === key),
+});
+const inLists = (d: BoardData, key: string): BoardData => ({
+  ...d,
+  lists: d.lists.filter((l) => l.list_key === key),
+});
+const inRequests = (d: BoardData, key: string): BoardData => ({
+  ...d,
+  requests: d.requests.filter((r) => r.list_key === key),
+});
+const inAssets = (d: BoardData, key: string): BoardData => ({
+  ...d,
+  assets: d.assets.filter((a) => a.list_key === key),
+});
 
 /** In the order the widgets drawer presents them, grouped by type. */
 export const BOARD_WIDGETS: BoardWidgetDefinition[] = [
   ...WIDGETS.map(fromAccess),
-  ...prefixed("project", PROJECT_INDICATORS, (w, d, config, render) => (
+  ...followers(MAIL_COUNT_WIDGETS),
+  ...followers(APPOINTMENT_WIDGETS),
+  ...prefixed("project", PROJECT_INDICATORS, inProjects, (w, d, config, render) => (
     <w.Display config={config} projects={d.projects} userId={d.userId} {...render} />
   )),
-  ...prefixed("task", TASK_INDICATORS, (w, d, config, render) => (
+  ...prefixed("task", TASK_INDICATORS, inLists, (w, d, config, render) => (
     <w.Display config={config} lists={d.lists} userId={d.userId} {...render} />
   )),
-  ...prefixed("support", INDICATORS, (w, d, config, render) => (
+  ...prefixed("support", INDICATORS, inRequests, (w, d, config, render) => (
     <w.Display config={config} requests={d.requests} userId={d.userId} {...render} />
   )),
-  ...prefixed("asset", ASSET_INDICATORS, (w, d, config, render) => (
+  ...prefixed("asset", ASSET_INDICATORS, inAssets, (w, d, config, render) => (
     <w.Display config={config} assets={d.assets} {...render} />
   )),
 ];
@@ -222,9 +321,3 @@ const BY_TYPE = new Map(BOARD_WIDGETS.map((w) => [w.type, w]));
  * version that knew one more must not crash the page.
  */
 export const boardWidget = (type: string): BoardWidgetDefinition | undefined => BY_TYPE.get(type);
-
-/** The permitted conversions: the category and the sub-category share their configuration. */
-export const CONVERSIONS: Record<string, string> = {
-  category: "subcategory",
-  subcategory: "category",
-};

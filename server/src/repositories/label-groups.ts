@@ -1,7 +1,6 @@
 // Label groups: every label belongs to one, and the groups are ordered among
 // themselves. The four kinds of labels — those of cards, of projects, of
-// assets, of Support — each have their own groups table; the first three are
-// bounded by their board, Support's form a single set.
+// assets, of Support — each have their own groups table, bounded by its board.
 //
 // The labels' "position" orders the whole set, group after group: it is
 // renumbered whenever a group moves or a label changes group. Every query that
@@ -166,9 +165,9 @@ export const assetLabelGroups = store({
   scoped: true,
 });
 
-/** The groups of the Support labels: a single set. */
+/** The groups of a board's Support labels. */
 export const supportLabelGroups = store({
   labels: "support_labels",
   groups: "support_label_groups",
-  scoped: false,
+  scoped: true,
 });

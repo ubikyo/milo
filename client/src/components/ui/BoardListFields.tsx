@@ -25,6 +25,7 @@ import {
   move,
   pluralize,
   rowStyle,
+  editKeys,
 } from "./DrawerRows";
 
 // The categories of the open board, in the drawer of a "Projets" widget,
@@ -320,6 +321,7 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
                 placeholder="Nom"
                 value={row.name}
                 onChange={(e) => change(rank, { name: e.currentTarget.value })}
+                {...editKeys((name) => change(rank, { name }))}
                 autoFocus={toName === row.key}
                 onFocus={() => setInput(`${row.key}-nom`)}
                 onBlur={() => {

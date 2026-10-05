@@ -74,8 +74,15 @@ export interface PublicUser {
    * in any list and is the actor of nothing.
    */
   system: boolean;
+  /**
+   * The workspace opened at sign-in: null for the one they were working in.
+   * The opening view and board are taken from it.
+   */
+  default_workspace: Id | null;
   /** The opening view: its id as a string, empty for the first. */
   default_view: string;
+  /** The opening board, in the opening view: its id as a string, empty for the first. */
+  default_board: string;
   /**
    * The workspace they work in: its views, boards and rights are
    * those of this workspace. "null" if they have none.
@@ -695,20 +702,43 @@ export const SUPPORT_URGENCY_LABELS = [
 
 /**
  * The channel through which a request arrived: set with the urgency
- * labels at installation.
+ * labels when the first Support widget is placed.
  */
 export const SUPPORT_CHANNEL_LABELS = [
   { name: "E-mail", color: "gray.7" },
   { name: "Téléphone", color: "gray.7" },
+  { name: "Teams", color: "gray.7" },
+  { name: "SMS", color: "gray.7" },
   { name: "Sur place", color: "gray.7" },
 ] as const;
 
+/**
+ * The priority labels a board's first projects widget brings, from the most to
+ * the least important, in the "Priorités" group (DEFAULT_LABEL_GROUP). Labels
+ * like the others: renamed, recolored, deleted at will.
+ */
+export const PROJECT_PRIORITY_LABELS = [
+  { name: "Importante", color: "red.6" },
+  { name: "Haute", color: "orange.6" },
+  { name: "Normale", color: "blue.6" },
+  { name: "Faible", color: "gray.6" },
+] as const;
+
 /** The groups the urgency and channel labels are gathered in. */
-export const SUPPORT_URGENCY_GROUP = "Urgence";
+export const SUPPORT_URGENCY_GROUP = "Priorité";
 export const SUPPORT_CHANNEL_GROUP = "Canal";
 
-/** What a fresh installation sets automatically on an incoming email. */
+/**
+ * What an incoming email receives automatically, as long as its list has not
+ * chosen (NEW_MESSAGE_LABELS): the labels of its board bearing these names.
+ */
 export const SUPPORT_NEW_MESSAGE_LABELS = ["Sans urgence", "E-mail"] as const;
+
+/**
+ * The configuration key of a request list: the ids of its board's labels an
+ * incoming email receives automatically. Absent: SUPPORT_NEW_MESSAGE_LABELS.
+ */
+export const NEW_MESSAGE_LABELS = "new_message_label_ids";
 
 /** The due date of an incoming email on a fresh installation, in business days. */
 export const SUPPORT_NEW_MESSAGE_DUE_DAYS = 15;
@@ -757,6 +787,8 @@ export const supportStatusLabel = (status: SupportStatus): string =>
  */
 export interface SupportLabel {
   id: Id;
+  /** Its board: Support's labels, like the other kinds, belong to one. */
+  board_id: Id;
   /** Its group: every label belongs to one (LabelGroup). */
   group_id: Id;
   /** The name of its group, on the lists that read it along. */
@@ -884,7 +916,6 @@ export type IndicatorSection = BoardSection;
 export const SUPPORT_INDICATOR_TYPES = [
   "list",
   "category",
-  "subcategory",
   "link",
   "number",
   "clock",
@@ -912,7 +943,6 @@ export const isSupportIndicatorType = (value: unknown): value is SupportIndicato
 export const ASSET_INDICATOR_TYPES = [
   "list",
   "category",
-  "subcategory",
   "link",
   "number",
   "clock",
@@ -932,7 +962,6 @@ export const isAssetIndicatorType = (value: unknown): value is AssetIndicatorTyp
 export const PROJECT_INDICATOR_TYPES = [
   "list",
   "category",
-  "subcategory",
   "link",
   "number",
   "clock",
@@ -956,7 +985,6 @@ export const isProjectIndicatorType = (value: unknown): value is ProjectIndicato
 export const TASK_INDICATOR_TYPES = [
   "list",
   "category",
-  "subcategory",
   "link",
   "number",
   "clock",
@@ -980,7 +1008,6 @@ export const isTaskIndicatorType = (value: unknown): value is TaskIndicatorType 
  */
 export const ACCESS_BLOCK_TYPES = [
   "category",
-  "subcategory",
   "link",
   "number",
   "clock",
@@ -999,16 +1026,6 @@ export type AccessBlockType = (typeof ACCESS_BLOCK_TYPES)[number];
 export const isAccessBlockType = (value: unknown): value is AccessBlockType =>
   ACCESS_BLOCK_TYPES.includes(value as AccessBlockType);
 
-/**
- * The items that convert into one another, and into what. The category
- * and the subcategory are the same title at two levels: same configuration,
- * only the type changes. The other widgets have nothing in common, and a link
- * does not become a clock.
- */
-export const ACCESS_BLOCK_CONVERSIONS: Partial<Record<AccessBlockType, AccessBlockType>> = {
-  category: "subcategory",
-  subcategory: "category",
-};
 
 
 /** An article of a feed, as the server pulls it from the source. */
@@ -1213,6 +1230,51 @@ export interface AccessMailFolder {
   name: string;
   /** Their inbox. */
   is_default: boolean;
+}
+
+/**
+ * A mail folder's counts, as Exchange keeps them on the folder: the "Messages
+ * par dossier" widget shows them without reading any e-mail.
+ */
+export interface AccessMailFolderCount {
+  id: string;
+  name: string;
+  /** Whose mailbox it belongs to: their address. */
+  owner: string;
+  total: number;
+  unread: number;
+  /** Which of Outlook's own folders it is (MAIL_FOLDER_KINDS); empty, one of the person's. */
+  kind: MailFolderKind | "";
+}
+
+/**
+ * Outlook's own folders, by their Exchange well-known names: whatever the
+ * mailbox's language, they are recognized.
+ */
+export const MAIL_FOLDER_KINDS = ["inbox", "sentitems", "drafts", "deleteditems", "junkemail"] as const;
+export type MailFolderKind = (typeof MAIL_FOLDER_KINDS)[number];
+
+/** What the mail widgets that count read: the folders, and the mailboxes that failed. */
+export interface AccessMailFolderCounts {
+  folders: AccessMailFolderCount[];
+  errors: { owner: string; message: string }[];
+}
+
+/**
+ * What the mail "Indicateur" counts: the unread ones and the total, kept by
+ * Exchange on each folder; those received since a moment, and those flagged,
+ * counted by Graph ($count) — none of them reads an e-mail.
+ */
+export const MAIL_METRICS = ["unread", "total", "today", "flagged"] as const;
+export type MailMetric = (typeof MAIL_METRICS)[number];
+
+export const isMailMetric = (value: unknown): value is MailMetric =>
+  MAIL_METRICS.includes(value as MailMetric);
+
+/** The count of an "Indicateur", over every folder it reads. */
+export interface AccessMailCount {
+  value: number;
+  errors: { owner: string; message: string }[];
 }
 
 /** An attachment of an opened email: its content is requested separately. */

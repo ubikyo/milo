@@ -2,6 +2,8 @@ import { Box } from "@mantine/core";
 import type { CSSProperties, ReactNode } from "react";
 import inset from "../assets/styles/AccessNumber.module.css";
 import { insertRow, type SettingRow, type SizeSetting } from "../components/ui/SettingRows";
+import alignment from "../assets/styles/Alignment.module.css";
+import { alignmentProps } from "./alignment";
 import { count, isFramed } from "./types";
 import type { AccessWidget, Margins, Padding } from "./types";
 import type { BoardWidget, AccessBlockType } from "@milo/shared";
@@ -55,18 +57,18 @@ const configured = (config: unknown, key: string): number | null => {
   return Number.isNaN(readValue) ? null : readValue;
 };
 
-/** The elements that open a group: the space before them is their own. */
-const TITLES: AccessBlockType[] = ["category", "subcategory"];
-
 /**
- * The widget's usual space, except before a category or a subcategory: the
- * element leaves nothing below itself there, the title alone setting the gap
- * that separates it.
+ * The elements that open a group: the space above them is the larger of their
+ * own and the previous element's (Margins.collapse), not their sum.
  */
-const regularOf = (widget: AccessWidget, { previousType, nextType }: Neighbors): Margins => {
-  const regular = widget.margins(previousType, nextType);
-  return nextType !== null && TITLES.includes(nextType) ? { ...regular, bottom: 0 } : regular;
-};
+const TITLES: AccessBlockType[] = ["category"];
+
+/** The widget's usual space. */
+const regularOf = (
+  widget: AccessWidget,
+  { previousType, nextType }: Neighbors,
+  config: unknown,
+): Margins => widget.margins(previousType, nextType, config);
 
 /** The space the element really leaves: its own, or that of its configuration. */
 export const marginsOf = (
@@ -74,7 +76,11 @@ export const marginsOf = (
   config: unknown,
   neighbors: Neighbors,
 ): Margins => {
-  return configuredMargins(config, regularOf(widget, neighbors));
+  const margins = configuredMargins(
+    widget.styled?.(config) ?? config,
+    regularOf(widget, neighbors, config),
+  );
+  return TITLES.includes(widget.type) ? { ...margins, collapse: true } : margins;
 };
 
 /**
@@ -154,10 +160,18 @@ export function Frame({
   const regular = padding ?? (framed ? FRAME_PADDING : 0);
   const sides = paddingOf(config, regular);
   if (!framed && Object.values(sides).every((v) => v === 0)) return <>{children}</>;
+  // Aligned, the frame fills the widget's place, and the content moves inside
+  // it (widgets/alignment.ts, Alignment.module.css).
+  const aligned = alignmentProps(config);
+  // What the frame holds keeps its own height: the stylesheet makes the frame
+  // fill its place.
+  const { flex: _flex, minHeight: _minHeight, ...alignedStyle } = aligned.style;
   return (
     <Box
-      className={framed ? inset.inset : undefined}
-      style={{ ...paddingStyle(config, regular), border: "none" }}
+      className={[framed ? inset.inset : undefined, alignment.frame, aligned.className]
+        .filter(Boolean)
+        .join(" ")}
+      style={{ ...alignedStyle, ...paddingStyle(config, regular), border: "none" }}
     >
       {children}
     </Box>
@@ -223,7 +237,7 @@ export const marginRows = (
   neighbors: Neighbors,
 ): SettingRow[] =>
   spacingRows(
-    regularOf(widget, neighbors),
+    regularOf(widget, neighbors, config),
     widget.padding?.(config) ?? (isFramed(config, widget.defaultFrame) ? FRAME_PADDING : 0),
     config,
     onChange,

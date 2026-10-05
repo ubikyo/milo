@@ -12,12 +12,14 @@ import {
 } from "@mantine/core";
 import { IconRestore } from "@tabler/icons-react";
 import { useState } from "react";
+import type { ComponentType } from "react";
 import { GREEN, SEGMENTS_BG } from "../../themes/colors";
 import { SHADES, SHADES_PER_ROW } from "../../widgets/style-fields";
 import {
   ROUNDING,
   ROW_INSET,
   INPUT_STYLE,
+  numberKeys,
   rowStyle,
 } from "./DrawerRows";
 
@@ -28,12 +30,19 @@ import {
 // color and size, or its switch, aligned right.
 
 /** The width of the row's name: the rows' fields line up beneath it. */
-const NAME_WIDTH = 65;
+const NAME_WIDTH = 100;
 
 /** The space between the button and the name. */
 const NAME_GAP = 10;
 const SIZE_WIDTH = 80;
 const COLOR_WIDTH = 120;
+
+/**
+ * Mantine's heights, which it only defines inside its components: a format
+ * button's (ActionIcon "md") and an "xs" field's.
+ */
+const BUTTON_HEIGHT = "calc(1.75rem * var(--mantine-scale))";
+const FIELD_HEIGHT = "calc(1.875rem * var(--mantine-scale))";
 
 /** The button's background, darker than the row's (ROW_BACKGROUND). */
 const BUTTON_BACKGROUND = "light-dark(#d4d4d4, var(--mantine-color-dark-4))";
@@ -53,6 +62,14 @@ export const insertRow = (
   return next;
 };
 
+/** A setting of a row's "formats": its button shows the icon, and is green when on. */
+export interface FormatSetting {
+  label: string;
+  icon: ComponentType<{ size?: number }>;
+  value: boolean;
+  onChange: (value: boolean) => void;
+}
+
 /** A size in pixels, set in a row. */
 export interface SizeSetting {
   value: number;
@@ -68,13 +85,16 @@ export interface SizeSetting {
    */
   prefix?: string;
   what?: string;
+  /** What follows the value: " px" by default, " %" for a share. */
+  suffix?: string;
 }
 
 export interface SettingRow {
   name: string;
   /** "du titre", "de la marge haute": what the field labels say. */
   what: string;
-  color?: { value: string; onChange: (value: string) => void };
+  /** "alpha": the color carries its transparency — a chart's fill. */
+  color?: { value: string; onChange: (value: string) => void; alpha?: boolean };
   size?: SizeSetting;
   /** Several sizes side by side, aligned right — a padding's top and bottom. */
   sizes?: SizeSetting[];
@@ -86,13 +106,21 @@ export interface SettingRow {
     data: { value: string; label: string }[];
     onChange: (value: string) => void;
   };
+  /**
+   * Settings that each turn on or off, as buttons side by side — a text's
+   * bold, italic, underline —, aligned right.
+   */
+  formats?: FormatSetting[];
   /** True when one of the row's settings differs from the default. */
   modified: boolean;
   reset: () => void;
 }
 
-/** The row's button, on the left: it resets all its settings to the default. */
-function Reset({
+/**
+ * The row's button, on the left: it resets all its settings to the default.
+ * Also that of the e-mail templates' rows (MailTemplates).
+ */
+export function Reset({
   active,
   onClick,
   what,
@@ -130,10 +158,12 @@ function Color({
   value,
   onChange,
   label,
+  alpha = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   label: string;
+  alpha?: boolean;
 }) {
   const [input, setInput] = useState(false);
   return (
@@ -144,7 +174,7 @@ function Color({
       placeholder="Par défaut"
       value={value}
       onChange={(v) => onChange(v.toLowerCase())}
-      format="hex"
+      format={alpha ? "hexa" : "hex"}
       swatches={SHADES}
       swatchesPerRow={SHADES_PER_ROW}
       withEyeDropper={false}
@@ -177,7 +207,7 @@ function Size({
       style={first ? { marginLeft: "auto" } : undefined}
       placeholder={String(size.defaultValue)}
       prefix={size.prefix ? `${size.prefix} ` : undefined}
-      suffix=" px"
+      suffix={size.suffix ?? " px"}
       min={size.min}
       max={size.max}
       allowDecimal={false}
@@ -185,6 +215,7 @@ function Size({
       aria-label={label}
       value={size.value}
       onChange={(v) => size.onChange(v === "" ? "" : Number(v))}
+      {...numberKeys(size.onChange)}
       onFocus={() => setInput(true)}
       onBlur={() => setInput(false)}
       styles={input ? { input: INPUT_STYLE } : undefined}
@@ -204,7 +235,9 @@ export default function SettingRows({
       <Stack gap={1}>
         {rows.map((l, rank) => (
           <Group
-            key={l.name}
+            // Two rows may share a name — an attribute's color, then its
+            // alignment —: what they set tells them apart.
+            key={`${l.name}|${l.what}`}
             gap="sm"
             wrap="nowrap"
             // The button, at the start, sits against the left edge like the
@@ -212,6 +245,11 @@ export default function SettingRows({
             style={{
               ...rowStyle(rank, rows.length, false),
               paddingLeft: ROW_INSET,
+              // A row with a choice keeps a field's height: the one that
+              // appears with an option — a height's value — doesn't enlarge it.
+              ...(l.choice && {
+                minHeight: `calc(${FIELD_HEIGHT} + ${2 * ROW_INSET}px)`,
+              }),
             }}
           >
             <Reset
@@ -233,6 +271,7 @@ export default function SettingRows({
               <Color
                 value={l.color.value}
                 onChange={l.color.onChange}
+                alpha={l.color.alpha}
                 label={`Couleur ${l.what}`}
               />
             )}
@@ -258,7 +297,14 @@ export default function SettingRows({
                 styles={{
                   root: { padding: 0, backgroundColor: SEGMENTS_BG },
                   indicator: { borderRadius: "var(--sc-radius)" },
-                  label: { borderRadius: "var(--sc-radius)" },
+                  // As tall as the format buttons (ActionIcon "md").
+                  label: {
+                    borderRadius: "var(--sc-radius)",
+                    height: BUTTON_HEIGHT,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  },
                 }}
                 value={l.choice.value}
                 onChange={l.choice.onChange}
@@ -272,8 +318,31 @@ export default function SettingRows({
                   if (option?.value === choice.value) choice.onChange(option.value);
                 }}
                 aria-label={l.name}
-                style={{ marginLeft: "auto" }}
+                // After a field — a height's value —, it follows it; alone, it
+                // goes to the right.
+                style={{ marginLeft: l.size || l.sizes ? undefined : "auto", marginRight: 1 }}
               />
+            )}
+            {l.formats && (
+              <Group gap={4} wrap="nowrap" style={{ marginLeft: "auto" }}>
+                {l.formats.map((f) => (
+                  <Tooltip key={f.label} label={f.label}>
+                    <ActionIcon
+                      variant="filled"
+                      radius={3}
+                      aria-label={f.label}
+                      aria-pressed={f.value}
+                      onClick={() => f.onChange(!f.value)}
+                      style={{
+                        backgroundColor: f.value ? GREEN : BUTTON_BACKGROUND,
+                        color: f.value ? "#ffffff" : "var(--mantine-color-text)",
+                      }}
+                    >
+                      <f.icon size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                ))}
+              </Group>
             )}
             {l.toggle && (
               <Switch

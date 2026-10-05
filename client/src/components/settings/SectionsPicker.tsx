@@ -11,6 +11,7 @@ import {
 import { IconChevronDown } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { pickKeys } from "../ui/DrawerRows";
 
 // Several sections picked at once, for the row being added (SectionRights):
 // a box each — and "all" above them, apart —, then "Ajouter". Closing the list
@@ -115,6 +116,7 @@ export default function SectionsPicker({
           rightSection={<IconChevronDown size={14} />}
           rightSectionPointerEvents="none"
           onClick={() => combobox.toggleDropdown()}
+          {...pickKeys}
           // Left without opening the list: the row goes away.
           onBlur={() => !combobox.dropdownOpened && finish([])}
         >

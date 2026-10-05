@@ -195,7 +195,6 @@ export const boardWidgets = {
     );
   },
   update: mutation("UPDATE board_widgets SET config = ? WHERE id = ?"),
-  convert: mutation("UPDATE board_widgets SET type = ? WHERE id = ?"),
   remove: mutation("DELETE FROM board_widgets WHERE id = ?"),
   /**
    * What a section now carries, in order. A widget coming from another

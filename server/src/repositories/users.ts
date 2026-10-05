@@ -69,7 +69,10 @@ export const users = {
      WHERE id = ?`,
   ),
   setPassword: mutation("UPDATE users SET password_hash = ? WHERE id = ?"),
-  setDefaultView: mutation("UPDATE users SET default_view = ? WHERE id = ?"),
+  /** The opening workspace, view and board, chosen in the profile. */
+  setOpening: mutation(
+    "UPDATE users SET default_workspace_id = ?, default_view = ?, default_board = ? WHERE id = ?",
+  ),
   setWorkspace: mutation("UPDATE users SET workspace_id = ? WHERE id = ?"),
   /** True if this id designates a person. Used to filter the attachments. */
   exists: selection<{ id: number }>("SELECT id FROM users WHERE id = ? AND system = 0"),
@@ -328,7 +331,11 @@ export const publicUser = (account: UserRow): PublicUser => {
     application: applicationRights(user),
     structure: structureRights(user),
     system: Boolean(user.system),
+    default_workspace: workspacesOf(user).some((w) => w.id === user.default_workspace_id)
+      ? user.default_workspace_id
+      : null,
     default_view: user.default_view ?? "",
+    default_board: user.default_board ?? "",
     workspace: user.workspace_id,
     workspaces: workspacesOf(user),
     workspace_rights: workspaceRights(user),

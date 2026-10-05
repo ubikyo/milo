@@ -103,6 +103,8 @@ interface SupportTemplatesProps<E extends string> {
   onError: (message: string) => void;
   /** The variable sources its templates may cite. */
   variableGroups?: readonly SupportVariableGroup[];
+  /** The e-mail template its templates are previewed in. */
+  previewTemplate: "support_reply" | "support_auto_reply";
 }
 
 export default function SupportTemplates<E extends string>({
@@ -119,6 +121,7 @@ export default function SupportTemplates<E extends string>({
   canEdit,
   onError,
   variableGroups,
+  previewTemplate,
 }: SupportTemplatesProps<E>) {
   // The templates, and the one whose modal is open.
   const [templates, setTemplates] = useState<Template<E>[]>([]);
@@ -302,6 +305,7 @@ export default function SupportTemplates<E extends string>({
         }}
         canEdit={canEdit}
         groups={variableGroups}
+        previewTemplate={previewTemplate}
       />
     </fieldset>
   );

@@ -18,5 +18,6 @@ export const mailOptin = widgetOptin({
   title: "Partager votre boîte aux lettres",
   intro: (who, board) =>
     `${who} souhaite afficher les e-mails de votre boîte Outlook dans Milo${board ? `, sur le tableau « ${board} »` : ""}. Les personnes qui voient ce tableau pourront lire les e-mails des dossiers choisis — expéditeur, objet, contenu et pièces jointes —, sans pouvoir les modifier ni y répondre. Si vous êtes d'accord, communiquez ce code à ${who}. Rien n'est lu de votre boîte avant.`,
+  templateKey: "mail_confirmation",
   name: "Mail",
 });

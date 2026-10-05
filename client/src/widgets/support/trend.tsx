@@ -3,6 +3,7 @@ import { Select, Stack } from "@mantine/core";
 import { IconChartHistogram } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { withField, count } from "../types";
+import { CHART_COLORS, barChartProps, barChartRows, colorOf, colorRow } from "../chart-colors";
 import { NameField, NAME, IndicatorTitle } from "./common";
 import type { SupportIndicatorWidget } from "./types";
 
@@ -13,6 +14,7 @@ const LABEL = "Évolution";
 const PERIOD = "days";
 const PERIODS = [7, 14, 30];
 const PERIOD_DEFAULT = 14;
+const COLOR = "color";
 
 /** The stored period, or the default one: an unknown value does not bring anything down. */
 const periodOf = (config: unknown) => {
@@ -49,8 +51,8 @@ export const evolutionIndicator: SupportIndicatorWidget = {
           h={160}
           data={data}
           dataKey="day"
-          series={[{ name: "tickets", label: "Tickets", color: "teal.6" }]}
-          gridAxis="none"
+          series={[{ name: "tickets", label: "Tickets", color: colorOf(config, COLOR, CHART_COLORS.green) }]}
+          {...barChartProps(config)}
           yAxisProps={{ allowDecimals: false, width: 24 }}
           withTooltip
         />
@@ -70,4 +72,9 @@ export const evolutionIndicator: SupportIndicatorWidget = {
       />
     </Stack>
   ),
+
+  chartAppearance: (config, onChange) => [
+    colorRow(config, onChange, { name: "Barres", what: "des barres", key: COLOR, defaultColor: CHART_COLORS.green }),
+    ...barChartRows(config, onChange),
+  ],
 };

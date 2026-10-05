@@ -49,12 +49,12 @@ const send = async (list: string, email: string, usage = ""): Promise<void> => {
     from: sendingAddress(),
     to: email,
     subject: CONFIRMATION_SUBJECT,
-    ...template({
+    ...(await template("mailbox_confirmation", {
       title: "Confirmez cette boîte de support",
       intro: `Milo doit relever les e-mails de ${email} pour en faire des tickets${usage ? ` (${usage})` : ""}. Pour confirmer que cette boîte vous appartient, saisissez ce code dans Milo : Actions → Confirmer une adresse. Rien n'en sera importé avant.`,
       rows: [{ text: `Code de confirmation : ${code}`, repetitions: 1 }],
       footer: "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.",
-    }),
+    }, { email, code })),
   });
   // Stored once sent: a failed send does not replace the previous code.
   optins.sent(list, email, code);

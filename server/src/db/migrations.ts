@@ -9,6 +9,7 @@ import type { Database } from "better-sqlite3";
 import {
   QUERY_PARAMS,
   DEFAULT_LABEL_GROUP,
+  NEW_MESSAGE_LABELS,
   SUPPORT_CHANNEL_GROUP,
   SUPPORT_CHANNEL_LABELS,
   SUPPORT_URGENCY_GROUP,
@@ -20,6 +21,7 @@ import {
   fullAdminPermissions,
   validApplicationRights,
   migrateWidgetConfig,
+  currentWidget,
   panelType,
   validWidgetRights,
   widgetRightsEverywhere,
@@ -281,6 +283,246 @@ export const migrate = (db: Database): void => {
   labelContexts(db);
   // Then the context group goes from the lists to their board.
   boardContextGroups(db);
+  subcategoriesAsTitles(db);
+  assetSettingsByBoard(db);
+  supportLabelsByBoard(db);
+  // Accounts from before the opening workspace and board.
+  const userColumns = columns(db, "users");
+  if (!userColumns.includes("default_workspace_id")) {
+    db.exec(
+      "ALTER TABLE users ADD COLUMN default_workspace_id INTEGER REFERENCES workspaces(id) ON DELETE SET NULL",
+    );
+  }
+  if (!userColumns.includes("default_board")) {
+    db.exec("ALTER TABLE users ADD COLUMN default_board TEXT NOT NULL DEFAULT ''");
+  }
+};
+
+/** Set once Support's labels belong to their board. */
+const SUPPORT_LABELS_BY_BOARD = "support_labels_by_board";
+
+/**
+ * Support's labels, once common to the whole application, belong to a board
+ * like those of cards and projects. The common ones go to the board holding
+ * the most requests — the first with a Support list, if none holds any. Any
+ * other board with a Support list receives the default priorities and
+ * channels; a request or an inbox of such a board that named a common label
+ * takes its copy there, by name. The labels an e-mail received, chosen once
+ * for all, go into each Support list's configuration (NEW_MESSAGE_LABELS).
+ */
+const supportLabelsByBoard = (db: Database): void => {
+  for (const table of ["support_labels", "support_label_groups"]) {
+    if (!columns(db, table).includes("board_id")) {
+      db.exec(
+        `ALTER TABLE ${table} ADD COLUMN board_id INTEGER REFERENCES boards(id) ON DELETE CASCADE`,
+      );
+    }
+  }
+  if (readSetting(db, SUPPORT_LABELS_BY_BOARD)) return;
+
+  const lists = db
+    .prepare(
+      `SELECT w.id, w.config, s.board_id FROM board_widgets w
+       JOIN board_sections s ON s.id = w.section_id
+       WHERE w.type = 'support.list'
+       ORDER BY w.id`,
+    )
+    .all() as { id: number; config: string; board_id: number }[];
+  const busiest = db
+    .prepare(
+      `SELECT board_id FROM support_requests
+       GROUP BY board_id ORDER BY COUNT(*) DESC, board_id LIMIT 1`,
+    )
+    .get() as { board_id: number } | undefined;
+  const primary = busiest?.board_id ?? lists[0]?.board_id;
+
+  const instant = new Date().toISOString();
+  const groupNamed = db.prepare(
+    "SELECT id FROM support_label_groups WHERE board_id = ? AND name = ? COLLATE NOCASE",
+  );
+  const createGroup = db.prepare(
+    `INSERT INTO support_label_groups (board_id, name, position, created_at)
+     VALUES (?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM support_label_groups
+                    WHERE board_id = ?), ?)`,
+  );
+  const labelNamed = db.prepare(
+    "SELECT id FROM support_labels WHERE board_id = ? AND name = ? COLLATE NOCASE",
+  );
+  const createLabel = db.prepare(
+    `INSERT INTO support_labels (board_id, group_id, name, color, position, created_at)
+     VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM support_labels
+                          WHERE board_id = ?), ?)`,
+  );
+  const labelById = db.prepare(
+    `SELECT l.board_id, l.name, l.color, g.name AS group_name FROM support_labels l
+     LEFT JOIN support_label_groups g ON g.id = l.group_id WHERE l.id = ?`,
+  );
+  const boardLabelCount = db.prepare(
+    `SELECT (SELECT COUNT(*) FROM support_labels WHERE board_id = @board)
+          + (SELECT COUNT(*) FROM support_label_groups WHERE board_id = @board) AS count`,
+  );
+
+  const group = (board: number, name: string): number =>
+    (groupNamed.get(board, name) as { id: number } | undefined)?.id ??
+    Number(createGroup.run(board, name, board, instant).lastInsertRowid);
+  const label = (board: number, groupName: string, name: string, color: string): number =>
+    (labelNamed.get(board, name) as { id: number } | undefined)?.id ??
+    Number(
+      createLabel.run(board, group(board, groupName), name, color, board, instant).lastInsertRowid,
+    );
+  /** The label of this board standing for this one: itself, or its copy by name. */
+  const onBoard = (labelId: number, board: number): number | null => {
+    const source = labelById.get(labelId) as
+      | { board_id: number; name: string; color: string; group_name: string | null }
+      | undefined;
+    if (!source) return null;
+    if (source.board_id === board) return labelId;
+    return label(board, source.group_name ?? DEFAULT_LABEL_GROUP, source.name, source.color);
+  };
+
+  db.transaction(() => {
+    if (primary === undefined) {
+      // No board uses Support: the common labels have no one to go to.
+      db.exec("DELETE FROM support_labels WHERE board_id IS NULL");
+      db.exec("DELETE FROM support_label_groups WHERE board_id IS NULL");
+    } else {
+      db.prepare("UPDATE support_labels SET board_id = ? WHERE board_id IS NULL").run(primary);
+      db.prepare("UPDATE support_label_groups SET board_id = ? WHERE board_id IS NULL").run(
+        primary,
+      );
+    }
+
+    // The other boards with a Support list, still without labels: the defaults.
+    for (const board of new Set(lists.map((l) => l.board_id))) {
+      if ((boardLabelCount.get({ board }) as { count: number }).count > 0) continue;
+      for (const [groupName, labels] of [
+        [SUPPORT_URGENCY_GROUP, SUPPORT_URGENCY_LABELS],
+        [SUPPORT_CHANNEL_GROUP, SUPPORT_CHANNEL_LABELS],
+      ] as const) {
+        for (const l of labels) label(board, groupName, l.name, l.color);
+      }
+    }
+
+    // A request carries only labels of its board.
+    const foreign = db
+      .prepare(
+        `SELECT rl.request_id, rl.label_id, r.board_id FROM support_request_labels rl
+         JOIN support_requests r ON r.id = rl.request_id
+         JOIN support_labels l ON l.id = rl.label_id
+         WHERE l.board_id != r.board_id`,
+      )
+      .all() as { request_id: number; label_id: number; board_id: number }[];
+    const link = db.prepare(
+      "INSERT OR IGNORE INTO support_request_labels (request_id, label_id) VALUES (?, ?)",
+    );
+    const unlink = db.prepare(
+      "DELETE FROM support_request_labels WHERE request_id = ? AND label_id = ?",
+    );
+    for (const f of foreign) {
+      const own = onBoard(f.label_id, f.board_id);
+      if (own !== null) link.run(f.request_id, own);
+      unlink.run(f.request_id, f.label_id);
+    }
+
+    // Each list's inboxes name a label of its board; the e-mail's labels
+    // become its own.
+    const chosen = readSetting(db, "support_default_label_ids");
+    const save = db.prepare("UPDATE board_widgets SET config = ? WHERE id = ?");
+    for (const list of lists) {
+      let config: Record<string, unknown>;
+      try {
+        config = JSON.parse(list.config) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      if (!config || typeof config !== "object") continue;
+      if (Array.isArray(config.mailboxes)) {
+        config.mailboxes = (config.mailboxes as Record<string, unknown>[]).map((m) =>
+          m && typeof m === "object" && typeof m.label_id === "number"
+            ? { ...m, label_id: onBoard(m.label_id, list.board_id) }
+            : m,
+        );
+      }
+      if (Array.isArray(chosen) && !Array.isArray(config[NEW_MESSAGE_LABELS])) {
+        config[NEW_MESSAGE_LABELS] = chosen
+          .map((id) => (typeof id === "number" ? onBoard(id, list.board_id) : null))
+          .filter((id): id is number => id !== null);
+      }
+      save.run(JSON.stringify(config), list.id);
+    }
+
+    // Positions renumbered board by board, group after group.
+    const place = db.prepare("UPDATE support_labels SET position = ? WHERE id = ?");
+    const order = db.prepare(
+      `SELECT l.id FROM support_labels l JOIN support_label_groups g ON g.id = l.group_id
+       WHERE l.board_id = ? ORDER BY g.position, g.id, l.position, l.id`,
+    );
+    const boards = db.prepare("SELECT DISTINCT board_id FROM support_labels").all() as {
+      board_id: number;
+    }[];
+    for (const { board_id } of boards) {
+      (order.all(board_id) as { id: number }[]).forEach(({ id }, rank) => place.run(rank, id));
+    }
+
+    db.exec("DELETE FROM settings WHERE key = 'support_default_label_ids'");
+    writeSetting(db, SUPPORT_LABELS_BY_BOARD, true);
+  })();
+};
+
+/**
+ * The model and VLAN tables, once common to the whole application, belong to
+ * each board's Asset widgets: every board that has an Assets list takes a
+ * copy of them, and the common ones go. Nothing left to move, it does nothing.
+ */
+const assetSettingsByBoard = (db: Database): void => {
+  const models = readSetting(db, "asset_models");
+  const vlans = readSetting(db, "asset_vlans");
+  if (models === undefined && vlans === undefined) return;
+  const boards = db
+    .prepare(
+      `SELECT DISTINCT s.board_id FROM board_widgets w
+       JOIN board_sections s ON s.id = w.section_id
+       WHERE w.type = 'asset.list'`,
+    )
+    .all() as { board_id: number }[];
+  const insert = db.prepare(
+    "INSERT OR IGNORE INTO board_asset_settings (board_id, models, vlans) VALUES (?, ?, ?)",
+  );
+  db.transaction(() => {
+    for (const { board_id } of boards) {
+      insert.run(
+        board_id,
+        Array.isArray(models) ? JSON.stringify(models) : null,
+        JSON.stringify(Array.isArray(vlans) ? vlans : []),
+      );
+    }
+    db.exec("DELETE FROM settings WHERE key IN ('asset_models', 'asset_vlans')");
+  })();
+};
+
+/**
+ * The subcategories, which no longer exist: each becomes a title in "H2"
+ * (currentWidget, shared) — the same look, the style's base being the
+ * subcategory's. Nothing left to convert, it does nothing.
+ */
+const subcategoriesAsTitles = (db: Database): void => {
+  const widgets = db
+    .prepare("SELECT id, config FROM board_widgets WHERE type = 'subcategory'")
+    .all() as { id: number; config: string }[];
+  if (!widgets.length) return;
+  const save = db.prepare("UPDATE board_widgets SET type = ?, config = ? WHERE id = ?");
+  db.transaction(() => {
+    for (const widget of widgets) {
+      let config: unknown = {};
+      try {
+        config = JSON.parse(widget.config);
+      } catch {
+        // Unreadable, it becomes an empty title in "H2".
+      }
+      const current = currentWidget("subcategory", config);
+      save.run(current.type, JSON.stringify(current.config), widget.id);
+    }
+  })();
 };
 
 /**

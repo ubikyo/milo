@@ -2,6 +2,7 @@ import { Group, Select, Text } from "@mantine/core";
 import { IconUser, IconUsersGroup } from "@tabler/icons-react";
 import DirectoryOrigin from "../ui/DirectoryOrigin";
 import { useEffect, useState } from "react";
+import { pickKeys } from "../ui/DrawerRows";
 import { api } from "../../api";
 import { errorMessage } from "../../lib/errors";
 import type { EntraPrincipal } from "@milo/shared";
@@ -102,6 +103,7 @@ export default function DirectoryPicker({
       dropdownOpened={opened && typing}
       onDropdownOpen={() => setOpened(true)}
       onDropdownClose={() => setOpened(false)}
+      {...pickKeys}
       // The directory has already filtered: the list does not filter again behind it.
       filter={({ options }) => options}
       nothingFoundMessage={

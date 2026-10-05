@@ -1,4 +1,4 @@
-import { Box, Checkbox, Group, Stack, Text, useMantineTheme } from "@mantine/core";
+import { Box, Group, Stack, Switch, Text, useMantineTheme } from "@mantine/core";
 import { IconTags } from "@tabler/icons-react";
 import { withField } from "../types";
 import { NameField, ongoing, NAME, Nothing, IndicatorTitle } from "./common";
@@ -200,7 +200,7 @@ export const labelsIndicator: SupportIndicatorWidget = {
     <Stack gap="xl">
       <NameField config={config} onChange={onChange} defaultValue={LABEL} />
       <LabelGroupSelect base="/support-labels" config={config} onChange={onChange} />
-      <Checkbox
+      <Switch
         label="Compter aussi les tickets résolus et fermés"
         checked={allRequests(config)}
         onChange={(e) => onChange(withField(config, ALL, e.currentTarget.checked))}

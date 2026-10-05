@@ -25,6 +25,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { BLUE, FOCUS_BORDER, ORANGE, PALETTE_RED, PALETTE_GREEN } from "./themes/colors";
+import ErrorPage from "./components/ui/ErrorPage";
 import Favicon from "./components/ui/Favicon";
 
 // All of Mantine's input fields: each reads "--input-bd-focus" for the
@@ -141,18 +142,22 @@ if (!root) throw new Error("Élément #root introuvable");
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
-    <ColorSchemeScript defaultColorScheme="auto" />
-    {/* "auto" follows the system theme; the user's choice is remembered
+    {/* An unknown error — uncaught — gives way to a red page that says
+        where it comes from, rather than a blank page. */}
+    <ErrorPage>
+      <ColorSchemeScript defaultColorScheme="auto" />
+      {/* "auto" follows the system theme; the user's choice is remembered
         by Mantine in the browser's localStorage. */}
-    <MantineProvider theme={theme} defaultColorScheme="auto">
-      {/* Calendars speak French and start the week on Monday. */}
-      <DatesProvider settings={{ locale: "fr", firstDayOfWeek: 1 }}>
-        <Favicon />
-        {/* Follow notifications stack at bottom right, out of the
+      <MantineProvider theme={theme} defaultColorScheme="auto">
+        {/* Calendars speak French and start the week on Monday. */}
+        <DatesProvider settings={{ locale: "fr", firstDayOfWeek: 1 }}>
+          <Favicon />
+          {/* Follow notifications stack at bottom right, out of the
             way of the mode bar that occupies the bottom left. */}
-        <Notifications position="bottom-right" limit={4} />
-        <App />
-      </DatesProvider>
-    </MantineProvider>
+          <Notifications position="bottom-right" limit={4} />
+          <App />
+        </DatesProvider>
+      </MantineProvider>
+    </ErrorPage>
   </React.StrictMode>,
 );

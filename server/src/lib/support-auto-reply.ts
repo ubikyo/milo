@@ -1,6 +1,6 @@
 // Default replies that are sent automatically: an event — the arrival of a
 // request by e-mail, its closing… — sends the sender the reply that the
-// Settings assigned to it (Support › Réponses par défaut).
+// Tickets widget assigned to it (Réponses automatiques).
 //
 // The reply enters the request's thread, signed Milo, like a team reply: you
 // can see what was sent, and whether it went out. It is sent from the support
@@ -52,7 +52,15 @@ export const sendAutoReply = async (
       instant,
       instant,
     );
-    await replyByEmail(request, lastInsertRowid as Id, html);
+    await replyByEmail(
+      request,
+      lastInsertRowid as Id,
+      html,
+      undefined,
+      [],
+      "support_auto_reply",
+      reply.name,
+    );
     signalWrite("support-requests");
   } catch (error) {
     console.error(`Default reply "${event}" to request ${requestId}:`, error);

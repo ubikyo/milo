@@ -9,7 +9,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { api } from "../api";
 import type { DisplaySettings } from "@milo/shared";
 
-let settings: DisplaySettings = { hideLogo: false };
+let settings: DisplaySettings = { hideLogo: false, showGravatars: true };
 let readItems = false;
 const subscribers = new Set<() => void>();
 
@@ -30,7 +30,7 @@ const read = () => {
     .getDisplaySettings()
     .then(publish)
     .catch(() => {
-      // Unread, the defaults stay: the logo is shown.
+      // Unread, the defaults stay: the logo and the Gravatars are shown.
       readItems = false;
     });
 };

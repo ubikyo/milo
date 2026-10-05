@@ -1,5 +1,5 @@
-// Settings of the "Assets" section of the Settings. They apply to the whole
-// application.
+// Settings of a board's Asset widgets: shared by all of them, for that board
+// only.
 
 /**
  * A hardware model: the identifier the machine reports ("Mac14,6")

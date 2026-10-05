@@ -1,4 +1,4 @@
-import { Checkbox, Group, Loader, NumberInput, Select, SimpleGrid, Stack, Text } from "@mantine/core";
+import { Group, Loader, Select, SimpleGrid, Stack, Switch, Text } from "@mantine/core";
 import { AreaChart, BarChart } from "@mantine/charts";
 import { useDebouncedValue } from "@mantine/hooks";
 import {
@@ -18,6 +18,8 @@ import {
 import { useEffect, useState } from "react";
 import type { ComponentType } from "react";
 import { api } from "../../api";
+import { BLUE, ORANGE } from "../../themes/colors";
+import { insertRow, type SettingRow } from "../../components/ui/SettingRows";
 import { Frame } from "../margins";
 import { withField, count, text } from "../types";
 import type { AccessWidget, WidgetConfigProps } from "../types";
@@ -42,10 +44,17 @@ const LONGITUDE = "longitude";
 const SIZE = "size";
 const SHOW_LOCATION = "showPlace";
 const SHOW_ICON = "showIcon";
+const SHOW_TEMPERATURE = "showTemperature";
 const SHOW_SKY = "showSky";
 const DETAILS = "details";
 const FORECASTS = "forecast";
 const FRAMED = "framed";
+const TEMPERATURE_COLOR = "temperatureColor";
+const SKY_COLOR = "skyColor";
+const LOCATION_COLOR = "placeColor";
+const DETAILS_COLOR = "detailsColor";
+const FORECASTS_COLOR = "forecastColor";
+const LEGEND_COLOR = "legendColor";
 
 const DEFAULT_SIZE = 32;
 
@@ -99,9 +108,18 @@ const skyOf = (code: number, day = true): Sky => {
   return { label: "Nuageux", icon: IconCloud, color: "#a6a6a6" };
 };
 
+/** The switches, each with its default: on or off when never set. */
+const SWITCHES = [
+  { key: SHOW_ICON, label: "Afficher le pictogramme", defaultValue: true },
+  { key: SHOW_TEMPERATURE, label: "Afficher la température", defaultValue: true },
+  { key: SHOW_SKY, label: "Afficher le type de temps", defaultValue: false },
+  { key: SHOW_LOCATION, label: "Afficher le nom du lieu", defaultValue: false },
+  { key: DETAILS, label: "Afficher le ressenti, l'humidité et le vent", defaultValue: false },
+];
+
 const degrees = (value: number) => `${Math.round(value)}°`;
 
-/** A box is checked by default when it has never been set. */
+/** A switch is on by default when it has never been set. */
 const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean => {
   const value = (config as Record<string, unknown> | null)?.[key];
   return value === undefined ? defaultValue : Boolean(value);
@@ -120,7 +138,16 @@ type State =
   | { phase: "ready"; weather: AccessWeather }
   | { phase: "error"; message: string };
 
-function Forecasts({ weather, what }: { weather: AccessWeather; what: string }) {
+/** The forecasts' colors; empty, the default's. */
+interface ForecastColors {
+  /** The curve, the bars, the week's highs: orange, blue, the text's. */
+  chart: string;
+  /** The axes' hours and degrees, the week's days: dimmed. */
+  legend: string;
+}
+
+function Forecasts({ weather, what, colors }: { weather: AccessWeather; what: string; colors: ForecastColors }) {
+  const legend = colors.legend || "dimmed";
   if (what === "temperature") {
     const data = weather.hourly.map((h) => ({ hour: `${h.time.slice(11, 13)} h`, temperature: h.temperature }));
     return (
@@ -128,7 +155,8 @@ function Forecasts({ weather, what }: { weather: AccessWeather; what: string }) 
         h={CHART_HEIGHT}
         data={data}
         dataKey="hour"
-        series={[{ name: "temperature", label: "Température", color: "orange.6" }]}
+        series={[{ name: "temperature", label: "Température", color: colors.chart || ORANGE }]}
+        textColor={legend}
         curveType="natural"
         gridAxis="none"
         withDots={false}
@@ -146,7 +174,8 @@ function Forecasts({ weather, what }: { weather: AccessWeather; what: string }) 
         h={CHART_HEIGHT}
         data={data}
         dataKey="hour"
-        series={[{ name: "rain", label: "Risque de pluie", color: "blue.6" }]}
+        series={[{ name: "rain", label: "Risque de pluie", color: colors.chart || BLUE }]}
+        textColor={legend}
         gridAxis="none"
         unit=" %"
         yAxisProps={{ width: 28, domain: [0, 100] }}
@@ -162,11 +191,11 @@ function Forecasts({ weather, what }: { weather: AccessWeather; what: string }) 
           const sky = skyOf(j.code);
           return (
             <Stack key={j.time} gap={2} align="center" title={sky.label}>
-              <Text size="xs" c="dimmed" tt="capitalize">
+              <Text size="xs" c={legend} tt="capitalize">
                 {day.format(new Date(`${j.time}T12:00:00`)).replace(".", "")}
               </Text>
               <sky.icon size={20} color={sky.color} stroke={1.6} />
-              <Text size="xs" fw={600}>
+              <Text size="xs" fw={600} c={colors.chart || undefined}>
                 {degrees(j.temperature)}
               </Text>
               <Text size="xs" c="dimmed">
@@ -243,31 +272,43 @@ function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
 
     const { current } = state.weather;
     const sky = skyOf(current.code, current.is_day);
+    // The place and the sky's state, side by side, each in its own color.
     const caption = [
-      isChecked(config, SHOW_LOCATION, false) ? place : "",
-      isChecked(config, SHOW_SKY, false) ? sky.label : "",
-    ]
-      .filter(Boolean)
-      .join(" · ");
+      isChecked(config, SHOW_LOCATION, false) && place
+        ? { label: place, color: text(config, LOCATION_COLOR) }
+        : null,
+      isChecked(config, SHOW_SKY, false) ? { label: sky.label, color: text(config, SKY_COLOR) } : null,
+    ].filter((part) => part !== null);
+    const showsIcon = isChecked(config, SHOW_ICON, true);
+    const showsTemperature = isChecked(config, SHOW_TEMPERATURE, true);
     return (
       <Stack gap="xs">
-        <Group gap="sm" wrap="nowrap" justify="center">
-          {isChecked(config, SHOW_ICON, true) && (
-            <sky.icon size={Math.round(size * 1.3)} color={sky.color} stroke={1.5} />
-          )}
-          <Stack gap={0}>
-            <Text fz={size} fw={600} lh={1.1}>
-              {degrees(current.temperature)}
-            </Text>
-            {caption && (
-              <Text size="xs" c="dimmed" lineClamp={1}>
-                {caption}
-              </Text>
+        {(showsIcon || showsTemperature || caption.length > 0) && (
+          <Group gap="sm" wrap="nowrap" justify="center">
+            {showsIcon && (
+              <sky.icon size={Math.round(size * 1.3)} color={sky.color} stroke={1.5} />
             )}
-          </Stack>
-        </Group>
+            <Stack gap={0}>
+              {showsTemperature && (
+                <Text fz={size} fw={600} lh={1.1} c={text(config, TEMPERATURE_COLOR) || undefined}>
+                  {degrees(current.temperature)}
+                </Text>
+              )}
+              {caption.length > 0 && (
+                <Text size="xs" c="dimmed" lineClamp={1}>
+                  {caption.map((part, i) => (
+                    <span key={part.label}>
+                      {i > 0 && " · "}
+                      <span style={part.color ? { color: part.color } : undefined}>{part.label}</span>
+                    </span>
+                  ))}
+                </Text>
+              )}
+            </Stack>
+          </Group>
+        )}
         {isChecked(config, DETAILS, false) && (
-          <Group gap="md" justify="center" c="dimmed">
+          <Group gap="md" justify="center" c={text(config, DETAILS_COLOR) || "dimmed"}>
             <Group gap={4} title="Ressenti">
               <IconTemperature size={14} />
               <Text size="xs">{degrees(current.feelsLike)}</Text>
@@ -282,7 +323,11 @@ function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
             </Group>
           </Group>
         )}
-        <Forecasts weather={state.weather} what={forecasts} />
+        <Forecasts
+          weather={state.weather}
+          what={forecasts}
+          colors={{ chart: text(config, FORECASTS_COLOR), legend: text(config, LEGEND_COLOR) }}
+        />
       </Stack>
     );
   })();
@@ -293,6 +338,10 @@ function Weather({ blockId, config }: { blockId: Id; config: unknown }) {
     </Frame>
   );
 }
+
+/** How many switches are on. */
+const switchesOn = (config: unknown) =>
+  SWITCHES.filter(({ key, defaultValue }) => isChecked(config, key, defaultValue)).length;
 
 /** A place as a list value: its coordinates, enough to find it again. */
 const valueFor = (latitude: number, longitude: number) => `${latitude},${longitude}`;
@@ -362,6 +411,7 @@ export const weatherWidget: AccessWidget = {
     [SIZE]: DEFAULT_SIZE,
     [SHOW_LOCATION]: false,
     [SHOW_ICON]: true,
+    [SHOW_TEMPERATURE]: true,
     [SHOW_SKY]: false,
     [DETAILS]: false,
     [FORECASTS]: "none",
@@ -377,54 +427,93 @@ export const weatherWidget: AccessWidget = {
   ownFrame: true,
   padding: () => DEFAULT_PADDING,
 
+  // The color of each element shown, and the temperature's size: a hidden one
+  // has nothing to set. Each field shows its default, in hexadecimal: Mantine's
+  // text and dimmed colors in the current scheme, orange or blue for the
+  // charts. Brought back to it, a color is no longer stored: the display keeps
+  // following the scheme. The pictogram has no color to set: it is the sky's,
+  // which changes with the weather.
+  appearance: (config, onChange) => {
+    const dark = document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
+    const textColor = dark ? "#c9c9c9" : "#000000";
+    const dimmed = dark ? "#828282" : "#868e96";
+    const colorOf = (key: string, defaultColor = "") => ({
+      value: text(config, key) || defaultColor,
+      onChange: (v: string) => onChange(insertRow(config, { [key]: v === defaultColor ? "" : v })),
+    });
+    const isSet = (key: string, defaultColor = "") =>
+      text(config, key) !== "" && text(config, key) !== defaultColor;
+    const colorRow = (name: string, what: string, key: string, defaultColor?: string): SettingRow => ({
+      name,
+      what,
+      color: colorOf(key, defaultColor),
+      modified: isSet(key, defaultColor),
+      reset: () => onChange(insertRow(config, { [key]: "" })),
+    });
+    // The size, brought back to the default, is no longer stored.
+    const size = count(config, SIZE, DEFAULT_SIZE);
+    const forecasts = text(config, FORECASTS, "none");
+    const temperature: SettingRow = {
+      name: "Degrés",
+      what: "de la température",
+      color: colorOf(TEMPERATURE_COLOR, textColor),
+      size: {
+        value: size,
+        defaultValue: DEFAULT_SIZE,
+        min: SIZE_MIN,
+        max: SIZE_MAX,
+        onChange: (v) => onChange(insertRow(config, { [SIZE]: v === DEFAULT_SIZE ? "" : v })),
+      },
+      modified: isSet(TEMPERATURE_COLOR, textColor) || size !== DEFAULT_SIZE,
+      reset: () => onChange(insertRow(config, { [TEMPERATURE_COLOR]: "", [SIZE]: "" })),
+    };
+    return [
+      ...(isChecked(config, SHOW_TEMPERATURE, true) ? [temperature] : []),
+      ...(isChecked(config, SHOW_SKY, false) ? [colorRow("Temps", "du type de temps", SKY_COLOR, dimmed)] : []),
+      ...(isChecked(config, SHOW_LOCATION, false) ? [colorRow("Lieu", "du nom du lieu", LOCATION_COLOR, dimmed)] : []),
+      ...(isChecked(config, DETAILS, false) ? [colorRow("Détails", "des détails", DETAILS_COLOR, dimmed)] : []),
+      ...(forecasts !== "none"
+        ? [
+            colorRow("Légende", "de la légende des prévisions", LEGEND_COLOR, dimmed),
+            colorRow(
+              "Graphique",
+              "du graphique des prévisions",
+              FORECASTS_COLOR,
+              forecasts === "temperature" ? ORANGE.toLowerCase() : forecasts === "rain" ? BLUE.toLowerCase() : textColor,
+            ),
+          ]
+        : []),
+    ];
+  },
+
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
       <PlaceField config={config} onChange={onChange} />
-      <NumberInput
-        label="Taille de la température"
-        placeholder={String(DEFAULT_SIZE)}
-        value={count(config, SIZE, DEFAULT_SIZE)}
-        onChange={(v) => onChange(withField(config, SIZE, v === "" ? DEFAULT_SIZE : Number(v)))}
-        min={SIZE_MIN}
-        max={SIZE_MAX}
-        suffix=" px"
-        allowNegative={false}
-        allowDecimal={false}
-        w={120}
-      />
       <Select
         label="Prévisions"
-        data={SUGGESTED_FORECASTS}
+        // Without a switch on, the forecasts are all that is left to show.
+        data={SUGGESTED_FORECASTS.map((o) => ({ ...o, disabled: o.value === "none" && switchesOn(config) === 0 }))}
         value={text(config, FORECASTS, "none")}
         onChange={(v) => v && onChange(withField(config, FORECASTS, v))}
         allowDeselect={false}
         w={240}
       />
       <Stack gap="sm">
-        <Checkbox
-          label="Afficher le pictogramme"
-          checked={isChecked(config, SHOW_ICON, true)}
-          onChange={(e) => onChange(withField(config, SHOW_ICON, e.currentTarget.checked))}
-          color="teal"
-        />
-        <Checkbox
-          label="Afficher le type de temps"
-          checked={isChecked(config, SHOW_SKY, false)}
-          onChange={(e) => onChange(withField(config, SHOW_SKY, e.currentTarget.checked))}
-          color="teal"
-        />
-        <Checkbox
-          label="Afficher le nom du lieu"
-          checked={isChecked(config, SHOW_LOCATION, false)}
-          onChange={(e) => onChange(withField(config, SHOW_LOCATION, e.currentTarget.checked))}
-          color="teal"
-        />
-        <Checkbox
-          label="Afficher le ressenti, l'humidité et le vent"
-          checked={isChecked(config, DETAILS, false)}
-          onChange={(e) => onChange(withField(config, DETAILS, e.currentTarget.checked))}
-          color="teal"
-        />
+        {SWITCHES.map(({ key, label, defaultValue }) => {
+          const checked = isChecked(config, key, defaultValue);
+          // The last thing shown stays: the widget is never empty.
+          const last = checked && switchesOn(config) === 1 && text(config, FORECASTS, "none") === "none";
+          return (
+            <Switch
+              key={key}
+              label={label}
+              checked={checked}
+              disabled={last}
+              onChange={(e) => onChange(withField(config, key, e.currentTarget.checked))}
+              color="teal"
+            />
+          );
+        })}
       </Stack>
     </Stack>
   ),

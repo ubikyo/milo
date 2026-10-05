@@ -1,0 +1,409 @@
+/*
+ * The clock's dial (widgets/common/clock.tsx): its hands turn by CSS
+ * animations, set on the time by a negative delay — the hour and minute hands
+ * continuously, the second hand by jumps, each second easing in and out and
+ * leaving a short trail behind it.
+ *
+ * The SVG is drawn on a grid 100 on a side: each hand turns around its
+ * center.
+ */
+
+.hand {
+  transform-box: view-box;
+  transform-origin: 50px 50px;
+}
+
+.hours {
+  animation: hours 86400s linear infinite;
+  filter: drop-shadow(0 0 1.5px rgb(0 0 0 / 50%));
+}
+
+.minutes {
+  animation: minutes 3600s linear infinite;
+  filter: drop-shadow(0 0 2.5px rgb(0 0 0 / 45%));
+}
+
+.seconds {
+  animation: seconds 60s cubic-bezier(0.8, 0, 0.2, 1) infinite;
+  filter: drop-shadow(0 0 3px rgb(0 0 0 / 40%));
+}
+
+/* The trail: copies of the second hand, which it leaves behind each second. */
+.trail {
+  animation: 1s cubic-bezier(0.8, 0, 0.2, 1) infinite;
+  opacity: 0;
+}
+
+.trail:nth-child(1) {
+  animation-name: trail1;
+}
+
+.trail:nth-child(2) {
+  animation-name: trail2;
+}
+
+.trail:nth-child(3) {
+  animation-name: trail3;
+}
+
+.trail:nth-child(4) {
+  animation-name: trail4;
+}
+
+.trail:nth-child(5) {
+  animation-name: trail5;
+}
+
+.trail:nth-child(6) {
+  animation-name: trail6;
+}
+
+.trail:nth-child(7) {
+  animation-name: trail7;
+}
+
+.trail:nth-child(8) {
+  animation-name: trail8;
+}
+
+
+@keyframes hours {
+  from {
+    transform: rotate(0);
+  }
+  to {
+    transform: rotate(2turn);
+  }
+}
+
+@keyframes minutes {
+  from {
+    transform: rotate(0);
+  }
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+
+@keyframes seconds {
+  0% {
+    transform: rotate(0deg);
+  }
+  1.6667% {
+    transform: rotate(6deg);
+  }
+  3.3333% {
+    transform: rotate(12deg);
+  }
+  5% {
+    transform: rotate(18deg);
+  }
+  6.6667% {
+    transform: rotate(24deg);
+  }
+  8.3333% {
+    transform: rotate(30deg);
+  }
+  10% {
+    transform: rotate(36deg);
+  }
+  11.6667% {
+    transform: rotate(42deg);
+  }
+  13.3333% {
+    transform: rotate(48deg);
+  }
+  15% {
+    transform: rotate(54deg);
+  }
+  16.6667% {
+    transform: rotate(60deg);
+  }
+  18.3333% {
+    transform: rotate(66deg);
+  }
+  20% {
+    transform: rotate(72deg);
+  }
+  21.6667% {
+    transform: rotate(78deg);
+  }
+  23.3333% {
+    transform: rotate(84deg);
+  }
+  25% {
+    transform: rotate(90deg);
+  }
+  26.6667% {
+    transform: rotate(96deg);
+  }
+  28.3333% {
+    transform: rotate(102deg);
+  }
+  30% {
+    transform: rotate(108deg);
+  }
+  31.6667% {
+    transform: rotate(114deg);
+  }
+  33.3333% {
+    transform: rotate(120deg);
+  }
+  35% {
+    transform: rotate(126deg);
+  }
+  36.6667% {
+    transform: rotate(132deg);
+  }
+  38.3333% {
+    transform: rotate(138deg);
+  }
+  40% {
+    transform: rotate(144deg);
+  }
+  41.6667% {
+    transform: rotate(150deg);
+  }
+  43.3333% {
+    transform: rotate(156deg);
+  }
+  45% {
+    transform: rotate(162deg);
+  }
+  46.6667% {
+    transform: rotate(168deg);
+  }
+  48.3333% {
+    transform: rotate(174deg);
+  }
+  50% {
+    transform: rotate(180deg);
+  }
+  51.6667% {
+    transform: rotate(186deg);
+  }
+  53.3333% {
+    transform: rotate(192deg);
+  }
+  55% {
+    transform: rotate(198deg);
+  }
+  56.6667% {
+    transform: rotate(204deg);
+  }
+  58.3333% {
+    transform: rotate(210deg);
+  }
+  60% {
+    transform: rotate(216deg);
+  }
+  61.6667% {
+    transform: rotate(222deg);
+  }
+  63.3333% {
+    transform: rotate(228deg);
+  }
+  65% {
+    transform: rotate(234deg);
+  }
+  66.6667% {
+    transform: rotate(240deg);
+  }
+  68.3333% {
+    transform: rotate(246deg);
+  }
+  70% {
+    transform: rotate(252deg);
+  }
+  71.6667% {
+    transform: rotate(258deg);
+  }
+  73.3333% {
+    transform: rotate(264deg);
+  }
+  75% {
+    transform: rotate(270deg);
+  }
+  76.6667% {
+    transform: rotate(276deg);
+  }
+  78.3333% {
+    transform: rotate(282deg);
+  }
+  80% {
+    transform: rotate(288deg);
+  }
+  81.6667% {
+    transform: rotate(294deg);
+  }
+  83.3333% {
+    transform: rotate(300deg);
+  }
+  85% {
+    transform: rotate(306deg);
+  }
+  86.6667% {
+    transform: rotate(312deg);
+  }
+  88.3333% {
+    transform: rotate(318deg);
+  }
+  90% {
+    transform: rotate(324deg);
+  }
+  91.6667% {
+    transform: rotate(330deg);
+  }
+  93.3333% {
+    transform: rotate(336deg);
+  }
+  95% {
+    transform: rotate(342deg);
+  }
+  96.6667% {
+    transform: rotate(348deg);
+  }
+  98.3333% {
+    transform: rotate(354deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes trail1 {
+  0% {
+    opacity: 1;
+    transform: rotate(0);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(-6deg);
+  }
+}
+
+@keyframes trail2 {
+  0%,
+  12.49% {
+    opacity: 0;
+    transform: rotate(0);
+  }
+  12.5% {
+    opacity: 1;
+    transform: rotate(0);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(-5.25deg);
+  }
+}
+
+@keyframes trail3 {
+  0%,
+  24.99% {
+    opacity: 0;
+    transform: rotate(0);
+  }
+  25% {
+    opacity: 1;
+    transform: rotate(0);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(-4.5deg);
+  }
+}
+
+@keyframes trail4 {
+  0%,
+  37.49% {
+    opacity: 0;
+    transform: rotate(0);
+  }
+  37.5% {
+    opacity: 1;
+    transform: rotate(0);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(-3.75deg);
+  }
+}
+
+@keyframes trail5 {
+  0%,
+  49.99% {
+    opacity: 0;
+    transform: rotate(0);
+  }
+  50% {
+    opacity: 1;
+    transform: rotate(0);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(-3deg);
+  }
+}
+
+@keyframes trail6 {
+  0%,
+  62.49% {
+    opacity: 0;
+    transform: rotate(0);
+  }
+  62.5% {
+    opacity: 1;
+    transform: rotate(0);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(-2.25deg);
+  }
+}
+
+@keyframes trail7 {
+  0%,
+  74.99% {
+    opacity: 0;
+    transform: rotate(0);
+  }
+  75% {
+    opacity: 1;
+    transform: rotate(0);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(-1.5deg);
+  }
+}
+
+@keyframes trail8 {
+  0%,
+  87.49% {
+    opacity: 0;
+    transform: rotate(0);
+  }
+  87.5% {
+    opacity: 1;
+    transform: rotate(0);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(-0.75deg);
+  }
+}
+
+/* Without motion, the hands stay on the time shown when the page was drawn. */
+@media (prefers-reduced-motion: reduce) {
+  .hours,
+  .minutes,
+  .seconds {
+    animation-play-state: paused;
+  }
+
+  .trail {
+    display: none;
+  }
+}

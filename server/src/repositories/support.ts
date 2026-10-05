@@ -1,4 +1,4 @@
-// Tickets: their actors, labels and thread. Labels are shared by all boards.
+// Tickets: their actors, labels and thread. Labels belong to the board.
 //
 // A request hangs off a context of a board: the one the request list ties to
 // the inbox it arrived in, or the one chosen when entering it. Its actors and
@@ -8,6 +8,8 @@
 import { parseAttachments } from "../lib/ticket-files.js";
 import {
   MILO_ACTOR,
+  SUPPORT_CHANNEL_GROUP,
+  SUPPORT_CHANNEL_LABELS,
   SUPPORT_URGENCY_GROUP,
   SUPPORT_URGENCY_LABELS,
   supportTicketRef,
@@ -22,7 +24,6 @@ import type {
 } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type {
-  NextRow,
   SupportCommentRow,
   SupportLabelRow,
   SupportRequestRow,
@@ -34,7 +35,6 @@ import { supportLabelGroups } from "./label-groups.js";
 import { actorOf } from "./users.js";
 
 export const REQUEST_NOT_FOUND = "Demande introuvable";
-export const SUPPORT_LABEL_NOT_FOUND = "Étiquette introuvable";
 
 export const supportRequests = {
   byId: selection<SupportRequestRow>("SELECT * FROM support_requests WHERE id = ?"),
@@ -137,79 +137,38 @@ export const supportLabels = {
     `SELECT l.*, g.name AS group_name FROM support_labels l
      LEFT JOIN support_label_groups g ON g.id = l.group_id WHERE l.id = ?`,
   ),
-  // All of them: they are shared across all of support.
-  all: selection<SupportLabelRow>(
-    `SELECT l.*, g.name AS group_name FROM support_labels l
-     LEFT JOIN support_label_groups g ON g.id = l.group_id ORDER BY l.position, l.id`,
-  ),
-  nextPosition: scalar<NextRow>(
-    "SELECT COALESCE(MAX(position), -1) + 1 AS next FROM support_labels",
-  ),
   create: mutation(
-    "INSERT INTO support_labels (group_id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?)",
-  ),
-  update: mutation("UPDATE support_labels SET name = ?, color = ? WHERE id = ?"),
-  remove: mutation("DELETE FROM support_labels WHERE id = ?"),
-  byName: selection<SupportLabelRow>(
-    "SELECT * FROM support_labels WHERE name = ? COLLATE NOCASE LIMIT 1",
-  ),
-  usage: scalar<{ count: number }>(
-    "SELECT COUNT(*) AS count FROM support_request_labels WHERE label_id = ?",
+    `INSERT INTO support_labels (board_id, group_id, name, color, position, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   ),
 };
 
-/**
- * The label with this name. If it has disappeared — renamed, deleted —, it
- * is recreated: a request received by e-mail always carries it.
- */
-export const namedLabel = (name: string): SupportLabelRow => {
-  const already = supportLabels.byName.get(name);
-  if (already) return already;
-  const template = SUPPORT_URGENCY_LABELS.find((l) => l.name === name);
-  // An urgency goes back among the urgencies.
-  const group = template
-    ? supportLabelGroups.named(undefined, SUPPORT_URGENCY_GROUP)
-    : supportLabelGroups.groupFor(undefined, null);
-  const { next } = supportLabels.nextPosition();
-  const { lastInsertRowid } = supportLabels.create.run(
-    group,
-    name,
-    template?.color ?? "red.6",
-    next,
-    new Date().toISOString(),
-  );
-  supportLabelGroups.renumber(undefined);
-  return supportLabels.byId.get(lastInsertRowid)!;
-};
-
-/** A label rewritten, and moved to the end of its new group if it changes. */
-export const updateSupportLabel = transaction(
-  (
-    existing: SupportLabelRow,
-    { name, color, group }: { name: string; color: string; group: Id },
-  ) => {
-    supportLabels.update.run(name, color, existing.id);
-    if (group !== existing.group_id) supportLabelGroups.moveTo(existing.id, group, undefined);
-  },
-);
-
-const firstPriority = selection<SupportLabelRow>(
-  `SELECT * FROM support_labels
-   WHERE name COLLATE NOCASE IN (SELECT value FROM json_each(?))
-   ORDER BY position, id
-   LIMIT 1`,
+const boardHasLabels = scalar<{ count: number }>(
+  `SELECT (SELECT COUNT(*) FROM support_labels WHERE board_id = @board)
+        + (SELECT COUNT(*) FROM support_label_groups WHERE board_id = @board) AS count`,
 );
 
 /**
- * The least urgent label: the first urgency in the labels' order. If none is
- * left, the model's first one is recreated.
+ * A board's first Support widget brings the default labels: the priorities,
+ * then the channels, each in its group — and no other. The board's Support
+ * widgets share them: as soon as one label or group exists there, nothing is
+ * added. True when they were created.
  */
-export const lightestPriority = (): SupportLabelRow => {
-  const names = SUPPORT_URGENCY_LABELS.map((l) => l.name);
-  const foundItem = firstPriority.get(JSON.stringify(names));
-  if (foundItem) return foundItem;
-  return namedLabel(SUPPORT_URGENCY_LABELS[0].name);
-};
+export const ensureSupportLabels = transaction((boardId: Id): boolean => {
+  if (boardHasLabels({ board: boardId }).count > 0) return false;
+  const instant = new Date().toISOString();
+  let position = 0;
+  for (const [name, labels] of [
+    [SUPPORT_URGENCY_GROUP, SUPPORT_URGENCY_LABELS],
+    [SUPPORT_CHANNEL_GROUP, SUPPORT_CHANNEL_LABELS],
+  ] as const) {
+    const group = supportLabelGroups.named(boardId, name);
+    for (const label of labels) {
+      supportLabels.create.run(boardId, group, label.name, label.color, position++, instant);
+    }
+  }
+  return true;
+});
 
 // --- Request actors --------------------------------------------------------
 
@@ -237,14 +196,17 @@ export const addActors = transaction((requestId: Id, userIds: Id[]) => {
 // --- Labels set on a request -----------------------------------------------
 
 const deleteLabels = mutation("DELETE FROM support_request_labels WHERE request_id = ?");
+// Only a label of the request's board.
 const addLabel = mutation(
   `INSERT OR IGNORE INTO support_request_labels (request_id, label_id)
-   SELECT ?, id FROM support_labels WHERE id = ?`,
+   SELECT r.id, l.id FROM support_requests r
+   JOIN support_labels l ON l.board_id = r.board_id
+   WHERE r.id = ? AND l.id = ?`,
 );
 
 /**
  * The labels of a request, replaced as a whole. An id that designates no
- * label is ignored rather than rejected, like a card's members.
+ * label of its board is ignored rather than rejected, like a card's members.
  */
 export const replaceSupportLabels = transaction((requestId: Id, labelIds: Id[]) => {
   deleteLabels.run(requestId);

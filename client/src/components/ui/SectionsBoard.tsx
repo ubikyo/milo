@@ -146,6 +146,12 @@ const FRAME_PADDING = 8;
 // show it — sections thus start just under the row's margin.
 const TOP_BAND = GRIP_ZONE + FRAME_PADDING;
 
+/**
+ * The CSS variable that carries a column's visible height to its widgets: a
+ * height in percent is a share of it (widgets/height.ts).
+ */
+export const COLUMN_HEIGHT = "--column-height";
+
 /** How far a column's frame overflows into the gap, on each side. */
 interface Overflows {
   left: number;
@@ -712,6 +718,22 @@ export default function SectionsBoard<S extends BoardSection>({
     return () => observer.disconnect();
   }, [bandEl]);
 
+  // The height a column's widgets have while the board does not scroll: the
+  // visible height, less the handle band above and the foot one below. A
+  // widget's height in percent is a share of it (widgets/height.ts) — a share
+  // of the window, and not of what the column holds.
+  const [viewportEl, setViewportEl] = useState<HTMLDivElement | null>(null);
+  const [columnHeight, setColumnHeight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!viewportEl) return;
+    const measure = () =>
+      setColumnHeight(viewportEl.clientHeight - TOP_BAND - GRIP_ZONE - FRAME_PADDING);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewportEl);
+    return () => observer.disconnect();
+  }, [viewportEl]);
+
   // The gap following each column, its right margin: the last has none.
   // Percentages are read on the row minus their sum.
   const last = ordered?.[ordered.length - 1];
@@ -894,7 +916,14 @@ export default function SectionsBoard<S extends BoardSection>({
     />
   ) : (
     <ScrollArea
-      style={{ flex: 1, minHeight: 0, marginInline: -margin, marginTop: -TOP_BAND }}
+      viewportRef={setViewportEl}
+      style={{
+        flex: 1,
+        minHeight: 0,
+        marginInline: -margin,
+        marginTop: -TOP_BAND,
+        ...(columnHeight !== null && ({ [COLUMN_HEIGHT]: `${columnHeight}px` } as CSSProperties)),
+      }}
       type="always"
       scrollbarSize={2}
       styles={{

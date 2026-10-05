@@ -103,6 +103,32 @@ interface ContextTarget {
 // Vertical padding of the rows; the height includes the padding (box-sizing).
 const ROW_PADDING_Y = 5;
 
+/**
+ * The rows and header of the grids — the projects', the e-mails' —: exactly the
+ * height of an actor badge, whether there are actors or not, the header with
+ * the same measure. content-box: the height describes the content area, i.e.
+ * exactly one badge, without the padding or border trimming it.
+ */
+export const GRID_STYLES = {
+  td: {
+    boxSizing: "content-box",
+    height: ACTOR_AVATAR_SIZE,
+    paddingTop: ROW_PADDING_Y,
+    paddingBottom: ROW_PADDING_Y,
+  },
+  th: {
+    boxSizing: "content-box",
+    height: ACTOR_AVATAR_SIZE,
+    paddingTop: ROW_PADDING_Y,
+    paddingBottom: ROW_PADDING_Y,
+    // The label, sort and filter sit in the middle of the cell.
+    verticalAlign: "middle",
+  },
+} as const;
+
+/** A grid's column label, as the projects' header shows it. */
+export const GRID_HEADER_TEXT = { size: "sm", fw: 600, c: STRONG_TEXT } as const;
+
 // The "Progression" column is sized to its content: the bar and the
 // percentage, plus the space between them.
 const PROGRESS_WIDTH = 85;
@@ -293,6 +319,32 @@ function ColumnFilter({ label, options, value, onChange }: ColumnFilterProps) {
 const sameSort = (sort: Sort, key: ColumnKey, group: Id | undefined): boolean =>
   sort.key === key && (key !== "labels" || sort.group === group);
 
+/**
+ * A grid header's label that sorts its column — the projects', the e-mails' —,
+ * with the sort's arrow: "direction" null while another column sorts.
+ */
+export function SortLabel({
+  label,
+  direction,
+  onSort,
+}: {
+  label: ReactNode;
+  direction: "asc" | "desc" | null;
+  onSort: () => void;
+}) {
+  const Icon = !direction ? IconSelector : direction === "asc" ? IconChevronUp : IconChevronDown;
+  return (
+    <UnstyledButton onClick={onSort} style={{ flex: 1, minWidth: 0 }}>
+      <Group gap={4} wrap="nowrap" justify="space-between">
+        <Text {...GRID_HEADER_TEXT}>{label}</Text>
+        <Center c={direction ? undefined : "dimmed"}>
+          <Icon size={14} />
+        </Center>
+      </Group>
+    </UnstyledButton>
+  );
+}
+
 // Sort and filter are two distinct controls: the sort button only
 // covers the label, otherwise opening the filter would sort the column in passing.
 interface SortableThProps {
@@ -314,11 +366,6 @@ function SortableTh({
   frozen,
 }: SortableThProps) {
   const active = sameSort(sort, column.key, column.group);
-  const Icon = !active
-    ? IconSelector
-    : sort.direction === "asc"
-      ? IconChevronUp
-      : IconChevronDown;
 
   return (
     <Table.Th w={column.width}>
@@ -326,19 +373,11 @@ function SortableTh({
           a squeezed grid brings it back to that of its content.
           The minimum set on the content holds it. */}
       <Group gap={4} wrap="nowrap" miw={frozen ? undefined : column.width}>
-        <UnstyledButton
-          onClick={() => onSort(column)}
-          style={{ flex: 1, minWidth: 0 }}
-        >
-          <Group gap={4} wrap="nowrap" justify="space-between">
-            <Text size="sm" fw={600} c={STRONG_TEXT}>
-              {column.label}
-            </Text>
-            <Center c={active ? undefined : "dimmed"}>
-              <Icon size={14} />
-            </Center>
-          </Group>
-        </UnstyledButton>
+        <SortLabel
+          label={column.label}
+          direction={active ? sort.direction : null}
+          onSort={() => onSort(column)}
+        />
         {filter}
       </Group>
       {handle}
@@ -757,24 +796,7 @@ export default function ProjectTable({
           verticalSpacing={0}
           // Rows are exactly the height of an actor badge, whether there
           // are actors or not. The header follows the same measure.
-          styles={{
-            // content-box: the height describes the content area, i.e. exactly
-            // one badge, without the padding or border trimming it.
-            td: {
-              boxSizing: "content-box",
-              height: ACTOR_AVATAR_SIZE,
-              paddingTop: ROW_PADDING_Y,
-              paddingBottom: ROW_PADDING_Y,
-            },
-            th: {
-              boxSizing: "content-box",
-              height: ACTOR_AVATAR_SIZE,
-              paddingTop: ROW_PADDING_Y,
-              paddingBottom: ROW_PADDING_Y,
-              // The label, sort and filter sit in the middle of the cell.
-              verticalAlign: "middle",
-            },
-          }}
+          styles={GRID_STYLES}
         >
           {resize.colgroup}
           <Table.Thead>

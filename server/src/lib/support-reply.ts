@@ -14,6 +14,7 @@ import { readTicket } from "./ticket-files.js";
 import { env } from "../env.js";
 import { supportComments } from "../repositories/support.js";
 import { entraConfigured, replyByGraph } from "./entra.js";
+import { replyTemplate } from "./mail-template.js";
 
 /**
  * The inbox to reply from for a request, or nothing: a request entered in
@@ -35,6 +36,10 @@ export const replyByEmail = async (
   html: string,
   copies: { cc: string[]; bcc: string[] } = { cc: [], bcc: [] },
   files: TicketFileRow[] = [],
+  /** The template that lays it out: a team reply, or an automatic one. */
+  kind: "support_reply" | "support_auto_reply" = "support_reply",
+  /** An automatic reply's name, for its template's {{name}}. */
+  name = "",
 ): Promise<SupportMailStatus> => {
   const mailbox = replyMailbox(request);
   if (!mailbox) return "";
@@ -57,13 +62,22 @@ export const replyByEmail = async (
       const content = readTicket(f.file);
       return content ? [{ name: f.name, mime: f.mime, content }] : [];
     });
+    const ticket = supportTicketRef(request.number);
+    const laidOut = await replyTemplate(kind, { content: html, ticket, subject: request.subject, name });
+    // The logos its template cites go with it, inline.
+    const logos = laidOut.attachments.map((a) => ({
+      name: a.filename,
+      mime: a.contentType,
+      content: a.content,
+      contentId: a.cid,
+    }));
     await replyByGraph(
       mailbox,
       request.mail_id,
-      html,
-      supportTicketRef(request.number),
+      laidOut.html || html,
+      ticket,
       copies,
-      attachments,
+      [...attachments, ...logos],
     );
     return record("sent");
   } catch (error) {

@@ -32,6 +32,10 @@ export interface UserRow {
   system: SqliteBool;
   /** The chosen workspace: null, or perhaps one it no longer has (users.ts, currentWorkspace). */
   workspace_id: Id | null;
+  /** The workspace opened at sign-in: null, or perhaps one it no longer has. */
+  default_workspace_id: Id | null;
+  /** The opening board, in the opening view: its id, or empty. */
+  default_board: string;
 }
 
 export interface SessionRow {
@@ -296,9 +300,10 @@ export interface SupportRequestRow {
   updated_at: string;
 }
 
-/** A Support-mode label: twin of "LabelRow", shared by the whole support. */
+/** A Support-mode label: twin of "LabelRow", bounded by its board. */
 export interface SupportLabelRow {
   id: Id;
+  board_id: Id;
   group_id: Id;
   group_name?: string;
   name: string;

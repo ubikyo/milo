@@ -1,9 +1,13 @@
-import { Checkbox, Input, SegmentedControl, Select, Stack, Text } from "@mantine/core";
+import { Group, Input, SegmentedControl, Select, Stack, Switch, Text } from "@mantine/core";
 import { IconClock } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
+import classes from "../../assets/styles/Clock.module.css";
 import { Frame } from "../margins";
 import { insertRow, type SettingRow } from "../../components/ui/SettingRows";
+import { formatOf, formatRow, formatStyle } from "../text-format";
+import type { TextFormat } from "../text-format";
 import { withField, count, text } from "../types";
+import { SEGMENTS_BG } from "../../themes/colors";
 import type { AccessWidget, Padding } from "../types";
 
 // A clock: the time it is elsewhere. Useful when calling a site in another
@@ -27,17 +31,28 @@ const DIAL_COLOR = "dialColor";
 const STROKE_COLOR = "strokeColor";
 const NUMERALS_COLOR = "numeralsColor";
 const HANDS_COLOR = "handsColor";
+const SECONDS_COLOR_KEY = "secondsColor";
 
 /**
- * The dial's background and outline while they are given no color, in
- * hexadecimal: the picker shows them as is. Two of the application's grays
- * (widgets/style-fields), the dial standing out on both themes.
+ * The dial's colors while they are given none, in hexadecimal: the picker
+ * shows them as is. The face and its outline are two of the application's
+ * grays (widgets/style-fields), the dial standing out on both themes; the
+ * marks, digits and hands are light grays that read on it — the text's color
+ * would vanish there in the light theme —; the second hand is the
+ * application's green (Mantine's teal 6).
  */
 const DEFAULT_FACE = "#2e2e2e";
 const DEFAULT_STROKE = "#4d4d4d";
+const DEFAULT_NUMERALS = "#c4c4c4";
+const DEFAULT_HANDS = "#ededed";
+const DEFAULT_SECONDS = "#12b886";
 
 /** The colors that follow the text's while none is chosen, depending on the theme. */
 const DEFAULT_INK = "var(--mantine-color-text)";
+
+/** The time's own format, in digits: bold, at its weight below. */
+const DEFAULT_TEXT_FORMAT: TextFormat = { bold: true, italic: false, underline: false };
+const BOLD_WEIGHT = 600;
 
 const MODES = [
   { value: "digital", label: "Numérique" },
@@ -113,8 +128,11 @@ const timeIn = (timezone: string, currentTime: Date, seconds: boolean): string =
   }
 };
 
-/** The hours, minutes and seconds it is in this time zone, to place the hands. */
-const clockPartsIn = (timezone: string, currentTime: Date): { h: number; m: number; s: number } => {
+/**
+ * The seconds elapsed since midnight in this time zone, milliseconds
+ * included, to place the hands.
+ */
+const elapsedIn = (timezone: string, currentTime: Date): number => {
   const read = (timeZone?: string) => {
     const dateParts = new Intl.DateTimeFormat("fr-FR", {
       hour: "numeric",
@@ -124,12 +142,13 @@ const clockPartsIn = (timezone: string, currentTime: Date): { h: number; m: numb
       ...(timeZone ? { timeZone } : {}),
     }).formatToParts(currentTime);
     const value = (type: string) => Number(dateParts.find((p) => p.type === type)?.value ?? 0);
-    return { h: value("hour"), m: value("minute"), s: value("second") };
+    return value("hour") * 3600 + value("minute") * 60 + value("second");
   };
+  const ms = currentTime.getMilliseconds() / 1000;
   try {
-    return read(timezone || DEFAULT_TIMEZONE);
+    return read(timezone || DEFAULT_TIMEZONE) + ms;
   } catch {
-    return read();
+    return read() + ms;
   }
 };
 
@@ -149,50 +168,51 @@ const showsSeconds = (config: unknown): boolean =>
   isChecked(config, SECONDS, isAnalog(config));
 
 /**
- * The dial: twelve marks, optional digits, the hour and minute hands, and the
- * second hand if requested. Drawn on a grid 100 on a side, it takes the set
- * diameter. Its face and its outline are dark grays unless given a color; the marks and digits share
- * one color, the hour and minute hands another — both the text's by default —,
- * and the second hand takes the application's color.
+ * The dial: sixty marks — longer every five minutes —, optional digits, the
+ * hour and minute hands, and the second hand if requested, which jumps from
+ * second to second leaving a short trail. Drawn on a grid 100 on a side, it
+ * takes the set diameter. Its face is a plain fill, a dark gray unless given a
+ * color, as its outline; the marks and digits share one color, the hour and
+ * minute hands another, the second hand a third — each with its default.
+ *
+ * The hands turn by CSS animations (assets/styles/Clock.module.css), which a
+ * negative delay sets on the time: "elapsed" is the seconds since midnight.
  */
 function Dial({
   diameter,
-  h,
-  m,
-  s,
+  elapsed,
   seconds,
   digits,
   face,
   stroke,
   numerals,
   hands,
+  secondsColor,
 }: {
   diameter: number;
-  h: number;
-  m: number;
-  s: number;
+  elapsed: number;
   seconds: boolean;
   digits: boolean;
   face: string;
   stroke: string;
   numerals: string;
   hands: string;
+  secondsColor: string;
 }) {
-  const hoursAngle = ((h % 12) + m / 60) * 30;
-  const minutesAngle = (m + s / 60) * 6;
-  const secondsAngle = s * 6;
-  const hand = (angle: number, length: number, thickness: number, color: string, queue = 0) => (
-    <line
-      x1={50}
-      y1={50 + queue}
-      x2={50}
-      y2={50 - length}
-      stroke={color}
-      strokeWidth={thickness}
-      strokeLinecap="round"
-      transform={`rotate(${angle} 50 50)`}
+  const h = Math.floor(elapsed / 3600);
+  const m = Math.floor((elapsed % 3600) / 60);
+  const delay = (period: number) => ({ animationDelay: `${-(elapsed % period)}s` });
+  // A hand: a straight bar, that goes a little past the center.
+  const bar = (length: number, thickness: number, tail: number, color: string) => (
+    <rect
+      x={50 - thickness / 2}
+      y={50 - length}
+      width={thickness}
+      height={length + tail}
+      fill={color}
     />
   );
+  const secondHand = bar(40, 1.6, 10, secondsColor);
   return (
     <svg
       width={diameter}
@@ -203,19 +223,21 @@ function Dial({
       style={{ display: "block", margin: "0 auto" }}
     >
       <circle cx={50} cy={50} r={48} fill={face} stroke={stroke} strokeWidth={1.5} />
-      {Array.from({ length: 12 }, (_, i) => (
-        <line
-          key={i}
-          x1={50}
-          y1={4}
-          x2={50}
-          y2={i % 3 === 0 ? 11 : 8}
-          stroke={numerals}
-          strokeWidth={i % 3 === 0 ? 2 : 1}
-          strokeLinecap="round"
-          transform={`rotate(${i * 30} 50 50)`}
-        />
-      ))}
+      {Array.from({ length: 60 }, (_, i) => {
+        const major = i % 5 === 0;
+        const thickness = major ? 1.4 : 0.7;
+        return (
+          <rect
+            key={i}
+            x={50 - thickness / 2}
+            y={4.5}
+            width={thickness}
+            height={major ? 6.5 : 3}
+            fill={numerals}
+            transform={`rotate(${i * 6} 50 50)`}
+          />
+        );
+      })}
       {digits &&
         Array.from({ length: 12 }, (_, i) => {
           const angle = ((i + 1) * 30 * Math.PI) / 180;
@@ -233,10 +255,29 @@ function Dial({
             </text>
           );
         })}
-      {hand(hoursAngle, 24, 4, hands)}
-      {hand(minutesAngle, 36, 2.5, hands)}
-      {seconds && hand(secondsAngle, 40, 1, "var(--mantine-color-teal-6)", 8)}
-      <circle cx={50} cy={50} r={2.5} fill={seconds ? "var(--mantine-color-teal-6)" : hands} />
+      {/* The hour hand turns twice a day: its animation lasts a day. */}
+      <g className={`${classes.hand} ${classes.hours}`} style={delay(86_400)}>
+        {bar(23.5, 3.4, 6.5, hands)}
+      </g>
+      <g className={`${classes.hand} ${classes.minutes}`} style={delay(3_600)}>
+        {bar(36.5, 3.4, 6.5, hands)}
+      </g>
+      {seconds ? (
+        <g className={`${classes.hand} ${classes.seconds}`} style={delay(60)}>
+          {/* The trail, copies of the hand that fade behind it each second. */}
+          <g>
+            {Array.from({ length: 8 }, (_, i) => (
+              <g key={i} className={`${classes.hand} ${classes.trail}`} style={delay(1)}>
+                {secondHand}
+              </g>
+            ))}
+          </g>
+          {secondHand}
+          <circle cx={50} cy={50} r={2.5} fill={secondsColor} />
+        </g>
+      ) : (
+        <circle cx={50} cy={50} r={2.5} fill={hands} />
+      )}
     </svg>
   );
 }
@@ -259,12 +300,15 @@ function Clock({ config }: { config: unknown }) {
   const analog = isAnalog(config);
   const seconds = showsSeconds(config);
 
-  // The display stops at the minute: refreshing it every second would change
-  // nothing on screen, and would make the page tick for nothing — except when
-  // the seconds show. Without it, the minute hand still moves forward in
-  // small steps.
+  // In digits, the display stops at the minute: refreshing it every second
+  // would change nothing on screen, and would make the page tick for nothing —
+  // except when the seconds show. A dial's hands turn by themselves: the
+  // refresh only sets them back on the time, once a minute.
   useEffect(() => {
-    const heartbeat = setInterval(() => setNow(new Date()), seconds ? 1_000 : analog ? 10_000 : 30_000);
+    const heartbeat = setInterval(
+      () => setNow(new Date()),
+      analog ? 60_000 : seconds ? 1_000 : 30_000,
+    );
     return () => clearInterval(heartbeat);
   }, [analog, seconds]);
 
@@ -274,13 +318,14 @@ function Clock({ config }: { config: unknown }) {
   const hour = analog ? (
     <Dial
       diameter={count(config, SIZE, DEFAULT_DIAMETER)}
-      {...clockPartsIn(timezone, currentTime)}
+      elapsed={elapsedIn(timezone, currentTime)}
       seconds={seconds}
       digits={isChecked(config, DIGITS, false)}
       face={text(config, DIAL_COLOR) || DEFAULT_FACE}
       stroke={text(config, STROKE_COLOR) || DEFAULT_STROKE}
-      numerals={text(config, NUMERALS_COLOR) || DEFAULT_INK}
-      hands={text(config, HANDS_COLOR) || DEFAULT_INK}
+      numerals={text(config, NUMERALS_COLOR) || DEFAULT_NUMERALS}
+      hands={text(config, HANDS_COLOR) || DEFAULT_HANDS}
+      secondsColor={text(config, SECONDS_COLOR_KEY) || DEFAULT_SECONDS}
     />
   ) : (
     // Centered in the column, whatever its width: the time is short, and
@@ -288,7 +333,7 @@ function Clock({ config }: { config: unknown }) {
     <Text
       ta="center"
       fz={count(config, SIZE, DEFAULT_SIZE)}
-      fw={600}
+      style={formatStyle(formatOf(config, DEFAULT_TEXT_FORMAT), BOLD_WEIGHT)}
       c={text(config, NUMERALS_COLOR) || DEFAULT_INK}
     >
       {timeIn(timezone, currentTime, seconds)}
@@ -371,20 +416,23 @@ export const clockWidget: AccessWidget = {
           reset: () => onChange(insertRow(config, { [DIAL_COLOR]: "", [SIZE]: "" })),
         },
         colorRow("Trait", "du trait du cadran", STROKE_COLOR, DEFAULT_STROKE),
-        colorRow("Chiffres", "des chiffres", NUMERALS_COLOR),
-        colorRow("Aiguilles", "des aiguilles", HANDS_COLOR),
+        colorRow("Chiffres", "des chiffres", NUMERALS_COLOR, DEFAULT_NUMERALS),
+        colorRow("Aiguilles", "des aiguilles", HANDS_COLOR, DEFAULT_HANDS),
+        colorRow("Trotteuse", "de la trotteuse", SECONDS_COLOR_KEY, DEFAULT_SECONDS),
       ];
 
-    // The size, brought back to the default, is no longer stored.
+    // The size, brought back to the default, is no longer stored. The color
+    // field shows the default, Mantine's text color in the current scheme, as
+    // the date's (widgets/common/date): brought back to it, it is no longer
+    // stored, and the time keeps following the scheme.
     const size = count(config, SIZE, DEFAULT_SIZE);
+    const dark = document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
+    const defaultInk = dark ? "#c9c9c9" : "#000000";
     return [
       {
         name: "Texte",
         what: "de l'heure",
-        color: {
-          value: text(config, NUMERALS_COLOR),
-          onChange: (v) => onChange(insertRow(config, { [NUMERALS_COLOR]: v })),
-        },
+        color: colorOf(NUMERALS_COLOR, defaultInk),
         size: {
           value: size,
           defaultValue: DEFAULT_SIZE,
@@ -392,50 +440,73 @@ export const clockWidget: AccessWidget = {
           max: SIZE_MAX,
           onChange: (v) => onChange(insertRow(config, { [SIZE]: v === DEFAULT_SIZE ? "" : v })),
         },
-        modified: text(config, NUMERALS_COLOR) !== "" || size !== DEFAULT_SIZE,
+        modified: isSet(NUMERALS_COLOR, defaultInk) || size !== DEFAULT_SIZE,
         reset: () => onChange(insertRow(config, { [NUMERALS_COLOR]: "", [SIZE]: "" })),
       },
+      formatRow(config, onChange, DEFAULT_TEXT_FORMAT),
     ];
   },
 
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
-      {/* Changing mode brings the size back to the mode's: 36 px of text do
-          not make a dial, nor 120 px of dial a text. */}
-      <Input.Wrapper label="Affichage">
-        <SegmentedControl
-          display="flex"
-          w="fit-content"
-          mt={4}
-          data={MODES}
-          value={isAnalog(config) ? "analog" : "digital"}
-          onChange={(mode) =>
-            onChange({
-              ...withField(config, MODE, mode),
-              [SIZE]: mode === "analog" ? DEFAULT_DIAMETER : DEFAULT_SIZE,
-            })
-          }
+      {/* The display and, to its right, the time zone. */}
+      <Group align="flex-end" gap="lg">
+        {/* Changing mode brings the size back to the mode's: 36 px of text do
+            not make a dial, nor 120 px of dial a text. */}
+        <Input.Wrapper label="Affichage">
+          <SegmentedControl
+            display="flex"
+            w="fit-content"
+            mt={4}
+            color="teal"
+            data={MODES}
+            // As the alignment's (components/ui/SettingRows): the chosen
+            // option fills the control to its edges, in green on the gray. It
+            // takes the height of the time zone's field, beside it.
+            styles={{
+              root: {
+                padding: 0,
+                backgroundColor: SEGMENTS_BG,
+                // The 36 px of a field (Mantine defines its variable on inputs only).
+                height: "calc(2.25rem * var(--mantine-scale))",
+              },
+              control: { display: "flex" },
+              indicator: { borderRadius: "var(--sc-radius)" },
+              label: {
+                borderRadius: "var(--sc-radius)",
+                display: "flex",
+                alignItems: "center",
+              },
+            }}
+            value={isAnalog(config) ? "analog" : "digital"}
+            onChange={(mode) =>
+              onChange({
+                ...withField(config, MODE, mode),
+                [SIZE]: mode === "analog" ? DEFAULT_DIAMETER : DEFAULT_SIZE,
+              })
+            }
+          />
+        </Input.Wrapper>
+        <Select
+          label="Fuseau horaire"
+          data={TIMEZONES}
+          value={text(config, TIMEZONE, DEFAULT_TIMEZONE)}
+          onChange={(value) => value && onChange(withField(config, TIMEZONE, value))}
+          allowDeselect={false}
+          searchable
+          autoFocus
+          styles={{ wrapper: { width: 200 } }}
         />
-      </Input.Wrapper>
-      <Select
-        label="Fuseau horaire"
-        data={TIMEZONES}
-        value={text(config, TIMEZONE, DEFAULT_TIMEZONE)}
-        onChange={(value) => value && onChange(withField(config, TIMEZONE, value))}
-        allowDeselect={false}
-        searchable
-        autoFocus
-        styles={{ wrapper: { width: 200 } }}
-      />
+      </Group>
       <Stack gap="sm">
-        <Checkbox
+        <Switch
           label="Afficher les secondes"
           checked={showsSeconds(config)}
           onChange={(e) => onChange(withField(config, SECONDS, e.currentTarget.checked))}
           color="teal"
         />
         {isAnalog(config) && (
-          <Checkbox
+          <Switch
             label="Chiffres sur le cadran"
             checked={isChecked(config, DIGITS, false)}
             onChange={(e) => onChange(withField(config, DIGITS, e.currentTarget.checked))}

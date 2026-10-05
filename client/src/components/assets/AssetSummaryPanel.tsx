@@ -752,7 +752,7 @@ export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
                           <CopyValueButton text={ip} label={`Copier l'adresse ${ip}`} withoutBubble />
                         </Group>
                       ))}
-                      {/* The VLAN of the Paramétrage that carries the adapter, when
+                      {/* The board's VLAN that carries the adapter, when
                           its subnet is declared there. */}
                       {card.vlan && (
                         <Group gap={6} wrap="nowrap">

@@ -7,3 +7,13 @@
   flex: 0 0 auto !important;
   max-width: 100%;
 }
+
+/*
+ * A widget's frame (Frame, widgets/margins.tsx) is the place itself: it takes
+ * its whole width and height, and the content moves inside it.
+ */
+.aligned > .frame {
+  align-self: stretch;
+  flex: 1 1 auto !important;
+  min-height: 0;
+}

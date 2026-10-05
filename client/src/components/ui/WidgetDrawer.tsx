@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import inset from "../../assets/styles/AccessNumber.module.css";
 import type { ComponentType, DragEvent } from "react";
 import { kindLabel, type WidgetKind } from "../../widgets/kinds";
-import { SUBCATEGORY_GAP } from "../../widgets/common/subcategory";
+import { H2_GAP } from "../../widgets/common/h2";
 
 // What a section can receive, one widget per row: its handle, its
 // icon, its name, in the widgets inset. The drawer opens on the left, and
@@ -14,8 +14,7 @@ import { SUBCATEGORY_GAP } from "../../widgets/common/subcategory";
 //
 // The list comes from the mode's registry: the drawer knows no widget in
 // particular. It arranges it by kind (widgets/kinds.ts), in the order in which the
-// registry presents the first widget of each, under a
-// subcategory title.
+// registry presents the first widget of each, under an "H2" title.
 
 /** What the drawer shows of a widget. */
 export interface WidgetChoice {
@@ -98,14 +97,14 @@ export default function WidgetDrawer<P extends WidgetChoice>({
       // Mantine's scrollbar, along the drawer's right edge.
       scrollAreaComponent={ScrollArea.Autosize}
     >
-      {/* A category title (widgets/common/category.tsx): its size, its
+      {/* An "H1" title (widgets/common/title.tsx): its size, its
           color, and 20 px of space before the list. */}
       <Title order={1} size={18} c="var(--mantine-color-white)" mb={20}>
         Widgets
       </Title>
       {groups.map((group, rank) => (
         <div key={group.kind}>
-          {/* A subcategory title (widgets/common/subcategory.tsx): its
+          {/* An "H2" title (widgets/common/h2.tsx): its
               size, its weight, the space under it; 40 px above when
               other widgets precede it. */}
           <Title
@@ -113,7 +112,7 @@ export default function WidgetDrawer<P extends WidgetChoice>({
             size={16}
             fw={400}
             c="var(--mantine-color-white)"
-            mb={SUBCATEGORY_GAP}
+            mb={H2_GAP}
             pt={rank > 0 ? GROUPS_GAP : 0}
           >
             {kindLabel(group.kind)}

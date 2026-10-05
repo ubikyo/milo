@@ -16,9 +16,11 @@ const GREEN = "rgb(35,182,151)";
 interface LogoProps {
   variant?: 1 | 2;
   h?: number;
+  /** Imposes the width instead of the height, which then follows the ratio. */
+  w?: number;
 }
 
-export default function Logo({ variant = 2, h = 40 }: LogoProps) {
+export default function Logo({ variant = 2, h = 40, w }: LogoProps) {
   // `colorScheme` can be "auto": we read the theme actually applied.
   // getInitialValueInEffect: false to avoid briefly showing the wrong logo on
   // first render.
@@ -30,8 +32,8 @@ export default function Logo({ variant = 2, h = 40 }: LogoProps) {
   // takes all the available width.
   const ink = INK[scheme];
   const style = {
-    height: h,
-    width: "auto",
+    height: w ? "auto" : h,
+    width: w ?? "auto",
     display: "block",
     fillRule: "evenodd",
     clipRule: "evenodd",

@@ -20,6 +20,8 @@ import {
   INPUT_INSET,
   INPUT_STYLE,
   move,
+  numberKeys,
+  pickKeys,
   rowStyle,
 } from "./DrawerRows";
 
@@ -75,8 +77,8 @@ interface Entry {
  * The column list shows only five options at a time, then scrolls: an option of
  * size "sm" measures 33.6875 px.
  */
-const VISIBLE_OPTIONS = 5;
-const OPTION_HEIGHT = 33.6875;
+export const VISIBLE_OPTIONS = 5;
+export const OPTION_HEIGHT = 33.6875;
 
 /** The group option of a labels column that shows them all. */
 const ALL_GROUPS = "all";
@@ -315,6 +317,7 @@ export default function ColumnFields({
                 onChange={(value) => replaceExisting(rank, value)}
                 // The added row, left without a column, disappears.
                 onBlur={() => newRow && setAdding(false)}
+                {...pickKeys}
                 onDropdownOpen={() => setOpened(rank)}
                 onDropdownClose={() => setOpened(null)}
                 allowDeselect={false}
@@ -379,6 +382,7 @@ export default function ColumnFields({
                 aria-label={`Largeur de la colonne ${column.label}`}
                 value={entry.width ?? ""}
                 onChange={(value) => changeWidth(rank, value)}
+                {...numberKeys((value) => changeWidth(rank, value))}
                 onFocus={() => setInput(rank)}
                 onBlur={() => setInput(null)}
                 styles={input === rank ? { input: INPUT_STYLE } : undefined}

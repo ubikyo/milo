@@ -1,6 +1,7 @@
 import { DonutChart } from "@mantine/charts";
 import { Stack } from "@mantine/core";
 import { IconProgress } from "@tabler/icons-react";
+import { CHART_COLORS, colorOf, donutChartProps, donutChartRows, partRows } from "../chart-colors";
 import { NAME, Nothing, IndicatorTitle } from "./common";
 import type { ProjectIndicatorWidget } from "./types";
 
@@ -11,12 +12,13 @@ import type { ProjectIndicatorWidget } from "./types";
 const LABEL = "Progression";
 
 // "Non démarrés" in dark gray — a neutral gray, Mantine's lean toward
-// blue.
+// blue. Each share's color is set in its own row, named short ("short");
+// "key" is where it is stored.
 const BANDS = [
-  { name: "Non démarrés", color: "#383838", matches: (s: number) => s === 0 },
-  { name: "Moins de 50 %", color: "orange.6", matches: (s: number) => s > 0 && s < 50 },
-  { name: "50 % et plus", color: "blue.6", matches: (s: number) => s >= 50 && s < 100 },
-  { name: "Terminés", color: "green.6", matches: (s: number) => s >= 100 },
+  { name: "Non démarrés", short: "0 %", key: "colorNotStarted", color: "#383838", matches: (s: number) => s === 0 },
+  { name: "Moins de 50 %", short: "< 50 %", key: "colorStarted", color: CHART_COLORS.orange, matches: (s: number) => s > 0 && s < 50 },
+  { name: "50 % et plus", short: "≥ 50 %", key: "colorHalf", color: CHART_COLORS.blue, matches: (s: number) => s >= 50 && s < 100 },
+  { name: "Terminés", short: "Terminés", key: "colorFinished", color: CHART_COLORS.green, matches: (s: number) => s >= 100 },
 ];
 
 export const progressIndicator: ProjectIndicatorWidget = {
@@ -27,9 +29,9 @@ export const progressIndicator: ProjectIndicatorWidget = {
   defaultConfig: { [NAME]: "" },
 
   Display: ({ config, projects }) => {
-    const data = BANDS.map(({ name, color, matches }) => ({
+    const data = BANDS.map(({ name, key, color, matches }) => ({
       name,
-      color,
+      color: colorOf(config, key, color),
       value: projects.filter((p) => matches(p.status)).length,
     })).filter((part) => part.value > 0);
 
@@ -50,9 +52,19 @@ export const progressIndicator: ProjectIndicatorWidget = {
             withTooltip
             withLegend
             pieProps={{ isAnimationActive: false }}
+            {...donutChartProps(config)}
           />
         )}
       </Stack>
     );
   },
+
+  chartAppearance: (config, onChange) => [
+    ...partRows(
+      config,
+      onChange,
+      BANDS.map((b) => ({ key: b.key, name: b.short, what: `des projets ${b.name.toLowerCase()}`, defaultColor: b.color })),
+    ),
+    ...donutChartRows(config, onChange, { withLabel: false }),
+  ],
 };

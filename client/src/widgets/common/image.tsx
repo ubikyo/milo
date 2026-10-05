@@ -1,4 +1,4 @@
-import { Box, Group, Input, NumberInput, Select, Stack, UnstyledButton } from "@mantine/core";
+import { Box, Group, Input, Stack, UnstyledButton } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconPhoto } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
@@ -16,7 +16,7 @@ import {
   useRowSelection,
 } from "../../components/ui/DrawerRows";
 import ResizedImage from "../../components/ui/ResizedImage";
-import { withField, count, text } from "../types";
+import { withField, count } from "../types";
 import type { AccessWidget, WidgetConfigProps } from "../types";
 
 // An image, or several that take turns: a logo, a floor plan, a campaign's
@@ -24,7 +24,8 @@ import type { AccessWidget, WidgetConfigProps } from "../types";
 // drawer, one row per image, a handle to reorder them and a checkbox to
 // delete them, the rotation interval next to the label; on the board, the
 // images take turns with a fade, hovering pauses them, and the dots laid on
-// the image lead to one or another.
+// the image lead to one or another. The image takes the section's width, and
+// the height that width gives it.
 //
 // The original is kept as uploaded: it is the server that reduces it to the
 // width of the section that shows it (ResizedImage), so a large photo does
@@ -36,17 +37,11 @@ import type { AccessWidget, WidgetConfigProps } from "../types";
 
 const IMAGES = "images";
 const INTERVAL = "interval";
-const HEIGHT = "height";
-const ADJUSTMENT = "fit";
 
 /** The time spent on each image, in seconds; zero, the first one stays. */
 const DEFAULT_INTERVAL = 10;
 
-/** The image's height, in pixels; "0": the one its width gives it. */
-const DEFAULT_HEIGHT = 0;
-const HEIGHT_MAX = 1200;
-
-/** The height of the empty frame, when the element sets none. */
+/** The height of the empty frame. */
 const EMPTY_HEIGHT = 160;
 
 /** The duration of the fade between two images. */
@@ -55,11 +50,6 @@ const FADE = 600;
 const ACCEPTED = "image/png,image/jpeg,image/gif,image/webp,image/avif,image/bmp";
 
 const ROTATIONS = COVER_ROTATIONS.map((r) => ({ value: String(r.value), label: r.label }));
-
-const ADJUSTMENTS = [
-  { value: "cover", label: "Remplir (recadrer)" },
-  { value: "contain", label: "Contenir (entière)" },
-];
 
 /** An image as the configuration keeps it: its address, and what the drawer shows of it. */
 interface StoredImage {
@@ -108,8 +98,6 @@ const intervalOf = (config: unknown): number => {
 
 function Slideshow({ config }: { config: unknown }) {
   const urls = imagesOf(config).map((i) => i.url);
-  const height = count(config, HEIGHT, DEFAULT_HEIGHT);
-  const adjustment = text(config, ADJUSTMENT, "cover") === "contain" ? "contain" : "cover";
   const interval = intervalOf(config);
   const [rank, setRank] = useState(0);
   const [pause, setPaused] = useState(false);
@@ -134,7 +122,7 @@ function Slideshow({ config }: { config: unknown }) {
   if (!total) {
     return (
       <Box
-        h={height || EMPTY_HEIGHT}
+        h={EMPTY_HEIGHT}
         c="dimmed"
         aria-label="Aucune image"
         style={{
@@ -150,8 +138,8 @@ function Slideshow({ config }: { config: unknown }) {
     );
   }
 
-  // The images overlap: the first one holds the frame's height when none is
-  // given, the others are laid on top of it with a fade.
+  // The images overlap: the first one holds the frame's height, the others
+  // are laid on top of it with a fade.
   return (
     <Box
       pos="relative"
@@ -163,12 +151,10 @@ function Slideshow({ config }: { config: unknown }) {
         <ResizedImage
           key={`${src}-${i}`}
           src={src}
-          fit={adjustment}
-          height={height || undefined}
           style={{
             position: i === 0 ? "relative" : "absolute",
             inset: i === 0 ? undefined : 0,
-            height: height || (i === 0 ? "auto" : "100%"),
+            height: i === 0 ? "auto" : "100%",
             opacity: i === current ? 1 : 0,
             transition: `opacity ${FADE}ms ease`,
           }}
@@ -320,32 +306,6 @@ function Fields({ config, onChange }: WidgetConfigProps) {
         />
       </div>
 
-      <Group align="flex-start">
-        <NumberInput
-          label="Hauteur"
-          description="0 : automatique"
-          value={count(config, HEIGHT, DEFAULT_HEIGHT)}
-          onChange={(v) =>
-            onChange(withField(config, HEIGHT, v === "" ? DEFAULT_HEIGHT : Number(v)))
-          }
-          min={0}
-          max={HEIGHT_MAX}
-          suffix=" px"
-          allowNegative={false}
-          allowDecimal={false}
-          w={140}
-        />
-        <Select
-          label="Ajustement"
-          description="Quand la hauteur est fixée"
-          data={ADJUSTMENTS}
-          value={text(config, ADJUSTMENT, "cover")}
-          onChange={(v) => v && onChange(withField(config, ADJUSTMENT, v))}
-          allowDeselect={false}
-          w={180}
-        />
-      </Group>
-
       <DeleteConfirmModal
         opened={confirming && toDelete.length > 0}
         onClose={() => setConfirming(false)}
@@ -377,8 +337,6 @@ export const imageWidget: AccessWidget = {
   defaultConfig: {
     [IMAGES]: [],
     [INTERVAL]: DEFAULT_INTERVAL,
-    [HEIGHT]: DEFAULT_HEIGHT,
-    [ADJUSTMENT]: "cover",
   },
   // The dots leading from one image to another receive their clicks.
   ownClicks: true,

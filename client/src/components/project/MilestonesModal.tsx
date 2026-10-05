@@ -23,6 +23,8 @@ import {
   nameFieldStyle,
   rowStyle,
   useRowSelection,
+  editKeys,
+  numberKeys,
 } from "../ui/DrawerRows";
 import { MilestoneLabels, milestoneMarks } from "./milestoneMarks";
 import { errorMessage, notifyError } from "../../lib/errors";
@@ -81,6 +83,7 @@ function PercentageField({
     <NumberInput
       value={value}
       onChange={(v) => onChange(v === "" ? "" : Number(v))}
+      {...numberKeys(onChange)}
       onFocus={() => setEntered(true)}
       onBlur={() => {
         setEntered(false);
@@ -328,9 +331,7 @@ export default function MilestonesModal({
                   aria-label="Libellé du jalon"
                   value={s.label}
                   onChange={(e) => updateStatement(s.key, { label: e.currentTarget.value })}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
-                  }}
+                  {...editKeys((label) => updateStatement(s.key, { label }))}
                   autoFocus={toName === s.key}
                   onFocus={() => setInput(s.key)}
                   onBlur={() => {

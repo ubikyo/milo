@@ -21,7 +21,7 @@ import {
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { RED } from "../../themes/colors";
 import { PersonAvatar, SenderAvatar } from "../ui/ActorAvatars";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
@@ -29,6 +29,7 @@ import RichTextField, { useRichEditor } from "../ui/RichText";
 import type { ThreadItem } from "../project/CommentThread";
 import { MILO_ACTOR_ID } from "@milo/shared";
 import type {
+  Actor,
   SqliteBool,
   SupportAttachment,
   SupportCommentFormat,
@@ -106,6 +107,8 @@ interface FileRow {
   size: number;
   /** The address to download it from, once stored. */
   href?: string;
+  /** Downloads it, when it has no address of its own (Mail widget). */
+  onOpen?: () => void;
   /** Remove it, as long as the reply has not been sent. */
   onRemove?: () => void;
 }
@@ -154,7 +157,11 @@ function FileList({
         };
         return (
           <Fragment key={row.key}>
-            {row.href ? (
+            {row.onOpen ? (
+              <Anchor component="button" type="button" size="sm" onClick={row.onOpen} style={style}>
+                {name}
+              </Anchor>
+            ) : row.href ? (
               <Anchor
                 href={row.href}
                 target="_blank"
@@ -215,6 +222,80 @@ function Attachments({ attachments }: { attachments: SupportAttachment[] }) {
 
 const formatDate = (value: string): string =>
   dayjs(value).format("DD/MM/YYYY HH:mm");
+
+/**
+ * A received e-mail laid out as the thread shows one — its header (who, their
+ * address, when), its body as written, its attachments —, for a mailbox read
+ * outside a request: the Mail widget's. "recipients", under the address.
+ */
+export function ReceivedEmail({
+  author,
+  date,
+  recipients,
+  html,
+  files,
+  headerBackground,
+  background = MESSAGE_BACKGROUND,
+}: {
+  author: Actor;
+  date: string;
+  /** Its header's own gray, when it is not the message's. */
+  headerBackground?: string;
+  /** Its body's background, when it is not the thread's messages'. */
+  background?: string;
+  recipients?: ReactNode;
+  /** null while the body is loading. */
+  html: ReactNode | string | null;
+  files: { key: string; name: string; size: number; onOpen: () => void }[];
+}) {
+  return (
+    <Paper
+      bg={background}
+      style={{ borderRadius: "var(--mantine-radius-md)", overflow: "hidden" }}
+    >
+      <Group
+        justify="space-between"
+        wrap="nowrap"
+        align="flex-start"
+        pl="md"
+        pr={8}
+        py={8}
+        style={{
+          borderBottom: "1px solid var(--mantine-color-default-border)",
+          ...(headerBackground ? { backgroundColor: headerBackground } : {}),
+        }}
+      >
+        <Group gap={20} wrap="nowrap" style={{ minWidth: 0 }}>
+          <SenderAvatar person={author} size={26} />
+          <div style={{ minWidth: 0 }}>
+            <Text size="sm" fw={600} truncate>
+              {author.name || author.email || "—"}
+            </Text>
+            {author.email && (
+              <Text size="xs" c="dimmed" truncate>
+                {author.email}
+              </Text>
+            )}
+            {recipients}
+          </div>
+        </Group>
+        {/* White on the dark theme, the text's color on the light one, where
+            white would not read on the header's gray. */}
+        <Text
+          size="xs"
+          c="light-dark(var(--mantine-color-text), var(--mantine-color-white))"
+          style={{ flexShrink: 0 }}
+        >
+          {formatDate(date)}
+        </Text>
+      </Group>
+      <div style={{ padding: MARGIN_MESSAGE }}>
+        {typeof html === "string" ? <EmailFrame html={html} /> : html}
+      </div>
+      {files.length > 0 && <FileList px={10} rows={files} />}
+    </Paper>
+  );
+}
 
 const escape = (text: string): string =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

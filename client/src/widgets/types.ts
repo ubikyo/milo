@@ -50,8 +50,7 @@ export interface WidgetDisplayProps {
    * Opens this element's drawer. A widget that leaves its clicks to the page
    * has nothing to do with it: the page calls it. It remains there for one
    * that handles them itself and would want to lead there by a gesture of its
-   * own — none does today, right click already opening the drawer of any
-   * element.
+   * own: Mail's "Ajouter", when it reads no mailbox.
    */
   onEdit: () => void;
   /** Locked category: the widget no longer offers anything that modifies. */
@@ -62,6 +61,12 @@ export interface WidgetDisplayProps {
 export interface Margins {
   top: number;
   bottom: number;
+  /**
+   * True when the space above is the larger of its top and the previous
+   * element's bottom, rather than their sum — a title, which opens a group:
+   * its top sets the gap, and an element above that asks for more keeps it.
+   */
+  collapse?: boolean;
 }
 
 /** A padding, in pixels: the same on all four sides, or side by side. */
@@ -91,6 +96,15 @@ export interface AccessWidget {
    * clock's time, for example. Otherwise, the registry frames it.
    */
   ownFrame?: boolean;
+  /**
+   * The configuration as it is displayed, when it is not the stored one: a
+   * title's style replaces its own appearance (lib/titleStyles.ts). Its
+   * presence also gives the drawer and the right-click menu the choice of a
+   * style.
+   */
+  styled?: (config: unknown) => Record<string, unknown>;
+  /** The style it has when it names none: it then always has one — a title's "H1". */
+  defaultStyle?: string;
   /** True when it is framed as long as nothing is set — the attributes. */
   defaultFrame?: boolean;
   /**
@@ -114,7 +128,12 @@ export interface AccessWidget {
    * of a column. The column sets it, and the configuration can override it
    * (margins.tsx): the display sets none itself.
    */
-  margins: (previousType: AccessBlockType | null, nextType: AccessBlockType | null) => Margins;
+  margins: (
+    previousType: AccessBlockType | null,
+    nextType: AccessBlockType | null,
+    /** Its configuration: a title's style can take another title's spacing. */
+    config?: unknown,
+  ) => Margins;
   /**
    * True when the element is named right in the column: nothing opens on its
    * creation, it appears empty and waits to be filled in place.

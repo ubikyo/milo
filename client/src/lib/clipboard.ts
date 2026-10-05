@@ -4,6 +4,9 @@
 // its configuration; pasting means adding it there, as from the widgets
 // drawer.
 //
+// Pasted once, it is emptied: the "Coller" items leave the menus, and the
+// same widget is not pasted again by mistake.
+//
 // It lives in the browser (localStorage): it survives view changes
 // and reloads, and passes from one tab to another. Refused storage — a
 // private window — leaves it in memory only.
@@ -55,6 +58,18 @@ export const copyWidget = (copy: CopiedWidget): void => {
     localStorage.removeItem(LEGACY_KEY);
   } catch {
     // Storage refused: the copy stays in memory, for the life of the page.
+  }
+  notify();
+};
+
+/** Empty the clipboard, once its widget is pasted. */
+export const clearCopiedWidget = (): void => {
+  current = null;
+  try {
+    localStorage.removeItem(KEY);
+    localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    // Storage refused: the copy only lived in memory.
   }
   notify();
 };

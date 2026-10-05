@@ -8,6 +8,8 @@ import {
   EmptyList,
   ListFooter,
   RowCheckbox,
+  editKeys,
+  holdEscape,
   useRowSelection,
   NAME_INSET,
   INPUT_INSET,
@@ -23,7 +25,9 @@ import {
 // value on the row itself, its label on the right. Its box, at the start,
 // selects it: the checked rows are removed together, from the button that takes
 // the place of "Ajouter" meanwhile. "Ajouter" adds an empty row at the end,
-// which disappears if left without anything written in it. With no reception, the empty-list prompt (EmptyList).
+// which disappears if left without anything written in it: Enter validates the
+// value, Escape puts back the previous one (editKeys). With no reception, the
+// empty-list prompt (EmptyList).
 
 /** A reception: the received value, and the label it sets. */
 type Inbox = Record<string, unknown> & { label_id?: number | null };
@@ -145,84 +149,98 @@ export default function ReceptionField({
         <EmptyList icon={icon} message={empty} />
       ) : (
         <Stack gap={1}>
-          {rows.map((row, rank) => (
-            <Group
-              key={rank}
-              gap="sm"
-              wrap="nowrap"
-              style={rowStyle(rank, rows.length, false)}
-            >
-              <RowCheckbox
-                label={`Sélectionner ${valueFor(row) || placeholder}`}
-                checked={selection.isChecked(rank)}
-                onChange={(on) => selection.toggle(rank, on)}
-              />
-              {/* The value aligns with the checkbox, as a column's name with
-                  its handle. */}
-              <Autocomplete
-                size="sm"
-                radius={ROUNDING}
-                style={{ flex: 1, minWidth: 0, marginLeft: -NAME_INSET }}
-                styles={{
-                  input: {
-                    height: "var(--input-height-xs)",
-                    minHeight: "var(--input-height-xs)",
-                    paddingLeft: INPUT_INSET,
-                    borderWidth: 0,
-                    ...(input === `${rank}-valeur`
-                      ? INPUT_STYLE
-                      : { backgroundColor: "transparent" }),
-                  },
-                }}
-                placeholder={placeholder}
-                aria-label={placeholder}
-                data={suggestions}
-                value={valueFor(row)}
-                onChange={(value) => {
-                  change(rank, { [field]: normalizeValue(value) });
-                  setSuggested(rank);
-                }}
-                dropdownOpened={suggested === rank}
-                onClick={() => setSuggested(rank)}
-                onOptionSubmit={() => setSuggested(null)}
-                onDropdownClose={() => setSuggested(null)}
-                autoFocus={toFill === rank}
-                onFocus={() => setInput(`${rank}-valeur`)}
-                onBlur={() => {
-                  setInput(null);
-                  setToFill(null);
-                  setSuggested(null);
-                  // A row left without a value disappears.
-                  if (!valueFor(row).trim()) remove(rank);
-                }}
-              />
-              {/* Without labels, nothing to choose. */}
-              {labelValues.size > 0 && (
-                <Select
-                  size="xs"
-                  radius={ROUNDING}
-                  w={LABEL_WIDTH}
-                  style={{ flexShrink: 0 }}
-                  placeholder="Contexte"
-                  aria-label="Contexte"
-                  data={labels}
-                  // A label deleted since then matches no option: none shows.
-                  value={
-                    row.label_id && labelValues.has(String(row.label_id))
-                      ? String(row.label_id)
-                      : null
-                  }
-                  onChange={(value) => change(rank, { label_id: value ? Number(value) : null })}
-                  clearable
-                  comboboxProps={{ withinPortal: true }}
-                  onFocus={() => setInput(`${rank}-label`)}
-                  onBlur={() => setInput(null)}
-                  styles={input === `${rank}-label` ? { input: INPUT_STYLE } : undefined}
+          {rows.map((row, rank) => {
+              const keys = editKeys((value) => change(rank, { [field]: value }));
+              return (
+              <Group
+                key={rank}
+                gap="sm"
+                wrap="nowrap"
+                style={rowStyle(rank, rows.length, false)}
+              >
+                <RowCheckbox
+                  label={`Sélectionner ${valueFor(row) || placeholder}`}
+                  checked={selection.isChecked(rank)}
+                  onChange={(on) => selection.toggle(rank, on)}
                 />
-              )}
-              {state?.(valueFor(row))}
-            </Group>
-          ))}
+                {/* The value aligns with the checkbox, as a column's name with
+                    its handle. */}
+                <Autocomplete
+                  size="sm"
+                  radius={ROUNDING}
+                  style={{ flex: 1, minWidth: 0, marginLeft: -NAME_INSET }}
+                  styles={{
+                    input: {
+                      height: "var(--input-height-xs)",
+                      minHeight: "var(--input-height-xs)",
+                      paddingLeft: INPUT_INSET,
+                      borderWidth: 0,
+                      ...(input === `${rank}-valeur`
+                        ? INPUT_STYLE
+                        : { backgroundColor: "transparent" }),
+                    },
+                  }}
+                  placeholder={placeholder}
+                  aria-label={placeholder}
+                  data={suggestions}
+                  value={valueFor(row)}
+                  onChange={(value) => {
+                    change(rank, { [field]: normalizeValue(value) });
+                    setSuggested(rank);
+                  }}
+                  dropdownOpened={suggested === rank}
+                  onClick={() => setSuggested(rank)}
+                  onOptionSubmit={() => setSuggested(null)}
+                  onDropdownClose={() => setSuggested(null)}
+                  autoFocus={toFill === rank}
+                  onFocusCapture={keys.onFocusCapture}
+                ref={holdEscape}
+                  onKeyDown={(e) => {
+                    // Enter first lets the suggestions take the highlighted one,
+                    // then leaves the field.
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const target = e.currentTarget;
+                      setTimeout(() => target.blur());
+                    } else keys.onKeyDown(e);
+                  }}
+                  onFocus={() => setInput(`${rank}-valeur`)}
+                  onBlur={() => {
+                    setInput(null);
+                    setToFill(null);
+                    setSuggested(null);
+                    // A row left without a value disappears.
+                    if (!valueFor(row).trim()) remove(rank);
+                  }}
+                />
+                {/* Without labels, nothing to choose. */}
+                {labelValues.size > 0 && (
+                  <Select
+                    size="xs"
+                    radius={ROUNDING}
+                    w={LABEL_WIDTH}
+                    style={{ flexShrink: 0 }}
+                    placeholder="Contexte"
+                    aria-label="Contexte"
+                    data={labels}
+                    // A label deleted since then matches no option: none shows.
+                    value={
+                      row.label_id && labelValues.has(String(row.label_id))
+                        ? String(row.label_id)
+                        : null
+                    }
+                    onChange={(value) => change(rank, { label_id: value ? Number(value) : null })}
+                    clearable
+                    comboboxProps={{ withinPortal: true }}
+                    onFocus={() => setInput(`${rank}-label`)}
+                    onBlur={() => setInput(null)}
+                    styles={input === `${rank}-label` ? { input: INPUT_STYLE } : undefined}
+                  />
+                )}
+                {state?.(valueFor(row))}
+              </Group>
+              );
+          })}
         </Stack>
       )}
 

@@ -11,10 +11,9 @@ import {
   Tabs,
   Text,
 } from "@mantine/core";
-import { IconDeviceLaptop, IconRefresh } from "@tabler/icons-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { IconDeviceLaptop } from "@tabler/icons-react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
-import SuccessAlert from "../ui/SuccessAlert";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { tabStyle } from "../../themes/tabs";
 import { WITHOUT_FRAME, SECTION_TABLES, EMPTY } from "./InventoryTables";
@@ -27,23 +26,13 @@ import type { Asset, AssetDetail, AssetEntry, AssetSection } from "@milo/shared"
 import CloseButton from "../ui/CloseButton";
 
 const DRAWER_PADDING = 40;
-const DRAWER_WIDTH = 1100;
+const DRAWER_WIDTH = 1060;
 
 /** Width of the tabs column: "Utilisateurs et groupes" fits in it. */
 const TABS_WIDTH = 210;
 
 /** The space between the header buttons and the rest of the record. */
 const SPACE_BELOW_HEADER = 30;
-
-/**
- * After an inventory request, the agent runs through the machine again and
- * sends back the result: this takes a few seconds to a few tens of
- * seconds depending on the workstation. We re-read at regular intervals until a
- * date changes, then give up — without blocking anything, the drawer
- * stays readable meanwhile.
- */
-const REREAD_DELAY = 3_000;
-const RELOAD_ATTEMPTS = 10;
 
 /**
  * What we open to take control. The "teamviewer10:" scheme launches the
@@ -314,16 +303,6 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
   const [detail, setDetail] = useState<AssetDetail | null>(null);
   /** The displayed tab; the first opens with the record. */
   const [domain, setDomain] = useState<string | null>(null);
-  /** What the last inventory request gave, in one sentence. */
-  const [notice, setNotice] = useState<string | null>(null);
-  /** True from the request until the agent responds, or until we give up. */
-  const [request, setRequested] = useState(false);
-  /**
-   * False as soon as the drawer closes or changes workstation: waiting for an
-   * inventory lasts several seconds, and what comes back afterwards may no longer
-   * concern what we are looking at.
-   */
-  const alive = useRef(true);
 
   // The identifier, not the workstation: the list is re-read on every write the
   // server announces, and the workstation is then a new object for the same
@@ -336,10 +315,7 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
     // The workstation changes, or the drawer reopens: start again from the collapsed list
     // and re-read. The inventory is bulky, it only travels there.
     setDomain(null);
-    setNotice(null);
-    setRequested(false);
     setDetail(null);
-    alive.current = true;
 
     let abandoned = false;
     api
@@ -355,58 +331,8 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
       });
     return () => {
       abandoned = true;
-      alive.current = false;
     };
   }, [opened, assetId]);
-
-  const wait = (ms: number) => new Promise((followUp) => setTimeout(followUp, ms));
-
-  /**
-   * Ask the workstation for its inventory again. The server only relays:
-   * the agent sends its inventory back through the agents' door, and it is
-   * by re-reading that we see the new one arrive. Until it is there, what
-   * is displayed stays displayed — it's the previous inventory, and it is dated.
-   */
-  const refetchInventory = async () => {
-    if (assetId === null || request) return;
-    setNotice(null);
-    setRequested(true);
-
-    const before = detail?.last_inventory;
-    try {
-      const { address } = await api.refreshAsset(assetId);
-      if (!alive.current) return;
-      setNotice(`Demande envoyée à ${address}. L'agent refait son tour de machine…`);
-
-      for (let attempt = 0; attempt < RELOAD_ATTEMPTS; attempt++) {
-        await wait(REREAD_DELAY);
-        if (!alive.current) return;
-        const received = await api.getAsset(assetId);
-        if (!alive.current) return;
-        if (received.last_inventory !== before) {
-          setDetail(received);
-          // The open tab stays open if it still exists: we were looking at what
-          // it said, which is why we asked for the inventory again.
-          const tabs = tabsOf(received.sections);
-          setDomain((current) =>
-            current === SUMMARY || (current && tabs.some((o) => o.value === current))
-              ? current
-              : SUMMARY,
-          );
-          setNotice("Inventaire reçu à l'instant.");
-          return;
-        }
-      }
-      setNotice(
-        "Demande transmise, mais rien n'est revenu dans les trente secondes. "
-          + "L'inventaire arrivera peut-être plus tard : rouvrez le poste pour voir.",
-      );
-    } catch (e) {
-      if (alive.current) notifyError(errorMessage(e));
-    } finally {
-      if (alive.current) setRequested(false);
-    }
-  };
 
   const tabs = useMemo(() => (detail ? tabsOf(detail.sections) : []), [detail]);
 
@@ -428,41 +354,23 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
       }}
     >
       <Stack gap="xs" style={{ flex: 1, minHeight: 0 }}>
-        {/* The asset tag is in the Identité card of the Summary. */}
-        <Group justify="flex-end" wrap="nowrap" align="center" pb={SPACE_BELOW_HEADER}>
-
-          <Group gap="sm" wrap="nowrap">
-            {/* Take control. The button only exists if the agent found a
-                TeamViewer ID on the workstation: without it, there is
-                nobody to call. */}
-            {detail?.teamviewer_id && (
-              <Button
-                component="a"
-                href={teamviewerLink(detail.teamviewer_id)}
-                variant="light"
-                color="teal"
-                leftSection={<IconDeviceLaptop size={16} />}
-              >
-                TeamViewer
-              </Button>
-            )}
-
-            {/* The address comes from the last inventory: with DHCP it may have
-                changed, and the server will say so by failing. */}
+        {/* The asset tag is in the Identité card of the Summary. Take
+            control: the button only exists if the agent found a TeamViewer
+            ID on the workstation — without it, there is nobody to call, and
+            the header row goes away with its space. */}
+        {detail?.teamviewer_id && (
+          <Group justify="flex-end" wrap="nowrap" align="center" pb={SPACE_BELOW_HEADER}>
             <Button
-              variant="subtle"
-              color="gray"
-              leftSection={<IconRefresh size={16} />}
-              onClick={refetchInventory}
-              loading={request}
-              disabled={!detail?.address}
+              component="a"
+              href={teamviewerLink(detail.teamviewer_id)}
+              variant="light"
+              color="teal"
+              leftSection={<IconDeviceLaptop size={16} />}
             >
-              Rafraîchir
+              TeamViewer
             </Button>
           </Group>
-        </Group>
-
-        {notice && <SuccessAlert onClose={() => setNotice(null)}>{notice}</SuccessAlert>}
+        )}
 
         {/* The tabs in a column along the left edge, each gathering
             several inventory sections. */}
@@ -518,11 +426,11 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
                 },
               }}
             >
-              <Tabs.Panel value={SUMMARY} px={40}>
+              <Tabs.Panel value={SUMMARY} pl={40}>
                 <AssetSummaryPanel detail={detail} />
               </Tabs.Panel>
               {tabs.map((tab) => (
-                <Tabs.Panel key={tab.value} value={tab.value} px={40}>
+                <Tabs.Panel key={tab.value} value={tab.value} pl={40}>
                   <SectionsTab groups={tab.groups} os={detail.os} />
                 </Tabs.Panel>
               ))}

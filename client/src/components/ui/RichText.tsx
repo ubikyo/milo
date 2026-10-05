@@ -186,6 +186,12 @@ interface RichTextFieldProps {
   maxLines?: number;
   /** The lines the area shows even when empty: just one by default. */
   minLines?: number;
+  /**
+   * The field takes its parent's full height, square — a template window's
+   * pane: the area grows to it, and scrolls beyond. The lines above are then
+   * of no use.
+   */
+  fill?: boolean;
 }
 
 export default function RichTextField({
@@ -197,6 +203,7 @@ export default function RichTextField({
   contentEnd,
   maxLines,
   minLines,
+  fill = false,
 }: RichTextFieldProps) {
   // No tooltip: Mantine gives the toolbar buttons a "title" (their label) that
   // no prop removes for all of them — the link's one even takes precedence. It
@@ -227,9 +234,15 @@ export default function RichTextField({
       // content that is only as tall as the text. Both take the background,
       // otherwise it would stop at the last line written.
       styles={{
-        content: { backgroundColor: FIELD_BG },
+        // Square and without a frame — the pane is one: Mantine rounds the
+        // frame, its toolbar and its area, each on their own.
+        ...(fill && {
+          root: { height: "100%", display: "flex", flexDirection: "column", borderRadius: 0, border: 0 },
+        }),
+        content: { backgroundColor: FIELD_BG, ...(fill && { borderRadius: 0 }) },
         toolbar: {
           backgroundColor: FIELD_BG,
+          ...(fill && { borderRadius: 0 }),
           borderBottom:
             "1px solid light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-4))",
         },
@@ -263,7 +276,13 @@ export default function RichTextField({
       </RichTextEditor.Toolbar>
       {topSection}
       <RichTextEditor.Content
-        className={minLines ? `${classes.content} ${classes.minLines}` : classes.content}
+        className={
+          fill
+            ? `${classes.content} ${classes.fill}`
+            : minLines
+              ? `${classes.content} ${classes.minLines}`
+              : classes.content
+        }
         style={
           {
             backgroundColor: FIELD_BG,

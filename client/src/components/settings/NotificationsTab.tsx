@@ -1,17 +1,18 @@
-import { Group, Select, Stack, Switch, TextInput } from "@mantine/core";
+import { Box, Group, Select, Stack, Switch, Text, TextInput } from "@mantine/core";
 import { useEffect, useState } from "react";
 import { NOTIFICATION_EMAIL_DELAYS } from "@milo/shared";
 import type { NotificationEmailMode, NotificationSettings } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
+import MailTemplates from "./MailTemplates";
 
 // The "Notifications" section of Settings ("Paramétrage"). Like the other
 // tabs, each action is sent to the server right away; the sending address
 // when its field is left.
 
 const MODES: { value: NotificationEmailMode; label: string }[] = [
-  { value: "immediate", label: "À chaque évènement" },
-  { value: "grouped", label: "De manière groupée" },
+  { value: "immediate", label: "directe" },
+  { value: "grouped", label: "groupée" },
 ];
 
 // The delay set outside the list — by MILO_NOTIFY_WINDOW_MINUTES — takes its
@@ -83,8 +84,12 @@ export default function NotificationsTab({ canEdit }: NotificationsTabProps) {
         disabled={frozen}
         color="teal"
       />
-      {/* The e-mail settings spaced like the Entra tab's fields. */}
-      <Stack gap="xl">
+      {/* The sending mode and the grouping delay on the switch's line, read
+          as a sentence: "Notifications par e-mail [groupée] sous [10 min]".
+          They sit in a zero-height row, centred on the switch and
+          overflowing it: the line keeps the switch's height, and the two
+          switches the Affichage tab's spacing. */}
+      <Group gap="sm" wrap="nowrap">
         <Switch
           label="Notifications par e-mail"
           checked={settings.email}
@@ -92,6 +97,37 @@ export default function NotificationsTab({ canEdit }: NotificationsTabProps) {
           disabled={frozen}
           color="teal"
         />
+        {settings.email && (
+          <Group h={0} gap="sm" wrap="nowrap">
+            <Select
+              aria-label="Envoi"
+              data={MODES}
+              value={settings.emailMode}
+              onChange={(v) => v && change({ emailMode: v as NotificationEmailMode })}
+              allowDeselect={false}
+              disabled={frozen}
+              w={110}
+            />
+            {settings.emailMode === "grouped" && (
+              <>
+                <Text size="sm">sous</Text>
+                <Select
+                  aria-label="Délai de regroupement"
+                  data={delays(settings.emailDelayMinutes)}
+                  value={String(settings.emailDelayMinutes)}
+                  onChange={(v) => v && change({ emailDelayMinutes: Number(v) })}
+                  allowDeselect={false}
+                  disabled={frozen}
+                  w={100}
+                />
+              </>
+            )}
+          </Group>
+        )}
+      </Group>
+      {/* Alone on its line, on the left edge like the e-mail templates,
+          spaced like the Entra tab's fields. */}
+      <Box mt="xl">
         {/* Where Milo's emails are sent from: notices, assignments, replies to
             the requests entered. A received request replies from its own
             mailbox. Shown even without e-mail notifications, for those. */}
@@ -107,44 +143,13 @@ export default function NotificationsTab({ canEdit }: NotificationsTabProps) {
             if (e.key === "Escape") setTypedSender(sender);
           }}
           disabled={frozen}
-          // Aligned with the switch label, like the settings below.
-          pl="calc(38px + var(--mantine-spacing-sm))"
-          w="calc(38px + var(--mantine-spacing-sm) + 240px)"
+          w={240}
         />
-        {settings.email && (
-          <Group
-            gap="md"
-            // Aligned with the switch label: its track (38 px), then the gap
-            // separating it from the label.
-            pl="calc(38px + var(--mantine-spacing-sm))"
-            align="flex-end"
-            wrap="nowrap"
-          >
-            <Select
-              label="Envoi"
-              data={MODES}
-              value={settings.emailMode}
-              onChange={(v) => v && change({ emailMode: v as NotificationEmailMode })}
-              allowDeselect={false}
-              disabled={frozen}
-              w={120}
-            />
-            {settings.emailMode === "grouped" && (
-              <Select
-                label="Délai de regroupement"
-                data={delays(settings.emailDelayMinutes)}
-                value={String(settings.emailDelayMinutes)}
-                onChange={(v) => v && change({ emailDelayMinutes: Number(v) })}
-                allowDeselect={false}
-                disabled={frozen}
-                w={100}
-                // The label overflows the field instead of wrapping.
-                styles={{ label: { whiteSpace: "nowrap" } }}
-              />
-            )}
-          </Group>
-        )}
-      </Stack>
+      </Box>
+      {/* The e-mails Milo sends, each with its template. */}
+      <Box mt="xl">
+        <MailTemplates canEdit={canEdit} />
+      </Box>
     </Stack>
   );
 }

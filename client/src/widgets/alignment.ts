@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import classes from "../assets/styles/Alignment.module.css";
 import { insertRow, type SettingRow } from "../components/ui/SettingRows";
+import { isSized } from "./height";
 import { text } from "./types";
 
 // Where a widget's content sits in its place: vertically — top, middle,
@@ -9,8 +10,9 @@ import { text } from "./types";
 // keep their full width, a clock its own centering. A horizontal choice, left
 // included, is stored: the content then keeps its own width and moves.
 //
-// Aligned vertically, a widget takes the height its section has left — shared
-// with the others aligned so —: that is the place its content moves in.
+// The content moves in its place — the widget's frame when it has one —, and
+// the place keeps its height (widgets/height.ts): its content's while nothing
+// is set, where a vertical alignment changes nothing.
 
 const VERTICAL = "alignVertical";
 const HORIZONTAL = "alignHorizontal";
@@ -33,10 +35,6 @@ const verticalOf = (config: unknown) =>
 const horizontalOf = (config: unknown) =>
   HORIZONTALS.find((h) => h.value === text(config, HORIZONTAL));
 
-/** True when the widget is aligned other than at the top: it takes its section's height. */
-export const isVerticallyAligned = (config: unknown): boolean =>
-  verticalOf(config) !== VERTICALS[0];
-
 /**
  * What the box holding the widget's content receives: its class and style;
  * nothing while the alignment is the default one.
@@ -46,7 +44,8 @@ export const alignmentProps = (
 ): { className?: string; style: CSSProperties } => {
   const vertical = verticalOf(config);
   const horizontal = horizontalOf(config);
-  if (vertical === VERTICALS[0] && !horizontal) return { style: {} };
+  const sized = isSized(config);
+  if (vertical === VERTICALS[0] && !horizontal && !sized) return { style: {} };
   return {
     className: classes.aligned,
     style: {
@@ -56,8 +55,8 @@ export const alignmentProps = (
       // Without a horizontal choice, the content keeps its full width.
       alignItems: horizontal?.css ?? "stretch",
       ...(horizontal ? { textAlign: horizontal.text } : {}),
-      // Aligned vertically, the content moves in the whole place.
-      ...(vertical !== VERTICALS[0] ? { flex: 1, minHeight: 0 } : {}),
+      // With a height of its own, the box fills the place: the content moves in it.
+      ...(sized ? { flex: 1, minHeight: 0 } : {}),
     },
   };
 };

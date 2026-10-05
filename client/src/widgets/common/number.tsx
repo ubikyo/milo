@@ -1,21 +1,30 @@
-import { Input, Text, TextInput } from "@mantine/core";
+import { Group, Input, Stack, Text, TextInput } from "@mantine/core";
 import { IconHash } from "@tabler/icons-react";
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useState } from "react";
+import type { DragEvent } from "react";
 import classes from "../../assets/styles/AccessNumber.module.css";
-import ListItems, { type AddRow } from "../../components/ui/ListItems";
 import {
-  DeleteSelectedButton,
+  EmptyList,
+  Handle,
+  ListFooter,
+  NAME_INSET,
+  ROUNDING,
   RowCheckbox,
+  move,
+  nameFieldStyle,
+  rowStyle,
   useRowSelection,
+  editKeys,
 } from "../../components/ui/DrawerRows";
-import { DragHandle, InsertLine, useDraggableStack } from "../../components/ui/DraggableStack";
 import { STRONG_TEXT } from "../../themes/colors";
-import { SUBCATEGORY_COLOR, SUBCATEGORY_GAP } from "./subcategory";
+import { insertRow, type SettingRow } from "../../components/ui/SettingRows";
+import { H2_COLOR, H2_GAP } from "./h2";
 import { Frame } from "../margins";
-import { isFramed, text } from "../types";
+import { formatOf, formatReset, formatRow, formatStyle, NO_FORMAT } from "../text-format";
+import type { TextFormat } from "../text-format";
+import { isFramed, text, withField } from "../types";
 import type { AccessWidget, WidgetConfigProps } from "../types";
 import type { AccessBlockType } from "@milo/shared";
-import type { KeyboardEvent } from "react";
 
 // Numbers: references that people come to read — a phone line, a contract,
 // an extension. Each row carries a label, which says which one, and the
@@ -29,18 +38,6 @@ interface Row {
   number: string;
 }
 
-const EMPTY_ROW: Row = { label: "", number: "" };
-
-// Beyond ten rows, the list scrolls.
-const VISIBLE_ROWS = 10;
-
-// Height of a field in its row: the text's, like renaming a category
-// (LookupManager). An "sm" field is 36 px, more than the row.
-const FIELD_HEIGHT = 22;
-const INLINE_FIELD = {
-  input: { height: FIELD_HEIGHT, minHeight: FIELD_HEIGHT, lineHeight: `${FIELD_HEIGHT}px` },
-};
-
 /**
  * The element's rows; a damaged row fills in what it lacks. An element stored
  * before multiple rows received its own at migration
@@ -53,14 +50,40 @@ const rows = (config: unknown): Row[] => {
     : [];
 };
 
-/** The rows only. */
-const store = (list: Row[]): Record<string, unknown> => ({ [ROWS]: list });
+const LABEL_COLOR = "labelColor";
+const VALUE_COLOR = "valueColor";
+
+/** The formats' prefixes: "labelBold", "valueItalic"… */
+const LABEL = "label";
+const VALUE = "value";
+
+/** Where each column's texts sit: by default, the attribute left, the value right. */
+const LABEL_ALIGN = "labelAlign";
+const VALUE_ALIGN = "valueAlign";
+
+const ALIGNMENTS = [
+  { value: "left", label: "Gauche" },
+  { value: "center", label: "Centre" },
+  { value: "right", label: "Droite" },
+] as const;
+
+type Alignment = (typeof ALIGNMENTS)[number]["value"];
+
+const alignmentOf = (config: unknown, key: string, defaultValue: Alignment): Alignment =>
+  ALIGNMENTS.find((a) => a.value === text(config, key))?.value ?? defaultValue;
+
+/** The value stands out, in bold at the weight below; the attribute does not. */
+const VALUE_FORMAT: TextFormat = { bold: true, italic: false, underline: false };
+const BOLD_WEIGHT = 600;
+
+/** The rows, the other settings kept — the colors, the frame. */
+const store = (config: unknown, list: Row[]): Record<string, unknown> => withField(config, ROWS, list);
 
 /** The elements that already carry their own space, above and below them. */
-const TITLES: AccessBlockType[] = ["category", "subcategory"];
+const TITLES: AccessBlockType[] = ["category"];
 
 /**
- * The space around the inset: that of a subcategory, at the top as at the
+ * The space around the inset: that of an "H2" title, at the top as at the
  * bottom. Nothing at the head or end of a column. Nothing either against a
  * title, which already leaves its own — the two would add up, the column being
  * a flex one, where margins do not collapse. And between two insets, only the
@@ -69,158 +92,180 @@ const TITLES: AccessBlockType[] = ["category", "subcategory"];
 const highMargin = (previous: AccessBlockType | null): number =>
   previous === null || previous === "number" || TITLES.includes(previous)
     ? 0
-    : SUBCATEGORY_GAP;
+    : H2_GAP;
 const lowMargin = (next: AccessBlockType | null): number =>
-  next === null || TITLES.includes(next) ? 0 : SUBCATEGORY_GAP;
+  next === null || TITLES.includes(next) ? 0 : H2_GAP;
+
+interface AttributeRowProps {
+  row: Row;
+  rank: number;
+  total: number;
+  held: boolean;
+  /** Just added: its attribute takes focus. */
+  toFill: boolean;
+  onChange: (field: keyof Row, value: string) => void;
+  /** The row left, focus gone from both its fields. */
+  onLeave: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onDragOver: (e: DragEvent<HTMLElement>) => void;
+  checked: boolean;
+  onCheck: (checked: boolean) => void;
+}
+
+/** A row in the drawer: its handle, its box, its attribute and its value, edited in place. */
+function AttributeRow({
+  row,
+  rank,
+  total,
+  held,
+  toFill,
+  onChange,
+  onLeave,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  checked,
+  onCheck,
+}: AttributeRowProps) {
+  const [entered, setEntered] = useState<keyof Row | null>(null);
+  const field = (name: keyof Row, placeholder: string) => (
+    <TextInput
+      size="sm"
+      radius={ROUNDING}
+      style={{ flex: 1, minWidth: 0, marginLeft: name === "label" ? -NAME_INSET : 0 }}
+      styles={{ input: nameFieldStyle(entered === name) }}
+      placeholder={placeholder}
+      aria-label={placeholder}
+      value={row[name]}
+      onChange={(e) => onChange(name, e.currentTarget.value)}
+      autoFocus={toFill && name === "label"}
+      onFocus={() => setEntered(name)}
+      onBlur={() => setEntered(null)}
+      // Enter validates, Escape puts back what the field held.
+      {...editKeys((value) => onChange(name, value))}
+    />
+  );
+  return (
+    <Group
+      gap="sm"
+      wrap="nowrap"
+      onDragOver={onDragOver}
+      onDrop={(e) => e.preventDefault()}
+      // Going from the attribute to the value does not leave the row.
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onLeave();
+      }}
+      style={rowStyle(rank, total, held)}
+    >
+      <Handle
+        label={`Déplacer ${row.label || row.number || "l'attribut"}`}
+        active={Boolean(row.label.trim() || row.number.trim())}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+      />
+      <RowCheckbox
+        label={`Sélectionner ${row.label || row.number || "l'attribut"}`}
+        checked={checked}
+        onChange={onCheck}
+        afterHandle
+      />
+      {field("label", "Attribut")}
+      {/* Text and not a number: a value is copied as it is written, with
+          its spaces, dots and any country code. */}
+      {field("number", "Valeur")}
+    </Group>
+  );
+}
 
 /**
- * The rows, in the list of categories and labels (ListItems): each row is
- * edited in place, dragged by its handle, and selected by its box; the last
- * one adds another — or, while rows are checked, deletes them. Beyond ten, the list
- * scrolls. Everything stays in the drawer's draft until saved.
+ * The rows: the handle orders them, their boxes select those that the button
+ * in place of "Ajouter" removes together, "Ajouter" puts an empty one at the
+ * end, which clears itself if left without anything written in it. Everything
+ * stays in the drawer's draft until saved.
  */
 function Rows({ config, onChange }: WidgetConfigProps) {
   const list = rows(config);
-  const [newRow, setNewRow] = useState<Row>(EMPTY_ROW);
-  const firstField = useRef<HTMLInputElement | null>(null);
+  /** The rank of the row being dragged. */
+  const [held, setHeld] = useState<number | null>(null);
+  /** The row just added: its attribute takes focus. */
+  const [toFill, setToFill] = useState<number | null>(null);
   /** The checked rows, by rank. */
-  const selection = useRowSelection(list.map((_, i) => i));
+  const selection = useRowSelection(list.map((_, rank) => rank));
 
-  const change = (index: number, field: keyof Row, value: string) =>
-    onChange(store(list.map((l, i) => (i === index ? { ...l, [field]: value } : l))));
-
-  // Rows have no identifier: their rank stands in for it, for the duration
-  // of the gesture. The order received is that of the old ranks.
-  // The checks follow their rows.
-  const handleReorder = (order: number[]) => {
-    onChange(store(order.flatMap((i) => list[i] ?? [])));
-    selection.reset(order.flatMap((old, i) => (selection.isChecked(old) ? [i] : [])));
+  const save = (next: Row[]) => onChange(store(config, next));
+  // Rows are known by their rank: those after the removed one move up, their
+  // checks with them.
+  const remove = (rank: number) => {
+    save(list.filter((_, i) => i !== rank));
+    selection.reset(selection.checked.filter((i) => i !== rank).map((i) => (i > rank ? i - 1 : i)));
   };
-  const { zoneRef, drag, onPointerDown } = useDraggableStack({
-    ids: list.map((_, i) => i),
-    selector: "[data-attribute-row]",
-    onReorder: handleReorder,
-  });
-
   const removeChecked = () => {
-    onChange(store(list.filter((_, i) => !selection.isChecked(i))));
+    save(list.filter((_, i) => !selection.isChecked(i)));
     selection.reset();
   };
 
-  // Focus returns to the label: the next entry follows on.
   const add = () => {
-    const row = { label: newRow.label.trim(), number: newRow.number.trim() };
-    if (!row.label && !row.number) return;
-    onChange(store([...list, row]));
-    setNewRow(EMPTY_ROW);
-    firstField.current?.focus();
+    save([...list, { label: "", number: "" }]);
+    setToFill(list.length);
   };
 
-  // Enter adds from either field of the add row.
-  const addKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      add();
-    }
-    if (e.key === "Escape") setNewRow(EMPTY_ROW);
-  };
-
-  // The add row, while no row is checked.
-  const addRow: AddRow = {
-    // The label slides in before the number field, which carries the
-    // list's Enter symbol at its end.
-    section: (
-      <TextInput
-        ref={firstField}
-        placeholder="Libellé"
-        aria-label="Libellé"
-        value={newRow.label}
-        onChange={(e) => setNewRow({ ...newRow, label: e.currentTarget.value })}
-        onKeyDown={addKeyDown}
-        variant="unstyled"
-        size="sm"
-        style={{ flex: 1, minWidth: 0 }}
-        autoFocus
-      />
-    ),
-    // Text and not a number: a number is copied as it is written, with
-    // its spaces, dots and any country code.
-    placeholder: "Numéro",
-    value: newRow.number,
-    onChange: (number) => setNewRow({ ...newRow, number }),
-    onSubmit: add,
-    onCancel: () => setNewRow(EMPTY_ROW),
+  // The held row takes the place of the one it hovers.
+  const dragHover = (e: DragEvent<HTMLElement>, rank: number) => {
+    if (held === null) return;
+    e.preventDefault();
+    const next = move(list, held, rank);
+    if (!next) return;
+    setHeld(rank);
+    save(next);
+    // The checks follow their rows.
+    const checks = move(
+      list.map((_, i) => selection.isChecked(i)),
+      held,
+      rank,
+    )!;
+    selection.reset(checks.flatMap((on, i) => (on ? [i] : [])));
   };
 
   return (
     <Input.Wrapper label="Attributs">
-      <ListItems
-        isEmpty={list.length === 0}
-        emptyIcon={IconHash}
-        emptyText="Aucun attribut"
-        maxRows={VISIBLE_ROWS}
-        // While rows are checked, the button that deletes them takes the place
-        // of the add row.
-        add={
-          selection.checked.length > 0
-            ? {
-                input: (
-                  <DeleteSelectedButton
-                    count={selection.checked.length}
-                    onClick={removeChecked}
-                  />
-                ),
+      {list.length === 0 ? (
+        <EmptyList icon={IconHash} message="Aucun attribut" />
+      ) : (
+        <Stack gap={1}>
+          {list.map((row, rank) => (
+            <AttributeRow
+              key={rank}
+              row={row}
+              rank={rank}
+              total={list.length}
+              held={held === rank}
+              toFill={toFill === rank}
+              onChange={(field, value) =>
+                save(list.map((l, i) => (i === rank ? { ...l, [field]: value } : l)))
               }
-            : addRow
-        }
-      >
-        <div ref={zoneRef}>
-          {list.map((l, i) => (
-            <div key={i} data-attribute-row style={{ opacity: drag?.id === i ? 0.4 : 1 }}>
-              {drag?.target === i && <InsertLine />}
-              <ListItems.Row>
-                {(active) => (
-                  <>
-                    {/* Only the handle moves the row: the fields keep their clicks. */}
-                    <DragHandle
-                      onPointerDown={onPointerDown(i, i)}
-                      visible={active}
-                      label="Glisser pour réordonner"
-                    />
-                    <RowCheckbox
-                      label={`Sélectionner ${l.label || l.number || "l'attribut"}`}
-                      checked={selection.isChecked(i)}
-                      onChange={(on) => selection.toggle(i, on)}
-                      afterHandle
-                    />
-                    <TextInput
-                      placeholder="Libellé"
-                      aria-label="Libellé"
-                      value={l.label}
-                      onChange={(e) => change(i, "label", e.currentTarget.value)}
-                      variant="unstyled"
-                      size="sm"
-                      style={{ flex: 1, minWidth: 0 }}
-                      styles={INLINE_FIELD}
-                    />
-                    <TextInput
-                      placeholder="Numéro"
-                      aria-label="Numéro"
-                      value={l.number}
-                      onChange={(e) => change(i, "number", e.currentTarget.value)}
-                      variant="unstyled"
-                      size="sm"
-                      style={{ flex: 1, minWidth: 0 }}
-                      styles={INLINE_FIELD}
-                    />
-                  </>
-                )}
-              </ListItems.Row>
-            </div>
+              onLeave={() => {
+                setToFill(null);
+                // A row left without anything written in it clears itself.
+                if (!row.label.trim() && !row.number.trim()) remove(rank);
+              }}
+              onDragStart={() => setHeld(rank)}
+              onDragEnd={() => setHeld(null)}
+              onDragOver={(e) => dragHover(e, rank)}
+              checked={selection.isChecked(rank)}
+              onCheck={(on) => selection.toggle(rank, on)}
+            />
           ))}
-          {drag && drag.target >= list.length && <InsertLine />}
-        </div>
-      </ListItems>
+        </Stack>
+      )}
+
+      {/* As close as possible to the list it lengthens. */}
+      <ListFooter
+        addLabel="Ajouter un attribut"
+        onAdd={add}
+        checkedCount={selection.checked.length}
+        onDeleteChecked={removeChecked}
+      />
     </Input.Wrapper>
   );
 }
@@ -239,22 +284,26 @@ export const numberWidget: AccessWidget = {
 
   Display: ({ config }) => {
     const list = rows(config);
+    const labelStyle = formatStyle(formatOf(config, NO_FORMAT, LABEL), BOLD_WEIGHT);
+    const valueStyle = formatStyle(formatOf(config, VALUE_FORMAT, VALUE), BOLD_WEIGHT);
+    const labelAlign = alignmentOf(config, LABEL_ALIGN, "left");
+    const valueAlign = alignmentOf(config, VALUE_ALIGN, "right");
     return (
       <Frame config={config} framed={isFramed(config, true)}>
         {list.length === 0 ? (
-          <Text size="sm" c={SUBCATEGORY_COLOR}>
+          <Text size="sm" c={H2_COLOR}>
             Attributs
           </Text>
         ) : (
           <div className={classes.grid}>
             {list.map((l, i) => (
               <Fragment key={i}>
-                <Text size="sm" c={SUBCATEGORY_COLOR} truncate>
-                  {l.label || "Numéro"}
+                <Text size="sm" c={text(config, LABEL_COLOR) || H2_COLOR} style={{ ...labelStyle, textAlign: labelAlign }} truncate>
+                  {l.label || "Attribut"}
                 </Text>
                 {/* White on the dark theme; on the light one, whose inset is
                     pale gray, white would not be legible: near-black. */}
-                <Text size="sm" fw={600} c={STRONG_TEXT} className={classes.number}>
+                <Text size="sm" c={text(config, VALUE_COLOR) || STRONG_TEXT} style={{ ...valueStyle, textAlign: valueAlign }} className={classes.number}>
                   {l.number || "—"}
                 </Text>
               </Fragment>
@@ -263,6 +312,58 @@ export const numberWidget: AccessWidget = {
         )}
       </Frame>
     );
+  },
+
+  // Each field shows its default, in hexadecimal: the "H2" title's light
+  // gray for the attribute, black or white for the value, depending on the
+  // scheme. Brought back to it, a color is no longer stored: the display keeps
+  // following the scheme. The format sits beside the color, on the same row:
+  // its button resets both.
+  appearance: (config, onChange) => {
+    const dark = document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
+    const textRow = (
+      name: string,
+      what: string,
+      key: string,
+      defaultColor: string,
+      prefix: string,
+      defaultFormat: TextFormat,
+    ): SettingRow => {
+      const color = text(config, key);
+      const format = formatRow(config, onChange, defaultFormat, prefix);
+      return {
+        name,
+        what,
+        color: {
+          value: color || defaultColor,
+          onChange: (v) => onChange(insertRow(config, { [key]: v === defaultColor ? "" : v })),
+        },
+        formats: format.formats,
+        modified: (color !== "" && color !== defaultColor) || format.modified,
+        reset: () => onChange(insertRow(config, { [key]: "", ...formatReset(prefix) })),
+      };
+    };
+    // Each column's alignment, brought back to its own, is no longer stored.
+    const alignRow = (name: string, what: string, key: string, defaultValue: Alignment): SettingRow => {
+      const current = alignmentOf(config, key, defaultValue);
+      return {
+        name,
+        what,
+        choice: {
+          value: current,
+          data: ALIGNMENTS.map(({ value, label }) => ({ value, label })),
+          onChange: (v) => onChange(insertRow(config, { [key]: v === defaultValue ? "" : v })),
+        },
+        modified: current !== defaultValue,
+        reset: () => onChange(insertRow(config, { [key]: "" })),
+      };
+    };
+    return [
+      textRow("Attribut", "des attributs", LABEL_COLOR, "#dcdcdc", LABEL, NO_FORMAT),
+      textRow("Valeur", "des valeurs", VALUE_COLOR, dark ? "#ffffff" : "#000000", VALUE, VALUE_FORMAT),
+      alignRow("Attribut", "de l'alignement des attributs", LABEL_ALIGN, "left"),
+      alignRow("Valeur", "de l'alignement des valeurs", VALUE_ALIGN, "right"),
+    ];
   },
 
   Config: Rows,

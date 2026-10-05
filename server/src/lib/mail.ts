@@ -48,11 +48,11 @@ export const sendTest = async (recipient: string): Promise<void> => {
       from: sender,
       to: recipient,
       subject: "Milo — Message de test",
-      ...template({
+      ...(await template("test", {
         title: "Message de test",
         intro: `Ce message confirme l'envoi par Milo depuis ${sender}.`,
         footer: "Envoyé depuis Paramétrage → Entra.",
-      }),
+      })),
     });
   } catch (error) {
     fail(400, error instanceof Error ? error.message : "L'envoi a échoué");

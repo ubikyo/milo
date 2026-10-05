@@ -139,10 +139,10 @@ const pending = new Map<string, Pending>();
 const key = (userId: Id, kind: NotificationKind, targetId: Id): string =>
   `${userId}:${kind}:${targetId}`;
 
-const body = (sending: Pending): { text: string; html: string } => {
+const body = (sending: Pending) => {
   const total = sending.occurrences.reduce((sum, occurrence) => sum + occurrence.repetitions, 0);
 
-  return template({
+  return template("changes", {
     title: sending.title,
     intro: total === 1 ? "Une modification :" : `${total} modifications :`,
     rows: sending.occurrences,
@@ -156,12 +156,16 @@ const dispatch = (sendKey: string): void => {
   if (!sending) return;
   pending.delete(sendKey);
 
-  sendMail({
-    from: sending.sender,
-    to: sending.recipient,
-    subject: `Milo — ${sending.title}`,
-    ...body(sending),
-  }).catch((error: unknown) => {
+  body(sending)
+    .then((content) =>
+      sendMail({
+        from: sending.sender,
+        to: sending.recipient,
+        subject: `Milo — ${sending.title}`,
+        ...content,
+      }),
+    )
+    .catch((error: unknown) => {
     // Nobody is waiting for this answer: the write that triggered it left
     // long ago. We log it, and that is all — a lost notification must not
     // make a successful modification fail.
@@ -365,17 +369,16 @@ export const notifyLinked = (r: Linkage): Id[] => {
       notified.push(person.id);
 
       if (!mailbox || !person.email || !notificationRights(person).email) continue;
-      sendMail({
-        from: mailbox,
-        to: person.email,
-        subject: `Milo — ${r.title}`,
-        ...template({
-          title: r.title,
-          intro: `${who} ${r.message}.`,
-          action: { url: link, label: "Ouvrir dans Milo" },
-          footer: "Vous recevez ce message parce que vous avez été ajouté à cet élément dans Milo.",
-        }),
-      }).catch((error: unknown) => {
+      template("linked", {
+        title: r.title,
+        intro: `${who} ${r.message}.`,
+        action: { url: link, label: "Ouvrir dans Milo" },
+        footer: "Vous recevez ce message parce que vous avez été ajouté à cet élément dans Milo.",
+      })
+        .then((content) =>
+          sendMail({ from: mailbox, to: person.email, subject: `Milo — ${r.title}`, ...content }),
+        )
+        .catch((error: unknown) => {
         console.error("Attachment notification not delivered:", error);
       });
     }
@@ -424,17 +427,16 @@ export const notifyReminder = (r: DueReminder): void => {
       } satisfies Notification);
 
       if (!mailbox || !person.email || !notificationRights(person).email) continue;
-      sendMail({
-        from: mailbox,
-        to: person.email,
-        subject: `Milo — ${r.card.text}`,
-        ...template({
-          title: r.card.text,
-          intro: `Milo ${r.message}.`,
-          action: { url: link, label: "Ouvrir dans Milo" },
-          footer: "Vous recevez ce message parce que vous êtes acteur de cette tâche dans Milo.",
-        }),
-      }).catch((error: unknown) => {
+      template("reminder", {
+        title: r.card.text,
+        intro: `Milo ${r.message}.`,
+        action: { url: link, label: "Ouvrir dans Milo" },
+        footer: "Vous recevez ce message parce que vous êtes acteur de cette tâche dans Milo.",
+      })
+        .then((content) =>
+          sendMail({ from: mailbox, to: person.email, subject: `Milo — ${r.card.text}`, ...content }),
+        )
+        .catch((error: unknown) => {
         console.error("Due-date reminder not delivered:", error);
       });
     }
@@ -503,22 +505,26 @@ export const notifyAssignments = (assignments: Assignment[]): void => {
     for (const { person, mailbox, rows, link, base, author } of mails.values()) {
       const who = author.name || author.email;
       const nounPhrase = rows.length === 1;
-      sendMail({
-        from: mailbox,
-        to: person.email,
-        subject: nounPhrase ? `Milo — ${rows[0]!.text}` : `Milo — ${rows.length} demandes vous sont assignées`,
-        ...template({
-          title: nounPhrase ? "Demande assignée" : "Demandes assignées",
-          intro: nounPhrase
-            ? `${who} vous a assigné cette demande :`
-            : `${who} vous a assigné ces ${rows.length} demandes :`,
-          rows,
-          // A single request: the link opens it. Several: it opens Milo,
-          // where they wait in Support mode.
-          action: { url: nounPhrase ? link : base, label: "Ouvrir dans Milo" },
-          footer: "Vous recevez ce message parce qu'un ticket vous a été assigné dans Milo.",
-        }),
-      }).catch((error: unknown) => {
+      template("assignment", {
+        title: nounPhrase ? "Demande assignée" : "Demandes assignées",
+        intro: nounPhrase
+          ? `${who} vous a assigné cette demande :`
+          : `${who} vous a assigné ces ${rows.length} demandes :`,
+        rows,
+        // A single request: the link opens it. Several: it opens Milo,
+        // where they wait in Support mode.
+        action: { url: nounPhrase ? link : base, label: "Ouvrir dans Milo" },
+        footer: "Vous recevez ce message parce qu'un ticket vous a été assigné dans Milo.",
+      })
+        .then((content) =>
+          sendMail({
+            from: mailbox,
+            to: person.email,
+            subject: nounPhrase ? `Milo — ${rows[0]!.text}` : `Milo — ${rows.length} demandes vous sont assignées`,
+            ...content,
+          }),
+        )
+        .catch((error: unknown) => {
         console.error("Assignment notification not delivered:", error);
       });
     }

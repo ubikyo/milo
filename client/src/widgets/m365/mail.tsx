@@ -1,26 +1,61 @@
 import {
-  Badge,
   Button,
-  Checkbox,
   Drawer,
   Group,
   Loader,
+  Menu,
   NumberInput,
   ScrollArea,
   Stack,
+  Switch,
   Table,
+  Tabs,
   Text,
-  Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconExternalLink, IconMail, IconMailbox, IconPaperclip } from "@tabler/icons-react";
+import {
+  IconChevronDown,
+  IconExternalLink,
+  IconMail,
+  IconMailbox,
+  IconPaperclip,
+  IconTrash,
+} from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { api } from "../../api";
-import ConfigurationProblem from "../../components/ui/ConfigurationProblem";
+import EmptyPanel from "../../components/ui/EmptyPanel";
 import { Frame } from "../margins";
-import EmailFrame from "../../components/support/EmailFrame";
+import { isSized } from "../height";
+import alignment from "../../assets/styles/Alignment.module.css";
+import scroll from "../../assets/styles/ListScroll.module.css";
+import DrawerScrollArea, {
+  DRAWER_PADDING,
+  DRAWER_PANEL_STYLE,
+  DRAWER_STYLES,
+  DRAWER_TABS_STYLES,
+} from "../../components/ui/DrawerScroll";
+import DrawerFooter from "../../components/ui/DrawerFooter";
+import { HEADER_BACKGROUND } from "../../components/ui/DrawerRows";
+import { tabStyle } from "../../themes/tabs";
+import { ACTIONS_BUTTON_STYLE, DRAWER_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
+import { RED } from "../../themes/colors";
+import DeleteConfirmModal from "../../components/ui/DeleteConfirmModal";
+import { useWidgetAccess } from "../../lib/rights";
+
+/**
+ * The message's background: a ticket's message's on the light theme; on dark,
+ * a gray lighter than the drawer's, which would otherwise swallow it.
+ */
+const MESSAGE_BACKGROUND = "light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))";
+
+/** "À :" and "Cc :": white on the dark theme, the text's color on the light one. */
+const LABEL_COLOR = "light-dark(var(--mantine-color-text), var(--mantine-color-white))";
+
+/** The reader's width: a ticket's drawer's. */
+const DRAWER_WIDTH = 820;
+import { ReceivedEmail } from "../../components/support/SupportMessages";
 import {
   ConfirmationActions,
   State as OptinState,
@@ -33,13 +68,27 @@ import ReceptionField, { inboxesOf } from "../../components/ui/ReceptionField";
 import { useConfirmations } from "../../lib/confirmations";
 import { notifyError } from "../../lib/errors";
 import { NEUTRAL_HOVER } from "../../themes/colors";
+import { GRID_STYLES, SortLabel } from "../../components/project/ProjectTable";
+import { useResizableColumns } from "../../components/ui/useResizableColumns";
 import { withField, count } from "../types";
-import type { AccessWidget, WidgetConfigProps } from "../types";
-import { MAIL_PEOPLE, SHOWN_FOLDERS, m365Event, mailKey, shownFoldersOf } from "@milo/shared";
+import type { AccessWidget, WidgetConfigProps, WidgetDisplayProps } from "../types";
+import {
+  MAIL_PEOPLE,
+  SHOWN_FOLDERS,
+  accessIncludes,
+  m365Event,
+  mailKey,
+  shownFoldersOf,
+} from "@milo/shared";
 import type { AccessMail, AccessMailDetail, Id, MailAddress } from "@milo/shared";
+import MailTemplates from "../../components/settings/MailTemplates";
+import { useSettingsMode } from "../../lib/rights";
+import type { MailTemplateKey } from "@milo/shared";
 
-// Mail: the viewer's inbox, if the drawer asks for it, as a grid — everyone sees their own, whatever the
-// board —, and the mailboxes of the people the widget names. Each of these
+/** The template of the e-mail that carries the code. */
+const MAIL_TEMPLATES: readonly MailTemplateKey[] = ["mail_confirmation"];
+
+// Mail: the mailboxes of the people the widget names, as a grid. Each of these
 // receives a code by e-mail when the widget is saved, and their mailbox is
 // only read once that code, passed on, is entered from the "Actions" menu
 // (server, lib/mail-optin.ts); the drawer then chooses, to the right of the
@@ -53,24 +102,18 @@ import type { AccessMail, AccessMailDetail, Id, MailAddress } from "@milo/shared
 // Nothing is modified in the mailbox: an email opened here is not marked read there.
 
 const QUANTITY = "count";
-const HEIGHT = "height";
 const UNREAD = "unreadOnly";
-const HEADER = "header";
 const FRAMED = "framed";
 /** Whether a new e-mail, seen when the page rereads the mailboxes, shows a notification. */
 const NOTIFY = "notifyNew";
-/** Whether the viewer's own inbox is read (server, routes/board-widgets.ts). */
-const OWN_INBOX = "ownInbox";
 
 /** The emails of a page: those the grid requests at once. */
 const QUANTITY_DEFAULT = 15;
 const QUANTITY_MIN = 5;
 const QUANTITY_MAX = 100;
 
-/** The grid's height, beyond which it scrolls. */
-const DEFAULT_HEIGHT = 360;
-const HEIGHT_MIN = 120;
-const HEIGHT_MAX = 1600;
+/** How close to the bottom of the grid the next page is requested, in pixels. */
+const LOAD_AHEAD = 120;
 
 /**
  * The page rereads the mailboxes at this rate: new emails are placed at the
@@ -98,10 +141,13 @@ const MAIL_COLUMNS: ListColumn[] = [
 
 const DEFAULT_COLUMNS = [{ key: "sender" }, { key: "subject" }, { key: "date" }];
 
-/** A column's width when the drawer sets none: the narrow ones keep theirs. */
-const NATURAL_WIDTHS: Record<string, number | string> = {
-  sender: "30%",
-  date: 80,
+/**
+ * A column's width when the drawer sets none: the narrow ones keep theirs, the
+ * others share the rest.
+ */
+const NATURAL_WIDTHS: Record<string, number> = {
+  // Wide enough for its header, "Date de réception", and for a full date.
+  date: 145,
   attachments: 32,
   importance: 90,
   status: 70,
@@ -136,8 +182,8 @@ const peopleOf = (config: unknown): string[] => [
   ),
 ];
 
-/** A mailbox's name: the start of its address, the viewer's own being "Moi". */
-const ownerName = (owner: string) => (owner ? owner.split("@")[0]! : "Moi");
+/** A mailbox's name: the start of its address. */
+const ownerName = (owner: string) => owner.split("@")[0]!;
 
 /**
  * A mailbox that cannot be read — Graph's "Access denied" — says why in a
@@ -187,10 +233,40 @@ const whenLabel = (iso: string): string => {
 
 const nameOf = (a: MailAddress) => a.name || a.email || "Inconnu";
 
-const size = (bytes: number): string => {
-  if (bytes < 1024) return `${bytes} o`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} Ko`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+/** What a column sorts the e-mails on. */
+const SORT_VALUES: Record<string, (m: AccessMail) => string | number> = {
+  sender: (m) => nameOf(m.from),
+  to: (m) => m.to.map(nameOf).join(", "),
+  subject: (m) => m.subject,
+  preview: (m) => m.preview,
+  date: (m) => m.received_at,
+  attachments: (m) => (m.has_attachments ? 1 : 0),
+  importance: (m) => ({ low: 0, normal: 1, high: 2 })[m.importance] ?? 1,
+  status: (m) => (m.is_read ? 1 : 0),
+  categories: (m) => m.categories.join(", "),
+  mailbox: (m) => ownerName(m.owner),
+  folder: (m) => m.folder,
+};
+
+/** The columns that start from the largest: the most recent, the most important first. */
+const DESCENDING = new Set(["date", "attachments", "importance"]);
+
+interface MailSort {
+  key: string;
+  direction: "asc" | "desc";
+}
+
+/** The e-mails in the order of the sort. */
+const sortedMails = (messages: AccessMail[], sort: MailSort): AccessMail[] => {
+  const value = SORT_VALUES[sort.key];
+  if (!value) return messages;
+  const factor = sort.direction === "asc" ? 1 : -1;
+  return [...messages].sort((a, b) => {
+    const left = value(a);
+    const right = value(b);
+    if (typeof left === "number" && typeof right === "number") return (left - right) * factor;
+    return String(left).localeCompare(String(right), "fr", { numeric: true }) * factor;
+  });
 };
 
 /** The emails opened, for the duration of the page: reopening them requests nothing. */
@@ -200,11 +276,31 @@ function Reader({
   blockId,
   header,
   onClose,
+  onDeleted,
 }: {
   blockId: Id;
   header: AccessMail | null;
   onClose: () => void;
+  /** The e-mail is gone from its mailbox: the grid drops it. */
+  onDeleted: (mail: AccessMail) => void;
 }) {
+  // Deleting takes the right to delete on the type, as the server checks.
+  const access = useWidgetAccess();
+  const canDelete = accessIncludes(access("m365"), "delete");
+  const [confirming, setConfirming] = useState(false);
+  const remove = async () => {
+    setConfirming(false);
+    if (!header) return;
+    try {
+      await api.deleteAccessMail(blockId, header.id, header.owner);
+      alreadyOpened.delete(mailKeyOf(header));
+      onDeleted(header);
+      onClose();
+      notifications.show({ color: "teal", message: "E-mail supprimé" });
+    } catch (e) {
+      notifyError((e as Error).message);
+    }
+  };
   const [detail, setDetail] = useState<AccessMailDetail | null>(null);
   const [error, setError] = useState("");
 
@@ -250,94 +346,149 @@ function Reader({
       opened={header !== null}
       onClose={onClose}
       position="right"
-      size={760}
+      size={DRAWER_WIDTH}
+      padding={DRAWER_PADDING}
+      withCloseButton={false}
+      // Like a ticket's drawer: only the tab's panel scrolls, the tab and the
+      // bottom button stay in place (components/ui/DrawerScroll.tsx).
+      styles={DRAWER_STYLES}
       // In a portal, but under the widget for React: nothing in it makes the widget drag.
       data-no-widget-drag
-      title={
-        <Title order={4} lineClamp={2}>
-          {header?.subject || "Sans objet"}
-        </Title>
-      }
     >
       {/* The drawer lives in a portal, but its events bubble up through
           React to the widget: right click does not open its settings there. */}
-      <Stack
-        gap="md"
+      <Tabs
+        value="message"
+        style={DRAWER_PANEL_STYLE}
+        styles={DRAWER_TABS_STYLES}
         data-no-widget-drag
         onContextMenu={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {header && (
-          <Stack gap={2}>
-            <Group justify="space-between" wrap="nowrap" align="flex-start">
-              <Text size="sm" fw={600}>
-                {nameOf(header.from)}{" "}
-                {header.from.name && (
-                  <Text span size="sm" c="dimmed" fw={400}>
-                    &lt;{header.from.email}&gt;
-                  </Text>
+        <Tabs.List mb="md">
+          <Tabs.Tab value="message" leftSection={<IconMail size={16} />} style={tabStyle(true)}>
+            Message
+          </Tabs.Tab>
+          {/* At the end of the tab row, as a ticket's actions. */}
+          {detail?.url && (
+            <Button
+              component="a"
+              href={detail.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="compact-xs"
+              variant="subtle"
+              color="gray"
+              rightSection={<IconExternalLink size={12} />}
+              ml="auto"
+              style={{ alignSelf: "center" }}
+            >
+              Ouvrir dans Outlook
+            </Button>
+          )}
+          {canDelete && header && (
+            <Menu
+              position="bottom-end"
+              withinPortal
+              shadow="md"
+              offset={DRAWER_MENU_OFFSET}
+              styles={TAB_MENU_STYLES}
+            >
+              <Menu.Target>
+                <Button
+                  variant="subtle"
+                  color="gray"
+                  rightSection={<IconChevronDown size={14} />}
+                  ml={detail?.url ? undefined : "auto"}
+                  mb={4}
+                  style={{ alignSelf: "center", ...ACTIONS_BUTTON_STYLE } as CSSProperties}
+                >
+                  Actions
+                </Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  color={RED}
+                  leftSection={<IconTrash size={16} />}
+                  onClick={() => setConfirming(true)}
+                >
+                  Supprimer
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          )}
+        </Tabs.List>
+
+        <Tabs.Panel value="message" style={DRAWER_PANEL_STYLE}>
+          <DrawerScrollArea fill>
+            <Stack gap={0} style={{ flex: 1 }}>
+              <Text fw={700} size="lg" pb={30}>
+                {header?.subject || "Sans objet"}
+              </Text>
+                {header && (
+                  <ReceivedEmail
+                    author={{ id: 0, name: header.from.name, email: header.from.email, gravatar_url: "" }}
+                    date={header.received_at}
+                    headerBackground={HEADER_BACKGROUND}
+                    background={MESSAGE_BACKGROUND}
+                    recipients={
+                      detail && (
+                        <>
+                          {detail.to.length > 0 && (
+                            <Text size="xs" c="dimmed">
+                              <Text span inherit c={LABEL_COLOR}>
+                                À :
+                              </Text>{" "}
+                              {addresses(detail.to)}
+                            </Text>
+                          )}
+                          {detail.cc.length > 0 && (
+                            <Text size="xs" c="dimmed">
+                              <Text span inherit c={LABEL_COLOR}>
+                                Cc :
+                              </Text>{" "}
+                              {addresses(detail.cc)}
+                            </Text>
+                          )}
+                        </>
+                      )
+                    }
+                    html={
+                      detail ? (
+                        detail.html
+                      ) : error ? (
+                        <Text size="sm" c="red">
+                          {error}
+                        </Text>
+                      ) : (
+                        <Group gap="xs" c="dimmed">
+                          <Loader size="xs" color="gray" />
+                          <Text size="sm">Chargement de l'e-mail…</Text>
+                        </Group>
+                      )
+                    }
+                    files={(detail?.attachments ?? []).map((p) => ({
+                      key: p.id,
+                      name: p.name,
+                      size: p.size,
+                      onOpen: () => void download(p.id, p.name),
+                    }))}
+                  />
                 )}
-              </Text>
-              <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>
-                {dayjs(header.received_at).format("dddd D MMMM YYYY, HH:mm")}
-              </Text>
-            </Group>
-            {detail && detail.to.length > 0 && (
-              <Text size="xs" c="dimmed">
-                À : {addresses(detail.to)}
-              </Text>
-            )}
-            {detail && detail.cc.length > 0 && (
-              <Text size="xs" c="dimmed">
-                Cc : {addresses(detail.cc)}
-              </Text>
-            )}
-          </Stack>
-        )}
-        {detail && (detail.attachments.length > 0 || detail.url) && (
-          <Group gap="xs">
-            {detail.attachments.map((p) => (
-              <Badge
-                key={p.id}
-                variant="default"
-                leftSection={<IconPaperclip size={12} />}
-                style={{ cursor: "pointer", textTransform: "none" }}
-                onClick={() => download(p.id, p.name)}
-                title="Télécharger"
-              >
-                {p.name} · {size(p.size)}
-              </Badge>
-            ))}
-            {detail.url && (
-              <Button
-                component="a"
-                href={detail.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                size="compact-xs"
-                variant="subtle"
-                color="gray"
-                rightSection={<IconExternalLink size={12} />}
-                ml="auto"
-              >
-                Ouvrir dans Outlook
-              </Button>
-            )}
-          </Group>
-        )}
-        {error && (
-          <Text size="sm" c="red">
-            {error}
-          </Text>
-        )}
-        {!detail && !error && (
-          <Group gap="xs" c="dimmed">
-            <Loader size="xs" color="gray" />
-            <Text size="sm">Chargement de l'e-mail…</Text>
-          </Group>
-        )}
-        {detail && <EmailFrame html={detail.html} />}
-      </Stack>
+            </Stack>
+          </DrawerScrollArea>
+        </Tabs.Panel>
+      </Tabs>
+
+      <DrawerFooter onClose={onClose} />
+
+      <DeleteConfirmModal
+        opened={confirming}
+        onClose={() => setConfirming(false)}
+        onConfirm={() => void remove()}
+        title="Supprimer l'e-mail"
+        message="Voulez-vous vraiment supprimer cet e-mail ? Il sera placé dans les éléments supprimés de sa boîte aux lettres."
+      />
     </Drawer>
   );
 }
@@ -350,21 +501,38 @@ type State =
       more: boolean;
       /** Where the next page starts. */
       cursor: string;
-      unread: number | null;
     }
   | { phase: "error"; message: string };
 
-function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
+function Mail({ blockId, config, onEdit, locked }: WidgetDisplayProps) {
   const quantity = bound(count(config, QUANTITY, QUANTITY_DEFAULT), QUANTITY_MIN, QUANTITY_MAX);
-  const height = bound(count(config, HEIGHT, DEFAULT_HEIGHT), HEIGHT_MIN, HEIGHT_MAX);
   const unreadOnly = isChecked(config, UNREAD, false);
   const columns = keptColumns(MAIL_COLUMNS, withColumns(config));
-  const own = isChecked(config, OWN_INBOX, false);
+  // By default, as the mailboxes send them: the most recent first.
+  const [sort, setSort] = useState<MailSort>({ key: "date", direction: "desc" });
+  const onSort = (key: string) =>
+    setSort((current) =>
+      current.key === key
+        ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+        : { key, direction: DESCENDING.has(key) ? "desc" : "asc" },
+    );
+  // As the projects': the drawer's widths, otherwise the natural ones, until a
+  // column is dragged.
+  const resize = useResizableColumns(
+    "mail",
+    columns.map((c) => c.id),
+    Object.fromEntries(
+      columns.flatMap((c) => {
+        const width = c.width ?? NATURAL_WIDTHS[c.key];
+        return width ? [[c.id, width]] : [];
+      }),
+    ),
+  );
   const shown = [...shownFoldersOf(config)];
+  // A height of its own: the grid fills it and scrolls; "Auto", it shows all its rows.
+  const sized = isSized(config);
   // The mailboxes read: the page reads them again when they change.
-  const sourcesKey = `${own}|${shown.map(([email, ids]) => `${email}:${ids.join("+")}`).join(",")}`;
-  // Only the viewer's inbox: the header names it.
-  const onlyOwn = own && shown.length === 0;
+  const sourcesKey = shown.map(([email, ids]) => `${email}:${ids.join("+")}`).join(",");
   const [state, setState] = useState<State>({ phase: "loading" });
   const [more, setMore] = useState(false);
   const [isOpen, setOpened] = useState<AccessMail | null>(null);
@@ -381,9 +549,9 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
   }, [state]);
 
   // Several mailboxes: an error says whose.
-  const several = shown.length > 0;
+  const several = shown.length > 1;
   // No mailbox to read: nothing is requested, the widget asks for its settings.
-  const nothingToRead = !own && shown.length === 0;
+  const nothingToRead = shown.length === 0;
 
   // The first page, reread at an interval: what has arrived since is placed at
   // the top, and the emails already there resume their state — read elsewhere, for example.
@@ -407,14 +575,12 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
                 messages: page.messages,
                 more: page.more,
                 cursor: page.cursor,
-                unread: page.unread ?? null,
               };
             }
             const fresh = new Map(page.messages.map((m) => [mailKeyOf(m), m]));
             const known = new Set(before.messages.map(mailKeyOf));
             return {
               ...before,
-              unread: page.unread ?? before.unread,
               messages: [
                 ...page.messages.filter((m) => !known.has(mailKeyOf(m))),
                 ...before.messages.map((m) => fresh.get(mailKeyOf(m)) ?? m),
@@ -439,6 +605,8 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
     };
   }, [blockId, quantity, unreadOnly, sourcesKey, several, nothingToRead]);
 
+  // A page that failed is not requested again by itself: only the button retries.
+  const failed = useRef(false);
   const loadMore = useCallback(() => {
     if (state.phase !== "ready" || !state.more || ongoing.current) return;
     ongoing.current = true;
@@ -457,14 +625,45 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
           };
         }),
       )
-      .catch((e: Error) => notifications.show({ color: "red", message: e.message }))
+      .catch((e: Error) => {
+        failed.current = true;
+        notifications.show({ color: "red", message: e.message });
+      })
       .finally(() => {
         ongoing.current = false;
         setMore(false);
       });
   }, [state, blockId, quantity, unreadOnly]);
 
-  if (nothingToRead) return <ConfigurationProblem widget={mailWidget.label} />;
+  // Given a height, the next page arrives before the very bottom of the grid is
+  // reached; and while the grid does not fill its place yet — nothing to
+  // scroll —, it requests the following ones by itself. "Auto", with no
+  // scrolling, they come through the button.
+  const viewport = useRef<HTMLDivElement>(null);
+  const nearBottom = () => {
+    const v = viewport.current;
+    return v !== null && v.scrollHeight - v.scrollTop - v.clientHeight <= LOAD_AHEAD;
+  };
+  const loadAhead = () => {
+    if (!failed.current && nearBottom()) loadMore();
+  };
+  useEffect(() => {
+    if (state.phase === "ready" && state.more) loadAhead();
+  });
+
+  // No mailbox: "Ajouter" opens the drawer, where they are named.
+  if (nothingToRead) {
+    return (
+      <EmptyPanel
+        icon={IconMailbox}
+        message="Aucune boîte aux lettres"
+        actionLabel={locked ? undefined : "Ajouter"}
+        onAction={onEdit}
+        size="md"
+        fill={false}
+      />
+    );
+  }
 
   const content = (() => {
     if (state.phase === "loading") {
@@ -497,57 +696,57 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
           );
         case "to":
           return (
-            <Text size="sm" c="dimmed" truncate title={m.to.map((a) => a.email).join(", ")}>
+            <Text size="sm" truncate title={m.to.map((a) => a.email).join(", ")}>
               {m.to.map(nameOf).join(", ")}
             </Text>
           );
         case "subject":
           return (
-            <Text size="sm" fw={weight} truncate c={m.importance === "high" ? "red" : undefined}>
+            <Text size="sm" fw={weight} truncate>
               {m.subject || "Sans objet"}
             </Text>
           );
         case "preview":
           return (
-            <Text size="sm" c="dimmed" truncate>
+            <Text size="sm" truncate>
               {m.preview}
             </Text>
           );
         case "date":
           return (
-            <Text size="xs" c="dimmed" fw={weight} ta="right" style={{ whiteSpace: "nowrap" }}>
+            <Text size="sm" fw={weight} ta="right" style={{ whiteSpace: "nowrap" }}>
               {whenLabel(m.received_at)}
             </Text>
           );
         case "attachments":
-          return m.has_attachments ? <IconPaperclip size={12} color="var(--mantine-color-dimmed)" /> : null;
+          return m.has_attachments ? <IconPaperclip size={14} /> : null;
         case "importance":
           return m.importance === "normal" ? null : (
-            <Text size="xs" c={m.importance === "high" ? "red" : "dimmed"} truncate>
+            <Text size="sm" truncate>
               {m.importance === "high" ? "Haute" : "Basse"}
             </Text>
           );
         case "status":
           return (
-            <Text size="xs" c={m.is_read ? "dimmed" : undefined} fw={weight} truncate>
+            <Text size="sm" fw={weight} truncate>
               {m.is_read ? "Lu" : "Non lu"}
             </Text>
           );
         case "categories":
           return (
-            <Text size="xs" c="dimmed" truncate title={m.categories.join(", ")}>
+            <Text size="sm" truncate title={m.categories.join(", ")}>
               {m.categories.join(", ")}
             </Text>
           );
         case "mailbox":
           return (
-            <Text size="xs" c="dimmed" truncate title={m.owner || undefined}>
+            <Text size="sm" truncate title={m.owner || undefined}>
               {ownerName(m.owner)}
             </Text>
           );
         case "folder":
           return (
-            <Text size="xs" c="dimmed" truncate>
+            <Text size="sm" truncate>
               {m.folder}
             </Text>
           );
@@ -556,93 +755,133 @@ function Mail({ blockId, config }: { blockId: Id; config: unknown }) {
       }
     };
 
+    const grid = (
+      <Table
+        highlightOnHover
+        verticalSpacing={0}
+        // The projects' grid format, header and rows.
+        styles={GRID_STYLES}
+        {...resize.tableProps}
+        style={
+          {
+            // Without any width, the columns share the grid rather than
+            // widening it to their content.
+            ...(resize.tableProps.style ?? { tableLayout: "fixed", width: "100%" }),
+            "--table-hover-color": NEUTRAL_HOVER,
+          } as CSSProperties
+        }
+      >
+        {resize.colgroup}
+        <Table.Thead>
+          <Table.Tr>
+            {columns.map((c) => (
+              <Table.Th key={c.id}>
+                <SortLabel
+                  label={c.key === "attachments" ? <IconPaperclip size={14} /> : c.label}
+                  direction={sort.key === c.key ? sort.direction : null}
+                  onSort={() => onSort(c.key)}
+                />
+                {resize.handle(c.id)}
+              </Table.Th>
+            ))}
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {sortedMails(state.messages, sort).map((m) => (
+            <Table.Tr key={mailKeyOf(m)} onClick={() => setOpened(m)} style={{ cursor: "pointer" }}>
+              {columns.map((c) => (
+                <Table.Td key={c.id} ta={c.key === "date" ? "right" : undefined}>
+                  {cell(c.key, m)}
+                </Table.Td>
+              ))}
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    );
+    // Near the bottom of the grid, the next page is requested by itself; the
+    // button remains, should a request have failed. A green band across the
+    // whole width, against the bottom of the widget.
+    const next = state.more && (
+      <Button
+        fullWidth
+        variant="filled"
+        color="teal"
+        loading={more}
+        onClick={() => {
+          failed.current = false;
+          loadMore();
+        }}
+        style={{ flexShrink: 0, height: "auto", padding: 10, borderRadius: "0 0 10px 10px" }}
+      >
+        Charger les suivants
+      </Button>
+    );
+
     return (
-      <Stack gap={6}>
-        {isChecked(config, HEADER, true) && (
-          <Group gap={6} c="dimmed">
-            <IconMail size={14} />
-            <Text size="xs">
-              {onlyOwn ? "Boîte de réception" : "E-mails"}
-              {state.unread !== null && ` · ${state.unread} non lu${state.unread > 1 ? "s" : ""}`}
-            </Text>
-          </Group>
-        )}
+      <>
         {state.messages.length === 0 ? (
           <Text size="sm" c="dimmed">
             {unreadOnly ? "Aucun e-mail non lu" : "Aucun e-mail"}
           </Text>
-        ) : (
-          <ScrollArea.Autosize mah={height} onBottomReached={loadMore} type="hover" offsetScrollbars="y">
-            <Table
-              highlightOnHover
-              stickyHeader
-              verticalSpacing={4}
-              horizontalSpacing="xs"
-              fz="sm"
-              style={{ "--table-hover-color": NEUTRAL_HOVER, tableLayout: "fixed" } as CSSProperties}
+        ) : sized ? (
+          // The band stays under the scrolling grid, at the bottom of the widget.
+          <Stack gap={0} style={{ flex: 1, minHeight: 0 }}>
+            <ScrollArea
+              viewportRef={viewport}
+              onScrollPositionChange={loadAhead}
+              type="auto"
+              scrollbars="y"
+              classNames={{ scrollbar: scroll.scrollbar, thumb: scroll.thumb }}
+              style={{ flex: 1, minHeight: 0 }}
             >
-              <Table.Thead>
-                <Table.Tr>
-                  {columns.map((c) => (
-                    <Table.Th
-                      key={c.id}
-                      fz="xs"
-                      c="dimmed"
-                      fw={500}
-                      w={c.width ?? NATURAL_WIDTHS[c.key]}
-                      ta={c.key === "date" ? "right" : undefined}
-                      style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-                    >
-                      {c.key === "attachments" ? <IconPaperclip size={12} /> : c.label}
-                    </Table.Th>
-                  ))}
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {state.messages.map((m) => (
-                  <Table.Tr key={mailKeyOf(m)} onClick={() => setOpened(m)} style={{ cursor: "pointer" }}>
-                    {columns.map((c) => (
-                      <Table.Td key={c.id} ta={c.key === "date" ? "right" : undefined}>
-                        {cell(c.key, m)}
-                      </Table.Td>
-                    ))}
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-            {/* The bottom of the grid requests the next page; when the grid
-                does not scroll yet, the button does the same. */}
-            {state.more && (
-              <Group justify="center" py={6}>
-                {more ? (
-                  <Loader size="xs" color="gray" />
-                ) : (
-                  <Button size="compact-xs" variant="subtle" color="gray" onClick={loadMore}>
-                    Charger les suivants
-                  </Button>
-                )}
-              </Group>
-            )}
-          </ScrollArea.Autosize>
+              {grid}
+            </ScrollArea>
+            {next}
+          </Stack>
+        ) : (
+          // "Auto": the whole grid, at its content's height; the following
+          // pages come through the band.
+          <Stack gap={0}>
+            {grid}
+            {next}
+          </Stack>
         )}
-        <Reader blockId={blockId} header={isOpen} onClose={() => setOpened(null)} />
-      </Stack>
+        <Reader
+          blockId={blockId}
+          header={isOpen}
+          onClose={() => setOpened(null)}
+          onDeleted={(gone) =>
+            setState((before) =>
+              before.phase === "ready"
+                ? { ...before, messages: before.messages.filter((m) => mailKeyOf(m) !== mailKeyOf(gone)) }
+                : before,
+            )
+          }
+        />
+      </>
     );
   })();
 
   return (
     <Frame config={config} framed={isChecked(config, FRAMED, false)}>
-      {content}
+      {/* Given a height, the content fills it: unframed, it is the place
+          itself (Alignment.module.css), framed, it fills the frame. */}
+      <Stack
+        gap={6}
+        className={sized ? alignment.frame : undefined}
+        style={sized ? { flex: 1, minHeight: 0 } : undefined}
+      >
+        {content}
+      </Stack>
     </Frame>
   );
 }
-
 /**
- * The drawer: the viewer's own inbox, the people whose mailbox may be read —
- * each with its consent state, then the folders read —, the grid's columns
- * and its settings.
+ * The people whose mailbox the widget reads — each with its consent state,
+ * then, once confirmed, the folders read.
  */
-function MailConfig({ config, onChange }: WidgetConfigProps) {
+function MailboxesField({ config, onChange }: WidgetConfigProps) {
   // The widget's key: a widget not yet saved has none — everything waits.
   const key = mailKey(config);
   const people = peopleOf(config);
@@ -666,26 +905,17 @@ function MailConfig({ config, onChange }: WidgetConfigProps) {
   };
 
   return (
-    <Stack gap="xl">
+    <>
       <ConfirmationActions scope="mail" owner={key} pending={pending} />
-      <Checkbox
-        label="Afficher ma boîte de réception"
-        description="Chacun voit la sienne, lue dans Entra (permission Mail.Read)."
-        checked={isChecked(config, OWN_INBOX, false)}
-        onChange={(e) => onChange(withField(config, OWN_INBOX, e.currentTarget.checked))}
-        color="teal"
-      />
       <ReceptionField
         configKey={MAIL_PEOPLE}
         field="email"
         label="Boîtes aux lettres"
         description={
           <>
-            Chaque adresse ajoutée reçoit, à l'enregistrement, un code à quatre chiffres : son
-            titulaire vous le communique s'il accepte que ses e-mails soient affichés. Saisissez-le
-            depuis le menu « Actions », puis « Confirmer une adresse ». Une fois l'adresse
-            confirmée, choisissez à sa droite les dossiers à lire. Tous ceux qui voient ce tableau
-            pourront lire ces e-mails.
+            L'ajout d'une boîte aux lettres nécessite un code d'activation à 4 chiffres envoyé sur
+            l'adresse e-mail. Une fois ce code reçu, cliquer sur le menu « Actions » puis «
+            Confirmer une adresse » pour terminer la configuration de l'adresse.
           </>
         }
         placeholder="Adresse e-mail"
@@ -711,52 +941,45 @@ function MailConfig({ config, onChange }: WidgetConfigProps) {
         config={config}
         onChange={onChange}
       />
+    </>
+  );
+}
+
+/** The drawer: the mailboxes read, the grid's columns and its settings. */
+function MailConfig({ config, onChange }: WidgetConfigProps) {
+  const canEditSettings = useSettingsMode();
+  return (
+    <Stack gap="xl">
+      <MailboxesField config={config} onChange={onChange} />
       <ColumnFields columns={MAIL_COLUMNS} config={withColumns(config)} onChange={onChange} />
-      <Group align="flex-start">
-        {/* A field emptied while typing stores the default value. */}
-        <NumberInput
-          label="E-mails par chargement"
-          value={count(config, QUANTITY, QUANTITY_DEFAULT)}
-          onChange={(v) => onChange(withField(config, QUANTITY, v === "" ? QUANTITY_DEFAULT : Number(v)))}
-          min={QUANTITY_MIN}
-          max={QUANTITY_MAX}
-          allowNegative={false}
-          allowDecimal={false}
-          w={170}
-        />
-        <NumberInput
-          label="Hauteur de la grille"
-          value={count(config, HEIGHT, DEFAULT_HEIGHT)}
-          onChange={(v) => onChange(withField(config, HEIGHT, v === "" ? DEFAULT_HEIGHT : Number(v)))}
-          min={HEIGHT_MIN}
-          max={HEIGHT_MAX}
-          suffix=" px"
-          allowNegative={false}
-          allowDecimal={false}
-          w={150}
-        />
-      </Group>
+      {/* A field emptied while typing stores the default value. */}
+      <NumberInput
+        label="E-mails par chargement"
+        value={count(config, QUANTITY, QUANTITY_DEFAULT)}
+        onChange={(v) => onChange(withField(config, QUANTITY, v === "" ? QUANTITY_DEFAULT : Number(v)))}
+        min={QUANTITY_MIN}
+        max={QUANTITY_MAX}
+        allowNegative={false}
+        allowDecimal={false}
+        w={170}
+      />
       <Stack gap="sm">
-        <Checkbox
+        <Switch
           label="Non lus uniquement"
           checked={isChecked(config, UNREAD, false)}
           onChange={(e) => onChange(withField(config, UNREAD, e.currentTarget.checked))}
           color="teal"
         />
-        <Checkbox
+        <Switch
           label="Notifier les nouveaux e-mails"
-          description="Une notification s'affiche dans la page à l'arrivée d'un e-mail."
           checked={isChecked(config, NOTIFY, false)}
           onChange={(e) => onChange(withField(config, NOTIFY, e.currentTarget.checked))}
           color="teal"
         />
-        <Checkbox
-          label="Afficher le nombre de non lus"
-          checked={isChecked(config, HEADER, true)}
-          onChange={(e) => onChange(withField(config, HEADER, e.currentTarget.checked))}
-          color="teal"
-        />
       </Stack>
+      {/* The code e-mail's template, as in the Tickets widget: it falls
+          under the Paramétrage. */}
+      {canEditSettings && <MailTemplates canEdit only={MAIL_TEMPLATES} />}
     </Stack>
   );
 }
@@ -764,16 +987,13 @@ function MailConfig({ config, onChange }: WidgetConfigProps) {
 export const mailWidget: AccessWidget = {
   type: "mail",
   kind: "m365",
-  label: "Mail",
+  label: "Messages",
   icon: IconMail,
   defaultConfig: {
     [QUANTITY]: QUANTITY_DEFAULT,
-    [HEIGHT]: DEFAULT_HEIGHT,
     [LIST_COLUMNS]: DEFAULT_COLUMNS,
     [UNREAD]: false,
-    [HEADER]: true,
     [FRAMED]: false,
-    [OWN_INBOX]: false,
     [NOTIFY]: false,
   },
   // Each row opens its email.

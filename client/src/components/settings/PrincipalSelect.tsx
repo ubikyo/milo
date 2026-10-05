@@ -1,5 +1,6 @@
 import { Group, Select, Text } from "@mantine/core";
 import { useState } from "react";
+import { holdEscape, pickKeys } from "../ui/DrawerRows";
 import { IconUser, IconUsersGroup } from "@tabler/icons-react";
 import type { EntraPrincipal } from "@milo/shared";
 import type { SelectProps } from "@mantine/core";
@@ -44,8 +45,10 @@ export default function PrincipalSelect({
       onSearchChange={(search) => {
         if (search && search !== value?.name) setOpened(true);
       }}
+      ref={holdEscape}
       onKeyDown={(e) => {
         if (e.key === "ArrowDown") setOpened(true);
+        pickKeys.onKeyDown(e);
         if (e.key === "Escape") setOpened(false);
       }}
       onDropdownClose={() => setOpened(false)}

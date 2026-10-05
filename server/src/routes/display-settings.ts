@@ -9,6 +9,7 @@ export const displaySettingsRoutes = Router();
 
 const displaySettings = (): DisplaySettings => ({
   hideLogo: readSetting("display_hide_logo", false),
+  showGravatars: readSetting("display_show_gravatars", true),
 });
 
 displaySettingsRoutes.get("/", (_req, res) => {
@@ -18,5 +19,7 @@ displaySettingsRoutes.get("/", (_req, res) => {
 displaySettingsRoutes.put("/", (req, res) => {
   const body = (req.body ?? {}) as Partial<DisplaySettings>;
   if (body.hideLogo !== undefined) writeSetting("display_hide_logo", Boolean(body.hideLogo));
+  if (body.showGravatars !== undefined)
+    writeSetting("display_show_gravatars", Boolean(body.showGravatars));
   res.json(displaySettings());
 });

@@ -4,9 +4,8 @@ import { CopyPasteContext } from "./CopyPasteActions";
 import { DrawerRegistrationsContext } from "./IndicatorDrawer";
 import LabelGroupsEditor from "./LabelGroupsEditor";
 
-// The open board's labels, in the drawer of a "Tâches", "Projets" or "Assets" widget —
-// or Support's, shared by all, in that of the "Tickets" widget —, gathered in
-// their groups (LabelGroupsEditor). They are not widget settings
+// The open board's labels, in the drawer of a "Tâches", "Projets", "Assets" or
+// "Tickets" widget, gathered in their groups (LabelGroupsEditor). They are not widget settings
 // but board data: they go with "Sauvegarder", like the categories
 // (BoardListFields).
 
@@ -29,7 +28,7 @@ const KINDS = {
   "support-labels": {
     base: "/support-labels",
     scope:
-      "Les étiquettes configurées ci-dessous sont communes à l'ensemble du Support, tous tableaux confondus.",
+      "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type ticket, du tableau actuel et uniquement pour ce tableau.",
   },
 } as const;
 
@@ -38,10 +37,8 @@ export default function LabelGroupFields({ kind }: { kind: keyof typeof KINDS })
   const board = useContext(CopyPasteContext);
   const register = useContext(DrawerRegistrationsContext);
   const boardId = board?.board?.id ?? null;
-  // Support's labels belong to no board.
-  const support = s.base === "/support-labels";
 
-  if ((!support && boardId === null) || !register) return null;
+  if (boardId === null || !register) return null;
 
   return (
     // These are not widget settings: say so under the label, at 20 px from
@@ -53,7 +50,7 @@ export default function LabelGroupFields({ kind }: { kind: keyof typeof KINDS })
     >
       <LabelGroupsEditor
         base={s.base}
-        boardId={support ? undefined : (boardId ?? undefined)}
+        boardId={boardId}
         register={register}
         // A paste from the "Actions" menu changes the list: it is re-read.
         version={board?.pastes ?? 0}

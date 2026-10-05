@@ -1,4 +1,4 @@
-import { Checkbox, Stack } from "@mantine/core";
+import { Stack, Switch } from "@mantine/core";
 import { IconCategory } from "@tabler/icons-react";
 import { withField } from "../types";
 import { LabelBars, NameField, NAME, Nothing, IndicatorTitle, isFinished } from "./common";
@@ -44,7 +44,7 @@ export const categoriesIndicator: ProjectIndicatorWidget = {
   Config: ({ config, onChange }) => (
     <Stack gap="xl">
       <NameField config={config} onChange={onChange} defaultValue={LABEL} />
-      <Checkbox
+      <Switch
         label="Compter aussi les projets terminés"
         checked={allProjects(config)}
         onChange={(e) => onChange(withField(config, ALL, e.currentTarget.checked))}

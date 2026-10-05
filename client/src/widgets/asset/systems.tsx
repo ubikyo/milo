@@ -1,6 +1,7 @@
 import { DonutChart } from "@mantine/charts";
 import { Stack } from "@mantine/core";
 import { IconBrandWindows } from "@tabler/icons-react";
+import { CHART_COLORS, colorOf, donutChartProps, donutChartRows, partRows } from "../chart-colors";
 import { NAME, Nothing, IndicatorTitle } from "./common";
 import type { AssetIndicatorWidget } from "./types";
 import type { Asset } from "@milo/shared";
@@ -15,7 +16,14 @@ const LABEL = "Systèmes";
 /** Beyond that, the smallest shares merge into "Autres". */
 const PARTS = 5;
 
-const COLORS = ["blue.6", "teal.6", "grape.6", "yellow.6", "cyan.6"];
+/**
+ * The shares' colors, by rank — the most widespread system first —, then
+ * the unknown systems' and the merged ones': each set in its own row.
+ */
+const COLORS = [CHART_COLORS.blue, CHART_COLORS.green, CHART_COLORS.grape, CHART_COLORS.yellow, CHART_COLORS.cyan];
+const rankKey = (rank: number) => `color${rank + 1}`;
+const UNKNOWN_COLOR = "colorUnknown";
+const OTHERS_COLOR = "colorOthers";
 
 const UNKNOWN = "Inconnu";
 
@@ -66,10 +74,13 @@ export const systemsIndicator: AssetIndicatorWidget = {
       ...topItems.map(([name, value], rank) => ({
         name,
         value,
-        color: name === UNKNOWN ? "gray.5" : (COLORS[rank] ?? "gray.6"),
+        color:
+          name === UNKNOWN
+            ? colorOf(config, UNKNOWN_COLOR, CHART_COLORS.gray5)
+            : colorOf(config, rankKey(rank), COLORS[rank] ?? CHART_COLORS.gray6),
       })),
       ...(others > 0
-        ? [{ name: "Autres", value: others, color: "gray.6" }]
+        ? [{ name: "Autres", value: others, color: colorOf(config, OTHERS_COLOR, CHART_COLORS.gray6) }]
         : []),
     ];
 
@@ -91,9 +102,24 @@ export const systemsIndicator: AssetIndicatorWidget = {
             withTooltip
             withLegend
             pieProps={{ isAnimationActive: false }}
+            {...donutChartProps(config)}
           />
         )}
       </Stack>
     );
   },
+
+  chartAppearance: (config, onChange) => [
+    ...partRows(config, onChange, [
+      ...COLORS.map((color, rank) => ({
+        key: rankKey(rank),
+        name: `Rang ${rank + 1}`,
+        what: `du système au rang ${rank + 1}`,
+        defaultColor: color,
+      })),
+      { key: UNKNOWN_COLOR, name: UNKNOWN, what: "des systèmes inconnus", defaultColor: CHART_COLORS.gray5 },
+      { key: OTHERS_COLOR, name: "Autres", what: "des autres systèmes", defaultColor: CHART_COLORS.gray6 },
+    ]),
+    ...donutChartRows(config, onChange, { withLabel: true }),
+  ],
 };

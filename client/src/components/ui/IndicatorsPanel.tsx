@@ -1,27 +1,43 @@
 import { Box, Menu, Stack, UnstyledButton } from "@mantine/core";
-import { IconCopy, IconCopyPlus, IconPencil, IconTrash } from "@tabler/icons-react";
-import { useRef, useState, type ComponentType, type ReactNode } from "react";
+import {
+  IconClipboard,
+  IconCopy,
+  IconCopyPlus,
+  IconCut,
+  IconPencil,
+  IconTrash,
+} from "@tabler/icons-react";
+import {
+  createContext,
+  useRef,
+  useState,
+  type ComponentType,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import inset from "../../assets/styles/AccessNumber.module.css";
 import { withField, isFramed, text } from "../../widgets/types";
 import { paddingStyle, sideMargins } from "../../widgets/margins";
 import { useWidgetAccess } from "../../lib/rights";
 import { RED } from "../../themes/colors";
-import { copyWidget, useCopiedWidget } from "../../lib/clipboard";
+import { clearCopiedWidget, copyWidget, useCopiedWidget } from "../../lib/clipboard";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { notifications } from "@mantine/notifications";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import { LIST_ITEMS } from "../../lib/lists";
 import IndicatorDrawer from "./IndicatorDrawer";
 import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
-import SectionsBoard from "./SectionsBoard";
+import SectionsBoard, { COLUMN_HEIGHT } from "./SectionsBoard";
 import { IndicatorCardContext, BACKGROUND, NAME } from "./IndicatorTitle";
 import { InsertionLine, useWidgetDrop, type WidgetDrag } from "./WidgetDrop";
 import type { PanelSections } from "../../api";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
+import type { SettingRow } from "./SettingRows";
 import { accessIncludes, canUpdate, isListWidgetType } from "@milo/shared";
 import type { Id, IndicatorSection } from "@milo/shared";
 import type { WidgetKind } from "../../widgets/kinds";
-import { alignmentProps, isVerticallyAligned } from "../../widgets/alignment";
+import { alignmentProps } from "../../widgets/alignment";
+import { heightStyle, isPercentHeight, isSized } from "../../widgets/height";
 
 /** The gap between two indicators of a section. */
 export const GAP = 20;
@@ -70,6 +86,11 @@ export interface IndicatorWidgetBase<Type extends string> {
    * only opens through a right click, outside its rows.
    */
   ownClicks?: boolean;
+  /**
+   * True when a list never has a frame — the appointments, whose gray sections
+   * are their own: its drawer offers none.
+   */
+  frameless?: boolean;
   /** True when its content stays modifiable while the screen is locked (todo). */
   liveContent?: boolean;
   /**
@@ -84,8 +105,8 @@ export interface IndicatorWidgetBase<Type extends string> {
    */
   fill?: boolean;
   /**
-   * True when the widget is named within the section itself — a category, a
-   * subcategory: once chosen, it is added right away, without a drawer, and
+   * True when the widget is named within the section itself — a title: once
+   * chosen, it is added right away, without a drawer, and
    * waits to be filled in by double-click.
    */
   inlineEdit?: boolean;
@@ -99,12 +120,24 @@ export interface IndicatorWidgetBase<Type extends string> {
     config: unknown,
     previousType: string | null,
     nextType: string | null,
-  ) => { top: number; bottom: number };
+  ) => { top: number; bottom: number; collapse?: boolean };
   /**
    * The "Apparence" block of its drawer, under its own fields: the card, the
    * frame and the margins (board-widgets).
    */
   Appearance?: ComponentType<IndicatorConfigProps>;
+  /**
+   * A chart's colors: the "Apparence du graphique" block of its drawer, under
+   * the "Apparence" one.
+   */
+  chartAppearance?: (config: unknown, onChange: IndicatorConfigProps["onChange"]) => SettingRow[];
+  /**
+   * The configuration as it is displayed, when it is not the stored one: a
+   * title's style replaces its own appearance — its side margins included.
+   */
+  styled?: (config: unknown) => Record<string, unknown>;
+  /** The style it has when it names none (widgets/types.ts). */
+  defaultStyle?: string;
   /** True when it must not appear — a disabled link, once locked. */
   hidden?: (config: unknown, locked: boolean) => boolean;
   /** The width of its drawer, when its fields do not fit in the common one. */
@@ -117,6 +150,8 @@ export interface WidgetRender {
   id: Id;
   /** Saves a configuration modified in place; has no effect when locked. */
   onChange: (config: Record<string, unknown>) => void | Promise<void>;
+  /** Opens its drawer; has no effect when frozen. */
+  onEdit: () => void;
   locked: boolean;
 }
 
@@ -163,20 +198,24 @@ interface IndicatorsPanelProps<Type extends string, P extends IndicatorWidgetBas
    */
   onDuplicate?: (indicator: Indicator<Type>) => Promise<unknown>;
   /**
-   * What a type converts into — category into subcategory —, and how to do it.
-   * Without it, the menu offers no conversion.
-   */
-  conversion?: {
-    to: Partial<Record<string, Type>>;
-    convert: (indicator: Indicator<Type>, type: Type) => Promise<unknown>;
-  };
-  /**
    * Extra actions on a widget's right click, which do not reshape it: creating
    * a task from a link. They stay available when the widget is frozen. Nothing
    * to offer: "null".
    */
   extraMenu?: (indicator: Indicator<Type>, close: () => void) => ReactNode;
+  /**
+   * Actions on a widget's right click that do reshape it — a title's style:
+   * offered only while it can be modified, before "Supprimer".
+   */
+  editMenu?: (indicator: Indicator<Type>, close: () => void) => ReactNode;
 }
+
+/**
+ * The board's widgets, in column order then each one's: a widget that follows
+ * another of its board — a mail count, its Mail widget — finds it there, in
+ * its display as in its drawer.
+ */
+export const BoardWidgetsContext = createContext<Indicator<string>[]>([]);
 
 export default function IndicatorsPanel<Type extends string, P extends IndicatorWidgetBase<Type>>({
   sections,
@@ -189,8 +228,8 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
   locked,
   onUnlock,
   onDuplicate,
-  conversion,
   extraMenu,
+  editMenu,
 }: IndicatorsPanelProps<Type, P>) {
   const access = useWidgetAccess();
   // The copied widget, pasted at the end of a section: only a type this panel
@@ -244,6 +283,23 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
   };
 
   /**
+   * Paste the copied widget into a section: at its end, or at the given place —
+   * right after the widget whose menu pasted it. Pasted, it leaves the
+   * clipboard: it is not pasted a second time.
+   */
+  const pasteInto = (section: Id, index = Number.MAX_SAFE_INTEGER) => {
+    if (!pastable) return;
+    void write(() =>
+      createAt({ section_id: section, type: pastable.type as Type, config: pastable.config }, index),
+    )
+      .then(() => {
+        clearCopiedWidget();
+        notifications.show({ color: "teal", message: `Widget « ${pastable.label} » collé` });
+      })
+      .catch((e: unknown) => notifyError(errorMessage(e)));
+  };
+
+  /**
    * A widget dropped from the left drawer. With no settings, or named in place,
    * it is created right away; otherwise its drawer opens, and it is only born
    * on save — at the place where it was dropped.
@@ -277,8 +333,10 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
     setDrawerOpened(true);
   };
 
+  const inOrder = (sections ?? []).flatMap((section) => indicatorsOf(section));
+
   return (
-    <>
+    <BoardWidgetsContext.Provider value={inOrder}>
       <SectionsBoard
         sections={sections}
         locked={locked}
@@ -321,21 +379,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
           pastable
             ? {
                 label: pastable.label,
-                onPaste: (section) =>
-                  write(() =>
-                    api.create({
-                      section_id: section.id,
-                      type: pastable.type as Type,
-                      config: pastable.config,
-                    }),
-                  )
-                    .then(() => {
-                      notifications.show({
-                        color: "teal",
-                        message: `Widget « ${pastable.label} » collé`,
-                      });
-                    })
-                    .catch((e: unknown) => notifyError(errorMessage(e))),
+                onPaste: (section) => pasteInto(section.id),
               }
             : undefined
         }
@@ -353,8 +397,19 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
           const frozen = locked || !widget || !canUpdate(access(widget.kind));
           const close = () => setMenu(null);
           const extra = extraMenu?.(indicator, close) ?? null;
-          const toType = conversion?.to[indicator.type];
-          const converted = toType ? widgetOf(toType) : undefined;
+          const copiable = Boolean(widget) && !isListWidgetType(String(indicator.type));
+          // Cutting deletes it: only a widget the account may delete.
+          const removable = !frozen && widget !== undefined && accessIncludes(access(widget.kind), "delete");
+          const editItems = frozen ? null : (editMenu?.(indicator, close) ?? null);
+          // The clipboard group, set apart from the items around it.
+          const above =
+            !frozen && (hasDrawer(indicator) || (Boolean(onDuplicate) && copiable));
+          const below = Boolean(editItems || extra);
+          const copied = () => ({
+            type: String(indicator.type),
+            config: indicator.config,
+            label: titleOf(indicator, widget?.label ?? String(indicator.type)),
+          });
           return (
             <PointMenu position={menu.position} onClose={close}>
               {!frozen && hasDrawer(indicator) && (
@@ -374,34 +429,58 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
                   Dupliquer
                 </Menu.Item>
               )}
-              {/* Copy, in edit mode only. A list widget owns its items: it
-                  cannot be copied any more than duplicated. */}
-              {!locked && widget && !isListWidgetType(String(indicator.type)) && (
-                <Menu.Item
-                  leftSection={<IconCopy size={16} />}
-                  onClick={() => {
-                    close();
-                    copyWidget({
-                      type: String(indicator.type),
-                      config: indicator.config,
-                      label: titleOf(indicator, widget.label),
-                    });
-                  }}
-                >
-                  Copier
-                </Menu.Item>
+              {/* The clipboard, in edit mode only: copy, cut, paste right
+                  after this widget. A list widget owns its items: it cannot be
+                  copied or cut any more than duplicated. */}
+              {!locked && (copiable || pastable) && (
+                <>
+                  {above && <Menu.Divider />}
+                  {copiable && (
+                    <Menu.Item
+                      leftSection={<IconCopy size={16} />}
+                      onClick={() => {
+                        close();
+                        copyWidget(copied());
+                      }}
+                    >
+                      Copier
+                    </Menu.Item>
+                  )}
+                  {copiable && removable && (
+                    <Menu.Item
+                      leftSection={<IconCut size={16} />}
+                      onClick={() => {
+                        close();
+                        const copy = copied();
+                        copyWidget(copy);
+                        void write(() => api.remove(indicator.id))
+                          .then(() => {
+                            notifications.show({ color: "teal", message: `Widget « ${copy.label} » coupé` });
+                          })
+                          .catch((e: unknown) => notifyError(errorMessage(e)));
+                      }}
+                    >
+                      Couper
+                    </Menu.Item>
+                  )}
+                  {pastable && (
+                    <Menu.Item
+                      leftSection={<IconClipboard size={16} />}
+                      onClick={() => {
+                        close();
+                        const ids = indicators
+                          .filter((i) => i.section_id === indicator.section_id)
+                          .map((i) => i.id);
+                        pasteInto(indicator.section_id, ids.indexOf(indicator.id) + 1);
+                      }}
+                    >
+                      Coller « {pastable.label} »
+                    </Menu.Item>
+                  )}
+                  {below && <Menu.Divider />}
+                </>
               )}
-              {!frozen && conversion && toType && converted && (
-                <Menu.Item
-                  leftSection={<converted.icon size={16} />}
-                  onClick={() => {
-                    close();
-                    void write(() => conversion.convert(indicator, toType));
-                  }}
-                >
-                  Convertir en {converted.label.toLowerCase()}
-                </Menu.Item>
-              )}
+              {editItems}
               {extra}
               {!frozen && (
                 <>
@@ -449,7 +528,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
           await onChanged();
         }}
       />
-    </>
+    </BoardWidgetsContext.Provider>
   );
 }
 
@@ -482,7 +561,7 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
   onContextMenu,
   withFrozenMenu,
 }: SectionIndicatorsProps<Type, P>) {
-  const { target, propsOf } = useWidgetDrop(section.id, drag, locked);
+  const { target, propsOf, stackProps } = useWidgetDrop(section.id, drag, locked);
   // The account's permission on each widget's type.
   const access = useWidgetAccess();
   // Where the last press happened. A widget that drags what it holds itself —
@@ -506,10 +585,14 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
     const after = visibleItems[rank];
     if (!before?.widget.margins || !after?.widget.margins) return GAP;
     const typeOf = (r: number) => visibleItems[r]?.indicator.type ?? null;
-    return (
-      before.widget.margins(before.indicator.config, typeOf(rank - 2), after.indicator.type).bottom +
-      after.widget.margins(after.indicator.config, before.indicator.type, typeOf(rank + 1)).top
-    );
+    const below = before.widget.margins(
+      before.indicator.config,
+      typeOf(rank - 2),
+      after.indicator.type,
+    ).bottom;
+    const above = after.widget.margins(after.indicator.config, before.indicator.type, typeOf(rank + 1));
+    // Above a title, the larger of the two; elsewhere, their sum.
+    return above.collapse ? Math.max(below, above.top) : below + above.top;
   };
 
   if (visibleItems.length === 0) return null;
@@ -519,13 +602,18 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
   // no gap between them.
   const fill = (rank: number) =>
     rank === visibleItems.length - 1 && Boolean(visibleItems[rank]?.widget.fill);
-  // A widget aligned vertically takes the height left too, wherever it is:
-  // its content moves in it (widgets/alignment.ts).
-  const grows = (rank: number) =>
-    fill(rank) || isVerticallyAligned(visibleItems[rank]?.indicator.config);
-  const stretched = visibleItems.some((_, rank) => grows(rank));
+  // A height in percent is a share of the column's visible height — the
+  // window's, not what the column holds (SectionsBoard, COLUMN_HEIGHT): the
+  // stack then takes that height, and the widget its share of it.
+  const percent = visibleItems.some(({ indicator }) => isPercentHeight(indicator.config));
+  const stretched = percent || visibleItems.some((_, rank) => fill(rank));
+  const stackStyle: CSSProperties | undefined = percent
+    ? { flex: "0 0 auto", height: `var(${COLUMN_HEIGHT})`, minHeight: 0 }
+    : stretched
+      ? { flex: 1, minHeight: 0 }
+      : undefined;
   return (
-    <Stack gap={0} style={stretched ? { flex: 1, minHeight: 0 } : undefined}>
+    <Stack {...stackProps} gap={0} style={stackStyle}>
       {visibleItems.map(({ indicator, widget }, rank) => {
         // The rank among all: this is what the drop stores.
         const index = indicators.indexOf(indicator);
@@ -540,6 +628,7 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
         const widgetRender: WidgetRender = {
           id: indicator.id,
           onChange: writable ? (config) => onChange(indicator, config) : () => {},
+          onEdit: () => !frozen && onOpen(indicator),
           locked: !writable,
         };
         const dragProps = { ...propsOf(indicator.id, index), ...(frozen ? { draggable: false } : {}) };
@@ -567,11 +656,15 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
             style={{
               position: "relative",
               marginTop: gapBefore,
-              ...sideMargins(indicator.config),
+              ...sideMargins(widget.styled?.(indicator.config) ?? indicator.config),
               opacity: drag.dragged === indicator.id ? 0.4 : 1,
               cursor: frozen || widget.ownClicks ? "default" : "grab",
-              ...(grows(rank)
+              ...(fill(rank)
                 ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
+                : {}),
+              // A height of its own: what it holds fills it (widgets/alignment.ts).
+              ...(isSized(indicator.config)
+                ? { display: "flex", flexDirection: "column", ...heightStyle(indicator.config) }
                 : {}),
             }}
           >
@@ -633,7 +726,7 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
                     ),
                     border: "none",
                     // Where the content sits in the card, as the drawer sets
-                    // it: aligned vertically, the card fills its place.
+                    // it: with a height of its own, the card fills its place.
                     ...alignment.style,
                     // The background chosen in the drawer, otherwise that of
                     // the inset.

@@ -17,6 +17,7 @@ import {
   nameFieldStyle,
   rowStyle,
   useRowSelection,
+  editKeys,
 } from "./DrawerRows";
 import { DEFAULT_LABEL_COLOR } from "@milo/shared";
 import type {
@@ -88,10 +89,10 @@ const ROUTES: Record<LabelsBase, LabelRoutes> = {
     read: (boardId) => api.getProjectLabels(boardId!),
   },
   "/support-labels": {
-    create: (_boardId, l, groupId) => api.createSupportLabel(l.name, l.color, groupId),
+    create: (boardId, l, groupId) => api.createSupportLabel(boardId!, l.name, l.color, groupId),
     update: (id, data) => api.updateSupportLabel(id, data),
     remove: (id) => api.deleteSupportLabel(id),
-    read: () => api.getSupportLabels(),
+    read: (boardId) => api.getSupportLabels(boardId!),
   },
   "/asset-labels": {
     create: (boardId, l, groupId) => api.createAssetLabel(boardId!, l.name, l.color, groupId),
@@ -387,9 +388,7 @@ export default function LabelGroupsEditor({
       placeholder={bold ? "Nom du groupe" : "Nom"}
       value={value}
       onChange={(e) => onChange(e.currentTarget.value)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") e.currentTarget.blur();
-      }}
+      {...editKeys(onChange)}
       autoFocus={toName === key}
       onFocus={() => setInput(key)}
       onBlur={() => {
@@ -403,11 +402,15 @@ export default function LabelGroupsEditor({
 
   return (
     <div>
-      <Stack gap="md">
+      <Stack gap={30}>
         {groups.length === 0 && <EmptyList icon={IconFolder} message="Aucun groupe" />}
 
         {groups.map((group, groupRank) => {
-          const total = group.labels.length + 1 + (group.labels.length === 0 ? 1 : 0);
+          // A group just added shows no empty screen while it is being named:
+          // only once its name is entered.
+          const naming = group.id === undefined && (input === group.key || toName === group.key);
+          const showsEmpty = group.labels.length === 0 && !naming;
+          const total = group.labels.length + 1 + (showsEmpty ? 1 : 0);
           return (
             <Box
               key={group.key}
@@ -451,7 +454,7 @@ export default function LabelGroupsEditor({
                   )}
                 </Group>
 
-                {group.labels.length === 0 && (
+                {showsEmpty && (
                   <Box
                     onDragOver={(e) => dragOverLabel(e, group.key, 0)}
                   >

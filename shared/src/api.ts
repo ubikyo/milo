@@ -50,8 +50,22 @@ export interface AdminLoginInput {
  * each sign-in: it is not edited here.
  */
 export interface UpdateMeInput {
+  /** The workspace opened at sign-in; null for the one they were working in. */
+  default_workspace?: Id | null;
   /** The opening view: its id, as a string. */
   default_view?: string;
+  /** The opening board, in the opening view: its id, as a string. */
+  default_board?: string;
+}
+
+/**
+ * The views of one of an account's workspaces, each with its boards: what the
+ * profile offers for the opening view and board.
+ */
+export interface OpeningView {
+  id: Id;
+  name: string;
+  boards: { id: Id; name: string }[];
 }
 
 export interface ViewInput {

@@ -43,7 +43,12 @@ import { supportReplyRoutes } from "./routes/support-replies.js";
 import { assetSettingsRoutes } from "./routes/asset-settings.js";
 import { milestoneTypeRoutes } from "./routes/milestone-types.js";
 import { followRoutes } from "./routes/follows.js";
-import { assetLabelRoutes, labelRoutes, projectLabelRoutes } from "./routes/labels.js";
+import {
+  assetLabelRoutes,
+  labelRoutes,
+  projectLabelRoutes,
+  supportLabelRoutes,
+} from "./routes/labels.js";
 import { cardLinkRoutes, linkRoutes } from "./routes/links.js";
 import { entraRoutes } from "./routes/entra.js";
 import { administrationRoutes, assignmentRoutes } from "./routes/assignments.js";
@@ -52,14 +57,15 @@ import { categoryRoutes } from "./routes/project-boards.js";
 import { projectRoutes } from "./routes/projects.js";
 import {
   supportCommentRoutes,
-  supportLabelRoutes,
   supportRequestRoutes,
 } from "./routes/support.js";
 import { taskCardRoutes, cardCommentRoutes } from "./routes/task-cards.js";
 import { taskListRoutes } from "./routes/task-lists.js";
 import { userRoutes } from "./routes/users.js";
 import { notificationSettingsRoutes } from "./routes/notification-settings.js";
+import { mailTemplateRoutes } from "./routes/mail-templates.js";
 import { displaySettingsRoutes } from "./routes/display-settings.js";
+import { titleStyleRoutes } from "./routes/title-styles.js";
 import { supportMailRoutes } from "./routes/support-mail.js";
 import { m365WebhookRoutes } from "./routes/m365-webhooks.js";
 import { optinRoutes } from "./routes/optins.js";
@@ -170,7 +176,7 @@ export const createApp = (): express.Express => {
   app.use("/api/asset-labels", assetLabelRoutes);
   app.use("/api/assets", assetRoutes);
   // The templates table: read everywhere, written from Settings.
-  app.use("/api/asset-settings", requireSettingsToWrite, assetSettingsRoutes);
+  app.use("/api/asset-settings", assetSettingsRoutes);
 
   app.use("/api/support-requests", supportRequestRoutes);
   app.use("/api/mailbox-optins", optinRoutes);
@@ -188,7 +194,9 @@ export const createApp = (): express.Express => {
   // Read by everyone — they set everyone's interface —, written from
   // Settings only.
   app.use("/api/notification-settings", requireSettingsToWrite, notificationSettingsRoutes);
+  app.use("/api/mail-templates", requireSettingsToWrite, mailTemplateRoutes);
   app.use("/api/display-settings", requireSettingsToWrite, displaySettingsRoutes);
+  app.use("/api/title-styles", titleStyleRoutes);
 
   app.use("/api", notFoundHandler);
   app.use(errorHandler);

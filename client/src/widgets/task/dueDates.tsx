@@ -1,7 +1,8 @@
 import { DonutChart } from "@mantine/charts";
 import { Stack } from "@mantine/core";
 import { IconCalendarDue } from "@tabler/icons-react";
-import { dueState } from "../../lib/due";
+import { donutChartProps } from "../chart-colors";
+import { dueAppearance, dueParts } from "../support/dueDates";
 import { NAME, Nothing, IndicatorTitle, tasksOf } from "./common";
 import type { TaskIndicatorWidget } from "./types";
 
@@ -22,16 +23,7 @@ export const taskDuesIndicator: TaskIndicatorWidget = {
     const cards = tasksOf(lists);
     const account = (filter: (due: string) => boolean) =>
       cards.filter((c) => filter(c.due_date)).length;
-    const data = [
-      { name: "En retard", value: account((due) => dueState(due) === "late"), color: "red.6" },
-      { name: "Bientôt", value: account((due) => dueState(due) === "soon"), color: "orange.6" },
-      {
-        name: "À venir",
-        value: account((due) => Boolean(due) && dueState(due) === "none"),
-        color: "green.6",
-      },
-      { name: "Sans échéance", value: account((due) => !due), color: "gray.5" },
-    ].filter((part) => part.value > 0);
+    const data = dueParts(config, account);
 
     return (
       <Stack gap={4} align="center" style={{ flex: 1 }}>
@@ -51,9 +43,12 @@ export const taskDuesIndicator: TaskIndicatorWidget = {
             withTooltip
             withLegend
             pieProps={{ isAnimationActive: false }}
+            {...donutChartProps(config)}
           />
         )}
       </Stack>
     );
   },
+
+  chartAppearance: dueAppearance,
 };

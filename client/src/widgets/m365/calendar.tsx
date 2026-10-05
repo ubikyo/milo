@@ -1,8 +1,11 @@
-import { Anchor, Box, Checkbox, Group, Indicator, Stack, Text } from "@mantine/core";
+import { Box, Indicator, Stack } from "@mantine/core";
 import { Calendar } from "@mantine/dates";
+import type { CalendarLevel } from "@mantine/dates";
 import { IconCalendar, IconCalendarUser } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import classes from "../../assets/styles/Calendar.module.css";
 import { api } from "../../api";
 import { ConfirmationActions, State, looksLikeAddress } from "../../components/support/Inboxes";
 import ChoicePicker, { CALENDAR_NOUN, calendarsOf } from "../../components/ui/ChoicePicker";
@@ -10,57 +13,73 @@ import ReceptionField, { inboxesOf } from "../../components/ui/ReceptionField";
 import { useConfirmations } from "../../lib/confirmations";
 import { notifyError } from "../../lib/errors";
 import { Frame } from "../margins";
-import { withField } from "../types";
+import { colorRow, defaultAxes, defaultText } from "../chart-colors";
+import { text, withField } from "../types";
 import type { AccessWidget, WidgetConfigProps } from "../types";
 import { CALENDAR_PEOPLE, SHOWN_CALENDARS, calendarKey, m365Event, shownCalendarsOf } from "@milo/shared";
 import type { AccessCalendar, AccessCalendarEvent, Id } from "@milo/shared";
+import MailTemplates from "../../components/settings/MailTemplates";
+import { useSettingsMode } from "../../lib/rights";
+import type { MailTemplateKey } from "@milo/shared";
+import { BLUE, PALETTE_GREEN, PALETTE_RED } from "../../themes/colors";
+import {
+  DAY,
+  NOTIFICATION_DELAY,
+  RELOAD_INTERVAL,
+  chooseDay,
+  daysOf,
+  ownerName,
+  shownKeyOf,
+  useChosenDay,
+} from "./agenda";
+
+/** The template of the e-mail that carries the code. */
+const CALENDAR_TEMPLATES: readonly MailTemplateKey[] = ["calendar_confirmation"];
 
 // A calendar: the current month, Mantine's. Optionally, it marks with a dot
 // the days of appointments in Outlook calendars, read from Entra by the
 // server (server/src/lib/entra.ts, Calendars.Read application permission):
-// the viewer's own, and those of the people the widget names. Each of these
+// those of the people the widget names. Each of these
 // receives a code by e-mail when the widget is saved, and their calendar is
 // only read once that code, passed on, is entered from the "Actions" menu
 // (server, lib/calendar-optin.ts). Once it is, the drawer chooses, to the
-// right of the address, which of their calendars are read. A chosen day shows
-// its appointments below the month.
+// right of the address, which of their calendars are read. A chosen day is
+// that of the "Rendez-vous" widgets that follow the calendar
+// (appointments.tsx): they list its appointments.
 
-const APPOINTMENTS = "showEvents";
-const LIST = "showList";
 const FRAMED = "framed";
 
 /**
- * The page rereads the calendar at this rate: an appointment made elsewhere
- * eventually shows up. When Graph notifies the server (lib/m365-webhooks.ts),
- * it rereads at once.
+ * The calendar's colors, set in the "Apparence" block: each one, stored,
+ * fills a CSS variable that Calendar.module.css reads; left as is, the
+ * variable is absent and the calendar keeps Mantine's color, in the current
+ * scheme. The defaults, in hexadecimal, are those the picker shows.
  */
-const RELOAD_INTERVAL = 5 * 60_000;
+const isDark = () => document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
+const COLORS = [
+  { key: "monthColor", name: "Mois", what: "du mois et des flèches", cssVar: "--calendar-month", defaultColor: defaultText },
+  { key: "weekdaysColor", name: "Semaine", what: "des jours de la semaine", cssVar: "--calendar-weekdays", defaultColor: defaultAxes },
+  { key: "daysColor", name: "Jours", what: "des jours", cssVar: "--calendar-days", defaultColor: defaultText },
+  { key: "weekendColor", name: "Week-end", what: "des jours du week-end", cssVar: "--calendar-weekend", defaultColor: () => PALETTE_RED.toLowerCase() },
+  { key: "outsideColor", name: "Hors mois", what: "des jours des mois voisins", cssVar: "--calendar-outside", defaultColor: defaultAxes },
+  { key: "todayColor", name: "Aujourd'hui", what: "du cadre d'aujourd'hui", cssVar: "--calendar-today", defaultColor: () => (isDark() ? "#424242" : "#ced4da") },
+  // Only with appointments: a day is chosen, and marked.
+  { key: "selectedColor", name: "Sélection", what: "du jour choisi", cssVar: "--calendar-selected", defaultColor: () => BLUE.toLowerCase(), appointments: true },
+  { key: "dotColor", name: "Rendez-vous", what: "du point des rendez-vous", cssVar: "", defaultColor: () => PALETTE_GREEN.toLowerCase(), appointments: true },
+] as const;
 
-/** Graph sends several notifications for one change: a single reread follows them. */
-const NOTIFICATION_DELAY = 1_000;
+const DOT_COLOR = "dotColor";
 
-/** At most, the appointments listed below the month. */
-const LIST_MAX = 6;
+/** The stored colors, as the CSS variables of the calendar. */
+const colorVars = (config: unknown): CSSProperties =>
+  Object.fromEntries(
+    COLORS.filter((c) => c.cssVar && text(config, c.key)).map((c) => [c.cssVar, text(config, c.key)]),
+  ) as CSSProperties;
 
 const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean => {
   const value = (config as Record<string, unknown> | null)?.[key];
   return value === undefined ? defaultValue : Boolean(value);
 };
-
-/** The days an appointment covers, in the calendar's day format. */
-const daysOf = (r: AccessCalendarEvent): string[] => {
-  // An all-day appointment ends at midnight the next day, in UTC: we read it
-  // by date, without a time zone, so as not to overflow by a day.
-  const start = r.all_day ? dayjs(r.start.slice(0, 10)) : dayjs(r.start);
-  const end = r.all_day ? dayjs(r.end.slice(0, 10)).subtract(1, "day") : dayjs(r.end).subtract(1, "minute");
-  const days: string[] = [];
-  for (let j = start.startOf("day"); !j.isAfter(end, "day") && days.length < 62; j = j.add(1, "day")) {
-    days.push(j.format("YYYY-MM-DD"));
-  }
-  return days.length ? days : [start.format("YYYY-MM-DD")];
-};
-
-const hour = (iso: string) => dayjs(iso).format("HH:mm");
 
 /** The addresses of the people the widget names, in lowercase. */
 const peopleOf = (config: unknown): string[] => [
@@ -71,10 +90,6 @@ const peopleOf = (config: unknown): string[] => [
   ),
 ];
 
-
-/** A calendar's name: the start of its address, the viewer's own being "Moi". */
-const ownerName = (owner: string) => (owner ? owner.split("@")[0]! : "Moi");
-
 type LoadState =
   | { phase: "loading" }
   | { phase: "ready"; calendar: AccessCalendar }
@@ -82,14 +97,25 @@ type LoadState =
 
 function CalendarWidget({ blockId, config }: { blockId: Id; config: unknown }) {
   const shown = [...shownCalendarsOf(config)];
-  const shownKey = shown.map(([email, ids]) => `${email}:${ids.join("+")}`).join(",");
-  const withAppointments = isChecked(config, APPOINTMENTS, false) || shown.length > 0;
-  // Several people: each appointment says whose it is.
-  const severalCalendars = (isChecked(config, APPOINTMENTS, false) ? 1 : 0) + shown.length > 1;
-  const withList = isChecked(config, LIST, true);
-  const [months, setMonth] = useState(() => dayjs().startOf("month").format("YYYY-MM-DD"));
-  const [selected, setChosen] = useState(() => dayjs().format("YYYY-MM-DD"));
+  const shownKey = shownKeyOf(config);
+  const withAppointments = shown.length > 0;
+  // Several people: each failure says whose calendar it is.
+  const severalCalendars = shown.length > 1;
+  const [months, setMonth] = useState(() => dayjs().startOf("month").format(DAY));
+  const selected = useChosenDay(blockId);
   const [state, setState] = useState<LoadState>({ phase: "loading" });
+  const [level, setLevel] = useState<CalendarLevel>("month");
+
+  // The year level keeps the month's height: it is measured while the month shows.
+  const calendarRef = useRef<HTMLDivElement>(null);
+  const [monthHeight, setMonthHeight] = useState<number>();
+  useEffect(() => {
+    const el = calendarRef.current;
+    if (!el || level !== "month") return;
+    const observer = new ResizeObserver(() => setMonthHeight(el.offsetHeight));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [level]);
 
   // The grid shows a few days of the neighboring months: the period covers them.
   useEffect(() => {
@@ -128,8 +154,6 @@ function CalendarWidget({ blockId, config }: { blockId: Id; config: unknown }) {
     return card;
   }, [state]);
 
-  // The day's appointments, in order, whoever's they are.
-  const ofDay = [...(byDay.get(selected) ?? [])].sort((a, b) => a.start.localeCompare(b.start));
   const errors = state.phase === "ready" ? state.calendar.errors : [];
 
   // A refusal — Graph's "Access denied" — goes out as a notification, not in
@@ -146,75 +170,43 @@ function CalendarWidget({ blockId, config }: { blockId: Id; config: unknown }) {
   }, [failuresKey]);
 
   const content = (
-    <Stack gap="sm">
+    <Box ref={calendarRef} h={level === "year" ? monthHeight : undefined}>
       <Calendar
         fullWidth
+        className={classes.calendar}
+        classNames={{
+          levelsGroup: classes.levelsGroup,
+          monthsList: classes.monthsList,
+          calendarHeaderLevel: classes.month,
+          calendarHeaderControl: classes.month,
+          weekday: classes.weekday,
+          day: classes.day,
+          monthsListControl: classes.monthsListControl,
+        }}
+        style={colorVars(config)}
         date={months}
         onDateChange={setMonth}
+        level={level}
+        onLevelChange={setLevel}
         // The calendar does not go below the month: the "year" and "decade"
         // levels have nothing to show here.
         maxLevel="year"
         highlightToday
-        getDayProps={(date) => ({
-          selected: date === selected,
-          onClick: () => setChosen(date),
-        })}
+        // Without an address, there is no appointment: no day to choose.
+        static={!withAppointments}
+        getDayProps={(date) =>
+          withAppointments ? { selected: date === selected, onClick: () => chooseDay(blockId, date) } : {}
+        }
         renderDay={(date) => {
           const count = byDay.get(date)?.length ?? 0;
           return (
-            <Indicator size={5} color="teal" offset={-3} disabled={!count} position="bottom-center">
+            <Indicator size={5} color={text(config, DOT_COLOR) || "teal"} offset={-3} disabled={!count} position="bottom-center">
               <div>{dayjs(date).date()}</div>
             </Indicator>
           );
         }}
       />
-      {withAppointments && withList && state.phase === "ready" && (
-        <Stack gap={4}>
-          <Text size="xs" c="dimmed" tt="capitalize">
-            {dayjs(selected).format("dddd D MMMM")}
-          </Text>
-          {ofDay.length === 0 && (
-            <Text size="sm" c="dimmed">
-              Aucun rendez-vous
-            </Text>
-          )}
-          {ofDay.slice(0, LIST_MAX).map((r) => (
-            <Group key={`${r.owner}|${r.id}`} gap="xs" wrap="nowrap" align="baseline">
-              <Text size="xs" c="dimmed" style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }} w={84}>
-                {r.all_day ? "Journée" : `${hour(r.start)} – ${hour(r.end)}`}
-              </Text>
-              <Box style={{ minWidth: 0 }}>
-                <Anchor
-                  href={r.url || undefined}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  size="sm"
-                  c="var(--mantine-color-text)"
-                  underline="hover"
-                  lineClamp={1}
-                  title={r.subject}
-                  style={{ opacity: r.show_as === "free" ? 0.6 : 1 }}
-                >
-                  {r.subject || "Sans objet"}
-                </Anchor>
-                {(r.location || severalCalendars) && (
-                  <Text size="xs" c="dimmed" lineClamp={1}>
-                    {[severalCalendars ? ownerName(r.owner) : "", r.location]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </Text>
-                )}
-              </Box>
-            </Group>
-          ))}
-          {ofDay.length > LIST_MAX && (
-            <Text size="xs" c="dimmed">
-              et {ofDay.length - LIST_MAX} de plus
-            </Text>
-          )}
-        </Stack>
-      )}
-    </Stack>
+    </Box>
   );
 
   return (
@@ -229,7 +221,7 @@ export const calendarWidget: AccessWidget = {
   kind: "m365",
   label: "Calendrier",
   icon: IconCalendar,
-  defaultConfig: { [APPOINTMENTS]: false, [LIST]: true, [FRAMED]: false },
+  defaultConfig: { [FRAMED]: false },
   // The days and the month arrows receive their clicks.
   ownClicks: true,
 
@@ -240,11 +232,19 @@ export const calendarWidget: AccessWidget = {
   // It draws its own frame, set in the drawer's "Apparence" block.
   ownFrame: true,
 
+  // Its colors: the choice and the dot only matter once a calendar is read.
+  appearance: (config, onChange) => {
+    const withAppointments = shownCalendarsOf(config).size > 0;
+    return COLORS.filter((c) => !("appointments" in c) || withAppointments).map((c) =>
+      colorRow(config, onChange, { name: c.name, what: c.what, key: c.key, defaultColor: c.defaultColor() }),
+    );
+  },
+
   Config: CalendarConfig,
 };
 
 /**
- * The drawer: the viewer's own calendar, the people whose calendar may be
+ * The drawer: the people whose calendar may be
  * shown — each with its consent state —, and those it shows.
  */
 function CalendarConfig({ config, onChange }: WidgetConfigProps) {
@@ -255,7 +255,7 @@ function CalendarConfig({ config, onChange }: WidgetConfigProps) {
   const pending = people.filter((e) => !confirmed(e));
   // A person removed from the list, or not yet confirmed, is no longer read.
   const shown = new Map([...shownCalendarsOf(config)].filter(([e]) => people.includes(e) && confirmed(e)));
-  const withAppointments = isChecked(config, APPOINTMENTS, false) || shown.size > 0;
+  const canEditSettings = useSettingsMode();
 
   /** A person's calendars, chosen; null: none of them is read any more. */
   const choose = (email: string, ids: string[] | null) => {
@@ -274,24 +274,15 @@ function CalendarConfig({ config, onChange }: WidgetConfigProps) {
   return (
     <Stack gap="lg">
       <ConfirmationActions scope="calendar" owner={key} pending={pending} />
-      <Checkbox
-        label="Marquer mes rendez-vous Outlook (Entra)"
-        description="Chacun voit les siens. Demande la permission Calendars.Read sur l'application Entra."
-        checked={isChecked(config, APPOINTMENTS, false)}
-        onChange={(e) => onChange(withField(config, APPOINTMENTS, e.currentTarget.checked))}
-        color="teal"
-      />
       <ReceptionField
         configKey={CALENDAR_PEOPLE}
         field="email"
         label="Calendriers"
         description={
           <>
-            Chaque adresse ajoutée reçoit, à l'enregistrement, un code à quatre chiffres : son
-            titulaire vous le communique s'il accepte que son calendrier soit affiché. Saisissez-le
-            depuis le menu « Actions », puis « Confirmer une adresse ». Une fois l'adresse
-            confirmée, choisissez à sa droite les calendriers à lire. Tous ceux qui voient ce
-            tableau verront leurs rendez-vous.
+            L'ajout d'un calendrier nécessite un code d'activation de 4 chiffres envoyé sur
+            l'adresse e-mail. Une fois ce code reçu, cliquer sur le menu « Actions » puis
+            « Confirmer une adresse » pour terminer la configuration de l'adresse.
           </>
         }
         placeholder="Adresse e-mail"
@@ -317,13 +308,9 @@ function CalendarConfig({ config, onChange }: WidgetConfigProps) {
         config={config}
         onChange={onChange}
       />
-      <Checkbox
-        label="Lister les rendez-vous du jour choisi"
-        checked={isChecked(config, LIST, true)}
-        disabled={!withAppointments}
-        onChange={(e) => onChange(withField(config, LIST, e.currentTarget.checked))}
-        color="teal"
-      />
+      {/* The code e-mail's template, as in the Tickets widget: it falls
+          under the Paramétrage. */}
+      {canEditSettings && <MailTemplates canEdit only={CALENDAR_TEMPLATES} />}
     </Stack>
   );
 }

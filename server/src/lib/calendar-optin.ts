@@ -18,6 +18,7 @@ export const calendarOptin = widgetOptin({
   title: "Partager votre calendrier",
   intro: (who, board) =>
     `${who} souhaite afficher votre calendrier Outlook dans Milo${board ? `, sur le tableau « ${board} »` : ""}. Les personnes qui voient ce tableau verront vos rendez-vous : horaires, objet et lieu — ceux marqués privés n'affichent que leurs horaires. Si vous êtes d'accord, communiquez ce code à ${who}. Rien n'est lu de votre calendrier avant.`,
+  templateKey: "calendar_confirmation",
   name: "Calendar",
 });
 

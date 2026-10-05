@@ -1,0 +1,60 @@
+/* The year level keeps the month's height: the months spread over it. */
+.calendar {
+  height: 100%;
+}
+
+.levelsGroup {
+  height: 100%;
+}
+
+.levelsGroup > [data-year-level] {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.monthsList {
+  flex: 1;
+}
+
+/*
+ * The colors set in the "Apparence" block (widgets/m365/calendar.tsx): each
+ * variable is absent until set, and the calendar then keeps Mantine's own.
+ * The rules go through .calendar to win over Mantine's, on hover too.
+ */
+.calendar .month {
+  color: var(--calendar-month, var(--mantine-color-text));
+}
+
+.calendar .weekday {
+  color: var(--calendar-weekdays, var(--mantine-color-dimmed));
+}
+
+.calendar .day,
+.calendar .monthsListControl {
+  color: var(--calendar-days, var(--mantine-color-text));
+}
+
+.calendar .day[data-weekend] {
+  color: var(--calendar-weekend, var(--mantine-color-red-6));
+}
+
+.calendar .day[data-outside] {
+  color: var(--calendar-outside, var(--mantine-color-dimmed));
+}
+
+.calendar .day[data-today][data-highlight-today]:not([data-selected]) {
+  border-color: var(
+    --calendar-today,
+    light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-4))
+  );
+}
+
+.calendar .day[data-selected] {
+  background-color: var(--calendar-selected, var(--mantine-primary-color-filled));
+  color: var(--mantine-primary-color-contrast);
+}
+
+.calendar .day[data-selected]:hover {
+  background-color: var(--calendar-selected, var(--mantine-primary-color-filled-hover));
+}

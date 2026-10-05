@@ -1,7 +1,7 @@
 // Labels: those of a task board, set on its cards, their twins of a project
-// board, set on its projects, and those of a board's assets, which name the
-// GLPI tags of its machines. Same rules, three tables: the modes do not share
-// their labels. Labels are a board's contexts (repositories/contexts.ts): any
+// board, set on its projects, and of a Support board, set on its requests, and
+// those of a board's assets, which name the GLPI tags of its machines. Same
+// rules, four tables: the modes do not share their labels. Labels are a board's contexts (repositories/contexts.ts): any
 // change re-reads the boards.
 //
 // One router serves both. They used to be two twin blocks of code in the old
@@ -30,6 +30,7 @@ import {
   assetLabelGroups,
   boardLabelGroups,
   projectLabelGroups,
+  supportLabelGroups,
 } from "../repositories/label-groups.js";
 import { reassignWorkstations } from "../repositories/assets.js";
 import type { LabelGroupStore } from "../repositories/label-groups.js";
@@ -41,11 +42,12 @@ const GROUP_TABLES = {
   labels: "label_groups",
   project_labels: "project_label_groups",
   asset_labels: "asset_label_groups",
+  support_labels: "support_label_groups",
 } as const;
 
 interface LabelTable {
   /** The table name. It only enters the SQL here, never from a request. */
-  table: "labels" | "project_labels" | "asset_labels";
+  table: "labels" | "project_labels" | "asset_labels" | "support_labels";
   /** What the event stream must signal when these labels change. */
   touched: Resource[];
   /**
@@ -101,14 +103,16 @@ const createRoutes = ({
     `SELECT * FROM ${table} WHERE board_id = ? AND name = ? COLLATE NOCASE LIMIT 1`,
   );
   const remove = mutation(`DELETE FROM ${table} WHERE id = ?`);
-  // What carries the label: cards, or projects. An asset label is carried by
-  // no link: it only names a tag, and may always go.
+  // What carries the label: cards, projects, or requests. An asset label is
+  // carried by no link: it only names a tag, and may always go.
   const uses = scalar<{ count: number }>(
     table === "labels"
       ? "SELECT COUNT(*) AS count FROM card_labels WHERE label_id = ?"
       : table === "project_labels"
         ? "SELECT COUNT(*) AS count FROM project_label_links WHERE label_id = ?"
-        : "SELECT 0 AS count",
+        : table === "support_labels"
+          ? "SELECT COUNT(*) AS count FROM support_request_labels WHERE label_id = ?"
+          : "SELECT 0 AS count",
   );
 
   const clearFromBoard = mutation(`DELETE FROM ${table} WHERE board_id = ?`);
@@ -244,6 +248,18 @@ export const projectLabelRoutes = createRoutes({
     return openBoard(boardId, req.user).id;
   },
   groups: projectLabelGroups,
+});
+
+/** Labels of a Support board: they follow the Support mode's rights. */
+export const supportLabelRoutes = createRoutes({
+  table: "support_labels",
+  // Requests carry their labels: they are re-read with them.
+  touched: ["support-labels", "support-requests"],
+  verifyBoard: (boardId, req, right) => {
+    require(req, "support", right);
+    return openBoard(boardId, req.user).id;
+  },
+  groups: supportLabelGroups,
 });
 
 /** The permission on the Asset widget type that each right on asset labels needs. */

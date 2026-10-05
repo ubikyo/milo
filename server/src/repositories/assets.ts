@@ -9,6 +9,7 @@ import type {
   Asset,
   AssetDetail,
   AssetEntry,
+  AssetModel,
   AssetNetwork,
   AssetOsFamily,
   AssetProtection,
@@ -20,7 +21,7 @@ import type {
 import { mutation, selection, transaction } from "../db/query.js";
 import type { AssetRow } from "../db/rows.js";
 import { receivedTags } from "./inboxes.js";
-import { templateName } from "../lib/asset-models.js";
+import { templateName, templates } from "../lib/asset-models.js";
 import { vlanOf, vlans } from "../lib/asset-vlans.js";
 import { sectionsOf, textOf } from "../lib/inventory.js";
 import type { Tree } from "../lib/inventory.js";
@@ -383,14 +384,14 @@ const REMOVED_FIELDS: Record<string, string[]> = {
 };
 
 /** An entry as the sheet shows it, according to its section's rule. */
-const displayedEntry = (section: string, raw: AssetEntry): AssetEntry => {
+const displayedEntry = (section: string, raw: AssetEntry, models: AssetModel[]): AssetEntry => {
   let entry =
     PRODUCT_SECTIONS.has(section) && typeof raw["NAME"] === "string"
       ? { ...raw, NAME: productName(raw["NAME"]) }
       : raw;
   // The model under its name, the identifier following: "MacBook Pro 16"
   // (M2 Max, 2023) — Mac14,6".
-  const template = section === "BIOS" ? templateName(entry["SMODEL"] ?? "") : "";
+  const template = section === "BIOS" ? templateName(entry["SMODEL"] ?? "", models) : "";
   if (template) entry = { ...entry, SMODEL: `${template} — ${entry["SMODEL"]}` };
   const keptCount = KEPT_FIELDS[section];
   if (keptCount) {
@@ -451,7 +452,7 @@ const administratorsOf = (sections: AssetSection[]): ((account: AssetEntry) => b
 };
 
 /**
- * The Paramétrage VLAN that carries a network card: the one of the first of
+ * The board's VLAN that carries a network card: the one of the first of
  * its IPv4 addresses that falls within a declared subnet.
  */
 const cardVlan = (entry: AssetEntry, table: AssetVlan[]): AssetVlan | null =>
@@ -462,9 +463,19 @@ const cardVlan = (entry: AssetEntry, table: AssetVlan[]): AssetVlan | null =>
     .map((ip) => vlanOf(ip, table))
     .find(Boolean) ?? null;
 
-const displayedSections = (sections: AssetSection[], windows: boolean): AssetSection[] => {
+/** The model and VLAN tables of the workstation's board, read once for the whole sheet. */
+interface BoardTables {
+  models: AssetModel[];
+  vlans: AssetVlan[];
+}
+
+const displayedSections = (
+  sections: AssetSection[],
+  windows: boolean,
+  tables: BoardTables,
+): AssetSection[] => {
   const administrator = administratorsOf(sections);
-  const table = vlans();
+  const table = tables.vlans;
   return sections
     .filter((section) => !HIDDEN_SECTIONS.has(section.name))
     .map((section) => ({
@@ -476,13 +487,13 @@ const displayedSections = (sections: AssetSection[], windows: boolean): AssetSec
             ? { ...entry, ADMIN: "1" }
             : entry,
         )
-        // VLAN and VLAN_NAME are not from the agent either: the Paramétrage
-        // VLAN that carries the card, when there is one.
+        // VLAN and VLAN_NAME are not from the agent either: the board's VLAN
+        // that carries the card, when there is one.
         .map((entry) => {
           const vlan = section.name === "NETWORKS" ? cardVlan(entry, table) : null;
           return vlan ? { ...entry, VLAN: String(vlan.vlan), VLAN_NAME: vlan.name } : entry;
         })
-        .map((entry) => displayedEntry(section.name, entry))
+        .map((entry) => displayedEntry(section.name, entry, tables.models))
         .filter((entry) => Object.keys(entry).length > 0),
     }))
     .filter((section) => section.entries.length > 0);
@@ -496,6 +507,7 @@ const displayedSections = (sections: AssetSection[], windows: boolean): AssetSec
 export const assetDetail = (row: AssetRow): AssetDetail => {
   const content = contentOf(row);
   const sections = sectionsOf(content);
+  const tables: BoardTables = { models: templates(row.board_id), vlans: vlans(row.board_id) };
 
   return {
     ...assetOf(row, content),
@@ -504,10 +516,10 @@ export const assetDetail = (row: AssetRow): AssetDetail => {
     created_at: row.created_at,
     // TeamViewer and the address are read from the whole inventory: what the
     // sheet hides may still help find them.
-    sections: displayedSections(sections, onWindows(content)),
+    sections: displayedSections(sections, onWindows(content), tables),
     teamviewer_id: teamviewerDe(sections),
     address: addressOf(sections),
-    summary: summaryOf(sections, content),
+    summary: summaryOf(sections, content, tables),
     // It is read from endoflife.date: the route sets it (lib/endoflife.ts).
     support: null,
   };
@@ -527,9 +539,7 @@ const count = (value: string | undefined): number | null => {
 /** A card as read, and whether it is connected: enough to choose. */
 type ReadCard = AssetNetwork & { connected: boolean };
 
-const cardsOf = (sections: AssetSection[]): AssetNetwork[] => {
-  // The Paramétrage VLAN table, read once for all cards.
-  const table = vlans();
+const cardsOf = (sections: AssetSection[], table: AssetVlan[]): AssetNetwork[] => {
   const cards = entriesOf(sections, "NETWORKS").flatMap((entry): ReadCard[] => {
     if (entry["VIRTUALDEV"] === "1") return [];
     const description = entry["DESCRIPTION"] ?? "";
@@ -565,7 +575,7 @@ const cardsOf = (sections: AssetSection[]): AssetNetwork[] => {
 };
 
 /** The "Résumé" tab: what one looks for first when opening a workstation. */
-const summaryOf = (sections: AssetSection[], content: Tree): AssetSummary => {
+const summaryOf = (sections: AssetSection[], content: Tree, tables: BoardTables): AssetSummary => {
   const bios = entriesOf(sections, "BIOS")[0] ?? {};
   const cpus = entriesOf(sections, "CPUS");
   const first = cpus[0];
@@ -576,11 +586,10 @@ const summaryOf = (sections: AssetSection[], content: Tree): AssetSummary => {
   const memorySize = count(entriesOf(sections, "HARDWARE")[0]?.["MEMORY"]) ?? (ramModules || null);
 
   return {
-    networks: cardsOf(sections),
+    networks: cardsOf(sections, tables.vlans),
     manufacturer: bios["SMANUFACTURER"] ?? bios["MMANUFACTURER"] ?? "",
-    // The name the Paramétrage gives the identifier ("Mac14,6"), if it has
-    // one.
-    model: templateName(bios["SMODEL"] ?? "") || (bios["SMODEL"] ?? ""),
+    // The name the board gives the identifier ("Mac14,6"), if it has one.
+    model: templateName(bios["SMODEL"] ?? "", tables.models) || (bios["SMODEL"] ?? ""),
     serial: bios["SSN"] ?? "",
     cpu: first?.["NAME"]
       ? {

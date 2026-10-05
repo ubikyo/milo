@@ -1,6 +1,6 @@
 import { Stack } from "@mantine/core";
 import { IconUsers } from "@tabler/icons-react";
-import { ActorRings } from "../support/actors";
+import { ActorRings, actorsAppearance } from "../support/actors";
 import { NAME, IndicatorTitle, tasksOf } from "./common";
 import type { TaskIndicatorWidget } from "./types";
 
@@ -19,7 +19,9 @@ export const membersIndicator: TaskIndicatorWidget = {
   Display: ({ config, lists }) => (
     <Stack gap={4} style={{ flex: 1 }}>
       <IndicatorTitle config={config} defaultValue={LABEL} />
-      <ActorRings actors={tasksOf(lists).map((c) => c.members)} unit="cartes" />
+      <ActorRings actors={tasksOf(lists).map((c) => c.members)} unit="cartes" config={config} />
     </Stack>
   ),
+
+  chartAppearance: actorsAppearance,
 };

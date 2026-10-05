@@ -19,6 +19,7 @@ import { Frame } from "../margins";
 import {
   ROUNDING,
   EmptyList,
+  editKeys,
   Handle,
   ListFooter,
   RowCheckbox,
@@ -29,9 +30,11 @@ import {
   rowStyle,
 } from "../../components/ui/DrawerRows";
 import ConfigurationProblem from "../../components/ui/ConfigurationProblem";
+import EmptyPanel from "../../components/ui/EmptyPanel";
+import { insertRow } from "../../components/ui/SettingRows";
 import { RED } from "../../themes/colors";
 import { withField, count, text } from "../types";
-import type { AccessWidget, WidgetConfigProps } from "../types";
+import type { AccessWidget, WidgetConfigProps, WidgetDisplayProps } from "../types";
 import {
   ACCESS_FEED_INTERVAL_DEFAULT,
   ACCESS_FEED_INTERVAL_MAX,
@@ -68,6 +71,13 @@ const QUANTITY = "count";
 const DATES = "dates";
 const INTERVAL = "interval";
 const FRAMED = "framed";
+const COLOR = "color";
+const DATE_COLOR = "dateColor";
+
+/** The titles' ink while the drawer's "Apparence" block sets none: the theme's text. */
+const DEFAULT_INK = "var(--mantine-color-text)";
+/** The space below the feed, by default: it keeps it off what follows. */
+const LOW_MARGIN = 15;
 
 /** Enough to follow a source, few enough not to overrun the column. */
 const QUANTITY_DEFAULT = 5;
@@ -246,7 +256,20 @@ type State =
   | { phase: "ready"; sources: Source[] }
   | { phase: "error"; message: string };
 
-function Feed({ blockId, config }: { blockId: Id; config: unknown }) {
+function Feed({ blockId, config, onEdit, locked }: WidgetDisplayProps) {
+  // No feed: "Ajouter" opens the drawer, where they are named — as for Mail.
+  if (addressesOf(config).length === 0) {
+    return (
+      <EmptyPanel
+        icon={IconRss}
+        message="Aucun flux RSS"
+        actionLabel={locked ? undefined : "Ajouter"}
+        onAction={onEdit}
+        size="md"
+        fill={false}
+      />
+    );
+  }
   const content = <Articles blockId={blockId} config={config} />;
   return (
     <Frame config={config} framed={isFramed(config)}>
@@ -294,9 +317,8 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
     };
   }, [blockId, key, allReadable, quantity]);
 
-  // Without a readable feed address — none, or one that is not http(s) —,
-  // the widget needs review: the yellow triangle, like a misconfigured list
-  // of requests.
+  // With a feed address that is not http(s), the widget needs review: the
+  // yellow triangle, like a misconfigured list of requests.
   if (!allReadable) return <ConfigurationProblem widget={rssWidget.label} />;
   // Loading already holds the height of the expected articles, line for
   // line: without it, each feed would grow all at once on arrival and push
@@ -350,14 +372,14 @@ function Articles({ blockId, config }: { blockId: Id; config: unknown }) {
         size="sm"
         style={LINK_ROW}
         lineClamp={1}
-        c="var(--mantine-color-text)"
+        c={text(config, COLOR) || DEFAULT_INK}
         underline="never"
         className={classes.link}
         // Merged, the articles of several sources state their own on hover.
         title={source ? `${title} — ${source}` : title}
       >
         {dates && a.date && (
-          <Text span size="xs" c="dimmed" style={DATE_COLUMN}>
+          <Text span size="xs" c={text(config, DATE_COLOR) || "dimmed"} style={DATE_COLUMN}>
             {formatDate(a.date)}
           </Text>
         )}
@@ -542,6 +564,7 @@ function SourceRow({
         aria-label="Adresse du flux"
         value={url}
         onChange={(e) => onChange(e.currentTarget.value)}
+        {...editKeys(onChange)}
         autoFocus={toFill}
         onFocus={() => setInput(true)}
         onBlur={() => {
@@ -706,13 +729,16 @@ function Settings({ config, onChange }: WidgetConfigProps) {
           />
           {/* Merged, the latest articles of all sources are shown, sorted by
               date; grouped, the displayed articles are shared among the
-              sources, in turn, in the list's order. */}
-          <Switch
-            label="Regrouper les articles par source"
-            checked={isGrouped(config)}
-            onChange={(e) => onChange(withField(config, GROUP, e.currentTarget.checked))}
-            color="teal"
-          />
+              sources, in turn, in the list's order. A single source has
+              nothing to group: the switch only shows from two. */}
+          {addressesOf(config).length > 1 && (
+            <Switch
+              label="Regrouper les articles par source"
+              checked={isGrouped(config)}
+              onChange={(e) => onChange(withField(config, GROUP, e.currentTarget.checked))}
+              color="teal"
+            />
+          )}
         </Stack>
       </Input.Wrapper>
     </Stack>
@@ -736,10 +762,49 @@ export const rssWidget: AccessWidget = {
 
   Display: Feed,
 
-  // A list of links: nothing more than the links themselves.
-  margins: () => ({ top: 0, bottom: 0 }),
+  margins: () => ({ top: 0, bottom: LOW_MARGIN }),
 
   // It draws its own frame, set in the drawer's "Apparence" block.
   ownFrame: true,
+
+  // The color fields show the defaults, Mantine's text and dimmed colors in
+  // the current scheme; brought back to them, they are no longer stored: the
+  // display keeps following the scheme.
+  appearance: (config, onChange) => {
+    const dark = document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
+    const defaultColor = dark ? "#c9c9c9" : "#000000";
+    const dimmed = dark ? "#828282" : "#868e96";
+    const color = text(config, COLOR);
+    const dateColor = text(config, DATE_COLOR);
+    return [
+      {
+        name: "Texte",
+        what: "du texte",
+        color: {
+          value: color || defaultColor,
+          onChange: (v: string) =>
+            onChange(insertRow(config, { [COLOR]: v === defaultColor ? "" : v })),
+        },
+        modified: color !== "" && color !== defaultColor,
+        reset: () => onChange(insertRow(config, { [COLOR]: "" })),
+      },
+      // The date's row, while dates are shown.
+      ...(withDates(config)
+        ? [
+            {
+              name: "Date",
+              what: "de la date",
+              color: {
+                value: dateColor || dimmed,
+                onChange: (v: string) =>
+                  onChange(insertRow(config, { [DATE_COLOR]: v === dimmed ? "" : v })),
+              },
+              modified: dateColor !== "" && dateColor !== dimmed,
+              reset: () => onChange(insertRow(config, { [DATE_COLOR]: "" })),
+            },
+          ]
+        : []),
+    ];
+  },
   Config: Settings,
 };

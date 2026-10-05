@@ -1,4 +1,4 @@
-import { ActionIcon, Box, Checkbox, Group, Loader, Select, Stack, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Box, Group, Loader, Select, Stack, Switch, Text, Tooltip } from "@mantine/core";
 import { IconQuote, IconRefresh } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { QUOTE_SOURCES } from "@milo/shared";
@@ -6,11 +6,13 @@ import type { AccessQuote, Id, QuoteSource } from "@milo/shared";
 import { api } from "../../api";
 import { Frame } from "../margins";
 import { insertRow } from "../../components/ui/SettingRows";
+import { formatOf, formatReset, formatRow, formatStyle, NO_FORMAT } from "../text-format";
+import type { TextFormat } from "../text-format";
 import { withField, count, text } from "../types";
 import type { AccessWidget, Padding, WidgetDisplayProps } from "../types";
 
 // A quote, or a joke, renewed at the interval chosen in its drawer. Several
-// sources can be checked: each renewal draws one of them at random.
+// sources can be switched on: each renewal draws one of them at random.
 //
 // The server fetches them and keeps each widget's for the interval
 // (server/src/lib/quotes.ts): everyone in front of the board reads the same
@@ -22,7 +24,14 @@ const INTERVAL = "interval";
 const AUTHOR = "author";
 const SIZE = "size";
 const COLOR = "color";
+const AUTHOR_COLOR = "authorColor";
 const FRAMED = "framed";
+/** The author's format is stored under this prefix: "authorBold"… */
+const AUTHOR_FORMAT = "author";
+
+/** A quote's own format: in italics; a joke's has none. */
+const QUOTE_FORMAT: TextFormat = { bold: false, italic: true, underline: false };
+const BOLD_WEIGHT = 600;
 
 const DEFAULT_SOURCES: QuoteSource[] = ["quote"];
 
@@ -52,7 +61,7 @@ const LOW_MARGIN = 15;
 
 const DEFAULT_INK = "var(--mantine-color-text)";
 
-/** The checked sources; none readable, the quotes. */
+/** The sources switched on; none readable, the quotes. */
 const sourcesOf = (config: unknown): QuoteSource[] => {
   const value = (config as Record<string, unknown> | null)?.[SOURCES];
   const sources = Array.isArray(value)
@@ -61,7 +70,7 @@ const sourcesOf = (config: unknown): QuoteSource[] => {
   return sources.length > 0 ? sources : DEFAULT_SOURCES;
 };
 
-/** A box checked by default until it has been set. */
+/** A switch on by default until it has been set. */
 const isChecked = (config: unknown, key: string, defaultValue: boolean): boolean => {
   const value = (config as Record<string, unknown> | null)?.[key];
   return value === undefined ? defaultValue : Boolean(value);
@@ -80,23 +89,33 @@ type State =
   | { phase: "ready"; quote: AccessQuote }
   | { phase: "error"; message: string };
 
-/** The quote, in « », its author and work below; a joke, its answer below in bold. */
+/** The quote, in « », its author and work below; a joke, its answer below. */
 function QuoteText({ quote, config }: { quote: AccessQuote; config: unknown }) {
   const size = count(config, SIZE, DEFAULT_SIZE);
   const color = text(config, COLOR) || DEFAULT_INK;
   const byline = [quote.author, quote.work].filter(Boolean).join(", ");
+  const format = formatStyle(
+    formatOf(config, quote.source === "quote" ? QUOTE_FORMAT : NO_FORMAT),
+    BOLD_WEIGHT,
+  );
   return (
     <Stack gap={6}>
-      <Text fz={size} c={color} fs={quote.source === "quote" ? "italic" : undefined} style={{ whiteSpace: "pre-line" }}>
+      <Text fz={size} c={color} style={{ ...format, whiteSpace: "pre-line" }}>
         {quote.source === "quote" ? `« ${quote.text} »` : quote.text}
       </Text>
       {quote.answer && (
-        <Text fz={size} c={color} fw={600} style={{ whiteSpace: "pre-line" }}>
+        // The answer follows the text's format, like the question.
+        <Text fz={size} c={color} style={{ ...format, whiteSpace: "pre-line" }}>
           {quote.answer}
         </Text>
       )}
       {quote.source === "quote" && byline && isChecked(config, AUTHOR, true) && (
-        <Text fz={Math.max(SIZE_MIN, size - 3)} c="dimmed" ta="right">
+        <Text
+          fz={Math.max(SIZE_MIN, size - 3)}
+          c={text(config, AUTHOR_COLOR) || "dimmed"}
+          ta="right"
+          style={formatStyle(formatOf(config, NO_FORMAT, AUTHOR_FORMAT), BOLD_WEIGHT)}
+        >
           — {byline}
         </Text>
       )}
@@ -214,15 +233,29 @@ export const quoteWidget: AccessWidget = {
   ownClicks: true,
   liveContent: true,
 
+  // The color field shows the default, Mantine's text color in the current
+  // scheme; brought back to it, it is no longer stored: the display keeps
+  // following the scheme.
   appearance: (config, onChange) => {
     const size = count(config, SIZE, DEFAULT_SIZE);
+    const dark = document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
+    const defaultColor = dark ? "#c9c9c9" : "#000000";
+    const dimmed = dark ? "#828282" : "#868e96";
+    const color = text(config, COLOR);
+    const authorColor = text(config, AUTHOR_COLOR);
+    // The author's row, while quotes are drawn and their author shown.
+    const showsAuthor = sourcesOf(config).includes("quote") && isChecked(config, AUTHOR, true);
+    // The format's default is a quote's as soon as quotes are drawn: jokes
+    // alone have none.
+    const textFormat = sourcesOf(config).includes("quote") ? QUOTE_FORMAT : NO_FORMAT;
+    const authorFormat = formatRow(config, onChange, NO_FORMAT, AUTHOR_FORMAT);
     return [
       {
-        name: "Texte",
-        what: "du texte",
+        name: "Citation",
+        what: "de la citation",
         color: {
-          value: text(config, COLOR),
-          onChange: (v) => onChange(insertRow(config, { [COLOR]: v })),
+          value: color || defaultColor,
+          onChange: (v) => onChange(insertRow(config, { [COLOR]: v === defaultColor ? "" : v })),
         },
         size: {
           value: size,
@@ -231,9 +264,27 @@ export const quoteWidget: AccessWidget = {
           max: SIZE_MAX,
           onChange: (v) => onChange(insertRow(config, { [SIZE]: v === DEFAULT_SIZE ? "" : v })),
         },
-        modified: text(config, COLOR) !== "" || size !== DEFAULT_SIZE,
+        modified: (color !== "" && color !== defaultColor) || size !== DEFAULT_SIZE,
         reset: () => onChange(insertRow(config, { [COLOR]: "", [SIZE]: "" })),
       },
+      { ...formatRow(config, onChange, textFormat), name: "Citation", what: "du format de la citation" },
+      ...(showsAuthor
+        ? [
+            {
+              name: "Auteur",
+              what: "de l'auteur",
+              color: {
+                value: authorColor || dimmed,
+                onChange: (v: string) =>
+                  onChange(insertRow(config, { [AUTHOR_COLOR]: v === dimmed ? "" : v })),
+              },
+              formats: authorFormat.formats,
+              modified: (authorColor !== "" && authorColor !== dimmed) || authorFormat.modified,
+              reset: () =>
+                onChange(insertRow(config, { [AUTHOR_COLOR]: "", ...formatReset(AUTHOR_FORMAT) })),
+            },
+          ]
+        : []),
     ];
   },
 
@@ -241,19 +292,18 @@ export const quoteWidget: AccessWidget = {
     const sources = sourcesOf(config);
     return (
       <Stack gap="xl">
-        {/* One source at least: the last one checked cannot be unchecked. */}
-        <Checkbox.Group
+        {/* One source at least: the last one on cannot be switched off. */}
+        <Switch.Group
           label="Sources"
-          description="Plusieurs : chaque renouvellement en tire une au hasard."
           value={sources}
           onChange={(value) => value.length > 0 && onChange(withField(config, SOURCES, value))}
         >
           <Stack gap="sm" mt="xs">
             {QUOTE_SOURCES.map((s) => (
-              <Checkbox key={s.value} value={s.value} label={s.label} color="teal" />
+              <Switch key={s.value} value={s.value} label={s.label} color="teal" />
             ))}
           </Stack>
-        </Checkbox.Group>
+        </Switch.Group>
         <Select
           label="Renouveler"
           data={INTERVALS}
@@ -262,12 +312,14 @@ export const quoteWidget: AccessWidget = {
           allowDeselect={false}
           styles={{ wrapper: { width: 220 } }}
         />
-        <Checkbox
-          label="Afficher l'auteur des citations"
-          checked={isChecked(config, AUTHOR, true)}
-          onChange={(e) => onChange(withField(config, AUTHOR, e.currentTarget.checked))}
-          color="teal"
-        />
+        {sources.includes("quote") && (
+          <Switch
+            label="Afficher l'auteur des citations"
+            checked={isChecked(config, AUTHOR, true)}
+            onChange={(e) => onChange(withField(config, AUTHOR, e.currentTarget.checked))}
+            color="teal"
+          />
+        )}
       </Stack>
     );
   },

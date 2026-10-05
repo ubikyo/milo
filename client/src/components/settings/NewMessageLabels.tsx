@@ -15,10 +15,11 @@ import {
   INPUT_INSET,
   nameFieldStyle,
   rowStyle,
+  pickKeys,
 } from "../ui/DrawerRows";
 
-// The labels a ticket received by e-mail gets automatically, in Settings
-// ("Paramétrage"). They look like the columns of a list (ColumnFields): one
+// The labels a ticket received by e-mail gets automatically, in the drawer
+// of its "Tickets" list. They look like the columns of a list (ColumnFields): one
 // row per label, drawn as its tag, which a click replaces with another.
 // Its box, at the start, selects it: the checked rows are removed together,
 // from the button that takes the place of "Ajouter" meanwhile. "Ajouter" adds
@@ -130,6 +131,7 @@ export default function NewMessageLabels({
                   onChange={(choice) => replaceExisting(rank, choice)}
                   // The added row, left without a label, disappears.
                   onBlur={() => newRow && setAdding(false)}
+                  {...pickKeys}
                   onDropdownOpen={() => setOpened(rank)}
                   onDropdownClose={() => setOpened(null)}
                   allowDeselect={false}

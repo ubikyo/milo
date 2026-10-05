@@ -3,11 +3,11 @@
 // and delete it along with everything its boards contain.
 
 import { Router } from "express";
-import type { Request } from "express";
 import { isShareLevel } from "@milo/shared";
 import type {
   EntraPrincipal,
   Id,
+  OpeningView,
   ShareLevel,
   View,
   ViewSharePermissions,
@@ -24,12 +24,12 @@ import { receivedOrder } from "../repositories/reorder.js";
 import { hiddenTabs, inOrderOf, userTabOrders, withHidden } from "../repositories/tab-orders.js";
 import { views, openView } from "../repositories/views.js";
 import { boardShares, ownsView } from "../repositories/shares.js";
-import { deleteBoard } from "./boards.js";
+import { deleteBoard, visibleBoards } from "./boards.js";
 
 const VIEW_SCOPES = "views";
 
 /** The views of its workspace that this account sees. */
-const accountViews = (req: Request) => views.visibleTo.all(req.user.workspace_id, req.user.id);
+const accountViews = (user: UserRow) => views.visibleTo.all(user.workspace_id, user.id);
 
 /** A view as this account sees it: whether it is theirs, whether it hid it. */
 const viewForAccount = (view: ViewRow, user: UserRow): View => {
@@ -45,12 +45,29 @@ const viewForAccount = (view: ViewRow, user: UserRow): View => {
  * The views this account sees, in its own order — those it hid at the end:
  * none without "Lire" on views.
  */
-const visibleViews = (req: Request): View[] =>
-  structureRights(req.user).views.view
-    ? withHidden(req.user.id, VIEW_SCOPES, inOrderOf(req.user.id, VIEW_SCOPES, accountViews(req))).map(
-        (v) => viewForAccount(v, req.user),
+const visibleViews = (user: UserRow): View[] =>
+  structureRights(user).views.view
+    ? withHidden(user.id, VIEW_SCOPES, inOrderOf(user.id, VIEW_SCOPES, accountViews(user))).map(
+        (v) => viewForAccount(v, user),
       )
     : [];
+
+/**
+ * The views and boards this account would see in one of its workspaces —
+ * those it hid left out —, for the profile's opening view and board.
+ */
+export const openingViews = (user: UserRow, workspace: Id): OpeningView[] => {
+  const inWorkspace = { ...user, workspace_id: workspace };
+  return visibleViews(inWorkspace)
+    .filter((v) => !v.is_hidden)
+    .map((v) => ({
+      id: v.id,
+      name: v.name,
+      boards: visibleBoards(v.id, inWorkspace)
+        .filter((b) => !b.is_hidden)
+        .map((b) => ({ id: b.id, name: b.name })),
+    }));
+};
 
 /**
  * A new view, after the others in its workspace: its creator's. It is born
@@ -78,7 +95,7 @@ viewRoutes.use(
 );
 
 viewRoutes.get("/", (req, res) => {
-  res.json(visibleViews(req));
+  res.json(visibleViews(req.user));
 });
 
 viewRoutes.post("/", (req, res) => {
@@ -96,11 +113,11 @@ viewRoutes.put("/reorder", (req, res) => {
   requireInterface(req);
   const order = receivedOrder(
     req.body.ids,
-    accountViews(req),
+    accountViews(req.user),
     "La liste des identifiants ne correspond pas aux vues",
   );
   userTabOrders.store(req.user.id, VIEW_SCOPES, order);
-  res.json(visibleViews(req));
+  res.json(visibleViews(req.user));
 });
 
 // "Masquer": hidden for this account, it only shows in interface editing,
@@ -109,11 +126,11 @@ viewRoutes.put("/:id/hidden", (req, res) => {
   requireInterface(req);
   const view = openView(req.params.id, req.user);
   const hidden = req.body.hidden === true;
-  if (hidden && !visibleViews(req).some((v) => v.id !== view.id && !v.is_hidden)) {
+  if (hidden && !visibleViews(req.user).some((v) => v.id !== view.id && !v.is_hidden)) {
     badRequest("La dernière vue affichée ne peut pas être masquée");
   }
   hiddenTabs.set(req.user.id, VIEW_SCOPES, view.id, hidden);
-  res.json(visibleViews(req));
+  res.json(visibleViews(req.user));
 });
 
 viewRoutes.put("/:id", (req, res) => {

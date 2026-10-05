@@ -227,6 +227,9 @@ function CommentBubble({ comment, onUpdate, onDelete, readOnly = false }: Commen
                 p={COMMENT_PADDING}
                 styles={{ input: { padding: 0, minHeight: 0 } }}
                 aria-label="Modifier le commentaire"
+                // Escape cancels the edit alone: the drawer stays open (Mantine
+                // closes it from a window listener this attribute holds back).
+                data-mantine-stop-propagation
               />
             ) : (
               <Text

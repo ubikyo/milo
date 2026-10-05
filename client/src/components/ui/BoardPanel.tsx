@@ -1,13 +1,13 @@
 import { Menu } from "@mantine/core";
 import { IconHeadset, IconSquarePlus } from "@tabler/icons-react";
 import { useMemo } from "react";
+import { TITLE_STYLE } from "@milo/shared";
+import { insertRow } from "./SettingRows";
+import { TitleStyleMenu } from "./TitleStyles";
+import { useTitleStyles } from "../../lib/titleStyles";
+import { errorMessage, notifyError } from "../../lib/errors";
 import { api } from "../../api";
-import {
-  CONVERSIONS,
-  BOARD_WIDGETS,
-  boardWidget,
-  type BoardData,
-} from "../../widgets";
+import { BOARD_WIDGETS, boardWidget, type BoardData } from "../../widgets";
 import IndicatorsPanel, { type IndicatorsApi } from "./IndicatorsPanel";
 import type { BoardWidget, Id, IndicatorSection } from "@milo/shared";
 
@@ -55,53 +55,77 @@ export default function BoardPanel({
     }),
     [boardId],
   );
+  // Subscribed: a style changed elsewhere redraws the titles' frames and margins.
+  useTitleStyles();
+
+  const restyle = async (widget: BoardWidget, config: Record<string, unknown>) => {
+    try {
+      await api.updateBoardWidget(widget.id, { config });
+    } catch (e) {
+      notifyError(errorMessage(e));
+    } finally {
+      await onChanged();
+    }
+  };
 
   return (
     <IndicatorsPanel
-      sections={sections}
-      indicators={widgets}
-      widgets={BOARD_WIDGETS}
-      widgetOf={boardWidget}
-      render={(widget, config, render) => widget.show(data, config, render)}
-      api={writings}
-      onChanged={onChanged}
-      locked={locked}
-      onUnlock={onUnlock}
-      onDuplicate={(widget) => api.duplicateBoardWidget(widget.id)}
-      conversion={{
-        to: CONVERSIONS,
-        convert: (widget, type) => api.updateBoardWidget(widget.id, { type }),
-      }}
-      // Only a link designates something to work on: a title, a
-      // number or a clock calls for neither a task nor a ticket.
-      extraMenu={(widget, close) =>
-        widget.type === "link" && (onCreateTask || onCreateSupportRequest) ? (
-          <>
-            {onCreateTask && (
-              <Menu.Item
-                leftSection={<IconSquarePlus size={16} />}
-                onClick={() => {
-                  close();
-                  onCreateTask(widget as BoardWidget);
-                }}
-              >
-                Créer une tâche
-              </Menu.Item>
-            )}
-            {onCreateSupportRequest && (
-              <Menu.Item
-                leftSection={<IconHeadset size={16} />}
-                onClick={() => {
-                  close();
-                  onCreateSupportRequest(widget as BoardWidget);
-                }}
-              >
-                Créer un ticket
-              </Menu.Item>
-            )}
-          </>
-        ) : null
-      }
-    />
+        sections={sections}
+        indicators={widgets}
+        widgets={BOARD_WIDGETS}
+        widgetOf={boardWidget}
+        render={(widget, config, render) => widget.show(data, config, render)}
+        api={writings}
+        onChanged={onChanged}
+        locked={locked}
+        onUnlock={onUnlock}
+        onDuplicate={(widget) => api.duplicateBoardWidget(widget.id)}
+        // Only a link designates something to work on: a title, a
+        // number or a clock calls for neither a task nor a ticket.
+        extraMenu={(widget, close) =>
+          widget.type === "link" && (onCreateTask || onCreateSupportRequest) ? (
+            <>
+              {onCreateTask && (
+                <Menu.Item
+                  leftSection={<IconSquarePlus size={16} />}
+                  onClick={() => {
+                    close();
+                    onCreateTask(widget as BoardWidget);
+                  }}
+                >
+                  Créer une tâche
+                </Menu.Item>
+              )}
+              {onCreateSupportRequest && (
+                <Menu.Item
+                  leftSection={<IconHeadset size={16} />}
+                  onClick={() => {
+                    close();
+                    onCreateSupportRequest(widget as BoardWidget);
+                  }}
+                >
+                  Créer un ticket
+                </Menu.Item>
+              )}
+            </>
+          ) : null
+        }
+        // A title changes style on its right click (lib/titleStyles.ts).
+        editMenu={(widget, close) =>
+          boardWidget(widget.type)?.styled ? (
+            <TitleStyleMenu
+              config={widget.config}
+              defaultStyle={boardWidget(widget.type)?.defaultStyle}
+              onChoose={(id) => {
+                close();
+                void restyle(
+                  widget as BoardWidget,
+                  insertRow(widget.config, { [TITLE_STYLE]: id }),
+                );
+              }}
+            />
+          ) : null
+        }
+      />
   );
 }

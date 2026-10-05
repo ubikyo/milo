@@ -12,6 +12,7 @@ import {
   useRowSelection,
   nameFieldStyle,
   rowStyle,
+  pickKeys,
 } from "../ui/DrawerRows";
 
 // The permissions of a user or a group, unfolded under its row
@@ -261,6 +262,7 @@ export default function SectionRights({
                     onChange={(choice) => pickSection(rank, choice)}
                     // The added row, left without a section, disappears.
                     onBlur={() => newRow && setAdding(false)}
+                    {...pickKeys}
                     onDropdownOpen={() => setOpened(section || "new")}
                     onDropdownClose={() => setOpened(null)}
                     allowDeselect={false}

@@ -1,0 +1,57 @@
+/* The shooting stars over the login image: they only live in its top 20%,
+   which clips them, and they fade out before reaching its bottom. */
+.zone {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 20%;
+  overflow: hidden;
+  pointer-events: none;
+  /* Lets the stars measure their fall in heights of the zone (cqh). */
+  container-type: size;
+}
+
+/* A star is a line whose bright head points down and to the right, the
+   direction it travels at 45°. Its start, length, brightness, delay and
+   duration come from variables set on each one. */
+.star {
+  position: absolute;
+  top: var(--top);
+  left: var(--left);
+  width: var(--length);
+  height: 1px;
+  border-radius: 1px;
+  background: linear-gradient(to right, transparent, white);
+  opacity: 0;
+  animation: fall var(--duration) linear var(--delay) infinite;
+}
+
+/* The fall takes the first 70% of the cycle, the rest is a pause: with the
+   delays, two or three stars at most are seen at once. It goes down the whole
+   height of the zone (cqh, for both axes: 45°), and the star is gone by the
+   time it reaches the bottom. */
+@keyframes fall {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(45deg);
+  }
+  10% {
+    opacity: var(--alpha);
+  }
+  45% {
+    opacity: var(--alpha);
+  }
+  70% {
+    opacity: 0;
+    transform: translate(85cqh, 85cqh) rotate(45deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(85cqh, 85cqh) rotate(45deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .star {
+    display: none;
+  }
+}

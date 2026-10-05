@@ -1,7 +1,7 @@
-import { Box, Button, Checkbox, Text, TextInput, type ButtonProps } from "@mantine/core";
+import { Box, Button, Checkbox, Radio, Text, TextInput, type ButtonProps } from "@mantine/core";
 import { useRef, useState } from "react";
 import { IconGripVertical, IconTrash } from "@tabler/icons-react";
-import type { ComponentType, CSSProperties, DragEvent } from "react";
+import type { ComponentType, CSSProperties, DragEvent, FocusEvent, KeyboardEvent } from "react";
 import AddButton from "./AddButton";
 import EmptyPanel from "./EmptyPanel";
 import { GREEN, RED } from "../../themes/colors";
@@ -241,6 +241,34 @@ export function RowCheckbox({
 }
 
 /**
+ * A row's radio button, in place of its checkbox, when the list chooses one
+ * of its rows rather than selecting several — a title's style.
+ */
+export function RowRadio({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <Radio
+      size="xs"
+      aria-label={label}
+      checked={checked}
+      onChange={onChange}
+      onMouseDown={(e) => e.stopPropagation()}
+      style={checkboxStyle(false)}
+      // Checked, it fills with the application's green, a white dot inside.
+      color={GREEN}
+      iconColor="#ffffff"
+    />
+  );
+}
+
+/**
  * The empty space of a row that cannot be deleted — a row being added, a
  * fixed one —: the width and margins of a RowCheckbox, so names stay aligned.
  */
@@ -331,6 +359,86 @@ export function ListFooter({
   return <AddButton label={addLabel} onClick={onAdd} mt={mt} h={h} />;
 }
 
+/** What each row field held when it was entered, for Escape (editKeys). */
+const entryValues = new WeakMap<HTMLInputElement, string>();
+
+/**
+ * Enter and Escape in a row's field edited live, spread on its TextInput:
+ * Enter validates — the field is left —, Escape puts back what it held on
+ * entry ("restore"), then leaves it. A row just added thus goes back to empty
+ * and clears itself on leaving, like any row left empty: the field is left
+ * once the restored value is rendered, so that its exit reads it. Escape stops
+ * at the field: the drawer or window holding it stays open — Mantine closes
+ * them from a window listener that only "data-mantine-stop-propagation" holds
+ * back, stopPropagation comes too late.
+ */
+export const editKeys = (restore: (value: string) => void) => ({
+  "data-mantine-stop-propagation": true,
+  onFocusCapture: (e: FocusEvent<HTMLInputElement>) =>
+    entryValues.set(e.currentTarget, e.currentTarget.value),
+  onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => {
+    const field = e.currentTarget;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      field.blur();
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      restore(entryValues.get(field) ?? field.value);
+      setTimeout(() => field.blur());
+    }
+  },
+});
+
+/** The attribute Mantine's drawers and modals read before closing on Escape. */
+const STOP_ESCAPE = "data-mantine-stop-propagation";
+
+/** The fields already held: Mantine's merged refs call holdEscape on each render. */
+const held = new WeakSet<HTMLElement>();
+
+/**
+ * Keeps the drawer or window open when Escape is pressed in this field, as
+ * editKeys does — passed as its "ref". For a Select or an Autocomplete: their
+ * list rewrites the attribute (set only while it is open), so it is put back
+ * each time it is taken away.
+ */
+export const holdEscape = (field: HTMLElement | null) => {
+  if (!field || held.has(field)) return;
+  held.add(field);
+  const hold = () => {
+    if (field.getAttribute(STOP_ESCAPE) !== "true") field.setAttribute(STOP_ESCAPE, "true");
+  };
+  hold();
+  // Released with the field: an observer does not keep it alive.
+  new MutationObserver(hold).observe(field, { attributes: true, attributeFilter: [STOP_ESCAPE] });
+};
+
+/**
+ * Escape in a row's picker — a Select chosen from a list: with the list
+ * closed, the field is left, and a row just added, still without a choice,
+ * disappears with its exit. The list open, Escape only closes it. The drawer
+ * stays open (holdEscape).
+ */
+export const pickKeys = {
+  ref: holdEscape,
+  onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key === "Escape" && !e.currentTarget.hasAttribute("data-expanded")) {
+      e.currentTarget.blur();
+    }
+  },
+};
+
+/**
+ * editKeys for a NumberInput: the field's text carries its prefix and suffix
+ * ("300 px", "50%"), Escape puts back the number alone — "" when it was empty.
+ */
+export const numberKeys = (restore: (value: number | "") => void) =>
+  editKeys((value) => {
+    const digits = value.replace(/[^\d-]/g, "");
+    restore(digits === "" ? "" : Number(digits));
+  });
+
 /** « 1 jalon », « 3 jalons ». */
 export const pluralize = (n: number, word: string) => `${n} ${word}${n > 1 ? "s" : ""}`;
 
@@ -369,11 +477,15 @@ export function RowField({
       placeholder={placeholder}
       aria-label={label}
       readOnly={readOnly}
+      // The drawer holding the row stays open on Escape (editKeys).
+      data-mantine-stop-propagation
       value={input}
       onChange={(e) => setInput(e.currentTarget.value)}
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
         if (e.key === "Escape") {
+          // The drawer holding the row stays open.
+          e.stopPropagation();
           cancelled.current = true;
           e.currentTarget.blur();
         }

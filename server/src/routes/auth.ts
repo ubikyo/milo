@@ -33,10 +33,19 @@ import {
 } from "../repositories/users.js";
 import { workspaces } from "../repositories/workspaces.js";
 import { now } from "../lib/time.js";
-import { visibleView } from "../repositories/views.js";
+import { openingViews } from "./views.js";
+import type { UpdateMeInput } from "@milo/shared";
 
-/** Opens a session and returns its token. */
+/**
+ * Opens a session and returns its token. The account starts in its opening
+ * workspace, if it chose one and still has it.
+ */
 const openSession = (userId: number | bigint): string => {
+  const user = users.byId.get(userId);
+  const opening = user?.default_workspace_id;
+  if (user && opening && opening !== user.workspace_id && workspacesOf(user).some((w) => w.id === opening)) {
+    users.setWorkspace.run(opening, user.id);
+  }
   const token = createToken();
   const currentTime = Date.now();
   sessions.open.run(
@@ -226,13 +235,40 @@ authRoutes.get("/me", (req, res) => {
   res.json(publicUser(req.user));
 });
 
-// What the person sets themselves: their opening view — a view they can
-// see, or none for the first one. Their identity comes from Entra.
+// What the person sets themselves: their opening workspace — one of theirs,
+// or none for the one they were working in —, and in it their opening view
+// and board — ones they see, or none for the first. Their identity comes from
+// Entra.
 authRoutes.put("/me", (req, res) => {
-  const received = String(req.body.default_view ?? req.user.default_view ?? "");
-  if (received !== "" && !visibleView(Number(received), req.user)) badRequest("Vue introuvable");
-  users.setDefaultView.run(received, req.user.id);
+  const body = (req.body ?? {}) as UpdateMeInput;
+  const workspace =
+    body.default_workspace === undefined
+      ? req.user.default_workspace_id
+      : body.default_workspace === null
+        ? null
+        : Number(body.default_workspace);
+  if (workspace !== null && !workspacesOf(req.user).some((w) => w.id === workspace)) {
+    badRequest("Workspace introuvable");
+  }
+  const view = String(body.default_view ?? req.user.default_view ?? "");
+  const board = String(body.default_board ?? req.user.default_board ?? "");
+  const views = openingViews(req.user, workspace ?? req.user.workspace_id ?? 0);
+  // No view: the first one, whose boards the opening board is chosen from.
+  const openingView = view === "" ? views[0] : views.find((v) => String(v.id) === view);
+  if (!openingView && view !== "") badRequest("Vue introuvable");
+  if (board !== "" && !openingView?.boards.some((b) => String(b.id) === board)) {
+    badRequest("Tableau introuvable");
+  }
+  users.setOpening.run(workspace, view, board, req.user.id);
   res.json(publicUser(users.byId.get(req.user.id)!));
+});
+
+// The views and boards of one of their workspaces: what the profile offers
+// for the opening view and board.
+authRoutes.get("/me/workspaces/:id/views", (req, res) => {
+  const id = Number(req.params.id);
+  if (!workspacesOf(req.user).some((w) => w.id === id)) badRequest("Workspace introuvable");
+  res.json(openingViews(req.user, id));
 });
 
 // Switching to another of their workspaces: their views, boards and rights

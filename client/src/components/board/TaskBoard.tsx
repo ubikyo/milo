@@ -865,7 +865,7 @@ function CardContent({
     <Stack gap={CARD_CONTENT_GAP}>
       {/* The cover opens the card, edge to edge: it eats the
           card's inset ("xs") and follows its rounding, border deducted. */}
-      {card.cover_urls.length > 0 && (
+      {card.cover_urls?.length > 0 && (
         <Cover urls={card.cover_urls} interval={card.cover_interval} />
       )}
       {/* Labels top the title. Clicking one of them collapses or

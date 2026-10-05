@@ -99,7 +99,6 @@ export const MODE_KINDS: Record<Mode, readonly WidgetKind[]> = {
  */
 export const COMMON_WIDGET_TYPES = [
   "category",
-  "subcategory",
   "link",
   "number",
   "clock",
@@ -112,6 +111,48 @@ export const COMMON_WIDGET_TYPES = [
   "mail",
   "todo",
 ] as const;
+
+/**
+ * The mail widgets that count rather than list: the "Indicateur" (unread,
+ * total…) and "Messages par dossier". They name no mailbox: each counts what a
+ * Mail widget of its board reads (MAIL_SOURCE), under that one's consent.
+ */
+export const MAIL_COUNT_TYPES = ["mail_count", "mail_folders"] as const;
+
+/** The Mail widget a counting one follows: its id; absent, all the board's. */
+export const MAIL_SOURCE = "source";
+
+/**
+ * The folders "Messages par dossier" counts, by person of its Mail widget
+ * ({ "email": …, "folders": [ids] }); a person with none chosen, those the Mail
+ * widget reads.
+ */
+export const COUNTED_FOLDERS = "counted_folders";
+
+export const countedFoldersOf = (config: unknown): Map<string, string[]> =>
+  choicesByPerson(config, COUNTED_FOLDERS, "folders");
+
+/** The Mail widget a configuration follows; null: all the board's. */
+export const mailSourceOf = (config: unknown): number | null => {
+  const value = Number((config as Record<string, unknown> | null)?.[MAIL_SOURCE]);
+  return Number.isInteger(value) && value > 0 ? value : null;
+};
+
+/**
+ * The calendar widgets that follow a Calendar widget of their board
+ * (CALENDAR_SOURCE) and read what it reads, under its consent: "Rendez-vous",
+ * the appointments listed, and its "Indicateur", their number.
+ */
+export const APPOINTMENT_TYPES = ["appointments", "appointment_count"] as const;
+
+/** The Calendar widget an appointment widget follows: its id; absent, all the board's. */
+export const CALENDAR_SOURCE = "source";
+
+/** The Calendar widget a configuration follows; null: all the board's. */
+export const calendarSourceOf = (config: unknown): number | null => {
+  const value = Number((config as Record<string, unknown> | null)?.[CALENDAR_SOURCE]);
+  return Number.isInteger(value) && value > 0 ? value : null;
+};
 
 /**
  * The widgets specific to a data type, under their prefix: those of
@@ -140,6 +181,8 @@ const PREFIXES: Record<keyof typeof OWN, WidgetKind> = {
  */
 export const BOARD_WIDGET_TYPES: readonly string[] = [
   ...COMMON_WIDGET_TYPES,
+  ...MAIL_COUNT_TYPES,
+  ...APPOINTMENT_TYPES,
   ...Object.entries(OWN).flatMap(([prefix, types]) =>
     types.map((type) => `${prefix}.${type}`),
   ),
@@ -257,10 +300,43 @@ export const shownFoldersOf = (config: unknown): Map<string, string[]> =>
   choicesByPerson(config, SHOWN_FOLDERS, "folders");
 
 /**
- * The widgets that read Microsoft 365, through Entra: the calendar (the
- * Outlook agenda) and the mail (the inbox). Their type is "m365".
+ * The key a widget owns, under the field its type stores it in: a list's
+ * (LIST_KEY), a calendar's (CALENDAR_KEY), a Mail widget's (MAIL_KEY); empty
+ * for the others, or for a widget not yet saved.
  */
-export const WIDGETS_365: readonly string[] = ["calendar", "mail"];
+export const ownKeyOf = (type: string, config: unknown): string => {
+  if (isListWidgetType(type)) return listKey(config);
+  if (type === "calendar") return calendarKey(config);
+  if (type === "mail") return mailKey(config);
+  return "";
+};
+
+/** The number of identifiers of 4 digits and letters. */
+const REFERENCES = 36 ** 4;
+
+/**
+ * A widget's identifier, as its drawer shows it: "#" and 4 digits and letters,
+ * drawn from its key — random, born with the widget, never changed. Empty for
+ * a widget that owns no key.
+ */
+export const widgetReference = (type: string, config: unknown): string => {
+  const hex = ownKeyOf(type, config).replace(/[^0-9a-f]/gi, "").slice(0, 8);
+  if (!hex) return "";
+  const value = parseInt(hex, 16) % REFERENCES;
+  return `#${value.toString(36).toUpperCase().padStart(4, "0")}`;
+};
+
+/**
+ * The widgets that read Microsoft 365, through Entra: the calendar (the
+ * Outlook agenda) and its appointments, the mail (the inbox) and its counts.
+ * Their type is "m365".
+ */
+export const WIDGETS_365: readonly string[] = [
+  "calendar",
+  "mail",
+  ...MAIL_COUNT_TYPES,
+  ...APPOINTMENT_TYPES,
+];
 
 /** The widget type of a widget, from what the database stores about it. */
 export const widgetKind = (type: string): WidgetKind => {

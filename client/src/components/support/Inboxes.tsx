@@ -42,7 +42,7 @@ import ReceptionField, { inboxesOf } from "../ui/ReceptionField";
 import { MAILBOXES } from "./SupportRequestsList";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
 import { listKey } from "@milo/shared";
-import type { SupportLabel } from "@milo/shared";
+import { useSupportLabels } from "../../lib/label-groups";
 
 // The inboxes from which a ticket list receives its tickets, in rows like the
 // list's columns (ReceptionField): one row per address, with the label its
@@ -111,14 +111,8 @@ export default function Inboxes({
   // The list the widget designates: its confirmations are its own. A
   // widget not yet saved has none — everything waits there.
   const list = listKey(config);
-  // The labels an inbox may set: Support's, by group.
-  const [supportLabels, setSupportLabels] = useState<SupportLabel[]>([]);
-  useEffect(() => {
-    api
-      .getSupportLabels()
-      .then(setSupportLabels)
-      .catch((e) => notifyError(errorMessage(e)));
-  }, []);
+  // The labels an inbox may set: the board's, by group.
+  const supportLabels = useSupportLabels();
   const labels = [...new Set(supportLabels.map((l) => l.group_name ?? ""))].map((group) => ({
     group,
     items: supportLabels

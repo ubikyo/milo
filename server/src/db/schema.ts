@@ -147,7 +147,12 @@ export const SCHEMA = `
     system INTEGER NOT NULL DEFAULT 0,
     -- Le workspace où il travaille, choisi dans le sélecteur. Nul, ou un
     -- workspace qu'il n'a plus : le premier des siens.
-    workspace_id INTEGER REFERENCES workspaces(id) ON DELETE SET NULL
+    workspace_id INTEGER REFERENCES workspaces(id) ON DELETE SET NULL,
+    -- The workspace opened at sign-in, chosen in the profile. Null, or one
+    -- it no longer has: the one it was working in.
+    default_workspace_id INTEGER REFERENCES workspaces(id) ON DELETE SET NULL,
+    -- The opening board, in the opening view: its id, or empty for the first.
+    default_board TEXT NOT NULL DEFAULT ''
   );
 
   -- Les acteurs favoris de chaque personne : ils passent en tête des listes
@@ -445,6 +450,15 @@ export const SCHEMA = `
     created_at TEXT NOT NULL
   );
 
+  -- The tables of a board's Asset widgets (lib/asset-models.ts,
+  -- lib/asset-vlans.ts), as JSON. models NULL: the starting table of Apple
+  -- models; vlans: none until the board records some.
+  CREATE TABLE IF NOT EXISTS board_asset_settings (
+    board_id INTEGER PRIMARY KEY REFERENCES boards(id) ON DELETE CASCADE,
+    models TEXT,
+    vlans TEXT NOT NULL DEFAULT '[]'
+  );
+
   CREATE TABLE IF NOT EXISTS card_labels (
     card_id INTEGER NOT NULL REFERENCES task_cards(id) ON DELETE CASCADE,
     label_id INTEGER NOT NULL REFERENCES labels(id) ON DELETE CASCADE,
@@ -603,12 +617,12 @@ export const SCHEMA = `
     PRIMARY KEY (request_id, user_id)
   );
 
-  -- Étiquettes du mode Support : jumelles de celles des cartes, mais communes
-  -- à tout le support — tous les contextes partagent les mêmes.
+  -- Support labels: twins of the cards', bounded like them by their board.
   -- Groups of the Support labels: every label belongs to one, and the
   -- groups are ordered among themselves.
   CREATE TABLE IF NOT EXISTS support_label_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER REFERENCES boards(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
@@ -616,8 +630,11 @@ export const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS support_labels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    -- Its group. "position" orders all the labels, group after group
-    -- (repositories/label-groups.ts).
+    -- Its board: null only for a database from before (migrations.ts,
+    -- supportLabelsByBoard).
+    board_id INTEGER REFERENCES boards(id) ON DELETE CASCADE,
+    -- Its group, on the same board. "position" orders the whole board,
+    -- group after group (repositories/label-groups.ts).
     group_id INTEGER REFERENCES support_label_groups(id),
     name TEXT NOT NULL,
     -- « teinte.nuance » de la palette Mantine, par exemple « red.6 ».
@@ -908,6 +925,9 @@ export const INDEXES = `
 
   CREATE INDEX IF NOT EXISTS idx_support_labels_position
     ON support_labels(position, id);
+  CREATE INDEX IF NOT EXISTS idx_support_labels_board ON support_labels(board_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_support_label_groups_board
+    ON support_label_groups(board_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_support_labels_group ON support_labels(group_id);
   CREATE INDEX IF NOT EXISTS idx_support_request_labels_label
     ON support_request_labels(label_id);

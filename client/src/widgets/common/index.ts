@@ -7,7 +7,7 @@
 // (shared/domain.ts), which is what the database stores.
 
 import { calendarWidget } from "../m365/calendar";
-import { categoryWidget } from "./category";
+import { titleWidget } from "./title";
 import { clockWidget } from "./clock";
 import { dateWidget } from "./date";
 import { quoteWidget } from "./quote";
@@ -17,15 +17,13 @@ import { mailWidget } from "../m365/mail";
 import { weatherWidget } from "./weather";
 import { numberWidget } from "./number";
 import { rssWidget } from "./rss";
-import { subcategoryWidget } from "./subcategory";
 import { todoWidget } from "./todo";
 import type { AccessWidget } from "../types";
 import type { AccessBlockType } from "@milo/shared";
 
 /** In the order in which the widget drawer presents them. */
 export const WIDGETS: AccessWidget[] = [
-  categoryWidget,
-  subcategoryWidget,
+  titleWidget,
   linkWidget,
   numberWidget,
   clockWidget,

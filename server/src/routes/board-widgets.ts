@@ -23,14 +23,22 @@ import {
   listKey,
   isBoardWidgetType,
   isListWidgetType,
+  isMailMetric,
+  mailSourceOf,
+  APPOINTMENT_TYPES,
+  calendarSourceOf,
+  countedFoldersOf,
   isSectionWidthUnit,
   migrateWidgetConfig,
+  currentWidget,
 } from "@milo/shared";
 import type {
   AccessCalendar,
   AccessCalendarEvent,
   AccessMail,
+  AccessMailCount,
   AccessMailDetail,
+  AccessMailFolderCounts,
   AccessMailPage,
   Resource,
   ImportResult,
@@ -38,9 +46,12 @@ import type {
 import type { BoardRow, BoardWidgetRow } from "../db/rows.js";
 import { widgetAccess, requireLayout, requireOrganize, requireWidget } from "../lib/rights.js";
 import {
+  countMessages,
+  deleteMail,
   entraAgenda,
   mailOfMailbox,
   entraConfigured,
+  folderCounts,
   folderPage,
   mailboxAttachment,
 } from "../lib/entra.js";
@@ -57,6 +68,8 @@ import { columnsGap, requestedRank, widthUnit, widthValue } from "../lib/section
 import { signalWrite, touch, touchNow } from "../middleware/events.js";
 import { ensureDefaultType } from "./milestone-types.js";
 import { reassignWorkstations } from "../repositories/assets.js";
+import { ensureSupportLabels } from "../repositories/support.js";
+import { ensureProjectPriorities } from "../repositories/projects.js";
 import { withNewKey, keyInBoard, keepKey, cleanLists } from "../repositories/lists.js";
 import { receivedTags } from "../repositories/inboxes.js";
 import { boardSections, boardWidgets, renderedWidget } from "../repositories/board-widgets.js";
@@ -65,9 +78,6 @@ import { calendarResource, folderResource, watch } from "../lib/m365-webhooks.js
 
 const SECTION_NOT_FOUND = "Section introuvable";
 const WIDGET_NOT_FOUND = "Widget introuvable";
-
-/** Allowed conversions: category and subcategory share their configuration. */
-const CONVERSIONS: Record<string, string> = { category: "subcategory", subcategory: "category" };
 
 type Account = Request["user"];
 
@@ -237,7 +247,9 @@ boardContentRoutes.post("/import", (req, res) => {
   const sections = (body!.sections as unknown[]).map((raw) => {
     const received = subject(raw) ?? {};
     const widgets = (Array.isArray(received.widgets) ? received.widgets : []).flatMap((w: unknown) => {
-      const widget = subject(w);
+      // A subcategory, exported before it became a title in "H2", is one.
+      const current = currentWidget(subject(w)?.type, subject(w)?.config);
+      const widget = subject(current);
       const type = widget?.type;
       if (!isBoardWidgetType(type) || !canUpdate(widgetAccess(req, type))) {
         discarded += 1;
@@ -357,21 +369,25 @@ boardWidgetRoutes.post("/", (req, res) => {
   if ((type as string).startsWith("project.") && ensureDefaultType()) {
     touchNow(res, "lookups", "projects");
   }
+  // A projects widget brings the "Priorités" labels (repositories/projects.ts).
+  if (type === "project.list" && ensureProjectPriorities(board.id)) {
+    touchNow(res, "project-labels");
+  }
+  // A board's first Support widget brings the default labels
+  // (repositories/support.ts).
+  if (type === "support.list" && ensureSupportLabels(board.id)) {
+    touchNow(res, "support-labels");
+  }
   res.status(201).json(renderedWidget(boardWidgets.byId(id)!));
 });
 
 // A widget's type cannot be changed: that would be another widget. Only its
-// configuration moves — except between category and subcategory, which
-// share theirs. Its configuration also carries what some widgets hold, a to-do
-// list's items: it moves under a "read" share too.
+// configuration moves. Its configuration also carries what some widgets hold,
+// a to-do list's items: it moves under a "read" share too.
 boardWidgetRoutes.put("/:id", (req, res) => {
-  const { widget, board } = openWidget(req.params.id, req);
+  const { widget } = openWidget(req.params.id, req);
   if (req.body.type !== undefined && req.body.type !== widget.type) {
-    requireStructure(req, board);
-    if (CONVERSIONS[widget.type] !== req.body.type) {
-      badRequest("Ce widget ne se convertit pas en ce type");
-    }
-    boardWidgets.convert.run(req.body.type, widget.id);
+    badRequest("Ce widget ne se convertit pas en ce type");
   }
   boardWidgets.update.run(
     keepKey(widget.type, widget.config, configuration(widget.type, req.body.config, widget.config)),
@@ -474,16 +490,8 @@ const readConfig = (config: string): Record<string, unknown> => {
   }
 };
 
-/**
- * The appointments a Calendar widget shows between "start" and "end": the
- * viewer's own, if it marks them — from their Outlook calendar, through Graph
- * (lib/entra.ts); a local account has none —, and those of the people it
- * names who have consented (lib/calendar-optin.ts). A calendar that cannot be
- * read says why, without hiding the others.
- */
-boardWidgetRoutes.get("/:id/calendar", (req, res, next) => {
-  const { widget } = openWidget(req.params.id, req);
-  if (widget.type !== "calendar") badRequest("Ce widget n'est pas un calendrier");
+/** The period a calendar asks for, checked: at most PERIOD_MAX. */
+const periodOf = (req: Request): { start: Date; end: Date } => {
   const start = new Date(String(req.query["start"] ?? ""));
   const end = new Date(String(req.query["end"] ?? ""));
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
@@ -491,7 +499,19 @@ boardWidgetRoutes.get("/:id/calendar", (req, res, next) => {
   }
   if (end.getTime() - start.getTime() > PERIOD_MAX) badRequest("Période trop longue");
   if (!entraConfigured()) badRequest("Milo n'est pas connecté à Entra");
+  return { start, end };
+};
 
+/**
+ * The appointments a Calendar widget reads between "start" and "end": those
+ * of the people it names who have consented (lib/calendar-optin.ts). A
+ * calendar that cannot be read says why, without hiding the others.
+ */
+const agendaOf = (
+  req: Request,
+  widget: BoardWidgetRow,
+  { start, end }: { start: Date; end: Date },
+): Promise<AccessCalendar> => {
   const config = readConfig(widget.config);
   const confirmed = confirmedCalendars(calendarKey(config));
   // Each calendar chosen for a person who consented; none chosen, their main one.
@@ -506,52 +526,66 @@ boardWidgetRoutes.get("/:id/calendar", (req, res, next) => {
         read: () => entraAgenda(email, start, end, email, id),
       })),
     );
-  if (config["showEvents"] === true) {
-    const own = req.user.entra_id;
-    calendars.unshift({
-      owner: "",
-      resource: own ? calendarResource(own) : "",
-      read: () =>
-        own
-          ? entraAgenda(own, start, end)
-          : Promise.reject(new Error("Votre compte n'est pas relié à Entra")),
-    });
-  }
 
   // The calendar is reread regularly: the viewer keeps being told of what
   // changes in these calendars (lib/m365-webhooks.ts).
   for (const c of calendars) if (c.resource) watch(req.user.id, "calendar", c.resource);
 
-  Promise.allSettled(calendars.map((c) => c.read()))
-    .then((results) => {
-      const calendar: AccessCalendar = { events: [], errors: [] };
-      results.forEach((r, i) => {
-        if (r.status === "fulfilled") calendar.events.push(...r.value);
-        // One reason per person, even when several of their calendars fail.
-        else if (!calendar.errors.some((e) => e.owner === calendars[i]!.owner)) {
-          calendar.errors.push({
-            owner: calendars[i]!.owner,
-            message: r.reason instanceof Error ? r.reason.message : String(r.reason),
-          });
-        }
-      });
-      res.json(calendar);
-    })
+  return Promise.allSettled(calendars.map((c) => c.read())).then((results) => {
+    const calendar: AccessCalendar = { events: [], errors: [] };
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled") calendar.events.push(...r.value);
+      // One reason per person, even when several of their calendars fail.
+      else if (!calendar.errors.some((e) => e.owner === calendars[i]!.owner)) {
+        calendar.errors.push({
+          owner: calendars[i]!.owner,
+          message: r.reason instanceof Error ? r.reason.message : String(r.reason),
+        });
+      }
+    });
+    return calendar;
+  });
+};
+
+/** The appointments a Calendar widget marks on its month. */
+boardWidgetRoutes.get("/:id/calendar", (req, res, next) => {
+  const { widget } = openWidget(req.params.id, req);
+  if (widget.type !== "calendar") badRequest("Ce widget n'est pas un calendrier");
+  agendaOf(req, widget, periodOf(req))
+    .then((calendar) => res.json(calendar))
     .catch(next);
 });
 
 /**
- * The viewer's Entra account: the Mail widget and the Calendar only show
- * what is theirs.
+ * The appointments of a "Rendez-vous" widget, or of its "Indicateur": those of
+ * the Calendar widget it follows, on its own board (CALENDAR_SOURCE) — none
+ * set, or one since removed, those of all the board's Calendar widgets. An
+ * appointment several of them read comes several times: the client counts it
+ * once. Without a Calendar widget, none.
  */
-const entraAccount = (req: Request): string => {
-  if (!entraConfigured()) badRequest("Milo n'est pas connecté à Entra");
-  if (!req.user.entra_id) badRequest("Votre compte n'est pas relié à Entra");
-  return req.user.entra_id;
-};
-
-/** The configuration key telling whether a Mail widget reads the viewer's own inbox. */
-const OWN_INBOX = "ownInbox";
+boardWidgetRoutes.get("/:id/appointments", (req, res, next) => {
+  const { widget, board } = openWidget(req.params.id, req);
+  if (!(APPOINTMENT_TYPES as readonly string[]).includes(widget.type)) {
+    badRequest("Ce widget ne lit pas de rendez-vous");
+  }
+  const period = periodOf(req);
+  const calendars = boardWidgets.all(board.id).filter((w) => w.type === "calendar");
+  const chosen = calendarSourceOf(readConfig(widget.config));
+  const source = calendars.find((w) => w.id === chosen);
+  Promise.all((source ? [source] : calendars).map((c) => agendaOf(req, c, period)))
+    .then((agendas) => {
+      const calendar: AccessCalendar = { events: [], errors: [] };
+      for (const a of agendas) {
+        calendar.events.push(...a.events);
+        // One reason per person, even when several widgets read them.
+        for (const e of a.errors) {
+          if (!calendar.errors.some((known) => known.owner === e.owner)) calendar.errors.push(e);
+        }
+      }
+      res.json(calendar);
+    })
+    .catch(next);
+});
 
 /** A folder a Mail widget reads: whose, in which mailbox, and under which name. */
 interface MailSource {
@@ -561,19 +595,15 @@ interface MailSource {
   user: string;
   /** "inbox", or a folder's id. */
   folder: string;
-  /** Whose e-mails they are: an address; empty, the viewer's own. */
+  /** Whose e-mails they are: an address. */
   owner: string;
 }
 
 /**
- * The targeted Mail widget and what it reads: the viewer's own inbox, if it
- * shows it — everyone sees their own —, and the folders chosen of the people
- * it names who have consented (lib/mail-optin.ts) — none chosen, their inbox.
+ * What a Mail widget reads: the folders chosen of the people it names who have
+ * consented (lib/mail-optin.ts) — none chosen, their inbox.
  */
-const openMailbox = (req: Request) => {
-  const { widget } = openWidget(req.params.id, req);
-  if (widget.type !== "mail") badRequest("Ce widget n'est pas un widget Mail");
-  if (!entraConfigured()) badRequest("Milo n'est pas connecté à Entra");
+const mailSourcesOf = (widget: BoardWidgetRow) => {
   const config = readConfig(widget.config);
   const confirmed = mailOptin.confirmed(mailKey(config));
   const others = [...shownFoldersOf(config)].filter(([email]) => confirmed.has(email));
@@ -585,23 +615,134 @@ const openMailbox = (req: Request) => {
       owner: email,
     })),
   );
-  const own = config[OWN_INBOX] === true;
-  if (own) sources.unshift({ id: "|inbox", user: req.user.entra_id ?? "", folder: "inbox", owner: "" });
-  return { sources, people: new Set(others.map(([email]) => email)), own };
+  return { sources, people: new Set(others.map(([email]) => email)) };
+};
+
+/** The targeted Mail widget and what it reads. */
+const openMailbox = (req: Request) => {
+  const { widget } = openWidget(req.params.id, req);
+  if (widget.type !== "mail") badRequest("Ce widget n'est pas un widget Mail");
+  if (!entraConfigured()) badRequest("Milo n'est pas connecté à Entra");
+  return mailSourcesOf(widget);
 };
 
 /**
- * The mailbox an opened e-mail comes from: the viewer's own, or that of a
- * person the widget reads — only if they consented.
+ * What a widget that counts reads: that of the Mail widget it follows, on its
+ * own board (MAIL_SOURCE) — none set, or one since removed, that of all the
+ * board's Mail widgets, each folder once. Without a Mail widget, nothing. "folders", the folders it counts itself of
+ * each person, among those that Mail widget's consent covers.
+ */
+const openCounted = (
+  req: Request,
+  type: string,
+  folders: (config: unknown) => Map<string, string[]> = () => new Map(),
+): MailSource[] => {
+  const { widget, board } = openWidget(req.params.id, req);
+  if (widget.type !== type) badRequest("Ce widget ne compte pas d'e-mails");
+  if (!entraConfigured()) badRequest("Milo n'est pas connecté à Entra");
+  const mails = boardWidgets.all(board.id).filter((w) => w.type === "mail");
+  const config = readConfig(widget.config);
+  const chosen = mailSourceOf(config);
+  const source = mails.find((w) => w.id === chosen);
+  const read = (source ? [source] : mails).map(mailSourcesOf);
+  const sources = read.flatMap((r) => r.sources);
+  const people = new Set(read.flatMap((r) => [...r.people]));
+  const own = folders(config);
+  const counted = [...people].flatMap((email) => {
+    const ids = own.get(email) ?? [];
+    return ids.length
+      ? ids.map((folder) => ({ id: `${email}|${folder}`, user: email, folder, owner: email }))
+      : sources.filter((s) => s.owner === email);
+  });
+  // A folder two Mail widgets read is counted once.
+  return counted.filter((s, i) => counted.findIndex((t) => t.id === s.id) === i);
+};
+
+/** The reasons the mailboxes that failed give: one per person. */
+const failuresOf = (
+  results: PromiseSettledResult<unknown>[],
+  ownerOf: (i: number) => string,
+): { owner: string; message: string }[] => {
+  const errors: { owner: string; message: string }[] = [];
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled" || errors.some((e) => e.owner === ownerOf(i))) return;
+    errors.push({
+      owner: ownerOf(i),
+      message: r.reason instanceof Error ? r.reason.message : String(r.reason),
+    });
+  });
+  return errors;
+};
+
+/** What a count is told of the folders it reads: what arrives there (lib/m365-webhooks.ts). */
+const watchSources = (req: Request, sources: MailSource[]) => {
+  for (const s of sources) watch(req.user.id, "mail", folderResource(s.user, s.folder));
+};
+
+/**
+ * The count of an "Indicateur" (shared, MAIL_METRICS), summed over the folders
+ * it reads. The unread ones and the total are kept by Exchange on the folder;
+ * the others are counted by Graph ($count): no e-mail is read. "since", for
+ * those received today, is the start of the viewer's day.
+ */
+boardWidgetRoutes.get("/:id/mail-count", (req, res, next) => {
+  const sources = openCounted(req, "mail_count");
+  const metric = isMailMetric(req.query["metric"]) ? req.query["metric"] : "unread";
+  const since = new Date(String(req.query["since"] ?? ""));
+  if (metric === "today" && Number.isNaN(since.getTime())) badRequest("Date de début invalide");
+  watchSources(req, sources);
+  const countOf = async (s: MailSource): Promise<number> => {
+    switch (metric) {
+      case "today":
+        return countMessages(s.user, s.folder, `receivedDateTime ge ${since.toISOString()}`);
+      case "flagged":
+        return countMessages(s.user, s.folder, "flag/flagStatus eq 'flagged'");
+      case "total":
+        return (await folderCounts(s.user, s.folder)).total;
+      default:
+        return (await folderCounts(s.user, s.folder)).unread;
+    }
+  };
+  Promise.allSettled(sources.map(countOf))
+    .then((results) => {
+      const count: AccessMailCount = {
+        value: results.reduce((sum, r) => sum + (r.status === "fulfilled" ? r.value : 0), 0),
+        errors: failuresOf(results, (i) => sources[i]!.owner),
+      };
+      res.json(count);
+    })
+    .catch(next);
+});
+
+/**
+ * The folders of "Messages par dossier", each with its counts: those chosen in
+ * its drawer, otherwise those its Mail widget reads. Exchange keeps the counts on each folder: no e-mail is read.
+ */
+boardWidgetRoutes.get("/:id/mail-folders", (req, res, next) => {
+  const sources = openCounted(req, "mail_folders", countedFoldersOf);
+  watchSources(req, sources);
+  Promise.allSettled(sources.map((s) => folderCounts(s.user, s.folder)))
+    .then((results) => {
+      const counts: AccessMailFolderCounts = {
+        folders: results.flatMap((r, i) =>
+          r.status === "fulfilled" ? [{ ...r.value, owner: sources[i]!.owner }] : [],
+        ),
+        errors: failuresOf(results, (i) => sources[i]!.owner),
+      };
+      res.json(counts);
+    })
+    .catch(next);
+});
+
+/**
+ * The mailbox an opened e-mail comes from: that of a person the widget
+ * reads — only if they consented.
  */
 const mailboxOf = (req: Request): { user: string; owner: string } => {
   const { people } = openMailbox(req);
   const owner = String(req.query["owner"] ?? "").trim().toLowerCase();
-  if (owner) {
-    if (!people.has(owner)) badRequest("Cette boîte n'est pas lue par ce widget");
-    return { user: owner, owner };
-  }
-  return { user: entraAccount(req), owner: "" };
+  if (!people.has(owner)) badRequest("Cette boîte n'est pas lue par ce widget");
+  return { user: owner, owner };
 };
 
 /** At most, one page of e-mails: Graph does not return more at once. */
@@ -694,6 +835,18 @@ boardWidgetRoutes.get("/:id/mails/:mail", (req, res, next) => {
       };
       res.json(detail);
     })
+    .catch(next);
+});
+
+/**
+ * Deletes an e-mail from a mailbox the widget reads: Graph puts it in its
+ * deleted items, where it can still be found. It takes the right to delete on
+ * the widget's type (openWidget, on a DELETE).
+ */
+boardWidgetRoutes.delete("/:id/mails/:mail", (req, res, next) => {
+  const { user } = mailboxOf(req);
+  deleteMail(user, String(req.params.mail))
+    .then(() => res.status(204).end())
     .catch(next);
 });
 

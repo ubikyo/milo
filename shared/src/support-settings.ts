@@ -253,11 +253,6 @@ export interface SupportSettings {
    * days after its receipt. Zero: no due date.
    */
   default_due_days: number;
-  /**
-   * The labels automatically set on a request that arrives by email.
-   * As long as the Settings has not chosen any, the lightest priority.
-   */
-  default_label_ids: Id[];
 }
 
 /** A Support default reply: a title, and its HTML template. */
@@ -274,7 +269,6 @@ export const SUPPORT_DUE_DAYS_MAX = 60;
 
 export const emptySupportSettings = (): SupportSettings => ({
   default_due_days: 0,
-  default_label_ids: [],
 });
 
 /** A calendar date, without time or time zone. */

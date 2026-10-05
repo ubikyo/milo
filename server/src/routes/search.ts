@@ -144,7 +144,7 @@ const visibleBlocks = selection<VisibleBlock>(
      JOIN board_sections s ON s.id = w.section_id
      JOIN boards b ON b.id = s.board_id
     WHERE ${VISIBLE_BOARDS_CLAUSE("b.id")}
-      AND w.type IN ('category', 'subcategory', 'link', 'number')
+      AND w.type IN ('category', 'link', 'number')
     ORDER BY b.position, s.position, w.position, w.id`,
 );
 
@@ -156,8 +156,7 @@ const readBlock = (
   config: Record<string, unknown>,
 ): { title: string; search: string[]; url?: string } | null => {
   switch (type) {
-    case "category":
-    case "subcategory": {
+    case "category": {
       const title = text(config.title);
       return title ? { title: title, search: [title] } : null;
     }

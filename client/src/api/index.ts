@@ -10,6 +10,9 @@ import type {
   AccessMailDetail,
   AccessMailFolder,
   AccessMailPage,
+  AccessMailCount,
+  AccessMailFolderCounts,
+  MailMetric,
   AccessWeather,
   AccessQuote,
   WeatherPlace,
@@ -90,7 +93,11 @@ import type {
   TaskList,
   TaskListCopyInput,
   NotificationSettings,
+  MailTemplate,
+  MailTemplateKey,
+  MailTemplatePreview,
   DisplaySettings,
+  TitleStyle,
   SupportContent,
   SupportContentEvent,
   SupportPerson,
@@ -99,6 +106,7 @@ import type {
   SupportSettings,
   AssetSettings,
   UpdateMeInput,
+  OpeningView,
   VersionPayload,
   SearchResult,
   Notification,
@@ -254,6 +262,9 @@ export const api = {
   logout: () => post<null>("/auth/logout"),
   me: () => get<PublicUser>("/auth/me"),
   updateMe: (data: UpdateMeInput) => put<PublicUser>("/auth/me", data),
+  /** The views and boards of one of the account's workspaces, for the profile. */
+  getOpeningViews: (workspace: Id) =>
+    get<OpeningView[]>(`/auth/me/workspaces/${workspace}/views`),
 
   getVersion: () => get<VersionPayload>("/version"),
 
@@ -446,12 +457,29 @@ export const api = {
     get<AccessCalendar>(
       `/board-widgets/${widgetId}/calendar?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`,
     ),
+  // Those of the Calendar widget a "Rendez-vous" widget, or its indicator, follows.
+  getAppointments: (widgetId: Id, start: Date, end: Date) =>
+    get<AccessCalendar>(
+      `/board-widgets/${widgetId}/appointments?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`,
+    ),
   // The mailboxes a Mail widget reads, page by page — "cursor", the previous
   // page's, says where the next one starts —, an opened e-mail and its
   // attachments; "owner" says whose mailbox, empty for the viewer's own.
   getAccessMails: (widgetId: Id, cursor: string, top: number, unread: boolean) =>
     get<AccessMailPage>(
       `/board-widgets/${widgetId}/mails?top=${top}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}${unread ? "&unread=1" : ""}`,
+    ),
+  /** "since": the start of the viewer's day, for the e-mails received today. */
+  getMailCount: (widgetId: Id, metric: MailMetric, since: string) =>
+    get<AccessMailCount>(
+      `/board-widgets/${widgetId}/mail-count?metric=${metric}&since=${encodeURIComponent(since)}`,
+    ),
+  getMailFolderCounts: (widgetId: Id) =>
+    get<AccessMailFolderCounts>(`/board-widgets/${widgetId}/mail-folders`),
+  /** Into the mailbox's deleted items. */
+  deleteAccessMail: (widgetId: Id, mailId: string, owner: string) =>
+    del(
+      `/board-widgets/${widgetId}/mails/${encodeURIComponent(mailId)}?owner=${encodeURIComponent(owner)}`,
     ),
   getAccessMail: (widgetId: Id, mailId: string, owner: string) =>
     get<AccessMailDetail>(
@@ -721,16 +749,34 @@ export const api = {
     data: { name?: string; html?: string; event?: SupportContentEvent | null },
   ) => put<SupportContent>(`/support-contents/${id}`, data),
   deleteSupportContent: (id: Id) => del(`/support-contents/${id}`),
-  // The "Assets" section of the Paramétrage: the templates table, the VLAN one.
-  getAssetSettings: () => get<AssetSettings>("/asset-settings"),
-  updateAssetSettings: (data: Partial<AssetSettings>) =>
-    put<AssetSettings>("/asset-settings", data),
+  // A board's Asset widgets settings: the templates table, the VLAN one.
+  getAssetSettings: (boardId: Id) =>
+    get<AssetSettings>(`/asset-settings${queryString({ board: boardId })}`),
+  updateAssetSettings: (boardId: Id, data: Partial<AssetSettings>) =>
+    put<AssetSettings>(
+      `/asset-settings${queryString({ board: boardId })}`,
+      data,
+    ),
   getNotificationSettings: () => get<NotificationSettings>("/notification-settings"),
   updateNotificationSettings: (data: Partial<NotificationSettings>) =>
     put<NotificationSettings>("/notification-settings", data),
+  getMailTemplates: () => get<MailTemplate[]>("/mail-templates"),
+  // The empty template goes back to Milo's own.
+  updateMailTemplate: (key: MailTemplateKey, mjml: string) =>
+    put<MailTemplate[]>(`/mail-templates/${key}`, { mjml }),
+  // A support content in its reply template, as saved.
+  previewReply: (
+    key: "support_reply" | "support_auto_reply",
+    reply: { content: string; ticket: string; subject: string; name: string },
+  ) => post<{ html: string }>(`/mail-templates/${key}/reply-preview`, reply),
+  previewMailTemplate: (key: MailTemplateKey, mjml: string) =>
+    post<MailTemplatePreview>(`/mail-templates/${key}/preview`, { mjml }),
   getDisplaySettings: () => get<DisplaySettings>("/display-settings"),
   updateDisplaySettings: (data: Partial<DisplaySettings>) =>
     put<DisplaySettings>("/display-settings", data),
+  getTitleStyles: () => get<TitleStyle[]>("/title-styles"),
+  updateTitleStyles: (styles: TitleStyle[]) =>
+    put<TitleStyle[]>("/title-styles", styles),
   // "Inventorie-toi maintenant": the server calls the agent on the workstation.
   // Nothing comes back — the inventory arrives later through the agents' door,
   // and the event stream notifies.
@@ -780,11 +826,16 @@ export const api = {
     put<SupportComment>(`/support-comments/${id}`, { text }),
   deleteSupportComment: (id: Id) => del(`/support-comments/${id}`),
 
-  // Support mode labels: they belong to the company, just as
-  // those of a board belong to it.
-  getSupportLabels: () => get<SupportLabel[]>("/support-labels"),
-  createSupportLabel: (name: string, color: string, group_id?: Id) =>
-    post<SupportLabel>("/support-labels", { name, color, group_id }),
+  // Support mode labels: they belong to the board, like the cards'.
+  getSupportLabels: (boardId: string | Id) =>
+    get<SupportLabel[]>(`/support-labels${queryString({ board: boardId })}`),
+  createSupportLabel: (
+    board_id: Id | string,
+    name: string,
+    color: string,
+    group_id?: Id,
+  ) =>
+    post<SupportLabel>("/support-labels", { board_id, name, color, group_id }),
   updateSupportLabel: (id: Id, data: SupportLabelInput) =>
     put<SupportLabel>(`/support-labels/${id}`, data),
   deleteSupportLabel: (id: Id) => del(`/support-labels/${id}`),

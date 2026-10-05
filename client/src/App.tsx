@@ -56,6 +56,7 @@ import LayoutModal from "./components/ui/LayoutModal";
 import PointMenu, { menuPosition, type PointMenuPosition } from "./components/ui/PointMenu";
 import KonamiCode from "./components/ui/KonamiCode";
 import { placeInterface, clearPage } from "./lib/interfaceFall";
+import { loadTitleStyles } from "./lib/titleStyles";
 import SettingsModal from "./components/settings/SettingsModal";
 import type {
   Asset,
@@ -131,6 +132,8 @@ export default function App() {
   const [viewId, setViewId] = useState<string | null>(null);
   // The opening view applies once, when the session opens.
   const appliedView = useRef<number | null>(null);
+  // The opening board, until the boards of its view are read.
+  const openingBoard = useRef<{ view: string; board: string } | null>(null);
   // The open view's boards, and the one that is open.
   const [boardsRead, setBoardsRead] = useState<LoadedFor<Board> | null>(null);
   const [boardId, setBoardId] = useState<string | null>(null);
@@ -585,14 +588,26 @@ export default function App() {
     if (user && supportNeed) api.syncSupportMail().catch(() => {});
   }, [user, supportNeed, boardId]);
 
-  // The opening view, once the session is open: the account's, or
-  // failing that the first.
+  // The opening view and board, once the session is open: the account's, or
+  // failing that the first. They belong to its opening workspace: in another
+  // one, the first.
   useEffect(() => {
     if (!user || !shownViews || appliedView.current === user.id) return;
     appliedView.current = user.id;
+    const inOpening =
+      user.default_workspace === null ||
+      user.default_workspace === user.workspace;
     const desiredView =
-      shownViews.find((v) => String(v.id) === user.default_view) ?? shownViews[0];
-    if (desiredView) setViewId(String(desiredView.id));
+      (inOpening &&
+        shownViews.find((v) => String(v.id) === user.default_view)) ||
+      shownViews[0];
+    if (!desiredView) return;
+    setViewId(String(desiredView.id));
+    if (inOpening && user.default_board)
+      openingBoard.current = {
+        view: String(desiredView.id),
+        board: user.default_board,
+      };
   }, [user, shownViews]);
 
   // The open view must be shown: deleting it — or hiding it, once interface
@@ -607,10 +622,19 @@ export default function App() {
   // board or hiding it goes back to the first in the list.
   useEffect(() => {
     if (!shownBoards) return;
+    // The opening board, once its view's boards are there; another view
+    // opened in the meantime forgets it.
+    const opening = openingBoard.current;
+    if (opening && opening.view !== viewId) openingBoard.current = null;
+    else if (opening && String(shownBoards[0]?.view_id) === opening.view) {
+      openingBoard.current = null;
+      if (shownBoards.some((b) => String(b.id) === opening.board))
+        return setBoardId(opening.board);
+    }
     const first = shownBoards[0];
     if (!first) return setBoardId(null);
     if (!shownBoards.some((b) => String(b.id) === boardId)) setBoardId(String(first.id));
-  }, [shownBoards, boardId]);
+  }, [shownBoards, boardId, viewId]);
 
   // A filter can point to a category or an actor that has just
   // disappeared.
@@ -775,6 +799,7 @@ export default function App() {
       // re-reads them when it opens.
       "support-labels": () => {},
       assets: loadAssets,
+      "title-styles": loadTitleStyles,
     };
 
     const apply = async (message: FeedMessage) => {
@@ -887,10 +912,17 @@ export default function App() {
   const [boardToRename, setBoardToRename] = useState<number | null>(null);
 
   // The views' "+" immediately creates "Nouvelle vue", with its first
-  // board, and opens it: its name is then typed in place.
+  // board, and opens it: its name is then typed in place. Escape there
+  // undoes the addition — the view goes away, the one open before comes back.
+  const newView = useRef<{
+    id: Id;
+    view: string | null;
+    board: string | null;
+  } | null>(null);
   const createView = async (): Promise<Id | null> => {
     try {
       const view = await api.createView("Nouvelle vue");
+      newView.current = { id: view.id, view: viewId, board: boardId };
       await loadViews();
       setViewId(String(view.id));
       setBoardId(null);
@@ -911,10 +943,14 @@ export default function App() {
     firstView.current = await createView();
   };
   const endViewRename = (id: Id, abandoned: boolean) => {
-    if (id !== firstView.current) return;
-    firstView.current = null;
-    if (!abandoned) return;
-    setIsEditing(false);
+    const created = newView.current?.id === id ? newView.current : null;
+    if (created) newView.current = null;
+    const first = id === firstView.current;
+    if (first) firstView.current = null;
+    if (!abandoned || !created) return;
+    if (first) setIsEditing(false);
+    setViewId(created.view);
+    setBoardId(created.board);
     void write(() => api.deleteView(id), loadViews);
   };
 
@@ -925,11 +961,15 @@ export default function App() {
   // The view whose "Partager" window is open.
   const [sharedView, setSharedView] = useState<View | null>(null);
 
+  // A board added with "+": Escape on its name undoes the addition — the
+  // board goes away, the one open before comes back.
+  const newBoard = useRef<{ id: Id; board: string | null } | null>(null);
   const addBoard = async (): Promise<Id | null> => {
     if (!viewId) return null;
     try {
       // "Nouveau tableau", opened immediately: its name is typed in place.
       const created = await api.createBoard(viewId, "Nouveau tableau");
+      newBoard.current = { id: created.id, board: boardId };
       await loadBoards();
       setBoardId(String(created.id));
       setBoardToRename(created.id);
@@ -948,10 +988,13 @@ export default function App() {
     firstBoard.current = await addBoard();
   };
   const endBoardRename = (id: Id, abandoned: boolean) => {
-    if (id !== firstBoard.current) return;
-    firstBoard.current = null;
-    if (!abandoned) return;
-    setIsEditing(false);
+    const created = newBoard.current?.id === id ? newBoard.current : null;
+    if (created) newBoard.current = null;
+    const first = id === firstBoard.current;
+    if (first) firstBoard.current = null;
+    if (!abandoned || !created) return;
+    if (first) setIsEditing(false);
+    setBoardId(created.board);
     void write(() => api.deleteBoard(id), loadBoards);
   };
 
@@ -1236,7 +1279,10 @@ export default function App() {
               clipboard,
               onCopy: (key, copy) => setClipboard((before) => ({ ...before, [key]: copy })),
               pastes,
-              onPasted: () => setPastes((n) => n + 1),
+            onPasted: (key) => {
+              setClipboard(({ [key]: _pasted, ...rest }) => rest);
+              setPastes((n) => n + 1);
+            },
             }}
           >
             <Stack
@@ -1251,8 +1297,8 @@ export default function App() {
                 const target = e.target as HTMLElement;
                 if (e.defaultPrevented || !background.current?.contains(target)) return;
                 if (target.closest("input, textarea, [contenteditable='true']")) return;
-                // Nothing to offer without either right.
-                if (!canEditInterface && !(canMoveLayout && board)) return;
+                // Nothing to offer without either right (layout moves need edit mode).
+                if (!canEditInterface && !(canMoveLayout && board && isEditing)) return;
                 setBackgroundMenu(menuPosition(e));
               }}
             >
@@ -1425,7 +1471,7 @@ export default function App() {
                       {isEditing ? "Terminer la modification" : "Modifier l’interface"}
                     </Menu.Item>
                   )}
-                  {board && canMoveLayout && (
+                  {board && canMoveLayout && isEditing && (
                     <>
                       {canEditInterface && <Menu.Divider />}
                       <Menu.Item
@@ -1655,7 +1701,6 @@ export default function App() {
                 opened={preferencesOpened}
                 onClose={() => setPreferencesOpened(false)}
                 user={user}
-                views={views ?? []}
                 onUpdated={(updated) => {
                   setUser(updated);
                   // The name also appears in the actors and the user list.

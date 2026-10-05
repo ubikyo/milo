@@ -11,12 +11,11 @@ import { mutation, selection } from "../db/query.js";
 import type { Selection } from "../db/query.js";
 
 /** Where each kind of list keeps its labels. Table names never come from a request. */
-const TABLES: Record<ContextList, { labels: string; groups: string; scoped: boolean }> = {
-  "project.list": { labels: "project_labels", groups: "project_label_groups", scoped: true },
-  "task.list": { labels: "labels", groups: "label_groups", scoped: true },
-  "asset.list": { labels: "asset_labels", groups: "asset_label_groups", scoped: true },
-  // Support's labels belong to no board.
-  "support.list": { labels: "support_labels", groups: "support_label_groups", scoped: false },
+const TABLES: Record<ContextList, { labels: string; groups: string }> = {
+  "project.list": { labels: "project_labels", groups: "project_label_groups" },
+  "task.list": { labels: "labels", groups: "label_groups" },
+  "asset.list": { labels: "asset_labels", groups: "asset_label_groups" },
+  "support.list": { labels: "support_labels", groups: "support_label_groups" },
 };
 
 const byKind = <Row>(sql: (t: (typeof TABLES)[ContextList]) => string) =>
@@ -24,10 +23,10 @@ const byKind = <Row>(sql: (t: (typeof TABLES)[ContextList]) => string) =>
     Object.entries(TABLES).map(([type, t]) => [type, selection<Row>(sql(t))]),
   ) as Record<ContextList, Selection<Row>>;
 
-/** The groups of a kind, in order: a board's — or Support's, all of them. */
+/** The groups of a kind for a board, in order. */
 const groupsOf = byKind<{ id: Id; name: string }>(
   (t) =>
-    `SELECT id, name FROM ${t.groups}${t.scoped ? " WHERE board_id = @board" : ""}
+    `SELECT id, name FROM ${t.groups} WHERE board_id = @board
      ORDER BY position, id`,
 );
 

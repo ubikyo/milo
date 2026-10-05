@@ -23,12 +23,15 @@ import type {
   AccessMail,
   AccessMailAttachment,
   AccessMailFolder,
+  AccessMailFolderCount,
+  MailFolderKind,
   MailAddress,
   EntraPrincipal,
   EntraSettings,
   EntraSettingsInput,
   EntraStatus,
 } from "@milo/shared";
+import { MAIL_FOLDER_KINDS } from "@milo/shared";
 import { badRequest, fail } from "./http.js";
 import type { MailAttachment } from "./mail-template.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
@@ -236,19 +239,67 @@ interface GraphError {
   error?: { code?: string; message?: string };
 }
 
+/**
+ * Exchange refuses more than four simultaneous requests from one app to one
+ * mailbox ("MailboxConcurrency"): a Mail widget reading several folders, a
+ * Calendar widget and a webhook reread easily exceed it. The calls to a
+ * mailbox — "/users/{id}/…" — wait their turn beyond this many.
+ */
+const MAILBOX_CONCURRENCY = 3;
+
+const mailboxQueues = new Map<string, { running: number; waiting: (() => void)[] }>();
+
+/** The mailbox a Graph path reaches, if any: the "users" segment followed by more. */
+const mailboxOfPath = (path: string): string | null =>
+  /\/users\/([^/?]+)\/[^?]/.exec(path)?.[1]?.toLowerCase() ?? null;
+
+const inMailboxTurn = async <T>(path: string, call: () => Promise<T>): Promise<T> => {
+  const mailbox = mailboxOfPath(path);
+  if (!mailbox) return call();
+  let queue = mailboxQueues.get(mailbox);
+  if (!queue) mailboxQueues.set(mailbox, (queue = { running: 0, waiting: [] }));
+  if (queue.running >= MAILBOX_CONCURRENCY) await new Promise<void>((resolve) => queue!.waiting.push(resolve));
+  queue.running++;
+  try {
+    return await call();
+  } finally {
+    queue.running--;
+    const next = queue.waiting.shift();
+    if (next) next();
+    else if (queue.running === 0) mailboxQueues.delete(mailbox);
+  }
+};
+
+/** How many times a throttled call (429) is retried, after the wait Graph asks for. */
+const THROTTLE_RETRIES = 3;
+const THROTTLE_WAIT_MAX = 10_000;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 /** A call to Graph on behalf of the app. Throws what Graph answered. */
 const graph = async <T>(
   path: string,
   init: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
 ): Promise<T> => {
-  const response = await fetch(path.startsWith("https://") ? path : `${GRAPH}${path}`, {
-    method: init.method ?? "GET",
-    headers: {
-      Authorization: `Bearer ${await appToken()}`,
-      ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...init.headers,
-    },
-    ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+  const send = async () =>
+    fetch(path.startsWith("https://") ? path : `${GRAPH}${path}`, {
+      method: init.method ?? "GET",
+      headers: {
+        Authorization: `Bearer ${await appToken()}`,
+        ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...init.headers,
+      },
+      ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+    });
+
+  const response = await inMailboxTurn(path, async () => {
+    let attempt = await send();
+    for (let retry = 1; attempt.status === 429 && retry <= THROTTLE_RETRIES; retry++) {
+      const seconds = Number(attempt.headers.get("Retry-After"));
+      await sleep(Math.min(THROTTLE_WAIT_MAX, seconds > 0 ? seconds * 1000 : 500 * 2 ** retry));
+      attempt = await send();
+    }
+    return attempt;
   });
 
   if (response.status === 202 || response.status === 204) return undefined as T;
@@ -627,7 +678,72 @@ interface GraphFolder {
   id: string;
   displayName?: string;
   childFolderCount?: number;
+  totalItemCount?: number;
+  unreadItemCount?: number;
 }
+
+const COUNT_FIELDS = "id,displayName,totalItemCount,unreadItemCount";
+
+/**
+ * A mail folder's counts — "inbox", or a folder's id: Exchange keeps them on
+ * the folder itself, a single request gives them without reading a message.
+ */
+export const folderCounts = async (user: string, folder: string): Promise<AccessMailFolderCount> => {
+  const f = await graph<GraphFolder>(
+    `/users/${encodeURIComponent(user)}/mailFolders/${encodeURIComponent(folder)}?$select=${COUNT_FIELDS}`,
+  );
+  return {
+    id: f.id,
+    name: f.displayName ?? "",
+    owner: user,
+    total: f.totalItemCount ?? 0,
+    unread: f.unreadItemCount ?? 0,
+    kind: (await wellKnownFolders(user)).get(f.id) ?? "",
+  };
+};
+
+/** Each mailbox's own folders, by id: their ids never change, they are asked once. */
+const knownFolders = new Map<string, Promise<Map<string, MailFolderKind>>>();
+
+/**
+ * A mailbox's Outlook folders — inbox, sent items, drafts, deleted items,
+ * junk e-mail —, by id. A request that fails is asked again next time.
+ */
+const wellKnownFolders = (user: string): Promise<Map<string, MailFolderKind>> => {
+  const known = knownFolders.get(user);
+  if (known) return known;
+  const asked = Promise.all(
+    MAIL_FOLDER_KINDS.map((kind) =>
+      graph<{ id: string }>(`/users/${encodeURIComponent(user)}/mailFolders/${kind}?$select=id`)
+        .then((f) => [f.id, kind] as const)
+        // A mailbox without one of them — no junk folder — keeps the others.
+        .catch(() => null),
+    ),
+  ).then((pairs) => new Map(pairs.filter((p) => p !== null)));
+  knownFolders.set(user, asked);
+  asked.then(
+    (found) => found.size === 0 && knownFolders.delete(user),
+    () => knownFolders.delete(user),
+  );
+  return asked;
+};
+
+/**
+ * How many e-mails of a folder match an OData filter: Graph counts them
+ * itself ($count) and returns a single id — nothing is read.
+ */
+export const countMessages = async (user: string, folder: string, filter: string): Promise<number> => {
+  const searchParams = new URLSearchParams({
+    $filter: filter,
+    $count: "true",
+    $top: "1",
+    $select: "id",
+  });
+  const page = await graph<{ "@odata.count"?: number }>(
+    `/users/${encodeURIComponent(user)}/mailFolders/${encodeURIComponent(folder)}/messages?${searchParams.toString()}`,
+  );
+  return page["@odata.count"] ?? 0;
+};
 
 /** How deep the folder tree is walked: beyond, a folder is rarely one to show. */
 const FOLDER_DEPTH = 3;
@@ -1106,7 +1222,8 @@ export const replyByGraph = async (
   html: string,
   ticket: string,
   copies: { cc: string[]; bcc: string[] } = { cc: [], bcc: [] },
-  graphAttachments: { name: string; mime: string; content: Buffer }[] = [],
+  /** With a "contentId", the file is inline: the HTML cites it as "cid:". */
+  graphAttachments: { name: string; mime: string; content: Buffer; contentId?: string }[] = [],
 ): Promise<void> => {
   const root = `/users/${encodeURIComponent(mailbox)}/messages`;
   const found = await graph<Page<{ id: string; subject?: string }>>(
@@ -1134,6 +1251,7 @@ export const replyByGraph = async (
           name: p.name,
           contentType: p.mime,
           contentBytes: p.content.toString("base64"),
+          ...(p.contentId && { isInline: true, contentId: p.contentId }),
         })),
       },
     },

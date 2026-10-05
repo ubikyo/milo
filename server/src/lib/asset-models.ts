@@ -1,15 +1,13 @@
-// The model table of the "Assets" section of Settings: the identifier a
-// workstation declares ("Mac14,6") and the name it is known by.
+// The model table of a board's Asset widgets: the identifier a workstation
+// declares ("Mac14,6") and the name it is known by.
 //
 // Apple only reports that identifier, and the agent does not translate it.
-// As long as Settings has recorded nothing, the table starts from the most
-// common Apple-silicon Macs; once recorded, it is the one from Settings, and
-// nothing is added to it by itself any more.
+// As long as the board has recorded nothing, the table starts from the most
+// common Apple-silicon Macs; once recorded, it is the board's, and nothing is
+// added to it by itself any more.
 
-import type { AssetModel } from "@milo/shared";
-import { readSetting, writeSetting } from "../repositories/settings.js";
-
-const KEY = "asset_models";
+import type { AssetModel, Id } from "@milo/shared";
+import { mutation, selection } from "../db/query.js";
 
 /** The starting table: Apple-silicon Macs, from 2020 to 2024. */
 const STARTER_TEMPLATES: AssetModel[] = [
@@ -43,20 +41,39 @@ const STARTER_TEMPLATES: AssetModel[] = [
   { identifier: "Mac15,13", name: 'MacBook Air 15" (M3, 2024)' },
 ];
 
-/** The model table: the one from Settings, or the starting one. */
-export const templates = (): AssetModel[] => {
-  const saved = readSetting<AssetModel[] | null>(KEY, null);
-  return Array.isArray(saved) ? saved : STARTER_TEMPLATES;
+const read = selection<{ models: string | null }>(
+  "SELECT models FROM board_asset_settings WHERE board_id = ?",
+);
+const write = mutation(
+  `INSERT INTO board_asset_settings (board_id, models) VALUES (?, ?)
+   ON CONFLICT(board_id) DO UPDATE SET models = excluded.models`,
+);
+
+/**
+ * The board's model table, or the starting one. Unreadable JSON counts as
+ * nothing recorded. A workstation without a board has the starting one.
+ */
+export const templates = (boardId: Id | null): AssetModel[] => {
+  const saved = boardId === null ? null : read.get(boardId)?.models;
+  if (saved == null) return STARTER_TEMPLATES;
+  try {
+    const list = JSON.parse(saved) as unknown;
+    return Array.isArray(list) ? (list as AssetModel[]) : STARTER_TEMPLATES;
+  } catch {
+    return STARTER_TEMPLATES;
+  }
 };
 
-export const saveTemplates = (list: AssetModel[]): void => writeSetting(KEY, list);
+export const saveTemplates = (boardId: Id, list: AssetModel[]): void => {
+  write.run(boardId, JSON.stringify(list));
+};
 
 /**
  * The name of a model from its identifier, ignoring case and spaces; empty
  * when the table does not know it.
  */
-export const templateName = (identifier: string): string => {
+export const templateName = (identifier: string, table: AssetModel[]): string => {
   const search = identifier.trim().toLowerCase();
   if (!search) return "";
-  return templates().find((m) => m.identifier.trim().toLowerCase() === search)?.name ?? "";
+  return table.find((m) => m.identifier.trim().toLowerCase() === search)?.name ?? "";
 };

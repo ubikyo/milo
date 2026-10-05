@@ -2,11 +2,10 @@ import { useContext, useEffect, useState } from "react";
 import { api } from "../api";
 import { CopyPasteContext } from "../components/ui/CopyPasteActions";
 import { errorMessage, notifyError } from "./errors";
-import type { Id, LabelGroup, LabelsBase } from "@milo/shared";
+import type { Id, LabelGroup, LabelsBase, SupportLabel } from "@milo/shared";
 
 // What the lists and indicators share about label groups: reading those of the
-// open board — or of Support —, and keeping the labels of one group in their
-// order.
+// open board, and keeping the labels of one group in their order.
 
 /** What a label carries that matters here: its group and its place. */
 interface Placed {
@@ -38,16 +37,16 @@ export const labelsColumnTitle = (groups: LabelGroup[], group: Id | null | undef
   (group == null ? undefined : groups.find((g) => g.id === group)?.name) ?? "Étiquette";
 
 /**
- * The groups of a kind of labels: those of the open board, or of Support.
+ * The groups of a kind of labels: those of the open board.
  * Empty while they are read, or without "base".
  */
 export function useLabelGroups(base: LabelsBase | undefined): LabelGroup[] {
   const board = useContext(CopyPasteContext)?.board ?? null;
-  const boardId = base === "/support-labels" ? undefined : board?.id;
+  const boardId = board?.id;
   const [groups, setGroups] = useState<LabelGroup[]>([]);
 
   useEffect(() => {
-    if (!base || (base !== "/support-labels" && boardId === undefined)) return;
+    if (!base || boardId === undefined) return;
     api
       .getLabelGroups(base, boardId)
       .then(setGroups)
@@ -55,4 +54,20 @@ export function useLabelGroups(base: LabelsBase | undefined): LabelGroup[] {
   }, [base, boardId]);
 
   return groups;
+}
+
+/** The open board's Support labels, in order. Empty while they are read. */
+export function useSupportLabels(): SupportLabel[] {
+  const boardId = useContext(CopyPasteContext)?.board?.id;
+  const [labels, setLabels] = useState<SupportLabel[]>([]);
+
+  useEffect(() => {
+    if (boardId === undefined) return;
+    api
+      .getSupportLabels(boardId)
+      .then(setLabels)
+      .catch((e) => notifyError(errorMessage(e)));
+  }, [boardId]);
+
+  return labels;
 }

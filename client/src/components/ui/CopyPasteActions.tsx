@@ -32,7 +32,9 @@ import { DrawerActionsContext } from "./IndicatorDrawer";
 // Copying only remembers the source board: the clipboard is held by the
 // application (CopyPasteContext), and it survives tab and view changes. Pasting
 // is confirmed — you choose to replace what the board already has, or to add to
-// it —, and the notification then says what the paste produced.
+// it —, and the notification then says what the paste produced. Pasted, the
+// copy leaves the clipboard: "Coller" leaves the menu, and the same labels are
+// not pasted again.
 
 /** Card labels and project labels are not the same. */
 export type Scope = "tasks" | "projects";
@@ -57,7 +59,8 @@ export interface CopyPasteValue {
    * (BoardListFields) are re-read when it changes.
    */
   pastes: number;
-  onPasted: () => void;
+  /** A copy pasted: it leaves the clipboard. */
+  onPasted: (key: keyof Clipboard) => void;
 }
 
 export const CopyPasteContext = createContext<CopyPasteValue | null>(
@@ -160,7 +163,7 @@ export default function CopyPasteActions({
         board.id,
         replaceExisting && canReplace,
       );
-      context.onPasted();
+      context.onPasted(`${scope}.${toPaste}`);
       notifications.show({
         color: "teal",
         title: WORDS[toPaste].paste,

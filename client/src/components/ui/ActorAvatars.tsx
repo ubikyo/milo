@@ -1,6 +1,7 @@
 import { Avatar, Group, Text, useComputedColorScheme } from "@mantine/core";
 import { IconAt } from "@tabler/icons-react";
 import { MILO_ACTOR_ID } from "@milo/shared";
+import { useDisplaySettings } from "../../lib/displaySettings";
 import type { Actor } from "@milo/shared";
 
 const PALETTE: string[] = [
@@ -63,6 +64,7 @@ export function PersonAvatar({
   person: Actor | null | undefined;
   size?: number;
 }) {
+  const { settings } = useDisplaySettings();
   if (person?.id === MILO_ACTOR_ID) return <MiloAvatar size={size} />;
   return (
     <Avatar
@@ -70,7 +72,7 @@ export function PersonAvatar({
       radius="xl"
       variant="filled"
       color={colorFor(person?.email || person?.name || "")}
-      src={person?.gravatar_url || null}
+      src={(settings.showGravatars && person?.gravatar_url) || null}
     >
       {initialsOf(person?.name || person?.email)}
     </Avatar>
@@ -105,6 +107,7 @@ export default function ActorAvatars({
   size = ACTOR_AVATAR_SIZE,
   max = 4,
 }: ActorAvatarsProps) {
+  const { settings } = useDisplaySettings();
   if (!actors || actors.length === 0) {
     return (
       <Text size="sm" c="dimmed">
@@ -130,7 +133,7 @@ export default function ActorAvatars({
             radius="xl"
             variant="filled"
             color={colorFor(actor.email || actor.name)}
-            src={actor.gravatar_url || null}
+            src={(settings.showGravatars && actor.gravatar_url) || null}
             // The name is not displayed on hover: it stays readable by keyboard
             // and screen readers.
             aria-label={actor.name}
