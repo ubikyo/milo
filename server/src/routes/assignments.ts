@@ -15,6 +15,7 @@
 import { Router } from "express";
 import type { NextFunction, Request, Response } from "express";
 import {
+  ADMIN_SECTIONS,
   defaultAdminPermissions,
   parseAdminRights,
   validAdminPermissions,
@@ -34,8 +35,15 @@ import type {
 import { mutation, selection } from "../db/query.js";
 import { HttpError, badRequest, requireText } from "../lib/http.js";
 import { searchInDirectory } from "../lib/entra.js";
+import { inviteToAdministration, inviteToWorkspace } from "../lib/invitations.js";
+import { root } from "../lib/notify.js";
 import { touch } from "../middleware/events.js";
-import { groupsOf, settingsRights, workspaceRights } from "../repositories/users.js";
+import {
+  adminPermissions,
+  administrationRights,
+  groupsOf,
+  workspaceRights,
+} from "../repositories/users.js";
 import type { UserRow } from "../db/rows.js";
 import { WORKSPACE_NOT_FOUND, workspaces } from "../repositories/workspaces.js";
 
@@ -186,12 +194,12 @@ assignmentRoutes.use(touch("lookups"));
 
 /**
  * Search for a user or group in the directory, to give them access or an
- * administration: a right on "Paramétrage" or on workspaces is enough.
+ * administration: "Créer" on workspaces or on the administration is enough.
  * Declared before the access guard.
  */
 assignmentRoutes.get("/search", (req, res, next) => {
-  if (!settingsRights(req.user).view && !Object.values(workspaceRights(req.user)).some(Boolean)) {
-    throw new HttpError(403, "Réservé à qui peut voir le Paramétrage");
+  if (!workspaceRights(req.user).create && !administrationRights(req.user).create) {
+    throw new HttpError(403, "Réservé à qui peut donner des droits");
   }
   searchInDirectory(String(req.query["q"] ?? ""), req.query["groups"] ? "groups" : "all")
     .then((matches) => res.json(matches))
@@ -208,11 +216,16 @@ assignmentRoutes.get("/", (req, res) => {
 // workspace: they
 // replace the previous ones. Without any right, they stay listed, with no
 // access, until they are removed. Unlike the administration, one's own
-// access can be changed: it only concerns this workspace.
+// access can be changed: it only concerns this workspace. Just added, and
+// "invite" given, they receive the "Nouvel utilisateur" e-mail — each user of
+// a group.
 assignmentRoutes.put("/:type/:id", (req, res) => {
   const workspace = workspaceOf(req);
   const principal = receivedPrincipal(req);
   const received = (req.body.permissions ?? {}) as Record<string, unknown>;
+  const isNew = !workspaceAccess
+    .all(workspace)
+    .some((row) => row.principal_type === principal.type && row.principal_id === principal.id);
   setAccess.run(
     workspace,
     principal.type,
@@ -224,6 +237,9 @@ assignmentRoutes.put("/:type/:id", (req, res) => {
     JSON.stringify(validApplicationRights(received["application"])),
     JSON.stringify(validStructurePermissions(received["structure"])),
   );
+  if (isNew && req.body.invite === true) {
+    inviteToWorkspace([principal], workspaces.byId.get(workspace)!.name, req.user, root(req));
+  }
   res.json(accessOf(workspace, req.user));
 });
 
@@ -236,21 +252,27 @@ assignmentRoutes.delete("/:type/:id", (req, res) => {
 // --- The application's administration ----------------------------------------
 
 /**
- * "Paramétrage" is read and changed with "Accéder". Whoever only has rights on
- * workspaces does not come here.
+ * "Gestion des droits d'administration", right by right: reading requires
+ * "Voir", removing someone "Supprimer", the rest — adding someone, setting
+ * their rights — "Créer".
  */
-const requireSettings = (req: Request, _res: Response, next: NextFunction): void => {
-  const rights = settingsRights(req.user);
-  if (!rights.view) throw new HttpError(403, "Réservé à qui peut voir le Paramétrage");
-  if (req.method !== "GET" && !rights.update) {
-    throw new HttpError(403, "Réservé à qui peut modifier le Paramétrage");
+const requireAdministration = (req: Request, _res: Response, next: NextFunction): void => {
+  const rights = administrationRights(req.user);
+  if (req.method === "GET") {
+    if (!rights.view) throw new HttpError(403, "Réservé à qui peut voir les droits d'administration");
+  } else if (req.method === "DELETE") {
+    if (!rights.delete) {
+      throw new HttpError(403, "Réservé à qui peut supprimer des droits d'administration");
+    }
+  } else if (!rights.create) {
+    throw new HttpError(403, "Réservé à qui peut créer des droits d'administration");
   }
   next();
 };
 
 export const administrationRoutes = Router();
 
-administrationRoutes.use(touch("lookups"), requireSettings);
+administrationRoutes.use(touch("lookups"), requireAdministration);
 
 administrationRoutes.get("/", (req, res) => {
   res.json(administrations(req.user));
@@ -263,22 +285,32 @@ const administrationBefore = (type: string, id: string): AdminPermissions => {
 };
 
 // The principal's administration replaces the previous one; without any
-// right, they stay listed. A right on workspaces that the author does not
-// hold stays as it was: only whoever holds it grants or removes it. The
-// author's own rights, and their groups', are only added to.
+// right, they stay listed. A right the author does not hold stays as it
+// was: only whoever holds it grants or removes it. The author's own rights,
+// and their groups', are only added to. Just added, and
+// "invite" given, they receive the "Nouvel administrateur" e-mail — each user
+// of a group.
 administrationRoutes.put("/:type/:id", (req, res) => {
   const principal = receivedPrincipal(req);
+  const isNew = !principalAdministration.get(principal.type, principal.id);
   const received: AdminPermissions = validAdminPermissions(req.body.permissions);
-  const own = workspaceRights(req.user);
+  const own = adminPermissions(req.user);
   const before = administrationBefore(principal.type, principal.id);
   const kept = isOwn(req.user, principal.type, principal.id);
-  const permissions = validAdminPermissions({
-    settings: [...received.settings, ...(kept ? before.settings : [])],
-    workspaces: [
-      ...received.workspaces.filter((r) => own[r]),
-      ...before.workspaces.filter((r) => !own[r] || kept),
-    ],
-  });
+  const permissions = validAdminPermissions(
+    Object.fromEntries(
+      ADMIN_SECTIONS.map(({ value: section }) => {
+        const held = own[section] as string[];
+        return [
+          section,
+          [
+            ...(received[section] as string[]).filter((r) => held.includes(r)),
+            ...(before[section] as string[]).filter((r) => !held.includes(r) || kept),
+          ],
+        ];
+      }),
+    ),
+  );
   setAdministration.run(
     principal.type,
     principal.id,
@@ -286,6 +318,7 @@ administrationRoutes.put("/:type/:id", (req, res) => {
     principal.email,
     JSON.stringify(permissions),
   );
+  if (isNew && req.body.invite === true) inviteToAdministration([principal], req.user, root(req));
   res.json(administrations(req.user));
 });
 
@@ -294,11 +327,12 @@ administrationRoutes.delete("/:type/:id", (req, res) => {
   if (isOwn(req.user, type, req.params.id)) {
     throw new HttpError(403, "Vos propres droits, ou ceux de vos groupes, ne se retirent pas");
   }
-  // Removing someone removes their rights on workspaces: each one is
-  // reserved to whoever holds it.
-  const own = workspaceRights(req.user);
-  if (administrationBefore(type, req.params.id).workspaces.some((r) => !own[r])) {
-    throw new HttpError(403, "Réservé à qui détient ces droits sur les workspaces");
+  // Removing someone removes all their rights: each one is reserved to
+  // whoever holds it.
+  const own = adminPermissions(req.user);
+  const before = administrationBefore(type, req.params.id);
+  if (ADMIN_SECTIONS.some((s) => (before[s.value] as string[]).some((r) => !(own[s.value] as string[]).includes(r)))) {
+    throw new HttpError(403, "Réservé à qui détient tous ces droits d'administration");
   }
   forgetAdministration.run(type, req.params.id);
   res.json(administrations(req.user));

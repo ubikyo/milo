@@ -30,31 +30,62 @@
   color: var(--mantine-color-text);
 }
 
-/* Trial: with the list open, the tab holding it takes its background, and
-   the tab row, the tab and the list share one border, lighter than Mantine's
-   (dark-4 was barely visible): the row's rule, the tab's frame and the list's
-   follow on from each other. The attribute is set by ContextsMenu, on the tab
-   and on its row; doubled to win over Mantine's rules. The bottom of the tab
-   takes the background: it joins the list. */
+/* With the list open, the tab holding it takes a background close to the
+   list's, its border in the same color. The
+   row's line is the themes' active tab line (lib/themeColors.ts), set here for
+   every tab row: the list, in a portal, cannot read Mantine's own. The
+   attribute is set by ContextsMenu, on the tab; doubled to win over Mantine's
+   rules. The bottom of the tab takes the background: it joins the list. */
 :root {
-  --contexts-border: var(--milo-strong-border);
   --contexts-bg: var(--mantine-color-default);
+  /* The open tab: the list's background, one step lighter on dark. */
+  --contexts-open-tab-bg: light-dark(var(--contexts-bg), var(--mantine-color-dark-5));
 }
 
-:global([role="tablist"][data-contexts-open][data-contexts-open]) {
-  --tab-border-color: var(--contexts-border);
+:global(.mantine-Tabs-root.mantine-Tabs-root) {
+  --tab-border-color: var(--milo-tab-active-border);
+  /* Its thickness too (tabs.css). */
+  --tabs-list-border-width: var(--milo-tab-active-border-width);
 }
 
 :global([role="tab"][data-contexts-open][data-contexts-open]) {
   /* The view tab sets its background inline (BoardTabs): it reads this one. */
-  --contexts-tab-bg: var(--contexts-bg);
-  background-color: var(--contexts-bg);
-  border-color: var(--contexts-border);
-  border-bottom-color: var(--contexts-bg);
+  --contexts-tab-bg: var(--contexts-open-tab-bg);
+  --tab-border-color: var(--contexts-open-tab-bg);
+  background-color: var(--contexts-open-tab-bg);
+  border-bottom-color: var(--contexts-open-tab-bg);
 }
 
-/* The list placed in the tab keeps its top border, in the trial's light
-   gray: a line separates it from the tab, continuing the row's rule. */
-.tabDropdown.tabDropdown {
-  --popover-border-color: var(--contexts-border);
+/* The list's border: the open tab's background, which frames it. Its side
+   padding (the dropdowns' px), which its group lines cross (menus.css). */
+.dropdown.dropdown {
+  --popover-border-color: var(--contexts-open-tab-bg);
+  --milo-menu-px: 2px;
+}
+
+.dropdown :global(.mantine-Divider-root) {
+  margin-inline: calc(-1 * var(--milo-menu-px));
+}
+
+/* A row of the account menu: the contexts list's rows — their inset, height,
+   corners and hover. Doubled to win over Mantine's item radius. */
+.menuItem.menuItem {
+  border-radius: 4px;
+  padding: 4px 14px;
+  min-height: 32px;
+}
+
+.menuItem.menuItem:hover,
+.menuItem.menuItem[data-hovered] {
+  background-color: var(--milo-menu-hover);
+}
+
+/* The account's avatar: no focus ring nor highlight, whatever gives it focus —
+   the menu hands it back on closing. Doubled to win over Mantine's rules. */
+.profileTarget.profileTarget,
+.profileTarget.profileTarget:focus,
+.profileTarget.profileTarget:focus-visible {
+  outline: none;
+  box-shadow: none;
+  -webkit-tap-highlight-color: transparent;
 }

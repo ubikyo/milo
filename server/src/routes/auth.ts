@@ -19,7 +19,8 @@ import {
   completeLogin,
   loginUrl,
 } from "../lib/entra.js";
-import { badRequest, conflict, requireText } from "../lib/http.js";
+import { badRequest, conflict } from "../lib/http.js";
+import { notificationSettings, validNotificationSettings } from "../lib/notification-settings.js";
 import { touch } from "../middleware/events.js";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { requireAuth } from "../middleware/require-auth.js";
@@ -31,8 +32,8 @@ import {
   users,
   workspacesOf,
 } from "../repositories/users.js";
-import { workspaces } from "../repositories/workspaces.js";
 import { now } from "../lib/time.js";
+import { miloUrl } from "../lib/milo-url.js";
 import { openingViews } from "./views.js";
 import type { UpdateMeInput } from "@milo/shared";
 
@@ -82,19 +83,15 @@ publicAuthRoutes.get("/setup", (_req, res) => {
   res.json({ needs_setup: !users.admin.get(), entra: entraConfigured() });
 });
 
-// The first workspace already exists — the database gets one (migrations.ts):
-// it takes the chosen name. Its access is set afterwards, once Entra is
-// filled in.
+// Only the "admin" account: a new database has no workspace, no
+// administration and no access. Its administrators, once Entra is
+// connected, create the rest.
 publicAuthRoutes.post("/setup", attemptLimit, (req, res) => {
   if (users.admin.get()) conflict("Le compte admin existe déjà");
 
   const password = String(req.body.password ?? "");
   verifyPasswordRules(password);
-  const workspace = requireText(req.body.workspace, "Le nom du workspace est requis");
 
-  const first = workspaces.first.get();
-  if (first) workspaces.rename.run(workspace, first.id);
-  else workspaces.create.run(workspace, 0, now());
   const { lastInsertRowid } = users.createAdmin.run(ADMIN_USERNAME, hashPassword(password), now());
   res.status(201).json({
     token: openSession(lastInsertRowid),
@@ -118,12 +115,12 @@ publicAuthRoutes.post("/login", attemptLimit, (req, res) => {
 // --- Microsoft sign-in -------------------------------------------------------
 
 /**
- * Microsoft's return address. It is deduced from the one we are called
- * through: it is the one to register in Azure, and the Entra tab shows it
- * as is.
+ * Microsoft's return address: Milo's address, or failing that the one we
+ * are called through. It is the one to register in Azure, and the Entra tab
+ * shows it as is.
  */
 const returnAddress = (req: Request): string =>
-  `${req.protocol}://${req.get("host")}/api/auth/entra/callback`;
+  `${miloUrl() || `${req.protocol}://${req.get("host")}`}/api/auth/entra/callback`;
 
 /**
  * Sign-ins in progress. In memory, like attempt limiting: a restart forgets
@@ -237,8 +234,8 @@ authRoutes.get("/me", (req, res) => {
 
 // What the person sets themselves: their opening workspace — one of theirs,
 // or none for the one they were working in —, and in it their opening view
-// and board — ones they see, or none for the first. Their identity comes from
-// Entra.
+// and board — ones they see, or none for the first —, and how they are
+// notified. Their identity comes from Entra.
 authRoutes.put("/me", (req, res) => {
   const body = (req.body ?? {}) as UpdateMeInput;
   const workspace =
@@ -260,6 +257,16 @@ authRoutes.put("/me", (req, res) => {
     badRequest("Tableau introuvable");
   }
   users.setOpening.run(workspace, view, board, req.user.id);
+  // Their notifications: the fields given replace those in place.
+  if (body.notification_settings !== undefined) {
+    users.setNotificationSettings.run(
+      JSON.stringify({
+        ...notificationSettings(req.user),
+        ...validNotificationSettings(body.notification_settings),
+      }),
+      req.user.id,
+    );
+  }
   res.json(publicUser(users.byId.get(req.user.id)!));
 });
 

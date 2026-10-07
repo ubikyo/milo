@@ -40,6 +40,13 @@ export const TAB_MENU_STYLES = {
 } as const;
 
 /**
+ * TEST — a band on top of the menu, in the open contexts tab's background.
+ */
+export const MENU_TOP_BAND = {
+  borderTop: "2px solid var(--contexts-open-tab-bg)",
+} as const;
+
+/**
  * The "Actions" button: bare text, with no background or inner padding, even on
  * hover or when disabled. Only the text reacts to hover, going from neutral
  * gray to maximum contrast. The button keeps its height: the gaps above are

@@ -752,6 +752,7 @@ export default function CardDrawer({
                   <Group align="flex-start" gap="md" wrap="nowrap">
                     <div style={{ flex: "3 1 0", minWidth: 0 }}>
                       <ActorPicker
+                        kind="task"
                         chipHeight={CHIP_HEIGHT}
                         // The avatars follow one another with the same thin gap as on a
                         // board card or in the projects one.

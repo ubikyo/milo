@@ -102,8 +102,8 @@ export const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    -- La référence (« HLP-12 ») : le compteur des demandes du support la
-    -- donne aussi aux projets et aux cartes (repositories/references.ts).
+    -- The reference ("PRJ-12"), counted per "Projets" widget
+    -- (repositories/references.ts).
     number INTEGER NOT NULL DEFAULT 0,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
@@ -152,7 +152,10 @@ export const SCHEMA = `
     -- it no longer has: the one it was working in.
     default_workspace_id INTEGER REFERENCES workspaces(id) ON DELETE SET NULL,
     -- The opening board, in the opening view: its id, or empty for the first.
-    default_board TEXT NOT NULL DEFAULT ''
+    default_board TEXT NOT NULL DEFAULT '',
+    -- Their notification settings (JSON), chosen in the preferences. Empty,
+    -- or a field missing: the application's defaults.
+    notification_settings TEXT NOT NULL DEFAULT ''
   );
 
   -- Les acteurs favoris de chaque personne : ils passent en tête des listes
@@ -170,6 +173,14 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT ''
+  );
+
+  -- The last reference given in each list widget (repositories/references.ts):
+  -- each one numbers its items from 1, and a deleted item's number is not
+  -- given again.
+  CREATE TABLE IF NOT EXISTS reference_counters (
+    scope TEXT PRIMARY KEY,
+    last INTEGER NOT NULL DEFAULT 0
   );
 
   -- Ce que chacun suit : les éléments dont il veut être prévenu quand ils
@@ -359,9 +370,9 @@ export const SCHEMA = `
     list_id INTEGER NOT NULL REFERENCES task_lists(id) ON DELETE CASCADE,
     text TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
-    -- Numéro affiché sur la carte. Attribué à la création et compté par
-    -- tableau, pas sur l'identifiant global. Un séparateur n'en porte pas :
-    -- il reste à zéro.
+    -- The reference ("TSK-12"), counted per "Tâches" widget
+    -- (repositories/references.ts). A separator carries none: it stays at
+    -- zero.
     number INTEGER NOT NULL DEFAULT 0,
     -- No longer used: contexts are labels now.
     context_id INTEGER REFERENCES contexts(id) ON DELETE CASCADE,
@@ -582,9 +593,8 @@ export const SCHEMA = `
     mailbox TEXT NOT NULL DEFAULT '',
     -- Le widget « Tickets » qui la montre, comme pour un projet.
     list_key TEXT NOT NULL DEFAULT '',
-    -- Le numéro de ticket (« HLP-12 ») : il suit celui de la demande
-    -- précédente, tous contextes confondus. Le dernier donné est gardé dans
-    -- les réglages, pour qu'un numéro ne resserve pas après une suppression.
+    -- The ticket number ("HLP-12"), counted per "Tickets" widget
+    -- (repositories/references.ts).
     number INTEGER NOT NULL DEFAULT 0,
     -- L'objet de l'e-mail reçu, ou celui qu'on a saisi.
     subject TEXT NOT NULL DEFAULT '',
@@ -909,8 +919,8 @@ export const INDEXES = `
     ON support_requests(board_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_support_requests_context
     ON support_requests(context_id, created_at DESC);
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_support_requests_number
-    ON support_requests(number) WHERE number > 0;
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_support_requests_list_number
+    ON support_requests(board_id, list_key, number) WHERE number > 0;
   -- Un e-mail ne s'importe qu'une fois d'une boîte dans une liste : une boîte
   -- reçue par plusieurs listes y fait une demande par liste.
   CREATE UNIQUE INDEX IF NOT EXISTS idx_support_requests_mailbox_list

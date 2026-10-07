@@ -21,6 +21,13 @@ import { ALL_CONTEXTS, ALL_CONTEXT_GROUPS, NO_CONTEXT } from "@milo/shared";
 /** The bounds of the list width. */
 const WIDTH_MIN = 240;
 const WIDTH_MAX = 320;
+/** The list's side padding: the rows' hover stops this far from its border. */
+const LIST_INSET = 2;
+/**
+ * The rows' side padding: their text lines up with the tab's title, set 17 px
+ * in from the tab's edge (its 1 px border and Mantine's "md" padding).
+ */
+const ROW_INSET = 17 - 1 - LIST_INSET;
 
 /** What the list calls a context group: all of them, or its name. */
 const groupName = (group: string) => (group === ALL_CONTEXT_GROUPS ? ALL_CONTEXTS : group);
@@ -110,16 +117,12 @@ export default function ContextsMenu({
     if (!inTab || !isOpen || !target || !tab) return;
     const following = new ResizeObserver(() => measure(target));
     following.observe(tab);
-    // Experimental: the tab takes the background and border of the open list
-    // (ContextsMenu.module.css, data-contexts-open). The row too: its rule
-    // lightens along with it.
-    const band = tab.closest('[role="tablist"]');
+    // The tab takes a background close to the open list's, its border in the
+    // same color (ContextsMenu.module.css, data-contexts-open).
     tab.setAttribute("data-contexts-open", "");
-    band?.setAttribute("data-contexts-open", "");
     return () => {
       following.disconnect();
       tab.removeAttribute("data-contexts-open");
-      band?.removeAttribute("data-contexts-open");
     };
   }, [inTab, isOpen]);
   /** "Tous les contextes" being renamed: the name in its field. */
@@ -157,7 +160,7 @@ export default function ContextsMenu({
           setOpened(false);
           if (!selected) void onChangeGroup?.(name);
         }}
-        style={{ display: "flex", alignItems: "center", padding: "4px 8px", minHeight: 32 }}
+        style={{ display: "flex", alignItems: "center", padding: `4px ${ROW_INSET}px`, minHeight: 32 }}
       >
         <Text size="sm" fw={selected ? 600 : undefined} style={{ flex: 1, minWidth: 0 }} truncate>
           {name === null ? "Aucun" : groupName(name)}
@@ -205,7 +208,7 @@ export default function ContextsMenu({
         data-editing={inInput || undefined}
         onClick={() => !inInput && select(key)}
         onDoubleClick={() => key === null && openRename()}
-        style={{ display: "flex", alignItems: "center", padding: "4px 8px", minHeight: 32 }}
+        style={{ display: "flex", alignItems: "center", padding: `4px ${ROW_INSET}px`, minHeight: 32 }}
       >
         {inInput ? (
           <input
@@ -262,21 +265,9 @@ export default function ContextsMenu({
         withinPortal
         shadow="md"
         offset={inTab ? tabGap : ROW_MENU_OFFSET}
-        // Outside the tab, the list connects to the rule: no top border and no
-        // top corners. In the tab, it keeps its top border — the line that
-        // separates it from the tab (classes.tabDropdown) —, without top
-        // corners.
-        styles={
-          inTab
-            ? {
-                dropdown: {
-                  borderTopLeftRadius: 0,
-                  borderTopRightRadius: 0,
-                  borderTopStyle: "dotted",
-                },
-              }
-            : TAB_MENU_STYLES
-        }
+        // The list connects to the rule, or to the tab: no top border and no
+        // top corners.
+        styles={TAB_MENU_STYLES}
       >
         <Popover.Target>
           {/* The same button as the "Actions" menu of the row. */}
@@ -308,8 +299,10 @@ export default function ContextsMenu({
           </Button>
         </Popover.Target>
         <Popover.Dropdown
-          p={4}
-          className={inTab ? classes.tabDropdown : undefined}
+          pt={4}
+          pb={3}
+          px={LIST_INSET}
+          className={classes.dropdown}
           // In the tab, at least its width: the list only widens if its content
           // requires it — with no context, it always fits. Elsewhere, its own
           // bounds.
@@ -341,7 +334,7 @@ export default function ContextsMenu({
                     <div key={section.group}>
                       <Divider my={4} />
                       {/* At the rows' inset: the name lines up with its labels. */}
-                      <Text size="xs" c="dimmed" fw={600} px={8} pt={4} pb={2} truncate>
+                      <Text size="xs" c="dimmed" fw={600} px={ROW_INSET} pt={4} pb={2} truncate>
                         {section.group}
                       </Text>
                       {section.contexts.map((name) => row(name, name))}

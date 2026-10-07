@@ -19,7 +19,7 @@ import {
   calendarKey,
   mailKey,
   shownFoldersOf,
-  canUpdate,
+  canUse,
   listKey,
   isBoardWidgetType,
   isListWidgetType,
@@ -31,7 +31,10 @@ import {
   isSectionWidthUnit,
   migrateWidgetConfig,
   currentWidget,
+  widgetReference,
 } from "@milo/shared";
+import type { Id, NotificationScope } from "@milo/shared";
+import { concerned, notifyBoard, root } from "../lib/notify.js";
 import type {
   AccessCalendar,
   AccessCalendarEvent,
@@ -66,6 +69,7 @@ import { searchPlace, weatherCoordinates, weatherOf } from "../lib/weather.js";
 import { quoteOf, quoteSettings } from "../lib/quotes.js";
 import { columnsGap, requestedRank, widthUnit, widthValue } from "../lib/sections.js";
 import { signalWrite, touch, touchNow } from "../middleware/events.js";
+import { byId, deleteWithUndo } from "../lib/undo.js";
 import { ensureDefaultType } from "./milestone-types.js";
 import { reassignWorkstations } from "../repositories/assets.js";
 import { ensureSupportLabels } from "../repositories/support.js";
@@ -88,16 +92,15 @@ const openedSection = (id: unknown, user: Account) => {
 };
 
 /**
- * The requested widget, and the open section that carries it. Its type must
- * be readable — "Modifier" for a write.
+ * The requested widget, and the open section that carries it. Anyone who sees
+ * its board reads it; a write requires "Modifier" on its type, a deletion
+ * "Supprimer".
  */
 const openWidget = (id: unknown, req: Request) => {
   const widget = orNotFound(boardWidgets.byId(id), WIDGET_NOT_FOUND);
-  requireWidget(
-    req,
-    widget.type,
-    req.method === "GET" ? "view" : req.method === "DELETE" ? "delete" : "update",
-  );
+  if (req.method !== "GET") {
+    requireWidget(req, widget.type, req.method === "DELETE" ? "delete" : "update");
+  }
   return { widget, ...openedSection(widget.section_id, req.user) };
 };
 
@@ -110,9 +113,8 @@ const requireStructure = (req: Request, board: BoardRow): void => {
   requireBoardControl(board, req.user);
 };
 
-/** The widgets whose type the account reads: the others are not returned to it. */
-const allReadable = (req: Request, widgets: BoardWidgetRow[]) =>
-  widgets.filter((w) => widgetAccess(req, w.type) !== "").map(renderedWidget);
+/** A board's widgets, all of them: anyone who sees the board reads them. */
+const rendered = (widgets: BoardWidgetRow[]) => widgets.map(renderedWidget);
 
 /**
  * The received configuration, ready to store: an object, nothing else — with
@@ -160,6 +162,41 @@ export const followLists = (req: Request, res: Response, next: NextFunction): vo
   next();
 };
 
+/**
+ * A change of a board's layout, announced on it: a notification of edit,
+ * unless `scope` says otherwise. Only the author is told — if they asked to
+ * be —, unless items go with it: those they concern are told too.
+ */
+const announce = (
+  req: Request,
+  boardId: Id,
+  message: string,
+  { itemsGo = false, scope = "edit" }: { itemsGo?: boolean; scope?: NotificationScope } = {},
+): void =>
+  notifyBoard({
+    boardId,
+    message,
+    author: req.user,
+    base: root(req),
+    scope,
+    recipients: itemsGo
+      ? [...concerned.board(boardId), ...concerned.projectBoard(boardId), ...concerned.supportBoard(boardId)]
+      : [],
+  });
+
+/** A widget, as a notification names it: its name, or its reference. */
+const widgetName = (widget: Pick<BoardWidgetRow, "type" | "config">): string => {
+  let name = "";
+  try {
+    const config: unknown = JSON.parse(widget.config);
+    if (config && typeof config === "object" && "name" in config) name = String(config.name ?? "").trim();
+  } catch {
+    // An unreadable configuration has no name.
+  }
+  const reference = widgetReference(widget.type, widget.config);
+  return name ? `le widget « ${name} »` : reference ? `le widget ${reference}` : "un widget";
+};
+
 export const boardContentRoutes = Router({ mergeParams: true });
 
 boardContentRoutes.use(touch("board-widgets"), followLists);
@@ -180,6 +217,7 @@ boardContentRoutes.post("/sections", (req, res) => {
     columnsGap(req.body.gap, SECTIONS_GAP_DEFAULT),
     requestedRank(req.body.index),
   );
+  announce(req, board.id, "a ajouté une section");
   res.status(201).json(boardSections.byId(id));
 });
 
@@ -196,6 +234,7 @@ boardContentRoutes.put("/sections/reorder", (req, res) => {
     badRequest("La liste des identifiants ne correspond pas aux sections");
   }
   boardSections.store(ids);
+  if (ids.some((id, index) => id !== known[index])) announce(req, board.id, "a réorganisé les sections");
   res.json(boardSections.all(board.id));
 });
 
@@ -251,7 +290,7 @@ boardContentRoutes.post("/import", (req, res) => {
       const current = currentWidget(subject(w)?.type, subject(w)?.config);
       const widget = subject(current);
       const type = widget?.type;
-      if (!isBoardWidgetType(type) || !canUpdate(widgetAccess(req, type))) {
+      if (!isBoardWidgetType(type) || !canUse(widgetAccess(req, type))) {
         discarded += 1;
         return [];
       }
@@ -278,7 +317,16 @@ boardContentRoutes.post("/import", (req, res) => {
     .all(board.id)
     .filter((w) => !accessIncludes(widgetAccess(req, w.type), "delete"))
     .map((w) => w.id);
+  const itemsGo = [...concerned.board(board.id), ...concerned.projectBoard(board.id), ...concerned.supportBoard(board.id)];
   boardSections.importSections(board.id, sections, keptCount);
+  notifyBoard({
+    boardId: board.id,
+    message: "a importé une disposition",
+    author: req.user,
+    base: root(req),
+    scope: "edit",
+    recipients: itemsGo,
+  });
   const result: ImportResult = {
     placed: sections.reduce((n, s) => n + s.widgets.length, 0),
     discarded,
@@ -289,7 +337,7 @@ boardContentRoutes.post("/import", (req, res) => {
 
 boardContentRoutes.get("/widgets", (req, res) => {
   const board = openBoard((req.params as { id: string }).id, req.user);
-  res.json(allReadable(req, boardWidgets.all(board.id)));
+  res.json(rendered(boardWidgets.all(board.id)));
 });
 
 // --- A section ---------------------------------------------------------------
@@ -309,21 +357,31 @@ boardSectionRoutes.put("/:id", (req, res) => {
     req.body.width_value ?? (unit === existing.width_unit ? existing.width_value : undefined),
   );
   boardSections.update.run(unit, value, columnsGap(req.body.gap, existing.gap), existing.id);
+  announce(req, board.id, "a modifié une section");
   res.json(boardSections.byId(existing.id));
 });
 
 boardSectionRoutes.post("/:id/duplicate", (req, res) => {
   const { section: existing, board } = openedSection(req.params.id, req.user);
   requireStructure(req, board);
-  res.status(201).json(boardSections.byId(boardSections.duplicate(existing)));
+  const copy = boardSections.duplicate(existing);
+  announce(req, board.id, "a dupliqué une section");
+  res.status(201).json(boardSections.byId(copy));
 });
 
 boardSectionRoutes.delete("/:id", (req, res) => {
   const { section: existing, board } = openedSection(req.params.id, req.user);
   requireStructure(req, board);
-  // What it carried goes with it, through the foreign key.
-  boardSections.remove.run(existing.id);
-  res.status(204).end();
+  // What it carried goes with it, through the foreign key. The token undoes
+  // it (lib/undo.ts).
+  const holdsItems = boardWidgets
+    .all(board.id)
+    .some((w) => w.section_id === existing.id && isListWidgetType(w.type));
+  announce(req, board.id, "a supprimé une section", { itemsGo: holdsItems });
+  const undo = deleteWithUndo(req.user.id, [byId("board_sections", existing.id)], () =>
+    boardSections.remove.run(existing.id),
+  );
+  res.json({ undo });
 });
 
 // --- A widget ---------------------------------------------------------------
@@ -342,13 +400,14 @@ boardWidgetRoutes.put("/reorder", (req, res) => {
   const { section, board } = openedSection(req.body.section_id, req.user);
   requireStructure(req, board);
   const ids = toIds(req.body.ids);
-  // Only the widgets the account sees, of the same structure, are arranged.
-  const known = new Set(allReadable(req, boardWidgets.all(board.id)).map((w) => w.id));
+  // Only the widgets of the same structure are arranged.
+  const known = new Set(boardWidgets.all(board.id).map((w) => w.id));
   if (ids.length !== new Set(ids).size || ids.some((id) => !known.has(id))) {
     badRequest("La liste des identifiants ne correspond pas aux widgets");
   }
   boardWidgets.store(section.id, ids);
-  res.json(allReadable(req, boardWidgets.all(board.id)));
+  announce(req, board.id, "a réorganisé les widgets");
+  res.json(rendered(boardWidgets.all(board.id)));
 });
 
 boardWidgetRoutes.post("/", (req, res) => {
@@ -356,7 +415,7 @@ boardWidgetRoutes.post("/", (req, res) => {
   requireStructure(req, board);
   const type: unknown = req.body.type;
   if (!isBoardWidgetType(type)) badRequest("Widget inconnu");
-  requireWidget(req, type as string, "update");
+  requireWidget(req, type as string, "view");
   // A list widget gets its key here, new: that of a configuration copied from
   // elsewhere is not valid (repositories/lists.ts).
   const id = boardWidgets.create(
@@ -378,21 +437,33 @@ boardWidgetRoutes.post("/", (req, res) => {
   if (type === "support.list" && ensureSupportLabels(board.id)) {
     touchNow(res, "support-labels");
   }
-  res.status(201).json(renderedWidget(boardWidgets.byId(id)!));
+  const created = boardWidgets.byId(id)!;
+  announce(req, board.id, `a ajouté ${widgetName(created)}`);
+  res.status(201).json(renderedWidget(created));
 });
 
 // A widget's type cannot be changed: that would be another widget. Only its
 // configuration moves. Its configuration also carries what some widgets hold,
 // a to-do list's items: it moves under a "read" share too.
 boardWidgetRoutes.put("/:id", (req, res) => {
-  const { widget } = openWidget(req.params.id, req);
+  const { widget, board } = openWidget(req.params.id, req);
   if (req.body.type !== undefined && req.body.type !== widget.type) {
     badRequest("Ce widget ne se convertit pas en ce type");
   }
-  boardWidgets.update.run(
-    keepKey(widget.type, widget.config, configuration(widget.type, req.body.config, widget.config)),
-    widget.id,
-  );
+  const config = keepKey(widget.type, widget.config, configuration(widget.type, req.body.config, widget.config));
+  boardWidgets.update.run(config, widget.id);
+  // The same configuration saved again is not a modification.
+  // Changed in place, the edit mode off — a to-do list's items —, it is a
+  // notification of use.
+  if (config !== widget.config) {
+    const inUse = req.body.in_use === true;
+    announce(
+      req,
+      board.id,
+      `a modifié ${inUse ? "le contenu de " : ""}${widgetName({ type: widget.type, config })}`,
+      { scope: inUse ? "production" : "edit" },
+    );
+  }
   res.json(renderedWidget(boardWidgets.byId(widget.id)!));
 });
 
@@ -401,14 +472,19 @@ boardWidgetRoutes.post("/:id/duplicate", (req, res) => {
   requireStructure(req, board);
   // A list widget owns its items: it is not duplicated.
   if (isListWidgetType(widget.type)) badRequest("Ce widget ne se duplique pas");
-  res.status(201).json(renderedWidget(boardWidgets.byId(boardWidgets.duplicate(widget))!));
+  const copy = boardWidgets.duplicate(widget);
+  announce(req, board.id, `a dupliqué ${widgetName(widget)}`);
+  res.status(201).json(renderedWidget(boardWidgets.byId(copy)!));
 });
 
 boardWidgetRoutes.delete("/:id", (req, res) => {
   const { widget, board } = openWidget(req.params.id, req);
   requireStructure(req, board);
-  boardWidgets.remove.run(widget.id);
-  res.status(204).end();
+  announce(req, board.id, `a supprimé ${widgetName(widget)}`, { itemsGo: isListWidgetType(widget.type) });
+  const undo = deleteWithUndo(req.user.id, [byId("board_widgets", widget.id)], () =>
+    boardWidgets.remove.run(widget.id),
+  );
+  res.json({ undo });
 });
 
 /**

@@ -5,7 +5,7 @@ import { NUMBERS, TaskBoardWidget, withNumbers } from "../../components/board/Ta
 import MailTemplates from "../../components/settings/MailTemplates";
 import CopyPasteActions from "../../components/ui/CopyPasteActions";
 import LabelGroupFields from "../../components/ui/LabelGroupFields";
-import { useSettingsMode } from "../../lib/rights";
+import { useSettingsMode, useTemplatesAccess } from "../../lib/rights";
 import { withField } from "../types";
 import type { WidgetConfigProps } from "../types";
 import type { TaskIndicatorWidget } from "./types";
@@ -20,6 +20,7 @@ import type { TaskIndicatorWidget } from "./types";
 
 function ListFields({ config, onChange }: WidgetConfigProps) {
   const canEditSettings = useSettingsMode();
+  const canEditTemplates = useTemplatesAccess();
   return (
     <>
       <CopyPasteActions scope="tasks" items={["labels"]} />
@@ -32,7 +33,7 @@ function ListFields({ config, onChange }: WidgetConfigProps) {
         />
         {/* The board's labels: they go to saving. */}
         <LabelGroupFields kind="task-labels" />
-        {canEditSettings && <MailTemplates canEdit only={TASKS_MAIL_TEMPLATE_KEYS} />}
+        {canEditSettings && <MailTemplates canEdit={canEditTemplates} only={TASKS_MAIL_TEMPLATE_KEYS} />}
       </Stack>
     </>
   );

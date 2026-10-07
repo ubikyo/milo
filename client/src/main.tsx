@@ -7,11 +7,16 @@ import "@mantine/dates/styles.css";
 import "@mantine/notifications/styles.css";
 // Stylesheet of the charts: those of the indicators.
 import "@mantine/charts/styles.css";
+// Stylesheet of the Spotlight: the tab row search.
+import "@mantine/spotlight/styles.css";
 // Placed after Mantine's: it takes over its focus ring.
 // The gray thumb of all scrollbars.
 import "./assets/styles/scrollbars.css";
 // The hover of grid rows, a notch darker.
 import "./assets/styles/tables.css";
+import "./assets/styles/tabs.css";
+// The lines between a menu's groups, from edge to edge.
+import "./assets/styles/menus.css";
 // No selection of the interface.
 import "./assets/styles/no-select.css";
 import "./assets/styles/no-borders.css"; // TEMPORARY TEST: borderless fields
@@ -24,7 +29,7 @@ import "dayjs/locale/fr";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import { BLUE, FOCUS_BORDER, ORANGE, PALETTE_RED, PALETTE_GREEN } from "./themes/colors";
+import { BLUE, FOCUS_BORDER, ORANGE, PALETTE_RED, PALETTE_GREEN, TAB_SIZE, TAB_TEXT, TAB_WEIGHT } from "./themes/colors";
 import ErrorPage from "./components/ui/ErrorPage";
 import Favicon from "./components/ui/Favicon";
 
@@ -131,7 +136,12 @@ const theme = createTheme({
       // "text-align: center" on the label): we put it back on the left, against
       // its icon. Tabs are cut to fit their text, except the vertical
       // settings tabs, where the centering showed.
-      styles: { tabLabel: { textAlign: "left" } },
+      // The text's color, size and weight come from the themes ("Onglets");
+      // the active tab's, from tabStyle.
+      styles: {
+        tab: { color: TAB_TEXT, fontSize: TAB_SIZE, fontWeight: TAB_WEIGHT },
+        tabLabel: { textAlign: "left" },
+      },
     },
   },
 });

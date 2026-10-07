@@ -36,6 +36,8 @@ export interface UserRow {
   default_workspace_id: Id | null;
   /** The opening board, in the opening view: its id, or empty. */
   default_board: string;
+  /** JSON: their notification settings; empty for the defaults (lib/notification-settings.ts). */
+  notification_settings: string;
 }
 
 export interface SessionRow {

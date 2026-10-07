@@ -1,15 +1,17 @@
-import { DARK_HEADER } from "./colors";
+import { DARK_HEADER, DARK_HEADER_SIZE, DARK_HEADER_TEXT, DARK_HEADER_WEIGHT } from "./colors";
 
 // Header shared by modal windows and drawers — Mantine builds them on the
-// same base: a dark gray banner and a white title, identical in both themes.
+// same base: a dark gray banner and a white title by default; the banner's
+// color, and the title's color, size and weight, are set in the themes.
 //
 // "padding" is the window's inset: it restores the top one of the body, which
 // Mantine removes as soon as there is a header, and the banner takes half of
 // it to stay thin. The end inset is set explicitly, otherwise Mantine computes
 // it from the window's inset and the two sides of the banner would be unequal.
 //
-// The title uses the font's thinnest weight, and is one fifth larger than
-// Mantine's size (16 × 1.2 ≈ 19 px). Same title for all windows and drawers.
+// By default, the title uses the font's thinnest weight, and is one fifth
+// larger than Mantine's size (16 × 1.2 ≈ 19 px). Same title for all windows
+// and drawers.
 //
 // Not all fonts have a weight of 100: the browser then takes the thinnest it
 // has, often the normal one. The title therefore relies on nothing but its
@@ -21,9 +23,9 @@ export const MODAL_PADDING = 32;
 
 export const modalHeaderStyles = (padding: number) => ({
   title: {
-    fontWeight: 100,
-    color: "#FFFFFF",
-    fontSize: "calc(var(--mantine-font-size-md) * 1.2)",
+    fontWeight: DARK_HEADER_WEIGHT,
+    color: DARK_HEADER_TEXT,
+    fontSize: DARK_HEADER_SIZE,
   },
   header: {
     backgroundColor: DARK_HEADER,

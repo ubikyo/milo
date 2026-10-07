@@ -22,8 +22,7 @@ import type { AuthResult } from "@milo/shared";
 import type { CSSProperties, FormEvent } from "react";
 
 /**
- * "setup": the "admin" account's password and the name of the first
- * workspace, on the very first opening. "microsoft": everyone's login. "admin": that
+ * "setup": the "admin" account's password, on the very first opening. "microsoft": everyone's login. "admin": that
  * of the "admin" account, which is only used for settings.
  */
 type LoginMode = "setup" | "microsoft" | "admin";
@@ -106,7 +105,6 @@ export default function LoginPage({
   const [username, setUsername] = useState(ADMIN);
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
-  const [workspace, setWorkspace] = useState("");
   const [busy, setBusy] = useState(false);
   const [slide, setSlide] = useState(0);
 
@@ -126,7 +124,7 @@ export default function LoginPage({
 
   const incomplete =
     mode === "setup"
-      ? !workspace.trim() || passwordIssues(password).length > 0 || password !== confirmation
+      ? passwordIssues(password).length > 0 || password !== confirmation
       : !username.trim() || !password;
 
   const submit = async (event: FormEvent) => {
@@ -136,7 +134,7 @@ export default function LoginPage({
     try {
       onAuthenticated(
         mode === "setup"
-          ? await api.setup({ password, workspace: workspace.trim() })
+          ? await api.setup({ password })
           : await api.login(username.trim(), password),
       );
     } catch (e) {
@@ -153,12 +151,12 @@ export default function LoginPage({
   };
 
   return (
-    // Two halves: the logo on the left one, the form centred on the right one.
+    // The image on the left 60%, the form centred on the right 40%.
     <Flex mih="100vh" bg="#1f1f1f">
-      {/* 50% of the page minus its 20px margins on either side. */}
+      {/* 60% of the page minus its 20px margins on either side. */}
       <Box
         flex="none"
-        w="calc(50% - 40px)"
+        w="calc(60% - 40px)"
         m={20}
         p={30}
         visibleFrom="sm"
@@ -248,7 +246,7 @@ export default function LoginPage({
           </Group>
         </Box>
       </Box>
-      <Center flex="none" w={{ base: "100%", sm: "50%" }} p="md">
+      <Center flex="none" w={{ base: "100%", sm: "40%" }} p="md">
         <Box p={40} w="100%" maw={420}>
           <form onSubmit={submit}>
             <Stack gap="md">
@@ -261,8 +259,9 @@ export default function LoginPage({
                 <Logo variant={1} h={176} />
                 {mode === "setup" && (
                   <Text size="sm" c="dimmed" ta="center" pt={30}>
-                    Le premier workspace, et le mot de passe du compte admin
-                    pour le paramétrage de l'application
+                    Saisissez un mot de passe spécifique
+                    <br />
+                    au compte d'administration de Milo
                   </Text>
                 )}
                 {mode === "admin" && entra && (
@@ -296,25 +295,13 @@ export default function LoginPage({
                 />
               )}
 
-              {/* The first team's workspace: its access is set
-                afterwards, in the Paramétrage. */}
-              {mode === "setup" && (
-                <TextInput
-                  label="Nom du workspace"
-                  value={workspace}
-                  onChange={(e) => setWorkspace(e.currentTarget.value)}
-                  required
-                  data-autofocus
-                />
-              )}
-
               {mode !== "microsoft" && (
                 <PasswordInput
                   label="Mot de passe"
                   value={password}
                   onChange={(e) => setPassword(e.currentTarget.value)}
                   required
-                  data-autofocus={mode !== "setup"}
+                  data-autofocus
                 />
               )}
 
@@ -324,14 +311,9 @@ export default function LoginPage({
                     label="Vérification du mot de passe"
                     value={confirmation}
                     onChange={(e) => setConfirmation(e.currentTarget.value)}
-                    error={
-                      confirmation && password !== confirmation
-                        ? "Les deux mots de passe ne correspondent pas"
-                        : undefined
-                    }
                     required
                   />
-                  <PasswordRules password={password} />
+                  <PasswordRules password={password} confirmation={confirmation} />
                 </>
               )}
 

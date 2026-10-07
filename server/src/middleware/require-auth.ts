@@ -7,6 +7,8 @@ import {
   hasAccess,
   inOwnWorkspace,
   settingsRights,
+  templatesAccess,
+  themesAccess,
   workspaceRights,
   sessions,
   users,
@@ -111,6 +113,30 @@ export const requireSettingsUpdate = (req: Request, _res: Response, next: NextFu
   }
   next();
 };
+
+/**
+ * A section of the administration whose "Autorisée" opens a tab of its own:
+ * everyone reads what it sets — the e-mails, the colors —, only whoever holds
+ * it writes. Set after `requireAuth`.
+ */
+const requireToWrite =
+  (allowed: (user: UserRow) => boolean, message: string) =>
+  (req: Request, _res: Response, next: NextFunction): void => {
+    if (req.method !== "GET" && !allowed(req.user)) throw new HttpError(403, message);
+    next();
+  };
+
+/** The e-mail templates: "Gestion des modèles d'email". */
+export const requireTemplatesToWrite = requireToWrite(
+  templatesAccess,
+  "Réservé à qui peut gérer les modèles d'email",
+);
+
+/** The themes' colors: "Gestion des thèmes". */
+export const requireThemesToWrite = requireToWrite(
+  themesAccess,
+  "Réservé à qui peut gérer les thèmes",
+);
 
 /**
  * Workspaces, right by right (administration): reading them requires

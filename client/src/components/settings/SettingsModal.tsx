@@ -1,5 +1,7 @@
 import {
+  Box,
   Button,
+  Checkbox,
   Group,
   Modal,
   ScrollArea,
@@ -9,16 +11,17 @@ import {
   Title,
 } from "@mantine/core";
 import {
-  IconBell,
   IconDatabaseExport,
   IconBrandWindows,
   IconLayoutNavbar,
+  IconMail,
   IconPalette,
   IconShieldLock,
   IconStack2,
 } from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { EntraSettings, PublicUser, Workspace } from "@milo/shared";
+import type { AdminPermissions, EntraStatus, PublicUser, Workspace } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import {
@@ -31,7 +34,8 @@ import {
 import { tabStyle } from "../../themes/tabs";
 import BackupTab from "./BackupTab";
 import EntraTab from "./EntraTab";
-import NotificationsTab from "./NotificationsTab";
+import type { EntraCheckControls, EntraCheckPhase } from "./EntraTab";
+import TemplatesTab from "./TemplatesTab";
 import DisplayTab from "./DisplayTab";
 import ThemesTab from "./ThemesTab";
 import WorkspacesTab from "./WorkspacesTab";
@@ -43,28 +47,54 @@ const TABS: {
   value: string;
   label: string;
   icon: ComponentType<{ size?: number }>;
+  /** Under the title. */
+  description?: string;
 }[] = [
-  { value: "workspaces", label: "Workspaces", icon: IconStack2 },
-  // Settings ("Paramétrage") and workspace management: for the whole application.
-  { value: "administration", label: "Administration", icon: IconShieldLock },
+  // At the very top: everything else depends on it.
   { value: "entra", label: "Entra", icon: IconBrandWindows },
-  { value: "notifications", label: "Notifications", icon: IconBell },
-  { value: "display", label: "Affichage", icon: IconLayoutNavbar },
+  // The administration's rights: for the whole application.
+  { value: "administration", label: "Administration", icon: IconShieldLock },
+  { value: "workspaces", label: "Workspaces", icon: IconStack2 },
+  {
+    value: "templates",
+    label: "Modèles",
+    icon: IconMail,
+    description:
+      "Les modèles d’e-mail ci-dessous, au format MJML, sont communs à l’ensemble de l’application. Chaque widget dispose également de modèles spécifiques, modifiables depuis son interface de configuration.",
+  },
+  {
+    value: "display",
+    label: "Affichage",
+    icon: IconLayoutNavbar,
+    description: "Principaux paramètres d’affichage de l’application.",
+  },
   { value: "themes", label: "Thèmes", icon: IconPalette },
   // The backup at the very bottom: it covers the whole database, not a setting.
   { value: "backup", label: "Sauvegarde", icon: IconDatabaseExport },
 ];
 
+/** The tabs the "admin" account sees: it only sets up the application. */
+const STANDALONE_TABS = new Set(["entra", "administration", "backup"]);
+
 /**
- * The tabs that require Entra: workspace access and the administration are
- * granted to directory users and groups.
+ * The others' tabs, and the administration's right each one requires — on
+ * top of "Gestion du paramétrage", which opens the Settings. Affichage needs
+ * nothing more.
  */
-const WITH_ENTRA = new Set(["workspaces", "administration"]);
+const TAB_RIGHTS: Record<string, (a: AdminPermissions) => boolean> = {
+  workspaces: (a) => a.workspaces.includes("view"),
+  administration: (a) => a.administration.includes("view"),
+  templates: (a) => a.templates.includes("access"),
+  display: () => true,
+  themes: (a) => a.themes.includes("access"),
+};
 
-
-/** Entra is configured: the application is registered (ID, directory, secret). */
-const entraConfigured = (r: EntraSettings) =>
-  Boolean(r.client_id && r.tenant && r.has_secret);
+/**
+ * The tabs that require Entra connected: the administration is granted to
+ * directory users and groups, and the backup only makes sense once the
+ * application is set up.
+ */
+const WITH_ENTRA = new Set(["administration", "backup"]);
 
 const MODAL_HEADER = modalHeaderStyles(40);
 
@@ -112,6 +142,8 @@ interface SettingsModalProps {
   user: PublicUser;
   /** The account re-read, after a workspace change: the selector offers them. */
   onUserChange?: (user: PublicUser) => void;
+  /** The tab it opens on, if visible: the first visible one otherwise. */
+  initialTab?: string;
 }
 
 export default function SettingsModal({
@@ -121,11 +153,10 @@ export default function SettingsModal({
   canEdit,
   user,
   onUserChange,
+  initialTab,
 }: SettingsModalProps) {
-  // "Voir" on workspaces opens their tab; without it, the modal opens on
-  // Entra.
   const management = user.workspace_rights.view;
-  const [activeTab, setActiveTab] = useState<string | null>(management ? "workspaces" : "entra");
+  const [activeTab, setActiveTab] = useState<string | null>(null);
   // All workspaces, for whoever manages them: their tab, and the choice of
   // the one whose access is being set.
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -149,24 +180,35 @@ export default function SettingsModal({
   useEffect(() => {
     if (opened && management) void api.getWorkspaces().then(setWorkspaces, () => undefined);
   }, [opened, management]);
-  // As long as Entra is not configured, only its settings and the backup
-  // are shown. The Entra tab informs the modal on each read and each
-  // save; "null" as long as it has not said anything.
-  const [entraReady, setEntraReady] = useState<boolean | null>(null);
-  // Whoever manages workspaces without seeing Settings only gets their tab;
-  // they sign in through Microsoft: Entra is necessarily configured.
+  // As long as Entra is not connected, only its settings are shown. The
+  // Entra tab informs the modal of each connection check; "null" as long
+  // as it has not said anything.
+  const [entraConnected, setEntraConnected] = useState<boolean | null>(null);
+  // Entra and the backup are the "admin" account's alone; the others sign in
+  // through Microsoft: Entra is necessarily connected. Their tabs follow
+  // their administration.
   const visible = (tab: string) =>
-    (tab === "workspaces" ? management : true) &&
-    (user.settings.view || tab === "workspaces") &&
-    !(!canEdit && tab === "backup") &&
-    (entraReady === true || !WITH_ENTRA.has(tab) || !user.settings.view);
+    standalone
+      ? STANDALONE_TABS.has(tab) &&
+        !(!canEdit && tab === "backup") &&
+        (entraConnected === true || !WITH_ENTRA.has(tab))
+      : user.settings.view && Boolean(TAB_RIGHTS[tab]?.(user.administration));
+  // On each opening: the requested tab if it is visible, the first otherwise.
+  const firstTab = TABS.find((t) => visible(t.value))?.value ?? null;
+  useEffect(() => {
+    if (opened) setActiveTab(initialTab && visible(initialTab) ? initialTab : firstTab);
+    // Only on opening: the tab chosen afterwards stays.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened]);
 
-  // Stable: the Entra tab uses it when reading the settings.
-  const followEntra = useCallback((settings: EntraSettings) => {
-    const ready = entraConfigured(settings);
-    setEntraReady(ready);
+  // Stable: the Entra tab calls it on each connection check.
+  const followEntra = useCallback((status: EntraStatus | null) => {
+    // While checking, the tabs stay as they are.
+    if (!status) return;
+    const connected = status.state === "connected";
+    setEntraConnected(connected);
     // The open tab just disappeared: switch to Entra.
-    if (!ready) setActiveTab((t) => (t && WITH_ENTRA.has(t) ? "entra" : t));
+    if (!connected) setActiveTab((t) => (t && WITH_ENTRA.has(t) ? "entra" : t));
   }, []);
   /**
    * Only the Entra and Administration tabs have pending settings: the other
@@ -174,8 +216,21 @@ export default function SettingsModal({
    * deposits here; "Fermer" saves nothing.
    */
   const saveEntra = useRef<(() => Promise<boolean>) | null>(null);
+  // Disconnected, the "admin" account's buttons give way to the connection
+  // check, which the Entra tab runs.
+  const entraCheck = useRef<EntraCheckControls | null>(null);
+  const [checkPhase, setCheckPhase] = useState<EntraCheckPhase>("form");
+  const connecting = standalone && entraConnected === false;
+  // Connected, nothing is saved without a sending address (Entra tab).
+  const [sender, setSender] = useState<string | null>(null);
+  const senderMissing = standalone && entraConnected === true && sender === "";
   const saveAdministration = useRef<(() => Promise<boolean>) | null>(null);
   const [registration, setSaving] = useState(false);
+  // The Administration tab's "Envoyer une invitation": checked on each opening.
+  const [invite, setInvite] = useState(true);
+  useEffect(() => {
+    if (opened) setInvite(true);
+  }, [opened]);
 
   // Saves then closes; a server refusal keeps the modal open, with its
   // message in the relevant tab.
@@ -193,6 +248,7 @@ export default function SettingsModal({
     } finally {
       setSaving(false);
     }
+    notifications.show({ color: "teal", message: "Paramétrage enregistré." });
     if (!standalone) onClose();
   };
 
@@ -204,8 +260,10 @@ export default function SettingsModal({
     value: string,
     children: ReactNode,
     actionsRef?: (el: HTMLDivElement | null) => void,
-  ) =>
-    visible(value) && (
+  ) => {
+    const tab = TABS.find((t) => t.value === value);
+    const description = tab?.description;
+    return visible(value) && (
       <Tabs.Panel
         value={value}
         pl="xl"
@@ -218,9 +276,7 @@ export default function SettingsModal({
       >
         <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
           <Group justify="space-between" align="center" wrap="nowrap">
-            <Title order={4}>
-              {TABS.find((t) => t.value === value)?.label}
-            </Title>
+            <Title order={4}>{tab?.label}</Title>
             {/* Without a height, the menu centered on the row: taller than the
               title, it would enlarge the header and shift the panel relative
               to the other tabs. */}
@@ -231,6 +287,11 @@ export default function SettingsModal({
               />
             )}
           </Group>
+          {description && (
+            <Text size="sm" c="dimmed" mt={-8}>
+              {description}
+            </Text>
+          )}
           {/* "auto": the bar only appears if the tab overflows. */}
           <ScrollArea
             type="auto"
@@ -243,6 +304,7 @@ export default function SettingsModal({
         </Stack>
       </Tabs.Panel>
     );
+  };
 
   return (
     <Modal
@@ -289,7 +351,9 @@ export default function SettingsModal({
         keepMountedMode="display-none"
         style={{ flex: 1, minHeight: 0 }}
       >
-        <Tabs.List style={{ width: 170, flexShrink: 0 }}>
+        {/* 170 px of tabs, plus the window's inset their background takes
+            in (tabs.css). */}
+        <Tabs.List style={{ width: "calc(170px + var(--mb-padding))", flexShrink: 0 }}>
           {TABS.filter((t) => visible(t.value)).map(
             ({ value, label, icon: Icon }) => (
               <Tabs.Tab
@@ -304,60 +368,107 @@ export default function SettingsModal({
           )}
         </Tabs.List>
 
-        {panel(
-          "workspaces",
-          <WorkspacesTab
-            rights={user.workspace_rights}
-            workspaces={workspaces}
-            onChanged={reloadWorkspaces}
-            onAccessChanged={() => void reloadAccount()}
-          />,
-        )}
+        {/* The panels, then the buttons under them: the tabs' column runs
+            down to the window's bottom (tabs.css). */}
+        <Box style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          {panel(
+            "workspaces",
+            <WorkspacesTab
+              rights={user.workspace_rights}
+              workspaces={workspaces}
+              onChanged={reloadWorkspaces}
+              onAccessChanged={() => void reloadAccount()}
+            />,
+          )}
 
-        {panel(
-          "administration",
-          <AdministrationTab
-            workspaceRights={user.workspace_rights}
-            saveRef={saveAdministration}
-            onChange={() => void reloadAccount()}
-          />,
-        )}
+          {panel(
+            "administration",
+            <AdministrationTab
+              rights={user.administration}
+              invite={invite}
+              saveRef={saveAdministration}
+              onChange={() => void reloadAccount()}
+            />,
+          )}
 
-        {panel(
-          "entra",
-          <EntraTab
-            saveRef={saveEntra}
-            actionsTarget={entraActions}
-            onSettings={followEntra}
-          />,
-          setEntraActions,
-        )}
+          {panel(
+            "entra",
+            <EntraTab
+              saveRef={saveEntra}
+              actionsTarget={entraActions}
+              onStatus={followEntra}
+              onSender={setSender}
+              checkRef={entraCheck}
+              onPhase={setCheckPhase}
+            />,
+            setEntraActions,
+          )}
 
-        {panel("backup", <BackupTab />)}
+          {panel("backup", <BackupTab />)}
 
-        {panel("notifications", <NotificationsTab canEdit={canEdit} />)}
+          {panel("templates", <TemplatesTab canEdit={canEdit} />)}
 
-        {panel("display", <DisplayTab canEdit={canEdit} />)}
+          {panel("display", <DisplayTab canEdit={canEdit} />)}
 
-        {panel("themes", <ThemesTab canEdit={canEdit} />)}
+          {panel("themes", <ThemesTab canEdit={canEdit} />)}
+
+          <Group justify="flex-end" mt={40} pl="xl">
+            {!canEdit && user.settings.view && (
+              <Text size="sm" c="dimmed" mr="auto">
+                Consultation seule : votre rôle ne permet pas de modifier le
+                Paramétrage.
+              </Text>
+            )}
+            {/* Whoever is just added to the administration receives the "Nouvel
+                administrateur" e-mail — each user of a group. */}
+            {canEdit && activeTab === "administration" && user.administration.administration.includes("create") && (
+              <Checkbox
+                label="Envoyer une invitation"
+                checked={invite}
+                onChange={(e) => setInvite(e.currentTarget.checked)}
+                color="teal"
+                mr="auto"
+              />
+            )}
+            {connecting ? (
+              <>
+                {checkPhase === "failed" && (
+                  <CloseButton onClick={() => entraCheck.current?.back()}>Retour</CloseButton>
+                )}
+                {checkPhase === "passed" ? (
+                  <Button color="teal" onClick={() => entraCheck.current?.next()}>
+                    Suivant
+                  </Button>
+                ) : (
+                  <Button
+                    color="teal"
+                    onClick={() => entraCheck.current?.connect()}
+                    loading={checkPhase === "checking"}
+                  >
+                    Se connecter
+                  </Button>
+                )}
+              </>
+            ) : (
+              <>
+                <CloseButton onClick={onClose}>
+                  {standalone ? "Déconnexion" : "Fermer"}
+                </CloseButton>
+                {canEdit && (
+                  <Button
+                    color="teal"
+                    onClick={save}
+                    loading={registration}
+                    disabled={senderMissing}
+                  >
+                    Enregistrer
+                  </Button>
+                )}
+              </>
+            )}
+          </Group>
+        </Box>
       </Tabs>
-
-      <Group justify="flex-end" mt={40}>
-        {!canEdit && user.settings.view && (
-          <Text size="sm" c="dimmed" mr="auto">
-            Consultation seule : votre rôle ne permet pas de modifier le
-            Paramétrage.
-          </Text>
-        )}
-        <CloseButton onClick={onClose}>
-          {standalone ? "Déconnexion" : "Fermer"}
-        </CloseButton>
-        {canEdit && (
-          <Button color="teal" onClick={save} loading={registration}>
-            Enregistrer
-          </Button>
-        )}
-      </Group>
     </Modal>
   );
 }

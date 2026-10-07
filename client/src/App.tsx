@@ -22,13 +22,15 @@ import {
   IconFileExport,
   IconFileImport,
   IconLayoutDashboard,
+  IconSettings,
+  IconStack2,
   IconTrash,
 } from "@tabler/icons-react";
 import { RED } from "./themes/colors";
 import {
   DEFAULT_SUPPORT_STATUS,
   RESOURCES,
-  canUpdate,
+  canUse,
   emptyFollows,
   inContext,
   isM365Change,
@@ -58,7 +60,9 @@ import PointMenu, { menuPosition, type PointMenuPosition } from "./components/ui
 import KonamiCode from "./components/ui/KonamiCode";
 import { placeInterface, clearPage } from "./lib/interfaceFall";
 import { loadTitleStyles } from "./lib/titleStyles";
+import { rememberDeletion, useUndoShortcut } from "./lib/undo";
 import SettingsModal from "./components/settings/SettingsModal";
+import EmptyPanel from "./components/ui/EmptyPanel";
 import type {
   Asset,
   AuthResult,
@@ -115,7 +119,21 @@ const ofContext = <T extends { list_key: string; labels: { group_id: Id; name: s
     ? items.filter((e) => inContext(e.labels, groups[e.list_key], context))
     : items;
 
+/**
+ * What a notification opens. A board's structure — a list, a label — opens
+ * the board, as an Access-mode item does; a setting, nothing here: the
+ * settings open (`openNotification`).
+ */
+const notificationTarget = (notice: FollowNotification): Target | null =>
+  notice.kind === "settings"
+    ? null
+    : notice.kind === "board"
+      ? { kind: "access", id: notice.target_id }
+      : { kind: notice.kind, id: notice.target_id };
+
 export default function App() {
+  // ⌘Z undoes the last deletion of a widget, a section, a board or a view.
+  useUndoShortcut();
   const [user, setUser] = useState<PublicUser | null>(null);
   // The themes' colors, read once signed in. Subscribed: a color changed in
   // the Settings redraws the widgets whose default colors follow it.
@@ -141,6 +159,9 @@ export default function App() {
   const appliedView = useRef<number | null>(null);
   // The opening board, until the boards of its view are read.
   const openingBoard = useRef<{ view: string; board: string } | null>(null);
+  // A link — the address, a notification — has led to a board: the opening
+  // view and board must not take its place.
+  const linkedTo = useRef(false);
   // The open view's boards, and the one that is open.
   const [boardsRead, setBoardsRead] = useState<LoadedFor<Board> | null>(null);
   const [boardId, setBoardId] = useState<string | null>(null);
@@ -186,9 +207,9 @@ export default function App() {
   // doesn't see and remove what one can't do.
   const can = useMemo(() => canFrom(user?.rights ?? {}), [user]);
   // Organizing the shared views and boards requires the right to modify the
-  // interface, and being able to edit at least one widget type (like the
-  // server, lib/rights.ts).
-  const canArrange = canEditInterface && Object.values(user?.widgets ?? {}).some(canUpdate);
+  // layout, and being able to use at least one widget type (like the server,
+  // lib/rights.ts).
+  const canArrange = canEditInterface && Object.values(user?.widgets ?? {}).some(canUse);
 
   // Reads in progress. An empty screen is a conclusion: it is never drawn
   // during a read.
@@ -356,8 +377,10 @@ export default function App() {
           if (needs_setup) {
             setNeedsSetup(true);
           } else if (getToken()) {
-            setUser(await api.me());
-            if (connection) {
+            const account = await api.me();
+            setUser(account);
+            // The "admin" account only sees Settings: no build-up.
+            if (connection && !account.system) {
               clearPage();
               setEntered(true);
             }
@@ -393,6 +416,8 @@ export default function App() {
     setToken(token);
     setUser(account);
     setNeedsSetup(false);
+    // The "admin" account only sees Settings: no build-up.
+    if (account.system) return;
     // The interface will be built before the user's eyes, once loaded.
     clearPage();
     setEntered(true);
@@ -403,6 +428,13 @@ export default function App() {
       await api.logout();
     } catch {
       /* session already invalid on the server side */
+    }
+    // Entra may have been connected meanwhile — by the "admin" account,
+    // from Settings: the sign-in screen then offers Microsoft first.
+    try {
+      setEntraReady((await api.getSetupState()).entra);
+    } catch {
+      /* the sign-in screen keeps what it knew */
     }
     setToken(null);
     setUser(null);
@@ -601,6 +633,10 @@ export default function App() {
   useEffect(() => {
     if (!user || !shownViews || appliedView.current === user.id) return;
     appliedView.current = user.id;
+    if (linkedTo.current) {
+      linkedTo.current = false;
+      return;
+    }
     const inOpening =
       user.default_workspace === null ||
       user.default_workspace === user.workspace;
@@ -676,12 +712,25 @@ export default function App() {
     [follows],
   );
 
-  /** Go to a board, wherever it is: its view first. */
-  const goToBoard = useCallback(async (id: Id) => {
-    const board = await api.getBoard(id);
-    setViewId(String(board.view_id));
-    setBoardId(String(board.id));
+  /**
+   * Show a view and a board, in place of the opening ones if they are not
+   * applied yet.
+   */
+  const showBoard = useCallback((view: Id, board: Id) => {
+    linkedTo.current = true;
+    openingBoard.current = null;
+    setViewId(String(view));
+    setBoardId(String(board));
   }, []);
+
+  /** Go to a board, wherever it is: its view first. */
+  const goToBoard = useCallback(
+    async (id: Id) => {
+      const board = await api.getBoard(id);
+      showBoard(board.view_id, board.id);
+    },
+    [showBoard],
+  );
 
   /**
    * Opens the designated item, whether it comes from the URL, a notification or
@@ -707,15 +756,14 @@ export default function App() {
         } else {
           // A card: the board will open it, once its lists are read.
           const or = await api.getCardLocation(target.id);
-          setViewId(String(or.view_id));
-          setBoardId(String(or.board_id));
+          showBoard(or.view_id, or.board_id);
           setCardToOpen(target.id);
         }
       } catch {
         /* item deleted in the meantime, or made private: there is nothing to open */
       }
     },
-    [goToBoard],
+    [goToBoard, showBoard],
   );
 
   /** What the search found: a link directly opens its URL. */
@@ -731,23 +779,27 @@ export default function App() {
     [openTarget],
   );
 
-  // Paramétrage › Notifications: when off, notifications no longer show
-  // on screen — they still go into the drawer. Re-read on each
-  // close of the Paramétrage, where the setting may have changed.
+  // Préférences › Notifications: when off, notifications no longer show
+  // on screen — they still go into the drawer. The account carries the
+  // setting, and is replaced when the preferences are saved.
   const toastsEnabled = useRef(true);
-  useEffect(() => {
-    if (!user || settingsOpened) return;
-    api
-      .getNotificationSettings()
-      .then((r) => (toastsEnabled.current = r.toasts))
-      .catch(() => undefined);
-  }, [user, settingsOpened]);
+  toastsEnabled.current = user?.notification_settings.toasts ?? true;
 
   // And only for whoever has the right to them in their workspace (Accès).
   const screenRight = useRef(false);
   screenRight.current = Boolean(user?.notifications.screen);
 
   /** What is seen when a followed item changes, by someone else. */
+  /** Opens what a notification is about: its item, its board, or the settings. */
+  const openNotification = useCallback(
+    (notice: FollowNotification) => {
+      const target = notificationTarget(notice);
+      if (target) void openTarget(target);
+      else if (user?.settings.view) setSettingsOpened(true);
+    },
+    [openTarget, user?.settings.view],
+  );
+
   const showNotification = useCallback(
     (notice: FollowNotification) => {
       if (!toastsEnabled.current || !screenRight.current) return;
@@ -767,7 +819,7 @@ export default function App() {
                 size="sm"
                 onClick={() => {
                   notifications.hide(notice.id);
-                  openTarget({ kind: notice.kind, id: notice.target_id });
+                  openNotification(notice);
                 }}
               >
                 Ouvrir
@@ -777,7 +829,7 @@ export default function App() {
         ),
       });
     },
-    [openTarget],
+    [openNotification],
   );
 
   // Event stream: the server pushes its counters as soon as a write
@@ -1129,8 +1181,11 @@ export default function App() {
     if (target) openTarget(target);
   }, [user, openTarget]);
 
-  // The URL follows what is open, so a reload finds it again.
+  // The URL follows what is open, so a reload finds it again — once it has
+  // been read: before the session opens, nothing is open, and the link
+  // would be wiped before it could be followed.
   useEffect(() => {
+    if (!readAddress.current) return;
     if (drawerOpened && selectedProjectId) {
       noteInAddress({ kind: "project", id: selectedProjectId });
     } else if (displayedCard) {
@@ -1225,6 +1280,44 @@ export default function App() {
       />
     );
 
+  // No workspace: only an empty screen, which leads whoever can create one
+  // to the Settings' Workspaces tab. Once they have one, the interface
+  // follows.
+  if (user.workspaces.length === 0) {
+    const canManage = user.settings.view && user.workspace_rights.view;
+    return (
+      <Stack h="100vh" align="center" justify="center" gap="md">
+        <EmptyPanel
+          icon={IconStack2}
+          fill={false}
+          message={
+            canManage
+              ? "Aucun workspace pour le moment"
+              : "Aucun workspace ne vous est encore ouvert"
+          }
+          {...(canManage
+            ? {
+                actionLabel: "Ouvrir le paramétrage",
+                actionIcon: IconSettings,
+                onAction: () => setSettingsOpened(true),
+              }
+            : null)}
+        />
+        <Anchor size="sm" c="dimmed" onClick={() => void handleLogout()}>
+          Se déconnecter
+        </Anchor>
+        <SettingsModal
+          opened={settingsOpened}
+          onClose={() => setSettingsOpened(false)}
+          canEdit={user.settings.update}
+          user={user}
+          onUserChange={setUser}
+          initialTab="workspaces"
+        />
+      </Stack>
+    );
+  }
+
   // The open board's contexts, and the account.
   const account: AccountSlot = {
     contexts: board
@@ -1276,7 +1369,12 @@ export default function App() {
   const boardNameOf = (id: Id) => boards?.find((b) => b.id === id)?.name;
 
   return (
-    <RightsProvider rights={user.rights} widgets={user.widgets} canEditSettings={user.settings.update}>
+    <RightsProvider
+      rights={user.rights}
+      widgets={user.widgets}
+      canEditSettings={user.settings.update}
+      canEditTemplates={user.administration.templates.includes("access")}
+    >
       <EditingContext.Provider value={isEditing}>
           {/* The clipboard of labels and categories, which the "Actions"
             menu of a widget drawer fills and empties in another. */}
@@ -1357,7 +1455,14 @@ export default function App() {
                     }
                     onDeleteBoard={
                       user.structure.boards.delete && isEditing
-                        ? (id) => write(() => api.deleteBoard(id), loadBoards)
+                        ? (id) =>
+                            write(
+                              async () =>
+                                rememberDeletion(await api.deleteBoard(id), "Tableau supprimé", {
+                                  reload: loadBoards,
+                                }),
+                              loadBoards,
+                            )
                         : undefined
                     }
                     onToggleBoardHidden={
@@ -1644,7 +1749,14 @@ export default function App() {
                 }
                 onDelete={
                   user.structure.views.delete && isEditing
-                    ? (id) => write(() => api.deleteView(id), loadViews)
+                    ? (id) =>
+                        write(
+                          async () =>
+                            rememberDeletion(await api.deleteView(id), "Vue supprimée", {
+                              reload: loadViews,
+                            }),
+                          loadViews,
+                        )
                     : undefined
                 }
               />
@@ -1697,10 +1809,7 @@ export default function App() {
                 onOpen={(notification) => {
                   if (notification.deleted) return;
                   setNotificationsOpened(false);
-                  void openTarget({
-                    kind: notification.kind,
-                    id: notification.target_id,
-                  });
+                  openNotification(notification);
                 }}
               />
 

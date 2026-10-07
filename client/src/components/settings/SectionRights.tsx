@@ -30,8 +30,8 @@ const AFTER_CHECKBOX = 6;
 const PILL_HEIGHT = 22;
 const PILL_RADIUS = 4;
 
-/** The width of the section's field: enough to read "Notifications", and room left for the rights. */
-const SECTION_WIDTH = 200;
+/** The width of the section's field: enough to read "Gestion des droits d'administration", and room left for the rights. */
+const SECTION_WIDTH = 270;
 
 /**
  * A section and the rights it offers, in their order — and, if it has one,
@@ -64,7 +64,7 @@ interface SectionRightsProps {
   kept?: SectionPermissions;
   /**
    * A section's rights after a change, straightened out — "Modifier" brings
-   * "Lire" with it, for example. By default, as chosen.
+   * "Utiliser" with it, for example. By default, as chosen.
    */
   normalize?: (section: string, before: string[], after: string[]) => string[];
   /** Shown, not changed. */

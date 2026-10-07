@@ -3,8 +3,8 @@ import {
   Button,
   CopyButton,
   Group,
+  Loader,
   Menu,
-  Modal,
   PasswordInput,
   Stack,
   Text,
@@ -15,27 +15,26 @@ import {
   IconCheck,
   IconChevronDown,
   IconCopy,
-  IconMailForward,
   IconPlugConnected,
   IconPlugConnectedX,
-  IconSend,
+  IconX,
 } from "@tabler/icons-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { emptyEntraSettings } from "@milo/shared";
+import SenderField from "./SenderField";
+import { notifications } from "@mantine/notifications";
+import { emptyEntraSettings, ENTRA_CHECKS } from "@milo/shared";
 import { api } from "../../api";
-import { NEUTRAL_HOVER } from "../../themes/colors";
-import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
+import { GREEN, NEUTRAL_HOVER, RED } from "../../themes/colors";
 import { ACTIONS_BUTTON_STYLE } from "../../themes/menus";
-import SuccessAlert from "../ui/SuccessAlert";
 import { errorMessage, notifyError } from "../../lib/errors";
 import type {
+  EntraCheck,
   EntraSettings,
   EntraSettingsInput,
   EntraStatus,
 } from "@milo/shared";
 import type { CSSProperties } from "react";
-import CloseButton from "../ui/CloseButton";
 
 /** What the connection status shows, depending on what the server says about it. */
 const STATES: Record<
@@ -53,6 +52,34 @@ const STATES: Record<
  * so its presence is simulated with dots.
  */
 const MASK = "********";
+
+/** The path the server receives Microsoft's sign-ins on. */
+const REDIRECT_PATH = "/api/auth/entra/callback";
+
+/** The gap, in px, between the typed address and the redirect path. */
+const SUFFIX_GAP = 2;
+
+/** A canvas to measure text with, created on first use. */
+let measuring: CanvasRenderingContext2D | null = null;
+
+/**
+ * Where the redirect path goes over the address field, in px from the
+ * field's container: right after the typed text, measured in the input's
+ * own font, and up to the right section (copy button).
+ */
+function suffixPlace(input: HTMLInputElement): { left: number; width: number } {
+  const cs = getComputedStyle(input);
+  measuring ??= document.createElement("canvas").getContext("2d");
+  let text = 0;
+  if (measuring) {
+    measuring.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    text = measuring.measureText(input.value).width;
+  }
+  const start = input.offsetLeft + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft);
+  const end = input.offsetLeft + input.offsetWidth - parseFloat(cs.borderRightWidth) - parseFloat(cs.paddingRight);
+  const left = start + text - input.scrollLeft + SUFFIX_GAP;
+  return { left, width: Math.max(0, end - left) };
+}
 
 /**
  * Input in a field that still shows the mask: only what the person
@@ -73,88 +100,23 @@ function unmasked(value: string): string {
 }
 
 /**
- * The send test. It applies to the saved settings: the tab
- * sent them just before opening this window, otherwise the test would speak of a
- * configuration the server does not know yet.
+ * Where the connection check stands: the form, the steps running, then
+ * their outcome — a required permission missing, or all of them granted.
  */
-function MailTestModal({
-  opened,
-  onClose,
-  sender,
-}: {
-  opened: boolean;
-  onClose: () => void;
-  /** The saved sender address. */
-  sender: string;
-}) {
-  const [address, setAddress] = useState("");
-  const [sent, setSent] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+export type EntraCheckPhase = "form" | "checking" | "failed" | "passed";
 
-  const send = async () => {
-    setSent(null);
-    setBusy(true);
-    try {
-      const { sent_to } = await api.testMail(address.trim());
-      setSent(sent_to);
-    } catch (e) {
-      notifyError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      title="Tester l'envoi"
-      centered
-      padding={MODAL_PADDING}
-      withCloseButton={false}
-      styles={modalHeaderStyles(MODAL_PADDING)}
-    >
-      <Stack gap="md">
-        <Text size="sm">
-          {sender
-            ? `Le message part de l'adresse d'envoi, ${sender}.`
-            : "Renseignez d'abord l'adresse d'envoi."}
-        </Text>
-
-        <TextInput
-          label="Adresse de test"
-          type="email"
-          value={address}
-          onChange={(e) => setAddress(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && address.trim() && sender) send();
-          }}
-        />
-
-        {sent && (
-          <SuccessAlert>
-            <Text size="sm">Message envoyé à {sent}.</Text>
-          </SuccessAlert>
-        )}
-
-        <Group justify="flex-end" mt="md">
-          <CloseButton onClick={onClose} />
-          {/* The green of the actions that confirm, that of the accounts' checkmark
-              and of a successful send's report. */}
-          <Button
-            color="teal"
-            leftSection={<IconSend size={16} />}
-            onClick={send}
-            loading={busy}
-            disabled={!address.trim() || !sender}
-          >
-            Envoyer
-          </Button>
-        </Group>
-      </Stack>
-    </Modal>
-  );
+/** What the window's buttons do with the check (SettingsModal). */
+export interface EntraCheckControls {
+  /** Saves what is typed, then runs the check. */
+  connect: () => void;
+  /** Everything is granted: reconnects Milo, back to the form. */
+  next: () => void;
+  /** Back to the form, to correct it. */
+  back: () => void;
 }
+
+/** A step not reached yet, running, or answered. */
+type StepState = "pending" | "running" | EntraCheck;
 
 interface EntraTabProps {
   /**
@@ -169,11 +131,16 @@ interface EntraTabProps {
    */
   actionsTarget?: HTMLElement | null;
   /**
-   * The settings as the server has them, on each read and each
-   * save: the window only shows the other tabs once
-   * Entra is configured.
+   * Milo's connection to Entra, on each check (null while checking): the
+   * window only shows the administration and the backup once connected.
    */
-  onSettings?: (settings: EntraSettings) => void;
+  onStatus?: (status: EntraStatus | null) => void;
+  /** The saved sending address, once connected: the window requires it to save. */
+  onSender?: (address: string) => void;
+  /** Where the tab deposits the check's controls, for the window's buttons. */
+  checkRef?: { current: EntraCheckControls | null };
+  /** Where the check stands: the window's buttons follow it. */
+  onPhase?: (phase: EntraCheckPhase) => void;
 }
 
 /**
@@ -188,7 +155,10 @@ interface EntraTabProps {
 export default function EntraTab({
   saveRef,
   actionsTarget,
-  onSettings,
+  onStatus,
+  onSender,
+  checkRef,
+  onPhase,
 }: EntraTabProps) {
   const [settings, setSettings] = useState<EntraSettings>(emptyEntraSettings());
   const [secret, setSecret] = useState("");
@@ -200,7 +170,6 @@ export default function EntraTab({
   // fill in all at once.
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [testOpen, setTestOpened] = useState(false);
   // The state of Milo's connection to Entra: null until it is known.
   const [state, setState] = useState<EntraStatus | null>(null);
 
@@ -216,11 +185,14 @@ export default function EntraTab({
     readState();
   }, [readState]);
 
+  useEffect(() => {
+    onStatus?.(state);
+  }, [onStatus, state]);
+
   const reload = useCallback(async () => {
     try {
       const readItems = await api.getEntraSettings();
       setSettings(readItems);
-      onSettings?.(readItems);
       setModified(false);
     } catch (e) {
       notifyError(errorMessage(e));
@@ -228,7 +200,7 @@ export default function EntraTab({
       // Even if the read failed: the message is better than an empty tab.
       setLoaded(true);
     }
-  }, [onSettings]);
+  }, []);
 
   useEffect(() => {
     reload();
@@ -254,7 +226,6 @@ export default function EntraTab({
     try {
       const saved = await api.updateEntraSettings(toSend());
       setSettings(saved);
-      onSettings?.(saved);
       setSecretTouched(false);
       setSecret("");
       setModified(false);
@@ -282,14 +253,6 @@ export default function EntraTab({
 
   // The checks apply to what the server has in the database: the display
   // goes with it.
-  // The sending address is set in the Notifications tab: it is read again
-  // in case it changed since this tab loaded.
-  const runTest = async () => {
-    if (!(await save())) return;
-    await reload();
-    setTestOpened(true);
-  };
-
   /** Reconnect with what is typed, or disconnect. */
   const changeConnection = async (connect: boolean) => {
     if (connect && !(await save())) return;
@@ -304,15 +267,127 @@ export default function EntraTab({
     }
   };
 
-  // Disconnected, Milo no longer goes through Microsoft: the checks
-  // would fail outright.
-  const disconnected = state?.state === "disconnected";
+  // The connection check: null shows the form, otherwise each step's state.
+  const [checks, setChecks] = useState<Record<string, StepState> | null>(null);
+  const [phase, setPhase] = useState<EntraCheckPhase>("form");
+  useEffect(() => {
+    onPhase?.(phase);
+  }, [onPhase, phase]);
 
   /**
-   * The sign-in redirect address, to register in Azure: the one
-   * Milo is served from, followed by the path the server listens on.
+   * Runs the steps one by one, as the server answers them. Microsoft
+   * refusing the application itself (wrong IDs or secret) stops there:
+   * nothing else can be checked.
    */
-  const redirection = `${window.location.origin}/api/auth/entra/callback`;
+  const runCheck = async () => {
+    if (!(await save())) return;
+    const steps: Record<string, StepState> = Object.fromEntries(
+      ENTRA_CHECKS.map((c) => [c.value, "pending" as StepState]),
+    );
+    setChecks({ ...steps });
+    setPhase("checking");
+    for (const { value } of ENTRA_CHECKS) {
+      steps[value] = "running";
+      setChecks({ ...steps });
+      let result: EntraCheck;
+      try {
+        result = await api.checkEntra(value);
+      } catch (e) {
+        result = { ok: false, error: errorMessage(e) };
+      }
+      steps[value] = result;
+      setChecks({ ...steps });
+      if (value === "token" && !result.ok) {
+        notifyError(result.error, "Connexion à Entra refusée");
+        break;
+      }
+    }
+    const granted = ENTRA_CHECKS.every(
+      (c) => typeof steps[c.value] === "object" && (steps[c.value] as EntraCheck).ok,
+    );
+    setPhase(granted ? "passed" : "failed");
+  };
+
+  const leaveCheck = () => {
+    setChecks(null);
+    setPhase("form");
+  };
+
+  // Same principle as `saveRef`: the latest functions, on every render.
+  useEffect(() => {
+    if (!checkRef) return undefined;
+    checkRef.current = {
+      connect: () => void runCheck(),
+      next: () => void changeConnection(true).then(leaveCheck),
+      back: leaveCheck,
+    };
+    return () => {
+      checkRef.current = null;
+    };
+  });
+
+  // Milo's own address: the root of the links the e-mails carry, the
+  // templates' {{milo.url}}, and of the sign-in redirect. Saved when its
+  // field is left, as the sending address (NotificationsTab); empty, the
+  // server's (MILO_PUBLIC_URL) applies.
+  const [savedUrl, setSavedUrl] = useState("");
+  const [typedUrl, setTypedUrl] = useState("");
+  const [savingUrl, setSavingUrl] = useState(false);
+
+  useEffect(() => {
+    api.getMiloSettings().then(
+      (s) => {
+        setSavedUrl(s.url);
+        setTypedUrl(s.url);
+      },
+      (e) => notifyError(errorMessage(e)),
+    );
+  }, []);
+
+  const saveUrl = async () => {
+    const url = typedUrl.trim();
+    if (url === savedUrl) return setTypedUrl(url);
+    setSavingUrl(true);
+    try {
+      const s = await api.updateMiloSettings({ url });
+      setSavedUrl(s.url);
+      setTypedUrl(s.url);
+      notifications.show({ color: "teal", message: "Adresse de redirection enregistrée." });
+    } catch (e) {
+      // Refused, the field goes back to the saved address.
+      notifyError(errorMessage(e));
+      setTypedUrl(savedUrl);
+    } finally {
+      setSavingUrl(false);
+    }
+  };
+
+  /**
+   * The sign-in redirect address, to register in Azure: Milo's address
+   * followed by the path the server listens on (same rule as the server's).
+   * Only once the address typed is a valid http(s) one.
+   */
+  const url = typedUrl.trim().replace(/\/+$/, "");
+  const validUrl = /^https?:\/\/[^\s/]+/.test(url) && URL.canParse(url);
+  const redirection = validUrl ? `${url}${REDIRECT_PATH}` : "";
+
+  // The redirect path's place, measured after each keystroke and when the
+  // field scrolls or changes width.
+  const urlInput = useRef<HTMLInputElement>(null);
+  const [suffix, setSuffix] = useState<{ left: number; width: number } | null>(null);
+  const placeSuffix = useCallback(() => {
+    if (urlInput.current) setSuffix(suffixPlace(urlInput.current));
+  }, []);
+  useLayoutEffect(() => {
+    if (validUrl) placeSuffix();
+  }, [validUrl, typedUrl, loaded, checks, placeSuffix]);
+  useEffect(() => {
+    const input = urlInput.current;
+    if (!input || !validUrl) return undefined;
+    const observer = new ResizeObserver(placeSuffix);
+    observer.observe(input);
+    return () => observer.disconnect();
+  }, [validUrl, loaded, checks, placeSuffix]);
 
   /**
    * What can be done from here. Same menu as the board tabs'
@@ -326,7 +401,7 @@ export default function EntraTab({
           variant="subtle"
           color="gray"
           rightSection={<IconChevronDown size={14} />}
-          disabled={busy}
+          disabled={busy || phase === "checking"}
           style={ACTIONS_BUTTON_STYLE}
         >
           Actions
@@ -335,16 +410,8 @@ export default function EntraTab({
 
       <Menu.Dropdown>
         <Menu.Item
-          leftSection={<IconMailForward size={16} />}
-          onClick={runTest}
-          disabled={disconnected}
-        >
-          Tester l'envoi
-        </Menu.Item>
-        <Menu.Divider />
-        <Menu.Item
           leftSection={<IconPlugConnected size={16} />}
-          onClick={() => void changeConnection(true)}
+          onClick={() => void runCheck()}
         >
           Se reconnecter
         </Menu.Item>
@@ -401,7 +468,7 @@ export default function EntraTab({
   const secretField = (
     <PasswordInput
       label="Secret"
-      // A quarter of the row, as before the redirect moved beside it.
+      // A quarter of the row: Milo's address takes the rest.
       w="calc((100% - var(--mantine-spacing-md)) / 4)"
       style={{ flexShrink: 0 }}
       value={masked ? MASK : secret}
@@ -422,8 +489,49 @@ export default function EntraTab({
 
   if (!loaded) return null;
 
+  /**
+   * The check, in place of the form: each step in green with a check once
+   * granted, in red with a cross when missing.
+   */
+  const checkView = checks && (
+    <Stack gap="md">
+      <Text size="sm" c="dimmed">
+        {phase === "checking" ? "Vérification en cours…" : "Vérification terminée."}
+      </Text>
+      <Stack gap={0}>
+      {/* Each step appears when its turn comes. */}
+      {ENTRA_CHECKS.filter((c) => checks[c.value] !== "pending").map(({ value, label }) => {
+        const step = checks[value];
+        const done = typeof step === "object";
+        const color = done ? (step.ok ? GREEN : RED) : undefined;
+        return (
+          <Group key={value} gap="sm" wrap="nowrap" align="flex-start">
+            <div style={{ width: 18, display: "flex", justifyContent: "center", paddingTop: 2 }}>
+              {step === "running" ? (
+                <Loader size={14} color="gray" />
+              ) : done ? (
+                step.ok ? (
+                  <IconCheck size={16} color={GREEN} />
+                ) : (
+                  <IconX size={16} color={RED} />
+                )
+              ) : null}
+            </div>
+            <Stack gap={2} style={{ minWidth: 0 }}>
+              <Text size="sm" c={color} fw={done ? 500 : undefined}>
+                {label}
+              </Text>
+            </Stack>
+          </Group>
+        );
+      })}
+      </Stack>
+    </Stack>
+  );
+
   return (
     <>
+      {checkView || (
       <Stack gap="lg">
         <Stack gap="sm">
           <Text size="sm" c="dimmed" pb={7}>
@@ -454,13 +562,51 @@ export default function EntraTab({
             />
             <Group gap="md" wrap="nowrap" align="flex-start">
               {secretField}
-              {/* The address to copy into Azure, as is: it can be read,
-                and copied with a click. It takes the rest of the row. */}
+              {/* Milo's address; once valid, the redirect path follows
+                  it, glued to the typed text, and the whole address to
+                  register in Azure is copied with a click. It takes the
+                  rest of the row. */}
               <TextInput
-                label="Redirection"
+                label="Adresse de redirection"
+                ref={urlInput}
+                onScroll={placeSuffix}
                 style={{ flex: 1, minWidth: 0 }}
-                value={redirection}
-                readOnly
+                type="url"
+                placeholder="https://milo.contoso.com"
+                value={typedUrl}
+                onChange={(e) => setTypedUrl(e.currentTarget.value)}
+                onBlur={() => void saveUrl()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                  if (e.key === "Escape") setTypedUrl(savedUrl);
+                }}
+                disabled={savingUrl}
+                inputContainer={(children) => (
+                  <div style={{ position: "relative" }}>
+                    {children}
+                    {validUrl && suffix && (
+                      // Lets clicks through to the input.
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          bottom: 0,
+                          left: suffix.left,
+                          width: suffix.width,
+                          display: "flex",
+                          alignItems: "center",
+                          overflow: "hidden",
+                          whiteSpace: "pre",
+                          pointerEvents: "none",
+                          fontSize: "var(--mantine-font-size-sm)",
+                          color: "var(--mantine-color-dimmed)",
+                        }}
+                      >
+                        {REDIRECT_PATH}
+                      </div>
+                    )}
+                  </div>
+                )}
                 rightSection={
                   <CopyButton value={redirection}>
                     {({ copied, copy }) => (
@@ -469,6 +615,7 @@ export default function EntraTab({
                         color="gray"
                         size="compact-sm"
                         onClick={copy}
+                        disabled={!validUrl}
                         aria-label="Copier l'adresse de redirection"
                         style={
                           { "--button-hover": NEUTRAL_HOVER } as CSSProperties
@@ -485,24 +632,22 @@ export default function EntraTab({
                 }
               />
             </Group>
+            {/* Once connected: Milo can then send from it. */}
+            {state?.state === "connected" && <SenderField onSaved={onSender} />}
           </Stack>
         </Stack>
       </Stack>
+      )}
 
       {actionsTarget &&
         createPortal(
           <Group gap="sm" wrap="nowrap">
             {statusBadge}
-            {menuActions}
+            {/* Not connected, the window's "Se connecter" is the only way. */}
+            {state?.state === "connected" && menuActions}
           </Group>,
           actionsTarget,
         )}
-
-      <MailTestModal
-        opened={testOpen}
-        onClose={() => setTestOpened(false)}
-        sender={settings.mail_sender}
-      />
     </>
   );
 }

@@ -1,0 +1,10 @@
+/* The lines between a menu's groups run from edge to edge, across its side
+   padding, everywhere in the application. A menu whose padding is not
+   Mantine's (4 px) gives its own in "--milo-menu-px" (ContextsMenu.module.css). */
+.mantine-Menu-divider {
+  margin-inline: calc(-1 * var(--milo-menu-px, 4px));
+}
+
+.mantine-Combobox-dropdown .mantine-Divider-root {
+  margin-inline: calc(-1 * var(--milo-menu-px, var(--combobox-padding, 4px)));
+}

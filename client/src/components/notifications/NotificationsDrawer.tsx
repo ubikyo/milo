@@ -14,7 +14,9 @@ import {
   IconFolder,
   IconHeadset,
   IconHeartbeat,
+  IconLayoutDashboard,
   IconLayoutKanban,
+  IconSettings,
   IconTrash,
   IconX,
 } from "@tabler/icons-react";
@@ -52,6 +54,8 @@ const ICONS: Record<NotificationKind, ComponentType<{ size?: number }>> = {
   card: IconLayoutKanban,
   support: IconHeadset,
   access: IconHeartbeat,
+  board: IconLayoutDashboard,
+  settings: IconSettings,
 };
 
 const DAY = new Intl.DateTimeFormat("fr-FR", {

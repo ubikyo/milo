@@ -97,7 +97,7 @@ Le mode Support ne reçoit pas de notifications de Graph tant que
 2. **Réponses** — elles partent par défaut. `MILO_SUPPORT_REPLY=simulate`
    les retient, le temps d'une vérification : le journal montre alors
    `[Simulation] Réponse de … à …`.
-3. **Permissions Entra** — `Mail.Read` (relève, delta, abonnements) et
+3. **Permissions Entra** — `Mail.ReadWrite` (relève, delta, abonnements) et
    `Mail.Send` (réponses) avec consentement d'administrateur ; voir
    [Inscrire Milo dans Azure](#inscrire-milo-dans-azure).
 4. **Première relève** — sur une base neuve, chaque boîte n'importe que ses
@@ -224,18 +224,26 @@ Entra, sans laquelle personne d'autre ne peut se connecter — et ne voit que le
 Paramétrage. Il ne se montre dans aucune liste et n'est l'acteur de rien. Sur
 l'écran de connexion, il s'ouvre par le lien « Compte d'administration ».
 
-Les droits passent tous par les **rôles**, attribués par société dans
-Paramétrage → Accès, à titre personnel ou par l'un des groupes Entra de la
-personne (appartenances indirectes comprises). Sans rôle nulle part, la
-connexion est refusée ; un accès retiré ferme la session à la requête
-suivante.
+Une base neuve n'a que ce compte : aucun workspace, aucune administration,
+aucun accès. Une fois Entra connecté, `admin` attribue dans Paramétrage →
+Administration les droits d'administration à des utilisateurs ou groupes
+Entra (appartenances indirectes comprises), section par section :
 
-La grille d'un rôle porte, outre les modes, une ligne **Paramétrage** : « Voir »
-l'ouvre en consultation, « Modifier » permet d'y enregistrer — et de
-télécharger ou restaurer une sauvegarde, l'archive portant toute la base.
-Le Paramétrage étant commun à toutes les sociétés, ces droits valent dès qu'un
-rôle les accorde dans l'une d'elles. Le rôle **Administrateur** a tous les
-droits, Paramétrage compris.
+- **Gestion du paramétrage** — « Autorisée » : le menu Paramétrage du profil
+  (et l'onglet Affichage) ; sans lui, le Paramétrage n'est pas accessible.
+- **Gestion des workspaces** — « Voir » (l'onglet Workspaces et les accès de
+  chacun), « Créer » (en créer, les renommer, régler leurs accès),
+  « Supprimer ». Chaque droit suppose les précédents.
+- **Gestion des droits d'administration** — mêmes droits, pour l'onglet
+  Administration.
+- **Gestion des modèles d'email** et **Gestion des thèmes** — « Autorisée » :
+  les onglets Modèles et Thèmes.
+
+Un droit ne s'accorde ou ne se retire que par qui le détient. Sans
+workspace, la personne connectée ne voit qu'un écran vide qui mène, si elle
+le peut, à l'onglet Workspaces du Paramétrage. Sans aucun accès ni droit
+d'administration, la connexion est refusée ; un accès retiré ferme la
+session à la requête suivante.
 
 Les droits des modes sont enregistrés mais pas encore appliqués à leurs
 écrans et à leurs routes.
@@ -288,15 +296,17 @@ portail Azure (Microsoft Entra ID → Inscriptions d'applications → Nouvelle
 inscription, comptes de cet annuaire uniquement) :
 
 1. **Adresse de redirection** : de type « Web », et exactement
-   `https://<hôte>/api/auth/entra/callback` — où `<hôte>` est celui par lequel
-   Milo est servi. L'onglet Entra la montre, prête à copier. Microsoft refuse
-   la connexion si elle diffère d'un caractère.
+   `https://<hôte>/api/auth/entra/callback` — où `https://<hôte>` est
+   l'adresse de redirection saisie dans l'onglet Entra (à défaut, celle par
+   laquelle Milo est servi). L'onglet la montre, prête à copier. Microsoft
+   refuse la connexion si elle diffère d'un caractère.
 2. **Permissions**, sous « API autorisées » → Microsoft Graph :
    - déléguées : `openid`, `profile`, `email` (la connexion) ;
    - d'application : `User.Read.All`, `Group.Read.All`,
-     `GroupMember.Read.All` (l'annuaire), `Mail.Read` et `Mail.Send` (les
-     boîtes de support et l'expédition), et, en option, `Calendars.Read`
-     (les rendez-vous que le widget Calendrier marque pour chacun).
+     `GroupMember.Read.All` (l'annuaire), `Mail.ReadWrite` et `Mail.Send`
+     (les boîtes de support et l'expédition), et `Calendars.Read` (les
+     rendez-vous que le widget Calendrier marque pour chacun). L'onglet
+     Entra les vérifie une par une à la connexion.
 
    Puis **« Accorder un consentement d'administrateur »** : les permissions
    d'application ne valent qu'avec lui.
@@ -309,7 +319,7 @@ Les trois valeurs à reporter dans l'onglet portent les noms du portail :
 l'**ID d'application (client)**, l'**ID de l'annuaire (locataire)**, requis,
 et le **secret**.
 
-`Mail.Read` et `Mail.Send` ouvrent par défaut toutes les boîtes du locataire.
+`Mail.ReadWrite` et `Mail.Send` ouvrent par défaut toutes les boîtes du locataire.
 Pour les restreindre aux boîtes de support, une
 stratégie d'accès d'application Exchange Online (`New-ApplicationAccessPolicy`)
 limite l'application à un groupe de sécurité à extension messagerie qui les

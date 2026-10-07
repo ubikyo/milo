@@ -1,4 +1,4 @@
-import { ActionIcon, Avatar, Group, Menu } from "@mantine/core";
+import { ActionIcon, Avatar, Box, Group, Menu } from "@mantine/core";
 import {
   IconBell,
   IconLogout,
@@ -7,11 +7,14 @@ import {
 } from "@tabler/icons-react";
 import { initialsOf } from "./ActorAvatars";
 import { useDisplaySettings } from "../../lib/displaySettings";
-import { ROW_CONTROL_HEIGHT, ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
-import type { ReactNode } from "react";
+import { ROW_CONTROL_HEIGHT, ROW_MENU_OFFSET, TAB_MENU_STYLES, MENU_TOP_BAND } from "../../themes/menus";
+import { TAB_ACTIVE_BG, TAB_ACTIVE_BORDER_WIDTH } from "../../themes/colors";
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { PublicUser, SearchResult } from "@milo/shared";
 import type { ContextsMenuProps } from "./ContextsMenu";
 import WorkspaceMenu from "./WorkspaceMenu";
+import contextsClasses from "../../assets/styles/ContextsMenu.module.css";
 
 // The open board's contexts and the account, at the end of each view's tab
 // row. This used to be the header's content, which no longer exists: the
@@ -53,6 +56,37 @@ export type AccountSlot = Omit<AccountControlsProps, "actions"> & {
   onSearchOpen: (result: SearchResult) => void;
 };
 
+/**
+ * The account's frame: drawn like the open tab — its background, its line
+ * on top and on the sides, its rounded top corners —, standing on the row's
+ * line, which its background covers. In the main window's row, these are
+ * that row's settings (tabs.css).
+ */
+const PROFILE_FRAME: CSSProperties = {
+  alignSelf: "stretch",
+  display: "flex",
+  alignItems: "center",
+  position: "relative",
+  // 3 px between the avatar and the frame's sides.
+  paddingInline: 3,
+  backgroundColor: TAB_ACTIVE_BG,
+  // Its line transparent: the background, painted under it, gives it its own
+  // color exactly — even a translucent one, which would otherwise add up to
+  // a lighter outline.
+  border: `${TAB_ACTIVE_BORDER_WIDTH} solid transparent`,
+  backgroundClip: "border-box",
+  borderBottom: "none",
+  borderRadius: "var(--tabs-radius) var(--tabs-radius) 0 0",
+};
+
+/**
+ * The frame with its menu open: the background of the tab holding the open
+ * contexts list, under its transparent border too (ContextsMenu.module.css).
+ */
+const PROFILE_FRAME_OPEN: CSSProperties = {
+  backgroundColor: "var(--contexts-open-tab-bg)",
+};
+
 export default function AccountControls({
   user,
   onLogout,
@@ -62,8 +96,41 @@ export default function AccountControls({
   actions,
 }: AccountControlsProps) {
   const { settings: display } = useDisplaySettings();
+  const [isOpen, setOpened] = useState(false);
+  // Like the contexts list: the menu lands on the row's rule and ends at the
+  // frame's right edge. Both gaps are measured on opening, from the avatar.
+  const [gap, setGap] = useState({ mainAxis: ROW_MENU_OFFSET, crossAxis: 0 });
+  const frameRef = useRef<HTMLDivElement>(null);
+  const targetRef = useRef<HTMLButtonElement>(null);
+  const toggle = (opened: boolean) => {
+    const frame = frameRef.current?.getBoundingClientRect();
+    const target = targetRef.current?.getBoundingClientRect();
+    const row = targetRef.current?.closest('[role="tablist"]')?.getBoundingClientRect();
+    if (opened && frame && target) {
+      // Minus one pixel: the menu's top sits on the rule's line (ContextsMenu).
+      setGap({
+        mainAxis: (row?.bottom ?? frame.bottom) - target.bottom - 1,
+        crossAxis: frame.right - target.right,
+      });
+    }
+    setOpened(opened);
+  };
+  // A press anywhere else closes the menu, even where it is stopped before
+  // reaching the document — the contexts list in its tab keeps its presses
+  // (BoardTabs): Mantine's click outside would not hear it. Listened to on
+  // the way down, before anything can stop it.
+  useEffect(() => {
+    if (!isOpen) return;
+    const close = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (frameRef.current?.contains(target) || target?.closest("[data-profile-menu]")) return;
+      setOpened(false);
+    };
+    document.addEventListener("pointerdown", close, true);
+    return () => document.removeEventListener("pointerdown", close, true);
+  }, [isOpen]);
   return (
-    <Group gap="xs" wrap="nowrap">
+    <Group gap="xs" wrap="nowrap" align="center">
       {actions}
 
       {/* The contexts are placed in the active tab, to the right of its name
@@ -72,69 +139,101 @@ export default function AccountControls({
       {/* The workspace, next to the account: only if there are several. */}
       <WorkspaceMenu user={user} />
 
-      <Menu
-        position="bottom-end"
-        withinPortal
-        offset={ROW_MENU_OFFSET}
-        styles={TAB_MENU_STYLES}
+      {/* Its menu open, the frame takes the open contexts tab's colors. */}
+      <Box
+        ref={frameRef}
+        style={isOpen ? { ...PROFILE_FRAME, ...PROFILE_FRAME_OPEN } : PROFILE_FRAME}
       >
-        <Menu.Target>
-          {/* No tooltip, no hover background, no focus ring: the menu
-              that opens already carries the name and address. */}
-          {/* The same height as the row's two buttons: otherwise
-              its menu would not land on the same line. */}
-          <ActionIcon
-            variant="transparent"
-            size={ROW_CONTROL_HEIGHT}
-            aria-label="Compte"
-            style={{ outline: "none" }}
+        {/* The same look as the contexts list (ContextsMenu): its radius,
+            shadow, padding, width, border and rows. */}
+        <Menu
+          opened={isOpen}
+          onChange={toggle}
+          position="bottom-end"
+          withinPortal
+          shadow="md"
+          // The contexts list's: Mantine's default radius ("md"), not the
+          // menus' "xs" (main.tsx).
+          radius="md"
+          offset={gap}
+          // TEST: a band above the menu, in the open contexts tab's
+          // background (menus.ts).
+          styles={{ dropdown: { ...TAB_MENU_STYLES.dropdown, ...MENU_TOP_BAND } }}
+          classNames={{ item: contextsClasses.menuItem }}
+          // Focus stays where it is on closing: handed back to the avatar,
+          // it would highlight the frame.
+          returnFocus={false}
+        >
+          <Menu.Target>
+            {/* No tooltip, no hover background, no focus ring: the menu
+                that opens already carries the name and address. */}
+            {/* The same height as the row's two buttons: otherwise
+                its menu would not land on the same line. */}
+            <ActionIcon
+              ref={targetRef}
+              className={contextsClasses.profileTarget}
+              variant="transparent"
+              size={ROW_CONTROL_HEIGHT}
+              aria-label="Compte"
+              // As wide as the avatar: the frame's inset alone stands beside it.
+              style={{ outline: "none", width: "auto", minWidth: 0 }}
+            >
+              {/* A square with softened corners, not a circle: it sits
+                  like the row's other controls. */}
+              <Avatar
+                size={26}
+                // The contexts list's: Mantine's default radius ("md"), not the
+          // menus' "xs" (main.tsx).
+          radius="md"
+                color="teal"
+                variant="filled"
+                src={(display.showGravatars && user?.gravatar_url) || null}
+              >
+                {initialsOf(user?.name)}
+              </Avatar>
+            </ActionIcon>
+          </Menu.Target>
+          <Menu.Dropdown
+            data-profile-menu
+            pt={4}
+            pb={3}
+            px={2}
+            miw={150}
+            maw={320}
+            className={contextsClasses.dropdown}
           >
-            {/* A square with softened corners, not a circle: it sits
-                like the row's other controls. */}
-            <Avatar
-              size={26}
-              radius="sm"
-              color="teal"
-              variant="filled"
-              src={(display.showGravatars && user?.gravatar_url) || null}
-            >
-              {initialsOf(user?.name)}
-            </Avatar>
-          </ActionIcon>
-        </Menu.Target>
-        <Menu.Dropdown>
-          <Menu.Item
-            leftSection={<IconUserCog size={16} />}
-            onClick={onOpenPreferences}
-          >
-            Profil
-          </Menu.Item>
-          {/* Only for whoever receives notifications in their workspace, on
-              screen or by e-mail (Accès). */}
-          {(user.notifications.screen || user.notifications.email) && (
             <Menu.Item
-              leftSection={<IconBell size={16} />}
-              onClick={onOpenNotifications}
+              leftSection={<IconUserCog size={16} />}
+              onClick={onOpenPreferences}
             >
-              Notifications
+              Profil
             </Menu.Item>
-          )}
-          {/* Settings opens with its "Accéder" right, or to see
-              workspaces. */}
-          {(user.settings.view || user.workspace_rights.view) && (
-            <Menu.Item
-              leftSection={<IconSettings size={16} />}
-              onClick={onOpenSettings}
-            >
-              Paramétrage
+            {/* Only for whoever receives notifications on screen in their
+                workspace (Accès). */}
+            {user.notifications.screen && (
+              <Menu.Item
+                leftSection={<IconBell size={16} />}
+                onClick={onOpenNotifications}
+              >
+                Notifications
+              </Menu.Item>
+            )}
+            {/* Settings opens with "Gestion du paramétrage" only. */}
+            {user.settings.view && (
+              <Menu.Item
+                leftSection={<IconSettings size={16} />}
+                onClick={onOpenSettings}
+              >
+                Paramétrage
+              </Menu.Item>
+            )}
+            <Menu.Divider />
+            <Menu.Item leftSection={<IconLogout size={16} />} onClick={onLogout}>
+              Déconnexion
             </Menu.Item>
-          )}
-          <Menu.Divider />
-          <Menu.Item leftSection={<IconLogout size={16} />} onClick={onLogout}>
-            Déconnexion
-          </Menu.Item>
-        </Menu.Dropdown>
-      </Menu>
+          </Menu.Dropdown>
+        </Menu>
+      </Box>
     </Group>
   );
 }

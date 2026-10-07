@@ -4,13 +4,14 @@
 // workspace by workspace (routes/assignments.ts).
 //
 // A workspace is born with a view and its board, so that its team has somewhere to
-// place its first widgets; it leaves with everything its views carry. The
-// last one cannot be deleted: there must always be one.
+// place its first widgets; it leaves with everything its views carry. Even
+// the last one can go: whoever has none lands on an empty screen that leads
+// to the Settings.
 
 import { Router } from "express";
 import type { Id, Workspace } from "@milo/shared";
 import { transaction } from "../db/query.js";
-import { HttpError, conflict, requireText } from "../lib/http.js";
+import { HttpError, requireText } from "../lib/http.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { boards, viewBoards } from "../repositories/boards.js";
@@ -68,7 +69,6 @@ workspaceRoutes.put("/:id", (req, res) => {
 
 workspaceRoutes.delete("/:id", (req, res) => {
   const existing = openWorkspace(req.params.id);
-  if (workspaces.all.all().length <= 1) conflict("Le dernier workspace ne se supprime pas");
   // Each board goes with what it carries and announces it, whoever owns it;
   // the views and access follow the workspace.
   for (const { id: view } of workspaceViews.all(existing.id)) {

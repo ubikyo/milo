@@ -11,7 +11,7 @@ import {
 } from "@milo/shared";
 import MailTemplates from "../../components/settings/MailTemplates";
 import SupportOptions from "../../components/support/SupportOptions";
-import { useSettingsMode } from "../../lib/rights";
+import { useSettingsMode, useTemplatesAccess } from "../../lib/rights";
 import ConfigurationProblem from "../../components/ui/ConfigurationProblem";
 import EmptyPanel from "../../components/ui/EmptyPanel";
 import { DRAWER_WIDTH } from "../../components/ui/IndicatorDrawer";
@@ -57,6 +57,7 @@ function NewMessageFields({ config, onChange }: IndicatorConfigProps) {
  */
 function ListFields(props: IndicatorConfigProps) {
   const canEditSettings = useSettingsMode();
+  const canEditTemplates = useTemplatesAccess();
   return (
     <Stack gap="xl">
       <Inboxes {...props} />
@@ -68,7 +69,7 @@ function ListFields(props: IndicatorConfigProps) {
       {canEditSettings && (
         <>
           <SupportOptions canEdit />
-          <MailTemplates canEdit only={TICKETS_MAIL_TEMPLATE_KEYS} />
+          <MailTemplates canEdit={canEditTemplates} only={TICKETS_MAIL_TEMPLATE_KEYS} />
         </>
       )}
     </Stack>

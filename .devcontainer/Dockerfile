@@ -1,4 +1,4 @@
-FROM node:20-bookworm
+FROM node:22-bookworm
 
 # build-essential/python3 are required to compile the better-sqlite3 native addon,
 # sqlite3 is included for inspecting server/data.db from the terminal.

@@ -578,7 +578,7 @@ function CardChecklistPanel({ card, onCheck }: CardChecklistPanelProps) {
 
 // Bottom of the card: the description sign and the reference on the left, the
 // members on the right. The reference ("TSK-12") is a discreet marker to
-// designate it, given by the counter shared across modes; a board can hide it
+// designate it, counted per "Tâches" widget from 1; a board can hide it
 // ("Numéros des cartes", in its drawer). The avatars
 // overlap as in the projects board; with no members, the row shows
 // none.

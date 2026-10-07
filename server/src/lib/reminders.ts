@@ -19,7 +19,7 @@ import type { Recurrence } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import { signalWrite } from "../middleware/events.js";
 import { parisTime } from "./time.js";
-import { env } from "../env.js";
+import { miloUrl } from "./milo-url.js";
 import { notifyReminder } from "./notify.js";
 
 /** The background poll runs every minute: this is the step of the shortest reminder. */
@@ -127,7 +127,7 @@ export const sendReminders = (currentTime: Date = new Date()): void => {
         card,
         message: `vous rappelle l'échéance ${whenLabel(card.due_date)}`,
         recipients: actors.all(card.id).map((a) => a.user_id),
-        base: env.publicUrl,
+        base: miloUrl(),
       });
     }
     mark.run(card.due_date, card.id);
@@ -141,7 +141,7 @@ export const sendReminders = (currentTime: Date = new Date()): void => {
         card,
         message: `signale que l'échéance ${whenLabel(card.due_date)} est dépassée`,
         recipients: actors.all(card.id).map((a) => a.user_id),
-        base: env.publicUrl,
+        base: miloUrl(),
       });
     }
     markCard.run(card.due_date, card.id);
@@ -162,7 +162,7 @@ export const sendReminders = (currentTime: Date = new Date()): void => {
         recipients: ownIds.length
           ? ownIds
           : actors.all(element.card_id).map((a) => a.user_id),
-        base: env.publicUrl,
+        base: miloUrl(),
       });
     }
     markItem.run(element.due_date, element.id);

@@ -7,6 +7,7 @@ import { hasContent } from "../lib/html.js";
 import { attachmentCountsOfBoard } from "./attachments.js";
 import { coverUrlsOfBoard } from "./covers.js";
 import { linkCountsOfBoard } from "./links.js";
+import { listScope, nextCardReference } from "./references.js";
 import { actorOf } from "./users.js";
 
 export const taskLists = {
@@ -71,8 +72,22 @@ export const reorderTaskLists = transaction((ids: Id[]) => {
 });
 
 const updateCardPositions = mutation("UPDATE task_cards SET list_id = ?, position = ? WHERE id = ?");
+const setCardNumber = mutation("UPDATE task_cards SET number = ? WHERE id = ?");
+
+/**
+ * The cards of a list, in order. A card arriving from another widget takes
+ * the next number of this one — read before it moves in, so that its old
+ * number does not count.
+ */
 export const reorderTaskCards = transaction((listId: Id, ids: Id[]) => {
-  ids.forEach((id, index) => updateCardPositions.run(listId, index, id));
+  const scope = listScope(listId);
+  ids.forEach((id, index) => {
+    const card = taskCards.byId.get(id);
+    const arriving = card && card.number > 0 && listScope(card.list_id) !== scope;
+    const number = arriving ? nextCardReference(listId) : null;
+    updateCardPositions.run(listId, index, id);
+    if (number !== null) setCardNumber.run(number, id);
+  });
 });
 
 /** The board that holds a card, via its list. */
@@ -144,13 +159,14 @@ const boardRemaining = selection<{ card_id: Id; id: Id; text: string }>(
 );
 
 // The number of comments on each card: the card shows it next to its
-// actors.
+// actors. Milo's notes (creation, history) are not counted: every card has
+// at least one, the badge would no longer tell anything.
 const commentsOfBoard = selection<{ card_id: Id; total: number }>(
   `SELECT card_comments.card_id, COUNT(*) AS total
    FROM card_comments
    JOIN task_cards ON task_cards.id = card_comments.card_id
    JOIN task_lists ON task_lists.id = task_cards.list_id
-   WHERE task_lists.board_id = ?
+   WHERE task_lists.board_id = ? AND card_comments.system = 0
    GROUP BY card_comments.card_id`,
 );
 

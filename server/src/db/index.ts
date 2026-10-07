@@ -6,7 +6,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { env } from "../env.js";
 import { migrate, numberReferences } from "./migrations.js";
-import { seedIfEmpty } from "./seed.js";
 import { INDEXES, SCHEMA } from "./schema.js";
 
 fs.mkdirSync(path.dirname(env.dbPath), { recursive: true });
@@ -26,8 +25,7 @@ db.pragma("busy_timeout = 5000");
 db.exec(SCHEMA);
 migrate(db);
 db.exec(INDEXES);
-seedIfEmpty(db);
-// Demo projects have no reference: they are given one.
+// Projects from before references are given one.
 numberReferences(db);
 
 export default db;

@@ -1,4 +1,5 @@
-import { Combobox, Group, ScrollArea, Text, TextInput, useCombobox } from "@mantine/core";
+import { Text, UnstyledButton } from "@mantine/core";
+import { Spotlight, spotlight } from "@mantine/spotlight";
 import {
   IconBrandGoogle,
   IconDeviceDesktop,
@@ -7,22 +8,22 @@ import {
   IconHeadset,
   IconKey,
   IconLayoutKanban,
+  IconSearch,
 } from "@tabler/icons-react";
-import { useEffect, useRef, useState } from "react";
-import type { ComponentType, CSSProperties } from "react";
-import { SEARCH_MIN_LENGTH } from "@milo/shared";
+import Fuse from "fuse.js";
+import { useMemo, useState } from "react";
+import type { ComponentType } from "react";
 import type { SearchKind, SearchResult } from "@milo/shared";
 import { api } from "../../api";
 import classes from "../../assets/styles/SearchBox.module.css";
-import { ROW_CONTROL_HEIGHT, ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
+import { ROW_CONTROL_HEIGHT } from "../../themes/menus";
+import { useDisplaySettings } from "../../lib/displaySettings";
 
 // The search, in the tab row: from the end of the tabs to the menus and the
-// account, in all modes (ModeBar). A bare field — no border or background, only
-// its prompt — that searches everything the application holds and opens the
-// chosen item, wherever it is.
-
-/** The time given to typing before querying the server. */
-const WAITING = 200;
+// account, in all modes (ModeBar). The field there is only a lure: a click
+// opens the Spotlight, which searches everything the application holds and
+// opens the chosen item, wherever it is. The server hands over all the person
+// sees on opening; Fuse.js searches it, fuzzily — a typo still finds.
 
 /** The kinds, in the order the list presents them — that of the modes. */
 const KINDS: { kind: SearchKind; label: string; icon: ComponentType<{ size?: number }> }[] = [
@@ -33,172 +34,145 @@ const KINDS: { kind: SearchKind; label: string; icon: ComponentType<{ size?: num
   { kind: "asset", label: "Assets", icon: IconDeviceDesktop },
 ];
 
-const key = (r: SearchResult) => `${r.kind}:${r.id}`;
+/** The most each kind shows: the list stays readable at a glance. */
+const PER_KIND = 8;
 
-/** The list's bottom corners, sharper than those of menus. */
-const RADIUS = 2;
-
-/** The option that, lacking results, sends the input to Google. */
-const GOOGLE = "google";
+/** A result's key: a widget's elements share its id, their title tells them apart. */
+const key = (r: SearchResult) => `${r.kind}:${r.id}:${r.url ?? r.title}`;
 
 export interface SearchBoxProps {
   onOpen: (result: SearchResult) => void;
 }
 
 export default function SearchBox({ onOpen }: SearchBoxProps) {
-  const combobox = useCombobox({
-    onDropdownClose: () => combobox.resetSelectedOption(),
-  });
-  const [input, setInput] = useState("");
-  const [results, setResults] = useState<SearchResult[] | null>(null);
-  // The last search sent: a response slower than a following keystroke does not
-  // overwrite what that one returned.
-  const last = useRef(0);
+  const [query, setQuery] = useState("");
+  // The tolerance set in Paramétrage > Affichage.
+  const { settings: display } = useDisplaySettings();
+  // Everything searchable, loaded at each opening: null while it comes.
+  const [index, setIndex] = useState<SearchResult[] | null>(null);
 
-  useEffect(() => {
-    const search = input.trim();
-    if (search.length < SEARCH_MIN_LENGTH) {
-      setResults(null);
-      return;
+  const load = async () => {
+    setIndex(null);
+    try {
+      setIndex(await api.getSearchIndex());
+    } catch {
+      setIndex([]);
     }
-    const phoneNumber = ++last.current;
-    const timeout = window.setTimeout(async () => {
-      try {
-        const matches = await api.search(search);
-        if (phoneNumber === last.current) setResults(matches);
-      } catch {
-        if (phoneNumber === last.current) setResults([]);
-      }
-    }, WAITING);
-    return () => window.clearTimeout(timeout);
-  }, [input]);
-
-  // The first row is ready for Enter — the first result, or Google for lack of
-  // better. After rendering: before, the options do not exist yet.
-  useEffect(() => {
-    if (results) combobox.selectFirstOption();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results]);
-
-  const select = (value: string) => {
-    if (value === GOOGLE) {
-      window.open(
-        `https://www.google.com/search?q=${encodeURIComponent(input.trim())}`,
-        "_blank",
-        "noopener",
-      );
-      combobox.closeDropdown();
-      setInput("");
-      setResults(null);
-      return;
-    }
-    const result = results?.find((r) => key(r) === value);
-    if (!result) return;
-    combobox.closeDropdown();
-    setInput("");
-    setResults(null);
-    onOpen(result);
   };
 
+  // The title counts most, then where the item is; the rest (description,
+  // sender…) only to find it. Accents are ignored, and so is where the words
+  // fall in the text.
+  const fuse = useMemo(
+    () =>
+      new Fuse(index ?? [], {
+        keys: [
+          { name: "title", weight: 3 },
+          { name: "context", weight: 1 },
+          { name: "keywords", weight: 0.5 },
+        ],
+        // From 0, the text as typed, to 1, anything (Paramétrage > Affichage).
+        threshold: display.fuzzySearch ? display.searchThreshold : 0,
+        ignoreLocation: true,
+        ignoreDiacritics: true,
+        minMatchCharLength: 2,
+      }),
+    [index, display.fuzzySearch, display.searchThreshold],
+  );
+
+  const search = query.trim();
+  const found = useMemo(
+    () => (search ? fuse.search(search).map((r) => r.item) : []),
+    [fuse, search],
+  );
+
+  const openGoogle = () =>
+    window.open(
+      `https://www.google.com/search?q=${encodeURIComponent(search)}`,
+      "_blank",
+      "noopener",
+    );
+
   const groups = KINDS.map(({ kind, label, icon: Icon }) => {
-    const own = (results ?? []).filter((r) => r.kind === kind);
+    const own = found.filter((r) => r.kind === kind).slice(0, PER_KIND);
     if (own.length === 0) return null;
     return (
-      <Combobox.Group key={kind} label={label}>
+      <Spotlight.ActionsGroup key={kind} label={label}>
         {own.map((r) => {
           // An Access mode link opens as is, in a new tab: its icon says so.
           const IconRow = r.url ? IconExternalLink : Icon;
           return (
-            <Combobox.Option key={key(r)} value={key(r)}>
-              <Group gap="xs" wrap="nowrap">
-                <IconRow size={16} />
-                <div style={{ minWidth: 0 }}>
-                  <Text size="sm" truncate>
-                    {r.title}
+            <Spotlight.Action
+              key={key(r)}
+              label={r.title}
+              leftSection={<IconRow size={16} />}
+              // On a single line: its context on the right.
+              rightSection={
+                r.context ? (
+                  <Text size="xs" c="dimmed" truncate maw={260}>
+                    {r.context}
                   </Text>
-                  {r.context && (
-                    <Text size="xs" c="dimmed" truncate>
-                      {r.context}
-                    </Text>
-                  )}
-                </div>
-              </Group>
-            </Combobox.Option>
+                ) : undefined
+              }
+              onClick={() => onOpen(r)}
+            />
           );
         })}
-      </Combobox.Group>
+      </Spotlight.ActionsGroup>
     );
   });
 
   return (
-    <Combobox
-      store={combobox}
-      classNames={{ option: classes.option }}
-      onOptionSubmit={select}
-      position="bottom-start"
-      offset={ROW_MENU_OFFSET}
-      width={360}
-      withinPortal
-      styles={{
-        ...TAB_MENU_STYLES,
-        dropdown: {
-          ...TAB_MENU_STYLES.dropdown,
-          borderBottomLeftRadius: RADIUS,
-          borderBottomRightRadius: RADIUS,
-        },
-      }}
-    >
-      <Combobox.Target>
-        <TextInput
-          variant="unstyled"
-          placeholder="Recherche"
-          aria-label="Recherche"
-          value={input}
-          h={ROW_CONTROL_HEIGHT}
-          styles={{
-            input: {
-              height: ROW_CONTROL_HEIGHT,
-              minHeight: ROW_CONTROL_HEIGHT,
-              // A gray darker than that of the other fields, in both themes.
-              "--input-placeholder-color":
-                "var(--milo-search-placeholder)",
-            } as CSSProperties,
-          }}
-          onChange={(event) => {
-            setInput(event.currentTarget.value);
-            combobox.openDropdown();
-          }}
-          onFocus={() => combobox.openDropdown()}
-          onBlur={() => combobox.closeDropdown()}
-          onKeyDown={(event) => {
-            // Escape clears the field; a second time, it leaves it.
-            if (event.key !== "Escape") return;
-            if (input) setInput("");
-            else event.currentTarget.blur();
-          }}
-        />
-      </Combobox.Target>
+    <>
+      {/* The lure: a magnifier where the field was, a click opens the Spotlight. */}
+      <UnstyledButton
+        className={classes.lure}
+        h={ROW_CONTROL_HEIGHT}
+        aria-label="Recherche"
+        onClick={spotlight.open}
+      >
+        <IconSearch size={18} />
+      </UnstyledButton>
 
-      <Combobox.Dropdown hidden={results === null}>
-        <Combobox.Options>
-          {/* Mantine's bar, as everywhere else, and not the browser's. */}
-          <ScrollArea.Autosize mah={420} type="scroll" scrollbarSize={6}>
-            {results && results.length === 0 ? (
-              // Nothing in Milo: the input goes to Google, Enter is enough.
-              <Combobox.Option value={GOOGLE}>
-                <Group gap="xs" wrap="nowrap">
-                  <IconBrandGoogle size={16} />
-                  <Text size="sm" truncate>
-                    Rechercher « {input.trim()} » sur Google
-                  </Text>
-                </Group>
-              </Combobox.Option>
-            ) : (
-              groups
-            )}
-          </ScrollArea.Autosize>
-        </Combobox.Options>
-      </Combobox.Dropdown>
-    </Combobox>
+      <Spotlight.Root
+        query={query}
+        onQueryChange={setQuery}
+        onSpotlightOpen={() => void load()}
+        scrollable
+        maxHeight={420}
+        // The results in the contexts list's style (SearchBox.module.css).
+        classNames={{
+          actionsList: classes.actionsList,
+          action: classes.action,
+          actionSection: classes.actionSection,
+          actionsGroup: classes.actionsGroup,
+        }}
+      >
+        <Spotlight.Search
+          placeholder="Rechercher dans Milo…"
+          leftSection={<IconSearch size={18} />}
+          // The typed text in the search's own color (themes).
+          styles={{ input: { color: "var(--milo-search-text)" } }}
+        />
+        <Spotlight.ActionsList>
+          {!search ? (
+            <Spotlight.Empty>
+              Tapez pour rechercher projets, tâches, demandes, assets et accès.
+            </Spotlight.Empty>
+          ) : index === null ? (
+            <Spotlight.Empty>Chargement…</Spotlight.Empty>
+          ) : found.length > 0 ? (
+            groups
+          ) : (
+            // Nothing in Milo: the input goes to Google.
+            <Spotlight.Action
+              label={`Rechercher « ${search} » sur Google`}
+              leftSection={<IconBrandGoogle size={16} />}
+              onClick={openGoogle}
+            />
+          )}
+        </Spotlight.ActionsList>
+      </Spotlight.Root>
+    </>
   );
 }

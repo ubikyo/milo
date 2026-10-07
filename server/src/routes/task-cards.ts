@@ -4,6 +4,7 @@
 import { Router } from "express";
 import type { Request } from "express";
 import {
+  COVER_ROTATIONS,
   REMINDERS,
   RECURRENCES,
   isCardKind,
@@ -17,7 +18,7 @@ import { badRequest, forbidden, orNotFound, requireText, toIds } from "../lib/ht
 import { cleanDescription } from "../lib/html.js";
 import { quote, logAction, date, changes, list, editMessage } from "../lib/history.js";
 import type { Field } from "../lib/history.js";
-import { concerned, notify, notifyLinked, notifyDeletion, root } from "../lib/notify.js";
+import { concerned, notify, notifyBoard, notifyLinked, notifyDeletion, root } from "../lib/notify.js";
 import { due, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { openTaskBoard, boards } from "../repositories/boards.js";
@@ -32,7 +33,7 @@ import {
 } from "../repositories/cards.js";
 import { SYSTEM_COMMENT, creationNote, withAuthor } from "../repositories/comments.js";
 import { duplicateTaskCard } from "../repositories/copy-list.js";
-import { nextReference } from "../repositories/references.js";
+import { nextCardReference } from "../repositories/references.js";
 import {
   boardOfCard,
   listsWithCards,
@@ -57,6 +58,10 @@ const photo = (id: Id): Field[] => {
     { label: "Rappel", value: labelOf(REMINDERS, card.reminder) },
     { label: "Membres", value: list(membersOf(id).map((m) => m.name)) },
     { label: "Étiquettes", value: list(labelsOf(id).map((l) => l.name)) },
+    {
+      label: "Défilement des couvertures",
+      value: COVER_ROTATIONS.find((r) => r.value === card.cover_interval)?.label ?? "—",
+    },
   ];
 };
 
@@ -124,7 +129,7 @@ taskCardRoutes.post("/", (req, res) => {
     text,
     next,
     // A separator carries no reference, and so consumes none.
-    kind === "separator" ? 0 : nextReference(),
+    kind === "separator" ? 0 : nextCardReference(list.id),
     kind,
     timestamp,
   );
@@ -226,7 +231,9 @@ taskCardRoutes.put("/reorder", (req, res) => {
 
   // Where each card comes from, before the write erases it. Dragging a card
   // within its own list changes nothing about what it says and notifies no
-  // one; moving it from "À faire" to "Terminé" does.
+  // one — but its author, if they asked to be —; moving it from "À faire"
+  // to "Terminé" does.
+  const before = taskCards.idsOfList.all(list.id).map((c) => c.id);
   const listBefore = new Map<Id, Id>();
   for (const id of fullOrder) {
     const card = taskCards.byId.get(id);
@@ -234,6 +241,16 @@ taskCardRoutes.put("/reorder", (req, res) => {
   }
 
   reorderTaskCards(list.id, fullOrder);
+  const arrived = [...listBefore.values()].some((origin) => origin !== list.id);
+  if (!arrived && fullOrder.some((id, index) => id !== before[index])) {
+    notifyBoard({
+      boardId: list.board_id,
+      message: `a réorganisé les cartes de la liste « ${list.name} »`,
+      author: req.user,
+      base: root(req),
+      recipients: [],
+    });
+  }
 
   for (const [cardId, origin] of listBefore) {
     if (origin === list.id) continue;
@@ -372,6 +389,7 @@ taskCardRoutes.delete("/:id", (req, res) => {
     title: existing.text,
     message: "a supprimé la carte",
     author: req.user,
+    base: root(req),
     recipients,
     vanished: true,
   });
@@ -449,6 +467,7 @@ cardCommentRoutes.delete("/:id", (req, res) => {
     title: card.text,
     message: "a supprimé un commentaire",
     author: req.user,
+    base: root(req),
     recipients: concerned.card(card.id),
     vanished: false,
   });

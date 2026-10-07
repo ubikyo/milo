@@ -8,11 +8,21 @@
 // its picker shows — asks themeColor(), in the current theme.
 
 import { useSyncExternalStore } from "react";
-import { MANTINE_COLOR_KEYS, SHADE_KEYS, THEME_COLORS, hexString, hexaString, parseThemeColor } from "@milo/shared";
-import type { ThemeColors } from "@milo/shared";
+import {
+  MANTINE_COLOR_KEYS,
+  SHADE_KEYS,
+  THEME_COLORS,
+  THEME_SIZES,
+  hexaString,
+  parseThemeColor,
+  themeColorHex,
+  themeValueHex,
+  writtenThemeColor,
+} from "@milo/shared";
+import type { ThemeColors, ThemeScheme } from "@milo/shared";
 import { api } from "../api";
 
-export type Scheme = "light" | "dark";
+export type Scheme = ThemeScheme;
 
 const DEFINITIONS = new Map(THEME_COLORS.map((c) => [c.key, c]));
 
@@ -26,29 +36,15 @@ const subscribe = (subscriber: () => void) => {
 };
 
 /** The color as written: the stored one, otherwise its default. */
-export const writtenColor = (key: string, scheme: Scheme): string =>
-  colors[key]?.[scheme] ?? DEFINITIONS.get(key)?.[scheme] ?? "#000000";
+export const writtenColor = (key: string, scheme: Scheme): string => writtenThemeColor(colors, key, scheme);
 
 const SHADE = /^(gray|dark)\.(\d)$/;
 
 /** Another color of the themes, whose value a default takes: "@body". */
 const REFERENCE = /^@([a-z0-9-]+)$/;
 
-/**
- * A value in hexadecimal — 8 digits when translucent: a shade is that of
- * the scale, in its own theme; a reference is that color's, in the given
- * theme; a stored value is brought back to 6 digits when opaque.
- */
-const toHex = (value: string, scheme: Scheme): string => {
-  const reference = REFERENCE.exec(value);
-  if (reference) return themeColorOf(reference[1]!, scheme);
-  if (value === "white") return "#ffffff";
-  if (value === "black") return "#000000";
-  const shade = SHADE.exec(value);
-  if (shade) return themeColorOf(`shade-${shade[2]}`, shade[1] === "gray" ? "light" : "dark");
-  const parsed = parseThemeColor(value);
-  return parsed ? hexString(parsed) : value.toLowerCase();
-};
+/** A value in hexadecimal, in the given theme (shared/theme-colors.ts). */
+const toHex = (value: string, scheme: Scheme): string => themeValueHex(colors, value, scheme);
 
 /** A value as #rrggbbaa, the form the Settings show. */
 const toHexa = (hex: string): string => {
@@ -70,7 +66,7 @@ const toCss = (value: string): string => {
 };
 
 /** The color in hexadecimal, in the given theme. */
-export const themeColorOf = (key: string, scheme: Scheme): string => toHex(writtenColor(key, scheme), scheme);
+export const themeColorOf = (key: string, scheme: Scheme): string => themeColorHex(colors, key, scheme);
 
 export const currentScheme = (): Scheme =>
   document.documentElement.getAttribute("data-mantine-color-scheme") === "dark" ? "dark" : "light";
@@ -82,12 +78,25 @@ export const themeHexaOf = (key: string, scheme: Scheme): string => toHexa(theme
 export const defaultHexaOf = (key: string, scheme: Scheme): string =>
   toHexa(toHex(DEFINITIONS.get(key)?.[scheme] ?? "#000000", scheme));
 
+/** A size's value in the given theme: the stored one, otherwise its default. */
+export const themeSizeOf = (key: string, scheme: Scheme): number =>
+  colors[key]?.sizes?.[scheme] ?? THEME_SIZES.find((s) => s.key === key)?.defaultValue ?? 0;
+
 /** The color in hexadecimal, in the current theme. */
 export const themeColor = (key: string): string => themeColorOf(key, currentScheme());
 
 /** The color's CSS variable: it follows the theme by itself. */
 export const themeVar = (key: string): string =>
   MANTINE_COLOR_KEYS.has(key) ? `var(--mantine-color-${key})` : `var(--milo-${key})`;
+
+/**
+ * The side of the active tab that opens on its panel: its background, so that
+ * it covers the row's line — the page's when it has none (Mantine's own).
+ */
+const tabActiveJoint = (scheme: Scheme): string =>
+  parseThemeColor(themeColorOf("tab-active-bg", scheme))?.a
+    ? themeVar("tab-active-bg")
+    : "var(--mantine-color-body)";
 
 /**
  * The style sheet. Its selectors repeat ":root" to win over Mantine's own,
@@ -105,7 +114,9 @@ const styleSheet = (): string => {
         const name = MANTINE_COLOR_KEYS.has(c.key) ? `--mantine-color-${c.key}` : `--milo-${c.key}`;
         return `${name}: ${toCss(writtenColor(c.key, s))};`;
       })
-      .join("");
+      .join("") +
+    THEME_SIZES.map((size) => `--milo-${size.key}: ${themeSizeOf(size.key, s)}${size.unit};`).join("") +
+    `--milo-tab-active-joint: ${tabActiveJoint(s)};`;
   return (
     `:root:root:root{${scale}}` +
     `:root:root[data-mantine-color-scheme="light"]{${scheme("light")}}` +

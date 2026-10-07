@@ -11,7 +11,6 @@ export const WORKSPACE_NOT_FOUND = "Workspace introuvable";
 export const workspaces = {
   all: selection<WorkspaceRow>("SELECT * FROM workspaces ORDER BY position, id"),
   byId: selection<WorkspaceRow>("SELECT * FROM workspaces WHERE id = ?"),
-  first: selection<WorkspaceRow>("SELECT * FROM workspaces ORDER BY position, id LIMIT 1"),
   nextPosition: scalar<NextRow>("SELECT COALESCE(MAX(position), -1) + 1 AS next FROM workspaces"),
   create: mutation("INSERT INTO workspaces (name, position, created_at) VALUES (?, ?, ?)"),
   rename: mutation("UPDATE workspaces SET name = ? WHERE id = ?"),

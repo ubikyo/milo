@@ -17,6 +17,7 @@ import { widgetReference } from "@milo/shared";
 import type { Id } from "@milo/shared";
 import { ReferenceTag } from "./ReferenceTag";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
+import { rememberDeletion } from "../../lib/undo";
 
 /**
  * The location of a widget's "Actions" menu, at the end of the drawer's tab row
@@ -118,7 +119,7 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
     setConfirmDeleteOpened(false);
     if (!indicator) return;
     try {
-      await api.remove(indicator.id);
+      rememberDeletion(await api.remove(indicator.id), "Widget supprimé", { reload: onSaved });
       await onSaved();
     } catch (e) {
       notifyError(errorMessage(e));

@@ -9,9 +9,10 @@
 
 import type { CardLink } from "./dependencies.js";
 import type { DueShape, Reminder, Recurrence } from "./due.js";
-import type { CompanyRights, WorkspaceRights } from "./roles.js";
+import type { AdminPermissions, CompanyRights, WorkspaceRights } from "./roles.js";
 import type { WidgetRights } from "./widget-kinds.js";
 import type { EntraPrincipal, PrincipalPermissions } from "./entra.js";
+import type { NotificationSettings } from "./notification-settings.js";
 import type {
   ApplicationRights,
   NotificationRights,
@@ -35,9 +36,9 @@ export interface PublicUser {
   email: string;
   gravatar_url: string;
   /**
-   * Their rights on the Settings: the "admin" account has them all; the
-   * others, if they have a role that grants them in at least one company.
-   * "view" opens the Settings, "update" allows saving in them.
+   * Their rights on the Settings ("Gestion du paramétrage"): the "admin"
+   * account has them all. "view" opens the Settings, "update" allows saving
+   * in them — both go together.
    */
   settings: { view: boolean; update: boolean };
   /**
@@ -83,6 +84,8 @@ export interface PublicUser {
   default_view: string;
   /** The opening board, in the opening view: its id as a string, empty for the first. */
   default_board: string;
+  /** How they are notified: on screen, by e-mail, grouped or not. */
+  notification_settings: NotificationSettings;
   /**
    * The workspace they work in: its views, boards and rights are
    * those of this workspace. "null" if they have none.
@@ -95,6 +98,12 @@ export interface PublicUser {
    * create them — rename them and set their access too —, delete them.
    */
   workspace_rights: WorkspaceRights;
+  /**
+   * Their administration, section by section — their own and their groups'
+   * merged; all of it for the "admin" account. The Settings' tabs, and what
+   * can be granted in the Administration one, follow it.
+   */
+  administration: AdminPermissions;
   created_at: string;
 }
 
@@ -196,8 +205,8 @@ export type ViewSharePermissions = Record<string, ShareLevel>;
 
 /**
  * A view's sharing, as its "Partager" window reads it: its boards, whom they
- * can go to — the users and groups with access to its workspace —, and to
- * whom they went.
+ * can go to — the users and groups with access to its workspace, and each
+ * user of these groups —, and to whom they went.
  */
 export interface ViewShares {
   boards: { id: Id; name: string }[];
@@ -345,7 +354,7 @@ export interface ProjectLabel {
 
 export interface Project {
   id: Id;
-  /** Its reference ("HLP-12"), given by the counter shared by the modes. */
+  /** Its reference ("PRJ-12"), counted per "Projets" widget from 1. */
   number: number;
   name: string;
   description: string;
@@ -438,8 +447,8 @@ export interface TaskCard {
   text: string;
   position: number;
   /**
-   * Its reference ("HLP-12"), given at creation by the counter shared by the
-   * modes. Zero for a separator.
+   * Its reference ("TSK-12"), counted per "Tâches" widget from 1. Zero for a
+   * separator.
    */
   number: number;
   kind: CardKind;
@@ -745,9 +754,9 @@ export const SUPPORT_NEW_MESSAGE_DUE_DAYS = 15;
 
 
 /**
- * The prefix of the references: "HLP-1", "HLP-2"… A single counter
- * gives them, to support requests, projects and cards: a reference
- * designates only one thing, whatever the mode.
+ * The prefix of the tickets' references: "HLP-1", "HLP-2"… Each list widget
+ * numbers its own items from 1 (server, repositories/references.ts): a
+ * reference designates only one thing within its widget.
  */
 export const REFERENCE_PREFIX = "HLP-";
 
@@ -758,10 +767,7 @@ export const SUPPORT_TICKET_PREFIX = REFERENCE_PREFIX;
 /** A reference as it is read and cited. */
 export const reference = (number: number): string => `${REFERENCE_PREFIX}${number}`;
 
-/**
- * Projects read the same counter under their own prefix: "PRJ-12"
- * and "HLP-12" cannot designate two things at once.
- */
+/** Projects carry their own prefix: "PRJ-12" is not "HLP-12". */
 export const PROJECT_REFERENCE_PREFIX = "PRJ-";
 
 /** The reference of a project, as it is read and cited. */

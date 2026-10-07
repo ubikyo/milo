@@ -561,6 +561,7 @@ export default function SupportRequestDrawer({
                         style={{ flex: `0 0 ${ACTORS_WIDTH}px`, minWidth: 0 }}
                       >
                         <ActorPicker
+                          kind="helpdesk"
                           chipHeight={CHIP_HEIGHT}
                           chipGap={ACTOR_GAP}
                           label="Acteurs"

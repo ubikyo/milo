@@ -1,7 +1,7 @@
 // Permissions of an Entra user or group: in each
 // workspace, one permission per widget type — Aucun, Lire, Modifier
-// (widget-kinds.ts); for the whole application, the Settings (Voir or
-// Modifier) and workspace management.
+// (widget-kinds.ts); for the whole application, the administration
+// (ADMIN_SECTIONS).
 //
 // The rights of each mode — Voir, Ajouter, Modifier, Supprimer — that the
 // routes and the interface check are derived from them: a mode follows the type of
@@ -59,29 +59,56 @@ export const validPermissions = (value: unknown): Permissions => {
 };
 
 /**
- * The application's administration, section by section — "Paramétrage", the
- * workspaces —, and the rights each one offers. Without a right, a section
- * gives nothing. The "admin" account has them all.
+ * The application's administration, section by section, and the rights each
+ * one offers. Without a right, a section gives nothing. The "admin" account
+ * has them all.
  *
- *   - Paramétrage: "Accéder" opens it, and changes it.
- *   - Workspaces: "Voir" opens their tab and each one's access, read-only;
- *     "Créer" adds one, renames them and sets their access; "Supprimer"
- *     deletes one.
+ *   - Gestion du paramétrage: "Autorisée" opens it — the profile menu —, and
+ *     changes what no other section covers (Affichage).
+ *   - Gestion des workspaces: "Voir" opens their tab and each one's access,
+ *     read-only; "Créer" adds one, renames them and sets their access;
+ *     "Supprimer" deletes one.
+ *   - Gestion des droits d'administration: the same, for the administration
+ *     — its tab, adding someone and setting their rights, removing them.
+ *   - Gestion des modèles d'email, Gestion des thèmes: "Autorisée" opens
+ *     their tab.
+ *
+ * In the two lists, a right brings those before it: "Supprimer" requires
+ * "Créer", which requires "Voir".
  */
 export const ADMIN_SECTIONS = [
   {
     value: "settings",
-    label: "Paramétrage",
-    rights: [{ value: "access", label: "Accéder" }],
+    label: "Gestion du paramétrage",
+    rights: [{ value: "access", label: "Autorisée" }],
   },
   {
     value: "workspaces",
-    label: "Workspaces",
+    label: "Gestion des workspaces",
     rights: [
       { value: "view", label: "Voir" },
       { value: "create", label: "Créer" },
       { value: "delete", label: "Supprimer" },
     ],
+  },
+  {
+    value: "administration",
+    label: "Gestion des droits d'administration",
+    rights: [
+      { value: "view", label: "Voir" },
+      { value: "create", label: "Créer" },
+      { value: "delete", label: "Supprimer" },
+    ],
+  },
+  {
+    value: "templates",
+    label: "Gestion des modèles d'email",
+    rights: [{ value: "access", label: "Autorisée" }],
+  },
+  {
+    value: "themes",
+    label: "Gestion des thèmes",
+    rights: [{ value: "access", label: "Autorisée" }],
   },
 ] as const;
 
@@ -101,29 +128,74 @@ export type AdminRight<S extends AdminSection = AdminSection> = Extract<
 export type AdminPermissions = { [S in AdminSection]: AdminRight<S>[] };
 
 /** That of a user or a group that has none yet: no right. */
-export const defaultAdminPermissions = (): AdminPermissions => ({ settings: [], workspaces: [] });
+export const defaultAdminPermissions = (): AdminPermissions => ({
+  settings: [],
+  workspaces: [],
+  administration: [],
+  templates: [],
+  themes: [],
+});
 
 /** What someone may do with workspaces, right by right. */
 export type WorkspaceRights = { [R in AdminRight<"workspaces">]: boolean };
+
+/** What someone may do with the administration, right by right. */
+export type AdministrationRights = { [R in AdminRight<"administration">]: boolean };
 
 /** All of them: the "admin" account's. */
 export const fullAdminPermissions = (): AdminPermissions => ({
   settings: ["access"],
   workspaces: ["view", "create", "delete"],
+  administration: ["view", "create", "delete"],
+  templates: ["access"],
+  themes: ["access"],
 });
 
-/** An administration received from outside, reduced to what exists, in order. */
+/** The sections whose rights follow one another: "Supprimer" ⇒ "Créer" ⇒ "Voir". */
+const CHAINED: readonly AdminSection[] = ["workspaces", "administration"];
+
+/**
+ * A chained section's rights, straightened out: each right held brings those
+ * before it in the list.
+ */
+const chained = (section: AdminSection, rights: string[]): string[] => {
+  const order = ADMIN_SECTIONS.find((s) => s.value === section)!.rights.map((r) => r.value as string);
+  const last = Math.max(-1, ...rights.map((r) => order.indexOf(r)));
+  return order.slice(0, last + 1);
+};
+
+/**
+ * An administration received from outside, reduced to what exists, in order;
+ * in the chained sections, a right brings those before it.
+ */
 export const validAdminPermissions = (value: unknown): AdminPermissions => {
   const source = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   const result = defaultAdminPermissions();
   for (const section of ADMIN_SECTIONS) {
     const received = source[section.value];
     const list = Array.isArray(received) ? received : [];
-    (result[section.value] as string[]) = section.rights
-      .map((r) => r.value)
-      .filter((r) => list.includes(r));
+    const kept = section.rights.map((r) => r.value as string).filter((r) => list.includes(r));
+    (result[section.value] as string[]) = CHAINED.includes(section.value)
+      ? chained(section.value, kept)
+      : kept;
   }
   return result;
+};
+
+/**
+ * A chained section's rights after a change in the interface: removing a
+ * right removes those after it, adding one adds those before it.
+ */
+export const normalizeAdminRights = (
+  section: string,
+  before: string[],
+  after: string[],
+): string[] => {
+  if (!CHAINED.includes(section as AdminSection)) return after;
+  const order = ADMIN_SECTIONS.find((s) => s.value === section)!.rights.map((r) => r.value as string);
+  const removed = before.find((r) => !after.includes(r));
+  if (removed) return order.slice(0, order.indexOf(removed)).filter((r) => after.includes(r));
+  return chained(section as AdminSection, after);
 };
 
 /** Rights as stored, in JSON: unreadable, they grant nothing. */
@@ -145,8 +217,9 @@ export const mergeAdminPermissions = (all: AdminPermissions[]): AdminPermissions
 
 /**
  * The rights of each mode, derived from the per-type permissions: a mode follows
- * the widest of its widgets' types. "Lire" opens the mode read-only;
- * "Modifier" gives it everything the area offers but deleting, "Supprimer" everything.
+ * the widest of its widgets' types. Its data is read by all — what a widget
+ * shows can always be read; "Modifier" gives it everything the area offers
+ * but deleting, "Supprimer" everything.
  */
 export const widgetPermissions = (widgets: WidgetRights): Permissions => {
   const result: Permissions = {};
@@ -157,7 +230,7 @@ export const widgetPermissions = (widgets: WidgetRights): Permissions => {
     );
     // "Modifier" gives everything the area offers but deleting; "Supprimer",
     // that too.
-    if (access === "view") result[area] = ["view"];
+    if (access === "" || access === "view") result[area] = ["view"];
     if (access === "update") result[area] = rightsFor(area).filter((r) => r !== "delete");
     if (access === "delete") result[area] = [...rightsFor(area)];
   }

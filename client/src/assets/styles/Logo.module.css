@@ -39,29 +39,3 @@
     transform: skewY(-12deg) scaleX(0.78);
   }
 }
-
-/* The version number appears under the logo when the mouse lingers: the
-   delay ignores a mere pass. It floats over the page, pushing nothing, and
-   does not capture the mouse. */
-.brand {
-  position: relative;
-}
-
-.version {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  padding-top: 5px;
-  font-size: var(--mantine-font-size-xs);
-  color: var(--mantine-color-dimmed);
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 150ms ease;
-}
-
-.brand:hover .version {
-  opacity: 1;
-  transition-delay: 600ms;
-}

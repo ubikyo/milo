@@ -22,7 +22,7 @@ import PointMenu, { menuPosition, type PointMenuPosition } from "./PointMenu";
 import SectionDropZone, { DOTTED } from "./SectionDropZone";
 import WidgetDrawer, { type WidgetChoice } from "./WidgetDrawer";
 import { InsertionLine, type WidgetDrag } from "./WidgetDrop";
-import { canUpdate } from "@milo/shared";
+import { canUse } from "@milo/shared";
 import type { Id, SectionWidthUnit } from "@milo/shared";
 
 // Sections as columns, and the widgets they hold. This is the row of Access
@@ -110,11 +110,13 @@ const SECTION_MIN_WIDTH = 20;
 // half pixel.
 const ROUNDING = 0.5;
 
-// "Ajouter un widget", placed to the left of the shortcuts "?"
-// (ShortcutsHelp): at its height — that of a "lg" ActionIcon — and the
-// space separating them.
+// "Ajouter un widget", placed to the left of the logo that shows the
+// shortcuts (ShortcutsHelp): at its height — that of a "lg" ActionIcon — and
+// the space separating them.
 const HELP_SIZE = 34;
 const HELP_OFFSET = 10;
+// Between the button and the logo, 10 px more.
+const HELP_GAP = HELP_OFFSET + 10;
 
 // What the row holds when the widget comes from the drawer: it has no id
 // yet, and no placed widget has this one.
@@ -965,7 +967,7 @@ export default function SectionsBoard<S extends BoardSection>({
         <Box
           style={{
             position: "fixed",
-            right: PAGE_GUTTER + HELP_SIZE + HELP_OFFSET,
+            right: PAGE_GUTTER + HELP_SIZE + HELP_GAP,
             bottom: PAGE_GUTTER,
             zIndex: 200,
             display: "flex",
@@ -1051,8 +1053,8 @@ export default function SectionsBoard<S extends BoardSection>({
       <WidgetDrawer
         opened={drawerOpen}
         onClose={() => setDrawerOpened(false)}
-        // The drawer only offers the types the account can edit.
-        widgets={widgets.filter((w) => canUpdate(access(w.kind)))}
+        // The drawer only offers the types the account can use.
+        widgets={widgets.filter((w) => canUse(access(w.kind)))}
         onDragStart={(widget) => {
           setNewType(widget.type);
           setDraggedWidget(NEW_VALUE);

@@ -10,11 +10,19 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-xml": "^6.1.0",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
+    "@lezer/highlight": "^1.2.5",
     "@mantine/charts": "^9.6.2",
     "@mantine/core": "^9.6.2",
     "@mantine/dates": "^9.6.2",
     "@mantine/hooks": "^9.6.2",
     "@mantine/notifications": "^9.6.2",
+    "@mantine/spotlight": "~9.6.2",
     "@mantine/tiptap": "^9.6.2",
     "@milo/shared": "*",
     "@tabler/icons-react": "^3.19.0",
@@ -23,6 +31,7 @@
     "@tiptap/react": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
     "dayjs": "^1.11.13",
+    "fuse.js": "^7.5.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "recharts": "^3.10.1"

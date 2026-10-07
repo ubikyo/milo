@@ -15,6 +15,8 @@ interface EmptyPanelProps {
   message?: ReactNode;
   actionLabel?: string;
   onAction?: () => void;
+  /** The action button's icon: "+" by default, the screens adding something. */
+  actionIcon?: ComponentType<{ size?: number }>;
   size?: "sm" | "md" | "lg";
   fill?: boolean;
   /** True when the screen reports a problem: the icon turns yellow. */
@@ -26,6 +28,7 @@ export default function EmptyPanel({
   message,
   actionLabel,
   onAction,
+  actionIcon: ActionIcon = IconPlus,
   size = "lg",
   fill = true,
   warning = false,
@@ -54,7 +57,7 @@ export default function EmptyPanel({
       {/* Some screens have nothing to offer here: no action, no button. */}
       {actionLabel && onAction && (
         <EmptyState.Actions>
-          <Button color="teal" leftSection={<IconPlus size={PLUS_SIZE} />} onClick={onAction}>
+          <Button color="teal" leftSection={<ActionIcon size={PLUS_SIZE} />} onClick={onAction}>
             {actionLabel}
           </Button>
         </EmptyState.Actions>

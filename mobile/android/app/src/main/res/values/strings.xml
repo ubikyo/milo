@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Milo</string>
+    <string name="title_activity_main">Milo</string>
+    <string name="package_name">art.lesmanufactures.milo</string>
+    <string name="custom_url_scheme">art.lesmanufactures.milo</string>
+</resources>

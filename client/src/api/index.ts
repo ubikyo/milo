@@ -3,6 +3,8 @@
 
 import type {
   DirectoryUser,
+  WidgetKind,
+  WorkspacePeople,
   AccessCalendar,
   AccessCalendarChoice,
   AccessFeed,
@@ -55,6 +57,7 @@ import type {
   EntraPrincipal,
   EntraSettings,
   EntraSettingsInput,
+  EntraCheck,
   EntraStatus,
   MailboxCheck,
   PrincipalAdministration,
@@ -92,11 +95,11 @@ import type {
   TaskCardRow,
   TaskList,
   TaskListCopyInput,
-  NotificationSettings,
   MailTemplate,
   MailTemplateKey,
   MailTemplatePreview,
   DisplaySettings,
+  MiloSettings,
   ThemeColors,
   TitleStyle,
   SupportContent,
@@ -171,6 +174,8 @@ const post = <T>(path: string, body?: unknown) =>
 const put = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: "PUT", body: JSON.stringify(body ?? {}) });
 const del = (path: string) => request<null>(path, { method: "DELETE" });
+/** A deletion that can be undone: the server returns its token (lib/undo.tsx). */
+const undoableDel = (path: string) => request<{ undo: string }>(path, { method: "DELETE" });
 
 /**
  * A file upload: the request body is the file itself, its name and type
@@ -242,7 +247,7 @@ const boardSections = (boardId: Id | string) => ({
     put<IndicatorSection>(`/board-sections/${id}`, data),
   /** The copy, with its widgets, is placed right after the original. */
   duplicate: (id: Id) => post<IndicatorSection>(`/board-sections/${id}/duplicate`, {}),
-  remove: (id: Id) => del(`/board-sections/${id}`),
+  remove: (id: Id) => undoableDel(`/board-sections/${id}`),
   reorder: (ids: Id[]) => put<IndicatorSection[]>(`/boards/${boardId}/sections/reorder`, { ids }),
   /** An exported layout replaces the board's structure. */
   importSections: (layout: ExportedLayout) =>
@@ -276,15 +281,16 @@ export const api = {
   getFavorites: () => get<Id[]>("/users/favorites"),
   addFavorite: (id: Id) => put<Id[]>(`/users/favorites/${id}`),
   removeFavorite: (id: Id) => request<Id[]>(`/users/favorites/${id}`, { method: "DELETE" }),
+  // Who can be an actor in the current workspace: those who read this widget
+  // type — its users, its groups' listed individually, and its groups.
+  getWorkspacePeople: (kind: WidgetKind) =>
+    get<WorkspacePeople>(`/users/workspace?kind=${kind}`),
   // The people of the Entra directory, and the account of one of them — created
   // if it doesn't exist yet — to make them an actor.
   searchDirectoryUsers: (q: string) =>
     get<DirectoryUser[]>(`/users/directory?q=${encodeURIComponent(q)}`),
   addDirectoryUser: (oid: string) =>
     post<PublicUser>(`/users/directory/${encodeURIComponent(oid)}`),
-  // The directory's groups, for actors who only notify.
-  searchDirectoryGroups: (q: string) =>
-    get<EntraPrincipal[]>(`/users/directory/groups?q=${encodeURIComponent(q)}`),
 
   // --- Workspaces ----------------------------------------------------------
   // Switching to another of one's workspaces.
@@ -299,11 +305,17 @@ export const api = {
   getAssignments: (workspace: Id) =>
     get<PrincipalAssignments[]>(`/assignments?workspace=${workspace}`),
   // The types and notifications sent replace everything; with none, the
-  // principal stays listed without any access.
-  setAssignments: (principal: EntraPrincipal, permissions: WorkspacePermissions, workspace: Id) =>
+  // principal stays listed without any access. "invite": if just added, they
+  // receive the "Nouvel utilisateur" e-mail.
+  setAssignments: (
+    principal: EntraPrincipal,
+    permissions: WorkspacePermissions,
+    workspace: Id,
+    invite = false,
+  ) =>
     put<PrincipalAssignments[]>(
       `/assignments/${principal.type}/${encodeURIComponent(principal.id)}?workspace=${workspace}`,
-      { name: principal.name, email: principal.email, permissions },
+      { name: principal.name, email: principal.email, permissions, invite },
     ),
   deleteAssignments: (principal: EntraPrincipal, workspace: Id) =>
     request<PrincipalAssignments[]>(
@@ -313,10 +325,11 @@ export const api = {
 
   // --- Administration: Paramétrage and workspace management ----------------
   getAdministration: () => get<PrincipalAdministration[]>("/administration"),
-  setAdministration: (principal: EntraPrincipal, permissions: AdminPermissions) =>
+  // "invite": if just added, they receive the "Nouvel administrateur" e-mail.
+  setAdministration: (principal: EntraPrincipal, permissions: AdminPermissions, invite = false) =>
     put<PrincipalAdministration[]>(
       `/administration/${principal.type}/${encodeURIComponent(principal.id)}`,
-      { name: principal.name, email: principal.email, permissions },
+      { name: principal.name, email: principal.email, permissions, invite },
     ),
   deleteAdministration: (principal: EntraPrincipal) =>
     request<PrincipalAdministration[]>(
@@ -346,6 +359,7 @@ export const api = {
   getEntraStatus: () => get<EntraStatus>("/entra/status"),
   connectEntra: () => post<EntraStatus>("/entra/connect"),
   disconnectEntra: () => post<EntraStatus>("/entra/disconnect"),
+  checkEntra: (step: string) => post<EntraCheck>(`/entra/check/${encodeURIComponent(step)}`),
 
   // --- Follows -------------------------------------------------------------
   // The client keeps the list of what it follows: each write returns it
@@ -362,7 +376,7 @@ export const api = {
   /** Born without a board. */
   createView: (name: string) => post<View>("/views", { name }),
   updateView: (id: Id, data: ViewInput) => put<View>(`/views/${id}`, data),
-  deleteView: (id: Id) => del(`/views/${id}`),
+  deleteView: (id: Id) => undoableDel(`/views/${id}`),
   /** "Masquer" for this account; returns its views. */
   hideView: (id: Id, hidden: boolean) => put<View[]>(`/views/${id}/hidden`, { hidden }),
   /** "Partager": the view's boards, whom they can go to, and to whom they went. */
@@ -377,7 +391,7 @@ export const api = {
   /** A single board: enough to know which view it is in. */
   getBoard: (id: Id | string) => get<Board>(`/boards/${id}`),
   updateBoard: (id: Id, data: BoardInput) => put<Board>(`/boards/${id}`, data),
-  deleteBoard: (id: Id | string) => del(`/boards/${id}`),
+  deleteBoard: (id: Id | string) => undoableDel(`/boards/${id}`),
   /** "Masquer" for this account; returns the boards of its view. */
   hideBoard: (id: Id, hidden: boolean) => put<Board[]>(`/boards/${id}/hidden`, { hidden }),
 
@@ -397,7 +411,9 @@ export const api = {
     put<BoardWidget>(`/board-widgets/${id}`, data),
   /** The copy is placed right below the original. */
   duplicateBoardWidget: (id: Id) => post<BoardWidget>(`/board-widgets/${id}/duplicate`, {}),
-  deleteBoardWidget: (id: Id) => del(`/board-widgets/${id}`),
+  deleteBoardWidget: (id: Id) => undoableDel(`/board-widgets/${id}`),
+  /** Puts back what a deletion carried away, by the token it returned. */
+  undoDeletion: (token: string) => post<null>(`/undo/${token}`),
   /** What the section now carries: a widget from another one moves into it. */
   reorderBoardWidgets: (sectionId: Id, ids: Id[]) =>
     put<BoardWidget[]>("/board-widgets/reorder", { section_id: sectionId, ids }),
@@ -717,8 +733,9 @@ export const api = {
   deleteNotification: (id: string) => del(`/notifications/${encodeURIComponent(id)}`),
   clearNotifications: () => del("/notifications"),
 
-  // The tab row search, over everything the person sees.
-  search: (q: string) => get<SearchResult[]>(`/search${queryString({ q })}`),
+  // Everything the person sees, for the tab row search (Spotlight), which
+  // searches it itself.
+  getSearchIndex: () => get<SearchResult[]>("/search"),
 
 
   // The "Développeur" section of the Paramétrage, common to all.
@@ -758,9 +775,8 @@ export const api = {
       `/asset-settings${queryString({ board: boardId })}`,
       data,
     ),
-  getNotificationSettings: () => get<NotificationSettings>("/notification-settings"),
-  updateNotificationSettings: (data: Partial<NotificationSettings>) =>
-    put<NotificationSettings>("/notification-settings", data),
+  getMiloSettings: () => get<MiloSettings>("/milo-settings"),
+  updateMiloSettings: (data: Partial<MiloSettings>) => put<MiloSettings>("/milo-settings", data),
   getMailTemplates: () => get<MailTemplate[]>("/mail-templates"),
   // The empty template goes back to Milo's own.
   updateMailTemplate: (key: MailTemplateKey, mjml: string) =>

@@ -1,5 +1,6 @@
-import { Box, ScrollArea, useComputedColorScheme } from "@mantine/core";
-import { useEffect, useRef, useState } from "react";
+import { Box, ScrollArea, UnstyledButton, useComputedColorScheme } from "@mantine/core";
+import type { SplitterPaneSize } from "@mantine/hooks";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 // What the template windows share — the MJML one (MailTemplateModal) and the
 // support one (SupportReplyModal): their panes, side by side in a Splitter,
@@ -7,9 +8,9 @@ import { useEffect, useRef, useState } from "react";
 
 /**
  * The panes' widths on opening, the same in every template window: the
- * variables a fixed 200 px, the code and the preview sharing the rest.
+ * variables a fixed 350 px, the code and the preview sharing the rest.
  */
-export const PANE_SIZES = { variables: "200px", editor: 55, preview: 45 } as const;
+export const PANE_SIZES = { variables: "350px", editor: 55, preview: 45 } as const;
 
 // Narrower than this — in the unit of its width —, a dragged pane folds.
 export const PANE_MINS = { variables: "120px", editor: 15, preview: 15 } as const;
@@ -28,24 +29,176 @@ export const SCROLLBAR_SIZE = 2;
  * a scrollbar, a sticky toolbar with its own z-index — stays below the
  * handles' grips, which overhang it.
  */
-export const paneStyle = (side?: "left" | "right") => {
+export const paneStyle = (side?: "left" | "right", folded = false) => {
   const radius = "var(--mantine-radius-default)";
   return {
     overflow: "hidden",
     isolation: "isolate",
+    // Folded, it keeps a column for its name (FoldablePane), over its content.
+    position: "relative",
+    ...(folded && { minWidth: FOLDED_WIDTH }),
     ...(side === "left" && { borderTopLeftRadius: radius, borderBottomLeftRadius: radius }),
     ...(side === "right" && { borderTopRightRadius: radius, borderBottomRightRadius: radius }),
   } as const;
 };
 
-// The handles and the preview's frame: a neutral gray — Mantine's leans blue.
+// --- Escape --------------------------------------------------------------
+//
+// A template being edited must not be lost to Escape. Each open Mantine
+// window or drawer listens for it on the whole page — the Settings around a
+// template, a widget's drawer —, before anyone else: "closeOnEscape" on the
+// template's own window does not stop its parent from closing, and the
+// template with it. Mantine spares an event whose target carries
+// "data-mantine-stop-propagation": while a template is being edited, this
+// listener — set up as the module loads, so before any window's — marks
+// the target of every Escape, then takes the mark back. Escape still closes
+// what the code shows: the completion list.
+
+let editingTemplates = 0;
+const STOP = "data-mantine-stop-propagation";
+
+if (typeof window !== "undefined") {
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key !== "Escape" || editingTemplates === 0) return;
+      const target = event.target;
+      if (!(target instanceof Element) || target.hasAttribute(STOP)) return;
+      target.setAttribute(STOP, "true");
+      setTimeout(() => target.removeAttribute(STOP));
+    },
+    { capture: true },
+  );
+}
+
+/** While "active", Escape closes no window: a template is being edited. */
+export function useNoEscape(active: boolean) {
+  useEffect(() => {
+    if (!active) return undefined;
+    editingTemplates += 1;
+    return () => {
+      editingTemplates -= 1;
+    };
+  }, [active]);
+}
+
+/** A folded pane's column. */
+const FOLDED_WIDTH = 30;
+
+/** The panes on opening: the variables folded, the code and the preview sharing the width. */
+const OPENING_SIZES: SplitterPaneSize[] = ["0px", PANE_SIZES.editor, PANE_SIZES.preview];
+
+/** Each pane's own size, which it unfolds to when it had none before — the variables 350 px. */
+const OWN_SIZES: SplitterPaneSize[] = [PANE_SIZES.variables, PANE_SIZES.editor, PANE_SIZES.preview];
+
+const isFolded = (size: SplitterPaneSize | undefined) => parseFloat(String(size)) === 0;
+
+/**
+ * The panes' sizes, the variables folded at each opening — "opened" changes.
+ * Folded, a pane is at zero: its column (FoldablePane) unfolds it to the size
+ * it had — or to its own, the first time.
+ */
+export function useFoldingPanes(opened: unknown) {
+  const [sizes, setSizes] = useState<SplitterPaneSize[]>(OPENING_SIZES);
+  // The size each pane had before it folded.
+  const [before, setBefore] = useState<SplitterPaneSize[]>(OWN_SIZES);
+  // Adjusted during the render that sees the new opening.
+  const [seen, setSeen] = useState(opened);
+  if (opened !== seen) {
+    setSeen(opened);
+    if (opened) {
+      setSizes(OPENING_SIZES);
+      setBefore(OWN_SIZES);
+    }
+  }
+
+  /** Any change of sizes — a drag, a fold —: what was open before is remembered. */
+  const change = (next: SplitterPaneSize[]) => {
+    setBefore(before.map((size, i) => (!isFolded(sizes[i]) && isFolded(next[i]) ? sizes[i]! : size)));
+    setSizes(next);
+  };
+
+  return {
+    /** The Splitter's props. */
+    splitterProps: { sizes, onSizeChange: change },
+    folded: (index: number) => isFolded(sizes[index]),
+    unfold: (index: number) => setSizes(sizes.map((size, i) => (i === index ? before[i]! : size))),
+    fold: (index: number) => change(sizes.map((size, i) => (i === index ? "0px" : size))),
+  };
+}
+
+/**
+ * A pane's content, and once folded, a column of its name, written upward,
+ * that unfolds it on a click. The content is kept — with its state — but
+ * hidden: its scrollbars would show along the column.
+ */
+export function FoldablePane({
+  label,
+  folded,
+  onUnfold,
+  children,
+}: {
+  label: string;
+  folded: boolean;
+  onUnfold: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      {folded && (
+        <UnstyledButton
+          onClick={onUnfold}
+          aria-label={`Afficher ${label.toLowerCase()}`}
+          pos="absolute"
+          top={0}
+          bottom={0}
+          left={0}
+          w={FOLDED_WIDTH}
+          style={{
+            zIndex: 1,
+            display: "flex",
+            alignItems: "center",
+            // At the start of its line — the text's left, read upward: the
+            // column's bottom.
+            justifyContent: "flex-start",
+            paddingInlineStart: 12,
+            backgroundColor: "var(--mantine-color-body)",
+            // White on the dark theme; black on the light one, where white would
+            // not read on the page's background.
+            color: "var(--milo-strong-text)",
+            fontSize: "var(--mantine-font-size-sm)",
+            writingMode: "vertical-rl",
+            transform: "rotate(180deg)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {label}
+        </UnstyledButton>
+      )}
+      <Box h="100%" style={{ visibility: folded ? "hidden" : undefined }}>
+        {children}
+      </Box>
+    </>
+  );
+}
+
+// The handles and the panes' frame: a neutral gray — Mantine's leans blue.
 export const HANDLE_COLOR = "var(--milo-header-bg)";
 
-/** The handles above the panes, which are isolated (paneStyle). */
-export const SPLITTER_STYLES = { handle: { zIndex: 1 } };
+/**
+ * The handles above the panes, which are isolated (paneStyle); around the
+ * three panes, a frame of the handles' gray, rounded as their outer corners.
+ */
+export const SPLITTER_STYLES = {
+  root: { border: `1px solid ${HANDLE_COLOR}`, borderRadius: "var(--mantine-radius-default)" },
+  handle: { zIndex: 1 },
+};
 
-// The preview sits on the background of the theme it shows, in a gray frame.
-const PREVIEW_BG = { light: "var(--mantine-color-body)", dark: "var(--mantine-color-body)" };
+// The preview sits on the background of the theme it shows:
+// white in light, as a mail client shows a message, whatever the interface's
+// — its page background is gray in light, dark in dark; the dark one's in
+// dark.
+const PREVIEW_BG = { light: "#ffffff", dark: "var(--mantine-color-body)" };
 
 /**
  * The e-mail, transparent over the preview's background. The dark preview
@@ -125,13 +278,13 @@ export default function MailPreview({ html, dark, scheme, dragging }: MailPrevie
     <Box
       h="100%"
       style={{
-        // No line on the left: the handle already separates it from the code.
-        border: `1px solid ${HANDLE_COLOR}`,
-        borderLeft: 0,
+        // No frame of its own: the panes' one goes around it (SPLITTER_STYLES).
         background: dark ? PREVIEW_BG.dark : PREVIEW_BG.light,
       }}
     >
-      <ScrollArea h="100%" type="auto" scrollbarSize={SCROLLBAR_SIZE}>
+      {/* Down only, as the variables: no horizontal bar along its bottom —
+          the e-mail fits the pane's width. */}
+      <ScrollArea h="100%" type="auto" scrollbars="y" scrollbarSize={SCROLLBAR_SIZE}>
         <Box
           component="iframe"
           title="Aperçu"

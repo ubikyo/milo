@@ -33,11 +33,12 @@ import { InsertionLine, useWidgetDrop, type WidgetDrag } from "./WidgetDrop";
 import type { PanelSections } from "../../api";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
 import type { SettingRow } from "./SettingRows";
-import { accessIncludes, canUpdate, isListWidgetType } from "@milo/shared";
+import { accessIncludes, canUpdate, canUse, isListWidgetType } from "@milo/shared";
 import type { Id, IndicatorSection } from "@milo/shared";
 import type { WidgetKind } from "../../widgets/kinds";
 import { alignmentProps } from "../../widgets/alignment";
 import { heightStyle, isPercentHeight, isSized } from "../../widgets/height";
+import { rememberDeletion } from "../../lib/undo";
 
 /** The gap between two indicators of a section. */
 export const GAP = 20;
@@ -163,7 +164,11 @@ export interface IndicatorsApi<Type extends string> {
     type: Type;
     config: Record<string, unknown>;
   }) => Promise<{ id: Id }>;
-  update: (id: Id, data: { config: Record<string, unknown> }) => Promise<unknown>;
+  /**
+   * `in_use`: changed in place with the screen locked — the edit mode off —,
+   * the server announces it as use, not as edit.
+   */
+  update: (id: Id, data: { config: Record<string, unknown>; in_use?: boolean }) => Promise<unknown>;
   remove: (id: Id) => Promise<unknown>;
   /** What the section now holds, in order. */
   reorder: (sectionId: Id, ids: Id[]) => Promise<unknown>;
@@ -233,10 +238,10 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
 }: IndicatorsPanelProps<Type, P>) {
   const access = useWidgetAccess();
   // The copied widget, pasted at the end of a section: only a type this panel
-  // knows and the account can place.
+  // knows and the account can place ("Utiliser").
   const copy = useCopiedWidget();
   const toPaste = copy ? widgetOf(copy.type as Type) : undefined;
-  const pastable = copy && toPaste && canUpdate(access(toPaste.kind)) ? copy : null;
+  const pastable = copy && toPaste && canUse(access(toPaste.kind)) ? copy : null;
   const [drawerOpen, setDrawerOpened] = useState(false);
   const [modified, setModified] = useState<Indicator<Type> | null>(null);
   /** The widget dropped from the left drawer, waiting for its settings. */
@@ -263,7 +268,11 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
   const remove = async () => {
     const indicator = toDelete;
     setToDelete(null);
-    if (indicator) await write(() => api.remove(indicator.id));
+    if (indicator) {
+      await write(async () =>
+        rememberDeletion(await api.remove(indicator.id), "Widget supprimé", { reload: onChanged }),
+      );
+    }
   };
 
   /**
@@ -330,7 +339,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
     const inSection = indicators.filter((i) => i.section_id === sectionId);
     const visible = (i: Indicator<Type>) => {
       const widget = widgetOf(i.type);
-      return Boolean(widget) && access(widget!.kind) !== "" && !widget!.hidden?.(i.config, locked);
+      return Boolean(widget) && !widget!.hidden?.(i.config, locked);
     };
     const rank = modified ? inSection.findIndex((i) => i.id === modified.id) : created!.index;
     const before = inSection.slice(0, Math.max(0, rank)).filter(visible);
@@ -373,7 +382,9 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
             locked={locked}
             widgetOf={widgetOf}
             render={render}
-            onChange={(indicator, config) => write(() => api.update(indicator.id, { config }))}
+            onChange={(indicator, config) =>
+              write(() => api.update(indicator.id, { config, ...(locked && { in_use: true }) }))
+            }
             onOpen={updateStatement}
             onRename={(indicator, name) =>
               write(() => api.update(indicator.id, { config: withField(indicator.config, NAME, name) }))
@@ -406,7 +417,13 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
               }
             : undefined
         }
-        onDeleteSection={(section) => write(() => api.sections.remove(section.id))}
+        onDeleteSection={(section) =>
+          write(async () =>
+            rememberDeletion(await api.sections.remove(section.id), "Section supprimée", {
+              reload: onChanged,
+            }),
+          )
+        }
         onReorderSections={(ids) => write(() => api.sections.reorder(ids))}
         onChangeSection={(section, change) => write(() => api.sections.update(section.id, change))}
       />
@@ -415,7 +432,7 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
         (() => {
           const { indicator } = menu;
           const widget = widgetOf(indicator.type);
-          // Frozen — the screen locked, or a type the account can only read —,
+          // Frozen — the screen locked, or a type the account cannot modify —,
           // the widget only offers the actions that do not reshape it.
           const frozen = locked || !widget || !canUpdate(access(widget.kind));
           const close = () => setMenu(null);
@@ -476,7 +493,13 @@ export default function IndicatorsPanel<Type extends string, P extends Indicator
                         close();
                         const copy = copied();
                         copyWidget(copy);
-                        void write(() => api.remove(indicator.id))
+                        void write(async () =>
+                          // Undone by ⌘Z too; the notification below says "coupé".
+                          rememberDeletion(await api.remove(indicator.id), "Widget coupé", {
+                            reload: onChanged,
+                            silent: true,
+                          }),
+                        )
                           .then(() => {
                             notifications.show({ color: "teal", message: `Widget « ${copy.label} » coupé` });
                           })
@@ -593,12 +616,12 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
   // widget's native drag does not start there.
   const pressTarget = useRef<Element | null>(null);
 
-  // A hidden widget, of an unknown type — stored by a more recent version — or
-  // of a type the account cannot read, does not appear, and neither precedes
-  // nor follows anyone.
+  // A hidden widget, or of an unknown type — stored by a more recent version —,
+  // does not appear, and neither precedes nor follows anyone. Whatever the
+  // account's permission on its type, a widget is read.
   const visibleItems = indicators.flatMap((indicator) => {
     const widget = widgetOf(indicator.type);
-    return widget && access(widget.kind) !== "" && !widget.hidden?.(indicator.config, locked)
+    return widget && !widget.hidden?.(indicator.config, locked)
       ? [{ indicator, widget }]
       : [];
   });
@@ -642,7 +665,7 @@ function SectionIndicators<Type extends string, P extends IndicatorWidgetBase<Ty
         // The rank among all: this is what the drop stores.
         const index = indicators.indexOf(indicator);
         const gapBefore = rank === 0 ? 0 : gapBetween(rank);
-        // Frozen — the screen locked, or a type the account can only read —, a
+        // Frozen — the screen locked, or a type the account cannot modify —, a
         // widget cannot be dragged, opened or modified: a widget that is
         // modified in place receives nothing to save.
         const frozen = locked || !canUpdate(access(widget.kind));

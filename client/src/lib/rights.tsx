@@ -28,11 +28,13 @@ export const canFrom =
 const RightsContext = createContext<Can>(() => false);
 const WidgetsContext = createContext<WidgetRights>(widgetRightsEverywhere(""));
 const SettingsAccessContext = createContext(false);
+const TemplatesAccessContext = createContext(false);
 
 export function RightsProvider({
   rights,
   widgets,
   canEditSettings,
+  canEditTemplates,
   children,
 }: {
   rights: CompanyRights;
@@ -40,12 +42,16 @@ export function RightsProvider({
   widgets: WidgetRights;
   /** The right to edit the Paramétrage — milestone types, among others. */
   canEditSettings: boolean;
+  /** The right to edit the e-mail templates ("Gestion des modèles d'email"). */
+  canEditTemplates: boolean;
   children: ReactNode;
 }) {
   return (
     <RightsContext.Provider value={canFrom(rights)}>
       <WidgetsContext.Provider value={widgets}>
-        <SettingsAccessContext.Provider value={canEditSettings}>{children}</SettingsAccessContext.Provider>
+        <SettingsAccessContext.Provider value={canEditSettings}>
+          <TemplatesAccessContext.Provider value={canEditTemplates}>{children}</TemplatesAccessContext.Provider>
+        </SettingsAccessContext.Provider>
       </WidgetsContext.Provider>
     </RightsContext.Provider>
   );
@@ -57,10 +63,13 @@ export const useRights = (): Can => useContext(RightsContext);
 /** True when the signed-in account can edit the Paramétrage. */
 export const useSettingsMode = (): boolean => useContext(SettingsAccessContext);
 
+/** True when the signed-in account can edit the e-mail templates. */
+export const useTemplatesAccess = (): boolean => useContext(TemplatesAccessContext);
+
 /**
- * The signed-in account's permission on a widget type: "" (none), the
- * widget does not appear; "view", it can be read but not edited; "update",
- * it can be placed, arranged, configured.
+ * The signed-in account's permission on a widget type. Every widget on a
+ * board is read, whatever it is; "view" ("Utiliser"), it can be placed;
+ * "update", configured; "delete", removed.
  */
 export const useWidgetAccess = (): ((kind: WidgetKind) => WidgetAccess) => {
   const widgets = useContext(WidgetsContext);

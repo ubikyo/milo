@@ -7,7 +7,6 @@
 
 import type {
   BoardAccess,
-  EntraPrincipal,
   Id,
   PrincipalPermissions,
   ShareLevel,
@@ -63,18 +62,10 @@ const insertShare = mutation(
    VALUES (?, ?, ?, ?, ?, ?)`,
 );
 
-/** Whom a workspace's views can be shared with: the users and groups with access to it. */
-const principalsOf = selection<EntraPrincipal>(
-  `SELECT principal_type AS type, principal_id AS id, principal_name AS name,
-     principal_email AS email
-   FROM principal_permissions WHERE workspace_id = ? ORDER BY principal_type DESC, principal_name`,
-);
-
 /** The users and groups a view's boards went to, each with its boards and their level. */
 export type ViewShareList = PrincipalPermissions<ViewSharePermissions>[];
 
 export const boardShares = {
-  principals: (workspaceId: Id): EntraPrincipal[] => principalsOf.all(workspaceId),
   /** Grouped by user or group, in the order of their names. */
   ofView: (viewId: Id): ViewShareList => {
     const byPrincipal = new Map<string, ViewShareList[number]>();

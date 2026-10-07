@@ -1,0 +1,90 @@
+/* The main window's top row (ModeBar) has its own settings ("… de la
+   fenêtre principale"): they take the place of the tabs' ones in it, for
+   every rule that reads them — here, tabStyle, ContextsMenu.module.css. Its
+   active tab's background and open side are set by BoardTabs. */
+.milo-page-tabs {
+  --milo-tab-bg: var(--milo-main-tab-bg);
+  --milo-tab-text: var(--milo-main-tab-text);
+  --milo-tab-size: var(--milo-main-tab-size);
+  --milo-tab-weight: var(--milo-main-tab-weight);
+  --milo-tab-active-bg: var(--milo-view-tab-active);
+  --milo-tab-active-text: var(--milo-main-tab-active-text);
+  --milo-tab-active-border: var(--milo-main-tab-active-border);
+  --milo-tab-active-border-width: var(--milo-main-tab-active-border-width);
+  --milo-tab-active-size: var(--milo-main-tab-active-size);
+  --milo-tab-active-weight: var(--milo-main-tab-active-weight);
+}
+
+/* The background behind the tabs' row, set in the themes ("Onglets"). The
+   active tab's own is set by tabStyle (themes/tabs.ts); its frame and the
+   row's line, by ContextsMenu.module.css. */
+.mantine-Tabs-list {
+  background-color: var(--milo-tab-bg);
+}
+
+/* In a window or a drawer, and on the page's first line (ModeBar), the
+   background takes in the margins around the row, up to the edges: left, top
+   and right when horizontal; left, top and bottom when vertical. The inset —
+   the window's (--mb-padding), the page's (set by ModeBar) — is given back as
+   padding, so the tabs stay in place. */
+:where(.mantine-Modal-body, .mantine-Drawer-body, .milo-page-tabs) .mantine-Tabs-list {
+  --tabs-bleed: var(--mb-padding, var(--mantine-spacing-md));
+  margin-top: calc(-1 * var(--tabs-bleed));
+  padding-top: var(--tabs-bleed);
+  margin-inline-start: calc(-1 * var(--tabs-bleed));
+  padding-inline-start: var(--tabs-bleed);
+}
+
+:where(.mantine-Modal-body, .mantine-Drawer-body, .milo-page-tabs) .mantine-Tabs-list:not([data-orientation="vertical"]) {
+  margin-inline-end: calc(-1 * var(--tabs-bleed));
+  padding-inline-end: var(--tabs-bleed);
+  /* The row's line keeps to the inset, as before: only the background
+     reaches the edges. */
+  --tabs-list-line-start: var(--tabs-bleed);
+  --tabs-list-line-end: var(--tabs-bleed);
+}
+
+:where(.mantine-Modal-body, .mantine-Drawer-body) .mantine-Tabs-list[data-orientation="vertical"] {
+  margin-bottom: calc(-1 * var(--tabs-bleed));
+  padding-bottom: var(--tabs-bleed);
+  --tabs-list-line-top: var(--tabs-bleed);
+  --tabs-list-line-bottom: var(--tabs-bleed);
+}
+
+/* The thickness of the active tab's line ("Onglet actif"): its frame, the
+   row's line (ContextsMenu.module.css), and the two squares Mantine draws at
+   the frame's feet to join the row's line. Every tab takes it, transparent
+   when inactive: a tab does not grow when it opens. */
+.mantine-Tabs-tab {
+  --tab-line: var(--milo-tab-active-border-width);
+  border-width: var(--tab-line);
+}
+
+.mantine-Tabs-tab[data-active]::before,
+.mantine-Tabs-tab[data-active]::after {
+  width: var(--tab-line);
+  height: var(--tab-line);
+}
+
+.mantine-Tabs-tab[data-active]:not([data-orientation="vertical"]) {
+  --tab-before-bottom: calc(-1 * var(--tab-line));
+  --tab-before-start: calc(-1 * var(--tab-line));
+  --tab-after-bottom: calc(-1 * var(--tab-line));
+  --tab-after-end: calc(-1 * var(--tab-line));
+}
+
+.mantine-Tabs-tab[data-active][data-orientation="vertical"][data-placement="left"] {
+  --tab-before-end: calc(-1 * var(--tab-line));
+  --tab-before-top: calc(-1 * var(--tab-line));
+  --tab-after-end: calc(-1 * var(--tab-line));
+  --tab-after-bottom: calc(-1 * var(--tab-line));
+}
+
+/* In the main window, the row's line runs the full width, from edge to
+   edge, like its background; the account, at the row's end, sits 50 px from
+   the window's edge, like the logo at its start (ModeBar). */
+.milo-page-tabs .mantine-Tabs-list {
+  --tabs-list-line-start: 0;
+  --tabs-list-line-end: 0;
+  padding-inline-end: 50px;
+}

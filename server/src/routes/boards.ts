@@ -8,9 +8,8 @@ import type { Board, Id } from "@milo/shared";
 import { mutation, selection, transaction } from "../db/query.js";
 import type { BoardRow, UserRow } from "../db/rows.js";
 import { requireInterface, requireOrganize, requireStructureRight } from "../lib/rights.js";
-import { structureRights } from "../repositories/users.js";
 import { HttpError, badRequest, requireText } from "../lib/http.js";
-import { concerned, notifyDeletion } from "../lib/notify.js";
+import { concerned, notifyDeletion, root } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { boardSections } from "../repositories/board-widgets.js";
@@ -34,6 +33,7 @@ import { receivedOrder } from "../repositories/reorder.js";
 import { hiddenTabs, inOrderOf, userTabOrders, withHidden } from "../repositories/tab-orders.js";
 import { openView } from "../repositories/views.js";
 import { boardAccess, ownsView } from "../repositories/shares.js";
+import { byId, deleteWithUndo } from "../lib/undo.js";
 
 /** A setting arrives as a boolean; the database stores it as 0 or 1. */
 const flag = (value: unknown, defaultValue: 0 | 1): 0 | 1 =>
@@ -44,22 +44,21 @@ const viewScope = (viewId: Id) => `boards:${viewId}`;
 
 /**
  * A board as this account sees it: what it may do with it, and the context
- * it looks at, are its own. Without "Lire" on contexts, it has none: nothing
- * is filtered.
+ * it looks at, are its own. Its contexts follow its labels: whoever sees the
+ * board sees them.
  */
 export const boardForAccount = (board: BoardRow, user: UserRow): Board => {
-  const readsContexts = structureRights(user).contexts.view;
   const { is_private: _unused, ...rest } = board;
-  const sections = readsContexts ? boardContextSections(board.id) : [];
+  const sections = boardContextSections(board.id);
   const contexts = sections.flatMap((s) => s.contexts);
   return {
     ...rest,
-    context_group: readsContexts ? boardGroup(board.id) : null,
-    context_group_options: readsContexts ? contextGroupOptions(board.id) : [],
+    context_group: boardGroup(board.id),
+    context_group_options: contextGroupOptions(board.id),
     contexts,
     context_sections: sections,
-    context_groups: readsContexts ? contextGroups(board.id) : {},
-    context: readsContexts ? selectedContext(user.id, board.id, contexts) : null,
+    context_groups: contextGroups(board.id),
+    context: selectedContext(user.id, board.id, contexts),
     is_locked: 0,
     access: boardAccess(board, user) ?? "read",
     is_hidden: hiddenTabs.of(user.id, viewScope(board.view_id)).has(String(board.id)),
@@ -68,16 +67,14 @@ export const boardForAccount = (board: BoardRow, user: UserRow): Board => {
 
 /**
  * The boards of a view that this account sees, in their own order — those it
- * hid at the end: none without "Lire" on boards.
+ * hid at the end.
  */
 export const visibleBoards = (viewId: Id, user: UserRow): Board[] =>
-  structureRights(user).boards.view
-    ? withHidden(
-        user.id,
-        viewScope(viewId),
-        inOrderOf(user.id, viewScope(viewId), boards.visibleIn.all(viewId, user.id)),
-      ).map((b) => boardForAccount(b, user))
-    : [];
+  withHidden(
+    user.id,
+    viewScope(viewId),
+    inOrderOf(user.id, viewScope(viewId), boards.visibleIn.all(viewId, user.id)),
+  ).map((b) => boardForAccount(b, user));
 
 const boardProjects = selection<{ id: Id; name: string }>(
   "SELECT id, name FROM projects WHERE board_id = ?",
@@ -99,11 +96,12 @@ const deleteCascade = transaction((id: Id): void => {
 
 /**
  * A deleted board, and the announcement of what it takes with it: to those
- * who followed its lists or cards, and to the actors of each of its
+ * who followed its lists, cards or tickets, and to the actors of each of its
  * projects. Recipients are read before the deletion.
  */
 export const deleteBoard = (board: BoardRow, req: Request): void => {
-  const recipients = concerned.board(board.id);
+  // Its tickets' actors and followers too: they go with it.
+  const recipients = [...concerned.board(board.id), ...concerned.supportBoard(board.id)];
   const projects = boardProjects
     .all(board.id)
     .map((p) => ({ ...p, recipients: concerned.project(p.id) }));
@@ -114,8 +112,10 @@ export const deleteBoard = (board: BoardRow, req: Request): void => {
     title: board.name,
     message: "a supprimé le tableau",
     author: req.user,
+    base: root(req),
     recipients,
     vanished: true,
+    scope: "edit",
   });
   for (const project of projects) {
     notifyDeletion({
@@ -124,8 +124,10 @@ export const deleteBoard = (board: BoardRow, req: Request): void => {
       title: project.name,
       message: `a supprimé le tableau « ${board.name} » et ses projets`,
       author: req.user,
+      base: root(req),
       recipients: project.recipients,
       vanished: true,
+      scope: "edit",
     });
   }
 };
@@ -239,6 +241,9 @@ boardRoutes.delete("/:id", (req, res) => {
   requireStructureRight(req, "boards", "delete");
   const board = openBoard(req.params.id, req.user);
   requireBoardOwner(board, req.user);
-  deleteBoard(board, req);
-  res.status(204).end();
+  // The token undoes it (lib/undo.ts).
+  const undo = deleteWithUndo(req.user.id, [byId("boards", board.id)], () =>
+    deleteBoard(board, req),
+  );
+  res.json({ undo });
 });

@@ -212,6 +212,8 @@ export default function BoardTabs({
                 // the contexts list, open under it, gives it its own.
                 ...(value === String(board.id) && {
                   backgroundColor: "var(--contexts-tab-bg, var(--milo-view-tab-active))",
+                  // Its side open on the board, the same.
+                  "--milo-tab-active-joint": "var(--contexts-tab-bg, var(--milo-view-tab-active))",
                 }),
               })}
               onContextMenu={(e) => {

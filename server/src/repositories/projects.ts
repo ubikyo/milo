@@ -24,8 +24,8 @@ export const projects = {
        @milestone_type_id, @status, @created_at, @updated_at)`,
   ),
   update: mutation(
-    `UPDATE projects SET name = @name, description = @description, board_id = @board_id,
-       category_id = @category_id, list_key = @list_key,
+    `UPDATE projects SET number = @number, name = @name, description = @description,
+       board_id = @board_id, category_id = @category_id, list_key = @list_key,
        milestone_type_id = @milestone_type_id, status = @status,
        updated_at = @updated_at
      WHERE id = @id`,

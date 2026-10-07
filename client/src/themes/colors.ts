@@ -1,12 +1,14 @@
+import { PALETTE } from "@milo/shared";
+
 // The only red, orange, green and blue of the application. The theme (main.tsx)
 // fills Mantine's "red", "orange", "green", "teal" and
 // "blue" palettes with them, all shades alike: "red.3" as
 // "var(--mantine-color-teal-8)" render one of them, and no other red,
 // orange, green or blue appears anywhere.
-export const PALETTE_RED = "#E03131";
-export const ORANGE = "#E8590C";
-export const PALETTE_GREEN = "#2F9E44";
-export const BLUE = "#1971C2";
+export const PALETTE_RED = PALETTE.red;
+export const ORANGE = PALETTE.orange;
+export const PALETTE_GREEN = PALETTE.green;
+export const BLUE = PALETTE.blue;
 
 // The application's single red: error messages, header and deletion
 // actions. A single source to avoid two neighboring reds.
@@ -55,9 +57,26 @@ export const progressColor = (
 // The application's single green, on both themes.
 export const GREEN = PALETTE_GREEN;
 
-// Header of a confirmation we do not want to dramatize: dark gray
-// instead of red, the text staying white in both themes.
+// Header of the modals, and its title — color, size, weight: dark gray and a
+// thin white title by default, set in the themes ("Fenêtre de dialogue").
 export const DARK_HEADER = "var(--milo-dark-header)";
+export const DARK_HEADER_TEXT = "var(--milo-dark-header-text)";
+export const DARK_HEADER_SIZE = "var(--milo-dark-header-size)";
+export const DARK_HEADER_WEIGHT = "var(--milo-dark-header-weight)";
+
+// The tabs' row background and text — color, size, weight —; the active
+// tab's background, text, and line — its frame and the row's line along the
+// others: set in the themes ("Onglets", "Onglet actif").
+export const TAB_TEXT = "var(--milo-tab-text)";
+export const TAB_SIZE = "var(--milo-tab-size)";
+export const TAB_WEIGHT = "var(--milo-tab-weight)";
+export const TAB_ACTIVE_BG = "var(--milo-tab-active-bg)";
+export const TAB_ACTIVE_JOINT = "var(--milo-tab-active-joint)";
+export const TAB_ACTIVE_TEXT = "var(--milo-tab-active-text)";
+export const TAB_ACTIVE_BORDER = "var(--milo-tab-active-border)";
+export const TAB_ACTIVE_BORDER_WIDTH = "var(--milo-tab-active-border-width)";
+export const TAB_ACTIVE_SIZE = "var(--milo-tab-active-size)";
+export const TAB_ACTIVE_WEIGHT = "var(--milo-tab-active-weight)";
 
 // Green of the "add" actions placed at the end of a list, and its shade on
 // hover: a tone darker, without background. Each theme has its pair, otherwise the

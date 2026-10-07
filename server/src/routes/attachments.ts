@@ -116,6 +116,10 @@ cardMediaRoutes.post("/attachments", fileBody, (req, res) => {
   res.status(201).json(attachmentOf(attachments.byId.get(lastInsertRowid)!));
 });
 
+/** Something changed on the card's media: those who follow it are told. */
+const mediaChanged = (req: Request, card: { id: number; text: string }, message: string): void =>
+  notify({ kind: "card", targetId: card.id, title: card.text, message, author: req.user, base: root(req) });
+
 // An image pasted into a description. It leaves no row in the database: the
 // description cites it, and the media cleanup relies on that citation to know
 // the file is still in use.
@@ -153,6 +157,7 @@ cardMediaRoutes.post("/covers", touch("task-lists"), fileBody, (req, res) => {
     covers.nextPosition(card.id).next,
     now(),
   );
+  mediaChanged(req, card, `a ajouté l'image de couverture « ${name} »`);
   res.status(201).json(coverOf(covers.byId.get(lastInsertRowid)!));
 });
 
@@ -161,6 +166,7 @@ cardMediaRoutes.put("/attachments/order", (req, res) => {
   const { id } = req.params as { id?: string };
   const card = openCard(id, req);
   reorderAttachments(card.id, toIds(req.body.ids));
+  mediaChanged(req, card, "a réorganisé les pièces jointes");
   res.json(attachmentsOf(card.id));
 });
 
@@ -169,6 +175,7 @@ cardMediaRoutes.put("/covers/order", touch("task-lists"), (req, res) => {
   const { id } = req.params as { id?: string };
   const card = openCard(id, req);
   reorderCovers(card.id, toIds(req.body.ids));
+  mediaChanged(req, card, "a réorganisé les images de couverture");
   res.json(coversOf(card.id));
 });
 
@@ -177,8 +184,18 @@ export const coverRoutes = Router();
 
 coverRoutes.delete("/:id", touch("task-lists"), (req, res) => {
   const cover = orNotFound(covers.byId.get(req.params.id), "Image de couverture introuvable");
-  openCard(cover.card_id, req);
+  const card = openCard(cover.card_id, req);
   removeCover(cover);
+  notifyDeletion({
+    kind: "card",
+    targetId: card.id,
+    title: card.text,
+    message: `a supprimé l'image de couverture « ${cover.name} »`,
+    author: req.user,
+    base: root(req),
+    recipients: concerned.card(card.id),
+    vanished: false,
+  });
   res.status(204).end();
 });
 
@@ -196,6 +213,7 @@ attachmentRoutes.delete("/:id", (req, res) => {
     title: card.text,
     message: `a supprimé la pièce jointe « ${attachment.name} »`,
     author: req.user,
+    base: root(req),
     recipients: concerned.card(card.id),
     vanished: false,
   });

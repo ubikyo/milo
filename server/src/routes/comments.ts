@@ -93,6 +93,7 @@ commentRoutes.delete("/:id", (req, res) => {
     title: projects.raw.get(comment.project_id)?.name ?? "Projet",
     message: "a supprimé un commentaire",
     author: req.user,
+    base: root(req),
     recipients: concerned.project(comment.project_id),
     vanished: false,
   });

@@ -7,9 +7,14 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { api } from "../api";
+import { DEFAULT_SEARCH_THRESHOLD } from "@milo/shared";
 import type { DisplaySettings } from "@milo/shared";
 
-let settings: DisplaySettings = { hideLogo: false, showGravatars: true };
+let settings: DisplaySettings = {
+  showGravatars: true,
+  fuzzySearch: true,
+  searchThreshold: DEFAULT_SEARCH_THRESHOLD,
+};
 let readItems = false;
 const subscribers = new Set<() => void>();
 

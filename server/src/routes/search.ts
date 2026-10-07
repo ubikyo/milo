@@ -1,130 +1,121 @@
-// Global search: the field in the tab row. It searches projects, cards,
-// tickets, workstations and the Access mode's items, and only returns what
-// the person sees elsewhere — a board not shared with them stays closed here
-// too.
+// Global search: the field in the tab row. This hands over everything it
+// searches — projects, cards, tickets, workstations and the Access mode's
+// items —, only what the person sees elsewhere: a board not shared with them
+// stays closed here too. The client searches it itself, fuzzily (Spotlight,
+// Fuse.js).
 
 import { Router } from "express";
 import type { Request } from "express";
 import {
-  PROJECT_REFERENCE_PREFIX,
-  TASK_REFERENCE_PREFIX,
-  REFERENCE_PREFIX,
-  SEARCH_MIN_LENGTH,
   projectReference,
   taskReference,
   reference,
   supportStatusLabel,
+  linkEntries,
 } from "@milo/shared";
 import type { Area, Id, SearchResult, SupportStatus } from "@milo/shared";
 import db from "../db/index.js";
 import { selection } from "../db/query.js";
 import { VISIBLE_BOARDS_CLAUSE } from "../repositories/boards.js";
-import { widgetAccess, requestCan } from "../lib/rights.js";
-
-/** The most each kind returns: the list stays readable at a glance. */
-const PER_KIND = 6;
+import { requestCan } from "../lib/rights.js";
 
 /**
- * The text as it is compared: without tags (descriptions are HTML), without
- * accents, in lowercase. "Réseau" is found by typing "reseau", and "div"
- * does not bring back every description.
+ * The text as it is compared: without tags, without accents, in lowercase.
+ * Used by SQL searches elsewhere (repositories/links.ts) as "milo_fold".
  */
 const fold = (value: unknown): string =>
   String(value ?? "")
     .replace(/<[^>]*>/g, " ")
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 
 // Declared before the queries that use it: SQLite looks it up at
 // preparation.
 db.function("milo_fold", { deterministic: true }, (value: unknown) => fold(value));
 
-/** The "HLP-12" (or "PRJ-12") reference of a row, when it carries one. */
-const matchesReference = (column: string, prefix = REFERENCE_PREFIX) =>
-  `(${column} > 0 AND ${contains(`'${prefix}' || ${column}`)})`;
+/** How much of a description is searched: its start says what it is about. */
+const DESCRIPTION_LENGTH = 300;
 
-/** The LIKE pattern: wildcards typed by the person are searched for as is. */
-const pattern = (text: string): string => `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-
-const contains = (column: string) => `milo_fold(${column}) LIKE @q ESCAPE '\\'`;
+/** A description's text, without its tags (they are HTML), cut short. */
+const plain = (value: unknown): string =>
+  String(value ?? "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, DESCRIPTION_LENGTH);
 
 interface FoundProject {
   id: Id;
   number: number;
   name: string;
+  description: string | null;
   board: string;
   context: string | null;
 }
 
 const foundProjects = selection<FoundProject>(
-  `SELECT p.id, p.number, p.name, b.name AS board, NULL AS context
+  `SELECT p.id, p.number, p.name, p.description, b.name AS board, NULL AS context
      FROM projects p
      JOIN boards b ON b.id = p.board_id
     WHERE ${VISIBLE_BOARDS_CLAUSE("p.board_id")}
-      AND (${contains("p.name")} OR ${contains("p.description")} OR ${matchesReference("p.number", PROJECT_REFERENCE_PREFIX)})
-    ORDER BY p.updated_at DESC
-    LIMIT ${PER_KIND}`,
+    ORDER BY p.updated_at DESC`,
 );
 
 interface FoundCard {
   id: Id;
   number: number;
   text: string;
+  description: string | null;
   list: string;
   board: string;
   context: string | null;
 }
 
 const foundCards = selection<FoundCard>(
-  `SELECT tc.id, tc.number, tc.text, tl.name AS list, b.name AS board, NULL AS context
+  `SELECT tc.id, tc.number, tc.text, tc.description, tl.name AS list, b.name AS board, NULL AS context
      FROM task_cards tc
      JOIN task_lists tl ON tl.id = tc.list_id
      JOIN boards b ON b.id = tl.board_id
     WHERE tc.kind = 'card'
       AND ${VISIBLE_BOARDS_CLAUSE("b.id")}
-      AND (${contains("tc.text")} OR ${contains("tc.description")} OR ${matchesReference("tc.number", TASK_REFERENCE_PREFIX)})
-    ORDER BY tc.created_at DESC
-    LIMIT ${PER_KIND}`,
+    ORDER BY tc.created_at DESC`,
 );
 
 interface FoundRequest {
   id: Id;
   number: number;
   subject: string;
+  sender_name: string | null;
+  sender_email: string | null;
   status: SupportStatus;
   context: string | null;
   board: string;
 }
 
 const foundRequests = selection<FoundRequest>(
-  `SELECT sr.id, sr.number, sr.subject, sr.status, NULL AS context, b.name AS board
+  `SELECT sr.id, sr.number, sr.subject, sr.sender_name, sr.sender_email, sr.status,
+          NULL AS context, b.name AS board
      FROM support_requests sr
      JOIN boards b ON b.id = sr.board_id
     WHERE ${VISIBLE_BOARDS_CLAUSE("b.id")}
-      AND (${contains("sr.subject")}
-       OR ${contains("sr.sender_name")}
-       OR ${contains("sr.sender_email")}
-       OR ${matchesReference("sr.number")})
-    ORDER BY sr.created_at DESC
-    LIMIT ${PER_KIND}`,
+    ORDER BY sr.created_at DESC`,
 );
 
 interface FoundWorkstation {
   id: Id;
   name: string;
   last_user: string;
+  tag: string | null;
   context: string | null;
 }
 
 const foundWorkstations = selection<FoundWorkstation>(
-  `SELECT a.id, a.name, a.last_user, b.name AS context
+  `SELECT a.id, a.name, a.last_user, a.tag, b.name AS context
      FROM assets a
      JOIN boards b ON b.id = a.board_id
     WHERE a.board_id IS NOT NULL AND ${VISIBLE_BOARDS_CLAUSE("a.board_id")}
-      AND (${contains("a.name")} OR ${contains("a.last_user")} OR ${contains("a.tag")})
-    ORDER BY a.name
-    LIMIT ${PER_KIND}`,
+    ORDER BY a.name`,
 );
 
 interface VisibleBlock {
@@ -150,60 +141,62 @@ const visibleBlocks = selection<VisibleBlock>(
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
-/** What an Access mode item shows, and therefore what is searched in it. */
+/**
+ * What an Access mode item shows, and therefore what is searched in it: one
+ * entry per element — each link, each figure — so that a search finds the
+ * element, not the whole widget.
+ */
 const readBlock = (
   type: string,
   config: Record<string, unknown>,
-): { title: string; search: string[]; url?: string } | null => {
+): { title: string; keywords: string; url?: string }[] => {
   switch (type) {
     case "category": {
       const title = text(config.title);
-      return title ? { title: title, search: [title] } : null;
+      return title ? [{ title, keywords: "" }] : [];
     }
-    case "link": {
-      const label = text(config.label);
-      const url = text(config.url);
-      return { title: label || url, search: [label, url], url: url || undefined };
-    }
+    case "link":
+      // A switched-off link is not found; each other one opens itself.
+      return linkEntries(config)
+        .filter((l) => l.opening !== "off")
+        .map((l) => ({ label: text(l.label), url: text(l.url) }))
+        .filter((l) => l.label || l.url)
+        .map((l) => ({ title: l.label || l.url, keywords: l.url, url: l.url || undefined }));
     case "number": {
       const rows = Array.isArray(config.lines) ? (config.lines as Record<string, unknown>[]) : [];
-      const chunks = rows.map((l) => [text(l?.label), text(l?.number)]);
-      const title = chunks
-        .map((m) => m.filter(Boolean).join(" "))
+      return rows
+        .map((l) => [text(l?.label), text(l?.number)].filter(Boolean).join(" "))
         .filter(Boolean)
-        .join(" · ");
-      return title ? { title, search: chunks.flat() } : null;
+        .map((title) => ({ title, keywords: "" }));
     }
     default:
-      return null;
+      return [];
   }
 };
 
-const foundAccesses = (req: Request, folded: string): SearchResult[] => {
+const foundAccesses = (req: Request): SearchResult[] => {
   const userId = req.user.id;
-  const matches: SearchResult[] = [];
+  const found: SearchResult[] = [];
   for (const block of visibleBlocks.all({ me: userId })) {
-    // An item whose widget type the account does not read is not found.
-    if (widgetAccess(req, block.type) === "") continue;
     let config: Record<string, unknown>;
     try {
       config = JSON.parse(block.config) ?? {};
     } catch {
       continue;
     }
-    const readValue = readBlock(block.type, config);
-    if (!readValue || !readValue.search.some((c) => fold(c).includes(folded))) continue;
-    matches.push({
-      kind: "access",
-      id: block.id,
-      title: readValue.title,
-      context: block.board,
-      board_id: block.board_id,
-      url: readValue.url,
-    });
-    if (matches.length >= PER_KIND) break;
+    for (const entry of readBlock(block.type, config)) {
+      found.push({
+        kind: "access",
+        id: block.id,
+        title: entry.title,
+        context: block.board,
+        board_id: block.board_id,
+        url: entry.url,
+        keywords: entry.keywords,
+      });
+    }
   }
-  return matches;
+  return found;
 };
 
 const joinParts = (...chunks: (string | null | undefined)[]): string =>
@@ -212,11 +205,8 @@ const joinParts = (...chunks: (string | null | undefined)[]): string =>
 export const searchRoutes = Router();
 
 searchRoutes.get("/", (req, res) => {
-  const folded = fold(req.query.q).trim();
-  if (folded.length < SEARCH_MIN_LENGTH) return void res.json([]);
-
-  // Each kind only searches if its widget type is visible.
-  const params = { q: pattern(folded), me: req.user.id };
+  // Each kind only comes if its widget type is visible.
+  const params = { me: req.user.id };
   const ifAllowed = <T>(area: Area, find: () => T[]): T[] => (requestCan(req, area, "view") ? find() : []);
 
   const results: SearchResult[] = [
@@ -225,12 +215,14 @@ searchRoutes.get("/", (req, res) => {
       id: p.id,
       title: p.name,
       context: joinParts(p.number > 0 ? projectReference(p.number) : null, p.context, p.board),
+      keywords: plain(p.description),
     })),
     ...ifAllowed("tasks", () => foundCards.all(params)).map((c) => ({
       kind: "card" as const,
       id: c.id,
       title: c.text,
       context: joinParts(c.number > 0 ? taskReference(c.number) : null, c.context, c.board, c.list),
+      keywords: plain(c.description),
     })),
     ...ifAllowed("support", () => foundRequests.all(params)).map((d) => ({
       kind: "support" as const,
@@ -242,14 +234,16 @@ searchRoutes.get("/", (req, res) => {
         d.board,
         supportStatusLabel(d.status),
       ),
+      keywords: joinParts(d.sender_name, d.sender_email),
     })),
     ...ifAllowed("assets", () => foundWorkstations.all(params)).map((a) => ({
       kind: "asset" as const,
       id: a.id,
       title: a.name,
       context: joinParts(a.context, a.last_user),
+      keywords: a.tag ?? "",
     })),
-    ...(requestCan(req, "access", "view") ? foundAccesses(req, folded) : []),
+    ...(requestCan(req, "access", "view") ? foundAccesses(req) : []),
   ];
 
   res.json(results);

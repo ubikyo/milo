@@ -1,16 +1,32 @@
-import { Anchor, Select, Stack, Switch, Text, TextInput } from "@mantine/core";
+import { Anchor, Group, Input, Select, Stack, Text, TextInput } from "@mantine/core";
 import { IconLink } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
+import type { DragEvent } from "react";
+import { linkEntries, withLinks } from "@milo/shared";
+import type { LinkEntry, LinkOpening } from "@milo/shared";
 import classes from "../../assets/styles/AccessLink.module.css";
-import { editKeys } from "../../components/ui/DrawerRows";
+import {
+  EmptyList,
+  Handle,
+  ListFooter,
+  NAME_INSET,
+  ROUNDING,
+  RowCheckbox,
+  editKeys,
+  move,
+  nameFieldStyle,
+  rowStyle,
+  useRowSelection,
+} from "../../components/ui/DrawerRows";
 import { insertRow } from "../../components/ui/SettingRows";
 import { formatOf, formatRow, formatStyle } from "../text-format";
-import { withField, count, text } from "../types";
-import type { AccessWidget, WidgetDisplayProps } from "../types";
+import { count, text } from "../types";
+import type { AccessWidget, WidgetConfigProps, WidgetDisplayProps } from "../types";
 import { themeColor } from "../../lib/themeColors";
 
-// A link: a service's address, the word that designates it, and the means to
-// switch it off without losing it.
+// Links: services' addresses, the words that designate them, and the means to
+// switch them off without losing them. A widget holds as many as wanted, one
+// per row, in the order its drawer sets (shared, link-widget.ts).
 //
 // A single click opens the address — in the page, or in another one, as the
 // drawer says; a double click renames
@@ -22,20 +38,23 @@ import { themeColor } from "../../lib/themeColors";
 // waits to know whether a second one follows. This is what a Task mode card
 // already does.
 
-const LABEL = "label";
-const URL = "url";
-const ACTIVE = "enabled";
 const COLOR = "color";
 const SIZE = "size";
-/** Where the address opens: "blank", another page (the default), or "self", the page itself. */
-const OPENING = "opening";
-
-const OPENINGS = [
-  { value: "self", label: "Dans la fenêtre" },
-  { value: "blank", label: "Dans une nouvelle fenêtre" },
+/** Where each link opens, chosen on its row in the drawer. */
+const OPENINGS: { value: LinkOpening; label: string }[] = [
+  { value: "off", label: "Désactivée" },
+  { value: "self", label: "Cette fenêtre" },
+  { value: "blank", label: "Nouvelle fenêtre" },
 ];
 
-const inNewWindow = (config: unknown): boolean => text(config, OPENING) !== "self";
+/**
+ * The drawer's width: the shared one (IndicatorDrawer, 560) and 150 more — its
+ * rows carry a name, an address and an opening side by side.
+ */
+const DRAWER_WIDTH = 710;
+
+/** The width of the opening choice, on a link's row. */
+const OPENING_WIDTH = 150;
 
 /**
  * The text size of a link that has been given none: Mantine's "sm", that of
@@ -69,30 +88,44 @@ const DOUBLE_CLICK_DELAY = 250;
 const LINE_SPACING = { lineHeight: 1.3 };
 
 /**
- * The anchor needs one more precaution. Mantine sets it back to
- * "display: inline", and that rule comes after the one that makes it a block
- * to truncate it to one line. Left inline, the anchor no longer drives its
- * row's height: the container's line height sets it, i.e. the page body's —
- * nearly 25 pixels for a 14-pixel word. It is therefore set back to block, in
- * the form that the one-line truncation requires.
+ * One line, cut with an ellipsis when the column is too narrow. Not through
+ * Mantine's "lineClamp": its "-webkit-box" lets a box sized to its word shrink
+ * to the narrowest the word allows — "Prism…" for "Prism Central", with room
+ * to spare. Kept on one line ("nowrap"), the text cannot get narrower than
+ * itself: it is cut only by the width of the column ("max-width").
+ */
+const ONE_LINE = {
+  ...LINE_SPACING,
+  whiteSpace: "nowrap" as const,
+  overflow: "hidden" as const,
+  textOverflow: "ellipsis" as const,
+};
+
+/**
+ * The anchor is a block — Mantine would set it back to "display: inline", and
+ * the container's line height would then set its row's height, nearly 25
+ * pixels for a 14-pixel word. It stops at the word: taking the whole column,
+ * the hover would light up well beyond the text.
  */
 const LINK_ROW = {
-  ...LINE_SPACING,
-  display: "-webkit-box" as const,
-  // The anchor stops at the word: as a block, it would take the whole column
-  // and the hover would light up well beyond the text. "max-width" still caps
-  // it, otherwise an overly long label would overflow instead of being cut.
+  ...ONE_LINE,
+  display: "block" as const,
   width: "fit-content" as const,
   maxWidth: "100%" as const,
 };
 
-/** A new link is switched on: it is created to be used. */
-const isActive = (config: unknown): boolean => {
-  const value = (config as Record<string, unknown> | null)?.[ACTIVE];
-  return value === undefined ? true : Boolean(value);
-};
-
-function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
+/** One link of the widget, on its row; "onRename" stores its new label. */
+function LinkRow({
+  entry,
+  config,
+  onRename,
+  locked,
+}: {
+  entry: LinkEntry;
+  config: unknown;
+  onRename: (label: string) => void | Promise<void>;
+  locked: boolean;
+}) {
   const timer = useRef<number | null>(null);
   const field = useRef<HTMLInputElement | null>(null);
   const [editMode, setEditing] = useState(false);
@@ -114,14 +147,13 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
     field.current?.select();
   }, [editMode]);
 
-  const url = text(config, URL);
-  const title = text(config, LABEL);
+  const { url, label: title } = entry;
   const label = title || url;
-  const active = isActive(config);
+  const active = entry.opening !== "off";
   const color = text(config, COLOR) || DEFAULT_COLOR;
   const size = count(config, SIZE, DEFAULT_SIZE);
   const format = formatStyle(formatOf(config));
-  const newWindow = inNewWindow(config);
+  const newWindow = entry.opening === "blank";
 
   const click = () => {
     // The second click of a double click lands here: it triggers nothing, it
@@ -152,7 +184,7 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
     setEditing(false);
     const newValue = draft.trim();
     if (newValue === title) return;
-    await onChange(withField(config, LABEL, newValue));
+    await onRename(newValue);
   };
 
   if (editMode) {
@@ -191,14 +223,13 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
 
   // Switched off, the link can still be read — struck through and grayed —
   // while the category is open: that is where it is switched back on. When
-  // locked, it no longer appears at all (see "hidden" below).
+  // locked, it no longer appears at all (see LinkWidget).
   if (!active) {
     return (
       <Text
-        style={{ ...LINE_SPACING, ...format, fontSize: size, textDecoration: "line-through" }}
+        style={{ ...ONE_LINE, ...format, fontSize: size, textDecoration: "line-through" }}
         c="dimmed"
         onDoubleClick={doubleClick}
-        lineClamp={1}
       >
         {label || "Lien"}
       </Text>
@@ -210,10 +241,9 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
   if (!url) {
     return (
       <Text
-        style={{ ...LINE_SPACING, ...format, fontSize: size }}
+        style={{ ...ONE_LINE, ...format, fontSize: size }}
         c={color}
         onDoubleClick={doubleClick}
-        lineClamp={1}
       >
         {label || "Lien"}
       </Text>
@@ -229,7 +259,6 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
       target={newWindow ? "_blank" : undefined}
       rel={newWindow ? "noopener noreferrer" : undefined}
       style={{ ...LINK_ROW, ...format, fontSize: size }}
-      lineClamp={1}
       // Neither blue nor underlined — unless the appearance asks for it: the
       // link reads like the rest of the column.
       // The color is set here rather than in a stylesheet — it then wins for
@@ -250,18 +279,208 @@ function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
   );
 }
 
+function LinkWidget({ config, onChange, locked }: WidgetDisplayProps) {
+  const links = linkEntries(config);
+  // Emptied of all its links, the widget still holds its place, to be found
+  // again in edit mode.
+  if (links.length === 0) {
+    return (
+      <Text style={{ ...LINE_SPACING, fontSize: count(config, SIZE, DEFAULT_SIZE) }} c="dimmed">
+        Aucun lien
+      </Text>
+    );
+  }
+  return (
+    // The whole width of the column, its links placed in it as the drawer's
+    // alignment says (widgets/alignment.ts) — "align-items" taken from the box
+    // that holds it. Left to the width of its links, the box would come out a
+    // few pixels short of them — they reach 3 pixels past it on each side
+    // (AccessLink.module.css) — and cut their last letters.
+    <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "inherit" }}>
+      {links.map((entry, rank) =>
+        // Switched off and locked, a link disappears: nobody needs to see it
+        // anymore, and nobody can switch it back on anyway.
+        locked && entry.opening === "off" ? null : (
+        <LinkRow
+          key={rank}
+          entry={entry}
+          config={config}
+          locked={locked}
+          onRename={(label) =>
+            onChange(withLinks(config, links.map((l, i) => (i === rank ? { ...l, label } : l))))
+          }
+        />
+        ),
+      )}
+    </div>
+  );
+}
+
+/** A field of a link's row, edited in place: transparent until it has focus. */
+function LinkField({
+  value,
+  onChange,
+  placeholder,
+  label,
+  flex,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  label: string;
+  flex: number;
+  autoFocus?: boolean;
+}) {
+  const [focus, setFocus] = useState(false);
+  return (
+    <TextInput
+      size="sm"
+      radius={ROUNDING}
+      style={{ flex, minWidth: 0 }}
+      styles={{ input: nameFieldStyle(focus) }}
+      placeholder={placeholder}
+      aria-label={label}
+      value={value}
+      onChange={(e) => onChange(e.currentTarget.value)}
+      {...editKeys(onChange)}
+      autoFocus={autoFocus}
+      onFocus={() => setFocus(true)}
+      onBlur={() => setFocus(false)}
+    />
+  );
+}
+
+/**
+ * The widget's links in its drawer: one row per link, its name then its
+ * address. The handle reorders them, the box selects them for removal — the
+ * checked ones go together, from the button that takes the place of
+ * "Ajouter un lien" meanwhile. A link added lands at the end, its name ready
+ * to be typed.
+ */
+function LinkList({ config, onChange }: WidgetConfigProps) {
+  const links = linkEntries(config);
+  const [held, setHeld] = useState<number | null>(null);
+  /** The row that was just added: its name takes focus. */
+  const [toFill, setToFill] = useState<number | null>(null);
+  const selection = useRowSelection(links.map((_, rank) => rank));
+
+  const store = (next: LinkEntry[]) => onChange(withLinks(config, next));
+  const change = <K extends keyof LinkEntry>(rank: number, field: K, value: LinkEntry[K]) =>
+    store(links.map((l, i) => (i === rank ? { ...l, [field]: value } : l)));
+
+  const add = () => {
+    store([...links, { label: "", url: "", opening: "blank" }]);
+    setToFill(links.length);
+  };
+
+  const removeChecked = () => {
+    store(links.filter((_, i) => !selection.isChecked(i)));
+    selection.reset();
+  };
+
+  // The held row takes the place of the one it hovers: the list reorders under
+  // the pointer, and the configuration follows. Rows are known by their rank:
+  // the checks are dropped rather than left on the wrong rows.
+  const dragHover = (e: DragEvent<HTMLElement>, rank: number) => {
+    if (held === null) return;
+    e.preventDefault();
+    const next = move(links, held, rank);
+    if (!next) return;
+    setHeld(rank);
+    selection.reset();
+    store(next);
+  };
+
+  // A new widget opens on its only link, still empty: its name is typed first.
+  const fresh = links.length === 1 && !links[0]!.label && !links[0]!.url;
+
+  return (
+    <Input.Wrapper label="Liens">
+      {links.length === 0 ? (
+        <EmptyList icon={IconLink} message="Aucun lien" />
+      ) : (
+        <Stack gap={1}>
+          {links.map((entry, rank) => {
+            const name = entry.label || entry.url || "Lien";
+            return (
+              <Group
+                key={rank}
+                gap="sm"
+                wrap="nowrap"
+                onDragOver={(e) => dragHover(e, rank)}
+                onDrop={(e) => e.preventDefault()}
+                style={rowStyle(rank, links.length, held === rank)}
+              >
+                <Handle
+                  label={`Déplacer le lien ${name}`}
+                  active={links.length > 1}
+                  onDragStart={() => setHeld(rank)}
+                  onDragEnd={() => setHeld(null)}
+                />
+                <RowCheckbox
+                  label={`Sélectionner ${name}`}
+                  checked={selection.isChecked(rank)}
+                  onChange={(on) => selection.toggle(rank, on)}
+                  afterHandle
+                />
+                {/* The name aligns with the checkbox, as a column's. */}
+                <Group gap={4} wrap="nowrap" style={{ flex: 1, minWidth: 0, marginLeft: -NAME_INSET }}>
+                  <LinkField
+                    value={entry.label}
+                    onChange={(v) => change(rank, "label", v)}
+                    placeholder="Nom"
+                    label="Nom du lien"
+                    flex={2}
+                    autoFocus={toFill === rank || (fresh && rank === 0)}
+                  />
+                  <LinkField
+                    value={entry.url}
+                    onChange={(v) => change(rank, "url", v)}
+                    placeholder="https://"
+                    label="URL du lien"
+                    flex={3}
+                  />
+                  <Select
+                    size="xs"
+                    radius={ROUNDING}
+                    w={OPENING_WIDTH}
+                    style={{ flexShrink: 0 }}
+                    aria-label="Ouverture du lien"
+                    data={OPENINGS}
+                    value={entry.opening}
+                    onChange={(v) => v && change(rank, "opening", v as LinkOpening)}
+                    allowDeselect={false}
+                    comboboxProps={{ withinPortal: true }}
+                  />
+                </Group>
+              </Group>
+            );
+          })}
+        </Stack>
+      )}
+      <ListFooter
+        addLabel="Ajouter un lien"
+        onAdd={add}
+        checkedCount={selection.checked.length}
+        onDeleteChecked={removeChecked}
+      />
+    </Input.Wrapper>
+  );
+}
+
 export const linkWidget: AccessWidget = {
   type: "link",
   kind: "common",
   label: "Lien",
   icon: IconLink,
-  defaultConfig: { [LABEL]: "", [URL]: "", [ACTIVE]: true },
-  // A single click belongs to the link: the page does not wrap it in a
+  defaultConfig: { links: [{ label: "", url: "", opening: "blank" }] },
+  // A single click belongs to the links: the page does not wrap it in a
   // button that would open the drawer.
   ownClicks: true,
-  // Switched off and locked, it disappears: nobody needs to see it anymore,
-  // and nobody can switch it back on anyway.
-  hidden: (config, locked) => locked && !isActive(config),
+  // Locked, with all its links switched off, it disappears altogether.
+  hidden: (config, locked) => locked && linkEntries(config).every((l) => l.opening === "off"),
+  drawerSize: DRAWER_WIDTH,
 
   Display: LinkWidget,
 
@@ -299,43 +518,5 @@ export const linkWidget: AccessWidget = {
     ];
   },
 
-  Config: ({ config, onChange }) => (
-    <Stack gap="xl">
-      <TextInput
-        label="Nom"
-        placeholder="Nom du lien"
-        value={text(config, LABEL)}
-        onChange={(e) => onChange(withField(config, LABEL, e.currentTarget.value))}
-        {...editKeys((value) => onChange(withField(config, LABEL, value)))}
-        autoFocus
-      />
-      <TextInput
-        label="URL"
-        placeholder="https://"
-        value={text(config, URL)}
-        onChange={(e) => onChange(withField(config, URL, e.currentTarget.value))}
-        {...editKeys((value) => onChange(withField(config, URL, value)))}
-      />
-      <Select
-        label="Ouverture"
-        data={OPENINGS}
-        value={inNewWindow(config) ? "blank" : "self"}
-        onChange={(v) => v && onChange(withField(config, OPENING, v))}
-        allowDeselect={false}
-        comboboxProps={{ withinPortal: true }}
-      />
-    </Stack>
-  ),
-
-  // Switch off rather than delete: the address is kept, it simply no longer
-  // shows once the category is locked. Placed after the margins, last in the
-  // drawer.
-  ConfigEnd: ({ config, onChange }) => (
-    <Switch
-      label="Activé"
-      checked={isActive(config)}
-      onChange={(e) => onChange(withField(config, ACTIVE, e.currentTarget.checked))}
-      color="teal"
-    />
-  ),
+  Config: LinkList,
 };

@@ -1,4 +1,4 @@
-import { ActionIcon, Group, Menu, SegmentedControl } from "@mantine/core";
+import { ActionIcon, Group, Menu, Scroller, SegmentedControl } from "@mantine/core";
 import { IconEye, IconEyeOff, IconPencil, IconPlus, IconShare, IconTrash } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import type { View } from "@milo/shared";
@@ -9,8 +9,9 @@ import AdjustedInput from "./AdjustedInput";
 import PointMenu, { menuAnchor, type PointMenuPosition } from "./PointMenu";
 import { useTabReorder } from "./useTabReorder";
 
-// The views, at the bottom left: the counterpart of the shortcuts "?", same
-// inset, in the opposite corner. A "+" at the end creates one, which goes
+// The views, at the bottom left: the counterpart of the logo, which shows the
+// shortcuts (ShortcutsHelp), same inset, in the opposite corner. A "+" at the
+// end creates one, which goes
 // straight into name entry; right-clicking one of one's own renames it — in
 // place, like a tab —, shares its boards or deletes it; dragging reorders
 // it — for oneself only. Views shared by others offer none of that. In
@@ -74,6 +75,15 @@ const sonSelecteur = (element: HTMLElement) =>
 
 /** A hidden view, in interface editing: greyed. */
 const HIDDEN_OPACITY = 0.4;
+
+/**
+ * What the bottom right corner holds — the logo, the widgets' "+" and, while a
+ * widget is held, its trash —: the views stop before it, and scroll beyond.
+ */
+const BOTTOM_RIGHT_RESERVE = 300;
+
+/** The Scroller's chevrons, and their fade: Mantine's 50 pixels exceed the row. */
+const CHEVRON_SIZE = 20;
 
 /** The frame's radius, which the indicator and the cells take over as is. */
 const RADIUS = "var(--sc-radius, var(--mantine-radius-default))";
@@ -184,99 +194,115 @@ export default function ViewSwitch({
         gap={4}
         wrap="nowrap"
         // Aligned with the content's inset, like the "?" of the opposite corner.
-        style={{ position: "fixed", left: PAGE_GUTTER, bottom: PAGE_GUTTER, zIndex: 200 }}
+        style={{
+          position: "fixed",
+          left: PAGE_GUTTER,
+          bottom: PAGE_GUTTER,
+          zIndex: 200,
+          maxWidth: `calc(100vw - ${2 * PAGE_GUTTER + BOTTOM_RIGHT_RESERVE}px)`,
+        }}
       >
+        {/* Too many views for the width: they scroll sideways, with a chevron
+            at each end that has more to show. Dragging does not scroll them:
+            pressing a view drags the view itself (useTabReorder). The "+"
+            stays outside, always in sight. */}
         {ordered.length > 0 && (
-          <SegmentedControl
-            key={order}
-            value={value ?? ""}
-            onChange={guardChange((id: string) => onChange(id))}
-            data={ordered.map((view, index) => ({
-              value: String(view.id),
-              label: (
-                <span
-                  // No own position: the line sits against the cell.
-                  {...tabProps(view.id, index, {
-                    display: "inline-block",
-                    // Hidden: greyed, only shown in interface editing.
-                    ...(view.is_hidden ? { opacity: HIDDEN_OPACITY } : null),
-                  })}
-                  // A double-click renames, as on a tab.
-                  onDoubleClick={() => openRename(view)}
-                  onContextMenu={(e) => {
-                    if (!withMenu(view)) return;
-                    // The view's menu sits above its segment.
-                    const segment =
-                      e.currentTarget.closest(".mantine-SegmentedControl-control") ??
-                      e.currentTarget;
-                    setMenu({ view, position: menuAnchor(e, segment) });
-                  }}
-                >
-                  {insertAt(index) && <Line side="left" />}
-                  {index === ordered.length - 1 && insertAt(ordered.length) && (
-                    <Line side="right" />
-                  )}
-                  {renamed?.id === view.id ? (
-                    <AdjustedInput
-                      value={renamed.name}
-                      onChange={(e) => {
-                        const name = e.currentTarget.value;
-                        setRenamed((r) => (r ? { ...r, name } : r));
-                      }}
-                      // Keys stay with the field: otherwise, Tab
-                      // would switch view and Enter would save twice.
-                      onKeyDown={(e) => {
-                        e.stopPropagation();
-                        if (e.key === "Enter") {
+          <Scroller
+            draggable={false}
+            controlSize={CHEVRON_SIZE}
+            style={{ flex: "0 1 auto", minWidth: 0 }}
+          >
+            <SegmentedControl
+              key={order}
+              value={value ?? ""}
+              onChange={guardChange((id: string) => onChange(id))}
+              data={ordered.map((view, index) => ({
+                value: String(view.id),
+                label: (
+                  <span
+                    // No own position: the line sits against the cell.
+                    {...tabProps(view.id, index, {
+                      display: "inline-block",
+                      // Hidden: greyed, only shown in interface editing.
+                      ...(view.is_hidden ? { opacity: HIDDEN_OPACITY } : null),
+                    })}
+                    // A double-click renames, as on a tab.
+                    onDoubleClick={() => openRename(view)}
+                    onContextMenu={(e) => {
+                      if (!withMenu(view)) return;
+                      // The view's menu sits above its segment.
+                      const segment =
+                        e.currentTarget.closest(".mantine-SegmentedControl-control") ??
+                        e.currentTarget;
+                      setMenu({ view, position: menuAnchor(e, segment) });
+                    }}
+                  >
+                    {insertAt(index) && <Line side="left" />}
+                    {index === ordered.length - 1 && insertAt(ordered.length) && (
+                      <Line side="right" />
+                    )}
+                    {renamed?.id === view.id ? (
+                      <AdjustedInput
+                        value={renamed.name}
+                        onChange={(e) => {
+                          const name = e.currentTarget.value;
+                          setRenamed((r) => (r ? { ...r, name } : r));
+                        }}
+                        // Keys stay with the field: otherwise, Tab
+                        // would switch view and Enter would save twice.
+                        onKeyDown={(e) => {
+                          e.stopPropagation();
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void finishRename(true);
+                          }
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            void finishRename(false);
+                          }
+                        }}
+                        onBlur={() => void finishRename(true)}
+                        // Pressing in the field places the cursor: it does not
+                        // start dragging the view, and does not reopen it.
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
                           e.preventDefault();
-                          void finishRename(true);
-                        }
-                        if (e.key === "Escape") {
-                          e.preventDefault();
-                          void finishRename(false);
-                        }
-                      }}
-                      onBlur={() => void finishRename(true)}
-                      // Pressing in the field places the cursor: it does not
-                      // start dragging the view, and does not reopen it.
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                      }}
-                      onFocus={(e) => e.currentTarget.select()}
-                      autoFocus
-                      aria-label={`Renommer ${view.name}`}
-                    />
-                  ) : provisional?.id === view.id ? (
-                    provisional.name
-                  ) : (
-                    view.name
-                  )}
-                </span>
-              ),
-            }))}
-            size="sm"
-            // Without separator lines between views, without background and without inner
-            // margin: only the open view's indicator shows, laid directly
-            // on the page.
-            withItemsBorders={false}
-            styles={{
-              root: { backgroundColor: "transparent", padding: 0 },
-              // Mantine trims 4px off the radius of the indicator and cells, so
-              // they fit in the frame's inner margin, removed
-              // here: all take the frame's radius.
-              // Without shadow: the open view lies flat on the page.
-              indicator: { borderRadius: RADIUS, boxShadow: "none" },
-              label: { borderRadius: RADIUS },
-              control: { borderRadius: RADIUS },
-              // Mantine positions the label's wrapper: the insertion
-              // line would stick to it. Without it, it sits against the
-              // cell, between two views; the cell keeps the label above
-              // the indicator.
-              innerLabel: { position: "static" },
-            }}
-          />
+                        }}
+                        onFocus={(e) => e.currentTarget.select()}
+                        autoFocus
+                        aria-label={`Renommer ${view.name}`}
+                      />
+                    ) : provisional?.id === view.id ? (
+                      provisional.name
+                    ) : (
+                      view.name
+                    )}
+                  </span>
+                ),
+              }))}
+              size="sm"
+              // Without separator lines between views, without background and without inner
+              // margin: only the open view's indicator shows, laid directly
+              // on the page.
+              withItemsBorders={false}
+              styles={{
+                root: { backgroundColor: "transparent", padding: 0 },
+                // Mantine trims 4px off the radius of the indicator and cells, so
+                // they fit in the frame's inner margin, removed
+                // here: all take the frame's radius.
+                // Without shadow: the open view lies flat on the page.
+                indicator: { borderRadius: RADIUS, boxShadow: "none" },
+                label: { borderRadius: RADIUS },
+                control: { borderRadius: RADIUS },
+                // Mantine positions the label's wrapper: the insertion
+                // line would stick to it. Without it, it sits against the
+                // cell, between two views; the cell keeps the label above
+                // the indicator.
+                innerLabel: { position: "static" },
+              }}
+            />
+          </Scroller>
         )}
         {/* At the end of the last view: create one. The green of the other
             "add" gestures, a shade darker on hover. */}

@@ -58,7 +58,7 @@ import {
   deleteTicket,
   ticketUrl,
 } from "./ticket-files.js";
-import { env } from "../env.js";
+import { miloUrl } from "./milo-url.js";
 import { notify, requestTitle } from "./notify.js";
 import { parisTime, now } from "./time.js";
 import { supportSettings } from "../routes/support-settings.js";
@@ -232,7 +232,7 @@ const targetedRequest = (
   const { value: mailbox, list } = inbox;
   const reference = REFERENCE.exec(mail.subject);
   if (reference) {
-    const foundItem = supportRequests.byNumber.get(mailbox, list, Number(reference[1]));
+    const foundItem = supportRequests.byNumber.get(inbox.board_id, list, Number(reference[1]), mailbox);
     if (foundItem) return foundItem;
   }
 
@@ -323,7 +323,7 @@ const importSections = transaction(
     }
 
     const { changes, lastInsertRowid } = supportRequests.createFromMail.run(
-      nextTicketNumber(),
+      nextTicketNumber(inbox.board_id, inbox.list),
       inbox.board_id,
       inbox.list,
       inbox.value,
@@ -404,7 +404,7 @@ const repliedByEmail = (request: SupportRequestRow, mail: ReceivedMail): void =>
     title: requestTitle(request),
     message: "a répondu par e-mail",
     author: account ?? { id: 0, name: mail.from_name.trim(), email: mail.from_email.trim() },
-    base: env.publicUrl,
+    base: miloUrl(),
   });
 };
 

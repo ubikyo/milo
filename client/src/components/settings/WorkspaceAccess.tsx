@@ -5,7 +5,7 @@ import SectionRights from "./SectionRights";
 import type { RightsSection, SectionPermissions } from "./SectionRights";
 import { usePermissionsDraft } from "./usePermissionsDraft";
 import type { SaveRef } from "./usePermissionsDraft";
-import { pluralize } from "../ui/DrawerRows";
+import { pluralize, ROW_BACKGROUND } from "../ui/DrawerRows";
 import {
   APPLICATION_RIGHTS,
   NOTIFICATION_RIGHTS,
@@ -18,7 +18,13 @@ import {
   validNotificationRights,
   validStructurePermissions,
 } from "@milo/shared";
-import type { Id, WidgetAccess, WidgetRights, WorkspacePermissions } from "@milo/shared";
+import type {
+  Id,
+  StructureSection,
+  WidgetAccess,
+  WidgetRights,
+  WorkspacePermissions,
+} from "@milo/shared";
 
 /** The section of the notifications, under "Application". */
 const NOTIFICATIONS = "notifications";
@@ -29,33 +35,41 @@ const INTERFACE = "interface-rights";
 /** A widget type's rights, in their order: each one brings the previous ones. */
 const LEVELS = WIDGET_ACCESS.filter((a) => a.value !== "");
 
+/** The views and boards, as the access lists them. */
+const STRUCTURE_LABELS: Record<StructureSection, string> = {
+  views: "Gestion des vues",
+  boards: "Gestion des tableaux",
+};
+
 /**
- * One section per widget type, under "Widgets" — Lire, Modifier, Supprimer —,
- * then under "Application" the notifications, the interface — Modifier,
- * Import / export, Rendre privé, Désactiver héritage —, and the views, boards and contexts — Lire, Créer, Supprimer.
+ * One section per widget type, under "Widgets" — Utiliser, Modifier,
+ * Supprimer —, then under "Application" the notifications — À l'écran, Par
+ * e-mail —, the layout of the views — Modifier la disposition, Import /
+ * export —, and the views and boards — Créer, Supprimer. Each label says what
+ * it is about: "Widget Commun", "Gestion des vues".
  */
 const SECTIONS: RightsSection[] = [
   ...WIDGET_KINDS.map((k) => ({
     value: k.value,
-    label: k.label,
+    label: `Widget ${k.label}`,
     group: "Widgets",
     rights: LEVELS,
   })),
   {
     value: NOTIFICATIONS,
-    label: "Notifications",
+    label: "Recevoir des notifications",
     group: "Application",
     rights: NOTIFICATION_RIGHTS,
   },
   {
     value: INTERFACE,
-    label: "Interface",
+    label: "Gestion de la disposition des vues",
     group: "Application",
     rights: APPLICATION_RIGHTS,
   },
   ...STRUCTURE_SECTIONS.map((s) => ({
     value: s.value,
-    label: s.label,
+    label: STRUCTURE_LABELS[s.value],
     group: "Application",
     rights: STRUCTURE_RIGHTS,
   })),
@@ -96,14 +110,14 @@ const fromSections = (s: SectionPermissions): WorkspacePermissions => ({
 /**
  * A widget type's rights stay a level: a right chosen brings the lower ones,
  * a right removed takes the higher ones with it — one cannot delete what one
- * cannot modify, nor modify what one cannot read. On views, boards and
- * contexts, creating or deleting brings reading, and reading removed takes
- * them away. The notifications and application rights are independent.
+ * cannot modify, nor modify what one cannot use. On views and boards,
+ * deleting brings creating, and creating removed takes deleting away. The
+ * notifications and application rights are independent.
  */
 const normalize = (section: string, before: string[], after: string[]): string[] => {
   if (isStructure(section)) {
-    if (before.includes("view") && !after.includes("view")) return [];
-    return after.length > 0 && !after.includes("view") ? ["view", ...after] : after;
+    if (before.includes("create") && !after.includes("create")) return [];
+    return after.includes("delete") && !after.includes("create") ? ["create", ...after] : after;
   }
   if (!WIDGET_KINDS.some((k) => k.value === section)) return after;
   const removed = LEVELS.find((l) => before.includes(l.value) && !after.includes(l.value));
@@ -137,7 +151,7 @@ const summary = (p: WorkspacePermissions) =>
  * A workspace's access, opened from its row (WorkspacesTab): the Entra users
  * and groups, and their rights there — per widget type, which applies to the
  * widget as well as its data, the notifications they receive, what they may
- * do with the interface, and with its views, boards and contexts. As in the
+ * do with the interface, and with its views and boards. As in the
  * administration, a chevron unfolds them under the row; someone just added
  * has none. Unlike it, one's own access can be changed: it only concerns this
  * workspace. Nothing goes to the server before the modal's "Enregistrer"
@@ -147,10 +161,13 @@ const summary = (p: WorkspacePermissions) =>
 export default function WorkspaceAccess({
   workspace,
   readOnly = false,
+  invite = false,
   saveRef,
   onChange,
 }: {
   workspace: Id;
+  /** Those just added receive the "Nouvel utilisateur" e-mail, on save. */
+  invite?: boolean;
   /** Without the "Créer" right on workspaces: shown, not changed. */
   readOnly?: boolean;
   /** Where the tab deposits its save function, for the modal's "Enregistrer". */
@@ -161,7 +178,8 @@ export default function WorkspaceAccess({
   const read = useCallback(() => api.getAssignments(workspace), [workspace]);
   const draft = usePermissionsDraft<WorkspacePermissions>({
     read,
-    write: (principal, permissions) => api.setAssignments(principal, permissions, workspace),
+    write: (principal, permissions) =>
+      api.setAssignments(principal, permissions, workspace, invite),
     erase: (principal) => api.deleteAssignments(principal, workspace),
     same,
     saveRef,
@@ -175,6 +193,8 @@ export default function WorkspaceAccess({
       remove={draft.remove}
       empty={emptyWorkspacePermissions}
       summary={summary}
+      // As in the administration (AdministrationTab).
+      headerBackground={ROW_BACKGROUND}
       details={(permissions, change) => (
         <SectionRights
           sections={SECTIONS}

@@ -19,6 +19,7 @@ import {
   migrateSupportTemplate,
   canUpdate,
   fullAdminPermissions,
+  parseAdminRights,
   validApplicationRights,
   migrateWidgetConfig,
   currentWidget,
@@ -81,10 +82,12 @@ export const attachIndicators = (db: Database): void => {
   }
 };
 
-/** Set once the projects' and cards' references have been given by the shared counter. */
+/** Set once the projects' and cards' references were given by the former shared counter. */
 const SHARED_REFERENCES = "shared_references";
-/** The references counter (repositories/references.ts). */
+/** The former shared counter. */
 const REFERENCE_COUNTER = "support_ticket_counter";
+/** Set once each list widget numbers its own items from 1. */
+const REFERENCES_PER_WIDGET = "references_per_widget";
 
 const readSetting = (db: Database, key: string): unknown => {
   const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as
@@ -103,52 +106,84 @@ const writeSetting = (db: Database, key: string, value: unknown): void => {
   ).run(key, JSON.stringify(value));
 };
 
+type NumberedKind = "project" | "card" | "support";
+
+/** The items to number, of each kind, with their widget: all of them, or those without a number. */
+const numberedItems = (unnumbered: boolean): Record<NumberedKind, string> => {
+  const only = (column: string) => (unnumbered ? `AND ${column} = 0` : "");
+  return {
+    project: `SELECT id, board_id, list_key FROM projects WHERE 1 ${only("number")}
+              ORDER BY created_at, id`,
+    card: `SELECT c.id, l.board_id, l.list_key
+           FROM task_cards c JOIN task_lists l ON l.id = c.list_id
+           WHERE c.kind = 'card' ${only("c.number")}
+           ORDER BY c.created_at, c.id`,
+    support: `SELECT id, board_id, list_key FROM support_requests WHERE 1 ${only("number")}
+              ORDER BY created_at, id`,
+  };
+};
+
+/** The largest number in a widget, by kind. */
+const largestInWidget: Record<NumberedKind, string> = {
+  project: "SELECT COALESCE(MAX(number), 0) AS max FROM projects WHERE board_id = ? AND list_key = ?",
+  card: `SELECT COALESCE(MAX(c.number), 0) AS max
+         FROM task_cards c JOIN task_lists l ON l.id = c.list_id
+         WHERE l.board_id = ? AND l.list_key = ?`,
+  support:
+    "SELECT COALESCE(MAX(number), 0) AS max FROM support_requests WHERE board_id = ? AND list_key = ?",
+};
+
+const NUMBERED_TABLES: Record<NumberedKind, string> = {
+  project: "projects",
+  card: "task_cards",
+  support: "support_requests",
+};
+
 /**
- * Projects and cards receive their "HLP-" reference from the tickets counter.
- * Those from before the shared counter — cards were then numbered per board,
- * projects not at all — are renumbered once, in creation order, following the
- * last ticket. Afterwards, only what has no reference gets one: a project
- * placed by the demo database. Reapplied after a backup restore, like the
- * Administrateur role: a backup from before the shared counter gets
+ * Each list widget numbers its items from 1 (repositories/references.ts).
+ * Databases from before — a single counter for requests, projects and cards
+ * — are renumbered once, widget by widget, in creation order. Afterwards,
+ * only what has no reference gets one: a project placed by the demo
+ * database. Reapplied after a backup restore: a backup from before gets
  * renumbered.
  */
 export const numberReferences = (db: Database): void => {
-  const common = readSetting(db, SHARED_REFERENCES) === true;
-  const withoutReference = common ? "number = 0" : "1";
-  const items = db
-    .prepare(
-      `SELECT 'project' AS kind, id, created_at FROM projects WHERE ${withoutReference}
-       UNION ALL
-       SELECT 'card' AS kind, id, created_at FROM task_cards WHERE kind = 'card' AND ${withoutReference}
-       ORDER BY created_at, id`,
-    )
-    .all() as { kind: "project" | "card"; id: number }[];
-  if (common && items.length === 0) return;
+  const perWidget = readSetting(db, REFERENCES_PER_WIDGET) === true;
+  const counter = db.prepare("SELECT last FROM reference_counters WHERE scope = ?");
+  const writeCounter = db.prepare(
+    `INSERT INTO reference_counters (scope, last) VALUES (?, ?)
+     ON CONFLICT(scope) DO UPDATE SET last = excluded.last`,
+  );
 
   db.transaction(() => {
-    const counter = readSetting(db, REFERENCE_COUNTER);
-    const { max } = db
-      .prepare(
-        common
-          ? `SELECT MAX(
-               (SELECT COALESCE(MAX(number), 0) FROM support_requests),
-               (SELECT COALESCE(MAX(number), 0) FROM projects),
-               (SELECT COALESCE(MAX(number), 0) FROM task_cards)
-             ) AS max`
-          : "SELECT COALESCE(MAX(number), 0) AS max FROM support_requests",
-      )
-      .get() as { max: number };
-    let phoneNumber = Math.max(typeof counter === "number" ? counter : 0, max);
-    const project = db.prepare("UPDATE projects SET number = ? WHERE id = ?");
-    const card = db.prepare("UPDATE task_cards SET number = ? WHERE id = ?");
-    for (const { kind, id } of items) {
-      phoneNumber += 1;
-      (kind === "project" ? project : card).run(phoneNumber, id);
+    if (!perWidget) {
+      // Unique across the application, ticket numbers now are per widget.
+      db.exec("DROP INDEX IF EXISTS idx_support_requests_number");
+      for (const table of Object.values(NUMBERED_TABLES)) db.exec(`UPDATE ${table} SET number = 0`);
+      db.exec("DELETE FROM reference_counters");
+      db.prepare("DELETE FROM settings WHERE key IN (?, ?)").run(REFERENCE_COUNTER, SHARED_REFERENCES);
     }
-    // A separator carries no reference.
-    if (!common) db.exec("UPDATE task_cards SET number = 0 WHERE kind = 'separator'");
-    writeSetting(db, REFERENCE_COUNTER, phoneNumber);
-    writeSetting(db, SHARED_REFERENCES, true);
+    for (const kind of Object.keys(NUMBERED_TABLES) as NumberedKind[]) {
+      const items = db.prepare(numberedItems(perWidget)[kind]).all() as
+        { id: number; board_id: number; list_key: string }[];
+      if (items.length === 0) continue;
+      const largest = db.prepare(largestInWidget[kind]);
+      const write = db.prepare(`UPDATE ${NUMBERED_TABLES[kind]} SET number = ? WHERE id = ?`);
+      const last = new Map<string, number>();
+      for (const { id, board_id, list_key } of items) {
+        const scope = `${kind}:${board_id}:${list_key}`;
+        let previous = last.get(scope);
+        if (previous === undefined) {
+          const stored = counter.get(scope) as { last: number } | undefined;
+          const { max } = largest.get(board_id, list_key) as { max: number };
+          previous = Math.max(stored?.last ?? 0, max);
+        }
+        write.run(previous + 1, id);
+        last.set(scope, previous + 1);
+      }
+      for (const [scope, value] of last) writeCounter.run(scope, value);
+    }
+    writeSetting(db, REFERENCES_PER_WIDGET, true);
   })();
 };
 
@@ -219,6 +254,7 @@ export const migrate = (db: Database): void => {
   workspaceNotifications(db);
   workspaceApplication(db);
   workspaceStructure(db);
+  adminSections(db);
   interfaceRights(db);
   withoutUptimeWith365(db);
   sortedCategories(db);
@@ -254,11 +290,13 @@ export const migrate = (db: Database): void => {
     db.exec("ALTER TABLE card_covers ADD COLUMN name TEXT NOT NULL DEFAULT ''");
     db.exec("ALTER TABLE card_covers ADD COLUMN size INTEGER NOT NULL DEFAULT 0");
   }
-  // Views without a workspace — those from before workspaces, those a new
-  // database has just received (viewsAndBoards) — go into the first one.
-  db.prepare("UPDATE views SET workspace_id = ? WHERE workspace_id IS NULL").run(
-    firstWorkspace(db),
-  );
+  // Views without a workspace — those from before workspaces — go into the
+  // first one. A new database has none: it starts without any workspace.
+  if (db.prepare("SELECT 1 FROM views WHERE workspace_id IS NULL LIMIT 1").get()) {
+    db.prepare("UPDATE views SET workspace_id = ? WHERE workspace_id IS NULL").run(
+      firstWorkspace(db),
+    );
+  }
   // The follows index, renamed (idx_follows_target, schema.ts).
   db.exec("DROP INDEX IF EXISTS idx_follows_cible");
   ownedViews(db);
@@ -295,6 +333,10 @@ export const migrate = (db: Database): void => {
   }
   if (!userColumns.includes("default_board")) {
     db.exec("ALTER TABLE users ADD COLUMN default_board TEXT NOT NULL DEFAULT ''");
+  }
+  // Notifications, once set for the whole application, are each person's.
+  if (!userColumns.includes("notification_settings")) {
+    db.exec("ALTER TABLE users ADD COLUMN notification_settings TEXT NOT NULL DEFAULT ''");
   }
 };
 
@@ -660,6 +702,39 @@ const adminRights = (db: Database): void => {
   })();
 };
 
+/** Set once the administration has taken its last three sections. */
+const ADMIN_SECTIONS_KEY = "admin_sections";
+
+/**
+ * The administration gains "Gestion des droits d'administration", "Gestion
+ * des modèles d'email" and "Gestion des thèmes", which "Paramétrage" used to
+ * cover: whoever had it receives them all, and loses nothing.
+ */
+const adminSections = (db: Database): void => {
+  if (readSetting(db, ADMIN_SECTIONS_KEY)) return;
+  db.transaction(() => {
+    const rows = db.prepare("SELECT rowid, rights FROM principal_admin").all() as {
+      rowid: number;
+      rights: string;
+    }[];
+    const update = db.prepare("UPDATE principal_admin SET rights = ? WHERE rowid = ?");
+    for (const row of rows) {
+      const rights = parseAdminRights(row.rights);
+      if (!rights.settings.includes("access")) continue;
+      update.run(
+        JSON.stringify({
+          ...rights,
+          administration: ["view", "create", "delete"],
+          templates: ["access"],
+          themes: ["access"],
+        }),
+        row.rowid,
+      );
+    }
+    writeSetting(db, ADMIN_SECTIONS_KEY, true);
+  })();
+};
+
 /** Set once workspace access has taken its notifications and "Supprimer". */
 const WORKSPACE_NOTIFICATIONS = "workspace_notifications";
 
@@ -979,8 +1054,8 @@ const workspaces = (db: Database): void => {
       "ALTER TABLE users ADD COLUMN workspace_id INTEGER REFERENCES workspaces(id) ON DELETE SET NULL",
     );
   }
-  const first = firstWorkspace(db);
   if (!columns(db, "principal_permissions").includes("workspace_id")) {
+    const first = firstWorkspace(db);
     withoutForeignKeys(db, () =>
       db.transaction(() =>
         rebuildTable(
@@ -1754,7 +1829,6 @@ const catchUpBeforeViews = (db: Database): void => {
   if (!columns(db, "projects").includes("number")) {
     db.exec("ALTER TABLE projects ADD COLUMN number INTEGER NOT NULL DEFAULT 0");
   }
-  numberReferences(db);
   setDefaultSections(db);
 
   // Databases from before "Hérité": all sections were public. The earlier
@@ -1974,7 +2048,12 @@ const rebuildTable = (
  */
 export const viewsAndBoards = (db: Database): void => {
   if (readSetting(db, VIEWS_AND_BOARDS)) return;
-  const old = !columns(db, "boards").includes("view_id");
+  // A new database starts empty: its views come with its first workspace
+  // (routes/workspaces.ts).
+  if (columns(db, "boards").includes("view_id")) {
+    writeSetting(db, VIEWS_AND_BOARDS, true);
+    return;
+  }
   withoutForeignKeys(db, () =>
     db.transaction(() => {
       const currentTime = new Date().toISOString();
@@ -1988,46 +2067,10 @@ export const viewsAndBoards = (db: Database): void => {
         ]),
       ) as Record<PreviousMode, number>;
 
-      if (!old) {
-        setStartingBoards(db, views, currentTime);
-      } else {
-        convertModes(db, views, currentTime);
-      }
+      convertModes(db, views, currentTime);
       writeSetting(db, VIEWS_AND_BOARDS, true);
     })(),
   );
-};
-
-/** A new database: one board per view, with the view's list. */
-const setStartingBoards = (
-  db: Database,
-  views: Record<PreviousMode, number>,
-  currentTime: string,
-): void => {
-  const createBoard = db.prepare(
-    "INSERT INTO boards (view_id, name, position, created_at) VALUES (?, ?, 0, ?)",
-  );
-  const createSection = db.prepare(
-    "INSERT INTO board_sections (board_id, position, created_at) VALUES (?, 0, ?)",
-  );
-  const createWidget = db.prepare(
-    "INSERT INTO board_widgets (section_id, type, config, position, created_at) VALUES (?, ?, '{}', 0, ?)",
-  );
-  const lists: Record<PreviousMode, [string, string | null]> = {
-    access: ["Liens", null],
-    projects: ["Projets", "project.list"],
-    tasks: ["Tâches", "task.list"],
-    support: ["Demandes", "support.list"],
-    assets: ["Postes", "asset.list"],
-  };
-  for (const [mode, [name, list]] of Object.entries(lists) as [
-    PreviousMode,
-    [string, string | null],
-  ][]) {
-    const board = Number(createBoard.run(views[mode], name, currentTime).lastInsertRowid);
-    const section = Number(createSection.run(board, currentTime).lastInsertRowid);
-    if (list) createWidget.run(section, list, currentTime);
-  }
 };
 
 /** A database from before views: each mode becomes its own. */

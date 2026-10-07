@@ -33,7 +33,7 @@ const ATTEMPTS_MAX = 5;
  */
 export const missingLabel = (): string => {
   if (!entraConfigured()) return "La messagerie n'est pas configurée (Paramétrage → Entra)";
-  if (!sendingAddress()) return "Renseignez l'adresse d'envoi dans Paramétrage → Entra";
+  if (!sendingAddress()) return "Renseignez l'adresse d'envoi dans Paramétrage → Notifications";
   return "";
 };
 

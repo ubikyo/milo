@@ -25,7 +25,7 @@ import type {
 import { now } from "../lib/time.js";
 import { cardComments } from "./cards.js";
 import { creationNote } from "./comments.js";
-import { nextReference } from "./references.js";
+import { nextCardReference } from "./references.js";
 import { boardLabelGroups } from "./label-groups.js";
 import { keyInBoard } from "./lists.js";
 import { reorderTaskCards, taskCards, taskLists } from "./tasks.js";
@@ -176,9 +176,10 @@ const copyCard = (card: TaskCardRow, copy: CardCopy): Id => {
   const { listId, rank, boardId, text, userId, timestamp, labels } = copy;
   const separator = card.kind === "separator";
 
-  // The reference is not the original's: two cards cannot carry the same
-  // marker. A separator has none.
-  const phoneNumber = separator ? 0 : nextReference();
+  // The reference is not the original's, but the next of the destination
+  // widget: two cards of a widget cannot carry the same marker. A separator
+  // has none.
+  const phoneNumber = separator ? 0 : nextCardReference(listId);
   const cardId = Number(
     taskCards.create
       .run(

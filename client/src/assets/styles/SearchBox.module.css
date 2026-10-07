@@ -1,20 +1,69 @@
-/* The search rows. Hovered or selected with the keyboard, a row takes a
-   neutral gray rather than Mantine's primary color: the text keeps its
-   color. On the light theme, the hover gray (themes/colors.ts,
-   NEUTRAL_HOVER); on dark, that one is exactly the list background (dark-6),
-   so it needs one step lighter. Barely rounded corners. The class is doubled
-   to beat Mantine's hover, whatever the stylesheet order. */
-.option {
-  border-radius: 2px;
+/* The lure of the tab row: a magnifier in the search's gray (themes), with no
+   border nor background, over all the room from the last tab to the menus.
+   A click opens the Spotlight. */
+.lure {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  padding-inline: 10px;
+  color: var(--milo-search-placeholder);
+  cursor: pointer;
 }
 
-.option.option:hover,
-.option.option[data-combobox-selected] {
+/* The Spotlight's results, in the contexts list's style (ContextsMenu): its
+   padding, rows, hover and group names. The classes are doubled to win over
+   Mantine's, whatever the stylesheet order. */
+
+/* No side padding: the scroll area would clip the group lines at it. The rows
+   keep the 2 px themselves. */
+.actionsList.actionsList {
+  padding: 4px 0 3px;
+  margin-inline-end: 0;
+}
+
+.action.action {
+  margin-inline: 2px;
+  width: calc(100% - 4px);
+  min-height: 32px;
+  /* Less inset than the contexts' rows: the icon leads the line. */
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: var(--mantine-font-size-sm);
+  /* The context on the right stays dimmed, selected or not. */
+  --action-description-color: var(--mantine-color-dimmed);
+  --action-description-opacity: 1;
+}
+
+/* Hovered or chosen with the arrows: the themes' menu hover, the text keeping
+   its color. */
+.action.action:hover,
+.action.action[data-selected] {
   background-color: var(--milo-menu-hover);
   color: inherit;
 }
 
-/* An invisible separator between two rows: a little air, no line. */
-.option + .option {
-  margin-top: 2px;
+/* The icon, as close to the title as in the old list. */
+.actionSection.actionSection[data-position="left"] {
+  margin-inline-end: var(--mantine-spacing-xs);
+}
+
+/* A kind's name: small, dimmed and bold, lined up with its results' titles —
+   the rows' margin and inset (8 px), their icon (16 px) and its gap. */
+.actionsGroup.actionsGroup {
+  margin-top: 0;
+}
+
+.actionsGroup.actionsGroup::before {
+  text-transform: none;
+  font-weight: 600;
+  padding: 4px 16px 2px calc(2px + 8px + 16px + var(--mantine-spacing-xs));
+}
+
+/* A line between two kinds, from edge to edge, like the list's dividers. */
+.actionsGroup.actionsGroup + .actionsGroup.actionsGroup {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
 }

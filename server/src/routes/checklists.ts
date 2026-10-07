@@ -82,6 +82,7 @@ const deletionOnCard = (cardId: unknown, req: Request, message: string): void =>
     title: card.text,
     message,
     author: req.user,
+    base: root(req),
     recipients: concerned.card(card.id),
     vanished: false,
   });

@@ -37,8 +37,11 @@ const NAME_GAP = 10;
 const SIZE_WIDTH = 80;
 const COLOR_WIDTH = 120;
 
-/** The width of a row's color field: column headers line up with it. */
-export const COLOR_FIELD_WIDTH = COLOR_WIDTH;
+// The eyedropper's button, at the field's right, takes this much more.
+const EYE_DROPPER_WIDTH = 24;
+
+/** The width of a color field with the eyedropper: column headers line up with it. */
+export const EYE_DROPPER_FIELD_WIDTH = COLOR_WIDTH + EYE_DROPPER_WIDTH;
 
 type ColorFormat = "hex" | "hexa";
 
@@ -100,6 +103,10 @@ export interface SizeSetting {
   what?: string;
   /** What follows the value: " px" by default, " %" for a share. */
   suffix?: string;
+  /** The arrows' step — a font weight's hundreds. */
+  step?: number;
+  /** The field's width, when it lines up with other columns — the themes'. */
+  width?: number;
 }
 
 export interface SettingRow {
@@ -122,6 +129,8 @@ export interface SettingRow {
     /** Swatches other than the usual shades. */
     swatches?: string[];
     swatchesPerRow?: number;
+    /** The eyedropper, to pick a color on the screen — the themes'. */
+    eyeDropper?: boolean;
   }[];
   /** A line under the name: what the setting applies to. */
   hint?: string;
@@ -196,6 +205,7 @@ function Color({
   format,
   swatches = SHADES,
   swatchesPerRow = SHADES_PER_ROW,
+  eyeDropper = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -204,6 +214,7 @@ function Color({
   format?: ColorFormat;
   swatches?: string[];
   swatchesPerRow?: number;
+  eyeDropper?: boolean;
 }) {
   const [input, setInput] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
@@ -211,7 +222,7 @@ function Color({
     <ColorInput
       size="xs"
       radius={ROUNDING}
-      w={COLOR_WIDTH}
+      w={eyeDropper ? EYE_DROPPER_FIELD_WIDTH : COLOR_WIDTH}
       placeholder="Par défaut"
       value={draft ?? value}
       onChange={(v) => {
@@ -221,7 +232,7 @@ function Color({
       format={format ?? (alpha ? "hexa" : "hex")}
       swatches={swatches}
       swatchesPerRow={swatchesPerRow}
-      withEyeDropper={false}
+      withEyeDropper={eyeDropper}
       popoverProps={{ withinPortal: true }}
       aria-label={label}
       onFocus={() => setInput(true)}
@@ -250,13 +261,14 @@ function Size({
     <NumberInput
       size="xs"
       radius={ROUNDING}
-      w={SIZE_WIDTH}
+      w={size.width ?? SIZE_WIDTH}
       style={first ? { marginLeft: "auto" } : undefined}
       placeholder={String(size.defaultValue)}
       prefix={size.prefix ? `${size.prefix} ` : undefined}
       suffix={size.suffix ?? " px"}
       min={size.min}
       max={size.max}
+      step={size.step}
       allowDecimal={false}
       allowNegative={false}
       aria-label={label}
@@ -344,6 +356,7 @@ export default function SettingRows({
                     format={c.format}
                     swatches={c.swatches}
                     swatchesPerRow={c.swatchesPerRow}
+                    eyeDropper={c.eyeDropper}
                     label={`Couleur ${c.what}`}
                   />
                 ))}

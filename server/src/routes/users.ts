@@ -10,14 +10,16 @@
 // Everyone also has favorite actors: those that come first in the lists.
 
 import { Router } from "express";
-import type { DirectoryUser, EntraPrincipal, Id } from "@milo/shared";
+import { WIDGET_KINDS } from "@milo/shared";
+import type { DirectoryUser, Id, WidgetKind } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import { fullName } from "../lib/auth.js";
 import { searchInDirectory, entraProfile } from "../lib/entra.js";
 import { badRequest, orNotFound, requireText } from "../lib/http.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
-import { publicUser, users } from "../repositories/users.js";
+import { workspacePeople } from "../lib/workspace-people.js";
+import { currentWorkspace, publicUser, users } from "../repositories/users.js";
 
 export const userRoutes = Router();
 
@@ -57,6 +59,26 @@ userRoutes.delete("/favorites/:id", (req, res) => {
   res.json(myFavorites(req.user.id));
 });
 
+// --- Workspace -------------------------------------------------------------
+
+/**
+ * Who can be an actor in the workspace one works in: its users — their own
+ * and its groups', listed individually — and its groups, among those who read
+ * this widget type ("Utiliser" at least).
+ */
+userRoutes.get("/workspace", (req, res, next) => {
+  const kind = String(req.query["kind"] ?? "");
+  if (!WIDGET_KINDS.some((k) => k.value === kind)) badRequest("Type de widget inconnu");
+  const workspace = currentWorkspace(req.user);
+  if (workspace === null) {
+    res.json({ users: [], groups: [] });
+    return;
+  }
+  workspacePeople(workspace, kind as WidgetKind)
+    .then((people) => res.json(people))
+    .catch(next);
+});
+
 // --- Directory -------------------------------------------------------------
 
 /**
@@ -88,22 +110,6 @@ userRoutes.get("/directory", (req, res, next) => {
           }),
       ),
     )
-    .catch(next);
-});
-
-/**
- * The groups of the Entra directory whose name starts with what is typed. A
- * group is an actor where people are notified without being assigned: its
- * members receive the notification.
- */
-userRoutes.get("/directory/groups", (req, res, next) => {
-  const q = String(req.query["q"] ?? "").trim();
-  if (q.length < 2) {
-    res.json([]);
-    return;
-  }
-  searchInDirectory(q, "groups")
-    .then((matches) => res.json(matches.filter((p): p is EntraPrincipal => p.type === "group")))
     .catch(next);
 });
 

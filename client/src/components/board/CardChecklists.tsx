@@ -200,6 +200,7 @@ function ItemMembers({ members, users, onChange }: ItemMembersProps) {
 
   return (
     <ActorPicker
+      kind="task"
       label="Acteurs de l'élément"
       users={users}
       value={chosen.map((m) => String(m.id))}

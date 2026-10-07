@@ -248,7 +248,7 @@ projectRoutes.post("/", (req, res) => {
   // project.
   const id = transaction((): Id => {
     const { lastInsertRowid } = projects.create.run({
-      number: nextReference(),
+      number: nextReference("project", board.id, list),
       name,
       description: cleanDescription(description),
       board_id,
@@ -306,18 +306,20 @@ projectRoutes.post("/:id/copy", (req, res) => {
 
   const timestamp = now();
 
+  const list = keyInBoard(
+    board.id,
+    "project.list",
+    board.id === source.board_id ? source.list_key : undefined,
+  );
+
   const id = transaction((): Id => {
     const { lastInsertRowid } = projects.create.run({
-      number: nextReference(),
+      number: nextReference("project", board.id, list),
       name,
       description: source.description,
       board_id: board.id,
       category_id: Number(categoryId),
-      list_key: keyInBoard(
-        board.id,
-        "project.list",
-        board.id === source.board_id ? source.list_key : undefined,
-      ),
+      list_key: list,
       milestone_type_id: source.milestone_type_id,
       status: source.status,
       created_at: timestamp,
@@ -400,18 +402,20 @@ projectRoutes.put("/:id", (req, res) => {
     sameIds(actor_ids, actorsOf(existing.id)) &&
     sameIds(label_ids, labelsOf(existing.id));
 
+  // Moved to another board, it goes to the new board's first "Projets"
+  // widget, and takes its next number.
+  const moved = board.id !== existing.board_id;
+  const list = moved ? keyInBoard(board.id, "project.list", undefined) : existing.list_key;
+
   transaction(() => {
     projects.update.run({
       id: existing.id,
+      number: moved ? nextReference("project", board.id, list) : existing.number,
       name,
       description: clean,
       board_id,
       category_id,
-      // Moved to another board, it goes to the new board's first "Projets" widget.
-      list_key:
-        board.id === existing.board_id
-          ? existing.list_key
-          : keyInBoard(board.id, "project.list", undefined),
+      list_key: list,
       milestone_type_id: milestoneType,
       status,
       updated_at: unchanged ? existing.updated_at : now(),
@@ -454,6 +458,7 @@ projectRoutes.delete("/:id", (req, res) => {
     title: existing.name,
     message: "a supprimé le projet",
     author: req.user,
+    base: root(req),
     recipients,
     vanished: true,
   });

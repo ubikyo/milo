@@ -85,12 +85,14 @@ export const supportRequests = {
      ORDER BY id DESC LIMIT 1`,
   ),
   /**
-   * The request bearing this ticket number: arrived in this inbox, or
-   * entered by hand — its replies were sent from the sending address.
+   * The request bearing this ticket number in the inbox's "Tickets" widget —
+   * numbers are counted per widget: arrived in this inbox, or entered by
+   * hand — its replies were sent from the sending address.
    */
   byNumber: selection<SupportRequestRow>(
     `SELECT * FROM support_requests
-     WHERE ((mailbox = ? COLLATE NOCASE AND list_key = ?) OR mailbox = '') AND number = ?`,
+     WHERE board_id = ? AND list_key = ? AND number = ?
+       AND (mailbox = ? COLLATE NOCASE OR mailbox = '')`,
   ),
   /** An e-mail already filed in an inbox thread: it is not imported twice. */
   mailAlreadyFiled: selection<{ id: Id }>(
@@ -126,10 +128,11 @@ export const supportRequests = {
 // --- Ticket numbers --------------------------------------------------------
 
 /**
- * The number of the next ticket: the next reference, shared by requests,
- * projects and cards (repositories/references.ts).
+ * The number of the next ticket of a "Tickets" widget
+ * (repositories/references.ts).
  */
-export const nextTicketNumber = nextReference;
+export const nextTicketNumber = (boardId: Id, listKey: string): number =>
+  nextReference("support", boardId, listKey);
 
 export const supportLabels = {
   // With the name of their group: the lists title them by it.

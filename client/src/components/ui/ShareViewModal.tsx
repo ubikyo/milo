@@ -1,6 +1,6 @@
-import { Button, Group, Modal, ScrollArea, Stack } from "@mantine/core";
+import { Button, Checkbox, Group, Modal, ScrollArea, Stack } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SHARE_LEVELS } from "@milo/shared";
 import type {
   EntraPrincipal,
@@ -25,7 +25,8 @@ import CloseButton from "./CloseButton";
 
 // "Partager", on a view's right-click: its boards, shared board by board,
 // laid out like a workspace's access (WorkspaceAccess). Users and groups are
-// picked from a list — those with access to the workspace —, added one after
+// picked from a list — those with access to the workspace, and each user of
+// its groups, individually —, added one after
 // another; each one unfolds the boards it receives, added one by one, each
 // with its level — "Lecture seule" or "Contrôle total". Nothing goes to the
 // server before "Enregistrer", which sends the whole sharing of the view.
@@ -69,11 +70,17 @@ interface ShareViewModalProps {
 export default function ShareViewModal({ view, onClose }: ShareViewModalProps) {
   // The view's boards, as the rows' choices; and the sharing being edited.
   const [boards, setBoards] = useState<RightsSection[]>([]);
-  // Whom they can go to: the users and groups with access to the workspace.
+  // Whom they can go to: the users and groups with access to the workspace,
+  // and the users of these groups.
   const [principals, setPrincipals] = useState<EntraPrincipal[]>([]);
   const draft = useRef<Entry[]>([]);
   const [saving, setSaving] = useState(false);
+  // "Envoyer une invitation": checked on each opening.
+  const [invite, setInvite] = useState(true);
   const viewId = view?.id;
+  useEffect(() => {
+    if (viewId !== undefined) setInvite(true);
+  }, [viewId]);
 
   // The view whose sharing is open: an answer for another one, arriving late,
   // is dropped.
@@ -111,8 +118,10 @@ export default function ShareViewModal({ view, onClose }: ShareViewModalProps) {
     setSaving(true);
     try {
       // Someone left without a board receives nothing: they are not sent.
+      // Those just added receive the "Nouveau partage" e-mail, if asked.
       await api.setViewShares(view.id, {
         shares: draft.current.filter((e) => Object.keys(e.permissions).length > 0),
+        invite,
       });
       notifications.show({ color: "teal", message: `Partage de « ${view.name} » enregistré.` });
       onClose();
@@ -195,6 +204,13 @@ export default function ShareViewModal({ view, onClose }: ShareViewModalProps) {
           )}
         </ScrollArea>
         <Group justify="flex-end">
+          <Checkbox
+            label="Envoyer une invitation"
+            checked={invite}
+            onChange={(e) => setInvite(e.currentTarget.checked)}
+            color="teal"
+            mr="auto"
+          />
           <CloseButton onClick={onClose} />
           <Button color="teal" onClick={send} loading={saving}>
             Enregistrer

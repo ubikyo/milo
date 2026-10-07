@@ -7,6 +7,7 @@
 
 import type {
   AdminPermissions,
+  AdministrationRights,
   CompanyRights,
   Id,
   PublicUser,
@@ -22,7 +23,7 @@ import type {
 } from "@milo/shared";
 import {
   ALL_COMPANIES,
-  canRead,
+  grantsAnything,
   fullAdminPermissions,
   mergeAdminPermissions,
   widgetPermissions,
@@ -42,6 +43,7 @@ import {
 import { mutation, selection } from "../db/query.js";
 import type { SessionRow, UserRow } from "../db/rows.js";
 import { fullName, gravatarUrl } from "../lib/auth.js";
+import { notificationSettings } from "../lib/notification-settings.js";
 import { workspaces } from "./workspaces.js";
 
 /** The id of the "admin" account. */
@@ -74,6 +76,8 @@ export const users = {
     "UPDATE users SET default_workspace_id = ?, default_view = ?, default_board = ? WHERE id = ?",
   ),
   setWorkspace: mutation("UPDATE users SET workspace_id = ? WHERE id = ?"),
+  /** Their notification settings, as JSON, chosen in the preferences. */
+  setNotificationSettings: mutation("UPDATE users SET notification_settings = ? WHERE id = ?"),
   /** True if this id designates a person. Used to filter the attachments. */
   exists: selection<{ id: number }>("SELECT id FROM users WHERE id = ? AND system = 0"),
 };
@@ -156,7 +160,7 @@ const administrationOf = (user: UserRow): AdminPermissions => {
 };
 
 /**
- * The workspaces they can access — where they read at least one widget type —,
+ * The workspaces they can access — where Accès grants them at least one right —,
  * in their order: all of them for the "admin" account.
  */
 export const workspacesOf = (user: UserRow): WorkspaceRef[] => {
@@ -164,7 +168,7 @@ export const workspacesOf = (user: UserRow): WorkspaceRef[] => {
   if (user.system) return all;
   const openItems = new Set(
     userRows(user)
-      .filter((l) => Object.values(l.widgets).some(canRead))
+      .filter((l) => grantsAnything(l))
       .map((l) => l.workspace),
   );
   return all.filter((w) => openItems.has(w.id));
@@ -189,9 +193,30 @@ export const workspaceRights = (user: UserRow): WorkspaceRights => {
   };
 };
 
-/** Do they hold at least one right on workspaces? */
-const anyWorkspaceRight = (user: UserRow): boolean =>
-  Object.values(workspaceRights(user)).some(Boolean);
+/** Their rights on the administration: the "admin" account's, or those it grants them. */
+export const administrationRights = (user: UserRow): AdministrationRights => {
+  const { administration } = administrationOf(user);
+  return {
+    view: administration.includes("view"),
+    create: administration.includes("create"),
+    delete: administration.includes("delete"),
+  };
+};
+
+/** Their administration, merged: what they may grant to others. */
+export const adminPermissions = (user: UserRow): AdminPermissions => administrationOf(user);
+
+/** Do they manage the e-mail templates ("Gestion des modèles d'email")? */
+export const templatesAccess = (user: UserRow): boolean =>
+  administrationOf(user).templates.includes("access");
+
+/** Do they manage the themes ("Gestion des thèmes")? */
+export const themesAccess = (user: UserRow): boolean =>
+  administrationOf(user).themes.includes("access");
+
+/** Do they hold at least one right in the administration? */
+const anyAdminRight = (user: UserRow): boolean =>
+  Object.values(administrationOf(user)).some((rights) => rights.length > 0);
 
 /**
  * Their permissions per widget type in the workspace they work in
@@ -241,8 +266,7 @@ export const applicationRights = (user: UserRow): ApplicationRights => {
 };
 
 /**
- * What they may do with the views, boards and contexts of the workspace they
- * work in, merged — their own and their groups'. The "admin" account may do
+ * What they may do with the views and boards of the workspace they work in, merged — their own and their groups'. The "admin" account may do
  * everything.
  */
 export const structureRights = (user: UserRow): StructureRights => {
@@ -281,8 +305,8 @@ export interface SettingsRights {
 
 /**
  * Their rights on "Paramétrage", held through their administration — their own
- * or one of their groups'. The "admin" account has them all. "Accéder" opens
- * it and changes it.
+ * or one of their groups'. The "admin" account has them all. "Autorisée"
+ * ("Gestion du paramétrage") opens it and changes it.
  */
 export const settingsRights = (user: UserRow): SettingsRights => {
   const access = administrationOf(user).settings.includes("access");
@@ -292,13 +316,12 @@ export const settingsRights = (user: UserRow): SettingsRights => {
 /**
  * Does the account have access to Milo? The "admin" account, someone with
  * access to at least one workspace — directly, or through one of their
- * groups —, who holds a right on "Paramétrage" or on workspaces.
+ * groups —, who holds a right in the administration.
  */
 export const hasAccess = (user: UserRow): boolean =>
   Boolean(user.system) ||
   workspacesOf(user).length > 0 ||
-  settingsRights(user).view ||
-  anyWorkspaceRight(user);
+  anyAdminRight(user);
 
 /**
  * The account, with its workspace straightened out: the one they chose if
@@ -336,9 +359,11 @@ export const publicUser = (account: UserRow): PublicUser => {
       : null,
     default_view: user.default_view ?? "",
     default_board: user.default_board ?? "",
+    notification_settings: notificationSettings(user),
     workspace: user.workspace_id,
     workspaces: workspacesOf(user),
     workspace_rights: workspaceRights(user),
+    administration: administrationOf(user),
     created_at: user.created_at,
   };
 };

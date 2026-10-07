@@ -3,12 +3,13 @@
 import { Router } from "express";
 import { isListColor } from "@milo/shared";
 import { badRequest, orNotFound, requireText, toIds } from "../lib/http.js";
-import { concerned, notifyDeletion } from "../lib/notify.js";
+import { concerned, notifyBoard, notifyDeletion, root } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch, touchNow } from "../middleware/events.js";
 import { openTaskBoard } from "../repositories/boards.js";
 import { copyTaskList } from "../repositories/copy-list.js";
 import { keyInBoard } from "../repositories/lists.js";
+import { renumberListCards } from "../repositories/references.js";
 import { transaction } from "../db/query.js";
 import { listsWithCards, reorderTaskLists, taskCards, taskLists } from "../repositories/tasks.js";
 
@@ -47,6 +48,13 @@ taskListRoutes.post("/", (req, res) => {
       .filter((other) => other !== id);
     reorderTaskLists([...others.slice(0, rank), id, ...others.slice(rank)]);
   }
+  notifyBoard({
+    boardId: Number(boardId),
+    message: `a ajouté la liste « ${name} »`,
+    author: req.user,
+    base: root(req),
+    recipients: concerned.board(Number(boardId)),
+  });
   res.status(201).json({ ...taskLists.byId.get(id), cards: [] });
 });
 
@@ -58,14 +66,30 @@ taskListRoutes.put("/reorder", (req, res) => {
   if (!board_id) badRequest("Le tableau est requis");
   const board = openTaskBoard(board_id, req, "update");
 
-  // The order sent must cover exactly the lists of this board.
-  const known = new Set(taskLists.idsOfBoard.all(board.id).map((l) => l.id));
+  // The order sent covers the lists of one "Tâches" widget — the board may
+  // have several. They swap places among the slots they occupy; the other
+  // widgets' lists keep theirs.
+  const all = taskLists.ofBoard.all(board.id).map((l) => l.id);
   const order = toIds(ids);
-  if (order.length !== known.size || order.some((id) => !known.has(id))) {
+  const sent = new Set(order);
+  if (sent.size !== order.length || order.some((id) => !all.includes(id))) {
     badRequest("La liste des identifiants ne correspond pas aux listes de ce tableau");
   }
 
-  reorderTaskLists(order);
+  let next = 0;
+  const reordered = all.map((id) => (sent.has(id) ? order[next++]! : id));
+  reorderTaskLists(reordered);
+  // Announced only when something moved: the same order sent again is not
+  // a modification.
+  if (reordered.some((id, index) => id !== all[index])) {
+    notifyBoard({
+      boardId: board.id,
+      message: "a réorganisé les listes",
+      author: req.user,
+      base: root(req),
+      recipients: concerned.board(board.id),
+    });
+  }
   res.json(listsWithCards(board.id));
 });
 
@@ -100,6 +124,13 @@ taskListRoutes.post("/:id/copy", (req, res) => {
     userId: req.user.id,
   });
 
+  notifyBoard({
+    boardId: target.id,
+    message: `a copié la liste « ${existing.name} »${name !== existing.name ? ` sous le nom « ${name} »` : ""}`,
+    author: req.user,
+    base: root(req),
+    recipients: concerned.board(target.id),
+  });
   res.status(201).json({ ...taskLists.byId.get(copy), cards: [] });
 });
 
@@ -133,7 +164,34 @@ taskListRoutes.put("/:id", (req, res) => {
       ? keyInBoard(Number(boardId), "task.list", undefined)
       : existing.list_key;
     taskLists.update.run(boardId, name, position, color, key, existing.id);
+    // Its cards are numbered in their new widget.
+    if (change) renumberListCards(existing.id);
   })();
+
+  const what: string[] = [];
+  if (name !== existing.name) what.push(`a renommé la liste « ${existing.name} » en « ${name} »`);
+  if (color !== (existing.color ?? "")) what.push(`a changé la couleur de la liste « ${name} »`);
+  if (change) {
+    notifyBoard({
+      boardId: existing.board_id,
+      message: `a déplacé la liste « ${name} » vers un autre tableau`,
+      author: req.user,
+      base: root(req),
+      recipients: concerned.list(existing.id),
+    });
+    what.push(`a déplacé ici la liste « ${name} »`);
+  } else if (position !== existing.position) {
+    what.push(`a déplacé la liste « ${name} »`);
+  }
+  for (const message of what) {
+    notifyBoard({
+      boardId: Number(boardId),
+      message,
+      author: req.user,
+      base: root(req),
+      recipients: concerned.list(existing.id),
+    });
+  }
   res.json(taskLists.byId.get(existing.id));
 });
 
@@ -149,6 +207,7 @@ taskListRoutes.delete("/:id/cards", (req, res) => {
     title: existing.name,
     message: "a supprimé les tâches de la liste",
     author: req.user,
+    base: root(req),
     recipients,
     vanished: true,
   });
@@ -166,6 +225,7 @@ taskListRoutes.delete("/:id", (req, res) => {
     title: existing.name,
     message: "a supprimé la liste",
     author: req.user,
+    base: root(req),
     recipients,
     vanished: true,
   });

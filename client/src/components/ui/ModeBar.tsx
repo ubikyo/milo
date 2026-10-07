@@ -1,12 +1,11 @@
-import { Box, Tabs } from "@mantine/core";
-import type { ReactNode } from "react";
+import { Box, Scroller, Tabs, rem } from "@mantine/core";
+import type { CSSProperties, ReactNode } from "react";
 import AccountControls from "./AccountControls";
 import type { AccountSlot } from "./AccountControls";
-import Logo from "./Logo";
-import logoClasses from "../../assets/styles/Logo.module.css";
 import SearchBox from "./SearchBox";
 import { TAB_ROW_HEIGHT } from "../../themes/tabs";
-import { useDisplaySettings } from "../../lib/displaySettings";
+import { ROW_CONTROL_HEIGHT } from "../../themes/menus";
+import { PAGE_GUTTER } from "../../themes/layout";
 
 // The first line of the screen, in all modes: the logo, the mode's tabs, then
 // the company and the account.
@@ -30,10 +29,18 @@ interface ModeBarProps {
   account: AccountSlot;
 }
 
-// The logo fits in the row's height, without pushing it, and breathes a little
-// from the left edge: the tabs already carry their own inset.
-const LOGO_HEIGHT = 26;
-const LOGO_PADDING_LEFT = 20;
+// The Scroller's chevrons, and the fade that carries them: Mantine sizes both
+// at 50 pixels, taller than the row itself.
+const CHEVRON_SIZE = 24;
+
+// The row's height, set rather than left to its content: a page without tabs
+// — or before its boards arrive —, an open tab with its contexts list, would
+// each give it a slightly different one, and the header would jump from page
+// to page. A tab's is its inset, its line, and its text, at a line height of
+// 1 (Mantine), at the larger of the two sizes the themes give; the controls
+// at the row's end never go below theirs. The page's inset above is part of
+// the row (tabs.css).
+const ROW_HEIGHT = `max(${TAB_ROW_HEIGHT}px, calc(var(--tabs-bleed) + max(${ROW_CONTROL_HEIGHT}px, calc(2 * var(--mantine-spacing-xs) + 2 * var(--milo-tab-active-border-width) + max(var(--milo-tab-size), var(--milo-tab-active-size))))))`;
 
 export default function ModeBar({
   value,
@@ -42,44 +49,49 @@ export default function ModeBar({
   actions,
   account,
 }: ModeBarProps) {
-  // The logo can be hidden from the Settings ("Affichage").
-  const { settings: display } = useDisplaySettings();
   return (
     // Tabs stay on a single line, whatever the window width: it is the search
-    // that gives way, not the row that wraps. Each tab keeps its whole name, on
-    // one line.
+    // that gives way first, not the row that wraps. Each tab keeps its whole
+    // name, on one line; once the search has no room left, the tabs scroll.
     <Tabs
       value={value}
       onChange={onChange}
       mb={50}
+      // The row's background takes in the page's margins above and on the
+      // sides, up to the window's edges (tabs.css).
+      className="milo-page-tabs"
       styles={{
-        list: { flexWrap: "nowrap" },
+        list: { flexWrap: "nowrap", "--tabs-bleed": rem(PAGE_GUTTER) } as CSSProperties,
         tab: { flexShrink: 0, whiteSpace: "nowrap" },
       }}
     >
-      {/* The height is that of all modes: elsewhere the "Actions" button gives
-          it, here it is stated once and for all. */}
-      <Tabs.List mih={TAB_ROW_HEIGHT}>
-        {/* RESPONSIVE — the logo is the first thing that can give up its place
-            on a narrow screen: it brings nothing the page does not already say. */}
-        {!display.hideLogo && (
-          <Box
-            pl={LOGO_PADDING_LEFT}
-            pr="md"
-            className={logoClasses.brand}
-            style={{ alignSelf: "center", display: "flex", flexShrink: 0 }}
+      {/* The height is that of all modes and all pages (ROW_HEIGHT). */}
+      <Tabs.List style={{ height: ROW_HEIGHT }}>
+        {/* The mode's tabs scroll sideways once the row is full, with a
+            chevron at each end that has more to show. Dragging the row does
+            not scroll it: pressing a tab drags the tab itself (useTabReorder).
+            The Scroller fills the row's height, so that the open tab still
+            sits on its closing rule, and its chevrons stop just above it. */}
+        {children && (
+          <Scroller
+            draggable={false}
+            controlSize={CHEVRON_SIZE}
+            style={{ flex: "0 1 auto", minWidth: 0, alignSelf: "stretch", alignItems: "stretch" }}
+            styles={{
+              container: { display: "flex" },
+              content: { flexShrink: 0, alignItems: "stretch" },
+              control: { bottom: 1 },
+            }}
           >
-            <Logo variant={2} h={LOGO_HEIGHT} />
-            {/* The version number, under the logo, for those who linger. */}
-            <span className={logoClasses.version}>{__APP_VERSION__}</span>
-          </Box>
+            {children}
+          </Scroller>
         )}
-
-        {children}
 
         {/* The search takes everything left between the last tab — or its "+" —
             and the row's end: it is what pushes the latter to the right edge. */}
-        <Box pl="md" style={{ flex: 1, minWidth: 0, alignSelf: "center" }}>
+        {/* No gap on either side: the search's field fills everything from the
+            last tab to the menus and the account (SearchBox). */}
+        <Box style={{ flex: 1, minWidth: 0, alignSelf: "stretch", display: "flex" }}>
           <SearchBox onOpen={account.onSearchOpen} />
         </Box>
 
@@ -87,8 +99,9 @@ export default function ModeBar({
             company, the account. */}
         <Box
           ml="auto"
-          pl="md"
-          style={{ alignSelf: "center", display: "flex", alignItems: "center", flexShrink: 0 }}
+          // The full row's height: the account's frame stands on the row's line,
+          // like a tab (AccountControls).
+          style={{ alignSelf: "stretch", display: "flex", alignItems: "stretch", flexShrink: 0 }}
         >
           <AccountControls {...account} actions={actions} />
         </Box>

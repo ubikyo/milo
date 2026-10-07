@@ -3,9 +3,11 @@
 // A widget belongs to a type: those of the Access mode are shared by all
 // modes ("common"), except those that read Microsoft 365 — the mail and
 // calendar of whoever is looking ("m365"); those of a mode serve only that mode. The permission of a user or
-// group is set type by type — Aucun, Lire, Modifier, Supprimer — and applies
-// to the widget as to its data: "Support" at Modifier means placing its
-// widgets and handling requests; at Supprimer, deleting them too.
+// group is set type by type — Aucun, Utiliser, Modifier, Supprimer. Any widget
+// on a board one sees can be read, with its data, whatever the permission.
+// "Utiliser" places it on a board; "Modifier" changes its configuration and
+// its data — "Support" at Modifier handles requests —; "Supprimer" removes it
+// from a board, and deletes its data too.
 
 import type { Mode } from "./modes.js";
 
@@ -30,7 +32,7 @@ export const kindLabel = (kind: WidgetKind): string =>
  */
 export const WIDGET_ACCESS = [
   { value: "", label: "Aucun" },
-  { value: "view", label: "Lire" },
+  { value: "view", label: "Utiliser" },
   { value: "update", label: "Modifier" },
   { value: "delete", label: "Supprimer" },
 ] as const;
@@ -59,7 +61,7 @@ export const validWidgetRights = (value: unknown): WidgetRights => {
 
 const RANK: Record<WidgetAccess, number> = { "": 0, view: 1, update: 2, delete: 3 };
 
-/** Does this permission include that one? "Supprimer" includes "Modifier". */
+/** Does this permission include that one? "Supprimer" includes "Modifier", which includes "Utiliser". */
 export const accessIncludes = (access: WidgetAccess, wanted: WidgetAccess): boolean =>
   RANK[access] >= RANK[wanted];
 
@@ -76,8 +78,8 @@ export const mergeWidgetRights = (rightSets: WidgetRights[]): WidgetRights =>
     ]),
   ) as WidgetRights;
 
-/** "Lire" or better. */
-export const canRead = (access: WidgetAccess): boolean => access !== "";
+/** "Utiliser" or better: the widget can be placed on a board. */
+export const canUse = (access: WidgetAccess): boolean => access !== "";
 
 /** "Modifier" or better. */
 export const canUpdate = (access: WidgetAccess): boolean => accessIncludes(access, "update");

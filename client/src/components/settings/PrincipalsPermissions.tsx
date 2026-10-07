@@ -107,6 +107,11 @@ interface PrincipalsPermissionsProps<T> {
   removeDialog: { label: string; message: (name: string) => ReactNode };
   /** Read-only: no adding, no removal, no change. */
   readOnly?: boolean;
+  /**
+   * Can they be removed — or replaced, which removes them? By default, yes;
+   * without it, they can still be added and changed.
+   */
+  canRemove?: boolean;
   /** Empty, the list takes the whole free height, its prompt centered in it. */
   fillEmpty?: boolean;
   /**
@@ -147,6 +152,7 @@ export default function PrincipalsPermissions<T>({
   emptyText,
   removeDialog,
   readOnly = false,
+  canRemove = true,
   protectOwn = true,
   headerBackground = HEADER_BACKGROUND,
   fillEmpty = false,
@@ -301,7 +307,7 @@ export default function PrincipalsPermissions<T>({
             {access.map((entry, rank) => {
               const { principal, permissions, own } = entry;
               const open = unfolded.has(key(principal));
-              const locked = own && protectOwn;
+              const locked = (own && protectOwn) || !canRemove;
               return (
                 // One block per principal: folded, the panel adds no gap to the list's.
                 <div key={key(principal)}>

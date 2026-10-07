@@ -26,12 +26,13 @@ const assetSettings = (boardId: Id): AssetSettings => ({
   vlans: vlans(boardId),
 });
 
-/** The board named by "?board=", if this person may see — or change — its assets. */
+/**
+ * The board named by "?board=", if this person sees it — and, to change its
+ * assets' settings, may modify them.
+ */
 const verifyBoard = (req: Request, write: boolean): Id => {
-  if (!accessIncludes(widgetRights(req.user).asset, write ? "update" : "view")) {
-    throw write
-      ? new HttpError(403, "Vous n'avez pas le droit de modifier ici")
-      : new HttpError(404, "Introuvable");
+  if (write && !accessIncludes(widgetRights(req.user).asset, "update")) {
+    throw new HttpError(403, "Vous n'avez pas le droit de modifier ici");
   }
   const board = openBoard(req.query.board, req.user);
   if (write) requireBoardControl(board, req.user);

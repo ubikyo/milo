@@ -28,6 +28,7 @@ import type {
   MailAddress,
   EntraPrincipal,
   EntraSettings,
+  EntraCheck,
   EntraSettingsInput,
   EntraStatus,
 } from "@milo/shared";
@@ -118,7 +119,8 @@ export const updateEntra = (entry: EntraSettingsInput): void => {
   if (entry.secret !== undefined) nextItems.secret = String(entry.secret);
   if (entry.mail_sender !== undefined) {
     const address = text(entry.mail_sender);
-    if (address && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) badRequest("Adresse d'envoi invalide");
+    if (!address) badRequest("L'adresse d'envoi est requise");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) badRequest("Adresse d'envoi invalide");
     nextItems.mail_sender = address;
   }
 
@@ -223,6 +225,56 @@ export const entraState = async (): Promise<EntraStatus> => {
       state: "error",
       error: error instanceof Error ? error.message : "Microsoft a refusé la demande",
     };
+  }
+};
+
+/**
+ * The application permissions of the last token the check obtained: the
+ * check's first step asks for one, the following ones read it.
+ */
+let checkedRoles: string[] | null = null;
+
+/** The "roles" claim of an access token: the application permissions granted. */
+const tokenRoles = (token: string): string[] => {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")) as {
+      roles?: unknown;
+    };
+    return Array.isArray(payload.roles) ? payload.roles.map(String) : [];
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * One step of the connection check (ENTRA_CHECKS), even while disconnected:
+ * it decides whether to reconnect. "token" asks Microsoft for a fresh app
+ * token; a permission is looked up in that token's roles — they are written
+ * in it as granted, with the administrator's consent.
+ */
+export const checkEntra = async (step: string): Promise<EntraCheck> => {
+  try {
+    if (step === "token" || !checkedRoles) {
+      const r = entraSettings();
+      if (!registrationComplete(r)) badRequest("Renseignez l'ID d'application, l'ID de l'annuaire et le secret");
+      const token = await requestToken(
+        r.tenant,
+        new URLSearchParams({
+          client_id: r.client_id,
+          client_secret: r.secret,
+          grant_type: "client_credentials",
+          scope: "https://graph.microsoft.com/.default",
+        }),
+      );
+      checkedRoles = tokenRoles(token.access_token!);
+    }
+    if (step === "token") return { ok: true, error: "" };
+    return checkedRoles.includes(step)
+      ? { ok: true, error: "" }
+      : { ok: false, error: "Permission non accordée, ou sans consentement d'administrateur" };
+  } catch (error) {
+    if (step === "token") checkedRoles = null;
+    return { ok: false, error: error instanceof Error ? error.message : "Microsoft a refusé la demande" };
   }
 };
 
@@ -487,6 +539,17 @@ export const entraGroups = async (oid: string): Promise<string[]> => {
     `/users/${encodeURIComponent(oid)}/transitiveMemberOf/microsoft.graph.group?$select=id&$top=999`,
   );
   return groups.map((g) => g.id);
+};
+
+/**
+ * A group's users, including those it holds through another group: the
+ * people an invitation sent to the group reaches.
+ */
+export const entraGroupMembers = async (groupId: string): Promise<EntraPrincipal[]> => {
+  const members = await allPages<GraphUser>(
+    `/groups/${encodeURIComponent(groupId)}/transitiveMembers/microsoft.graph.user?$select=id,displayName,mail,userPrincipalName&$top=999`,
+  );
+  return members.map(toUser);
 };
 
 // --- Calendar ---------------------------------------------------------------

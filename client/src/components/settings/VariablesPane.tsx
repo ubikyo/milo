@@ -59,7 +59,9 @@ export default function VariablesPane({ variables, onInsert, canEdit, opened }: 
       {/* The padding lives in the scrolling area, not on its frame: placed on
           the frame, it added to a 100% high area, which overflowed by that
           much at the bottom. */}
-      <ScrollArea pos="absolute" inset={0} type="auto" scrollbarSize={SCROLLBAR_SIZE}>
+      {/* Down only: a pane narrower than its chips clips them, rather than
+          showing a horizontal bar along its bottom. */}
+      <ScrollArea pos="absolute" inset={0} type="auto" scrollbars="y" scrollbarSize={SCROLLBAR_SIZE}>
         <Box p={FRAME_INSET}>
           <Accordion
             multiple
@@ -99,7 +101,7 @@ export default function VariablesPane({ variables, onInsert, canEdit, opened }: 
                     {/* Fixed widths: without them, each table distributes the
                         remaining space its own way, and a group's variables do
                         not line up with those of the next. */}
-                    <Table verticalSpacing={1} fz="sm" layout="fixed">
+                    <Table verticalSpacing={1} fz="sm" layout="fixed" withRowBorders={false}>
                       <Table.Tbody>
                         {variables
                           .filter((v) => v.group === group)

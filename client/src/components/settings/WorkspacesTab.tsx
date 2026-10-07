@@ -1,4 +1,4 @@
-import { Button, Group, Menu, Modal, ScrollArea, Stack, Text } from "@mantine/core";
+import { Button, Checkbox, Group, Menu, Modal, ScrollArea, Stack, Text } from "@mantine/core";
 import { IconStack2, IconTrash, IconUsers } from "@tabler/icons-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api";
@@ -24,7 +24,7 @@ import {
 } from "../ui/DrawerRows";
 import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 import WorkspaceAccess from "./WorkspaceAccess";
-import { canRead } from "@milo/shared";
+import { grantsAnything } from "@milo/shared";
 import type { Workspace, WorkspaceRights } from "@milo/shared";
 
 interface WorkspacesTabProps {
@@ -44,9 +44,8 @@ interface WorkspacesTabProps {
  * The workspaces: one team each, with its views, boards and
  * contexts, isolated from the others'. They look like the drawer
  * lists (ColumnFields): one row per workspace, its name inline in the
- * row. Right-click opens its access or deletes it — the last one cannot be
- * deleted; "Ajouter" adds an empty row at the end, created as soon as it has
- * a name.
+ * row. Right-click opens its access or deletes it — the last one too;
+ * "Ajouter" adds an empty row at the end, created as soon as it has a name.
  */
 export default function WorkspacesTab({
   rights,
@@ -69,13 +68,13 @@ export default function WorkspacesTab({
   const readAccess = useCallback(async () => {
     try {
       const accounts = await Promise.all(
-        // Those listed without any readable type have no access yet.
+        // Those listed without any right have no access yet.
         workspaces.map(
           async (w) =>
             [
               w.id,
               (await api.getAssignments(w.id)).filter((a) =>
-                Object.values(a.permissions.widgets).some(canRead),
+                grantsAnything(a.permissions),
               ).length,
             ] as const,
         ),
@@ -94,9 +93,12 @@ export default function WorkspacesTab({
   // "Enregistrer".
   const saveAccess = useRef<(() => Promise<boolean>) | null>(null);
   const [saving, setSaving] = useState(false);
+  // "Envoyer une invitation": checked on each opening.
+  const [invite, setInvite] = useState(true);
 
   const closeAccess = () => {
     setAccessOf(null);
+    setInvite(true);
     void readAccess();
   };
 
@@ -125,9 +127,11 @@ export default function WorkspacesTab({
     <Stack gap="sm">
       {/* 15 px more than the stack gap before the list. */}
       <Text size="sm" c="dimmed" mb={15}>
-        Un workspace naît avec une vue et son tableau, sans aucun accès :
-        chacun a les siens, à régler par un clic droit sur sa ligne.
-        Le supprimer emporte toutes ses vues et tout ce qu'elles contiennent.
+        Un workspace est un environnement de travail étanche, associé à un
+        ensemble d’utilisateurs ou de groupes d’utilisateurs disposant de
+        droits pour créer des vues et des tableaux, ainsi que pour utiliser
+        des widgets. Les données d’un workspace ne sont pas accessibles aux
+        utilisateurs des autres workspaces.
       </Text>
 
       <div>
@@ -204,7 +208,7 @@ export default function WorkspacesTab({
           >
             Accès
           </Menu.Item>
-          {rights.delete && workspaces.length > 1 && (
+          {rights.delete && (
             <>
               <Menu.Divider />
               <Menu.Item
@@ -281,6 +285,7 @@ export default function WorkspacesTab({
             {accessOf && <WorkspaceAccess
                 workspace={accessOf.id}
                 readOnly={!rights.create}
+                invite={invite}
                 saveRef={saveAccess}
                 onChange={onAccessChanged}
               />}
@@ -288,6 +293,17 @@ export default function WorkspacesTab({
           {/* "Fermer" drops what was not saved; "Enregistrer" sends it, then
               closes — unless the server refused. */}
           <Group justify="flex-end">
+            {/* Whoever is just added receives the "Nouvel utilisateur"
+                e-mail — each user of a group. */}
+            {rights.create && (
+              <Checkbox
+                label="Envoyer une invitation"
+                checked={invite}
+                onChange={(e) => setInvite(e.currentTarget.checked)}
+                color="teal"
+                mr="auto"
+              />
+            )}
             <CloseButton onClick={closeAccess} />
             {rights.create && (
               <Button color="teal" onClick={saveAndClose} loading={saving}>

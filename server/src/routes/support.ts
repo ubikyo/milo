@@ -163,6 +163,7 @@ const announceDeletions = (req: Request, requests: SupportRequestRow[]): (() => 
         title: requestTitle(d),
         message: "a supprimé la demande",
         author: req.user,
+        base: root(req),
         recipients,
         vanished: true,
       });
@@ -325,7 +326,7 @@ supportRequestRoutes.post("/", (req, res) => {
 
   const timestamp = now();
   const { lastInsertRowid } = supportRequests.create.run(
-    nextTicketNumber(),
+    nextTicketNumber(board.id, list),
     board.id,
     list,
     String(req.body.subject ?? "").trim(),
@@ -345,9 +346,10 @@ supportRequestRoutes.post("/", (req, res) => {
   );
 
   const created = request(lastInsertRowid);
+  let assigned: Id[] = [];
   if (Array.isArray(req.body.actor_ids)) {
     replaceSupportActors(created.id, toIds(req.body.actor_ids));
-    notifyNewActors(req, created.id, new Set());
+    assigned = notifyNewActors(req, created.id, new Set());
   }
   if (Array.isArray(req.body.label_ids)) {
     replaceSupportLabels(created.id, toIds(req.body.label_ids));
@@ -355,6 +357,8 @@ supportRequestRoutes.post("/", (req, res) => {
   // Entered in a context, it receives its label: it stays in sight.
   const label = contextLabel("support.list", board.id, req.body.context);
   if (label !== null) addSupportLabel(created.id, label);
+  // Those just assigned already have theirs.
+  updatedRequest(req, created.id, "a créé la demande", assigned);
 
   res.status(201).json(supportRequestDetail(created));
 });
@@ -616,6 +620,7 @@ supportCommentRoutes.delete("/:id", (req, res) => {
       title: requestTitle(parent),
       message: comment.internal ? "a supprimé un commentaire" : "a supprimé un message",
       author: req.user,
+      base: root(req),
       recipients: concerned.request(parent.id),
       vanished: false,
     });

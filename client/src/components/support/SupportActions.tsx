@@ -446,6 +446,7 @@ export default function SupportActions({
             existante et informés aussitôt.
           </Text>
           <ActorPicker
+            kind="helpdesk"
             label="Acteurs"
             users={users}
             value={actors}

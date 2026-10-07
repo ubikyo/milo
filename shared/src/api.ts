@@ -3,6 +3,7 @@
 
 import type { DueShape, Reminder, Recurrence } from "./due.js";
 import type { EntraPrincipal } from "./entra.js";
+import type { NotificationSettings } from "./notification-settings.js";
 import type {
   CardKind,
   Id,
@@ -35,8 +36,6 @@ export interface SetupState {
  */
 export interface SetupInput {
   password: string;
-  /** The name of the first workspace. */
-  workspace: string;
 }
 
 /** The sign-in of the "admin" account, the only one with a password. */
@@ -56,6 +55,8 @@ export interface UpdateMeInput {
   default_view?: string;
   /** The opening board, in the opening view: its id, as a string. */
   default_board?: string;
+  /** Their notification settings: only the fields given change. */
+  notification_settings?: Partial<NotificationSettings>;
 }
 
 /**
@@ -78,6 +79,8 @@ export interface ViewInput {
  */
 export interface ViewSharesInput {
   shares: { principal: EntraPrincipal; permissions: Record<string, string> }[];
+  /** Those just added receive the "Nouveau partage" e-mail. */
+  invite?: boolean;
 }
 
 /** A board: its name, its settings, the label of "Tous les contextes". */
@@ -135,6 +138,11 @@ export interface BoardWidgetInput {
   section_id?: Id;
   type?: string;
   config?: Record<string, unknown>;
+  /**
+   * The configuration changed in place, the edit mode off — a to-do list's
+   * items: its notification is one of use, not of edit.
+   */
+  in_use?: boolean;
 }
 
 export interface TaskListInput {

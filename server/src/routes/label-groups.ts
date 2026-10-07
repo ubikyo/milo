@@ -17,11 +17,15 @@ const GROUP_NOT_FOUND = "Groupe introuvable";
  */
 export type ScopeOf = (req: Request, boardId: unknown, right: Right) => Id | undefined;
 
+/** Announces a change of the groups on their board (lib/notify.ts, `notifyBoard`). */
+export type Announce = (req: Request, boardId: Id | null | undefined, message: string) => void;
+
 /** Declared before "/:id": "/arrange" would otherwise be taken for an id. */
 export const mountLabelGroups = (
   routes: Router,
   groups: LabelGroupStore,
   scopeOf: ScopeOf,
+  announce: Announce,
 ): void => {
   routes.get("/groups", (req, res) => {
     res.json(groups.ofScope(scopeOf(req, req.query.board, "view")));
@@ -30,7 +34,9 @@ export const mountLabelGroups = (
   routes.post("/groups", (req, res) => {
     const scope = scopeOf(req, req.body.board_id, "create");
     const name = requireText(req.body.name, "Le nom du groupe est requis");
-    res.status(201).json(groups.byId(groups.create(scope, name)));
+    const created = groups.create(scope, name);
+    announce(req, scope, `a ajouté le groupe d'étiquettes « ${name} »`);
+    res.status(201).json(groups.byId(created));
   });
 
   routes.put("/groups/:id", (req, res) => {
@@ -40,6 +46,9 @@ export const mountLabelGroups = (
     groups.rename(existing.id, name);
     // A board's context group is named: it follows the rename.
     renameContextGroup(existing.board_id, existing.name, name);
+    if (name !== existing.name) {
+      announce(req, existing.board_id, `a renommé le groupe d'étiquettes « ${existing.name} » en « ${name} »`);
+    }
     res.json(groups.byId(existing.id));
   });
 
@@ -56,6 +65,7 @@ export const mountLabelGroups = (
       );
     }
     groups.remove(existing.id);
+    announce(req, existing.board_id, `a supprimé le groupe d'étiquettes « ${existing.name} »`);
     res.status(204).end();
   });
 
@@ -63,6 +73,7 @@ export const mountLabelGroups = (
   routes.put("/arrange", (req, res) => {
     const scope = scopeOf(req, req.body.board_id, "update");
     groups.arrange(scope, groups.receivedLayout(req.body.groups, scope));
+    announce(req, scope, "a réorganisé les étiquettes");
     res.status(204).end();
   });
 };

@@ -22,6 +22,7 @@ import type { LabelRow, NextRow } from "../db/rows.js";
 import { require } from "../lib/rights.js";
 import { widgetRights } from "../repositories/users.js";
 import { HttpError, badRequest, orNotFound, refuseIfUsed, requireText } from "../lib/http.js";
+import { concerned, notifyBoard, root } from "../lib/notify.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { openTaskBoard } from "../repositories/boards.js";
@@ -60,6 +61,11 @@ interface LabelTable {
   groups: LabelGroupStore;
   /** What follows a change of these labels, once written. */
   changed?: () => void;
+  /**
+   * Who is told when these labels change, besides the author: those
+   * concerned by the items that carry them (lib/notify.ts, `concerned`).
+   */
+  concernedBy: (boardId: Id) => Id[];
 }
 
 const createRoutes = ({
@@ -68,7 +74,14 @@ const createRoutes = ({
   verifyBoard,
   groups,
   changed = () => undefined,
+  concernedBy,
 }: LabelTable): Router => {
+  /** A change of these labels, announced on their board. */
+  const announce = (req: Request, boardId: Id | null | undefined, message: string): void => {
+    if (!boardId) return;
+    notifyBoard({ boardId, message, author: req.user, base: root(req), recipients: concernedBy(boardId) });
+  };
+
   const groupTable = GROUP_TABLES[table];
   // With the name of their group: the lists title them by it.
   const byId = selection<LabelRow>(
@@ -151,7 +164,12 @@ const createRoutes = ({
 
   const routes = Router();
   routes.use(touch("boards", ...touched));
-  mountLabelGroups(routes, groups, (req, boardId, right) => verifyBoard(boardId, req, right));
+  mountLabelGroups(
+    routes,
+    groups,
+    (req, boardId, right) => verifyBoard(boardId, req, right),
+    announce,
+  );
 
   routes.get("/", (req, res) => {
     const { board } = req.query;
@@ -173,6 +191,7 @@ const createRoutes = ({
     const { lastInsertRowid } = create.run(board, group, name, color, next, now());
     groups.renumber(board);
     changed();
+    announce(req, board, `a ajouté l'étiquette « ${name} »`);
     res.status(201).json(byId.get(lastInsertRowid));
   });
 
@@ -193,6 +212,15 @@ const createRoutes = ({
 
     const result = copy(source, target, replaceExisting);
     changed();
+    if (result.copied || result.removed) {
+      announce(
+        req,
+        target,
+        replaceExisting
+          ? `a remplacé les étiquettes par celles d'un autre tableau`
+          : `a copié ${result.copied} étiquette${result.copied > 1 ? "s" : ""} d'un autre tableau`,
+      );
+    }
     res.json(result);
   });
 
@@ -212,6 +240,15 @@ const createRoutes = ({
 
     update(existing, { name, color, group });
     changed();
+    if (name !== existing.name) {
+      announce(req, existing.board_id, `a renommé l'étiquette « ${existing.name} » en « ${name} »`);
+    }
+    if (color !== existing.color) {
+      announce(req, existing.board_id, `a changé la couleur de l'étiquette « ${name} »`);
+    }
+    if (group !== existing.group_id) {
+      announce(req, existing.board_id, `a changé le groupe de l'étiquette « ${name} »`);
+    }
     res.json(byId.get(existing.id));
   });
 
@@ -222,6 +259,7 @@ const createRoutes = ({
 
     remove.run(existing.id);
     changed();
+    announce(req, existing.board_id, `a supprimé l'étiquette « ${existing.name} »`);
     res.status(204).end();
   });
 
@@ -235,6 +273,7 @@ export const labelRoutes = createRoutes({
   touched: ["labels", "task-lists"],
   verifyBoard: (boardId, req, right) => openTaskBoard(boardId, req, right).id,
   groups: boardLabelGroups,
+  concernedBy: concerned.board,
 });
 
 /** Labels of a project board: likewise. */
@@ -248,6 +287,7 @@ export const projectLabelRoutes = createRoutes({
     return openBoard(boardId, req.user).id;
   },
   groups: projectLabelGroups,
+  concernedBy: concerned.projectBoard,
 });
 
 /** Labels of a Support board: they follow the Support mode's rights. */
@@ -260,6 +300,7 @@ export const supportLabelRoutes = createRoutes({
     return openBoard(boardId, req.user).id;
   },
   groups: supportLabelGroups,
+  concernedBy: concerned.supportBoard,
 });
 
 /** The permission on the Asset widget type that each right on asset labels needs. */
@@ -288,6 +329,8 @@ export const assetLabelRoutes = createRoutes({
     return openBoard(boardId, req.user).id;
   },
   groups: assetLabelGroups,
+  // Machines are followed by no one: only the author, if they asked to.
+  concernedBy: () => [],
   // A label renamed, deleted or added changes the machines it brings.
   changed: () => reassignWorkstations(),
 });

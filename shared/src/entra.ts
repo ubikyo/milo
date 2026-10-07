@@ -63,6 +63,18 @@ export interface EntraSettingsInput {
   mail_sender?: string;
 }
 
+/**
+ * The people of a workspace, for its actors and its sharing: the users with
+ * access to it in their own right, its groups, and each user of these groups,
+ * listed individually.
+ */
+export interface WorkspacePeople {
+  /** Its users — their own and its groups' —, once each, by name. */
+  users: DirectoryUser[];
+  /** Its groups, each with the Entra ids of its users. */
+  groups: (EntraPrincipal & { members: string[] })[];
+}
+
 /** Permissions of a user or a group, with who they concern. */
 export interface PrincipalPermissions<T> {
   principal: EntraPrincipal;
@@ -105,3 +117,25 @@ export const emptyEntraSettings = (): EntraSettings => ({
   has_secret: false,
   mail_sender: "",
 });
+
+/**
+ * What the connection check goes through, in order: Microsoft accepting the
+ * application (its ID, directory and secret), then each Graph application
+ * permission Milo uses — Mail.ReadWrite covers reading the mailboxes.
+ */
+export const ENTRA_CHECKS: { value: string; label: string }[] = [
+  { value: "token", label: "Connexion à Microsoft" },
+  { value: "User.Read.All", label: "User.Read.All" },
+  { value: "Group.Read.All", label: "Group.Read.All" },
+  { value: "GroupMember.Read.All", label: "GroupMember.Read.All" },
+  { value: "Mail.Send", label: "Mail.Send" },
+  { value: "Mail.ReadWrite", label: "Mail.ReadWrite" },
+  { value: "Calendars.Read", label: "Calendars.Read" },
+];
+
+/** The result of one step of the connection check. */
+export interface EntraCheck {
+  ok: boolean;
+  /** Why it failed: Microsoft's message, or the missing permission. */
+  error: string;
+}

@@ -4,6 +4,7 @@
 // about.
 
 import { sendingAddress, entraConfigured, sendViaGraph } from "./entra.js";
+import { miloUrl } from "./milo-url.js";
 import { badRequest, fail } from "./http.js";
 import { template } from "./mail-template.js";
 import type { MailAttachment } from "./mail-template.js";
@@ -41,7 +42,7 @@ export const sendMail = (mail: Mail): Promise<void> => sendViaGraph(mail);
  */
 export const sendTest = async (recipient: string): Promise<void> => {
   const sender = sendingAddress();
-  if (!sender) badRequest("Renseignez l'adresse d'envoi dans Paramétrage → Entra");
+  if (!sender) badRequest("Renseignez l'adresse d'envoi dans Paramétrage → Notifications");
 
   try {
     await sendMail({
@@ -50,8 +51,9 @@ export const sendTest = async (recipient: string): Promise<void> => {
       subject: "Milo — Message de test",
       ...(await template("test", {
         title: "Message de test",
-        intro: `Ce message confirme l'envoi par Milo depuis ${sender}.`,
-        footer: "Envoyé depuis Paramétrage → Entra.",
+        intro: `Test de l'envoi d'un message depuis ${sender}`,
+        ...(miloUrl() && { action: { url: miloUrl(), label: "Ouvrir Milo" } }),
+        footer: "Envoyé depuis Paramétrage → Notifications.",
       })),
     });
   } catch (error) {

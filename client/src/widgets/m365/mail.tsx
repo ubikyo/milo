@@ -82,7 +82,7 @@ import {
 } from "@milo/shared";
 import type { AccessMail, AccessMailDetail, Id, MailAddress } from "@milo/shared";
 import MailTemplates from "../../components/settings/MailTemplates";
-import { useSettingsMode } from "../../lib/rights";
+import { useSettingsMode, useTemplatesAccess } from "../../lib/rights";
 import type { MailTemplateKey } from "@milo/shared";
 
 /** The template of the e-mail that carries the code. */
@@ -948,6 +948,7 @@ function MailboxesField({ config, onChange }: WidgetConfigProps) {
 /** The drawer: the mailboxes read, the grid's columns and its settings. */
 function MailConfig({ config, onChange }: WidgetConfigProps) {
   const canEditSettings = useSettingsMode();
+  const canEditTemplates = useTemplatesAccess();
   return (
     <Stack gap="xl">
       <MailboxesField config={config} onChange={onChange} />
@@ -979,7 +980,7 @@ function MailConfig({ config, onChange }: WidgetConfigProps) {
       </Stack>
       {/* The code e-mail's template, as in the Tickets widget: it falls
           under the Paramétrage. */}
-      {canEditSettings && <MailTemplates canEdit only={MAIL_TEMPLATES} />}
+      {canEditSettings && <MailTemplates canEdit={canEditTemplates} only={MAIL_TEMPLATES} />}
     </Stack>
   );
 }

@@ -2,6 +2,7 @@
 // category the same way.
 
 import { Router } from "express";
+import type { Request } from "express";
 import type { CopyResult, Id, Milestone } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { CategoryRow, CountRow } from "../db/rows.js";
@@ -12,6 +13,7 @@ import {
   refuseIfUsed,
   requireText,
 } from "../lib/http.js";
+import { concerned, notifyBoard, root } from "../lib/notify.js";
 import { require, requestCan } from "../lib/rights.js";
 import { touch } from "../middleware/events.js";
 import { VISIBLE_BOARDS_CLAUSE, openBoard } from "../repositories/boards.js";
@@ -19,6 +21,10 @@ import { renderedCategory, categories, validMilestones } from "../repositories/p
 import { receivedOrder, arrangeCategories } from "../repositories/reorder.js";
 
 const CATEGORY_NOT_FOUND = "Catégorie introuvable";
+
+/** A change of a board's categories, announced to those its projects concern. */
+const announce = (req: Request, boardId: Id, message: string): void =>
+  notifyBoard({ boardId, message, author: req.user, base: root(req), recipients: concerned.projectBoard(boardId) });
 const EXISTING_CATEGORY = "Cette catégorie existe déjà";
 
 // --- Categories ------------------------------------------------------------
@@ -136,7 +142,17 @@ categoryRoutes.post("/copy", (req, res) => {
   const target = openBoard(to_board, req.user);
   if (source.id === target.id) badRequest("Choisissez un autre tableau que celui-ci");
 
-  res.json(copyCategories(source.id, target.id, replaceExisting));
+  const result = copyCategories(source.id, target.id, replaceExisting);
+  if (result.copied || result.removed) {
+    announce(
+      req,
+      target.id,
+      replaceExisting
+        ? "a remplacé les catégories par celles d'un autre tableau"
+        : `a copié ${result.copied} catégorie${result.copied > 1 ? "s" : ""} d'un autre tableau`,
+    );
+  }
+  res.json(result);
 });
 
 // The order of a board's categories, dragged in the widget's drawer: it
@@ -148,6 +164,7 @@ categoryRoutes.put("/reorder", (req, res) => {
   const board = openBoard(board_id, req.user);
   const all = categoriesOfBoard.all(board.id);
   arrangeCategories(receivedOrder(ids, all, "L'ordre doit nommer toutes les catégories"), board.id);
+  announce(req, board.id, "a réorganisé les catégories");
   res.json(categoriesOfBoard.all(board.id).map(renderedCategory));
 });
 
@@ -162,6 +179,7 @@ categoryRoutes.post("/", (req, res) => {
   const milestones = readMilestones(req.body.milestones) ?? [];
 
   const { lastInsertRowid } = categories.create.run(boardId, name, JSON.stringify(milestones));
+  announce(req, Number(boardId), `a ajouté la catégorie « ${name} »`);
   res.status(201).json(renderedCategory(categories.byId.get(lastInsertRowid)!));
 });
 
@@ -180,6 +198,12 @@ categoryRoutes.put("/:id", (req, res) => {
   }
 
   updateCategory(existing.id, name, milestones);
+  if (name !== null && name !== existing.name) {
+    announce(req, existing.board_id, `a renommé la catégorie « ${existing.name} » en « ${name} »`);
+  }
+  if (milestones) {
+    announce(req, existing.board_id, `a modifié les jalons de la catégorie « ${name ?? existing.name} »`);
+  }
   res.json(renderedCategory(categories.byId.get(existing.id)!));
 });
 
@@ -188,5 +212,7 @@ categoryRoutes.delete("/:id", (req, res) => {
   const existing = orNotFound(categories.byId.get(req.params.id), CATEGORY_NOT_FOUND);
   openBoard(existing.board_id, req.user);
   refuseIfUsed(existing.name, countProjectsOfCategory(existing.id).count);
-  res.json({ deleted_projects: deleteCategoryCascade(existing.id) });
+  const deleted = deleteCategoryCascade(existing.id);
+  announce(req, existing.board_id, `a supprimé la catégorie « ${existing.name} »`);
+  res.json({ deleted_projects: deleted });
 });

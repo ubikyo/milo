@@ -14,7 +14,7 @@
 
 import crypto from "node:crypto";
 import type { Id, M365Change } from "@milo/shared";
-import { env } from "../env.js";
+import { miloUrl } from "./milo-url.js";
 import { pushM365Change } from "../middleware/events.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 import { deleteSubscription, renewSubscription, subscribeTo } from "./entra.js";
@@ -84,7 +84,7 @@ export const watch = (userId: Id, kind: M365Change, resource: string): void => {
 
   if (creating.has(resource) || readSetting<Subscriptions>(SUBSCRIPTIONS_KEY, {})[resource]) return;
   creating.add(resource);
-  const url = `${env.publicUrl}${M365_NOTIFICATIONS_PATH}`;
+  const url = `${miloUrl()}${M365_NOTIFICATIONS_PATH}`;
   subscribeTo(resource, CHANGES[kind], url, notificationsSecret(), expiration())
     .then((created) => {
       const subscriptions = readSetting<Subscriptions>(SUBSCRIPTIONS_KEY, {});

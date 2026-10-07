@@ -1,14 +1,16 @@
 // A user's or group's access to a workspace: a permission per widget type
 // (widget-kinds.ts), the notifications they receive there — on screen, by
-// e-mail —, and what they may do with its interface. Without any notification
-// right, the "Notifications" menu is not offered.
+// e-mail —, and what they may do with its interface. Without the on-screen
+// right, no notification shows on screen and the "Notifications" menu is not
+// offered; without any notification right, the profile has no Notifications
+// tab.
 
 import { WIDGET_KINDS, validWidgetRights } from "./widget-kinds.js";
 import type { WidgetRights } from "./widget-kinds.js";
 
 export const NOTIFICATION_RIGHTS = [
-  { value: "screen", label: "Notifications à l'écran" },
-  { value: "email", label: "Notifications par e-mail" },
+  { value: "screen", label: "À l'écran" },
+  { value: "email", label: "Par e-mail" },
 ] as const;
 
 export type NotificationRight = (typeof NOTIFICATION_RIGHTS)[number]["value"];
@@ -17,12 +19,12 @@ export type NotificationRight = (typeof NOTIFICATION_RIGHTS)[number]["value"];
 export type NotificationRights = { [R in NotificationRight]: boolean };
 
 /**
- * What one may do with the workspace's interface: modify it — its views,
- * boards, sections, the widgets placed there —, and import or export a
+ * What one may do with the layout of the workspace's views: modify it — edit
+ * mode, its sections, the widgets placed there —, and import or export a
  * board's layout. Each one is a yes or a no.
  */
 export const APPLICATION_RIGHTS = [
-  { value: "interface", label: "Modifier" },
+  { value: "interface", label: "Modifier la disposition" },
   { value: "layout", label: "Import / export" },
 ] as const;
 
@@ -32,19 +34,17 @@ export type ApplicationRight = (typeof APPLICATION_RIGHTS)[number]["value"];
 export type ApplicationRights = { [R in ApplicationRight]: boolean };
 
 /**
- * The workspace's structure — its views, their boards, a board's contexts —
- * and what one may do with each: read it (without it, nothing of it is
- * shown), create one, delete one. Renaming and reordering follow the right
- * to modify the interface.
+ * The workspace's structure — its views, their boards — and what one may do
+ * with each: create one, delete one. Everyone sees them, those shared with
+ * them included. Deleting requires creating. Renaming and reordering follow
+ * the right to modify the layout.
  */
 export const STRUCTURE_SECTIONS = [
   { value: "views", label: "Vue" },
   { value: "boards", label: "Tableau" },
-  { value: "contexts", label: "Contexte" },
 ] as const;
 
 export const STRUCTURE_RIGHTS = [
-  { value: "view", label: "Lire" },
   { value: "create", label: "Créer" },
   { value: "delete", label: "Supprimer" },
 ] as const;
@@ -58,13 +58,17 @@ export type StructurePermissions = Record<StructureSection, StructureRight[]>;
 /** What someone may do with each part of the structure, right by right. */
 export type StructureRights = Record<StructureSection, Record<StructureRight, boolean>>;
 
-/** Structure rights received from outside, reduced to what exists, in order. */
+/**
+ * Structure rights received from outside, reduced to what exists, in order:
+ * "Supprimer" without "Créer" grants nothing.
+ */
 export const validStructurePermissions = (value: unknown): StructurePermissions => {
   const source = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   return Object.fromEntries(
     STRUCTURE_SECTIONS.map((s) => {
       const list = Array.isArray(source[s.value]) ? (source[s.value] as unknown[]) : [];
-      return [s.value, STRUCTURE_RIGHTS.map((r) => r.value).filter((r) => list.includes(r))];
+      const held = STRUCTURE_RIGHTS.map((r) => r.value).filter((r) => list.includes(r));
+      return [s.value, held.includes("create") ? held : []];
     }),
   ) as StructurePermissions;
 };
@@ -131,7 +135,10 @@ export const mergeNotificationRights = (sets: NotificationRight[][]): Notificati
     NOTIFICATION_RIGHTS.map((r) => [r.value, sets.some((s) => s.includes(r.value))]),
   ) as NotificationRights;
 
-/** Does it grant anything at all — a widget type to read, a notification? */
+/**
+ * Does it grant anything at all — a widget type to use, a notification? Whoever
+ * holds one enters the workspace.
+ */
 export const grantsAnything = (p: WorkspacePermissions): boolean =>
   p.notifications.length > 0 ||
   p.application.length > 0 ||

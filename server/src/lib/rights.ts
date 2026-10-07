@@ -14,7 +14,7 @@ import type {
   StructureSection,
   WidgetAccess,
 } from "@milo/shared";
-import { accessIncludes, can, canUpdate, widgetKind } from "@milo/shared";
+import { accessIncludes, can, canUse, widgetKind } from "@milo/shared";
 import {
   applicationRights,
   companyRights,
@@ -84,7 +84,7 @@ export const requireInterface = (req: Request): void => {
 
 /**
  * Throws if the account lacks this right on a part of the workspace's
- * structure — its views, boards, contexts (Accès).
+ * structure — its views, boards (Accès).
  */
 export const requireStructureRight = (
   req: Request,
@@ -96,9 +96,7 @@ export const requireStructureRight = (
       403,
       right === "delete"
         ? "Vous n'avez pas le droit de supprimer ici"
-        : right === "create"
-          ? "Vous n'avez pas le droit de créer ici"
-          : "Vous n'avez pas le droit de voir ceci",
+        : "Vous n'avez pas le droit de créer ici",
     );
   }
 };
@@ -113,11 +111,11 @@ export const requireLayout = (req: Request): void => {
 /**
  * Can the account organize shared views and boards — create them, rename
  * them, arrange them, set their sections? It needs the right to modify the
- * interface, and to modify at least one widget type: otherwise it would have
+ * layout, and to use at least one widget type: otherwise it would have
  * nothing to put in them.
  */
 export const canArrange = (req: Request): boolean =>
-  applicationRights(req.user).interface && Object.values(widgetRights(req.user)).some(canUpdate);
+  applicationRights(req.user).interface && Object.values(widgetRights(req.user)).some(canUse);
 
 /** Throws if the account cannot organize shared views and boards. */
 export const requireOrganize = (req: Request): void => {
@@ -125,23 +123,24 @@ export const requireOrganize = (req: Request): void => {
 };
 
 /**
- * Throws if the account lacks this permission on the widget's type: 404 when
- * it cannot even read it — what is not seen is not found —, 403 when it
- * reads it without being able to modify or delete it.
+ * Throws (403) if the account lacks this permission on the widget's type:
+ * "view" — "Utiliser" — to place it on a board, "update" to change its
+ * configuration, "delete" to remove it. Reading needs none: a widget on a
+ * board one sees can always be read.
  */
 export const requireWidget = (
   req: Request,
   type: string,
   desired: "view" | "update" | "delete",
 ): void => {
-  const access = widgetAccess(req, type);
-  if (access === "") throw new HttpError(404, "Widget introuvable");
-  if (!accessIncludes(access, desired)) {
+  if (!accessIncludes(widgetAccess(req, type), desired)) {
     throw new HttpError(
       403,
       desired === "delete"
         ? "Vous n'avez pas le droit de supprimer ce widget"
-        : "Vous n'avez pas le droit de modifier ce widget",
+        : desired === "update"
+          ? "Vous n'avez pas le droit de modifier ce widget"
+          : "Vous n'avez pas le droit d'utiliser ce widget",
     );
   }
 };

@@ -11,8 +11,11 @@ import MailPreview, {
   SPLITTER_STYLES,
   PANES_HEIGHT,
   PANE_MINS,
+  FoldablePane,
   PANE_SIZES,
   paneStyle,
+  useFoldingPanes,
+  useNoEscape,
   usePreviewTheme,
 } from "./MailPreview";
 import VariablesPane from "./VariablesPane";
@@ -86,6 +89,13 @@ export default function SupportReplyModal({
   const [typed] = useDebouncedValue(content, PREVIEW_DELAY_MS);
   const [html, setHtml] = useState("");
   const { dark, setDark, scheme } = usePreviewTheme(reply);
+  // The variables folded at each opening; a folded pane, a column of its name.
+  const panes = useFoldingPanes(reply);
+
+  // Escape closes nothing while the template is open: neither this window,
+  // nor the one it opened from — the work in progress would go with them.
+  useNoEscape(reply !== null);
+
   // While a handle is dragged, the preview lets the pointer through.
   const [dragging, setDragging] = useState(false);
 
@@ -159,6 +169,7 @@ export default function SupportReplyModal({
     <Modal
       opened={reply !== null}
       onClose={onClose}
+      closeOnEscape={false}
       title={reply ? `Modèle — ${reply.name}` : "Modèle"}
       centered
       size={WINDOW_WIDTH}
@@ -174,24 +185,31 @@ export default function SupportReplyModal({
           h={PANES_HEIGHT}
           handleColor={HANDLE_COLOR}
           styles={SPLITTER_STYLES}
+          {...panes.splitterProps}
           onResizeStart={() => setDragging(true)}
           onResizeEnd={() => setDragging(false)}
         >
-          <Splitter.Pane defaultSize={PANE_SIZES.variables} min={PANE_MINS.variables} collapsible style={paneStyle("left")}>
-            <VariablesPane
-              variables={variables}
-              onInsert={insert}
-              canEdit={canEdit}
-              opened={reply}
-            />
+          <Splitter.Pane defaultSize={PANE_SIZES.variables} min={PANE_MINS.variables} collapsible style={paneStyle("left", panes.folded(0))}>
+            <FoldablePane label="Variables" folded={panes.folded(0)} onUnfold={() => panes.unfold(0)}>
+              <VariablesPane
+                variables={variables}
+                onInsert={insert}
+                canEdit={canEdit}
+                opened={reply}
+              />
+            </FoldablePane>
           </Splitter.Pane>
 
-          <Splitter.Pane defaultSize={PANE_SIZES.editor} min={PANE_MINS.editor} collapsible style={paneStyle()}>
-            <RichTextField editor={editor} fill />
+          <Splitter.Pane defaultSize={PANE_SIZES.editor} min={PANE_MINS.editor} collapsible style={paneStyle(undefined, panes.folded(1))}>
+            <FoldablePane label="Message" folded={panes.folded(1)} onUnfold={() => panes.unfold(1)}>
+              <RichTextField editor={editor} fill />
+            </FoldablePane>
           </Splitter.Pane>
 
-          <Splitter.Pane defaultSize={PANE_SIZES.preview} min={PANE_MINS.preview} collapsible style={paneStyle("right")}>
-            <MailPreview html={html} dark={dark} scheme={scheme} dragging={dragging} />
+          <Splitter.Pane defaultSize={PANE_SIZES.preview} min={PANE_MINS.preview} collapsible style={paneStyle("right", panes.folded(2))}>
+            <FoldablePane label="Aperçu" folded={panes.folded(2)} onUnfold={() => panes.unfold(2)}>
+              <MailPreview html={html} dark={dark} scheme={scheme} dragging={dragging} />
+            </FoldablePane>
           </Splitter.Pane>
         </Splitter>
 

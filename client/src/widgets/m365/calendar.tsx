@@ -19,7 +19,7 @@ import type { AccessWidget, WidgetConfigProps } from "../types";
 import { CALENDAR_PEOPLE, SHOWN_CALENDARS, calendarKey, m365Event, shownCalendarsOf } from "@milo/shared";
 import type { AccessCalendar, AccessCalendarEvent, Id } from "@milo/shared";
 import MailTemplates from "../../components/settings/MailTemplates";
-import { useSettingsMode } from "../../lib/rights";
+import { useSettingsMode, useTemplatesAccess } from "../../lib/rights";
 import type { MailTemplateKey } from "@milo/shared";
 import { BLUE, PALETTE_GREEN, PALETTE_RED } from "../../themes/colors";
 import {
@@ -256,6 +256,7 @@ function CalendarConfig({ config, onChange }: WidgetConfigProps) {
   // A person removed from the list, or not yet confirmed, is no longer read.
   const shown = new Map([...shownCalendarsOf(config)].filter(([e]) => people.includes(e) && confirmed(e)));
   const canEditSettings = useSettingsMode();
+  const canEditTemplates = useTemplatesAccess();
 
   /** A person's calendars, chosen; null: none of them is read any more. */
   const choose = (email: string, ids: string[] | null) => {
@@ -310,7 +311,7 @@ function CalendarConfig({ config, onChange }: WidgetConfigProps) {
       />
       {/* The code e-mail's template, as in the Tickets widget: it falls
           under the Paramétrage. */}
-      {canEditSettings && <MailTemplates canEdit only={CALENDAR_TEMPLATES} />}
+      {canEditSettings && <MailTemplates canEdit={canEditTemplates} only={CALENDAR_TEMPLATES} />}
     </Stack>
   );
 }

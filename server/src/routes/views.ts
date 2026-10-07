@@ -3,6 +3,7 @@
 // and delete it along with everything its boards contain.
 
 import { Router } from "express";
+import type { Request } from "express";
 import { isShareLevel } from "@milo/shared";
 import type {
   EntraPrincipal,
@@ -15,7 +16,6 @@ import type {
 } from "@milo/shared";
 import type { UserRow, ViewRow } from "../db/rows.js";
 import { requireInterface, requireOrganize, requireStructureRight } from "../lib/rights.js";
-import { structureRights } from "../repositories/users.js";
 import { HttpError, badRequest, requireText } from "../lib/http.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
@@ -24,7 +24,12 @@ import { receivedOrder } from "../repositories/reorder.js";
 import { hiddenTabs, inOrderOf, userTabOrders, withHidden } from "../repositories/tab-orders.js";
 import { views, openView } from "../repositories/views.js";
 import { boardShares, ownsView } from "../repositories/shares.js";
+import { workspaces } from "../repositories/workspaces.js";
+import { inviteToShare } from "../lib/invitations.js";
+import { sharePrincipals } from "../lib/workspace-people.js";
+import { root } from "../lib/notify.js";
 import { deleteBoard, visibleBoards } from "./boards.js";
+import { byId, deleteWithUndo } from "../lib/undo.js";
 
 const VIEW_SCOPES = "views";
 
@@ -42,15 +47,12 @@ const viewForAccount = (view: ViewRow, user: UserRow): View => {
 };
 
 /**
- * The views this account sees, in its own order — those it hid at the end:
- * none without "Lire" on views.
+ * The views this account sees, in its own order — those it hid at the end.
  */
 const visibleViews = (user: UserRow): View[] =>
-  structureRights(user).views.view
-    ? withHidden(user.id, VIEW_SCOPES, inOrderOf(user.id, VIEW_SCOPES, accountViews(user))).map(
-        (v) => viewForAccount(v, user),
-      )
-    : [];
+  withHidden(user.id, VIEW_SCOPES, inOrderOf(user.id, VIEW_SCOPES, accountViews(user))).map(
+    (v) => viewForAccount(v, user),
+  );
 
 /**
  * The views and boards this account would see in one of its workspaces —
@@ -144,21 +146,25 @@ viewRoutes.delete("/:id", (req, res) => {
   requireStructureRight(req, "views", "delete");
   const existing = ownedView(req.params.id, req.user);
   // Each board goes with what it carries and announces it — those shared
-  // with others too —; then the view.
-  for (const board of boards.ofView.all(existing.id)) deleteBoard(board, req);
-  views.remove.run(existing.id);
-  res.status(204).end();
+  // with others too —; then the view. The token undoes it (lib/undo.ts).
+  const undo = deleteWithUndo(req.user.id, [byId("views", existing.id)], () => {
+    for (const board of boards.ofView.all(existing.id)) deleteBoard(board, req);
+    views.remove.run(existing.id);
+  });
+  res.json({ undo });
 });
 
 /** A view's sharing: its boards, whom they can go to, and to whom they went. */
-const sharesOf = (view: ViewRow): ViewShares => ({
+const sharesOf = async (view: ViewRow): Promise<ViewShares> => ({
   boards: boards.ofView.all(view.id).map(({ id, name }) => ({ id, name })),
-  principals: view.workspace_id === null ? [] : boardShares.principals(view.workspace_id),
+  principals: view.workspace_id === null ? [] : await sharePrincipals(view.workspace_id),
   shares: boardShares.ofView(view.id),
 });
 
-viewRoutes.get("/:id/shares", (req, res) => {
-  res.json(sharesOf(ownedView(req.params.id, req.user)));
+viewRoutes.get("/:id/shares", (req, res, next) => {
+  sharesOf(ownedView(req.params.id, req.user))
+    .then((shares) => res.json(shares))
+    .catch(next);
 });
 
 /**
@@ -175,12 +181,21 @@ const receivedPrincipal = (value: unknown, principals: EntraPrincipal[]): EntraP
 /**
  * "Partager": the view's sharing, replaced as a whole — each user or group
  * with access to the workspace, with its boards, among the view's, and their
- * level. One left with no board no longer receives any.
+ * level. One left with no board no longer receives any. Those just added,
+ * when "invite" is given, receive the "Nouveau partage" e-mail — each user of
+ * a group.
  */
-viewRoutes.put("/:id/shares", (req, res) => {
+viewRoutes.put("/:id/shares", (req, res, next) => {
   const view = ownedView(req.params.id, req.user);
+  sharesOf(view)
+    .then(({ principals }) => replaceShares(req, view, principals))
+    .then((shares) => res.json(shares))
+    .catch(next);
+});
+
+/** The sharing received, saved; then re-read. */
+const replaceShares = (req: Request, view: ViewRow, principals: EntraPrincipal[]): Promise<ViewShares> => {
   const ownBoards = new Set(boards.ofView.all(view.id).map((b) => b.id));
-  const { principals } = sharesOf(view);
   const received: unknown = req.body.shares;
   if (!Array.isArray(received)) badRequest("Les partages sont requis");
   const seen = new Set<string>();
@@ -201,6 +216,29 @@ viewRoutes.put("/:id/shares", (req, res) => {
     }
     return { principal, permissions };
   });
+  const before = new Set(
+    boardShares.ofView(view.id).map((s) => `${s.principal.type}:${s.principal.id}`),
+  );
   boardShares.replaceOfView(view.id, shares);
-  res.json(sharesOf(view));
-});
+  if (req.body.invite === true) {
+    const added = shares.filter(
+      (s) =>
+        Object.keys(s.permissions).length > 0 &&
+        !before.has(`${s.principal.type}:${s.principal.id}`),
+    );
+    const names = new Map(boards.ofView.all(view.id).map((b) => [String(b.id), b.name]));
+    const workspace = view.workspace_id === null ? undefined : workspaces.byId.get(view.workspace_id);
+    inviteToShare(
+      added.map((s) => s.principal),
+      (principal) =>
+        Object.keys(
+          added.find((s) => s.principal.type === principal.type && s.principal.id === principal.id)
+            ?.permissions ?? {},
+        ).map((id) => names.get(id) ?? ""),
+      { name: view.name, workspace: workspace?.name ?? "" },
+      req.user,
+      root(req),
+    );
+  }
+  return sharesOf(view);
+};

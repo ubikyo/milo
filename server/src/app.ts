@@ -13,6 +13,8 @@ import {
   requireWorkspaces,
   requireSettingsToWrite,
   requireSettingsUpdate,
+  requireTemplatesToWrite,
+  requireThemesToWrite,
 } from "./middleware/require-auth.js";
 import { assetRoutes, inventoryRoutes } from "./routes/assets.js";
 import {
@@ -62,15 +64,17 @@ import {
 import { taskCardRoutes, cardCommentRoutes } from "./routes/task-cards.js";
 import { taskListRoutes } from "./routes/task-lists.js";
 import { userRoutes } from "./routes/users.js";
-import { notificationSettingsRoutes } from "./routes/notification-settings.js";
 import { mailTemplateRoutes } from "./routes/mail-templates.js";
 import { displaySettingsRoutes } from "./routes/display-settings.js";
+import { miloSettingsRoutes } from "./routes/milo-settings.js";
 import { themeColorRoutes } from "./routes/theme-colors.js";
 import { titleStyleRoutes } from "./routes/title-styles.js";
+import { settingsNotice } from "./middleware/settings-notice.js";
 import { supportMailRoutes } from "./routes/support-mail.js";
 import { m365WebhookRoutes } from "./routes/m365-webhooks.js";
 import { optinRoutes } from "./routes/optins.js";
 import { calendarOptinRoutes, mailOptinRoutes } from "./routes/widget-optins.js";
+import { undoRoutes } from "./routes/undo.js";
 
 export const createApp = (): express.Express => {
   const app = express();
@@ -127,19 +131,19 @@ export const createApp = (): express.Express => {
   app.get("/api/version", (_req, res) => res.json(payload()));
   app.get("/api/events", feed);
 
-  app.use("/api/users", userRoutes);
+  app.use("/api/users", settingsNotice("les comptes", /^\/favorites\//), userRoutes);
   // What Settings controls requires its rights (View, Edit). Companies and
   // milestone types are read everywhere in the application: only writing them
   // requires them.
-  app.use("/api/milestone-types", requireSettingsToWrite, milestoneTypeRoutes);
+  app.use("/api/milestone-types", requireSettingsToWrite, settingsNotice("les types de jalons"), milestoneTypeRoutes);
   // A workspace's access, set by whoever manages the workspaces;
   // administration — Settings, workspace management — by Settings
   // (routes/assignments.ts).
-  app.use("/api/assignments", assignmentRoutes);
-  app.use("/api/administration", administrationRoutes);
-  app.use("/api/workspaces", requireWorkspaces, workspaceRoutes);
-  app.use("/api/entra", requireSettings, entraRoutes);
-  app.use("/api/backup", requireSettingsUpdate, backupRoutes);
+  app.use("/api/assignments", settingsNotice("les accès d'un workspace"), assignmentRoutes);
+  app.use("/api/administration", settingsNotice("l'administration"), administrationRoutes);
+  app.use("/api/workspaces", requireWorkspaces, settingsNotice("les workspaces"), workspaceRoutes);
+  app.use("/api/entra", requireSettings, settingsNotice("la connexion Entra", /^\/test$/), entraRoutes);
+  app.use("/api/backup", requireSettingsUpdate, settingsNotice("la sauvegarde (restauration)"), backupRoutes);
   app.use("/api/follows", followRoutes);
   app.use("/api/notifications", notificationRoutes);
 
@@ -153,6 +157,7 @@ export const createApp = (): express.Express => {
   app.use("/api/boards", boardRoutes);
   app.use("/api/board-sections", boardSectionRoutes);
   app.use("/api/board-widgets", boardWidgetRoutes);
+  app.use("/api/undo", undoRoutes);
   app.use("/api/widget-images", widgetImageRoutes);
 
   app.use("/api/categories", categoryRoutes);
@@ -177,7 +182,7 @@ export const createApp = (): express.Express => {
   app.use("/api/asset-labels", assetLabelRoutes);
   app.use("/api/assets", assetRoutes);
   // The templates table: read everywhere, written from Settings.
-  app.use("/api/asset-settings", assetSettingsRoutes);
+  app.use("/api/asset-settings", settingsNotice("les réglages des postes"), assetSettingsRoutes);
 
   app.use("/api/support-requests", supportRequestRoutes);
   app.use("/api/mailbox-optins", optinRoutes);
@@ -186,19 +191,19 @@ export const createApp = (): express.Express => {
   app.use("/api/support-comments", supportCommentRoutes);
   app.use("/api/support-labels", supportLabelRoutes);
   // The default due date: read everywhere, written from Settings.
-  app.use("/api/support-settings", requireSettingsToWrite, supportSettingsRoutes);
-  app.use("/api/support-replies", requireSettingsToWrite, supportReplyRoutes);
+  app.use("/api/support-settings", requireSettingsToWrite, settingsNotice("les réglages du Support"), supportSettingsRoutes);
+  app.use("/api/support-replies", requireSettingsToWrite, settingsNotice("les réponses du Support"), supportReplyRoutes);
   // Read by a request's page, which puts them in its reply.
-  app.use("/api/support-contents", requireSettingsToWrite, supportContentRoutes);
+  app.use("/api/support-contents", requireSettingsToWrite, settingsNotice("les contenus du Support"), supportContentRoutes);
 
   app.use("/api/search", searchRoutes);
   // Read by everyone — they set everyone's interface —, written from
   // Settings only.
-  app.use("/api/notification-settings", requireSettingsToWrite, notificationSettingsRoutes);
-  app.use("/api/mail-templates", requireSettingsToWrite, mailTemplateRoutes);
-  app.use("/api/display-settings", requireSettingsToWrite, displaySettingsRoutes);
-  app.use("/api/theme-colors", requireSettingsToWrite, themeColorRoutes);
-  app.use("/api/title-styles", titleStyleRoutes);
+  app.use("/api/mail-templates", requireTemplatesToWrite, settingsNotice("les modèles d'e-mail", /preview$/), mailTemplateRoutes);
+  app.use("/api/display-settings", requireSettingsToWrite, settingsNotice("l'affichage"), displaySettingsRoutes);
+  app.use("/api/milo-settings", requireSettingsToWrite, settingsNotice("les réglages de Milo"), miloSettingsRoutes);
+  app.use("/api/theme-colors", requireThemesToWrite, settingsNotice("les couleurs des thèmes"), themeColorRoutes);
+  app.use("/api/title-styles", settingsNotice("les styles de titres"), titleStyleRoutes);
 
   app.use("/api", notFoundHandler);
   app.use(errorHandler);

@@ -1,4 +1,10 @@
-import { STRONG_TEXT } from "./colors";
+import {
+  TAB_ACTIVE_BG,
+  TAB_ACTIVE_JOINT,
+  TAB_ACTIVE_SIZE,
+  TAB_ACTIVE_TEXT,
+  TAB_ACTIVE_WEIGHT,
+} from "./colors";
 
 // Style shared by all the application's tabs (settings, project drawer,
 // boards of the Projects and Tasks modes). The "outline" variant is set once
@@ -16,8 +22,21 @@ export const tabStyle = (isActive: boolean) => ({
   outline: "none",
   // The active tab's boldness is drawn with a text outline, not with the
   // font weight: a real weight widens the label and shifts all the following
-  // tabs on every tab change.
-  ...(isActive ? { color: STRONG_TEXT, WebkitTextStroke: "0.04em currentColor" } : {}),
+  // tabs on every tab change. Its background, color, size and weight come
+  // from the themes ("Onglet actif"); its frame, the row's line (tabs.css).
+  // Mantine draws the side open on the panel in the page's color,
+  // whatever the orientation: on the tab only, that color becomes its
+  // background's.
+  ...(isActive
+    ? {
+        backgroundColor: TAB_ACTIVE_BG,
+        "--mantine-color-body": TAB_ACTIVE_JOINT,
+        color: TAB_ACTIVE_TEXT,
+        fontSize: TAB_ACTIVE_SIZE,
+        fontWeight: TAB_ACTIVE_WEIGHT,
+        WebkitTextStroke: "0.04em currentColor",
+      }
+    : {}),
 });
 
 /**

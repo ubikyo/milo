@@ -18,7 +18,7 @@
 import mjml2html from "mjml";
 import Mustache from "mustache";
 import type { MailTemplate, MailTemplateKey, MailTemplatePreview, MailTemplateVariable } from "@milo/shared";
-import { MAIL_TEMPLATE_KEYS } from "@milo/shared";
+import { MAIL_TEMPLATE_KEYS, PALETTE, themeColorHex } from "@milo/shared";
 import {
   LOGO_CID,
   LOGO_DARK_CID,
@@ -27,7 +27,10 @@ import {
   attachedDarkLogo,
   attachedLogo,
 } from "./mail-logo.js";
+import { sendingAddress } from "./entra.js";
 import { badRequest } from "./http.js";
+import { miloUrl } from "./milo-url.js";
+import { themeColors } from "./theme-colors.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 
 /** Milo's colors, frozen: see the explanation at the top of the file. */
@@ -56,6 +59,8 @@ export interface Message {
   action?: { url: string; label: string };
   /** The fine print, at the very bottom. */
   footer: string;
+  /** The text version, when the caller writes it — several elements in one e-mail. */
+  text?: string;
 }
 
 const withRepeats = (row: Row): string =>
@@ -67,7 +72,7 @@ const withRepeats = (row: Row): string =>
  * HTML is blocked. It does not come from the template.
  */
 const toText = (m: Message): string =>
-  [
+  m.text ?? [
     m.intro,
     "",
     ...(m.rows ?? []).map((row) => `  — ${withRepeats(row)}`),
@@ -119,7 +124,7 @@ const defaultMjml = ({ rows, action }: { rows: boolean; action: boolean }): stri
     <mj-section padding="16px ${INSET} ${INSET} ${INSET}">
       <mj-column>
         <mj-text font-size="12px" color="${DIMMED}">
-          <img src="{{logo}}" alt="" width="${LOGO_WIDTH_PX}" height="${LOGO_HEIGHT_PX}"
+          <img src="{{milo.logo}}" alt="" width="${LOGO_WIDTH_PX}" height="${LOGO_HEIGHT_PX}"
                style="border:0;width:${LOGO_WIDTH_PX}px;height:${LOGO_HEIGHT_PX}px;vertical-align:middle" />&nbsp;<span style="vertical-align:middle">Milo</span>
         </mj-text>
       </mj-column>
@@ -153,7 +158,7 @@ const confirmationMjml = (title: string, heading: string, text: string): string 
   <mj-body>
     <mj-section>
       <mj-column>
-        <mj-image src="{{logo}}" align="left" width="80px"/>
+        <mj-image src="{{milo.logo}}" align="left" width="80px"/>
 
         <mj-text padding="30px 25px 15px 25px" color="#333333">
           <h1 style="margin: 0;">${heading}</h1>
@@ -161,6 +166,44 @@ const confirmationMjml = (title: string, heading: string, text: string): string 
 
         <mj-text padding="0 25px 10px 25px" color="#333333">
           <p style="margin: 0;">${text}</p>
+        </mj-text>
+
+        <mj-text padding="10px 25px" align="left" font-size="36px" color="#333333" font-family="Helvetica, sans-serif">
+          <p style="margin: 0;">{{code}}</p>
+        </mj-text>
+
+        <mj-divider border-width="1px" border-style="solid" />
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>`;
+
+/** The code a person whose calendar a Calendar widget shows receives. */
+const CALENDAR_CONFIRMATION_MJML = `<mjml>
+  <mj-head>
+    <mj-title>Partage de votre calendrier</mj-title>
+
+    <mj-attributes>
+      <mj-all font-family="Arial, sans-serif" font-size="14px" color="#333333" line-height="1.5" />
+      <mj-text padding="10px 25px" />
+      <mj-section padding="20px" />
+    </mj-attributes>
+
+    <mj-raw><meta name="color-scheme" content="light dark" /></mj-raw>
+    <mj-raw><meta name="supported-color-schemes" content="light dark" /></mj-raw>
+  </mj-head>
+
+  <mj-body>
+    <mj-section>
+      <mj-column>
+        <mj-image src="{{logo}}" align="left" width="80px"/>
+
+        <mj-text padding="30px 25px 15px 25px" color="#333333">
+          <h1 style="margin: 0;">Partage de votre calendrier</h1>
+        </mj-text>
+
+        <mj-text padding="0 25px 10px 25px" color="#333333">
+          <p style="margin: 0;">Pour terminer la configuration de votre calendrier dans Milo, utilisez le code suivant :</p>
         </mj-text>
 
         <mj-text padding="10px 25px" align="left" font-size="36px" color="#333333" font-family="Helvetica, sans-serif">
@@ -198,7 +241,7 @@ const REPLY_MJML = `<mjml>
   <mj-body>
     <mj-section>
       <mj-column>
-        <mj-image src="{{logo}}" align="left" width="80px"/>
+        <mj-image src="{{milo.logo}}" align="left" width="80px"/>
 
         <mj-text padding="30px 25px 15px 25px" color="#333333">
           <h1 style="margin: 0;">{{ticket.subject}}</h1>
@@ -232,7 +275,7 @@ const AUTO_REPLY_MJML = `<mjml>
   <mj-body>
     <mj-section>
       <mj-column>
-        <mj-image src="{{logo}}" width="80px" align="left" />
+        <mj-image src="{{milo.logo}}" width="80px" align="left" />
 
         <mj-text padding="30px 25px 15px 25px" color="#333333">
           <h1 style="margin: 0;">{{model.name}}</h1>
@@ -248,15 +291,11 @@ const AUTO_REPLY_MJML = `<mjml>
   </mj-body>
 </mjml>`;
 
-// One logo: its dark-background variant is added after compilation (withDarkLogo).
-const LOGO: MailTemplateVariable[] = [{ group: "Message", label: "Logo", name: "{{logo}}" }];
 const COMMON: MailTemplateVariable[] = [
   { group: "Message", label: "Titre", name: "{{title}}" },
   { group: "Message", label: "Introduction", name: "{{intro}}" },
-  ...LOGO,
 ];
 const CONFIRMATION: MailTemplateVariable[] = [
-  ...LOGO,
   { group: "Confirmation", label: "Adresse e-mail", name: "{{email}}" },
   { group: "Confirmation", label: "Code", name: "{{code}}" },
 ];
@@ -266,6 +305,95 @@ const SHARING: MailTemplateVariable[] = [
   { group: "Partage", label: "Bloc du tableau", name: "{{#board}}…{{/board}}" },
   { group: "Partage", label: "Tableau", name: "{{board}}" },
 ];
+
+/** The test message: its texts are written in it, only Milo varies. */
+const TEST_MJML = `<mjml>
+  <mj-head>
+    <mj-title>Message de test</mj-title>
+
+    <mj-attributes>
+      <mj-all font-family="Arial, sans-serif" font-size="14px" color="{{colors.text}}" line-height="1.5" />
+      <mj-text padding="10px 25px" color="{{colors.text}}" />
+      <mj-button background-color="{{colors.green}}" color="{{colors.text}}" border-radius="4px" font-size="14px" />
+      <mj-section padding="20px" />
+    </mj-attributes>
+
+    <mj-raw><meta name="color-scheme" content="light dark" /></mj-raw>
+    <mj-raw><meta name="supported-color-schemes" content="light dark" /></mj-raw>
+  </mj-head>
+
+  <mj-body>
+    <mj-section>
+      <mj-column>
+        <mj-image src="{{milo.logo}}" align="left" width="80px"/>
+
+        <mj-text padding="30px 25px 15px 25px">
+          <h1 style="margin: 0;">{{template.title}}</h1>
+        </mj-text>
+
+        <mj-text padding="0 25px 10px 25px">
+          <p style="margin: 0;">Test de l'envoi d'un message depuis {{milo.email}}</p>
+        </mj-text>
+        <mj-button href="{{milo.url}}" align="left">Ouvrir Milo</mj-button>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>`;
+
+// Every template's: its own title, as its <mj-title> writes it — to repeat
+// it in the body without writing it twice.
+const TEMPLATE: MailTemplateVariable[] = [{ group: "Modèle", label: "Titre", name: "{{template.title}}" }];
+
+// Every template's last two sources: Milo — its logo, its sending address,
+// its own address —, and its main colors, as the "Thèmes" section sets them.
+// One logo: its dark-background variant is added after compilation
+// (withDarkLogo). "{{logo}}", its former name, still fills a template saved
+// with it (logo, in each view).
+const MILO: MailTemplateVariable[] = [
+  { group: "Milo", label: "Logo", name: "{{milo.logo}}" },
+  { group: "Milo", label: "Adresse d'envoi", name: "{{milo.email}}" },
+  { group: "Milo", label: "Adresse de Milo", name: "{{milo.url}}" },
+];
+
+/**
+ * The colors a template can draw from, on the light theme: a message's
+ * background is white, whatever the theme of whoever sent it. The four of
+ * the palette, then the base ones by their key in the themes.
+ */
+const COLORS: { name: string; label: string; key?: string; value?: string }[] = [
+  { name: "green", label: "Vert", value: PALETTE.green },
+  { name: "red", label: "Rouge", value: PALETTE.red },
+  { name: "orange", label: "Orange", value: PALETTE.orange },
+  { name: "blue", label: "Bleu", value: PALETTE.blue },
+  { name: "text", label: "Texte", key: "text" },
+  { name: "dimmed", label: "Texte atténué", key: "dimmed" },
+  { name: "strong", label: "Texte fort", key: "strong-text" },
+  { name: "background", label: "Fond de page", key: "body" },
+  { name: "field", label: "Fond des champs", key: "default" },
+  { name: "border", label: "Bordures", key: "default-border" },
+  { name: "divider", label: "Filets", key: "divider" },
+];
+const COLOR_VARIABLES: MailTemplateVariable[] = COLORS.map((c) => ({
+  group: "Couleurs",
+  label: c.label,
+  name: `{{colors.${c.name}}}`,
+}));
+
+/**
+ * What every template is filled with besides its own: read at each send, a
+ * change in the Settings applies to the next message. A raw template's
+ * values come escaped (replyViewOf).
+ */
+const commonView = (raw = false) => {
+  const stored = themeColors();
+  const escaped = (text: string) => (raw ? Mustache.escape(text) : text);
+  return {
+    milo: { logo: LOGO_SRC, email: escaped(sendingAddress()), url: escaped(miloUrl()) },
+    colors: Object.fromEntries(
+      COLORS.map((c) => [c.name, c.value ?? themeColorHex(stored, c.key!, "light")]),
+    ),
+  };
+};
 const SHARING_SAMPLE = {
   email: "claire.martin@exemple.fr",
   code: "4821",
@@ -277,6 +405,81 @@ const ROWS: MailTemplateVariable[] = [
   { group: "Lignes", label: "Bloc des lignes", name: "{{#rows}}…{{/rows}}" },
   { group: "Lignes", label: "Texte", name: "{{text}}" },
 ];
+// The changes' own: the list of modifications, and one of them, inside.
+const UPDATES: MailTemplateVariable[] = [
+  { group: "Modifications", label: "Liste des modifications", name: "{{#updates.items}}…{{/updates.items}}" },
+  { group: "Modifications", label: "Modification", name: "{{updates.item}}" },
+];
+
+/**
+ * The modifications as their template reads them. Each one carries its text
+ * under the same name: inside the block, "{{updates.item}}" is that
+ * modification's.
+ */
+export const updatesView = (rows: Row[]) => ({
+  items: rows.map((row) => ({ updates: { item: withRepeats(row) } })),
+});
+
+/** "Une modification", "3 modifications". */
+export const modificationsLabel = (n: number): string => (n === 1 ? "Une modification" : `${n} modifications`);
+
+/** An element of the changes' e-mail, where it sits — each level by an identifier and a name. */
+export interface PlacedElement {
+  /** As {{#elements.items}} repeats it: {{element.…}}, {{updates.…}}. */
+  item: { element: ElementView; updates: ReturnType<typeof updatesView> };
+  /** Its modifications, one per line listed — a repeat is on its line. */
+  total: number;
+  /**
+   * One key per level, from the workspace to the widget — two widgets of the
+   * same name stay apart; a type of widget is the same everywhere: "card".
+   */
+  keys: Record<PlaceLevel, string>;
+}
+
+/** The levels the changes' e-mail can group by, from the outermost. */
+const PLACE_LEVELS = ["workspace", "view", "board", "widgetType", "widget"] as const;
+type PlaceLevel = (typeof PLACE_LEVELS)[number];
+
+/** Each level's list in the template: {{#views.items}}… */
+const LEVEL_LISTS: Record<PlaceLevel, string> = {
+  workspace: "workspaces",
+  view: "views",
+  board: "boards",
+  widgetType: "widgetTypes",
+  widget: "widgets",
+};
+
+/** A level's name, from the element: its workspace, its view… */
+const levelName = (e: ElementView, level: PlaceLevel): string =>
+  level === "widgetType" ? e.widgetType : e[level];
+
+/**
+ * The elements grouped by each level below "from", in the order of their
+ * first modification: {{#workspaces.items}} repeats each workspace, with
+ * {{workspace.name}} and {{workspace.updates.count}}, and inside it every deeper
+ * list — {{#views.items}}, {{#boards.items}}… — of that workspace's elements
+ * alone. A level can thus be skipped: from the root, {{#widgetTypes.items}}
+ * groups the whole e-mail by type of widget. Every group ends with its own
+ * {{#elements.items}}.
+ */
+export const placesView = (elements: PlacedElement[], from = 0): Record<string, unknown> => {
+  const view: Record<string, unknown> = { elements: { items: elements.map((e) => e.item) } };
+  PLACE_LEVELS.slice(from).forEach((level, i) => {
+    const groups = new Map<string, PlacedElement[]>();
+    for (const e of elements) groups.set(e.keys[level], [...(groups.get(e.keys[level]) ?? []), e]);
+    view[LEVEL_LISTS[level]] = {
+      items: [...groups.values()].map((group) => ({
+        [level]: {
+          name: levelName(group[0]!.item.element, level),
+          updates: { count: group.reduce((sum, e) => sum + e.total, 0) },
+        },
+        ...placesView(group, from + i + 1),
+      })),
+    };
+  });
+  return view;
+};
+
 const ACTION: MailTemplateVariable[] = [
   { group: "Bouton", label: "Bloc du bouton", name: "{{#action}}…{{/action}}" },
   { group: "Bouton", label: "Lien", name: "{{url}}" },
@@ -288,7 +491,6 @@ const REPLY: MailTemplateVariable[] = [
   { group: "Modèle", label: "Message", name: "{{model.content}}" },
   { group: "Demande", label: "Numéro", name: "{{ticket.number}}" },
   { group: "Demande", label: "Objet", name: "{{ticket.subject}}" },
-  ...LOGO,
 ];
 const REPLY_NAME: MailTemplateVariable = { group: "Modèle", label: "Nom du modèle", name: "{{model.name}}" };
 
@@ -306,6 +508,339 @@ const LEGACY_REPLY_VARIABLES: [RegExp, string][] = [
 ];
 const withCurrentVariables = (mjml: string): string =>
   LEGACY_REPLY_VARIABLES.reduce((text, [legacy, current]) => text.replace(legacy, current), mjml);
+
+// The element a notice is about — a project, a card, a request —, as the
+// assignment's and the changes' templates name it.
+// An invitation's own: who gave the access, and to what.
+const INVITATION: MailTemplateVariable[] = [
+  { group: "Invitation", label: "Auteur", name: "{{invitation.author}}" },
+  { group: "Invitation", label: "Workspace", name: "{{invitation.workspace}}" },
+];
+// An administrator's: only who gave the administration.
+const ADMIN_INVITATION: MailTemplateVariable[] = [
+  { group: "Invitation", label: "Auteur", name: "{{invitation.author}}" },
+];
+// A share: the boards of a view, each with where it sits and who owns it —
+// outside the list, the view's, which every board shares.
+const SHARES: MailTemplateVariable[] = [
+  { group: "Partages", label: "Liste des partages", name: "{{#shares.items}}…{{/shares.items}}" },
+  { group: "Partages", label: "Workspace", name: "{{share.workspace}}" },
+  { group: "Partages", label: "Vue", name: "{{share.view}}" },
+  { group: "Partages", label: "Tableau", name: "{{share.board}}" },
+  { group: "Partages", label: "Propriétaire", name: "{{share.owner}}" },
+];
+
+/** What the share's template is filled with: the view, and each board shared. */
+export const sharesView = (owner: string, workspace: string, view: string, boards: string[]) => ({
+  share: { owner, workspace, view },
+  shares: { items: boards.map((board) => ({ share: { owner, workspace, view, board } })) },
+});
+
+/** The variables of a share's template as first named, and today's. */
+const LEGACY_SHARE_VARIABLES: [RegExp, string][] = [
+  [/\{\{\s*#\s*rows\s*\}\}/g, "{{#shares.items}}"],
+  [/\{\{\s*\/\s*rows\s*\}\}/g, "{{/shares.items}}"],
+  [/\{\{\s*text\s*\}\}/g, "{{share.board}}"],
+  [/\{\{\s*invitation\.author\s*\}\}/g, "{{share.owner}}"],
+  [/\{\{\s*invitation\.workspace\s*\}\}/g, "{{share.workspace}}"],
+  [/\{\{\s*invitation\.view\s*\}\}/g, "{{share.view}}"],
+];
+const asShares = (mjml: string): string =>
+  LEGACY_SHARE_VARIABLES.reduce((text, [legacy, current]) => text.replace(legacy, current), mjml);
+
+/**
+ * The share's invitation: who shared, then each board — where it sits —,
+ * and the button that opens Milo.
+ */
+const NEW_SHARE_MJML = `<mjml>
+  <mj-head>
+    <mj-title>Nouveau partage !</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Arial, sans-serif" font-size="14px" color="{{colors.text}}" line-height="1.5" />
+      <mj-text padding="10px 25px" color="{{colors.text}}" />
+      <mj-button background-color="{{colors.green}}" color="{{colors.text}}" border-radius="4px" font-size="14px" />
+      <mj-section padding="20px" />
+    </mj-attributes>
+
+    <mj-raw><meta name="color-scheme" content="light dark" /></mj-raw>
+    <mj-raw><meta name="supported-color-schemes" content="light dark" /></mj-raw>
+  </mj-head>
+
+  <mj-body>
+    <mj-section>
+      <mj-column>
+        <mj-image src="{{milo.logo}}" align="left" width="80px"/>
+        <mj-text padding="30px 25px 15px 25px">
+          <h1 style="margin: 0;">{{ template.title }}</h1>
+        </mj-text>
+        <mj-text padding="0 25px 10px 25px">
+          <p style="margin: 0;">Un ou plusieurs tableaux viennent de vous être partagés par {{share.owner}} :</p>
+        </mj-text>
+        <mj-text>
+          {{#shares.items}}
+          <span style="color:#099268;padding-right:8px">&#8212;</span>{{share.board}} {{share.workspace}} {{share.view}}<br>
+          {{/shares.items}}
+        </mj-text>
+        <mj-button href="{{milo.url}}" align="left">Ouvrir Milo</mj-button>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>`;
+
+/**
+ * The element's variables, its own — "{{element.activity}}" the assignment's
+ * sentence, "{{element.updates.count}}" the changes' number — after its name.
+ */
+const elementVariables = (own: MailTemplateVariable): MailTemplateVariable[] => [
+  { group: "Élément", label: "Nom", name: "{{element.name}}" },
+  own,
+  { group: "Élément", label: "Lien", name: "{{element.url}}" },
+  { group: "Élément", label: "Workspace", name: "{{element.workspace}}" },
+  { group: "Élément", label: "Vue", name: "{{element.view}}" },
+  { group: "Élément", label: "Tableau", name: "{{element.board}}" },
+  { group: "Élément", label: "Type de widget", name: "{{element.widgetType}}" },
+  { group: "Élément", label: "Widget", name: "{{element.widget}}" },
+  { group: "Élément", label: "Chemin", name: "{{element.path}}" },
+];
+const LINKED_ELEMENT = elementVariables({ group: "Élément", label: "Activité", name: "{{element.activity}}" });
+const CHANGED_ELEMENT = elementVariables({
+  group: "Élément",
+  label: "Nombre de modifications",
+  name: "{{element.updates.count}}",
+});
+
+// The changes' e-mail carries one element — immediate sending — or every
+// element modified during the delay — grouped sending —: the list repeats
+// each, and inside it, {{element.…}} and {{updates.…}} are that element's.
+// Grouped, the same elements level by level: each list repeats its level —
+// a workspace, a view… —, the next one inside, down to the widgets, whose
+// {{#elements.items}} are theirs.
+const PLACES: MailTemplateVariable[] = [
+  { group: "Workspaces", label: "Liste des workspaces", name: "{{#workspaces.items}}…{{/workspaces.items}}" },
+  { group: "Workspaces", label: "Nom", name: "{{workspace.name}}" },
+  { group: "Workspaces", label: "Nombre de modifications", name: "{{workspace.updates.count}}" },
+  { group: "Vues", label: "Liste des vues", name: "{{#views.items}}…{{/views.items}}" },
+  { group: "Vues", label: "Nom", name: "{{view.name}}" },
+  { group: "Vues", label: "Nombre de modifications", name: "{{view.updates.count}}" },
+  { group: "Tableaux", label: "Liste des tableaux", name: "{{#boards.items}}…{{/boards.items}}" },
+  { group: "Tableaux", label: "Nom", name: "{{board.name}}" },
+  { group: "Tableaux", label: "Nombre de modifications", name: "{{board.updates.count}}" },
+  { group: "Types de widget", label: "Liste des types", name: "{{#widgetTypes.items}}…{{/widgetTypes.items}}" },
+  { group: "Types de widget", label: "Nom", name: "{{widgetType.name}}" },
+  { group: "Types de widget", label: "Nombre de modifications", name: "{{widgetType.updates.count}}" },
+  { group: "Widgets", label: "Liste des widgets", name: "{{#widgets.items}}…{{/widgets.items}}" },
+  { group: "Widgets", label: "Nom", name: "{{widget.name}}" },
+  { group: "Widgets", label: "Nombre de modifications", name: "{{widget.updates.count}}" },
+];
+
+const ELEMENTS: MailTemplateVariable[] = [
+  { group: "Éléments modifiés", label: "Liste des éléments", name: "{{#elements.items}}…{{/elements.items}}" },
+  { group: "Éléments modifiés", label: "Résumé", name: "{{elements.activity}}" },
+];
+
+/**
+ * A notice's template as the assignment's and the changes' name their
+ * variables: the element's name, activity and link. Their button is always
+ * there — without Milo's address, nothing is sent —: its block goes, and its
+ * label is written in it.
+ * A template saved with the notice's variables reads as if written with these.
+ */
+const asElement = (mjml: string): string =>
+  mjml
+    .replace(/^[ \t]*\{\{\s*[#/]\s*action\s*\}\}[ \t]*\n/gm, "")
+    .replace(/\{\{\s*[#/]\s*action\s*\}\}/g, "")
+    .replace(/\{\{\s*title\s*\}\}/g, "{{element.name}}")
+    .replace(/\{\{\s*intro\s*\}\}/g, "{{element.activity}}")
+    .replace(/\{\{\s*url\s*\}\}/g, "{{element.url}}")
+    .replace(/\{\{\s*label\s*\}\}/g, "Ouvrir dans Milo");
+
+/** The assignment's template: the element's name, its activity, the button that opens it. */
+const LINKED_MJML = `<mjml>
+  <mj-head>
+    <mj-title>{{element.widget}} &mdash; {{element.name}}</mj-title>
+
+    <mj-attributes>
+      <mj-all font-family="Arial, sans-serif" font-size="14px" color="{{colors.text}}" line-height="1.5" />
+      <mj-text padding="10px 25px" color="{{colors.text}}" />
+      <mj-button background-color="{{colors.green}}" color="{{colors.text}}" border-radius="4px" font-size="14px" />
+      <mj-section padding="20px" />
+    </mj-attributes>
+
+    <mj-raw><meta name="color-scheme" content="light dark" /></mj-raw>
+    <mj-raw><meta name="supported-color-schemes" content="light dark" /></mj-raw>
+  </mj-head>
+
+  <mj-body>
+    <mj-section>
+      <mj-column>
+        <mj-image src="{{milo.logo}}" align="left" width="80px"/>
+
+        <mj-text padding="30px 25px 15px 25px">
+          <h1 style="margin: 0;">{{template.title}}</h1>
+        </mj-text>
+
+        <mj-text padding="0 25px 10px 25px">
+          <p style="margin: 0;">{{element.activity}}</p>
+        </mj-text>
+        <mj-button href="{{element.url}}" align="left">Ouvrir Milo</mj-button>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>`;
+
+/** The changes' template as it names its modifications, a template saved with its lines included. */
+const asUpdates = (mjml: string): string =>
+  asElement(mjml)
+    .replace(/\{\{\s*#\s*rows\s*\}\}/g, "{{#updates.items}}")
+    .replace(/\{\{\s*\/\s*rows\s*\}\}/g, "{{/updates.items}}")
+    .replace(/\{\{\s*text\s*\}\}/g, "{{updates.item}}")
+    // Each level's number of modifications, once named "activity".
+    .replace(/\{\{\s*(workspace|view|board|widgetType|widget|element)\.activity\s*\}\}/g, "{{$1.updates.count}}");
+
+/**
+ * The changes' template: its title, then each type of widget — its name and
+ * number of modifications —, and under it each modification, the way to its
+ * element as a link.
+ */
+const CHANGES_MJML = `<mjml>
+  <mj-head>
+    <mj-title>Ajout ou modification d'éléments</mj-title>
+
+    <mj-attributes>
+      <mj-all font-family="Arial, sans-serif" font-size="14px" color="{{colors.text}}" line-height="1.5" />
+      <mj-text padding="10px 25px" color="{{colors.text}}" />
+      <mj-button background-color="{{colors.green}}" color="{{colors.text}}" border-radius="4px" font-size="14px" />
+      <mj-section padding="20px" />
+    </mj-attributes>
+
+    <mj-raw><meta name="color-scheme" content="light dark" /></mj-raw>
+    <mj-raw><meta name="supported-color-schemes" content="light dark" /></mj-raw>
+  </mj-head>
+
+  <mj-body>
+    <mj-section padding-bottom="0">
+      <mj-column>
+        <mj-image src="{{milo.logo}}" align="left" width="80px"/>
+        <mj-text padding="30px 25px 0 25px">
+          <h1 style="margin: 0;">{{template.title}}</h1>
+        </mj-text>
+        <mj-text padding="0 25px 0 25px">La ou les modifications suivantes ont été réalisées dans Milo.</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-section>
+      <mj-column>
+        {{#widgetTypes.items}}
+          <mj-text padding="20px 25px 20px 25px">
+            <h2 style="margin: 0;">{{widgetType.name}}</h2>
+            <p style="margin: 0; color: {{colors.dimmed}};">Modifications réalisées : {{widgetType.updates.count}}</p>
+          </mj-text>
+          {{#elements.items}}
+            {{#updates.items}}
+            <mj-text padding="0 0 15px 50px">
+              <a href="{{element.url}}" style="color: {{colors.green}}"><span style="display: inline-block; width: 20px;">&mdash;</span>{{element.workspace}} › {{element.view}} › {{element.board}} › {{element.widget}}</a><br />
+              <span style="display: inline-block; width: 20px;"></span>{{element.name}} : {{updates.item}}
+            </mj-text>
+            {{/updates.items}}
+          {{/elements.items}}
+        {{/widgetTypes.items}}
+      </mj-column>
+    </mj-section>      
+    <mj-section padding="0 20px 20px 20px">
+      <mj-column>
+        <mj-button href="{{milo.url}}" align="left">Ouvrir Milo</mj-button>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>`;
+
+/**
+ * The invitation to a workspace: its texts are written in it, only who gave
+ * the access varies; the button opens Milo, where one signs in with Windows.
+ */
+const NEW_USER_MJML = `<mjml>
+  <mj-head>
+    <mj-title>Bienvenue dans Milo !</mj-title>
+
+    <mj-attributes>
+      <mj-all font-family="Arial, sans-serif" font-size="14px" color="{{colors.text}}" line-height="1.5" />
+      <mj-text padding="10px 25px" color="{{colors.text}}" />
+      <mj-button background-color="{{colors.green}}" color="{{colors.text}}" border-radius="4px" font-size="14px" />
+      <mj-section padding="20px" />
+    </mj-attributes>
+
+    <mj-raw><meta name="color-scheme" content="light dark" /></mj-raw>
+    <mj-raw><meta name="supported-color-schemes" content="light dark" /></mj-raw>
+  </mj-head>
+
+  <mj-body>
+    <mj-section>
+      <mj-column>
+        <mj-image src="{{milo.logo}}" align="left" width="80px"/>
+        <mj-text padding="30px 25px 15px 25px">
+          <h1 style="margin: 0;">{{template.title}}</h1>
+        </mj-text>
+        <mj-text padding="0 25px 10px 25px">
+          <p style="margin: 0;">Un accès pour Milo a été créé par {{invitation.author}}. Pour vous connecter, cliquer sur le bouton ci-dessous et utiliser vos identifiants de session Windows pour vous authentifier.</p>
+        </mj-text>
+        <mj-button href="{{milo.url}}" align="left">Ouvrir Milo</mj-button>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>`;
+
+/**
+ * The invitation of an administrator: as a workspace's, only who gave the
+ * administration varies.
+ */
+const NEW_ADMIN_MJML = `<mjml>
+  <mj-head>
+    <mj-title>Bienvenue dans Milo !</mj-title>
+
+    <mj-attributes>
+      <mj-all font-family="Arial, sans-serif" font-size="14px" color="{{colors.text}}" line-height="1.5" />
+      <mj-text padding="10px 25px" color="{{colors.text}}" />
+      <mj-button background-color="{{colors.green}}" color="{{colors.text}}" border-radius="4px" font-size="14px" />
+      <mj-section padding="20px" />
+    </mj-attributes>
+
+    <mj-raw><meta name="color-scheme" content="light dark" /></mj-raw>
+    <mj-raw><meta name="supported-color-schemes" content="light dark" /></mj-raw>
+  </mj-head>
+
+  <mj-body>
+    <mj-section>
+      <mj-column>
+        <mj-image src="{{milo.logo}}" align="left" width="80px"/>
+        <mj-text padding="30px 25px 15px 25px">
+          <h1 style="margin: 0;">{{template.title}}</h1>
+        </mj-text>
+        <mj-text padding="0 25px 10px 25px">
+          <p style="margin: 0;">{{invitation.author}} vous a désigné administrateur de Milo. Pour vous connecter, cliquer sur le bouton ci-dessous et utiliser vos identifiants de session Windows pour vous authentifier.</p>
+        </mj-text>
+        <mj-button href="{{milo.url}}" align="left">Ouvrir Milo</mj-button>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>`;
+
+/** What the assignment's template is filled with. */
+export interface ElementView {
+  name: string;
+  /** The assignment's sentence: "Claire Martin vous a ajouté comme acteur." */
+  activity?: string;
+  /** The changes': how many modifications it lists. */
+  updates?: { count: number };
+  url: string;
+  /** Where it sits: its workspace, its view, its board, and the widget that shows it. */
+  workspace: string;
+  /** The three, as a path: "Les manufactures › Projets › IT". */
+  path: string;
+  /** Its widget's type, as the interface names it: "Projets", "Tâches", "Tickets". */
+  widgetType: string;
+  view: string;
+  board: string;
+  widget: string;
+}
 
 /** What a reply's template is filled with; "name" is an automatic reply's. */
 export type ReplyView = {
@@ -348,6 +883,8 @@ interface Definition {
   raw?: boolean;
   /** The sample signed by whoever previews it — a team reply's. */
   signedSample?: (signer: string) => Record<string, unknown>;
+  /** A template saved with former variables, written with today's. */
+  current?: (mjml: string) => string;
 }
 
 /** What a message's template is filled with. */
@@ -395,6 +932,7 @@ const reply = (
     sample: sampleOf("Paul Durand"),
     raw: true,
     signedSample: sampleOf,
+    current: withCurrentVariables,
   };
 };
 
@@ -404,33 +942,114 @@ const spaced = (...lines: string[]): string =>
 
 const SAMPLE_LINK = { url: "https://milo.example/", label: "Ouvrir dans Milo" };
 
-const DEFINITIONS: Record<MailTemplateKey, Definition> = {
-  changes: notice(
-    "Ajout ou modification d'un élément",
-    "Les ajouts et les modifications d'un élément suivi, un à un ou regroupés.",
-    { rows: true, action: true },
-    {
-      title: "Refonte du site",
-      intro: "2 modifications :",
-      rows: [
+/** A sample element of the changes' e-mail, where it sits, and what happened to it. */
+const sampleElement = (
+  element: Omit<ElementView, "path" | "activity" | "updates">,
+  keys: Record<"workspace" | "view" | "board" | "widget", string>,
+  rows: Row[],
+): PlacedElement => {
+  // One modification per line listed: a repeat is "(2 fois)" on its line.
+  const total = rows.length;
+  return {
+    item: {
+      element: {
+        ...element,
+        updates: { count: total },
+        path: [element.workspace, element.view, element.board].filter(Boolean).join(" › "),
+      },
+      updates: updatesView(rows),
+    },
+    total,
+    keys: { ...keys, widgetType: element.widgetType },
+  };
+};
+
+/** The changes' preview: three elements, in two views of one workspace. */
+const changesSample = (): Record<string, unknown> => {
+  const elements = [
+    sampleElement(
+      {
+        name: "Préparer la maquette",
+        url: `${SAMPLE_LINK.url}?card=318`,
+        workspace: "Arco",
+        view: "Tâches",
+        board: "Les Manufactures",
+        widgetType: "Tâches",
+        widget: "Tâches",
+      },
+      { workspace: "1", view: "1", board: "1", widget: "1" },
+      [
         { text: "Claire Martin a commenté la tâche", repetitions: 1 },
         { text: "Paul Durand a modifié l'échéance", repetitions: 2 },
       ],
-      action: SAMPLE_LINK,
-      footer: "Vous recevez ce message parce que vous suivez cet élément dans Milo, ou que vous en êtes acteur.",
+    ),
+    sampleElement(
+      {
+        name: "Commander les badges",
+        url: `${SAMPLE_LINK.url}?card=322`,
+        workspace: "Arco",
+        view: "Tâches",
+        board: "Les Manufactures",
+        widgetType: "Tâches",
+        widget: "Tâches",
+      },
+      { workspace: "1", view: "1", board: "1", widget: "1" },
+      [{ text: "Claire Martin a déplacé la carte", repetitions: 1 }],
+    ),
+    sampleElement(
+      {
+        name: "Refonte du site",
+        url: `${SAMPLE_LINK.url}?project=42`,
+        workspace: "Arco",
+        view: "Projets",
+        board: "IT",
+        widgetType: "Projets",
+        widget: "Projets",
+      },
+      { workspace: "1", view: "2", board: "2", widget: "2" },
+      [
+        { text: "Claire Martin a modifié la fiche", repetitions: 1 },
+        { text: "Paul Durand a ajouté une étiquette", repetitions: 1 },
+      ],
+    ),
+  ];
+  const total = elements.reduce((sum, e) => sum + e.total, 0);
+  return {
+    ...placesView(elements),
+    elements: { activity: `${modificationsLabel(total)} sur ${elements.length} éléments`, items: elements.map((e) => e.item) },
+  };
+};
+
+const DEFINITIONS: Record<MailTemplateKey, Definition> = {
+  changes: {
+    label: "Ajout ou modification d'éléments",
+    description:
+      "Les ajouts et les modifications des éléments suivis : un e-mail par élément en envoi direct, un seul pour toute l'application en envoi groupé.",
+    variables: [...ELEMENTS, ...PLACES, ...CHANGED_ELEMENT, ...UPDATES],
+    mjml: CHANGES_MJML,
+    sample: changesSample(),
+    current: asUpdates,
+  },
+  linked: {
+    label: "Affectation d'un acteur à un élément",
+    description: "Une personne est ajoutée comme acteur d'un projet ou d'une carte, ou à un élément de checklist.",
+    variables: LINKED_ELEMENT,
+    mjml: LINKED_MJML,
+    sample: {
+      element: {
+        name: "Refonte du site",
+        activity: "Claire Martin vous a ajouté comme acteur.",
+        url: `${SAMPLE_LINK.url}?project=42`,
+        workspace: "Arco",
+        path: "Arco › Projets › IT",
+        view: "Projets",
+        board: "IT",
+        widgetType: "Projets",
+        widget: "Projets",
+      } satisfies ElementView,
     },
-  ),
-  linked: notice(
-    "Affectation d'un acteur à un élément",
-    "Une personne est ajoutée comme acteur d'un projet ou d'une carte, ou à un élément de checklist.",
-    { rows: false, action: true },
-    {
-      title: "Refonte du site",
-      intro: "Claire Martin vous a ajouté à ce projet.",
-      action: SAMPLE_LINK,
-      footer: "Vous recevez ce message parce que vous avez été ajouté à cet élément dans Milo.",
-    },
-  ),
+    current: asElement,
+  },
   reminder: notice(
     "Rappel d'échéance",
     "Le rappel envoyé aux acteurs d'une tâche avant son échéance.",
@@ -488,11 +1107,7 @@ const DEFINITIONS: Record<MailTemplateKey, Definition> = {
     label: "Confirmation d'une adresse",
     description: "Le code demandé à une personne dont un widget Calendrier affiche le calendrier.",
     variables: SHARING,
-    mjml: confirmationMjml(
-      "Partage de votre calendrier",
-      "Partage de votre calendrier",
-      "Pour terminer la configuration de votre calendrier dans Milo, utilisez le code suivant :",
-    ),
+    mjml: CALENDAR_CONFIRMATION_MJML,
     sample: SHARING_SAMPLE,
   },
   mail_confirmation: {
@@ -506,28 +1121,57 @@ const DEFINITIONS: Record<MailTemplateKey, Definition> = {
     ),
     sample: SHARING_SAMPLE,
   },
-  test: notice(
-    "Message de test",
-    "Envoyé depuis Paramétrage → Entra pour vérifier l'envoi.",
-    { rows: false, action: false },
-    {
-      title: "Message de test",
-      intro: "Ce message confirme l'envoi par Milo depuis milo@exemple.fr.",
-      footer: "Envoyé depuis Paramétrage → Entra.",
-    },
-  ),
+  new_user: {
+    label: "Nouvel utilisateur",
+    description:
+      "L'invitation envoyée à une personne — ou à chaque membre d'un groupe — qui reçoit l'accès à un workspace, si « Envoyer une invitation » est cochée.",
+    variables: INVITATION,
+    mjml: NEW_USER_MJML,
+    sample: { invitation: { author: "Claire Martin", workspace: "Arco" } },
+  },
+  new_admin: {
+    label: "Nouvel administrateur",
+    description:
+      "L'invitation envoyée à une personne — ou à chaque membre d'un groupe — qui reçoit des droits dans Administration, si « Envoyer une invitation » est cochée.",
+    variables: ADMIN_INVITATION,
+    mjml: NEW_ADMIN_MJML,
+    sample: { invitation: { author: "Claire Martin" } },
+  },
+  new_share: {
+    label: "Nouveau partage",
+    description:
+      "L'invitation envoyée à une personne — ou à chaque membre d'un groupe — avec qui les tableaux d'une vue sont partagés, si « Envoyer une invitation » est cochée.",
+    variables: SHARES,
+    mjml: NEW_SHARE_MJML,
+    sample: sharesView("Claire Martin", "Arco", "Projets", ["IT", "Marketing"]),
+    current: asShares,
+  },
+  test: {
+    label: "Message de test",
+    description: "Envoyé depuis Paramétrage → Notifications pour vérifier l'envoi.",
+    variables: [],
+    mjml: TEST_MJML,
+    // Milo's own: commonView.
+    sample: {},
+  },
 };
 
 const defaultOf = (key: MailTemplateKey): string => DEFINITIONS[key].mjml;
 
 const SETTING = "mail_templates";
 
-/** The templates modified in the Settings; the others are Milo's own. */
+/**
+ * The templates modified in the Settings; the others are Milo's own — as is
+ * one saved identical to it, which Milo has since adopted.
+ */
 const customized = (): Partial<Record<MailTemplateKey, string>> => {
   const saved = readSetting<Partial<Record<MailTemplateKey, string>>>(SETTING, {});
-  for (const key of ["support_reply", "support_auto_reply"] as const) {
+  for (const key of MAIL_TEMPLATE_KEYS) {
     const mjml = saved[key];
-    if (mjml !== undefined) saved[key] = withCurrentVariables(mjml);
+    if (mjml === undefined) continue;
+    const current = DEFINITIONS[key].current?.(mjml) ?? mjml;
+    if (current === defaultOf(key)) delete saved[key];
+    else saved[key] = current;
   }
   return saved;
 };
@@ -540,7 +1184,7 @@ export const mailTemplates = (): MailTemplate[] => {
       key,
       label: d.label,
       description: d.description,
-      variables: d.variables,
+      variables: [...d.variables, ...TEMPLATE, ...MILO, ...COLOR_VARIABLES],
       mjml: custom[key] ?? d.mjml,
       custom: custom[key] !== undefined,
     };
@@ -589,6 +1233,22 @@ const inPreview = (html: string): string =>
     .replaceAll(`"${LOGO_SRC}"`, `"${dataUri(attachedLogo())}"`);
 
 /** The template filled in and compiled; what MJML objected to comes back with it. */
+const TEMPLATE_TITLE = /\{\{\s*template\.title\s*\}\}/g;
+
+/**
+ * "{{template.title}}" replaced by what the template's <mj-title> holds,
+ * before anything is filled in: its own variables are then filled where it
+ * is repeated, and what it writes stays as written — an "&mdash;" as well.
+ */
+const withTemplateTitle = (mjml: string): string => {
+  // Within <mj-title> itself, it would repeat the title: it stays empty there.
+  const titled = mjml.replace(/<mj-title>([\s\S]*?)<\/mj-title>/, (_m, title: string) =>
+    `<mj-title>${title.replace(TEMPLATE_TITLE, "")}</mj-title>`,
+  );
+  const title = /<mj-title>([\s\S]*?)<\/mj-title>/.exec(titled)?.[1]?.trim() ?? "";
+  return titled.replace(TEMPLATE_TITLE, title);
+};
+
 const compile = async (
   mjml: string,
   view: Record<string, unknown>,
@@ -596,7 +1256,12 @@ const compile = async (
 ): Promise<MailTemplatePreview> => {
   let filled: string;
   try {
-    filled = Mustache.render(mjml, view, {}, raw ? { escape: (text: string) => text } : undefined);
+    filled = Mustache.render(
+      withTemplateTitle(mjml),
+      view,
+      {},
+      raw ? { escape: (text: string) => text } : undefined,
+    );
   } catch (error) {
     return { html: "", errors: [error instanceof Error ? error.message : "Variable mal formée"] };
   }
@@ -631,8 +1296,12 @@ export const previewMailTemplate = async (
 ): Promise<MailTemplatePreview> => {
   const { sample, signedSample } = DEFINITIONS[key];
   const compiled = await compile(
-    key === "support_reply" || key === "support_auto_reply" ? withCurrentVariables(mjml) : mjml,
-    { ...(signer && signedSample ? signedSample(signer) : sample), logo: LOGO_SRC },
+    DEFINITIONS[key].current?.(mjml) ?? mjml,
+    {
+      ...(signer && signedSample ? signedSample(signer) : sample),
+      ...commonView(DEFINITIONS[key].raw),
+      logo: LOGO_SRC,
+    },
     DEFINITIONS[key].raw,
   );
   return { ...compiled, html: inPreview(compiled.html) };
@@ -667,11 +1336,11 @@ export interface MailAttachment {
 export const template = async (
   key: MailTemplateKey,
   m: Message,
-  /** The template's own variables: a confirmation's address and code. */
-  extra: Record<string, string> = {},
+  /** The template's own variables: a confirmation's address and code, the assignment's element. */
+  extra: Record<string, unknown> = {},
 ): Promise<{ text: string; html: string; attachments: MailAttachment[] }> => ({
   text: toText(m),
-  ...(await withLogos(render(key, { ...viewOf(m), ...extra, logo: LOGO_SRC }))),
+  ...(await withLogos(render(key, { ...viewOf(m), ...extra, ...commonView(), logo: LOGO_SRC }))),
 });
 
 /** The HTML, and the logos it cites — up to the closing quote: one identifier begins the other. */
@@ -697,7 +1366,7 @@ export const isReplyTemplateKey = (key: MailTemplateKey): key is ReplyTemplateKe
  * preview, with the request it draws.
  */
 export const previewReply = async (key: ReplyTemplateKey, reply: ReplyView): Promise<string> =>
-  inPreview(await render(key, { ...replyViewOf(reply), logo: LOGO_SRC }));
+  inPreview(await render(key, { ...replyViewOf(reply), ...commonView(true), logo: LOGO_SRC }));
 
 /**
  * A support reply, team or automatic, laid out by its template — and the
@@ -707,4 +1376,4 @@ export const replyTemplate = async (
   key: ReplyTemplateKey,
   reply: ReplyView,
 ): Promise<{ html: string; attachments: MailAttachment[] }> =>
-  withLogos(render(key, { ...replyViewOf(reply), logo: LOGO_SRC }));
+  withLogos(render(key, { ...replyViewOf(reply), ...commonView(true), logo: LOGO_SRC }));

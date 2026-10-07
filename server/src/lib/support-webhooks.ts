@@ -9,7 +9,7 @@
 // regularly, and recreated if they have disappeared.
 
 import crypto from "node:crypto";
-import { env } from "../env.js";
+import { miloUrl } from "./milo-url.js";
 import { receivedMailboxes } from "../repositories/inboxes.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 import {
@@ -51,7 +51,7 @@ export const notificationsSecret = (): string => {
 };
 
 export const activeNotifications = (): boolean =>
-  entraConfigured() && env.publicUrl.startsWith("https://");
+  entraConfigured() && miloUrl().startsWith("https://");
 
 let alreadyReported = false;
 
@@ -72,7 +72,7 @@ export const maintainSubscriptions = async (): Promise<void> => {
     return;
   }
 
-  const url = `${env.publicUrl}${NOTIFICATIONS_PATH}`;
+  const url = `${miloUrl()}${NOTIFICATIONS_PATH}`;
   const secret = notificationsSecret();
   const subscriptions = readSetting<Subscriptions>(SUBSCRIPTIONS_KEY, {});
   const nextItems: Subscriptions = {};

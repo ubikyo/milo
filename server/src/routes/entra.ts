@@ -3,8 +3,10 @@
 // support inboxes that the request lists receive.
 
 import { Router } from "express";
+import { ENTRA_CHECKS } from "@milo/shared";
 import type { MailboxCheck } from "@milo/shared";
 import {
+  checkEntra,
   sendingAddress,
   connectEntra,
   entraState,
@@ -38,6 +40,15 @@ entraRoutes.post("/connect", (_req, res, next) => {
   connectEntra(true);
   entraState()
     .then((state) => res.json(state))
+    .catch(next);
+});
+
+// One step of the connection check, which the tab runs one by one.
+entraRoutes.post("/check/:step", (req, res, next) => {
+  const step = String(req.params["step"]);
+  if (!ENTRA_CHECKS.some((c) => c.value === step)) badRequest("Vérification inconnue");
+  checkEntra(step)
+    .then((result) => res.json(result))
     .catch(next);
 });
 
