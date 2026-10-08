@@ -7,8 +7,8 @@
 // reads labels "ORDER BY position" thus gets them in group order, without
 // joining the groups.
 
-import { DEFAULT_LABEL_GROUP } from "@milo/shared";
-import type { Id, LabelGroup, LabelGroupLayout } from "@milo/shared";
+import { DECLARED_ASSET_KINDS, DEFAULT_LABEL_GROUP } from "@milo/shared";
+import type { DeclaredAssetKind, Id, LabelGroup, LabelGroupLayout } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { IdRow, NextRow } from "../db/rows.js";
 import { badRequest, toIds } from "../lib/http.js";
@@ -17,8 +17,18 @@ import { receivedOrder } from "./reorder.js";
 
 interface Tables {
   /** The labels table. Table names come from here, never from a request. */
-  labels: "labels" | "project_labels" | "support_labels" | "asset_labels";
-  groups: "label_groups" | "project_label_groups" | "support_label_groups" | "asset_label_groups";
+  labels:
+    | "labels"
+    | "project_labels"
+    | "support_labels"
+    | "managed_device_asset_labels"
+    | `${DeclaredAssetKind}_labels`;
+  groups:
+    | "label_groups"
+    | "project_label_groups"
+    | "support_label_groups"
+    | "managed_device_asset_label_groups"
+    | `${DeclaredAssetKind}_label_groups`;
   /** True when the set is bounded by a board ("board_id"). */
   scoped: boolean;
 }
@@ -158,12 +168,20 @@ export const projectLabelGroups = store({
   scoped: true,
 });
 
-/** The groups of a board's asset labels. */
-export const assetLabelGroups = store({
-  labels: "asset_labels",
-  groups: "asset_label_groups",
+/** The groups of a board's managed device asset labels. */
+export const managedDeviceAssetLabelGroups = store({
+  labels: "managed_device_asset_labels",
+  groups: "managed_device_asset_label_groups",
   scoped: true,
 });
+
+/** The groups of a board's declared asset labels, kind by kind. */
+export const declaredAssetLabelGroups = Object.fromEntries(
+  DECLARED_ASSET_KINDS.map((kind) => [
+    kind,
+    store({ labels: `${kind}_labels`, groups: `${kind}_label_groups`, scoped: true }),
+  ]),
+) as Record<DeclaredAssetKind, ReturnType<typeof store>>;
 
 /** The groups of a board's Support labels. */
 export const supportLabelGroups = store({

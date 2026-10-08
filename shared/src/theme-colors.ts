@@ -1,4 +1,5 @@
-// The colors of the light and dark themes, set in "Paramétrage" > "Thèmes".
+// The colors of the light and dark themes, set in the theme editor
+// ("Paramétrage" > "Affichage").
 // They apply to the whole application, not to an account.
 //
 // Each color has a value per theme. Its default is a hexadecimal value, a
@@ -27,6 +28,17 @@ export interface ThemeColorGroup {
   label: string;
   /** What the group's colors have in common. */
   hint?: string;
+  /**
+   * The interface — the widgets drawer — whose groups these are: it names
+   * itself in the page (data-theme-scope), and the theme editor's panel
+   * beside it shows its groups alone; no other panel does.
+   */
+  scope?: string;
+  /**
+   * The group it is nested in, in the editor's tree — "Enregistrer" under
+   * "Boutons", under "Interface". A group may hold only groups.
+   */
+  parent?: string;
 }
 
 /**
@@ -44,8 +56,24 @@ export interface ThemeSizeDefinition {
   max: number;
   /** The values go by this step — a font weight's hundreds. */
   step?: number;
-  /** What follows the value in CSS and in the field: "px", or nothing for a weight. */
+  /** What follows the value in CSS and in the field: "px", or nothing for a weight — a list of its values in the editor. */
   unit: "px" | "";
+  /**
+   * One side of a padding: its four sizes are "<padding>-top", "-right",
+   * "-bottom" and "-left", one row in the editor; the padding's own variable
+   * gives them in that order (themeColors).
+   */
+  side?: ThemeSide;
+  /**
+   * The color it follows in its group's panel; otherwise it comes after the
+   * colors.
+   */
+  after?: string;
+  /**
+   * Another size whose value it takes while it is not set — like a color's
+   * "@body" —; defaultValue is then that size's own default.
+   */
+  defaultFrom?: string;
 }
 
 /**
@@ -60,6 +88,7 @@ export type ThemeColors = Record<
 
 export const THEME_COLOR_GROUPS: ThemeColorGroup[] = [
   { key: "dialogs", label: "Fenêtre de dialogue" },
+  { key: "drawers", label: "Tiroirs" },
   { key: "tabs", label: "Onglets" },
   { key: "active-tab", label: "Onglet actif" },
   { key: "main-tabs", label: "Onglets de la fenêtre principale" },
@@ -76,6 +105,62 @@ export const THEME_COLOR_GROUPS: ThemeColorGroup[] = [
   { key: "charts", label: "Widgets — graphiques", hint: "Les couleurs par défaut des indicateurs." },
   { key: "clock", label: "Widget Horloge", hint: "Les couleurs par défaut de l'horloge." },
   { key: "m365", label: "Widgets Microsoft 365", hint: "Calendrier, rendez-vous et messages." },
+  { key: "settings-window", label: "Interface", scope: "settings" },
+  { key: "settings-header", label: "Entête", scope: "settings" },
+  { key: "settings-all-tabs", label: "Onglets", scope: "settings" },
+  { key: "settings-titles", label: "Titres", scope: "settings" },
+  { key: "settings-description", label: "Description", scope: "settings" },
+  { key: "settings-checkboxes", label: "Case à cocher", scope: "settings" },
+  { key: "settings-switches", label: "Switch", scope: "settings" },
+  { key: "settings-slider", label: "Slider", scope: "settings" },
+  { key: "settings-buttons", label: "Boutons", scope: "settings" },
+  { key: "settings-lists", label: "Listes éditables", scope: "settings" },
+  { key: "settings-title", label: "Titre onglet", scope: "settings", parent: "settings-titles" },
+  { key: "settings-group-title", label: "Titre groupe", hint: "Au-dessus des listes éditables", scope: "settings", parent: "settings-titles" },
+  { key: "settings-scrollbars", label: "Barre de défilement", scope: "settings", parent: "settings-window" },
+  { key: "settings-save", label: "Enregistrer", scope: "settings", parent: "settings-buttons" },
+  { key: "settings-close", label: "Fermer", scope: "settings", parent: "settings-buttons" },
+  { key: "settings-checkbox", label: "Inactive", scope: "settings", parent: "settings-checkboxes" },
+  { key: "settings-checkbox-active", label: "Active", scope: "settings", parent: "settings-checkboxes" },
+  { key: "settings-switch", label: "Inactif", scope: "settings", parent: "settings-switches" },
+  { key: "settings-switch-active", label: "Actif", scope: "settings", parent: "settings-switches" },
+  { key: "settings-tabs", label: "Inactif", scope: "settings", parent: "settings-all-tabs" },
+  { key: "settings-active-tab", label: "Actif", scope: "settings", parent: "settings-all-tabs" },
+  { key: "settings-add-link", label: "Lien +", hint: "« Ajouter un utilisateur », « Ajouter un workspace »…", scope: "settings", parent: "settings-lists" },
+  { key: "settings-lists-texts", label: "Textes", scope: "settings", parent: "settings-lists" },
+  { key: "settings-theme-list-text", label: "Texte principal", hint: "Le nom des lignes", scope: "settings", parent: "settings-lists-texts" },
+  { key: "settings-principals-email", label: "Texte secondaire", hint: "Sous le nom : l'adresse e-mail", scope: "settings", parent: "settings-lists-texts" },
+  { key: "settings-principals-summary", label: "Texte état", hint: "En fin de ligne : les autorisations", scope: "settings", parent: "settings-lists-texts" },
+  { key: "settings-lists-icons", label: "Icônes", scope: "settings", parent: "settings-lists" },
+  { key: "settings-theme-list-icon", label: "Icône thème", hint: "Affichage", scope: "settings", parent: "settings-lists-icons" },
+  { key: "settings-principals-icon", label: "Icône groupe/utilisateur", hint: "Gestion des droits", scope: "settings", parent: "settings-lists-icons" },
+  { key: "settings-principals-chevron", label: "Icône accordéon", hint: "Gestion des droits", scope: "settings", parent: "settings-lists-icons" },
+  { key: "settings-principals-chevron-open", label: "Ouvert", scope: "settings", parent: "settings-principals-chevron" },
+  { key: "settings-principals-chevron-closed", label: "Fermé", scope: "settings", parent: "settings-principals-chevron" },
+  { key: "settings-theme-list-select", label: "Select", hint: "Impression, Affichage", scope: "settings", parent: "settings-lists" },
+  { key: "settings-inputs", label: "Zone de saisie", hint: "Les champs des lignes : leur fond, et le texte de ceux qui ne sont pas des noms", scope: "settings", parent: "settings-lists" },
+  { key: "settings-input", label: "État normal", scope: "settings", parent: "settings-inputs" },
+  { key: "settings-input-focus", label: "État sélectionné", scope: "settings", parent: "settings-inputs" },
+  { key: "settings-principals-tag", label: "Tag", hint: "Gestion des droits, Impression, Modèles", scope: "settings", parent: "settings-lists" },
+  { key: "settings-list-buttons", label: "Boutons", scope: "settings", parent: "settings-lists" },
+  { key: "settings-workspaces-button", label: "Détail", hint: "Les boutons des lignes : Workspaces, Modèles", scope: "settings", parent: "settings-list-buttons" },
+  { key: "settings-reset-button", label: "Réinitialiser", hint: "Le bouton de réinitialisation, quand il y a lieu : Modèles", scope: "settings", parent: "settings-list-buttons" },
+  { key: "settings-row-checkboxes", label: "Case à cocher", scope: "settings", parent: "settings-lists" },
+  { key: "settings-row-checkbox", label: "Inactive", scope: "settings", parent: "settings-row-checkboxes" },
+  { key: "settings-row-checkbox-active", label: "Active", scope: "settings", parent: "settings-row-checkboxes" },
+  { key: "settings-theme-list-selected", label: "Élément sélectionné", scope: "settings", parent: "settings-theme-list-select" },
+  { key: "settings-theme-list-selected-normal", label: "État normal", scope: "settings", parent: "settings-theme-list-selected" },
+  { key: "settings-theme-list-selected-hover", label: "État sélectionné", scope: "settings", parent: "settings-theme-list-selected" },
+  { key: "settings-select-clear", label: "Bouton reset", hint: "La croix qui vide la valeur", scope: "settings", parent: "settings-theme-list-select" },
+  { key: "settings-theme-list-dropdown", label: "Liste", scope: "settings", parent: "settings-theme-list-select" },
+  { key: "settings-theme-list-options", label: "Texte", scope: "settings", parent: "settings-theme-list-dropdown" },
+  { key: "settings-theme-list-option", label: "À l'état normal", scope: "settings", parent: "settings-theme-list-options" },
+  { key: "settings-theme-list-option-hover", label: "Au survol", scope: "settings", parent: "settings-theme-list-options" },
+  { key: "widgets-drawer", label: "Interface", scope: "widgets-drawer" },
+  { key: "widgets-drawer-scrollbars", label: "Barre de défilement", scope: "widgets-drawer", parent: "widgets-drawer" },
+  { key: "widgets-drawer-heading", label: "Titre", scope: "widgets-drawer" },
+  { key: "widgets-drawer-kinds", label: "Groupes de widgets", scope: "widgets-drawer" },
+  { key: "widgets-drawer-items", label: "Widgets", scope: "widgets-drawer" },
 ];
 
 /**
@@ -127,9 +212,9 @@ export const THEME_COLORS: ThemeColorDefinition[] = [
   { key: "default-hover", group: "base", label: "Survol des boutons", light: "gray.0", dark: "dark.5" },
   { key: "default-border", group: "base", label: "Bordures", hint: "Champs, cadres, séparateurs", light: "gray.4", dark: "dark.4" },
 
-  { key: "sunken-bg", group: "surfaces", label: "Fond encadré", hint: "Lignes des tiroirs, pièces jointes, survol des boutons gris", light: "gray.0", dark: "#2e2e2e" },
-  { key: "sunken-hover", group: "surfaces", label: "Survol d'un fond encadré", light: "white", dark: "dark.5" },
-  { key: "header-bg", group: "surfaces", label: "En-têtes", hint: "En-têtes des tiroirs, poignées, bordures de l'éditeur", light: "gray.3", dark: "dark.5" },
+  { key: "sunken-bg", group: "drawers", label: "Fond encadré", hint: "Lignes des tiroirs, pièces jointes, survol des boutons gris", light: "gray.0", dark: "#2e2e2e" },
+  { key: "sunken-hover", group: "drawers", label: "Survol d'un fond encadré", light: "white", dark: "dark.5" },
+  { key: "header-bg", group: "drawers", label: "En-têtes", hint: "En-têtes des tiroirs, poignées, bordures de l'éditeur", light: "gray.3", dark: "dark.5" },
   { key: "subtle-bg", group: "surfaces", label: "Fond discret", hint: "Choix segmentés, références", light: "gray.2", dark: "dark.5" },
   { key: "field-hover", group: "surfaces", label: "Survol dans un champ", hint: "Lignes d'une liste éditable, barre de l'éditeur", light: "gray.1", dark: "dark.5" },
   { key: "menu-hover", group: "surfaces", label: "Survol dans les menus", light: "gray.2", dark: "dark.4" },
@@ -197,9 +282,191 @@ export const THEME_COLORS: ThemeColorDefinition[] = [
   { key: "m365-appointment", group: "m365", label: "Rendez-vous", light: "gray.2", dark: "dark.6" },
   { key: "m365-day", group: "m365", label: "En-tête des jours", hint: "Au-dessus des rendez-vous", light: "gray.8", dark: "dark.8" },
   { key: "m365-message", group: "m365", label: "Fond des messages", light: "gray.0", dark: "dark.6" },
+
+  // The Settings window (SettingsModal): by default, what it showed before
+  // having its own colors — the windows' header and tabs.
+  { key: "settings-bg", group: "settings-window", label: "Couleur de fond", light: "@body", dark: "@body" },
+  { key: "settings-scrollbar", group: "settings-scrollbars", label: "Couleur slider", light: "@scrollbar", dark: "@scrollbar" },
+  { key: "settings-scrollbar-track", group: "settings-scrollbars", label: "Couleur piste", hint: "Au survol de la barre", light: "gray.0", dark: "dark.8" },
+  { key: "settings-save-bg", group: "settings-save", label: "Couleur de fond", light: PALETTE.green, dark: PALETTE.green },
+  { key: "settings-save-text", group: "settings-save", label: "Couleur", light: "white", dark: "white" },
+  { key: "settings-close-bg", group: "settings-close", label: "Couleur de fond", light: "#00000000", dark: "#00000000", alpha: true },
+  { key: "settings-close-text", group: "settings-close", label: "Couleur", hint: "« Fermer », « Déconnexion »", light: "@neutral-text", dark: "@neutral-text" },
+  { key: "settings-add-link-text", group: "settings-add-link", label: "Couleur", light: PALETTE.green, dark: PALETTE.green },
+  { key: "settings-checkbox-bg", group: "settings-checkbox", label: "Couleur de fond coche", light: "white", dark: "dark.6" },
+  { key: "settings-checkbox-border", group: "settings-checkbox", label: "Couleur de bordure", light: "@default-border", dark: "@default-border" },
+  { key: "settings-checkbox-text", group: "settings-checkbox", label: "Couleur", hint: "Le libellé", light: "@text", dark: "@text" },
+  { key: "settings-checkbox-active-bg", group: "settings-checkbox-active", label: "Couleur de fond coche", light: PALETTE.green, dark: PALETTE.green },
+  { key: "settings-checkbox-active-border", group: "settings-checkbox-active", label: "Couleur de bordure", light: "@settings-checkbox-active-bg", dark: "@settings-checkbox-active-bg" },
+  { key: "settings-checkbox-active-check", group: "settings-checkbox-active", label: "Couleur coche", light: "white", dark: "white" },
+  { key: "settings-checkbox-active-text", group: "settings-checkbox-active", label: "Couleur", hint: "Le libellé", light: "@settings-checkbox-text", dark: "@settings-checkbox-text" },
+  { key: "settings-row-checkbox-bg", group: "settings-row-checkbox", label: "Couleur de fond coche", light: "white", dark: "dark.6" },
+  { key: "settings-row-checkbox-border", group: "settings-row-checkbox", label: "Couleur de bordure", light: "@default-border", dark: "@default-border" },
+  { key: "settings-row-checkbox-active-bg", group: "settings-row-checkbox-active", label: "Couleur de fond coche", light: PALETTE.green, dark: PALETTE.green },
+  { key: "settings-row-checkbox-active-border", group: "settings-row-checkbox-active", label: "Couleur de bordure", light: "@settings-row-checkbox-active-bg", dark: "@settings-row-checkbox-active-bg" },
+  { key: "settings-row-checkbox-active-check", group: "settings-row-checkbox-active", label: "Couleur coche", light: "white", dark: "white" },
+  { key: "settings-switch-track", group: "settings-switch", label: "Couleur piste", light: "gray.3", dark: "dark.5" },
+  { key: "settings-switch-thumb", group: "settings-switch", label: "Couleur curseur", light: "white", dark: "white" },
+  { key: "settings-switch-active-track", group: "settings-switch-active", label: "Couleur piste", light: PALETTE.green, dark: PALETTE.green },
+  { key: "settings-switch-active-thumb", group: "settings-switch-active", label: "Couleur curseur", light: "white", dark: "white" },
+  { key: "settings-slider-mark", group: "settings-slider", label: "Couleur marque", hint: "Le centre des marques ; leur contour prend la couleur de la piste où elles sont", light: "white", dark: "white" },
+  { key: "settings-slider-mark-label", group: "settings-slider", label: "Couleur texte marque", light: "gray.6", dark: "dark.2" },
+  { key: "settings-slider-thumb", group: "settings-slider", label: "Couleur curseur", light: PALETTE.green, dark: "white" },
+  { key: "settings-slider-bar", group: "settings-slider", label: "Couleur piste active", light: PALETTE.green, dark: PALETTE.green },
+  { key: "settings-slider-track", group: "settings-slider", label: "Couleur piste inactive", light: "gray.2", dark: "dark.4" },
+  { key: "settings-list-bg", group: "settings-lists", label: "Couleur de fond", hint: "Les lignes des listes", light: "@sunken-bg", dark: "@sunken-bg" },
+  { key: "settings-theme-list-text-color", group: "settings-theme-list-text", label: "Couleur", light: "@text", dark: "@text" },
+  { key: "settings-theme-list-icon-color", group: "settings-theme-list-icon", label: "Couleur", light: "@dimmed", dark: "@dimmed" },
+  { key: "settings-theme-list-selected-color", group: "settings-theme-list-selected-normal", label: "Couleur", light: "@text", dark: "@text" },
+  { key: "settings-theme-list-selected-chevron", group: "settings-theme-list-selected-normal", label: "Couleur de l'indicateur", hint: "La flèche du select", light: "@dimmed", dark: "@dimmed" },
+  { key: "settings-theme-list-selected-hover-bg", group: "settings-theme-list-selected-hover", label: "Couleur de fond", hint: "Le select, sa liste ouverte", light: "@body", dark: "@body" },
+  { key: "settings-group-title-color", group: "settings-group-title", label: "Couleur", light: "@text", dark: "@text" },
+  { key: "settings-select-clear-bg", group: "settings-select-clear", label: "Couleur de fond", light: "#00000000", dark: "#00000000", alpha: true },
+  { key: "settings-select-clear-icon", group: "settings-select-clear", label: "Couleur de l'icône", light: "@settings-theme-list-selected-chevron", dark: "@settings-theme-list-selected-chevron" },
+  { key: "settings-input-color", group: "settings-input", label: "Couleur texte", light: "@text", dark: "@text" },
+  { key: "settings-input-focus-bg", group: "settings-input-focus", label: "Couleur de fond", light: "@body", dark: "@body" },
+  { key: "settings-input-focus-color", group: "settings-input-focus", label: "Couleur texte", light: "@settings-input-color", dark: "@settings-input-color" },
+  { key: "settings-theme-list-dropdown-bg", group: "settings-theme-list-dropdown", label: "Couleur de fond", light: "@body", dark: "@body" },
+  { key: "settings-theme-list-dropdown-border", group: "settings-theme-list-dropdown", label: "Couleur de bordure", light: "@default-border", dark: "@default-border" },
+  { key: "settings-theme-list-option-color", group: "settings-theme-list-option", label: "Couleur texte", light: "@text", dark: "@text" },
+  { key: "settings-theme-list-option-hover-bg", group: "settings-theme-list-option-hover", label: "Couleur de fond", hint: "L'option survolée", light: "gray.0", dark: "dark.7" },
+  { key: "settings-theme-list-option-hover-color", group: "settings-theme-list-option-hover", label: "Couleur texte", light: "@settings-theme-list-option-color", dark: "@settings-theme-list-option-color" },
+  { key: "settings-workspaces-button-bg", group: "settings-workspaces-button", label: "Couleur de fond", light: PALETTE.green, dark: PALETTE.green },
+  { key: "settings-workspaces-button-icon", group: "settings-workspaces-button", label: "Couleur de l'icône", light: "@settings-workspaces-button-color", dark: "@settings-workspaces-button-color" },
+  { key: "settings-workspaces-button-color", group: "settings-workspaces-button", label: "Couleur du texte", light: "white", dark: "white" },
+  { key: "settings-reset-button-bg", group: "settings-reset-button", label: "Couleur de fond", light: PALETTE.green, dark: PALETTE.green },
+  { key: "settings-reset-button-icon", group: "settings-reset-button", label: "Couleur de l'icône", light: "white", dark: "white" },
+  { key: "settings-principals-chevron-open-color", group: "settings-principals-chevron-open", label: "Couleur", light: "gray.9", dark: "gray.0" },
+  { key: "settings-principals-chevron-closed-color", group: "settings-principals-chevron-closed", label: "Couleur", light: "gray.9", dark: "gray.0" },
+  { key: "settings-principals-icon-bg", group: "settings-principals-icon", label: "Couleur de fond", light: "@control-bg", dark: "@control-bg" },
+  { key: "settings-principals-icon-color", group: "settings-principals-icon", label: "Couleur", light: "@text", dark: "@text" },
+  { key: "settings-principals-tag-bg", group: "settings-principals-tag", label: "Couleur de fond", light: PALETTE.green, dark: PALETTE.green },
+  { key: "settings-principals-tag-text", group: "settings-principals-tag", label: "Couleur", light: "white", dark: "white" },
+  { key: "settings-principals-email-text", group: "settings-principals-email", label: "Couleur", light: "@dimmed", dark: "@dimmed" },
+  { key: "settings-principals-summary-text", group: "settings-principals-summary", label: "Couleur", light: "@dimmed", dark: "@dimmed" },
+  { key: "settings-header-bg", group: "settings-header", label: "Couleur de fond", light: "@dark-header", dark: "@dark-header" },
+  { key: "settings-header-text", group: "settings-header", label: "Couleur", light: "@dark-header-text", dark: "@dark-header-text" },
+  { key: "settings-title-text", group: "settings-title", label: "Couleur", light: "@text", dark: "@text" },
+  { key: "settings-description-text", group: "settings-description", label: "Couleur", light: "@dimmed", dark: "@dimmed" },
+  { key: "settings-tab-bg", group: "settings-tabs", label: "Couleur de fond", hint: "Derrière la colonne des onglets", light: "@tab-bg", dark: "@tab-bg", alpha: true },
+  { key: "settings-tab-icon", group: "settings-tabs", label: "Couleur de l'icône", light: "@settings-tab-text", dark: "@settings-tab-text" },
+  { key: "settings-tab-text", group: "settings-tabs", label: "Couleur du nom", light: "@tab-text", dark: "@tab-text" },
+  { key: "settings-tab-active-bg", group: "settings-active-tab", label: "Couleur de fond", light: "@tab-active-bg", dark: "@tab-active-bg", alpha: true },
+  { key: "settings-tab-active-icon", group: "settings-active-tab", label: "Couleur de l'icône", light: "@settings-tab-active-text", dark: "@settings-tab-active-text" },
+  { key: "settings-tab-active-text", group: "settings-active-tab", label: "Couleur du nom", light: "@tab-active-text", dark: "@tab-active-text" },
+  { key: "settings-tab-active-border", group: "settings-active-tab", label: "Couleur du filet", light: "@tab-active-border", dark: "@tab-active-border" },
+
+  // The widgets drawer (WidgetDrawer): by default, what it showed before
+  // having its own colors.
+  { key: "widgets-drawer-bg", group: "widgets-drawer", label: "Couleur de fond", hint: "Fond du tiroir", light: "@body", dark: "@body" },
+  { key: "widgets-drawer-scrollbar", group: "widgets-drawer-scrollbars", label: "Couleur slider", light: "@scrollbar", dark: "@scrollbar" },
+  { key: "widgets-drawer-scrollbar-track", group: "widgets-drawer-scrollbars", label: "Couleur piste", hint: "Au survol de la barre", light: "gray.0", dark: "dark.8" },
+  { key: "widgets-drawer-title", group: "widgets-drawer-heading", label: "Couleur", light: "white", dark: "white" },
+  { key: "widgets-drawer-group", group: "widgets-drawer-kinds", label: "Couleur", hint: "Titres des groupes de widgets", light: "white", dark: "white" },
+  { key: "widgets-drawer-item-bg", group: "widgets-drawer-items", label: "Couleur de fond", light: "@inset-bg", dark: "@inset-bg" },
+  { key: "widgets-drawer-grip", group: "widgets-drawer-items", label: "Couleur poignée", light: "@dimmed", dark: "@dimmed" },
+  { key: "widgets-drawer-icon", group: "widgets-drawer-items", label: "Couleur de l'icône", light: "@text", dark: "@text" },
+  { key: "widgets-drawer-item-text", group: "widgets-drawer-items", label: "Couleur du nom", light: "@text", dark: "@text" },
 ];
 
+export const THEME_SIDES = ["top", "right", "bottom", "left"] as const;
+
+export type ThemeSide = (typeof THEME_SIDES)[number];
+
+/**
+ * A padding's sides — all four, or only those given —, at the same default
+ * unless one side has its own. A side left out is 0 in its variable.
+ */
+const paddingSizes = (
+  key: string,
+  size: Omit<ThemeSizeDefinition, "key" | "unit" | "side" | "min">,
+  sides: Partial<Record<ThemeSide, number>> = {},
+  only: readonly ThemeSide[] = THEME_SIDES,
+): ThemeSizeDefinition[] =>
+  only.map((side) => ({
+    ...size,
+    key: `${key}-${side}`,
+    side,
+    min: 0,
+    unit: "px",
+    defaultValue: sides[side] ?? size.defaultValue,
+  }));
+
+/** The padding a side belongs to: "settings-padding-top" is "settings-padding"'s. */
+export const themePaddingOf = (key: string): string => key.replace(/-(top|right|bottom|left)$/, "");
+
 export const THEME_SIZES: ThemeSizeDefinition[] = [
+  // The tabs' column, against the window's edges but on its right, where
+  // the content begins.
+  ...paddingSizes(
+    "settings-padding",
+    { group: "settings-all-tabs", label: "Padding", hint: "La colonne des onglets", defaultValue: 40, max: 80 },
+    {},
+    ["top", "bottom", "left"],
+  ),
+  // The tab's content and the buttons under it, beside the tabs.
+  ...paddingSizes("settings-panel-padding", { group: "settings-all-tabs", label: "Padding du contenu", hint: "Le contenu de l'onglet ouvert et les boutons", defaultValue: 40, max: 80 }),
+  { key: "settings-scrollbar-width", group: "settings-scrollbars", label: "Largeur", defaultValue: 2, min: 1, max: 16, unit: "px" },
+  { key: "settings-save-size", group: "settings-save", label: "Taille", defaultValue: 14, min: 10, max: 30, unit: "px" },
+  { key: "settings-save-weight", group: "settings-save", label: "Graisse", defaultValue: 600, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-close-size", group: "settings-close", label: "Taille", defaultValue: 14, min: 10, max: 30, unit: "px" },
+  { key: "settings-close-weight", group: "settings-close", label: "Graisse", defaultValue: 600, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-add-link-size", group: "settings-add-link", label: "Taille", defaultValue: 12, min: 8, max: 30, unit: "px" },
+  { key: "settings-add-link-weight", group: "settings-add-link", label: "Graisse", defaultValue: 600, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-checkbox-size", group: "settings-checkbox", label: "Taille", defaultValue: 14, min: 8, max: 30, unit: "px" },
+  { key: "settings-checkbox-weight", group: "settings-checkbox", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-checkbox-active-size", group: "settings-checkbox-active", label: "Taille", defaultValue: 14, min: 8, max: 30, unit: "px", defaultFrom: "settings-checkbox-size" },
+  { key: "settings-checkbox-active-weight", group: "settings-checkbox-active", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "", defaultFrom: "settings-checkbox-weight" },
+  { key: "settings-theme-list-text-size", group: "settings-theme-list-text", label: "Taille", defaultValue: 14, min: 8, max: 30, unit: "px" },
+  { key: "settings-theme-list-text-weight", group: "settings-theme-list-text", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-theme-list-selected-size", group: "settings-theme-list-selected-normal", label: "Taille", defaultValue: 14, min: 8, max: 30, unit: "px" },
+  { key: "settings-theme-list-selected-weight", group: "settings-theme-list-selected-normal", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-description-margin-bottom", group: "settings-description", label: "Marge basse", hint: "Sous la description et les textes d'introduction", defaultValue: 15, min: 0, max: 80, unit: "px" },
+  { key: "settings-list-gap", group: "settings-lists", label: "Marge basse", hint: "Entre les listes d'un onglet (Affichage, Impression)", defaultValue: 30, min: 0, max: 80, unit: "px" },
+  { key: "settings-group-title-size", group: "settings-group-title", label: "Taille", defaultValue: 14, min: 8, max: 40, unit: "px" },
+  { key: "settings-group-title-weight", group: "settings-group-title", label: "Graisse", defaultValue: 500, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-input-size", group: "settings-input", label: "Taille", defaultValue: 12, min: 8, max: 30, unit: "px" },
+  { key: "settings-input-weight", group: "settings-input", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-input-focus-size", group: "settings-input-focus", label: "Taille", defaultValue: 12, min: 8, max: 30, unit: "px", defaultFrom: "settings-input-size" },
+  { key: "settings-input-focus-weight", group: "settings-input-focus", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "", defaultFrom: "settings-input-weight" },
+  { key: "settings-theme-list-dropdown-border-width", group: "settings-theme-list-dropdown", label: "Taille de la bordure", defaultValue: 1, min: 0, max: 10, unit: "px" },
+  { key: "settings-theme-list-option-size", group: "settings-theme-list-option", label: "Taille texte", defaultValue: 14, min: 8, max: 30, unit: "px" },
+  { key: "settings-theme-list-option-weight", group: "settings-theme-list-option", label: "Graisse texte", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-theme-list-option-hover-size", group: "settings-theme-list-option-hover", label: "Taille texte", defaultValue: 14, min: 8, max: 30, unit: "px", defaultFrom: "settings-theme-list-option-size" },
+  { key: "settings-theme-list-option-hover-weight", group: "settings-theme-list-option-hover", label: "Graisse texte", defaultValue: 400, min: 100, max: 900, step: 100, unit: "", defaultFrom: "settings-theme-list-option-weight" },
+  { key: "settings-workspaces-button-size", group: "settings-workspaces-button", label: "Taille", defaultValue: 14, min: 8, max: 30, unit: "px" },
+  { key: "settings-workspaces-button-weight", group: "settings-workspaces-button", label: "Graisse", defaultValue: 500, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-principals-tag-size", group: "settings-principals-tag", label: "Taille", defaultValue: 10, min: 8, max: 30, unit: "px" },
+  { key: "settings-principals-tag-weight", group: "settings-principals-tag", label: "Graisse", defaultValue: 700, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-principals-email-size", group: "settings-principals-email", label: "Taille", defaultValue: 12, min: 8, max: 30, unit: "px" },
+  { key: "settings-principals-email-weight", group: "settings-principals-email", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-principals-summary-size", group: "settings-principals-summary", label: "Taille", defaultValue: 12, min: 8, max: 30, unit: "px" },
+  { key: "settings-principals-summary-weight", group: "settings-principals-summary", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
+  // Its height is the title's and the padding's alone.
+  ...paddingSizes("settings-header-padding", { group: "settings-header", label: "Padding", hint: "Marge intérieure de l'entête", defaultValue: 20, max: 60, after: "settings-header-bg" }),
+  { key: "settings-header-size", group: "settings-header", label: "Taille", defaultValue: 19, min: 10, max: 40, unit: "px", defaultFrom: "dark-header-size" },
+  { key: "settings-header-weight", group: "settings-header", label: "Graisse", defaultValue: 100, min: 100, max: 900, step: 100, unit: "", defaultFrom: "dark-header-weight" },
+  { key: "settings-title-size", group: "settings-title", label: "Taille", defaultValue: 18, min: 10, max: 40, unit: "px" },
+  { key: "settings-title-weight", group: "settings-title", label: "Graisse", defaultValue: 700, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-description-size", group: "settings-description", label: "Taille", defaultValue: 14, min: 10, max: 30, unit: "px" },
+  { key: "settings-description-weight", group: "settings-description", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-tab-icon-size", group: "settings-tabs", label: "Taille de l'icône", defaultValue: 16, min: 8, max: 40, unit: "px", after: "settings-tab-icon" },
+  { key: "settings-tab-size", group: "settings-tabs", label: "Taille du nom", defaultValue: 14, min: 10, max: 30, unit: "px", after: "settings-tab-text", defaultFrom: "tab-size" },
+  { key: "settings-tab-weight", group: "settings-tabs", label: "Graisse du nom", defaultValue: 400, min: 100, max: 900, step: 100, unit: "", after: "settings-tab-text", defaultFrom: "tab-weight" },
+  { key: "settings-tab-width", group: "settings-tabs", label: "Largeur", hint: "Largeur des libellés : la fenêtre s'élargit d'autant", defaultValue: 170, min: 100, max: 400, unit: "px" },
+  { key: "settings-tab-active-icon-size", group: "settings-active-tab", label: "Taille de l'icône", defaultValue: 16, min: 8, max: 40, unit: "px", after: "settings-tab-active-icon" },
+  { key: "settings-tab-active-size", group: "settings-active-tab", label: "Taille du nom", defaultValue: 14, min: 10, max: 30, unit: "px", after: "settings-tab-active-text", defaultFrom: "tab-active-size" },
+  { key: "settings-tab-active-weight", group: "settings-active-tab", label: "Graisse du nom", defaultValue: 400, min: 100, max: 900, step: 100, unit: "", after: "settings-tab-active-text", defaultFrom: "tab-active-weight" },
+  { key: "settings-tab-active-border-width", group: "settings-active-tab", label: "Taille du filet", defaultValue: 1, min: 1, max: 10, unit: "px", after: "settings-tab-active-border", defaultFrom: "tab-active-border-width" },
+  ...paddingSizes("widgets-drawer-padding", { group: "widgets-drawer", label: "Padding", hint: "Marge intérieure du tiroir", defaultValue: 30, max: 80, after: "widgets-drawer-bg" }),
+  { key: "widgets-drawer-scrollbar-width", group: "widgets-drawer-scrollbars", label: "Largeur", defaultValue: 2, min: 1, max: 16, unit: "px" },
+  { key: "widgets-drawer-title-size", group: "widgets-drawer-heading", label: "Taille", defaultValue: 18, min: 10, max: 40, unit: "px" },
+  { key: "widgets-drawer-title-weight", group: "widgets-drawer-heading", label: "Graisse", defaultValue: 700, min: 100, max: 900, step: 100, unit: "" },
+  { key: "widgets-drawer-group-size", group: "widgets-drawer-kinds", label: "Taille", defaultValue: 16, min: 10, max: 40, unit: "px" },
+  { key: "widgets-drawer-group-weight", group: "widgets-drawer-kinds", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
+  { key: "widgets-drawer-item-size", group: "widgets-drawer-items", label: "Taille du nom", defaultValue: 14, min: 10, max: 30, unit: "px" },
+  { key: "widgets-drawer-item-weight", group: "widgets-drawer-items", label: "Graisse du nom", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
+  { key: "widgets-drawer-icon-size", group: "widgets-drawer-items", label: "Taille de l'icône", defaultValue: 20, min: 10, max: 40, unit: "px", after: "widgets-drawer-icon" },
   { key: "dark-header-size", group: "dialogs", label: "Taille du titre", defaultValue: 19, min: 10, max: 40, unit: "px" },
   { key: "dark-header-weight", group: "dialogs", label: "Graisse du titre", defaultValue: 100, min: 100, max: 900, step: 100, unit: "" },
   { key: "tab-size", group: "tabs", label: "Taille du texte", defaultValue: 14, min: 10, max: 30, unit: "px" },
@@ -213,6 +480,19 @@ export const THEME_SIZES: ThemeSizeDefinition[] = [
   { key: "main-tab-active-size", group: "main-active-tab", label: "Taille du texte", defaultValue: 14, min: 10, max: 30, unit: "px" },
   { key: "main-tab-active-weight", group: "main-active-tab", label: "Graisse du texte", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
 ];
+
+const SIZE_DEFINITIONS = new Map(THEME_SIZES.map((s) => [s.key, s]));
+
+/** A size's value: the stored one, otherwise its default. */
+export const themeSizeValue = (colors: ThemeColors, key: string, scheme: ThemeScheme): number =>
+  colors[key]?.sizes?.[scheme] ?? themeSizeDefault(colors, key, scheme);
+
+/** A size's default: its own, or the current value of the size it follows (defaultFrom). */
+export const themeSizeDefault = (colors: ThemeColors, key: string, scheme: ThemeScheme): number => {
+  const definition = SIZE_DEFINITIONS.get(key);
+  if (!definition) return 0;
+  return definition.defaultFrom ? themeSizeValue(colors, definition.defaultFrom, scheme) : definition.defaultValue;
+};
 
 /** A size brought within its bounds and onto its step; null when it is not a number. */
 export const cleanThemeSize = (definition: ThemeSizeDefinition, value: unknown): number | null => {
@@ -296,3 +576,33 @@ export const themeValueHex = (colors: ThemeColors, value: string, scheme: ThemeS
 /** The color in hexadecimal, in the given theme. */
 export const themeColorHex = (colors: ThemeColors, key: string, scheme: ThemeScheme): string =>
   themeValueHex(colors, writtenThemeColor(colors, key, scheme), scheme);
+
+/**
+ * A theme of the list ("Paramétrage" > "Affichage" > "Thèmes"): a name, the
+ * Mantine scheme it is built on — its fields, menus and shadows —, and its
+ * colors, stored like the original pair's under that scheme only.
+ */
+export interface Theme {
+  id: number;
+  name: string;
+  scheme: ThemeScheme;
+  /**
+   * The theme the system's preference picks for its scheme, for whoever
+   * follows the system ("Lié au système"): exactly one dark theme and one
+   * light theme carry it, and they cannot be deleted.
+   */
+  system: boolean;
+  colors: ThemeColors;
+}
+
+/** The list as it starts: the original dark and light themes, both the system's. */
+export const DEFAULT_THEMES: Theme[] = [
+  { id: 1, name: "Thème dark", scheme: "dark", system: true, colors: {} },
+  { id: 2, name: "Thème light", scheme: "light", system: true, colors: {} },
+];
+
+/** The theme the system picks for the scheme: the first one of it otherwise. */
+export const systemTheme = (themes: Theme[], scheme: ThemeScheme): Theme =>
+  themes.find((t) => t.scheme === scheme && t.system) ??
+  themes.find((t) => t.scheme === scheme) ??
+  DEFAULT_THEMES.find((t) => t.scheme === scheme)!;

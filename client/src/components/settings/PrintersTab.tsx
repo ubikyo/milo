@@ -1,0 +1,365 @@
+import {
+  Badge,
+  Box,
+  Group,
+  Input,
+  Select,
+  Stack,
+  TextInput,
+} from "@mantine/core";
+import { IconPrinter } from "@tabler/icons-react";
+import { useCallback, useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { PRINTER_TYPES, PRINTER_TYPE_LABELS } from "@milo/shared";
+import type { Printer, PrinterInfo, PrinterInfos, PrinterInput, PrinterType } from "@milo/shared";
+import { api } from "../../api";
+import { errorMessage, notifyError } from "../../lib/errors";
+import { GREEN, RED } from "../../themes/colors";
+import DeleteConfirmModal from "../ui/DeleteConfirmModal";
+import PaperFormats from "./PaperFormats";
+import {
+  EmptyList,
+  INPUT_STYLE,
+  ListFooter,
+  NAME_INSET,
+  ROUNDING,
+  ROW_INSET,
+  RowCheckbox,
+  RowCheckboxSpace,
+  RowField,
+  editKeys,
+  pickKeys,
+  pluralize,
+  rowStyle,
+  useRowSelection,
+} from "../ui/DrawerRows";
+import listClasses from "../../assets/styles/SettingsList.module.css";
+
+// The "Impression" section of Settings ("Paramétrage"): the printers, for the
+// whole application, drawn like the other editable lists (DrawerRows). A row
+// per printer: its name, its type, its IP address, edited in place, then the
+// model it gives — in red "Hors ligne" when its port 9100 does not answer.
+// "Ajouter une imprimante" adds a row, created only once it has its name and
+// its IP address; an address cannot be emptied afterwards. Under them,
+// the paper formats (PaperFormats). Like the other tabs, each change is sent
+// right away.
+
+/** How often the printers are asked again while the tab is open. */
+const INFO_INTERVAL = 30_000;
+
+const TYPE_WIDTH = 100;
+const HOST_WIDTH = 150;
+/** Wide enough for "ZD421 203dpi", so the rows' ends stay aligned. */
+const MODEL_WIDTH = 120;
+
+const TYPES = PRINTER_TYPES.map((t) => ({ value: t, label: PRINTER_TYPE_LABELS[t] }));
+
+const onError = (e: unknown) => notifyError(errorMessage(e));
+
+/** The added row, while it waits for its name and address. */
+type Draft = Omit<Printer, "id">;
+
+const EMPTY_DRAFT: Draft = { type: "zebra", name: "", host: "" };
+
+/** A row's field: transparent over its gray, the window's background once entered. */
+const fieldStyles = (entered: boolean) => ({
+  input: entered ? INPUT_STYLE : { backgroundColor: "transparent", borderWidth: 0 },
+});
+
+/** A row's field, framed in red while it is required and still empty. */
+const missingStyles = { input: { backgroundColor: "transparent", border: `1px solid ${RED}` } };
+
+interface FieldProps<T> {
+  value: T;
+  onChange: (value: T) => void;
+  /** Its row's name, for screen readers: "Adresse IP de …". */
+  of: string;
+}
+
+/**
+ * The IP address, sent when the field is left. It cannot be emptied: left
+ * empty, it goes back to its address.
+ */
+function HostField({ value: saved, onChange, of, missing = false }: FieldProps<string> & {
+  /** Still to be entered before the printer can be created: framed in red. */
+  missing?: boolean;
+}) {
+  const [value, setValue] = useState(saved);
+  const [entered, setEntered] = useState(false);
+  useEffect(() => setValue(saved), [saved]);
+  return (
+    <TextInput
+      size="xs"
+      radius={ROUNDING}
+      w={HOST_WIDTH}
+      style={{ flexShrink: 0 }}
+      placeholder="Adresse IP"
+      aria-label={`Adresse IP ${of}`}
+      value={value}
+      onChange={(e) => setValue(e.currentTarget.value)}
+      {...editKeys(setValue)}
+      onFocus={() => setEntered(true)}
+      onBlur={(e) => {
+        setEntered(false);
+        const host = e.currentTarget.value.trim();
+        if (!host) setValue(saved);
+        else if (host !== saved) onChange(host);
+      }}
+      styles={missing && !entered ? missingStyles : fieldStyles(entered)}
+    />
+  );
+}
+
+/** Its type: Zebra only, for now. */
+function TypeField({ value, onChange, of }: FieldProps<PrinterType>) {
+  const [entered, setEntered] = useState(false);
+  return (
+    <Select
+      size="xs"
+      radius={ROUNDING}
+      w={TYPE_WIDTH}
+      style={{ flexShrink: 0 }}
+      data={TYPES}
+      value={value}
+      onChange={(v) => {
+        const type = PRINTER_TYPES.find((t) => t === v);
+        if (type && type !== value) onChange(type);
+      }}
+      allowDeselect={false}
+      {...pickKeys}
+      comboboxProps={{ withinPortal: true }}
+      classNames={{ dropdown: listClasses.dropdown, option: listClasses.option }}
+      onFocus={() => setEntered(true)}
+      onBlur={() => setEntered(false)}
+      styles={fieldStyles(entered)}
+      aria-label={`Type ${of}`}
+    />
+  );
+}
+
+/** "ZD421-203dpi", as the printer gives it, read "ZD421 203dpi". */
+const modelLabel = (model: string) => model.replace(/-(\d{3}dpi)$/i, " $1");
+
+/**
+ * The model the printer gives, in green; in red "Hors ligne" when it does not
+ * answer ("null"), gray while it is asked ("undefined").
+ */
+function ModelTag({ info }: { info: PrinterInfo | null | undefined }) {
+  const label =
+    info === undefined ? "…" : info === null ? "Hors ligne" : modelLabel(info.model) || "En ligne";
+  return (
+    <Box w={MODEL_WIDTH} style={{ flexShrink: 0, display: "flex", justifyContent: "center", minWidth: 0 }}>
+      <Badge
+        color={info === undefined ? "gray" : info ? GREEN : RED}
+        variant="filled"
+        size="sm"
+        radius="sm"
+        tt="none"
+        fw={600}
+        maw={MODEL_WIDTH}
+        title={label}
+        // In the Settings, their tags' look; online, its background too.
+        data-list-tag={info ? "filled" : ""}
+      >
+        {label}
+      </Badge>
+    </Box>
+  );
+}
+
+export default function PrintersTab({ canEdit }: { canEdit: boolean }) {
+  const [printers, setPrinters] = useState<Printer[]>([]);
+  // What each printer says of itself; missing while it is asked.
+  const [infos, setInfos] = useState<PrinterInfos>({});
+  // The added row, waiting for its name and address.
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const selection = useRowSelection(printers.map((p) => p.id));
+  const [toDelete, setToDelete] = useState<Printer[]>([]);
+
+  const reload = useCallback(async () => {
+    try {
+      setPrinters(await api.getPrinters());
+    } catch (e) {
+      onError(e);
+    }
+  }, []);
+
+  const askInfos = useCallback(async () => {
+    try {
+      setInfos(await api.getPrinterInfos());
+    } catch {
+      // Asked again at the next round: a model is not worth an error.
+    }
+  }, []);
+
+  useEffect(() => {
+    void reload();
+    void askInfos();
+    const timer = setInterval(() => void askInfos(), INFO_INTERVAL);
+    return () => clearInterval(timer);
+  }, [reload, askInfos]);
+
+  /** An API call, followed by re-reading the printers. */
+  const write = async (action: () => Promise<unknown>) => {
+    try {
+      await action();
+    } catch (e) {
+      onError(e);
+    }
+    await reload();
+  };
+
+  /** A change of where to reach it: it is asked again. */
+  const change = (printer: Printer, data: PrinterInput) => {
+    if (data.host !== undefined) {
+      setInfos(({ [printer.id]: _, ...others }) => others);
+    }
+    void write(() => api.updatePrinter(printer.id, data)).then(askInfos);
+  };
+
+  /**
+   * The added row, changed: created once complete — kept as it is if the
+   * server refuses it —, gone once emptied.
+   */
+  const changeDraft = async (change: Partial<Draft>) => {
+    if (!draft) return;
+    const next = { ...draft, ...change };
+    if (!next.name && !next.host) {
+      setDraft(null);
+      return;
+    }
+    setDraft(next);
+    if (!next.name || !next.host) return;
+    try {
+      await api.createPrinter(next);
+      setDraft(null);
+    } catch (e) {
+      onError(e);
+    }
+    await reload();
+    void askInfos();
+  };
+
+  const total = printers.length + (draft ? 1 : 0);
+
+  /** A row's style: the default inset with a checkbox, ROW_INSET without. */
+  const printerRowStyle = (rank: number) => ({
+    ...rowStyle(rank, total, false),
+    ...(canEdit ? null : { paddingLeft: ROW_INSET }),
+  });
+
+  /** The name field: behind a checkbox, it moves back to align with it. */
+  const nameSlot = (field: ReactNode) =>
+    canEdit ? (
+      <Box style={{ flex: 1, minWidth: 0, display: "flex", marginLeft: -NAME_INSET }}>{field}</Box>
+    ) : (
+      field
+    );
+
+  return (
+    <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+      {/* The space between its lists is the themes' ("Listes éditables" > "Marge basse"). */}
+      <Stack gap="xl" data-settings-lists>
+        {/* Its select, with the Settings' look ("Listes éditables" > "Select"). */}
+        <Input.Wrapper label="Imprimantes" className={listClasses.list} data-settings-list>
+          {total === 0 ? (
+            <EmptyList icon={IconPrinter} message="Aucune imprimante" />
+          ) : (
+            <Stack gap={1}>
+              {printers.map((printer, rank) => (
+                <Group key={printer.id} gap="sm" wrap="nowrap" style={printerRowStyle(rank)}>
+                  {canEdit && (
+                    <RowCheckbox
+                      label={`Sélectionner ${printer.name}`}
+                      checked={selection.isChecked(printer.id)}
+                      onChange={(on) => selection.toggle(printer.id, on)}
+                    />
+                  )}
+                  {nameSlot(
+                    <RowField
+                      name={printer.name}
+                      placeholder="Nom de l'imprimante"
+                      label={`Nom de ${printer.name}`}
+                      readOnly={!canEdit}
+                      onValidate={(name) => {
+                        if (name && name !== printer.name) change(printer, { name });
+                      }}
+                    />,
+                  )}
+                  <TypeField value={printer.type} of={`de ${printer.name}`} onChange={(type) => change(printer, { type })} />
+                  <HostField value={printer.host} of={`de ${printer.name}`} onChange={(host) => change(printer, { host })} />
+                  <ModelTag info={infos[printer.id]} />
+                </Group>
+              ))}
+              {draft && (
+                <Group gap="sm" wrap="nowrap" style={printerRowStyle(total - 1)}>
+                  {/* Not created yet: nothing to delete. */}
+                  <RowCheckboxSpace />
+                  {nameSlot(
+                    <RowField
+                      name={draft.name}
+                      placeholder="Nom de l'imprimante"
+                      label="Nom de l'imprimante à ajouter"
+                      autoFocus
+                      // Left empty with no address, the row disappears.
+                      onValidate={(name) => void changeDraft({ name })}
+                    />,
+                  )}
+                  <TypeField value={draft.type} of="de l'imprimante à ajouter" onChange={(type) => void changeDraft({ type })} />
+                  {/* Named, the missing address shows in red. */}
+                  <HostField
+                    value={draft.host}
+                    of="de l'imprimante à ajouter"
+                    onChange={(host) => void changeDraft({ host })}
+                    missing={Boolean(draft.name) && !draft.host}
+                  />
+                  {/* Not asked yet: an empty space keeps the rows' ends aligned. */}
+                  <Box w={MODEL_WIDTH} style={{ flexShrink: 0 }} />
+                </Group>
+              )}
+            </Stack>
+          )}
+          {canEdit && (
+            <ListFooter
+              addLabel="Ajouter une imprimante"
+              onAdd={() => setDraft(EMPTY_DRAFT)}
+              checkedCount={selection.checked.length}
+              onDeleteChecked={() => setToDelete(printers.filter((p) => selection.isChecked(p.id)))}
+            />
+          )}
+        </Input.Wrapper>
+
+        <PaperFormats printers={printers} canEdit={canEdit} />
+      </Stack>
+
+      <DeleteConfirmModal
+        opened={toDelete.length > 0}
+        onClose={() => setToDelete([])}
+        onConfirm={async () => {
+          const list = toDelete;
+          setToDelete([]);
+          selection.reset();
+          await write(() => Promise.all(list.map((p) => api.deletePrinter(p.id))));
+        }}
+        title={
+          toDelete.length > 1
+            ? `Supprimer ${pluralize(toDelete.length, "imprimante")}`
+            : "Supprimer l'imprimante"
+        }
+        message={
+          toDelete.length > 1 ? (
+            <>
+              Voulez-vous vraiment supprimer ces {pluralize(toDelete.length, "imprimante")} ? Cette
+              action est irréversible.
+            </>
+          ) : (
+            <>
+              Voulez-vous vraiment supprimer « {toDelete[0]?.name} » ? Cette action est
+              irréversible.
+            </>
+          )
+        }
+      />
+    </fieldset>
+  );
+}

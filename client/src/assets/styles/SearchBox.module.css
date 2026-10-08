@@ -44,6 +44,18 @@
   color: inherit;
 }
 
+/* The title on a single line, cut short with an ellipsis: the body may shrink
+   below its text for that, leaving the context its room on the right. */
+.actionBody.actionBody {
+  min-width: 0;
+}
+
+.actionLabel.actionLabel {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* The icon, as close to the title as in the old list. */
 .actionSection.actionSection[data-position="left"] {
   margin-inline-end: var(--mantine-spacing-xs);

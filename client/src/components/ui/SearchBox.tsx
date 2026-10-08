@@ -2,12 +2,17 @@ import { Text, UnstyledButton } from "@mantine/core";
 import { Spotlight, spotlight } from "@mantine/spotlight";
 import {
   IconBrandGoogle,
+  IconCalendarEvent,
   IconDeviceDesktop,
+  IconApps,
+  IconDevices,
   IconExternalLink,
   IconFolder,
   IconHeadset,
   IconKey,
   IconLayoutKanban,
+  IconMail,
+  IconRss,
   IconSearch,
 } from "@tabler/icons-react";
 import Fuse from "fuse.js";
@@ -18,12 +23,15 @@ import { api } from "../../api";
 import classes from "../../assets/styles/SearchBox.module.css";
 import { ROW_CONTROL_HEIGHT } from "../../themes/menus";
 import { useDisplaySettings } from "../../lib/displaySettings";
+import { knownResults } from "../../lib/searchSources";
 
 // The search, in the tab row: from the end of the tabs to the menus and the
 // account, in all modes (ModeBar). The field there is only a lure: a click
 // opens the Spotlight, which searches everything the application holds and
 // opens the chosen item, wherever it is. The server hands over all the person
-// sees on opening; Fuse.js searches it, fuzzily — a typo still finds.
+// sees on opening, the widgets add the e-mails and appointments they have
+// loaded (lib/searchSources.ts); Fuse.js searches it, fuzzily — a typo still
+// finds.
 
 /** The kinds, in the order the list presents them — that of the modes. */
 const KINDS: { kind: SearchKind; label: string; icon: ComponentType<{ size?: number }> }[] = [
@@ -31,14 +39,27 @@ const KINDS: { kind: SearchKind; label: string; icon: ComponentType<{ size?: num
   { kind: "project", label: "Projets", icon: IconFolder },
   { kind: "card", label: "Tâches", icon: IconLayoutKanban },
   { kind: "support", label: "Support", icon: IconHeadset },
-  { kind: "asset", label: "Assets", icon: IconDeviceDesktop },
+  { kind: "managed_device_asset", label: "Assets", icon: IconDeviceDesktop },
+  { kind: "unmanaged_device_asset", label: "Équipements déclarés", icon: IconDevices },
+  { kind: "application_asset", label: "Applications", icon: IconApps },
+  { kind: "mail", label: "E-mails", icon: IconMail },
+  { kind: "appointment", label: "Rendez-vous", icon: IconCalendarEvent },
+  { kind: "article", label: "Flux RSS", icon: IconRss },
 ];
 
 /** The most each kind shows: the list stays readable at a glance. */
 const PER_KIND = 8;
 
-/** A result's key: a widget's elements share its id, their title tells them apart. */
-const key = (r: SearchResult) => `${r.kind}:${r.id}:${r.url ?? r.title}`;
+/**
+ * A result's key: a widget's elements share its id, their title tells them
+ * apart. An e-mail or an appointment is itself, whatever widget shows it.
+ */
+const key = (r: SearchResult) => (r.item ? `${r.kind}:${r.item}` : `${r.kind}:${r.id}:${r.url ?? r.title}`);
+
+/** Each result once: two widgets may show the same e-mail or appointment. */
+const unique = (results: SearchResult[]): SearchResult[] => [
+  ...new Map(results.map((r) => [key(r), r])).values(),
+];
 
 export interface SearchBoxProps {
   onOpen: (result: SearchResult) => void;
@@ -53,11 +74,13 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
 
   const load = async () => {
     setIndex(null);
+    let server: SearchResult[] = [];
     try {
-      setIndex(await api.getSearchIndex());
+      server = await api.getSearchIndex();
     } catch {
-      setIndex([]);
+      /* the server's part fails: what the widgets loaded is still searched */
     }
+    setIndex(unique([...server, ...knownResults()]));
   };
 
   // The title counts most, then where the item is; the rest (description,
@@ -99,12 +122,14 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
     return (
       <Spotlight.ActionsGroup key={kind} label={label}>
         {own.map((r) => {
-          // An Access mode link opens as is, in a new tab: its icon says so.
+          // A link, an appointment, an article opens as is, in a new tab: its icon says so.
           const IconRow = r.url ? IconExternalLink : Icon;
           return (
             <Spotlight.Action
               key={key(r)}
               label={r.title}
+              // Cut to one line: the whole title on hovering.
+              title={r.title}
               leftSection={<IconRow size={16} />}
               // On a single line: its context on the right.
               rightSection={
@@ -144,6 +169,8 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
         classNames={{
           actionsList: classes.actionsList,
           action: classes.action,
+          actionBody: classes.actionBody,
+          actionLabel: classes.actionLabel,
           actionSection: classes.actionSection,
           actionsGroup: classes.actionsGroup,
         }}
@@ -157,7 +184,8 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
         <Spotlight.ActionsList>
           {!search ? (
             <Spotlight.Empty>
-              Tapez pour rechercher projets, tâches, demandes, assets et accès.
+              Tapez pour rechercher projets, tâches, demandes, assets, accès, e-mails, rendez-vous et
+              articles.
             </Spotlight.Empty>
           ) : index === null ? (
             <Spotlight.Empty>Chargement…</Spotlight.Empty>

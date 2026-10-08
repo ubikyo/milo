@@ -1,0 +1,17 @@
+/* A drawer list's drop zone (components/ui/FileDropzone.tsx): the rows'
+   background, whatever happens. Files it takes hovering over it turn its
+   border green — the application's —; files it refuses, red. */
+.root {
+  background-color: var(--milo-sunken-bg);
+}
+
+.root[data-accept] {
+  background-color: var(--milo-sunken-bg);
+  border-color: var(--mantine-color-teal-6);
+  color: var(--mantine-color-teal-6);
+}
+
+.root[data-reject] {
+  background-color: var(--milo-sunken-bg);
+  border-color: var(--mantine-color-red-6);
+}

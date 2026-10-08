@@ -17,35 +17,26 @@ import { tabStyle } from "../../themes/tabs";
 import { initialsOf } from "../ui/ActorAvatars";
 import { useDisplaySettings } from "../../lib/displaySettings";
 import { errorMessage, notifyError } from "../../lib/errors";
-import type { Id, NotificationSettings, OpeningView, PublicUser } from "@milo/shared";
+import { setThemeChoice, themeChoice, useThemes } from "../../lib/themeColors";
+import type { Id, NotificationSettings, OpeningView, PublicUser, Theme } from "@milo/shared";
 import type { ComponentType } from "react";
 import CloseButton from "../ui/CloseButton";
 import NotificationPreferences from "./NotificationPreferences";
 
-type Scheme = "auto" | "light" | "dark";
-
-interface SchemeOption {
-  value: Scheme;
-  label: string;
-  icon: ComponentType<{ size?: number }>;
-}
-
-const SCHEME_OPTIONS: SchemeOption[] = [
-  { value: "auto", label: "System", icon: IconDeviceDesktop },
-  { value: "light", label: "Clair", icon: IconSun },
-  { value: "dark", label: "Sombre", icon: IconMoon },
-];
+/** The profile's theme as the Select holds it: "system", or a theme's id. */
+const SYSTEM = "system";
 
 // The options of a Select only carry text: the icon is looked up by the
 // value, for the dropdown as well as for the closed field.
 /**
- * A theme's icon. Declared at module level: assigned to a variable inside a
- * component body, React would see a new component type on every render and
- * remount its subtree each time.
+ * A theme's icon: the system's, or its scheme's. Declared at module level:
+ * assigned to a variable inside a component body, React would see a new
+ * component type on every render and remount its subtree each time.
  */
-function SchemeIcon({ value, size = 16 }: { value: string; size?: number }) {
-  const Icon =
-    SCHEME_OPTIONS.find((o) => o.value === value)?.icon ?? IconDeviceDesktop;
+function SchemeIcon({ value, themes, size = 16 }: { value: string; themes: Theme[]; size?: number }) {
+  const scheme = themes.find((t) => String(t.id) === value)?.scheme;
+  const Icon: ComponentType<{ size?: number }> =
+    scheme === "dark" ? IconMoon : scheme === "light" ? IconSun : IconDeviceDesktop;
   return <Icon size={size} />;
 }
 
@@ -94,7 +85,7 @@ export default function PreferencesModal({
   user,
   onUpdated,
 }: PreferencesModalProps) {
-  const { colorScheme, setColorScheme } = useMantineColorScheme();
+  const { setColorScheme } = useMantineColorScheme();
   const { settings: display } = useDisplaySettings();
   // The opening workspace, and in it the opening view and board; empty,
   // or one that is gone, the first one.
@@ -103,7 +94,8 @@ export default function PreferencesModal({
   const [board, setBoard] = useState("");
   // The views of the chosen workspace, each with its boards; null until read.
   const [views, setViews] = useState<OpeningView[] | null>(null);
-  const [theme, setTheme] = useState<Scheme>("auto");
+  const { themes } = useThemes();
+  const [theme, setTheme] = useState<string>(SYSTEM);
   const [notifying, setNotifying] = useState<NotificationSettings | null>(null);
   const [tab, setTab] = useState<string | null>("profile");
   const [busy, setBusy] = useState(false);
@@ -115,7 +107,9 @@ export default function PreferencesModal({
     setWorkspace(user?.default_workspace ?? user?.workspaces[0]?.id ?? user?.workspace ?? null);
     setView(user?.default_view ?? "");
     setBoard(user?.default_board ?? "");
-    setTheme((colorScheme ?? "auto") as Scheme);
+    // A theme deleted since: the system's again.
+    const chosen = themeChoice();
+    setTheme(themes.some((t) => t.id === chosen) ? String(chosen) : SYSTEM);
     setNotifying(user?.notification_settings ?? null);
     setTab("profile");
     // The theme is only re-read on opening: re-reading it while choosing
@@ -175,7 +169,11 @@ export default function PreferencesModal({
             ...(notifyingChanged ? { notification_settings: notifying } : {}),
           }),
         );
-      setColorScheme(theme);
+      // The theme, and Mantine's scheme under it: the system's follows the
+      // system, a theme its own.
+      const chosen = themes.find((t) => String(t.id) === theme);
+      setThemeChoice(chosen ? chosen.id : "system");
+      setColorScheme(chosen ? chosen.scheme : "auto");
       onClose();
     } catch (e) {
       notifyError(errorMessage(e));
@@ -304,24 +302,27 @@ export default function PreferencesModal({
               </Text>
               <Select
                 aria-label="Thème"
-                data={SCHEME_OPTIONS.map(({ value, label }) => ({
-                  value,
-                  label,
-                }))}
-                leftSection={<SchemeIcon value={theme} />}
+                // "Lié au système" first — the system's dark or light theme,
+                // as the system prefers —, then the themes, under a rule.
+                data={[
+                  { value: SYSTEM, label: "Lié au système" },
+                  {
+                    group: "Thèmes",
+                    items: themes.map((t) => ({ value: String(t.id), label: t.name })),
+                  },
+                ]}
+                leftSection={<SchemeIcon value={theme} themes={themes} />}
                 renderOption={({ option }) => (
                   <Group gap={6} wrap="nowrap">
-                    <SchemeIcon value={option.value} />
+                    <SchemeIcon value={option.value} themes={themes} />
                     <span>{option.label}</span>
                   </Group>
                 )}
-                // "System" follows the system theme: it is the default value,
-                // set in the theme (main.tsx) and remembered by Mantine
-                // afterwards.
                 value={theme}
-                onChange={(value) => value && setTheme(value as Scheme)}
+                onChange={(value) => value && setTheme(value)}
                 allowDeselect={false}
-                w={FIELD_WIDTH}
+                // Wider than the other fields: a theme's name is free.
+                w={FIELD_WIDTH + 50}
               />
             </Group>
           </Stack>

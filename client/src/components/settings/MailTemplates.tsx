@@ -48,7 +48,8 @@ export default function MailTemplates({ canEdit, only }: MailTemplatesProps) {
   const edited = templates.find((t) => t.key === editedKey) ?? null;
 
   return (
-    <Input.Wrapper label="Modèles d'e-mail">
+    // In the Settings, their editable lists' look ("Listes éditables").
+    <Input.Wrapper label="Modèles d'e-mail" data-settings-list>
       <Stack gap={1}>
         {templates.map((t, rank) => (
           // As the appearance rows (SettingRows): at the start, the button
@@ -61,11 +62,11 @@ export default function MailTemplates({ canEdit, only }: MailTemplatesProps) {
           >
             <Reset active={canEdit && t.custom} what="du modèle" onClick={() => setToReset(t)} />
             <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-              <Text size="sm" truncate>
+              <Text size="sm" truncate data-row-name>
                 {t.label}
               </Text>
               {t.custom && (
-                <Badge color="green" variant="filled" radius="sm" h={TAG_HEIGHT}>
+                <Badge color="green" variant="filled" radius="sm" h={TAG_HEIGHT} data-list-tag="filled">
                   Modifié
                 </Badge>
               )}

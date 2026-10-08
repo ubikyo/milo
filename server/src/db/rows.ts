@@ -69,6 +69,21 @@ export interface ViewRow {
 
 
 /** A milestone type: its milestones are JSON text here. */
+export interface PrinterRow {
+  id: Id;
+  type: string;
+  name: string;
+  host: string;
+}
+
+export interface PaperFormatRow {
+  id: Id;
+  name: string;
+  printer_id: Id | null;
+  width: number;
+  height: number;
+}
+
 export interface MilestoneTypeRow {
   id: Id;
   name: string;
@@ -380,7 +395,7 @@ export interface FollowRow {
  * A workstation of Assets mode. "content" is the whole inventory as JSON,
  * exactly as the agent sent it: it is only read back when the drawer opens.
  */
-export interface AssetRow {
+export interface ManagedDeviceAssetRow {
   id: Id;
   deviceid: string;
   name: string;

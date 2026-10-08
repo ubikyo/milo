@@ -7,9 +7,19 @@
 // last widget holding their key.
 
 import { randomUUID } from "node:crypto";
-import { CALENDAR_KEY, LIST_KEY, MAIL_KEY, isListWidgetType } from "@milo/shared";
-import type { Id } from "@milo/shared";
+import {
+  CALENDAR_KEY,
+  DECLARED_ASSET_KINDS,
+  DECLARED_ASSET_RESOURCES,
+  LIST_KEY,
+  MAIL_KEY,
+  declaredAssetListType,
+  isListWidgetType,
+} from "@milo/shared";
+import type { DeclaredAssetKind, Id } from "@milo/shared";
+import { declaredAssetTables } from "../db/declared-asset-tables.js";
 import { mutation, selection } from "../db/query.js";
+import type { Mutation } from "../db/query.js";
 
 const read = (config: string): Record<string, unknown> => {
   try {
@@ -75,6 +85,24 @@ const holdsKey = (type: string, board: string, key: string) =>
            WHERE s.board_id = ${board} AND w.type = '${type}' AND json_valid(w.config)
              AND json_extract(w.config, '$.${LIST_KEY}') = ${key})`;
 
+/** The declared assets of each kind no widget holds anymore (shared, declared-assets.ts). */
+const declaredOrphans = Object.fromEntries(
+  DECLARED_ASSET_KINDS.map((kind) => {
+    const { assets } = declaredAssetTables(kind);
+    return [
+      DECLARED_ASSET_RESOURCES[kind],
+      mutation(
+        `DELETE FROM ${assets}
+         WHERE list_key != '' AND NOT ${holdsKey(
+           declaredAssetListType(kind),
+           `${assets}.board_id`,
+           `${assets}.list_key`,
+         )}`,
+      ),
+    ];
+  }),
+) as Record<(typeof DECLARED_ASSET_RESOURCES)[DeclaredAssetKind], Mutation>;
+
 const orphans = {
   projects: mutation(
     `DELETE FROM projects
@@ -92,14 +120,15 @@ const orphans = {
        "support_requests.list_key",
      )}`,
   ),
-  assets: mutation(
-    `DELETE FROM assets
+  "managed-device-assets": mutation(
+    `DELETE FROM managed_device_assets
      WHERE list_key != '' AND NOT ${holdsKey(
-       "asset.list",
-       "assets.board_id",
-       "assets.list_key",
+       "managed_device_asset.list",
+       "managed_device_assets.board_id",
+       "managed_device_assets.list_key",
      )}`,
   ),
+  ...declaredOrphans,
 } as const;
 
 /**

@@ -1,17 +1,17 @@
-// The "Thèmes" section of "Paramétrage": the colors of the light and dark
-// themes, for the whole application (see shared/theme-colors.ts).
+// The themes ("Paramétrage" > "Affichage"): their list and their colors, for
+// the whole application (see shared/theme-colors.ts).
 
 import { Router } from "express";
-import { saveThemeColors, themeColors } from "../lib/theme-colors.js";
+import { saveThemes, themes } from "../lib/theme-colors.js";
 
 export const themeColorRoutes = Router();
 
 themeColorRoutes.get("/", (_req, res) => {
-  res.json(themeColors());
+  res.json(themes());
 });
 
-// The whole set of changed colors replaces the stored one.
+// The whole list replaces the stored one.
 themeColorRoutes.put("/", (req, res) => {
-  saveThemeColors(req.body);
-  res.json(themeColors());
+  saveThemes(req.body);
+  res.json(themes());
 });

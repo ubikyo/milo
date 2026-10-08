@@ -1,6 +1,6 @@
 import { Menu } from "@mantine/core";
 import { IconHeadset, IconSquarePlus } from "@tabler/icons-react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { TITLE_STYLE } from "@milo/shared";
 import { insertRow } from "./SettingRows";
 import { TitleStyleMenu } from "./TitleStyles";
@@ -9,6 +9,7 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import { api } from "../../api";
 import { BOARD_WIDGETS, boardWidget, type BoardData } from "../../widgets";
 import IndicatorsPanel, { type IndicatorsApi } from "./IndicatorsPanel";
+import { SearchBoardContext, keepWidgets } from "../../lib/searchSources";
 import type { BoardWidget, Id, IndicatorSection } from "@milo/shared";
 
 interface BoardPanelProps {
@@ -58,6 +59,11 @@ export default function BoardPanel({
   // Subscribed: a style changed elsewhere redraws the titles' frames and margins.
   useTitleStyles();
 
+  // A widget removed from the board: the search forgets what it had loaded.
+  useEffect(() => {
+    if (sections !== null) keepWidgets(boardId, widgets.map((w) => w.id));
+  }, [boardId, sections, widgets]);
+
   const restyle = async (widget: BoardWidget, config: Record<string, unknown>) => {
     try {
       await api.updateBoardWidget(widget.id, { config });
@@ -69,6 +75,8 @@ export default function BoardPanel({
   };
 
   return (
+    // The widgets publish to the search what they load, with their board.
+    <SearchBoardContext.Provider value={boardId}>
     <IndicatorsPanel
         sections={sections}
         indicators={widgets}
@@ -127,5 +135,6 @@ export default function BoardPanel({
           ) : null
         }
       />
+    </SearchBoardContext.Provider>
   );
 }

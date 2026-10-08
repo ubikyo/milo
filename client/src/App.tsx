@@ -9,7 +9,10 @@ import {
   PAGE_GUTTER,
 } from "./themes/layout";
 import LoginPage from "./pages/LoginPage";
-import { loadThemeColors, useThemeColors } from "./lib/themeColors";
+import { loadThemeColors, useThemes } from "./lib/themeColors";
+import { useThemeEditor } from "./lib/themeEditor";
+import ThemeEditor from "./components/theme/ThemeEditor";
+import { THEME_INTERFACE_GAP, themePanelWidth } from "./components/theme/ThemePanel";
 import ViewPage from "./pages/ViewPage";
 import NotificationsDrawer from "./components/notifications/NotificationsDrawer";
 import CardDrawer from "./components/board/CardDrawer";
@@ -33,6 +36,7 @@ import {
   canUse,
   emptyFollows,
   inContext,
+  isDeclaredAssetKind,
   isM365Change,
   isNotification,
   m365Event,
@@ -41,8 +45,10 @@ import { RightsProvider, canFrom } from "./lib/rights";
 import { errorMessage, notifyError } from "./lib/errors";
 import { EditingContext } from "./lib/editing";
 import { addressTarget, noteInAddress } from "./lib/follow";
+import { requestOpening } from "./lib/searchSources";
 import type { Target } from "./lib/follow";
-import AssetDrawer from "./components/assets/AssetDrawer";
+import ManagedDeviceAssetDrawer from "./components/managed-device-assets/ManagedDeviceAssetDrawer";
+import { announceDeclaredAssets } from "./lib/declaredAssets";
 import SupportRequestDrawer from "./components/support/SupportRequestDrawer";
 import PreferencesModal from "./components/settings/PreferencesModal";
 import { CopyPasteContext } from "./components/ui/CopyPasteActions";
@@ -64,7 +70,7 @@ import { rememberDeletion, useUndoShortcut } from "./lib/undo";
 import SettingsModal from "./components/settings/SettingsModal";
 import EmptyPanel from "./components/ui/EmptyPanel";
 import type {
-  Asset,
+  ManagedDeviceAsset,
   AuthResult,
   Board,
   BoardInput,
@@ -136,8 +142,9 @@ export default function App() {
   useUndoShortcut();
   const [user, setUser] = useState<PublicUser | null>(null);
   // The themes' colors, read once signed in. Subscribed: a color changed in
-  // the Settings redraws the widgets whose default colors follow it.
-  useThemeColors();
+  // the editor, or another theme chosen, redraws the widgets whose default
+  // colors follow it.
+  useThemes();
   useEffect(() => {
     if (user) loadThemeColors();
   }, [user]);
@@ -179,7 +186,8 @@ export default function App() {
   const [loadedTaskLists, setTaskListsRead] = useState<LoadedFor<TaskList> | null>(null);
   const [labelsRead, setLabelsRead] = useState<LoadedFor<Label> | null>(null);
   const [supportRead, setSupportRead] = useState<LoadedFor<SupportRequest> | null>(null);
-  const [assetsRead, setAssetsRead] = useState<LoadedFor<Asset> | null>(null);
+  const [managedDeviceAssetsRead, setManagedDeviceAssetsRead] =
+    useState<LoadedFor<ManagedDeviceAsset> | null>(null);
 
   // "Modifier l'interface" applies to the whole application: all
   // boards, all views. It only lives in this window, which opens
@@ -267,13 +275,13 @@ export default function App() {
   const taskLists = loadedTaskLists?.key === boardId ? loadedTaskLists.items : null;
   const labels = labelsRead?.key === boardId ? labelsRead.items : [];
   const supportRequests = supportRead?.key === boardId ? supportRead.items : null;
-  const assets = assetsRead?.key === boardId ? assetsRead.items : null;
+  const assets = managedDeviceAssetsRead?.key === boardId ? managedDeviceAssetsRead.items : null;
 
   // What the open board's widgets ask to read.
   const projectsNeed = withPrefix(widgets, "project");
   const tasksNeed = withPrefix(widgets, "task");
   const supportNeed = withPrefix(widgets, "support");
-  const assetsNeed = withPrefix(widgets, "asset");
+  const managedDeviceAssetsNeed = withPrefix(widgets, "managed_device_asset");
   // The context this account views in the open board — a label name —, or
   // null for all; and the context group of each of its lists.
   const selectedContext = board?.context ?? null;
@@ -319,14 +327,16 @@ export default function App() {
   // waiting to be pasted into another.
   const [clipboard, setClipboard] = useState<Clipboard>({});
   const [pastes, setPastes] = useState(0);
-  const [assetDrawerOpened, setAssetDrawerOpened] = useState(false);
-  const [openedAsset, setOpenedAsset] = useState<Asset | null>(null);
+  const [managedDeviceAssetDrawerOpened, setManagedDeviceAssetDrawerOpened] = useState(false);
+  const [openedManagedDeviceAsset, setOpenedManagedDeviceAsset] =
+    useState<ManagedDeviceAsset | null>(null);
   const [supportDrawerOpened, setSupportDrawerOpened] = useState(false);
   const [editedSupportRequest, setEditedSupportRequest] = useState<SupportRequest | null>(null);
   // The subject of a request created from a link; "null" for a request
   // created from a request list, which starts empty.
   const [accessRequestSubject, setAccessRequestSubject] = useState<string | null>(null);
   const [settingsOpened, setSettingsOpened] = useState(false);
+  const themeEditorOn = useThemeEditor();
   const [preferencesOpened, setPreferencesOpened] = useState(false);
   // The notifications drawer, and what makes it re-read.
   const [notificationsOpened, setNotificationsOpened] = useState(false);
@@ -566,11 +576,11 @@ export default function App() {
   }, [boardId, supportNeed, read]);
 
   // The board's workstations, of the chosen context.
-  const loadAssets = useCallback(async () => {
-    if (!boardId || !assetsNeed) return setAssetsRead(null);
-    const items = await read(() => api.getAssets(Number(boardId)));
-    setAssetsRead({ key: boardId, items });
-  }, [boardId, assetsNeed, read]);
+  const loadManagedDeviceAssets = useCallback(async () => {
+    if (!boardId || !managedDeviceAssetsNeed) return setManagedDeviceAssetsRead(null);
+    const items = await read(() => api.getManagedDeviceAssets(Number(boardId)));
+    setManagedDeviceAssetsRead({ key: boardId, items });
+  }, [boardId, managedDeviceAssetsNeed, read]);
 
   useEffect(() => {
     if (user) loadLookups();
@@ -617,8 +627,8 @@ export default function App() {
     if (user) loadSupportRequests().catch(() => {});
   }, [user, loadSupportRequests]);
   useEffect(() => {
-    if (user) loadAssets().catch(() => {});
-  }, [user, loadAssets]);
+    if (user) loadManagedDeviceAssets().catch(() => {});
+  }, [user, loadManagedDeviceAssets]);
 
   // A board that shows requests opens with a mailbox poll,
   // without waiting for the one the server does on its own. What it brings
@@ -743,9 +753,9 @@ export default function App() {
         if (target.kind === "support") {
           setEditedSupportRequest(await api.getSupportRequest(target.id));
           setSupportDrawerOpened(true);
-        } else if (target.kind === "asset") {
-          setOpenedAsset(await api.getAsset(target.id));
-          setAssetDrawerOpened(true);
+        } else if (target.kind === "managed_device_asset") {
+          setOpenedManagedDeviceAsset(await api.getManagedDeviceAsset(target.id));
+          setManagedDeviceAssetDrawerOpened(true);
         } else if (target.kind === "project") {
           const project = await api.getProject(target.id);
           await goToBoard(project.board_id);
@@ -766,10 +776,21 @@ export default function App() {
     [goToBoard, showBoard],
   );
 
-  /** What the search found: a link directly opens its URL. */
+  /**
+   * What the search found: a link, an appointment, an article directly opens
+   * its URL; an e-mail, in its widget's reader, on its board.
+   */
   const openSearch = useCallback(
     async (result: SearchResult) => {
-      if (result.kind !== "access") return openTarget({ kind: result.kind, id: result.id });
+      // A declared asset opens in its widget, on its board, as an e-mail.
+      if (result.kind === "mail" || isDeclaredAssetKind(result.kind)) {
+        if (result.item) requestOpening(result.id, result.item);
+        if (result.board_id) return openTarget({ kind: "access", id: result.board_id });
+        return;
+      }
+      if (result.kind !== "access" && result.kind !== "appointment" && result.kind !== "article") {
+        return openTarget({ kind: result.kind, id: result.id });
+      }
       if (result.url) {
         window.open(result.url, "_blank", "noopener");
         return;
@@ -857,7 +878,10 @@ export default function App() {
       // Support labels are read in a request's drawer, which
       // re-reads them when it opens.
       "support-labels": () => {},
-      assets: loadAssets,
+      "managed-device-assets": loadManagedDeviceAssets,
+      // The declared asset lists read their own: they re-read on this.
+      "unmanaged-device-assets": () => announceDeclaredAssets("unmanaged_device_asset"),
+      "application-assets": () => announceDeclaredAssets("application_asset"),
       "title-styles": loadTitleStyles,
     };
 
@@ -939,7 +963,7 @@ export default function App() {
     loadLabels,
     loadProjectLabels,
     loadSupportRequests,
-    loadAssets,
+    loadManagedDeviceAssets,
     showNotification,
   ]);
 
@@ -1250,7 +1274,7 @@ export default function App() {
   };
 
   // From a workstation: the request takes its name as its subject.
-  const openSupportRequestFromAsset = (workstation: Asset) => {
+  const openSupportRequestFromManagedDeviceAsset = (workstation: ManagedDeviceAsset) => {
     setAccessRequestSubject(workstationSource(workstation).title);
     setEditedSupportRequest(null);
     setSupportDrawerOpened(true);
@@ -1367,6 +1391,10 @@ export default function App() {
   const createRequest =
     can("support", "create") && widgets.some((w) => w.type === "support.list");
   const boardNameOf = (id: Id) => boards?.find((b) => b.id === id)?.name;
+  // The theme editor's panels, for whoever may change the themes: it was
+  // turned on in this browser, possibly by another account.
+  const themeEditor =
+    themeEditorOn && user.settings.update && user.administration.themes.includes("access");
 
   return (
     <RightsProvider
@@ -1394,6 +1422,12 @@ export default function App() {
               ref={background}
               gap={0}
               h="100vh"
+              // The theme editor's interface panel is docked on the right. The
+              // transform makes this the frame of what is fixed in the
+              // interface — the logo, "Ajouter un widget", the scrollbar —:
+              // their corner moves with it.
+              mr={themeEditor ? themePanelWidth("interface") + THEME_INTERFACE_GAP : 0}
+              style={themeEditor ? { transform: "translateZ(0)" } : undefined}
               // The right click on the background: what no element — tab, widget,
               // section, row — took for its own menu. An input keeps
               // the browser's, for copy and paste; a window or a
@@ -1486,7 +1520,7 @@ export default function App() {
                       requests: visibleRequests ?? [],
                       projects: viewedProjects ?? [],
                       lists: visibleTasks ?? [],
-                      assets: viewedWorkstations ?? [],
+                      managedDeviceAssets: viewedWorkstations ?? [],
                       userId: user.id,
                     }}
                     projects={{
@@ -1543,18 +1577,18 @@ export default function App() {
                       followedIds: follows.support,
                       onToggleFollow: (request) => toggleFollow("support", request.id),
                     }}
-                    assets={{
-                      assets: viewedWorkstations,
+                    managedDeviceAssets={{
+                      managedDeviceAssets: viewedWorkstations,
                       loading: loading,
-                      onOpenAsset: (workstation) => {
-                        setOpenedAsset(workstation);
-                        setAssetDrawerOpened(true);
+                      onOpenManagedDeviceAsset: (workstation) => {
+                        setOpenedManagedDeviceAsset(workstation);
+                        setManagedDeviceAssetDrawerOpened(true);
                       },
                       onCreateTask: createTask
                         ? (workstation) => setSourceTask(workstationSource(workstation))
                         : undefined,
                       onCreateSupportRequest: createRequest
-                        ? openSupportRequestFromAsset
+                        ? openSupportRequestFromManagedDeviceAsset
                         : undefined,
                     }}
                     onCreateTaskFromLink={
@@ -1631,16 +1665,16 @@ export default function App() {
                       loadProjects(),
                       loadTaskLists(),
                       loadSupportRequests(),
-                      loadAssets(),
+                      loadManagedDeviceAssets(),
                     ]);
                   }
                 }}
               />
 
-              <AssetDrawer
-                opened={assetDrawerOpened}
-                onClose={() => setAssetDrawerOpened(false)}
-                asset={openedAsset}
+              <ManagedDeviceAssetDrawer
+                opened={managedDeviceAssetDrawerOpened}
+                onClose={() => setManagedDeviceAssetDrawerOpened(false)}
+                asset={openedManagedDeviceAsset}
               />
 
               <SupportRequestDrawer
@@ -1833,6 +1867,9 @@ export default function App() {
                 onUserChange={setUser}
               />
             </Stack>
+
+            {/* Out of the interface: its transform would hold the panels in it. */}
+            {themeEditor && <ThemeEditor canEdit />}
           </CopyPasteContext.Provider>
       </EditingContext.Provider>
     </RightsProvider>

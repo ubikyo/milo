@@ -11,7 +11,7 @@
 // (routes/attachments.ts).
 
 import { gunzipSync, inflateSync } from "node:zlib";
-import type { AssetEntry, AssetSection } from "@milo/shared";
+import type { ManagedDeviceAssetEntry, ManagedDeviceAssetSection } from "@milo/shared";
 
 /** What an element carries: text, one element, or several of the same name. */
 type TreeNode = string | Tree | TreeNode[];
@@ -129,7 +129,7 @@ export const textOf = (tree: TreeNode | undefined, ...path: string[]): string =>
  * display does not try to render depth, it shows pairs. Several values of the
  * same name are read one after another, separated by a comma.
  */
-const flatten = (treeNode: TreeNode, prefix = "", into: AssetEntry = {}): AssetEntry => {
+const flatten = (treeNode: TreeNode, prefix = "", into: ManagedDeviceAssetEntry = {}): ManagedDeviceAssetEntry => {
   if (typeof treeNode === "string") {
     if (treeNode) into[prefix || "VALEUR"] = treeNode;
     return into;
@@ -153,7 +153,7 @@ const flatten = (treeNode: TreeNode, prefix = "", into: AssetEntry = {}): AssetE
  * Empty sections are discarded: they teach nothing, and an agent sends them
  * regularly.
  */
-export const sectionsOf = (content: TreeNode | undefined): AssetSection[] => {
+export const sectionsOf = (content: TreeNode | undefined): ManagedDeviceAssetSection[] => {
   if (!content || typeof content === "string" || Array.isArray(content)) return [];
 
   return Object.entries(content)

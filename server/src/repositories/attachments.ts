@@ -7,14 +7,24 @@
 import type { Attachment, Id } from "@milo/shared";
 import { mutation, scalar, selection, transaction } from "../db/query.js";
 import type { AttachmentRow, CountRow } from "../db/rows.js";
+import { DECLARED_ASSET_KINDS } from "@milo/shared";
+import { declaredAssetTables } from "../db/declared-asset-tables.js";
 import { covers } from "./covers.js";
 import { isImage, citedMedia, deleteOrphans, deleteMedia, mediaUrl } from "../lib/media.js";
 
+/** The declared assets' tables, whose photos and documents are media too. */
+const DECLARED_TABLES = DECLARED_ASSET_KINDS.map(declaredAssetTables);
+
 export const attachments = {
   byId: selection<AttachmentRow>("SELECT * FROM card_attachments WHERE id = ?"),
-  /** The first row that cites this file: it carries the original name. */
-  byFile: selection<AttachmentRow>(
-    "SELECT * FROM card_attachments WHERE file = ? ORDER BY id LIMIT 1",
+  /**
+   * The first row that cites this file — a card's attachment, or a declared
+   * asset's document —: it carries the original name.
+   */
+  byFile: selection<{ name: string }>(
+    `SELECT name FROM card_attachments WHERE file = @file
+     ${DECLARED_TABLES.map((t) => `UNION ALL SELECT name FROM ${t.attachments} WHERE file = @file`).join("\n")}
+     LIMIT 1`,
   ),
   ofCard: selection<AttachmentRow>(
     "SELECT * FROM card_attachments WHERE card_id = ? ORDER BY position, id DESC",
@@ -29,7 +39,12 @@ export const attachments = {
   /** How many rows still cite this file. Zero: it may leave the disk. */
   countOfFile: scalar<CountRow>(
     `SELECT (SELECT COUNT(*) FROM card_attachments WHERE file = @file)
-          + (SELECT COUNT(*) FROM card_covers WHERE file = @file) AS count`,
+          + (SELECT COUNT(*) FROM card_covers WHERE file = @file)
+          ${DECLARED_TABLES.map(
+            (t) =>
+              `+ (SELECT COUNT(*) FROM ${t.attachments} WHERE file = @file)
+               + (SELECT COUNT(*) FROM ${t.photos} WHERE file = @file)`,
+          ).join("\n")} AS count`,
   ),
 };
 
@@ -76,9 +91,10 @@ export const removeAttachment = (row: AttachmentRow): void => {
 
 // --- Cleanup ---------------------------------------------------------------
 
-/** All files cited by an attachment. */
+/** All files cited by an attachment — a card's, or a declared asset's document — or a photo. */
 const attachmentFiles = selection<{ file: string }>(
-  "SELECT DISTINCT file FROM card_attachments",
+  `SELECT file FROM card_attachments
+   ${DECLARED_TABLES.map((t) => `UNION SELECT file FROM ${t.attachments} UNION SELECT file FROM ${t.photos}`).join("\n")}`,
 );
 
 /**

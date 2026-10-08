@@ -1,4 +1,4 @@
-import { Stack, Text } from "@mantine/core";
+import { Stack } from "@mantine/core";
 import { useCallback } from "react";
 import { api } from "../../api";
 import PrincipalsPermissions from "./PrincipalsPermissions";
@@ -14,6 +14,7 @@ import {
   validAdminPermissions,
 } from "@milo/shared";
 import type { AdminPermissions } from "@milo/shared";
+import SettingsIntro from "./SettingsIntro";
 
 /** What it administers, at a glance: its number of rights, "3 autorisations". */
 const summary = (permissions: AdminPermissions): string => {
@@ -69,12 +70,12 @@ export default function AdministrationTab({
 
   return (
     <Stack gap="xl">
-      <Text size="sm" c="dimmed">
+      <SettingsIntro parentGap="var(--mantine-spacing-xl)">
         La gestion des comptes d’administration permet d’attribuer à un ensemble
         d’utilisateurs ou de groupes d’utilisateurs les droits nécessaires au
         paramétrage de Milo et à la création d’environnements de travail
         (workspaces).
-      </Text>
+      </SettingsIntro>
       <PrincipalsPermissions<AdminPermissions>
         load={draft.load}
         save={draft.save}

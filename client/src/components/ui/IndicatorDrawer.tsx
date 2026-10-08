@@ -1,8 +1,9 @@
 import { Drawer, Group, Stack, Tabs } from "@mantine/core";
 import { IconSettings } from "@tabler/icons-react";
-import { createContext, useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NameField } from "../../widgets/support/common";
 import { errorMessage, notifyError } from "../../lib/errors";
+import { LabelGroupDraftsContext } from "../../lib/label-groups";
 import { tabStyle } from "../../themes/tabs";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import DrawerFooter from "./DrawerFooter";
@@ -14,7 +15,7 @@ import DrawerScrollArea, {
 } from "./DrawerScroll";
 import type { Indicator, IndicatorWidgetBase, IndicatorsApi } from "./IndicatorsPanel";
 import { widgetReference } from "@milo/shared";
-import type { Id } from "@milo/shared";
+import type { Id, LabelGroup, LabelsBase } from "@milo/shared";
 import { ReferenceTag } from "./ReferenceTag";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
 import { rememberDeletion } from "../../lib/undo";
@@ -26,8 +27,13 @@ import { rememberDeletion } from "../../lib/undo";
  */
 export const DrawerActionsContext = createContext<HTMLElement | null>(null);
 
-/** What a drawer field saves itself, on click of "Sauvegarder". */
-export type Registration = () => Promise<void>;
+/**
+ * What a drawer field saves itself, on click of "Sauvegarder". It may return a
+ * change to the configuration, applied before it is saved: the ids of the
+ * label groups it has just created (remapGroups).
+ */
+export type Registration = () => Promise<void | ConfigChange>;
+type ConfigChange = (config: Record<string, unknown>) => Record<string, unknown>;
 
 /**
  * Registers what a field saves on click of "Sauvegarder" — the board's
@@ -76,6 +82,19 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
   const [saving, setSaving] = useState(false);
   const [actions, setActions] = useState<HTMLDivElement | null>(null);
   const registrations = useRef(new Set<Registration>());
+  /** The label groups being edited, by kind: the group choices follow them. */
+  const [labelDrafts, setLabelDrafts] = useState<Partial<Record<LabelsBase, LabelGroup[]>>>({});
+  const publishLabelDraft = useCallback((base: LabelsBase, groups: LabelGroup[] | null) =>
+    setLabelDrafts((before) => {
+      const next = { ...before };
+      if (groups) next[base] = groups;
+      else delete next[base];
+      return next;
+    }), []);
+  const labelGroupDrafts = useMemo(
+    () => ({ drafts: labelDrafts, publish: publishLabelDraft }),
+    [labelDrafts, publishLabelDraft],
+  );
   const register = useCallback((registration: Registration) => {
     registrations.current.add(registration);
     return () => {
@@ -102,10 +121,15 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
     try {
       // What the fields save themselves comes first: an error stops everything,
       // the configuration included.
-      for (const save of registrations.current) await save();
-      if (indicator) await api.update(indicator.id, { config });
+      let saved = config;
+      for (const save of registrations.current) {
+        const change = await save();
+        if (change) saved = change(saved);
+      }
+      if (saved !== config) setConfig(saved);
+      if (indicator) await api.update(indicator.id, { config: saved });
       else if (sectionId !== null) {
-        await api.create({ section_id: sectionId, type: widget.type, config });
+        await api.create({ section_id: sectionId, type: widget.type, config: saved });
       }
       await onSaved();
     } catch (e) {
@@ -162,7 +186,9 @@ export default function IndicatorDrawer<Type extends string, P extends Indicator
                   (widget.Config ? (
                     <DrawerActionsContext.Provider value={actions}>
                       <DrawerRegistrationsContext.Provider value={register}>
-                        <widget.Config config={config} onChange={setConfig} neighbors={neighbors} />
+                        <LabelGroupDraftsContext.Provider value={labelGroupDrafts}>
+                          <widget.Config config={config} onChange={setConfig} neighbors={neighbors} />
+                        </LabelGroupDraftsContext.Provider>
                       </DrawerRegistrationsContext.Provider>
                     </DrawerActionsContext.Provider>
                   ) : (

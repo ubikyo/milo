@@ -9,7 +9,11 @@ import {
 } from "@tabler/icons-react";
 import { BRAND_LOGOS, type BrandLogo } from "./brandLogos";
 import type { ComponentType } from "react";
-import type { Asset, AssetOsFamily, AssetProtection } from "@milo/shared";
+import type {
+  ManagedDeviceAsset,
+  ManagedDeviceAssetOsFamily,
+  ManagedDeviceAssetProtection,
+} from "@milo/shared";
 
 // The workstation list logos: the system after the name, the protection
 // vendor in its column.
@@ -44,7 +48,7 @@ function Mark({
 type TablerIcon = ComponentType<{ size?: number; style?: React.CSSProperties }>;
 
 /** Each family and its logo: Tabler when it has it, Simple Icons otherwise. */
-const LOGOS_OS: Record<AssetOsFamily, TablerIcon | BrandLogo> = {
+const LOGOS_OS: Record<ManagedDeviceAssetOsFamily, TablerIcon | BrandLogo> = {
   windows: IconBrandWindows,
   macos: IconBrandApple,
   ubuntu: IconBrandUbuntu,
@@ -66,7 +70,7 @@ function OsIcon({ icon: Icon, size }: { icon: TablerIcon; size: number }) {
  * The system logo, gray like secondary text. At the size of the list
  * icons, except when the record wants it bigger.
  */
-export function OsLogo({ os, size = SIZE }: { os: Asset["os"]; size?: number }) {
+export function OsLogo({ os, size = SIZE }: { os: ManagedDeviceAsset["os"]; size?: number }) {
   if (!os) return null;
   const logo = LOGOS_OS[os.family];
   return (
@@ -108,7 +112,7 @@ const PUBLISHERS: { pattern: RegExp; logo: BrandLogo | "defender" }[] = [
 const WINDOWS_BLUE = "#0078D4";
 
 /** The protection vendor logo; a shield when it is unknown. */
-export function ProtectionLogo({ protection }: { protection: AssetProtection }) {
+export function ProtectionLogo({ protection }: { protection: ManagedDeviceAssetProtection }) {
   const text = `${protection.name} ${protection.company}`;
   // Bitdefender contains "defender": specific brands come first.
   const found =

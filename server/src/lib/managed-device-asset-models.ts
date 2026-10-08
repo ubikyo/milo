@@ -6,11 +6,11 @@
 // common Apple-silicon Macs; once recorded, it is the board's, and nothing is
 // added to it by itself any more.
 
-import type { AssetModel, Id } from "@milo/shared";
+import type { ManagedDeviceAssetModel, Id } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 
 /** The starting table: Apple-silicon Macs, from 2020 to 2024. */
-const STARTER_TEMPLATES: AssetModel[] = [
+const STARTER_TEMPLATES: ManagedDeviceAssetModel[] = [
   { identifier: "MacBookAir10,1", name: 'MacBook Air 13" (M1, 2020)' },
   { identifier: "MacBookPro17,1", name: 'MacBook Pro 13" (M1, 2020)' },
   { identifier: "Macmini9,1", name: "Mac mini (M1, 2020)" },
@@ -42,10 +42,10 @@ const STARTER_TEMPLATES: AssetModel[] = [
 ];
 
 const read = selection<{ models: string | null }>(
-  "SELECT models FROM board_asset_settings WHERE board_id = ?",
+  "SELECT models FROM board_managed_device_asset_settings WHERE board_id = ?",
 );
 const write = mutation(
-  `INSERT INTO board_asset_settings (board_id, models) VALUES (?, ?)
+  `INSERT INTO board_managed_device_asset_settings (board_id, models) VALUES (?, ?)
    ON CONFLICT(board_id) DO UPDATE SET models = excluded.models`,
 );
 
@@ -53,18 +53,18 @@ const write = mutation(
  * The board's model table, or the starting one. Unreadable JSON counts as
  * nothing recorded. A workstation without a board has the starting one.
  */
-export const templates = (boardId: Id | null): AssetModel[] => {
+export const templates = (boardId: Id | null): ManagedDeviceAssetModel[] => {
   const saved = boardId === null ? null : read.get(boardId)?.models;
   if (saved == null) return STARTER_TEMPLATES;
   try {
     const list = JSON.parse(saved) as unknown;
-    return Array.isArray(list) ? (list as AssetModel[]) : STARTER_TEMPLATES;
+    return Array.isArray(list) ? (list as ManagedDeviceAssetModel[]) : STARTER_TEMPLATES;
   } catch {
     return STARTER_TEMPLATES;
   }
 };
 
-export const saveTemplates = (boardId: Id, list: AssetModel[]): void => {
+export const saveTemplates = (boardId: Id, list: ManagedDeviceAssetModel[]): void => {
   write.run(boardId, JSON.stringify(list));
 };
 
@@ -72,7 +72,7 @@ export const saveTemplates = (boardId: Id, list: AssetModel[]): void => {
  * The name of a model from its identifier, ignoring case and spaces; empty
  * when the table does not know it.
  */
-export const templateName = (identifier: string, table: AssetModel[]): string => {
+export const templateName = (identifier: string, table: ManagedDeviceAssetModel[]): string => {
   const search = identifier.trim().toLowerCase();
   if (!search) return "";
   return table.find((m) => m.identifier.trim().toLowerCase() === search)?.name ?? "";

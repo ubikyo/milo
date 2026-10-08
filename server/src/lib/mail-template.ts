@@ -18,7 +18,7 @@
 import mjml2html from "mjml";
 import Mustache from "mustache";
 import type { MailTemplate, MailTemplateKey, MailTemplatePreview, MailTemplateVariable } from "@milo/shared";
-import { MAIL_TEMPLATE_KEYS, PALETTE, themeColorHex } from "@milo/shared";
+import { MAIL_TEMPLATE_KEYS, PALETTE, systemTheme, themeColorHex } from "@milo/shared";
 import {
   LOGO_CID,
   LOGO_DARK_CID,
@@ -30,7 +30,7 @@ import {
 import { sendingAddress } from "./entra.js";
 import { badRequest } from "./http.js";
 import { miloUrl } from "./milo-url.js";
-import { themeColors } from "./theme-colors.js";
+import { themes } from "./theme-colors.js";
 import { readSetting, writeSetting } from "../repositories/settings.js";
 
 /** Milo's colors, frozen: see the explanation at the top of the file. */
@@ -385,7 +385,8 @@ const COLOR_VARIABLES: MailTemplateVariable[] = COLORS.map((c) => ({
  * values come escaped (replyViewOf).
  */
 const commonView = (raw = false) => {
-  const stored = themeColors();
+  // The e-mails are light: the system's light theme colors them.
+  const stored = systemTheme(themes(), "light").colors;
   const escaped = (text: string) => (raw ? Mustache.escape(text) : text);
   return {
     milo: { logo: LOGO_SRC, email: escaped(sendingAddress()), url: escaped(miloUrl()) },

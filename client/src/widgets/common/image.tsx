@@ -2,14 +2,14 @@ import { Box, Group, Input, Stack, UnstyledButton } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconPhoto } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
-import type { DragEvent } from "react";
 import { COVER_ROTATIONS } from "@milo/shared";
 import { api } from "../../api";
 import { FileRow, useOrderedFiles } from "../../components/board/CardAttachments";
 import { SmallChoice } from "../../components/board/CardDueDate";
 import DeleteConfirmModal from "../../components/ui/DeleteConfirmModal";
+import FileDropzone from "../../components/ui/FileDropzone";
+import { useFileDrag } from "../../lib/useFileDrag";
 import {
-  EmptyList,
   ListFooter,
   ROW_BACKGROUND,
   RowCheckbox,
@@ -212,8 +212,8 @@ function Fields({ config, onChange }: WidgetConfigProps) {
   const rows: Row[] = images.map((image, id) => ({ ...image, id }));
   const [sending, setSending] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  /** True while files hover over the block: they will be added. */
-  const [over, setOver] = useState(false);
+  // Files dragged over the page: the drop zone shows, even under the images.
+  const dragging = useFileDrag(true);
   const picker = useRef<HTMLInputElement>(null);
 
   const store = (next: StoredImage[]) => onChange(withField(config, IMAGES, next));
@@ -251,32 +251,9 @@ function Fields({ config, onChange }: WidgetConfigProps) {
     }
   };
 
-  // Only files dropped from outside: the rows' handles drag nothing of the kind.
-  const carriesFiles = (e: DragEvent) => e.dataTransfer.types.includes("Files");
-
   return (
     <Stack gap="xl">
-      <div
-        onDragOver={(e) => {
-          if (!carriesFiles(e)) return;
-          e.preventDefault();
-          setOver(true);
-        }}
-        onDragLeave={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
-        }}
-        onDrop={(e) => {
-          if (!carriesFiles(e)) return;
-          e.preventDefault();
-          setOver(false);
-          void drop([...e.dataTransfer.files]);
-        }}
-        style={{
-          outline: over ? "2px dashed var(--mantine-primary-color-filled)" : undefined,
-          outlineOffset: 4,
-          borderRadius: "var(--mantine-radius-sm)",
-        }}
-      >
+      <div>
         <Group justify="space-between" align="flex-end" wrap="nowrap">
           <Input.Label>Images</Input.Label>
           <SmallChoice
@@ -289,7 +266,13 @@ function Fields({ config, onChange }: WidgetConfigProps) {
         </Group>
 
         {images.length === 0 ? (
-          <EmptyList icon={IconPhoto} message="Aucune image" />
+          <FileDropzone
+            icon={IconPhoto}
+            message="Déposez des images ici"
+            onDrop={(files) => void drop(files)}
+            accept={ACCEPTED.split(",")}
+            rejected="Ce format d'image n'est pas accepté"
+          />
         ) : (
           <Stack gap={2}>
             {displayed.map((image, rank) => (
@@ -308,6 +291,18 @@ function Fields({ config, onChange }: WidgetConfigProps) {
               />
             ))}
           </Stack>
+        )}
+        {images.length > 0 && dragging && (
+          <div style={{ marginTop: 8 }}>
+            <FileDropzone
+              icon={IconPhoto}
+              message="Déposez des images ici"
+              onDrop={(files) => void drop(files)}
+              accept={ACCEPTED.split(",")}
+              rejected="Ce format d'image n'est pas accepté"
+              reveal
+            />
+          </div>
         )}
 
         <ListFooter

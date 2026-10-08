@@ -946,7 +946,7 @@ export const isSupportIndicatorType = (value: unknown): value is SupportIndicato
  * Support, each value designates a client widget
  * (client/src/asset-indicators), and the string stored in the database never changes.
  */
-export const ASSET_INDICATOR_TYPES = [
+export const MANAGED_DEVICE_ASSET_INDICATOR_TYPES = [
   "list",
   "category",
   "link",
@@ -954,10 +954,10 @@ export const ASSET_INDICATOR_TYPES = [
   "clock",
   "assets", "compliance", "systems", "disks"] as const;
 
-export type AssetIndicatorType = (typeof ASSET_INDICATOR_TYPES)[number];
+export type ManagedDeviceAssetIndicatorType = (typeof MANAGED_DEVICE_ASSET_INDICATOR_TYPES)[number];
 
-export const isAssetIndicatorType = (value: unknown): value is AssetIndicatorType =>
-  ASSET_INDICATOR_TYPES.includes(value as AssetIndicatorType);
+export const isManagedDeviceAssetIndicatorType = (value: unknown): value is ManagedDeviceAssetIndicatorType =>
+  MANAGED_DEVICE_ASSET_INDICATOR_TYPES.includes(value as ManagedDeviceAssetIndicatorType);
 
 
 /**
@@ -1307,20 +1307,20 @@ export interface AccessMailDetail extends AccessMail {
 // looking at it that we will decide what to keep.
 
 /** An entry of a section: its fields, in the order the agent gives them. */
-export type AssetEntry = Record<string, string>;
+export type ManagedDeviceAssetEntry = Record<string, string>;
 
 /**
  * A section of the inventory — BIOS, CPUS, SOFTWARES… Sections that
  * describe only one thing have a single entry; the others have as many as the
  * machine has memory modules, disks or software.
  */
-export interface AssetSection {
+export interface ManagedDeviceAssetSection {
   name: string;
-  entries: AssetEntry[];
+  entries: ManagedDeviceAssetEntry[];
 }
 
 /** A machine in the list: its name, who uses it, its system disk. */
-export interface Asset {
+export interface ManagedDeviceAsset {
   id: Id;
   /** What the machine says about itself (HARDWARE/NAME). */
   name: string;
@@ -1360,13 +1360,13 @@ export interface Asset {
    * "14.5") and that of its kernel ("10.0.22631"). Empty when the agent does not
    * give them.
    */
-  os: { family: AssetOsFamily; name: string; version: string; kernel: string } | null;
+  os: { family: ManagedDeviceAssetOsFamily; name: string; version: string; kernel: string } | null;
   /** The machine protection: antivirus, EPP or EDR. */
-  protection: AssetProtection;
+  protection: ManagedDeviceAssetProtection;
 }
 
 /** The system families the list can represent with a logo. */
-export type AssetOsFamily =
+export type ManagedDeviceAssetOsFamily =
   | "windows"
   | "macos"
   | "ubuntu"
@@ -1383,14 +1383,14 @@ export type AssetOsFamily =
  * "unknown": the agent says nothing, which is the rule outside Windows;
  * "none": Windows declares none.
  */
-export interface AssetProtection {
+export interface ManagedDeviceAssetProtection {
   state: "active" | "inactive" | "none" | "unknown";
   name: string;
   company: string;
 }
 
 /** An open machine: everything the agent reported. */
-export interface AssetDetail extends Asset {
+export interface ManagedDeviceAssetDetail extends ManagedDeviceAsset {
   /** The id the agent gives itself: "poste-2026-09-28-14-22-31". */
   deviceid: string;
   /** The "tag" passed to the agent, as is. */
@@ -1404,7 +1404,7 @@ export interface AssetDetail extends Asset {
    * tell nothing, and a few rows are dropped: the detail is in
    * repositories/assets.ts.
    */
-  sections: AssetSection[];
+  sections: ManagedDeviceAssetSection[];
   /**
    * The TeamViewer id of the machine, taken from REMOTE_MGMT. Empty when
    * TeamViewer is not installed — or when the agent could not read it.
@@ -1418,17 +1418,17 @@ export interface AssetDetail extends Asset {
    */
   address: string;
   /** The "Résumé" tab of the record: the essentials, taken from the inventory. */
-  summary: AssetSummary;
+  summary: ManagedDeviceAssetSummary;
   /**
    * The end of support of the system, according to endoflife.date. "null" when
    * unknown: unrecognized system, version missing from their list, or
    * unreachable service.
    */
-  support: AssetSupport | null;
+  support: ManagedDeviceAssetSupport | null;
 }
 
 /** The end of support of a system, as endoflife.date publishes it. */
-export interface AssetSupport {
+export interface ManagedDeviceAssetSupport {
   /** The recognized version, under the endoflife.date name: "11 25H2 (E)", "27". */
   cycle: string;
   /**
@@ -1441,7 +1441,7 @@ export interface AssetSupport {
 }
 
 /** A physical network card, as the summary shows it. */
-export interface AssetNetwork {
+export interface ManagedDeviceAssetNetwork {
   kind: "ethernet" | "wifi";
   /** The name of the card ("Intel(R) Wi-Fi 6 AX201"). */
   description: string;
@@ -1455,9 +1455,9 @@ export interface AssetNetwork {
 }
 
 /** The essentials of a machine. Each field is empty when the agent does not give it. */
-export interface AssetSummary {
+export interface ManagedDeviceAssetSummary {
   /** The network card in use — at most one: connected, Wi-Fi first. */
-  networks: AssetNetwork[];
+  networks: ManagedDeviceAssetNetwork[];
   manufacturer: string;
   model: string;
   /** The manufacturer serial number (BIOS/SSN). */
@@ -1485,7 +1485,7 @@ export interface AssetSummary {
 }
 
 /** What an immediate inventory request returns. */
-export interface AssetRefresh {
+export interface ManagedDeviceAssetRefresh {
   /** The address actually called, to report it when it fails. */
   address: string;
 }

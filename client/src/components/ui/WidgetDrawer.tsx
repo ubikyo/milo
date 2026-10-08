@@ -2,9 +2,11 @@ import { Drawer, Group, ScrollArea, Stack, Text, Title } from "@mantine/core";
 import { IconGripVertical } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import inset from "../../assets/styles/AccessNumber.module.css";
-import type { ComponentType, DragEvent } from "react";
-import { kindLabel, type WidgetKind } from "../../widgets/kinds";
+import styles from "../../assets/styles/WidgetDrawer.module.css";
+import type { ComponentType, DragEvent, ReactNode } from "react";
+import { drawerGroup, drawerGroupLabel, type WidgetKind } from "../../widgets/kinds";
 import { H2_GAP } from "../../widgets/common/h2";
+import { THEME_SCOPE_ATTRIBUTE } from "../theme/ThemePanel";
 
 // What a section can receive, one widget per row: its handle, its
 // icon, its name, in the widgets inset. The drawer opens on the left, and
@@ -36,6 +38,29 @@ interface WidgetDrawerProps<P extends WidgetChoice> {
 }
 
 const WIDTH = 320;
+
+/**
+ * The drawer's scroll zone, at the drawer's full height: it alone scrolls,
+ * with Mantine's thin bar, as everywhere else. "auto": the bar shows as soon
+ * as the list overflows.
+ * The height Mantine gives it (100vh) is replaced by 100%: a few pixels too
+ * many, and the drawer itself scrolled, with the browser's bar.
+ */
+function DrawerScroll({ children }: { children?: ReactNode }) {
+  return (
+    <ScrollArea
+      type="auto"
+      scrollbars="y"
+      scrollbarSize="var(--milo-widgets-drawer-scrollbar-width)"
+      h="100%"
+      // The drawer's own color and width (theme editor), over the common ones.
+      styles={{ thumb: { backgroundColor: "var(--milo-widgets-drawer-scrollbar)" } }}
+      classNames={{ scrollbar: styles.scrollbar }}
+    >
+      {children}
+    </ScrollArea>
+  );
+}
 
 /** The space above a kind's title, when other widgets precede it. */
 const GROUPS_GAP = 40;
@@ -74,12 +99,14 @@ export default function WidgetDrawer<P extends WidgetChoice>({
     onDragEnd();
   };
 
-  // Widgets by kind, each group at the place of its first widget.
+  // Widgets by kind — some kinds share a group —, each group at the place
+  // of its first widget.
   const groups: { kind: WidgetKind; widgets: P[] }[] = [];
   for (const widget of widgets) {
-    const group = groups.find((g) => g.kind === widget.kind);
+    const kind = drawerGroup(widget.kind);
+    const group = groups.find((g) => g.kind === kind);
     if (group) group.widgets.push(widget);
-    else groups.push({ kind: widget.kind, widgets: [widget] });
+    else groups.push({ kind, widgets: [widget] });
   }
 
   return (
@@ -88,18 +115,30 @@ export default function WidgetDrawer<P extends WidgetChoice>({
       onClose={onClose}
       position="left"
       size={WIDTH}
-      padding={30}
+      padding="var(--milo-widgets-drawer-padding)"
       withCloseButton={false}
       // Closed mid-drag, the drawer stays in the page, hidden: the
       // picked row must still receive the end of the drag, otherwise the
       // row would think it still holds the widget.
       keepMounted
       // Mantine's scrollbar, along the drawer's right edge.
-      scrollAreaComponent={ScrollArea.Autosize}
+      scrollAreaComponent={DrawerScroll}
+      // Only that zone scrolls, never the drawer itself. Its colors and
+      // sizes are its own (theme editor).
+      styles={{
+        content: { overflow: "hidden", backgroundColor: "var(--milo-widgets-drawer-bg)" },
+      }}
+      attributes={{ content: { [THEME_SCOPE_ATTRIBUTE]: "widgets-drawer" } }}
     >
       {/* An "H1" title (widgets/common/title.tsx): its size, its
           color, and 20 px of space before the list. */}
-      <Title order={1} size={18} c="var(--mantine-color-white)" mb={20}>
+      <Title
+        order={1}
+        size="var(--milo-widgets-drawer-title-size)"
+        fw="var(--milo-widgets-drawer-title-weight)"
+        c="var(--milo-widgets-drawer-title)"
+        mb={20}
+      >
         Widgets
       </Title>
       {groups.map((group, rank) => (
@@ -109,13 +148,13 @@ export default function WidgetDrawer<P extends WidgetChoice>({
               other widgets precede it. */}
           <Title
             order={2}
-            size={16}
-            fw={400}
-            c="var(--mantine-color-white)"
+            size="var(--milo-widgets-drawer-group-size)"
+            fw="var(--milo-widgets-drawer-group-weight)"
+            c="var(--milo-widgets-drawer-group)"
             mb={H2_GAP}
             pt={rank > 0 ? GROUPS_GAP : 0}
           >
-            {kindLabel(group.kind)}
+            {drawerGroupLabel(group.kind)}
           </Title>
           <Stack gap={4}>
             {group.widgets.map((widget) => (
@@ -130,13 +169,25 @@ export default function WidgetDrawer<P extends WidgetChoice>({
                 gap="sm"
                 wrap="nowrap"
                 className={inset.inset}
-                style={{ padding: 10, border: "none", cursor: "grab" }}
+                style={{
+                  padding: 10,
+                  border: "none",
+                  cursor: "grab",
+                  backgroundColor: "var(--milo-widgets-drawer-item-bg)",
+                }}
               >
-                <Text c="dimmed" component="span" style={{ display: "flex" }}>
+                <Text c="var(--milo-widgets-drawer-grip)" component="span" style={{ display: "flex" }}>
                   <IconGripVertical size={16} />
                 </Text>
-                <widget.icon size={20} />
-                <Text size="sm" truncate>
+                <span className={styles.icon}>
+                  <widget.icon size={20} />
+                </span>
+                <Text
+                  truncate
+                  c="var(--milo-widgets-drawer-item-text)"
+                  fw="var(--milo-widgets-drawer-item-weight)"
+                  style={{ fontSize: "var(--milo-widgets-drawer-item-size)" }}
+                >
                   {widget.label}
                 </Text>
               </Group>

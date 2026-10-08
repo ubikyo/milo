@@ -2,33 +2,33 @@
 // VLAN that carries it (106) and its name. Empty as long as the board has
 // recorded nothing.
 
-import type { AssetVlan, Id } from "@milo/shared";
+import type { ManagedDeviceAssetVlan, Id } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 
 const read = selection<{ vlans: string }>(
-  "SELECT vlans FROM board_asset_settings WHERE board_id = ?",
+  "SELECT vlans FROM board_managed_device_asset_settings WHERE board_id = ?",
 );
 const write = mutation(
-  `INSERT INTO board_asset_settings (board_id, vlans) VALUES (?, ?)
+  `INSERT INTO board_managed_device_asset_settings (board_id, vlans) VALUES (?, ?)
    ON CONFLICT(board_id) DO UPDATE SET vlans = excluded.vlans`,
 );
 
 /** The board's VLANs; none for a workstation without a board. */
-export const vlans = (boardId: Id | null): AssetVlan[] => {
+export const vlans = (boardId: Id | null): ManagedDeviceAssetVlan[] => {
   const saved = boardId === null ? undefined : read.get(boardId)?.vlans;
   if (!saved) return [];
   try {
     const list = JSON.parse(saved) as unknown;
     // VLANs recorded before they had a name get an empty one.
     return Array.isArray(list)
-      ? (list as AssetVlan[]).map((v) => ({ ...v, name: v.name ?? "" }))
+      ? (list as ManagedDeviceAssetVlan[]).map((v) => ({ ...v, name: v.name ?? "" }))
       : [];
   } catch {
     return [];
   }
 };
 
-export const saveVlans = (boardId: Id, list: AssetVlan[]): void => {
+export const saveVlans = (boardId: Id, list: ManagedDeviceAssetVlan[]): void => {
   write.run(boardId, JSON.stringify(list));
 };
 
@@ -45,10 +45,10 @@ const toNumber = (address: string): number | null => {
  * The VLAN whose subnet contains the address, or null. If several contain it
  * ("10.1.0.0/16" and "10.1.106.0/24"), the most specific wins.
  */
-export const vlanOf = (address: string, list: AssetVlan[]): AssetVlan | null => {
+export const vlanOf = (address: string, list: ManagedDeviceAssetVlan[]): ManagedDeviceAssetVlan | null => {
   const ip = toNumber(address);
   if (ip === null) return null;
-  let found: AssetVlan | null = null;
+  let found: ManagedDeviceAssetVlan | null = null;
   let precision = -1;
   for (const v of list) {
     const [network = "", bits = ""] = v.subnet.split("/");

@@ -24,7 +24,7 @@
 }
 
 /* The variable sources, like the sections of an asset's sheet
-   (AssetDrawer.module.css): the header stays on the background on hover —
+   (ManagedDeviceAssetDrawer.module.css): the header stays on the background on hover —
    Mantine's gray leans towards blue; the class is doubled to beat its rule —,
    and the gap between two sources is set above the next one. */
 .control.control:hover {

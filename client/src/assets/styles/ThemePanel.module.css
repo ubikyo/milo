@@ -1,0 +1,32 @@
+/* The theme editor's panels: darker than the page, so that they read as a
+   tool beside the interface rather than a part of it. Their colors are their
+   own, the same on the light theme and the dark one, and outside the themes:
+   editing a color never changes the editor itself. The variables its fields,
+   buttons and texts read are therefore set again here, to fixed neutral
+   grays — the dark theme's defaults. */
+.panel {
+  color-scheme: dark;
+  background-color: #181818;
+  color: #c9c9c9;
+
+  --mantine-color-body: #181818;
+  --mantine-color-text: #c9c9c9;
+  --mantine-color-dimmed: #828282;
+  --mantine-color-placeholder: #696969;
+  --mantine-color-default: #2e2e2e;
+  --mantine-color-default-hover: #3b3b3b;
+  --mantine-color-default-border: #424242;
+  --milo-strong-text: #ffffff;
+  --milo-control-bg: #424242;
+  --milo-inset-bg: #1f1f1f;
+  --milo-field-icon: #b8b8b8;
+  --milo-scrollbar: #828282;
+}
+
+
+/* An open group of the tree, fields and subgroups included, is spaced from
+   the next one; the last of its level is not — its parent's spacing, if
+   any, follows. */
+.node:has(> [data-open]):not(:last-child) {
+  margin-bottom: 30px;
+}

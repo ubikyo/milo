@@ -14,8 +14,8 @@ import {
   IndicatorTitle,
   windows10,
 } from "./common";
-import type { AssetIndicatorWidget } from "./types";
-import type { Asset } from "@milo/shared";
+import type { ManagedDeviceAssetIndicatorWidget } from "./types";
+import type { ManagedDeviceAsset } from "@milo/shared";
 
 // The share of compliant workstations, as a ring: a workstation is compliant
 // when it misses none of the ticked rules. Next to it, what is missing, rule
@@ -29,7 +29,7 @@ interface Rule {
   label: string;
   /** What is missing, next to the ring. */
   missingLabel: string;
-  inDefault: (a: Asset) => boolean;
+  inDefault: (a: ManagedDeviceAsset) => boolean;
 }
 
 const RULES: Rule[] = [
@@ -57,9 +57,9 @@ const active = (config: unknown, rule: Rule): boolean =>
 /** The ring color: green at 90% and above, orange at 70%, red below. */
 const color = (part: number): string => (part >= 90 ? "teal" : part >= 70 ? "orange" : RED);
 
-export const complianceIndicator: AssetIndicatorWidget = {
+export const complianceIndicator: ManagedDeviceAssetIndicatorWidget = {
   type: "compliance",
-  kind: "asset",
+  kind: "managed_device_asset",
   label: LABEL,
   icon: IconShieldCheck,
   defaultConfig: { [NAME]: "", ...Object.fromEntries(RULES.map((r) => [r.key, true])) },

@@ -26,29 +26,30 @@
    background takes in the margins around the row, up to the edges: left, top
    and right when horizontal; left, top and bottom when vertical. The inset —
    the window's (--mb-padding), the page's (set by ModeBar) — is given back as
-   padding, so the tabs stay in place. */
+   padding, so the tabs stay in place. A window whose sides differ gives each
+   one (--tabs-bleed-top, -right, -bottom, -left: SettingsModal). */
 :where(.mantine-Modal-body, .mantine-Drawer-body, .milo-page-tabs) .mantine-Tabs-list {
   --tabs-bleed: var(--mb-padding, var(--mantine-spacing-md));
-  margin-top: calc(-1 * var(--tabs-bleed));
-  padding-top: var(--tabs-bleed);
-  margin-inline-start: calc(-1 * var(--tabs-bleed));
-  padding-inline-start: var(--tabs-bleed);
+  margin-top: calc(-1 * var(--tabs-bleed-top, var(--tabs-bleed)));
+  padding-top: var(--tabs-bleed-top, var(--tabs-bleed));
+  margin-inline-start: calc(-1 * var(--tabs-bleed-left, var(--tabs-bleed)));
+  padding-inline-start: var(--tabs-bleed-left, var(--tabs-bleed));
 }
 
 :where(.mantine-Modal-body, .mantine-Drawer-body, .milo-page-tabs) .mantine-Tabs-list:not([data-orientation="vertical"]) {
-  margin-inline-end: calc(-1 * var(--tabs-bleed));
-  padding-inline-end: var(--tabs-bleed);
+  margin-inline-end: calc(-1 * var(--tabs-bleed-right, var(--tabs-bleed)));
+  padding-inline-end: var(--tabs-bleed-right, var(--tabs-bleed));
   /* The row's line keeps to the inset, as before: only the background
      reaches the edges. */
-  --tabs-list-line-start: var(--tabs-bleed);
-  --tabs-list-line-end: var(--tabs-bleed);
+  --tabs-list-line-start: var(--tabs-bleed-left, var(--tabs-bleed));
+  --tabs-list-line-end: var(--tabs-bleed-right, var(--tabs-bleed));
 }
 
 :where(.mantine-Modal-body, .mantine-Drawer-body) .mantine-Tabs-list[data-orientation="vertical"] {
-  margin-bottom: calc(-1 * var(--tabs-bleed));
-  padding-bottom: var(--tabs-bleed);
-  --tabs-list-line-top: var(--tabs-bleed);
-  --tabs-list-line-bottom: var(--tabs-bleed);
+  margin-bottom: calc(-1 * var(--tabs-bleed-bottom, var(--tabs-bleed)));
+  padding-bottom: var(--tabs-bleed-bottom, var(--tabs-bleed));
+  --tabs-list-line-top: var(--tabs-bleed-top, var(--tabs-bleed));
+  --tabs-list-line-bottom: var(--tabs-bleed-bottom, var(--tabs-bleed));
 }
 
 /* The thickness of the active tab's line ("Onglet actif"): its frame, the

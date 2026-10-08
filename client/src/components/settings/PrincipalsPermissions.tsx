@@ -75,6 +75,19 @@ const ROUNDED_TOP = (({ borderTopLeftRadius, borderTopRightRadius }) => ({
 /** The unfolding's duration: that of Mantine's accordions. */
 const UNFOLD_DURATION = 200;
 
+/**
+ * A row's texts: Mantine's own, unless the window sets them — the Settings
+ * ("Listes éditables" > "Gestion de groupes et utilisateurs").
+ */
+const textStyle = (part: string, color: string, size: string) => ({
+  color: `var(--milo-principal-${part}, ${color})`,
+  size: `var(--milo-principal-${part}-size, ${size})`,
+  weight: `var(--milo-principal-${part}-weight, 400)`,
+});
+const NAME = textStyle("name", "var(--mantine-color-text)", "var(--mantine-font-size-sm)");
+const EMAIL = textStyle("email", "var(--mantine-color-dimmed)", "var(--mantine-font-size-xs)");
+const SUMMARY = textStyle("summary", "var(--mantine-color-dimmed)", "var(--mantine-font-size-xs)");
+
 /** The chevron's background on hover: a neutral gray, darker than the header. */
 const CHEVRON_HOVER = "var(--milo-control-bg)";
 
@@ -248,7 +261,7 @@ export default function PrincipalsPermissions<T>({
   const identity = (principal: EntraPrincipal, own?: boolean) => (
     <>
       <Group gap={6} wrap="nowrap">
-        <Text size="sm" truncate>
+        <Text c={NAME.color} fz={NAME.size} fw={NAME.weight} truncate>
           {principal.name || principal.email}
         </Text>
         {/* Oneself, or one's group: a green tag says so, as the VLAN's in Assets. */}
@@ -260,13 +273,15 @@ export default function PrincipalsPermissions<T>({
             radius="sm"
             tt="none"
             style={{ flexShrink: 0 }}
+            // In the Settings, their tags' look ("Listes éditables" > "Tag").
+            data-list-tag="filled"
           >
             {principal.type === "group" ? "Groupe courant" : "Utilisateur courant"}
           </Badge>
         )}
       </Group>
       {principal.type !== "group" && principal.email && (
-        <Text size="xs" c="dimmed" truncate>
+        <Text c={EMAIL.color} fz={EMAIL.size} fw={EMAIL.weight} truncate>
           {principal.email}
         </Text>
       )}
@@ -348,6 +363,10 @@ export default function PrincipalsPermissions<T>({
                       variant="subtle"
                       color="gray"
                       size={CHEVRON_SIZE + 4}
+                      // Its color, open or folded, when the window sets it
+                      // (SettingsModal.module.css).
+                      data-principal-chevron
+                      data-open={open || undefined}
                       // A neutral gray on hover, darker than the header:
                       // Mantine's grays lean blue.
                       style={
@@ -377,8 +396,8 @@ export default function PrincipalsPermissions<T>({
                       styles={{
                         root: { flexShrink: 0 },
                         placeholder: {
-                          backgroundColor: AVATAR_BACKGROUND,
-                          color: "var(--mantine-color-text)",
+                          backgroundColor: `var(--milo-principal-icon-bg, ${AVATAR_BACKGROUND})`,
+                          color: "var(--milo-principal-icon, var(--mantine-color-text))",
                         },
                       }}
                     >
@@ -426,8 +445,9 @@ export default function PrincipalsPermissions<T>({
                     {/* What it has, at a glance, at the end of the row, as far
                         from the right edge as the checkbox from the left. */}
                     <Text
-                      size="xs"
-                      c="dimmed"
+                      c={SUMMARY.color}
+                      fz={SUMMARY.size}
+                      fw={SUMMARY.weight}
                       style={{ flexShrink: 0, marginRight: NAME_INSET - ROW_INSET }}
                     >
                       {summary(permissions)}

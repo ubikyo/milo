@@ -224,12 +224,12 @@ const sameSort = (sort: Sort, key: ColumnKey, group: Id | undefined): boolean =>
   sort.key === key && (key !== "labels" || sort.group === group);
 
 /** A funnel option: "all" means "no filter". */
-interface FilterOption {
+export interface FilterOption {
   value: string;
   label: string;
 }
 
-const ALL_OPTION = "all";
+export const ALL_OPTION = "all";
 
 const STATUS_ORDER = Object.fromEntries(SUPPORT_STATUSES.map((s, i) => [s.value, i])) as Record<
   SupportStatus,
@@ -308,8 +308,11 @@ const chosen = (f: Filters, d: SupportRequest): boolean => {
   return true;
 };
 
-/** The funnel of a choice list. It is colored as long as it retains something. */
-function ChoiceFilter({
+/**
+ * The funnel of a choice list. It is colored as long as it retains something.
+ * The declared asset lists take it too (DeclaredAssetsList).
+ */
+export function ChoiceFilter({
   label,
   options,
   value,
@@ -351,7 +354,7 @@ function ChoiceFilter({
 }
 
 /** The funnel of a text column: you type what you are looking for. */
-function TextFilter({
+export function TextFilter({
   label,
   value,
   onChange,

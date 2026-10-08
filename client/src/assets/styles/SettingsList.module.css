@@ -1,0 +1,56 @@
+/* The selects of the Settings' editable lists — the themes' role
+   (Affichage), the printers' type and the paper formats (Impression) —, with the Settings' own
+   look ("Listes éditables" > "Select"). These lists only show there: the
+   rules read the Settings' variables, which also reach a select's list, out
+   of the window. Mantine's rules are beaten by a doubled class. */
+
+/* The chosen value: the select's own text, and its arrow. */
+.list.list :global(.mantine-Select-input) {
+  color: var(--milo-settings-theme-list-selected-color);
+  font-size: var(--milo-settings-theme-list-selected-size);
+  font-weight: var(--milo-settings-theme-list-selected-weight);
+}
+
+.list.list :global(.mantine-Select-section) {
+  color: var(--milo-settings-theme-list-selected-chevron);
+}
+
+/* The cross that empties it ("Select" > "Bouton reset"). */
+.list.list :global(.mantine-Select-section button) {
+  background-color: var(--milo-settings-select-clear-bg) !important;
+  color: var(--milo-settings-select-clear-icon) !important;
+}
+
+/* With its list open ("Élément sélectionné" > "Au survol"), and while the
+   theme editor edits it: its background, over the inline one
+   (nameFieldStyle). */
+.list.list :global(.mantine-Select-input[data-expanded]),
+:global(html[data-theme-preview="settings-theme-list-selected-hover"]) .list.list :global(.mantine-Select-input:not(:disabled)) {
+  background-color: var(--milo-settings-theme-list-selected-hover-bg) !important;
+}
+
+/* Its list — opened while the theme editor edits it (ThemeList). */
+.dropdown.dropdown {
+  background-color: var(--milo-settings-theme-list-dropdown-bg);
+  border-style: solid;
+  border-color: var(--milo-settings-theme-list-dropdown-border);
+  border-width: var(--milo-settings-theme-list-dropdown-border-width);
+}
+
+.option.option {
+  color: var(--milo-settings-theme-list-option-color);
+  font-size: var(--milo-settings-theme-list-option-size);
+  font-weight: var(--milo-settings-theme-list-option-weight);
+}
+
+/* Hovered, or reached with the keyboard. While the theme editor edits it,
+   one option shows it: the chosen one, or else the first. */
+.option.option:hover,
+.option.option[data-combobox-selected],
+:global(html[data-theme-preview="settings-theme-list-option-hover"]) .option.option[data-checked],
+:global(html[data-theme-preview="settings-theme-list-option-hover"]) .dropdown:not(:has([data-checked])) .option.option:first-child {
+  background-color: var(--milo-settings-theme-list-option-hover-bg);
+  color: var(--milo-settings-theme-list-option-hover-color);
+  font-size: var(--milo-settings-theme-list-option-hover-size);
+  font-weight: var(--milo-settings-theme-list-option-hover-weight);
+}

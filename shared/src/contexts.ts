@@ -12,7 +12,7 @@
 import type { Id } from "./domain.js";
 
 /** The list widgets whose labels can give the board its contexts. */
-export const CONTEXT_LISTS = ["project.list", "task.list", "support.list", "asset.list"] as const;
+export const CONTEXT_LISTS = ["project.list", "task.list", "support.list", "managed_device_asset.list"] as const;
 
 export type ContextList = (typeof CONTEXT_LISTS)[number];
 

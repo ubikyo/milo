@@ -33,10 +33,11 @@ import {
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import inset from "../../assets/styles/AccessNumber.module.css";
-import { OsLogo, ProtectionLogo } from "./AssetLogos";
+import { OsLogo, ProtectionLogo } from "./ManagedDeviceAssetLogos";
 import RecordTitle, { SPACE_BELOW_TITLE } from "./RecordTitle";
 import { CARD_BACKGROUND } from "./backgrounds";
-import { diskColor } from "./AssetsList";
+import PrintLabelButton from "../ui/PrintLabelButton";
+import { diskColor } from "./ManagedDeviceAssetsList";
 import { EMPTY, size } from "./InventoryTables";
 import {
   DAYS_WITHOUT_INVENTORY,
@@ -47,7 +48,7 @@ import {
 import { Fragment } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { RED } from "../../themes/colors";
-import type { AssetDetail, AssetSummary } from "@milo/shared";
+import type { ManagedDeviceAssetDetail, ManagedDeviceAssetSummary } from "@milo/shared";
 
 // The "Résumé" tab of a workstation's record: what one looks for first on
 // opening it, arranged in cards by theme. The detail stays in the other tabs.
@@ -138,7 +139,10 @@ const TAG_TITLE = {
 } as CSSProperties;
 
 /** The asset tag, at the head of the summary: taller than the others, over the full width. */
-const TAG_ASSET = { ...TAG_TITLE, "--badge-height": "44px" } as CSSProperties;
+const TAG_HEIGHT = 44;
+/** The print button's gap to the band's edges. */
+const PRINT_INSET = 6;
+const TAG_MANAGED_DEVICE_ASSET = { ...TAG_TITLE, "--badge-height": `${TAG_HEIGHT}px` } as CSSProperties;
 
 /** The ring's free part: a light neutral gray, not Mantine's, which leans blue. */
 const RING_BACKGROUND = "var(--milo-control-bg)";
@@ -212,7 +216,7 @@ const MONTHS_BEFORE_END = 6;
  * has passed, orange when it is near, green otherwise — and green too
  * when the vendor hasn't announced one yet. Gray when unknown.
  */
-function EndOfSupport({ support }: { support: AssetDetail["support"] }) {
+function EndOfSupport({ support }: { support: ManagedDeviceAssetDetail["support"] }) {
   if (!support) {
     return (
       <Text size="sm" c="dimmed">
@@ -319,7 +323,7 @@ function State({
  * orange when it is disabled, red when Windows declares
  * none. Outside Windows the agent knows nothing about it: we say so, in gray.
  */
-function Protection({ protection }: { protection: AssetDetail["protection"] }) {
+function Protection({ protection }: { protection: ManagedDeviceAssetDetail["protection"] }) {
   if (protection.state === "none") {
     return (
       <State color={RED} icon={<IconShieldOff size={16} />}>
@@ -355,7 +359,7 @@ function Encryption({
   encryption,
 }: {
   encrypted: boolean | null;
-  encryption: AssetSummary["encryption"];
+  encryption: ManagedDeviceAssetSummary["encryption"];
 }) {
   if (encrypted === false) {
     return (
@@ -386,7 +390,7 @@ function Encryption({
  * profile is off (we say which), red when it is off on all, gray
  * when the agent doesn't say.
  */
-function Firewall({ firewall }: { firewall: AssetSummary["firewall"] }) {
+function Firewall({ firewall }: { firewall: ManagedDeviceAssetSummary["firewall"] }) {
   switch (firewall.state) {
     case "on":
       return (
@@ -420,7 +424,7 @@ function Firewall({ firewall }: { firewall: AssetSummary["firewall"] }) {
 const SEVERITY = { red: 0, orange: 1, gray: 2, green: 3 } as const;
 type Severity = keyof typeof SEVERITY;
 
-const protectionSeverity = ({ state }: AssetDetail["protection"]): Severity =>
+const protectionSeverity = ({ state }: ManagedDeviceAssetDetail["protection"]): Severity =>
   state === "none"
     ? "red"
     : state === "inactive"
@@ -432,7 +436,7 @@ const protectionSeverity = ({ state }: AssetDetail["protection"]): Severity =>
 const encryptionSeverity = (encrypted: boolean | null): Severity =>
   encrypted === false ? "red" : encrypted == null ? "gray" : "green";
 
-const firewallSeverity = ({ state }: AssetSummary["firewall"]): Severity =>
+const firewallSeverity = ({ state }: ManagedDeviceAssetSummary["firewall"]): Severity =>
   state === "off"
     ? "red"
     : state === "partial"
@@ -445,7 +449,7 @@ const firewallSeverity = ({ state }: AssetSummary["firewall"]): Severity =>
  * The three states of the Sécurité card, red first, then orange, gray
  * and green; at equal severity, the order EPP/EDR, encryption, firewall.
  */
-const securityItems = (detail: AssetDetail) =>
+const securityItems = (detail: ManagedDeviceAssetDetail) =>
   [
     {
       key: "protection",
@@ -479,7 +483,7 @@ const SECURITY_POINTS = 3;
  * active EPP/EDR, an encrypted disk, a firewall active on all profiles.
  * What is disabled, partial or undeclared doesn't count.
  */
-const securityScore = (detail: AssetDetail): number =>
+const securityScore = (detail: ManagedDeviceAssetDetail): number =>
   [
     detail.protection.state === "active",
     detail.system_disk_encrypted === true,
@@ -514,7 +518,7 @@ function SecurityScore({ score }: { score: number }) {
  * macOS and Windows often name the interface after its type ("Wi-Fi",
  * "Ethernet"): the name is then not repeated.
  */
-const connectionType = (card: AssetSummary["networks"][number]): string => {
+const connectionType = (card: ManagedDeviceAssetSummary["networks"][number]): string => {
   const type = card.kind === "wifi" ? "Wi-Fi" : "Ethernet";
   const name = card.description.trim();
   return name && name.toLowerCase() !== type.toLowerCase() ? `${type} — ${name}` : type;
@@ -566,7 +570,7 @@ export function CopyValueButton({
   );
 }
 
-export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
+export default function ManagedDeviceAssetSummaryPanel({ detail }: { detail: ManagedDeviceAssetDetail }) {
   const { summary, os, system_disk: disk } = detail;
   const used = diskUsage(disk);
   const old = daysSinceInventory(detail) > DAYS_WITHOUT_INVENTORY;
@@ -595,16 +599,37 @@ export default function AssetSummaryPanel({ detail }: { detail: AssetDetail }) {
         </Text>
       </Group>
       <Grid gap="md" type="container" breakpoints={BREAKPOINTS}>
-        {/* At the head, the asset tag, alone, over the full width. */}
+        {/* At the head, the asset tag over the full width, on its left; on
+            its right, in the band, the label printed from the board's
+            templates. */}
         <Grid.Col span={12}>
           <Badge
-            color="green"
             variant="filled"
             radius="sm"
             tt="uppercase"
             fullWidth
-            style={TAG_ASSET}
-            styles={{ root: { justifyContent: "center" }, label: { textAlign: "center" } }}
+            style={TAG_MANAGED_DEVICE_ASSET}
+            rightSection={
+              detail.board_id !== null && (
+                <PrintLabelButton
+                  kind="managed_device_asset"
+                  boardId={detail.board_id}
+                  assetId={detail.id}
+                  size={TAG_HEIGHT - 2 * PRINT_INSET}
+                />
+              )
+            }
+            // On the gray of the cards below, in the text color; the button
+            // as far from the right edge as from the top and bottom.
+            styles={{
+              root: {
+                justifyContent: "flex-start",
+                backgroundColor: CARD_BACKGROUND,
+                color: "var(--mantine-color-text)",
+                paddingRight: PRINT_INSET,
+              },
+              label: { flex: 1, textAlign: "left" },
+            }}
           >
             {detail.name || EMPTY}
           </Badge>

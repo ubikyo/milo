@@ -9,6 +9,8 @@ import "@mantine/notifications/styles.css";
 import "@mantine/charts/styles.css";
 // Stylesheet of the Spotlight: the tab row search.
 import "@mantine/spotlight/styles.css";
+// Stylesheet of the drop zones: a declared equipment's photos and documents.
+import "@mantine/dropzone/styles.css";
 // Placed after Mantine's: it takes over its focus ring.
 // The gray thumb of all scrollbars.
 import "./assets/styles/scrollbars.css";
@@ -155,10 +157,10 @@ ReactDOM.createRoot(root).render(
     {/* An unknown error — uncaught — gives way to a red page that says
         where it comes from, rather than a blank page. */}
     <ErrorPage>
-      <ColorSchemeScript defaultColorScheme="auto" />
-      {/* "auto" follows the system theme; the user's choice is remembered
-        by Mantine in the browser's localStorage. */}
-      <MantineProvider theme={theme} defaultColorScheme="auto">
+      <ColorSchemeScript defaultColorScheme="dark" />
+      {/* Dark until the user chooses ("Thème dark", see lib/themeColors.ts);
+        their choice is remembered by Mantine in the browser's localStorage. */}
+      <MantineProvider theme={theme} defaultColorScheme="dark">
         {/* Calendars speak French and start the week on Monday. */}
         <DatesProvider settings={{ locale: "fr", firstDayOfWeek: 1 }}>
           <Favicon />

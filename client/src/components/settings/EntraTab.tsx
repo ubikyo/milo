@@ -35,6 +35,7 @@ import type {
   EntraStatus,
 } from "@milo/shared";
 import type { CSSProperties } from "react";
+import SettingsIntro from "./SettingsIntro";
 
 /** What the connection status shows, depending on what the server says about it. */
 const STATES: Record<
@@ -534,11 +535,11 @@ export default function EntraTab({
       {checkView || (
       <Stack gap="lg">
         <Stack gap="sm">
-          <Text size="sm" c="dimmed" pb={7}>
+          <SettingsIntro parentGap="var(--mantine-spacing-sm)">
             Paramètres de connexion à Entra, veuillez lire l'aide relative à
             l'installation de Milo pour déterminer les valeurs à préciser dans
             les éléments ci-dessous.
-          </Text>
+          </SettingsIntro>
 
           {/* The two Azure portal labels, word for word: that is where
               the values are looked up, so better not rename them along

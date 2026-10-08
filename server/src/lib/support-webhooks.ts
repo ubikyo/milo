@@ -2,7 +2,7 @@
 // arrives in a support inbox, and Milo polls right away, without waiting for
 // the periodic poll — which stays, in case a notification gets lost.
 //
-// This requires a public https address (MILO_PUBLIC_URL): Microsoft is the one
+// This requires a public https address (lib/milo-url.ts): Microsoft is the one
 // calling it. Without it, nothing is requested from Graph.
 //
 // A subscription to an inbox lives at most seven days: they are renewed
@@ -65,12 +65,13 @@ export const maintainSubscriptions = async (): Promise<void> => {
   if (!activeNotifications()) {
     if (!alreadyReported && entraConfigured()) {
       console.log(
-        "Graph notifications inactive: MILO_PUBLIC_URL (in https) is not set. The periodic poll is enough.",
+        "Graph notifications inactive: Milo's address (Paramétrage > Entra, or MILO_PUBLIC_URL) is not https. The periodic poll is enough.",
       );
       alreadyReported = true;
     }
     return;
   }
+  alreadyReported = false;
 
   const url = `${miloUrl()}${NOTIFICATIONS_PATH}`;
   const secret = notificationsSecret();

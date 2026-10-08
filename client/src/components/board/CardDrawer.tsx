@@ -21,7 +21,6 @@ import {
   IconPaperclip,
   IconPhoto,
   IconSettings,
-  IconUpload,
 } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api";
@@ -52,7 +51,9 @@ import { BARE_FIELDSET } from "../../lib/rights";
 import { ReferenceTag } from "../ui/ReferenceTag";
 import classes from "../../assets/styles/CardDrawer.module.css";
 import { errorMessage, notifyError } from "../../lib/errors";
-import type { CSSProperties, DragEvent as ReactDragEvent } from "react";
+import type { CSSProperties } from "react";
+import { IMAGE_MIME_TYPE } from "@mantine/dropzone";
+import { useFileDrag } from "../../lib/useFileDrag";
 import { taskReference } from "@milo/shared";
 import type {
   Attachment,
@@ -160,10 +161,6 @@ export default function CardDrawer({
   const [drafts, setDrafts] = useState<DraftDependency[]>([]);
   /** Seconds between two covers on the board; saved with the form. */
   const [rotation, setRotation] = useState(0);
-  /** True while files hover over the covers block: they will become covers. */
-  const [overCovers, setOverCovers] = useState(false);
-  /** True while files hover over the drawer: the drop prompt is shown. */
-  const [fileHover, setFileHover] = useState(false);
   const [phoneNumber, setNumber] = useState<number | null>(null);
   /** The card's due date: its start, end, recurrence, reminder. */
   const [due, setDue] = useState<Due>(EMPTY_DUE);
@@ -196,11 +193,11 @@ export default function CardDrawer({
   /** The cover image picker: images only, one or several. */
   const coverField = useRef<HTMLInputElement>(null);
   /**
-   * How many drawer elements the drag has crossed. A simple boolean
-   * would flicker: moving from one child to the next triggers a leave
-   * before the next enter, and the prompt would go out in between.
+   * Files dragged over the page: the covers' and attachments' drop zones
+   * show, even under blocks that already have rows (as a declared
+   * equipment's photos and documents).
    */
-  const depth = useRef(0);
+  const dragging = useFileDrag(opened && !creation && !readOnly);
 
   /**
    * An image pasted into the description: it is sent to the server, and
@@ -399,54 +396,6 @@ export default function CardDrawer({
     }
   };
 
-  // --- Drag and drop on the drawer ------------------------------------------
-  // Only files from outside count: dragging a checklist or text inside
-  // the drawer must trigger nothing.
-  const hasFiles = (e: ReactDragEvent) =>
-    e.dataTransfer.types.includes("Files");
-
-  const hoverEnd = () => {
-    depth.current = 0;
-    setFileHover(false);
-    setOverCovers(false);
-  };
-
-  /** True when the drag passes over the covers block (CardCovers). */
-  const toCovers = (e: ReactDragEvent) =>
-    e.target instanceof Element && e.target.closest("[data-covers]") !== null;
-
-  const hover = {
-    onDragEnter: (e: ReactDragEvent) => {
-      if (!hasFiles(e)) return;
-      depth.current += 1;
-      setFileHover(true);
-    },
-    onDragLeave: (e: ReactDragEvent) => {
-      if (!hasFiles(e)) return;
-      depth.current -= 1;
-      if (depth.current <= 0) hoverEnd();
-    },
-    onDragOver: (e: ReactDragEvent) => {
-      if (!hasFiles(e)) return;
-      // Without this, the browser would open the file in place of the page.
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "copy";
-      setOverCovers(toCovers(e));
-    },
-    onDrop: (e: ReactDragEvent) => {
-      if (!hasFiles(e)) return;
-      e.preventDefault();
-      hoverEnd();
-      const files = Array.from(e.dataTransfer.files);
-      // Dropped on the covers block, files become covers;
-      // anywhere else, they are attachments.
-      if (toCovers(e)) void dropCovers(files);
-      else void dropFiles(files);
-    },
-    // A drag abandoned midway would leave the prompt on.
-    onDragEnd: hoverEnd,
-  };
-
   // The due date as the server receives it. Without an end, nothing holds: no
   // start, no recurrence, no reminder.
   const dueFields = {
@@ -569,12 +518,7 @@ export default function CardDrawer({
         },
       }}
     >
-      {/* The whole drawer is a drop zone: a file dropped anywhere on the
-          form is attached to it. The prompt sits on top, without taking
-          the pointer — the elements below keep seeing the drag
-          go by. */}
       <div
-        {...(creation ? {} : hover)}
         style={{
           position: "relative",
           flex: 1,
@@ -583,17 +527,6 @@ export default function CardDrawer({
           flexDirection: "column",
         }}
       >
-        {fileHover && (
-          <div className={classes.dropZone}>
-            <Group gap="xs" wrap="nowrap">
-              <IconUpload size={22} />
-              <Text fw={600}>
-                {overCovers ? "Déposer en image de couverture" : "Glisser ici"}
-              </Text>
-            </Group>
-          </div>
-        )}
-
         <Tabs
           value={activeTab}
           onChange={setActiveTab}
@@ -864,6 +797,18 @@ export default function CardDrawer({
                       onReorder={arrangeCovers}
                       onDelete={deleteCover}
                       readOnly={readOnly}
+                      drop={
+                        readOnly
+                          ? undefined
+                          : {
+                              icon: IconPhoto,
+                              message: "Déposez des images de couverture ici",
+                              onDrop: (files) => void dropCovers(files),
+                              accept: IMAGE_MIME_TYPE,
+                              rejected: "Seules les images peuvent servir de couverture",
+                              shown: dragging,
+                            }
+                      }
                     />
                   )}
 
@@ -909,14 +854,24 @@ export default function CardDrawer({
                     />
                   )}
 
-                  {/* The attachments close the form. Like the checklists,
-                      the panel only appears when there is something in it. */}
+                  {/* The attachments close the form. Empty, a drop zone stands
+                      in for them; read-only, the block only shows with rows. */}
                   <div data-zone="attachments">
                     <CardAttachments
                       attachments={attachments}
                       onPick={() => fileField.current?.click()}
                       onReorder={arrangeAttachments}
                       onDelete={deleteAttachment}
+                      drop={
+                        card && !readOnly
+                          ? {
+                              icon: IconPaperclip,
+                              message: "Déposez des fichiers ici",
+                              onDrop: (files) => void dropFiles(files),
+                              shown: dragging,
+                            }
+                          : undefined
+                      }
                     />
                   </div>
                 </Stack>

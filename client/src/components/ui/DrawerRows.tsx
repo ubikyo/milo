@@ -13,9 +13,10 @@ import { PLUS_SIZE } from "../../themes/plus";
 
 /**
  * A row's background, laid directly on the drawer: a neutral gray on white, and
- * on dark a gray lighter than the drawer.
+ * on dark a gray lighter than the drawer. A window with its own — the
+ * Settings ("Listes éditables") — sets --milo-row-bg.
  */
-export const ROW_BACKGROUND = "var(--milo-sunken-bg)";
+export const ROW_BACKGROUND = "var(--milo-row-bg, var(--milo-sunken-bg))";
 
 /**
  * A header row's background — a checklist's title, a user above their
@@ -170,6 +171,9 @@ export function RowButton({
       radius={3}
       onClick={onClick}
       leftSection={<Icon size={14} />}
+      // Told apart from the list's other buttons — "Ajouter" —: the
+      // Settings set its look apart (SettingsModal.module.css).
+      data-row-button
       styles={{
         root: {
           flexShrink: 0,
@@ -235,6 +239,9 @@ export function RowCheckbox({
       onChange={(e) => onChange(e.currentTarget.checked)}
       // Pressing the box must not start dragging the row.
       onMouseDown={(e) => e.stopPropagation()}
+      // Told apart from the boxes with a label: the Settings set their
+      // colors apart ("Listes éditables").
+      className="milo-row-checkbox"
       style={checkboxStyle(afterHandle, gap)}
     />
   );
@@ -479,6 +486,8 @@ export function RowField({
       readOnly={readOnly}
       // The drawer holding the row stays open on Escape (editKeys).
       data-mantine-stop-propagation
+      // A row's name: the Settings set its look ("Listes éditables" > "Texte").
+      data-row-name
       value={input}
       onChange={(e) => setInput(e.currentTarget.value)}
       onKeyDown={(e) => {

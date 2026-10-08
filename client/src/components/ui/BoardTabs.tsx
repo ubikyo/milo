@@ -208,7 +208,7 @@ export default function BoardTabs({
               value={String(board.id)}
               {...tabProps(board.id, index, {
                 ...tabStyle(value === String(board.id)),
-                // The open tab's background (Paramétrage > Thèmes) — unless
+                // The open tab's background (theme editor) — unless
                 // the contexts list, open under it, gives it its own.
                 ...(value === String(board.id) && {
                   backgroundColor: "var(--contexts-tab-bg, var(--milo-view-tab-active))",

@@ -24,7 +24,10 @@ export const RESOURCES = [
   "support-requests",
   "support-labels",
   /** Machines: what the inventory agents report. */
-  "assets",
+  "managed-device-assets",
+  /** The declared assets, by kind: what is entered by hand (declared-assets.ts). */
+  "unmanaged-device-assets",
+  "application-assets",
   /** The styles the titles share. */
   "title-styles",
 ] as const;

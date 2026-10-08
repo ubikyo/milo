@@ -3,7 +3,7 @@
 //
 // Two routers, because two audiences: "inventoryRoutes" is open, since an
 // agent has no session — it is a service running on a workstation, not
-// someone signing in; "assetRoutes" sits behind the session, like the rest of
+// someone signing in; "managedDeviceAssetRoutes" sits behind the session, like the rest of
 // the API.
 //
 // The dialogue is OCS's, which FusionInventory and GLPI Agent both speak: the
@@ -21,11 +21,11 @@ import { parisTime, now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import {
   WORKSTATION_NOT_FOUND,
-  assetDetail,
-  assetOf,
+  managedDeviceAssetDetail,
+  managedDeviceAssetOf,
   assets,
   contentUser,
-} from "../repositories/assets.js";
+} from "../repositories/managed-device-assets.js";
 import { readableBoard, boards, openBoard } from "../repositories/boards.js";
 import { tagInbox } from "../repositories/inboxes.js";
 
@@ -57,7 +57,7 @@ const respond = (res: express.Response, xml: string) =>
 
 export const inventoryRoutes = Router();
 
-inventoryRoutes.use(touch("assets"));
+inventoryRoutes.use(touch("managed-device-assets"));
 
 /**
  * Dropping off an inventory. An agent showing up for the first time creates
@@ -150,9 +150,9 @@ inventoryRoutes.post("/", agentBody, (req: Request, res) => {
 
 // --- What the client reads ---------------------------------------------------
 
-export const assetRoutes = Router();
+export const managedDeviceAssetRoutes = Router();
 
-assetRoutes.use(touch("assets"));
+managedDeviceAssetRoutes.use(touch("managed-device-assets"));
 
 /** The workstation, if the user sees the assets and its board. */
 const visibleWorkstation = (req: Request, id: unknown) => {
@@ -166,10 +166,10 @@ const visibleWorkstation = (req: Request, id: unknown) => {
  * The workstations of a board. A workstation whose tag no asset label names
  * shows up nowhere.
  */
-assetRoutes.get("/", (req, res) => {
+managedDeviceAssetRoutes.get("/", (req, res) => {
   if (!requestCan(req, "assets", "view")) return void res.json([]);
   const board = openBoard(req.query.board, req.user);
-  res.json(assets.ofBoard.all(board.id).map((row) => assetOf(row)));
+  res.json(assets.ofBoard.all(board.id).map((row) => managedDeviceAssetOf(row)));
 });
 
 /**
@@ -178,8 +178,8 @@ assetRoutes.get("/", (req, res) => {
  * for an async function. It never makes the detail view fail: without it,
  * the workstation still opens.
  */
-assetRoutes.get("/:id", (req, res, next) => {
-  const detail = assetDetail(visibleWorkstation(req, req.params.id));
+managedDeviceAssetRoutes.get("/:id", (req, res, next) => {
+  const detail = managedDeviceAssetDetail(visibleWorkstation(req, req.params.id));
   endOfSupport(detail.os)
     .then((support) => res.json({ ...detail, support }))
     .catch(next);
@@ -236,9 +236,9 @@ const requestInventory = async (address: string): Promise<void> => {
  * through "next", because Express 4 does not catch rejections from an async
  * function — the rest of the server is synchronous and has no such issue.
  */
-assetRoutes.post("/:id/refresh", (req, res, next) => {
+managedDeviceAssetRoutes.post("/:id/refresh", (req, res, next) => {
   const workstation = visibleWorkstation(req, req.params.id);
-  const { address } = assetDetail(workstation);
+  const { address } = managedDeviceAssetDetail(workstation);
   if (!address) {
     badRequest("Aucune adresse connue pour ce poste : son inventaire n'en déclare aucune.");
   }
@@ -249,7 +249,7 @@ assetRoutes.post("/:id/refresh", (req, res, next) => {
 });
 
 /** A workstation that no longer exists: the only action we have on it. */
-assetRoutes.delete("/:id", (req, res) => {
+managedDeviceAssetRoutes.delete("/:id", (req, res) => {
   assets.remove.run(visibleWorkstation(req, req.params.id).id);
   res.status(204).end();
 });

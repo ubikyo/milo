@@ -9,7 +9,9 @@ export const LIST_ITEMS: Record<string, string> = {
   "project.list": "Les projets qu'il montre",
   "task.list": "Les listes de tâches qu'il montre, et leurs cartes,",
   "support.list": "Les tickets qu'il montre",
-  "asset.list": "Les assets qu'il montre",
+  "managed_device_asset.list": "Les assets qu'il montre",
+  "unmanaged_device_asset.list": "Les équipements qu'il montre, leurs photos et leurs documents",
+  "application_asset.list": "Les applications qu'il montre, leurs photos et leurs documents",
 };
 
 /** The filter of a widget's items, from its configuration. */

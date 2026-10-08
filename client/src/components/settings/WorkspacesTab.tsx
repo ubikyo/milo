@@ -1,4 +1,4 @@
-import { Button, Checkbox, Group, Menu, Modal, ScrollArea, Stack, Text } from "@mantine/core";
+import { Button, Checkbox, Group, Menu, Modal, ScrollArea, Stack } from "@mantine/core";
 import { IconStack2, IconTrash, IconUsers } from "@tabler/icons-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api";
@@ -26,6 +26,7 @@ import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu
 import WorkspaceAccess from "./WorkspaceAccess";
 import { grantsAnything } from "@milo/shared";
 import type { Workspace, WorkspaceRights } from "@milo/shared";
+import SettingsIntro from "./SettingsIntro";
 
 interface WorkspacesTabProps {
   /**
@@ -125,16 +126,16 @@ export default function WorkspacesTab({
 
   return (
     <Stack gap="sm">
-      {/* 15 px more than the stack gap before the list. */}
-      <Text size="sm" c="dimmed" mb={15}>
+      <SettingsIntro parentGap="var(--mantine-spacing-sm)">
         Un workspace est un environnement de travail étanche, associé à un
         ensemble d’utilisateurs ou de groupes d’utilisateurs disposant de
         droits pour créer des vues et des tableaux, ainsi que pour utiliser
         des widgets. Les données d’un workspace ne sont pas accessibles aux
         utilisateurs des autres workspaces.
-      </Text>
+      </SettingsIntro>
 
-      <div>
+      {/* An editable list of the Settings: their look ("Listes éditables"). */}
+      <div data-settings-list>
         {total === 0 ? (
           <EmptyList icon={IconStack2} message="Aucun workspace" />
         ) : (

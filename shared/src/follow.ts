@@ -31,7 +31,7 @@ export const emptyFollows = (): Follows => ({ project: [], card: [], list: [], s
  * A list has none: what is notified for a list is always one of
  * its cards, and the link points to that card.
  */
-export type LinkTargetKind = "project" | "card" | "support" | "asset" | "access";
+export type LinkTargetKind = "project" | "card" | "support" | "managed_device_asset" | "access";
 
 /**
  * A machine opens by its id; an item of the Access mode, by its
@@ -41,7 +41,8 @@ export const QUERY_PARAMS: Record<LinkTargetKind, string> = {
   project: "project",
   card: "card",
   support: "ticket",
-  asset: "asset",
+  // The address keeps its short name: the links already sent still open.
+  managed_device_asset: "asset",
   access: "access",
 };
 
@@ -53,7 +54,7 @@ export const LEGACY_QUERY_PARAMS: Record<LinkTargetKind, string> = {
   project: "projet",
   card: "carte",
   support: "demande",
-  asset: "poste",
+  managed_device_asset: "poste",
   access: "acces",
 };
 

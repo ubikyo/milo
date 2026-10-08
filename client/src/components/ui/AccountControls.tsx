@@ -1,4 +1,4 @@
-import { ActionIcon, Avatar, Box, Group, Menu } from "@mantine/core";
+import { ActionIcon, Avatar, Box, Group, Menu, Text } from "@mantine/core";
 import {
   IconBell,
   IconLogout,
@@ -96,6 +96,7 @@ export default function AccountControls({
   actions,
 }: AccountControlsProps) {
   const { settings: display } = useDisplaySettings();
+  const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ");
   const [isOpen, setOpened] = useState(false);
   // Like the contexts list: the menu lands on the row's rule and ends at the
   // frame's right edge. Both gaps are measured on opening, from the avatar.
@@ -178,6 +179,13 @@ export default function AccountControls({
               // As wide as the avatar: the frame's inset alone stands beside it.
               style={{ outline: "none", width: "auto", minWidth: 0 }}
             >
+              {/* The first and last name, to the left of the avatar: part
+                  of the target, they open the menu too. */}
+              {fullName && (
+                <Text component="span" size="sm" c="var(--mantine-color-text)" pl={6} pr={8}>
+                  {fullName}
+                </Text>
+              )}
               {/* A square with softened corners, not a circle: it sits
                   like the row's other controls. */}
               <Avatar

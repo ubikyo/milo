@@ -3,7 +3,14 @@
 // item's name, and how to get back to it.
 
 import { linkEntries, projectReference, supportTicketRef } from "@milo/shared";
-import type { AccessBlockType, Asset, BoardWidget, Id, Project, SupportRequest } from "@milo/shared";
+import type {
+  AccessBlockType,
+  ManagedDeviceAsset,
+  BoardWidget,
+  Id,
+  Project,
+  SupportRequest,
+} from "@milo/shared";
 import type { SourceTask } from "../components/board/TaskDestination";
 import { widgetFor } from "../widgets/common";
 
@@ -26,8 +33,8 @@ export const requestSource = (request: SupportRequest): SourceTask => ({
     .join(" — "),
 });
 
-export const workstationSource = (workstation: Asset): SourceTask => ({
-  kind: "asset",
+export const workstationSource = (workstation: ManagedDeviceAsset): SourceTask => ({
+  kind: "managed_device_asset",
   id: workstation.id,
   title: workstation.name,
 });

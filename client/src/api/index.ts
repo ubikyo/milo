@@ -19,14 +19,14 @@ import type {
   AccessQuote,
   WeatherPlace,
   ApiError,
-  Asset,
-  AssetDetail,
+  ManagedDeviceAsset,
+  ManagedDeviceAssetDetail,
   IndicatorSection,
   IndicatorSectionInput,
   ExportedLayout,
   MailboxOptinState,
   ImportResult,
-  AssetRefresh,
+  ManagedDeviceAssetRefresh,
   Attachment,
   CardCover,
   AuthResult,
@@ -100,7 +100,12 @@ import type {
   MailTemplatePreview,
   DisplaySettings,
   MiloSettings,
-  ThemeColors,
+  Printer,
+  PrinterInput,
+  PrinterInfos,
+  PaperFormat,
+  PaperFormatInput,
+  Theme,
   TitleStyle,
   SupportContent,
   SupportContentEvent,
@@ -108,13 +113,26 @@ import type {
   SupportReply,
   SupportReplyEvent,
   SupportSettings,
-  AssetSettings,
+  ManagedDeviceAssetSettings,
+  LabelPreview,
+  LabelTemplate,
+  LabelTemplateKind,
+  LabelTemplates,
+  LabelTestPrint,
+  DeclaredAsset,
+  DeclaredAssetAttachment,
+  DeclaredAssetFiles,
+  DeclaredAssetInput,
+  DeclaredAssetKind,
+  DeclaredAssetPhoto,
+  DeclaredAssetSettings,
   UpdateMeInput,
   OpeningView,
   VersionPayload,
   SearchResult,
   Notification,
 } from "@milo/shared";
+import { DECLARED_ASSET_ROUTES } from "@milo/shared";
 import { getToken, setToken } from "../lib/auth";
 
 /** An uploaded reply attachment: what the reply then cites. */
@@ -239,6 +257,16 @@ const queryString = (params: Record<string, unknown>): string => {
  * A board's sections: its columns. Sections are read and created through the
  * board; they are then modified by their identifier.
  */
+/** Fired with the kind of labels whose groups have changed: their readers re-read. */
+export const LABEL_GROUPS_EVENT = "milo:label-groups";
+
+/** A change to the groups of "base": signaled once the server has made it. */
+const groupsChange = <T>(base: LabelsBase, change: Promise<T>): Promise<T> =>
+  change.then((result) => {
+    window.dispatchEvent(new CustomEvent(LABEL_GROUPS_EVENT, { detail: base }));
+    return result;
+  });
+
 const boardSections = (boardId: Id | string) => ({
   all: () => get<IndicatorSection[]>(`/boards/${boardId}/sections`),
   create: (data: IndicatorSectionInput) =>
@@ -552,25 +580,45 @@ export const api = {
   deleteProjectLabel: (id: Id) => del(`/project-labels/${id}`),
 
   // A board's asset labels: each names the GLPI tag of the machines it brings.
-  getAssetLabels: (boardId: string | Id) =>
-    get<Label[]>(`/asset-labels${queryString({ board: boardId })}`),
-  createAssetLabel: (board_id: Id | string, name: string, color: string, group_id?: Id) =>
-    post<Label>("/asset-labels", { board_id, name, color, group_id }),
-  updateAssetLabel: (id: Id, data: LabelInput) => put<Label>(`/asset-labels/${id}`, data),
-  deleteAssetLabel: (id: Id) => del(`/asset-labels/${id}`),
+  getManagedDeviceAssetLabels: (boardId: string | Id) =>
+    get<Label[]>(`/managed-device-asset-labels${queryString({ board: boardId })}`),
+  createManagedDeviceAssetLabel: (
+    board_id: Id | string,
+    name: string,
+    color: string,
+    group_id?: Id,
+  ) => post<Label>("/managed-device-asset-labels", { board_id, name, color, group_id }),
+  updateManagedDeviceAssetLabel: (id: Id, data: LabelInput) =>
+    put<Label>(`/managed-device-asset-labels/${id}`, data),
+  deleteManagedDeviceAssetLabel: (id: Id) => del(`/managed-device-asset-labels/${id}`),
+
+  // A board's declared asset labels, by kind: its own, named by no tag.
+  getDeclaredAssetLabels: (kind: DeclaredAssetKind, boardId: string | Id) =>
+    get<Label[]>(`${DECLARED_ASSET_ROUTES[kind].labels}${queryString({ board: boardId })}`),
+  createDeclaredAssetLabel: (
+    kind: DeclaredAssetKind,
+    board_id: Id | string,
+    name: string,
+    color: string,
+    group_id?: Id,
+  ) => post<Label>(DECLARED_ASSET_ROUTES[kind].labels, { board_id, name, color, group_id }),
+  updateDeclaredAssetLabel: (kind: DeclaredAssetKind, id: Id, data: LabelInput) =>
+    put<Label>(`${DECLARED_ASSET_ROUTES[kind].labels}/${id}`, data),
+  deleteDeclaredAssetLabel: (kind: DeclaredAssetKind, id: Id) =>
+    del(`${DECLARED_ASSET_ROUTES[kind].labels}/${id}`),
 
   // The groups of a kind of labels: those of a board ("board_id"), or of
   // Support, which belong to none.
   getLabelGroups: (base: LabelsBase, board?: Id | string) =>
     get<LabelGroup[]>(`${base}/groups${queryString({ board })}`),
   createLabelGroup: (base: LabelsBase, name: string, board_id?: Id | string) =>
-    post<LabelGroup>(`${base}/groups`, { board_id, name }),
+    groupsChange(base, post<LabelGroup>(`${base}/groups`, { board_id, name })),
   renameLabelGroup: (base: LabelsBase, id: Id, name: string) =>
-    put<LabelGroup>(`${base}/groups/${id}`, { name }),
-  deleteLabelGroup: (base: LabelsBase, id: Id) => del(`${base}/groups/${id}`),
+    groupsChange(base, put<LabelGroup>(`${base}/groups/${id}`, { name })),
+  deleteLabelGroup: (base: LabelsBase, id: Id) => groupsChange(base, del(`${base}/groups/${id}`)),
   // Every group in order, each with all its labels: labels may change group.
   arrangeLabels: (base: LabelsBase, groups: LabelGroupLayout[], board_id?: Id | string) =>
-    put<null>(`${base}/arrange`, { board_id, groups }),
+    groupsChange(base, put<null>(`${base}/arrange`, { board_id, groups })),
 
   getProjects: (filters: ProjectFilters = {}) =>
     get<Project[]>(
@@ -725,8 +773,9 @@ export const api = {
   // name: everything else waits until the workstation is opened, and so only travels
   // for the one being viewed.
   /** A board's workstations. */
-  getAssets: (boardId: Id) => get<Asset[]>(`/assets${queryString({ board: boardId })}`),
-  getAsset: (id: Id) => get<AssetDetail>(`/assets/${id}`),
+  getManagedDeviceAssets: (boardId: Id) =>
+    get<ManagedDeviceAsset[]>(`/managed-device-assets${queryString({ board: boardId })}`),
+  getManagedDeviceAsset: (id: Id) => get<ManagedDeviceAssetDetail>(`/managed-device-assets/${id}`),
 
   // The notifications received, for the "Notifications" drawer.
   getNotifications: () => get<Notification[]>("/notifications"),
@@ -768,13 +817,67 @@ export const api = {
   ) => put<SupportContent>(`/support-contents/${id}`, data),
   deleteSupportContent: (id: Id) => del(`/support-contents/${id}`),
   // A board's Asset widgets settings: the templates table, the VLAN one.
-  getAssetSettings: (boardId: Id) =>
-    get<AssetSettings>(`/asset-settings${queryString({ board: boardId })}`),
-  updateAssetSettings: (boardId: Id, data: Partial<AssetSettings>) =>
-    put<AssetSettings>(
-      `/asset-settings${queryString({ board: boardId })}`,
+  getManagedDeviceAssetSettings: (boardId: Id) =>
+    get<ManagedDeviceAssetSettings>(`/managed-device-asset-settings${queryString({ board: boardId })}`),
+  updateManagedDeviceAssetSettings: (boardId: Id, data: Partial<ManagedDeviceAssetSettings>) =>
+    put<ManagedDeviceAssetSettings>(
+      `/managed-device-asset-settings${queryString({ board: boardId })}`,
       data,
     ),
+  // A board's label templates, by asset kind; the preview is drawn by the
+  // format's printer, the test printed on it.
+  getLabelTemplates: (kind: LabelTemplateKind, boardId: Id) =>
+    get<LabelTemplates>(`/label-templates/${kind}${queryString({ board: boardId })}`),
+  updateLabelTemplates: (kind: LabelTemplateKind, boardId: Id, templates: LabelTemplate[]) =>
+    put<LabelTemplates>(`/label-templates/${kind}${queryString({ board: boardId })}`, { templates }),
+  previewLabelTemplate: (kind: LabelTemplateKind, boardId: Id, data: Omit<LabelTemplate, "name">) =>
+    post<LabelPreview>(`/label-templates/${kind}/preview${queryString({ board: boardId })}`, data),
+  printLabelTemplate: (kind: LabelTemplateKind, boardId: Id, data: Omit<LabelTemplate, "name">) =>
+    post<LabelTestPrint>(`/label-templates/${kind}/print${queryString({ board: boardId })}`, data),
+  // An asset's label, from the template of this name.
+  printAssetLabel: (kind: LabelTemplateKind, assetId: Id, name: string) =>
+    post<LabelTestPrint>(`/label-templates/${kind}/assets/${assetId}/print`, { name }),
+  // A board's declared asset lists, by kind: categories, suppliers, makers, products.
+  getDeclaredAssetSettings: (kind: DeclaredAssetKind, boardId: Id) =>
+    get<DeclaredAssetSettings>(
+      `${DECLARED_ASSET_ROUTES[kind].settings}${queryString({ board: boardId })}`,
+    ),
+  updateDeclaredAssetSettings: (
+    kind: DeclaredAssetKind,
+    boardId: Id,
+    data: Partial<DeclaredAssetSettings>,
+  ) =>
+    put<DeclaredAssetSettings>(
+      `${DECLARED_ASSET_ROUTES[kind].settings}${queryString({ board: boardId })}`,
+      data,
+    ),
+  // A board's declared assets, by kind. Their photos and documents go out on
+  // upload, like a card's.
+  getDeclaredAssets: (kind: DeclaredAssetKind, boardId: Id) =>
+    get<DeclaredAsset[]>(`${DECLARED_ASSET_ROUTES[kind].assets}${queryString({ board: boardId })}`),
+  createDeclaredAsset: (kind: DeclaredAssetKind, data: DeclaredAssetInput) =>
+    post<DeclaredAsset>(DECLARED_ASSET_ROUTES[kind].assets, data),
+  updateDeclaredAsset: (kind: DeclaredAssetKind, id: Id, data: DeclaredAssetInput) =>
+    put<DeclaredAsset>(`${DECLARED_ASSET_ROUTES[kind].assets}/${id}`, data),
+  deleteDeclaredAsset: (kind: DeclaredAssetKind, id: Id) =>
+    del(`${DECLARED_ASSET_ROUTES[kind].assets}/${id}`),
+  getDeclaredAssetFiles: (kind: DeclaredAssetKind, id: Id) =>
+    get<DeclaredAssetFiles>(`${DECLARED_ASSET_ROUTES[kind].assets}/${id}/files`),
+  uploadDeclaredAssetPhoto: (kind: DeclaredAssetKind, id: Id, file: File) =>
+    upload<DeclaredAssetPhoto>(`${DECLARED_ASSET_ROUTES[kind].assets}/${id}/photos`, file),
+  reorderDeclaredAssetPhotos: (kind: DeclaredAssetKind, id: Id, ids: Id[]) =>
+    put<DeclaredAssetPhoto[]>(`${DECLARED_ASSET_ROUTES[kind].assets}/${id}/photos/order`, { ids }),
+  deleteDeclaredAssetPhoto: (kind: DeclaredAssetKind, id: Id) =>
+    del(`${DECLARED_ASSET_ROUTES[kind].assets}/photos/${id}`),
+  uploadDeclaredAssetAttachment: (kind: DeclaredAssetKind, id: Id, file: File) =>
+    upload<DeclaredAssetAttachment>(`${DECLARED_ASSET_ROUTES[kind].assets}/${id}/attachments`, file),
+  reorderDeclaredAssetAttachments: (kind: DeclaredAssetKind, id: Id, ids: Id[]) =>
+    put<DeclaredAssetAttachment[]>(
+      `${DECLARED_ASSET_ROUTES[kind].assets}/${id}/attachments/order`,
+      { ids },
+    ),
+  deleteDeclaredAssetAttachment: (kind: DeclaredAssetKind, id: Id) =>
+    del(`${DECLARED_ASSET_ROUTES[kind].assets}/attachments/${id}`),
   getMiloSettings: () => get<MiloSettings>("/milo-settings"),
   updateMiloSettings: (data: Partial<MiloSettings>) => put<MiloSettings>("/milo-settings", data),
   getMailTemplates: () => get<MailTemplate[]>("/mail-templates"),
@@ -791,16 +894,30 @@ export const api = {
   getDisplaySettings: () => get<DisplaySettings>("/display-settings"),
   updateDisplaySettings: (data: Partial<DisplaySettings>) =>
     put<DisplaySettings>("/display-settings", data),
-  getThemeColors: () => get<ThemeColors>("/theme-colors"),
-  updateThemeColors: (colors: ThemeColors) => put<ThemeColors>("/theme-colors", colors),
+  getPrinters: () => get<Printer[]>("/printers"),
+  // Each printer asked for its model: a few seconds at most.
+  getPrinterInfos: () => get<PrinterInfos>("/printers/info"),
+  createPrinter: (data: PrinterInput) => post<Printer>("/printers", data),
+  updatePrinter: (id: Id, data: PrinterInput) => put<Printer>(`/printers/${id}`, data),
+  deletePrinter: (id: Id) => del(`/printers/${id}`),
+  /** A ZPL job, sent as is to a Zebra. */
+  printZpl: (id: Id, zpl: string) => post<void>(`/printers/${id}/print`, { zpl }),
+  getPaperFormats: () => get<PaperFormat[]>("/paper-formats"),
+  createPaperFormat: (data: Omit<PaperFormat, "id">) => post<PaperFormat>("/paper-formats", data),
+  updatePaperFormat: (id: Id, data: PaperFormatInput) =>
+    put<PaperFormat>(`/paper-formats/${id}`, data),
+  deletePaperFormat: (id: Id) => del(`/paper-formats/${id}`),
+  getThemes: () => get<Theme[]>("/theme-colors"),
+  updateThemes: (themes: Theme[]) => put<Theme[]>("/theme-colors", themes),
   getTitleStyles: () => get<TitleStyle[]>("/title-styles"),
   updateTitleStyles: (styles: TitleStyle[]) =>
     put<TitleStyle[]>("/title-styles", styles),
   // "Inventorie-toi maintenant": the server calls the agent on the workstation.
   // Nothing comes back — the inventory arrives later through the agents' door,
   // and the event stream notifies.
-  refreshAsset: (id: Id) => post<AssetRefresh>(`/assets/${id}/refresh`, {}),
-  deleteAsset: (id: Id) => del(`/assets/${id}`),
+  refreshManagedDeviceAsset: (id: Id) =>
+    post<ManagedDeviceAssetRefresh>(`/managed-device-assets/${id}/refresh`, {}),
+  deleteManagedDeviceAsset: (id: Id) => del(`/managed-device-assets/${id}`),
   // --- Support mode --------------------------------------------------------
 
   /** A board's requests. */

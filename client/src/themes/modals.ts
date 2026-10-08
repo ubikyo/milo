@@ -21,7 +21,11 @@ import { DARK_HEADER, DARK_HEADER_SIZE, DARK_HEADER_TEXT, DARK_HEADER_WEIGHT } f
 // "md".
 export const MODAL_PADDING = 32;
 
-export const modalHeaderStyles = (padding: number) => ({
+/** Half the inset: a number, or a CSS value — a theme's variable. */
+const half = (padding: number | string) =>
+  typeof padding === "number" ? padding / 2 : `calc(${padding} / 2)`;
+
+export const modalHeaderStyles = (padding: number | string) => ({
   title: {
     fontWeight: DARK_HEADER_WEIGHT,
     color: DARK_HEADER_TEXT,
@@ -29,8 +33,8 @@ export const modalHeaderStyles = (padding: number) => ({
   },
   header: {
     backgroundColor: DARK_HEADER,
-    padding: padding / 2,
-    paddingInlineEnd: padding / 2,
+    padding: half(padding),
+    paddingInlineEnd: half(padding),
   },
   body: { paddingTop: padding },
 });

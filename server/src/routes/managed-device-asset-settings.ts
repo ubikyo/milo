@@ -7,21 +7,26 @@
 import { Router } from "express";
 import type { Request } from "express";
 import {
-  ASSET_MODEL_MAX,
+  MANAGED_DEVICE_ASSET_MODEL_MAX,
   VLAN_MAX,
   VLAN_MIN,
   VLAN_NAME_MAX,
   accessIncludes,
 } from "@milo/shared";
-import type { AssetModel, AssetSettings, AssetVlan, Id } from "@milo/shared";
-import { saveTemplates, templates } from "../lib/asset-models.js";
-import { saveVlans, vlans } from "../lib/asset-vlans.js";
+import type {
+  ManagedDeviceAssetModel,
+  ManagedDeviceAssetSettings,
+  ManagedDeviceAssetVlan,
+  Id,
+} from "@milo/shared";
+import { saveTemplates, templates } from "../lib/managed-device-asset-models.js";
+import { saveVlans, vlans } from "../lib/managed-device-asset-vlans.js";
 import { HttpError, badRequest } from "../lib/http.js";
 import { touchNow } from "../middleware/events.js";
 import { openBoard, requireBoardControl } from "../repositories/boards.js";
 import { widgetRights } from "../repositories/users.js";
 
-const assetSettings = (boardId: Id): AssetSettings => ({
+const assetSettings = (boardId: Id): ManagedDeviceAssetSettings => ({
   models: templates(boardId),
   vlans: vlans(boardId),
 });
@@ -31,7 +36,7 @@ const assetSettings = (boardId: Id): AssetSettings => ({
  * assets' settings, may modify them.
  */
 const verifyBoard = (req: Request, write: boolean): Id => {
-  if (write && !accessIncludes(widgetRights(req.user).asset, "update")) {
+  if (write && !accessIncludes(widgetRights(req.user).managed_device_asset, "update")) {
     throw new HttpError(403, "Vous n'avez pas le droit de modifier ici");
   }
   const board = openBoard(req.query.board, req.user);
@@ -49,9 +54,9 @@ const isSubnet = (text: string): boolean => {
   return bytes.every((o) => o <= 255) && Number(m[5]) <= 32;
 };
 
-export const assetSettingsRoutes = Router();
+export const managedDeviceAssetSettingsRoutes = Router();
 
-assetSettingsRoutes.get("/", (req, res) => {
+managedDeviceAssetSettingsRoutes.get("/", (req, res) => {
   res.json(assetSettings(verifyBoard(req, false)));
 });
 
@@ -59,22 +64,22 @@ assetSettingsRoutes.get("/", (req, res) => {
  * The models table. Rows with neither id nor name — a row just added and
  * not filled in — are left out; an id appears only once.
  */
-const readTemplates = (received: unknown): AssetModel[] => {
+const readTemplates = (received: unknown): ManagedDeviceAssetModel[] => {
   if (!Array.isArray(received)) badRequest("La table des modèles est une liste");
 
   const seen = new Set<string>();
-  const list: AssetModel[] = [];
+  const list: ManagedDeviceAssetModel[] = [];
   for (const entry of received as unknown[]) {
     const identifier = String(
-      (entry as AssetModel | null)?.identifier ?? "",
+      (entry as ManagedDeviceAssetModel | null)?.identifier ?? "",
     ).trim();
-    const name = String((entry as AssetModel | null)?.name ?? "").trim();
+    const name = String((entry as ManagedDeviceAssetModel | null)?.name ?? "").trim();
     if (!identifier && !name) continue;
     if (!identifier) badRequest(`Le modèle « ${name} » n'a pas d'identifiant`);
     if (!name) badRequest(`L'identifiant « ${identifier} » n'a pas de nom`);
-    if (identifier.length > ASSET_MODEL_MAX || name.length > ASSET_MODEL_MAX) {
+    if (identifier.length > MANAGED_DEVICE_ASSET_MODEL_MAX || name.length > MANAGED_DEVICE_ASSET_MODEL_MAX) {
       badRequest(
-        `Un identifiant ou un nom tient en ${ASSET_MODEL_MAX} caractères`,
+        `Un identifiant ou un nom tient en ${MANAGED_DEVICE_ASSET_MODEL_MAX} caractères`,
       );
     }
     const key = identifier.toLowerCase();
@@ -90,15 +95,15 @@ const readTemplates = (received: unknown): AssetModel[] => {
  * The VLAN table. Empty rows are left out; a subnet appears only once, a
  * single VLAN can carry several. The name is optional.
  */
-const readVlans = (received: unknown): AssetVlan[] => {
+const readVlans = (received: unknown): ManagedDeviceAssetVlan[] => {
   if (!Array.isArray(received)) badRequest("La table des VLAN est une liste");
 
   const seen = new Set<string>();
-  const list: AssetVlan[] = [];
+  const list: ManagedDeviceAssetVlan[] = [];
   for (const entry of received as unknown[]) {
-    const subnet = String((entry as AssetVlan | null)?.subnet ?? "").trim();
-    const raw = String((entry as AssetVlan | null)?.vlan ?? "").trim();
-    const name = String((entry as AssetVlan | null)?.name ?? "").trim();
+    const subnet = String((entry as ManagedDeviceAssetVlan | null)?.subnet ?? "").trim();
+    const raw = String((entry as ManagedDeviceAssetVlan | null)?.vlan ?? "").trim();
+    const name = String((entry as ManagedDeviceAssetVlan | null)?.name ?? "").trim();
     if (!subnet && !raw && !name) continue;
     if (!subnet) badRequest(`Le VLAN « ${raw} » n'a pas de sous-réseau`);
     if (!isSubnet(subnet)) {
@@ -125,7 +130,7 @@ const readVlans = (received: unknown): AssetVlan[] => {
  * Each received table is replaced entirely, in one go; a table that is not
  * sent stays as it is.
  */
-assetSettingsRoutes.put("/", (req, res) => {
+managedDeviceAssetSettingsRoutes.put("/", (req, res) => {
   const boardId = verifyBoard(req, true);
   const body = req.body ?? {};
   if (body.models === undefined && body.vlans === undefined) {
@@ -141,6 +146,6 @@ assetSettingsRoutes.put("/", (req, res) => {
   if (newVlans) saveVlans(boardId, newVlans);
 
   // Open detail views display the name: let them re-read.
-  touchNow(res, "assets");
+  touchNow(res, "managed-device-assets");
   res.json(assetSettings(boardId));
 });

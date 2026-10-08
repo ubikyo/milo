@@ -8,13 +8,22 @@
    - Mantine's areas (ScrollArea, and everything using it: Select dropdowns,
      menus…). Their "mantine-ScrollArea-*" classes are part of its public
      interface. The selector goes through the bar and hover to beat Mantine's
-     own, which tint the thumb gray and darken it on hover;
+     own, which tint the thumb gray and darken it on hover, and which round
+     the thumb: square everywhere;
    - the browser's native bars, where a block scrolls with "overflow: auto"
      (drawer bodies, rich text input…). */
+.mantine-ScrollArea-scrollbar {
+  /* Mantine pads the bar by a fifth of its size: the thumb then stood off
+     the edge by a pixel or more. It lies against it, and is as wide as the
+     size given. */
+  padding: 0;
+}
+
 .mantine-ScrollArea-scrollbar > .mantine-ScrollArea-thumb,
 .mantine-ScrollArea-scrollbar:hover > .mantine-ScrollArea-thumb,
 .mantine-ScrollArea-scrollbar:active > .mantine-ScrollArea-thumb {
   background-color: var(--milo-scrollbar);
+  border-radius: 0;
 }
 
 * {

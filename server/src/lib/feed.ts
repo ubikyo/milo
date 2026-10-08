@@ -533,7 +533,8 @@ export const pollAllFeeds = async (): Promise<void> => {
   }
 };
 
-const articlesOf = (row: AccessFeedRow): AccessFeedArticle[] => {
+/** A feed's articles, as the database keeps them; also searched (routes/search.ts). */
+export const articlesOf = (row: AccessFeedRow): AccessFeedArticle[] => {
   try {
     const readItems: unknown = JSON.parse(row.articles);
     return Array.isArray(readItems) ? (readItems as AccessFeedArticle[]) : [];

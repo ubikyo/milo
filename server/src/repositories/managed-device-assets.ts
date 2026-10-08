@@ -6,56 +6,56 @@
 // unrolls it, and nobody has yet decided what would be kept of it.
 
 import type {
-  Asset,
-  AssetDetail,
-  AssetEntry,
-  AssetModel,
-  AssetNetwork,
-  AssetOsFamily,
-  AssetProtection,
-  AssetSection,
-  AssetSummary,
-  AssetVlan,
+  ManagedDeviceAsset,
+  ManagedDeviceAssetDetail,
+  ManagedDeviceAssetEntry,
+  ManagedDeviceAssetModel,
+  ManagedDeviceAssetNetwork,
+  ManagedDeviceAssetOsFamily,
+  ManagedDeviceAssetProtection,
+  ManagedDeviceAssetSection,
+  ManagedDeviceAssetSummary,
+  ManagedDeviceAssetVlan,
   Label,
 } from "@milo/shared";
 import { mutation, selection, transaction } from "../db/query.js";
-import type { AssetRow } from "../db/rows.js";
+import type { ManagedDeviceAssetRow } from "../db/rows.js";
 import { receivedTags } from "./inboxes.js";
-import { templateName, templates } from "../lib/asset-models.js";
-import { vlanOf, vlans } from "../lib/asset-vlans.js";
+import { templateName, templates } from "../lib/managed-device-asset-models.js";
+import { vlanOf, vlans } from "../lib/managed-device-asset-vlans.js";
 import { sectionsOf, textOf } from "../lib/inventory.js";
 import type { Tree } from "../lib/inventory.js";
 
 export const WORKSTATION_NOT_FOUND = "Poste introuvable";
 
 export const assets = {
-  byId: selection<AssetRow>("SELECT * FROM assets WHERE id = ?"),
-  byDeviceId: selection<AssetRow>("SELECT * FROM assets WHERE deviceid = ?"),
+  byId: selection<ManagedDeviceAssetRow>("SELECT * FROM managed_device_assets WHERE id = ?"),
+  byDeviceId: selection<ManagedDeviceAssetRow>("SELECT * FROM managed_device_assets WHERE deviceid = ?"),
   // The name first, since it is all the list shows. Workstations without a
   // name — an agent that could not tell it — go at the end, by their
   // identifier.
-  all: selection<AssetRow>("SELECT * FROM assets ORDER BY name = '', name, deviceid"),
+  all: selection<ManagedDeviceAssetRow>("SELECT * FROM managed_device_assets ORDER BY name = '', name, deviceid"),
   /** Those of a board. */
-  ofBoard: selection<AssetRow>(
-    `SELECT * FROM assets WHERE board_id = ? ORDER BY name = '', name, deviceid`,
+  ofBoard: selection<ManagedDeviceAssetRow>(
+    `SELECT * FROM managed_device_assets WHERE board_id = ? ORDER BY name = '', name, deviceid`,
   ),
   create: mutation(
-    `INSERT INTO assets
+    `INSERT INTO managed_device_assets
        (deviceid, name, tag, board_id, list_key, content, last_user, last_inventory, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ),
   update: mutation(
-    `UPDATE assets
+    `UPDATE managed_device_assets
      SET name = ?, tag = ?, board_id = ?, list_key = ?, content = ?, last_user = ?, last_inventory = ?
      WHERE id = ?`,
   ),
-  remove: mutation("DELETE FROM assets WHERE id = ?"),
+  remove: mutation("DELETE FROM managed_device_assets WHERE id = ?"),
 };
 
 const setList = mutation(
-  "UPDATE assets SET board_id = ?, list_key = ? WHERE lower(trim(tag)) = ?",
+  "UPDATE managed_device_assets SET board_id = ?, list_key = ? WHERE lower(trim(tag)) = ?",
 );
-const withoutReceipt = mutation("UPDATE assets SET board_id = NULL, list_key = ''");
+const withoutReceipt = mutation("UPDATE managed_device_assets SET board_id = NULL, list_key = ''");
 
 /**
  * Workstations follow the workstation lists: each goes to the list whose
@@ -71,14 +71,14 @@ export const reassignWorkstations = transaction((): void => {
 
 /** The asset labels of a board named as a tag, case aside. */
 const labelsOfTag = selection<Label>(
-  `SELECT l.*, g.name AS group_name FROM asset_labels l
-   LEFT JOIN asset_label_groups g ON g.id = l.group_id
+  `SELECT l.*, g.name AS group_name FROM managed_device_asset_labels l
+   LEFT JOIN managed_device_asset_label_groups g ON g.id = l.group_id
    WHERE l.board_id = ? AND lower(trim(l.name)) = lower(trim(?))
    ORDER BY l.position, l.id`,
 );
 
 /** The content kept in the database, or nothing when it is unreadable. */
-const contentOf = (row: AssetRow): Tree => {
+const contentOf = (row: ManagedDeviceAssetRow): Tree => {
   try {
     return JSON.parse(row.content) as Tree;
   } catch {
@@ -91,14 +91,14 @@ const contentOf = (row: AssetRow): Tree => {
  * macOS — the agent then gives it in TYPE. Nothing when the agent does not
  * declare it, or without a readable size.
  */
-const systemVolume = (content: Tree): AssetEntry | undefined =>
+const systemVolume = (content: Tree): ManagedDeviceAssetEntry | undefined =>
   entriesOf(sectionsOf(content), "DRIVES").find(
     (entry) =>
       (entry["LETTER"] ?? "").trim().toUpperCase().startsWith("C:") ||
       (entry["TYPE"] ?? "").trim() === "/",
   );
 
-const systemDisk = (content: Tree): Asset["system_disk"] => {
+const systemDisk = (content: Tree): ManagedDeviceAsset["system_disk"] => {
   const volume = systemVolume(content);
   if (!volume) return null;
   const total = Number(volume["TOTAL"]);
@@ -124,7 +124,7 @@ const volumeEncrypted = (content: Tree): boolean | null =>
  * "64-bit"…), failing that the one the processor description says
  * ("ARMv8 (64-bit)", "Intel64 Family 6").
  */
-const architectureOf = (content: Tree, cpu: AssetEntry | undefined): AssetSummary["arch"] => {
+const architectureOf = (content: Tree, cpu: ManagedDeviceAssetEntry | undefined): ManagedDeviceAssetSummary["arch"] => {
   const indices = [
     textOf(content, "OPERATINGSYSTEM", "ARCH"),
     cpu?.["DESCRIPTION"] ?? "",
@@ -139,7 +139,7 @@ const architectureOf = (content: Tree, cpu: AssetEntry | undefined): AssetSummar
 };
 
 /** The system volume's encryption name and its algorithm; "None" says nothing. */
-const encryptionOf = (content: Tree): AssetSummary["encryption"] => {
+const encryptionOf = (content: Tree): ManagedDeviceAssetSummary["encryption"] => {
   const volume = systemVolume(content);
   const algorithm = (volume?.["ENCRYPT_ALGO"] ?? "").trim();
   return {
@@ -159,7 +159,7 @@ const FIREWALL_PROFILES: Record<string, string> = {
  * The firewall, as the agent describes it: one entry per profile on Windows,
  * a single one elsewhere (macOS). Entries without a readable state do not count.
  */
-const firewallOf = (sections: AssetSection[]): AssetSummary["firewall"] => {
+const firewallOf = (sections: ManagedDeviceAssetSection[]): ManagedDeviceAssetSummary["firewall"] => {
   const profiles = entriesOf(sections, "FIREWALL")
     .map((entry) => ({
       name: FIREWALL_PROFILES[entry["PROFILE"] ?? ""] ?? entry["PROFILE"] ?? "",
@@ -178,7 +178,7 @@ const firewallOf = (sections: AssetSection[]): AssetSummary["firewall"] => {
 };
 
 /** The workstation's system: its name, and the family that picks its logo. */
-const systemOf = (content: Tree): Asset["os"] => {
+const systemOf = (content: Tree): ManagedDeviceAsset["os"] => {
   const name =
     textOf(content, "OPERATINGSYSTEM", "FULL_NAME") ||
     textOf(content, "OPERATINGSYSTEM", "NAME") ||
@@ -186,7 +186,7 @@ const systemOf = (content: Tree): Asset["os"] => {
   const kernel = textOf(content, "OPERATINGSYSTEM", "KERNEL_NAME").toLowerCase();
   if (!name && !kernel) return null;
 
-  let family: AssetOsFamily = "other";
+  let family: ManagedDeviceAssetOsFamily = "other";
   if (onWindows(content)) family = "windows";
   else if (kernel === "darwin" || /mac ?os|os x/i.test(name)) family = "macos";
   else if (/ubuntu/i.test(name)) family = "ubuntu";
@@ -226,7 +226,7 @@ const PRODUCT_SECTIONS = new Set(["ANTIVIRUS", "SOFTWARES"]);
  * Outside Windows, the agent lists none: nothing allows concluding there is
  * none.
  */
-const protectionOf = (content: Tree): AssetProtection => {
+const protectionOf = (content: Tree): ManagedDeviceAssetProtection => {
   const protections = entriesOf(sectionsOf(content), "ANTIVIRUS");
   const chosen =
     protections.find((p) => yesNo(p["ENABLED"]) === true) ?? protections[0];
@@ -244,7 +244,7 @@ const protectionOf = (content: Tree): AssetProtection => {
  * What the list shows: the name and system, who logs in, when it was last
  * seen, its protection, and the state of its system disk.
  */
-export const assetOf = (row: AssetRow, content: Tree = contentOf(row)): Asset => ({
+export const managedDeviceAssetOf = (row: ManagedDeviceAssetRow, content: Tree = contentOf(row)): ManagedDeviceAsset => ({
   id: row.id,
   name: row.name,
   board_id: row.board_id,
@@ -282,7 +282,7 @@ export const contentUser = (content: Tree): string => {
 };
 
 /** A section's entries, or nothing: all are optional. */
-const entriesOf = (sections: AssetSection[], name: string) =>
+const entriesOf = (sections: ManagedDeviceAssetSection[], name: string) =>
   sections.find((section) => section.name === name)?.entries ?? [];
 
 /**
@@ -290,7 +290,7 @@ const entriesOf = (sections: AssetSection[], name: string) =>
  * "teamviewer --info"). A workstation may carry several remote-control tools:
  * we keep only that one, it is the only one we know how to open.
  */
-const teamviewerDe = (sections: AssetSection[]): string =>
+const teamviewerDe = (sections: ManagedDeviceAssetSection[]): string =>
   entriesOf(sections, "REMOTE_MGMT").find(
     (entry) => (entry["TYPE"] ?? "").toLowerCase() === "teamviewer",
   )?.["ID"] ?? "";
@@ -308,7 +308,7 @@ const unusable = (address: string): boolean =>
  * may have changed since, which is why a failed inventory request always says
  * which address was called.
  */
-const addressOf = (sections: AssetSection[]): string => {
+const addressOf = (sections: ManagedDeviceAssetSection[]): string => {
   const cards = entriesOf(sections, "NETWORKS");
   const first = (entry: Record<string, string>): string =>
     (entry["IPADDRESS"] ?? "").split(",")[0]!.trim();
@@ -384,7 +384,7 @@ const REMOVED_FIELDS: Record<string, string[]> = {
 };
 
 /** An entry as the sheet shows it, according to its section's rule. */
-const displayedEntry = (section: string, raw: AssetEntry, models: AssetModel[]): AssetEntry => {
+const displayedEntry = (section: string, raw: ManagedDeviceAssetEntry, models: ManagedDeviceAssetModel[]): ManagedDeviceAssetEntry => {
   let entry =
     PRODUCT_SECTIONS.has(section) && typeof raw["NAME"] === "string"
       ? { ...raw, NAME: productName(raw["NAME"]) }
@@ -421,7 +421,7 @@ const onWindows = (content: Tree): boolean =>
  * starts with "_" are service ones (_www, _spotlight…), and likewise for
  * groups: macOS declares around a hundred, and nobody logs into them.
  */
-const discardedEntry = (section: string, entry: AssetEntry, windows: boolean): boolean => {
+const discardedEntry = (section: string, entry: ManagedDeviceAssetEntry, windows: boolean): boolean => {
   if (windows) return false;
   if (section === "LOCAL_USERS") return (entry["LOGIN"] ?? "").startsWith("_");
   if (section === "LOCAL_GROUPS") return (entry["NAME"] ?? "").startsWith("_");
@@ -437,7 +437,7 @@ const discardedEntry = (section: string, entry: AssetEntry, windows: boolean): b
  * members: on Windows, never; on macOS, only those of /etc/group. An
  * administrator may therefore escape the mark.
  */
-const administratorsOf = (sections: AssetSection[]): ((account: AssetEntry) => boolean) => {
+const administratorsOf = (sections: ManagedDeviceAssetSection[]): ((account: ManagedDeviceAssetEntry) => boolean) => {
   const members = new Set(
     entriesOf(sections, "LOCAL_GROUPS")
       .filter((group) => group["ID"] === "S-1-5-32-544" || group["NAME"] === "admin")
@@ -455,7 +455,7 @@ const administratorsOf = (sections: AssetSection[]): ((account: AssetEntry) => b
  * The board's VLAN that carries a network card: the one of the first of
  * its IPv4 addresses that falls within a declared subnet.
  */
-const cardVlan = (entry: AssetEntry, table: AssetVlan[]): AssetVlan | null =>
+const cardVlan = (entry: ManagedDeviceAssetEntry, table: ManagedDeviceAssetVlan[]): ManagedDeviceAssetVlan | null =>
   (entry["IPADDRESS"] ?? "")
     .split(",")
     .map((a) => a.trim())
@@ -465,15 +465,15 @@ const cardVlan = (entry: AssetEntry, table: AssetVlan[]): AssetVlan | null =>
 
 /** The model and VLAN tables of the workstation's board, read once for the whole sheet. */
 interface BoardTables {
-  models: AssetModel[];
-  vlans: AssetVlan[];
+  models: ManagedDeviceAssetModel[];
+  vlans: ManagedDeviceAssetVlan[];
 }
 
 const displayedSections = (
-  sections: AssetSection[],
+  sections: ManagedDeviceAssetSection[],
   windows: boolean,
   tables: BoardTables,
-): AssetSection[] => {
+): ManagedDeviceAssetSection[] => {
   const administrator = administratorsOf(sections);
   const table = tables.vlans;
   return sections
@@ -504,13 +504,13 @@ const displayedSections = (
  * content — a hand-written database, a truncated upload — yields a
  * workstation without sections rather than making the request fail.
  */
-export const assetDetail = (row: AssetRow): AssetDetail => {
+export const managedDeviceAssetDetail = (row: ManagedDeviceAssetRow): ManagedDeviceAssetDetail => {
   const content = contentOf(row);
   const sections = sectionsOf(content);
   const tables: BoardTables = { models: templates(row.board_id), vlans: vlans(row.board_id) };
 
   return {
-    ...assetOf(row, content),
+    ...managedDeviceAssetOf(row, content),
     deviceid: row.deviceid,
     tag: row.tag,
     created_at: row.created_at,
@@ -537,9 +537,9 @@ const count = (value: string | undefined): number | null => {
  * in TYPE; the oldest ones do not, and the card's name then says it.
  */
 /** A card as read, and whether it is connected: enough to choose. */
-type ReadCard = AssetNetwork & { connected: boolean };
+type ReadCard = ManagedDeviceAssetNetwork & { connected: boolean };
 
-const cardsOf = (sections: AssetSection[], table: AssetVlan[]): AssetNetwork[] => {
+const cardsOf = (sections: ManagedDeviceAssetSection[], table: ManagedDeviceAssetVlan[]): ManagedDeviceAssetNetwork[] => {
   const cards = entriesOf(sections, "NETWORKS").flatMap((entry): ReadCard[] => {
     if (entry["VIRTUALDEV"] === "1") return [];
     const description = entry["DESCRIPTION"] ?? "";
@@ -575,7 +575,7 @@ const cardsOf = (sections: AssetSection[], table: AssetVlan[]): AssetNetwork[] =
 };
 
 /** The "Résumé" tab: what one looks for first when opening a workstation. */
-const summaryOf = (sections: AssetSection[], content: Tree, tables: BoardTables): AssetSummary => {
+const summaryOf = (sections: ManagedDeviceAssetSection[], content: Tree, tables: BoardTables): ManagedDeviceAssetSummary => {
   const bios = entriesOf(sections, "BIOS")[0] ?? {};
   const cpus = entriesOf(sections, "CPUS");
   const first = cpus[0];

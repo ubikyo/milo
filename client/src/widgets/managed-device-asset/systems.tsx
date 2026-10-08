@@ -3,8 +3,8 @@ import { Stack } from "@mantine/core";
 import { IconBrandWindows } from "@tabler/icons-react";
 import { CHART_COLORS, colorOf, donutChartProps, donutChartRows, partRows } from "../chart-colors";
 import { NAME, Nothing, IndicatorTitle } from "./common";
-import type { AssetIndicatorWidget } from "./types";
-import type { Asset } from "@milo/shared";
+import type { ManagedDeviceAssetIndicatorWidget } from "./types";
+import type { ManagedDeviceAsset } from "@milo/shared";
 
 // The fleet's systems, as a ring, version by version: "Windows 11
 // 25H2", "macOS 15.5". The edition doesn't count — "Professionnel" and
@@ -28,7 +28,7 @@ const OTHERS_COLOR = "colorOthers";
 const UNKNOWN = "Inconnu";
 
 /** The system and its version: "Windows 11 25H2", "macOS 15.5", "Ubuntu 24.04". */
-const versionOf = (os: Asset["os"]): string => {
+const versionOf = (os: ManagedDeviceAsset["os"]): string => {
   if (!os || !os.name.trim()) return UNKNOWN;
   // On macOS, the build number in parentheses — "(24F74)" — is not a
   // version: it is removed, as in the list.
@@ -51,9 +51,9 @@ const versionOf = (os: Asset["os"]): string => {
   return release ? `${name} ${release}` : name;
 };
 
-export const systemsIndicator: AssetIndicatorWidget = {
+export const systemsIndicator: ManagedDeviceAssetIndicatorWidget = {
   type: "systems",
-  kind: "asset",
+  kind: "managed_device_asset",
   label: LABEL,
   icon: IconBrandWindows,
   defaultConfig: { [NAME]: "" },

@@ -15,6 +15,7 @@ import { touch } from "../middleware/events.js";
 import { boardSections } from "../repositories/board-widgets.js";
 import { ensureSupportLabels } from "../repositories/support.js";
 import { ensureProjectPriorities } from "../repositories/projects.js";
+import { ensureDeclaredAssetLabels } from "../repositories/declared-asset-labels.js";
 import { followLists } from "./board-widgets.js";
 import {
   boards,
@@ -145,6 +146,8 @@ export const createBoard = transaction(
     if (firstWidget === "support.list") ensureSupportLabels(id);
     // A projects widget brings the "Priorités" labels (repositories/projects.ts).
     if (firstWidget === "project.list") ensureProjectPriorities(id);
+    // A declared asset widget brings its kind's (repositories/declared-asset-labels.ts).
+    if (firstWidget) ensureDeclaredAssetLabels(firstWidget, id);
     return id;
   },
 );

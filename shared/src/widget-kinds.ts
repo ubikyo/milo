@@ -17,7 +17,12 @@ export const WIDGET_KINDS = [
   { value: "project", label: "Projet" },
   { value: "task", label: "Tâche" },
   { value: "helpdesk", label: "Support" },
-  { value: "asset", label: "Asset" },
+  // Managed device assets: the workstations a GLPI agent inventories.
+  { value: "managed_device_asset", label: "Équipements supervisés" },
+  // The declared assets (declared-assets.ts): the equipment and the
+  // applications entered by hand.
+  { value: "unmanaged_device_asset", label: "Équipements déclarés" },
+  { value: "application_asset", label: "Applications" },
 ] as const;
 
 export type WidgetKind = (typeof WIDGET_KINDS)[number]["value"];
@@ -46,9 +51,14 @@ export type WidgetRights = Record<WidgetKind, WidgetAccess>;
 export const widgetRightsEverywhere = (access: WidgetAccess): WidgetRights =>
   Object.fromEntries(WIDGET_KINDS.map((k) => [k.value, access])) as WidgetRights;
 
-/** Permissions received from outside, reduced to what exists: a missing type has nothing. */
+/**
+ * Permissions received from outside, reduced to what exists: a missing type
+ * has nothing; one stored under its former name counts under its current one.
+ */
 export const validWidgetRights = (value: unknown): WidgetRights => {
-  const source = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const source = renamedWidgetKinds(
+    (value && typeof value === "object" ? value : {}) as Record<string, unknown>,
+  );
   return Object.fromEntries(
     WIDGET_KINDS.map((k) => [
       k.value,
@@ -90,7 +100,7 @@ export const MODE_KINDS: Record<Mode, readonly WidgetKind[]> = {
   projects: ["project"],
   tasks: ["task"],
   support: ["helpdesk"],
-  assets: ["asset"],
+  assets: ["managed_device_asset"],
 };
 
 /**
@@ -158,12 +168,14 @@ export const calendarSourceOf = (config: unknown): number | null => {
 
 /**
  * The widgets specific to a data type, under their prefix: those of
- * Support ("support."), Assets ("asset."), projects
+ * Support ("support."), Assets ("managed_device_asset."), projects
  * ("project.") and tasks ("task.").
  */
 const OWN = {
   support: ["list", "tickets", "status", "actors", "trend", "age", "due", "labels", "senders"],
-  asset: ["list", "assets", "compliance", "systems", "disks"],
+  managed_device_asset: ["list", "assets", "compliance", "systems", "disks"],
+  unmanaged_device_asset: ["list"],
+  application_asset: ["list"],
   project: ["list", "projects", "progress", "categories", "actors", "labels"],
   task: ["list", "cards", "lists", "due", "members", "labels"],
 } as const;
@@ -171,10 +183,33 @@ const OWN = {
 /** The prefix of the widgets of each data type, and the widget type that goes with it. */
 const PREFIXES: Record<keyof typeof OWN, WidgetKind> = {
   support: "helpdesk",
-  asset: "asset",
+  managed_device_asset: "managed_device_asset",
+  unmanaged_device_asset: "unmanaged_device_asset",
+  application_asset: "application_asset",
   project: "project",
   task: "task",
 };
+
+/** The widget types, and permissions, named before the assets were named by kind. */
+const RENAMED_KINDS: Record<string, WidgetKind> = {
+  asset: "managed_device_asset",
+  unmanaged_asset: "unmanaged_device_asset",
+};
+
+/**
+ * A widget type as it was stored before the assets were named by kind —
+ * "asset.list", "unmanaged_asset.list" —, as it is now; any other, as is.
+ * A layout exported before still imports.
+ */
+export const renamedWidgetType = (type: string): string => {
+  const dot = type.indexOf(".");
+  const kind = dot < 0 ? undefined : RENAMED_KINDS[type.slice(0, dot)];
+  return kind ? `${kind}${type.slice(dot)}` : type;
+};
+
+/** Permissions by type, stored under the former names: under the current ones. */
+export const renamedWidgetKinds = (rights: Record<string, unknown>): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(rights).map(([kind, access]) => [RENAMED_KINDS[kind] ?? kind, access]));
 
 /**
  * Everything a section can carry: the string stored in the database, which
@@ -203,7 +238,9 @@ export const LIST_WIDGET_TYPES: readonly string[] = [
   "project.list",
   "task.list",
   "support.list",
-  "asset.list",
+  "managed_device_asset.list",
+  "unmanaged_device_asset.list",
+  "application_asset.list",
 ];
 
 export const isListWidgetType = (type: string): boolean => LIST_WIDGET_TYPES.includes(type);

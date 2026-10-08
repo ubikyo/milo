@@ -10,9 +10,17 @@
 
 import { Stack } from "@mantine/core";
 import type { ComponentType, ReactNode } from "react";
-import { COMMON_WIDGET_TYPES } from "@milo/shared";
-import type { AccessBlockType, Asset, Id, Project, SupportRequest, TaskList } from "@milo/shared";
-import { ASSET_INDICATORS } from "./asset";
+import { COMMON_WIDGET_TYPES, DECLARED_ASSET_KINDS } from "@milo/shared";
+import type {
+  AccessBlockType,
+  ManagedDeviceAsset,
+  Id,
+  Project,
+  SupportRequest,
+  TaskList,
+} from "@milo/shared";
+import { MANAGED_DEVICE_ASSET_INDICATORS } from "./managed-device-asset";
+import { declaredAssetWidgets } from "./declared-asset";
 import { INDICATORS } from "./support";
 import type { IndicatorConfigProps } from "./support/types";
 import { PROJECT_INDICATORS } from "./project";
@@ -44,7 +52,7 @@ export interface BoardData {
   requests: SupportRequest[];
   projects: Project[];
   lists: TaskList[];
-  assets: Asset[];
+  managedDeviceAssets: ManagedDeviceAsset[];
   /** The signed-in account: what belongs to "me" is counted through it. */
   userId: Id;
 }
@@ -298,10 +306,27 @@ const inRequests = (d: BoardData, key: string): BoardData => ({
   ...d,
   requests: d.requests.filter((r) => r.list_key === key),
 });
-const inAssets = (d: BoardData, key: string): BoardData => ({
+const inManagedDeviceAssets = (d: BoardData, key: string): BoardData => ({
   ...d,
-  assets: d.assets.filter((a) => a.list_key === key),
+  managedDeviceAssets: d.managedDeviceAssets.filter((a) => a.list_key === key),
 });
+
+/** The managed device assets widgets: their list, then their indicators. */
+const MANAGED_DEVICE_ASSETS = prefixed(
+  "managed_device_asset",
+  MANAGED_DEVICE_ASSET_INDICATORS,
+  inManagedDeviceAssets,
+  (w, d, config, render) => (
+    <w.Display config={config} assets={d.managedDeviceAssets} {...render} />
+  ),
+);
+const MANAGED_DEVICE_ASSET_LIST = "managed_device_asset.list";
+const MANAGED_DEVICE_ASSET_LIST_WIDGET = MANAGED_DEVICE_ASSETS.filter(
+  (w) => w.type === MANAGED_DEVICE_ASSET_LIST,
+);
+const MANAGED_DEVICE_ASSET_INDICATOR_WIDGETS = MANAGED_DEVICE_ASSETS.filter(
+  (w) => w.type !== MANAGED_DEVICE_ASSET_LIST,
+);
 
 /** In the order the widgets drawer presents them, grouped by type. */
 export const BOARD_WIDGETS: BoardWidgetDefinition[] = [
@@ -317,9 +342,16 @@ export const BOARD_WIDGETS: BoardWidgetDefinition[] = [
   ...prefixed("support", INDICATORS, inRequests, (w, d, config, render) => (
     <w.Display config={config} requests={d.requests} userId={d.userId} {...render} />
   )),
-  ...prefixed("asset", ASSET_INDICATORS, inAssets, (w, d, config, render) => (
-    <w.Display config={config} assets={d.assets} {...render} />
-  )),
+  // The asset lists side by side — the drawer files them under the same
+  // title: the managed device assets', the declared ones' —, then the managed
+  // device asset indicators.
+  ...MANAGED_DEVICE_ASSET_LIST_WIDGET,
+  ...DECLARED_ASSET_KINDS.flatMap((kind) =>
+    prefixed(kind, declaredAssetWidgets(kind), (d) => d, (w, _d, config, render) => (
+      <w.Display config={config} {...render} />
+    )),
+  ),
+  ...MANAGED_DEVICE_ASSET_INDICATOR_WIDGETS,
 ];
 
 const BY_TYPE = new Map(BOARD_WIDGETS.map((w) => [w.type, w]));

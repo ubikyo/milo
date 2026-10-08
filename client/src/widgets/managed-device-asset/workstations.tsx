@@ -13,8 +13,8 @@ import {
   IndicatorValue,
   windows10,
 } from "./common";
-import type { AssetIndicatorWidget } from "./types";
-import type { Asset } from "@milo/shared";
+import type { ManagedDeviceAssetIndicatorWidget } from "./types";
+import type { ManagedDeviceAsset } from "@milo/shared";
 
 // A workstation count: those of the company being viewed that match the
 // chosen type — all of them, or those that need attention.
@@ -24,7 +24,7 @@ const TYPE = "type";
 interface WorkstationType {
   value: string;
   label: string;
-  account: (a: Asset) => boolean;
+  account: (a: ManagedDeviceAsset) => boolean;
 }
 
 const DEFAULT_TYPE: WorkstationType = { value: "total", label: "Postes au total", account: () => true };
@@ -46,9 +46,9 @@ const TYPES: WorkstationType[] = [
 const typeOf = (config: unknown) =>
   TYPES.find((t) => t.value === text(config, TYPE)) ?? DEFAULT_TYPE;
 
-export const workstationsIndicator: AssetIndicatorWidget = {
+export const workstationsIndicator: ManagedDeviceAssetIndicatorWidget = {
   type: "assets",
-  kind: "asset",
+  kind: "managed_device_asset",
   label: "Indicateur",
   icon: IconDeviceDesktop,
   withValue: true,

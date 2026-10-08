@@ -1,9 +1,11 @@
 import { Box, Group, Stack, TextInput } from "@mantine/core";
 import { IconFolder, IconTag } from "@tabler/icons-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
+import { LabelGroupDraftsContext, remapGroups } from "../../lib/label-groups";
+import type { Registration } from "./IndicatorDrawer";
 import AddButton from "./AddButton";
 import LabelColorPicker from "./LabelColorPicker";
 import {
@@ -19,8 +21,9 @@ import {
   useRowSelection,
   editKeys,
 } from "./DrawerRows";
-import { DEFAULT_LABEL_COLOR } from "@milo/shared";
+import { DECLARED_ASSET_KINDS, DECLARED_ASSET_ROUTES, DEFAULT_LABEL_COLOR } from "@milo/shared";
 import type {
+  DeclaredAssetKind,
   Id,
   Label,
   LabelGroup,
@@ -56,6 +59,8 @@ interface LabelDraft {
 interface GroupDraft {
   key: string;
   id?: Id;
+  /** Until it is created: the negative id the drawer's group choices give it. */
+  temp?: Id;
   name: string;
   labels: LabelDraft[];
 }
@@ -73,6 +78,15 @@ interface LabelRoutes {
   remove: (id: Id) => Promise<unknown>;
   read: (boardId: Id | undefined) => Promise<AnyLabel[]>;
 }
+
+/** A declared asset kind's label routes (shared, declared-assets.ts). */
+const declaredAssetRoutes = (kind: DeclaredAssetKind): LabelRoutes => ({
+  create: (boardId, l, groupId) =>
+    api.createDeclaredAssetLabel(kind, boardId!, l.name, l.color, groupId),
+  update: (id, data) => api.updateDeclaredAssetLabel(kind, id, data),
+  remove: (id) => api.deleteDeclaredAssetLabel(kind, id),
+  read: (boardId) => api.getDeclaredAssetLabels(kind, boardId!),
+});
 
 const ROUTES: Record<LabelsBase, LabelRoutes> = {
   "/labels": {
@@ -94,12 +108,15 @@ const ROUTES: Record<LabelsBase, LabelRoutes> = {
     remove: (id) => api.deleteSupportLabel(id),
     read: (boardId) => api.getSupportLabels(boardId!),
   },
-  "/asset-labels": {
-    create: (boardId, l, groupId) => api.createAssetLabel(boardId!, l.name, l.color, groupId),
-    update: (id, data) => api.updateAssetLabel(id, data),
-    remove: (id) => api.deleteAssetLabel(id),
-    read: (boardId) => api.getAssetLabels(boardId!),
+  "/managed-device-asset-labels": {
+    create: (boardId, l, groupId) => api.createManagedDeviceAssetLabel(boardId!, l.name, l.color, groupId),
+    update: (id, data) => api.updateManagedDeviceAssetLabel(id, data),
+    remove: (id) => api.deleteManagedDeviceAssetLabel(id),
+    read: (boardId) => api.getManagedDeviceAssetLabels(boardId!),
   },
+  ...(Object.fromEntries(
+    DECLARED_ASSET_KINDS.map((kind) => [DECLARED_ASSET_ROUTES[kind].labels, declaredAssetRoutes(kind)]),
+  ) as Record<(typeof DECLARED_ASSET_ROUTES)[DeclaredAssetKind]["labels"], LabelRoutes>),
 };
 
 // Height of the "Ajouter" buttons: that of their text line. An "xs" button's
@@ -112,6 +129,8 @@ const COLOR_MARGIN = 5;
 
 let counter = 0;
 const newKey = () => `new-${++counter}`;
+let temps = 0;
+const newTemp = (): Id => -++temps;
 
 
 /** The draft, built from what the server holds. */
@@ -143,7 +162,7 @@ interface LabelGroupsEditorProps {
   /** The board whose labels these are; none for Support. */
   boardId?: Id;
   /** Registers the save; returns how to unregister it. */
-  register: (save: () => Promise<void>) => () => void;
+  register: (save: Registration) => () => void;
   /** Changing it re-reads the lists: a paste from the "Actions" menu. */
   version?: number;
 }
@@ -185,6 +204,24 @@ export default function LabelGroupsEditor({
     void reload();
   }, [reload, version]);
 
+  // In a widget drawer, its group choices follow the draft: the named groups,
+  // in their order.
+  const publish = useContext(LabelGroupDraftsContext)?.publish;
+  useEffect(() => {
+    publish?.(
+      base,
+      groups
+        .filter((g) => g.name.trim())
+        .map((g, position) => ({
+          id: g.id ?? g.temp!,
+          name: g.name.trim(),
+          position,
+          created_at: "",
+        })),
+    );
+  }, [publish, base, groups]);
+  useEffect(() => () => publish?.(base, null), [publish, base]);
+
   // The save: what was removed, the groups, then the labels, then the order.
   // An empty name stops everything before the first send.
   const state = useRef({ originals, groups });
@@ -200,6 +237,7 @@ export default function LabelGroupsEditor({
         if (after.some((g) => !g.name.trim() || g.labels.some((l) => !l.name.trim()))) {
           throw new Error("Étiquettes : chaque groupe et chaque étiquette demandent un nom.");
         }
+        const created = new Map<Id, Id>();
         try {
           // Labels first: a group only goes once emptied.
           const keptLabels = new Set(after.flatMap((g) => g.labels.map((l) => l.id)));
@@ -213,6 +251,7 @@ export default function LabelGroupsEditor({
             let groupId = g.id;
             if (groupId === undefined) {
               groupId = (await api.createLabelGroup(base, name, boardId)).id;
+              if (g.temp !== undefined) created.set(g.temp, groupId);
             } else if (before.groups.find((o) => o.id === groupId)?.name !== name) {
               await api.renameLabelGroup(base, groupId, name);
             }
@@ -251,6 +290,8 @@ export default function LabelGroupsEditor({
           const same =
             JSON.stringify(layout) === JSON.stringify(layoutOf(before.groups, before.labels));
           if (!same) await api.arrangeLabels(base, layout, boardId);
+          // The groups chosen before they existed take their real ids.
+          return (config: Record<string, unknown>) => remapGroups(config, created);
         } finally {
           // What was removed is gone: the list restarts from the server, even
           // after an error.
@@ -275,7 +316,7 @@ export default function LabelGroupsEditor({
 
   const addGroup = () => {
     const key = newKey();
-    setGroups((before) => [...before, { key, name: "", labels: [] }]);
+    setGroups((before) => [...before, { key, temp: newTemp(), name: "", labels: [] }]);
     setToName(key);
   };
 

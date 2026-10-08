@@ -90,9 +90,9 @@ export default function SupportActions({
   const [managesLabels, setManagingLabels] = useState(false);
   const openLabels = () => setManagingLabels(true);
   // The editor's save, run by "Enregistrer".
-  const saveLabels = useRef<(() => Promise<void>) | null>(null);
+  const saveLabels = useRef<(() => Promise<unknown>) | null>(null);
   const [savingLabels, setSavingLabels] = useState(false);
-  const registerLabels = useCallback((save: () => Promise<void>) => {
+  const registerLabels = useCallback((save: () => Promise<unknown>) => {
     saveLabels.current = save;
     return () => {
       if (saveLabels.current === save) saveLabels.current = null;

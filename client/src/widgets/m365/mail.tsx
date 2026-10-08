@@ -22,7 +22,7 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { api } from "../../api";
 import EmptyPanel from "../../components/ui/EmptyPanel";
@@ -43,6 +43,7 @@ import { ACTIONS_BUTTON_STYLE, DRAWER_MENU_OFFSET, TAB_MENU_STYLES } from "../..
 import { RED } from "../../themes/colors";
 import DeleteConfirmModal from "../../components/ui/DeleteConfirmModal";
 import { useWidgetAccess } from "../../lib/rights";
+import { clearRequest, usePublishedResults, useRequestedItem } from "../../lib/searchSources";
 
 /**
  * The message's background: a ticket's message's on the light theme; on dark,
@@ -547,6 +548,32 @@ function Mail({ blockId, config, onEdit, locked }: WidgetDisplayProps) {
   useEffect(() => {
     if (state.phase === "ready") seen.current = new Set(state.messages.map(mailKeyOf));
   }, [state]);
+
+  // The e-mails loaded are searched (SearchBox): their subject, sender and
+  // the start of their text. One found opens here, in the reader.
+  const loaded = state.phase === "ready" ? state.messages : null;
+  usePublishedResults(
+    blockId,
+    "mail",
+    useMemo(
+      () =>
+        loaded?.map((m) => ({
+          kind: "mail" as const,
+          title: m.subject || "Sans objet",
+          context: [nameOf(m.from), whenLabel(m.received_at), m.folder].filter(Boolean).join(" · "),
+          keywords: [m.from.email, m.preview].filter(Boolean).join(" "),
+          item: mailKeyOf(m),
+        })) ?? null,
+      [loaded],
+    ),
+  );
+  const requested = useRequestedItem(blockId);
+  useEffect(() => {
+    const found = requested && loaded?.find((m) => mailKeyOf(m) === requested);
+    if (!found) return;
+    clearRequest();
+    setOpened(found);
+  }, [requested, loaded]);
 
   // Several mailboxes: an error says whose.
   const several = shown.length > 1;

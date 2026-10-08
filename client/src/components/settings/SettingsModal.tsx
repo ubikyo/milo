@@ -15,7 +15,7 @@ import {
   IconBrandWindows,
   IconLayoutNavbar,
   IconMail,
-  IconPalette,
+  IconPrinter,
   IconShieldLock,
   IconStack2,
 } from "@tabler/icons-react";
@@ -28,19 +28,22 @@ import {
   SETTINGS_HEIGHT_MAX,
   SETTINGS_HEIGHT,
   SETTINGS_WIDTH,
-  SETTINGS_PADDING,
   modalHeaderStyles,
 } from "../../themes/modals";
 import { tabStyle } from "../../themes/tabs";
+import { THEME_SCOPE_ATTRIBUTE } from "../theme/ThemePanel";
+import { THEME_TAB_ATTRIBUTE } from "../theme/ThemeHighlight";
+import classes from "../../assets/styles/SettingsModal.module.css";
 import BackupTab from "./BackupTab";
 import EntraTab from "./EntraTab";
 import type { EntraCheckControls, EntraCheckPhase } from "./EntraTab";
 import TemplatesTab from "./TemplatesTab";
 import DisplayTab from "./DisplayTab";
-import ThemesTab from "./ThemesTab";
+import PrintersTab from "./PrintersTab";
 import WorkspacesTab from "./WorkspacesTab";
+import SettingsIntro from "./SettingsIntro";
 import AdministrationTab from "./AdministrationTab";
-import type { ComponentType, ReactNode } from "react";
+import type { CSSProperties, ComponentType, ReactNode } from "react";
 import CloseButton from "../ui/CloseButton";
 
 const TABS: {
@@ -63,12 +66,18 @@ const TABS: {
       "Les modèles d’e-mail ci-dessous, au format MJML, sont communs à l’ensemble de l’application. Chaque widget dispose également de modèles spécifiques, modifiables depuis son interface de configuration.",
   },
   {
+    value: "printing",
+    label: "Impression",
+    icon: IconPrinter,
+    description:
+      "La liste ci-dessous définit les imprimantes Zebra connectées au réseau Ethernet et les formats d’étiquettes associés.",
+  },
+  {
     value: "display",
     label: "Affichage",
     icon: IconLayoutNavbar,
     description: "Principaux paramètres d’affichage de l’application.",
   },
-  { value: "themes", label: "Thèmes", icon: IconPalette },
   // The backup at the very bottom: it covers the whole database, not a setting.
   { value: "backup", label: "Sauvegarde", icon: IconDatabaseExport },
 ];
@@ -78,15 +87,16 @@ const STANDALONE_TABS = new Set(["entra", "administration", "backup"]);
 
 /**
  * The others' tabs, and the administration's right each one requires — on
- * top of "Gestion du paramétrage", which opens the Settings. Affichage needs
- * nothing more.
+ * top of "Gestion du paramétrage", which opens the Settings. Impression and
+ * Affichage need nothing more. Neither is the "admin" account's
+ * (STANDALONE_TABS): it only sets up the application.
  */
 const TAB_RIGHTS: Record<string, (a: AdminPermissions) => boolean> = {
   workspaces: (a) => a.workspaces.includes("view"),
   administration: (a) => a.administration.includes("view"),
   templates: (a) => a.templates.includes("access"),
+  printing: () => true,
   display: () => true,
-  themes: (a) => a.themes.includes("access"),
 };
 
 /**
@@ -96,7 +106,51 @@ const TAB_RIGHTS: Record<string, (a: AdminPermissions) => boolean> = {
  */
 const WITH_ENTRA = new Set(["administration", "backup"]);
 
-const MODAL_HEADER = modalHeaderStyles(40);
+/**
+ * The tabs' left inset ("Onglets" > "Padding"): their column's width takes
+ * it in, and it stands for Mantine's single inset (--mb-padding).
+ */
+const PADDING_LEFT = "var(--milo-settings-padding-left)";
+
+const MODAL_HEADER = {
+  ...modalHeaderStyles(PADDING_LEFT),
+  // Its header's inset, set apart ("Entête").
+  header: {
+    ...modalHeaderStyles(PADDING_LEFT).header,
+    padding: "var(--milo-settings-header-padding)",
+    paddingInlineEnd: "var(--milo-settings-header-padding-right)",
+    // Mantine's 60 px at least: its height is only the padding's and the title's.
+    minHeight: 0,
+  },
+  // No inset of its own: the tabs and the content each have theirs.
+  body: { padding: 0 },
+};
+
+/**
+ * Its two buttons, set in the themes ("Bouton enregistrer", "Bouton
+ * fermer"): Mantine's variables, which the style overrides. The save button's
+ * hover keeps its background, like the single-shade green.
+ */
+const SAVE_STYLE = {
+  "--button-bg": "var(--milo-settings-save-bg)",
+  "--button-hover": "var(--milo-settings-save-bg)",
+  "--button-color": "var(--milo-settings-save-text)",
+  fontSize: "var(--milo-settings-save-size)",
+  fontWeight: "var(--milo-settings-save-weight)",
+} as CSSProperties;
+
+const CLOSE_STYLE = {
+  "--button-bg": "var(--milo-settings-close-bg)",
+  "--button-color": "var(--milo-settings-close-text)",
+  fontSize: "var(--milo-settings-close-size)",
+  fontWeight: "var(--milo-settings-close-weight)",
+} as CSSProperties;
+
+/** The tabs' labels' width, set in the themes ("Onglets"). */
+const TABS_WIDTH = "var(--milo-settings-tab-width)";
+
+/** The window widens as much as the tabs do, from their 170 px. */
+const WIDTH = `calc(${SETTINGS_WIDTH}px + ${TABS_WIDTH} - 170px)`;
 
 /**
  * A panel's scrollbar, moved to the modal's right border and spanning its
@@ -104,7 +158,7 @@ const MODAL_HEADER = modalHeaderStyles(40);
  * that it anchors to the modal and not to the screen: it is "content" that
  * carries the reference (position: relative).
  *
- * Left in place, it would straddle the panel's 40 px padding and jump from
+ * Left in place, it would straddle the panel's padding and jump from
  * one tab to another depending on what each contains. The panel therefore
  * keeps its full width — the bar is out of the flow — and the content does
  * not shift when it appears.
@@ -120,6 +174,8 @@ const SCROLLBAR_STYLES = {
     height: "auto",
     width: "var(--scrollarea-scrollbar-size)",
   },
+  // Its color, set in the themes like its width.
+  thumb: { backgroundColor: "var(--milo-settings-scrollbar)" },
 };
 
 interface SettingsModalProps {
@@ -266,7 +322,6 @@ export default function SettingsModal({
     return visible(value) && (
       <Tabs.Panel
         value={value}
-        pl="xl"
         style={{
           flex: 1,
           minHeight: 0,
@@ -274,9 +329,18 @@ export default function SettingsModal({
           flexDirection: "column",
         }}
       >
-        <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
-          <Group justify="space-between" align="center" wrap="nowrap">
-            <Title order={4}>{tab?.label}</Title>
+        {/* Spaced by margins rather than a gap: the one under the
+            description is the themes' ("Description" > "Marge basse"). */}
+        <Stack gap={0} style={{ flex: 1, minHeight: 0 }}>
+          <Group justify="space-between" align="center" wrap="nowrap" mb="md">
+            <Title
+              order={4}
+              c="var(--milo-settings-title-text)"
+              size="var(--milo-settings-title-size)"
+              fw="var(--milo-settings-title-weight)"
+            >
+              {tab?.label}
+            </Title>
             {/* Without a height, the menu centered on the row: taller than the
               title, it would enlarge the header and shift the panel relative
               to the other tabs. */}
@@ -288,15 +352,14 @@ export default function SettingsModal({
             )}
           </Group>
           {description && (
-            <Text size="sm" c="dimmed" mt={-8}>
-              {description}
-            </Text>
+            <SettingsIntro mt={-8}>{description}</SettingsIntro>
           )}
           {/* "auto": the bar only appears if the tab overflows. */}
           <ScrollArea
             type="auto"
-            scrollbarSize={2}
+            scrollbarSize="var(--milo-settings-scrollbar-width)"
             styles={SCROLLBAR_STYLES}
+            classNames={{ scrollbar: classes.scrollbar }}
             style={{ flex: 1, minHeight: 0 }}
           >
             {children}
@@ -318,20 +381,25 @@ export default function SettingsModal({
       title="Paramétrage"
       // In the middle of the screen, like the other modals.
       centered
-      size={SETTINGS_WIDTH}
-      padding={SETTINGS_PADDING}
+      size={WIDTH}
+      padding={PADDING_LEFT}
       withCloseButton={false}
+      // Its colors and sizes are its own (theme editor): its rules give them
+      // to the windows' header and tabs.
+      classNames={{ content: classes.window }}
+      attributes={{ content: { [THEME_SCOPE_ATTRIBUTE]: "settings" } }}
       styles={{
         ...MODAL_HEADER,
         content: {
+          backgroundColor: "var(--milo-settings-bg)",
           height: SETTINGS_HEIGHT,
           maxHeight: SETTINGS_HEIGHT_MAX,
           display: "flex",
           flexDirection: "column",
-          // Anchor for the moved scrollbar (see ListItems)
+          // Anchor for the moved scrollbar
           position: "relative",
         },
-        // The common header's top padding, plus the body's layout.
+        // Its four-side inset, plus the body's layout.
         body: {
           ...MODAL_HEADER.body,
           flex: 1,
@@ -351,9 +419,9 @@ export default function SettingsModal({
         keepMountedMode="display-none"
         style={{ flex: 1, minHeight: 0 }}
       >
-        {/* 170 px of tabs, plus the window's inset their background takes
+        {/* The tabs' width, plus the window's inset their background takes
             in (tabs.css). */}
-        <Tabs.List style={{ width: "calc(170px + var(--mb-padding))", flexShrink: 0 }}>
+        <Tabs.List style={{ width: `calc(${TABS_WIDTH} + ${PADDING_LEFT})`, flexShrink: 0 }}>
           {TABS.filter((t) => visible(t.value)).map(
             ({ value, label, icon: Icon }) => (
               <Tabs.Tab
@@ -370,7 +438,11 @@ export default function SettingsModal({
 
         {/* The panels, then the buttons under them: the tabs' column runs
             down to the window's bottom (tabs.css). */}
-        <Box style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        {/* Its padding, set in the themes ("Onglets" > "Padding du contenu"). */}
+        <Box
+          p="var(--milo-settings-panel-padding)"
+          style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}
+        >
           {panel(
             "workspaces",
             <WorkspacesTab
@@ -408,11 +480,17 @@ export default function SettingsModal({
 
           {panel("templates", <TemplatesTab canEdit={canEdit} />)}
 
-          {panel("display", <DisplayTab canEdit={canEdit} />)}
+          {panel("printing", <PrintersTab canEdit={canEdit} />)}
 
-          {panel("themes", <ThemesTab canEdit={canEdit} />)}
+          {panel(
+            "display",
+            <DisplayTab
+              canEdit={canEdit}
+              canEditThemes={canEdit && user.administration.themes.includes("access")}
+            />,
+          )}
 
-          <Group justify="flex-end" mt={40} pl="xl">
+          <Group justify="flex-end" mt={40}>
             {!canEdit && user.settings.view && (
               <Text size="sm" c="dimmed" mr="auto">
                 Consultation seule : votre rôle ne permet pas de modifier le
@@ -420,14 +498,18 @@ export default function SettingsModal({
               </Text>
             )}
             {/* Whoever is just added to the administration receives the "Nouvel
-                administrateur" e-mail — each user of a group. */}
-            {canEdit && activeTab === "administration" && user.administration.administration.includes("create") && (
+                administrateur" e-mail — each user of a group. Kept in the
+                page, hidden, on the other tabs: the theme editor finds it
+                there, and opens its tab (THEME_TAB_ATTRIBUTE). */}
+            {canEdit && user.administration.administration.includes("create") && (
               <Checkbox
                 label="Envoyer une invitation"
                 checked={invite}
                 onChange={(e) => setInvite(e.currentTarget.checked)}
                 color="teal"
                 mr="auto"
+                display={activeTab === "administration" ? undefined : "none"}
+                wrapperProps={{ [THEME_TAB_ATTRIBUTE]: "administration" }}
               />
             )}
             {connecting ? (
@@ -451,12 +533,13 @@ export default function SettingsModal({
               </>
             ) : (
               <>
-                <CloseButton onClick={onClose}>
+                <CloseButton onClick={onClose} style={CLOSE_STYLE}>
                   {standalone ? "Déconnexion" : "Fermer"}
                 </CloseButton>
                 {canEdit && (
                   <Button
                     color="teal"
+                    style={SAVE_STYLE}
                     onClick={save}
                     loading={registration}
                     disabled={senderMissing}

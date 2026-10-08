@@ -4,32 +4,36 @@
 
 import { complianceIndicator } from "./compliance";
 import { disksIndicator } from "./disks";
-import { assetListIndicator } from "./list";
+import { managedDeviceAssetListIndicator } from "./list";
 import { workstationsIndicator } from "./workstations";
 import { systemsIndicator } from "./systems";
 import { accessWidgets } from "../in-section";
-import type { AssetIndicatorDisplayProps, AssetIndicatorWidget } from "./types";
-import type { AssetIndicatorType } from "@milo/shared";
+import type {
+  ManagedDeviceAssetIndicatorDisplayProps,
+  ManagedDeviceAssetIndicatorWidget,
+} from "./types";
+import type { ManagedDeviceAssetIndicatorType } from "@milo/shared";
 
 /** In the order the widgets drawer presents them. */
-export const ASSET_INDICATORS: AssetIndicatorWidget[] = [
-  assetListIndicator,
-  ...accessWidgets<AssetIndicatorType, AssetIndicatorDisplayProps>(),
+export const MANAGED_DEVICE_ASSET_INDICATORS: ManagedDeviceAssetIndicatorWidget[] = [
+  managedDeviceAssetListIndicator,
+  ...accessWidgets<ManagedDeviceAssetIndicatorType, ManagedDeviceAssetIndicatorDisplayProps>(),
   workstationsIndicator,
   complianceIndicator,
   systemsIndicator,
   disksIndicator,
 ];
 
-const BY_TYPE = new Map<AssetIndicatorType, AssetIndicatorWidget>(
-  ASSET_INDICATORS.map((p) => [p.type, p]),
+const BY_TYPE = new Map<ManagedDeviceAssetIndicatorType, ManagedDeviceAssetIndicatorWidget>(
+  MANAGED_DEVICE_ASSET_INDICATORS.map((p) => [p.type, p]),
 );
 
 /**
  * The widget that can read this indicator, or "undefined": a type stored
  * by a version that knew one more must not crash the page.
  */
-export const assetIndicatorOf = (type: AssetIndicatorType): AssetIndicatorWidget | undefined =>
-  BY_TYPE.get(type);
+export const managedDeviceAssetIndicatorOf = (
+  type: ManagedDeviceAssetIndicatorType,
+): ManagedDeviceAssetIndicatorWidget | undefined => BY_TYPE.get(type);
 
-export type { AssetIndicatorWidget } from "./types";
+export type { ManagedDeviceAssetIndicatorWidget } from "./types";

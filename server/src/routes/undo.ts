@@ -22,7 +22,7 @@ undoRoutes.use(
     "project-labels",
     "support-requests",
     "support-labels",
-    "assets",
+    "managed-device-assets",
   ),
 );
 

@@ -73,14 +73,14 @@ const TYPE_KEYS: Record<string, Record<string, string>> = {
   "project.list": LIST_KEYS,
   "task.list": { ...LIST_KEYS, numeros: "show_numbers" },
   "support.list": { ...LIST_KEYS, boites: "mailboxes", suppression: "delete_after_import" },
-  "asset.list": LIST_KEYS,
+  "managed_device_asset.list": LIST_KEYS,
   "support.trend": { jours: "days" },
   "support.senders": { quantite: "count" },
   "support.labels": { toutes: "include_all" },
   "project.labels": { tous: "include_all" },
   "project.categories": { tous: "include_all" },
   "project.actors": { tous: "include_all" },
-  "asset.compliance": {
+  "managed_device_asset.compliance": {
     chiffrement: "encryption",
     disque: "disk",
     inventaire: "inventory",
@@ -163,7 +163,7 @@ export const migrateWidgetConfig = (type: string, config: unknown): Config => {
         result.mailboxes = renameInItems(result.mailboxes, RECEPTION_KEYS);
       }
       break;
-    case "asset.list":
+    case "managed_device_asset.list":
       if (result.tags !== undefined) result.tags = renameInItems(result.tags, RECEPTION_KEYS);
       break;
   }

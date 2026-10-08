@@ -1,10 +1,11 @@
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
-import { useContext, useEffect, useState, useSyncExternalStore } from "react";
+import { useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { api } from "../../api";
 import { BoardWidgetsContext } from "../../components/ui/IndicatorsPanel";
 import type { Indicator } from "../../components/ui/IndicatorsPanel";
 import { notifyError } from "../../lib/errors";
+import { usePublishedResults } from "../../lib/searchSources";
 import { calendarSourceOf, m365Event, shownCalendarsOf, widgetReference } from "@milo/shared";
 import type { AccessCalendar, AccessCalendarEvent, Id } from "@milo/shared";
 
@@ -113,6 +114,36 @@ export const calendarLabel = (w: Indicator<string>, rank: number) =>
 export const shownKeyOf = (config: unknown) =>
   [...shownCalendarsOf(config)].map(([email, ids]) => `${email}:${ids.join("+")}`).join(",");
 
+// --- The search --------------------------------------------------------------
+
+/** When an appointment is: its day, and its time unless it lasts all day. */
+const whenOf = (r: AccessCalendarEvent): string =>
+  r.all_day ? dayjs(r.start.slice(0, 10)).format("ddd D MMM YYYY") : dayjs(r.start).format("ddd D MMM YYYY · HH:mm");
+
+/**
+ * The appointments a widget has read, published to the search (SearchBox):
+ * their subject, when and where. One found opens in Outlook. Each period read
+ * has its own source: the months browsed stay known.
+ */
+export function usePublishedAppointments(blockId: Id, period: string, events: AccessCalendarEvent[] | null) {
+  usePublishedResults(
+    blockId,
+    `appointments:${period}`,
+    useMemo(
+      () =>
+        events?.map((r) => ({
+          kind: "appointment" as const,
+          title: r.subject || "Sans objet",
+          context: [whenOf(r), r.location, r.owner && ownerName(r.owner)].filter(Boolean).join(" · "),
+          keywords: r.location,
+          url: r.url || undefined,
+          item: appointmentKey(r),
+        })) ?? null,
+      [events],
+    ),
+  );
+}
+
 // --- Reading -----------------------------------------------------------------
 
 export type AgendaState =
@@ -176,6 +207,12 @@ export function useFollowedAgenda(
       window.removeEventListener(m365Event("calendar"), onChange);
     };
   }, [blockId, shownKey, empty, startKey, endKey]);
+
+  usePublishedAppointments(
+    blockId,
+    `${startKey}/${endKey}`,
+    state.phase === "ready" ? state.calendar.events : null,
+  );
 
   return { ...state, orphan, empty };
 }

@@ -10,8 +10,17 @@
 
 import { Router } from "express";
 import type { Request } from "express";
-import type { CopyResult, Id, Resource, Right, WidgetAccess } from "@milo/shared";
+import type {
+  CopyResult,
+  DeclaredAssetKind,
+  Id,
+  Resource,
+  Right,
+  WidgetAccess,
+} from "@milo/shared";
 import {
+  DECLARED_ASSET_KINDS,
+  DECLARED_ASSET_RESOURCES,
   DEFAULT_LABEL_COLOR,
   DEFAULT_LABEL_GROUP,
   accessIncludes,
@@ -28,27 +37,39 @@ import { touch } from "../middleware/events.js";
 import { openTaskBoard } from "../repositories/boards.js";
 import { openBoard } from "../repositories/boards.js";
 import {
-  assetLabelGroups,
+  managedDeviceAssetLabelGroups,
   boardLabelGroups,
   projectLabelGroups,
   supportLabelGroups,
+  declaredAssetLabelGroups,
 } from "../repositories/label-groups.js";
-import { reassignWorkstations } from "../repositories/assets.js";
+import { reassignWorkstations } from "../repositories/managed-device-assets.js";
 import type { LabelGroupStore } from "../repositories/label-groups.js";
 import { mountLabelGroups } from "./label-groups.js";
 
 const LABEL_NOT_FOUND = "Étiquette introuvable";
 
-const GROUP_TABLES = {
+/** A declared asset kind's labels table (shared, declared-assets.ts). */
+type DeclaredAssetLabels = `${DeclaredAssetKind}_labels`;
+
+const GROUP_TABLES: Record<LabelTable["table"], string> = {
   labels: "label_groups",
   project_labels: "project_label_groups",
-  asset_labels: "asset_label_groups",
+  managed_device_asset_labels: "managed_device_asset_label_groups",
   support_labels: "support_label_groups",
-} as const;
+  ...(Object.fromEntries(
+    DECLARED_ASSET_KINDS.map((kind) => [`${kind}_labels`, `${kind}_label_groups`]),
+  ) as Record<DeclaredAssetLabels, string>),
+};
 
 interface LabelTable {
   /** The table name. It only enters the SQL here, never from a request. */
-  table: "labels" | "project_labels" | "asset_labels" | "support_labels";
+  table:
+    | "labels"
+    | "project_labels"
+    | "managed_device_asset_labels"
+    | "support_labels"
+    | DeclaredAssetLabels;
   /** What the event stream must signal when these labels change. */
   touched: Resource[];
   /**
@@ -125,7 +146,9 @@ const createRoutes = ({
         ? "SELECT COUNT(*) AS count FROM project_label_links WHERE label_id = ?"
         : table === "support_labels"
           ? "SELECT COUNT(*) AS count FROM support_request_labels WHERE label_id = ?"
-          : "SELECT 0 AS count",
+          : table === "managed_device_asset_labels"
+            ? "SELECT 0 AS count"
+            : `SELECT COUNT(*) AS count FROM ${table.replace(/_labels$/, "_label_links")} WHERE label_id = ?`,
   );
 
   const clearFromBoard = mutation(`DELETE FROM ${table} WHERE board_id = ?`);
@@ -303,8 +326,8 @@ export const supportLabelRoutes = createRoutes({
   concernedBy: concerned.supportBoard,
 });
 
-/** The permission on the Asset widget type that each right on asset labels needs. */
-const ASSET_LABEL_ACCESS: Record<Right, WidgetAccess> = {
+/** The permission on an asset widget type that each right on its labels needs. */
+const MANAGED_DEVICE_ASSET_LABEL_ACCESS: Record<Right, WidgetAccess> = {
   view: "view",
   create: "update",
   update: "update",
@@ -317,20 +340,43 @@ const ASSET_LABEL_ACCESS: Record<Right, WidgetAccess> = {
  * the inventory —, but its labels are the board's settings: they follow the
  * permission on the Asset widget type.
  */
-export const assetLabelRoutes = createRoutes({
-  table: "asset_labels",
-  touched: ["assets"],
+export const managedDeviceAssetLabelRoutes = createRoutes({
+  table: "managed_device_asset_labels",
+  touched: ["managed-device-assets"],
   verifyBoard: (boardId, req, right) => {
-    if (!accessIncludes(widgetRights(req.user).asset, ASSET_LABEL_ACCESS[right])) {
+    const access = MANAGED_DEVICE_ASSET_LABEL_ACCESS[right];
+    if (!accessIncludes(widgetRights(req.user).managed_device_asset, access)) {
       throw right === "view"
         ? new HttpError(404, "Introuvable")
         : new HttpError(403, "Vous n'avez pas le droit de modifier ici");
     }
     return openBoard(boardId, req.user).id;
   },
-  groups: assetLabelGroups,
+  groups: managedDeviceAssetLabelGroups,
   // Machines are followed by no one: only the author, if they asked to.
   concernedBy: () => [],
   // A label renamed, deleted or added changes the machines it brings.
   changed: () => reassignWorkstations(),
 });
+
+/**
+ * Labels of a board's declared assets of one kind: the board's own, named by
+ * no tag. Like the managed device asset labels, they follow the permission on
+ * their widget type.
+ */
+export const declaredAssetLabelRoutes = (kind: DeclaredAssetKind) =>
+  createRoutes({
+    table: `${kind}_labels`,
+    // The assets carry their labels: they are re-read with them.
+    touched: [DECLARED_ASSET_RESOURCES[kind]],
+    verifyBoard: (boardId, req, right) => {
+      if (!accessIncludes(widgetRights(req.user)[kind], MANAGED_DEVICE_ASSET_LABEL_ACCESS[right])) {
+        throw right === "view"
+          ? new HttpError(404, "Introuvable")
+          : new HttpError(403, "Vous n'avez pas le droit de modifier ici");
+      }
+      return openBoard(boardId, req.user).id;
+    },
+    groups: declaredAssetLabelGroups[kind],
+    concernedBy: () => [],
+  });

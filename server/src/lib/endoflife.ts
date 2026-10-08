@@ -11,7 +11,7 @@
 // read is still used; without one, the record opens with no end of support
 // rather than waiting.
 
-import type { Asset, AssetSupport } from "@milo/shared";
+import type { ManagedDeviceAsset, ManagedDeviceAssetSupport } from "@milo/shared";
 
 const API = "https://endoflife.date/api";
 
@@ -66,7 +66,7 @@ const cyclesDe = (product: string): Promise<Cycle[] | null> => {
  * broadest. Windows has a list per edition: "e" for Enterprise and Education,
  * "w" for Home and Pro, and LTSC branches apart.
  */
-const search = (os: NonNullable<Asset["os"]>): { product: string; cycles: string[] } | null => {
+const search = (os: NonNullable<ManagedDeviceAsset["os"]>): { product: string; cycles: string[] } | null => {
   const name = os.name;
   const version = os.version.trim();
   const major = version.split(/[.\s]/)[0] ?? "";
@@ -111,7 +111,7 @@ const search = (os: NonNullable<Asset["os"]>): { product: string; cycles: string
 };
 
 /** The end of support of a workstation's system; "null" when we cannot tell. */
-export const endOfSupport = async (os: Asset["os"]): Promise<AssetSupport | null> => {
+export const endOfSupport = async (os: ManagedDeviceAsset["os"]): Promise<ManagedDeviceAssetSupport | null> => {
   if (!os) return null;
   const lookup = search(os);
   if (!lookup) return null;

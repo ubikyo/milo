@@ -14,7 +14,7 @@ import type { Selection } from "../db/query.js";
 const TABLES: Record<ContextList, { labels: string; groups: string }> = {
   "project.list": { labels: "project_labels", groups: "project_label_groups" },
   "task.list": { labels: "labels", groups: "label_groups" },
-  "asset.list": { labels: "asset_labels", groups: "asset_label_groups" },
+  "managed_device_asset.list": { labels: "managed_device_asset_labels", groups: "managed_device_asset_label_groups" },
   "support.list": { labels: "support_labels", groups: "support_label_groups" },
 };
 

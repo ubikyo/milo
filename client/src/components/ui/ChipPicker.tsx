@@ -310,7 +310,7 @@ export default function ChipPicker<T extends ChipOption>({
             {emptyText}
           </Text>
         )}
-        {/* The thin bar of the application's other lists (ListItems). */}
+        {/* The thin bar of the application's other lists. */}
         <ScrollArea.Autosize
           mah={listMaxHeight ?? maxHeight}
           type="auto"

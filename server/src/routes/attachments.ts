@@ -260,7 +260,7 @@ const send = (
   // under, not the sixteen random bytes. An image pasted into a description
   // has no row in the database and so keeps its own, which is not visible:
   // we don't save it.
-  const name = attachments.byFile.get(file)?.name ?? file;
+  const name = attachments.byFile.get({ file })?.name ?? file;
 
   // Whatever is not on the list of types returned as is goes out as a
   // download, with no guessed type: a file uploaded onto a card must never

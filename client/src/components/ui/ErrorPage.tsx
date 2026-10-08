@@ -1,6 +1,7 @@
 import { IconChevronDown } from "@tabler/icons-react";
 import { Component, useState } from "react";
 import type { CSSProperties, ErrorInfo, ReactNode } from "react";
+import logo from "../../assets/media/Milo-white.svg";
 import { PALETTE_RED } from "../../themes/colors";
 
 // The red page of an unknown error: one nobody caught, so that no
@@ -145,6 +146,7 @@ export default class ErrorPage extends Component<
     return (
       <div style={styles.page}>
         <div style={styles.content}>
+          <img src={logo} alt="Milo" style={styles.logo} />
           <h1 style={styles.title}>Milo a rencontré une erreur</h1>
           <p style={styles.text}>
             Elle n'a pas pu être traitée. Rechargez la page pour reprendre ; si l'erreur revient, copiez le rapport
@@ -254,6 +256,7 @@ const styles: Record<string, CSSProperties> = {
     userSelect: "text",
   },
   content: { maxWidth: 960, padding: 50 },
+  logo: { display: "block", width: 200, marginBottom: 24 },
   title: { fontSize: 28, fontWeight: 700, margin: "0 0 12px" },
   folds: { marginTop: 28 },
   foldLabel: {

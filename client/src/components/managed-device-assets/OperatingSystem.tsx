@@ -16,16 +16,20 @@ import {
   IconWorldWww,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
-import { OsLogo } from "./AssetLogos";
+import { OsLogo } from "./ManagedDeviceAssetLogos";
 import {
   Card,
   ROUND_ICON,
   BREAKPOINTS,
   CircleIcon,
   value,
-} from "./AssetSummaryPanel";
+} from "./ManagedDeviceAssetSummaryPanel";
 import type { ReactNode } from "react";
-import type { AssetDetail, AssetEntry, AssetSection } from "@milo/shared";
+import type {
+  ManagedDeviceAssetDetail,
+  ManagedDeviceAssetEntry,
+  ManagedDeviceAssetSection,
+} from "@milo/shared";
 
 // The "Description" of the Système d'exploitation tab: the agent's
 // OPERATINGSYSTEM section, arranged in cards like the Summary rather than as
@@ -119,7 +123,7 @@ function RoundCard({
   );
 }
 
-function Description({ entry, os }: { entry: AssetEntry; os: AssetDetail["os"] }) {
+function Description({ entry, os }: { entry: ManagedDeviceAssetEntry; os: ManagedDeviceAssetDetail["os"] }) {
   const others = Object.keys(entry).filter((field) => !SHOWN_FIELDS.has(field));
   return (
     <Grid gap="md" type="container" breakpoints={BREAKPOINTS}>
@@ -191,9 +195,9 @@ export default function OperatingSystem({
   section,
   os,
 }: {
-  section: AssetSection;
+  section: ManagedDeviceAssetSection;
   /** The workstation's system, as the server recognized it: its logo. */
-  os: AssetDetail["os"];
+  os: ManagedDeviceAssetDetail["os"];
 }) {
   return (
     <>

@@ -1,10 +1,10 @@
 // What the workstations list and the Assets indicators read the same way.
 
 import dayjs from "dayjs";
-import type { Asset } from "@milo/shared";
+import type { ManagedDeviceAsset } from "@milo/shared";
 
 /** The share of the system disk used, as a percentage; "null" without a disk. */
-export const diskUsage = (disk: Asset["system_disk"]): number | null =>
+export const diskUsage = (disk: ManagedDeviceAsset["system_disk"]): number | null =>
   disk
     ? Math.round(Math.min(100, Math.max(0, ((disk.total - disk.free) / disk.total) * 100)))
     : null;
@@ -16,7 +16,7 @@ export const DISK_FULL = 85;
 export const DAYS_WITHOUT_INVENTORY = 30;
 
 /** The days elapsed since the last inventory. */
-export const daysSinceInventory = (workstation: Asset): number =>
+export const daysSinceInventory = (workstation: ManagedDeviceAsset): number =>
   dayjs().diff(dayjs(workstation.last_inventory), "day", true);
 
 /**
@@ -24,7 +24,7 @@ export const daysSinceInventory = (workstation: Asset): number =>
  * already say it. On macOS, the build number in parentheses — "(23F79)" —
  * tells the list's reader nothing: it is removed.
  */
-export const osLabel = (os: NonNullable<Asset["os"]>): string => {
+export const osLabel = (os: NonNullable<ManagedDeviceAsset["os"]>): string => {
   const clean = (text: string) =>
     os.family === "macos" ? text.replace(/\s*\([^)]*\)/g, "").trim() : text;
   const name = clean(os.name);

@@ -31,6 +31,7 @@ import {
   ownerName,
   shownKeyOf,
   useChosenDay,
+  usePublishedAppointments,
 } from "./agenda";
 import { themeColor } from "../../lib/themeColors";
 
@@ -144,6 +145,8 @@ function CalendarWidget({ blockId, config }: { blockId: Id; config: unknown }) {
     };
     // The shown calendars are read again when they change.
   }, [withAppointments, blockId, months, shownKey]);
+
+  usePublishedAppointments(blockId, months, state.phase === "ready" ? state.calendar.events : null);
 
   const byDay = useMemo(() => {
     const card = new Map<string, AccessCalendarEvent[]>();

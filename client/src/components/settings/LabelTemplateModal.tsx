@@ -1,0 +1,344 @@
+import { ActionIcon, Box, Button, Group, Loader, Modal, Splitter, Stack, Text, Tooltip } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { IconMaximize, IconMinimize, IconPrinter } from "@tabler/icons-react";
+import { useDebouncedValue } from "@mantine/hooks";
+import { useEffect, useRef, useState } from "react";
+import type { Id, LabelTemplate, LabelTemplateKind, MailTemplateVariable, PaperFormat } from "@milo/shared";
+import { api } from "../../api";
+import { errorMessage, notifyError } from "../../lib/errors";
+import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
+import { RED, STRONG_TEXT } from "../../themes/colors";
+import CloseButton from "../ui/CloseButton";
+import {
+  HANDLE_COLOR,
+  SPLITTER_STYLES,
+  PANES_HEIGHT,
+  PANE_MINS,
+  FoldablePane,
+  PANE_SIZES,
+  paneStyle,
+  useFoldingPanes,
+  useNoEscape,
+} from "./MailPreview";
+import VariablesPane from "./VariablesPane";
+import type { PaneVariable } from "./VariablesPane";
+import ZplEditor from "./ZplEditor";
+import type { MjmlEditorHandle } from "./MjmlEditor";
+
+// A label template in three panes, as an e-mail template
+// (MailTemplateModal): its variables — a click drops one where the cursor
+// was —, its ZPL, and the label as the format's printer draws it. "Imprimer"
+// sends a test label to that printer.
+
+interface LabelTemplateModalProps {
+  /** The template being edited; "null" closes the modal. */
+  template: LabelTemplate | null;
+  kind: LabelTemplateKind;
+  boardId: Id;
+  variables: MailTemplateVariable[];
+  /** Its paper format: the printer that draws and prints it. */
+  format: PaperFormat | null;
+  onClose: () => void;
+  /** Writes the template on the server: the window closes once it is done. */
+  onSave: (zpl: string) => Promise<unknown>;
+  canEdit: boolean;
+}
+
+const WINDOW_WIDTH = 1320;
+
+// The printer draws the label: it is asked once typing has paused a little longer.
+const PREVIEW_DELAY_MS = 800;
+
+/** The label, on its paper, against the pane's edges. */
+const LABEL_INSET = 20;
+
+export default function LabelTemplateModal({
+  template,
+  kind,
+  boardId,
+  variables,
+  format,
+  onClose,
+  onSave,
+  canEdit,
+}: LabelTemplateModalProps) {
+  const [zpl, setZpl] = useState("");
+  const [typed] = useDebouncedValue(zpl, PREVIEW_DELAY_MS);
+  const [image, setImage] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [drawing, setDrawing] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const source = useRef<MjmlEditorHandle>(null);
+  const formatId = format?.id ?? null;
+
+  // Each opening starts again from the template as the drawer holds it.
+  useEffect(() => {
+    setZpl(template?.zpl ?? "");
+    setImage(null);
+    setPreviewError(null);
+  }, [template]);
+
+  useEffect(() => {
+    if (!template || !typed.trim()) return;
+    if (formatId === null) {
+      setPreviewError("Choisissez d'abord le format d'étiquette du modèle.");
+      return;
+    }
+    let current = true;
+    setDrawing(true);
+    api.previewLabelTemplate(kind, boardId, { paper_format_id: formatId, zpl: typed }).then(
+      (p) => {
+        if (!current) return;
+        setImage(p.image);
+        setPreviewError(null);
+      },
+      (e) => current && setPreviewError(errorMessage(e)),
+    ).finally(() => current && setDrawing(false));
+    return () => {
+      current = false;
+    };
+  }, [template, typed, kind, boardId, formatId]);
+
+  const print = async () => {
+    if (formatId === null) return notifyError("Choisissez d'abord le format d'étiquette du modèle.");
+    setPrinting(true);
+    try {
+      const sent = await api.printLabelTemplate(kind, boardId, { paper_format_id: formatId, zpl });
+      notifications.show({
+        color: "teal",
+        title: "Étiquette de test envoyée",
+        message: `Imprimée sur « ${sent.printer} ».`,
+      });
+    } catch (e) {
+      notifyError(errorMessage(e));
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onSave(zpl);
+      onClose();
+    } catch (e) {
+      notifyError(errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const paneVariables: PaneVariable[] = variables.map((v) => ({
+    group: v.group,
+    label: v.label,
+    token: v.name,
+    inserted: v.name,
+  }));
+
+  const panes = useFoldingPanes(template);
+
+  // The window over the whole browser window, back to its size at each opening.
+  const [full, setFull] = useState(false);
+  const [openedOn, setOpenedOn] = useState(template);
+  if (template !== openedOn) {
+    setOpenedOn(template);
+    setFull(false);
+  }
+  const headerStyles = modalHeaderStyles(MODAL_PADDING);
+  const toggleFull = () => {
+    setFull(!full);
+    panes.fold(0);
+  };
+
+  // Escape closes nothing while the template is open (MailTemplateModal).
+  useNoEscape(template !== null);
+
+  return (
+    <Modal
+      opened={template !== null}
+      onClose={onClose}
+      closeOnEscape={false}
+      title={
+        <Group component="span" justify="space-between" wrap="nowrap">
+          {template ? `Modèle — ${template.name}` : "Modèle"}
+          <ActionIcon
+            variant="transparent"
+            c={full ? STRONG_TEXT : "#ffffff"}
+            onClick={toggleFull}
+            aria-label={full ? "Réduire la fenêtre" : "Agrandir la fenêtre"}
+          >
+            {full ? <IconMinimize size={18} /> : <IconMaximize size={18} />}
+          </ActionIcon>
+        </Group>
+      }
+      centered
+      size={WINDOW_WIDTH}
+      fullScreen={full}
+      padding={MODAL_PADDING}
+      withCloseButton={false}
+      styles={{
+        ...headerStyles,
+        title: { ...headerStyles.title, flex: 1 },
+        // As the e-mail templates' window over the whole browser window.
+        ...(full && {
+          header: {
+            ...headerStyles.header,
+            padding: "5px 10px",
+            paddingInlineEnd: 10,
+            minHeight: 0,
+            backgroundColor: "var(--mantine-color-body)",
+          },
+          title: { ...headerStyles.title, flex: 1, color: STRONG_TEXT },
+          content: { display: "flex", flexDirection: "column" },
+          body: {
+            paddingTop: 0,
+            paddingInline: 0,
+            paddingBottom: 0,
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+          },
+        }),
+      }}
+    >
+      <Stack gap={full ? 0 : "md"} style={full ? { flex: 1, minHeight: 0 } : undefined}>
+        <Splitter
+          h={full ? undefined : PANES_HEIGHT}
+          style={full ? { flex: 1, minHeight: 0 } : undefined}
+          handleColor={HANDLE_COLOR}
+          styles={
+            full
+              ? {
+                  ...SPLITTER_STYLES,
+                  root: {
+                    border: 0,
+                    borderTop: `1px solid ${HANDLE_COLOR}`,
+                    borderBottom: `1px solid ${HANDLE_COLOR}`,
+                    borderRadius: 0,
+                  },
+                }
+              : SPLITTER_STYLES
+          }
+          {...panes.splitterProps}
+        >
+          <Splitter.Pane defaultSize={PANE_SIZES.variables} min={PANE_MINS.variables} collapsible style={paneStyle(full ? undefined : "left", panes.folded(0))}>
+            <FoldablePane label="Variables" folded={panes.folded(0)} onUnfold={() => panes.unfold(0)}>
+              <VariablesPane
+                variables={paneVariables}
+                onInsert={(text) => source.current?.insert(text)}
+                canEdit={canEdit}
+                opened={template}
+              />
+            </FoldablePane>
+          </Splitter.Pane>
+
+          <Splitter.Pane defaultSize={PANE_SIZES.editor} min={PANE_MINS.editor} collapsible style={paneStyle(undefined, panes.folded(1))}>
+            <FoldablePane label="Code" folded={panes.folded(1)} onUnfold={() => panes.unfold(1)}>
+              <ZplEditor
+                ref={source}
+                value={zpl}
+                variables={variables}
+                onChange={setZpl}
+                readOnly={!canEdit}
+                height={full ? "100%" : PANES_HEIGHT}
+              />
+            </FoldablePane>
+          </Splitter.Pane>
+
+          <Splitter.Pane defaultSize={PANE_SIZES.preview} min={PANE_MINS.preview} collapsible style={paneStyle(full ? undefined : "right", panes.folded(2))}>
+            <FoldablePane label="Aperçu" folded={panes.folded(2)} onUnfold={() => panes.unfold(2)}>
+              <LabelPreview image={image} error={previewError} drawing={drawing} />
+            </FoldablePane>
+          </Splitter.Pane>
+        </Splitter>
+
+        <Group
+          justify="space-between"
+          mt={full ? 0 : MODAL_PADDING - 16}
+          style={full ? { padding: "10px 8px 10px 15px" } : undefined}
+        >
+          {/* A test label: a number drawn at random, one label of each group
+              the template names. */}
+          <Tooltip label="Imprimer une étiquette de test">
+            <ActionIcon
+              variant="default"
+              size="lg"
+              aria-label="Imprimer une étiquette de test"
+              onClick={() => void print()}
+              loading={printing}
+              disabled={!zpl.trim() || formatId === null}
+            >
+              <IconPrinter size={18} />
+            </ActionIcon>
+          </Tooltip>
+          <Group>
+            <CloseButton onClick={onClose} />
+            {canEdit && (
+              <Button color="teal" onClick={() => void save()} loading={saving}>
+                Enregistrer
+              </Button>
+            )}
+          </Group>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+/**
+ * The label the printer drew, white as its paper, in the pane's middle; while
+ * it draws, a loader over the last one. What went wrong runs along the bottom,
+ * white on red, as MJML's errors.
+ */
+function LabelPreview({
+  image,
+  error,
+  drawing,
+}: {
+  image: string | null;
+  error: string | null;
+  drawing: boolean;
+}) {
+  return (
+    <Box h="100%" pos="relative" style={{ backgroundColor: "var(--mantine-color-body)" }}>
+      <Box
+        pos="absolute"
+        inset={0}
+        p={LABEL_INSET}
+        style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+      >
+        {image ? (
+          <img
+            src={image}
+            alt="Aperçu de l'étiquette"
+            style={{
+              maxWidth: "100%",
+              maxHeight: "100%",
+              objectFit: "contain",
+              backgroundColor: "#ffffff",
+              border: "1px solid #d0d0d0",
+              borderRadius: 4,
+              opacity: drawing ? 0.5 : 1,
+            }}
+          />
+        ) : (
+          !drawing && (
+            <Text size="sm" c="dimmed" ta="center">
+              L'aperçu est dessiné par l'imprimante du format d'étiquette.
+            </Text>
+          )
+        )}
+        {drawing && <Loader size="sm" pos="absolute" />}
+      </Box>
+      {error && (
+        <Box pos="absolute" left={0} right={0} bottom={0} p="xs" style={{ backgroundColor: RED }}>
+          <Text size="xs" c="#ffffff">
+            {error}
+          </Text>
+        </Box>
+      )}
+    </Box>
+  );
+}

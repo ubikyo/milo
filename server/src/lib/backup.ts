@@ -22,7 +22,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { BackupInfo, RestoreResult } from "@milo/shared";
-import { migrate, numberReferences } from "../db/migrations.js";
+import { migrate, numberReferences, renameTables } from "../db/migrations.js";
 import { INDEXES, SCHEMA } from "../db/schema.js";
 import { db, transaction } from "../db/query.js";
 import { env } from "../env.js";
@@ -152,6 +152,7 @@ const migrateBackup = (relativePath: string): void => {
   const base = new Database(relativePath);
   try {
     base.pragma("foreign_keys = ON");
+    renameTables(base);
     base.exec(SCHEMA);
     migrate(base);
     base.exec(INDEXES);

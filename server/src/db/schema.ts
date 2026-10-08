@@ -1,6 +1,8 @@
 // The schema. It is created empty and is never modified here: an existing
 // database goes through the migrations (migrations.ts).
 
+import { DECLARED_ASSET_INDEXES, DECLARED_ASSET_SCHEMA } from "./declared-asset-tables.js";
+
 export const SCHEMA = `
   -- Les workspaces : une équipe chacun. Ses vues, et tout ce qu'elles
   -- portent, ne se voient que depuis lui ; ses accès sont les siens
@@ -44,7 +46,7 @@ export const SCHEMA = `
 
   -- Les accès d'un utilisateur ou d'un groupe Entra à un workspace : une
   -- permission par type de widget, en JSON — { "helpdesk": "update",
-  -- "asset": "view", … } (shared, widget-kinds.ts). Sans ligne, aucun accès
+  -- "managed_device_asset": "view", … } (shared, widget-kinds.ts). Sans ligne, aucun accès
   -- au workspace. Désignés par leur identifiant d'objet Entra, qui ne change
   -- pas quand on les renomme ; le nom et l'adresse sont gardés pour
   -- l'affichage. Les notifications reçues dans le workspace, en JSON —
@@ -173,6 +175,34 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT ''
+  );
+
+  -- The printers of "Paramétrage" > "Impression": their kind (Zebra only, for
+  -- now), their name, their address — reached on port 9100 (lib/zebra.ts).
+  CREATE TABLE IF NOT EXISTS printers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL DEFAULT 'zebra',
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    host TEXT NOT NULL DEFAULT ''
+  );
+
+  -- The paper formats printed on (shared/printers.ts): their size in
+  -- millimeters, required. A printer deleted leaves its formats without one.
+  CREATE TABLE IF NOT EXISTS paper_formats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    printer_id INTEGER REFERENCES printers(id) ON DELETE SET NULL,
+    width REAL NOT NULL,
+    height REAL NOT NULL
+  );
+
+  -- The label templates of a board's asset widgets, kind by kind
+  -- (routes/label-templates.ts), as JSON: name, paper format, ZPL.
+  CREATE TABLE IF NOT EXISTS board_label_templates (
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    templates TEXT NOT NULL DEFAULT '[]',
+    PRIMARY KEY (board_id, kind)
   );
 
   -- The last reference given in each list widget (repositories/references.ts):
@@ -443,7 +473,7 @@ export const SCHEMA = `
   -- Labels of a board's assets, in their groups, like those of projects. They
   -- are set on no machine: a machine carries the label named as its GLPI
   -- agent tag, case aside (repositories/assets.ts).
-  CREATE TABLE IF NOT EXISTS asset_label_groups (
+  CREATE TABLE IF NOT EXISTS managed_device_asset_label_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -451,20 +481,23 @@ export const SCHEMA = `
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS asset_labels (
+  CREATE TABLE IF NOT EXISTS managed_device_asset_labels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
-    group_id INTEGER REFERENCES asset_label_groups(id),
+    group_id INTEGER REFERENCES managed_device_asset_label_groups(id),
     name TEXT NOT NULL,
     color TEXT NOT NULL DEFAULT 'blue.6',
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
 
-  -- The tables of a board's Asset widgets (lib/asset-models.ts,
-  -- lib/asset-vlans.ts), as JSON. models NULL: the starting table of Apple
+  -- The declared assets — equipment, applications —, kind by kind
+  -- (declared-asset-tables.ts).
+${DECLARED_ASSET_SCHEMA}
+  -- The tables of a board's managed device asset widgets
+  -- (lib/managed-device-asset-models.ts, lib/managed-device-asset-vlans.ts), as JSON. models NULL: the starting table of Apple
   -- models; vlans: none until the board records some.
-  CREATE TABLE IF NOT EXISTS board_asset_settings (
+  CREATE TABLE IF NOT EXISTS board_managed_device_asset_settings (
     board_id INTEGER PRIMARY KEY REFERENCES boards(id) ON DELETE CASCADE,
     models TEXT,
     vlans TEXT NOT NULL DEFAULT '[]'
@@ -866,8 +899,9 @@ export const INDEXES = `
 
   CREATE INDEX IF NOT EXISTS idx_card_members_user ON card_members(user_id);
   CREATE INDEX IF NOT EXISTS idx_labels_board ON labels(board_id, position, id);
-  CREATE INDEX IF NOT EXISTS idx_asset_labels_board ON asset_labels(board_id, position, id);
-  CREATE INDEX IF NOT EXISTS idx_asset_labels_group ON asset_labels(group_id);
+  CREATE INDEX IF NOT EXISTS idx_managed_device_asset_labels_board ON managed_device_asset_labels(board_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_managed_device_asset_labels_group ON managed_device_asset_labels(group_id);
+${DECLARED_ASSET_INDEXES}
   CREATE INDEX IF NOT EXISTS idx_labels_group ON labels(group_id);
   CREATE INDEX IF NOT EXISTS idx_label_groups_board ON label_groups(board_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_card_labels_label ON card_labels(label_id);
@@ -890,7 +924,7 @@ export const INDEXES = `
   -- champ ferait une quarantaine de tables pour une décision qui n'est pas
   -- prise. Seul ce qui sert à ranger les postes en sort — le nom, le contexte,
   -- la date.
-  CREATE TABLE IF NOT EXISTS assets (
+  CREATE TABLE IF NOT EXISTS managed_device_assets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     -- L'identifiant que l'agent se donne et répète à chaque envoi : c'est lui
     -- qui distingue un poste nouveau d'un poste déjà connu, et non le nom, qui
@@ -926,8 +960,8 @@ export const INDEXES = `
   CREATE UNIQUE INDEX IF NOT EXISTS idx_support_requests_mailbox_list
     ON support_requests(mailbox, list_key, mail_id) WHERE mail_id != '';
 
-  CREATE INDEX IF NOT EXISTS idx_assets_context ON assets(context_id, name);
-  CREATE INDEX IF NOT EXISTS idx_assets_board ON assets(board_id, name);
+  CREATE INDEX IF NOT EXISTS idx_managed_device_assets_context ON managed_device_assets(context_id, name);
+  CREATE INDEX IF NOT EXISTS idx_managed_device_assets_board ON managed_device_assets(board_id, name);
   CREATE INDEX IF NOT EXISTS idx_notifications_user
     ON notifications(user_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_support_request_actors_user

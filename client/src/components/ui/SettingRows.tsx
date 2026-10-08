@@ -5,6 +5,7 @@ import {
   Input,
   NumberInput,
   SegmentedControl,
+  Select,
   Stack,
   Switch,
   Text,
@@ -107,6 +108,8 @@ export interface SizeSetting {
   step?: number;
   /** The field's width, when it lines up with other columns — the themes'. */
   width?: number;
+  /** The field's background out of focus, when it isn't Mantine's — the theme editor's. */
+  background?: string;
 }
 
 export interface SettingRow {
@@ -180,6 +183,9 @@ export function Reset({
         onClick={onClick}
         disabled={!active}
         aria-label={label}
+        // The Settings set its look when active (SettingsModal.module.css).
+        data-reset-button
+        data-active={active || undefined}
         style={{
           backgroundColor: active ? GREEN : BUTTON_BACKGROUND,
           color: active ? "#ffffff" : "var(--mantine-color-text)",
@@ -192,12 +198,16 @@ export function Reset({
   );
 }
 
+/** A field's look: the drawer's background while typed in, otherwise its own if it has one. */
+const fieldStyles = (input: boolean, background?: string) =>
+  input ? { input: INPUT_STYLE } : background ? { input: { backgroundColor: background } } : undefined;
+
 /**
  * A row's color, with the usual shades (field styles). It can be typed: what
  * is being written stays in the field, and only a complete color is passed
  * on; leaving the field brings back the last one.
  */
-function Color({
+export function Color({
   value,
   onChange,
   label,
@@ -206,7 +216,13 @@ function Color({
   swatches = SHADES,
   swatchesPerRow = SHADES_PER_ROW,
   eyeDropper = false,
+  width,
+  background,
 }: {
+  /** The field's width, when it fills a column — the theme editor's. */
+  width?: number;
+  /** Its background out of focus, when it isn't Mantine's — the theme editor's. */
+  background?: string;
   value: string;
   onChange: (value: string) => void;
   label: string;
@@ -222,7 +238,7 @@ function Color({
     <ColorInput
       size="xs"
       radius={ROUNDING}
-      w={eyeDropper ? EYE_DROPPER_FIELD_WIDTH : COLOR_WIDTH}
+      w={width ?? (eyeDropper ? EYE_DROPPER_FIELD_WIDTH : COLOR_WIDTH)}
       placeholder="Par défaut"
       value={draft ?? value}
       onChange={(v) => {
@@ -240,13 +256,13 @@ function Color({
         setInput(false);
         setDraft(null);
       }}
-      styles={input ? { input: INPUT_STYLE } : undefined}
+      styles={fieldStyles(input, background)}
     />
   );
 }
 
 /** A row's size, in pixels, aligned right. */
-function Size({
+export function Size({
   size,
   label,
   first = true,
@@ -277,7 +293,53 @@ function Size({
       {...numberKeys(size.onChange)}
       onFocus={() => setInput(true)}
       onBlur={() => setInput(false)}
-      styles={input ? { input: INPUT_STYLE } : undefined}
+      styles={fieldStyles(input, size.background)}
+    />
+  );
+}
+
+/** The font weights, by their usual names. */
+const WEIGHTS = [
+  { value: "100", label: "100 · Thin" },
+  { value: "200", label: "200 · Extra Light" },
+  { value: "300", label: "300 · Light" },
+  { value: "400", label: "400 · Regular" },
+  { value: "500", label: "500 · Medium" },
+  { value: "600", label: "600 · Semi Bold" },
+  { value: "700", label: "700 · Bold" },
+  { value: "800", label: "800 · Extra Bold" },
+  { value: "900", label: "900 · Black" },
+];
+
+/** A font weight, chosen in the list of its values. */
+export function Weight({
+  value,
+  onChange,
+  label,
+  width,
+  background,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  label: string;
+  width?: number;
+  /** Its background out of focus, when it isn't Mantine's — the theme editor's. */
+  background?: string;
+}) {
+  const [input, setInput] = useState(false);
+  return (
+    <Select
+      size="xs"
+      radius={ROUNDING}
+      w={width ?? SIZE_WIDTH}
+      data={WEIGHTS}
+      value={String(value)}
+      onChange={(v) => v && onChange(Number(v))}
+      allowDeselect={false}
+      aria-label={label}
+      onFocus={() => setInput(true)}
+      onBlur={() => setInput(false)}
+      styles={fieldStyles(input, background)}
     />
   );
 }

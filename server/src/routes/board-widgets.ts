@@ -11,6 +11,7 @@
 import express, { Router } from "express";
 import type { NextFunction, Request, Response } from "express";
 import {
+  DECLARED_ASSET_RESOURCES,
   LIST_KEY,
   shownCalendarsOf,
   SECTIONS_GAP_DEFAULT,
@@ -33,7 +34,7 @@ import {
   currentWidget,
   widgetReference,
 } from "@milo/shared";
-import type { Id, NotificationScope } from "@milo/shared";
+import type { DeclaredAssetKind, Id, NotificationScope } from "@milo/shared";
 import { concerned, notifyBoard, root } from "../lib/notify.js";
 import type {
   AccessCalendar,
@@ -71,9 +72,10 @@ import { columnsGap, requestedRank, widthUnit, widthValue } from "../lib/section
 import { signalWrite, touch, touchNow } from "../middleware/events.js";
 import { byId, deleteWithUndo } from "../lib/undo.js";
 import { ensureDefaultType } from "./milestone-types.js";
-import { reassignWorkstations } from "../repositories/assets.js";
+import { reassignWorkstations } from "../repositories/managed-device-assets.js";
 import { ensureSupportLabels } from "../repositories/support.js";
 import { ensureProjectPriorities } from "../repositories/projects.js";
+import { ensureDeclaredAssetLabels } from "../repositories/declared-asset-labels.js";
 import { withNewKey, keyInBoard, keepKey, cleanLists } from "../repositories/lists.js";
 import { receivedTags } from "../repositories/inboxes.js";
 import { boardSections, boardWidgets, renderedWidget } from "../repositories/board-widgets.js";
@@ -155,7 +157,7 @@ export const followLists = (req: Request, res: Response, next: NextFunction): vo
     mailOptin.askForConfirmations(req.user.name);
     if (JSON.stringify(receivedTags()) !== before) {
       reassignWorkstations();
-      touchedResources.push("assets");
+      touchedResources.push("managed-device-assets");
     }
     signalWrite(...touchedResources);
   });
@@ -436,6 +438,12 @@ boardWidgetRoutes.post("/", (req, res) => {
   // (repositories/support.ts).
   if (type === "support.list" && ensureSupportLabels(board.id)) {
     touchNow(res, "support-labels");
+  }
+  // A declared asset widget brings its kind's default labels
+  // (repositories/declared-asset-labels.ts).
+  if (ensureDeclaredAssetLabels(type as string, board.id)) {
+    const kind = (type as string).split(".")[0] as DeclaredAssetKind;
+    touchNow(res, DECLARED_ASSET_RESOURCES[kind]);
   }
   const created = boardWidgets.byId(id)!;
   announce(req, board.id, `a ajouté ${widgetName(created)}`);

@@ -6,7 +6,8 @@ import { PLUS_SIZE } from "../../themes/plus";
 
 // "Add" action placed at the end of a list: a green label without background, a
 // darker tone on hover. Used at the bottom of the projects table as well as at the end of
-// the Task mode's row of lists.
+// the Task mode's row of lists. A window that has its own look for it — the
+// Settings ("Lien +") — sets its color, size and weight (--milo-add-link-*).
 interface AddButtonProps extends ButtonProps {
   label: string;
   onClick: () => void;
@@ -22,12 +23,22 @@ export default function AddButton({ label, onClick, ...props }: AddButtonProps) 
       justify="flex-start"
       // No inner margin: the "+" aligns with the content that precedes it.
       px={0}
-      c={hovered ? ADD_ACTION.hover : ADD_ACTION.color}
+      c={
+        props.disabled
+          ? "var(--mantine-color-dimmed)"
+          : hovered
+            ? ADD_ACTION.hover
+            : `var(--milo-add-link-color, ${ADD_ACTION.color})`
+      }
+      fz="var(--milo-add-link-size, var(--mantine-font-size-xs))"
+      fw="var(--milo-add-link-weight, 600)"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       leftSection={<IconPlus size={PLUS_SIZE} />}
       onClick={onClick}
       {...props}
+      // Disabled, it only fades: Mantine would give it a gray background.
+      styles={{ root: { backgroundColor: "transparent" } }}
     >
       {label}
     </Button>

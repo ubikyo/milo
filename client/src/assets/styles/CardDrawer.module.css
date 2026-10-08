@@ -46,32 +46,6 @@
   min-height: 100%;
 }
 
-/* The drop prompt, laid over the card while a file hovers over it.
-
-   It stops exactly where the area that receives the drop stops, not at the
-   drawer edge: the dashed frame promises what it delivers. The drawer's
-   padding stays outside — a file dropped there falls back to the browser's
-   behavior, like everywhere else in the application.
-
-   It does not take the pointer: the elements underneath keep seeing the drag
-   pass, and their common parent receives the drop
-   (components/board/CardDrawer.tsx). */
-.dropZone {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  pointer-events: none;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  color: var(--mantine-color-teal-6);
-  background-color: color-mix(in srgb, var(--mantine-color-body) 90%, transparent);
-  border: 2px dashed var(--mantine-color-teal-6);
-  border-radius: var(--mantine-radius-md);
-}
-
 /* The same bar, this time on the drawer's right edge — the one touching the
    window edge — and over its full height, tabs and bottom buttons included,
    although only the tab content scrolls. Added to ".scrollbar".

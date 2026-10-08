@@ -2,7 +2,10 @@ import { Stack } from "@mantine/core";
 import { IconLayoutBottombar, IconLayoutColumns } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import type { BoardData } from "../widgets";
-import { AssetsListContext, type AssetsListHandle } from "../components/assets/AssetsList";
+import {
+  ManagedDeviceAssetsListContext,
+  type ManagedDeviceAssetsListHandle,
+} from "../components/managed-device-assets/ManagedDeviceAssetsList";
 import { TaskBoardContext, type TaskBoardProps } from "../components/board/TaskBoard";
 import { ProjectsListContext, type ProjectsList } from "../components/project/ProjectTable";
 import SupportActions from "../components/support/SupportActions";
@@ -11,6 +14,7 @@ import type { AccountSlot } from "../components/ui/AccountControls";
 import BoardPanel from "../components/ui/BoardPanel";
 import BoardTabs from "../components/ui/BoardTabs";
 import EmptyPanel from "../components/ui/EmptyPanel";
+import { UsersContext } from "../lib/users";
 import type {
   Board,
   BoardWidget,
@@ -69,7 +73,7 @@ interface ViewPageProps {
   projects: ProjectsList;
   tasks: TaskBoardProps;
   support: BoardSupport;
-  assets: AssetsListHandle;
+  managedDeviceAssets: ManagedDeviceAssetsListHandle;
   /** "Créer une tâche" and "Créer une demande", on right-click on a link. */
   onCreateTaskFromLink?: (widget: BoardWidget) => void;
   onCreateSupportFromLink?: (widget: BoardWidget) => void;
@@ -108,7 +112,7 @@ export default function ViewPage({
   projects,
   tasks,
   support,
-  assets,
+  managedDeviceAssets,
   onCreateTaskFromLink,
   onCreateSupportFromLink,
   loading,
@@ -158,22 +162,24 @@ export default function ViewPage({
               onAddRequest: support.onAddRequest,
             }}
           >
-            <AssetsListContext.Provider value={assets}>
-              <BoardPanel
-                // Another board: another panel, carrying nothing over from the
-                // previous one — neither a drag in progress, nor an open drawer.
-                key={openBoard.id}
-                boardId={openBoard.id}
-                sections={sections}
-                widgets={widgets}
-                data={data}
-                onChanged={onWidgetsChanged}
-                locked={locked}
-                onUnlock={onUnlock}
-                onCreateTask={onCreateTaskFromLink}
-                onCreateSupportRequest={onCreateSupportFromLink}
-              />
-            </AssetsListContext.Provider>
+            <ManagedDeviceAssetsListContext.Provider value={managedDeviceAssets}>
+              <UsersContext.Provider value={support.users}>
+                <BoardPanel
+                  // Another board: another panel, carrying nothing over from the
+                  // previous one — neither a drag in progress, nor an open drawer.
+                  key={openBoard.id}
+                  boardId={openBoard.id}
+                  sections={sections}
+                  widgets={widgets}
+                  data={data}
+                  onChanged={onWidgetsChanged}
+                  locked={locked}
+                  onUnlock={onUnlock}
+                  onCreateTask={onCreateTaskFromLink}
+                  onCreateSupportRequest={onCreateSupportFromLink}
+                />
+              </UsersContext.Provider>
+            </ManagedDeviceAssetsListContext.Provider>
           </SupportListContext.Provider>
         </TaskBoardContext.Provider>
       </ProjectsListContext.Provider>

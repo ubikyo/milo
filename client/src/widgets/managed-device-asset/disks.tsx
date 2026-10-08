@@ -3,7 +3,7 @@ import { IconDatabase } from "@tabler/icons-react";
 import { diskUsage } from "../../lib/workstation";
 import { LabelBars } from "../support/labels";
 import { NAME, Nothing, IndicatorTitle } from "./common";
-import type { AssetIndicatorWidget } from "./types";
+import type { ManagedDeviceAssetIndicatorWidget } from "./types";
 
 // System disk usage, by bracket: green, blue, orange, then red. A red bar
 // that keeps growing means workstations about to run out of
@@ -22,9 +22,9 @@ const BANDS = [
   { name: "85 à 100 %", upTo: Infinity, color: "red.6" },
 ];
 
-export const disksIndicator: AssetIndicatorWidget = {
+export const disksIndicator: ManagedDeviceAssetIndicatorWidget = {
   type: "disks",
-  kind: "asset",
+  kind: "managed_device_asset",
   label: LABEL,
   icon: IconDatabase,
   defaultConfig: { [NAME]: "" },

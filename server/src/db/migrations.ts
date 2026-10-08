@@ -7,7 +7,12 @@
 
 import type { Database } from "better-sqlite3";
 import {
+  DECLARED_ASSET_EXTRAS,
+  DECLARED_ASSET_EXTRA_LISTS,
+  DECLARED_ASSET_KINDS,
   QUERY_PARAMS,
+  renamedWidgetKinds,
+  renamedWidgetType,
   DEFAULT_LABEL_GROUP,
   NEW_MESSAGE_LABELS,
   SUPPORT_CHANNEL_GROUP,
@@ -28,6 +33,11 @@ import {
   widgetRightsEverywhere,
 } from "@milo/shared";
 import { parisTime } from "../lib/time.js";
+import {
+  EXTRA_COLUMNS,
+  EXTRA_LIST_COLUMNS,
+  declaredAssetTables,
+} from "./declared-asset-tables.js";
 
 /** The milestones all projects shared before they followed the category. */
 const HISTORICAL_MILESTONES = [
@@ -257,6 +267,12 @@ export const migrate = (db: Database): void => {
   adminSections(db);
   interfaceRights(db);
   withoutUptimeWith365(db);
+  unmanagedAssets(db);
+  declaredDeviceColumns(db);
+  assetsNamedByKind(db);
+  applicationAssets(db);
+  declaredAssetListKeys(db);
+  declaredAssetExtras(db);
   sortedCategories(db);
   // Cards created before the period, the recurrence and the due-date reminder.
   const cardColumns = columns(db, "task_cards");
@@ -313,6 +329,10 @@ export const migrate = (db: Database): void => {
       db.exec(`ALTER TABLE ${table} DROP COLUMN weight`);
     }
   }
+  // Printers are all reached on their raw port, 9100: theirs goes away.
+  if (columns(db, "printers").includes("port")) {
+    db.exec("ALTER TABLE printers DROP COLUMN port");
+  }
   // Last: values stored in French, translated once the earlier catch-ups,
   // which read them, have run.
   englishValues(db);
@@ -322,7 +342,7 @@ export const migrate = (db: Database): void => {
   // Then the context group goes from the lists to their board.
   boardContextGroups(db);
   subcategoriesAsTitles(db);
-  assetSettingsByBoard(db);
+  managedDeviceAssetSettingsByBoard(db);
   supportLabelsByBoard(db);
   // Accounts from before the opening workspace and board.
   const userColumns = columns(db, "users");
@@ -516,7 +536,7 @@ const supportLabelsByBoard = (db: Database): void => {
  * each board's Asset widgets: every board that has an Assets list takes a
  * copy of them, and the common ones go. Nothing left to move, it does nothing.
  */
-const assetSettingsByBoard = (db: Database): void => {
+const managedDeviceAssetSettingsByBoard = (db: Database): void => {
   const models = readSetting(db, "asset_models");
   const vlans = readSetting(db, "asset_vlans");
   if (models === undefined && vlans === undefined) return;
@@ -528,7 +548,7 @@ const assetSettingsByBoard = (db: Database): void => {
     )
     .all() as { board_id: number }[];
   const insert = db.prepare(
-    "INSERT OR IGNORE INTO board_asset_settings (board_id, models, vlans) VALUES (?, ?, ?)",
+    "INSERT OR IGNORE INTO board_managed_device_asset_settings (board_id, models, vlans) VALUES (?, ?, ?)",
   );
   db.transaction(() => {
     for (const { board_id } of boards) {
@@ -1032,6 +1052,341 @@ const withoutUptimeWith365 = (db: Database): void => {
       write.run(JSON.stringify({ ...rest, m365: rest["m365"] ?? rest["common"] ?? "" }), rowid);
     }
     writeSetting(db, WITHOUT_UPTIME_WITH_365, true);
+  })();
+};
+
+/** Set once the "Unmanaged Assets" type has been granted to the groups. */
+const UNMANAGED_ASSETS = "unmanaged_assets_added";
+
+/**
+ * The "Unmanaged Assets" type arrives: the groups that already have access
+ * receive every permission on it. Users keep none, as for any new type.
+ */
+const unmanagedAssets = (db: Database): void => {
+  if (readSetting(db, UNMANAGED_ASSETS)) return;
+  db.transaction(() => {
+    const rows = db
+      .prepare("SELECT rowid, widgets FROM principal_permissions WHERE principal_type = 'group'")
+      .all() as { rowid: number; widgets: string }[];
+    const write = db.prepare("UPDATE principal_permissions SET widgets = ? WHERE rowid = ?");
+    for (const { rowid, widgets } of rows) {
+      let readValue: Record<string, unknown> = {};
+      try {
+        const raw = JSON.parse(widgets) as unknown;
+        if (raw && typeof raw === "object") readValue = raw as Record<string, unknown>;
+      } catch {
+        // Unreadable: granted nothing, and now only the new type.
+      }
+      write.run(JSON.stringify({ ...readValue, unmanaged_asset: "delete" }), rowid);
+    }
+    writeSetting(db, UNMANAGED_ASSETS, true);
+  })();
+};
+
+/**
+ * The tables renamed when the assets were named by kind: the supervised
+ * workstations became the managed device assets, the declared equipment the
+ * unmanaged device assets. Run before the schema, which would otherwise
+ * create the new tables empty beside the old ones — one created so still
+ * gives way to the old one; their indexes go, the schema's come back under
+ * the new names. Foreign keys follow the rename.
+ */
+const RENAMED_TABLES: [string, string][] = [
+  ["assets", "managed_device_assets"],
+  ["asset_labels", "managed_device_asset_labels"],
+  ["asset_label_groups", "managed_device_asset_label_groups"],
+  ["board_asset_settings", "board_managed_device_asset_settings"],
+  ["unmanaged_assets", "unmanaged_device_assets"],
+  ["unmanaged_asset_actors", "unmanaged_device_asset_actors"],
+  ["unmanaged_asset_label_links", "unmanaged_device_asset_label_links"],
+  ["unmanaged_asset_labels", "unmanaged_device_asset_labels"],
+  ["unmanaged_asset_label_groups", "unmanaged_device_asset_label_groups"],
+  ["unmanaged_asset_photos", "unmanaged_device_asset_photos"],
+  ["unmanaged_asset_attachments", "unmanaged_device_asset_attachments"],
+  ["board_unmanaged_asset_settings", "board_unmanaged_device_asset_settings"],
+];
+
+export const renameTables = (db: Database): void => {
+  const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?");
+  const indexes = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+  );
+  db.transaction(() => {
+    for (const [before, after] of RENAMED_TABLES) {
+      if (!exists.get(before)) continue;
+      if (exists.get(after)) {
+        // The new table was created empty beside the old one — a schema run
+        // before this step: it gives way. Both holding rows, they are left
+        // as they are rather than one erased.
+        if (db.prepare(`SELECT 1 FROM "${after}" LIMIT 1`).get()) continue;
+        db.exec(`DROP TABLE "${after}"`);
+      }
+      for (const { name } of indexes.all(before) as { name: string }[]) {
+        db.exec(`DROP INDEX IF EXISTS "${name}"`);
+      }
+      db.exec(`ALTER TABLE "${before}" RENAME TO "${after}"`);
+    }
+  })();
+};
+
+/** The JSON of a row, or an empty object when it cannot be read. */
+const parsedObject = (json: string): Record<string, unknown> => {
+  try {
+    const raw = JSON.parse(json) as unknown;
+    return raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+};
+
+/**
+ * The declared equipment, written with its device type, brand and model,
+ * takes the columns every declared asset shares — category, maker,
+ * product —, and its supplier, quantity, price and notes if it predates
+ * them; its lists' columns likewise. Its board's lists too: the device
+ * types, brands and models become the categories, makers and products.
+ */
+const declaredDeviceColumns = (db: Database): void => {
+  const assets = columns(db, "unmanaged_device_assets");
+  for (const [before, after] of [
+    ["device_type", "category"],
+    ["brand", "maker"],
+    ["model", "product"],
+  ] as const) {
+    if (assets.includes(before) && !assets.includes(after)) {
+      db.exec(`ALTER TABLE unmanaged_device_assets RENAME COLUMN ${before} TO ${after}`);
+    }
+  }
+  const now = columns(db, "unmanaged_device_assets");
+  for (const [column, definition] of [
+    ["supplier", "TEXT NOT NULL DEFAULT ''"],
+    ["quantity", "INTEGER NOT NULL DEFAULT 1"],
+    ["price", "REAL"],
+    ["notes", "TEXT NOT NULL DEFAULT ''"],
+  ] as const) {
+    if (!now.includes(column)) {
+      db.exec(`ALTER TABLE unmanaged_device_assets ADD COLUMN ${column} ${definition}`);
+    }
+  }
+  // Their lists' columns, chosen in the widget's drawer, take the same names.
+  const named: Record<string, string> = { device_type: "category", brand: "maker", model: "product" };
+  const listWidgets = db
+    .prepare(
+      `SELECT id, config FROM board_widgets
+       WHERE type IN ('unmanaged_asset.list', 'unmanaged_device_asset.list')`,
+    )
+    .all() as { id: number; config: string }[];
+  const rewrite = db.prepare("UPDATE board_widgets SET config = ? WHERE id = ?");
+  for (const { id, config } of listWidgets) {
+    const parsed = parsedObject(config);
+    const shown = parsed.columns;
+    if (!Array.isArray(shown)) continue;
+    let changed = false;
+    const renamed = shown.map((entry: unknown) => {
+      const column = (entry ?? {}) as Record<string, unknown>;
+      const key = typeof column.key === "string" ? named[column.key] : undefined;
+      if (!key) return entry;
+      changed = true;
+      return { ...column, key };
+    });
+    if (changed) rewrite.run(JSON.stringify({ ...parsed, columns: renamed }), id);
+  }
+  const lists = columns(db, "board_unmanaged_device_asset_settings");
+  if (!lists.includes("models")) return;
+  db.transaction(() => {
+    for (const [before, after] of [
+      ["device_types", "categories"],
+      ["brands", "makers"],
+      ["models", "products"],
+    ] as const) {
+      db.exec(`ALTER TABLE board_unmanaged_device_asset_settings RENAME COLUMN ${before} TO ${after}`);
+    }
+    // A model named its device type and brand: a product, its category and maker.
+    const rows = db
+      .prepare("SELECT board_id, products FROM board_unmanaged_device_asset_settings")
+      .all() as { board_id: number; products: string }[];
+    const write = db.prepare(
+      "UPDATE board_unmanaged_device_asset_settings SET products = ? WHERE board_id = ?",
+    );
+    for (const { board_id, products } of rows) {
+      let list: unknown;
+      try {
+        list = JSON.parse(products);
+      } catch {
+        list = [];
+      }
+      const read = (Array.isArray(list) ? list : []).map((entry) => {
+        const m = (entry ?? {}) as Record<string, unknown>;
+        return { category: m.device_type ?? "", maker: m.brand ?? "", name: m.name ?? "" };
+      });
+      write.run(JSON.stringify(read), board_id);
+    }
+  })();
+};
+
+/** Set once the widget types and permissions bear the assets' kinds. */
+const ASSETS_NAMED_BY_KIND = "assets_named_by_kind";
+
+/**
+ * The assets named by kind: the widgets placed — "asset.list" becomes
+ * "managed_device_asset.list", "unmanaged_asset.list"
+ * "unmanaged_device_asset.list" — and the permissions of the users and
+ * groups take the new names (shared, renamedWidgetType).
+ */
+const assetsNamedByKind = (db: Database): void => {
+  if (readSetting(db, ASSETS_NAMED_BY_KIND)) return;
+  db.transaction(() => {
+    const widgets = db.prepare("SELECT id, type FROM board_widgets").all() as {
+      id: number;
+      type: string;
+    }[];
+    const retype = db.prepare("UPDATE board_widgets SET type = ? WHERE id = ?");
+    for (const { id, type } of widgets) {
+      const renamed = renamedWidgetType(type);
+      if (renamed !== type) retype.run(renamed, id);
+    }
+    const rights = db.prepare("SELECT rowid, widgets FROM principal_permissions").all() as {
+      rowid: number;
+      widgets: string;
+    }[];
+    const write = db.prepare("UPDATE principal_permissions SET widgets = ? WHERE rowid = ?");
+    for (const { rowid, widgets } of rights) {
+      write.run(JSON.stringify(renamedWidgetKinds(parsedObject(widgets))), rowid);
+    }
+    writeSetting(db, ASSETS_NAMED_BY_KIND, true);
+  })();
+};
+
+/**
+ * Declared assets written before their kind's extra fields take them — a
+ * device its identifications and location; an application its version,
+ * website and license information —, and their boards' lists the kind's
+ * extra lists, with their defaults. What was kept before goes into the
+ * typed values, and its column goes after: a device's serial number becomes
+ * an identification "Numéro de série"; an application's license keys — a
+ * single one, then a list — become "Clé de licence" information.
+ */
+const declaredAssetExtras = (db: Database): void => {
+  for (const kind of DECLARED_ASSET_KINDS) {
+    const { assets, settings } = declaredAssetTables(kind);
+    const present = columns(db, assets);
+    for (const column of DECLARED_ASSET_EXTRAS[kind]) {
+      if (!present.includes(column)) {
+        db.exec(`ALTER TABLE ${assets} ADD COLUMN ${column} ${EXTRA_COLUMNS[column]}`);
+      }
+    }
+    const lists = columns(db, settings);
+    for (const list of DECLARED_ASSET_EXTRA_LISTS[kind]) {
+      if (!lists.includes(list)) {
+        db.exec(`ALTER TABLE ${settings} ADD COLUMN ${list} ${EXTRA_LIST_COLUMNS[list]}`);
+      }
+    }
+  }
+  // A device's location is a place of its board's tree, by its id: one kept
+  // for a while as its own tree of places is none.
+  db.exec("UPDATE unmanaged_device_assets SET location = '' WHERE location LIKE '[%'");
+
+  /** A row's typed values, the given ones added after; then its old column goes. */
+  const intoTypedValues = (
+    table: string,
+    old: string,
+    target: string,
+    type: string,
+    valuesOf: (stored: string) => string[],
+  ) => {
+    if (!columns(db, table).includes(old)) return;
+    const rows = db
+      .prepare(`SELECT id, ${old} AS stored, ${target} AS current FROM ${table}`)
+      .all() as { id: number; stored: string | null; current: string }[];
+    const write = db.prepare(`UPDATE ${table} SET ${target} = ? WHERE id = ?`);
+    for (const { id, stored, current } of rows) {
+      const values = valuesOf(stored ?? "");
+      if (values.length === 0) continue;
+      let already: unknown;
+      try {
+        already = JSON.parse(current);
+      } catch {
+        already = [];
+      }
+      write.run(
+        JSON.stringify([
+          ...(Array.isArray(already) ? already : []),
+          ...values.map((value) => ({ type, value })),
+        ]),
+        id,
+      );
+    }
+    db.exec(`ALTER TABLE ${table} DROP COLUMN ${old}`);
+  };
+  const lines = (stored: string) =>
+    stored
+      .split(/\r?\n/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+  const listed = (stored: string): string[] => {
+    try {
+      const list = JSON.parse(stored) as unknown;
+      return Array.isArray(list)
+        ? list.filter((v): v is string => typeof v === "string" && v.trim() !== "")
+        : [];
+    } catch {
+      return [];
+    }
+  };
+  db.transaction(() => {
+    intoTypedValues("unmanaged_device_assets", "serial_number", "identifications", "Numéro de série", lines);
+    intoTypedValues("application_assets", "license_key", "license_infos", "Clé de licence", lines);
+    intoTypedValues("application_assets", "license_keys", "license_infos", "Clé de licence", listed);
+  })();
+};
+
+/** Set once the "Applications" type has been granted to the groups. */
+const APPLICATION_ASSETS = "application_assets_added";
+
+/**
+ * The "Applications" type arrives: as for the declared equipment, the groups
+ * that already have access receive every permission on it. Users keep none.
+ */
+const applicationAssets = (db: Database): void => {
+  if (readSetting(db, APPLICATION_ASSETS)) return;
+  db.transaction(() => {
+    const rows = db
+      .prepare("SELECT rowid, widgets FROM principal_permissions WHERE principal_type = 'group'")
+      .all() as { rowid: number; widgets: string }[];
+    const write = db.prepare("UPDATE principal_permissions SET widgets = ? WHERE rowid = ?");
+    for (const { rowid, widgets } of rows) {
+      write.run(JSON.stringify({ ...parsedObject(widgets), application_asset: "delete" }), rowid);
+    }
+    writeSetting(db, APPLICATION_ASSETS, true);
+  })();
+};
+
+/**
+ * The declared assets' lists are list widgets: each carries a list key,
+ * which gives it its reference. Those placed before receive one.
+ */
+const declaredAssetListKeys = (db: Database): void => {
+  const widgets = db
+    .prepare(
+      `SELECT id, config FROM board_widgets
+       WHERE type IN ('unmanaged_device_asset.list', 'application_asset.list')`,
+    )
+    .all() as { id: number; config: string }[];
+  const write = db.prepare("UPDATE board_widgets SET config = ? WHERE id = ?");
+  db.transaction(() => {
+    for (const { id, config } of widgets) {
+      let readValue: Record<string, unknown> = {};
+      try {
+        const raw = JSON.parse(config) as unknown;
+        if (raw && typeof raw === "object") readValue = raw as Record<string, unknown>;
+      } catch {
+        // Unreadable: it starts over with only its key.
+      }
+      if (typeof readValue.list_key === "string" && readValue.list_key) continue;
+      write.run(JSON.stringify({ ...readValue, list_key: crypto.randomUUID() }), id);
+    }
   })();
 };
 
@@ -1609,23 +1964,23 @@ const catchUpBeforeViews = (db: Database): void => {
 
   // Workstations inventoried before we displayed who connects to them: the
   // column is added empty, and each workstation's next inventory fills it.
-  const assetColumns = columns(db, "assets");
-  if (assetColumns.length > 0 && !assetColumns.includes("last_user")) {
-    db.exec("ALTER TABLE assets ADD COLUMN last_user TEXT NOT NULL DEFAULT ''");
+  const managedDeviceAssetColumns = columns(db, "managed_device_assets");
+  if (managedDeviceAssetColumns.length > 0 && !managedDeviceAssetColumns.includes("last_user")) {
+    db.exec("ALTER TABLE managed_device_assets ADD COLUMN last_user TEXT NOT NULL DEFAULT ''");
   }
 
   // Workstations dated from the receipt of their inventory, before we took
   // the time the agent writes in it (ACCESSLOG/LOGDATE). Only this value is
   // extracted from the JSON: rereading whole inventories at every startup
   // would cost for nothing. A workstation already up to date is not rewritten.
-  if (assetColumns.length > 0) {
+  if (managedDeviceAssetColumns.length > 0) {
     const inventoryDates = db
       .prepare(
         `SELECT id, last_inventory, json_extract(content, '$.ACCESSLOG.LOGDATE') AS logdate
-         FROM assets WHERE json_valid(content)`,
+         FROM managed_device_assets WHERE json_valid(content)`,
       )
       .all() as { id: number; last_inventory: string; logdate: unknown }[];
-    const updateDate = db.prepare("UPDATE assets SET last_inventory = ? WHERE id = ?");
+    const updateDate = db.prepare("UPDATE managed_device_assets SET last_inventory = ? WHERE id = ?");
     for (const { id, last_inventory, logdate } of inventoryDates) {
       const date = typeof logdate === "string" ? parisTime(logdate) : null;
       if (date && date !== last_inventory) updateDate.run(date, id);
@@ -2510,10 +2865,10 @@ export const contexts = (db: Database): void => {
       }
 
       // Workstations: their company's context, in the workstations board.
-      if (columns(db, "assets").includes("company_id")) {
+      if (columns(db, "managed_device_assets").includes("company_id")) {
         rebuildTable(
           db,
-          "assets",
+          "managed_device_assets",
           (sql) =>
             sql.replace(
               /company_id INTEGER[^,]*,/,
@@ -2544,10 +2899,10 @@ export const contexts = (db: Database): void => {
       const companyContext = db.prepare(
         "SELECT context_id FROM temp.correspondance WHERE board_id = ? AND company_id = ?",
       );
-      const knownTags = columns(db, "assets").includes("context_id")
+      const knownTags = columns(db, "managed_device_assets").includes("context_id")
         ? (db
             .prepare(
-              `SELECT DISTINCT a.tag, c.company_id FROM assets a
+              `SELECT DISTINCT a.tag, c.company_id FROM managed_device_assets a
                  JOIN temp.correspondance c ON c.context_id = a.context_id
                  WHERE a.tag != ''`,
             )
@@ -2651,7 +3006,7 @@ interface ListWidget {
 export const listsPerWidget = (db: Database): void => {
   if (readSetting(db, LISTS_PER_WIDGET)) return;
   db.transaction(() => {
-    for (const table of ["projects", "task_lists", "support_requests", "assets"]) {
+    for (const table of ["projects", "task_lists", "support_requests", "managed_device_assets"]) {
       // A new database does not have its workstations yet: their table is born
       // after the migrations, with the column (schema.ts).
       if (columns(db, table).length === 0) continue;
@@ -2743,17 +3098,17 @@ export const listsPerWidget = (db: Database): void => {
         d.id,
       );
     }
-    if (columns(db, "assets").length === 0) {
+    if (columns(db, "managed_device_assets").length === 0) {
       writeSetting(db, LISTS_PER_WIDGET, true);
       return;
     }
     const workstations = db
       .prepare(
-        `SELECT a.id, a.tag, c.board_id FROM assets a
+        `SELECT a.id, a.tag, c.board_id FROM managed_device_assets a
          JOIN contexts c ON c.id = a.context_id WHERE a.list_key = ''`,
       )
       .all() as { id: number; tag: string; board_id: number }[];
-    const updateWorkstation = db.prepare("UPDATE assets SET list_key = ? WHERE id = ?");
+    const updateWorkstation = db.prepare("UPDATE managed_device_assets SET list_key = ? WHERE id = ?");
     for (const a of workstations) {
       const w = receiver(a.board_id, "asset.list", "tags", "tag", a.tag.trim().toLowerCase());
       updateWorkstation.run(
@@ -2803,13 +3158,13 @@ export const optionalContexts = (db: Database): void => {
           { board_id: contextBoard },
         );
       }
-      const workstations = columns(db, "assets");
+      const workstations = columns(db, "managed_device_assets");
       if (workstations.length > 0 && !workstations.includes("board_id")) {
         db.exec(
-          "ALTER TABLE assets ADD COLUMN board_id INTEGER REFERENCES boards(id) ON DELETE CASCADE",
+          "ALTER TABLE managed_device_assets ADD COLUMN board_id INTEGER REFERENCES boards(id) ON DELETE CASCADE",
         );
         db.exec(
-          "UPDATE assets SET board_id = (SELECT board_id FROM contexts WHERE id = assets.context_id)",
+          "UPDATE managed_device_assets SET board_id = (SELECT board_id FROM contexts WHERE id = managed_device_assets.context_id)",
         );
       }
       writeSetting(db, OPTIONAL_CONTEXTS, true);
@@ -2927,7 +3282,7 @@ const LEGACY_LINK_PARAMS: Record<string, string> = {
   projet: QUERY_PARAMS.project,
   carte: QUERY_PARAMS.card,
   demande: QUERY_PARAMS.support,
-  poste: QUERY_PARAMS.asset,
+  poste: QUERY_PARAMS.managed_device_asset,
   acces: QUERY_PARAMS.access,
 };
 
@@ -3264,7 +3619,7 @@ export const labelContexts = (db: Database): void => {
         const unique = [...new Map(tags.map((t) => [t.toLowerCase(), t])).values()];
         if (unique.length > 0) {
           const target = groupIn(
-            { labels: "asset_labels", groups: "asset_label_groups", scoped: true },
+            { labels: "managed_device_asset_labels", groups: "managed_device_asset_label_groups", scoped: true },
             board,
           );
           for (const tag of unique) target.label(tag);
@@ -3285,7 +3640,13 @@ export const labelContexts = (db: Database): void => {
          (SELECT name FROM contexts WHERE id = user_board_contexts.context_id), '')
        WHERE context_id IS NOT NULL`,
     );
-    for (const table of ["projects", "task_cards", "support_requests", "assets", "user_board_contexts"]) {
+    for (const table of [
+      "projects",
+      "task_cards",
+      "support_requests",
+      "managed_device_assets",
+      "user_board_contexts",
+    ]) {
       if (columns(db, table).includes("context_id")) {
         db.exec(`UPDATE ${table} SET context_id = NULL WHERE context_id IS NOT NULL`);
       }
@@ -3303,7 +3664,7 @@ const CONTEXT_GROUP_TABLES: Record<string, string> = {
   "project.list": "project_label_groups",
   "task.list": "label_groups",
   "support.list": "support_label_groups",
-  "asset.list": "asset_label_groups",
+  "asset.list": "managed_device_asset_label_groups",
 };
 
 /**

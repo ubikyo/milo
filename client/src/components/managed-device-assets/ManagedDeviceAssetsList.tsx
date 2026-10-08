@@ -28,22 +28,25 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { OsLogo, ProtectionLogo } from "./AssetLogos";
+import { OsLogo, ProtectionLogo } from "./ManagedDeviceAssetLogos";
 import { keptColumns, defaultWidths } from "../ui/ColumnFields";
+import type { ListColumn } from "../ui/ColumnFields";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
+import LabelChip from "../ui/LabelChip";
 import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
 import { useResizableColumns } from "../ui/useResizableColumns";
 import { useIsEditing } from "../../lib/editing";
+import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
 import { inList } from "../../lib/lists";
 import { DISK_FULL, diskUsage, osLabel } from "../../lib/workstation";
 import { RED, STRONG_TEXT } from "../../themes/colors";
-import type { Asset } from "@milo/shared";
+import type { ManagedDeviceAsset, Id } from "@milo/shared";
 
 // The Assets mode workstation list: a section widget, like the
 // indicators (widgets/asset/list.tsx). It holds its sort and its right-click
 // menu; the workstations, and what is opened from them, come from the page
-// (AssetsListContext). Its configuration only names the columns it
+// (ManagedDeviceAssetsListContext). Its configuration only names the columns it
 // shows.
 //
 // There is no add row: a workstation isn't entered, it declares itself —
@@ -66,28 +69,50 @@ const DISK_BAR_WIDTH = 85;
 const DISK_PERCENT_WIDTH = 40;
 const DISK_GAP = 10;
 
+// A workstation's labels, on a single line, as in Support: beyond two, the
+// count of the others replaces the list.
+const LABELS_SHOWN = 2;
+const LABEL_HEIGHT = 20;
+
 // --- Sort ------------------------------------------------------------------
 // As in the Project and Support modes: a click on the label sorts, a second
 // reverses the direction.
 
-export type ColumnKey = "name" | "os" | "user" | "protection" | "encrypted" | "disk" | "inventory";
+export type ColumnKey =
+  | "name"
+  | "labels"
+  | "os"
+  | "user"
+  | "protection"
+  | "encrypted"
+  | "disk"
+  | "inventory";
 
 /** A protection's sort rank: workstations without protection first. */
-const PROTECTION_RANK: Record<Asset["protection"]["state"], number> = {
+const PROTECTION_RANK: Record<ManagedDeviceAsset["protection"]["state"], number> = {
   none: 0,
   inactive: 1,
   active: 2,
   unknown: 3,
 };
 
+/** The sort: a column, and for the labels, its group — two can coexist. */
 interface Sort {
   key: ColumnKey;
+  group?: Id;
   direction: "asc" | "desc";
 }
 
+/** True when the sort is that of this column — and of this group, for the labels. */
+const sameSort = (sort: Sort, key: ColumnKey, group: Id | undefined): boolean =>
+  sort.key === key && (key !== "labels" || sort.group === group);
+
 /** The value each column sorts on; "null" goes to the bottom. */
-const VALUES: Record<ColumnKey, (a: Asset) => string | number | null> = {
+const VALUES: Record<ColumnKey, (a: ManagedDeviceAsset) => string | number | null> = {
   name: (a) => a.name || null,
+  // By the first label, in the labels' order: the one the cell shows first.
+  // A column limited to a group reads its own (ManagedDeviceAssetsList).
+  labels: (a) => labelRank(a.labels, null),
   // The name then the version, read as a number: "10" comes after "9".
   os: (a) => (a.os ? osLabel(a.os) : null),
   user: (a) => a.user || null,
@@ -104,6 +129,7 @@ const VALUES: Record<ColumnKey, (a: Asset) => string | number | null> = {
 function SortableTh({
   label,
   column,
+  group,
   sort,
   onSort,
   style,
@@ -111,16 +137,18 @@ function SortableTh({
 }: {
   label: string;
   column: ColumnKey;
+  /** For a labels column, the group it shows. */
+  group?: Id;
   sort: Sort;
-  onSort: (key: ColumnKey) => void;
+  onSort: (key: ColumnKey, group?: Id) => void;
   style?: CSSProperties;
   handle: ReactNode;
 }) {
-  const active = sort.key === column;
+  const active = sameSort(sort, column, group);
   const Icon = !active ? IconSelector : sort.direction === "asc" ? IconChevronUp : IconChevronDown;
   return (
     <Table.Th style={style}>
-      <UnstyledButton onClick={() => onSort(column)} w="100%">
+      <UnstyledButton onClick={() => onSort(column, group)} w="100%">
         <Group gap={4} wrap="nowrap" justify="space-between">
           <Text size="sm" fw={600} c={STRONG_TEXT}>
             {label}
@@ -135,8 +163,33 @@ function SortableTh({
   );
 }
 
+/** The workstation's labels, in their order — group after group. */
+function LabelsCell({ labels }: { labels: ManagedDeviceAsset["labels"] }) {
+  if (!labels.length) {
+    return (
+      <Text size="sm" c="dimmed">
+        {EMPTY}
+      </Text>
+    );
+  }
+  const shown = ofGroup(labels, null).slice(0, LABELS_SHOWN);
+  const remaining = labels.length - shown.length;
+  return (
+    <Group gap={4} wrap="nowrap">
+      {shown.map((label) => (
+        <LabelChip key={label.id} label={label} size="xs" height={LABEL_HEIGHT} />
+      ))}
+      {remaining > 0 && (
+        <Text size="xs" c="dimmed">
+          +{remaining}
+        </Text>
+      )}
+    </Group>
+  );
+}
+
 /** The system: its logo, its name and its version. */
-function OsCell({ os }: { os: Asset["os"] }) {
+function OsCell({ os }: { os: ManagedDeviceAsset["os"] }) {
   if (!os) {
     return (
       <Text size="sm" c="dimmed">
@@ -159,7 +212,7 @@ function OsCell({ os }: { os: Asset["os"] }) {
  * protection says so in orange, a Windows workstation without protection in red;
  * outside Windows, the agent knows nothing about it, and the cell stays empty.
  */
-function ProtectionCell({ protection }: { protection: Asset["protection"] }) {
+function ProtectionCell({ protection }: { protection: ManagedDeviceAsset["protection"] }) {
   if (protection.state === "unknown") {
     return (
       <Text size="sm" c="dimmed">
@@ -219,7 +272,7 @@ export const diskColor = (used: number): string => {
 };
 
 /** The used share of the system disk, like a project's progress. */
-function DiskCell({ disk }: { disk: Asset["system_disk"] }) {
+function DiskCell({ disk }: { disk: ManagedDeviceAsset["system_disk"] }) {
   const used = diskUsage(disk);
   if (used == null) {
     return (
@@ -239,8 +292,10 @@ function DiskCell({ disk }: { disk: Asset["system_disk"] }) {
 }
 
 /** The columns the list can show, in order. */
-export const ASSET_COLUMNS: { key: ColumnKey; label: string }[] = [
+export const MANAGED_DEVICE_ASSET_COLUMNS: (ListColumn & { key: ColumnKey })[] = [
   { key: "name", label: "Asset" },
+  // It picks the group it shows.
+  { key: "labels", label: "Étiquettes", labelGroups: "/managed-device-asset-labels" },
   { key: "os", label: "Système" },
   { key: "user", label: "Dernier utilisateur connecté" },
   { key: "protection", label: "Antivirus" },
@@ -250,35 +305,40 @@ export const ASSET_COLUMNS: { key: ColumnKey; label: string }[] = [
 ];
 
 /** What the page gives the list. */
-export interface AssetsListHandle {
+export interface ManagedDeviceAssetsListHandle {
   /** "null" while the workstations aren't read yet. */
-  assets: Asset[] | null;
+  managedDeviceAssets: ManagedDeviceAsset[] | null;
   loading: boolean;
-  onOpenAsset: (asset: Asset) => void;
+  onOpenManagedDeviceAsset: (asset: ManagedDeviceAsset) => void;
   /** "Créer une tâche", on right click on a workstation. */
-  onCreateTask?: (asset: Asset) => void;
+  onCreateTask?: (asset: ManagedDeviceAsset) => void;
   /** "Créer un ticket", on right click on a workstation. */
-  onCreateSupportRequest?: (asset: Asset) => void;
+  onCreateSupportRequest?: (asset: ManagedDeviceAsset) => void;
 }
 
-export const AssetsListContext = createContext<AssetsListHandle | null>(null);
+export const ManagedDeviceAssetsListContext = createContext<ManagedDeviceAssetsListHandle | null>(null);
 
-export default function AssetsList({ config }: { config: unknown }) {
-  const list = useContext(AssetsListContext);
+export default function ManagedDeviceAssetsList({ config }: { config: unknown }) {
+  const list = useContext(ManagedDeviceAssetsListContext);
   // The board's workstations, of the chosen context, that the page read — those of
   // this widget only: those whose tag its board's labels name (lib/lists.ts).
-  const all = list?.assets ?? null;
+  const all = list?.managedDeviceAssets ?? null;
   const assets = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
   const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
+  // A labels column limited to a group takes its name.
+  const labelGroups = useLabelGroups("/managed-device-asset-labels");
   const isEditing = useIsEditing();
   const withMenu = Boolean(list?.onCreateTask || list?.onCreateSupportRequest);
   /** The workstation whose right-click menu is open, and where it opens. */
-  const [context, setContext] = useState<{ workstation: Asset; position: PointMenuPosition } | null>(
+  const [context, setContext] = useState<{ workstation: ManagedDeviceAsset; position: PointMenuPosition } | null>(
     null,
   );
 
   const shown = useMemo(() => {
-    const value = VALUES[sort.key];
+    const value =
+      sort.key === "labels"
+        ? (a: ManagedDeviceAsset) => labelRank(a.labels, sort.group)
+        : VALUES[sort.key];
     const factor = sort.direction === "asc" ? 1 : -1;
     return [...(assets ?? [])].sort((a, b) => {
       const left = value(a);
@@ -294,16 +354,18 @@ export default function AssetsList({ config }: { config: unknown }) {
 
   // Texts go up first; the disk and the date start with the fullest and
   // the most recent.
-  const sortBy = (key: ColumnKey) =>
+  const sortBy = (key: ColumnKey, group?: Id) =>
     setSort((current) =>
-      current.key === key
-        ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+      sameSort(current, key, group)
+        ? { key, group, direction: current.direction === "asc" ? "desc" : "asc" }
         : {
             key,
+            group,
             // Protection and encryption go up too: what is missing
             // comes first.
             direction:
               key === "name" ||
+              key === "labels" ||
               key === "os" ||
               key === "user" ||
               key === "protection" ||
@@ -315,18 +377,25 @@ export default function AssetsList({ config }: { config: unknown }) {
 
   // The columns shown, in the order the configuration sets.
   // A column can come back: "id" distinguishes each occurrence.
-  const columns = keptColumns(ASSET_COLUMNS, config);
+  const columns = keptColumns(MANAGED_DEVICE_ASSET_COLUMNS, config);
   const resize = useResizableColumns(
-    "assets",
+    "managed-device-assets",
     columns.map((c) => c.id),
-    defaultWidths(ASSET_COLUMNS, config),
+    defaultWidths(MANAGED_DEVICE_ASSET_COLUMNS, config),
   );
 
-  const th = (id: string, label: string, column: ColumnKey, style?: CSSProperties) => (
+  const th = (
+    id: string,
+    label: string,
+    column: ColumnKey,
+    style?: CSSProperties,
+    group?: Id,
+  ) => (
     <SortableTh
       key={id}
       label={label}
       column={column}
+      group={group}
       sort={sort}
       onSort={sortBy}
       style={style}
@@ -335,8 +404,10 @@ export default function AssetsList({ config }: { config: unknown }) {
   );
 
   /** The header of each column. */
-  const headers: Record<ColumnKey, (id: string) => ReactNode> = {
+  const headers: Record<ColumnKey, (id: string, group?: Id) => ReactNode> = {
     name: (id) => th(id, "Asset", "name"),
+    labels: (id, group) =>
+      th(id, labelsColumnTitle(labelGroups, group), "labels", { whiteSpace: "nowrap" }, group),
     os: (id) => th(id, "Système", "os"),
     user: (id) => th(id, "Dernier utilisateur connecté", "user"),
     protection: (id) => th(id, "Antivirus", "protection"),
@@ -348,12 +419,18 @@ export default function AssetsList({ config }: { config: unknown }) {
   };
 
   /** Each column's cell, for a workstation. */
-  const cells: Record<ColumnKey, (workstation: Asset) => ReactNode> = {
+  const cells: Record<ColumnKey, (workstation: ManagedDeviceAsset, group?: Id) => ReactNode> = {
     name: (workstation) => (
       <Table.Td key="name" style={{ whiteSpace: "nowrap" }}>
         <Badge color="green" variant="filled" radius="sm" h={TAG_HEIGHT} tt="uppercase">
           {workstation.name}
         </Badge>
+      </Table.Td>
+    ),
+    // Limited to a group, the column shows only its labels.
+    labels: (workstation, group) => (
+      <Table.Td key="labels">
+        <LabelsCell labels={ofGroup(workstation.labels, group)} />
       </Table.Td>
     ),
     os: (workstation) => (
@@ -413,13 +490,13 @@ export default function AssetsList({ config }: { config: unknown }) {
     >
       {resize.colgroup}
       <Table.Thead>
-        <Table.Tr>{columns.map((c) => headers[c.key](c.id))}</Table.Tr>
+        <Table.Tr>{columns.map((c) => headers[c.key](c.id, c.group))}</Table.Tr>
       </Table.Thead>
       <Table.Tbody>
         {shown.map((workstation) => (
           <Table.Tr
             key={workstation.id}
-            onClick={() => list?.onOpenAsset(workstation)}
+            onClick={() => list?.onOpenManagedDeviceAsset(workstation)}
             // In edit mode, right click goes back to the widget's menu.
             onContextMenu={(e) => {
               if (isEditing || !withMenu) return;
@@ -433,7 +510,7 @@ export default function AssetsList({ config }: { config: unknown }) {
             }}
           >
             {columns.map((c) => (
-              <Fragment key={c.id}>{cells[c.key](workstation)}</Fragment>
+              <Fragment key={c.id}>{cells[c.key](workstation, c.group)}</Fragment>
             ))}
           </Table.Tr>
         ))}

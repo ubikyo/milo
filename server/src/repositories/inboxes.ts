@@ -73,8 +73,8 @@ const newMessageLabels = (config: Record<string, unknown>, boardId: Id): Id[] =>
   const names = SUPPORT_NEW_MESSAGE_LABELS.map((n) => n.toLowerCase());
   return labels.filter((l) => names.includes(l.name.toLowerCase())).map((l) => l.id);
 };
-const assetLabelsOf = selection<{ name: string }>(
-  "SELECT name FROM asset_labels WHERE board_id = ? ORDER BY position, id",
+const managedDeviceAssetLabelsOf = selection<{ name: string }>(
+  "SELECT name FROM managed_device_asset_labels WHERE board_id = ? ORDER BY position, id",
 );
 
 /** A widget's configuration; null when it is unreadable. */
@@ -163,11 +163,11 @@ export const receivedMailboxes = (): (Inbox & { confirmed_at: string })[] => {
  */
 export const receivedTags = (): Inbox[] => {
   const views = new Map<string, Inbox>();
-  for (const widget of receivers.all("asset.list")) {
+  for (const widget of receivers.all("managed_device_asset.list")) {
     const config = parsed(widget.config);
     if (!config) continue;
     const board = boardOf.get(widget.board_id)?.name ?? "";
-    for (const { name } of assetLabelsOf.all(widget.board_id)) {
+    for (const { name } of managedDeviceAssetLabelsOf.all(widget.board_id)) {
       const value = name.trim();
       if (!value || views.has(value.toLowerCase())) continue;
       views.set(value.toLowerCase(), {

@@ -5,7 +5,7 @@ import type { Database as SqliteDatabase } from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import { env } from "../env.js";
-import { migrate, numberReferences } from "./migrations.js";
+import { migrate, numberReferences, renameTables } from "./migrations.js";
 import { INDEXES, SCHEMA } from "./schema.js";
 
 fs.mkdirSync(path.dirname(env.dbPath), { recursive: true });
@@ -22,6 +22,8 @@ db.pragma("synchronous = NORMAL");
 // and the writes cross paths.
 db.pragma("busy_timeout = 5000");
 
+// Tables renamed since: before the schema, which would create them empty.
+renameTables(db);
 db.exec(SCHEMA);
 migrate(db);
 db.exec(INDEXES);

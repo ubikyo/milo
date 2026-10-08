@@ -10,8 +10,9 @@ import DeleteConfirmModal from "./DeleteConfirmModal";
 import { DragHandle, InsertLine, useDraggableStack } from "./DraggableStack";
 import EmptyPanel from "./EmptyPanel";
 import LabelChip from "./LabelChip";
-import { DEFAULT_LABEL_COLOR } from "@milo/shared";
+import { DECLARED_ASSET_ROUTES, DEFAULT_LABEL_COLOR } from "@milo/shared";
 import type {
+  DeclaredAssetKind,
   Id,
   Label,
   LabelGroup,
@@ -125,6 +126,16 @@ export const SUPPORT_LABELS_API: LabelsApi = {
   carriers: "des demandes qui la portent",
   base: "/support-labels",
 };
+
+/** A declared asset kind's labels (shared, declared-assets.ts). */
+export const declaredAssetLabelsApi = (kind: DeclaredAssetKind): LabelsApi => ({
+  create: (boardId, name, color, groupId) =>
+    api.createDeclaredAssetLabel(kind, boardId, name, color, groupId),
+  update: (id, data) => api.updateDeclaredAssetLabel(kind, id, data),
+  remove: (id) => api.deleteDeclaredAssetLabel(kind, id),
+  carriers: "des assets qui la portent",
+  base: DECLARED_ASSET_ROUTES[kind].labels,
+});
 
 /**
  * A card's labels, gathered in their groups: a click checks them to apply them,

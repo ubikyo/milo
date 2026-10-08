@@ -3,9 +3,16 @@ import { IconExternalLink } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useState } from "react";
-import type { ComponentPropsWithoutRef, DragEvent, ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ComponentType, DragEvent, ReactNode } from "react";
 import { FIELD_ICON } from "../../themes/colors";
-import { Handle, ListFooter, RowCheckbox, move, useRowSelection } from "../ui/DrawerRows";
+import FileDropzone from "../ui/FileDropzone";
+import {
+  Handle,
+  ListFooter,
+  RowCheckbox,
+  move,
+  useRowSelection,
+} from "../ui/DrawerRows";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import type { Attachment, Id } from "@milo/shared";
 import classes from "../../assets/styles/CardAttachments.module.css";
@@ -186,27 +193,68 @@ export function useOrderedFiles<T extends { id: Id; name: string }>(
  * The inset only shows when there is something to show: a card without
  * attachments doesn't carry one more empty block.
  */
-interface CardAttachmentsProps {
-  attachments: Attachment[];
+/** What the block needs of an attachment: a card's, or a declared equipment's. */
+type AttachedFile = File & Pick<Attachment, "id">;
+
+/**
+ * A drop zone (FileDropzone): in place of the rows while there are none, and
+ * under them while files are dragged over the drawer ("shown").
+ */
+export interface DropTarget {
+  icon: ComponentType<{ size?: number }>;
+  message: string;
+  /** The browser's files: "File" here names an attachment as shown. */
+  onDrop: (files: globalThis.File[]) => void;
+  accept?: string[];
+  rejected?: string;
+  shown: boolean;
+}
+
+/** How the block names its files. */
+interface AttachmentWords {
+  title: string;
+  /** "la pièce jointe", for deleting one. */
+  one: string;
+  /** "pièces jointes", after a count. */
+  many: string;
+}
+
+const ATTACHMENT_WORDS: AttachmentWords = {
+  title: "Pièces jointes",
+  one: "la pièce jointe",
+  many: "pièces jointes",
+};
+
+interface CardAttachmentsProps<T extends AttachedFile> {
+  attachments: T[];
   /** Opens the drawer's file picker, the very one the "Actions" menu opens. */
   onPick: () => void;
   /** The full order, when a handle is dropped. */
   onReorder: (ids: Id[]) => void | Promise<void>;
-  onDelete: (attachment: Attachment) => void | Promise<void>;
+  onDelete: (attachment: T) => void | Promise<void>;
+  /**
+   * Shown even without an attachment: its title, a drop zone, and "Ajouter un
+   * fichier" — a declared equipment has no "Actions" menu to add the first
+   * one from.
+   */
+  drop?: DropTarget;
+  words?: AttachmentWords;
 }
 
-export default function CardAttachments({
+export default function CardAttachments<T extends AttachedFile>({
   attachments,
   onPick,
   onReorder,
   onDelete,
-}: CardAttachmentsProps) {
+  drop,
+  words = ATTACHMENT_WORDS,
+}: CardAttachmentsProps<T>) {
   const [confirming, setConfirming] = useState(false);
 
   const attachmentList = attachments || [];
   const { displayed, row } = useOrderedFiles(attachmentList, onReorder, true);
   const selection = useRowSelection(attachmentList.map((a) => a.id));
-  if (attachmentList.length === 0) return null;
+  if (attachmentList.length === 0 && !drop) return null;
 
   const toDelete = attachmentList.filter((a) => selection.isChecked(a.id));
 
@@ -214,27 +262,36 @@ export default function CardAttachments({
     // The block carries its heading like the other fields of the card — the
     // title, the description, the checklists —, and disappears with them when the
     // card has no attachment.
-    <Input.Wrapper label="Pièces jointes">
+    <Input.Wrapper label={words.title}>
       {/* A stack of gray rows, like checklists: the drawer
           background shows between two attachments. */}
       <Box>
-        <Stack gap={2}>
-          {displayed.map((attachment, rank) => (
-            <FileRow
-              key={attachment.id}
-              attachment={attachment}
-              checkbox={
-                <RowCheckbox
-                  label={`Sélectionner ${attachment.name}`}
-                  checked={selection.isChecked(attachment.id)}
-                  onChange={(on) => selection.toggle(attachment.id, on)}
-                  afterHandle
-                />
-              }
-              {...row(attachment, rank)}
-            />
-          ))}
-        </Stack>
+        {attachmentList.length === 0 && drop ? (
+          <FileDropzone {...drop} />
+        ) : (
+          <Stack gap={2}>
+            {displayed.map((attachment, rank) => (
+              <FileRow
+                key={attachment.id}
+                attachment={attachment}
+                checkbox={
+                  <RowCheckbox
+                    label={`Sélectionner ${attachment.name}`}
+                    checked={selection.isChecked(attachment.id)}
+                    onChange={(on) => selection.toggle(attachment.id, on)}
+                    afterHandle
+                  />
+                }
+                {...row(attachment, rank)}
+              />
+            ))}
+          </Stack>
+        )}
+        {attachmentList.length > 0 && drop?.shown && (
+          <div style={{ marginTop: 8 }}>
+            <FileDropzone {...drop} reveal />
+          </div>
+        )}
 
         {/* As close as possible to the stack it extends. */}
         <ListFooter
@@ -255,12 +312,12 @@ export default function CardAttachments({
           }}
           title={
             toDelete.length > 1
-              ? `Supprimer ${toDelete.length} pièces jointes`
-              : "Supprimer la pièce jointe"
+              ? `Supprimer ${toDelete.length} ${words.many}`
+              : `Supprimer ${words.one}`
           }
           message={
             toDelete.length > 1 ? (
-              <>Voulez-vous vraiment supprimer ces {toDelete.length} pièces jointes ?</>
+              <>Voulez-vous vraiment supprimer ces {toDelete.length} {words.many} ?</>
             ) : (
               <>Voulez-vous vraiment supprimer « {toDelete[0]?.name} » ?</>
             )

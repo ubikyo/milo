@@ -56,7 +56,7 @@ const findClosest = <T extends { name: string }>(name: string | undefined, items
 const ORIGIN_LABELS: Record<SourceTask["kind"], string> = {
   project: "le projet",
   support: "la demande",
-  asset: "le poste",
+  managed_device_asset: "le poste",
   access: "l'accès",
 };
 

@@ -28,7 +28,7 @@ import { ReferenceTag } from "../ui/ReferenceTag";
 import { CARD_BACKGROUND } from "./backgrounds";
 import { useResizableColumns } from "../ui/useResizableColumns";
 import type { ComponentType, CSSProperties, ReactNode } from "react";
-import type { AssetEntry, AssetSection } from "@milo/shared";
+import type { ManagedDeviceAssetEntry, ManagedDeviceAssetSection } from "@milo/shared";
 
 // The inventory sections that a workstation's record shows as a table,
 // rather than as records one after another: those with enough rows that one
@@ -49,8 +49,8 @@ interface Column {
    * row says nothing about it: it then goes to the bottom, in either
    * direction.
    */
-  value: (entry: AssetEntry) => string | number | null;
-  render: (entry: AssetEntry) => ReactNode;
+  value: (entry: ManagedDeviceAssetEntry) => string | number | null;
+  render: (entry: ManagedDeviceAssetEntry) => ReactNode;
   /** The direction of the first click: descending for what one wants at the top. */
   firstDirection?: Direction;
   onRight?: boolean;
@@ -106,7 +106,7 @@ function SortableTable({
   perPage,
 }: {
   columns: Column[];
-  entries: AssetEntry[];
+  entries: ManagedDeviceAssetEntry[];
   initialSorting: Sorting;
   spacing?: number;
   /**
@@ -335,7 +335,7 @@ const fileSystem = (value: string | undefined): string =>
  * A volume's used share, from 0 to 100, or nothing: an empty optical drive
  * or an unreachable share gives no size.
  */
-const usage = (entry: AssetEntry): number | null => {
+const usage = (entry: ManagedDeviceAssetEntry): number | null => {
   const total = Number(entry["TOTAL"]);
   const free = Number(entry["FREE"]);
   if (!(total > 0) || Number.isNaN(free)) return null;
@@ -343,7 +343,7 @@ const usage = (entry: AssetEntry): number | null => {
 };
 
 /** A volume's gauge: the used part as a bar, the free and the total in plain text. */
-function Usage({ entry }: { entry: AssetEntry }) {
+function Usage({ entry }: { entry: ManagedDeviceAssetEntry }) {
   const used = usage(entry);
   if (used === null) {
     return (
@@ -366,7 +366,7 @@ function Usage({ entry }: { entry: AssetEntry }) {
 }
 
 /** The system volume: "C:" on Windows, "/" elsewhere. */
-const isSystemDisk = (entry: AssetEntry): boolean =>
+const isSystemDisk = (entry: ManagedDeviceAssetEntry): boolean =>
   (entry["LETTER"] ?? "").toUpperCase() === "C:" || entry["TYPE"] === "/";
 
 /**
@@ -375,7 +375,7 @@ const isSystemDisk = (entry: AssetEntry): boolean =>
  * those without a size at the end. The letter only comes from Windows; it is
  * only shown if the agent gives one.
  */
-function Volumes({ section }: { section: AssetSection }) {
+function Volumes({ section }: { section: ManagedDeviceAssetSection }) {
   const letters = section.entries.some((entry) => entry["LETTER"]);
   const entries = [...section.entries].sort(
     (a, b) =>
@@ -444,7 +444,7 @@ const STATE_WIDTH = 100;
  * often two, Defender left in the background next to the one that was
  * installed: the active ones first.
  */
-function Protections({ section }: { section: AssetSection }) {
+function Protections({ section }: { section: ManagedDeviceAssetSection }) {
   const entries = [...section.entries].sort(
     (a, b) => Number(active(b["ENABLED"]) ?? -1) - Number(active(a["ENABLED"]) ?? -1),
   );
@@ -480,7 +480,7 @@ const FIREWALL_PROFILES: Record<string, string> = {
  * The workstation's firewall, presented like the volumes: one entry per profile
  * on Windows, a single one elsewhere. The active profiles first.
  */
-function Firewall({ section }: { section: AssetSection }) {
+function Firewall({ section }: { section: ManagedDeviceAssetSection }) {
   const entries = [...section.entries].sort(
     (a, b) => Number(active(b["STATUS"]) ?? -1) - Number(active(a["STATUS"]) ?? -1),
   );
@@ -544,7 +544,7 @@ const application = (command: string): string => {
 };
 
 /** The CPU share, as a number; nothing when the agent didn't read it. */
-const cpu = (entry: AssetEntry): number | null => {
+const cpu = (entry: ManagedDeviceAssetEntry): number | null => {
   const value = Number(entry["CPUUSAGE"]);
   return entry["CPUUSAGE"] && !Number.isNaN(value) ? value : null;
 };
@@ -553,7 +553,7 @@ const cpu = (entry: AssetEntry): number | null => {
  * The workstation's processes at the time of the inventory, the hungriest
  * first: they are what one comes looking for when a workstation lags.
  */
-function Processes({ section }: { section: AssetSection }) {
+function Processes({ section }: { section: ManagedDeviceAssetSection }) {
   const columns: Column[] = [
     {
       key: "CMD",
@@ -609,7 +609,7 @@ const sortableDate = (value: string | undefined): string => {
  * gives it — its format changes from one system to another — and is only re-read
  * for sorting, the most recent first on the first click.
  */
-function Software({ section }: { section: AssetSection }) {
+function Software({ section }: { section: ManagedDeviceAssetSection }) {
   const columns: Column[] = [
     field("NAME", "Nom"),
     field("VERSION", "Version"),
@@ -639,7 +639,7 @@ function Software({ section }: { section: AssetSection }) {
  * The workstation's local groups, by name, presented like the processes: 15
  * rows high, the rest as one scrolls.
  */
-function Groups({ section }: { section: AssetSection }) {
+function Groups({ section }: { section: ManagedDeviceAssetSection }) {
   return (
     <SortableTable
       columns={[field("NAME", "Nom")]}
@@ -656,7 +656,7 @@ function Groups({ section }: { section: AssetSection }) {
  * comes from Linux and macOS: the column only exists if the agent gives
  * one.
  */
-function Accounts({ section }: { section: AssetSection }) {
+function Accounts({ section }: { section: ManagedDeviceAssetSection }) {
   const folders = section.entries.some((entry) => entry["HOME"]);
   const name: Column = {
     ...field("NAME", "Nom"),
@@ -688,7 +688,7 @@ function Accounts({ section }: { section: AssetSection }) {
  * sometimes as "size=2048" (Parallels); Docker containers declare
  * none.
  */
-const memorySize = (entry: AssetEntry): number | null => {
+const memorySize = (entry: ManagedDeviceAssetEntry): number | null => {
   const digits = /\d+(?:[.,]\d+)?/.exec(entry["MEMORY"] ?? "");
   return digits ? Number(digits[0].replace(",", ".")) : null;
 };
@@ -719,7 +719,7 @@ const vmState = (
  * ("Docker", "Parallels"…), the started ones first, presented like the
  * processes: 15 rows high, the rest as one scrolls.
  */
-function VirtualMachines({ section }: { section: AssetSection }) {
+function VirtualMachines({ section }: { section: ManagedDeviceAssetSection }) {
   const memoryColumn: Column = {
     key: "MEMORY",
     label: "Mémoire",
@@ -733,7 +733,7 @@ function VirtualMachines({ section }: { section: AssetSection }) {
   };
   // Memory only has its column if a machine of the type declares one:
   // Docker containers say nothing about it.
-  const columnsOf = (entries: AssetEntry[]): Column[] => [
+  const columnsOf = (entries: ManagedDeviceAssetEntry[]): Column[] => [
     field("NAME", "Nom"),
     ...(entries.some((entry) => memorySize(entry) !== null) ? [memoryColumn] : []),
     {
@@ -752,7 +752,7 @@ function VirtualMachines({ section }: { section: AssetSection }) {
       },
     },
   ];
-  const byType = new Map<string, AssetEntry[]>();
+  const byType = new Map<string, ManagedDeviceAssetEntry[]>();
   // By name first: at equal state, sorting by status keeps them in that order.
   const byName = [...section.entries].sort((a, b) =>
     (a["NAME"] ?? "").localeCompare(b["NAME"] ?? "", "fr", { numeric: true, sensitivity: "base" }),
@@ -819,7 +819,7 @@ function Value({
  * rest of what the agent reports (capacity, chemistry, manufacturer) is not
  * shown.
  */
-function Battery({ section }: { section: AssetSection }) {
+function Battery({ section }: { section: ManagedDeviceAssetSection }) {
   return (
     <NumberedLines
       entries={section.entries}
@@ -856,7 +856,7 @@ const FAULTY_STATES = new Set(["not charging", "discharging", "error", "failed"]
  * The workstation's power supplies: name, manufacturer, maximum power and state,
  * as a tag; then the serial number and whether it is plugged in.
  */
-function PowerSupply({ section }: { section: AssetSection }) {
+function PowerSupply({ section }: { section: ManagedDeviceAssetSection }) {
   return (
     <NumberedLines
       entries={section.entries}
@@ -939,15 +939,15 @@ function NumberedLines({
   columns: template,
   numberWidth,
 }: {
-  entries: AssetEntry[];
+  entries: ManagedDeviceAssetEntry[];
   texts: number;
   numbers: number;
-  values: (entry: AssetEntry) => ReactNode;
-  phoneNumber?: (entry: AssetEntry) => string | undefined;
+  values: (entry: ManagedDeviceAssetEntry) => ReactNode;
+  phoneNumber?: (entry: ManagedDeviceAssetEntry) => string | undefined;
   /** The width of the first column, in pixels. */
   first?: number;
   /** What comes to the right of the values, over the row's full height. */
-  beside?: (entry: AssetEntry) => ReactNode;
+  beside?: (entry: ManagedDeviceAssetEntry) => ReactNode;
   /** The grid columns, when the default order doesn't fit. */
   columns?: string;
   /** A fixed width for the number's rectangle, instead of that of its content. */
@@ -1012,7 +1012,7 @@ function NumberedLines({
 }
 
 /** The workstation's processors: manufacturer, model, cores and threads. */
-function Processors({ section }: { section: AssetSection }) {
+function Processors({ section }: { section: ManagedDeviceAssetSection }) {
   return (
     <NumberedLines
       entries={section.entries}
@@ -1062,9 +1062,9 @@ function State({ active }: { active: boolean }) {
  * The workstation's network cards, the connected ones first; among them as
  * among the others, Wi-Fi first, then Ethernet, then the rest. VIRTUALDEV is not shown.
  */
-function Networks({ section }: { section: AssetSection }) {
+function Networks({ section }: { section: ManagedDeviceAssetSection }) {
   // Connected cards first; within each group, the type breaks ties.
-  const disconnected = (entry: AssetEntry) =>
+  const disconnected = (entry: ManagedDeviceAssetEntry) =>
     (entry["STATUS"] ?? "").toLowerCase() === "up" ? 0 : 1;
   const entries = [...section.entries].sort(
     (a, b) => disconnected(a) - disconnected(b) || typeRank(a["TYPE"]) - typeRank(b["TYPE"]),
@@ -1142,7 +1142,7 @@ const toGb = (value: string | undefined): string => {
  * The workstation's memory modules: capacity, type and description. The agent's
  * slot number is not shown: the row's own number stands in for it.
  */
-function Memory({ section }: { section: AssetSection }) {
+function Memory({ section }: { section: ManagedDeviceAssetSection }) {
   return (
     <NumberedLines
       entries={section.entries}
@@ -1235,7 +1235,7 @@ function Row({ label, value }: { label: string; value?: ReactNode }) {
  * — with the manufacturer ID at the right edge, in the green tag
  * of references — and type, one under the other.
  */
-function Controllers({ section }: { section: AssetSection }) {
+function Controllers({ section }: { section: ManagedDeviceAssetSection }) {
   const template = idTemplate(section.entries.map((entry) => entry["VENDORID"]));
   return (
     <NumberedLines
@@ -1301,7 +1301,7 @@ function Screen({ resolution }: { resolution?: string }) {
  * The workstation's video cards: chip, name and PCI location one under the other,
  * and next to them a screen carrying the resolution.
  */
-function Video({ section }: { section: AssetSection }) {
+function Video({ section }: { section: ManagedDeviceAssetSection }) {
   return (
     <NumberedLines
       entries={section.entries}
@@ -1324,7 +1324,7 @@ function Video({ section }: { section: AssetSection }) {
  * the other. The agent's caption (CAPTION) is not shown: it repeats
  * the name.
  */
-function Audio({ section }: { section: AssetSection }) {
+function Audio({ section }: { section: ManagedDeviceAssetSection }) {
   return (
     <NumberedLines
       entries={section.entries}
@@ -1353,7 +1353,7 @@ type Fields = [string, string][];
  * say the same thing.
  */
 const rowsOf = (
-  entry: AssetEntry,
+  entry: ManagedDeviceAssetEntry,
   fields: Fields,
   { excluded = [], formats = {}, labels = {} }: {
     excluded?: string[];
@@ -1400,12 +1400,12 @@ function NumberedRecords({
   labels = {},
   beside,
 }: {
-  section: AssetSection;
+  section: ManagedDeviceAssetSection;
   fields: Fields;
   excluded?: string[];
   formats?: Record<string, (raw: string) => string>;
   labels?: Record<string, string>;
-  beside?: (entry: AssetEntry) => ReactNode;
+  beside?: (entry: ManagedDeviceAssetEntry) => ReactNode;
 }) {
   // A single width for all of the section's labels.
   const template = idTemplate(
@@ -1495,8 +1495,8 @@ function DiskShare({ capacity, total }: { capacity: number; total: number }) {
  * The workstation's storage media. The capacity isn't written inline:
  * the ring on the right carries it, with the share it makes of the workstation's total.
  */
-function Storage({ section }: { section: AssetSection }) {
-  const capacity = (entry: AssetEntry) => Number(entry["DISKSIZE"]) || 0;
+function Storage({ section }: { section: ManagedDeviceAssetSection }) {
+  const capacity = (entry: ManagedDeviceAssetEntry) => Number(entry["DISKSIZE"]) || 0;
   const total = section.entries.reduce((sum, entry) => sum + capacity(entry), 0);
   return (
     <NumberedRecords
@@ -1520,7 +1520,7 @@ const INPUT_FIELDS: Fields = [
 ];
 
 /** The workstation's keyboards, mice and other input devices. */
-function Inputs({ section }: { section: AssetSection }) {
+function Inputs({ section }: { section: ManagedDeviceAssetSection }) {
   return <NumberedRecords section={section} fields={INPUT_FIELDS} />;
 }
 
@@ -1539,7 +1539,7 @@ const MONITOR_FIELDS: Fields = [
  * The workstation's monitors. BASE64 and UUENCODE carry the screen's raw EDID:
  * unreadable, so it isn't shown.
  */
-function Monitors({ section }: { section: AssetSection }) {
+function Monitors({ section }: { section: ManagedDeviceAssetSection }) {
   return (
     <NumberedRecords section={section} fields={MONITOR_FIELDS} excluded={["BASE64", "UUENCODE"]} />
   );
@@ -1563,7 +1563,7 @@ const PRINTER_FIELDS: Fields = [
  * The printers installed on the workstation. The print processor, the
  * status and the resolution are not shown.
  */
-function Printers({ section }: { section: AssetSection }) {
+function Printers({ section }: { section: ManagedDeviceAssetSection }) {
   return (
     <NumberedRecords
       section={section}
@@ -1588,7 +1588,7 @@ const USB_FIELDS: Fields = [
  * its name, the product ID the device name, each as a tag at the
  * right edge.
  */
-function Usb({ section }: { section: AssetSection }) {
+function Usb({ section }: { section: ManagedDeviceAssetSection }) {
   return (
     <NumberedRecords
       section={section}
@@ -1611,7 +1611,7 @@ const BIOS_LABELS: Record<string, string> = {
  * column — a processor's model, for example: the label takes up the
  * rectangle, the first column and the two gaps.
  */
-function Bios({ section }: { section: AssetSection }) {
+function Bios({ section }: { section: ManagedDeviceAssetSection }) {
   return (
     <Stack gap={20}>
       {section.entries.map((entry, rank) => (
@@ -1646,7 +1646,7 @@ function Bios({ section }: { section: AssetSection }) {
 export const WITHOUT_FRAME = new Set(["OPERATINGSYSTEM", "VIRTUALMACHINES"]);
 
 /** The sections that have their table; the others stay as records. */
-export const SECTION_TABLES: Record<string, ComponentType<{ section: AssetSection }>> = {
+export const SECTION_TABLES: Record<string, ComponentType<{ section: ManagedDeviceAssetSection }>> = {
   ANTIVIRUS: Protections,
   BATTERIES: Battery,
   BIOS: Bios,

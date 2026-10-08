@@ -7,6 +7,8 @@
 // them from it instead of its own. A key left out keeps the title's usual
 // value.
 
+import { renamedWidgetType } from "./widget-kinds.js";
+
 export interface TitleStyle {
   /** Chosen by the client; what a title stores to designate its style. */
   id: string;
@@ -65,7 +67,8 @@ export const isBuiltInTitleStyle = (id: string): boolean =>
 
 /**
  * A widget of a type that no longer exists, as the one that replaced it: a
- * subcategory is a title in "H2" — its own style kept, if it had chosen one.
+ * subcategory is a title in "H2" — its own style kept, if it had chosen one —;
+ * an asset widget named before the assets were named by kind, by its name now.
  * Read by the migration of the database and by the import of a layout
  * exported before.
  */
@@ -73,6 +76,10 @@ export const currentWidget = (
   type: unknown,
   config: unknown,
 ): { type: unknown; config: unknown } => {
+  // A type named before the assets were named by kind takes its current name.
+  if (typeof type === "string" && renamedWidgetType(type) !== type) {
+    return { type: renamedWidgetType(type), config };
+  }
   if (type !== "subcategory") return { type, config };
   const own = config && typeof config === "object" ? (config as Record<string, unknown>) : {};
   return {

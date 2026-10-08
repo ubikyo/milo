@@ -2,18 +2,18 @@
 //
 // The same as the Support one (widgets/support/types.ts), on workstations instead
 // of requests. Adding a kind of indicator means adding a file in
-// this folder, registering it in "index.ts" and in "ASSET_INDICATOR_TYPES"
+// this folder, registering it in "index.ts" and in "MANAGED_DEVICE_ASSET_INDICATOR_TYPES"
 // (shared/domain.ts).
 
 import type { ComponentType } from "react";
 import type { IndicatorWidgetBase } from "../../components/ui/IndicatorsPanel";
-import type { Asset, AssetIndicatorType } from "@milo/shared";
+import type { ManagedDeviceAsset, ManagedDeviceAssetIndicatorType } from "@milo/shared";
 
 /** What the panel passes to a widget's display. */
-export interface AssetIndicatorDisplayProps {
+export interface ManagedDeviceAssetIndicatorDisplayProps {
   config: unknown;
   /** The workstations of the company being viewed — all of them, "toutes les sociétés" included. */
-  assets: Asset[];
+  assets: ManagedDeviceAsset[];
   /**
    * Saves a configuration modified from the display itself — a
    * title renamed on double-click. No effect once locked.
@@ -23,7 +23,7 @@ export interface AssetIndicatorDisplayProps {
   locked?: boolean;
 }
 
-export interface AssetIndicatorWidget extends IndicatorWidgetBase<AssetIndicatorType> {
+export interface ManagedDeviceAssetIndicatorWidget extends IndicatorWidgetBase<ManagedDeviceAssetIndicatorType> {
   /** What the panel shows. */
-  Display: ComponentType<AssetIndicatorDisplayProps>;
+  Display: ComponentType<ManagedDeviceAssetIndicatorDisplayProps>;
 }

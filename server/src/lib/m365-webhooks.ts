@@ -10,7 +10,7 @@
 // and the subscription is dropped once nobody has read them for a while.
 //
 // Like support (lib/support-webhooks.ts), this requires a public https address
-// (MILO_PUBLIC_URL). Without it, nothing is requested from Graph.
+// (lib/milo-url.ts). Without it, nothing is requested from Graph.
 
 import crypto from "node:crypto";
 import type { Id, M365Change } from "@milo/shared";

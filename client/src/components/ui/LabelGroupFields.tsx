@@ -20,10 +20,20 @@ const KINDS = {
     scope:
       "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type projet, du tableau actuel et uniquement pour ce tableau.",
   },
-  "asset-labels": {
-    base: "/asset-labels",
+  "managed-device-asset-labels": {
+    base: "/managed-device-asset-labels",
     scope:
       "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type asset, du tableau actuel. Chacune porte le nom d'un tag de l'agent GLPI : les postes de ce tag apparaissent dans le tableau.",
+  },
+  "unmanaged-device-asset-labels": {
+    base: "/unmanaged-device-asset-labels",
+    scope:
+      "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type équipement déclaré, du tableau actuel et uniquement pour ce tableau.",
+  },
+  "application-asset-labels": {
+    base: "/application-asset-labels",
+    scope:
+      "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type application, du tableau actuel et uniquement pour ce tableau.",
   },
   "support-labels": {
     base: "/support-labels",

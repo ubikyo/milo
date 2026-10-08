@@ -1,0 +1,16 @@
+/* The locations tree (components/ui/EditableTree.tsx): Mantine's lines are
+   drawn for its own row height — the horizontal connector 12 px from the
+   top. Our rows are an editable list's (38 px): the connectors, and the end of
+   a level's vertical line, come down to their middle. */
+.root :global(.mantine-Tree-node)::before {
+  top: calc(var(--editable-tree-row) / 2);
+}
+
+.root :global(.mantine-Tree-subtree) > :global(.mantine-Tree-node):last-child::after {
+  height: calc(var(--editable-tree-row) / 2);
+}
+
+/* A place's chevron: a neutral hover, where Mantine's gray leans blue. */
+.chevron:hover {
+  background-color: var(--milo-menu-hover);
+}

@@ -308,7 +308,13 @@ export interface SupportLabelInput {
 }
 
 /** The routes of a kind of labels: those of cards, of projects, of Support. */
-export type LabelsBase = "/labels" | "/project-labels" | "/support-labels" | "/asset-labels";
+export type LabelsBase =
+  | "/labels"
+  | "/project-labels"
+  | "/support-labels"
+  | "/managed-device-asset-labels"
+  | "/unmanaged-device-asset-labels"
+  | "/application-asset-labels";
 
 /**
  * The confirmation of a support mailbox: while it is pending, nothing is

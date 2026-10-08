@@ -4,6 +4,7 @@
 
 import cors from "cors";
 import express from "express";
+import { DECLARED_ASSET_KINDS, DECLARED_ASSET_ROUTES, DECLARED_ASSET_WORDS } from "@milo/shared";
 import { env } from "./env.js";
 import { countWrites, feed, payload } from "./middleware/events.js";
 import { errorHandler, notFoundHandler } from "./middleware/errors.js";
@@ -16,7 +17,7 @@ import {
   requireTemplatesToWrite,
   requireThemesToWrite,
 } from "./middleware/require-auth.js";
-import { assetRoutes, inventoryRoutes } from "./routes/assets.js";
+import { managedDeviceAssetRoutes, inventoryRoutes } from "./routes/managed-device-assets.js";
 import {
   attachmentRoutes,
   cardMediaRoutes,
@@ -42,11 +43,14 @@ import { notificationRoutes } from "./routes/notifications.js";
 import { supportSettingsRoutes } from "./routes/support-settings.js";
 import { supportContentRoutes } from "./routes/support-contents.js";
 import { supportReplyRoutes } from "./routes/support-replies.js";
-import { assetSettingsRoutes } from "./routes/asset-settings.js";
+import { managedDeviceAssetSettingsRoutes } from "./routes/managed-device-asset-settings.js";
+import { declaredAssetSettingsRoutes } from "./routes/declared-asset-settings.js";
+import { declaredAssetRoutes } from "./routes/declared-assets.js";
 import { milestoneTypeRoutes } from "./routes/milestone-types.js";
 import { followRoutes } from "./routes/follows.js";
 import {
-  assetLabelRoutes,
+  managedDeviceAssetLabelRoutes,
+  declaredAssetLabelRoutes,
   labelRoutes,
   projectLabelRoutes,
   supportLabelRoutes,
@@ -75,6 +79,9 @@ import { m365WebhookRoutes } from "./routes/m365-webhooks.js";
 import { optinRoutes } from "./routes/optins.js";
 import { calendarOptinRoutes, mailOptinRoutes } from "./routes/widget-optins.js";
 import { undoRoutes } from "./routes/undo.js";
+import { printerRoutes } from "./routes/printers.js";
+import { paperFormatRoutes } from "./routes/paper-formats.js";
+import { labelTemplateRoutes } from "./routes/label-templates.js";
 
 export const createApp = (): express.Express => {
   const app = express();
@@ -179,10 +186,34 @@ export const createApp = (): express.Express => {
   app.use("/api/card-links", linkRoutes);
   app.use("/api/labels", labelRoutes);
 
-  app.use("/api/asset-labels", assetLabelRoutes);
-  app.use("/api/assets", assetRoutes);
+  app.use("/api/managed-device-asset-labels", managedDeviceAssetLabelRoutes);
+  app.use("/api/managed-device-assets", managedDeviceAssetRoutes);
   // The templates table: read everywhere, written from Settings.
-  app.use("/api/asset-settings", settingsNotice("les réglages des postes"), assetSettingsRoutes);
+  app.use(
+    "/api/managed-device-asset-settings",
+    settingsNotice("les réglages des postes"),
+    managedDeviceAssetSettingsRoutes,
+  );
+  // The declared assets, kind by kind — equipment, applications —: the
+  // assets, their labels, their board's lists.
+  // The label templates of the asset widgets, kind by kind: previewing or
+  // printing one changes nothing.
+  app.use(
+    "/api/label-templates",
+    settingsNotice("les modèles d'étiquette", /\/(preview|print)$/),
+    labelTemplateRoutes,
+  );
+  for (const kind of DECLARED_ASSET_KINDS) {
+    const routes = DECLARED_ASSET_ROUTES[kind];
+    app.use(`/api${routes.assets}`, declaredAssetRoutes(kind));
+    app.use(`/api${routes.labels}`, declaredAssetLabelRoutes(kind));
+    app.use(
+      `/api${routes.settings}`,
+      settingsNotice(`les réglages des ${DECLARED_ASSET_WORDS[kind].label.toLowerCase()}`),
+      declaredAssetSettingsRoutes(kind),
+    );
+  }
+
 
   app.use("/api/support-requests", supportRequestRoutes);
   app.use("/api/mailbox-optins", optinRoutes);
@@ -202,6 +233,10 @@ export const createApp = (): express.Express => {
   app.use("/api/mail-templates", requireTemplatesToWrite, settingsNotice("les modèles d'e-mail", /preview$/), mailTemplateRoutes);
   app.use("/api/display-settings", requireSettingsToWrite, settingsNotice("l'affichage"), displaySettingsRoutes);
   app.use("/api/milo-settings", requireSettingsToWrite, settingsNotice("les réglages de Milo"), miloSettingsRoutes);
+  // Read by everyone — whoever prints picks one —, set from Settings
+  // (routes/printers.ts). Printing changes nothing.
+  app.use("/api/printers", settingsNotice("les imprimantes", /\/print$/), printerRoutes);
+  app.use("/api/paper-formats", requireSettingsToWrite, settingsNotice("les formats de papier"), paperFormatRoutes);
   app.use("/api/theme-colors", requireThemesToWrite, settingsNotice("les couleurs des thèmes"), themeColorRoutes);
   app.use("/api/title-styles", settingsNotice("les styles de titres"), titleStyleRoutes);
 

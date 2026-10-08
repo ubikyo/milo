@@ -17,12 +17,17 @@ import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { tabStyle } from "../../themes/tabs";
 import { WITHOUT_FRAME, SECTION_TABLES, EMPTY } from "./InventoryTables";
-import AssetSummaryPanel, { CARD_BACKGROUND } from "./AssetSummaryPanel";
+import ManagedDeviceAssetSummaryPanel, { CARD_BACKGROUND } from "./ManagedDeviceAssetSummaryPanel";
 import OperatingSystem from "./OperatingSystem";
 import RecordTitle, { SPACE_BELOW_TITLE } from "./RecordTitle";
-import classes from "../../assets/styles/AssetDrawer.module.css";
+import classes from "../../assets/styles/ManagedDeviceAssetDrawer.module.css";
 import type { CSSProperties } from "react";
-import type { Asset, AssetDetail, AssetEntry, AssetSection } from "@milo/shared";
+import type {
+  ManagedDeviceAsset,
+  ManagedDeviceAssetDetail,
+  ManagedDeviceAssetEntry,
+  ManagedDeviceAssetSection,
+} from "@milo/shared";
 import CloseButton from "../ui/CloseButton";
 
 const DRAWER_PADDING = 40;
@@ -53,11 +58,11 @@ export const teamviewerFallbackLink = (id: string) =>
  * a few tabs. Nothing is edited there — a workstation describes itself,
  * nobody enters it —, so the footer only carries "Fermer".
  */
-interface AssetDrawerProps {
+interface ManagedDeviceAssetDrawerProps {
   opened: boolean;
   onClose: () => void;
   /** The workstation from the list: the drawer fetches the rest itself. */
-  asset: Asset | null;
+  asset: ManagedDeviceAsset | null;
 }
 
 /**
@@ -69,7 +74,7 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
 };
 
 /** The fields of an entry, in two columns: the name, the value. */
-function Entry({ section, entry }: { section: string; entry: AssetEntry }) {
+function Entry({ section, entry }: { section: string; entry: ManagedDeviceAssetEntry }) {
   const labels = FIELD_LABELS[section] ?? {};
   return (
     <Table withRowBorders={false} verticalSpacing={2} horizontalSpacing={0}>
@@ -187,7 +192,7 @@ const PLACED_SECTIONS = new Set(TABS.flatMap((o) => o.groups.map((g) => g.sectio
 /** A group as displayed: its label, and the inventory section. */
 interface DisplayedGroup {
   label: string;
-  section: AssetSection;
+  section: ManagedDeviceAssetSection;
 }
 
 /**
@@ -196,7 +201,7 @@ interface DisplayedGroup {
  * only some workstations declare — goes in "Autres", under its agent
  * name, rather than vanishing unnoticed.
  */
-const tabsOf = (sections: AssetSection[]) => {
+const tabsOf = (sections: ManagedDeviceAssetSection[]) => {
   const byName = new Map(sections.map((s) => [s.name, s]));
   const tabs = TABS.map(({ value, label, groups }) => ({
     value,
@@ -230,7 +235,7 @@ function SectionsTab({
 }: {
   groups: DisplayedGroup[];
   /** The workstation's system, whose Description takes the logo. */
-  os: AssetDetail["os"];
+  os: ManagedDeviceAssetDetail["os"];
 }) {
   const [openSessions, setOpenedItems] = useState<string[]>([]);
   return (
@@ -241,7 +246,7 @@ function SectionsTab({
       chevronPosition="right"
       // The first section's title falls at the height of "Résumé":
       // the header has no margin of its own, the gap between two headers comes
-      // from the stylesheet (AssetDrawer.module.css). Under the title, the
+      // from the stylesheet (ManagedDeviceAssetDrawer.module.css). Under the title, the
       // grid spaces out like the Summary cards.
       classNames={{ item: classes.section, control: classes.control }}
       styles={{
@@ -285,7 +290,7 @@ function SectionsTab({
 }
 
 /** A section's content: its table when it has one, its records otherwise. */
-function SectionContent({ section, os }: { section: AssetSection; os: AssetDetail["os"] }) {
+function SectionContent({ section, os }: { section: ManagedDeviceAssetSection; os: ManagedDeviceAssetDetail["os"] }) {
   // The system description, in cards like the Summary.
   if (section.name === "OPERATINGSYSTEM") return <OperatingSystem section={section} os={os} />;
   const SectionTable = SECTION_TABLES[section.name];
@@ -299,8 +304,8 @@ function SectionContent({ section, os }: { section: AssetSection; os: AssetDetai
   );
 }
 
-export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps) {
-  const [detail, setDetail] = useState<AssetDetail | null>(null);
+export default function ManagedDeviceAssetDrawer({ opened, onClose, asset }: ManagedDeviceAssetDrawerProps) {
+  const [detail, setDetail] = useState<ManagedDeviceAssetDetail | null>(null);
   /** The displayed tab; the first opens with the record. */
   const [domain, setDomain] = useState<string | null>(null);
 
@@ -319,7 +324,7 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
 
     let abandoned = false;
     api
-      .getAsset(assetId)
+      .getManagedDeviceAsset(assetId)
       .then((received) => {
         if (abandoned) return;
         setDetail(received);
@@ -427,7 +432,7 @@ export default function AssetDrawer({ opened, onClose, asset }: AssetDrawerProps
               }}
             >
               <Tabs.Panel value={SUMMARY} pl={40}>
-                <AssetSummaryPanel detail={detail} />
+                <ManagedDeviceAssetSummaryPanel detail={detail} />
               </Tabs.Panel>
               {tabs.map((tab) => (
                 <Tabs.Panel key={tab.value} value={tab.value} pl={40}>

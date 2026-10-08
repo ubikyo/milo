@@ -34,7 +34,7 @@ export const SHADES = [
 export const SHADES_PER_ROW = 6;
 
 /**
- * The themes' palette (Paramétrage > Thèmes): Mantine's ten grays and ten
+ * The themes' palette (theme editor): Mantine's ten grays and ten
  * darks, the scale's defaults, then the usual shades.
  */
 export const THEME_SHADES = [

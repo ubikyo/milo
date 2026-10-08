@@ -1,0 +1,353 @@
+/* The Settings window's own colors and sizes ("Paramétrage" in the theme
+   editor): they take the place of the windows' header and tabs ones in it,
+   for every rule that reads them — modalHeaderStyles, tabStyle, tabs.css —,
+   like the main window's top row (.milo-page-tabs). The windows it opens are
+   outside it, and keep the common ones. */
+.window {
+  --milo-dark-header: var(--milo-settings-header-bg);
+  --milo-dark-header-text: var(--milo-settings-header-text);
+  --milo-dark-header-size: var(--milo-settings-header-size);
+  --milo-dark-header-weight: var(--milo-settings-header-weight);
+  --milo-tab-bg: var(--milo-settings-tab-bg);
+  --milo-tab-text: var(--milo-settings-tab-text);
+  --milo-tab-size: var(--milo-settings-tab-size);
+  --milo-tab-weight: var(--milo-settings-tab-weight);
+  --milo-tab-active-bg: var(--milo-settings-tab-active-bg);
+  --milo-tab-active-joint: var(--milo-settings-tab-active-joint);
+  --milo-tab-active-text: var(--milo-settings-tab-active-text);
+  --milo-tab-active-border: var(--milo-settings-tab-active-border);
+  --milo-tab-active-border-width: var(--milo-settings-tab-active-border-width);
+  --milo-tab-active-size: var(--milo-settings-tab-active-size);
+  --milo-tab-active-weight: var(--milo-settings-tab-active-weight);
+  --milo-add-link-color: var(--milo-settings-add-link-text);
+  --milo-add-link-size: var(--milo-settings-add-link-size);
+  --milo-add-link-weight: var(--milo-settings-add-link-weight);
+  /* Its editable lists ("Listes éditables"): their rows, and the users and
+     groups of the administration (PrincipalsPermissions). */
+  --milo-row-bg: var(--milo-settings-list-bg);
+  --milo-principal-icon-bg: var(--milo-settings-principals-icon-bg);
+  --milo-principal-icon: var(--milo-settings-principals-icon-color);
+  /* A user's or group's name is a row's ("Listes éditables" > "Texte"). */
+  --milo-principal-name: var(--milo-settings-theme-list-text-color);
+  --milo-principal-name-size: var(--milo-settings-theme-list-text-size);
+  --milo-principal-name-weight: var(--milo-settings-theme-list-text-weight);
+  --milo-principal-email: var(--milo-settings-principals-email-text);
+  --milo-principal-email-size: var(--milo-settings-principals-email-size);
+  --milo-principal-email-weight: var(--milo-settings-principals-email-weight);
+  --milo-principal-summary: var(--milo-settings-principals-summary-text);
+  --milo-principal-summary-size: var(--milo-settings-principals-summary-size);
+  --milo-principal-summary-weight: var(--milo-settings-principals-summary-weight);
+}
+
+/* The tabs' icons: their color and size, the active tab's apart. */
+.window :global(.mantine-Tabs-tabSection) {
+  color: var(--milo-settings-tab-icon);
+}
+
+.window :global(.mantine-Tabs-tabSection svg) {
+  width: var(--milo-settings-tab-icon-size);
+  height: var(--milo-settings-tab-icon-size);
+}
+
+.window :global(.mantine-Tabs-tab[data-active] .mantine-Tabs-tabSection) {
+  color: var(--milo-settings-tab-active-icon);
+}
+
+.window :global(.mantine-Tabs-tab[data-active] .mantine-Tabs-tabSection svg) {
+  width: var(--milo-settings-tab-active-icon-size);
+  height: var(--milo-settings-tab-active-icon-size);
+}
+
+/* Its check boxes ("Interface" > "Case à cocher"): the box, its mark and
+   its label; checked or half-checked, the active ones, as Mantine draws
+   them. A disabled box keeps Mantine's gray. An editable list's own
+   (RowCheckbox) are set apart ("Listes éditables"). */
+.window :global(.mantine-Checkbox-root:not(.milo-row-checkbox)) {
+  --box-bg: var(--milo-settings-checkbox-bg);
+  --box-border: var(--milo-settings-checkbox-border);
+  --box-active-border: var(--milo-settings-checkbox-active-border);
+  --box-active-bg: var(--milo-settings-checkbox-active-bg);
+  --box-active-check: var(--milo-settings-checkbox-active-check);
+}
+
+.window :global(.mantine-Checkbox-root.milo-row-checkbox) {
+  --box-bg: var(--milo-settings-row-checkbox-bg);
+  --box-border: var(--milo-settings-row-checkbox-border);
+  --box-active-border: var(--milo-settings-row-checkbox-active-border);
+  --box-active-bg: var(--milo-settings-row-checkbox-active-bg);
+  --box-active-check: var(--milo-settings-row-checkbox-active-check);
+}
+
+.window :global(.mantine-Checkbox-input:not(:disabled)) {
+  background-color: var(--box-bg);
+  border-color: var(--box-border);
+}
+
+.window :global(.mantine-Checkbox-input:is(:checked, [data-indeterminate]):not(:disabled)) {
+  background-color: var(--box-active-bg);
+  border-color: var(--box-active-border);
+}
+
+.window :global(.mantine-Checkbox-input:is(:checked, [data-indeterminate]) + .mantine-Checkbox-icon) {
+  color: var(--box-active-check);
+}
+
+.window :global(.mantine-Checkbox-label) {
+  color: var(--milo-settings-checkbox-text);
+  font-size: var(--milo-settings-checkbox-size);
+  font-weight: var(--milo-settings-checkbox-weight);
+}
+
+.window
+  :global(.mantine-Checkbox-root:has(.mantine-Checkbox-input:is(:checked, [data-indeterminate])) .mantine-Checkbox-label) {
+  color: var(--milo-settings-checkbox-active-text);
+  font-size: var(--milo-settings-checkbox-active-size);
+  font-weight: var(--milo-settings-checkbox-active-weight);
+}
+
+/* While the theme editor edits a state of the boxes (data-theme-preview,
+   ThemeHighlight), they all show it, whatever they hold: only their look
+   changes, never their value — nothing of it is saved. */
+:global(html[data-theme-preview="settings-checkbox"]) .window :global(.mantine-Checkbox-root:not(.milo-row-checkbox) .mantine-Checkbox-input:not(:disabled)),
+:global(html[data-theme-preview="settings-row-checkbox"]) .window :global(.mantine-Checkbox-root.milo-row-checkbox .mantine-Checkbox-input:not(:disabled)) {
+  background-color: var(--box-bg) !important;
+  border-color: var(--box-border) !important;
+}
+
+:global(html[data-theme-preview="settings-checkbox"]) .window :global(.mantine-Checkbox-root:not(.milo-row-checkbox) .mantine-Checkbox-icon),
+:global(html[data-theme-preview="settings-row-checkbox"]) .window :global(.mantine-Checkbox-root.milo-row-checkbox .mantine-Checkbox-icon) {
+  opacity: 0 !important;
+}
+
+:global(html[data-theme-preview="settings-checkbox"]) .window :global(.mantine-Checkbox-root:not(.milo-row-checkbox) .mantine-Checkbox-label),
+:global(html[data-theme-preview="settings-row-checkbox"]) .window :global(.mantine-Checkbox-root.milo-row-checkbox .mantine-Checkbox-label) {
+  color: var(--milo-settings-checkbox-text) !important;
+  font-size: var(--milo-settings-checkbox-size) !important;
+  font-weight: var(--milo-settings-checkbox-weight) !important;
+}
+
+:global(html[data-theme-preview="settings-checkbox-active"]) .window :global(.mantine-Checkbox-root:not(.milo-row-checkbox) .mantine-Checkbox-input:not(:disabled)),
+:global(html[data-theme-preview="settings-row-checkbox-active"]) .window :global(.mantine-Checkbox-root.milo-row-checkbox .mantine-Checkbox-input:not(:disabled)) {
+  background-color: var(--box-active-bg) !important;
+  border-color: var(--box-active-border) !important;
+}
+
+:global(html[data-theme-preview="settings-checkbox-active"]) .window :global(.mantine-Checkbox-root:not(.milo-row-checkbox) .mantine-Checkbox-icon),
+:global(html[data-theme-preview="settings-row-checkbox-active"]) .window :global(.mantine-Checkbox-root.milo-row-checkbox .mantine-Checkbox-icon) {
+  opacity: 1 !important;
+  transform: none !important;
+  color: var(--box-active-check) !important;
+}
+
+:global(html[data-theme-preview="settings-checkbox-active"]) .window :global(.mantine-Checkbox-root:not(.milo-row-checkbox) .mantine-Checkbox-label),
+:global(html[data-theme-preview="settings-row-checkbox-active"]) .window :global(.mantine-Checkbox-root.milo-row-checkbox .mantine-Checkbox-label) {
+  color: var(--milo-settings-checkbox-active-text) !important;
+  font-size: var(--milo-settings-checkbox-active-size) !important;
+  font-weight: var(--milo-settings-checkbox-active-weight) !important;
+}
+
+/* Its switches ("Switch" > "Inactif", "Actif"): the track and the thumb. A
+   disabled one keeps Mantine's gray. */
+.window :global(.mantine-Switch-input:not(:disabled) + .mantine-Switch-track) {
+  background-color: var(--milo-settings-switch-track);
+}
+
+.window :global(.mantine-Switch-input:not(:disabled) + * > .mantine-Switch-thumb) {
+  background-color: var(--milo-settings-switch-thumb);
+}
+
+.window :global(.mantine-Switch-input:checked:not(:disabled) + .mantine-Switch-track) {
+  background-color: var(--milo-settings-switch-active-track);
+}
+
+.window :global(.mantine-Switch-input:checked:not(:disabled) + * > .mantine-Switch-thumb) {
+  background-color: var(--milo-settings-switch-active-thumb);
+}
+
+/* The thumb's center: the track's color, in each state. */
+.window :global(.mantine-Switch-input:not(:disabled) + * > .mantine-Switch-thumb)::before {
+  background-color: var(--milo-settings-switch-track);
+}
+
+.window :global(.mantine-Switch-input:checked:not(:disabled) + * > .mantine-Switch-thumb)::before {
+  background-color: var(--milo-settings-switch-active-track);
+}
+
+/* While the theme editor edits a state of the switches, they all show it —
+   their look only, like the boxes'. */
+:global(html[data-theme-preview="settings-switch"]) .window :global(.mantine-Switch-input:not(:disabled) + * > .mantine-Switch-thumb)::before {
+  background-color: var(--milo-settings-switch-track) !important;
+}
+
+:global(html[data-theme-preview="settings-switch"]) .window :global(.mantine-Switch-input:not(:disabled) + .mantine-Switch-track) {
+  background-color: var(--milo-settings-switch-track) !important;
+}
+
+:global(html[data-theme-preview="settings-switch"]) .window :global(.mantine-Switch-input:not(:disabled) + * > .mantine-Switch-thumb) {
+  background-color: var(--milo-settings-switch-thumb) !important;
+  inset-inline-start: var(--switch-track-label-padding) !important;
+}
+
+:global(html[data-theme-preview="settings-switch-active"]) .window :global(.mantine-Switch-input:not(:disabled) + * > .mantine-Switch-thumb)::before {
+  background-color: var(--milo-settings-switch-active-track) !important;
+}
+
+:global(html[data-theme-preview="settings-switch-active"]) .window :global(.mantine-Switch-input:not(:disabled) + .mantine-Switch-track) {
+  background-color: var(--milo-settings-switch-active-track) !important;
+}
+
+:global(html[data-theme-preview="settings-switch-active"]) .window :global(.mantine-Switch-input:not(:disabled) + * > .mantine-Switch-thumb) {
+  background-color: var(--milo-settings-switch-active-thumb) !important;
+  inset-inline-start: calc(100% - var(--switch-thumb-size) - var(--switch-track-label-padding)) !important;
+}
+
+/* Its sliders ("Slider"): the inactive track, the active one — and the marks
+   along it —, the thumb, the marks and their text. A disabled one keeps
+   Mantine's gray. */
+.window :global(.mantine-Slider-root) {
+  --slider-track-bg: var(--milo-settings-slider-track);
+}
+
+.window :global(.mantine-Slider-bar:not([data-disabled])) {
+  background-color: var(--milo-settings-slider-bar);
+}
+
+/* The thumb: its ring, and its center in the active track's color. */
+.window :global(.mantine-Slider-thumb:not([data-disabled])) {
+  border-color: var(--milo-settings-slider-thumb);
+  background-color: var(--milo-settings-slider-bar);
+}
+
+/* A mark: its center, and its outline in the color of the track it sits
+   on — the inactive one, or the active one. */
+.window :global(.mantine-Slider-mark) {
+  background-color: var(--milo-settings-slider-mark);
+  border-color: var(--milo-settings-slider-track);
+}
+
+.window :global(.mantine-Slider-mark[data-filled]:not([data-disabled])) {
+  border-color: var(--milo-settings-slider-bar);
+}
+
+.window :global(.mantine-Slider-markLabel) {
+  color: var(--milo-settings-slider-mark-label);
+}
+
+/* Its scrollbar's track, which Mantine shows on hover ("Barre de
+   défilement" > "Couleur piste"); shown while the theme editor edits it.
+   The class is doubled to win over Mantine's rule. */
+.scrollbar.scrollbar:hover,
+:global(html[data-theme-preview="settings-scrollbars"]) .scrollbar.scrollbar {
+  background-color: var(--milo-settings-scrollbar-track);
+}
+
+/* A user's or group's chevron ("Indicateur"): folded, unfolded. While the
+   theme editor edits one of them, they all show it — their look only. */
+.window :global([data-principal-chevron]) {
+  color: var(--milo-settings-principals-chevron-closed-color);
+}
+
+.window :global([data-principal-chevron][data-open]) {
+  color: var(--milo-settings-principals-chevron-open-color);
+}
+
+:global(html[data-theme-preview="settings-principals-chevron-closed"]) .window :global([data-principal-chevron]) {
+  color: var(--milo-settings-principals-chevron-closed-color) !important;
+}
+
+:global(html[data-theme-preview="settings-principals-chevron-closed"]) .window :global([data-principal-chevron] svg) {
+  transform: none !important;
+}
+
+:global(html[data-theme-preview="settings-principals-chevron-open"]) .window :global([data-principal-chevron]) {
+  color: var(--milo-settings-principals-chevron-open-color) !important;
+}
+
+:global(html[data-theme-preview="settings-principals-chevron-open"]) .window :global([data-principal-chevron] svg) {
+  transform: rotate(180deg) !important;
+}
+
+/* Its editable lists' common parts ("Listes éditables"): a row's name
+   (RowField, a template's), its green button (RowButton) and a tag. Their
+   inline colors are overridden. The templates also show in widgets'
+   drawers, outside the window: there, theirs stay. */
+.window :global([data-row-name]) {
+  color: var(--milo-settings-theme-list-text-color);
+  font-size: var(--milo-settings-theme-list-text-size);
+  font-weight: var(--milo-settings-theme-list-text-weight);
+}
+
+.window :global([data-row-button]) {
+  background-color: var(--milo-settings-workspaces-button-bg) !important;
+  color: var(--milo-settings-workspaces-button-color) !important;
+  font-size: var(--milo-settings-workspaces-button-size);
+  font-weight: var(--milo-settings-workspaces-button-weight) !important;
+}
+
+.window :global([data-row-button] .mantine-Button-section) {
+  color: var(--milo-settings-workspaces-button-icon);
+}
+
+/* Its editable lists (data-settings-list): the title above each ("Titres"
+   > "Titre groupe"), and their fields
+   ("Zone de saisie") — entered, their background, names included; the text
+   of the others, a name's being "Texte". Their inline backgrounds are
+   overridden. */
+.window :global([data-settings-list] > .mantine-InputWrapper-label) {
+  color: var(--milo-settings-group-title-color);
+  font-size: var(--milo-settings-group-title-size);
+  font-weight: var(--milo-settings-group-title-weight);
+}
+
+/* The space between the lists of a tab (data-settings-lists): its column's
+   row gap, over Mantine's. */
+.window :global([data-settings-lists]) {
+  row-gap: var(--milo-settings-list-gap);
+}
+
+.window :global([data-settings-list] :is(.mantine-TextInput-input, .mantine-NumberInput-input):not([data-row-name])) {
+  color: var(--milo-settings-input-color);
+  font-size: var(--milo-settings-input-size);
+  font-weight: var(--milo-settings-input-weight);
+}
+
+/* Entered — and while the theme editor edits that state, all of them. */
+.window :global([data-settings-list] :is(.mantine-TextInput-input, .mantine-NumberInput-input):focus),
+:global(html[data-theme-preview="settings-input-focus"]) .window :global([data-settings-list] :is(.mantine-TextInput-input, .mantine-NumberInput-input)) {
+  background-color: var(--milo-settings-input-focus-bg) !important;
+}
+
+.window :global([data-settings-list] :is(.mantine-TextInput-input, .mantine-NumberInput-input):not([data-row-name]):focus),
+:global(html[data-theme-preview="settings-input-focus"]) .window :global([data-settings-list] :is(.mantine-TextInput-input, .mantine-NumberInput-input):not([data-row-name])) {
+  color: var(--milo-settings-input-focus-color);
+  font-size: var(--milo-settings-input-focus-size);
+  font-weight: var(--milo-settings-input-focus-weight);
+}
+
+/* A row's reset button ("Boutons" > "Réinitialiser"), in both states —
+   faded while there is nothing to reset. */
+.window :global([data-reset-button]) {
+  background-color: var(--milo-settings-reset-button-bg) !important;
+  color: var(--milo-settings-reset-button-icon) !important;
+}
+
+/* A tag: its text always; its background when it says the good news — a
+   printer online, oneself — rather than a state of its own (data-list-tag). */
+.window :global([data-list-tag]) {
+  color: var(--milo-settings-principals-tag-text) !important;
+  font-size: var(--milo-settings-principals-tag-size);
+  font-weight: var(--milo-settings-principals-tag-weight) !important;
+}
+
+.window :global([data-list-tag="filled"]) {
+  background-color: var(--milo-settings-principals-tag-bg) !important;
+}
+
+/* Its tabs' column: no bleed past an inset — the body has none —, but its
+   own padding ("Onglets" > "Padding"), its line kept to it as tabs.css does. */
+.window :global(.mantine-Tabs-list[data-orientation="vertical"]) {
+  margin: 0;
+  padding: var(--milo-settings-padding-top) 0 var(--milo-settings-padding-bottom) var(--milo-settings-padding-left);
+  --tabs-list-line-top: var(--milo-settings-padding-top);
+  --tabs-list-line-bottom: var(--milo-settings-padding-bottom);
+}

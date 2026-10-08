@@ -59,7 +59,7 @@ const DIMMED = "var(--mantine-color-dimmed)";
  * against a gray line, the monospace text — and thin scrollbars, as in every
  * pane.
  */
-const THEME = EditorView.theme({
+export const THEME = EditorView.theme({
   "&": { height: "100%", backgroundColor: CODE_BG, color: "var(--mantine-color-text)" },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": {
@@ -171,7 +171,7 @@ const mustache = new MatchDecorator({
   regexp: /\{\{\{?[^{}]*\}?\}\}/g,
   decoration: Decoration.mark({ class: "cm-mustache" }),
 });
-const MUSTACHE = ViewPlugin.fromClass(
+export const MUSTACHE = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
     constructor(view: EditorView) {
