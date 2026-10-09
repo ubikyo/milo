@@ -3,6 +3,7 @@ import type { DeclaredAssetKind } from "@milo/shared";
 import DeclaredAssetsList, {
   declaredAssetColumns,
 } from "../../components/declared-assets/DeclaredAssetsList";
+import AssetNumberTemplateFields from "../../components/declared-assets/AssetNumberTemplateFields";
 import DeclaredAssetTablesFields from "../../components/declared-assets/DeclaredAssetTablesFields";
 import { DECLARED_ASSET_LOOKS } from "../../components/declared-assets/kinds";
 import ColumnFields from "../../components/ui/ColumnFields";
@@ -17,7 +18,7 @@ import type { DeclaredAssetWidget } from ".";
 /**
  * The list settings: at the top, the board's labels of the kind, then its
  * lists — categories, suppliers, makers, products —, then its columns, then
- * its label templates.
+ * its label templates and its asset number template.
  */
 const listFields = (kind: DeclaredAssetKind) =>
   function ListFields(props: IndicatorConfigProps) {
@@ -30,6 +31,7 @@ const listFields = (kind: DeclaredAssetKind) =>
         <ColumnFields columns={declaredAssetColumns(kind)} {...props} />
         {/* Its label templates, before the "Apparence" block: board data too. */}
         <LabelTemplatesFields kind={kind} />
+        <AssetNumberTemplateFields kind={kind} />
       </Stack>
     );
   };

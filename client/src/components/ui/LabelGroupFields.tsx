@@ -23,7 +23,7 @@ const KINDS = {
   "managed-device-asset-labels": {
     base: "/managed-device-asset-labels",
     scope:
-      "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type asset, du tableau actuel. Chacune porte le nom d'un tag de l'agent GLPI : les postes de ce tag apparaissent dans le tableau.",
+      "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type asset, du tableau actuel. Une étiquette nommée comme le tag d'un poste s'affiche sur ce poste.",
   },
   "unmanaged-device-asset-labels": {
     base: "/unmanaged-device-asset-labels",

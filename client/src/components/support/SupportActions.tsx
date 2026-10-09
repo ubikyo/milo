@@ -1,4 +1,4 @@
-import { Button, Group, Menu, Modal, Stack, Text } from "@mantine/core";
+import { Button, Menu, Modal, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
   IconArrowMerge,
@@ -31,6 +31,8 @@ import PointMenu, { type PointMenuPosition } from "../ui/PointMenu";
 import { supportTicketRef } from "@milo/shared";
 import type { PublicUser, SupportRequest } from "@milo/shared";
 import CloseButton from "../ui/CloseButton";
+import Footer from "../ui/Footer";
+import { themeWindow } from "../../lib/themeWindow";
 
 /** The action awaiting its confirmation. */
 type ToConfirm = "merge" | "close" | "delete" | null;
@@ -376,6 +378,7 @@ export default function SupportActions({
       />
 
       <Modal
+        attributes={themeWindow("support-labels")}
         opened={managesLabels}
         onClose={() => setManagingLabels(false)}
         title="Étiquettes"
@@ -390,7 +393,7 @@ export default function SupportActions({
           {/* Nothing is sent before "Enregistrer": it saves, closes and has
               the requests re-read, so that they show the labels as they were
               just left. "Fermer" leaves everything as before. */}
-          <Group justify="flex-end" mt={MODAL_PADDING - 16}>
+          <Footer parentGap="var(--mantine-spacing-md)">
             <CloseButton onClick={() => setManagingLabels(false)} />
             <Button
               color="teal"
@@ -410,11 +413,12 @@ export default function SupportActions({
             >
               Enregistrer
             </Button>
-          </Group>
+          </Footer>
         </Stack>
       </Modal>
 
       <Modal
+        attributes={themeWindow("support-assign")}
         opened={assignment}
         onClose={() => {
           if (ongoing) return;
@@ -452,7 +456,7 @@ export default function SupportActions({
             value={actors}
             onChange={setActors}
           />
-          <Group justify="flex-end" mt={MODAL_PADDING - 16}>
+          <Footer parentGap="var(--mantine-spacing-md)">
             <CloseButton
               onClick={() => {
                 setAssignment(false);
@@ -468,7 +472,7 @@ export default function SupportActions({
             >
               Assigner
             </Button>
-          </Group>
+          </Footer>
         </Stack>
       </Modal>
     </>

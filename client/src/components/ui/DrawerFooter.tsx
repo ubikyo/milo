@@ -2,6 +2,7 @@ import { Button, Group } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { RED } from "../../themes/colors";
 import CloseButton from "./CloseButton";
+import Footer from "./Footer";
 
 // The footer of all drawers. It carries the three actions, always in the same
 // place: delete on the left, "Fermer" and "Sauvegarder" on the right.
@@ -30,9 +31,8 @@ export default function DrawerFooter({
   saving = false,
 }: DrawerFooterProps) {
   return (
-    // "mt: auto" pins the footer to the bottom of the drawer, whatever the
-    // height of what precedes.
-    <Group justify="space-between" wrap="nowrap" mt="auto" pt={40}>
+    // Pinned to the bottom of the drawer, whatever the height of what precedes.
+    <Footer justify="space-between" wrap="nowrap" pinned>
       {/* Always an element on the left, even without delete: without it, the
           other two buttons would recenter. */}
       {onDelete ? (
@@ -48,7 +48,7 @@ export default function DrawerFooter({
         <span />
       )}
 
-      <Group gap="sm" wrap="nowrap">
+      <Group gap="var(--milo-settings-hstack-gap)" wrap="nowrap">
         <CloseButton onClick={onClose} />
         {onSave && (
           <Button color="teal" onClick={onSave} loading={saving}>
@@ -56,6 +56,6 @@ export default function DrawerFooter({
           </Button>
         )}
       </Group>
-    </Group>
+    </Footer>
   );
 }

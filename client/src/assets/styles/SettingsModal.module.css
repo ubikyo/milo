@@ -8,26 +8,21 @@
   --milo-dark-header-text: var(--milo-settings-header-text);
   --milo-dark-header-size: var(--milo-settings-header-size);
   --milo-dark-header-weight: var(--milo-settings-header-weight);
-  --milo-tab-bg: var(--milo-settings-tab-bg);
-  --milo-tab-text: var(--milo-settings-tab-text);
-  --milo-tab-size: var(--milo-settings-tab-size);
-  --milo-tab-weight: var(--milo-settings-tab-weight);
-  --milo-tab-active-bg: var(--milo-settings-tab-active-bg);
-  --milo-tab-active-joint: var(--milo-settings-tab-active-joint);
-  --milo-tab-active-text: var(--milo-settings-tab-active-text);
-  --milo-tab-active-border: var(--milo-settings-tab-active-border);
-  --milo-tab-active-border-width: var(--milo-settings-tab-active-border-width);
-  --milo-tab-active-size: var(--milo-settings-tab-active-size);
-  --milo-tab-active-weight: var(--milo-settings-tab-active-weight);
   --milo-add-link-color: var(--milo-settings-add-link-text);
   --milo-add-link-size: var(--milo-settings-add-link-size);
   --milo-add-link-weight: var(--milo-settings-add-link-weight);
-  /* Its editable lists ("Listes éditables"): their rows, and the users and
+  /* Its editable lists ("Formulaire" > "Liste"): their rows, and the users and
      groups of the administration (PrincipalsPermissions). */
   --milo-row-bg: var(--milo-settings-list-bg);
+  --milo-row-padding-simple: var(--milo-settings-list-simple-padding);
+  --milo-row-gap-simple: var(--milo-settings-list-simple-gap);
+  --milo-row-padding-accordion: var(--milo-settings-list-accordion-padding);
+  --milo-row-gap-accordion: var(--milo-settings-list-accordion-gap);
+  --milo-row-padding-checkbox: var(--milo-settings-list-checkbox-padding);
+  --milo-row-gap-checkbox: var(--milo-settings-list-checkbox-gap);
   --milo-principal-icon-bg: var(--milo-settings-principals-icon-bg);
   --milo-principal-icon: var(--milo-settings-principals-icon-color);
-  /* A user's or group's name is a row's ("Listes éditables" > "Texte"). */
+  /* A user's or group's name is a row's ("Formulaire" > "Liste" > "Texte"). */
   --milo-principal-name: var(--milo-settings-theme-list-text-color);
   --milo-principal-name-size: var(--milo-settings-theme-list-text-size);
   --milo-principal-name-weight: var(--milo-settings-theme-list-text-weight);
@@ -39,29 +34,67 @@
   --milo-principal-summary-weight: var(--milo-settings-principals-summary-weight);
 }
 
+/* Its tabs, by their orientation ("Onglets" > "Verticaux", "Horizontaux"):
+   their own values take the place of the tabs' ones, for every rule that
+   reads them — tabStyle, the theme's Tabs, tabs.css —, and their icons'. */
+.window :global(.mantine-Tabs-root[data-orientation="vertical"]) {
+  --milo-tab-bg: var(--milo-settings-tab-bg);
+  --milo-tab-text: var(--milo-settings-tab-text);
+  --milo-tab-size: var(--milo-settings-tab-size);
+  --milo-tab-weight: var(--milo-settings-tab-weight);
+  --milo-tab-active-bg: var(--milo-settings-tab-active-bg);
+  --milo-tab-active-joint: var(--milo-settings-tab-active-joint);
+  --milo-tab-active-text: var(--milo-settings-tab-active-text);
+  --milo-tab-active-border: var(--milo-settings-tab-active-border);
+  --milo-tab-active-border-width: var(--milo-settings-tab-active-border-width);
+  --milo-tab-active-size: var(--milo-settings-tab-active-size);
+  --milo-tab-active-weight: var(--milo-settings-tab-active-weight);
+  --tabs-icon: var(--milo-settings-tab-icon);
+  --tabs-icon-size: var(--milo-settings-tab-icon-size);
+  --tabs-active-icon: var(--milo-settings-tab-active-icon);
+  --tabs-active-icon-size: var(--milo-settings-tab-active-icon-size);
+}
+
+.window :global(.mantine-Tabs-root[data-orientation="horizontal"]) {
+  --milo-tab-text: var(--milo-settings-htab-text);
+  --milo-tab-size: var(--milo-settings-htab-size);
+  --milo-tab-weight: var(--milo-settings-htab-weight);
+  --milo-tab-active-bg: var(--milo-settings-htab-active-bg);
+  --milo-tab-active-joint: var(--milo-settings-htab-active-joint);
+  --milo-tab-active-text: var(--milo-settings-htab-active-text);
+  --milo-tab-active-border: var(--milo-settings-htab-active-border);
+  --milo-tab-active-border-width: var(--milo-settings-htab-active-border-width);
+  --milo-tab-active-size: var(--milo-settings-htab-active-size);
+  --milo-tab-active-weight: var(--milo-settings-htab-active-weight);
+  --tabs-icon: var(--milo-settings-htab-icon);
+  --tabs-icon-size: var(--milo-settings-htab-icon-size);
+  --tabs-active-icon: var(--milo-settings-htab-active-icon);
+  --tabs-active-icon-size: var(--milo-settings-htab-active-icon-size);
+}
+
 /* The tabs' icons: their color and size, the active tab's apart. */
 .window :global(.mantine-Tabs-tabSection) {
-  color: var(--milo-settings-tab-icon);
+  color: var(--tabs-icon);
 }
 
 .window :global(.mantine-Tabs-tabSection svg) {
-  width: var(--milo-settings-tab-icon-size);
-  height: var(--milo-settings-tab-icon-size);
+  width: var(--tabs-icon-size);
+  height: var(--tabs-icon-size);
 }
 
 .window :global(.mantine-Tabs-tab[data-active] .mantine-Tabs-tabSection) {
-  color: var(--milo-settings-tab-active-icon);
+  color: var(--tabs-active-icon);
 }
 
 .window :global(.mantine-Tabs-tab[data-active] .mantine-Tabs-tabSection svg) {
-  width: var(--milo-settings-tab-active-icon-size);
-  height: var(--milo-settings-tab-active-icon-size);
+  width: var(--tabs-active-icon-size);
+  height: var(--tabs-active-icon-size);
 }
 
-/* Its check boxes ("Interface" > "Case à cocher"): the box, its mark and
-   its label; checked or half-checked, the active ones, as Mantine draws
-   them. A disabled box keeps Mantine's gray. An editable list's own
-   (RowCheckbox) are set apart ("Listes éditables"). */
+/* Its check boxes ("Formulaire" > "Case à cocher"): the box and its mark —
+   their label is "Libellé"; checked or half-checked, the active ones, as
+   Mantine draws them. A disabled box keeps Mantine's gray. An editable list's own
+   (RowCheckbox) are set apart ("Formulaire" > "Liste"). */
 .window :global(.mantine-Checkbox-root:not(.milo-row-checkbox)) {
   --box-bg: var(--milo-settings-checkbox-bg);
   --box-border: var(--milo-settings-checkbox-border);
@@ -92,19 +125,6 @@
   color: var(--box-active-check);
 }
 
-.window :global(.mantine-Checkbox-label) {
-  color: var(--milo-settings-checkbox-text);
-  font-size: var(--milo-settings-checkbox-size);
-  font-weight: var(--milo-settings-checkbox-weight);
-}
-
-.window
-  :global(.mantine-Checkbox-root:has(.mantine-Checkbox-input:is(:checked, [data-indeterminate])) .mantine-Checkbox-label) {
-  color: var(--milo-settings-checkbox-active-text);
-  font-size: var(--milo-settings-checkbox-active-size);
-  font-weight: var(--milo-settings-checkbox-active-weight);
-}
-
 /* While the theme editor edits a state of the boxes (data-theme-preview,
    ThemeHighlight), they all show it, whatever they hold: only their look
    changes, never their value — nothing of it is saved. */
@@ -119,13 +139,6 @@
   opacity: 0 !important;
 }
 
-:global(html[data-theme-preview="settings-checkbox"]) .window :global(.mantine-Checkbox-root:not(.milo-row-checkbox) .mantine-Checkbox-label),
-:global(html[data-theme-preview="settings-row-checkbox"]) .window :global(.mantine-Checkbox-root.milo-row-checkbox .mantine-Checkbox-label) {
-  color: var(--milo-settings-checkbox-text) !important;
-  font-size: var(--milo-settings-checkbox-size) !important;
-  font-weight: var(--milo-settings-checkbox-weight) !important;
-}
-
 :global(html[data-theme-preview="settings-checkbox-active"]) .window :global(.mantine-Checkbox-root:not(.milo-row-checkbox) .mantine-Checkbox-input:not(:disabled)),
 :global(html[data-theme-preview="settings-row-checkbox-active"]) .window :global(.mantine-Checkbox-root.milo-row-checkbox .mantine-Checkbox-input:not(:disabled)) {
   background-color: var(--box-active-bg) !important;
@@ -137,13 +150,6 @@
   opacity: 1 !important;
   transform: none !important;
   color: var(--box-active-check) !important;
-}
-
-:global(html[data-theme-preview="settings-checkbox-active"]) .window :global(.mantine-Checkbox-root:not(.milo-row-checkbox) .mantine-Checkbox-label),
-:global(html[data-theme-preview="settings-row-checkbox-active"]) .window :global(.mantine-Checkbox-root.milo-row-checkbox .mantine-Checkbox-label) {
-  color: var(--milo-settings-checkbox-active-text) !important;
-  font-size: var(--milo-settings-checkbox-active-size) !important;
-  font-weight: var(--milo-settings-checkbox-active-weight) !important;
 }
 
 /* Its switches ("Switch" > "Inactif", "Actif"): the track and the thumb. A
@@ -267,7 +273,7 @@
   transform: rotate(180deg) !important;
 }
 
-/* Its editable lists' common parts ("Listes éditables"): a row's name
+/* Its editable lists' common parts ("Formulaire" > "Liste"): a row's name
    (RowField, a template's), its green button (RowButton) and a tag. Their
    inline colors are overridden. The templates also show in widgets'
    drawers, outside the window: there, theirs stay. */
@@ -278,6 +284,7 @@
 }
 
 .window :global([data-row-button]) {
+  width: var(--milo-settings-workspaces-button-width);
   background-color: var(--milo-settings-workspaces-button-bg) !important;
   color: var(--milo-settings-workspaces-button-color) !important;
   font-size: var(--milo-settings-workspaces-button-size);
@@ -297,6 +304,7 @@
   color: var(--milo-settings-group-title-color);
   font-size: var(--milo-settings-group-title-size);
   font-weight: var(--milo-settings-group-title-weight);
+  margin-bottom: var(--milo-settings-group-title-margin-bottom);
 }
 
 /* The space between the lists of a tab (data-settings-lists): its column's
@@ -324,9 +332,14 @@
   font-weight: var(--milo-settings-input-focus-weight);
 }
 
-/* A row's reset button ("Boutons" > "Réinitialiser"), in both states —
-   faded while there is nothing to reset. */
+/* A row's reset button ("Boutons" > "Réinitialiser"): with nothing to reset,
+   faded as everywhere; once the row is modified, active. */
 .window :global([data-reset-button]) {
+  background-color: var(--milo-settings-reset-button-inactive-bg) !important;
+  color: var(--milo-settings-reset-button-inactive-icon) !important;
+}
+
+.window :global([data-reset-button][data-active]) {
   background-color: var(--milo-settings-reset-button-bg) !important;
   color: var(--milo-settings-reset-button-icon) !important;
 }
@@ -343,11 +356,216 @@
   background-color: var(--milo-settings-principals-tag-bg) !important;
 }
 
-/* Its tabs' column: no bleed past an inset — the body has none —, but its
-   own padding ("Onglets" > "Padding"), its line kept to it as tabs.css does. */
-.window :global(.mantine-Tabs-list[data-orientation="vertical"]) {
-  margin: 0;
-  padding: var(--milo-settings-padding-top) 0 var(--milo-settings-padding-bottom) var(--milo-settings-padding-left);
-  --tabs-list-line-top: var(--milo-settings-padding-top);
-  --tabs-list-line-bottom: var(--milo-settings-padding-bottom);
+/* Every window's body ("Fenêtre" > "Padding"), over their own inline ones;
+   the tabs' backgrounds reach its edges past each side of it (tabs.css). */
+.window :global(.mantine-Modal-body) {
+  padding: var(--milo-settings-window-padding) !important;
+}
+
+.window {
+  --tabs-bleed-top: var(--milo-settings-window-padding-top);
+  --tabs-bleed-right: var(--milo-settings-window-padding-right);
+  --tabs-bleed-bottom: var(--milo-settings-window-padding-bottom);
+  --tabs-bleed-left: var(--milo-settings-window-padding-left);
+}
+
+/* Every modal has this look (main.tsx): its background ("Interface"), its
+   header's padding ("Entête"), and its buttons — "Fermer" (CloseButton) and
+   the green one that saves or goes on, Mantine's teal ("Boutons"). Their
+   inline values are overridden; a row's own green button is not one. */
+.window.window {
+  background-color: var(--milo-settings-bg);
+}
+
+.window :global(.mantine-Modal-header) {
+  border-bottom: var(--milo-settings-header-border-width) solid var(--milo-settings-header-border);
+  padding: var(--milo-settings-header-padding) !important;
+  padding-inline-end: var(--milo-settings-header-padding-right) !important;
+  min-height: 0;
+}
+
+/* A template window over the whole screen ("Éditeur de modèles" >
+   "Fenêtre plein écran", MailPreview's templateWindow): its header's own
+   padding ("Entête"), and no padding around the panes, against its edges. */
+.window[data-template-editor][data-full-screen] :global(.mantine-Modal-header) {
+  padding: var(--milo-settings-template-full-header-padding) !important;
+  padding-inline-end: var(--milo-settings-template-full-header-padding-right) !important;
+}
+
+.window[data-template-editor][data-full-screen] :global(.mantine-Modal-body) {
+  padding: 0 !important;
+}
+
+.window :global([data-close-button]) {
+  --button-bg: var(--milo-settings-close-bg) !important;
+  --button-color: var(--milo-settings-close-text) !important;
+  font-size: var(--milo-settings-close-size);
+  font-weight: var(--milo-settings-close-weight);
+}
+
+.window :global(.mantine-Button-root[style*="--mantine-color-teal-filled)"]:not([data-row-button])) {
+  --button-bg: var(--milo-settings-save-bg) !important;
+  --button-hover: var(--milo-settings-save-bg) !important;
+  --button-color: var(--milo-settings-save-text) !important;
+  font-size: var(--milo-settings-save-size);
+  font-weight: var(--milo-settings-save-weight);
+}
+
+/* The fields' labels ("Textes" > "Libellé"): a switch's and a check box's,
+   on their right, and those on the left of a select (data-field-label),
+   over their inline weight. */
+.window :global(:is(.mantine-Switch-label, .mantine-Checkbox-label, [data-field-label])) {
+  color: var(--milo-settings-label-color) !important;
+  font-size: var(--milo-settings-label-size) !important;
+  font-weight: var(--milo-settings-label-weight) !important;
+}
+
+/* An information alert ("Info bulle"): Mantine's Alert, "default" variant.
+   Its inline margin is overridden. */
+.window :global(.mantine-Alert-root[data-variant="default"]) {
+  background-color: var(--milo-settings-info-bg);
+  border: var(--milo-settings-info-border-width) solid var(--milo-settings-info-border);
+  margin-top: var(--milo-settings-info-margin-top) !important;
+  padding: var(--milo-settings-info-padding);
+}
+
+.window :global(.mantine-Alert-root[data-variant="default"] .mantine-Alert-icon) {
+  color: var(--milo-settings-info-icon);
+}
+
+.window :global(.mantine-Alert-root[data-variant="default"] .mantine-Alert-title) {
+  color: var(--milo-settings-info-title);
+  font-size: var(--milo-settings-info-title-size);
+  font-weight: var(--milo-settings-info-title-weight);
+}
+
+.window :global(.mantine-Alert-root[data-variant="default"] .mantine-Alert-message) {
+  color: var(--milo-settings-info-text);
+  font-size: var(--milo-settings-info-text-size);
+  font-weight: var(--milo-settings-info-text-weight);
+}
+
+/* The other selects of the windows ("Formulaire" > "Select"): those outside
+   an editable list, whose own are set apart (SettingsList.module.css). Their
+   list, out of the window, takes it while one of them is open: the windows
+   are found by their mark (data-theme-scope), a module's class not being
+   usable there. */
+.window :global(.mantine-Select-input:not([data-settings-list] *)) {
+  background-color: var(--milo-settings-form-select-selected-bg);
+  color: var(--milo-settings-form-select-selected-color);
+  font-size: var(--milo-settings-form-select-selected-size);
+  font-weight: var(--milo-settings-form-select-selected-weight);
+}
+
+/* Its arrow — Mantine's chevron reads its variable —, and its icon on the
+   left, open or not. */
+.window :global(.mantine-Select-root:not([data-settings-list] *)) {
+  --combobox-chevron-color: var(--milo-settings-form-select-selected-chevron);
+}
+
+.window :global(.mantine-Select-section[data-position="left"]:not([data-settings-list] *)) {
+  color: var(--milo-settings-form-select-selected-icon);
+}
+
+.window :global(.mantine-Select-root:has(.mantine-Select-input[data-expanded]):not([data-settings-list] *) .mantine-Select-section[data-position="left"]),
+:global(html[data-theme-preview="settings-form-select-selected-hover"]) .window :global(.mantine-Select-section[data-position="left"]:not([data-settings-list] *)) {
+  color: var(--milo-settings-form-select-selected-hover-icon);
+}
+
+.window :global(.mantine-Select-input[data-expanded]:not([data-settings-list] *)),
+:global(html[data-theme-preview="settings-form-select-selected-hover"]) .window :global(.mantine-Select-input:not(:disabled):not([data-settings-list] *)) {
+  background-color: var(--milo-settings-form-select-selected-hover-bg) !important;
+}
+
+.window :global(.mantine-Select-section:not([data-settings-list] *) button) {
+  background-color: var(--milo-settings-form-select-clear-bg) !important;
+  color: var(--milo-settings-form-select-clear-icon) !important;
+}
+
+:global(body:has([data-theme-scope="settings"] .mantine-Select-input[data-expanded]:not([data-settings-list] *)) .mantine-Select-dropdown) {
+  background-color: var(--milo-settings-form-select-dropdown-bg);
+  border-style: solid;
+  border-color: var(--milo-settings-form-select-dropdown-border);
+  border-width: var(--milo-settings-form-select-dropdown-border-width);
+}
+
+:global(body:has([data-theme-scope="settings"] .mantine-Select-input[data-expanded]:not([data-settings-list] *)) .mantine-Select-option) {
+  color: var(--milo-settings-form-select-option-color);
+  font-size: var(--milo-settings-form-select-option-size);
+  font-weight: var(--milo-settings-form-select-option-weight);
+}
+
+:global(body:has([data-theme-scope="settings"] .mantine-Select-input[data-expanded]:not([data-settings-list] *)) .mantine-Select-option:is(:hover, [data-combobox-selected])),
+:global(html[data-theme-preview="settings-form-select-option-hover"] body:has([data-theme-scope="settings"] .mantine-Select-input[data-expanded]:not([data-settings-list] *)) .mantine-Select-option[data-checked]) {
+  background-color: var(--milo-settings-form-select-option-hover-bg);
+  color: var(--milo-settings-form-select-option-hover-color);
+  font-size: var(--milo-settings-form-select-option-hover-size);
+  font-weight: var(--milo-settings-form-select-option-hover-weight);
+}
+
+/* The content under horizontal tabs ("Onglets" > "Horizontaux" > "Padding
+   du contenu"), over its inline padding. */
+.window :global(.mantine-Tabs-root[data-orientation="horizontal"] > .mantine-Tabs-panel) {
+  padding-top: var(--milo-settings-htab-panel-padding-top) !important;
+}
+
+/* A column of controls — switches, one under the other (data-controls):
+   its gap ("Sections" > "Stack"), over Mantine's. */
+.window :global([data-controls]) {
+  gap: var(--milo-settings-stack-gap);
+}
+
+/* A "+ Ajouter…" link ("Lien +"): the space above it, over its own, and
+   no height nor line height of its own or of its inner parts — Mantine's
+   button's —: its text's and its icon's. */
+.window :global([data-add-link]) {
+  margin-top: var(--milo-settings-add-link-margin-top) !important;
+  height: auto !important;
+  line-height: inherit;
+}
+
+.window :global([data-add-link] :is(.mantine-Button-inner, .mantine-Button-label, .mantine-Button-section)) {
+  height: auto;
+}
+
+/* Each tab ("Onglets" > "Padding"), and the space after its icon. */
+.window :global(.mantine-Tabs-tab) {
+  padding: var(--milo-settings-tab-padding);
+}
+
+.window :global(.mantine-Tabs-tabSection[data-position="left"]) {
+  margin-inline-end: var(--milo-settings-tab-icon-margin-right);
+}
+
+/* A row's name right after its checkbox — or the space that stands for it —
+   is drawn back against it, as Impression's lists do (their nameSlot). */
+.window :global(:is(.milo-row-checkbox, .milo-row-checkbox-space) + .mantine-TextInput-root) {
+  margin-left: -10px;
+}
+
+/* The footer at the bottom of every window, whether its height is set or its
+   content's: the window is a column, its body fills it, and a footer right in
+   the body is pushed to its end — its space above ("Bas de page" > "Marge
+   haute") then the least there is. A window that lays its body out itself
+   (Paramétrage) keeps its own. */
+.window.window {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Every window's height ("Fenêtre" > "Hauteur"): its content's, set, or
+   a share of the screen's. Not over the whole screen: Mantine's 100dvh. */
+.window.window:not([data-full-screen]) {
+  height: var(--milo-settings-window-height);
+}
+
+.window :global(.mantine-Modal-body) {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.window :global(.mantine-Modal-body > [data-footer]) {
+  margin-top: auto !important;
+  padding-top: var(--milo-settings-footer-margin-top);
 }

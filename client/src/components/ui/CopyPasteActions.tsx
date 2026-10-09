@@ -1,7 +1,6 @@
 import {
   Button,
   Checkbox,
-  Group,
   Menu,
   Modal,
   Stack,
@@ -22,8 +21,10 @@ import {
 } from "../../themes/menus";
 import type { CopyResult, Id } from "@milo/shared";
 import CloseButton from "./CloseButton";
+import Footer from "./Footer";
 import { report } from "./copyReport";
 import { DrawerActionsContext } from "./IndicatorDrawer";
+import { themeWindow } from "../../lib/themeWindow";
 
 // The "Actions" menu of a "Projets" or "Tâches" widget drawer: copy the labels
 // or categories of the open board, then paste them into another board, from the
@@ -229,6 +230,7 @@ export default function CopyPasteActions({
         )}
 
       <Modal
+        attributes={themeWindow("paste")}
         opened={Boolean(toPaste && source)}
         onClose={() => setToPaste(null)}
         title={toPaste ? WORDS[toPaste].paste : ""}
@@ -258,12 +260,12 @@ export default function CopyPasteActions({
                 color="teal"
               />
             </Stack>
-            <Group justify="flex-end" mt={MODAL_PADDING}>
+            <Footer>
               <CloseButton onClick={() => setToPaste(null)} />
               <Button color="teal" onClick={validate} loading={saving}>
                 Coller
               </Button>
-            </Group>
+            </Footer>
           </>
         )}
       </Modal>

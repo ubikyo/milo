@@ -13,7 +13,6 @@ import {
   ListFooter,
   useRowSelection,
   EmptyList,
-  ROW_INSET,
   NAME_INSET,
   INPUT_STYLE,
   pluralize,
@@ -174,11 +173,8 @@ export default function SupportTemplates<E extends string>({
       field
     );
 
-  /** A row's style: the default inset with a checkbox, ROW_INSET without. */
-  const templateRowStyle = (rank: number) => ({
-    ...rowStyle(rank, total, false),
-    ...(canEdit ? null : { paddingLeft: ROW_INSET }),
-  });
+  /** A row's style: without its checkbox, read only, a simple list's. */
+  const templateRowStyle = (rank: number) => rowStyle(rank, total, false, canEdit ? "checkbox" : "simple");
 
   return (
     <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
@@ -221,8 +217,8 @@ export default function SupportTemplates<E extends string>({
                 <RowButton
                   icon={IconTemplate}
                   onClick={() => setTemplateOf(m.id)}
-                  // 5 px from the end of the row, padding included.
-                  rightMargin={5 - ROW_INSET}
+                  // Its distance to the end is the row's padding.
+                  rightMargin={0}
                 >
                   Modèle
                 </RowButton>

@@ -205,6 +205,16 @@ export const SCHEMA = `
     PRIMARY KEY (board_id, kind)
   );
 
+  -- The asset number templates of a board's declared asset widgets, kind by
+  -- kind (routes/asset-number-templates.ts), as JSON: name, TypeScript — run
+  -- by the browser.
+  CREATE TABLE IF NOT EXISTS board_asset_number_templates (
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    templates TEXT NOT NULL DEFAULT '[]',
+    PRIMARY KEY (board_id, kind)
+  );
+
   -- The last reference given in each list widget (repositories/references.ts):
   -- each one numbers its items from 1, and a deleted item's number is not
   -- given again.
@@ -255,6 +265,30 @@ export const SCHEMA = `
     -- rien. Une session oubliée finit par se fermer d'elle-même.
     last_seen_at TEXT NOT NULL DEFAULT '',
     expires_at TEXT NOT NULL DEFAULT ''
+  );
+
+  -- The API tokens of "Paramétrage" > "API" (shared/api-tokens.ts). Each
+  -- one acts as its own service account ("user_id", users.system = 2), kept
+  -- when the token is revoked: what it wrote keeps its author. Only the
+  -- token's SHA-256 is stored.
+  CREATE TABLE IF NOT EXISTS api_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    hint TEXT NOT NULL DEFAULT '',
+    access TEXT NOT NULL DEFAULT 'read',
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    last_used_at TEXT NOT NULL DEFAULT '',
+    expires_at TEXT NOT NULL DEFAULT ''
+  );
+
+  -- The workspaces an API token reaches.
+  CREATE TABLE IF NOT EXISTS api_token_workspaces (
+    token_id INTEGER NOT NULL REFERENCES api_tokens(id) ON DELETE CASCADE,
+    workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    PRIMARY KEY (token_id, workspace_id)
   );
 
   -- Acteurs d'un projet : association vers les utilisateurs.
@@ -932,9 +966,9 @@ ${DECLARED_ASSET_INDEXES}
     deviceid TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL DEFAULT '',
     -- The "tag" given to the agent (its "tag" option). Through it the
-    -- machine joins a board: the one with an asset label of the same name.
+    -- machine joins a board: the one whose list has a collector of that tag.
     tag TEXT NOT NULL DEFAULT '',
-    -- The board whose asset label names its tag. Null as long as none does:
+    -- The board whose list collects its tag. Null as long as none does:
     -- it then shows nowhere. "context_id" is no longer used.
     board_id INTEGER REFERENCES boards(id) ON DELETE CASCADE,
     context_id INTEGER REFERENCES contexts(id) ON DELETE CASCADE,

@@ -2,7 +2,9 @@
 // application requires it to exist and not to have expired.
 
 import type { NextFunction, Request, Response } from "express";
+import { API_TOKEN_PREFIX, API_WORKSPACE_HEADER } from "@milo/shared";
 import { env } from "../env.js";
+import { apiTokens, hashApiToken } from "../repositories/api-tokens.js";
 import {
   hasAccess,
   inOwnWorkspace,
@@ -10,6 +12,7 @@ import {
   templatesAccess,
   themesAccess,
   workspaceRights,
+  workspacesOf,
   sessions,
   users,
 } from "../repositories/users.js";
@@ -34,8 +37,50 @@ const tokenOf = (req: Request): string | null => {
   return header.startsWith("Bearer ") ? header.slice(7) : null;
 };
 
+/**
+ * An API token ("Paramétrage" > "API"): its service account, in the
+ * workspace the request names among the token's — or the one it last used.
+ * A read-only token only reads.
+ */
+const apiAuth = (req: Request, token: string, next: NextFunction): void => {
+  const row = apiTokens.byHash.get(hashApiToken(token));
+  if (!row) throw new HttpError(401, "Jeton d'API inconnu ou révoqué");
+
+  const currentTime = Date.now();
+  if (row.expires_at && Date.parse(row.expires_at) < currentTime) {
+    throw new HttpError(401, "Jeton d'API expiré");
+  }
+  if (row.access !== "write" && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    throw new HttpError(403, "Ce jeton d'API est en lecture seule");
+  }
+  const account = users.byId.get(row.user_id);
+  if (!account) throw new HttpError(401, "Jeton d'API inconnu ou révoqué");
+
+  // The last use, once a minute at most: the write is what costs.
+  const usedAgo = row.last_used_at ? currentTime - Date.parse(row.last_used_at) : Infinity;
+  if (usedAgo > 60_000) apiTokens.touch.run(new Date(currentTime).toISOString(), row.id);
+
+  // The workspace is kept on its own account: changing it disturbs no one.
+  const asked = req.get(API_WORKSPACE_HEADER);
+  if (asked) {
+    const id = Number(asked);
+    if (!workspacesOf(account).some((w) => w.id === id)) {
+      throw new HttpError(403, "Ce jeton d'API n'a pas accès à ce workspace");
+    }
+    if (id !== account.workspace_id) users.setWorkspace.run(id, account.id);
+    account.workspace_id = id;
+  }
+  req.user = inOwnWorkspace(account);
+  if (req.user.workspace_id === null) {
+    throw new HttpError(403, "Ce jeton d'API n'a accès à aucun workspace");
+  }
+  req.token = token;
+  next();
+};
+
 export const requireAuth = (req: Request, _res: Response, next: NextFunction): void => {
   const token = tokenOf(req);
+  if (token?.startsWith(API_TOKEN_PREFIX)) return apiAuth(req, token, next);
   const session = token ? sessions.byToken.get(token) : undefined;
 
   if (!session || !token) throw new HttpError(401, "Authentification requise");

@@ -70,6 +70,17 @@ export interface ThemeSizeDefinition {
    */
   after?: string;
   /**
+   * One way only — a margin's, a gap's —: the arrow its field shows (a
+   * padding's sides show theirs).
+   */
+  direction?: ThemeSide | "vertical" | "horizontal";
+  /**
+   * 0 stands for "auto" — a window's height following its content —, a
+   * negative value for a percentage (its magnitude): its field offers
+   * "Auto", "px" or "%".
+   */
+  auto?: boolean;
+  /**
    * Another size whose value it takes while it is not set — like a color's
    * "@body" —; defaultValue is then that size's own default.
    */
@@ -83,7 +94,16 @@ export interface ThemeSizeDefinition {
  */
 export type ThemeColors = Record<
   string,
-  { light?: string; dark?: string; sizes?: { light?: number; dark?: number } }
+  {
+    light?: string;
+    dark?: string;
+    sizes?: { light?: number; dark?: number };
+    /**
+     * On a window's own value ("key@window"): the window follows the style's
+     * value, although it has one of its own by default (THEME_WINDOW_DEFAULTS).
+     */
+    inherit?: boolean;
+  }
 >;
 
 export const THEME_COLOR_GROUPS: ThemeColorGroup[] = [
@@ -105,18 +125,52 @@ export const THEME_COLOR_GROUPS: ThemeColorGroup[] = [
   { key: "charts", label: "Widgets — graphiques", hint: "Les couleurs par défaut des indicateurs." },
   { key: "clock", label: "Widget Horloge", hint: "Les couleurs par défaut de l'horloge." },
   { key: "m365", label: "Widgets Microsoft 365", hint: "Calendrier, rendez-vous et messages." },
-  { key: "settings-window", label: "Interface", scope: "settings" },
-  { key: "settings-header", label: "Entête", scope: "settings" },
-  { key: "settings-all-tabs", label: "Onglets", scope: "settings" },
-  { key: "settings-titles", label: "Titres", scope: "settings" },
-  { key: "settings-description", label: "Description", scope: "settings" },
-  { key: "settings-checkboxes", label: "Case à cocher", scope: "settings" },
-  { key: "settings-switches", label: "Switch", scope: "settings" },
-  { key: "settings-slider", label: "Slider", scope: "settings" },
-  { key: "settings-buttons", label: "Boutons", scope: "settings" },
-  { key: "settings-lists", label: "Listes éditables", scope: "settings" },
+  { key: "settings-common", label: "Thèmes communs", scope: "settings" },
+  { key: "settings-window", label: "Fenêtre", scope: "settings", parent: "settings-common" },
+  { key: "settings-sections", label: "Sections", scope: "settings", parent: "settings-common" },
+  { key: "settings-texts", label: "Textes", scope: "settings", parent: "settings-common" },
+  { key: "settings-form", label: "Formulaire", scope: "settings", parent: "settings-common" },
+  { key: "settings-specific", label: "Thèmes spécifiques", scope: "settings" },
+  { key: "settings-widgets-list", label: "Liste des widgets", hint: "Le tiroir des widgets", scope: "settings", parent: "settings-specific" },
+  { key: "widgets-drawer-kinds", label: "Groupes de widgets", scope: "settings", parent: "settings-widgets-list" },
+  { key: "widgets-drawer-items", label: "Widgets", scope: "settings", parent: "settings-widgets-list" },
+  { key: "settings-profile", label: "Profil", hint: "La fenêtre Profil", scope: "settings", parent: "settings-specific" },
+  { key: "settings-profile-sections", label: "Sections", scope: "settings", parent: "settings-profile" },
+  { key: "settings-profile-header", label: "Profil", hint: "La photo, le nom et l'e-mail", scope: "settings", parent: "settings-profile-sections" },
+  { key: "settings-profile-photo", label: "Photo", scope: "settings", parent: "settings-profile-header" },
+  { key: "settings-profile-name", label: "Nom", scope: "settings", parent: "settings-profile-header" },
+  { key: "settings-profile-email", label: "E-mail", scope: "settings", parent: "settings-profile-header" },
+  { key: "settings-template-editor", label: "Éditeur de modèles", hint: "Les modèles d'e-mail, d'étiquette et de format de nom d'asset", scope: "settings", parent: "settings-specific" },
+  { key: "settings-template-normal", label: "Fenêtre normale", scope: "settings", parent: "settings-template-editor" },
+  { key: "settings-template-full", label: "Fenêtre plein écran", scope: "settings", parent: "settings-template-editor" },
+  { key: "settings-template-full-header", label: "Entête", scope: "settings", parent: "settings-template-full" },
+  { key: "settings-template-full-panes", label: "Panneaux", scope: "settings", parent: "settings-template-full" },
+  { key: "settings-template-full-footer", label: "Bas de page", scope: "settings", parent: "settings-template-full" },
+  { key: "settings-header", label: "Entête", scope: "settings", parent: "settings-sections" },
+  { key: "settings-all-tabs", label: "Onglets", scope: "settings", parent: "settings-sections" },
+  { key: "settings-info", label: "Info bulle", hint: "Les alertes d'information", scope: "settings", parent: "settings-sections" },
+  { key: "settings-footer", label: "Bas de page", hint: "Les boutons Fermer, Enregistrer… des fenêtres et des tiroirs", scope: "settings", parent: "settings-sections" },
+  { key: "settings-titles", label: "Titres", scope: "settings", parent: "settings-texts" },
+  { key: "settings-description", label: "Description", scope: "settings", parent: "settings-texts" },
+  { key: "settings-label", label: "Libellé", hint: "À gauche des listes déroulantes, à droite des switchs et des cases à cocher", scope: "settings", parent: "settings-texts" },
+  { key: "settings-checkboxes", label: "Case à cocher", scope: "settings", parent: "settings-form" },
+  { key: "settings-switches", label: "Switch", scope: "settings", parent: "settings-form" },
+  { key: "settings-slider", label: "Slider", scope: "settings", parent: "settings-form" },
+  { key: "settings-form-select", label: "Select", scope: "settings", parent: "settings-form" },
+  { key: "settings-buttons", label: "Boutons", scope: "settings", parent: "settings-form" },
+  { key: "settings-lists", label: "Liste", scope: "settings", parent: "settings-form" },
+  { key: "settings-form-select-selected", label: "Élément sélectionné", scope: "settings", parent: "settings-form-select" },
+  { key: "settings-form-select-selected-normal", label: "État normal", scope: "settings", parent: "settings-form-select-selected" },
+  { key: "settings-form-select-selected-hover", label: "État sélectionné", scope: "settings", parent: "settings-form-select-selected" },
+  { key: "settings-form-select-clear", label: "Bouton reset", scope: "settings", parent: "settings-form-select" },
+  { key: "settings-form-select-dropdown", label: "Liste", scope: "settings", parent: "settings-form-select" },
+  { key: "settings-form-select-options", label: "Texte", scope: "settings", parent: "settings-form-select-dropdown" },
+  { key: "settings-form-select-option", label: "À l'état normal", scope: "settings", parent: "settings-form-select-options" },
+  { key: "settings-form-select-option-hover", label: "Au survol", scope: "settings", parent: "settings-form-select-options" },
   { key: "settings-title", label: "Titre onglet", scope: "settings", parent: "settings-titles" },
   { key: "settings-group-title", label: "Titre groupe", hint: "Au-dessus des listes éditables", scope: "settings", parent: "settings-titles" },
+  { key: "settings-stack", label: "Stack vertical", hint: "Les contrôles les uns sous les autres, comme les switchs", scope: "settings", parent: "settings-sections" },
+  { key: "settings-hstack", label: "Stack horizontal", hint: "Les contrôles côte à côte, comme les boutons Fermer et Enregistrer", scope: "settings", parent: "settings-sections" },
   { key: "settings-scrollbars", label: "Barre de défilement", scope: "settings", parent: "settings-window" },
   { key: "settings-save", label: "Enregistrer", scope: "settings", parent: "settings-buttons" },
   { key: "settings-close", label: "Fermer", scope: "settings", parent: "settings-buttons" },
@@ -124,8 +178,16 @@ export const THEME_COLOR_GROUPS: ThemeColorGroup[] = [
   { key: "settings-checkbox-active", label: "Active", scope: "settings", parent: "settings-checkboxes" },
   { key: "settings-switch", label: "Inactif", scope: "settings", parent: "settings-switches" },
   { key: "settings-switch-active", label: "Actif", scope: "settings", parent: "settings-switches" },
-  { key: "settings-tabs", label: "Inactif", scope: "settings", parent: "settings-all-tabs" },
-  { key: "settings-active-tab", label: "Actif", scope: "settings", parent: "settings-all-tabs" },
+  { key: "settings-vtabs", label: "Verticaux", hint: "Paramétrage", scope: "settings", parent: "settings-all-tabs" },
+  { key: "settings-tabs", label: "Inactif", scope: "settings", parent: "settings-vtabs" },
+  { key: "settings-active-tab", label: "Actif", scope: "settings", parent: "settings-vtabs" },
+  { key: "settings-htabs", label: "Horizontaux", hint: "Les autres fenêtres", scope: "settings", parent: "settings-all-tabs" },
+  { key: "settings-htab", label: "Inactif", scope: "settings", parent: "settings-htabs" },
+  { key: "settings-htab-active", label: "Actif", scope: "settings", parent: "settings-htabs" },
+  { key: "settings-list-types", label: "Types de listes", scope: "settings", parent: "settings-lists" },
+  { key: "settings-list-simple", label: "Liste simple", hint: "Workspaces, Modèles d'e-mail", scope: "settings", parent: "settings-list-types" },
+  { key: "settings-list-accordion", label: "Liste déroulante", hint: "Gestion des droits", scope: "settings", parent: "settings-list-types" },
+  { key: "settings-list-checkbox", label: "Liste avec case à cocher", hint: "Imprimantes, Formats de papier, Thèmes, Token", scope: "settings", parent: "settings-list-types" },
   { key: "settings-add-link", label: "Lien +", hint: "« Ajouter un utilisateur », « Ajouter un workspace »…", scope: "settings", parent: "settings-lists" },
   { key: "settings-lists-texts", label: "Textes", scope: "settings", parent: "settings-lists" },
   { key: "settings-theme-list-text", label: "Texte principal", hint: "Le nom des lignes", scope: "settings", parent: "settings-lists-texts" },
@@ -144,7 +206,9 @@ export const THEME_COLOR_GROUPS: ThemeColorGroup[] = [
   { key: "settings-principals-tag", label: "Tag", hint: "Gestion des droits, Impression, Modèles", scope: "settings", parent: "settings-lists" },
   { key: "settings-list-buttons", label: "Boutons", scope: "settings", parent: "settings-lists" },
   { key: "settings-workspaces-button", label: "Détail", hint: "Les boutons des lignes : Workspaces, Modèles", scope: "settings", parent: "settings-list-buttons" },
-  { key: "settings-reset-button", label: "Réinitialiser", hint: "Le bouton de réinitialisation, quand il y a lieu : Modèles", scope: "settings", parent: "settings-list-buttons" },
+  { key: "settings-reset-button", label: "Réinitialiser", hint: "Le bouton de réinitialisation des lignes : Modèles", scope: "settings", parent: "settings-list-buttons" },
+  { key: "settings-reset-button-inactive", label: "Inactif", hint: "Rien à réinitialiser", scope: "settings", parent: "settings-reset-button" },
+  { key: "settings-reset-button-active", label: "Actif", hint: "La ligne a été modifiée", scope: "settings", parent: "settings-reset-button" },
   { key: "settings-row-checkboxes", label: "Case à cocher", scope: "settings", parent: "settings-lists" },
   { key: "settings-row-checkbox", label: "Inactive", scope: "settings", parent: "settings-row-checkboxes" },
   { key: "settings-row-checkbox-active", label: "Active", scope: "settings", parent: "settings-row-checkboxes" },
@@ -156,11 +220,7 @@ export const THEME_COLOR_GROUPS: ThemeColorGroup[] = [
   { key: "settings-theme-list-options", label: "Texte", scope: "settings", parent: "settings-theme-list-dropdown" },
   { key: "settings-theme-list-option", label: "À l'état normal", scope: "settings", parent: "settings-theme-list-options" },
   { key: "settings-theme-list-option-hover", label: "Au survol", scope: "settings", parent: "settings-theme-list-options" },
-  { key: "widgets-drawer", label: "Interface", scope: "widgets-drawer" },
-  { key: "widgets-drawer-scrollbars", label: "Barre de défilement", scope: "widgets-drawer", parent: "widgets-drawer" },
-  { key: "widgets-drawer-heading", label: "Titre", scope: "widgets-drawer" },
-  { key: "widgets-drawer-kinds", label: "Groupes de widgets", scope: "widgets-drawer" },
-  { key: "widgets-drawer-items", label: "Widgets", scope: "widgets-drawer" },
+
 ];
 
 /**
@@ -295,11 +355,9 @@ export const THEME_COLORS: ThemeColorDefinition[] = [
   { key: "settings-add-link-text", group: "settings-add-link", label: "Couleur", light: PALETTE.green, dark: PALETTE.green },
   { key: "settings-checkbox-bg", group: "settings-checkbox", label: "Couleur de fond coche", light: "white", dark: "dark.6" },
   { key: "settings-checkbox-border", group: "settings-checkbox", label: "Couleur de bordure", light: "@default-border", dark: "@default-border" },
-  { key: "settings-checkbox-text", group: "settings-checkbox", label: "Couleur", hint: "Le libellé", light: "@text", dark: "@text" },
   { key: "settings-checkbox-active-bg", group: "settings-checkbox-active", label: "Couleur de fond coche", light: PALETTE.green, dark: PALETTE.green },
   { key: "settings-checkbox-active-border", group: "settings-checkbox-active", label: "Couleur de bordure", light: "@settings-checkbox-active-bg", dark: "@settings-checkbox-active-bg" },
   { key: "settings-checkbox-active-check", group: "settings-checkbox-active", label: "Couleur coche", light: "white", dark: "white" },
-  { key: "settings-checkbox-active-text", group: "settings-checkbox-active", label: "Couleur", hint: "Le libellé", light: "@settings-checkbox-text", dark: "@settings-checkbox-text" },
   { key: "settings-row-checkbox-bg", group: "settings-row-checkbox", label: "Couleur de fond coche", light: "white", dark: "dark.6" },
   { key: "settings-row-checkbox-border", group: "settings-row-checkbox", label: "Couleur de bordure", light: "@default-border", dark: "@default-border" },
   { key: "settings-row-checkbox-active-bg", group: "settings-row-checkbox-active", label: "Couleur de fond coche", light: PALETTE.green, dark: PALETTE.green },
@@ -334,8 +392,10 @@ export const THEME_COLORS: ThemeColorDefinition[] = [
   { key: "settings-workspaces-button-bg", group: "settings-workspaces-button", label: "Couleur de fond", light: PALETTE.green, dark: PALETTE.green },
   { key: "settings-workspaces-button-icon", group: "settings-workspaces-button", label: "Couleur de l'icône", light: "@settings-workspaces-button-color", dark: "@settings-workspaces-button-color" },
   { key: "settings-workspaces-button-color", group: "settings-workspaces-button", label: "Couleur du texte", light: "white", dark: "white" },
-  { key: "settings-reset-button-bg", group: "settings-reset-button", label: "Couleur de fond", light: PALETTE.green, dark: PALETTE.green },
-  { key: "settings-reset-button-icon", group: "settings-reset-button", label: "Couleur de l'icône", light: "white", dark: "white" },
+  { key: "settings-reset-button-inactive-bg", group: "settings-reset-button-inactive", label: "Couleur de fond", light: "@control-bg", dark: "@control-bg" },
+  { key: "settings-reset-button-inactive-icon", group: "settings-reset-button-inactive", label: "Couleur de l'icône", light: "@text", dark: "@text" },
+  { key: "settings-reset-button-bg", group: "settings-reset-button-active", label: "Couleur de fond", light: PALETTE.green, dark: PALETTE.green },
+  { key: "settings-reset-button-icon", group: "settings-reset-button-active", label: "Couleur de l'icône", light: "white", dark: "white" },
   { key: "settings-principals-chevron-open-color", group: "settings-principals-chevron-open", label: "Couleur", light: "gray.9", dark: "gray.0" },
   { key: "settings-principals-chevron-closed-color", group: "settings-principals-chevron-closed", label: "Couleur", light: "gray.9", dark: "gray.0" },
   { key: "settings-principals-icon-bg", group: "settings-principals-icon", label: "Couleur de fond", light: "@control-bg", dark: "@control-bg" },
@@ -344,8 +404,38 @@ export const THEME_COLORS: ThemeColorDefinition[] = [
   { key: "settings-principals-tag-text", group: "settings-principals-tag", label: "Couleur", light: "white", dark: "white" },
   { key: "settings-principals-email-text", group: "settings-principals-email", label: "Couleur", light: "@dimmed", dark: "@dimmed" },
   { key: "settings-principals-summary-text", group: "settings-principals-summary", label: "Couleur", light: "@dimmed", dark: "@dimmed" },
+  { key: "settings-htab-icon", group: "settings-htab", label: "Couleur de l'icône", light: "@settings-htab-text", dark: "@settings-htab-text" },
+  { key: "settings-htab-text", group: "settings-htab", label: "Couleur du nom", light: "@tab-text", dark: "@tab-text" },
+  { key: "settings-htab-active-bg", group: "settings-htab-active", label: "Couleur de fond", light: "@tab-active-bg", dark: "@tab-active-bg", alpha: true },
+  { key: "settings-htab-active-icon", group: "settings-htab-active", label: "Couleur de l'icône", light: "@settings-htab-active-text", dark: "@settings-htab-active-text" },
+  { key: "settings-htab-active-text", group: "settings-htab-active", label: "Couleur du nom", light: "@tab-active-text", dark: "@tab-active-text" },
+  { key: "settings-htab-active-border", group: "settings-htab-active", label: "Couleur du filet", light: "@tab-active-border", dark: "@tab-active-border" },
+  { key: "settings-form-select-selected-bg", group: "settings-form-select-selected-normal", label: "Couleur de fond", light: "@default", dark: "@default" },
+  { key: "settings-form-select-selected-icon", group: "settings-form-select-selected-normal", label: "Couleur de l'icône", hint: "À gauche : soleil, lune…", light: "@dimmed", dark: "@dimmed" },
+  { key: "settings-form-select-selected-hover-icon", group: "settings-form-select-selected-hover", label: "Couleur de l'icône", light: "@settings-form-select-selected-icon", dark: "@settings-form-select-selected-icon" },
+  { key: "settings-form-select-selected-color", group: "settings-form-select-selected-normal", label: "Couleur", light: "@text", dark: "@text" },
+  { key: "settings-form-select-selected-chevron", group: "settings-form-select-selected-normal", label: "Couleur de l'indicateur", light: "@dimmed", dark: "@dimmed" },
+  { key: "settings-form-select-selected-hover-bg", group: "settings-form-select-selected-hover", label: "Couleur de fond", light: "@default", dark: "@default" },
+  { key: "settings-form-select-clear-bg", group: "settings-form-select-clear", label: "Couleur de fond", light: "#00000000", dark: "#00000000", alpha: true },
+  { key: "settings-form-select-clear-icon", group: "settings-form-select-clear", label: "Couleur de l'icône", light: "@settings-form-select-selected-chevron", dark: "@settings-form-select-selected-chevron" },
+  { key: "settings-form-select-dropdown-bg", group: "settings-form-select-dropdown", label: "Couleur de fond", light: "@body", dark: "@body" },
+  { key: "settings-form-select-dropdown-border", group: "settings-form-select-dropdown", label: "Couleur de bordure", light: "@default-border", dark: "@default-border" },
+  { key: "settings-form-select-option-color", group: "settings-form-select-option", label: "Couleur texte", light: "@text", dark: "@text" },
+  { key: "settings-form-select-option-hover-bg", group: "settings-form-select-option-hover", label: "Couleur de fond", light: "gray.0", dark: "dark.7" },
+  { key: "settings-form-select-option-hover-color", group: "settings-form-select-option-hover", label: "Couleur texte", light: "@settings-form-select-option-color", dark: "@settings-form-select-option-color" },
+  { key: "settings-label-color", group: "settings-label", label: "Couleur", light: "@text", dark: "@text" },
+  { key: "settings-info-bg", group: "settings-info", label: "Couleur de fond", light: "@default", dark: "@default" },
+  { key: "settings-info-border", group: "settings-info", label: "Couleur de bordure", light: "@default-border", dark: "@default-border" },
+  { key: "settings-info-icon", group: "settings-info", label: "Couleur icône", light: "@text", dark: "@text" },
+  { key: "settings-info-title", group: "settings-info", label: "Couleur titre", light: "@text", dark: "@text" },
+  { key: "settings-info-text", group: "settings-info", label: "Couleur texte", light: "@strong-text", dark: "@strong-text" },
+  { key: "settings-profile-bg", group: "settings-profile-header", label: "Couleur de fond", light: "#00000000", dark: "#00000000", alpha: true },
+  { key: "settings-profile-photo-border", group: "settings-profile-photo", label: "Couleur de bordure", light: "#00000000", dark: "#00000000", alpha: true },
+  { key: "settings-profile-name-color", group: "settings-profile-name", label: "Couleur", light: "@text", dark: "@text" },
+  { key: "settings-profile-email-color", group: "settings-profile-email", label: "Couleur", light: "@dimmed", dark: "@dimmed" },
   { key: "settings-header-bg", group: "settings-header", label: "Couleur de fond", light: "@dark-header", dark: "@dark-header" },
   { key: "settings-header-text", group: "settings-header", label: "Couleur", light: "@dark-header-text", dark: "@dark-header-text" },
+  { key: "settings-header-border", group: "settings-header", label: "Couleur bordure du bas", light: "@divider", dark: "@divider" },
   { key: "settings-title-text", group: "settings-title", label: "Couleur", light: "@text", dark: "@text" },
   { key: "settings-description-text", group: "settings-description", label: "Couleur", light: "@dimmed", dark: "@dimmed" },
   { key: "settings-tab-bg", group: "settings-tabs", label: "Couleur de fond", hint: "Derrière la colonne des onglets", light: "@tab-bg", dark: "@tab-bg", alpha: true },
@@ -356,17 +446,23 @@ export const THEME_COLORS: ThemeColorDefinition[] = [
   { key: "settings-tab-active-text", group: "settings-active-tab", label: "Couleur du nom", light: "@tab-active-text", dark: "@tab-active-text" },
   { key: "settings-tab-active-border", group: "settings-active-tab", label: "Couleur du filet", light: "@tab-active-border", dark: "@tab-active-border" },
 
-  // The widgets drawer (WidgetDrawer): by default, what it showed before
-  // having its own colors.
-  { key: "widgets-drawer-bg", group: "widgets-drawer", label: "Couleur de fond", hint: "Fond du tiroir", light: "@body", dark: "@body" },
-  { key: "widgets-drawer-scrollbar", group: "widgets-drawer-scrollbars", label: "Couleur slider", light: "@scrollbar", dark: "@scrollbar" },
-  { key: "widgets-drawer-scrollbar-track", group: "widgets-drawer-scrollbars", label: "Couleur piste", hint: "Au survol de la barre", light: "gray.0", dark: "dark.8" },
-  { key: "widgets-drawer-title", group: "widgets-drawer-heading", label: "Couleur", light: "white", dark: "white" },
+  // The widgets drawer's list (WidgetDrawer, "Thèmes spécifiques" > "Liste des
+  // widgets"): by default, what it showed before having its own colors.
   { key: "widgets-drawer-group", group: "widgets-drawer-kinds", label: "Couleur", hint: "Titres des groupes de widgets", light: "white", dark: "white" },
   { key: "widgets-drawer-item-bg", group: "widgets-drawer-items", label: "Couleur de fond", light: "@inset-bg", dark: "@inset-bg" },
   { key: "widgets-drawer-grip", group: "widgets-drawer-items", label: "Couleur poignée", light: "@dimmed", dark: "@dimmed" },
   { key: "widgets-drawer-icon", group: "widgets-drawer-items", label: "Couleur de l'icône", light: "@text", dark: "@text" },
   { key: "widgets-drawer-item-text", group: "widgets-drawer-items", label: "Couleur du nom", light: "@text", dark: "@text" },
+
+  // The template windows (MailTemplateModal, LabelTemplateModal,
+  // AssetNumberTemplateModal), at their size and over the whole browser
+  // window: by default, what they showed before having their own colors.
+  { key: "settings-template-frame", group: "settings-template-normal", label: "Couleur du cadre", hint: "Autour des volets, et leurs poignées", light: "@header-bg", dark: "@header-bg" },
+  { key: "settings-template-icon", group: "settings-template-normal", label: "Couleur de l'icône Agrandir", light: "white", dark: "white" },
+  { key: "settings-template-full-header-bg", group: "settings-template-full-header", label: "Couleur de fond", light: "@body", dark: "@body" },
+  { key: "settings-template-full-title", group: "settings-template-full-header", label: "Couleur du titre", light: "@strong-text", dark: "@strong-text" },
+  { key: "settings-template-full-icon", group: "settings-template-full-header", label: "Couleur de l'icône Réduire", light: "@strong-text", dark: "@strong-text" },
+  { key: "settings-template-full-line", group: "settings-template-full-panes", label: "Couleur des filets", hint: "Au-dessus et sous les panneaux, et leurs poignées", light: "@header-bg", dark: "@header-bg" },
 ];
 
 export const THEME_SIDES = ["top", "right", "bottom", "left"] as const;
@@ -396,16 +492,22 @@ const paddingSizes = (
 export const themePaddingOf = (key: string): string => key.replace(/-(top|right|bottom|left)$/, "");
 
 export const THEME_SIZES: ThemeSizeDefinition[] = [
-  // The tabs' column, against the window's edges but on its right, where
-  // the content begins.
+  // The windows' body: the tabs' backgrounds reach its edges past it (tabs.css).
+  ...paddingSizes("settings-window-padding", { group: "settings-window", label: "Padding", hint: "Le corps des fenêtres", defaultValue: 40, max: 80, after: "settings-bg" }),
+  // The space between the horizontal tabs and their content.
   ...paddingSizes(
-    "settings-padding",
-    { group: "settings-all-tabs", label: "Padding", hint: "La colonne des onglets", defaultValue: 40, max: 80 },
+    "settings-htab-panel-padding",
+    { group: "settings-htabs", label: "Padding haut du contenu", hint: "Entre les onglets et leur contenu", defaultValue: 40, max: 80 },
     {},
-    ["top", "bottom", "left"],
+    ["top"],
   ),
-  // The tab's content and the buttons under it, beside the tabs.
-  ...paddingSizes("settings-panel-padding", { group: "settings-all-tabs", label: "Padding du contenu", hint: "Le contenu de l'onglet ouvert et les boutons", defaultValue: 40, max: 80 }),
+  // The space between the vertical tabs and the tab's content.
+  ...paddingSizes(
+    "settings-panel-padding",
+    { group: "settings-vtabs", label: "Padding gauche du contenu", hint: "Entre les onglets et le contenu de l'onglet ouvert", defaultValue: 40, max: 80 },
+    {},
+    ["left"],
+  ),
   { key: "settings-scrollbar-width", group: "settings-scrollbars", label: "Largeur", defaultValue: 2, min: 1, max: 16, unit: "px" },
   { key: "settings-save-size", group: "settings-save", label: "Taille", defaultValue: 14, min: 10, max: 30, unit: "px" },
   { key: "settings-save-weight", group: "settings-save", label: "Graisse", defaultValue: 600, min: 100, max: 900, step: 100, unit: "" },
@@ -413,16 +515,13 @@ export const THEME_SIZES: ThemeSizeDefinition[] = [
   { key: "settings-close-weight", group: "settings-close", label: "Graisse", defaultValue: 600, min: 100, max: 900, step: 100, unit: "" },
   { key: "settings-add-link-size", group: "settings-add-link", label: "Taille", defaultValue: 12, min: 8, max: 30, unit: "px" },
   { key: "settings-add-link-weight", group: "settings-add-link", label: "Graisse", defaultValue: 600, min: 100, max: 900, step: 100, unit: "" },
-  { key: "settings-checkbox-size", group: "settings-checkbox", label: "Taille", defaultValue: 14, min: 8, max: 30, unit: "px" },
-  { key: "settings-checkbox-weight", group: "settings-checkbox", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
-  { key: "settings-checkbox-active-size", group: "settings-checkbox-active", label: "Taille", defaultValue: 14, min: 8, max: 30, unit: "px", defaultFrom: "settings-checkbox-size" },
-  { key: "settings-checkbox-active-weight", group: "settings-checkbox-active", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "", defaultFrom: "settings-checkbox-weight" },
   { key: "settings-theme-list-text-size", group: "settings-theme-list-text", label: "Taille", defaultValue: 14, min: 8, max: 30, unit: "px" },
   { key: "settings-theme-list-text-weight", group: "settings-theme-list-text", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
   { key: "settings-theme-list-selected-size", group: "settings-theme-list-selected-normal", label: "Taille", defaultValue: 14, min: 8, max: 30, unit: "px" },
   { key: "settings-theme-list-selected-weight", group: "settings-theme-list-selected-normal", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
-  { key: "settings-description-margin-bottom", group: "settings-description", label: "Marge basse", hint: "Sous la description et les textes d'introduction", defaultValue: 15, min: 0, max: 80, unit: "px" },
-  { key: "settings-list-gap", group: "settings-lists", label: "Marge basse", hint: "Entre les listes d'un onglet (Affichage, Impression)", defaultValue: 30, min: 0, max: 80, unit: "px" },
+  { key: "settings-description-margin-bottom", group: "settings-description", label: "Marge basse", hint: "Sous la description et les textes d'introduction", defaultValue: 20, min: 0, max: 80, unit: "px", direction: "bottom" },
+  { key: "settings-list-gap", group: "settings-lists", label: "Marge basse", hint: "Entre les listes d'un onglet (Affichage, Impression)", defaultValue: 30, min: 0, max: 80, unit: "px", direction: "vertical" },
+  { key: "settings-group-title-margin-bottom", group: "settings-group-title", label: "Marge basse", defaultValue: 5, min: 0, max: 60, unit: "px", direction: "bottom" },
   { key: "settings-group-title-size", group: "settings-group-title", label: "Taille", defaultValue: 14, min: 8, max: 40, unit: "px" },
   { key: "settings-group-title-weight", group: "settings-group-title", label: "Graisse", defaultValue: 500, min: 100, max: 900, step: 100, unit: "" },
   { key: "settings-input-size", group: "settings-input", label: "Taille", defaultValue: 12, min: 8, max: 30, unit: "px" },
@@ -434,6 +533,7 @@ export const THEME_SIZES: ThemeSizeDefinition[] = [
   { key: "settings-theme-list-option-weight", group: "settings-theme-list-option", label: "Graisse texte", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
   { key: "settings-theme-list-option-hover-size", group: "settings-theme-list-option-hover", label: "Taille texte", defaultValue: 14, min: 8, max: 30, unit: "px", defaultFrom: "settings-theme-list-option-size" },
   { key: "settings-theme-list-option-hover-weight", group: "settings-theme-list-option-hover", label: "Graisse texte", defaultValue: 400, min: 100, max: 900, step: 100, unit: "", defaultFrom: "settings-theme-list-option-weight" },
+  { key: "settings-workspaces-button-width", group: "settings-workspaces-button", label: "Largeur", defaultValue: 100, min: 20, max: 300, unit: "px" },
   { key: "settings-workspaces-button-size", group: "settings-workspaces-button", label: "Taille", defaultValue: 14, min: 8, max: 30, unit: "px" },
   { key: "settings-workspaces-button-weight", group: "settings-workspaces-button", label: "Graisse", defaultValue: 500, min: 100, max: 900, step: 100, unit: "" },
   { key: "settings-principals-tag-size", group: "settings-principals-tag", label: "Taille", defaultValue: 10, min: 8, max: 30, unit: "px" },
@@ -443,6 +543,49 @@ export const THEME_SIZES: ThemeSizeDefinition[] = [
   { key: "settings-principals-summary-size", group: "settings-principals-summary", label: "Taille", defaultValue: 12, min: 8, max: 30, unit: "px" },
   { key: "settings-principals-summary-weight", group: "settings-principals-summary", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
   // Its height is the title's and the padding's alone.
+  { key: "settings-form-select-selected-size", group: "settings-form-select-selected-normal", label: "Taille", defaultValue: 14, min: 8, max: 30, unit: "px" },
+  { key: "settings-form-select-selected-weight", group: "settings-form-select-selected-normal", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-form-select-dropdown-border-width", group: "settings-form-select-dropdown", label: "Taille de la bordure", defaultValue: 1, min: 0, max: 10, unit: "px" },
+  { key: "settings-form-select-option-size", group: "settings-form-select-option", label: "Taille texte", defaultValue: 14, min: 8, max: 30, unit: "px" },
+  { key: "settings-form-select-option-weight", group: "settings-form-select-option", label: "Graisse texte", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-form-select-option-hover-size", group: "settings-form-select-option-hover", label: "Taille texte", defaultValue: 14, min: 8, max: 30, unit: "px", defaultFrom: "settings-form-select-option-size" },
+  { key: "settings-form-select-option-hover-weight", group: "settings-form-select-option-hover", label: "Graisse texte", defaultValue: 400, min: 100, max: 900, step: 100, unit: "", defaultFrom: "settings-form-select-option-weight" },
+  { key: "settings-label-size", group: "settings-label", label: "Taille", defaultValue: 14, min: 8, max: 30, unit: "px" },
+  { key: "settings-label-weight", group: "settings-label", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-info-border-width", group: "settings-info", label: "Taille de bordure", defaultValue: 1, min: 0, max: 10, unit: "px", after: "settings-info-border" },
+  { key: "settings-info-margin-top", group: "settings-info", label: "Marge haute", hint: "L'espace au-dessus de l'info bulle", defaultValue: 40, min: 0, max: 80, unit: "px", after: "settings-info-border", direction: "top" },
+  ...paddingSizes("settings-info-padding", { group: "settings-info", label: "Padding", defaultValue: 16, max: 60, after: "settings-info-border" }),
+  { key: "settings-info-title-size", group: "settings-info", label: "Taille titre", defaultValue: 14, min: 8, max: 30, unit: "px", after: "settings-info-title" },
+  { key: "settings-info-title-weight", group: "settings-info", label: "Graisse titre", defaultValue: 700, min: 100, max: 900, step: 100, unit: "", after: "settings-info-title" },
+  { key: "settings-info-text-size", group: "settings-info", label: "Taille texte", defaultValue: 14, min: 8, max: 30, unit: "px", after: "settings-info-text" },
+  { key: "settings-info-text-weight", group: "settings-info", label: "Graisse texte", defaultValue: 400, min: 100, max: 900, step: 100, unit: "", after: "settings-info-text" },
+  // A window's height: 0 is "auto", its content's; above, pixels; below, a
+  // share of the screen's (its magnitude in %).
+  { key: "settings-window-height", group: "settings-window", label: "Hauteur", hint: "Auto : celle du contenu", defaultValue: 0, min: -100, max: 2000, unit: "px", auto: true },
+  { key: "settings-title-margin-bottom", group: "settings-title", label: "Marge basse", defaultValue: 10, min: 0, max: 80, unit: "px", direction: "bottom" },
+  { key: "settings-add-link-margin-top", group: "settings-add-link", label: "Marge haute", defaultValue: 5, min: 0, max: 60, unit: "px", direction: "top" },
+  { key: "settings-hstack-gap", group: "settings-hstack", label: "Gap", defaultValue: 15, min: 0, max: 80, unit: "px", direction: "horizontal" },
+  // The rows of the editable lists, by their type (rowStyle's "kind").
+  { key: "settings-list-simple-gap", group: "settings-list-simple", label: "Gap horizontal", hint: "Entre les éléments d'une ligne", defaultValue: 12, min: 0, max: 60, unit: "px", direction: "horizontal" },
+  ...paddingSizes("settings-list-simple-padding", { group: "settings-list-simple", label: "Padding", hint: "Chaque ligne", defaultValue: 5, max: 40 }, { left: 4 }),
+  { key: "settings-list-accordion-gap", group: "settings-list-accordion", label: "Gap horizontal", hint: "Entre les éléments d'une ligne", defaultValue: 12, min: 0, max: 60, unit: "px", direction: "horizontal" },
+  ...paddingSizes("settings-list-accordion-padding", { group: "settings-list-accordion", label: "Padding", hint: "Chaque ligne", defaultValue: 10, max: 40 }, { right: 15 }),
+  { key: "settings-list-checkbox-gap", group: "settings-list-checkbox", label: "Gap horizontal", hint: "Entre les éléments d'une ligne", defaultValue: 12, min: 0, max: 60, unit: "px", direction: "horizontal" },
+  ...paddingSizes("settings-list-checkbox-padding", { group: "settings-list-checkbox", label: "Padding", hint: "Chaque ligne", defaultValue: 5, max: 40 }, { right: 10, left: 10 }),
+  ...paddingSizes("settings-tab-padding", { group: "settings-all-tabs", label: "Padding", hint: "Chaque onglet", defaultValue: 10, max: 40 }, { right: 15, left: 15 }),
+  // Between a tab's icon and its name: Mantine's "xs".
+  { key: "settings-tab-icon-margin-right", group: "settings-all-tabs", label: "Marge droite de l'icône", defaultValue: 10, min: 0, max: 40, unit: "px", direction: "right" },
+  { key: "settings-stack-gap", group: "settings-stack", label: "Gap", defaultValue: 12, min: 0, max: 80, unit: "px", direction: "vertical" },
+  { key: "settings-footer-margin-top", group: "settings-footer", label: "Marge haute", defaultValue: 40, min: 0, max: 80, unit: "px", direction: "top" },
+  { key: "settings-header-border-width", group: "settings-header", label: "Taille bordure du bas", defaultValue: 0, min: 0, max: 10, unit: "px", after: "settings-header-border" },
+  { key: "settings-profile-margin-top", group: "settings-profile-header", label: "Marge haut", defaultValue: 0, min: 0, max: 80, unit: "px", direction: "top" },
+  { key: "settings-profile-margin-bottom", group: "settings-profile-header", label: "Marge bas", defaultValue: 40, min: 0, max: 80, unit: "px", direction: "bottom" },
+  { key: "settings-profile-photo-border-width", group: "settings-profile-photo", label: "Taille de bordure", defaultValue: 0, min: 0, max: 10, unit: "px" },
+  { key: "settings-profile-photo-margin-right", group: "settings-profile-photo", label: "Marge droite", defaultValue: 15, min: 0, max: 60, unit: "px", direction: "right" },
+  { key: "settings-profile-name-size", group: "settings-profile-name", label: "Taille", defaultValue: 16, min: 8, max: 40, unit: "px" },
+  { key: "settings-profile-name-weight", group: "settings-profile-name", label: "Graisse", defaultValue: 500, min: 100, max: 900, step: 100, unit: "" },
+  { key: "settings-profile-email-size", group: "settings-profile-email", label: "Taille", defaultValue: 14, min: 8, max: 40, unit: "px" },
+  { key: "settings-profile-email-weight", group: "settings-profile-email", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
   ...paddingSizes("settings-header-padding", { group: "settings-header", label: "Padding", hint: "Marge intérieure de l'entête", defaultValue: 20, max: 60, after: "settings-header-bg" }),
   { key: "settings-header-size", group: "settings-header", label: "Taille", defaultValue: 19, min: 10, max: 40, unit: "px", defaultFrom: "dark-header-size" },
   { key: "settings-header-weight", group: "settings-header", label: "Graisse", defaultValue: 100, min: 100, max: 900, step: 100, unit: "", defaultFrom: "dark-header-weight" },
@@ -453,20 +596,32 @@ export const THEME_SIZES: ThemeSizeDefinition[] = [
   { key: "settings-tab-icon-size", group: "settings-tabs", label: "Taille de l'icône", defaultValue: 16, min: 8, max: 40, unit: "px", after: "settings-tab-icon" },
   { key: "settings-tab-size", group: "settings-tabs", label: "Taille du nom", defaultValue: 14, min: 10, max: 30, unit: "px", after: "settings-tab-text", defaultFrom: "tab-size" },
   { key: "settings-tab-weight", group: "settings-tabs", label: "Graisse du nom", defaultValue: 400, min: 100, max: 900, step: 100, unit: "", after: "settings-tab-text", defaultFrom: "tab-weight" },
-  { key: "settings-tab-width", group: "settings-tabs", label: "Largeur", hint: "Largeur des libellés : la fenêtre s'élargit d'autant", defaultValue: 170, min: 100, max: 400, unit: "px" },
+  { key: "settings-tab-width", group: "settings-vtabs", label: "Largeur", hint: "Largeur des libellés : la fenêtre s'élargit d'autant", defaultValue: 170, min: 100, max: 400, unit: "px" },
+  { key: "settings-htab-icon-size", group: "settings-htab", label: "Taille de l'icône", defaultValue: 16, min: 8, max: 40, unit: "px", after: "settings-htab-icon" },
+  { key: "settings-htab-size", group: "settings-htab", label: "Taille du nom", defaultValue: 14, min: 10, max: 30, unit: "px", after: "settings-htab-text", defaultFrom: "tab-size" },
+  { key: "settings-htab-weight", group: "settings-htab", label: "Graisse du nom", defaultValue: 400, min: 100, max: 900, step: 100, unit: "", after: "settings-htab-text", defaultFrom: "tab-weight" },
+  { key: "settings-htab-active-icon-size", group: "settings-htab-active", label: "Taille de l'icône", defaultValue: 16, min: 8, max: 40, unit: "px", after: "settings-htab-active-icon" },
+  { key: "settings-htab-active-size", group: "settings-htab-active", label: "Taille du nom", defaultValue: 14, min: 10, max: 30, unit: "px", after: "settings-htab-active-text", defaultFrom: "tab-active-size" },
+  { key: "settings-htab-active-weight", group: "settings-htab-active", label: "Graisse du nom", defaultValue: 400, min: 100, max: 900, step: 100, unit: "", after: "settings-htab-active-text", defaultFrom: "tab-active-weight" },
+  { key: "settings-htab-active-border-width", group: "settings-htab-active", label: "Taille du filet", defaultValue: 1, min: 1, max: 10, unit: "px", after: "settings-htab-active-border", defaultFrom: "tab-active-border-width" },
   { key: "settings-tab-active-icon-size", group: "settings-active-tab", label: "Taille de l'icône", defaultValue: 16, min: 8, max: 40, unit: "px", after: "settings-tab-active-icon" },
   { key: "settings-tab-active-size", group: "settings-active-tab", label: "Taille du nom", defaultValue: 14, min: 10, max: 30, unit: "px", after: "settings-tab-active-text", defaultFrom: "tab-active-size" },
   { key: "settings-tab-active-weight", group: "settings-active-tab", label: "Graisse du nom", defaultValue: 400, min: 100, max: 900, step: 100, unit: "", after: "settings-tab-active-text", defaultFrom: "tab-active-weight" },
   { key: "settings-tab-active-border-width", group: "settings-active-tab", label: "Taille du filet", defaultValue: 1, min: 1, max: 10, unit: "px", after: "settings-tab-active-border", defaultFrom: "tab-active-border-width" },
-  ...paddingSizes("widgets-drawer-padding", { group: "widgets-drawer", label: "Padding", hint: "Marge intérieure du tiroir", defaultValue: 30, max: 80, after: "widgets-drawer-bg" }),
-  { key: "widgets-drawer-scrollbar-width", group: "widgets-drawer-scrollbars", label: "Largeur", defaultValue: 2, min: 1, max: 16, unit: "px" },
-  { key: "widgets-drawer-title-size", group: "widgets-drawer-heading", label: "Taille", defaultValue: 18, min: 10, max: 40, unit: "px" },
-  { key: "widgets-drawer-title-weight", group: "widgets-drawer-heading", label: "Graisse", defaultValue: 700, min: 100, max: 900, step: 100, unit: "" },
   { key: "widgets-drawer-group-size", group: "widgets-drawer-kinds", label: "Taille", defaultValue: 16, min: 10, max: 40, unit: "px" },
   { key: "widgets-drawer-group-weight", group: "widgets-drawer-kinds", label: "Graisse", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
   { key: "widgets-drawer-item-size", group: "widgets-drawer-items", label: "Taille du nom", defaultValue: 14, min: 10, max: 30, unit: "px" },
   { key: "widgets-drawer-item-weight", group: "widgets-drawer-items", label: "Graisse du nom", defaultValue: 400, min: 100, max: 900, step: 100, unit: "" },
   { key: "widgets-drawer-icon-size", group: "widgets-drawer-items", label: "Taille de l'icône", defaultValue: 20, min: 10, max: 40, unit: "px", after: "widgets-drawer-icon" },
+  { key: "settings-template-width", group: "settings-template-normal", label: "Largeur", defaultValue: 1320, min: 600, max: 2400, unit: "px" },
+  { key: "settings-template-panes-height", group: "settings-template-normal", label: "Hauteur des volets", defaultValue: 560, min: 200, max: 1500, unit: "px" },
+  { key: "settings-template-frame-width", group: "settings-template-normal", label: "Taille du cadre", defaultValue: 1, min: 0, max: 10, unit: "px", after: "settings-template-frame" },
+  { key: "settings-template-footer-margin-top", group: "settings-template-normal", label: "Marge haute du bas de page", hint: "Entre les volets et les boutons", defaultValue: 40, min: 0, max: 80, unit: "px", direction: "top", defaultFrom: "settings-footer-margin-top" },
+  ...paddingSizes("settings-template-full-header-padding", { group: "settings-template-full-header", label: "Padding", defaultValue: 10, max: 40, after: "settings-template-full-header-bg" }, { top: 5, bottom: 5 }),
+  { key: "settings-template-full-title-size", group: "settings-template-full-header", label: "Taille du titre", defaultValue: 19, min: 10, max: 40, unit: "px", after: "settings-template-full-title", defaultFrom: "dark-header-size" },
+  { key: "settings-template-full-title-weight", group: "settings-template-full-header", label: "Graisse du titre", defaultValue: 100, min: 100, max: 900, step: 100, unit: "", after: "settings-template-full-title", defaultFrom: "dark-header-weight" },
+  { key: "settings-template-full-line-width", group: "settings-template-full-panes", label: "Taille des filets", defaultValue: 1, min: 0, max: 10, unit: "px", after: "settings-template-full-line" },
+  ...paddingSizes("settings-template-full-footer-padding", { group: "settings-template-full-footer", label: "Padding", defaultValue: 10, max: 40 }, { right: 8, left: 15 }),
   { key: "dark-header-size", group: "dialogs", label: "Taille du titre", defaultValue: 19, min: 10, max: 40, unit: "px" },
   { key: "dark-header-weight", group: "dialogs", label: "Graisse du titre", defaultValue: 100, min: 100, max: 900, step: 100, unit: "" },
   { key: "tab-size", group: "tabs", label: "Taille du texte", defaultValue: 14, min: 10, max: 30, unit: "px" },
@@ -492,6 +647,36 @@ export const themeSizeDefault = (colors: ThemeColors, key: string, scheme: Theme
   const definition = SIZE_DEFINITIONS.get(key);
   if (!definition) return 0;
   return definition.defaultFrom ? themeSizeValue(colors, definition.defaultFrom, scheme) : definition.defaultValue;
+};
+
+/**
+ * A style's value for one window only — "settings-bg@profile" (themeWindow,
+ * client) —, stored beside the others. It exists as soon as the window has
+ * its own value; while it holds none for a scheme, the window follows the
+ * style's.
+ */
+export const THEME_WINDOW_ID = /^[a-z0-9-]{1,40}$/;
+
+export const themeWindowKey = (key: string, window: string): string => `${key}@${window}`;
+
+/**
+ * The windows' own values by default — their box checked from the start —,
+ * by style, then by window: Paramétrage's and Profil's heights.
+ */
+export const THEME_WINDOW_DEFAULTS: Record<string, Record<string, number>> = {
+  "settings-window-height": { settings: 725, profile: 725 },
+};
+
+/** A window's own value of a style by default, if it has one. */
+export const themeWindowDefault = (key: string, window: string): number | undefined =>
+  THEME_WINDOW_DEFAULTS[key]?.[window];
+
+/** A window's own value's key, split; null for a style's own key. */
+export const parseThemeWindowKey = (key: string): { key: string; window: string } | null => {
+  const at = key.indexOf("@");
+  if (at < 0) return null;
+  const window = key.slice(at + 1);
+  return THEME_WINDOW_ID.test(window) ? { key: key.slice(0, at), window } : null;
 };
 
 /** A size brought within its bounds and onto its step; null when it is not a number. */

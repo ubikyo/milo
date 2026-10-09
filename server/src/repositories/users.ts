@@ -45,6 +45,7 @@ import type { SessionRow, UserRow } from "../db/rows.js";
 import { fullName, gravatarUrl } from "../lib/auth.js";
 import { notificationSettings } from "../lib/notification-settings.js";
 import { workspaces } from "./workspaces.js";
+import { apiAccountWorkspaces, apiAccountWrites, isApiAccount } from "./api-tokens.js";
 
 /** The id of the "admin" account. */
 export const ADMIN_USERNAME = "admin";
@@ -151,6 +152,8 @@ const userRows = (
  * that one of them grants. The "admin" account has everything.
  */
 const administrationOf = (user: UserRow): AdminPermissions => {
+  // An API token never reaches the administration, nor the Settings.
+  if (isApiAccount(user)) return mergeAdminPermissions([]);
   if (user.system) return fullAdminPermissions();
   return mergeAdminPermissions(
     accountAdministration
@@ -165,6 +168,10 @@ const administrationOf = (user: UserRow): AdminPermissions => {
  */
 export const workspacesOf = (user: UserRow): WorkspaceRef[] => {
   const all = workspaces.all.all().map(({ id, name }) => ({ id, name }));
+  if (isApiAccount(user)) {
+    const own = new Set(apiAccountWorkspaces(user));
+    return all.filter((w) => own.has(w.id));
+  }
   if (user.system) return all;
   const openItems = new Set(
     userRows(user)
@@ -225,7 +232,11 @@ const anyAdminRight = (user: UserRow): boolean =>
  * everything.
  */
 const workspaceWidgets = (user: UserRow): WidgetRights =>
-  user.system
+  // An API token sees everything in its workspaces, and changes it only if
+  // it writes.
+  isApiAccount(user)
+    ? widgetRightsEverywhere(apiAccountWrites(user) ? "delete" : "view")
+    : user.system
     ? widgetRightsEverywhere("delete")
     : mergeWidgetRights(
         userRows(user)
@@ -242,6 +253,7 @@ export const widgetRights = (user: UserRow): WidgetRights => workspaceWidgets(us
  * groups'. The "admin" account receives them all.
  */
 export const notificationRights = (user: UserRow): NotificationRights => {
+  if (isApiAccount(user)) return { screen: false, email: false };
   if (user.system) return { screen: true, email: true };
   const workspace = currentWorkspace(user);
   return mergeNotificationRights(
@@ -256,6 +268,7 @@ export const notificationRights = (user: UserRow): NotificationRights => {
  * — their own and their groups'. The "admin" account may do everything.
  */
 export const applicationRights = (user: UserRow): ApplicationRights => {
+  if (isApiAccount(user)) return apiAccountWrites(user) ? fullApplicationRights() : mergeApplicationRights([]);
   if (user.system) return fullApplicationRights();
   const workspace = currentWorkspace(user);
   return mergeApplicationRights(
@@ -270,6 +283,7 @@ export const applicationRights = (user: UserRow): ApplicationRights => {
  * everything.
  */
 export const structureRights = (user: UserRow): StructureRights => {
+  if (isApiAccount(user)) return apiAccountWrites(user) ? fullStructureRights() : mergeStructureRights([]);
   if (user.system) return fullStructureRights();
   const workspace = currentWorkspace(user);
   return mergeStructureRights(

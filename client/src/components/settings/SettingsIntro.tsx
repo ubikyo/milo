@@ -21,7 +21,10 @@ export default function SettingsIntro({
   return (
     <Text
       c="var(--milo-settings-description-text)"
-      size="var(--milo-settings-description-size)"
+      // Its line height stays "sm"'s: a size given as a variable would
+      // also become Mantine's line height.
+      size="sm"
+      fz="var(--milo-settings-description-size)"
       fw="var(--milo-settings-description-weight)"
       mb={parentGap ? `calc(${space} - ${parentGap})` : space}
       {...props}

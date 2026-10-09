@@ -23,7 +23,6 @@ import {
   ListFooter,
   NAME_INSET,
   ROUNDING,
-  ROW_INSET,
   RowCheckbox,
   RowCheckboxSpace,
   RowField,
@@ -47,6 +46,8 @@ import listClasses from "../../assets/styles/SettingsList.module.css";
 /** How often the printers are asked again while the tab is open. */
 const INFO_INTERVAL = 30_000;
 
+// Their sum gives the paper formats' printer column (PaperFormats), so the
+// names of both lists have the same width.
 const TYPE_WIDTH = 100;
 const HOST_WIDTH = 150;
 /** Wide enough for "ZD421 203dpi", so the rows' ends stay aligned. */
@@ -148,7 +149,8 @@ function ModelTag({ info }: { info: PrinterInfo | null | undefined }) {
   const label =
     info === undefined ? "…" : info === null ? "Hors ligne" : modelLabel(info.model) || "En ligne";
   return (
-    <Box w={MODEL_WIDTH} style={{ flexShrink: 0, display: "flex", justifyContent: "center", minWidth: 0 }}>
+    // Against the row's end, its column's width keeping the rows aligned.
+    <Box w={MODEL_WIDTH} style={{ flexShrink: 0, display: "flex", justifyContent: "flex-end", minWidth: 0 }}>
       <Badge
         color={info === undefined ? "gray" : info ? GREEN : RED}
         variant="filled"
@@ -242,11 +244,8 @@ export default function PrintersTab({ canEdit }: { canEdit: boolean }) {
 
   const total = printers.length + (draft ? 1 : 0);
 
-  /** A row's style: the default inset with a checkbox, ROW_INSET without. */
-  const printerRowStyle = (rank: number) => ({
-    ...rowStyle(rank, total, false),
-    ...(canEdit ? null : { paddingLeft: ROW_INSET }),
-  });
+  /** A row's style: without its checkbox, read only, a simple list's. */
+  const printerRowStyle = (rank: number) => rowStyle(rank, total, false, canEdit ? "checkbox" : "simple");
 
   /** The name field: behind a checkbox, it moves back to align with it. */
   const nameSlot = (field: ReactNode) =>
@@ -258,9 +257,9 @@ export default function PrintersTab({ canEdit }: { canEdit: boolean }) {
 
   return (
     <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-      {/* The space between its lists is the themes' ("Listes éditables" > "Marge basse"). */}
+      {/* The space between its lists is the themes' ("Formulaire" > "Liste" > "Marge basse"). */}
       <Stack gap="xl" data-settings-lists>
-        {/* Its select, with the Settings' look ("Listes éditables" > "Select"). */}
+        {/* Its select, with the Settings' look ("Formulaire" > "Liste" > "Select"). */}
         <Input.Wrapper label="Imprimantes" className={listClasses.list} data-settings-list>
           {total === 0 ? (
             <EmptyList icon={IconPrinter} message="Aucune imprimante" />

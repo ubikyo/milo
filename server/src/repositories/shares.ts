@@ -27,12 +27,12 @@ const SHARED_WITH = (s: string, me: string): string =>
 
 /** The condition, in SQL, under which account "me" sees board "b". */
 export const SEES_BOARD = (b: string, me: string): string =>
-  `(${me}.system = 1 OR ${b}.owner_id = ${me}.id OR EXISTS (
+  `(${me}.system != 0 OR ${b}.owner_id = ${me}.id OR EXISTS (
      SELECT 1 FROM board_shares s WHERE s.board_id = ${b}.id AND ${SHARED_WITH("s", me)}))`;
 
 /** The condition, in SQL, under which account "me" sees view "v". */
 export const SEES_VIEW = (v: string, me: string): string =>
-  `(${me}.system = 1 OR ${v}.owner_id = ${me}.id OR EXISTS (
+  `(${me}.system != 0 OR ${v}.owner_id = ${me}.id OR EXISTS (
      SELECT 1 FROM boards vb WHERE vb.view_id = ${v}.id AND ${SEES_BOARD("vb", me)}))`;
 
 const levels = selection<{ level: ShareLevel }>(

@@ -59,6 +59,7 @@ import { pluralize } from "../ui/DrawerRows";
 import { ListRows } from "../ui/EditableRows";
 import LabelPicker, { declaredAssetLabelsApi } from "../ui/LabelPicker";
 import PrintLabelButton from "../ui/PrintLabelButton";
+import GenerateNumberButton from "./GenerateNumberButton";
 
 // A declared asset's drawer, laid out like a card's (CardDrawer): its actors
 // and labels first, then its name; its category, maker and product on one
@@ -114,6 +115,13 @@ const TYPED_LISTS = [
 /** A website as typed — "editeur.fr" —, as a link opens it. */
 const websiteHref = (typed: string): string =>
   /^[a-z][a-z0-9+.-]*:/i.test(typed.trim()) ? typed.trim() : `https://${typed.trim()}`;
+
+/**
+ * The asset field's buttons — generate, print —: two "md" ones (28 px), apart
+ * and away from the field's edge by the same gap.
+ */
+const NAME_BUTTONS_GAP = 4;
+const NAME_BUTTONS_WIDTH = 2 * 28 + 2 * NAME_BUTTONS_GAP;
 
 // The widths of the quantity and the price, on the supplier's line.
 const QUANTITY_WIDTH = 100;
@@ -515,15 +523,21 @@ export default function DeclaredAssetDrawer({
                 onChange={(e) => set("name", e.currentTarget.value)}
                 maxLength={DECLARED_ASSET_NAME_MAX}
                 required
-                // The saved asset's label, printed from the board's templates.
+                // On the right, a number drawn from the board's formats, from
+                // the labels chosen — a new asset's too —, then the saved
+                // asset's label, printed from the board's templates.
+                rightSectionWidth={NAME_BUTTONS_WIDTH}
                 rightSection={
-                  asset ? (
-                    <PrintLabelButton
+                  <Group gap={NAME_BUTTONS_GAP} wrap="nowrap" justify="flex-end" w="100%" pr={NAME_BUTTONS_GAP}>
+                    <GenerateNumberButton
                       kind={kind}
                       boardId={boardId}
-                      assetId={asset.id}
+                      labels={labels.filter((l) => form.label_ids.includes(String(l.id)))}
+                      onGenerated={(number) => set("name", number)}
+                      disabled={readOnly}
                     />
-                  ) : null
+                    {asset && <PrintLabelButton kind={kind} boardId={boardId} assetId={asset.id} />}
+                  </Group>
                 }
               />
 

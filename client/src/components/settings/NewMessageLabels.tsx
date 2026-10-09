@@ -10,7 +10,6 @@ import {
   RowCheckbox,
   RowCheckboxSpace,
   useRowSelection,
-  ROW_INSET,
   NAME_INSET,
   INPUT_INSET,
   nameFieldStyle,
@@ -99,13 +98,8 @@ export default function NewMessageLabels({
                 key={newRow ? "new" : id}
                 gap="sm"
                 wrap="nowrap"
-                // Read-only, without boxes, the label sits to the left like
-                // the end of its field to the right: at ROW_INSET from the
-                // row's edge.
-                style={{
-                  ...rowStyle(rank, rows.length, false),
-                  ...(canEdit ? null : { paddingLeft: ROW_INSET }),
-                }}
+                // Read-only, without boxes: a simple list's row.
+                style={rowStyle(rank, rows.length, false, canEdit ? "checkbox" : "simple")}
               >
                 {canEdit &&
                   (newRow ? (

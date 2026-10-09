@@ -1,4 +1,4 @@
-import { Button, Group, Modal, Select, Stack, Text, TextInput } from "@mantine/core";
+import { Button, Modal, Select, Stack, Text, TextInput } from "@mantine/core";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { useRights } from "../../lib/rights";
@@ -6,6 +6,8 @@ import { modalHeaderStyles } from "../../themes/modals";
 import type { Board, Id, TaskList, View } from "@milo/shared";
 import { errorMessage, notifyError } from "../../lib/errors";
 import CloseButton from "../ui/CloseButton";
+import Footer from "../ui/Footer";
+import { themeWindow } from "../../lib/themeWindow";
 
 // Move or copy a list to a board. Both gestures ask the same
 // question — which one? — and the same dialog answers it, apart from the title.
@@ -141,6 +143,7 @@ export default function MoveOrCopyListModal({
 
   return (
     <Modal
+      attributes={themeWindow("move-list")}
       opened={opened}
       onClose={onClose}
       title={copy ? "Copier la liste" : "Déplacer la liste"}
@@ -198,7 +201,7 @@ export default function MoveOrCopyListModal({
         )}
       </Stack>
 
-      <Group justify="flex-end" mt={32}>
+      <Footer>
         <CloseButton onClick={onClose} />
         <Button
           color="teal"
@@ -208,7 +211,7 @@ export default function MoveOrCopyListModal({
         >
           {copy ? "Copier" : "Déplacer"}
         </Button>
-      </Group>
+      </Footer>
     </Modal>
   );
 }

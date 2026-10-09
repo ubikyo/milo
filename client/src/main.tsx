@@ -32,8 +32,11 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { BLUE, FOCUS_BORDER, ORANGE, PALETTE_RED, PALETTE_GREEN, TAB_SIZE, TAB_TEXT, TAB_WEIGHT } from "./themes/colors";
+import { SELECT_CLASSES } from "./themes/selects";
 import ErrorPage from "./components/ui/ErrorPage";
 import Favicon from "./components/ui/Favicon";
+import { THEME_SCOPE_ATTRIBUTE } from "./lib/themeWindow";
+import windowClasses from "./assets/styles/SettingsModal.module.css";
 
 // All of Mantine's input fields: each reads "--input-bd-focus" for the
 // border it takes on focus, and each draws it from the primary color —
@@ -103,6 +106,19 @@ const theme = createTheme({
   focusRing: "never",
   components: {
     ...fieldsWithoutBlue,
+    // Every multiselect is styled as a select (themes/selects.ts).
+    MultiSelect: {
+      ...fieldsWithoutBlue.MultiSelect,
+      classNames: SELECT_CLASSES,
+    },
+    // Every modal takes the Settings' look, set in the themes: a change made
+    // beside the Settings shows in all of them, and the theme editor offers
+    // the same settings beside each (SettingsModal.module.css). Drawers keep
+    // their own.
+    Modal: {
+      classNames: { content: windowClasses.window },
+      defaultProps: { attributes: { content: { [THEME_SCOPE_ATTRIBUTE]: "settings" } } },
+    },
     // All links in green.
     Anchor: { defaultProps: { c: "teal" } },
     // The lines between the rows of all grids, two tones darker

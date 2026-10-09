@@ -273,6 +273,14 @@ export function Size({
   first?: boolean;
 }) {
   const [input, setInput] = useState(false);
+  // What is being typed, while out of bounds — "2" on the way to "20" —:
+  // shown, not sent, which would bring it within them at once. Leaving the
+  // field sends it, within them.
+  const [draft, setDraft] = useState<number | null>(null);
+  const send = (value: number | "") => {
+    setDraft(null);
+    size.onChange(value);
+  };
   return (
     <NumberInput
       size="xs"
@@ -288,11 +296,18 @@ export function Size({
       allowDecimal={false}
       allowNegative={false}
       aria-label={label}
-      value={size.value}
-      onChange={(v) => size.onChange(v === "" ? "" : Number(v))}
-      {...numberKeys(size.onChange)}
+      value={draft ?? size.value}
+      onChange={(v) => {
+        const value = v === "" ? "" : Number(v);
+        if (value !== "" && (value < size.min || value > size.max)) setDraft(value);
+        else send(value);
+      }}
+      {...numberKeys(send)}
       onFocus={() => setInput(true)}
-      onBlur={() => setInput(false)}
+      onBlur={() => {
+        setInput(false);
+        if (draft !== null) send(Math.min(size.max, Math.max(size.min, draft)));
+      }}
       styles={fieldStyles(input, size.background)}
     />
   );
@@ -367,10 +382,9 @@ export default function SettingRows({
             gap="sm"
             wrap="nowrap"
             // The button, at the start, sits against the left edge like the
-            // last field against the right one.
+            // last field against the right one: a simple list's row.
             style={{
-              ...rowStyle(rank, rows.length, false),
-              paddingLeft: ROW_INSET,
+              ...rowStyle(rank, rows.length, false, "simple"),
               // A row with a choice keeps a field's height: the one that
               // appears with an option — a height's value — doesn't enlarge it.
               ...(l.choice && {

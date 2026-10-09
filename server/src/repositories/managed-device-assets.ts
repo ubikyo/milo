@@ -58,9 +58,9 @@ const setList = mutation(
 const withoutReceipt = mutation("UPDATE managed_device_assets SET board_id = NULL, list_key = ''");
 
 /**
- * Workstations follow the workstation lists: each goes to the list whose
- * board names its tag with an asset label, or nowhere. Redone when a
- * workstation list or an asset label changes.
+ * Workstations follow the workstation lists: each goes to the list one of
+ * whose collectors names its tag, or nowhere. Redone when a workstation
+ * list changes.
  */
 export const reassignWorkstations = transaction((): void => {
   withoutReceipt.run();

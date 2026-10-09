@@ -6,7 +6,6 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import { RED } from "../../themes/colors";
 import {
   SETTINGS_HEIGHT_MAX,
-  SETTINGS_HEIGHT,
   SETTINGS_WIDTH,
   SETTINGS_PADDING,
   modalHeaderStyles,
@@ -14,12 +13,12 @@ import {
 import scroll from "../../assets/styles/ListScroll.module.css";
 import AddButton from "../ui/AddButton";
 import CloseButton from "../ui/CloseButton";
+import Footer from "../ui/Footer";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import {
   RowButton,
   RowField,
   EmptyList,
-  ROW_INSET,
   rowStyle,
 } from "../ui/DrawerRows";
 import PointMenu, { menuPosition, type PointMenuPosition } from "../ui/PointMenu";
@@ -27,6 +26,7 @@ import WorkspaceAccess from "./WorkspaceAccess";
 import { grantsAnything } from "@milo/shared";
 import type { Workspace, WorkspaceRights } from "@milo/shared";
 import SettingsIntro from "./SettingsIntro";
+import { themeWindow } from "../../lib/themeWindow";
 
 interface WorkspacesTabProps {
   /**
@@ -134,7 +134,7 @@ export default function WorkspacesTab({
         utilisateurs des autres workspaces.
       </SettingsIntro>
 
-      {/* An editable list of the Settings: their look ("Listes éditables"). */}
+      {/* An editable list of the Settings: their look ("Formulaire" > "Liste"). */}
       <div data-settings-list>
         {total === 0 ? (
           <EmptyList icon={IconStack2} message="Aucun workspace" />
@@ -146,7 +146,7 @@ export default function WorkspacesTab({
                 gap="sm"
                 wrap="nowrap"
                 onContextMenu={(e) => setMenu({ workspace: w, position: menuPosition(e) })}
-                style={{ ...rowStyle(rank, total, false), paddingLeft: ROW_INSET }}
+                style={rowStyle(rank, total, false, "simple")}
               >
                 <RowField
                   name={w.name}
@@ -162,8 +162,8 @@ export default function WorkspacesTab({
                   <RowButton
                     icon={IconUsers}
                     onClick={() => setAccessOf(w)}
-                    // 5 px from the end of the row, padding included.
-                    rightMargin={5 - ROW_INSET}
+                    // Its distance to the end is the row's padding.
+                    rightMargin={0}
                   >
                     {/* "accès" is invariable (same singular and plural in French). */}
                     {`${access[w.id]} accès`}
@@ -175,7 +175,7 @@ export default function WorkspacesTab({
               <Group
                 gap="sm"
                 wrap="nowrap"
-                style={{ ...rowStyle(total - 1, total, false), paddingLeft: ROW_INSET }}
+                style={rowStyle(total - 1, total, false, "simple")}
               >
                 <RowField
                   name=""
@@ -245,6 +245,7 @@ export default function WorkspacesTab({
       />
 
       <Modal
+        attributes={themeWindow("workspace-access")}
         opened={accessOf !== null}
         onClose={closeAccess}
         title={`Accès — ${accessOf?.name ?? ""}`}
@@ -262,7 +263,6 @@ export default function WorkspacesTab({
         styles={{
           ...modalHeaderStyles(SETTINGS_PADDING),
           content: {
-            height: SETTINGS_HEIGHT,
             maxHeight: SETTINGS_HEIGHT_MAX,
             display: "flex",
             flexDirection: "column",
@@ -293,7 +293,7 @@ export default function WorkspacesTab({
           </ScrollArea>
           {/* "Fermer" drops what was not saved; "Enregistrer" sends it, then
               closes — unless the server refused. */}
-          <Group justify="flex-end">
+          <Footer parentGap="var(--mantine-spacing-xl)">
             {/* Whoever is just added receives the "Nouvel utilisateur"
                 e-mail — each user of a group. */}
             {rights.create && (
@@ -311,7 +311,7 @@ export default function WorkspacesTab({
                 Enregistrer
               </Button>
             )}
-          </Group>
+          </Footer>
         </Stack>
       </Modal>
     </Stack>

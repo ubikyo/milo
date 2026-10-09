@@ -146,7 +146,14 @@ export default class ErrorPage extends Component<
     return (
       <div style={styles.page}>
         <div style={styles.content}>
-          <img src={logo} alt="Milo" style={styles.logo} />
+          {/* The logo as wide as the "Recharger la page" button: an invisible
+              copy of its label sizes the box, the logo fills it. */}
+          <div style={styles.logoBox}>
+            <span aria-hidden style={styles.logoRuler}>
+              {RELOAD}
+            </span>
+            <img src={logo} alt="Milo" style={styles.logo} />
+          </div>
           <h1 style={styles.title}>Milo a rencontré une erreur</h1>
           <p style={styles.text}>
             Elle n'a pas pu être traitée. Rechargez la page pour reprendre ; si l'erreur revient, copiez le rapport
@@ -158,7 +165,7 @@ export default class ErrorPage extends Component<
               style={styles.primary}
               onClick={() => window.location.reload()}
             >
-              Recharger la page
+              {RELOAD}
             </button>
             <button
               type="button"
@@ -244,6 +251,16 @@ function Fold({ label, openGap = 0, children }: FoldProps) {
 
 const WHITE = "#ffffff";
 
+/** The label of the reload button, which also gives the logo its width. */
+const RELOAD = "Recharger la page";
+
+/** The text of a button: shared by the button and the logo's ruler. */
+const BUTTON_TEXT: CSSProperties = {
+  padding: "8px 16px",
+  fontSize: 14,
+  fontWeight: 600,
+};
+
 const styles: Record<string, CSSProperties> = {
   page: {
     position: "fixed",
@@ -256,7 +273,18 @@ const styles: Record<string, CSSProperties> = {
     userSelect: "text",
   },
   content: { maxWidth: 960, padding: 50 },
-  logo: { display: "block", width: 200, marginBottom: 24 },
+  logoBox: { display: "inline-grid", marginBottom: 24 },
+  logoRuler: {
+    ...BUTTON_TEXT,
+    paddingTop: 0,
+    paddingBottom: 0,
+    height: 0,
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+    visibility: "hidden",
+  },
+  // Width 0 so the image does not widen the box; 100% of it once laid out.
+  logo: { display: "block", width: 0, minWidth: "100%" },
   title: { fontSize: 28, fontWeight: 700, margin: "0 0 12px" },
   folds: { marginTop: 28 },
   foldLabel: {
@@ -279,9 +307,7 @@ const styles: Record<string, CSSProperties> = {
     color: PALETTE_RED,
     border: "none",
     borderRadius: 4,
-    padding: "8px 16px",
-    fontSize: 14,
-    fontWeight: 600,
+    ...BUTTON_TEXT,
     cursor: "pointer",
   },
   secondary: {
@@ -289,9 +315,7 @@ const styles: Record<string, CSSProperties> = {
     color: WHITE,
     border: `1px solid ${WHITE}`,
     borderRadius: 4,
-    padding: "8px 16px",
-    fontSize: 14,
-    fontWeight: 600,
+    ...BUTTON_TEXT,
     cursor: "pointer",
   },
   facts: {

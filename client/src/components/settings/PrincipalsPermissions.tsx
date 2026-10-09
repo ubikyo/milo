@@ -34,17 +34,14 @@ import type { EntraPrincipal, PrincipalPermissions } from "@milo/shared";
 /** The background of a row's icon: a neutral gray, darker than the row. */
 const AVATAR_BACKGROUND = "var(--milo-control-bg)";
 
-/** The air added above and below a row: 10 px more height. */
-const EXTRA_PADDING = 5;
-
 /**
- * A row's height: that of a user, its name ("sm") over its address ("xs"),
- * with the row's air above and below.
+ * The height of a row's content: that of a user, its name ("sm") over its
+ * address ("xs") — the row's padding around it.
  */
-const ROW_HEIGHT = `calc(${2 * (ROW_INSET + EXTRA_PADDING)}px + (var(--mantine-font-size-sm) + var(--mantine-font-size-xs)) * var(--mantine-line-height))`;
+const CONTENT_HEIGHT = "calc((var(--mantine-font-size-sm) + var(--mantine-font-size-xs)) * var(--mantine-line-height))";
 
-/** The gap between a row's elements ("sm"). */
-const GAP = 12;
+/** The gap between a row's elements: the Settings' (rowStyle), or "sm". */
+const GAP = "var(--milo-row-gap-accordion, 12px)";
 
 /** The chevron's room, in front of the icon. */
 const CHEVRON_SIZE = 16;
@@ -77,7 +74,7 @@ const UNFOLD_DURATION = 200;
 
 /**
  * A row's texts: Mantine's own, unless the window sets them — the Settings
- * ("Listes éditables" > "Gestion de groupes et utilisateurs").
+ * ("Formulaire" > "Liste" > "Gestion de groupes et utilisateurs").
  */
 const textStyle = (part: string, color: string, size: string) => ({
   color: `var(--milo-principal-${part}, ${color})`,
@@ -255,13 +252,22 @@ export default function PrincipalsPermissions<T>({
   // "Retirer l'accès" → "retirer l'accès", in the middle of a sentence.
   const action = removeDialog.label.charAt(0).toLowerCase() + removeDialog.label.slice(1);
   // A row's name takes what the summary leaves it, at the end.
-  const nameStyle = { flex: 1, minWidth: 0 };
+  // A group, with no address, keeps the height of a user, centered: all rows
+  // are equal.
+  const nameStyle: CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    minHeight: CONTENT_HEIGHT,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+  };
 
   /** Its name, and a user's address under it; a group only has its name — its icon says what it is. */
   const identity = (principal: EntraPrincipal, own?: boolean) => (
     <>
       <Group gap={6} wrap="nowrap">
-        <Text c={NAME.color} fz={NAME.size} fw={NAME.weight} truncate>
+        <Text size="sm" c={NAME.color} fz={NAME.size} fw={NAME.weight} truncate>
           {principal.name || principal.email}
         </Text>
         {/* Oneself, or one's group: a green tag says so, as the VLAN's in Assets. */}
@@ -273,7 +279,7 @@ export default function PrincipalsPermissions<T>({
             radius="sm"
             tt="none"
             style={{ flexShrink: 0 }}
-            // In the Settings, their tags' look ("Listes éditables" > "Tag").
+            // In the Settings, their tags' look ("Formulaire" > "Liste" > "Tag").
             data-list-tag="filled"
           >
             {principal.type === "group" ? "Groupe courant" : "Utilisateur courant"}
@@ -281,7 +287,7 @@ export default function PrincipalsPermissions<T>({
         )}
       </Group>
       {principal.type !== "group" && principal.email && (
-        <Text c={EMAIL.color} fz={EMAIL.size} fw={EMAIL.weight} truncate>
+        <Text size="xs" c={EMAIL.color} fz={EMAIL.size} fw={EMAIL.weight} truncate>
           {principal.email}
         </Text>
       )}
@@ -330,7 +336,7 @@ export default function PrincipalsPermissions<T>({
                     gap="sm"
                     wrap="nowrap"
                     style={{
-                      ...rowStyle(rank, total, false),
+                      ...rowStyle(rank, total, false, "accordion"),
                       // After an unfolded one, a block of its own: rounded at the top.
                       ...(afterUnfolded(rank) ? ROUNDED_TOP : null),
                       // A header above its permissions: the darker gray of a
@@ -338,12 +344,6 @@ export default function PrincipalsPermissions<T>({
                       // unfolded against it.
                       backgroundColor: headerBackground,
                       ...(open ? { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 } : null),
-                      paddingLeft: NAME_INSET,
-                      // On two lines, name and address: a bit more air.
-                      paddingBlock: ROW_INSET + EXTRA_PADDING,
-                      // A group, with no address, keeps the height of a user:
-                      // all rows are equal.
-                      minHeight: ROW_HEIGHT,
                     }}
                   >
                     {/* Oneself, or one's group, cannot be removed: an empty
@@ -372,7 +372,7 @@ export default function PrincipalsPermissions<T>({
                       style={
                         {
                           "--ai-hover": CHEVRON_HOVER,
-                          marginLeft: readOnly ? 0 : AFTER_CHECKBOX - 2 - GAP,
+                          marginLeft: readOnly ? 0 : `calc(${AFTER_CHECKBOX - 2}px - ${GAP})`,
                         } as CSSProperties
                       }
                       onClick={() => toggleUnfolded(key(principal))}
@@ -442,13 +442,14 @@ export default function PrincipalsPermissions<T>({
                         {identity(principal, own)}
                       </UnstyledButton>
                     )}
-                    {/* What it has, at a glance, at the end of the row, as far
-                        from the right edge as the checkbox from the left. */}
+                    {/* What it has, at a glance, at the end of the row: the
+                        row's padding from the right edge. */}
                     <Text
+                      size="xs"
                       c={SUMMARY.color}
                       fz={SUMMARY.size}
                       fw={SUMMARY.weight}
-                      style={{ flexShrink: 0, marginRight: NAME_INSET - ROW_INSET }}
+                      style={{ flexShrink: 0 }}
                     >
                       {summary(permissions)}
                     </Text>
@@ -480,9 +481,8 @@ export default function PrincipalsPermissions<T>({
                 gap="sm"
                 wrap="nowrap"
                 style={{
-                  ...rowStyle(total - 1, total, false),
+                  ...rowStyle(total - 1, total, false, "accordion"),
                   ...(afterUnfolded(access.length) ? ROUNDED_TOP : null),
-                  paddingLeft: ROW_INSET,
                 }}
               >
                 {picker({
@@ -503,7 +503,8 @@ export default function PrincipalsPermissions<T>({
                   autoFocus: true,
                   size: "sm",
                   radius: ROUNDING,
-                  style: { flex: 1, minWidth: 0 },
+                  // A field has its own inset: it moves back toward the edge.
+                  style: { flex: 1, minWidth: 0, marginLeft: ROW_INSET - NAME_INSET },
                   styles: { input: nameFieldStyle(true) },
                   comboboxProps: { withinPortal: true },
                 })}

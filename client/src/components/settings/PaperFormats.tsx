@@ -13,7 +13,6 @@ import {
   ListFooter,
   NAME_INSET,
   ROUNDING,
-  ROW_INSET,
   RowCheckbox,
   RowCheckboxSpace,
   RowField,
@@ -40,8 +39,12 @@ type Draft = Omit<PaperFormat, "id" | "width" | "height"> & {
 
 const EMPTY_DRAFT: Draft = { name: "", printer_id: null, width: null, height: null };
 
-const PRINTER_WIDTH = 160;
 const SIZE_WIDTH = 96;
+/**
+ * The printers' columns (PrintersTab: type 100 + IP address 150 + model 120)
+ * less the two sizes, so the names are as wide as the printers' above.
+ */
+const PRINTER_WIDTH = 100 + 150 + 120 - 2 * SIZE_WIDTH;
 
 const onError = (e: unknown) => notifyError(errorMessage(e));
 
@@ -214,10 +217,8 @@ export default function PaperFormats({ printers, canEdit }: PaperFormatsProps) {
 
   const total = formats.length + (draft ? 1 : 0);
 
-  const formatRowStyle = (rank: number) => ({
-    ...rowStyle(rank, total, false),
-    ...(canEdit ? null : { paddingLeft: ROW_INSET }),
-  });
+  /** A row's style: without its checkbox, read only, a simple list's. */
+  const formatRowStyle = (rank: number) => rowStyle(rank, total, false, canEdit ? "checkbox" : "simple");
 
   /** The name field: behind a checkbox, it moves back to align with it. */
   const nameSlot = (field: ReactNode) =>
@@ -228,7 +229,7 @@ export default function PaperFormats({ printers, canEdit }: PaperFormatsProps) {
     );
 
   return (
-    // An editable list of the Settings: their look ("Listes éditables").
+    // An editable list of the Settings: their look ("Formulaire" > "Liste").
     <Input.Wrapper label="Formats de papier" className={listClasses.list} data-settings-list>
       {total === 0 ? (
         <EmptyList icon={IconRuler2} message="Aucun format de papier" />

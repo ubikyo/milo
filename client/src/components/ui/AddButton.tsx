@@ -35,6 +35,7 @@ export default function AddButton({ label, onClick, ...props }: AddButtonProps) 
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       leftSection={<IconPlus size={PLUS_SIZE} />}
+      data-add-link
       onClick={onClick}
       {...props}
       // Disabled, it only fades: Mantine would give it a gray background.

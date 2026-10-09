@@ -63,7 +63,7 @@ export default function NotificationPreferences({
   const extended = value.scopes.some((s) => s !== "production");
 
   return (
-    <Stack gap="sm">
+    <Stack gap="sm" data-controls>
       {rights.screen && (
         <Switch
           label="Notifications à l'écran"

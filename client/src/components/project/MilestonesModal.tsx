@@ -31,6 +31,8 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import { DEFAULT_LABEL_COLOR } from "@milo/shared";
 import type { Milestone, MilestoneType } from "@milo/shared";
 import CloseButton from "../ui/CloseButton";
+import Footer from "../ui/Footer";
+import { themeWindow } from "../../lib/themeWindow";
 
 /** A milestone being typed: the value can be emptied while typing. */
 interface InputEntry {
@@ -252,6 +254,7 @@ export default function MilestonesModal({
 
   return (
     <Modal
+      attributes={themeWindow("milestones")}
       opened={type !== null}
       onClose={onClose}
       title={`Jalons — ${type?.name ?? ""}`}
@@ -377,7 +380,7 @@ export default function MilestonesModal({
           </Text>
         )}
 
-        <Group justify="flex-end" mt={MODAL_PADDING - 16}>
+        <Footer parentGap="var(--mantine-spacing-md)">
           <CloseButton onClick={onClose} />
           <Button
             color="teal"
@@ -387,7 +390,7 @@ export default function MilestonesModal({
           >
             Enregistrer
           </Button>
-        </Group>
+        </Footer>
       </Stack>
     </Modal>
   );

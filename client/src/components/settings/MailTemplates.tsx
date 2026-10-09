@@ -6,7 +6,7 @@ import type { MailTemplate, MailTemplateKey } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
-import { ROW_INSET, RowButton, rowStyle } from "../ui/DrawerRows";
+import { RowButton, rowStyle } from "../ui/DrawerRows";
 import { Reset } from "../ui/SettingRows";
 import MailTemplateModal from "./MailTemplateModal";
 
@@ -48,7 +48,7 @@ export default function MailTemplates({ canEdit, only }: MailTemplatesProps) {
   const edited = templates.find((t) => t.key === editedKey) ?? null;
 
   return (
-    // In the Settings, their editable lists' look ("Listes éditables").
+    // In the Settings, their editable lists' look ("Formulaire" > "Liste").
     <Input.Wrapper label="Modèles d'e-mail" data-settings-list>
       <Stack gap={1}>
         {templates.map((t, rank) => (
@@ -58,7 +58,7 @@ export default function MailTemplates({ canEdit, only }: MailTemplatesProps) {
             key={t.key}
             gap="sm"
             wrap="nowrap"
-            style={{ ...rowStyle(rank, templates.length, false), paddingLeft: ROW_INSET }}
+            style={rowStyle(rank, templates.length, false, "simple")}
           >
             <Reset active={canEdit && t.custom} what="du modèle" onClick={() => setToReset(t)} />
             <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
@@ -71,7 +71,7 @@ export default function MailTemplates({ canEdit, only }: MailTemplatesProps) {
                 </Badge>
               )}
             </Group>
-            <RowButton icon={IconTemplate} onClick={() => setEditedKey(t.key)} rightMargin={5 - ROW_INSET}>
+            <RowButton icon={IconTemplate} onClick={() => setEditedKey(t.key)} rightMargin={0}>
               Modèle
             </RowButton>
 

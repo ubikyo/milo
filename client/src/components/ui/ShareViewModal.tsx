@@ -1,4 +1,4 @@
-import { Button, Checkbox, Group, Modal, ScrollArea, Stack } from "@mantine/core";
+import { Button, Checkbox, Modal, ScrollArea, Stack } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SHARE_LEVELS } from "@milo/shared";
@@ -10,7 +10,6 @@ import type {
 } from "@milo/shared";
 import { api } from "../../api";
 import {
-  SETTINGS_HEIGHT,
   SETTINGS_HEIGHT_MAX,
   SETTINGS_PADDING,
   SETTINGS_WIDTH,
@@ -22,6 +21,8 @@ import PrincipalsPermissions from "../settings/PrincipalsPermissions";
 import SectionRights from "../settings/SectionRights";
 import type { RightsSection, SectionPermissions } from "../settings/SectionRights";
 import CloseButton from "./CloseButton";
+import Footer from "./Footer";
+import { themeWindow } from "../../lib/themeWindow";
 
 // "Partager", on a view's right-click: its boards, shared board by board,
 // laid out like a workspace's access (WorkspaceAccess). Users and groups are
@@ -134,6 +135,7 @@ export default function ShareViewModal({ view, onClose }: ShareViewModalProps) {
 
   return (
     <Modal
+      attributes={themeWindow("share-view")}
       opened={view !== null}
       onClose={onClose}
       title={`Partager — ${view?.name ?? ""}`}
@@ -143,9 +145,8 @@ export default function ShareViewModal({ view, onClose }: ShareViewModalProps) {
       withCloseButton={false}
       styles={{
         ...modalHeaderStyles(SETTINGS_PADDING),
-        // The size of Paramétrage (SettingsModal).
+        // The width of Paramétrage (SettingsModal); its height, its content's.
         content: {
-          height: SETTINGS_HEIGHT,
           maxHeight: SETTINGS_HEIGHT_MAX,
           display: "flex",
           flexDirection: "column",
@@ -203,7 +204,7 @@ export default function ShareViewModal({ view, onClose }: ShareViewModalProps) {
             />
           )}
         </ScrollArea>
-        <Group justify="flex-end">
+        <Footer parentGap="var(--mantine-spacing-xl)">
           <Checkbox
             label="Envoyer une invitation"
             checked={invite}
@@ -215,7 +216,7 @@ export default function ShareViewModal({ view, onClose }: ShareViewModalProps) {
           <Button color="teal" onClick={send} loading={saving}>
             Enregistrer
           </Button>
-        </Group>
+        </Footer>
       </Stack>
     </Modal>
   );

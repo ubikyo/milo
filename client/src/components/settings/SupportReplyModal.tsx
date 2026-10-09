@@ -5,6 +5,7 @@ import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import CloseButton from "../ui/CloseButton";
+import Footer from "../ui/Footer";
 import RichTextField, { useRichEditor } from "../ui/RichText";
 import MailPreview, {
   HANDLE_COLOR,
@@ -23,6 +24,7 @@ import type { PaneVariable } from "./VariablesPane";
 import { SUPPORT_REPLY_VARIABLES, SUPPORT_VARIABLE_GROUPS, fillSupportTemplate } from "@milo/shared";
 import type { SupportPerson, SupportVariableGroup } from "@milo/shared";
 import { DEFAULT_CONTENT_SUBJECT, inSampleReply, supportSample } from "../../lib/support-sample";
+import { themeWindow } from "../../lib/themeWindow";
 
 interface SupportReplyModalProps {
   /**
@@ -167,6 +169,7 @@ export default function SupportReplyModal({
 
   return (
     <Modal
+      attributes={themeWindow("support-reply")}
       opened={reply !== null}
       onClose={onClose}
       closeOnEscape={false}
@@ -213,7 +216,7 @@ export default function SupportReplyModal({
           </Splitter.Pane>
         </Splitter>
 
-        <Group justify="space-between" mt={MODAL_PADDING - 16}>
+        <Footer justify="space-between" parentGap="var(--mantine-spacing-md)">
           {/* The preview's theme. */}
           <Switch
             size="xs"
@@ -230,7 +233,7 @@ export default function SupportReplyModal({
               </Button>
             )}
           </Group>
-        </Group>
+        </Footer>
       </Stack>
     </Modal>
   );

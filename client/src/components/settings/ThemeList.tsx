@@ -1,23 +1,13 @@
 import { Group, Input, Select, Stack } from "@mantine/core";
 import { IconChevronDown, IconCopy, IconMoon, IconPalette, IconSun } from "@tabler/icons-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { Theme } from "@milo/shared";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { currentScheme, themeOf, updateThemes, useThemes } from "../../lib/themeColors";
 import AddButton from "../ui/AddButton";
 import { PLUS_SIZE } from "../../themes/plus";
 import classes from "../../assets/styles/SettingsList.module.css";
-import { refreshThemeHighlight, revealElement, useThemePreviewGroup } from "../theme/ThemeHighlight";
 
-/**
- * The theme editor's groups of the select's list ("Gestion des thèmes" >
- * "Select" > "Liste"): while one is edited, a select's list opens to show it.
- */
-const LIST_GROUPS = new Set([
-  "settings-theme-list-dropdown",
-  "settings-theme-list-option",
-  "settings-theme-list-option-hover",
-]);
 import {
   DeleteSelectedButton,
   EmptyList,
@@ -62,19 +52,6 @@ export default function ThemeList() {
   const checks = useRowSelection(themes.map((t) => t.id));
   const checked = themes.filter((t) => checks.isChecked(t.id));
 
-  // The list shown for the theme editor: the first select that opens — the
-  // system's are disabled —, its tab brought forward first. Only shown: the
-  // themes stay as they are.
-  const previewing = LIST_GROUPS.has(useThemePreviewGroup() ?? "");
-  const previewed = previewing ? themes.find((t) => !t.system)?.id : undefined;
-  const wrapper = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (previewed === undefined) return;
-    if (wrapper.current) revealElement(wrapper.current);
-    // Framed once open, as the list only then exists.
-    const frame = requestAnimationFrame(() => requestAnimationFrame(refreshThemeHighlight));
-    return () => cancelAnimationFrame(frame);
-  }, [previewed]);
 
   const nextId = (list: Theme[]) => Math.max(0, ...list.map((t) => t.id)) + 1;
 
@@ -122,7 +99,7 @@ export default function ThemeList() {
   const rows: (Theme | null)[] = adding ? [...themes, null] : themes;
 
   return (
-    <Input.Wrapper label="Thèmes" className={classes.list} ref={wrapper} data-settings-list>
+    <Input.Wrapper label="Thèmes" className={classes.list} data-settings-list>
       {rows.length === 0 ? (
         <EmptyList icon={IconPalette} message="Aucun thème" />
       ) : (
@@ -167,7 +144,6 @@ export default function ThemeList() {
                       disabled={theme.system}
                       allowDeselect={false}
                       {...pickKeys}
-                      dropdownOpened={previewed === theme.id ? true : undefined}
                       onDropdownOpen={() => setOpened(theme.id)}
                       onDropdownClose={() => setOpened(null)}
                       rightSection={

@@ -7,6 +7,7 @@ import ThemePanel, {
   themePanelWidth,
 } from "./ThemePanel";
 import type { ThemePanelKind } from "./ThemePanel";
+import { THEME_WINDOW_ATTRIBUTE } from "../../lib/themeWindow";
 import panelClasses from "../../assets/styles/ThemePanel.module.css";
 
 // The theme editor, once turned on ("Paramétrage" > "Affichage"): a panel
@@ -39,6 +40,9 @@ const DRAWER_GAP = THEME_INTERFACE_GAP + 1;
 /** A window's panel stops this far from the bottom of the screen. */
 const SCREEN_MARGIN = 8;
 
+/** The room kept on the modals' right for their panel (all modals share the Settings' one). */
+const MODAL_ROOM = themePanelWidth("modal", "settings") + 2 * GAP;
+
 /** A short window — a confirmation — still gets a usable panel. */
 const MIN_HEIGHT = 360;
 
@@ -48,6 +52,8 @@ interface Host {
   kind: ThemePanelKind;
   /** The interface's own colors, when it has them. */
   scope: string | null;
+  /** The window's name (themeWindow): a style may take a value for it only. */
+  window: string | null;
   /** Its panel's width (themePanelWidth). */
   width: number;
 }
@@ -60,7 +66,8 @@ const findHosts = (): Host[] =>
     if (!root) return [];
     const kind: ThemePanelKind = content.classList.contains("mantine-Drawer-content") ? "drawer" : "modal";
     const scope = content.getAttribute(THEME_SCOPE_ATTRIBUTE);
-    return [{ content, root, kind, scope, width: themePanelWidth(kind, scope) }];
+    const window = content.getAttribute(THEME_WINDOW_ATTRIBUTE);
+    return [{ content, root, kind, scope, window, width: themePanelWidth(kind, scope) }];
   });
 
 /**
@@ -193,6 +200,9 @@ export default function ThemeEditor({ canEdit }: { canEdit: boolean }) {
 
   return (
     <>
+      {/* The modals center in what the panel beside them leaves: on the
+          right, its width and its gap are kept free. */}
+      <style>{`.mantine-Modal-inner.mantine-Modal-inner { padding-inline-end: ${MODAL_ROOM}px; }`}</style>
       <ThemeHighlight />
       <ThemePanel
         kind="interface"
@@ -213,6 +223,7 @@ export default function ThemeEditor({ canEdit }: { canEdit: boolean }) {
           <ThemePanel
             kind={host.kind}
             scope={host.scope}
+            window={host.window}
             canEdit={canEdit}
             style={{ height: "100%", width: "100%" }}
           />,

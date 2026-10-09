@@ -36,3 +36,26 @@ export const VLAN_MAX = 4094;
 
 /** Beyond this, a VLAN name is no longer one. */
 export const VLAN_NAME_MAX = 120;
+
+// --- Collectors --------------------------------------------------------------
+// What feeds a workstation list: each collector names a source and the tag
+// it carries. Kept in the list's configuration, under COLLECTORS:
+//
+//   managed_device_asset.list : { "collectors": [{ "type": "glpi_agent", "tag": "ACME" }] }
+//
+// The server re-reads them to file the inventories that arrive
+// (server, repositories/inboxes.ts).
+
+/** The configuration key of a workstation list's collectors. */
+export const COLLECTORS = "collectors";
+
+/** The kinds of collector: only the GLPI agent for now. */
+export const COLLECTOR_TYPES = [{ value: "glpi_agent", label: "Agent GLPI" }] as const;
+
+export type CollectorType = (typeof COLLECTOR_TYPES)[number]["value"];
+
+/** A collector: its kind, and the tag the agent is given ("tag" option). */
+export interface Collector {
+  type: CollectorType;
+  tag: string;
+}

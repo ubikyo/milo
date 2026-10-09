@@ -1,10 +1,12 @@
-import { Button, Group, Modal, Select, Stack, Text, TextInput } from "@mantine/core";
+import { Button, Modal, Select, Stack, Text, TextInput } from "@mantine/core";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
 import type { Category, Project, ProjectBoard } from "@milo/shared";
 import { errorMessage, notifyError } from "../../lib/errors";
 import CloseButton from "../ui/CloseButton";
+import Footer from "../ui/Footer";
+import { themeWindow } from "../../lib/themeWindow";
 
 // Move or copy a project to a board. Both gestures ask the same
 // question — which one? — and the same dialog answers it, as for a list
@@ -127,6 +129,7 @@ export default function MoveOrCopyProjectModal({
 
   return (
     <Modal
+      attributes={themeWindow("move-project")}
       opened={opened}
       onClose={onClose}
       title={copy ? "Copier le projet" : "Déplacer le projet"}
@@ -191,7 +194,7 @@ export default function MoveOrCopyProjectModal({
         )}
       </Stack>
 
-      <Group justify="flex-end" mt={32}>
+      <Footer>
         <CloseButton onClick={onClose} />
         <Button
           color="teal"
@@ -201,7 +204,7 @@ export default function MoveOrCopyProjectModal({
         >
           {copy ? "Copier" : "Déplacer"}
         </Button>
-      </Group>
+      </Footer>
     </Modal>
   );
 }

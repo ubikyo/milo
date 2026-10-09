@@ -59,7 +59,7 @@ const printerOfFormat = selection<PrinterRow & { format: string }>(
 );
 
 /** The kind's label groups, in their order, with their labels in theirs. */
-const groupsOf = (kind: LabelTemplateKind, boardId: Id) => {
+export const groupsOf = (kind: LabelTemplateKind, boardId: Id) => {
   // The table names come from the kind, checked against the list, never from
   // the request as is.
   const groups = selection<{ id: Id; name: string }>(
@@ -150,7 +150,7 @@ const kindOf = (req: Request): LabelTemplateKind =>
  * The board named by "?board=", if this person sees it — and, to change its
  * templates, may modify the kind's widgets.
  */
-const verifyBoard = (req: Request, kind: LabelTemplateKind, write: boolean): Id => {
+export const verifyBoard = (req: Request, kind: LabelTemplateKind, write: boolean): Id => {
   if (write && !accessIncludes(widgetRights(req.user)[kind], "update")) {
     throw new HttpError(403, "Vous n'avez pas le droit de modifier ici");
   }

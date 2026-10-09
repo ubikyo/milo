@@ -1153,6 +1153,9 @@ export default function App() {
       if (textInput) return;
 
       if (event.code === "Tab" && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        // A modal or drawer is open (Mantine marks both aria-modal): leave
+        // Tab to the browser's focus navigation.
+        if (document.querySelector('[aria-modal="true"]')) return;
         event.preventDefault();
         const list = event.altKey
           ? (shownBoards ?? []).map((b) => String(b.id))

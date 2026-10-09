@@ -10,18 +10,20 @@ import {
   useMantineColorScheme,
 } from "@mantine/core";
 import { IconBell, IconDeviceDesktop, IconMoon, IconSun, IconUser } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
 import { tabStyle } from "../../themes/tabs";
 import { initialsOf } from "../ui/ActorAvatars";
 import { useDisplaySettings } from "../../lib/displaySettings";
 import { errorMessage, notifyError } from "../../lib/errors";
-import { setThemeChoice, themeChoice, useThemes } from "../../lib/themeColors";
+import { setThemeChoice, themeChoice, useThemes, type ThemeChoice } from "../../lib/themeColors";
 import type { Id, NotificationSettings, OpeningView, PublicUser, Theme } from "@milo/shared";
 import type { ComponentType } from "react";
 import CloseButton from "../ui/CloseButton";
+import Footer from "../ui/Footer";
 import NotificationPreferences from "./NotificationPreferences";
+import { themeWindow } from "../../lib/themeWindow";
 
 /** The profile's theme as the Select holds it: "system", or a theme's id. */
 const SYSTEM = "system";
@@ -39,6 +41,9 @@ function SchemeIcon({ value, themes, size = 16 }: { value: string; themes: Theme
     scheme === "dark" ? IconMoon : scheme === "light" ? IconSun : IconDeviceDesktop;
   return <Icon size={size} />;
 }
+
+/** The windows' body padding, on a side ("Fenêtre" > "Padding"). */
+const pad = (side: "top" | "right" | "left") => `var(--milo-settings-window-padding-${side})`;
 
 // Label width: the fields align on the same column.
 const LABEL_WIDTH = 160;
@@ -58,11 +63,6 @@ const GAP = 16;
  */
 const MODAL_WIDTH = 520 + 2 * PADDING;
 
-/**
- * The tabs' height, their padding included: that of the Notifications tab
- * with its alert. Switching tabs does not make the modal jump.
- */
-const PANEL_HEIGHT = 400;
 
 interface PreferencesModalProps {
   opened: boolean;
@@ -77,7 +77,8 @@ interface PreferencesModalProps {
  * remains is what each person sets for themselves — in the Préférences tab, the
  * opening workspace, view and board, the theme; in the Notifications tab, how
  * they are notified —, which only apply on save: "Fermer" leaves them as they
- * were.
+ * were. The theme shows as soon as it is chosen, and "Fermer" puts back the
+ * one in place at opening.
  */
 export default function PreferencesModal({
   opened,
@@ -85,7 +86,7 @@ export default function PreferencesModal({
   user,
   onUpdated,
 }: PreferencesModalProps) {
-  const { setColorScheme } = useMantineColorScheme();
+  const { colorScheme, setColorScheme } = useMantineColorScheme();
   const { settings: display } = useDisplaySettings();
   // The opening workspace, and in it the opening view and board; empty,
   // or one that is gone, the first one.
@@ -99,6 +100,8 @@ export default function PreferencesModal({
   const [notifying, setNotifying] = useState<NotificationSettings | null>(null);
   const [tab, setTab] = useState<string | null>("profile");
   const [busy, setBusy] = useState(false);
+  // The theme and Mantine's scheme in place at opening, put back unless saved.
+  const original = useRef<{ choice: ThemeChoice; scheme: typeof colorScheme } | null>(null);
 
   // Each opening starts again from what is in place.
   useEffect(() => {
@@ -109,6 +112,7 @@ export default function PreferencesModal({
     setBoard(user?.default_board ?? "");
     // A theme deleted since: the system's again.
     const chosen = themeChoice();
+    original.current = { choice: chosen, scheme: colorScheme };
     setTheme(themes.some((t) => t.id === chosen) ? String(chosen) : SYSTEM);
     setNotifying(user?.notification_settings ?? null);
     setTab("profile");
@@ -143,6 +147,24 @@ export default function PreferencesModal({
   // workspace, on screen or by e-mail (Accès).
   const notified = Boolean(user?.notifications.screen || user?.notifications.email);
 
+  // The theme, and Mantine's scheme under it: the system's follows the
+  // system, a theme its own.
+  const applyTheme = (value: string) => {
+    const chosen = themes.find((t) => String(t.id) === value);
+    setThemeChoice(chosen ? chosen.id : "system");
+    setColorScheme(chosen ? chosen.scheme : "auto");
+  };
+
+  // Closed without saving: the theme in place at opening again.
+  const close = () => {
+    if (original.current) {
+      setThemeChoice(original.current.choice);
+      setColorScheme(original.current.scheme);
+      original.current = null;
+    }
+    onClose();
+  };
+
   const save = async () => {
     setBusy(true);
     try {
@@ -169,11 +191,8 @@ export default function PreferencesModal({
             ...(notifyingChanged ? { notification_settings: notifying } : {}),
           }),
         );
-      // The theme, and Mantine's scheme under it: the system's follows the
-      // system, a theme its own.
-      const chosen = themes.find((t) => String(t.id) === theme);
-      setThemeChoice(chosen ? chosen.id : "system");
-      setColorScheme(chosen ? chosen.scheme : "auto");
+      applyTheme(theme);
+      original.current = null;
       onClose();
     } catch (e) {
       notifyError(errorMessage(e));
@@ -184,8 +203,9 @@ export default function PreferencesModal({
 
   return (
     <Modal
+      attributes={themeWindow("profile")}
       opened={opened}
-      onClose={onClose}
+      onClose={close}
       title="Profil"
       size={MODAL_WIDTH}
       padding={PADDING}
@@ -193,28 +213,60 @@ export default function PreferencesModal({
       withCloseButton={false}
       styles={modalHeaderStyles(PADDING)}
     >
-      {/* Who they are, above the tabs: it is the same in both. */}
-      <Group gap="md" wrap="nowrap">
+      {/* Who they are, above the tabs: it is the same in both. Its look is
+          the themes' ("Thèmes spécifiques" > "Profil"). */}
+      <Group
+        gap={0}
+        wrap="nowrap"
+        // Its background reaches the window's sides and its header: the
+        // body's padding on the sides and above is taken in, and given back
+        // inside; its spaces above and below ("Marge haut", "Marge bas")
+        // are inside it too, its background under them.
+        style={{
+          backgroundColor: "var(--milo-settings-profile-bg)",
+          margin: `calc(-1 * ${pad("top")}) calc(-1 * ${pad("right")}) 0 calc(-1 * ${pad("left")})`,
+          padding:
+            `calc(${pad("top")} + var(--milo-settings-profile-margin-top)) ${pad("right")} ` +
+            `var(--milo-settings-profile-margin-bottom) ${pad("left")}`,
+        }}
+      >
         <Avatar
           size={48}
           radius="sm"
           color="teal"
           variant="filled"
           src={(display.showGravatars && user?.gravatar_url) || null}
+          mr="var(--milo-settings-profile-photo-margin-right)"
+          style={{
+            flexShrink: 0,
+            border:
+              "var(--milo-settings-profile-photo-border-width) solid var(--milo-settings-profile-photo-border)",
+          }}
         >
           {initialsOf(user?.name)}
         </Avatar>
         <div style={{ minWidth: 0 }}>
-          <Text fw={500} truncate>
+          <Text
+            c="var(--milo-settings-profile-name-color)"
+            fz="var(--milo-settings-profile-name-size)"
+            fw="var(--milo-settings-profile-name-weight)"
+            truncate
+          >
             {user?.name}
           </Text>
-          <Text size="sm" c="dimmed" truncate>
+          <Text
+            size="sm"
+            c="var(--milo-settings-profile-email-color)"
+            fz="var(--milo-settings-profile-email-size)"
+            fw="var(--milo-settings-profile-email-weight)"
+            truncate
+          >
             {user?.email}
           </Text>
         </div>
       </Group>
 
-      <Tabs value={tab} onChange={setTab} color="teal" mt={40}>
+      <Tabs value={tab} onChange={setTab} color="teal">
         <Tabs.List>
           <Tabs.Tab value="profile" leftSection={<IconUser size={16} />} style={tabStyle(tab === "profile")}>
             Préférences
@@ -230,15 +282,18 @@ export default function PreferencesModal({
           )}
         </Tabs.List>
 
-        <Tabs.Panel value="profile" h={PANEL_HEIGHT} pt={40}>
+        {/* Its height is its content's: the window's is the themes'
+            ("Fenêtre" > "Hauteur"). */}
+        <Tabs.Panel value="profile" pt={40}>
           {/* The label sits to the left of the field, not above it like
               Mantine's labels: both settings align on the same
               column. */}
-          <Stack gap="md">
+          {/* Its gap is the themes' ("Sections" > "Stack"). */}
+          <Stack gap="md" data-controls>
             {/* Only for those who have several: the others' is the only one. */}
             {several && (
               <Group gap={GAP} wrap="nowrap" align="center">
-                <Text size="sm" fw={500} w={LABEL_WIDTH}>
+                <Text size="sm" fw={500} w={LABEL_WIDTH} data-field-label>
                   Workspace par défaut
                 </Text>
                 <Select
@@ -262,7 +317,7 @@ export default function PreferencesModal({
             )}
 
             <Group gap={GAP} wrap="nowrap" align="center">
-              <Text size="sm" fw={500} w={LABEL_WIDTH}>
+              <Text size="sm" fw={500} w={LABEL_WIDTH} data-field-label>
                 Vue par défaut
               </Text>
               <Select
@@ -282,7 +337,7 @@ export default function PreferencesModal({
             </Group>
 
             <Group gap={GAP} wrap="nowrap" align="center">
-              <Text size="sm" fw={500} w={LABEL_WIDTH}>
+              <Text size="sm" fw={500} w={LABEL_WIDTH} data-field-label>
                 Tableau par défaut
               </Text>
               <Select
@@ -297,7 +352,7 @@ export default function PreferencesModal({
             </Group>
 
             <Group gap={GAP} wrap="nowrap" align="center">
-              <Text size="sm" fw={500} w={LABEL_WIDTH}>
+              <Text size="sm" fw={500} w={LABEL_WIDTH} data-field-label>
                 Thème
               </Text>
               <Select
@@ -319,7 +374,11 @@ export default function PreferencesModal({
                   </Group>
                 )}
                 value={theme}
-                onChange={(value) => value && setTheme(value)}
+                onChange={(value) => {
+                  if (!value) return;
+                  setTheme(value);
+                  applyTheme(value);
+                }}
                 allowDeselect={false}
                 // Wider than the other fields: a theme's name is free.
                 w={FIELD_WIDTH + 50}
@@ -329,7 +388,7 @@ export default function PreferencesModal({
         </Tabs.Panel>
 
         {notified && notifying && (
-          <Tabs.Panel value="notifications" h={PANEL_HEIGHT} pt={40}>
+          <Tabs.Panel value="notifications" pt={40}>
             <NotificationPreferences
               value={notifying}
               onChange={(change) => setNotifying({ ...notifying, ...change })}
@@ -339,12 +398,12 @@ export default function PreferencesModal({
         )}
       </Tabs>
 
-      <Group justify="flex-end" mt="md">
-        <CloseButton onClick={onClose} />
+      <Footer>
+        <CloseButton onClick={close} />
         <Button color="teal" onClick={save} loading={busy}>
           Enregistrer
         </Button>
-      </Group>
+      </Footer>
     </Modal>
   );
 }

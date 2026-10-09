@@ -6,14 +6,21 @@ import { useEffect, useRef, useState } from "react";
 import type { Id, LabelTemplate, LabelTemplateKind, MailTemplateVariable, PaperFormat } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
-import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
-import { RED, STRONG_TEXT } from "../../themes/colors";
+import { MODAL_PADDING } from "../../themes/modals";
+import { RED } from "../../themes/colors";
 import CloseButton from "../ui/CloseButton";
+import Footer from "../ui/Footer";
 import {
-  HANDLE_COLOR,
-  SPLITTER_STYLES,
-  PANES_HEIGHT,
   PANE_MINS,
+  TEMPLATE_PANES_HEIGHT,
+  TEMPLATE_WIDTH,
+  templateFooterMargin,
+  templateFooterStyle,
+  templateHandleColor,
+  templateIconColor,
+  templateModalStyles,
+  templateSplitterStyles,
+  templateWindow,
   FoldablePane,
   PANE_SIZES,
   paneStyle,
@@ -43,8 +50,6 @@ interface LabelTemplateModalProps {
   onSave: (zpl: string) => Promise<unknown>;
   canEdit: boolean;
 }
-
-const WINDOW_WIDTH = 1320;
 
 // The printer draws the label: it is asked once typing has paused a little longer.
 const PREVIEW_DELAY_MS = 800;
@@ -145,7 +150,6 @@ export default function LabelTemplateModal({
     setOpenedOn(template);
     setFull(false);
   }
-  const headerStyles = modalHeaderStyles(MODAL_PADDING);
   const toggleFull = () => {
     setFull(!full);
     panes.fold(0);
@@ -156,6 +160,7 @@ export default function LabelTemplateModal({
 
   return (
     <Modal
+      attributes={templateWindow("label-template")}
       opened={template !== null}
       onClose={onClose}
       closeOnEscape={false}
@@ -164,7 +169,7 @@ export default function LabelTemplateModal({
           {template ? `Modèle — ${template.name}` : "Modèle"}
           <ActionIcon
             variant="transparent"
-            c={full ? STRONG_TEXT : "#ffffff"}
+            c={templateIconColor(full)}
             onClick={toggleFull}
             aria-label={full ? "Réduire la fenêtre" : "Agrandir la fenêtre"}
           >
@@ -173,54 +178,18 @@ export default function LabelTemplateModal({
         </Group>
       }
       centered
-      size={WINDOW_WIDTH}
+      size={TEMPLATE_WIDTH}
       fullScreen={full}
       padding={MODAL_PADDING}
       withCloseButton={false}
-      styles={{
-        ...headerStyles,
-        title: { ...headerStyles.title, flex: 1 },
-        // As the e-mail templates' window over the whole browser window.
-        ...(full && {
-          header: {
-            ...headerStyles.header,
-            padding: "5px 10px",
-            paddingInlineEnd: 10,
-            minHeight: 0,
-            backgroundColor: "var(--mantine-color-body)",
-          },
-          title: { ...headerStyles.title, flex: 1, color: STRONG_TEXT },
-          content: { display: "flex", flexDirection: "column" },
-          body: {
-            paddingTop: 0,
-            paddingInline: 0,
-            paddingBottom: 0,
-            flex: 1,
-            minHeight: 0,
-            display: "flex",
-            flexDirection: "column",
-          },
-        }),
-      }}
+      styles={templateModalStyles(full)}
     >
       <Stack gap={full ? 0 : "md"} style={full ? { flex: 1, minHeight: 0 } : undefined}>
         <Splitter
-          h={full ? undefined : PANES_HEIGHT}
+          h={full ? undefined : TEMPLATE_PANES_HEIGHT}
           style={full ? { flex: 1, minHeight: 0 } : undefined}
-          handleColor={HANDLE_COLOR}
-          styles={
-            full
-              ? {
-                  ...SPLITTER_STYLES,
-                  root: {
-                    border: 0,
-                    borderTop: `1px solid ${HANDLE_COLOR}`,
-                    borderBottom: `1px solid ${HANDLE_COLOR}`,
-                    borderRadius: 0,
-                  },
-                }
-              : SPLITTER_STYLES
-          }
+          handleColor={templateHandleColor(full)}
+          styles={templateSplitterStyles(full)}
           {...panes.splitterProps}
         >
           <Splitter.Pane defaultSize={PANE_SIZES.variables} min={PANE_MINS.variables} collapsible style={paneStyle(full ? undefined : "left", panes.folded(0))}>
@@ -242,7 +211,7 @@ export default function LabelTemplateModal({
                 variables={variables}
                 onChange={setZpl}
                 readOnly={!canEdit}
-                height={full ? "100%" : PANES_HEIGHT}
+                height={full ? "100%" : TEMPLATE_PANES_HEIGHT}
               />
             </FoldablePane>
           </Splitter.Pane>
@@ -254,10 +223,11 @@ export default function LabelTemplateModal({
           </Splitter.Pane>
         </Splitter>
 
-        <Group
+        <Footer
           justify="space-between"
-          mt={full ? 0 : MODAL_PADDING - 16}
-          style={full ? { padding: "10px 8px 10px 15px" } : undefined}
+          parentGap="var(--mantine-spacing-md)"
+          mt={templateFooterMargin(full)}
+          style={templateFooterStyle(full)}
         >
           {/* A test label: a number drawn at random, one label of each group
               the template names. */}
@@ -281,7 +251,7 @@ export default function LabelTemplateModal({
               </Button>
             )}
           </Group>
-        </Group>
+        </Footer>
       </Stack>
     </Modal>
   );

@@ -257,6 +257,16 @@ export const migrate = (db: Database): void => {
   if (columns(db, "list_mailbox_optins").includes("token")) {
     db.exec("ALTER TABLE list_mailbox_optins DROP COLUMN token");
   }
+  // A board's asset number template becomes a list of named ones: the one it
+  // had is the list's first.
+  if (columns(db, "board_asset_number_templates").includes("code")) {
+    db.exec(`
+      ALTER TABLE board_asset_number_templates ADD COLUMN templates TEXT NOT NULL DEFAULT '[]';
+      UPDATE board_asset_number_templates
+        SET templates = json_array(json_object('name', 'Numéro d''asset', 'code', code));
+      ALTER TABLE board_asset_number_templates DROP COLUMN code;
+    `);
+  }
   // After all the access catch-ups: they may have set a Settings right.
   workspaceManagement(db);
   globalAdministration(db);
@@ -344,6 +354,8 @@ export const migrate = (db: Database): void => {
   subcategoriesAsTitles(db);
   managedDeviceAssetSettingsByBoard(db);
   supportLabelsByBoard(db);
+  // After the widgets took their "managed_device_asset" names.
+  tagCollectors(db);
   // Accounts from before the opening workspace and board.
   const userColumns = columns(db, "users");
   if (!userColumns.includes("default_workspace_id")) {
@@ -358,6 +370,47 @@ export const migrate = (db: Database): void => {
   if (!userColumns.includes("notification_settings")) {
     db.exec("ALTER TABLE users ADD COLUMN notification_settings TEXT NOT NULL DEFAULT ''");
   }
+};
+
+/** Set once workstation lists name their tags with collectors. */
+const TAG_COLLECTORS = "tag_collectors";
+
+/**
+ * Workstation lists received the tags their board's asset labels named:
+ * they now name them with their own collectors. Each list without any takes
+ * one GLPI agent collector per label of its board named as a tag already
+ * received, so that what arrived keeps arriving — the other labels named
+ * no tag.
+ */
+const tagCollectors = (db: Database): void => {
+  if (readSetting(db, TAG_COLLECTORS)) return;
+  const widgets = db
+    .prepare(
+      `SELECT w.id, w.config, s.board_id FROM board_widgets w
+       JOIN board_sections s ON s.id = w.section_id
+       WHERE w.type = 'managed_device_asset.list'`,
+    )
+    .all() as { id: number; config: string; board_id: number }[];
+  const labels = db.prepare(
+    `SELECT name FROM managed_device_asset_labels l
+     WHERE board_id = ? AND EXISTS (
+       SELECT 1 FROM managed_device_assets a WHERE lower(trim(a.tag)) = lower(trim(l.name))
+     )
+     ORDER BY position, id`,
+  );
+  const saveConfig = db.prepare("UPDATE board_widgets SET config = ? WHERE id = ?");
+  db.transaction(() => {
+    for (const widget of widgets) {
+      const config = parsedObject(widget.config);
+      if (Array.isArray(config.collectors)) continue;
+      const tags = (labels.all(widget.board_id) as { name: string }[])
+        .map(({ name }) => name.trim())
+        .filter((name) => name !== "");
+      config.collectors = tags.map((tag) => ({ type: "glpi_agent", tag }));
+      saveConfig.run(JSON.stringify(config), widget.id);
+    }
+    writeSetting(db, TAG_COLLECTORS, true);
+  })();
 };
 
 /** Set once Support's labels belong to their board. */

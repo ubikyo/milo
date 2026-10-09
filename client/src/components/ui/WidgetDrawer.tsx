@@ -3,10 +3,11 @@ import { IconGripVertical } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import inset from "../../assets/styles/AccessNumber.module.css";
 import styles from "../../assets/styles/WidgetDrawer.module.css";
+import windowClasses from "../../assets/styles/SettingsModal.module.css";
 import type { ComponentType, DragEvent, ReactNode } from "react";
 import { drawerGroup, drawerGroupLabel, type WidgetKind } from "../../widgets/kinds";
 import { H2_GAP } from "../../widgets/common/h2";
-import { THEME_SCOPE_ATTRIBUTE } from "../theme/ThemePanel";
+import { themeWindow } from "../../lib/themeWindow";
 
 // What a section can receive, one widget per row: its handle, its
 // icon, its name, in the widgets inset. The drawer opens on the left, and
@@ -51,11 +52,11 @@ function DrawerScroll({ children }: { children?: ReactNode }) {
     <ScrollArea
       type="auto"
       scrollbars="y"
-      scrollbarSize="var(--milo-widgets-drawer-scrollbar-width)"
+      scrollbarSize="var(--milo-settings-scrollbar-width)"
       h="100%"
       // The drawer's own color and width (theme editor), over the common ones.
-      styles={{ thumb: { backgroundColor: "var(--milo-widgets-drawer-scrollbar)" } }}
-      classNames={{ scrollbar: styles.scrollbar }}
+      styles={{ thumb: { backgroundColor: "var(--milo-settings-scrollbar)" } }}
+      classNames={{ scrollbar: windowClasses.scrollbar }}
     >
       {children}
     </ScrollArea>
@@ -115,7 +116,7 @@ export default function WidgetDrawer<P extends WidgetChoice>({
       onClose={onClose}
       position="left"
       size={WIDTH}
-      padding="var(--milo-widgets-drawer-padding)"
+      padding="var(--milo-settings-window-padding-left)"
       withCloseButton={false}
       // Closed mid-drag, the drawer stays in the page, hidden: the
       // picked row must still receive the end of the drag, otherwise the
@@ -123,21 +124,25 @@ export default function WidgetDrawer<P extends WidgetChoice>({
       keepMounted
       // Mantine's scrollbar, along the drawer's right edge.
       scrollAreaComponent={DrawerScroll}
-      // Only that zone scrolls, never the drawer itself. Its colors and
-      // sizes are its own (theme editor).
+      // Only that zone scrolls, never the drawer itself. Its look is the
+      // windows' (theme editor: "Fenêtre", "Titres"), its list its own
+      // ("Thèmes spécifiques" > "Liste des widgets").
       styles={{
-        content: { overflow: "hidden", backgroundColor: "var(--milo-widgets-drawer-bg)" },
+        content: { overflow: "hidden", backgroundColor: "var(--milo-settings-bg)" },
+        // Its four sides on the body itself: Mantine's top one reads its
+        // single inset (--mb-padding), which four values would void.
+        body: { padding: "var(--milo-settings-window-padding)" },
       }}
-      attributes={{ content: { [THEME_SCOPE_ATTRIBUTE]: "widgets-drawer" } }}
+      attributes={themeWindow("widgets-drawer")}
     >
-      {/* An "H1" title (widgets/common/title.tsx): its size, its
-          color, and 20 px of space before the list. */}
+      {/* The windows' tab title ("Titres" > "Titre onglet"), and its space
+          before the list. */}
       <Title
         order={1}
-        size="var(--milo-widgets-drawer-title-size)"
-        fw="var(--milo-widgets-drawer-title-weight)"
-        c="var(--milo-widgets-drawer-title)"
-        mb={20}
+        size="var(--milo-settings-title-size)"
+        fw="var(--milo-settings-title-weight)"
+        c="var(--milo-settings-title-text)"
+        mb="var(--milo-settings-title-margin-bottom)"
       >
         Widgets
       </Title>

@@ -14,7 +14,7 @@ import { PLUS_SIZE } from "../../themes/plus";
 /**
  * A row's background, laid directly on the drawer: a neutral gray on white, and
  * on dark a gray lighter than the drawer. A window with its own — the
- * Settings ("Listes éditables") — sets --milo-row-bg.
+ * Settings ("Formulaire" > "Liste") — sets --milo-row-bg.
  */
 export const ROW_BACKGROUND = "var(--milo-row-bg, var(--milo-sunken-bg))";
 
@@ -44,12 +44,37 @@ export const ROUNDING = "xs";
 const RADIUS = 8;
 
 /**
+ * A row's type, by what starts it: a checkbox, a field or button of its own
+ * ("simple"), the chevron that unfolds what it holds ("accordion").
+ */
+export type RowKind = "simple" | "accordion" | "checkbox";
+
+/**
+ * A row's padding by its type, where no window sets one: a field starting the
+ * row has its own inset; an unfolding row, on two lines, a bit more air.
+ */
+const ROW_PADDING: Record<RowKind, string> = {
+  simple: `${ROW_INSET}px`,
+  accordion: `${ROW_INSET + 5}px ${NAME_INSET}px`,
+  checkbox: `${ROW_INSET}px ${ROW_INSET}px ${ROW_INSET}px ${NAME_INSET}px`,
+};
+
+/**
  * A row's style: only the ends of the stack are rounded, the middle ones stay
  * square; the row being dragged fades. On the right, the last field sits flush
  * with the edge, away from the top and bottom.
  */
-export const rowStyle = (rank: number, total: number, held: boolean): CSSProperties => ({
-  padding: `${ROW_INSET}px ${ROW_INSET}px ${ROW_INSET}px ${NAME_INSET}px`,
+export const rowStyle = (
+  rank: number,
+  total: number,
+  held: boolean,
+  kind: RowKind = "checkbox",
+): CSSProperties => ({
+  // A window with its own — the Settings ("Formulaire" > "Liste" > "Types de
+  // listes") — sets them by type; the gap is otherwise the row's own (a
+  // Group's --group-gap).
+  padding: `var(--milo-row-padding-${kind}, ${ROW_PADDING[kind]})`,
+  gap: `var(--milo-row-gap-${kind}, var(--group-gap))`,
   borderTopLeftRadius: rank === 0 ? RADIUS : 0,
   borderTopRightRadius: rank === 0 ? RADIUS : 0,
   borderBottomLeftRadius: rank === total - 1 ? RADIUS : 0,
@@ -240,7 +265,7 @@ export function RowCheckbox({
       // Pressing the box must not start dragging the row.
       onMouseDown={(e) => e.stopPropagation()}
       // Told apart from the boxes with a label: the Settings set their
-      // colors apart ("Listes éditables").
+      // colors apart ("Formulaire" > "Liste").
       className="milo-row-checkbox"
       style={checkboxStyle(afterHandle, gap)}
     />
@@ -280,7 +305,7 @@ export function RowRadio({
  * fixed one —: the width and margins of a RowCheckbox, so names stay aligned.
  */
 export function RowCheckboxSpace({ afterHandle = false }: { afterHandle?: boolean }) {
-  return <Box w={CHECKBOX_SIZE} style={checkboxStyle(afterHandle)} />;
+  return <Box w={CHECKBOX_SIZE} style={checkboxStyle(afterHandle)} className="milo-row-checkbox-space" />;
 }
 
 /**
@@ -422,6 +447,38 @@ export const holdEscape = (field: HTMLElement | null) => {
 };
 
 /**
+ * Where a field belongs to an editable list: a row (rowStyle, its padding or
+ * background), a header row, a Settings list.
+ */
+/** A field one types in or picks from — not a checkbox, not a plain button. */
+const FIELD =
+  "input:not([type='checkbox']):not([type='radio']), textarea, select, [role='combobox'], [aria-haspopup], [contenteditable='true']";
+
+const LIST_ROW = '[style*="--milo-row-"], [style*="--milo-header-bg"], [data-settings-list]';
+
+/**
+ * Escape in any field of an editable list never closes the drawer or window
+ * holding it, whether or not the field holds it itself (editKeys, holdEscape):
+ * marked before Mantine reads it. Registered when this module loads, before
+ * any drawer or window opens — a window's capture listeners run in that order.
+ */
+if (typeof window !== "undefined" && !(window as { __miloListEscape?: boolean }).__miloListEscape) {
+  (window as { __miloListEscape?: boolean }).__miloListEscape = true;
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key !== "Escape" || !(e.target instanceof HTMLElement)) return;
+      const field = e.target;
+      const editable =
+        field.matches(FIELD) &&
+        field.closest(LIST_ROW);
+      if (editable && field.getAttribute(STOP_ESCAPE) !== "true") field.setAttribute(STOP_ESCAPE, "true");
+    },
+    { capture: true },
+  );
+}
+
+/**
  * Escape in a row's picker — a Select chosen from a list: with the list
  * closed, the field is left, and a row just added, still without a choice,
  * disappears with its exit. The list open, Escape only closes it. The drawer
@@ -486,7 +543,7 @@ export function RowField({
       readOnly={readOnly}
       // The drawer holding the row stays open on Escape (editKeys).
       data-mantine-stop-propagation
-      // A row's name: the Settings set its look ("Listes éditables" > "Texte").
+      // A row's name: the Settings set its look ("Formulaire" > "Liste" > "Texte").
       data-row-name
       value={input}
       onChange={(e) => setInput(e.currentTarget.value)}

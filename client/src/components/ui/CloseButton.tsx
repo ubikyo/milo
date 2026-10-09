@@ -18,6 +18,8 @@ export default function CloseButton({ children = "Fermer", style, ...props }: Cl
     <Button
       variant="subtle"
       color="gray"
+      // In a window, the themes' look ("Paramétrage" > "Boutons" > "Fermer").
+      data-close-button
       {...props}
       style={
         {

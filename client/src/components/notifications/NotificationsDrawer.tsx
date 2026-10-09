@@ -42,6 +42,7 @@ import DrawerScrollArea, {
 } from "../ui/DrawerScroll";
 import EmptyPanel from "../ui/EmptyPanel";
 import CloseButton from "../ui/CloseButton";
+import Footer from "../ui/Footer";
 
 // The latest notifications received, opened from the account menu. On
 // screen, a notification passes and fades; here, it stays until
@@ -278,9 +279,9 @@ export default function NotificationsDrawer({
           </Tabs.Panel>
         </Tabs>
 
-        <Group justify="flex-end" pt="md">
+        <Footer>
           <CloseButton onClick={onClose} />
-        </Group>
+        </Footer>
       </Drawer>
 
       <DeleteConfirmModal

@@ -1,6 +1,6 @@
 // Labels: those of a task board, set on its cards, their twins of a project
 // board, set on its projects, and of a Support board, set on its requests, and
-// those of a board's assets, which name the GLPI tags of its machines. Same
+// those of a board's assets, shown on the machines whose GLPI tag they name. Same
 // rules, four tables: the modes do not share their labels. Labels are a board's contexts (repositories/contexts.ts): any
 // change re-reads the boards.
 //
@@ -43,7 +43,6 @@ import {
   supportLabelGroups,
   declaredAssetLabelGroups,
 } from "../repositories/label-groups.js";
-import { reassignWorkstations } from "../repositories/managed-device-assets.js";
 import type { LabelGroupStore } from "../repositories/label-groups.js";
 import { mountLabelGroups } from "./label-groups.js";
 
@@ -335,10 +334,11 @@ const MANAGED_DEVICE_ASSET_LABEL_ACCESS: Record<Right, WidgetAccess> = {
 };
 
 /**
- * Labels of a board's assets: each brings into the board the machines whose
- * GLPI tag bears its name. The Assets mode is read-only — machines come from
- * the inventory —, but its labels are the board's settings: they follow the
- * permission on the Asset widget type.
+ * Labels of a board's assets: each shows on the machines whose GLPI tag
+ * bears its name — the list's collectors, not its labels, bring them in.
+ * The Assets mode is read-only — machines come from the inventory —, but its
+ * labels are the board's settings: they follow the permission on the Asset
+ * widget type.
  */
 export const managedDeviceAssetLabelRoutes = createRoutes({
   table: "managed_device_asset_labels",
@@ -355,8 +355,6 @@ export const managedDeviceAssetLabelRoutes = createRoutes({
   groups: managedDeviceAssetLabelGroups,
   // Machines are followed by no one: only the author, if they asked to.
   concernedBy: () => [],
-  // A label renamed, deleted or added changes the machines it brings.
-  changed: () => reassignWorkstations(),
 });
 
 /**

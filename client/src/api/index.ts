@@ -100,6 +100,9 @@ import type {
   MailTemplatePreview,
   DisplaySettings,
   MiloSettings,
+  ApiToken,
+  ApiTokenInput,
+  CreatedApiToken,
   Printer,
   PrinterInput,
   PrinterInfos,
@@ -118,6 +121,8 @@ import type {
   LabelTemplate,
   LabelTemplateKind,
   LabelTemplates,
+  AssetNumberTemplate,
+  AssetNumberTemplates,
   LabelTestPrint,
   DeclaredAsset,
   DeclaredAssetAttachment,
@@ -834,6 +839,13 @@ export const api = {
     post<LabelPreview>(`/label-templates/${kind}/preview${queryString({ board: boardId })}`, data),
   printLabelTemplate: (kind: LabelTemplateKind, boardId: Id, data: Omit<LabelTemplate, "name">) =>
     post<LabelTestPrint>(`/label-templates/${kind}/print${queryString({ board: boardId })}`, data),
+  // A board's asset number templates, by declared asset kind: the browser runs them.
+  getAssetNumberTemplates: (kind: DeclaredAssetKind, boardId: Id) =>
+    get<AssetNumberTemplates>(`/asset-number-templates/${kind}${queryString({ board: boardId })}`),
+  updateAssetNumberTemplates: (kind: DeclaredAssetKind, boardId: Id, templates: AssetNumberTemplate[]) =>
+    put<AssetNumberTemplates>(`/asset-number-templates/${kind}${queryString({ board: boardId })}`, {
+      templates,
+    }),
   // An asset's label, from the template of this name.
   printAssetLabel: (kind: LabelTemplateKind, assetId: Id, name: string) =>
     post<LabelTestPrint>(`/label-templates/${kind}/assets/${assetId}/print`, { name }),
@@ -894,6 +906,12 @@ export const api = {
   getDisplaySettings: () => get<DisplaySettings>("/display-settings"),
   updateDisplaySettings: (data: Partial<DisplaySettings>) =>
     put<DisplaySettings>("/display-settings", data),
+  // "Paramétrage" > "API": the secret only comes back on generation.
+  getApiTokens: () => get<ApiToken[]>("/api-tokens"),
+  createApiToken: (data: ApiTokenInput) => post<CreatedApiToken>("/api-tokens", data),
+  updateApiToken: (id: Id, data: ApiTokenInput) => put<ApiToken>(`/api-tokens/${id}`, data),
+  deleteApiToken: (id: Id) => del(`/api-tokens/${id}`),
+
   getPrinters: () => get<Printer[]>("/printers"),
   // Each printer asked for its model: a few seconds at most.
   getPrinterInfos: () => get<PrinterInfos>("/printers/info"),

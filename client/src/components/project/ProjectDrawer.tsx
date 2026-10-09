@@ -66,6 +66,8 @@ import type {
 } from "@milo/shared";
 import type { ThreadItem } from "./CommentThread";
 import CloseButton from "../ui/CloseButton";
+import Footer from "../ui/Footer";
+import { themeWindow } from "../../lib/themeWindow";
 
 /** The form being edited. Everything is strings: they are fields. */
 
@@ -692,6 +694,7 @@ export default function ProjectDrawer({
       />
 
       <Modal
+        attributes={themeWindow("new-category")}
         opened={newCategoryOpened}
         onClose={closeNewCategory}
         title="Nouvelle catégorie"
@@ -716,7 +719,7 @@ export default function ProjectDrawer({
           />
           {/* Space above the actions equal to the window's inset, as in
               the deletion confirmation. */}
-          <Group justify="flex-end" mt={MODAL_PADDING - 16}>
+          <Footer parentGap="var(--mantine-spacing-md)">
             <CloseButton onClick={closeNewCategory} />
             <Button
               color="teal"
@@ -726,7 +729,7 @@ export default function ProjectDrawer({
             >
               Ajouter
             </Button>
-          </Group>
+          </Footer>
         </Stack>
       </Modal>
 

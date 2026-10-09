@@ -11,6 +11,7 @@ import {
   Title,
 } from "@mantine/core";
 import {
+  IconApi,
   IconDatabaseExport,
   IconBrandWindows,
   IconLayoutNavbar,
@@ -26,12 +27,11 @@ import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import {
   SETTINGS_HEIGHT_MAX,
-  SETTINGS_HEIGHT,
   SETTINGS_WIDTH,
   modalHeaderStyles,
 } from "../../themes/modals";
 import { tabStyle } from "../../themes/tabs";
-import { THEME_SCOPE_ATTRIBUTE } from "../theme/ThemePanel";
+import { themeWindow } from "../../lib/themeWindow";
 import { THEME_TAB_ATTRIBUTE } from "../theme/ThemeHighlight";
 import classes from "../../assets/styles/SettingsModal.module.css";
 import BackupTab from "./BackupTab";
@@ -43,8 +43,10 @@ import PrintersTab from "./PrintersTab";
 import WorkspacesTab from "./WorkspacesTab";
 import SettingsIntro from "./SettingsIntro";
 import AdministrationTab from "./AdministrationTab";
-import type { CSSProperties, ComponentType, ReactNode } from "react";
+import ApiTab from "./ApiTab";
+import type { ComponentType, ReactNode } from "react";
 import CloseButton from "../ui/CloseButton";
+import Footer from "../ui/Footer";
 
 const TABS: {
   value: string;
@@ -78,6 +80,13 @@ const TABS: {
     icon: IconLayoutNavbar,
     description: "Principaux paramètres d’affichage de l’application.",
   },
+  {
+    value: "api",
+    label: "API",
+    icon: IconApi,
+    description:
+      "Les tokens API permettent à des clients externes (agents connectés via MCP, scripts, etc.) d’accéder à Milo. Chaque token agit comme un compte de service dont les droits sont limités aux workspaces autorisés, sans accès aux paramètres d’administration.",
+  },
   // The backup at the very bottom: it covers the whole database, not a setting.
   { value: "backup", label: "Sauvegarde", icon: IconDatabaseExport },
 ];
@@ -87,8 +96,8 @@ const STANDALONE_TABS = new Set(["entra", "administration", "backup"]);
 
 /**
  * The others' tabs, and the administration's right each one requires — on
- * top of "Gestion du paramétrage", which opens the Settings. Impression and
- * Affichage need nothing more. Neither is the "admin" account's
+ * top of "Gestion du paramétrage", which opens the Settings. Impression,
+ * Affichage and API need nothing more. Neither is the "admin" account's
  * (STANDALONE_TABS): it only sets up the application.
  */
 const TAB_RIGHTS: Record<string, (a: AdminPermissions) => boolean> = {
@@ -97,6 +106,7 @@ const TAB_RIGHTS: Record<string, (a: AdminPermissions) => boolean> = {
   templates: (a) => a.templates.includes("access"),
   printing: () => true,
   display: () => true,
+  api: () => true,
 };
 
 /**
@@ -107,10 +117,11 @@ const TAB_RIGHTS: Record<string, (a: AdminPermissions) => boolean> = {
 const WITH_ENTRA = new Set(["administration", "backup"]);
 
 /**
- * The tabs' left inset ("Onglets" > "Padding"): their column's width takes
- * it in, and it stands for Mantine's single inset (--mb-padding).
+ * The window's left inset ("Fenêtre" > "Padding"): the tabs' column takes it
+ * in, its background reaching the edge (tabs.css), and it stands for
+ * Mantine's single inset (--mb-padding).
  */
-const PADDING_LEFT = "var(--milo-settings-padding-left)";
+const PADDING_LEFT = "var(--milo-settings-window-padding-left)";
 
 const MODAL_HEADER = {
   ...modalHeaderStyles(PADDING_LEFT),
@@ -122,29 +133,10 @@ const MODAL_HEADER = {
     // Mantine's 60 px at least: its height is only the padding's and the title's.
     minHeight: 0,
   },
-  // No inset of its own: the tabs and the content each have theirs.
-  body: { padding: 0 },
+  // Its inset, all windows' ("Fenêtre" > "Padding").
+  body: { padding: "var(--milo-settings-window-padding)" },
 };
 
-/**
- * Its two buttons, set in the themes ("Bouton enregistrer", "Bouton
- * fermer"): Mantine's variables, which the style overrides. The save button's
- * hover keeps its background, like the single-shade green.
- */
-const SAVE_STYLE = {
-  "--button-bg": "var(--milo-settings-save-bg)",
-  "--button-hover": "var(--milo-settings-save-bg)",
-  "--button-color": "var(--milo-settings-save-text)",
-  fontSize: "var(--milo-settings-save-size)",
-  fontWeight: "var(--milo-settings-save-weight)",
-} as CSSProperties;
-
-const CLOSE_STYLE = {
-  "--button-bg": "var(--milo-settings-close-bg)",
-  "--button-color": "var(--milo-settings-close-text)",
-  fontSize: "var(--milo-settings-close-size)",
-  fontWeight: "var(--milo-settings-close-weight)",
-} as CSSProperties;
 
 /** The tabs' labels' width, set in the themes ("Onglets"). */
 const TABS_WIDTH = "var(--milo-settings-tab-width)";
@@ -332,7 +324,12 @@ export default function SettingsModal({
         {/* Spaced by margins rather than a gap: the one under the
             description is the themes' ("Description" > "Marge basse"). */}
         <Stack gap={0} style={{ flex: 1, minHeight: 0 }}>
-          <Group justify="space-between" align="center" wrap="nowrap" mb="md">
+          <Group
+            justify="space-between"
+            align="center"
+            wrap="nowrap"
+            mb="var(--milo-settings-title-margin-bottom)"
+          >
             <Title
               order={4}
               c="var(--milo-settings-title-text)"
@@ -387,12 +384,14 @@ export default function SettingsModal({
       // Its colors and sizes are its own (theme editor): its rules give them
       // to the windows' header and tabs.
       classNames={{ content: classes.window }}
-      attributes={{ content: { [THEME_SCOPE_ATTRIBUTE]: "settings" } }}
+      attributes={themeWindow("settings")}
       styles={{
         ...MODAL_HEADER,
         content: {
           backgroundColor: "var(--milo-settings-bg)",
-          height: SETTINGS_HEIGHT,
+          // The windows' ("Fenêtre" > "Hauteur") — its own when checked
+          // beside it: its content's ("auto"), or set.
+          height: "var(--milo-settings-window-height)",
           maxHeight: SETTINGS_HEIGHT_MAX,
           display: "flex",
           flexDirection: "column",
@@ -478,6 +477,8 @@ export default function SettingsModal({
 
           {panel("backup", <BackupTab />)}
 
+          {panel("api", <ApiTab canEdit={canEdit} workspaces={user.workspaces} />)}
+
           {panel("templates", <TemplatesTab canEdit={canEdit} />)}
 
           {panel("printing", <PrintersTab canEdit={canEdit} />)}
@@ -490,7 +491,7 @@ export default function SettingsModal({
             />,
           )}
 
-          <Group justify="flex-end" mt={40}>
+          <Footer>
             {!canEdit && user.settings.view && (
               <Text size="sm" c="dimmed" mr="auto">
                 Consultation seule : votre rôle ne permet pas de modifier le
@@ -533,13 +534,12 @@ export default function SettingsModal({
               </>
             ) : (
               <>
-                <CloseButton onClick={onClose} style={CLOSE_STYLE}>
+                <CloseButton onClick={onClose}>
                   {standalone ? "Déconnexion" : "Fermer"}
                 </CloseButton>
                 {canEdit && (
                   <Button
                     color="teal"
-                    style={SAVE_STYLE}
                     onClick={save}
                     loading={registration}
                     disabled={senderMissing}
@@ -549,7 +549,7 @@ export default function SettingsModal({
                 )}
               </>
             )}
-          </Group>
+          </Footer>
         </Box>
       </Tabs>
     </Modal>

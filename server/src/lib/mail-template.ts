@@ -689,6 +689,40 @@ const LINKED_MJML = `<mjml>
   </mj-body>
 </mjml>`;
 
+/** The due-date reminder's template: the element that falls due, the button that opens it. */
+const REMINDER_MJML = `<mjml>
+  <mj-head>
+    <mj-title>Rappel d'échéance !</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Arial, sans-serif" font-size="14px" color="{{colors.text}}" line-height="1.5" />
+      <mj-text padding="10px 25px" color="{{colors.text}}" />
+      <mj-button background-color="{{colors.green}}" color="{{colors.text}}" border-radius="4px" font-size="14px" />
+      <mj-section padding="20px" />
+    </mj-attributes>
+
+    <mj-raw><meta name="color-scheme" content="light dark" /></mj-raw>
+    <mj-raw><meta name="supported-color-schemes" content="light dark" /></mj-raw>
+  </mj-head>
+
+  <mj-body>
+    <mj-section>
+      <mj-column>
+        <mj-image src="{{milo.logo}}" align="left" width="80px"/>
+        <mj-text padding="30px 25px 15px 25px">
+          <h1 style="margin: 0;">{{ template.title }}</h1>
+        </mj-text>
+        <mj-text padding="0 25px 10px 25px">
+          <p style="margin: 0;">L'élement suivant arrive à échéance prochainement :</p>
+        </mj-text>
+        <mj-text>
+          <span style="display: inline-block; width: 20px; color: {{colors.green}}">&mdash;</span>{{element.name}}<br />
+        </mj-text>
+        <mj-button href="{{element.url}}" align="left">Ouvrir dans Milo</mj-button>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>`;
+
 /** The changes' template as it names its modifications, a template saved with its lines included. */
 const asUpdates = (mjml: string): string =>
   asElement(mjml)
@@ -1051,17 +1085,26 @@ const DEFINITIONS: Record<MailTemplateKey, Definition> = {
     },
     current: asElement,
   },
-  reminder: notice(
-    "Rappel d'échéance",
-    "Le rappel envoyé aux acteurs d'une tâche avant son échéance.",
-    { rows: false, action: true },
-    {
-      title: "Préparer la maquette",
-      intro: "Milo vous rappelle l'échéance du 5 octobre à 17:00.",
-      action: SAMPLE_LINK,
-      footer: "Vous recevez ce message parce que vous êtes acteur de cette tâche dans Milo.",
+  reminder: {
+    label: "Rappel d'échéance",
+    description: "Le rappel envoyé aux acteurs d'une tâche avant son échéance.",
+    variables: LINKED_ELEMENT,
+    mjml: REMINDER_MJML,
+    sample: {
+      element: {
+        name: "Préparer la maquette",
+        activity: "Milo vous rappelle l'échéance du 5 octobre à 17:00.",
+        url: `${SAMPLE_LINK.url}?card=318`,
+        workspace: "Arco",
+        path: "Arco › Tâches › Les Manufactures",
+        view: "Tâches",
+        board: "Les Manufactures",
+        widgetType: "Tâches",
+        widget: "Tâches",
+      } satisfies ElementView,
     },
-  ),
+    current: asElement,
+  },
   assignment: notice(
     "Demande assignée",
     "Une ou plusieurs demandes de support assignées à une personne.",

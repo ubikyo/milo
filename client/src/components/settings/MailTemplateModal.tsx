@@ -5,14 +5,20 @@ import { useEffect, useRef, useState } from "react";
 import type { MailTemplate, MailTemplatePreview } from "@milo/shared";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
-import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
-import { STRONG_TEXT } from "../../themes/colors";
+import { MODAL_PADDING } from "../../themes/modals";
 import CloseButton from "../ui/CloseButton";
+import Footer from "../ui/Footer";
 import MailPreview, {
-  HANDLE_COLOR,
-  SPLITTER_STYLES,
-  PANES_HEIGHT,
   PANE_MINS,
+  TEMPLATE_PANES_HEIGHT,
+  TEMPLATE_WIDTH,
+  templateFooterMargin,
+  templateFooterStyle,
+  templateHandleColor,
+  templateIconColor,
+  templateModalStyles,
+  templateSplitterStyles,
+  templateWindow,
   FoldablePane,
   PANE_SIZES,
   paneStyle,
@@ -37,8 +43,6 @@ interface MailTemplateModalProps {
   onSave: (mjml: string) => Promise<unknown>;
   canEdit: boolean;
 }
-
-const WINDOW_WIDTH = 1320;
 
 // The preview waits for typing to pause before asking the server.
 const PREVIEW_DELAY_MS = 400;
@@ -107,7 +111,6 @@ export default function MailTemplateModal({ template, onClose, onSave, canEdit }
     setOpenedOn(template);
     setFull(false);
   }
-  const headerStyles = modalHeaderStyles(MODAL_PADDING);
   // From one size to the other, the variables fold again — in either direction.
   const toggleFull = () => {
     setFull(!full);
@@ -123,6 +126,7 @@ export default function MailTemplateModal({ template, onClose, onSave, canEdit }
 
   return (
     <Modal
+      attributes={templateWindow("mail-template")}
       opened={template !== null}
       onClose={onClose}
       // Escape belongs to the code — it closes the completion list —: the
@@ -136,7 +140,7 @@ export default function MailTemplateModal({ template, onClose, onSave, canEdit }
           {template ? `Modèle — ${template.label}` : "Modèle"}
           <ActionIcon
             variant="transparent"
-            c={full ? STRONG_TEXT : "#ffffff"}
+            c={templateIconColor(full)}
             onClick={toggleFull}
             aria-label={full ? "Réduire la fenêtre" : "Agrandir la fenêtre"}
           >
@@ -145,65 +149,18 @@ export default function MailTemplateModal({ template, onClose, onSave, canEdit }
         </Group>
       }
       centered
-      size={WINDOW_WIDTH}
+      size={TEMPLATE_WIDTH}
       fullScreen={full}
       padding={MODAL_PADDING}
       withCloseButton={false}
-      styles={{
-        ...headerStyles,
-        title: { ...headerStyles.title, flex: 1 },
-        // Over the whole window, the panes take the height the rest leaves.
-        ...(full && {
-          // A thinner banner: the room goes to the panes.
-          // Mantine gives the header 60 px at least: dropped, the title and its
-          // icon set the height.
-          // On the interface's background, not the dark banner: the title in
-          // the strong text, white on dark, black on light.
-          header: {
-            ...headerStyles.header,
-            padding: "5px 10px",
-            paddingInlineEnd: 10,
-            minHeight: 0,
-            backgroundColor: "var(--mantine-color-body)",
-          },
-          title: { ...headerStyles.title, flex: 1, color: STRONG_TEXT },
-          content: { display: "flex", flexDirection: "column" },
-          // The panes against the edges; the buttons' bar keeps its own inset.
-          // Each side by its own name: a "padding" shorthand, removed on the way
-          // back, would also take away the top one the normal size keeps.
-          body: {
-            paddingTop: 0,
-            paddingInline: 0,
-            paddingBottom: 0,
-            flex: 1,
-            minHeight: 0,
-            display: "flex",
-            flexDirection: "column",
-          },
-        }),
-      }}
+      styles={templateModalStyles(full)}
     >
       <Stack gap={full ? 0 : "md"} style={full ? { flex: 1, minHeight: 0 } : undefined}>
         <Splitter
-          h={full ? undefined : PANES_HEIGHT}
+          h={full ? undefined : TEMPLATE_PANES_HEIGHT}
           style={full ? { flex: 1, minHeight: 0 } : undefined}
-          handleColor={HANDLE_COLOR}
-          // Over the whole window, no frame: the panes run to its edges, a
-          // line above and under them sets them apart from the title and the
-          // buttons.
-          styles={
-            full
-              ? {
-                  ...SPLITTER_STYLES,
-                  root: {
-                    border: 0,
-                    borderTop: `1px solid ${HANDLE_COLOR}`,
-                    borderBottom: `1px solid ${HANDLE_COLOR}`,
-                    borderRadius: 0,
-                  },
-                }
-              : SPLITTER_STYLES
-          }
+          handleColor={templateHandleColor(full)}
+          styles={templateSplitterStyles(full)}
           {...panes.splitterProps}
           onResizeStart={() => setDragging(true)}
           onResizeEnd={() => setDragging(false)}
@@ -228,7 +185,7 @@ export default function MailTemplateModal({ template, onClose, onSave, canEdit }
                 onChange={setMjml}
                 readOnly={!canEdit}
                 errors={errors}
-                height={full ? "100%" : PANES_HEIGHT}
+                height={full ? "100%" : TEMPLATE_PANES_HEIGHT}
               />
             </FoldablePane>
           </Splitter.Pane>
@@ -240,12 +197,11 @@ export default function MailTemplateModal({ template, onClose, onSave, canEdit }
           </Splitter.Pane>
         </Splitter>
 
-        {/* Over the whole window, a thin bar: 10 px above and below, 15 px
-            on the left, 8 px on the right. */}
-        <Group
+        <Footer
           justify="space-between"
-          mt={full ? 0 : MODAL_PADDING - 16}
-          style={full ? { padding: "10px 8px 10px 15px" } : undefined}
+          parentGap="var(--mantine-spacing-md)"
+          mt={templateFooterMargin(full)}
+          style={templateFooterStyle(full)}
         >
           {/* The preview's theme. */}
           <Switch
@@ -263,7 +219,7 @@ export default function MailTemplateModal({ template, onClose, onSave, canEdit }
               </Button>
             )}
           </Group>
-        </Group>
+        </Footer>
       </Stack>
     </Modal>
   );

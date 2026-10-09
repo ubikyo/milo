@@ -1,11 +1,14 @@
 import {
   Box,
   Group,
+  Select,
   ScrollArea,
   SimpleGrid,
   Stack,
+  Switch,
   Text,
   Title,
+  Tooltip,
   Tree,
   useComputedColorScheme,
   useTree,
@@ -22,6 +25,8 @@ import {
   hexaString,
   parseThemeColor,
   themePaddingOf,
+  themeWindowDefault,
+  themeWindowKey,
 } from "@milo/shared";
 import type { ThemeColorDefinition, ThemeColors, ThemeSizeDefinition } from "@milo/shared";
 import type { CSSProperties, FocusEvent, PointerEvent } from "react";
@@ -55,11 +60,8 @@ export const THEME_INTERFACE_GAP = 1;
 
 export type ThemePanelKind = "interface" | "modal" | "drawer";
 
-/**
- * Set on a window's content by an interface that has its own colors — the
- * widgets drawer —: its name, that its groups carry (THEME_COLOR_GROUPS' "scope").
- */
-export const THEME_SCOPE_ATTRIBUTE = "data-theme-scope";
+/** Set on a window's content: the styles it takes (THEME_COLOR_GROUPS' "scope"). */
+export { THEME_SCOPE_ATTRIBUTE } from "../../lib/themeWindow";
 
 const PADDING = 30;
 
@@ -147,7 +149,32 @@ const depthOf = (nodes: TreeNodeData[]): number =>
  * by a step (INDENT) per level — the fields step in under their title.
  */
 export const themePanelWidth = (kind: ThemePanelKind, scope?: string | null): number =>
-  THEME_PANEL_WIDTH + INDENT * depthOf(panelTree(kind, scope));
+  THEME_PANEL_WIDTH + INDENT * depthOf(panelTree(kind, scope)) + (scope ? OWN_MARGIN + OWN_SIZE + OWN_GAP : 0);
+
+/**
+ * Beside a window, each style's switch — its own value or the style's —, in
+ * its control: its width (Mantine's "xs"), and its gap to the reset button
+ * (RESET_GAP).
+ */
+const OWN_SIZE = 32;
+const OWN_GAP = 8;
+
+/** The space on the switch's left, inside the control. */
+const OWN_MARGIN = 3;
+
+/** The groups of "Thèmes spécifiques", whatever their depth: their styles are one window's anyway. */
+const SPECIFIC_GROUPS = (() => {
+  const under = new Set(["settings-specific"]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const g of THEME_COLOR_GROUPS)
+      if (g.parent && under.has(g.parent) && !under.has(g.key)) {
+        under.add(g.key);
+        grew = true;
+      }
+  }
+  return under;
+})();
 
 /**
  * The scrollbar along the panel's right edge, over its whole height, title
@@ -176,15 +203,37 @@ const SIDE_FIELDS = {
   left: { arrow: "←", what: "gauche" },
 };
 
+/** A margin's or a gap's arrow (direction): a side's, or both ways. */
+const arrowOf = (direction: ThemeSizeDefinition["direction"]) =>
+  direction === "vertical"
+    ? "↕"
+    : direction === "horizontal"
+      ? "↔"
+      : direction
+        ? SIDE_FIELDS[direction].arrow
+        : undefined;
+
+/** "Auto" or a size in pixels (ThemeSizeDefinition's "auto"): the choice's width. */
+const AUTO_WIDTH = 72;
+
+/** The size a choice of "px" starts at. */
+const AUTO_PX = 600;
+
+/** The share a choice of "%" starts at. */
+const AUTO_PERCENT = 80;
+
 /** Two sides per line, within the field's width. */
 const SIDE_GAP = 6;
 
 /**
  * A group's colors, then its sizes — each after the color it names (after),
- * if any. A padding is one row: its top side stands for the four.
+ * if any. A padding is one row: its first side stands for them all.
  */
 const groupRows = (group: string): (ThemeColorDefinition | ThemeSizeDefinition)[] => {
-  const sizes = THEME_SIZES.filter((s) => s.group === group && (!s.side || s.side === "top"));
+  // A padding's first side stands for its row: "top", or the first it has.
+  const firstSide = (s: ThemeSizeDefinition) =>
+    THEME_SIZES.find((d) => d.side && themePaddingOf(d.key) === themePaddingOf(s.key)) === s;
+  const sizes = THEME_SIZES.filter((s) => s.group === group && (!s.side || firstSide(s)));
   const placed = (key: string) => sizes.filter((s) => s.after === key);
   return [
     ...THEME_COLORS.filter((c) => c.group === group).flatMap((c) => [c, ...placed(c.key)]),
@@ -195,12 +244,18 @@ const groupRows = (group: string): (ThemeColorDefinition | ThemeSizeDefinition)[
 export default function ThemePanel({
   kind,
   scope,
+  window = null,
   canEdit,
   style,
 }: {
   kind: ThemePanelKind;
   /** The interface beside which it stands has its own colors: only those. */
   scope?: string | null;
+  /**
+   * The window beside which it stands, by its name (themeWindow): a style
+   * may take a value for it only.
+   */
+  window?: string | null;
   canEdit: boolean;
   /** Its place: docked beside the interface, or floating beside a window. */
   style?: CSSProperties;
@@ -215,54 +270,151 @@ export default function ThemePanel({
   const tree = useMemo(() => panelTree(kind, scope), [kind, scope]);
   const width = themePanelWidth(kind, scope);
   /** A field fills its row, at every level: the panel's width, less its title's step and its own. */
-  const fieldWidth = (level: number) => FIELD_WIDTH + width - THEME_PANEL_WIDTH - INDENT * level;
+  const fieldWidth = (level: number) =>
+    FIELD_WIDTH + width - THEME_PANEL_WIDTH - INDENT * level - (window ? OWN_MARGIN + OWN_SIZE + OWN_GAP : 0);
+
+  /** A style's own value in the window beside which the panel stands: its stored key. */
+  const ownKey = (key: string) => (window ? themeWindowKey(key, window) : key);
+  /** The window's own value of the style by default, if any (THEME_WINDOW_DEFAULTS). */
+  const ownDefault = (key: string) => (window ? themeWindowDefault(key, window) : undefined);
+  /**
+   * The window has its own value of the style (its box checked): edits go
+   * there. By default for some — unless it follows the style's.
+   */
+  const isOwn = (key: string) => {
+    if (window === null) return false;
+    const entry = colors[ownKey(key)];
+    return entry ? !entry.inherit : ownDefault(key) !== undefined;
+  };
+
+  /** The color the field shows: the window's own, otherwise the style's. */
+  const hexaOf = (key: string) => {
+    const own = isOwn(key) ? colors[ownKey(key)]?.[scheme] : undefined;
+    return own ?? themeHexaOf(key, scheme);
+  };
+
+  /** The size the field shows: the window's own, otherwise the style's. */
+  const sizeOf = (key: string) => {
+    if (!isOwn(key)) return themeSizeOf(key, scheme);
+    return colors[ownKey(key)]?.sizes?.[scheme] ?? ownDefault(key) ?? themeSizeOf(key, scheme);
+  };
 
   /**
-   * Sets the color, as #rrggbbaa whatever its writing; brought back to its
-   * default, it is no longer stored. The other theme's value stays.
+   * Stores a style's value in the theme shown, in the window's own entry when
+   * it has one — there, the style's value is not stored, the window follows
+   * it; and the entry stays, its box checked. Otherwise the style's value,
+   * not stored either when it is its default.
    */
-  const change = (key: string, value: string) => {
-    const parsed = parseThemeColor(value);
-    if (!canEdit || !parsed) return;
-    const hexa = hexaString(parsed);
-    const own = { ...colors[key] };
-    if (hexa === defaultHexaOf(key, scheme)) delete own[scheme];
-    else own[scheme] = hexa;
+  const store = (key: string, value: { color?: string; size?: number } | null, isDefault: boolean) => {
+    const own = isOwn(key);
+    const stored = own ? ownKey(key) : key;
+    const entry: ThemeColors[string] = { ...colors[stored] };
+    if (value?.size !== undefined || (value === null && THEME_SIZES.some((d) => d.key === key))) {
+      const sizes = { ...entry.sizes };
+      if (value?.size === undefined || isDefault) delete sizes[scheme];
+      else sizes[scheme] = value.size;
+      if (sizes.light !== undefined || sizes.dark !== undefined) entry.sizes = sizes;
+      else delete entry.sizes;
+    } else {
+      if (value?.color === undefined || isDefault) delete entry[scheme];
+      else entry[scheme] = value.color;
+    }
     const next: ThemeColors = { ...colors };
-    if (own.light || own.dark) next[key] = own;
-    else delete next[key];
+    if (own || entry.light || entry.dark || entry.sizes) next[stored] = entry;
+    else delete next[stored];
     updateThemeColors(scheme, next, onError);
   };
 
-  /** Sets a size; emptied or brought back to its default, it is no longer stored. */
+  /**
+   * Sets the color, as #rrggbbaa whatever its writing; brought back to its
+   * default — for a window, the style's —, it is no longer stored. The other
+   * theme's value stays.
+   */
+  const change = (key: string, value: string) => {
+    const picked = parseThemeColor(value);
+    if (!canEdit || !picked) return;
+    // A transparent color — a tab's background, by default — given another
+    // hue: it is made opaque, otherwise the pick would not show at all.
+    const before = parseThemeColor(hexaOf(key));
+    const parsed =
+      picked.a === 0 && before?.a === 0 && (picked.r !== before.r || picked.g !== before.g || picked.b !== before.b)
+        ? { ...picked, a: 1 }
+        : picked;
+    const hexa = hexaString(parsed);
+    const base = isOwn(key) ? themeHexaOf(key, scheme) : defaultHexaOf(key, scheme);
+    store(key, { color: hexa }, hexa === base);
+  };
+
+  /** Sets a size; emptied or brought back to its default — for a window, the style's —, it is no longer stored. */
   const changeSize = (key: string, value: number | "") => {
     const definition = THEME_SIZES.find((s) => s.key === key);
     if (!canEdit || !definition) return;
     const size = value === "" ? null : cleanThemeSize(definition, value);
-    const sizes = { ...colors[key]?.sizes };
-    if (size === null || size === themeSizeDefaultOf(key, scheme)) delete sizes[scheme];
-    else sizes[scheme] = size;
-    const next: ThemeColors = { ...colors };
-    if (sizes.light !== undefined || sizes.dark !== undefined) next[key] = { sizes };
-    else delete next[key];
-    updateThemeColors(scheme, next, onError);
+    const base = isOwn(key) ? (ownDefault(key) ?? themeSizeOf(key, scheme)) : themeSizeDefaultOf(key, scheme);
+    store(key, size === null ? null : { size }, size === null || size === base);
   };
 
-  /** Brings the values back to their default, in the theme shown only. */
+  /** Brings the values back to their default — for a window, the style's —, in the theme shown only. */
   const reset = (...keys: string[]) => {
     const next: ThemeColors = { ...colors };
     for (const key of keys) {
-      const own = colors[key];
-      if (!own) continue;
-      const { [scheme]: _color, sizes, ...rest } = own;
+      const own = isOwn(key);
+      const stored = own ? ownKey(key) : key;
+      const entry = colors[stored];
+      if (!entry) continue;
+      const { [scheme]: _color, sizes, ...rest } = entry;
       const { [scheme]: _size, ...otherSizes } = sizes ?? {};
       const kept: ThemeColors[string] = Object.keys(otherSizes).length
         ? { ...rest, sizes: otherSizes }
         : rest;
-      if (Object.keys(kept).length) next[key] = kept;
-      else delete next[key];
+      if (own || Object.keys(kept).length) next[stored] = kept;
+      else delete next[stored];
     }
     updateThemeColors(scheme, next, onError);
+  };
+
+  /**
+   * Gives the window its own values of the styles — following theirs until
+   * set —, or takes them back: the window then follows the styles again.
+   */
+  const setOwn = (keys: string[], on: boolean) => {
+    if (!canEdit || !window) return;
+    const next: ThemeColors = { ...colors };
+    for (const key of keys) {
+      const stored = ownKey(key);
+      const byDefault = ownDefault(key) !== undefined;
+      // Checked: its own value — the default one, if it has one. Unchecked:
+      // the style's — said so, when it has one by default.
+      if (on) next[stored] = byDefault ? {} : (next[stored] ?? {});
+      else if (byDefault) next[stored] = { inherit: true };
+      else delete next[stored];
+    }
+    updateThemeColors(scheme, next, onError);
+  };
+
+  /**
+   * In a style's control, beside a window: its switch, on when the window
+   * has its own values; a style of "Thèmes spécifiques" is the window's anyway, an
+   * empty space keeps the controls aligned. Beside the interface, nothing.
+   */
+  const ownBox = (keys: string[], group: string, label: string) => {
+    if (!window) return null;
+    if (SPECIFIC_GROUPS.has(group)) return <Box w={OWN_SIZE} ml={OWN_MARGIN} style={{ flexShrink: 0 }} />;
+    return (
+      <Tooltip label="Propre à cette fenêtre" withinPortal>
+        <Switch
+          size="xs"
+          color="teal"
+          // A padding's sides go together: on when all are the window's.
+          checked={keys.every(isOwn)}
+          onChange={(e) => setOwn(keys, e.currentTarget.checked)}
+          disabled={!canEdit}
+          aria-label={`« ${label} » propre à cette fenêtre`}
+          ml={OWN_MARGIN}
+          style={{ flexShrink: 0, alignSelf: "center" }}
+        />
+      </Tooltip>
+    );
   };
 
   /**
@@ -282,8 +434,11 @@ export default function ThemePanel({
     },
   });
 
-  const modified = (key: string) =>
-    colors[key]?.[scheme] !== undefined || colors[key]?.sizes?.[scheme] !== undefined;
+  /** The field differs from its default — for a window of its own, from the style's. */
+  const modified = (key: string) => {
+    const stored = colors[isOwn(key) ? ownKey(key) : key];
+    return stored?.[scheme] !== undefined || stored?.sizes?.[scheme] !== undefined;
+  };
 
   const colorRow = (c: ThemeColorDefinition, width: number) => (
     <Stack key={c.key} gap={2}>
@@ -291,6 +446,7 @@ export default function ThemePanel({
         {c.label}
       </Text>
       <Group gap={RESET_GAP} wrap="nowrap" style={FIELD_ROW} {...focusFrames(c.key)}>
+        {ownBox([c.key], c.group, c.label)}
         <Reset
           active={modified(c.key)}
           what={`« ${c.label} »`}
@@ -299,7 +455,7 @@ export default function ThemePanel({
         <Color
           width={width}
           background={FIELD_BACKGROUND}
-          value={themeHexaOf(c.key, scheme)}
+          value={hexaOf(c.key)}
           onChange={(v) => change(c.key, v)}
           format="hexa"
           swatches={THEME_SHADES}
@@ -322,13 +478,16 @@ export default function ThemePanel({
         <Text size="xs" title={s.hint}>
           {s.label}
         </Text>
-        <Group gap={RESET_GAP} wrap="nowrap" align="flex-start" style={FIELD_ROW}>
+        {/* Its switch and reset button centered on its lines. */}
+        <Group gap={RESET_GAP} wrap="nowrap" align="center" style={FIELD_ROW}>
+          {ownBox(keys, s.group, s.label)}
           <Reset
             active={keys.some(modified)}
             what={`« ${s.label} »`}
             onClick={() => reset(...keys)}
           />
-          <SimpleGrid cols={2} spacing={SIDE_GAP} verticalSpacing={SIDE_GAP} w={width}>
+          {/* Two sides per line; a single side fills it. */}
+          <SimpleGrid cols={Math.min(2, sides.length)} spacing={SIDE_GAP} verticalSpacing={SIDE_GAP} w={width}>
             {sides.map((side) => {
               const key = `${padding}-${side}`;
               const definition = THEME_SIZES.find((d) => d.key === key)!;
@@ -338,13 +497,13 @@ export default function ThemePanel({
                     first={false}
                     label={`Padding ${SIDE_FIELDS[side].what} « ${s.label} »`}
                     size={{
-                      value: themeSizeOf(key, scheme),
+                      value: sizeOf(key),
                       defaultValue: themeSizeDefaultOf(key, scheme),
                       min: definition.min,
                       max: definition.max,
                       prefix: SIDE_FIELDS[side].arrow,
                       suffix: " px",
-                      width: (width - SIDE_GAP) / 2,
+                      width: sides.length > 1 ? (width - SIDE_GAP) / 2 : width,
                       background: FIELD_BACKGROUND,
                       onChange: (v) => changeSize(key, v),
                     }}
@@ -361,21 +520,60 @@ export default function ThemePanel({
   /** A size; a weight — without a unit — is chosen in the list of its values. */
   const sizeRow = (s: ThemeSizeDefinition, width: number) => {
     if (s.side) return paddingRow(s, width);
+    const value = sizeOf(s.key);
+    // "Auto" (0), pixels, or a percentage (negative).
+    const mode = value === 0 ? "auto" : value < 0 ? "%" : "px";
     return (
       <Stack key={s.key} gap={2}>
         <Text size="xs" title={s.hint}>
           {s.label}
         </Text>
         <Group gap={RESET_GAP} wrap="nowrap" style={FIELD_ROW} {...focusFrames(s.key)}>
+          {ownBox([s.key], s.group, s.label)}
           <Reset
             active={modified(s.key)}
             what={`« ${s.label} »`}
             onClick={() => reset(s.key)}
           />
-          {s.unit === "" ? (
+          {s.auto ? (
+            // "Auto", pixels or a percentage, then the size.
+            <Group gap={SIDE_GAP} wrap="nowrap" w={width}>
+              <Select
+                size="xs"
+                radius="xs"
+                w={mode === "auto" ? width : AUTO_WIDTH}
+                data={[
+                  { value: "auto", label: "Auto" },
+                  { value: "px", label: "px" },
+                  { value: "%", label: "%" },
+                ]}
+                value={mode}
+                onChange={(v) => v && v !== mode && changeSize(s.key, v === "auto" ? 0 : v === "%" ? -AUTO_PERCENT : AUTO_PX)}
+                allowDeselect={false}
+                aria-label={`Mode « ${s.label} »`}
+                styles={{ input: { backgroundColor: FIELD_BACKGROUND } }}
+              />
+              {mode !== "auto" && (
+                <Size
+                  first={false}
+                  label={`Taille « ${s.label} »`}
+                  size={{
+                    value: Math.abs(value),
+                    defaultValue: mode === "%" ? AUTO_PERCENT : AUTO_PX,
+                    min: 1,
+                    max: mode === "%" ? 100 : s.max,
+                    suffix: mode === "%" ? " %" : " px",
+                    width: width - AUTO_WIDTH - SIDE_GAP,
+                    background: FIELD_BACKGROUND,
+                    onChange: (v) => changeSize(s.key, v === "" ? "" : mode === "%" ? -v : v),
+                  }}
+                />
+              )}
+            </Group>
+          ) : s.unit === "" ? (
             <Weight
               label={`Graisse « ${s.label} »`}
-              value={themeSizeOf(s.key, scheme)}
+              value={sizeOf(s.key)}
               onChange={(v) => changeSize(s.key, v)}
               width={width}
               background={FIELD_BACKGROUND}
@@ -385,11 +583,12 @@ export default function ThemePanel({
               first={false}
               label={`Taille « ${s.label} »`}
               size={{
-                value: themeSizeOf(s.key, scheme),
+                value: sizeOf(s.key),
                 defaultValue: themeSizeDefaultOf(s.key, scheme),
                 min: s.min,
                 max: s.max,
                 step: s.step,
+                prefix: arrowOf(s.direction),
                 suffix: ` ${s.unit}`,
                 width,
                 background: FIELD_BACKGROUND,

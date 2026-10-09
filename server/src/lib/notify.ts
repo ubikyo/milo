@@ -653,6 +653,7 @@ export const notifyReminder = (r: DueReminder): void => {
     const whenLabel = now();
     const link = `${r.base}/${itemLink("card", r.card.id)}`;
     const mailbox = r.base ? sendingMailbox() : "";
+    const place = mailbox ? placeNames("card", r.card.id) : null;
 
     for (const id of new Set(r.recipients)) {
       const person = users.byId.get(id);
@@ -674,12 +675,18 @@ export const notifyReminder = (r: DueReminder): void => {
       } satisfies Notification);
 
       if (!mailbox || !wantsEmail(person)) continue;
-      template("reminder", {
-        title: r.card.text,
-        intro: `Milo ${r.message}.`,
-        action: { url: link, label: "Ouvrir dans Milo" },
-        footer: "Vous recevez ce message parce que vous êtes acteur de cette tâche dans Milo.",
-      })
+      template(
+        "reminder",
+        {
+          title: r.card.text,
+          intro: `Milo ${r.message}.`,
+          action: { url: link, label: "Ouvrir dans Milo" },
+          footer: "Vous recevez ce message parce que vous êtes acteur de cette tâche dans Milo.",
+        },
+        {
+          element: { name: r.card.text, activity: `Milo ${r.message}.`, url: link, ...place! } satisfies ElementView,
+        },
+      )
         .then((content) =>
           sendMail({ from: mailbox, to: person.email, subject: `Milo — ${r.card.text}`, ...content }),
         )

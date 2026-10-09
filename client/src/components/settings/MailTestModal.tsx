@@ -1,4 +1,4 @@
-import { Button, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
+import { Button, Modal, Stack, Text, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconSend } from "@tabler/icons-react";
 import { useState } from "react";
@@ -6,6 +6,8 @@ import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import CloseButton from "../ui/CloseButton";
+import Footer from "../ui/Footer";
+import { themeWindow } from "../../lib/themeWindow";
 
 // The send test of the Notifications tab: an address, and the test
 // message's template ("Message de test") sent to it.
@@ -44,6 +46,7 @@ export default function MailTestModal({
 
   return (
     <Modal
+      attributes={themeWindow("mail-test")}
       opened={opened}
       onClose={onClose}
       title="Envoyer un message de test"
@@ -69,7 +72,7 @@ export default function MailTestModal({
           }}
         />
 
-        <Group justify="flex-end" mt="md">
+        <Footer parentGap="var(--mantine-spacing-md)">
           <CloseButton onClick={onClose} />
           {/* The green of the actions that confirm, that of the accounts' checkmark
               and of a successful send's report. */}
@@ -82,7 +85,7 @@ export default function MailTestModal({
           >
             Envoyer
           </Button>
-        </Group>
+        </Footer>
       </Stack>
     </Modal>
   );

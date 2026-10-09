@@ -47,11 +47,11 @@ export default function DisplayTab({ canEdit, canEditThemes }: DisplayTabProps) 
   };
 
   return (
-    // The space between its lists is the themes' ("Listes éditables" > "Marge basse").
+    // The space between its lists is the themes' ("Formulaire" > "Liste" > "Marge basse").
     <Stack gap="xl" data-settings-lists>
       {canEditThemes && <ThemeList />}
 
-      <Stack gap="sm">
+      <Stack gap="sm" data-controls>
         {/* This browser's alone: no saving, the panels open and close at once. */}
         {canEditThemes && (
           <Switch

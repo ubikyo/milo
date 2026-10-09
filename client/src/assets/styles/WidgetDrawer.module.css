@@ -11,11 +11,3 @@
   width: var(--milo-widgets-drawer-icon-size);
   height: var(--milo-widgets-drawer-icon-size);
 }
-
-/* The drawer's scrollbar track, which Mantine shows on hover ("Barre de
-   défilement" > "Couleur piste"); shown while the theme editor edits it.
-   The class is doubled to win over Mantine's rule. */
-.scrollbar.scrollbar:hover,
-:global(html[data-theme-preview="widgets-drawer-scrollbars"]) .scrollbar.scrollbar {
-  background-color: var(--milo-widgets-drawer-scrollbar-track);
-}

@@ -1,4 +1,6 @@
 export * from "./api.js";
+export * from "./api-tokens.js";
+export * from "./asset-number-templates.js";
 export * from "./managed-device-asset-settings.js";
 export * from "./declared-assets.js";
 export * from "./backup.js";

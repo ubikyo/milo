@@ -45,8 +45,10 @@ export const modalHeaderStyles = (padding: number | string) => ({
  */
 export const SETTINGS_WIDTH = 900;
 
-/** Its height, capped to the screen: the windows opened from it reuse it too. */
-export const SETTINGS_HEIGHT = 725;
+/**
+ * Its height's cap, the screen's: the windows opened from it reuse it too.
+ * Its height is the themes' ("Fenêtre" > "Hauteur").
+ */
 export const SETTINGS_HEIGHT_MAX = "90vh";
 
 /** Its inner inset, wider than that of the other windows (MODAL_PADDING). */

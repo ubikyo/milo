@@ -1,18 +1,20 @@
 import { ActionIcon, Avatar, Box, Group, Menu, Text } from "@mantine/core";
 import {
   IconBell,
+  IconChevronDown,
   IconLogout,
   IconSettings,
   IconUserCog,
 } from "@tabler/icons-react";
 import { initialsOf } from "./ActorAvatars";
 import { useDisplaySettings } from "../../lib/displaySettings";
-import { ROW_CONTROL_HEIGHT, ROW_MENU_OFFSET, TAB_MENU_STYLES, MENU_TOP_BAND } from "../../themes/menus";
+import { ROW_CONTROL_HEIGHT, ROW_MENU_OFFSET, TAB_MENU_STYLES } from "../../themes/menus";
 import { TAB_ACTIVE_BG, TAB_ACTIVE_BORDER_WIDTH } from "../../themes/colors";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { PublicUser, SearchResult } from "@milo/shared";
 import type { ContextsMenuProps } from "./ContextsMenu";
+import Logo from "./Logo";
 import WorkspaceMenu from "./WorkspaceMenu";
 import contextsClasses from "../../assets/styles/ContextsMenu.module.css";
 
@@ -56,6 +58,10 @@ export type AccountSlot = Omit<AccountControlsProps, "actions"> & {
   onSearchOpen: (result: SearchResult) => void;
 };
 
+/** The account's menu: Milo's logo, then its entries. */
+const PROFILE_MENU_WIDTH = 300;
+const PROFILE_LOGO_HEIGHT = 80;
+
 /**
  * The account's frame: drawn like the open tab — its background, its line
  * on top and on the sides, its rounded top corners —, standing on the row's
@@ -67,8 +73,10 @@ const PROFILE_FRAME: CSSProperties = {
   display: "flex",
   alignItems: "center",
   position: "relative",
-  // 3 px between the avatar and the frame's sides.
-  paddingInline: 3,
+  // TEST: the avatar on the left side, the tabs' own inset on the right
+  // (Mantine's Tabs: spacing md).
+  paddingInlineStart: 0,
+  paddingInlineEnd: "var(--mantine-spacing-md)",
   backgroundColor: TAB_ACTIVE_BG,
   // Its line transparent: the background, painted under it, gives it its own
   // color exactly — even a translucent one, which would otherwise add up to
@@ -157,9 +165,13 @@ export default function AccountControls({
           // menus' "xs" (main.tsx).
           radius="md"
           offset={gap}
-          // TEST: a band above the menu, in the open contexts tab's
-          // background (menus.ts).
-          styles={{ dropdown: { ...TAB_MENU_STYLES.dropdown, ...MENU_TOP_BAND } }}
+          // TEST: the open frame's background, which the menu extends.
+          styles={{
+            dropdown: {
+              ...TAB_MENU_STYLES.dropdown,
+              backgroundColor: PROFILE_FRAME_OPEN.backgroundColor,
+            },
+          }}
           classNames={{ item: contextsClasses.menuItem }}
           // Focus stays where it is on closing: handed back to the avatar,
           // it would highlight the frame.
@@ -176,29 +188,63 @@ export default function AccountControls({
               variant="transparent"
               size={ROW_CONTROL_HEIGHT}
               aria-label="Compte"
-              // As wide as the avatar: the frame's inset alone stands beside it.
-              style={{ outline: "none", width: "auto", minWidth: 0 }}
+              // Square at the bottom: only the frame's top-left corner is
+              // rounded.
+              radius={0}
+              // The frame's full height, its line included: drawn over the
+              // frame's top and left line, the avatar is set from its edges.
+              style={{
+                outline: "none",
+                // Mantine's ActionIcon keeps a 1px border, transparent here:
+                // it would leave a gap between the avatar and the frame's edges.
+                border: 0,
+                width: "auto",
+                minWidth: 0,
+                alignSelf: "stretch",
+                height: "auto",
+                minHeight: 0,
+                marginTop: `calc(-1 * ${TAB_ACTIVE_BORDER_WIDTH})`,
+                marginInlineStart: `calc(-1 * ${TAB_ACTIVE_BORDER_WIDTH})`,
+                borderStartStartRadius: "var(--tabs-radius)",
+              }}
             >
-              {/* The first and last name, to the left of the avatar: part
-                  of the target, they open the menu too. */}
-              {fullName && (
-                <Text component="span" size="sm" c="var(--mantine-color-text)" pl={6} pr={8}>
-                  {fullName}
-                </Text>
-              )}
-              {/* A square with softened corners, not a circle: it sits
-                  like the row's other controls. */}
+              {/* TEST: a rounded square 5px inside the frame's left side, top
+                  and bottom. Spaced from the name as a board tab's text is
+                  from its edge (Mantine's Tabs: spacing md). */}
               <Avatar
                 size={26}
-                // The contexts list's: Mantine's default radius ("md"), not the
-          // menus' "xs" (main.tsx).
-          radius="md"
+                // Rounder than the frame's corner (the tabs' "sm").
+                radius={6}
+                style={{
+                  height: "calc(100% - 10px)",
+                  width: "auto",
+                  minWidth: 0,
+                  aspectRatio: "1",
+                  marginBlock: 5,
+                  marginInlineStart: 5,
+                  marginInlineEnd: "var(--mantine-spacing-md)",
+                }}
                 color="teal"
                 variant="filled"
                 src={(display.showGravatars && user?.gravatar_url) || null}
               >
                 {initialsOf(user?.name)}
               </Avatar>
+              {/* TEST: the first and last name, to the right of the avatar:
+                  part of the target, they open the menu too. */}
+              {fullName && (
+                <Text component="span" size="sm" c="var(--mantine-color-text)">
+                  {fullName}
+                </Text>
+              )}
+              {/* A chevron at the end, like the row's other
+                  menus: it says the account opens a list. */}
+              <IconChevronDown
+                size={14}
+                color="var(--mantine-color-text)"
+                // Half the tabs' inset from the name.
+                style={{ marginLeft: "calc(var(--mantine-spacing-md) / 2)" }}
+              />
             </ActionIcon>
           </Menu.Target>
           <Menu.Dropdown
@@ -206,39 +252,46 @@ export default function AccountControls({
             pt={4}
             pb={3}
             px={2}
-            miw={150}
-            maw={320}
+            w={PROFILE_MENU_WIDTH}
             className={contextsClasses.dropdown}
           >
-            <Menu.Item
-              leftSection={<IconUserCog size={16} />}
-              onClick={onOpenPreferences}
-            >
-              Profil
-            </Menu.Item>
-            {/* Only for whoever receives notifications on screen in their
-                workspace (Accès). */}
-            {user.notifications.screen && (
-              <Menu.Item
-                leftSection={<IconBell size={16} />}
-                onClick={onOpenNotifications}
-              >
-                Notifications
-              </Menu.Item>
-            )}
-            {/* Settings opens with "Gestion du paramétrage" only. */}
-            {user.settings.view && (
-              <Menu.Item
-                leftSection={<IconSettings size={16} />}
-                onClick={onOpenSettings}
-              >
-                Paramétrage
-              </Menu.Item>
-            )}
-            <Menu.Divider />
-            <Menu.Item leftSection={<IconLogout size={16} />} onClick={onLogout}>
-              Déconnexion
-            </Menu.Item>
+            {/* TEST: two columns, Milo's logo on the left, the menu on the right. */}
+            <Group gap={0} wrap="nowrap" align="stretch">
+              <Box style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Logo variant={1} h={PROFILE_LOGO_HEIGHT} />
+              </Box>
+              <Box style={{ flex: 1, minWidth: 0 }}>
+                <Menu.Item
+                  leftSection={<IconUserCog size={16} />}
+                  onClick={onOpenPreferences}
+                >
+                  Profil
+                </Menu.Item>
+                {/* Only for whoever receives notifications on screen in their
+                    workspace (Accès). */}
+                {user.notifications.screen && (
+                  <Menu.Item
+                    leftSection={<IconBell size={16} />}
+                    onClick={onOpenNotifications}
+                  >
+                    Notifications
+                  </Menu.Item>
+                )}
+                {/* Settings opens with "Gestion du paramétrage" only. */}
+                {user.settings.view && (
+                  <Menu.Item
+                    leftSection={<IconSettings size={16} />}
+                    onClick={onOpenSettings}
+                  >
+                    Paramétrage
+                  </Menu.Item>
+                )}
+                <Menu.Divider />
+                <Menu.Item leftSection={<IconLogout size={16} />} onClick={onLogout}>
+                  Déconnexion
+                </Menu.Item>
+              </Box>
+            </Group>
           </Menu.Dropdown>
         </Menu>
       </Box>

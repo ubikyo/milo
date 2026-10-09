@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { MANTINE_COLOR_KEYS, THEME_COLORS, THEME_SIZES } from "@milo/shared";
 import type { Scheme } from "../../lib/themeColors";
+import { THEME_WINDOW_ATTRIBUTE } from "../../lib/themeWindow";
 
 // What the theme editor's field in focus colors: a dotted frame around each
 // element of the page that uses it.
@@ -92,6 +93,17 @@ const PROPERTIES = [
   "textDecorationColor",
   "width",
   "height",
+  // A margin's, a padding's, a gap's: the element that has them.
+  "marginTop",
+  "marginRight",
+  "marginBottom",
+  "marginLeft",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "rowGap",
+  "columnGap",
 ] as const;
 
 type Property = (typeof PROPERTIES)[number];
@@ -144,10 +156,11 @@ const usersOf = ({ key, scheme }: Target): Element[] => {
   still.textContent = "*, *::before, *::after { transition: none !important; }";
   document.head.appendChild(still);
   const before = elements.map((el) => snapshot(getComputedStyle(el)));
-  const root = document.documentElement.style;
-  const previous = root.getPropertyValue(variable);
-  const priority = root.getPropertyPriority(variable);
-  root.setProperty(variable, sentinelOf(key), "important");
+  // The page, and the windows that set the variable again for themselves
+  // (themeColors' windows' own values): each takes the unlikely value.
+  const holders = [document.documentElement, ...document.querySelectorAll<HTMLElement>(`[${THEME_WINDOW_ATTRIBUTE}]`)];
+  const previous = holders.map((h) => [h.style.getPropertyValue(variable), h.style.getPropertyPriority(variable)]);
+  for (const h of holders) h.style.setProperty(variable, sentinelOf(key), "important");
   const changed = new Map<Element, Set<Property>>();
   elements.forEach((el, i) => {
     const style = getComputedStyle(el);
@@ -156,8 +169,11 @@ const usersOf = ({ key, scheme }: Target): Element[] => {
     );
     if (properties.length > 0) changed.set(el, new Set(properties));
   });
-  if (previous) root.setProperty(variable, previous, priority);
-  else root.removeProperty(variable);
+  holders.forEach((h, i) => {
+    const [value, priority] = previous[i]!;
+    if (value) h.style.setProperty(variable, value, priority);
+    else h.style.removeProperty(variable);
+  });
   // Read once more, still without transitions, before they come back.
   void getComputedStyle(document.body).color;
   still.remove();
@@ -226,6 +242,39 @@ const reveal = (elements: Element[]) => {
   }
 };
 
+/** The windows' selects: those of the editable lists, and the others. */
+const LIST_SELECT = '[data-theme-scope="settings"] [data-settings-list] .mantine-Select-input:not(:disabled)';
+const FORM_SELECT =
+  '[data-theme-scope="settings"] .mantine-Select-input:not(:disabled):not([data-settings-list] *)';
+
+/** The groups of a select's list, and which selects show it once open. */
+const SELECT_LISTS = new Map<string, string>([
+  ...["dropdown", "options", "option", "option-hover"].map((g) => [`settings-theme-list-${g}`, LIST_SELECT] as const),
+  ...["dropdown", "options", "option", "option-hover"].map((g) => [`settings-form-select-${g}`, FORM_SELECT] as const),
+]);
+
+/**
+ * Opens a select's list while its group is edited — a click, as the user's:
+ * the first one shown, or else the first one, its tab brought forward. The
+ * list only exists once open: the key is framed again then. Closed again when
+ * the field is left, unless it was already open.
+ */
+const openSelect = (group: string | undefined): (() => void) | undefined => {
+  const selector = group && SELECT_LISTS.get(group);
+  if (!selector) return undefined;
+  const inputs = [...document.querySelectorAll<HTMLElement>(selector)];
+  const input = inputs.find(visible) ?? inputs[0];
+  if (!input) return undefined;
+  reveal([input]);
+  const opened = !input.hasAttribute("data-expanded");
+  if (opened) input.click();
+  const frame = requestAnimationFrame(() => requestAnimationFrame(refreshThemeHighlight));
+  return () => {
+    cancelAnimationFrame(frame);
+    if (opened && input.hasAttribute("data-expanded")) input.click();
+  };
+};
+
 /** Brings an element into view: its tab opened, if hidden, and scrolled to. */
 export const revealElement = (el: Element) => reveal([el]);
 
@@ -280,10 +329,13 @@ export default function ThemeHighlight() {
   const current = useSyncExternalStore(subscribe, () => target);
   const again = useSyncExternalStore(subscribe, () => version);
   const [frames, setFrames] = useState<Frame[]>([]);
+  // The key is used nowhere in the page: a message says so.
+  const [missing, setMissing] = useState(false);
 
   useEffect(() => {
     if (!current) {
       setFrames([]);
+      setMissing(false);
       return;
     }
     // The state first: the elements in it are those that use the key.
@@ -291,6 +343,7 @@ export default function ThemeHighlight() {
     const group = GROUPS.get(current.key);
     if (group) page.setAttribute(THEME_PREVIEW_ATTRIBUTE, group);
     const elements = usersOf(current).slice(0, MAX_FRAMES);
+    setMissing(elements.length === 0);
     reveal(elements);
     // The frames follow their element: a window opening, a scroll.
     let frame = 0;
@@ -306,12 +359,37 @@ export default function ThemeHighlight() {
     };
   }, [current, again]);
 
+  // A select's list, opened while one of its keys is edited: not again when
+  // the key is framed anew.
+  useEffect(() => openSelect(current ? GROUPS.get(current.key) : undefined), [current]);
+
   // Reset when the editor closes.
   useEffect(() => () => highlightThemeKey(null), []);
 
-  if (frames.length === 0) return null;
+  if (frames.length === 0 && !missing) return null;
   return createPortal(
     <div {...{ [THEME_EDITOR_ATTRIBUTE]: "" }} style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 10000 }}>
+      {/* At the bottom of the screen, white on red: fixed colors,
+          outside the themes. */}
+      {missing && (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 16,
+            left: "50%",
+            transform: "translateX(-50%)",
+            padding: "6px 12px",
+            borderRadius: 4,
+            backgroundColor: "#e03131",
+            color: "#ffffff",
+            fontSize: 13,
+            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.3)",
+          }}
+        >
+          Aucun composant de ce type dans la fenêtre affichée
+        </div>
+      )}
       {frames.map((f, i) => (
         <div
           key={i}

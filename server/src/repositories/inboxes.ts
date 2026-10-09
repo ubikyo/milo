@@ -7,11 +7,13 @@
 // Its "new_message_label_ids" names the labels every incoming e-mail receives
 // besides (shared, NEW_MESSAGE_LABELS).
 //
-// A workstation list receives the tags its board's asset labels name.
+// A workstation list receives the tags of its GLPI agent collectors:
+//
+//   managed_device_asset.list : { "collectors": [{ "type": "glpi_agent", "tag": "ACME" }] }
 //
 // An inbox received by two widgets goes to the first: the oldest.
 
-import { NEW_MESSAGE_LABELS, SUPPORT_NEW_MESSAGE_LABELS, listKey } from "@milo/shared";
+import { COLLECTORS, NEW_MESSAGE_LABELS, SUPPORT_NEW_MESSAGE_LABELS, listKey } from "@milo/shared";
 import type { Id } from "@milo/shared";
 import { selection } from "../db/query.js";
 import { optins, pair } from "./optins.js";
@@ -73,10 +75,6 @@ const newMessageLabels = (config: Record<string, unknown>, boardId: Id): Id[] =>
   const names = SUPPORT_NEW_MESSAGE_LABELS.map((n) => n.toLowerCase());
   return labels.filter((l) => names.includes(l.name.toLowerCase())).map((l) => l.id);
 };
-const managedDeviceAssetLabelsOf = selection<{ name: string }>(
-  "SELECT name FROM managed_device_asset_labels WHERE board_id = ? ORDER BY position, id",
-);
-
 /** A widget's configuration; null when it is unreadable. */
 const parsed = (config: string): Record<string, unknown> | null => {
   try {
@@ -158,8 +156,8 @@ export const receivedMailboxes = (): (Inbox & { confirmed_at: string })[] => {
 };
 
 /**
- * The agent tags that workstation lists receive: the names of their board's
- * asset labels. A tag named on two boards goes to the oldest list.
+ * The agent tags that workstation lists receive: those of their GLPI agent
+ * collectors. A tag named by two lists goes to the oldest.
  */
 export const receivedTags = (): Inbox[] => {
   const views = new Map<string, Inbox>();
@@ -167,8 +165,12 @@ export const receivedTags = (): Inbox[] => {
     const config = parsed(widget.config);
     if (!config) continue;
     const board = boardOf.get(widget.board_id)?.name ?? "";
-    for (const { name } of managedDeviceAssetLabelsOf.all(widget.board_id)) {
-      const value = name.trim();
+    const collectors = Array.isArray(config[COLLECTORS])
+      ? (config[COLLECTORS] as Record<string, unknown>[])
+      : [];
+    for (const collector of collectors) {
+      if (collector?.type !== "glpi_agent") continue;
+      const value = typeof collector.tag === "string" ? collector.tag.trim() : "";
       if (!value || views.has(value.toLowerCase())) continue;
       views.set(value.toLowerCase(), {
         value,

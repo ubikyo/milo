@@ -29,7 +29,12 @@ export interface UserRow {
   entra_id: string;
   /** JSON: the ids of the account's Entra groups. */
   entra_groups: string;
-  system: SqliteBool;
+  /**
+   * 0 for a person, 1 for the "admin" account, API_ACCOUNT (2) for an API
+   * token's service account (repositories/api-tokens.ts). Every check that
+   * only tests it as a boolean reads both as "not a person".
+   */
+  system: SqliteBool | 2;
   /** The chosen workspace: null, or perhaps one it no longer has (users.ts, currentWorkspace). */
   workspace_id: Id | null;
   /** The workspace opened at sign-in: null, or perhaps one it no longer has. */
@@ -38,6 +43,20 @@ export interface UserRow {
   default_board: string;
   /** JSON: their notification settings; empty for the defaults (lib/notification-settings.ts). */
   notification_settings: string;
+}
+
+export interface ApiTokenRow {
+  id: Id;
+  /** Its service account. */
+  user_id: Id;
+  name: string;
+  token_hash: string;
+  hint: string;
+  access: string;
+  created_by: Id | null;
+  created_at: string;
+  last_used_at: string;
+  expires_at: string;
 }
 
 export interface SessionRow {

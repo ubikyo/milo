@@ -1,6 +1,6 @@
 /* The selects of the Settings' editable lists — the themes' role
    (Affichage), the printers' type and the paper formats (Impression) —, with the Settings' own
-   look ("Listes éditables" > "Select"). These lists only show there: the
+   look ("Formulaire" > "Liste" > "Select"). These lists only show there: the
    rules read the Settings' variables, which also reach a select's list, out
    of the window. Mantine's rules are beaten by a doubled class. */
 
@@ -13,6 +13,11 @@
 
 .list.list :global(.mantine-Select-section) {
   color: var(--milo-settings-theme-list-selected-chevron);
+}
+
+/* Mantine's own arrow reads its variable. */
+.list.list :global(.mantine-Select-root) {
+  --combobox-chevron-color: var(--milo-settings-theme-list-selected-chevron);
 }
 
 /* The cross that empties it ("Select" > "Bouton reset"). */

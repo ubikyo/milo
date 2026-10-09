@@ -29,6 +29,7 @@ import type {
   ManagedDeviceAssetSection,
 } from "@milo/shared";
 import CloseButton from "../ui/CloseButton";
+import Footer from "../ui/Footer";
 
 const DRAWER_PADDING = 40;
 const DRAWER_WIDTH = 1060;
@@ -443,9 +444,9 @@ export default function ManagedDeviceAssetDrawer({ opened, onClose, asset }: Man
           </Tabs>
         )}
 
-        <Group justify="flex-end" mt="auto" pt="md">
+        <Footer pinned>
           <CloseButton onClick={onClose} />
-        </Group>
+        </Footer>
       </Stack>
     </Drawer>
   );

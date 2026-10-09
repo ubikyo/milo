@@ -1,6 +1,8 @@
 import { Box, ScrollArea, UnstyledButton, useComputedColorScheme } from "@mantine/core";
 import type { SplitterPaneSize } from "@mantine/hooks";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
+import { themeWindow } from "../../lib/themeWindow";
 
 // What the template windows share — the MJML one (MailTemplateModal) and the
 // support one (SupportReplyModal): their panes, side by side in a Splitter,
@@ -193,6 +195,91 @@ export const SPLITTER_STYLES = {
   root: { border: `1px solid ${HANDLE_COLOR}`, borderRadius: "var(--mantine-radius-default)" },
   handle: { zIndex: 1 },
 };
+
+// --- The template windows' look ------------------------------------------
+//
+// The e-mail, label and asset number templates' windows (MailTemplateModal,
+// LabelTemplateModal, AssetNumberTemplateModal), at their size and over the
+// whole browser window: the themes' ("Thèmes spécifiques" > "Éditeur de
+// modèles" > "Fenêtre normale", "Fenêtre plein écran").
+
+const templateVar = (key: string) => `var(--milo-settings-template-${key})`;
+
+/**
+ * The window's content attributes (Mantine's "attributes"): its name
+ * (themeWindow), and the mark the windows' style sheet reads to give it its
+ * header and body over the whole window (SettingsModal.module.css).
+ */
+export const templateWindow = (id: string) => ({
+  content: { ...themeWindow(id).content, "data-template-editor": "" },
+});
+
+/** The window's width at its size. */
+export const TEMPLATE_WIDTH = templateVar("width");
+
+/** The panes' height at the window's size; over the whole window, the room the rest leaves. */
+export const TEMPLATE_PANES_HEIGHT = templateVar("panes-height");
+
+/** The icon that switches between the two sizes. */
+export const templateIconColor = (full: boolean) => templateVar(full ? "full-icon" : "icon");
+
+/** The handles: the frame's color at the window's size, the lines' over the whole window. */
+export const templateHandleColor = (full: boolean) => templateVar(full ? "full-line" : "frame");
+
+/**
+ * The splitter: framed at the window's size; over the whole window, no
+ * frame — the panes run to its edges, a line above and under them sets them
+ * apart from the title and the buttons.
+ */
+export const templateSplitterStyles = (full: boolean) => {
+  const line = `${templateVar(full ? "full-line-width" : "frame-width")} solid ${templateHandleColor(full)}`;
+  return {
+    ...SPLITTER_STYLES,
+    root: full
+      ? { border: 0, borderTop: line, borderBottom: line, borderRadius: 0 }
+      : { ...SPLITTER_STYLES.root, border: line },
+  };
+};
+
+/** The window's styles (Mantine's "styles"): over the whole window, the panes take the height the rest leaves. */
+export const templateModalStyles = (full: boolean) => {
+  const headerStyles = modalHeaderStyles(MODAL_PADDING);
+  if (!full) return { ...headerStyles, title: { ...headerStyles.title, flex: 1 } };
+  return {
+    ...headerStyles,
+    // A thinner banner — its padding, the style sheet's —: the room goes to
+    // the panes. Mantine gives the header 60 px at least: dropped, the title
+    // and its icon set the height.
+    header: { ...headerStyles.header, minHeight: 0, backgroundColor: templateVar("full-header-bg") },
+    title: {
+      ...headerStyles.title,
+      flex: 1,
+      color: templateVar("full-title"),
+      fontSize: templateVar("full-title-size"),
+      fontWeight: templateVar("full-title-weight"),
+    },
+    content: { display: "flex", flexDirection: "column" as const },
+    // The panes against the edges — no padding, the style sheet's —; the
+    // buttons' bar keeps its own inset.
+    body: {
+      flex: 1,
+      minHeight: 0,
+      display: "flex",
+      flexDirection: "column" as const,
+    },
+  };
+};
+
+/**
+ * The space above the buttons' bar, in a column of Mantine's "md" gap at the
+ * window's size (Footer's "parentGap"); none over the whole window.
+ */
+export const templateFooterMargin = (full: boolean) =>
+  full ? 0 : `calc(${templateVar("footer-margin-top")} - var(--mantine-spacing-md))`;
+
+/** The buttons' bar: over the whole window, its own inset. */
+export const templateFooterStyle = (full: boolean) =>
+  full ? { padding: templateVar("full-footer-padding") } : undefined;
 
 // The preview sits on the background of the theme it shows:
 // white in light, as a mail client shows a message, whatever the interface's

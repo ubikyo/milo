@@ -35,6 +35,9 @@ type Inbox = Record<string, unknown> & { label_id?: number | null };
 /** The width of the label choice. */
 const LABEL_WIDTH = 170;
 
+/** The width of the kind choice. */
+const TYPE_WIDTH = 140;
+
 interface ReceptionFieldProps extends IndicatorConfigProps {
   /**
    * The configuration key that holds the list: "mailboxes", "calendars". Not
@@ -61,6 +64,11 @@ interface ReceptionFieldProps extends IndicatorConfigProps {
   normalizeValue?: (value: string) => string;
   /** The labels a reception may set, by group; none, the choice is not offered. */
   labels?: { group: string; items: { value: string; label: string }[] }[];
+  /**
+   * The kinds a reception may be, chosen at the start of its row and kept
+   * under "type": a collector's "Agent GLPI". None, the choice is not offered.
+   */
+  types?: readonly { value: string; label: string }[];
 }
 
 /** The receptions the configuration holds. */
@@ -102,10 +110,13 @@ export default function ReceptionField({
   state,
   normalizeValue = (value) => value,
   labels = [],
+  types = [],
   config,
   onChange,
 }: ReceptionFieldProps) {
   const rows = inboxesOf(config, configKey);
+  /** The kind a row takes when it states none: the first. */
+  const firstType = types[0]?.value;
   const labelValues = new Set(labels.flatMap((g) => g.items.map((l) => l.value)));
   /** The field that has focus: it takes the drawer's background. */
   const [input, setInput] = useState<string | null>(null);
@@ -133,9 +144,13 @@ export default function ReceptionField({
     selection.reset();
   };
 
-  // The new row sets no label: it is chosen on the row.
+  // The new row sets no label: it is chosen on the row. It takes the first
+  // kind.
   const addRow = () => {
-    insertRow([...rows, { [field]: "", label_id: null }]);
+    insertRow([
+      ...rows,
+      { ...(firstType && { type: firstType }), [field]: "", label_id: null },
+    ]);
     setToFill(rows.length);
   };
 
@@ -163,12 +178,29 @@ export default function ReceptionField({
                   checked={selection.isChecked(rank)}
                   onChange={(on) => selection.toggle(rank, on)}
                 />
+                {types.length > 0 && (
+                  <Select
+                    size="xs"
+                    radius={ROUNDING}
+                    w={TYPE_WIDTH}
+                    style={{ flexShrink: 0 }}
+                    aria-label="Type"
+                    data={[...types]}
+                    value={typeof row.type === "string" ? row.type : firstType}
+                    onChange={(value) => value && change(rank, { type: value })}
+                    allowDeselect={false}
+                    comboboxProps={{ withinPortal: true }}
+                    onFocus={() => setInput(`${rank}-type`)}
+                    onBlur={() => setInput(null)}
+                    styles={input === `${rank}-type` ? { input: INPUT_STYLE } : undefined}
+                  />
+                )}
                 {/* The value aligns with the checkbox, as a column's name with
-                    its handle. */}
+                    its handle — after the kind, it no longer has to. */}
                 <Autocomplete
                   size="sm"
                   radius={ROUNDING}
-                  style={{ flex: 1, minWidth: 0, marginLeft: -NAME_INSET }}
+                  style={{ flex: 1, minWidth: 0, marginLeft: types.length > 0 ? 0 : -NAME_INSET }}
                   styles={{
                     input: {
                       height: "var(--input-height-xs)",

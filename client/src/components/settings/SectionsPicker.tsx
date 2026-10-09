@@ -11,6 +11,7 @@ import {
 import { IconChevronDown } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { SELECT_CLASSES } from "../../themes/selects";
 import { pickKeys } from "../ui/DrawerRows";
 
 // Several sections picked at once, for the row being added (SectionRights):
@@ -102,6 +103,8 @@ export default function SectionsPicker({
       shadow="md"
       width={280}
       position="bottom-start"
+      // Styled as a select (themes/selects.ts).
+      classNames={{ dropdown: SELECT_CLASSES.dropdown, option: SELECT_CLASSES.option }}
     >
       <Combobox.Target>
         <InputBase
@@ -109,6 +112,7 @@ export default function SectionsPicker({
           type="button"
           size="sm"
           pointer
+          classNames={{ root: SELECT_CLASSES.root, input: SELECT_CLASSES.input, section: SELECT_CLASSES.section }}
           autoFocus
           aria-label={ariaLabel}
           style={style}

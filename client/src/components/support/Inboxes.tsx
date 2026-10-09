@@ -35,6 +35,7 @@ import {
 } from "../../themes/menus";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import CloseButton from "../ui/CloseButton";
+import Footer from "../ui/Footer";
 import { DrawerActionsContext } from "../ui/IndicatorDrawer";
 import { ROW_INSET, NAME_INSET } from "../ui/DrawerRows";
 import { withField } from "../../widgets/types";
@@ -43,6 +44,7 @@ import { MAILBOXES } from "./SupportRequestsList";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
 import { listKey } from "@milo/shared";
 import { useSupportLabels } from "../../lib/label-groups";
+import { themeWindow } from "../../lib/themeWindow";
 
 // The inboxes from which a ticket list receives its tickets, in rows like the
 // list's columns (ReceptionField): one row per address, with the label its
@@ -328,6 +330,7 @@ function ConfirmModal({
 
   return (
     <Modal
+      attributes={themeWindow("inbox-confirm")}
       opened={opened}
       onClose={onClose}
       title="Confirmer l'adresse"
@@ -369,7 +372,7 @@ function ConfirmModal({
           />
         </Group>
       </Stack>
-      <Group justify="flex-end" mt={MODAL_PADDING}>
+      <Footer>
         <CloseButton onClick={onClose}>Annuler</CloseButton>
         <Button
           color="teal"
@@ -379,7 +382,7 @@ function ConfirmModal({
         >
           Confirmer
         </Button>
-      </Group>
+      </Footer>
     </Modal>
   );
 }

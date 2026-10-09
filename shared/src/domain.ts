@@ -1324,13 +1324,13 @@ export interface ManagedDeviceAsset {
   id: Id;
   /** What the machine says about itself (HARDWARE/NAME). */
   name: string;
-  /** The board whose asset labels name its tag; null otherwise. */
+  /** The board of the list whose collectors name its tag; null otherwise. */
   board_id: Id | null;
   /** The "Assets" widget that shows it, the one that receives its tag; empty otherwise. */
   list_key: string;
   /**
-   * The GLPI agent tag: a board's asset label of the same name — case aside —
-   * brings the machine into its "Assets" list.
+   * The GLPI agent tag: an "Assets" list with a collector of that tag — case
+   * aside — receives the machine.
    */
   tag: string;
   /** The asset labels of its board named as its tag. */

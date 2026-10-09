@@ -82,6 +82,8 @@ import { undoRoutes } from "./routes/undo.js";
 import { printerRoutes } from "./routes/printers.js";
 import { paperFormatRoutes } from "./routes/paper-formats.js";
 import { labelTemplateRoutes } from "./routes/label-templates.js";
+import { assetNumberTemplateRoutes } from "./routes/asset-number-templates.js";
+import { apiTokenRoutes } from "./routes/api-tokens.js";
 
 export const createApp = (): express.Express => {
   const app = express();
@@ -150,6 +152,8 @@ export const createApp = (): express.Express => {
   app.use("/api/administration", settingsNotice("l'administration"), administrationRoutes);
   app.use("/api/workspaces", requireWorkspaces, settingsNotice("les workspaces"), workspaceRoutes);
   app.use("/api/entra", requireSettings, settingsNotice("la connexion Entra", /^\/test$/), entraRoutes);
+  // The API tokens: an outside client's access to some workspaces.
+  app.use("/api/api-tokens", requireSettings, settingsNotice("les jetons d'API"), apiTokenRoutes);
   app.use("/api/backup", requireSettingsUpdate, settingsNotice("la sauvegarde (restauration)"), backupRoutes);
   app.use("/api/follows", followRoutes);
   app.use("/api/notifications", notificationRoutes);
@@ -202,6 +206,12 @@ export const createApp = (): express.Express => {
     "/api/label-templates",
     settingsNotice("les modèles d'étiquette", /\/(preview|print)$/),
     labelTemplateRoutes,
+  );
+  // The asset number templates of the declared asset widgets, kind by kind.
+  app.use(
+    "/api/asset-number-templates",
+    settingsNotice("les modèles de format d'asset"),
+    assetNumberTemplateRoutes,
   );
   for (const kind of DECLARED_ASSET_KINDS) {
     const routes = DECLARED_ASSET_ROUTES[kind];

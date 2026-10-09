@@ -94,10 +94,10 @@ export default function ContextsMenu({
     const tab = target.closest('[role="tab"]')?.getBoundingClientRect();
     const button = target.getBoundingClientRect();
     if (!tab) return;
-    // Minus one pixel: the top line of the list sits on the rule's line,
-    // instead of falling below it.
+    // Right under the tab: its bottom border already lies on the row's line
+    // and takes its background — the list must not cover it.
     setTabOffset({
-      mainAxis: tab.bottom - button.bottom - 1,
+      mainAxis: tab.bottom - button.bottom,
       crossAxis: tab.left - button.left,
     });
     setTabWidth(tab.width);

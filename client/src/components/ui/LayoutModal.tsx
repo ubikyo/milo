@@ -1,7 +1,6 @@
 import {
   Alert,
   Button,
-  Group,
   Modal,
   Stack,
   Text,
@@ -22,12 +21,14 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import { RED } from "../../themes/colors";
 import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import CloseButton from "./CloseButton";
+import Footer from "./Footer";
 import { canUse } from "@milo/shared";
 import type {
   BoardWidget,
   ExportedLayout,
   IndicatorSection,
 } from "@milo/shared";
+import { themeWindow } from "../../lib/themeWindow";
 
 interface LayoutModalProps {
   /** "export" shows the text to hand over, "import" waits for the one received. */
@@ -49,6 +50,7 @@ export default function LayoutModal({
 }: LayoutModalProps) {
   return (
     <Modal
+      attributes={themeWindow("layout")}
       opened={mode !== null}
       onClose={onClose}
       title={
@@ -124,7 +126,7 @@ function Export({
         />
       </Stack>
       {/* The same gap before the buttons as in the other windows. */}
-      <Group justify="flex-end" mt={MODAL_PADDING}>
+      <Footer>
         <CloseButton onClick={onClose} />
         <Button
           color="teal"
@@ -134,7 +136,7 @@ function Export({
         >
           {copy ? "Copié" : "Copier"}
         </Button>
-      </Group>
+      </Footer>
     </>
   );
 }
@@ -256,7 +258,7 @@ function Import({
         )}
       </Stack>
       {/* The same gap before the buttons as in the other windows. */}
-      <Group justify="flex-end" mt={MODAL_PADDING}>
+      <Footer>
         <CloseButton onClick={onClose}>Annuler</CloseButton>
         <Button
           color={result?.lostLists.length ? RED : "teal"}
@@ -266,7 +268,7 @@ function Import({
         >
           Importer
         </Button>
-      </Group>
+      </Footer>
     </>
   );
 }
