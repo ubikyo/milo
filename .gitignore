@@ -12,11 +12,11 @@ medias/
 upload/
 
 # SQLite database
-server/data.db
+server/*.db
+server/*.db.*
+server/*.db-*
 server/data-*.db
-server/*.db-journal
-server/*.db-shm
-server/*.db-wal
+server/data-*.db-*
 
 # Env files
 .env
