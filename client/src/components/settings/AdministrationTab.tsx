@@ -51,7 +51,7 @@ export default function AdministrationTab({
    * removes, and only the rights they hold can be granted.
    */
   rights: AdminPermissions;
-  /** Those just added receive the "Nouvel administrateur" e-mail, on save. */
+  /** Those just added receive the "Nouvel accès à un élément" e-mail, on save. */
   invite?: boolean;
   /** Where the tab deposits its save function, for the modal's "Enregistrer". */
   saveRef?: SaveRef;

@@ -513,13 +513,13 @@ const withCurrentVariables = (mjml: string): string =>
 // The element a notice is about — a project, a card, a request —, as the
 // assignment's and the changes' templates name it.
 // An invitation's own: who gave the access, and to what.
+// Who gave the access, and to what, with its preposition: "à l'administration
+// de Milo", "au workspace « Arco »" — the workspace's name alone, empty for the
+// administration.
 const INVITATION: MailTemplateVariable[] = [
   { group: "Invitation", label: "Auteur", name: "{{invitation.author}}" },
+  { group: "Invitation", label: "Élément", name: "{{invitation.element}}" },
   { group: "Invitation", label: "Workspace", name: "{{invitation.workspace}}" },
-];
-// An administrator's: only who gave the administration.
-const ADMIN_INVITATION: MailTemplateVariable[] = [
-  { group: "Invitation", label: "Auteur", name: "{{invitation.author}}" },
 ];
 // A share: the boards of a view, each with where it sits and who owns it —
 // outside the list, the view's, which every board shares.
@@ -789,10 +789,10 @@ const CHANGES_MJML = `<mjml>
 </mjml>`;
 
 /**
- * The invitation to a workspace: its texts are written in it, only who gave
- * the access varies; the button opens Milo, where one signs in with Windows.
+ * The invitation to an element — the administration, a workspace: who gave
+ * the access, and to what, vary.
  */
-const NEW_USER_MJML = `<mjml>
+const NEW_ACCESS_MJML = `<mjml>
   <mj-head>
     <mj-title>Bienvenue dans Milo !</mj-title>
 
@@ -815,42 +815,7 @@ const NEW_USER_MJML = `<mjml>
           <h1 style="margin: 0;">{{template.title}}</h1>
         </mj-text>
         <mj-text padding="0 25px 10px 25px">
-          <p style="margin: 0;">Un accès pour Milo a été créé par {{invitation.author}}. Pour vous connecter, cliquer sur le bouton ci-dessous et utiliser vos identifiants de session Windows pour vous authentifier.</p>
-        </mj-text>
-        <mj-button href="{{milo.url}}" align="left">Ouvrir Milo</mj-button>
-      </mj-column>
-    </mj-section>
-  </mj-body>
-</mjml>`;
-
-/**
- * The invitation of an administrator: as a workspace's, only who gave the
- * administration varies.
- */
-const NEW_ADMIN_MJML = `<mjml>
-  <mj-head>
-    <mj-title>Bienvenue dans Milo !</mj-title>
-
-    <mj-attributes>
-      <mj-all font-family="Arial, sans-serif" font-size="14px" color="{{colors.text}}" line-height="1.5" />
-      <mj-text padding="10px 25px" color="{{colors.text}}" />
-      <mj-button background-color="{{colors.green}}" color="{{colors.text}}" border-radius="4px" font-size="14px" />
-      <mj-section padding="20px" />
-    </mj-attributes>
-
-    <mj-raw><meta name="color-scheme" content="light dark" /></mj-raw>
-    <mj-raw><meta name="supported-color-schemes" content="light dark" /></mj-raw>
-  </mj-head>
-
-  <mj-body>
-    <mj-section>
-      <mj-column>
-        <mj-image src="{{milo.logo}}" align="left" width="80px"/>
-        <mj-text padding="30px 25px 15px 25px">
-          <h1 style="margin: 0;">{{template.title}}</h1>
-        </mj-text>
-        <mj-text padding="0 25px 10px 25px">
-          <p style="margin: 0;">{{invitation.author}} vous a désigné administrateur de Milo. Pour vous connecter, cliquer sur le bouton ci-dessous et utiliser vos identifiants de session Windows pour vous authentifier.</p>
+          <p style="margin: 0;">{{invitation.author}} vous a donné accès {{invitation.element}}. Pour vous connecter, cliquer sur le bouton ci-dessous et utiliser vos identifiants de session Windows pour vous authentifier.</p>
         </mj-text>
         <mj-button href="{{milo.url}}" align="left">Ouvrir Milo</mj-button>
       </mj-column>
@@ -1165,21 +1130,15 @@ const DEFINITIONS: Record<MailTemplateKey, Definition> = {
     ),
     sample: SHARING_SAMPLE,
   },
-  new_user: {
-    label: "Nouvel utilisateur",
-    description:
-      "L'invitation envoyée à une personne — ou à chaque membre d'un groupe — qui reçoit l'accès à un workspace, si « Envoyer une invitation » est cochée.",
-    variables: INVITATION,
-    mjml: NEW_USER_MJML,
-    sample: { invitation: { author: "Claire Martin", workspace: "Arco" } },
-  },
   new_admin: {
-    label: "Nouvel administrateur",
+    label: "Nouvel accès à un élément",
     description:
-      "L'invitation envoyée à une personne — ou à chaque membre d'un groupe — qui reçoit des droits dans Administration, si « Envoyer une invitation » est cochée.",
-    variables: ADMIN_INVITATION,
-    mjml: NEW_ADMIN_MJML,
-    sample: { invitation: { author: "Claire Martin" } },
+      "L'invitation envoyée à une personne — ou à chaque membre d'un groupe — qui reçoit des droits dans Administration ou l'accès à un workspace, si « Envoyer une invitation » est cochée.",
+    variables: INVITATION,
+    mjml: NEW_ACCESS_MJML,
+    sample: {
+      invitation: { author: "Claire Martin", element: "au workspace « Arco »", workspace: "Arco" },
+    },
   },
   new_share: {
     label: "Nouveau partage",

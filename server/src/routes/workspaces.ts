@@ -3,21 +3,19 @@
 // ("Supprimer"). Their access is set elsewhere,
 // workspace by workspace (routes/assignments.ts).
 //
-// A workspace is born with a view and its board, so that its team has somewhere to
-// place its first widgets; it leaves with everything its views carry. Even
-// the last one can go: whoever has none lands on an empty screen that leads
-// to the Settings.
+// A workspace is born empty: its first view is created from the empty screen
+// that greets it ("Aucune vue"). It leaves with everything its views carry.
+// Even the last one can go: whoever has none lands on an empty screen that
+// leads to the Settings.
 
 import { Router } from "express";
-import type { Id, Workspace } from "@milo/shared";
-import { transaction } from "../db/query.js";
+import type { Workspace } from "@milo/shared";
 import { HttpError, requireText } from "../lib/http.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { boards, viewBoards } from "../repositories/boards.js";
 import { WORKSPACE_NOT_FOUND, workspaceViews, workspaces } from "../repositories/workspaces.js";
 import { deleteBoard } from "./boards.js";
-import { createView } from "./views.js";
 
 const NAME_REQUIRED = "Le nom du workspace est requis";
 
@@ -28,13 +26,12 @@ const openWorkspace = (id: unknown): Workspace => {
   return workspace;
 };
 
-/** A new workspace, after the others, with its first view: its creator's. */
-const createWorkspace = transaction((name: string, owner: Id): Workspace => {
+/** A new workspace, after the others, without a view. */
+const createWorkspace = (name: string): Workspace => {
   const { next } = workspaces.nextPosition();
   const id = Number(workspaces.create.run(name, next, now()).lastInsertRowid);
-  createView(id, "Vue", owner);
   return workspaces.byId.get(id)!;
-});
+};
 
 export const workspaceRoutes = Router();
 
@@ -58,7 +55,7 @@ workspaceRoutes.get("/", (_req, res) => {
 });
 
 workspaceRoutes.post("/", (req, res) => {
-  res.status(201).json(createWorkspace(requireText(req.body.name, NAME_REQUIRED), req.user.id));
+  res.status(201).json(createWorkspace(requireText(req.body.name, NAME_REQUIRED)));
 });
 
 workspaceRoutes.put("/:id", (req, res) => {

@@ -1,7 +1,7 @@
 import { Group, Stack, Text, ThemeIcon } from "@mantine/core";
 import { IconCheck, IconX } from "@tabler/icons-react";
 import { PASSWORD_RULES } from "@milo/shared";
-import { GREEN } from "../../themes/colors";
+import { GREEN, RED } from "../../themes/colors";
 
 // List of rules with their state, updated on every keystroke. Given a
 // confirmation, a last rule checks that both entries match.
@@ -19,16 +19,11 @@ export default function PasswordRules({ password, confirmation }: { password: st
     <Stack gap={4}>
       {checks.map(({ id, label, ok }) => (
         <Group key={id} gap={6} wrap="nowrap">
-          <ThemeIcon
-            size={16}
-            radius="xl"
-            variant={ok ? "filled" : "light"}
-            color={ok ? GREEN : "gray"}
-            c={ok ? "white" : undefined}
-          >
+          {/* Met, a white check on green; not met, a white cross on the project's red. */}
+          <ThemeIcon size={16} radius="xl" variant="filled" color={ok ? GREEN : RED} c="white">
             {ok ? <IconCheck size={11} /> : <IconX size={11} />}
           </ThemeIcon>
-          <Text size="xs" c={ok ? GREEN : "dimmed"} fw={ok ? 600 : undefined}>
+          <Text size="xs" c={ok ? GREEN : RED} fw={600}>
             {label}
           </Text>
         </Group>

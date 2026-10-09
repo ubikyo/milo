@@ -187,7 +187,7 @@ export default function LoginPage({
         <Logo w={40} />
         {/* As high as the Milo logo. */}
         <Anchor
-          href="https://github.com"
+          href="https://github.com/ubikyo/milo"
           target="_blank"
           rel="noreferrer"
           pos="absolute"

@@ -6,11 +6,13 @@ import { errorMessage, notifyError } from "../../lib/errors";
 import { RED } from "../../themes/colors";
 import {
   SETTINGS_HEIGHT_MAX,
-  SETTINGS_WIDTH,
+  SETTINGS_OWN_HEIGHT,
+  SETTINGS_SCROLLBAR_STYLES,
+  SETTINGS_WINDOW_WIDTH,
   SETTINGS_PADDING,
   modalHeaderStyles,
 } from "../../themes/modals";
-import scroll from "../../assets/styles/ListScroll.module.css";
+import settingsClasses from "../../assets/styles/SettingsModal.module.css";
 import AddButton from "../ui/AddButton";
 import CloseButton from "../ui/CloseButton";
 import Footer from "../ui/Footer";
@@ -255,15 +257,18 @@ export default function WorkspacesTab({
         // Settings' is already behind.
         transitionProps={{ transition: "fade" }}
         withOverlay={false}
-        // The size of Settings, from where it opens: the list scrolls within
-        // its height, "Fermer" stays at the bottom.
-        size={SETTINGS_WIDTH}
+        // The size of Settings, from where it opens — its width and its
+        // height: the list scrolls within it, "Fermer" stays at the bottom.
+        size={SETTINGS_WINDOW_WIDTH}
         padding={SETTINGS_PADDING}
         withCloseButton={false}
         styles={{
           ...modalHeaderStyles(SETTINGS_PADDING),
           content: {
+            height: SETTINGS_OWN_HEIGHT,
             maxHeight: SETTINGS_HEIGHT_MAX,
+            // Anchor for the moved scrollbar, as in Settings.
+            position: "relative",
             display: "flex",
             flexDirection: "column",
           },
@@ -277,11 +282,15 @@ export default function WorkspacesTab({
         }}
       >
         <Stack gap="xl" style={{ flex: 1, minHeight: 0 }}>
+          {/* The Settings panels' bar: on the window's right border, over its
+              whole height, at the themes' width. */}
           <ScrollArea
             type="auto"
             scrollbars="y"
+            scrollbarSize="var(--milo-settings-scrollbar-width)"
+            styles={SETTINGS_SCROLLBAR_STYLES}
+            classNames={{ scrollbar: settingsClasses.scrollbar }}
             style={{ flex: 1, minHeight: 0 }}
-            classNames={{ scrollbar: scroll.scrollbar, thumb: scroll.thumb }}
           >
             {accessOf && <WorkspaceAccess
                 workspace={accessOf.id}
@@ -294,7 +303,7 @@ export default function WorkspacesTab({
           {/* "Fermer" drops what was not saved; "Enregistrer" sends it, then
               closes — unless the server refused. */}
           <Footer parentGap="var(--mantine-spacing-xl)">
-            {/* Whoever is just added receives the "Nouvel utilisateur"
+            {/* Whoever is just added receives the "Nouvel accès à un élément"
                 e-mail — each user of a group. */}
             {rights.create && (
               <Checkbox

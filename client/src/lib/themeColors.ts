@@ -317,6 +317,27 @@ const windowEntries = (s: Scheme): Map<string, [string, ThemeColors[string]][]> 
 };
 
 /**
+ * The Settings window's own height, in the scheme's theme — its default
+ * (THEME_WINDOW_DEFAULTS) unless the theme sets another or has it follow
+ * the style's. Published for every window: those that open over it (a
+ * workspace's access) take the same height.
+ */
+const SETTINGS_HEIGHT = "settings-window-height";
+const settingsWindowHeight = (s: Scheme): string => {
+  const own = windowEntries(s)
+    .get("settings")
+    ?.find(([key]) => key === SETTINGS_HEIGHT)?.[1]
+    ?.sizes?.[s];
+  const size = SIZE_DEFINITIONS.get(SETTINGS_HEIGHT);
+  if (own === undefined || !size) return `var(--milo-${SETTINGS_HEIGHT})`;
+  const colors = colorsOf(s);
+  return sizeCss(size, s, {
+    ...colors,
+    [SETTINGS_HEIGHT]: { ...colors[SETTINGS_HEIGHT], sizes: { ...colors[SETTINGS_HEIGHT]?.sizes, [s]: own } },
+  } as ThemeColors);
+};
+
+/**
  * The style sheet. Its selectors repeat ":root" to win over Mantine's own,
  * whatever their order in the page.
  */
@@ -336,6 +357,7 @@ const styleSheet = (): string => {
     THEME_SIZES.map((size) => `--milo-${size.key}: ${sizeCss(size, s)};`).join("") +
     PADDINGS.map((p) => `--milo-${p}: ${THEME_SIDES.map((side) => (SIDES.has(`${p}-${side}`) ? `var(--milo-${p}-${side})` : "0px")).join(" ")};`).join("") +
     `--milo-tab-active-joint: ${tabActiveJoint(s)};` +
+    `--milo-settings-own-window-height: ${settingsWindowHeight(s)};` +
     // The Settings window's, on its own background (tabs.css).
     `--milo-settings-tab-active-joint: ${tabActiveJoint(s, "settings-tab-active-bg", themeVar("settings-bg"))};` +
     `--milo-settings-htab-active-joint: ${tabActiveJoint(s, "settings-htab-active-bg", themeVar("settings-bg"))};`;

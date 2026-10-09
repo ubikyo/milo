@@ -133,6 +133,9 @@ export const sendingAddress = (): string => entraSettings().mail_sender;
 
 const registrationComplete = (r: Stored): boolean => Boolean(r.client_id && r.tenant && r.secret);
 
+/** The application's ID, directory and secret are all filled in. */
+export const entraRegistered = (): boolean => registrationComplete(entraSettings());
+
 /**
  * Is the registration complete, and Milo connected? Without them, nothing
  * goes through Microsoft.

@@ -104,17 +104,6 @@ Le mode Support ne reçoit pas de notifications de Graph tant que
    15 derniers messages (`PREMIERE_RELEVE`, `server/src/lib/support-mail.ts`),
    réglage de mise au point à revoir avant la mise en service.
 
-Le widget **Uptime** du mode Accès vérifie les machines depuis le serveur
-(`server/src/lib/uptime.ts`) :
-
-- **ICMP** passe par la commande `ping` du système (`iputils-ping`) : Node
-  n'ouvre pas de socket ICMP. L'unité systemd tourne avec
-  `NoNewPrivileges=true`, ce qui suppose que les pings non privilégiés soient
-  permis (`net.ipv4.ping_group_range`, ouvert par défaut avec systemd).
-- **SNMP** lit l'OID en v2c (port 161 par défaut) ; **Zabbix** demande
-  `agent.ping` à l'agent (port 10050 par défaut), qui doit nommer Milo dans
-  sa directive `Server=`.
-
 ## API
 
 Toutes les routes sont sous `/api` et exigent un jeton

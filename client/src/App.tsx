@@ -9,6 +9,7 @@ import {
   PAGE_GUTTER,
 } from "./themes/layout";
 import LoginPage from "./pages/LoginPage";
+import FirstSetup from "./pages/FirstSetup";
 import { loadThemeColors, useThemes } from "./lib/themeColors";
 import { useThemeEditor } from "./lib/themeEditor";
 import ThemeEditor from "./components/theme/ThemeEditor";
@@ -152,6 +153,12 @@ export default function App() {
   const [needsSetup, setNeedsSetup] = useState(false);
   // Microsoft sign-in is possible: the Entra application is configured.
   const [entraReady, setEntraReady] = useState(false);
+  // The Entra application or the sending address is missing: the "admin"
+  // account goes through the first setup before the Settings.
+  const [firstSetup, setFirstSetup] = useState(false);
+  // Once the first setup is validated, the Settings open on the
+  // Administration tab: the administrators come next.
+  const [setupDone, setSetupDone] = useState(false);
   // The error a Microsoft sign-in return brought.
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
@@ -197,9 +204,6 @@ export default function App() {
   const [isEditing, setIsEditing] = useState(false);
   const canEditInterface = Boolean(user?.application.interface);
   const canMoveLayout = Boolean(user?.application.layout);
-  const toggleEdit = () => {
-    if (canEditInterface) setIsEditing((before) => !before);
-  };
   // The right-click menu on the application background, and the window
   // for exporting or importing the open board's layout.
   const background = useRef<HTMLDivElement>(null);
@@ -265,6 +269,12 @@ export default function App() {
     [boards, isEditing],
   );
   const board = boards?.find((b) => String(b.id) === boardId) ?? null;
+  // Nothing to arrange without a view or a board: the interface is not
+  // modified there — an editing already under way can still be ended.
+  const hasBoard = Boolean(viewId) && (boards?.length ?? 0) > 0;
+  const toggleEdit = () => {
+    if (canEditInterface) setIsEditing((before) => !before && hasBoard);
+  };
   const sections = sectionsRead?.key === boardId ? sectionsRead.items : null;
   const widgets = useMemo(
     () => (loadedWidgets?.key === boardId ? loadedWidgets.items : []),
@@ -382,8 +392,9 @@ export default function App() {
       // or a dropped network says nothing about the token: we keep it and retry.
       for (;;) {
         try {
-          const { needs_setup, entra } = await api.getSetupState();
+          const { needs_setup, entra, first_setup } = await api.getSetupState();
           setEntraReady(entra);
+          setFirstSetup(first_setup);
           if (needs_setup) {
             setNeedsSetup(true);
           } else if (getToken()) {
@@ -442,7 +453,9 @@ export default function App() {
     // Entra may have been connected meanwhile — by the "admin" account,
     // from Settings: the sign-in screen then offers Microsoft first.
     try {
-      setEntraReady((await api.getSetupState()).entra);
+      const state = await api.getSetupState();
+      setEntraReady(state.entra);
+      setFirstSetup(state.first_setup);
     } catch {
       /* the sign-in screen keeps what it knew */
     }
@@ -1294,7 +1307,19 @@ export default function App() {
       />
     );
 
-  // The "admin" account is only for settings: it sees nothing else.
+  // The "admin" account is only for settings: it sees nothing else — and
+  // first, as long as Entra is not set up, the first setup.
+  if (user.system && firstSetup)
+    return (
+      <FirstSetup
+        onDone={() => {
+          setFirstSetup(false);
+          setEntraReady(true);
+          setSetupDone(true);
+        }}
+        onLogout={() => void handleLogout()}
+      />
+    );
   if (user.system)
     return (
       <SettingsModal
@@ -1304,6 +1329,8 @@ export default function App() {
         canEdit
         user={user}
         onUserChange={setUser}
+        initialTab={setupDone ? "administration" : undefined}
+        entraConnected={setupDone}
       />
     );
 
@@ -1439,8 +1466,10 @@ export default function App() {
                 const target = e.target as HTMLElement;
                 if (e.defaultPrevented || !background.current?.contains(target)) return;
                 if (target.closest("input, textarea, [contenteditable='true']")) return;
-                // Nothing to offer without either right (layout moves need edit mode).
-                if (!canEditInterface && !(canMoveLayout && board && isEditing)) return;
+                // Nothing to offer without either right (layout moves need edit
+                // mode), nor, without a view or a board, outside edit mode.
+                const canToggle = canEditInterface && (isEditing || hasBoard);
+                if (!canToggle && !(canMoveLayout && board && isEditing)) return;
                 setBackgroundMenu(menuPosition(e));
               }}
             >
@@ -1610,7 +1639,7 @@ export default function App() {
 
               {backgroundMenu && (
                 <PointMenu position={backgroundMenu} onClose={() => setBackgroundMenu(null)}>
-                  {canEditInterface && (
+                  {canEditInterface && (isEditing || hasBoard) && (
                     <Menu.Item
                       leftSection={
                         isEditing ? <IconCheck size={16} /> : <IconLayoutDashboard size={16} />
@@ -1802,6 +1831,10 @@ export default function App() {
                 projects={widgets.some((w) => w.type === "project.list")}
                 requests={widgets.some((w) => w.type === "support.list")}
                 contexts={contexts.length > 0}
+                // Those the Tab shortcuts go through.
+                views={(shownViews?.length ?? 0) > 1}
+                boards={(shownBoards?.length ?? 0) > 1}
+                board={(shownBoards?.length ?? 0) > 0}
               />
               <KonamiCode
                 isEditing={isEditing}

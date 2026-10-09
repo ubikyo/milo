@@ -28,6 +28,12 @@ export interface SetupState {
   needs_setup: boolean;
   /** The Entra application is configured: Microsoft sign-in is possible. */
   entra: boolean;
+  /**
+   * The Entra application or the sending address is still missing: the
+   * "admin" account goes through the first setup (FirstSetup) rather than
+   * the Settings.
+   */
+  first_setup: boolean;
 }
 
 /**

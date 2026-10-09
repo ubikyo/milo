@@ -81,6 +81,8 @@ interface BoardTabsProps {
   deleteTitle?: string;
   /** The company and the account, which ModeBar places at the end of the row. */
   account: AccountSlot;
+  /** The row's search (ModeBar): hidden when there is nothing to search. */
+  withSearch?: boolean;
   /** The open board's "Actions" menu, placed between the company and the account. */
   actions?: ReactNode;
   /**
@@ -115,6 +117,7 @@ export default function BoardTabs({
   deleteWarning,
   deleteTitle = "Supprimer le tableau",
   account,
+  withSearch,
   actions,
   toRename,
   onRenameOpened,
@@ -200,7 +203,13 @@ export default function BoardTabs({
 
   return (
     <>
-      <ModeBar value={value} onChange={changeTab} account={account} actions={actions}>
+      <ModeBar
+        value={value}
+        onChange={changeTab}
+        account={account}
+        actions={actions}
+        withSearch={withSearch}
+      >
         {tabs.map((board, index) => (
           <Fragment key={board.id}>
             {insertAt(index) && <InsertLine />}

@@ -16,6 +16,7 @@ import {
 } from "../lib/entra.js";
 import { badRequest, requireText } from "../lib/http.js";
 import { sendTest } from "../lib/mail.js";
+import { confirmSender, sendSenderCode } from "../lib/sender-confirmation.js";
 import { configuredMailboxes } from "../repositories/inboxes.js";
 
 export const entraRoutes = Router();
@@ -65,6 +66,22 @@ entraRoutes.post("/test", (req, res, next) => {
   sendTest(recipient)
     .then(() => res.json({ sent_to: recipient }))
     .catch(next);
+});
+
+// The sending address of the first setup (FirstSetup): a code sent from the
+// mailbox to itself, then entered to make it the sending address.
+entraRoutes.post("/sender/code", (req, res, next) => {
+  const email = requireText(req.body?.email, "L'adresse d'envoi est requise");
+  sendSenderCode(email)
+    .then(() => res.json({ sent_to: email.trim() }))
+    .catch(next);
+});
+
+entraRoutes.post("/sender/confirm", (req, res) => {
+  const email = requireText(req.body?.email, "L'adresse d'envoi est requise");
+  const code = requireText(req.body?.code, "Le code est requis");
+  confirmSender(email, code);
+  res.json(publicEntraSettings());
 });
 
 /**

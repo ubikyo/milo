@@ -166,7 +166,7 @@ export default function WorkspaceAccess({
   onChange,
 }: {
   workspace: Id;
-  /** Those just added receive the "Nouvel utilisateur" e-mail, on save. */
+  /** Those just added receive the "Nouvel accès à un élément" e-mail, on save. */
   invite?: boolean;
   /** Without the "Créer" right on workspaces: shown, not changed. */
   readOnly?: boolean;

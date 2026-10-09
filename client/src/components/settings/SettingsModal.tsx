@@ -27,7 +27,9 @@ import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import {
   SETTINGS_HEIGHT_MAX,
-  SETTINGS_WIDTH,
+  SETTINGS_SCROLLBAR_STYLES,
+  SETTINGS_WINDOW_HEIGHT,
+  SETTINGS_WINDOW_WIDTH,
   modalHeaderStyles,
 } from "../../themes/modals";
 import { tabStyle } from "../../themes/tabs";
@@ -142,33 +144,8 @@ const MODAL_HEADER = {
 const TABS_WIDTH = "var(--milo-settings-tab-width)";
 
 /** The window widens as much as the tabs do, from their 170 px. */
-const WIDTH = `calc(${SETTINGS_WIDTH}px + ${TABS_WIDTH} - 170px)`;
+const WIDTH = SETTINGS_WINDOW_WIDTH;
 
-/**
- * A panel's scrollbar, moved to the modal's right border and spanning its
- * full height. Same principle as the projects list (ProjectTable), except
- * that it anchors to the modal and not to the screen: it is "content" that
- * carries the reference (position: relative).
- *
- * Left in place, it would straddle the panel's padding and jump from
- * one tab to another depending on what each contains. The panel therefore
- * keeps its full width — the bar is out of the flow — and the content does
- * not shift when it appears.
- */
-const SCROLLBAR_STYLES = {
-  root: { position: "static" as const },
-  scrollbar: {
-    position: "absolute" as const,
-    top: 0,
-    bottom: 0,
-    right: 0,
-    left: "auto",
-    height: "auto",
-    width: "var(--scrollarea-scrollbar-size)",
-  },
-  // Its color, set in the themes like its width.
-  thumb: { backgroundColor: "var(--milo-settings-scrollbar)" },
-};
 
 interface SettingsModalProps {
   opened: boolean;
@@ -192,6 +169,11 @@ interface SettingsModalProps {
   onUserChange?: (user: PublicUser) => void;
   /** The tab it opens on, if visible: the first visible one otherwise. */
   initialTab?: string;
+  /**
+   * Entra is known to be connected — the first setup just checked it: the
+   * tabs that need it show at once, without waiting for the Entra tab's check.
+   */
+  entraConnected?: boolean;
 }
 
 export default function SettingsModal({
@@ -202,6 +184,7 @@ export default function SettingsModal({
   user,
   onUserChange,
   initialTab,
+  entraConnected: knownConnected,
 }: SettingsModalProps) {
   const management = user.workspace_rights.view;
   const [activeTab, setActiveTab] = useState<string | null>(null);
@@ -231,7 +214,9 @@ export default function SettingsModal({
   // As long as Entra is not connected, only its settings are shown. The
   // Entra tab informs the modal of each connection check; "null" as long
   // as it has not said anything.
-  const [entraConnected, setEntraConnected] = useState<boolean | null>(null);
+  const [entraConnected, setEntraConnected] = useState<boolean | null>(
+    knownConnected ? true : null,
+  );
   // Entra and the backup are the "admin" account's alone; the others sign in
   // through Microsoft: Entra is necessarily connected. Their tabs follow
   // their administration.
@@ -248,6 +233,15 @@ export default function SettingsModal({
     // Only on opening: the tab chosen afterwards stays.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened]);
+  // The "admin" account's requested tab may wait for Entra's connection
+  // (WITH_ENTRA): it is opened once Entra is known to be connected.
+  useEffect(() => {
+    if (opened && standalone && entraConnected && initialTab && visible(initialTab)) {
+      setActiveTab(initialTab);
+    }
+    // Only when the connection becomes known: the tab chosen afterwards stays.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entraConnected]);
 
   // Stable: the Entra tab calls it on each connection check.
   const followEntra = useCallback((status: EntraStatus | null) => {
@@ -357,7 +351,7 @@ export default function SettingsModal({
           <ScrollArea
             type="auto"
             scrollbarSize="var(--milo-settings-scrollbar-width)"
-            styles={SCROLLBAR_STYLES}
+            styles={SETTINGS_SCROLLBAR_STYLES}
             classNames={{ scrollbar: classes.scrollbar }}
             style={{ flex: 1, minHeight: 0 }}
           >
@@ -392,8 +386,9 @@ export default function SettingsModal({
         content: {
           backgroundColor: "var(--milo-settings-bg)",
           // The windows' ("Fenêtre" > "Hauteur") — its own when checked
-          // beside it: its content's ("auto"), or set.
-          height: "var(--milo-settings-window-height)",
+          // beside it: its content's ("auto"), or set. The "admin"
+          // account's is fixed: 800px.
+          height: standalone ? 800 : SETTINGS_WINDOW_HEIGHT,
           maxHeight: SETTINGS_HEIGHT_MAX,
           display: "flex",
           flexDirection: "column",
@@ -538,7 +533,7 @@ export default function SettingsModal({
             ) : (
               <>
                 <CloseButton onClick={onClose}>
-                  {standalone ? "Quitter" : "Fermer"}
+                  {standalone ? "Se déconnecter" : "Fermer"}
                 </CloseButton>
                 {canEdit && (
                   <Button

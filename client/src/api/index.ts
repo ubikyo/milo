@@ -339,7 +339,7 @@ export const api = {
     get<PrincipalAssignments[]>(`/assignments?workspace=${workspace}`),
   // The types and notifications sent replace everything; with none, the
   // principal stays listed without any access. "invite": if just added, they
-  // receive the "Nouvel utilisateur" e-mail.
+  // receive the "Nouvel accès à un élément" e-mail.
   setAssignments: (
     principal: EntraPrincipal,
     permissions: WorkspacePermissions,
@@ -358,7 +358,7 @@ export const api = {
 
   // --- Administration: Paramétrage and workspace management ----------------
   getAdministration: () => get<PrincipalAdministration[]>("/administration"),
-  // "invite": if just added, they receive the "Nouvel administrateur" e-mail.
+  // "invite": if just added, they receive the "Nouvel accès à un élément" e-mail.
   setAdministration: (principal: EntraPrincipal, permissions: AdminPermissions, invite = false) =>
     put<PrincipalAdministration[]>(
       `/administration/${principal.type}/${encodeURIComponent(principal.id)}`,
@@ -393,6 +393,10 @@ export const api = {
   connectEntra: () => post<EntraStatus>("/entra/connect"),
   disconnectEntra: () => post<EntraStatus>("/entra/disconnect"),
   checkEntra: (step: string) => post<EntraCheck>(`/entra/check/${encodeURIComponent(step)}`),
+  // The first setup's sending address: a code sent to it, then entered.
+  sendSenderCode: (email: string) => post<MailTestResult>("/entra/sender/code", { email }),
+  confirmSender: (email: string, code: string) =>
+    post<EntraSettings>("/entra/sender/confirm", { email, code }),
 
   // --- Follows -------------------------------------------------------------
   // The client keeps the list of what it follows: each write returns it

@@ -5,7 +5,6 @@
 // In the order Notifications lists them.
 export const MAIL_TEMPLATE_KEYS = [
   "test",
-  "new_user",
   "new_admin",
   "new_share",
   "linked",

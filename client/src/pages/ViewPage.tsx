@@ -202,6 +202,8 @@ export default function ViewPage({
         onRenameOpened={onRenameOpened}
         onRenameEnded={onRenameEnded}
         account={account}
+        // Nothing to search without a view or a board — once that is certain.
+        withSearch={!(noView || (!loading && boards?.length === 0))}
         actions={
           withRequests ? (
             <SupportActions

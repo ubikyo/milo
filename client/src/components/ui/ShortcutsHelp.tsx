@@ -4,16 +4,17 @@ import Logo from "./Logo";
 
 // Action on the left, shortcut on the right. "when" limits a shortcut to the board
 // where it acts: no new project without a projects list, no next context
-// without contexts.
-type Condition = "projects" | "requests" | "contexts";
+// without contexts, no switching between views or boards with fewer than two,
+// no interface editing without a board.
+type Condition = "projects" | "requests" | "contexts" | "views" | "boards" | "board";
 
 const SHORTCUTS: { action: string; key: string; when?: Condition }[] = [
   { action: "Nouveau projet", key: "N", when: "projects" },
   { action: "Nouvelle demande", key: "N", when: "requests" },
-  { action: "Changer de vue", key: "Tab" },
-  { action: "Tableau suivant", key: "⌥ Tab" },
+  { action: "Changer de vue", key: "Tab", when: "views" },
+  { action: "Tableau suivant", key: "⌥ Tab", when: "boards" },
   { action: "Contexte suivant", key: "C", when: "contexts" },
-  { action: "Modifier l’interface / terminer", key: "I" },
+  { action: "Modifier l’interface / terminer", key: "I", when: "board" },
 ];
 
 // The logo stands in the bottom right corner, at the height of a "lg"
@@ -31,20 +32,42 @@ const CORNER = {
 /**
  * The logo in the bottom right corner: the shortcuts show when the mouse is
  * on it, the version under them. What the open board holds: a projects list,
- * a requests list, contexts.
+ * a requests list, contexts; whether there are views, boards, to go
+ * through — at least two —, and a board at all.
  */
 export default function ShortcutsHelp({
   projects,
   requests,
   contexts,
+  views,
+  boards,
+  board,
 }: {
   projects: boolean;
   requests: boolean;
   contexts: boolean;
+  views: boolean;
+  boards: boolean;
+  board: boolean;
 }) {
-  const holds: Record<Condition, boolean> = { projects, requests, contexts };
+  const holds: Record<Condition, boolean> = {
+    projects,
+    requests,
+    contexts,
+    views,
+    boards,
+    board,
+  };
+  const shown = SHORTCUTS.filter((s) => !s.when || holds[s.when]);
   return (
-    <HoverCard position="top-end" withArrow shadow="md" openDelay={100}>
+    // No shortcut to show: the logo stays, without its bubble.
+    <HoverCard
+      position="top-end"
+      withArrow
+      shadow="md"
+      openDelay={100}
+      disabled={shown.length === 0}
+    >
       <HoverCard.Target>
         <Box
           aria-label="Raccourcis clavier"
@@ -61,7 +84,7 @@ export default function ShortcutsHelp({
           <Text size="xs" fw={700} tt="uppercase" c="dimmed">
             Raccourcis clavier
           </Text>
-          {SHORTCUTS.filter((s) => !s.when || holds[s.when]).map(
+          {shown.map(
             ({ action, key }) => (
               <Group key={action} justify="space-between" gap="xl" wrap="nowrap">
                 <Text size="sm">{action}</Text>

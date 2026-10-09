@@ -34,6 +34,21 @@ const PILL_RADIUS = 4;
 const SECTION_WIDTH = 270;
 
 /**
+ * The choice that adds, at once, every section left with every right the
+ * author may grant there.
+ */
+const ALL = "__all__";
+const ALL_LABEL = "Tous les accès";
+
+/**
+ * The lists show 10 options at most, then scroll (Mantine's ScrollArea): an
+ * "sm" option is 34 px high, the list has 4 px of padding above and below.
+ */
+const VISIBLE_OPTIONS = 10;
+const OPTION_HEIGHT = 34;
+const DROPDOWN_HEIGHT = VISIBLE_OPTIONS * OPTION_HEIGHT + 8;
+
+/**
  * A section and the rights it offers, in their order — and, if it has one,
  * the group it is listed under in the section's choice ("Widgets",
  * "Application").
@@ -126,6 +141,12 @@ export default function SectionRights({
   const remaining = (p: SectionPermissions, section: string) =>
     rightsOf(p, section).filter((r) => !canChange(section, r));
 
+  /** Every right the author may grant in a section. */
+  const grantable = (section: string) =>
+    sectionOf(section)
+      .rights.map((r) => r.value)
+      .filter((r) => canChange(section, r));
+
   /** Its first right the author may grant: what a newly picked section receives. */
   const firstRight = (section: string) =>
     sectionOf(section)
@@ -136,12 +157,25 @@ export default function SectionRights({
   const pickSection = (rank: number, choice: string | null) => {
     setAdding(false);
     if (!choice) return;
+    if (choice === ALL) return pickAll();
     const old = rows[rank];
     if (old === choice) return;
     // In place of another: that one loses its rights — those the author
     // can remove.
     const base = old ? withRights(permissions, old, remaining(permissions, old)) : permissions;
     onChange(withRights(base, choice, normalize(choice, [], firstRight(choice))));
+  };
+
+  /** "Tous les accès": every section left, each with every right the author may grant. */
+  const pickAll = () => {
+    onChange(
+      offered
+        .filter((section) => !listed.includes(section))
+        .reduce(
+          (p, section) => withRights(p, section, normalize(section, [], grantable(section))),
+          permissions,
+        ),
+    );
   };
 
   /** Several sections at once, each with its first right. */
@@ -187,12 +221,17 @@ export default function SectionRights({
       (s) => s.value === own || (offered.includes(s.value) && !listed.includes(s.value)),
     );
     const option = (s: RightsSection) => ({ value: s.value, label: s.label });
-    if (!choice.some((s) => s.group)) return choice.map(option);
+    // The added row offers them all at once, first — when more than one is left.
+    const all = own === "" && choice.length > 1 ? [{ value: ALL, label: ALL_LABEL }] : [];
+    if (!choice.some((s) => s.group)) return [...all, ...choice.map(option)];
     const groups = [...new Set(choice.map((s) => s.group ?? ""))];
-    return groups.map((group) => ({
-      group,
-      items: choice.filter((s) => (s.group ?? "") === group).map(option),
-    }));
+    return [
+      ...all,
+      ...groups.map((group) => ({
+        group,
+        items: choice.filter((s) => (s.group ?? "") === group).map(option),
+      })),
+    ];
   };
 
   return (
@@ -266,6 +305,7 @@ export default function SectionRights({
                     onDropdownOpen={() => setOpened(section || "new")}
                     onDropdownClose={() => setOpened(null)}
                     allowDeselect={false}
+                    maxDropdownHeight={DROPDOWN_HEIGHT}
                     autoFocus={newRow}
                     disabled={locked}
                     rightSection={<IconChevronDown size={14} />}
@@ -292,6 +332,7 @@ export default function SectionRights({
                     }))}
                     value={rightsOf(permissions, section)}
                     onChange={(rights) => changeRights(section, rights)}
+                    maxDropdownHeight={DROPDOWN_HEIGHT}
                     disabled={locked}
                     // The rights to the right of the field, at the end of the row.
                     // Taller than an "xs" pill (18 px) by 4 px, barely rounded.

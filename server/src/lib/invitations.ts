@@ -1,7 +1,8 @@
 // The invitations: an e-mail to whoever has just received an access to a
-// workspace ("Nouvel utilisateur"), the administration ("Nouvel
-// administrateur") or the boards of a view ("Nouveau partage"), when "Envoyer une invitation" is checked. A group is not
-// written to: each of its users is, those of its subgroups included.
+// workspace or the administration ("Nouvel accès à un élément"), or the boards
+// of a view ("Nouveau partage"), when "Envoyer une invitation" is checked. A
+// group is not written to: each of its users is, those of its subgroups
+// included.
 
 import type { EntraPrincipal } from "@milo/shared";
 import type { UserRow } from "../db/rows.js";
@@ -63,7 +64,7 @@ const sendAll = (
     .catch((error: unknown) => console.error("Invitations abandoned:", error));
 };
 
-/** "Nouvel utilisateur": access to a workspace has just been given to them. */
+/** "Nouvel accès à un élément": access to a workspace has just been given to them. */
 export const inviteToWorkspace = (
   principals: EntraPrincipal[],
   workspace: string,
@@ -79,22 +80,26 @@ export const inviteToWorkspace = (
   };
   sendAll(principals, author, async () => ({
     subject: `Milo — Accès au workspace ${workspace}`,
-    content: await template("new_user", message, { invitation: { author: who, workspace } }),
+    content: await template("new_admin", message, {
+      invitation: { author: who, element: `au workspace « ${workspace} »`, workspace },
+    }),
   }));
 };
 
-/** "Nouvel administrateur": rights in the administration have just been given to them. */
+/** "Nouvel accès à un élément": rights in the administration have just been given to them. */
 export const inviteToAdministration = (principals: EntraPrincipal[], author: UserRow, base: string): void => {
   const who = authorName(author);
   const message: Message = {
     title: "Bienvenue dans Milo",
-    intro: `${who} vous a désigné administrateur de Milo.`,
+    intro: `${who} vous a donné accès à l'administration de Milo.`,
     ...(base ? { action: { url: base, label: "Ouvrir Milo" } } : {}),
     footer: "Vous recevez ce message parce qu'un accès à Milo vous a été donné.",
   };
   sendAll(principals, author, async () => ({
     subject: "Milo — Accès à l'administration",
-    content: await template("new_admin", message, { invitation: { author: who } }),
+    content: await template("new_admin", message, {
+      invitation: { author: who, element: "à l'administration de Milo", workspace: "" },
+    }),
   }));
 };
 

@@ -27,6 +27,8 @@ interface ModeBarProps {
   actions?: ReactNode;
   /** What it takes to mount the row's end: the company, the mode's menu, the account. */
   account: AccountSlot;
+  /** The search, shown unless there is nothing to search: no view, no board. */
+  withSearch?: boolean;
 }
 
 // The Scroller's chevrons, and the fade that carries them: Mantine sizes both
@@ -48,6 +50,7 @@ export default function ModeBar({
   children,
   actions,
   account,
+  withSearch = true,
 }: ModeBarProps) {
   return (
     // Tabs stay on a single line, whatever the window width: it is the search
@@ -92,7 +95,7 @@ export default function ModeBar({
         {/* No gap on either side: the search's field fills everything from the
             last tab to the menus and the account (SearchBox). */}
         <Box style={{ flex: 1, minWidth: 0, alignSelf: "stretch", display: "flex" }}>
-          <SearchBox onOpen={account.onSearchOpen} />
+          {withSearch && <SearchBox onOpen={account.onSearchOpen} />}
         </Box>
 
         {/* Everything on the right fits in a single box: the mode's menus, the

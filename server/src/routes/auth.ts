@@ -14,10 +14,12 @@ import { env } from "../env.js";
 import { createToken, fullName, hashPassword, verifyPassword } from "../lib/auth.js";
 import {
   entraConfigured,
+  entraRegistered,
   entraGroups,
   entraProfile,
   completeLogin,
   loginUrl,
+  sendingAddress,
 } from "../lib/entra.js";
 import { badRequest, conflict } from "../lib/http.js";
 import { notificationSettings, validNotificationSettings } from "../lib/notification-settings.js";
@@ -80,7 +82,11 @@ export const publicAuthRoutes = Router();
 // sign-in is possible: with no application filled in, the sign-in screen
 // only offers the "admin" account.
 publicAuthRoutes.get("/setup", (_req, res) => {
-  res.json({ needs_setup: !users.admin.get(), entra: entraConfigured() });
+  res.json({
+    needs_setup: !users.admin.get(),
+    entra: entraConfigured(),
+    first_setup: !entraRegistered() || !sendingAddress(),
+  });
 });
 
 // Only the "admin" account: a new database has no workspace, no

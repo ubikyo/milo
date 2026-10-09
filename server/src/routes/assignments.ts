@@ -217,7 +217,7 @@ assignmentRoutes.get("/", (req, res) => {
 // replace the previous ones. Without any right, they stay listed, with no
 // access, until they are removed. Unlike the administration, one's own
 // access can be changed: it only concerns this workspace. Just added, and
-// "invite" given, they receive the "Nouvel utilisateur" e-mail — each user of
+// "invite" given, they receive the "Nouvel accès à un élément" e-mail — each user of
 // a group.
 assignmentRoutes.put("/:type/:id", (req, res) => {
   const workspace = workspaceOf(req);
@@ -288,7 +288,7 @@ const administrationBefore = (type: string, id: string): AdminPermissions => {
 // right, they stay listed. A right the author does not hold stays as it
 // was: only whoever holds it grants or removes it. The author's own rights,
 // and their groups', are only added to. Just added, and
-// "invite" given, they receive the "Nouvel administrateur" e-mail — each user
+// "invite" given, they receive the "Nouvel accès à un élément" e-mail — each user
 // of a group.
 administrationRoutes.put("/:type/:id", (req, res) => {
   const principal = receivedPrincipal(req);

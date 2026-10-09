@@ -151,7 +151,7 @@ export const createApp = (): express.Express => {
   app.use("/api/assignments", settingsNotice("les accès d'un workspace"), assignmentRoutes);
   app.use("/api/administration", settingsNotice("l'administration"), administrationRoutes);
   app.use("/api/workspaces", requireWorkspaces, settingsNotice("les workspaces"), workspaceRoutes);
-  app.use("/api/entra", requireSettings, settingsNotice("la connexion Entra", /^\/test$/), entraRoutes);
+  app.use("/api/entra", requireSettings, settingsNotice("la connexion Entra", /^\/(test|sender\/code)$/), entraRoutes);
   // The API tokens: an outside client's access to some workspaces.
   app.use("/api/api-tokens", requireSettings, settingsNotice("les jetons d'API"), apiTokenRoutes);
   app.use("/api/backup", requireSettingsUpdate, settingsNotice("la sauvegarde (restauration)"), backupRoutes);

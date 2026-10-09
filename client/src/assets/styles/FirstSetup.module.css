@@ -1,0 +1,18 @@
+/* The first setup's "Précédent" and "Se déconnecter" (FirstSetup): a plain
+   text, no background nor padding, that turns gray on hover — never
+   underlined. */
+.link {
+  /* Over the links' green, given inline (main.tsx). */
+  color: var(--milo-neutral-text) !important;
+  text-decoration: none !important;
+  transition: color 120ms ease;
+}
+
+.link:hover:not(:disabled) {
+  color: var(--mantine-color-dimmed) !important;
+}
+
+.link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
