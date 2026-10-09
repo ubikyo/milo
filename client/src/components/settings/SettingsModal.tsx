@@ -268,6 +268,8 @@ export default function SettingsModal({
   // check, which the Entra tab runs.
   const entraCheck = useRef<EntraCheckControls | null>(null);
   const [checkPhase, setCheckPhase] = useState<EntraCheckPhase>("form");
+  // "Se connecter" waits for a valid redirect address (Entra tab).
+  const [redirectReady, setRedirectReady] = useState(false);
   const connecting = standalone && entraConnected === false;
   // Connected, nothing is saved without a sending address (Entra tab).
   const [sender, setSender] = useState<string | null>(null);
@@ -471,6 +473,7 @@ export default function SettingsModal({
               onSender={setSender}
               checkRef={entraCheck}
               onPhase={setCheckPhase}
+              onRedirectReady={setRedirectReady}
             />,
             setEntraActions,
           )}
@@ -522,7 +525,7 @@ export default function SettingsModal({
                   <Button color="teal" onClick={() => entraCheck.current?.next()}>
                     Suivant
                   </Button>
-                ) : (
+                ) : redirectReady ? (
                   <Button
                     color="teal"
                     onClick={() => entraCheck.current?.connect()}
@@ -530,12 +533,12 @@ export default function SettingsModal({
                   >
                     Se connecter
                   </Button>
-                )}
+                ) : null}
               </>
             ) : (
               <>
                 <CloseButton onClick={onClose}>
-                  {standalone ? "Déconnexion" : "Fermer"}
+                  {standalone ? "Quitter" : "Fermer"}
                 </CloseButton>
                 {canEdit && (
                   <Button

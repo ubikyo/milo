@@ -326,7 +326,7 @@ export default function LoginPage({
                   fullWidth
                   mt="md"
                 >
-                  {mode === "setup" ? "Créer le compte admin" : "Se connecter"}
+                  {mode === "setup" ? "Créer le compte" : "Se connecter"}
                 </Button>
               )}
 

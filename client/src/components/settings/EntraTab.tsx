@@ -57,6 +57,9 @@ const MASK = "********";
 /** The path the server receives Microsoft's sign-ins on. */
 const REDIRECT_PATH = "/api/auth/entra/callback";
 
+/** True for an http(s) address. */
+const isHttpUrl = (url: string): boolean => /^https?:\/\/[^\s/]+/.test(url) && URL.canParse(url);
+
 /** The gap, in px, between the typed address and the redirect path. */
 const SUFFIX_GAP = 2;
 
@@ -142,6 +145,11 @@ interface EntraTabProps {
   checkRef?: { current: EntraCheckControls | null };
   /** Where the check stands: the window's buttons follow it. */
   onPhase?: (phase: EntraCheckPhase) => void;
+  /**
+   * Whether a valid redirect address is saved: until then, the window
+   * hides its "Se connecter" button, as the tab hides the other fields.
+   */
+  onRedirectReady?: (ready: boolean) => void;
 }
 
 /**
@@ -160,6 +168,7 @@ export default function EntraTab({
   onSender,
   checkRef,
   onPhase,
+  onRedirectReady,
 }: EntraTabProps) {
   const [settings, setSettings] = useState<EntraSettings>(emptyEntraSettings());
   const [secret, setSecret] = useState("");
@@ -332,6 +341,7 @@ export default function EntraTab({
   // field is left, as the sending address (NotificationsTab); empty, the
   // server's (MILO_PUBLIC_URL) applies.
   const [savedUrl, setSavedUrl] = useState("");
+  const [fallbackUrl, setFallbackUrl] = useState("");
   const [typedUrl, setTypedUrl] = useState("");
   const [savingUrl, setSavingUrl] = useState(false);
 
@@ -339,6 +349,7 @@ export default function EntraTab({
     api.getMiloSettings().then(
       (s) => {
         setSavedUrl(s.url);
+        setFallbackUrl(s.fallback);
         setTypedUrl(s.url);
       },
       (e) => notifyError(errorMessage(e)),
@@ -369,8 +380,15 @@ export default function EntraTab({
    * Only once the address typed is a valid http(s) one.
    */
   const url = typedUrl.trim().replace(/\/+$/, "");
-  const validUrl = /^https?:\/\/[^\s/]+/.test(url) && URL.canParse(url);
+  const validUrl = isHttpUrl(url);
   const redirection = validUrl ? `${url}${REDIRECT_PATH}` : "";
+
+  // The other fields wait for a valid address, saved — or, none saved,
+  // the server's.
+  const redirectReady = isHttpUrl(savedUrl || fallbackUrl);
+  useEffect(() => {
+    onRedirectReady?.(redirectReady);
+  }, [redirectReady, onRedirectReady]);
 
   // The redirect path's place, measured after each keystroke and when the
   // field scrolls or changes width.
@@ -469,9 +487,6 @@ export default function EntraTab({
   const secretField = (
     <PasswordInput
       label="Secret"
-      // A quarter of the row: Milo's address takes the rest.
-      w="calc((100% - var(--mantine-spacing-md)) / 4)"
-      style={{ flexShrink: 0 }}
       value={masked ? MASK : secret}
       visibilityToggleButtonProps={
         masked ? { style: { display: "none" } } : undefined
@@ -546,93 +561,93 @@ export default function EntraTab({
               the way. The labels above the fields, as in the card
               details, with the same gaps. */}
           <Stack gap="xl">
-            {/* The two IDs, one per line, across the whole width. */}
+            {/* Milo's address; once valid, the redirect path follows
+                it, glued to the typed text, and the whole address to
+                register in Azure is copied with a click. */}
             <TextInput
-              label="ID d'application"
-              value={settings.client_id}
-              onChange={(e) =>
-                updateStatement({ client_id: e.currentTarget.value })
+              label="Adresse de redirection"
+              ref={urlInput}
+              onScroll={placeSuffix}
+              type="url"
+              placeholder="https://milo.contoso.com"
+              value={typedUrl}
+              onChange={(e) => setTypedUrl(e.currentTarget.value)}
+              onBlur={() => void saveUrl()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") setTypedUrl(savedUrl);
+              }}
+              disabled={savingUrl}
+              inputContainer={(children) => (
+                <div style={{ position: "relative" }}>
+                  {children}
+                  {validUrl && suffix && (
+                    // Lets clicks through to the input.
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        bottom: 0,
+                        left: suffix.left,
+                        width: suffix.width,
+                        display: "flex",
+                        alignItems: "center",
+                        overflow: "hidden",
+                        whiteSpace: "pre",
+                        pointerEvents: "none",
+                        fontSize: "var(--mantine-font-size-sm)",
+                        color: "var(--mantine-color-dimmed)",
+                      }}
+                    >
+                      {REDIRECT_PATH}
+                    </div>
+                  )}
+                </div>
+              )}
+              rightSection={
+                <CopyButton value={redirection}>
+                  {({ copied, copy }) => (
+                    <Button
+                      variant="subtle"
+                      color="gray"
+                      size="compact-sm"
+                      onClick={copy}
+                      disabled={!validUrl}
+                      aria-label="Copier l'adresse de redirection"
+                      style={
+                        { "--button-hover": NEUTRAL_HOVER } as CSSProperties
+                      }
+                    >
+                      {copied ? (
+                        <IconCheck size={14} />
+                      ) : (
+                        <IconCopy size={14} />
+                      )}
+                    </Button>
+                  )}
+                </CopyButton>
               }
             />
-            <TextInput
-              label="ID de l'annuaire"
-              value={settings.tenant}
-              onChange={(e) =>
-                updateStatement({ tenant: e.currentTarget.value })
-              }
-            />
-            <Group gap="md" wrap="nowrap" align="flex-start">
-              {secretField}
-              {/* Milo's address; once valid, the redirect path follows
-                  it, glued to the typed text, and the whole address to
-                  register in Azure is copied with a click. It takes the
-                  rest of the row. */}
-              <TextInput
-                label="Adresse de redirection"
-                ref={urlInput}
-                onScroll={placeSuffix}
-                style={{ flex: 1, minWidth: 0 }}
-                type="url"
-                placeholder="https://milo.contoso.com"
-                value={typedUrl}
-                onChange={(e) => setTypedUrl(e.currentTarget.value)}
-                onBlur={() => void saveUrl()}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") e.currentTarget.blur();
-                  if (e.key === "Escape") setTypedUrl(savedUrl);
-                }}
-                disabled={savingUrl}
-                inputContainer={(children) => (
-                  <div style={{ position: "relative" }}>
-                    {children}
-                    {validUrl && suffix && (
-                      // Lets clicks through to the input.
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          bottom: 0,
-                          left: suffix.left,
-                          width: suffix.width,
-                          display: "flex",
-                          alignItems: "center",
-                          overflow: "hidden",
-                          whiteSpace: "pre",
-                          pointerEvents: "none",
-                          fontSize: "var(--mantine-font-size-sm)",
-                          color: "var(--mantine-color-dimmed)",
-                        }}
-                      >
-                        {REDIRECT_PATH}
-                      </div>
-                    )}
-                  </div>
-                )}
-                rightSection={
-                  <CopyButton value={redirection}>
-                    {({ copied, copy }) => (
-                      <Button
-                        variant="subtle"
-                        color="gray"
-                        size="compact-sm"
-                        onClick={copy}
-                        disabled={!validUrl}
-                        aria-label="Copier l'adresse de redirection"
-                        style={
-                          { "--button-hover": NEUTRAL_HOVER } as CSSProperties
-                        }
-                      >
-                        {copied ? (
-                          <IconCheck size={14} />
-                        ) : (
-                          <IconCopy size={14} />
-                        )}
-                      </Button>
-                    )}
-                  </CopyButton>
-                }
-              />
-            </Group>
+            {redirectReady && (
+              <>
+                {/* The IDs and the secret, one per line, across the whole width. */}
+                <TextInput
+                  label="ID d'application"
+                  value={settings.client_id}
+                  onChange={(e) =>
+                    updateStatement({ client_id: e.currentTarget.value })
+                  }
+                />
+                <TextInput
+                  label="ID de l'annuaire"
+                  value={settings.tenant}
+                  onChange={(e) =>
+                    updateStatement({ tenant: e.currentTarget.value })
+                  }
+                />
+                {secretField}
+              </>
+            )}
             {/* Once connected: Milo can then send from it. */}
             {state?.state === "connected" && <SenderField onSaved={onSender} />}
           </Stack>
