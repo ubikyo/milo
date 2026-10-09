@@ -893,6 +893,39 @@ ${DECLARED_ASSET_SCHEMA}
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+
+  -- Les postes du mode Assets : ce qu'un agent d'inventaire (FusionInventory,
+  -- GLPI Agent) remonte d'une machine.
+  --
+  -- L'inventaire entier est gardé tel quel, en JSON, plutôt que découpé en
+  -- colonnes : on ne sait pas encore ce qu'on en garde, et une colonne par
+  -- champ ferait une quarantaine de tables pour une décision qui n'est pas
+  -- prise. Seul ce qui sert à ranger les postes en sort — le nom, le contexte,
+  -- la date.
+  CREATE TABLE IF NOT EXISTS managed_device_assets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- L'identifiant que l'agent se donne et répète à chaque envoi : c'est lui
+    -- qui distingue un poste nouveau d'un poste déjà connu, et non le nom, qui
+    -- change quand on renomme la machine.
+    deviceid TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL DEFAULT '',
+    -- The "tag" given to the agent (its "tag" option). Through it the
+    -- machine joins a board: the one whose list has a collector of that tag.
+    tag TEXT NOT NULL DEFAULT '',
+    -- The board whose list collects its tag. Null as long as none does:
+    -- it then shows nowhere. "context_id" is no longer used.
+    board_id INTEGER REFERENCES boards(id) ON DELETE CASCADE,
+    context_id INTEGER REFERENCES contexts(id) ON DELETE CASCADE,
+    -- Le widget « Assets » qui reçoit son tag ; vide s'il n'y en a aucun.
+    list_key TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '{}',
+    -- La dernière personne connectée, sortie de l'inventaire à sa réception :
+    -- la liste la montre, et relire le JSON de chaque poste pour l'afficher
+    -- coûterait cent fois plus cher que de la garder ici.
+    last_user TEXT NOT NULL DEFAULT '',
+    last_inventory TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
 `;
 
 // Indexes. The database had none: every foreign-key read — a list's cards, a
@@ -950,39 +983,6 @@ ${DECLARED_ASSET_INDEXES}
   CREATE INDEX IF NOT EXISTS idx_card_links_target ON card_links(target_id);
 
   -- Les demandes se lisent par contexte, de la plus récente à la plus ancienne.
-  -- Les postes du mode Assets : ce qu'un agent d'inventaire (FusionInventory,
-  -- GLPI Agent) remonte d'une machine.
-  --
-  -- L'inventaire entier est gardé tel quel, en JSON, plutôt que découpé en
-  -- colonnes : on ne sait pas encore ce qu'on en garde, et une colonne par
-  -- champ ferait une quarantaine de tables pour une décision qui n'est pas
-  -- prise. Seul ce qui sert à ranger les postes en sort — le nom, le contexte,
-  -- la date.
-  CREATE TABLE IF NOT EXISTS managed_device_assets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    -- L'identifiant que l'agent se donne et répète à chaque envoi : c'est lui
-    -- qui distingue un poste nouveau d'un poste déjà connu, et non le nom, qui
-    -- change quand on renomme la machine.
-    deviceid TEXT NOT NULL UNIQUE,
-    name TEXT NOT NULL DEFAULT '',
-    -- The "tag" given to the agent (its "tag" option). Through it the
-    -- machine joins a board: the one whose list has a collector of that tag.
-    tag TEXT NOT NULL DEFAULT '',
-    -- The board whose list collects its tag. Null as long as none does:
-    -- it then shows nowhere. "context_id" is no longer used.
-    board_id INTEGER REFERENCES boards(id) ON DELETE CASCADE,
-    context_id INTEGER REFERENCES contexts(id) ON DELETE CASCADE,
-    -- Le widget « Assets » qui reçoit son tag ; vide s'il n'y en a aucun.
-    list_key TEXT NOT NULL DEFAULT '',
-    content TEXT NOT NULL DEFAULT '{}',
-    -- La dernière personne connectée, sortie de l'inventaire à sa réception :
-    -- la liste la montre, et relire le JSON de chaque poste pour l'afficher
-    -- coûterait cent fois plus cher que de la garder ici.
-    last_user TEXT NOT NULL DEFAULT '',
-    last_inventory TEXT NOT NULL,
-    created_at TEXT NOT NULL
-  );
-
   CREATE INDEX IF NOT EXISTS idx_support_requests_board
     ON support_requests(board_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_support_requests_context
