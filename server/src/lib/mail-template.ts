@@ -1133,7 +1133,7 @@ const DEFINITIONS: Record<MailTemplateKey, Definition> = {
   new_admin: {
     label: "Nouvel accès à un élément",
     description:
-      "L'invitation envoyée à une personne — ou à chaque membre d'un groupe — qui reçoit des droits dans Administration ou l'accès à un workspace, si « Envoyer une invitation » est cochée.",
+      "L'invitation envoyée à une personne — ou à chaque membre d'un groupe — qui reçoit des droits dans Administration ou l'accès à un workspace, si « Envoyer une confirmation par e-Mail » est cochée.",
     variables: INVITATION,
     mjml: NEW_ACCESS_MJML,
     sample: {

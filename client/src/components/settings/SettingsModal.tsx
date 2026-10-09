@@ -270,7 +270,7 @@ export default function SettingsModal({
   const senderMissing = standalone && entraConnected === true && sender === "";
   const saveAdministration = useRef<(() => Promise<boolean>) | null>(null);
   const [registration, setSaving] = useState(false);
-  // The Administration tab's "Envoyer une invitation": checked on each opening.
+  // The Administration tab's "Envoyer une confirmation par e-Mail": checked on each opening.
   const [invite, setInvite] = useState(true);
   useEffect(() => {
     if (opened) setInvite(true);
@@ -502,7 +502,7 @@ export default function SettingsModal({
                 there, and opens its tab (THEME_TAB_ATTRIBUTE). */}
             {canEdit && user.administration.administration.includes("create") && (
               <Checkbox
-                label="Envoyer une invitation"
+                label="Envoyer une confirmation par e-Mail"
                 checked={invite}
                 onChange={(e) => setInvite(e.currentTarget.checked)}
                 color="teal"

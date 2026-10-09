@@ -17,8 +17,6 @@ import {
   ThemeIcon,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-// The title's font, served with the application: latin, semi-bold only.
-import "@fontsource/google-sans/latin-600.css";
 import { IconAlertCircle, IconCheck, IconCopy, IconX } from "@tabler/icons-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ENTRA_CHECKS } from "@milo/shared";

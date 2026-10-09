@@ -39,6 +39,12 @@ export interface BoardSupport {
 
 interface ViewPageProps {
   /**
+   * The open view, or board, was just created and its name is being typed:
+   * its empty screen ("Aucun tableau", "Aucune section") waits for it.
+   */
+  namingView?: boolean;
+  namingBoard?: boolean;
+  /**
    * The account sees no view: the prompt takes the place of the boards, with
    * "onCreateView" if it may create one.
    */
@@ -90,6 +96,8 @@ interface ViewPageProps {
  */
 export default function ViewPage({
   noView = false,
+  namingView = false,
+  namingBoard = false,
   onCreateView,
   boards,
   boardId,
@@ -142,7 +150,7 @@ export default function ViewPage({
     );
   } else if (!boards || boards.length === 0) {
     content =
-      loading || !boards ? null : (
+      loading || !boards || namingView ? null : (
         <EmptyPanel
           icon={IconLayoutColumns}
           message="Aucun tableau"
@@ -150,6 +158,9 @@ export default function ViewPage({
           onAction={onCreateFirstBoard}
         />
       );
+  } else if (openBoard && namingBoard) {
+    // Nothing yet: the new board shows once named.
+    content = null;
   } else if (openBoard) {
     content = (
       <ProjectsListContext.Provider value={projects}>

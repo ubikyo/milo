@@ -22,6 +22,14 @@ import "./assets/styles/menus.css";
 // No selection of the interface.
 import "./assets/styles/no-select.css";
 import "./assets/styles/no-borders.css"; // TEMPORARY TEST: borderless fields
+// Google Sans, served with the application (latin): the first setup's title,
+// and those of every window and drawer (titles.css) — at each weight the
+// themes may give them.
+import "@fontsource/google-sans/latin-400.css";
+import "@fontsource/google-sans/latin-500.css";
+import "@fontsource/google-sans/latin-600.css";
+import "@fontsource/google-sans/latin-700.css";
+import "./assets/styles/titles.css";
 
 import { ColorSchemeScript, MantineProvider, createTheme } from "@mantine/core";
 import type { MantineColorsTuple } from "@mantine/core";

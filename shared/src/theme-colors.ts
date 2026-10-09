@@ -299,14 +299,15 @@ export const THEME_COLORS: ThemeColorDefinition[] = [
   { key: "tab-active-text", group: "active-tab", label: "Couleur du texte", light: "@strong-text", dark: "@strong-text" },
   { key: "tab-active-border", group: "active-tab", label: "Couleur du trait", light: "@divider", dark: "@divider" },
 
-  // The main window's top row (ModeBar): by default, the tabs' above. The
-  // active tab's background keeps its former key.
-  { key: "main-tab-bg", group: "main-tabs", label: "Couleur de fond", light: "@tab-bg", dark: "@tab-bg", alpha: true },
+  // The main window's top row (ModeBar): by default, the tabs' above — on the
+  // dark theme, a gray row without the active tab's line. The active tab's
+  // background keeps its former key.
+  { key: "main-tab-bg", group: "main-tabs", label: "Couleur de fond", light: "@tab-bg", dark: "#2e2e2e", alpha: true },
   { key: "main-tab-text", group: "main-tabs", label: "Couleur du texte", light: "@tab-text", dark: "@tab-text" },
 
   { key: "view-tab-active", group: "main-active-tab", label: "Couleur de fond", light: "@body", dark: "@body" },
   { key: "main-tab-active-text", group: "main-active-tab", label: "Couleur du texte", light: "@tab-active-text", dark: "@tab-active-text" },
-  { key: "main-tab-active-border", group: "main-active-tab", label: "Couleur du trait", light: "@tab-active-border", dark: "@tab-active-border" },
+  { key: "main-tab-active-border", group: "main-active-tab", label: "Couleur du trait", light: "@tab-active-border", dark: "#00000000" },
 
   { key: "strong-text", group: "lines", label: "Texte fort", hint: "Titres des fenêtres, onglet actif", light: "black", dark: "white" },
   { key: "neutral-text", group: "lines", label: "Texte des boutons gris", hint: "« Fermer »", light: "gray.7", dark: "#c9c9c9" },

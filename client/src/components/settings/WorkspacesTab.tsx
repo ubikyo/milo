@@ -96,7 +96,7 @@ export default function WorkspacesTab({
   // "Enregistrer".
   const saveAccess = useRef<(() => Promise<boolean>) | null>(null);
   const [saving, setSaving] = useState(false);
-  // "Envoyer une invitation": checked on each opening.
+  // "Envoyer une confirmation par e-Mail": checked on each opening.
   const [invite, setInvite] = useState(true);
 
   const closeAccess = () => {
@@ -307,7 +307,7 @@ export default function WorkspacesTab({
                 e-mail — each user of a group. */}
             {rights.create && (
               <Checkbox
-                label="Envoyer une invitation"
+                label="Envoyer une confirmation par e-Mail"
                 checked={invite}
                 onChange={(e) => setInvite(e.currentTarget.checked)}
                 color="teal"

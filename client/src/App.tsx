@@ -1006,6 +1006,11 @@ export default function App() {
   // edit mode, as soon as they appear.
   const [viewToRename, setViewToRename] = useState<number | null>(null);
   const [boardToRename, setBoardToRename] = useState<number | null>(null);
+  // The view and board just created, until their name is validated (or the
+  // creation undone): their empty screen — "Aucun tableau", "Aucune
+  // section" — waits for it.
+  const [namingView, setNamingView] = useState<Id | null>(null);
+  const [namingBoard, setNamingBoard] = useState<Id | null>(null);
 
   // The views' "+" immediately creates "Nouvelle vue", with its first
   // board, and opens it: its name is then typed in place. Escape there
@@ -1022,6 +1027,7 @@ export default function App() {
       await loadViews();
       setViewId(String(view.id));
       setBoardId(null);
+      setNamingView(view.id);
       setViewToRename(view.id);
       return view.id;
     } catch (e) {
@@ -1039,6 +1045,7 @@ export default function App() {
     firstView.current = await createView();
   };
   const endViewRename = (id: Id, abandoned: boolean) => {
+    setNamingView((naming) => (naming === id ? null : naming));
     const created = newView.current?.id === id ? newView.current : null;
     if (created) newView.current = null;
     const first = id === firstView.current;
@@ -1068,6 +1075,7 @@ export default function App() {
       newBoard.current = { id: created.id, board: boardId };
       await loadBoards();
       setBoardId(String(created.id));
+      setNamingBoard(created.id);
       setBoardToRename(created.id);
       return created.id;
     } catch (e) {
@@ -1084,6 +1092,7 @@ export default function App() {
     firstBoard.current = await addBoard();
   };
   const endBoardRename = (id: Id, abandoned: boolean) => {
+    setNamingBoard((naming) => (naming === id ? null : naming));
     const created = newBoard.current?.id === id ? newBoard.current : null;
     if (created) newBoard.current = null;
     const first = id === firstBoard.current;
@@ -1494,6 +1503,8 @@ export default function App() {
                 {(viewId || shownViews?.length === 0) && (
                   <ViewPage
                     noView={!viewId}
+                    namingView={namingView !== null && String(namingView) === viewId}
+                    namingBoard={namingBoard !== null && String(namingBoard) === boardId}
                     onCreateView={user.structure.views.create ? createFirstView : undefined}
                     boards={displayedBoards ?? (viewId ? null : [])}
                     boardId={boardId}
@@ -1521,14 +1532,19 @@ export default function App() {
                     }
                     onDeleteBoard={
                       user.structure.boards.delete && isEditing
-                        ? (id) =>
-                            write(
+                        ? async (id) => {
+                            // The last one gone, nothing is left to arrange:
+                            // editing ends.
+                            const last = (boards?.length ?? 0) <= 1;
+                            await write(
                               async () =>
                                 rememberDeletion(await api.deleteBoard(id), "Tableau supprimé", {
                                   reload: loadBoards,
                                 }),
                               loadBoards,
-                            )
+                            );
+                            if (last) setIsEditing(false);
+                          }
                         : undefined
                     }
                     onToggleBoardHidden={
@@ -1815,14 +1831,19 @@ export default function App() {
                 }
                 onDelete={
                   user.structure.views.delete && isEditing
-                    ? (id) =>
-                        write(
+                    ? async (id) => {
+                        // The last one gone, nothing is left to arrange:
+                        // editing ends.
+                        const last = (views?.length ?? 0) <= 1;
+                        await write(
                           async () =>
                             rememberDeletion(await api.deleteView(id), "Vue supprimée", {
                               reload: loadViews,
                             }),
                           loadViews,
-                        )
+                        );
+                        if (last) setIsEditing(false);
+                      }
                     : undefined
                 }
               />

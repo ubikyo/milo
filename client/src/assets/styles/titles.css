@@ -1,0 +1,8 @@
+/* The titles of every window and drawer — their header's, and the titles
+   (Mantine's Title) they hold: the first setup's font ("Configuration"),
+   Google Sans, loaded with the application (main.tsx). Their size, color and
+   weight stay the themes'. */
+:is(.mantine-Modal-title, .mantine-Drawer-title),
+:is(.mantine-Modal-content, .mantine-Drawer-content) .mantine-Title-root {
+  font-family: "Google Sans", var(--mantine-font-family);
+}
