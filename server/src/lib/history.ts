@@ -131,7 +131,7 @@ const merge = (old: string[], newItems: ChangeLine[]): string[] => {
 // --- Each item's thread -----------------------------------------------------
 
 /** The items whose thread receives these notes. */
-export type Historized = "project" | "card" | "support";
+export type Historized = "project" | "card" | "support" | "product" | "contact";
 
 interface LastWord {
   id: Id;
@@ -166,6 +166,16 @@ const THREADS: Record<Historized, ReturnType<typeof thread> & { modified: string
     ...thread("support_comments", "request_id", true),
     modified: "Demande modifiée",
     created: "Demande créée",
+  },
+  product: {
+    ...thread("product_comments", "product_id", false),
+    modified: "Produit modifié",
+    created: "Produit créé",
+  },
+  contact: {
+    ...thread("contact_comments", "contact_id", false),
+    modified: "Contact modifié",
+    created: "Contact créé",
   },
 };
 

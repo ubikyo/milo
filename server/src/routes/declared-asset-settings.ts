@@ -12,6 +12,7 @@ import {
   DECLARED_ASSET_EXTRA_LIST_DEFAULTS,
   DECLARED_ASSET_LISTS,
   DECLARED_ASSET_NAME_MAX,
+  DECLARED_ASSET_RESOURCES,
   DECLARED_ASSET_SUPPLIER,
   DECLARED_ASSET_WORDS,
   accessIncludes,
@@ -30,6 +31,7 @@ import { declaredAssetTables } from "../db/declared-asset-tables.js";
 import { mutation, selection, transaction } from "../db/query.js";
 import type { Mutation } from "../db/query.js";
 import { HttpError, badRequest } from "../lib/http.js";
+import { touch } from "../middleware/events.js";
 import { openBoard, requireBoardControl } from "../repositories/boards.js";
 import { widgetRights } from "../repositories/users.js";
 
@@ -221,6 +223,10 @@ export const declaredAssetSettingsRoutes = (kind: DeclaredAssetKind): Router => 
   });
 
   const routes = Router();
+
+  // The lists name what the assets show — a renamed maker, a location's
+  // path —: their lists re-read with them.
+  routes.use(touch(DECLARED_ASSET_RESOURCES[kind]));
 
   routes.get("/", (req, res) => {
     res.json(settingsOf(verifyBoard(req, false)));

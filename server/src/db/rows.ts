@@ -148,6 +148,8 @@ export interface CategoryRow {
   /** JSON: an array of { value, label }. */
   milestones: string;
   position: number;
+  /** Its parent category; null at the root. */
+  parent_id: Id | null;
 }
 
 

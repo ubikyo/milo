@@ -3,6 +3,7 @@ import { IconList } from "@tabler/icons-react";
 import { PROJECT_COLUMNS, ProjectsListWidget } from "../../components/project/ProjectTable";
 import CopyPasteActions from "../../components/ui/CopyPasteActions";
 import ColumnFields, { LIST_COLUMNS } from "../../components/ui/ColumnFields";
+import ProjectCategoriesFields from "../../components/project/ProjectCategoriesFields";
 import BoardListFields from "../../components/ui/BoardListFields";
 import LabelGroupFields from "../../components/ui/LabelGroupFields";
 import { useSettingsMode } from "../../lib/rights";
@@ -50,7 +51,7 @@ function Settings(props: WidgetConfigProps) {
         {/* The categories, the board's labels and the milestone types,
             under its columns: they go to saving, with the
             configuration. */}
-        <BoardListFields kind="categories" />
+        <ProjectCategoriesFields />
         <LabelGroupFields kind="project-labels" />
         {canEditSettings && <BoardListFields kind="milestone-types" />}
       </Stack>

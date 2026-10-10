@@ -22,6 +22,7 @@ import type {
 import { MANAGED_DEVICE_ASSET_INDICATORS } from "./managed-device-asset";
 import { contactListWidget } from "./contact";
 import { contactCountIndicator } from "./contact/count";
+import { productListWidget } from "./product";
 import { declaredAssetWidgets } from "./declared-asset";
 import { INDICATORS } from "./support";
 import type { IndicatorConfigProps } from "./support/types";
@@ -46,6 +47,7 @@ import { heightRow } from "./height";
 import SettingRows, { frameRow } from "../components/ui/SettingRows";
 import { TitleStyleField } from "../components/ui/TitleStyles";
 import { FRAMED, isFramed, type AccessWidget } from "./types";
+import { WidgetConfigContext } from "../lib/editing";
 import { CARD_PADDING, GAP } from "../components/ui/IndicatorsPanel";
 import type { IndicatorWidgetBase, WidgetRender } from "../components/ui/IndicatorsPanel";
 
@@ -236,8 +238,10 @@ const prefixed = <W extends IndicatorWidgetBase<string>>(
     .filter((w) => !COMMON.has(w.type))
     .map((w) => {
       const follows = w.type !== "list";
+      // A widget that places its own source field reads its list itself.
+      const wrapsSource = follows && !w.ownSource;
       const content = (data: BoardData, config: unknown, render: WidgetRender) =>
-        follows ? (
+        wrapsSource ? (
           <FromListSource prefix={prefix} config={config}>
             {(key) => show(w, key ? scope(data, key) : data, config, render)}
           </FromListSource>
@@ -248,7 +252,7 @@ const prefixed = <W extends IndicatorWidgetBase<string>>(
       return {
         ...w,
         type: `${prefix}.${w.type}`,
-        ...(follows && {
+        ...(wrapsSource && {
           Config: ({ config, onChange }: IndicatorConfigProps) => (
             <Stack gap="xl">
               <ListSourceField prefix={prefix} config={config} onChange={onChange} />
@@ -261,12 +265,16 @@ const prefixed = <W extends IndicatorWidgetBase<string>>(
         // here, on request.
         Appearance: appearanceOf(w),
         margins: (config: unknown) => configuredMargins(config, regularMargins(w)),
-        // A card has its padding from the panel (IndicatorsPanel).
+        // A card has its padding from the panel (IndicatorsPanel). A list
+        // may save its configuration in place: its columns' widths, set above
+        // them in edit mode (useColumnWidthEditing).
         show: (data: BoardData, config: unknown, render: WidgetRender) =>
           w.ownClicks ? (
-            <Frame config={config} framed={!w.frameless && isFramed(config)}>
-              {content(data, config, render)}
-            </Frame>
+            <WidgetConfigContext.Provider value={{ onChange: render.onChange, locked: render.locked }}>
+              <Frame config={config} framed={!w.frameless && isFramed(config)}>
+                {content(data, config, render)}
+              </Frame>
+            </WidgetConfigContext.Provider>
           ) : (
             content(data, config, render)
           ),
@@ -354,8 +362,14 @@ export const BOARD_WIDGETS: BoardWidgetDefinition[] = [
     )),
   ),
   ...MANAGED_DEVICE_ASSET_INDICATOR_WIDGETS,
-  // The logistics: the contacts.
-  ...prefixed("contact", [contactListWidget, contactCountIndicator], (d) => d, (w, _d, config, render) => (
+  // The logistics: the contacts, the products, then their indicator.
+  ...prefixed("contact", [contactListWidget], (d) => d, (w, _d, config, render) => (
+    <w.Display config={config} {...render} />
+  )),
+  ...prefixed("product", [productListWidget], (d) => d, (w, _d, config, render) => (
+    <w.Display config={config} {...render} />
+  )),
+  ...prefixed("contact", [contactCountIndicator], (d) => d, (w, _d, config, render) => (
     <w.Display config={config} {...render} />
   )),
 ];

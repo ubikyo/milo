@@ -135,15 +135,23 @@ import type {
   DeclaredAssetPhoto,
   DeclaredAssetSettings,
   Contact,
+  ContactComment,
   ContactInput,
   ContactSettings,
+  Product,
+  ProductAttachment,
+  ProductComment,
+  ProductFiles,
+  ProductInput,
+  ProductPhoto,
+  ProductSettings,
   UpdateMeInput,
   OpeningView,
   VersionPayload,
   SearchResult,
   Notification,
 } from "@milo/shared";
-import { CONTACT_ROUTES, DECLARED_ASSET_ROUTES } from "@milo/shared";
+import { CONTACT_ROUTES, DECLARED_ASSET_ROUTES, PRODUCT_ROUTES } from "@milo/shared";
 import { getToken, setToken } from "../lib/auth";
 
 /** An uploaded reply attachment: what the reply then cites. */
@@ -556,16 +564,18 @@ export const api = {
   // Categories belong to a board.
   getCategories: (boardId?: string | null) =>
     get<Category[]>(`/categories${queryString({ board: boardId })}`),
-  createCategory: (board_id: Id | string, name: string) =>
-    post<Category>("/categories", { board_id, name }),
+  // Under "parent_id", or at the root.
+  createCategory: (board_id: Id | string, name: string, parent_id: Id | null = null) =>
+    post<Category>("/categories", { board_id, name, parent_id }),
   // "replace": those of the destination board go first, except
   // those that still hold projects.
   copyCategories: (from_board: Id, to_board: Id, replace = false) =>
     post<CopyResult>("/categories/copy", { from_board, to_board, replace }),
-  // The name and the milestones are modified separately: what isn't sent stays.
+  // The name, the parent and the milestones are modified separately: what
+  // isn't sent stays.
   updateCategory: (
     id: Id,
-    data: string | { name?: string; milestones?: Milestone[] },
+    data: string | { name?: string; parent_id?: Id | null; milestones?: Milestone[] },
   ) =>
     put<Category>(
       `/categories/${id}`,
@@ -630,6 +640,15 @@ export const api = {
   updateContactLabel: (id: Id, data: LabelInput) =>
     put<Label>(`${CONTACT_ROUTES.labels}/${id}`, data),
   deleteContactLabel: (id: Id) => del(`${CONTACT_ROUTES.labels}/${id}`),
+
+  // A board's product labels (shared, products.ts).
+  getProductLabels: (boardId: string | Id) =>
+    get<Label[]>(`${PRODUCT_ROUTES.labels}${queryString({ board: boardId })}`),
+  createProductLabel: (board_id: Id | string, name: string, color: string, group_id?: Id) =>
+    post<Label>(PRODUCT_ROUTES.labels, { board_id, name, color, group_id }),
+  updateProductLabel: (id: Id, data: LabelInput) =>
+    put<Label>(`${PRODUCT_ROUTES.labels}/${id}`, data),
+  deleteProductLabel: (id: Id) => del(`${PRODUCT_ROUTES.labels}/${id}`),
 
   // The groups of a kind of labels: those of a board ("board_id"), or of
   // Support, which belong to none.
@@ -917,10 +936,46 @@ export const api = {
   updateContact: (id: Id, data: ContactInput) =>
     put<Contact>(`${CONTACT_ROUTES.contacts}/${id}`, data),
   deleteContact: (id: Id) => del(`${CONTACT_ROUTES.contacts}/${id}`),
+  getContactComments: (id: Id) => get<ContactComment[]>(`${CONTACT_ROUTES.contacts}/${id}/comments`),
+  addContactComment: (id: Id, text: string) =>
+    post<ContactComment>(`${CONTACT_ROUTES.contacts}/${id}/comments`, { text }),
+  updateContactComment: (id: Id, text: string) =>
+    put<ContactComment>(`${CONTACT_ROUTES.contacts}/comments/${id}`, { text }),
+  deleteContactComment: (id: Id) => del(`${CONTACT_ROUTES.contacts}/comments/${id}`),
   getContactSettings: (boardId: Id) =>
     get<ContactSettings>(`${CONTACT_ROUTES.settings}${queryString({ board: boardId })}`),
   updateContactSettings: (boardId: Id, data: Partial<ContactSettings>) =>
     put<ContactSettings>(`${CONTACT_ROUTES.settings}${queryString({ board: boardId })}`, data),
+  // A board's products, their files and their comments.
+  getProducts: (boardId: Id) =>
+    get<Product[]>(`${PRODUCT_ROUTES.products}${queryString({ board: boardId })}`),
+  createProduct: (data: ProductInput & { board_id: Id; list_key: string }) =>
+    post<Product>(PRODUCT_ROUTES.products, data),
+  updateProduct: (id: Id, data: ProductInput) =>
+    put<Product>(`${PRODUCT_ROUTES.products}/${id}`, data),
+  deleteProduct: (id: Id) => del(`${PRODUCT_ROUTES.products}/${id}`),
+  getProductFiles: (id: Id) => get<ProductFiles>(`${PRODUCT_ROUTES.products}/${id}/files`),
+  uploadProductPhoto: (id: Id, file: File) =>
+    upload<ProductPhoto>(`${PRODUCT_ROUTES.products}/${id}/photos`, file),
+  reorderProductPhotos: (id: Id, ids: Id[]) =>
+    put<ProductPhoto[]>(`${PRODUCT_ROUTES.products}/${id}/photos/order`, { ids }),
+  deleteProductPhoto: (id: Id) => del(`${PRODUCT_ROUTES.products}/photos/${id}`),
+  uploadProductAttachment: (id: Id, file: File) =>
+    upload<ProductAttachment>(`${PRODUCT_ROUTES.products}/${id}/attachments`, file),
+  reorderProductAttachments: (id: Id, ids: Id[]) =>
+    put<ProductAttachment[]>(`${PRODUCT_ROUTES.products}/${id}/attachments/order`, { ids }),
+  deleteProductAttachment: (id: Id) => del(`${PRODUCT_ROUTES.products}/attachments/${id}`),
+  getProductComments: (id: Id) => get<ProductComment[]>(`${PRODUCT_ROUTES.products}/${id}/comments`),
+  addProductComment: (id: Id, text: string) =>
+    post<ProductComment>(`${PRODUCT_ROUTES.products}/${id}/comments`, { text }),
+  updateProductComment: (id: Id, text: string) =>
+    put<ProductComment>(`${PRODUCT_ROUTES.products}/comments/${id}`, { text }),
+  deleteProductComment: (id: Id) => del(`${PRODUCT_ROUTES.products}/comments/${id}`),
+  // A board's product lists: its categories tree.
+  getProductSettings: (boardId: Id) =>
+    get<ProductSettings>(`${PRODUCT_ROUTES.settings}${queryString({ board: boardId })}`),
+  updateProductSettings: (boardId: Id, data: ProductSettings) =>
+    put<ProductSettings>(`${PRODUCT_ROUTES.settings}${queryString({ board: boardId })}`, data),
   getMiloSettings: () => get<MiloSettings>("/milo-settings"),
   updateMiloSettings: (data: Partial<MiloSettings>) => put<MiloSettings>("/milo-settings", data),
   getMailTemplates: () => get<MailTemplate[]>("/mail-templates"),

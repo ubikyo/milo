@@ -6,7 +6,7 @@
 // widget's configuration but the board's, shared by every Contact widget on
 // it, as its labels.
 
-import type { Id, Label } from "./domain.js";
+import type { Actor, Id, Label, SqliteBool } from "./domain.js";
 
 /** The widget that owns its contacts (LIST_KEY). */
 export const CONTACT_LIST_TYPE = "contact.list";
@@ -101,6 +101,21 @@ export interface ContactInput {
   currency: string;
   member_ids: Id[];
   label_ids: Id[];
+}
+
+/**
+ * A comment of a contact's thread, as a card's: Milo writes its creation and
+ * its edits there (system), signed by no account.
+ */
+export interface ContactComment {
+  id: Id;
+  contact_id: Id;
+  user_id: Id | null;
+  text: string;
+  system: SqliteBool;
+  created_at: string;
+  updated_at: string;
+  author: Actor | null;
 }
 
 // --- The board's lists -------------------------------------------------------

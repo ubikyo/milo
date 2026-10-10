@@ -1,28 +1,47 @@
 // Project categories, and their milestones. A category belongs to a board; its
-// visibility is the board's (repositories/boards.ts).
+// visibility is the board's (repositories/boards.ts). They form a tree: each
+// has a parent, none at the root.
 
 import { mutation, selection } from "../db/query.js";
 import { isLabelColor } from "@milo/shared";
-import type { Category, Milestone } from "@milo/shared";
+import type { Category, Id, Milestone } from "@milo/shared";
 import type { CategoryRow } from "../db/rows.js";
 
 const createCategory = mutation(
-  `INSERT INTO categories (board_id, name, milestones, position)
-   VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM categories WHERE board_id = ?))`,
+  `INSERT INTO categories (board_id, name, milestones, parent_id, position)
+   VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM categories WHERE board_id = ?))`,
 );
 
 export const categories = {
   byId: selection<CategoryRow>("SELECT * FROM categories WHERE id = ?"),
+  // Two categories of a parent do not share a name; those of two parents may.
   byName: selection<CategoryRow>(
-    "SELECT * FROM categories WHERE board_id = ? AND name = ? COLLATE NOCASE AND id != ?",
+    `SELECT * FROM categories
+     WHERE board_id = ? AND parent_id IS ? AND name = ? COLLATE NOCASE AND id != ?`,
   ),
+  children: selection<CategoryRow>("SELECT * FROM categories WHERE parent_id = ?"),
   // A new category is placed at the end of its board's.
   create: {
-    run: (boardId: unknown, name: string, milestones: string) =>
-      createCategory.run(boardId, name, milestones, boardId),
+    run: (boardId: unknown, name: string, milestones: string, parentId: Id | null = null) =>
+      createCategory.run(boardId, name, milestones, parentId, boardId),
   },
   rename: mutation("UPDATE categories SET name = ? WHERE id = ?"),
+  setParent: mutation("UPDATE categories SET parent_id = ? WHERE id = ?"),
   setMilestones: mutation("UPDATE categories SET milestones = ? WHERE id = ?"),
+};
+
+/** A category and all those under it, by their ids. */
+export const subtreeOf = (id: Id): Set<Id> => {
+  const inside = new Set<Id>([id]);
+  const pending: Id[] = [id];
+  while (pending.length) {
+    for (const child of categories.children.all(pending.pop())) {
+      if (inside.has(child.id)) continue;
+      inside.add(child.id);
+      pending.push(child.id);
+    }
+  }
+  return inside;
 };
 
 /**

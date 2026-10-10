@@ -1,10 +1,12 @@
 import { Box, Group, Stack, TextInput } from "@mantine/core";
 import { IconFolder, IconTag } from "@tabler/icons-react";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import type { DragEvent } from "react";
+import type { Dispatch, DragEvent, SetStateAction } from "react";
 import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { LabelGroupDraftsContext, remapGroups } from "../../lib/label-groups";
+import { LABEL_WORDS } from "../../lib/label-words";
+import type { LabelWords } from "../../lib/label-words";
 import type { Registration } from "./IndicatorDrawer";
 import AddButton from "./AddButton";
 import LabelColorPicker from "./LabelColorPicker";
@@ -48,7 +50,7 @@ import type {
 type AnyLabel = Label | ProjectLabel | SupportLabel;
 
 /** A label of the draft: "id" absent until it is created. */
-interface LabelDraft {
+export interface LabelDraft {
   key: string;
   id?: Id;
   name: string;
@@ -56,7 +58,7 @@ interface LabelDraft {
 }
 
 /** A group of the draft, with its labels in order. */
-interface GroupDraft {
+export interface GroupDraft {
   key: string;
   id?: Id;
   /** Until it is created: the negative id the drawer's group choices give it. */
@@ -120,6 +122,12 @@ const ROUTES: Record<LabelsBase, LabelRoutes> = {
     remove: (id) => api.deleteContactLabel(id),
     read: (boardId) => api.getContactLabels(boardId!),
   },
+  "/product-labels": {
+    create: (boardId, l, groupId) => api.createProductLabel(boardId!, l.name, l.color, groupId),
+    update: (id, data) => api.updateProductLabel(id, data),
+    remove: (id) => api.deleteProductLabel(id),
+    read: (boardId) => api.getProductLabels(boardId!),
+  },
   ...(Object.fromEntries(
     DECLARED_ASSET_KINDS.map((kind) => [DECLARED_ASSET_ROUTES[kind].labels, declaredAssetRoutes(kind)]),
   ) as Record<(typeof DECLARED_ASSET_ROUTES)[DeclaredAssetKind]["labels"], LabelRoutes>),
@@ -134,7 +142,8 @@ const ADD_HEIGHT = 20;
 const COLOR_MARGIN = 5;
 
 let counter = 0;
-const newKey = () => `new-${++counter}`;
+/** A draft row's key, unique on the page. */
+export const newKey = () => `new-${++counter}`;
 let temps = 0;
 const newTemp = (): Id => -++temps;
 
@@ -171,6 +180,8 @@ interface LabelGroupsEditorProps {
   register: (save: Registration) => () => void;
   /** Changing it re-reads the lists: a paste from the "Actions" menu. */
   version?: number;
+  /** What the labels and their groups are called: labels and groups by default. */
+  words?: LabelWords;
 }
 
 export default function LabelGroupsEditor({
@@ -178,6 +189,7 @@ export default function LabelGroupsEditor({
   boardId,
   register,
   version = 0,
+  words = LABEL_WORDS,
 }: LabelGroupsEditorProps) {
   const routes = ROUTES[base];
 
@@ -187,11 +199,6 @@ export default function LabelGroupsEditor({
     labels: [],
   });
   const [groups, setGroups] = useState<GroupDraft[]>([]);
-  const [held, setHeld] = useState<Held>(null);
-  /** The field with focus: it takes the drawer's background. */
-  const [input, setInput] = useState<string | null>(null);
-  /** The row just added: its name takes focus. */
-  const [toName, setToName] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -241,7 +248,7 @@ export default function LabelGroupsEditor({
           .map((g) => ({ ...g, labels: g.labels.filter((l) => l.id !== undefined || l.name.trim()) }))
           .filter((g) => g.id !== undefined || g.name.trim() || g.labels.length > 0);
         if (after.some((g) => !g.name.trim() || g.labels.some((l) => !l.name.trim()))) {
-          throw new Error("Étiquettes : chaque groupe et chaque étiquette demandent un nom.");
+          throw new Error(words.missingName);
         }
         const created = new Map<Id, Id>();
         try {
@@ -304,8 +311,31 @@ export default function LabelGroupsEditor({
           await reload();
         }
       }),
-    [register, base, boardId, routes, reload],
+    [register, base, boardId, routes, reload, words.missingName],
   );
+
+  return <LabelGroupsDraft groups={groups} onChange={setGroups} words={words} />;
+}
+
+interface LabelGroupsDraftProps {
+  /** The groups and their labels, in their order. */
+  groups: GroupDraft[];
+  onChange: Dispatch<SetStateAction<GroupDraft[]>>;
+  /** What the labels and their groups are called: labels and groups by default. */
+  words?: LabelWords;
+}
+
+/**
+ * The list itself, on a draft held by its owner: the board's labels above,
+ * which saves it with the drawer; a product's variants (ProductDrawer), which
+ * saves them with the product.
+ */
+export function LabelGroupsDraft({ groups, onChange: setGroups, words = LABEL_WORDS }: LabelGroupsDraftProps) {
+  const [held, setHeld] = useState<Held>(null);
+  /** The field with focus: it takes the drawer's background. */
+  const [input, setInput] = useState<string | null>(null);
+  /** The row just added: its name takes focus. */
+  const [toName, setToName] = useState<string | null>(null);
 
   // --- Editing the draft ----------------------------------------------------
 
@@ -432,7 +462,7 @@ export default function LabelGroupsEditor({
       styles={{
         input: { ...nameFieldStyle(input === key), ...(bold ? { fontWeight: 600 } : {}) },
       }}
-      placeholder={bold ? "Nom du groupe" : "Nom"}
+      placeholder={bold ? words.groupName : "Nom"}
       value={value}
       onChange={(e) => onChange(e.currentTarget.value)}
       {...editKeys(onChange)}
@@ -450,7 +480,7 @@ export default function LabelGroupsEditor({
   return (
     <div>
       <Stack gap={30}>
-        {groups.length === 0 && <EmptyList icon={IconFolder} message="Aucun groupe" />}
+        {groups.length === 0 && <EmptyList icon={IconFolder} message={words.noGroup} />}
 
         {groups.map((group, groupRank) => {
           // A group just added shows no empty screen while it is being named:
@@ -474,12 +504,12 @@ export default function LabelGroupsEditor({
                   style={{ ...rowStyle(0, total, false), backgroundColor: HEADER_BACKGROUND }}
                 >
                   <Handle
-                    label={`Déplacer le groupe ${group.name || ""}`.trim()}
+                    label={`Déplacer ${words.theGroup}${group.name || ""}`.trim()}
                     onDragStart={() => setHeld({ kind: "group", key: group.key })}
                     onDragEnd={() => setHeld(null)}
                   />
                   <RowCheckbox
-                    label={`Sélectionner le groupe ${group.name}`.trim()}
+                    label={`Sélectionner ${words.theGroup}${group.name}`.trim()}
                     checked={groupChecked(group)}
                     indeterminate={groupPartlyChecked(group)}
                     onChange={(on) => checkGroup(group, on)}
@@ -496,7 +526,7 @@ export default function LabelGroupsEditor({
                         setGroups((before) => before.filter((g) => g.key !== group.key));
                       }
                     },
-                    `Nom du groupe ${group.name}`.trim(),
+                    `${words.groupName} ${group.name}`.trim(),
                     true,
                   )}
                 </Group>
@@ -507,7 +537,7 @@ export default function LabelGroupsEditor({
                   >
                     {/* The empty screen, against the header: it is also where a
                         label is dropped into the group. */}
-                    <EmptyList icon={IconTag} message="Aucune étiquette dans ce groupe" attached />
+                    <EmptyList icon={IconTag} message={words.noLabelInGroup} attached />
                   </Box>
                 )}
 
@@ -525,12 +555,12 @@ export default function LabelGroupsEditor({
                     )}
                   >
                     <Handle
-                      label={`Déplacer ${label.name || "l'étiquette"}`}
+                      label={`Déplacer ${label.name || words.theLabel}`}
                       onDragStart={() => setHeld({ kind: "label", key: label.key })}
                       onDragEnd={() => setHeld(null)}
                     />
                     <RowCheckbox
-                      label={`Sélectionner ${label.name || "l'étiquette"}`}
+                      label={`Sélectionner ${label.name || words.theLabel}`}
                       checked={selection.isChecked(label.key)}
                       onChange={(on) => selection.toggle(label.key, on)}
                       afterHandle
@@ -550,12 +580,12 @@ export default function LabelGroupsEditor({
                           );
                         }
                       },
-                      `Nom de ${label.name || "l'étiquette"}`,
+                      `Nom de ${label.name || words.theLabel}`,
                     )}
                     <LabelColorPicker
                       color={label.color}
                       onChange={(color) => changeLabel(label.key, { color })}
-                      label={label.name || "l'étiquette"}
+                      label={label.name || words.theLabel}
                       palettePadding={0}
                       // Off the row's edge, rather than flush against it.
                       marginRight={COLOR_MARGIN}
@@ -564,7 +594,7 @@ export default function LabelGroupsEditor({
                 ))}
               </Stack>
               <AddButton
-                label="Ajouter une étiquette"
+                label={words.addLabel}
                 onClick={() => addLabel(group.key)}
                 mt={4}
                 h={ADD_HEIGHT}
@@ -577,7 +607,7 @@ export default function LabelGroupsEditor({
       {/* Right under the last group's "Ajouter une étiquette": the two
           additions read as one block. */}
       <ListFooter
-        addLabel="Ajouter un groupe"
+        addLabel={words.addGroup}
         onAdd={addGroup}
         checkedCount={
           groups.filter(groupChecked).length +

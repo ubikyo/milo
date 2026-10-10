@@ -1,9 +1,11 @@
-import { Button, Modal, Select, Stack, Text, TextInput } from "@mantine/core";
-import { useEffect, useState } from "react";
+import { Button, Cascader, Modal, Select, Stack, Text, TextInput } from "@mantine/core";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
 import type { Category, Project, ProjectBoard } from "@milo/shared";
+import { categoryNodes } from "../../lib/categories";
 import { errorMessage, notifyError } from "../../lib/errors";
+import { TREE_CASCADER, locationTreeData, treePath } from "../ui/EditableTree";
 import CloseButton from "../ui/CloseButton";
 import Footer from "../ui/Footer";
 import { themeWindow } from "../../lib/themeWindow";
@@ -87,7 +89,7 @@ export default function MoveOrCopyProjectModal({
         // first one offered, which can be changed.
         const own = list.find((c) => c.id === project?.category_id);
         const chosen = Number(boardId) === project?.board_id ? own : undefined;
-        setCategoryId(String((chosen ?? list[0])?.id ?? "") || null);
+        setCategoryId((chosen ? String(chosen.id) : categoryNodes(list)[0]?.id) ?? null);
       })
       .catch((e: unknown) => {
         if (!abandoned) notifyError(errorMessage(e));
@@ -97,6 +99,10 @@ export default function MoveOrCopyProjectModal({
       abandoned = true;
     };
   }, [boardId, project]);
+
+  // The destination's tree, to pick the category in, level after level.
+  const nodes = useMemo(() => categoryNodes(categories ?? []), [categories]);
+  const categoryData = useMemo(() => locationTreeData(nodes), [nodes]);
 
   // Moving excludes the board that already holds the project; copying accepts it.
   const boardOptions = boards
@@ -159,7 +165,7 @@ export default function MoveOrCopyProjectModal({
                 are not those of the source board. A board with none
                 says so in the field: moving then remains
                 impossible. */}
-            <Select
+            <Cascader
               label="Catégorie dans ce tableau"
               placeholder={
                 !boardId
@@ -168,10 +174,15 @@ export default function MoveOrCopyProjectModal({
                     ? "Aucune catégorie dans ce tableau"
                     : "Choisir une catégorie"
               }
-              data={(categories ?? []).map((c) => ({ value: String(c.id), label: c.name }))}
-              value={categoryId}
-              onChange={setCategoryId}
-              allowDeselect={false}
+              data={categoryData}
+              value={categoryId ? treePath(nodes, categoryId) : null}
+              onChange={(path) => {
+                const chosen = path?.at(-1);
+                if (chosen) setCategoryId(chosen);
+              }}
+              nothingFoundMessage="Aucune catégorie"
+              {...TREE_CASCADER}
+              searchable
               disabled={!boardId || categories === null}
               required
             />

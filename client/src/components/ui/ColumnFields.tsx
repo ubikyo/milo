@@ -1,10 +1,13 @@
 import { Group, Input, NumberInput, Select, Stack } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
+import dayjs from "dayjs";
 import { IconChevronDown } from "@tabler/icons-react";
-import { useState } from "react";
+import { useContext, useState } from "react";
 import type { DragEvent } from "react";
 import classes from "../../assets/styles/ColumnFields.module.css";
+import { WidgetConfigContext, useIsEditing } from "../../lib/editing";
 import { useLabelGroups } from "../../lib/label-groups";
+import type { ColumnWidthEditing } from "./useResizableColumns";
 import { withField } from "../../widgets/types";
 import type { IndicatorConfigProps } from "../../widgets/support/types";
 import type { Id, LabelsBase } from "@milo/shared";
@@ -49,13 +52,72 @@ export interface ListColumn {
   label: string;
   /** The kind of labels it shows, when it shows labels: it then picks a group. */
   labelGroups?: LabelsBase;
+  /**
+   * Its narrowest width, when it shows less than a text — an icon: below the
+   * common minimum (WIDTH_MIN).
+   */
+  minWidth?: number;
+  /**
+   * The ways it may show its value, the first by default: a path's
+   * (PATH_FORMATS), a date's (DATE_FORMATS). Chosen beside its width.
+   */
+  formats?: readonly ColumnFormat[];
 }
+
+/** A way a column shows its value. */
+export interface ColumnFormat {
+  value: string;
+  label: string;
+}
+
+/** A tree's place — a category, a location —: its whole path, or itself. */
+export const PATH_FORMATS = [
+  { value: "path", label: "Chemin complet" },
+  { value: "leaf", label: "Élément final" },
+] as const;
+
+/** A moment: its date and time, its date, or its time. */
+export const DATE_FORMATS = [
+  { value: "datetime", label: "Date et heure" },
+  { value: "date", label: "Date" },
+  { value: "time", label: "Heure" },
+] as const;
+
+const DATE_PATTERNS: Record<string, string> = {
+  datetime: "DD/MM/YYYY HH:mm",
+  date: "DD/MM/YYYY",
+  time: "HH:mm",
+};
+
+/** A moment as a date column shows it, in its format: "Date et heure" by default. */
+export const formatMoment = (value: string, format?: string): string =>
+  dayjs(value).format(DATE_PATTERNS[format ?? ""] ?? DATE_PATTERNS.datetime);
+
+/** A place as a path column shows it: its whole path by default, or its own name. */
+export const formatPath = (path: string, name: string, format?: string): string =>
+  format === "leaf" ? name : path;
 
 /**
  * A shown column: "id" tells it apart from its duplicates in the grid. "group",
  * for a labels column, is the group it shows; absent, all of them.
  */
-export type ShownColumn<C extends ListColumn> = C & { id: string; width?: number; group?: Id };
+export type ShownColumn<C extends ListColumn> = C & {
+  id: string;
+  width?: number;
+  /** The unit of "width": pixels unless it says percent. */
+  unit?: ColumnWidthUnit;
+  group?: Id;
+  /** One of its "formats"; absent, the first. */
+  format?: string;
+};
+
+/** A column's set width: in pixels, or a percentage of the grid. */
+export type ColumnWidthUnit = "px" | "percent";
+
+export interface ColumnWidth {
+  value: number;
+  unit: ColumnWidthUnit;
+}
 
 /** The shown columns, in order: one entry per row of the list. */
 export const LIST_COLUMNS = "columns";
@@ -69,8 +131,12 @@ const COLUMN_WIDTHS = "column_widths";
 interface Entry {
   key: string;
   width?: number;
+  /** Stored only for a percentage: a width without it is in pixels. */
+  unit?: "percent";
   /** A labels column's group; absent for all of them. */
   group?: Id;
+  /** One of the column's formats; absent, its first. */
+  format?: string;
 }
 
 /**
@@ -96,8 +162,20 @@ const subject = (config: unknown, key: string): Record<string, unknown> => {
     : {};
 };
 
-const readWidth = (value: unknown): number | undefined =>
-  typeof value === "number" && value >= WIDTH_MIN ? value : undefined;
+const readWidth = (value: unknown, min = WIDTH_MIN, unit: ColumnWidthUnit = "px"): number | undefined =>
+  typeof value === "number" && value >= (unit === "percent" ? 1 : min) && (unit === "px" || value <= 100)
+    ? value
+    : undefined;
+
+/** A stored format, if its column offers it. */
+const formatOf = (columns: ListColumn[], key: string, format: unknown): string | undefined =>
+  columns.find((c) => c.key === key)?.formats?.some((f) => f.value === format)
+    ? (format as string)
+    : undefined;
+
+/** A column's narrowest width: its own, or the common one. */
+const minOf = (columns: ListColumn[], key: string): number =>
+  columns.find((c) => c.key === key)?.minWidth ?? WIDTH_MIN;
 
 /** The entries from before the list existed: the non-hidden columns, in the configured order. */
 const legacyEntries = (columns: ListColumn[], config: unknown): Entry[] => {
@@ -112,7 +190,7 @@ const legacyEntries = (columns: ListColumn[], config: unknown): Entry[] => {
   return [...columns]
     .sort((a, b) => rank(a) - rank(b))
     .filter((c) => hiddenItems[c.key] !== false)
-    .map((c) => ({ key: c.key, width: readWidth(widths[c.key]) }));
+    .map((c) => ({ key: c.key, width: readWidth(widths[c.key], c.minWidth) }));
 };
 
 /**
@@ -127,11 +205,17 @@ const entries = (columns: ListColumn[], config: unknown): Entry[] => {
           (e): e is Entry =>
             Boolean(e) && typeof e === "object" && columns.some((c) => c.key === e.key),
         )
-        .map((e) => ({
-          key: e.key,
-          width: readWidth(e.width),
-          ...(typeof e.group === "number" ? { group: e.group } : {}),
-        }))
+        .map((e) => {
+          const unit = e.unit === "percent" ? ("percent" as const) : undefined;
+          const width = readWidth(e.width, minOf(columns, e.key), unit ?? "px");
+          return {
+            key: e.key,
+            width,
+            ...(unit && width !== undefined ? { unit } : {}),
+            ...(typeof e.group === "number" ? { group: e.group } : {}),
+            ...(formatOf(columns, e.key, e.format) ? { format: e.format } : {}),
+          };
+        })
     : legacyEntries(columns, config);
   return readItems.length > 0 ? readItems : columns.map((c) => ({ key: c.key }));
 };
@@ -157,7 +241,9 @@ export const keptColumns = <C extends ListColumn>(
     ...columns.find((c) => c.key === e.key)!,
     id: ids[i]!,
     width: e.width,
+    unit: e.unit ?? "px",
     group: e.group,
+    format: e.format,
   }));
 };
 
@@ -169,13 +255,53 @@ export const keptColumns = <C extends ListColumn>(
 export const defaultWidths = (
   columns: ListColumn[],
   config: unknown,
-): Record<string, number> | undefined => {
+): Record<string, ColumnWidth> | undefined => {
   const widths = Object.fromEntries(
     keptColumns(columns, config)
       .filter((c) => c.width !== undefined)
-      .map((c) => [c.id, c.width!]),
+      .map((c) => [c.id, { value: c.width!, unit: c.unit ?? "px" }]),
   );
   return Object.keys(widths).length > 0 ? widths : undefined;
+};
+
+/**
+ * The configuration with one shown column's width changed — "null": auto —,
+ * by its identifier in the grid. Set from the grid's header in edit mode.
+ */
+export const withColumnWidth = (
+  columns: ListColumn[],
+  config: unknown,
+  id: string,
+  width: ColumnWidth | null,
+): Record<string, unknown> => {
+  const list = entries(columns, config);
+  const ids = identifiers(list);
+  const next = list.map((e, i) => {
+    if (ids[i] !== id) return e;
+    const { width: _width, unit: _unit, ...rest } = e;
+    if (!width) return rest;
+    return { ...rest, width: width.value, ...(width.unit === "percent" ? { unit: "percent" as const } : {}) };
+  });
+  return withField(config, LIST_COLUMNS, next);
+};
+
+/**
+ * In edit mode, with its sections unlocked, how a grid saves the widths set
+ * above its columns — "ids", its shown columns' identifiers —: into its
+ * widget's configuration, as its drawer would. Undefined otherwise.
+ */
+export const useColumnWidthEditing = (
+  columns: ListColumn[],
+  config: unknown,
+  ids: string[],
+): ColumnWidthEditing | undefined => {
+  const editing = useIsEditing();
+  const widget = useContext(WidgetConfigContext);
+  if (!editing || !widget || widget.locked) return undefined;
+  return {
+    keys: ids,
+    onWidth: (id, width) => void widget.onChange(withColumnWidth(columns, config, id, width)),
+  };
 };
 
 export default function ColumnFields({
@@ -239,8 +365,16 @@ export default function ColumnFields({
     store(list.map((e, i) => (i === rank ? { key } : e)));
   };
 
+  // The width keeps its unit: typed in pixels, or in percent once set so.
   const changeWidth = (rank: number, value: string | number) =>
-    store(list.map((e, i) => (i === rank ? { ...e, width: readWidth(value) } : e)));
+    store(
+      list.map((e, i) => {
+        if (i !== rank) return e;
+        const width = readWidth(value, minOf(columns, e.key), e.unit ?? "px");
+        const { unit: _unit, ...rest } = e;
+        return { ...rest, width, ...(width !== undefined && e.unit ? { unit: e.unit } : {}) };
+      }),
+    );
 
   // A labels column's group: "all" stores none.
   const groups = useLabelGroups(columns.find((c) => c.labelGroups)?.labelGroups);
@@ -248,9 +382,26 @@ export default function ColumnFields({
     store(
       list.map((e, i) =>
         i === rank
-          ? { key: e.key, width: e.width, ...(value && value !== ALL_GROUPS ? { group: Number(value) } : {}) }
+          ? {
+              key: e.key,
+              width: e.width,
+              ...(e.unit ? { unit: e.unit } : {}),
+              ...(value && value !== ALL_GROUPS ? { group: Number(value) } : {}),
+              ...(e.format ? { format: e.format } : {}),
+            }
           : e,
       ),
+    );
+
+  // A column's format: its first is stored as none.
+  const changeFormat = (rank: number, value: string | null) =>
+    store(
+      list.map((e, i) => {
+        if (i !== rank) return e;
+        const { format: _format, ...rest } = e;
+        const first = columnOf(e.key)?.formats?.[0]?.value;
+        return value && value !== first ? { ...rest, format: value } : rest;
+      }),
     );
 
   // The held row takes the place of the one it hovers: the list reorders under
@@ -366,6 +517,21 @@ export default function ColumnFields({
                   aria-label={`Groupe de la colonne ${column.label}`}
                 />
               )}
+              {/* A path's or a date's column: how it shows its value. */}
+              {"formats" in column && column.formats && (
+                <Select
+                  size="xs"
+                  radius={ROUNDING}
+                  w={150}
+                  ml={-6}
+                  data={column.formats.map((f) => ({ value: f.value, label: f.label }))}
+                  value={entry.format ?? column.formats[0]?.value ?? null}
+                  onChange={(value) => changeFormat(rank, value)}
+                  allowDeselect={false}
+                  comboboxProps={{ shadow: "md" }}
+                  aria-label={`Affichage de la colonne ${column.label}`}
+                />
+              )}
               <NumberInput
                 size="xs"
                 radius={ROUNDING}
@@ -374,9 +540,9 @@ export default function ColumnFields({
                 // Closer to the column it sizes than the row's usual gap.
                 ml={-6}
                 placeholder="Auto"
-                suffix=" px"
-                min={WIDTH_MIN}
-                max={1200}
+                suffix={entry.unit === "percent" ? " %" : " px"}
+                min={entry.unit === "percent" ? 1 : (column.minWidth ?? WIDTH_MIN)}
+                max={entry.unit === "percent" ? 100 : 1200}
                 allowDecimal={false}
                 allowNegative={false}
                 aria-label={`Largeur de la colonne ${column.label}`}

@@ -132,6 +132,10 @@ const orphans = {
     `DELETE FROM contacts
      WHERE list_key != '' AND NOT ${holdsKey("contact.list", "contacts.board_id", "contacts.list_key")}`,
   ),
+  products: mutation(
+    `DELETE FROM products
+     WHERE list_key != '' AND NOT ${holdsKey("product.list", "products.board_id", "products.list_key")}`,
+  ),
   ...declaredOrphans,
 } as const;
 

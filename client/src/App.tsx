@@ -51,6 +51,7 @@ import type { Target } from "./lib/follow";
 import ManagedDeviceAssetDrawer from "./components/managed-device-assets/ManagedDeviceAssetDrawer";
 import { announceDeclaredAssets } from "./lib/declaredAssets";
 import { announceContacts } from "./lib/contacts";
+import { announceProducts } from "./lib/products";
 import { announceProxies } from "./lib/proxies";
 import SupportRequestDrawer from "./components/support/SupportRequestDrawer";
 import PreferencesModal from "./components/settings/PreferencesModal";
@@ -898,6 +899,7 @@ export default function App() {
       "unmanaged-device-assets": () => announceDeclaredAssets("unmanaged_device_asset"),
       "application-assets": () => announceDeclaredAssets("application_asset"),
       contacts: announceContacts,
+      products: announceProducts,
       "title-styles": loadTitleStyles,
       // Read by the Settings only, which re-read on this.
       proxies: announceProxies,
@@ -1772,7 +1774,6 @@ export default function App() {
                 labels={projectLabels}
                 boards={boards ?? []}
                 currentUser={user}
-                onCategoriesChanged={loadCategories}
                 onLabelsChanged={loadProjectLabels}
                 onSaved={handleSaved}
                 onDeleted={handleSaved}

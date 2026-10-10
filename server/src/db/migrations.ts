@@ -286,6 +286,7 @@ export const migrate = (db: Database): void => {
   declaredAssetListKeys(db);
   declaredAssetExtras(db);
   sortedCategories(db);
+  categoryTree(db);
   // Cards created before the period, the recurrence and the due-date reminder.
   // Contacts from before a person's job title and first name, and their
   // boards' lists from before the countries.
@@ -293,6 +294,14 @@ export const migrate = (db: Database): void => {
   for (const column of ["job_title", "first_name"]) {
     if (!contactColumns.includes(column)) {
       db.exec(`ALTER TABLE contacts ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
+    }
+  }
+  // Products from before their own variants, and before their category.
+  const productColumns = columns(db, "products");
+  for (const column of ["variants", "category"]) {
+    if (!productColumns.includes(column)) {
+      const value = column === "variants" ? "'[]'" : "''";
+      db.exec(`ALTER TABLE products ADD COLUMN ${column} TEXT NOT NULL DEFAULT ${value}`);
     }
   }
   if (!columns(db, "board_contact_settings").includes("countries")) {
@@ -769,6 +778,26 @@ const sortedCategories = (db: Database): void => {
       )
     `);
   })();
+};
+
+/**
+ * Categories become a tree: each gets a parent — none, for those from before,
+ * which stay at the root —, and their name is unique among their siblings
+ * only, which the server checks: the table loses its constraint.
+ */
+const categoryTree = (db: Database): void => {
+  const table = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'categories'")
+    .get() as { sql: string } | undefined;
+  const unique = /,\s*UNIQUE\s*\(\s*board_id\s*,\s*name\s*\)/i;
+  if (table && unique.test(table.sql)) {
+    withoutForeignKeys(db, () =>
+      db.transaction(() => rebuildTable(db, "categories", (sql) => sql.replace(unique, "")))(),
+    );
+  }
+  if (!columns(db, "categories").includes("parent_id")) {
+    db.exec("ALTER TABLE categories ADD COLUMN parent_id INTEGER REFERENCES categories(id)");
+  }
 };
 
 /** Set once the administration has taken its rights per section. */

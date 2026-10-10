@@ -10,7 +10,7 @@ import DeleteConfirmModal from "./DeleteConfirmModal";
 import { DragHandle, InsertLine, useDraggableStack } from "./DraggableStack";
 import EmptyPanel from "./EmptyPanel";
 import LabelChip from "./LabelChip";
-import { CONTACT_ROUTES, DECLARED_ASSET_ROUTES, DEFAULT_LABEL_COLOR } from "@milo/shared";
+import { CONTACT_ROUTES, DECLARED_ASSET_ROUTES, DEFAULT_LABEL_COLOR, PRODUCT_ROUTES } from "@milo/shared";
 import type {
   DeclaredAssetKind,
   Id,
@@ -144,6 +144,15 @@ export const CONTACT_LABELS_API: LabelsApi = {
   remove: api.deleteContactLabel,
   carriers: "des contacts qui la portent",
   base: CONTACT_ROUTES.labels,
+};
+
+/** A board's product labels (shared, products.ts). */
+export const PRODUCT_LABELS_API: LabelsApi = {
+  create: api.createProductLabel,
+  update: api.updateProductLabel,
+  remove: api.deleteProductLabel,
+  carriers: "des produits qui la portent",
+  base: PRODUCT_ROUTES.labels,
 };
 
 /**

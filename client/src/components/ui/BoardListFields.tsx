@@ -1,6 +1,5 @@
 import { Group, Input, Stack, TextInput } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
-import { IconCategory, IconFlag } from "@tabler/icons-react";
+import { IconFlag } from "@tabler/icons-react";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, DragEvent } from "react";
 import { api } from "../../api";
@@ -28,24 +27,22 @@ import {
   editKeys,
 } from "./DrawerRows";
 
-// The categories of the open board, in the drawer of a "Projets" widget,
-// with the same look as its columns (ColumnFields): one row per item, its
-// handle for dragging, its name inline. Its box selects it for deletion;
-// "Ajouter" adds an empty row at the end. The labels, gathered in groups,
-// have their own list (LabelGroupFields).
+// The milestone types, in the drawer of a "Projets" widget, with the same look
+// as its columns (ColumnFields): one row per item, its name inline. Its box
+// selects it for deletion; "Ajouter" adds an empty row at the end. The
+// labels, gathered in groups, have their own list (LabelGroupFields), the
+// board's categories their tree (ProjectCategoriesFields).
 //
-// These are not widget settings but board data: nothing is
-// sent before "Sauvegarder" (DrawerRegistrationsContext), and "Fermer"
-// leaves everything as before. What is still in use — a category that files
-// projects — cannot be removed: the server refuses, and
-// the notification says so.
-//
-// Milestone types are set here too, under the categories, although they
-// are shared by all boards: sorted by name, they have no
-// handle, and their milestones open from their row's menu.
+// These are not widget settings: nothing is sent before "Sauvegarder"
+// (DrawerRegistrationsContext), and "Fermer" leaves everything as before.
+// Shared by all boards, the types are sorted by name: they have no handle,
+// and their milestones open from their row's menu.
 
-/** What the list manages: a category, a milestone type. Labels have their groups (LabelGroupFields). */
-export type ListKind = "categories" | "milestone-types";
+/**
+ * What the list manages: a milestone type. Labels have their groups
+ * (LabelGroupFields), categories their tree (ProjectCategoriesFields).
+ */
+export type ListKind = "milestone-types";
 
 interface Element {
   id: Id;
@@ -85,21 +82,6 @@ interface ListKindInfo {
 const NO_REORDER = async () => undefined;
 
 const KINDS: Record<ListKind, ListKindInfo> = {
-  categories: {
-    title: "Catégories",
-    add: "Ajouter une catégorie",
-    scope: "Les catégories configurées ci-dessous sont communes à l'ensemble des widgets, de type projet, du tableau actuel et uniquement pour ce tableau.",
-    nounPhrase: "la catégorie",
-    icon: IconCategory,
-    empty: "Aucune catégorie",
-    withColor: false,
-    orderable: true,
-    read: (boardId) => api.getCategories(String(boardId)),
-    create: (boardId, l) => api.createCategory(boardId, l.name),
-    updateStatement: (id, l) => api.updateCategory(id, { name: l.name }),
-    remove: (id) => api.deleteCategory(id),
-    store: (boardId, ids) => api.reorderCategories(boardId, ids),
-  },
   "milestone-types": {
     title: "Types de jalons",
     add: "Ajouter un type de jalons",
@@ -222,30 +204,10 @@ export default function BoardListFields({ kind }: { kind: ListKind }) {
 
   const selection = useRowSelection(rows.map((r) => r.key));
 
-  /**
-   * Removes the checked rows, except the categories that still file projects:
-   * the server would refuse them on save. Those stay checked.
-   */
   const removeChecked = () => {
     const checked = new Set(selection.checked);
-    const kept: string[] = [];
-    for (const row of rows) {
-      if (!checked.has(row.key)) continue;
-      const original = originals.find((o) => o.id === row.id) as
-        | (Element & { project_count?: number })
-        | undefined;
-      if (!original?.project_count) continue;
-      kept.push(row.key);
-      notifications.show({
-        color: "orange",
-        title: "Suppression impossible",
-        message: `« ${original.name} » range encore ${original.project_count} projet${
-          original.project_count > 1 ? "s" : ""
-        }.`,
-      });
-    }
-    setRows((before) => before.filter((r) => !checked.has(r.key) || kept.includes(r.key)));
-    selection.reset(kept);
+    setRows((before) => before.filter((r) => !checked.has(r.key)));
+    selection.reset([]);
   };
 
   const dragHover = (e: DragEvent<HTMLElement>, rank: number) => {

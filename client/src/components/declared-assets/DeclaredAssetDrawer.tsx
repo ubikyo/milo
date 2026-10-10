@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Cascader,
   Drawer,
   Group,
   NumberInput,
@@ -8,7 +9,6 @@ import {
   Stack,
   Textarea,
   TextInput,
-  TreeSelect,
 } from "@mantine/core";
 import {
   IconCertificate,
@@ -54,7 +54,7 @@ import ActorPicker from "../ui/ActorPicker";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
 import DrawerFooter from "../ui/DrawerFooter";
 import DrawerScrollArea, { DRAWER_PADDING, DRAWER_STYLES } from "../ui/DrawerScroll";
-import { locationTreeData } from "../ui/EditableTree";
+import { TREE_CASCADER, locationTreeData, treePath } from "../ui/EditableTree";
 import { pluralize } from "../ui/DrawerRows";
 import { ListRows } from "../ui/EditableRows";
 import LabelPicker, { declaredAssetLabelsApi } from "../ui/LabelPicker";
@@ -68,7 +68,7 @@ import GenerateNumberButton from "./GenerateNumberButton";
 // chosen in the board's lists (DeclaredAssetTablesFields) —; a description
 // and notes. A device has more after its supplier: its location — a place of
 // its board's locations tree, Société > Bâtiment > Baie > Position, picked in
-// a TreeSelect —, and its identifications — typed values, a serial number, a
+// a Cascader —, and its identifications — typed values, a serial number, a
 // service tag —; an application, under what names it, its version and
 // website, and after its supplier, its license information, typed values too;
 // then its photos and documents, in the same blocks as a card's covers and
@@ -703,15 +703,16 @@ export default function DeclaredAssetDrawer({
               {/* A device's place, then its identifications; an
                   application's license information: lists of typed values. */}
               {extras.includes("location") && (
-                <TreeSelect
+                // In columns, level after level; any level may be chosen. The
+                // device keeps the place's id, the field reads its path.
+                <Cascader
                   label="Emplacement"
                   placeholder="Choisir un emplacement"
                   data={locationData}
-                  value={form.location || null}
-                  onChange={(v) => set("location", typeof v === "string" ? v : "")}
+                  value={form.location ? treePath(lists.locations ?? [], form.location) : null}
+                  onChange={(path) => set("location", path?.at(-1) ?? "")}
                   nothingFoundMessage="Aucun emplacement"
-                  withLines
-                  defaultExpandAll
+                  {...TREE_CASCADER}
                   clearable
                   searchable
                 />

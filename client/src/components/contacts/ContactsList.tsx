@@ -26,7 +26,7 @@ import {
 import type { Contact, ContactType, Id } from "@milo/shared";
 import ContactDrawer from "./ContactDrawer";
 import AddButton from "../ui/AddButton";
-import { keptColumns, defaultWidths } from "../ui/ColumnFields";
+import { keptColumns, defaultWidths, useColumnWidthEditing } from "../ui/ColumnFields";
 import type { ListColumn } from "../ui/ColumnFields";
 import { CopyPasteContext } from "../ui/CopyPasteActions";
 import { ALL_OPTION, ChoiceFilter, TextFilter } from "../support/SupportRequestsList";
@@ -298,10 +298,14 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
 
   // The columns shown, in the order the configuration sets.
   const columns = keptColumns(CONTACT_COLUMNS, config);
+  // In edit mode, the widths set above the columns go to the widget.
+  const widthEditing = useColumnWidthEditing(CONTACT_COLUMNS, config, columns.map((c) => c.id));
   const resize = useResizableColumns(
     "contact",
     columns.map((c) => c.id),
     defaultWidths(CONTACT_COLUMNS, config),
+    undefined,
+    widthEditing,
   );
 
   const th = (
@@ -406,6 +410,7 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
     >
       {resize.colgroup}
       <Table.Thead>
+        {resize.widthRow}
         <Table.Tr>{columns.map((c) => headers[c.key](c.id, c.group))}</Table.Tr>
       </Table.Thead>
       <Table.Tbody>

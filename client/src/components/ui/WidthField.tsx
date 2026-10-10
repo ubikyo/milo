@@ -6,7 +6,8 @@ import type { SectionWidthUnit } from "@milo/shared";
 import classes from "../../assets/styles/GapField.module.css";
 import { GAP_FIELD_HEIGHT } from "./GapField";
 
-// A section's width, set at the foot of its column: the number when
+// A section's width — or, in edit mode, a grid column's (useResizableColumns) —,
+// set at the foot of its column: the number when
 // the unit requires one, then the unit. Discreet like the gap field, at its
 // height. Choosing "px" or "%" takes effect at once, with the width the
 // column has on screen: it does not jump. The number is sent on validation —
@@ -34,9 +35,17 @@ interface WidthFieldProps {
   /** The width the column has on screen, in this unit. */
   measure: (unit: Exclude<SectionWidthUnit, "auto">) => number;
   style?: CSSProperties;
+  /** What it sizes, in its labels: "de la section" by default — or "de la colonne". */
+  subject?: string;
 }
 
-export default function WidthField({ value, onChange, measure, style }: WidthFieldProps) {
+export default function WidthField({
+  value,
+  onChange,
+  measure,
+  style,
+  subject = "de la section",
+}: WidthFieldProps) {
   /** What is typed; "null" until it has been touched. */
   const [input, setInput] = useState<number | string | null>(null);
 
@@ -92,7 +101,7 @@ export default function WidthField({ value, onChange, measure, style }: WidthFie
             }
           }}
           aria-label={
-            value.width_unit === "percent" ? "Largeur de la section en %" : "Largeur de la section en pixels"
+            value.width_unit === "percent" ? `Largeur ${subject} en %` : `Largeur ${subject} en pixels`
           }
           className={`${classes.field} ${classes.number}`}
         />
@@ -110,8 +119,8 @@ export default function WidthField({ value, onChange, measure, style }: WidthFie
         comboboxProps={{ width: 72, position: "bottom" }}
         // As close as possible to the number: the fields' inner space is enough.
         ml={value.width_unit === "auto" ? 0 : -3}
-        aria-label="Unité de la largeur de la section"
-        title="Largeur de la section"
+        aria-label={`Unité de la largeur ${subject}`}
+        title={`Largeur ${subject}`}
         className={`${classes.field} ${classes.unit}`}
       />
     </Group>

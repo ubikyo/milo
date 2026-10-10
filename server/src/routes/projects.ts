@@ -116,7 +116,14 @@ projectRoutes.use(touch("projects"));
 // interpolation.
 const CLAUSES: Record<string, string> = {
   board: "projects.board_id = @board",
-  category: "projects.category_id = @category",
+  // A category takes in those under it.
+  category: `projects.category_id IN (
+    WITH RECURSIVE under (id) AS (
+      SELECT CAST(@category AS INTEGER)
+      UNION SELECT categories.id FROM categories JOIN under ON categories.parent_id = under.id
+    )
+    SELECT id FROM under
+  )`,
   actor: "projects.id IN (SELECT project_id FROM project_actors WHERE user_id = @actor)",
 };
 

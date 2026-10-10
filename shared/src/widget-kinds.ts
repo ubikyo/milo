@@ -23,7 +23,7 @@ export const WIDGET_KINDS = [
   // applications entered by hand.
   { value: "unmanaged_device_asset", label: "Équipements déclarés" },
   { value: "application_asset", label: "Applications" },
-  // The logistics: the contacts (contacts.ts).
+  // The logistics: the contacts (contacts.ts), the products (products.ts).
   { value: "logistics", label: "Logistique" },
 ] as const;
 
@@ -179,6 +179,7 @@ const OWN = {
   unmanaged_device_asset: ["list"],
   application_asset: ["list"],
   contact: ["list", "contacts"],
+  product: ["list"],
   project: ["list", "projects", "progress", "categories", "actors", "labels"],
   task: ["list", "cards", "lists", "due", "members", "labels"],
 } as const;
@@ -190,6 +191,7 @@ const PREFIXES: Record<keyof typeof OWN, WidgetKind> = {
   unmanaged_device_asset: "unmanaged_device_asset",
   application_asset: "application_asset",
   contact: "logistics",
+  product: "logistics",
   project: "project",
   task: "task",
 };
@@ -246,6 +248,7 @@ export const LIST_WIDGET_TYPES: readonly string[] = [
   "unmanaged_device_asset.list",
   "application_asset.list",
   "contact.list",
+  "product.list",
 ];
 
 export const isListWidgetType = (type: string): boolean => LIST_WIDGET_TYPES.includes(type);

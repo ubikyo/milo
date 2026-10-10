@@ -25,11 +25,10 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { createContext, Fragment, useContext, useMemo, useState } from "react";
-import dayjs from "dayjs";
 import { RED, STRONG_TEXT } from "../../themes/colors";
 import ActorAvatars, { ACTOR_AVATAR_SIZE } from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
-import { keptColumns, defaultWidths } from "../ui/ColumnFields";
+import { keptColumns, defaultWidths, useColumnWidthEditing, DATE_FORMATS, formatMoment, PATH_FORMATS, formatPath } from "../ui/ColumnFields";
 import type { ListColumn } from "../ui/ColumnFields";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
@@ -37,7 +36,8 @@ import LabelChip from "../ui/LabelChip";
 import { menuPosition } from "../ui/PointMenu";
 import { ReferenceTag } from "../ui/ReferenceTag";
 import { useResizableColumns } from "../ui/useResizableColumns";
-import { listKey, projectReference } from "@milo/shared";
+import { listKey, locationPaths, projectReference } from "@milo/shared";
+import { categoryNodes } from "../../lib/categories";
 import { inList } from "../../lib/lists";
 import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
 import type { ReactNode } from "react";
@@ -84,7 +84,7 @@ interface Column {
 }
 
 /** A shown column: its occurrence, and for the labels, the group it shows. */
-type ShownColumn = Column & { id: string; group?: Id };
+type ShownColumn = Column & { id: string; group?: Id; format?: string };
 
 /** The sort: a column, and for the labels, its group — two can coexist. */
 interface Sort {
@@ -139,8 +139,6 @@ const STATUS_WIDTH = PROGRESS_WIDTH + PERCENT_WIDTH + STATUS_GAP;
 // The longest reference expected: the tag takes its width.
 const REFERENCE_TEMPLATE = projectReference(999);
 
-const formatDate = (value: string): string =>
-  dayjs(value).format("DD/MM/YYYY HH:mm");
 
 const STATUS_OPTIONS: FilterOption[] = [
   { value: "all", label: "Tous" },
@@ -253,8 +251,10 @@ const COLUMNS: Column[] = [
 export const PROJECT_COLUMNS: ListColumn[] = COLUMNS.map(({ key, label }) => ({
   key,
   label: key === "number" ? "Référence" : label,
-  // The labels column picks the group it shows.
+  // The labels column picks the group it shows; a date, its format.
   ...(key === "labels" ? { labelGroups: "/project-labels" as const } : {}),
+  ...(key === "created_at" || key === "updated_at" ? { formats: DATE_FORMATS } : {}),
+  ...(key === "category_name" ? { formats: PATH_FORMATS } : {}),
 }));
 
 // Beyond ten options — actors, quickly numerous —, the list scrolls.
@@ -534,13 +534,18 @@ interface ProjectRowProps {
   active: boolean;
   /** The columns shown, in the order the widget has set. */
   columns: ShownColumn[];
+  /**
+   * Each category's name, by its id: the category column shows it alone
+   * ("Élément final") — the project's "category_name" is its whole path.
+   */
+  categoryNames: Map<string, string>;
   onEdit: (project: Project) => void;
   onContextMenu?: (project: Project, x: number, y: number) => void;
 }
 
 // The content of each cell, by column: the row places them in the order
 // of the columns shown.
-const CELLS: Record<ColumnKey, (project: Project) => ReactNode> = {
+const CELLS: Record<ColumnKey, (project: Project, format?: string) => ReactNode> = {
   number: (project) => (
     <Table.Td style={{ whiteSpace: "nowrap" }}>
       {project.number > 0 && (
@@ -564,8 +569,9 @@ const CELLS: Record<ColumnKey, (project: Project) => ReactNode> = {
       <ActorAvatars actors={project.actors} />
     </Table.Td>
   ),
-  created_at: (project) => <Table.Td>{formatDate(project.created_at)}</Table.Td>,
-  updated_at: (project) => <Table.Td>{formatDate(project.updated_at)}</Table.Td>,
+  // In the column's format: date and time, date, or time.
+  created_at: (project, format) => <Table.Td>{formatMoment(project.created_at, format)}</Table.Td>,
+  updated_at: (project, format) => <Table.Td>{formatMoment(project.updated_at, format)}</Table.Td>,
   labels: (project) => (
     <Table.Td>
       <LabelsCell labels={project.labels} />
@@ -582,6 +588,7 @@ function ProjectRow({
   project,
   active,
   columns,
+  categoryNames,
   onEdit,
   onContextMenu,
 }: ProjectRowProps) {
@@ -609,8 +616,18 @@ function ProjectRow({
             <Table.Td>
               <LabelsCell labels={ofGroup(project.labels ?? [], column.group)} />
             </Table.Td>
+          ) : column.key === "category_name" ? (
+            // Its whole path in the board's tree — as the server gives it —,
+            // or the category alone.
+            <Table.Td>
+              {formatPath(
+                project.category_name,
+                categoryNames.get(String(project.category_id)) ?? project.category_name,
+                column.format,
+              )}
+            </Table.Td>
           ) : (
-            CELLS[column.key](project)
+            CELLS[column.key](project, column.format)
           )}
         </Fragment>
       ))}
@@ -665,10 +682,10 @@ export default function ProjectTable({
   // A labels column limited to a group sorts on that group's labels, and
   // takes its name.
   const labelGroups = useLabelGroups("/project-labels");
-  const columns: ShownColumn[] = keptColumns(PROJECT_COLUMNS, config).flatMap((c) => {
+  const columns: ShownColumn[] = keptColumns(PROJECT_COLUMNS, config).flatMap((c): ShownColumn[] => {
     const column = COLUMNS.find((col) => col.key === c.key);
     if (!column) return [];
-    if (column.key !== "labels") return [{ ...column, id: c.id }];
+    if (column.key !== "labels") return [{ ...column, id: c.id, format: c.format }];
     return [
       {
         ...column,
@@ -681,10 +698,14 @@ export default function ProjectTable({
   });
   // The widget's default widths, as long as nobody has dragged the
   // columns.
+  // In edit mode, the widths set above the columns go to the widget.
+  const widthEditing = useColumnWidthEditing(PROJECT_COLUMNS, config, columns.map((c) => c.id));
   const resize = useResizableColumns(
     "projects",
     columns.map((c) => c.id),
     defaultWidths(PROJECT_COLUMNS, config),
+    undefined,
+    widthEditing,
   );
   // Project targeted by the right-click, and the point where the menu should open.
   const [contextMenu, setContextMenu] = useState<ContextTarget | null>(null);
@@ -696,9 +717,14 @@ export default function ProjectTable({
     ...users.map((u) => ({ value: String(u.id), label: u.name })),
   ];
 
+  // Each category by its path, in the tree's order: one takes in those under
+  // it (server, routes/projects.ts).
+  const categoryNodesList = categoryNodes(categories);
+  const categoryPaths = locationPaths(categoryNodesList);
+  const categoryNames = new Map(categoryNodesList.map((c) => [c.id, c.name]));
   const categoryOptions: FilterOption[] = [
     { value: "all", label: "Toutes" },
-    ...categories.map((c) => ({ value: String(c.id), label: c.name })),
+    ...categoryNodesList.map((c) => ({ value: c.id, label: categoryPaths.get(c.id) ?? c.name })),
   ];
 
   // Chaque colonne filtrable porte son entonnoir.
@@ -800,6 +826,7 @@ export default function ProjectTable({
         >
           {resize.colgroup}
           <Table.Thead>
+            {resize.widthRow}
             <Table.Tr>
               {columns.map((column) => (
                 <SortableTh
@@ -821,6 +848,7 @@ export default function ProjectTable({
                 project={project}
                 active={contextMenu?.project.id === project.id}
                 columns={columns}
+                categoryNames={categoryNames}
                 onEdit={onRowClick}
                 onContextMenu={
                   isEditing && !canCopy

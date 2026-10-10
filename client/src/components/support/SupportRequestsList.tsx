@@ -23,7 +23,7 @@ import dayjs from "dayjs";
 import { Fragment, createContext, useContext, useMemo, useState } from "react";
 import ActorAvatars, { ACTOR_AVATAR_SIZE, ACTOR_GAP, SenderAvatar } from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
-import { keptColumns, defaultWidths } from "../ui/ColumnFields";
+import { keptColumns, defaultWidths, useColumnWidthEditing, DATE_FORMATS, formatMoment } from "../ui/ColumnFields";
 import type { ListColumn } from "../ui/ColumnFields";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
@@ -443,7 +443,7 @@ export const SUPPORT_COLUMNS: ListColumn[] = [
   // It picks the group it shows.
   { key: "labels", label: "Étiquettes", labelGroups: "/support-labels" },
   { key: "status", label: "Statut" },
-  { key: "received", label: "Reçu le" },
+  { key: "received", label: "Reçu le", formats: DATE_FORMATS },
   { key: "due", label: "Échéance" },
 ];
 
@@ -586,10 +586,14 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
   const labelGroups = useLabelGroups("/support-labels");
   // The checkbox at the start of each row, then the columns.
   const columnCount = columns.length + 1;
+  // In edit mode, the widths set above the columns go to the widget.
+  const widthEditing = useColumnWidthEditing(SUPPORT_COLUMNS, config, columns.map((c) => c.id));
   const resize = useResizableColumns(
     "support",
     ["checkbox", ...columns.map((c) => c.id)],
     defaultWidths(SUPPORT_COLUMNS, config),
+    undefined,
+    widthEditing,
   );
 
   const isFiltered = Object.entries(filters).some(
@@ -728,7 +732,10 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
   };
 
   // Each column's cell, for a request.
-  const cells: Record<ColumnKey, (request: SupportRequest, group?: Id) => ReactNode> = {
+  const cells: Record<
+    ColumnKey,
+    (request: SupportRequest, group?: Id, format?: string) => ReactNode
+  > = {
     ticket: (request) => (
       <Table.Td key="ticket" style={{ whiteSpace: "nowrap" }}>
         <ReferenceTag reference={supportTicketRef(request.number)} template={REFERENCE_TEMPLATE} />
@@ -768,12 +775,12 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
         />
       </Table.Td>
     ),
-    received: (request) => (
+    received: (request, _group, format) => (
       <Table.Td
         key="received"
         style={{ whiteSpace: "nowrap", width: DATE_WIDTH, maxWidth: DATE_WIDTH }}
       >
-        <Text size="sm">{dayjs(request.created_at).format("DD/MM/YYYY HH:mm")}</Text>
+        <Text size="sm">{formatMoment(request.created_at, format)}</Text>
       </Table.Td>
     ),
     due: (request) => (
@@ -825,6 +832,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
       >
         {resize.colgroup}
         <Table.Thead>
+          {resize.widthRow}
           <Table.Tr>
             {/* No "check all": requests are chosen one by one. */}
             <Table.Th style={{ width: 1 }} />
@@ -860,7 +868,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
                 />
               </Table.Td>
               {columns.map((c) => (
-                <Fragment key={c.id}>{cells[c.key as ColumnKey](request, c.group)}</Fragment>
+                <Fragment key={c.id}>{cells[c.key as ColumnKey](request, c.group, c.format)}</Fragment>
               ))}
             </Table.Tr>
           ))}

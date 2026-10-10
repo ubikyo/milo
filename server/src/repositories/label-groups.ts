@@ -23,6 +23,7 @@ interface Tables {
     | "support_labels"
     | "managed_device_asset_labels"
     | "contact_labels"
+    | "product_labels"
     | `${DeclaredAssetKind}_labels`;
   groups:
     | "label_groups"
@@ -30,6 +31,7 @@ interface Tables {
     | "support_label_groups"
     | "managed_device_asset_label_groups"
     | "contact_label_groups"
+    | "product_label_groups"
     | `${DeclaredAssetKind}_label_groups`;
   /** True when the set is bounded by a board ("board_id"). */
   scoped: boolean;
@@ -189,6 +191,13 @@ export const declaredAssetLabelGroups = Object.fromEntries(
 export const contactLabelGroups = store({
   labels: "contact_labels",
   groups: "contact_label_groups",
+  scoped: true,
+});
+
+/** The groups of a board's product labels. */
+export const productLabelGroups = store({
+  labels: "product_labels",
+  groups: "product_label_groups",
   scoped: true,
 });
 

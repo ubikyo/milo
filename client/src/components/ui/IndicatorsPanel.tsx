@@ -88,6 +88,11 @@ export interface IndicatorWidgetBase<Type extends string> {
    */
   ownClicks?: boolean;
   /**
+   * True when a widget that counts places its "Widget associé" field itself
+   * (list-source.tsx) — the logistics' indicator, whose list follows its data.
+   */
+  ownSource?: boolean;
+  /**
    * True when a list never has a frame — the appointments, whose gray sections
    * are their own: its drawer offers none.
    */

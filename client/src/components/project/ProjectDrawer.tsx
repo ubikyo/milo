@@ -1,11 +1,10 @@
 import {
-  ActionIcon,
   Button,
+  Cascader,
   Drawer,
   Group,
   Input,
   Menu,
-  Modal,
   Notification,
   NumberInput,
   Select,
@@ -21,14 +20,12 @@ import {
   IconEye,
   IconFolderSymlink,
   IconMessage,
-  IconPlus,
   IconSettings,
 } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { api } from "../../api";
 import { progressColor } from "../../themes/colors";
-import { MODAL_PADDING, modalHeaderStyles } from "../../themes/modals";
 import {
   ACTIONS_BUTTON_STYLE,
   DRAWER_MENU_OFFSET,
@@ -55,7 +52,8 @@ import DrawerScrollArea, {
 } from "../ui/DrawerScroll";
 import { BARE_FIELDSET, useRights } from "../../lib/rights";
 import LabelPicker, { PROJECT_LABELS_API } from "../ui/LabelPicker";
-import { errorMessage, notifyError } from "../../lib/errors";
+import { categoryNodes } from "../../lib/categories";
+import { TREE_CASCADER, locationTreeData, treePath } from "../ui/EditableTree";
 import type {
   Category,
   MilestoneType,
@@ -65,9 +63,6 @@ import type {
   PublicUser,
 } from "@milo/shared";
 import type { ThreadItem } from "./CommentThread";
-import CloseButton from "../ui/CloseButton";
-import Footer from "../ui/Footer";
-import { themeWindow } from "../../lib/themeWindow";
 
 /** The form being edited. Everything is strings: they are fields. */
 
@@ -119,7 +114,6 @@ interface ProjectDrawerProps {
   /** The boards the project can be moved to, via the "Actions" menu. */
   boards: ProjectBoard[];
   currentUser: PublicUser | null;
-  onCategoriesChanged: () => void | Promise<void>;
   onLabelsChanged: (patch?: {
     id: number;
     data: Partial<ProjectLabel>;
@@ -144,7 +138,6 @@ export default function ProjectDrawer({
   labels,
   boards,
   currentUser,
-  onCategoriesChanged,
   onLabelsChanged,
   onSaved,
   onDeleted,
@@ -161,9 +154,6 @@ export default function ProjectDrawer({
    * single dialog answers it.
    */
   const [movement, setMove] = useState<ProjectAction | null>(null);
-  const [newCategoryOpened, setNewCategoryOpened] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [creatingCategory, setCreatingCategory] = useState(false);
   const [activeTab, setActiveTab] = useState<string | null>("settings");
 
   const isEditing = Boolean(projectId);
@@ -205,7 +195,7 @@ export default function ProjectDrawer({
       const defaultValue = types.find((t) => t.name === DEFAULT_MILESTONE_TYPE);
       setForm({
         ...emptyForm,
-        category_id: cats[0] ? String(cats[0].id) : "",
+        category_id: categoryNodes(cats)[0]?.id ?? "",
         milestone_type_id: defaultValue ? String(defaultValue.id) : "",
       });
       setComments([]);
@@ -267,29 +257,6 @@ export default function ProjectDrawer({
     }
     setSaving(false);
     onSaved();
-  };
-
-  // The new category is selected as soon as it is created.
-  const createCategory = async () => {
-    const name = newCategoryName.trim();
-    if (!name) return;
-    setCreatingCategory(true);
-    try {
-      const created = await api.createCategory(Number(boardId), name);
-      await onCategoriesChanged();
-      setForm((f) => ({ ...f, category_id: String(created.id) }));
-      setNewCategoryName("");
-      setNewCategoryOpened(false);
-    } catch (e) {
-      notifyError(errorMessage(e));
-    } finally {
-      setCreatingCategory(false);
-    }
-  };
-
-  const closeNewCategory = () => {
-    setNewCategoryOpened(false);
-    setNewCategoryName("");
   };
 
   /**
@@ -359,10 +326,9 @@ export default function ProjectDrawer({
     await refreshComments();
   };
 
-  const categoryOptions = categories.map((c) => ({
-    value: String(c.id),
-    label: c.name,
-  }));
+  // The board's tree, to pick the project's category in, level after level.
+  const categoryNodesList = categoryNodes(categories);
+  const categoryData = locationTreeData(categoryNodesList);
 
   return (
     <>
@@ -516,27 +482,25 @@ export default function ProjectDrawer({
                     required
                   />
                   <RichTextField editor={editor} label="Description" />
-                  <Group gap="xs" align="flex-end" wrap="nowrap">
-                    <Select
+                  {/* In columns, level after level; any level may be chosen.
+                      The project keeps the category's id; the categories are
+                      set in the widget's drawer. */}
+                    <Cascader
                       label="Catégorie"
-                      data={categoryOptions}
-                      value={form.category_id}
-                      onChange={(value) =>
-                        setForm((f) => ({ ...f, category_id: value ?? "" }))
+                      placeholder="Choisir une catégorie"
+                      data={categoryData}
+                      value={
+                        form.category_id ? treePath(categoryNodesList, form.category_id) : null
                       }
+                      onChange={(path) => {
+                        const chosen = path?.at(-1);
+                        if (chosen) setForm((f) => ({ ...f, category_id: chosen }));
+                      }}
+                      nothingFoundMessage="Aucune catégorie"
+                      {...TREE_CASCADER}
+                      searchable
                       required
-                      style={{ flex: 1 }}
                     />
-                    <ActionIcon
-                      variant="filled"
-                      color="teal"
-                      size={36}
-                      aria-label="Nouvelle catégorie"
-                      onClick={() => setNewCategoryOpened(true)}
-                    >
-                      <IconPlus size={18} />
-                    </ActionIcon>
-                  </Group>
 
                   {/* The milestone names are written under the slider, in the
                       flow (MilestoneLabels): they count in what scrolls. */}
@@ -692,46 +656,6 @@ export default function ProjectDrawer({
         boards={boards}
         onMoved={handleMoved(movement ?? "move")}
       />
-
-      <Modal
-        attributes={themeWindow("new-category")}
-        opened={newCategoryOpened}
-        onClose={closeNewCategory}
-        title="Nouvelle catégorie"
-        centered
-        padding={MODAL_PADDING}
-        withCloseButton={false}
-        styles={modalHeaderStyles(MODAL_PADDING)}
-      >
-        <Stack gap="md">
-          <TextInput
-            label="Nom"
-            value={newCategoryName}
-            onChange={(e) => setNewCategoryName(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                createCategory();
-              }
-            }}
-            required
-            autoFocus
-          />
-          {/* Space above the actions equal to the window's inset, as in
-              the deletion confirmation. */}
-          <Footer parentGap="var(--mantine-spacing-md)">
-            <CloseButton onClick={closeNewCategory} />
-            <Button
-              color="teal"
-              onClick={createCategory}
-              loading={creatingCategory}
-              disabled={!newCategoryName.trim()}
-            >
-              Ajouter
-            </Button>
-          </Footer>
-        </Stack>
-      </Modal>
 
       <DeleteConfirmModal
         opened={confirmDeleteOpened}

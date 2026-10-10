@@ -9,14 +9,25 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { accessIncludes, listKey } from "@milo/shared";
-import { DECLARED_ASSET_ROUTES, DECLARED_ASSET_SUPPLIER, DECLARED_ASSET_WORDS } from "@milo/shared";
-import type { DeclaredAsset, DeclaredAssetKind, DeclaredAssetNoun, Id } from "@milo/shared";
+import { accessIncludes, listKey, locationPaths } from "@milo/shared";
+import {
+  DECLARED_ASSET_EXTRAS,
+  DECLARED_ASSET_ROUTES,
+  DECLARED_ASSET_SUPPLIER,
+  DECLARED_ASSET_WORDS,
+} from "@milo/shared";
+import type {
+  DeclaredAsset,
+  DeclaredAssetKind,
+  DeclaredAssetLocation,
+  DeclaredAssetNoun,
+  Id,
+} from "@milo/shared";
 import DeclaredAssetDrawer from "./DeclaredAssetDrawer";
 import { DECLARED_ASSET_LOOKS } from "./kinds";
 import ActorAvatars from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
-import { keptColumns, defaultWidths } from "../ui/ColumnFields";
+import { keptColumns, defaultWidths, useColumnWidthEditing, PATH_FORMATS, formatPath } from "../ui/ColumnFields";
 import type { ListColumn } from "../ui/ColumnFields";
 import { CopyPasteContext } from "../ui/CopyPasteActions";
 import { ALL_OPTION, ChoiceFilter, TextFilter } from "../support/SupportRequestsList";
@@ -31,6 +42,8 @@ import { inList } from "../../lib/lists";
 import { useWidgetAccess } from "../../lib/rights";
 import { clearRequest, useRequestedItem } from "../../lib/searchSources";
 import { useDeclaredAssets } from "../../lib/declaredAssets";
+import { api } from "../../api";
+import { errorMessage, notifyError } from "../../lib/errors";
 import { STRONG_TEXT } from "../../themes/colors";
 
 // The list of a declared asset kind — equipment, applications —: the assets
@@ -38,7 +51,8 @@ import { STRONG_TEXT } from "../../themes/colors";
 // same grid as the managed device assets' (ManagedDeviceAssetsList): its
 // header, its sort, its columns chosen in the drawer — its labels, its
 // actors, and a value from each of the board's lists
-// (DeclaredAssetTablesFields), in the kind's words. It reads its own assets
+// (DeclaredAssetTablesFields), in the kind's words — and, for a device, its
+// location, as its path in the board's tree. It reads its own assets
 // (lib/declaredAssets.ts), and only shows those of its widget (LIST_KEY).
 //
 // Its columns sort and filter as the tickets' do (SupportRequestsList): the
@@ -73,8 +87,12 @@ export type ColumnKey =
   | "supplier"
   | "maker"
   | "product"
+  | "location"
   | "quantity"
   | "price";
+
+/** An asset as the grid reads it: its location's path beside its id. */
+type Row = DeclaredAsset & { location_path: string; location_name: string };
 
 /** The sort: a column, and for the labels, its group — two can coexist. */
 interface Sort {
@@ -88,7 +106,7 @@ const sameSort = (sort: Sort, key: ColumnKey, group: Id | undefined): boolean =>
   sort.key === key && (key !== "labels" || sort.group === group);
 
 /** The value each column sorts on; "null" goes to the bottom. */
-const VALUES: Record<ColumnKey, (a: DeclaredAsset) => string | number | null> = {
+const VALUES: Record<ColumnKey, (a: Row) => string | number | null> = {
   name: (a) => a.name || null,
   // By the first label, in the labels' order: the one the cell shows first.
   // A column limited to a group reads its own (DeclaredAssetsList).
@@ -98,6 +116,7 @@ const VALUES: Record<ColumnKey, (a: DeclaredAsset) => string | number | null> = 
   supplier: (a) => a.supplier || null,
   maker: (a) => a.maker || null,
   product: (a) => a.product || null,
+  location: (a) => a.location_path || null,
   quantity: (a) => a.quantity,
   price: (a) => a.price,
 };
@@ -105,7 +124,15 @@ const VALUES: Record<ColumnKey, (a: DeclaredAsset) => string | number | null> = 
 // --- Filters -------------------------------------------------------------
 
 /** The columns that filter: the name by text, the others by a value. */
-type FilterKey = "name" | "labels" | "actor" | "category" | "supplier" | "maker" | "product";
+type FilterKey =
+  | "name"
+  | "labels"
+  | "actor"
+  | "category"
+  | "supplier"
+  | "maker"
+  | "product"
+  | "location";
 
 type Filters = Record<FilterKey, string>;
 
@@ -117,20 +144,22 @@ const NO_FILTER: Filters = {
   supplier: ALL_OPTION,
   maker: ALL_OPTION,
   product: ALL_OPTION,
+  location: ALL_OPTION,
 };
 
 /** The values an asset offers to a choice filter: a label's name, an actor's id… */
-const CHOICES: Record<Exclude<FilterKey, "name">, (a: DeclaredAsset) => FilterOption[]> = {
+const CHOICES: Record<Exclude<FilterKey, "name">, (a: Row) => FilterOption[]> = {
   labels: (a) => a.labels.map((l) => ({ value: l.name, label: l.name })),
   actor: (a) => a.actors.map((u) => ({ value: String(u.id), label: u.name })),
   category: (a) => (a.category ? [{ value: a.category, label: a.category }] : []),
   supplier: (a) => (a.supplier ? [{ value: a.supplier, label: a.supplier }] : []),
   maker: (a) => (a.maker ? [{ value: a.maker, label: a.maker }] : []),
   product: (a) => (a.product ? [{ value: a.product, label: a.product }] : []),
+  location: (a) => (a.location_path ? [{ value: a.location_path, label: a.location_path }] : []),
 };
 
 /** Does the asset pass every filter? */
-const chosen = (f: Filters, a: DeclaredAsset): boolean => {
+const chosen = (f: Filters, a: Row): boolean => {
   if (f.name.trim() && !a.name.toLowerCase().includes(f.name.trim().toLowerCase())) return false;
   return (Object.keys(CHOICES) as (keyof typeof CHOICES)[]).every(
     (key) => f[key] === ALL_OPTION || CHOICES[key](a).some((o) => o.value === f[key]),
@@ -154,6 +183,10 @@ export const declaredAssetColumns = (kind: DeclaredAssetKind): (ListColumn & { k
     { key: "supplier", label: DECLARED_ASSET_SUPPLIER.title },
     { key: "maker", label: maker.title },
     { key: "product", label: product.title },
+    // A device's place in the board's locations tree; an application has none.
+    ...(DECLARED_ASSET_EXTRAS[kind].includes("location")
+      ? [{ key: "location" as const, label: "Emplacement", formats: PATH_FORMATS }]
+      : []),
     { key: "quantity", label: "Quantité" },
     { key: "price", label: "Prix" },
   ];
@@ -244,8 +277,33 @@ export default function DeclaredAssetsList({
   const look = DECLARED_ASSET_LOOKS[kind];
   const boardId = useContext(CopyPasteContext)?.board?.id;
   const { assets: all, reload } = useDeclaredAssets(kind, boardId);
+  // A device's board locations tree: each reads with its location's path.
+  // Re-read when the assets are — a change of the tree announces them too.
+  const withLocation = DECLARED_ASSET_EXTRAS[kind].includes("location");
+  const [locations, setLocations] = useState<DeclaredAssetLocation[]>([]);
+  useEffect(() => {
+    if (boardId === undefined || !withLocation) return;
+    api
+      .getDeclaredAssetSettings(kind, boardId)
+      .then((s) => setLocations(s.locations ?? []))
+      .catch((e) => notifyError(errorMessage(e)));
+  }, [kind, boardId, withLocation, all]);
   // Those of this widget only.
-  const assets = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
+  const assets = useMemo(() => {
+    const paths = locationPaths(locations);
+    const names = new Map(locations.map((l) => [l.id, l.name]));
+    return (
+      all
+        ?.filter(inList(config))
+        .map(
+          (a): Row => ({
+            ...a,
+            location_path: (a.location && paths.get(a.location)) || "",
+            location_name: (a.location && names.get(a.location)) || "",
+          }),
+        ) ?? null
+    );
+  }, [all, config, locations]);
   const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
   const [filters, setFilters] = useState<Filters>(NO_FILTER);
   const isFiltered = (Object.keys(NO_FILTER) as FilterKey[]).some(
@@ -272,7 +330,7 @@ export default function DeclaredAssetsList({
   const shown = useMemo(() => {
     const value =
       sort.key === "labels"
-        ? (a: DeclaredAsset) => labelRank(a.labels, sort.group)
+        ? (a: Row) => labelRank(a.labels, sort.group)
         : VALUES[sort.key];
     const factor = sort.direction === "asc" ? 1 : -1;
     return (assets ?? []).filter((a) => chosen(filters, a)).sort((a, b) => {
@@ -326,10 +384,14 @@ export default function DeclaredAssetsList({
   // A column can come back: "id" distinguishes each occurrence.
   const allColumns = declaredAssetColumns(kind);
   const columns = keptColumns(allColumns, config);
+  // In edit mode, the widths set above the columns go to the widget.
+  const widthEditing = useColumnWidthEditing(allColumns, config, columns.map((c) => c.id));
   const resize = useResizableColumns(
     kind,
     columns.map((c) => c.id),
     defaultWidths(allColumns, config),
+    undefined,
+    widthEditing,
   );
 
   const th = (
@@ -382,12 +444,13 @@ export default function DeclaredAssetsList({
       th(id, DECLARED_ASSET_SUPPLIER.title, "supplier", nounFilter("supplier", DECLARED_ASSET_SUPPLIER)),
     maker: (id) => th(id, words.maker.title, "maker", nounFilter("maker", words.maker)),
     product: (id) => th(id, words.product.title, "product", nounFilter("product", words.product)),
+    location: (id) => th(id, "Emplacement", "location", choiceFilter("location", "emplacement", "Tous")),
     quantity: (id) => th(id, "Quantité", "quantity", undefined, { whiteSpace: "nowrap" }),
     price: (id) => th(id, "Prix", "price", undefined, { whiteSpace: "nowrap" }),
   };
 
   /** Each column's cell, for an asset. */
-  const cells: Record<ColumnKey, (asset: DeclaredAsset, group?: Id) => ReactNode> = {
+  const cells: Record<ColumnKey, (asset: Row, group?: Id, format?: string) => ReactNode> = {
     name: (asset) => (
       <Table.Td key="name" style={{ whiteSpace: "nowrap" }}>
         <Badge color="green" variant="filled" radius="sm" h={TAG_HEIGHT} tt="uppercase">
@@ -426,6 +489,11 @@ export default function DeclaredAssetsList({
         <TextCell value={asset.product} />
       </Table.Td>
     ),
+    location: (asset, _group, format) => (
+      <Table.Td key="location">
+        <TextCell value={formatPath(asset.location_path, asset.location_name, format)} />
+      </Table.Td>
+    ),
     quantity: (asset) => (
       <Table.Td key="quantity">
         <TextCell value={String(asset.quantity)} />
@@ -454,6 +522,7 @@ export default function DeclaredAssetsList({
     >
       {resize.colgroup}
       <Table.Thead>
+        {resize.widthRow}
         <Table.Tr>{columns.map((c) => headers[c.key](c.id, c.group))}</Table.Tr>
       </Table.Thead>
       <Table.Tbody>
@@ -464,7 +533,7 @@ export default function DeclaredAssetsList({
             style={{ cursor: "pointer" }}
           >
             {columns.map((c) => (
-              <Fragment key={c.id}>{cells[c.key](asset, c.group)}</Fragment>
+              <Fragment key={c.id}>{cells[c.key](asset, c.group, c.format)}</Fragment>
             ))}
           </Table.Tr>
         ))}

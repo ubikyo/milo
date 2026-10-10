@@ -1,5 +1,6 @@
 // Project categories. A category belongs to a board: two boards can name a
-// category the same way.
+// category the same way. A board's form a tree — "Interne > Informatique >
+// Réseau" —: two categories of a parent do not share a name.
 
 import { Router } from "express";
 import type { Request } from "express";
@@ -17,7 +18,12 @@ import { concerned, notifyBoard, root } from "../lib/notify.js";
 import { require, requestCan } from "../lib/rights.js";
 import { touch } from "../middleware/events.js";
 import { VISIBLE_BOARDS_CLAUSE, openBoard } from "../repositories/boards.js";
-import { renderedCategory, categories, validMilestones } from "../repositories/project-boards.js";
+import {
+  renderedCategory,
+  categories,
+  subtreeOf,
+  validMilestones,
+} from "../repositories/project-boards.js";
 import { receivedOrder, arrangeCategories } from "../repositories/reorder.js";
 
 const CATEGORY_NOT_FOUND = "Catégorie introuvable";
@@ -48,12 +54,30 @@ const categoriesOfBoard = selection<CategoryRow & { project_count: number }>(
 
 const deleteCategory = mutation("DELETE FROM categories WHERE id = ?");
 
+/** A board's categories in the tree's order: each parent before its children. */
+const inTreeOrder = <Row extends CategoryRow>(rows: Row[]): Row[] => {
+  const ids = new Set(rows.map((r) => r.id));
+  const ordered: Row[] = [];
+  const visit = (parent: Id | null) => {
+    for (const row of rows) {
+      // A category whose parent is missing counts as a root.
+      const at = row.parent_id !== null && ids.has(row.parent_id) ? row.parent_id : null;
+      if (at !== parent) continue;
+      ordered.push(row);
+      visit(row.id);
+    }
+  };
+  visit(null);
+  return ordered;
+};
+
 /**
- * The categories of one board set on another. Those already bearing the same
- * name there are not duplicated — the database would refuse it anyway, the
- * name being unique per board. "replace": the destination's go first, except
- * those still holding projects — deleting them would take those projects
- * with them. The report says they were kept.
+ * The categories of one board set on another, with their tree. Those already
+ * bearing the same name under the same parent there are not duplicated: what
+ * the source holds under them joins them. "replace": the destination's go
+ * first, except those still holding projects — themselves or under them:
+ * deleting them would take those projects with them. The report says they
+ * were kept.
  */
 const copyCategories = transaction((source: Id, target: Id, replaceExisting: boolean): CopyResult => {
   let copied = 0;
@@ -62,8 +86,9 @@ const copyCategories = transaction((source: Id, target: Id, replaceExisting: boo
   let kept = 0;
 
   if (replaceExisting) {
-    for (const category of categoriesOfBoard.all(target)) {
-      if (category.project_count > 0) {
+    // The deepest first: a parent goes once its children are gone.
+    for (const category of inTreeOrder(categoriesOfBoard.all(target)).reverse()) {
+      if (categories.children.all(category.id).length > 0 || category.project_count > 0) {
         kept += 1;
         continue;
       }
@@ -72,17 +97,39 @@ const copyCategories = transaction((source: Id, target: Id, replaceExisting: boo
     }
   }
 
-  for (const category of categoriesOfBoard.all(source)) {
-    if (categories.byName.get(target, category.name, 0)) {
+  /** A source category's counterpart in the destination. */
+  const counterpart = new Map<Id, Id>();
+  for (const category of inTreeOrder(categoriesOfBoard.all(source))) {
+    const parent = category.parent_id === null ? null : (counterpart.get(category.parent_id) ?? null);
+    const already = categories.byName.get(target, parent, category.name, 0);
+    if (already) {
+      counterpart.set(category.id, already.id);
       skipped += 1;
       continue;
     }
-    categories.create.run(target, category.name, category.milestones);
+    const { lastInsertRowid } = categories.create.run(target, category.name, category.milestones, parent);
+    counterpart.set(category.id, Number(lastInsertRowid));
     copied += 1;
   }
 
   return { copied, skipped, removed, kept };
 });
+
+/**
+ * The parent received for a category of this board: null at the root. It must
+ * be one of the board's, and not the category itself or one under it.
+ */
+const readParent = (received: unknown, boardId: Id, own?: Id): Id | null => {
+  if (received === null || received === undefined || received === "") return null;
+  const parent = orNotFound(categories.byId.get(received), "Catégorie parente introuvable");
+  if (String(parent.board_id) !== String(boardId)) {
+    badRequest("La catégorie parente doit être du même tableau");
+  }
+  if (own !== undefined && subtreeOf(own).has(parent.id)) {
+    badRequest("Une catégorie ne peut pas être rangée sous elle-même");
+  }
+  return parent.id;
+};
 
 const countProjectsOfCategory = scalar<CountRow>(
   "SELECT COUNT(*) AS count FROM projects WHERE category_id = ?",
@@ -105,8 +152,14 @@ const readMilestones = (received: unknown): Milestone[] | undefined => {
 };
 
 const updateCategory = transaction(
-  (id: Id, name: string | null, milestones: Milestone[] | undefined): void => {
+  (
+    id: Id,
+    name: string | null,
+    parent: Id | null | undefined,
+    milestones: Milestone[] | undefined,
+  ): void => {
     if (name !== null) categories.rename.run(name, id);
+    if (parent !== undefined) categories.setParent.run(parent, id);
     if (milestones) categories.setMilestones.run(JSON.stringify(milestones), id);
   },
 );
@@ -173,13 +226,14 @@ categoryRoutes.post("/", (req, res) => {
   const name = requireText(req.body.name, "Le nom est requis");
   const boardId = req.body.board_id;
   if (!boardId) badRequest("Le tableau est requis");
-  openBoard(boardId, req.user);
-  if (categories.byName.get(boardId, name, 0)) conflict(EXISTING_CATEGORY);
+  const board = openBoard(boardId, req.user);
+  const parent = readParent(req.body.parent_id, board.id);
+  if (categories.byName.get(board.id, parent, name, 0)) conflict(EXISTING_CATEGORY);
 
   const milestones = readMilestones(req.body.milestones) ?? [];
 
-  const { lastInsertRowid } = categories.create.run(boardId, name, JSON.stringify(milestones));
-  announce(req, Number(boardId), `a ajouté la catégorie « ${name} »`);
+  const { lastInsertRowid } = categories.create.run(board.id, name, JSON.stringify(milestones), parent);
+  announce(req, board.id, `a ajouté la catégorie « ${name} »`);
   res.status(201).json(renderedCategory(categories.byId.get(lastInsertRowid)!));
 });
 
@@ -188,18 +242,33 @@ categoryRoutes.put("/:id", (req, res) => {
   const existing = orNotFound(categories.byId.get(req.params.id), CATEGORY_NOT_FOUND);
   openBoard(existing.board_id, req.user);
 
-  // The name and milestones are each edited on their own: what is not sent
-  // does not change.
+  // The name, the parent and the milestones are each edited on their own:
+  // what is not sent does not change.
   const milestones = readMilestones(req.body.milestones);
   const name =
     req.body.name === undefined ? null : requireText(req.body.name, "Le nom est requis");
-  if (name !== null && categories.byName.get(existing.board_id, name, existing.id)) {
+  const parent =
+    req.body.parent_id === undefined
+      ? undefined
+      : readParent(req.body.parent_id, existing.board_id, existing.id);
+  if (
+    (name !== null || parent !== undefined) &&
+    categories.byName.get(
+      existing.board_id,
+      parent === undefined ? existing.parent_id : parent,
+      name ?? existing.name,
+      existing.id,
+    )
+  ) {
     conflict(EXISTING_CATEGORY);
   }
 
-  updateCategory(existing.id, name, milestones);
+  updateCategory(existing.id, name, parent, milestones);
   if (name !== null && name !== existing.name) {
     announce(req, existing.board_id, `a renommé la catégorie « ${existing.name} » en « ${name} »`);
+  }
+  if (parent !== undefined && parent !== existing.parent_id) {
+    announce(req, existing.board_id, `a déplacé la catégorie « ${name ?? existing.name} »`);
   }
   if (milestones) {
     announce(req, existing.board_id, `a modifié les jalons de la catégorie « ${name ?? existing.name} »`);
@@ -212,6 +281,10 @@ categoryRoutes.delete("/:id", (req, res) => {
   const existing = orNotFound(categories.byId.get(req.params.id), CATEGORY_NOT_FOUND);
   openBoard(existing.board_id, req.user);
   refuseIfUsed(existing.name, countProjectsOfCategory(existing.id).count);
+  // Those under it go first.
+  if (categories.children.get(existing.id)) {
+    conflict(`« ${existing.name} » contient encore d'autres catégories`);
+  }
   const deleted = deleteCategoryCascade(existing.id);
   announce(req, existing.board_id, `a supprimé la catégorie « ${existing.name} »`);
   res.json({ deleted_projects: deleted });

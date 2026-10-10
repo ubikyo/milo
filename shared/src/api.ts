@@ -321,7 +321,8 @@ export type LabelsBase =
   | "/managed-device-asset-labels"
   | "/unmanaged-device-asset-labels"
   | "/application-asset-labels"
-  | "/contact-labels";
+  | "/contact-labels"
+  | "/product-labels";
 
 /**
  * The confirmation of a support mailbox: while it is pending, nothing is

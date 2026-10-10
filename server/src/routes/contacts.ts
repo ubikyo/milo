@@ -2,6 +2,9 @@
 // "Contact" widgets, each in its own (LIST_KEY), with their labels, and
 // their board's lists — payment terms, currencies, countries. They follow the
 // permission on their widget type, "Logistique", like their labels.
+//
+// Each has its thread, as a card: Milo notes its creation and its edits
+// there (lib/history.ts); the comments are written one by one.
 
 import { Router } from "express";
 import type { Request } from "express";
@@ -18,11 +21,14 @@ import {
   CONTACT_URL_MAX,
   CONTACT_URL_PATTERN,
   accessIncludes,
+  contactName,
+  contactTypeLabel,
   isContactType,
 } from "@milo/shared";
 import type {
   Contact,
   ContactAddress,
+  ContactComment,
   ContactCountry,
   ContactCurrency,
   ContactPaymentTerm,
@@ -32,13 +38,18 @@ import type {
   ContactWebsite,
   Id,
   Label,
+  SqliteBool,
   WidgetAccess,
 } from "@milo/shared";
 import { mutation, selection, transaction } from "../db/query.js";
-import { HttpError, badRequest, orNotFound, requireText, toIds } from "../lib/http.js";
+import type { WithAuthorColumns } from "../db/rows.js";
+import { changes, list, logAction, quote } from "../lib/history.js";
+import type { Field } from "../lib/history.js";
+import { HttpError, badRequest, forbidden, orNotFound, requireText, toIds } from "../lib/http.js";
 import { now } from "../lib/time.js";
 import { touch } from "../middleware/events.js";
 import { openBoard, requireBoardControl } from "../repositories/boards.js";
+import { SYSTEM_COMMENT, creationNote, withAuthor } from "../repositories/comments.js";
 import { keyInBoard } from "../repositories/lists.js";
 import { widgetRights } from "../repositories/users.js";
 
@@ -222,6 +233,85 @@ const contactsOf = (boardId: Id): Contact[] => {
 const oneContact = (row: ContactRow): Contact =>
   contactsOf(row.board_id).find((c) => c.id === row.id)!;
 
+// --- Its thread --------------------------------------------------------------
+
+const NONE = "—";
+
+/** The rows of one of its lists, in their order. */
+const inOrder = (values: string[]): string => values.filter(Boolean).join(", ") || NONE;
+
+/** An address on one line: "Siège : 1 rue …, 75001 Paris, France". */
+const addressLine = (a: ContactAddress): string => {
+  const place = [a.line1, a.line2, [a.postal_code, a.city].filter(Boolean).join(" "), a.country]
+    .filter(Boolean)
+    .join(", ");
+  return a.label ? `${a.label} : ${place}` : place;
+};
+
+/** What the thread notes about a contact when its record changes (lib/history.ts). */
+const photo = (id: Id): Field[] => {
+  const all = contactsOf(byId.get(id)!.board_id);
+  const c = all.find((k) => k.id === id)!;
+  const names = new Map(all.map((k) => [k.id, contactName(k)]));
+  return [
+    { label: "Type", value: contactTypeLabel(c.type) },
+    { label: "Prénom", value: quote(c.first_name) },
+    { label: "Nom", value: quote(c.name) },
+    { label: "Fonction", value: quote(c.job_title) },
+    { label: "Contacts", value: list(c.member_ids.map((m) => names.get(m) ?? "")) },
+    { label: "Conditions de paiement", value: c.payment_term || NONE },
+    { label: "Devise", value: c.currency || NONE },
+    { label: "E-mails", value: inOrder(c.emails) },
+    {
+      label: "Numéros de téléphone",
+      value: inOrder(c.phones.map((p) => [p.label, p.number].filter(Boolean).join(" "))),
+    },
+    { label: "Adresses", value: inOrder(c.addresses.map(addressLine)) },
+    { label: "Sites internet", value: inOrder(c.websites.map((w) => w.url)) },
+    { label: "Étiquettes", value: list(c.labels.map((l) => l.name)) },
+  ];
+};
+
+const COMMENT_NOT_FOUND = "Commentaire introuvable";
+
+interface CommentRow {
+  id: Id;
+  contact_id: Id;
+  user_id: Id | null;
+  text: string;
+  system: SqliteBool;
+  created_at: string;
+  updated_at: string;
+}
+
+const COMMENT_SELECT = `
+  SELECT contact_comments.*, users.name AS author_name, users.email AS author_email
+  FROM contact_comments
+  LEFT JOIN users ON users.id = contact_comments.user_id
+`;
+
+const comments = {
+  raw: selection<CommentRow>("SELECT * FROM contact_comments WHERE id = ?"),
+  byId: selection<WithAuthorColumns<CommentRow>>(`${COMMENT_SELECT} WHERE contact_comments.id = ?`),
+  ofContact: selection<WithAuthorColumns<CommentRow>>(
+    `${COMMENT_SELECT} WHERE contact_comments.contact_id = ?
+     ORDER BY contact_comments.created_at ASC, contact_comments.id ASC`,
+  ),
+  create: mutation(
+    `INSERT INTO contact_comments (contact_id, user_id, text, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ),
+  // A note from Milo: no account behind it.
+  createSystem: mutation(
+    `INSERT INTO contact_comments (contact_id, user_id, text, system, created_at, updated_at)
+     VALUES (?, NULL, ?, 1, ?, ?)`,
+  ),
+  update: mutation("UPDATE contact_comments SET text = ?, updated_at = ? WHERE id = ?"),
+  remove: mutation("DELETE FROM contact_comments WHERE id = ?"),
+};
+
+const commentOf = (row: WithAuthorColumns<CommentRow>): ContactComment => withAuthor(row);
+
 // --- Writing -----------------------------------------------------------------
 
 const insert = mutation(
@@ -320,19 +410,58 @@ contactRoutes.post("/", (req, res) => {
     toIds(body.label_ids),
     toIds(body.member_ids),
   );
+  // A contact's thread opens on its creation.
+  const at = now();
+  comments.createSystem.run(id, creationNote("Contact créé", at, req.user.id), at, at);
   res.status(201).json(oneContact(byId.get(id)!));
 });
 
 contactRoutes.put("/:id", (req, res) => {
   const existing = openContact(req, req.params.id, "update");
   const body = (req.body ?? {}) as Record<string, unknown>;
+  const before = photo(existing.id);
   write(existing.id, existing.board_id, fieldsOf(body), toIds(body.label_ids), toIds(body.member_ids));
+  // A record saved without changes notes nothing.
+  logAction("contact", existing.id, req.user, changes(before, photo(existing.id)));
   res.json(oneContact(byId.get(existing.id)!));
 });
 
 contactRoutes.delete("/:id", (req, res) => {
   const existing = openContact(req, req.params.id, "delete");
   remove.run(existing.id);
+  res.status(204).end();
+});
+
+// A contact's thread, read when its "Commentaires" tab is.
+contactRoutes.get("/:id/comments", (req, res) => {
+  const contact = openContact(req, req.params.id, "view");
+  res.json(comments.ofContact.all(contact.id).map(commentOf));
+});
+
+// Writing in a contact's thread means editing it.
+contactRoutes.post("/:id/comments", (req, res) => {
+  const contact = openContact(req, req.params.id, "update");
+  const body = requireText(req.body?.text, "text est requis");
+  const at = now();
+  const { lastInsertRowid } = comments.create.run(contact.id, req.user.id, body, at, at);
+  res.status(201).json(commentOf(comments.byId.get(lastInsertRowid)!));
+});
+
+contactRoutes.put("/comments/:comment", (req, res) => {
+  const comment = orNotFound(comments.raw.get(req.params.comment), COMMENT_NOT_FOUND);
+  if (comment.system) forbidden(SYSTEM_COMMENT);
+  openContact(req, comment.contact_id, "update");
+  const body = requireText(req.body?.text, "text est requis");
+  // An identical text is not a modification: the comment's date stays.
+  if (body !== comment.text) comments.update.run(body, now(), comment.id);
+  res.json(commentOf(comments.byId.get(comment.id)!));
+});
+
+contactRoutes.delete("/comments/:comment", (req, res) => {
+  const comment = orNotFound(comments.raw.get(req.params.comment), COMMENT_NOT_FOUND);
+  if (comment.system) forbidden(SYSTEM_COMMENT);
+  openContact(req, comment.contact_id, "update");
+  comments.remove.run(comment.id);
   res.status(204).end();
 });
 

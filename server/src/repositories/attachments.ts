@@ -24,6 +24,7 @@ export const attachments = {
   byFile: selection<{ name: string }>(
     `SELECT name FROM card_attachments WHERE file = @file
      ${DECLARED_TABLES.map((t) => `UNION ALL SELECT name FROM ${t.attachments} WHERE file = @file`).join("\n")}
+     UNION ALL SELECT name FROM product_attachments WHERE file = @file
      LIMIT 1`,
   ),
   ofCard: selection<AttachmentRow>(
@@ -44,7 +45,9 @@ export const attachments = {
             (t) =>
               `+ (SELECT COUNT(*) FROM ${t.attachments} WHERE file = @file)
                + (SELECT COUNT(*) FROM ${t.photos} WHERE file = @file)`,
-          ).join("\n")} AS count`,
+          ).join("\n")}
+          + (SELECT COUNT(*) FROM product_attachments WHERE file = @file)
+          + (SELECT COUNT(*) FROM product_photos WHERE file = @file) AS count`,
   ),
 };
 
@@ -91,10 +94,11 @@ export const removeAttachment = (row: AttachmentRow): void => {
 
 // --- Cleanup ---------------------------------------------------------------
 
-/** All files cited by an attachment — a card's, or a declared asset's document — or a photo. */
+/** All files cited by an attachment — a card's, a declared asset's or a product's document — or a photo. */
 const attachmentFiles = selection<{ file: string }>(
   `SELECT file FROM card_attachments
-   ${DECLARED_TABLES.map((t) => `UNION SELECT file FROM ${t.attachments} UNION SELECT file FROM ${t.photos}`).join("\n")}`,
+   ${DECLARED_TABLES.map((t) => `UNION SELECT file FROM ${t.attachments} UNION SELECT file FROM ${t.photos}`).join("\n")}
+   UNION SELECT file FROM product_attachments UNION SELECT file FROM product_photos`,
 );
 
 /**

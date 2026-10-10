@@ -43,6 +43,7 @@ import {
   supportLabelGroups,
   declaredAssetLabelGroups,
   contactLabelGroups,
+  productLabelGroups,
 } from "../repositories/label-groups.js";
 import type { LabelGroupStore } from "../repositories/label-groups.js";
 import { mountLabelGroups } from "./label-groups.js";
@@ -58,6 +59,7 @@ const GROUP_TABLES: Record<LabelTable["table"], string> = {
   managed_device_asset_labels: "managed_device_asset_label_groups",
   support_labels: "support_label_groups",
   contact_labels: "contact_label_groups",
+  product_labels: "product_label_groups",
   ...(Object.fromEntries(
     DECLARED_ASSET_KINDS.map((kind) => [`${kind}_labels`, `${kind}_label_groups`]),
   ) as Record<DeclaredAssetLabels, string>),
@@ -71,6 +73,7 @@ interface LabelTable {
     | "managed_device_asset_labels"
     | "support_labels"
     | "contact_labels"
+    | "product_labels"
     | DeclaredAssetLabels;
   /** What the event stream must signal when these labels change. */
   touched: Resource[];
@@ -401,3 +404,24 @@ export const contactLabelRoutes = createRoutes({
   groups: contactLabelGroups,
   concernedBy: () => [],
 });
+
+/** The "Logistique" permission a product label needs. */
+const logisticsBoard = (boardId: unknown, req: Request, right: Right): Id => {
+  if (!accessIncludes(widgetRights(req.user).logistics, MANAGED_DEVICE_ASSET_LABEL_ACCESS[right])) {
+    throw right === "view"
+      ? new HttpError(404, "Introuvable")
+      : new HttpError(403, "Vous n'avez pas le droit de modifier ici");
+  }
+  return openBoard(boardId, req.user).id;
+};
+
+/** Labels of a board's products: the board's own, like the contacts'. */
+export const productLabelRoutes = createRoutes({
+  table: "product_labels",
+  // The products carry their labels: they are re-read with them.
+  touched: ["products"],
+  verifyBoard: logisticsBoard,
+  groups: productLabelGroups,
+  concernedBy: () => [],
+});
+

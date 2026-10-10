@@ -4,6 +4,7 @@ import {
   Checkbox,
   Group,
   Input,
+  ScrollArea,
   Text,
   TextInput,
   Tree,
@@ -14,8 +15,9 @@ import {
 import type { TreeDragDropPayload, TreeNodeData } from "@mantine/core";
 import { IconChevronRight, IconGripVertical, IconMapPin } from "@tabler/icons-react";
 import { useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { ComponentType, CSSProperties } from "react";
 import classes from "../../assets/styles/EditableTree.module.css";
+import scroll from "../../assets/styles/ListScroll.module.css";
 import type { DeclaredAssetLocation } from "@milo/shared";
 import AddButton from "./AddButton";
 import DeleteConfirmModal from "./DeleteConfirmModal";
@@ -49,6 +51,12 @@ const LEVEL_OFFSET = 32;
  */
 const ROW_HEIGHT = 30 + 2 * ROW_INSET;
 
+/** A Cascader's column: a long name truncates rather than widen it. */
+const CASCADER_COLUMN_WIDTH = 200;
+
+/** Ten places at most at a time: beyond that, the tree scrolls in its frame. */
+const VISIBLE_ROWS = 10;
+
 /** The chevron, on a place with children; one without has none, nor its room. */
 const CHEVRON_SIZE = 20;
 
@@ -76,6 +84,44 @@ export const locationTreeData = (nodes: Node[]): TreeNodeData[] => {
   return childrenOf(null);
 };
 
+/**
+ * A place's path from the root, as a Cascader reads its value: its ancestors'
+ * ids, then its own. Empty for none, or for a place no longer in the tree.
+ */
+export const treePath = (nodes: Node[], id: string): string[] => {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const path: string[] = [];
+  for (let node = byId.get(id); node; node = node.parent ? byId.get(node.parent) : undefined) {
+    path.unshift(node.id);
+  }
+  return path;
+};
+
+/**
+ * What a tree's Cascader — a device's location, a product's category — shares:
+ * the field shows the full path, "Société > Bâtiment > Baie"; the dropdown takes the width of its columns, not the field's, which would cut
+ * them, and shows two levels at a time, each with the application's thin
+ * scrollbar; any level may be chosen.
+ */
+export const TREE_CASCADER = {
+  comboboxProps: { width: "max-content", position: "bottom-start" },
+  columnWidth: CASCADER_COLUMN_WIDTH,
+  // Two levels side by side: deeper ones replace the first, which an arrow
+  // brings back.
+  maxDisplayedLevels: 2,
+  // Each column scrolls with the thin bar of the drawers' lists, on its right
+  // edge: the column's inset moves inside the scrolled area.
+  scrollAreaProps: {
+    type: "auto",
+    scrollbars: "y",
+    classNames: { scrollbar: scroll.scrollbar, thumb: scroll.thumb },
+    styles: { viewport: { padding: "var(--combobox-padding)" } },
+  },
+  styles: { columnScroll: { padding: 0 } },
+  separator: " > ",
+  changeOnSelect: true,
+} as const;
+
 /** Nested data back to flat places: a parent before its children, in their order. */
 const flatten = (data: TreeNodeData[], parent: string | null = null): Node[] =>
   data.flatMap((d) => [
@@ -90,15 +136,40 @@ const subtreeOf = (nodes: Node[], id: string): Set<string> => {
   return inside;
 };
 
+/** What the tree's elements are called: places by default. */
+export interface TreeWords {
+  icon: ComponentType<{ size?: number }>;
+  /** "Aucun emplacement". */
+  none: string;
+  /** "l'emplacement". */
+  the: string;
+  /** "emplacements". */
+  plural: string;
+}
+
+const PLACE_WORDS: TreeWords = {
+  icon: IconMapPin,
+  none: "Aucun emplacement",
+  the: "l'emplacement",
+  plural: "emplacements",
+};
+
 interface EditableTreeProps {
   title: string;
   /** Under the title: whom the tree is shared by. */
   description?: string;
   nodes: Node[];
   onChange: (nodes: Node[]) => void;
+  words?: TreeWords;
 }
 
-export default function EditableTree({ title, description, nodes, onChange }: EditableTreeProps) {
+export default function EditableTree({
+  title,
+  description,
+  nodes,
+  onChange,
+  words = PLACE_WORDS,
+}: EditableTreeProps) {
   // The same data while the places do not change: Mantine's Tree starts over
   // from each new one.
   const data = useMemo(() => locationTreeData(nodes), [nodes]);
@@ -159,151 +230,161 @@ export default function EditableTree({ title, description, nodes, onChange }: Ed
       styles={{ description: { paddingBottom: 20 } }}
     >
       {nodes.length === 0 ? (
-        <EmptyList icon={IconMapPin} message="Aucun emplacement" />
+        <EmptyList icon={words.icon} message={words.none} />
       ) : (
-        // One control: the whole tree in a single sunken frame.
+        // One control: the whole tree in a single sunken frame, which scrolls
+        // with the thin bar of the drawers' lists (EditableRows), on the
+        // frame's right edge: the frame's inset is inside the scrolled area.
         <Box
-          p={FRAME_PADDING}
-          style={{ backgroundColor: ROW_BACKGROUND, borderRadius: FRAME_RADIUS }}
+          style={{ backgroundColor: ROW_BACKGROUND, borderRadius: FRAME_RADIUS, overflow: "hidden" }}
         >
-          <Tree
-            className={classes.root}
-            style={{ "--editable-tree-row": `${ROW_HEIGHT}px` } as CSSProperties}
-            data={data}
-            tree={tree}
-            levelOffset={LEVEL_OFFSET}
-            withLines
-            withDragHandle
-            onDragDrop={move}
-            expandOnClick={false}
-            // A click selects the place — never unselects it: "Ajouter un
-            // élément enfant" adds under it.
-            selectOnClick={false}
-            renderNode={({
-              node,
-              expanded,
-              hasChildren,
-              elementProps,
-              dragHandleProps,
-              selected: isSelected,
-            }) => {
-              const value = node.value;
-              const isChecked = tree.isNodeChecked(value);
-              const isPartly = tree.isNodeIndeterminate(value);
-              return (
-                <Group
-                  gap={6}
-                  wrap="nowrap"
-                  {...elementProps}
-                  onClick={() => {
-                    tree.clearSelected();
-                    tree.select(value);
-                  }}
-                  style={{
-                    ...elementProps.style,
-                    height: ROW_HEIGHT,
-                    // The start is Mantine's: each level's offset.
-                    paddingInlineEnd: ROW_INSET,
-                    borderRadius: "var(--mantine-radius-sm)",
-                    // A neutral gray, a step darker than the frame.
-                    backgroundColor: isSelected ? "var(--milo-menu-hover)" : undefined,
-                  }}
-                >
-                  <Box
-                    {...dragHandleProps}
-                    c="dimmed"
-                    style={{ display: "flex", cursor: "grab", flexShrink: 0 }}
-                    aria-label={`Déplacer ${String(node.label) || "l'emplacement"}`}
-                  >
-                    <IconGripVertical size={14} />
-                  </Box>
-                  {hasChildren ? (
-                    <ActionIcon
-                      // Mantine's gray leans blue: a neutral one, and a
-                      // neutral hover (EditableTree.module.css).
-                      variant="transparent"
-                      c={NEUTRAL_TEXT}
-                      className={classes.chevron}
-                      size={CHEVRON_SIZE}
-                      aria-label={expanded ? "Replier" : "Déplier"}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        tree.toggleExpanded(value);
+          <ScrollArea.Autosize
+            mah={VISIBLE_ROWS * ROW_HEIGHT + 2 * FRAME_PADDING}
+            type="auto"
+            scrollbars="y"
+            classNames={{ scrollbar: scroll.scrollbar, thumb: scroll.thumb }}
+          >
+            <Box p={FRAME_PADDING}>
+              <Tree
+                className={classes.root}
+                style={{ "--editable-tree-row": `${ROW_HEIGHT}px` } as CSSProperties}
+                data={data}
+                tree={tree}
+                levelOffset={LEVEL_OFFSET}
+                withLines
+                withDragHandle
+                onDragDrop={move}
+                expandOnClick={false}
+                // A click selects the place — never unselects it: "Ajouter un
+                // élément enfant" adds under it.
+                selectOnClick={false}
+                renderNode={({
+                  node,
+                  expanded,
+                  hasChildren,
+                  elementProps,
+                  dragHandleProps,
+                  selected: isSelected,
+                }) => {
+                  const value = node.value;
+                  const isChecked = tree.isNodeChecked(value);
+                  const isPartly = tree.isNodeIndeterminate(value);
+                  return (
+                    <Group
+                      gap={6}
+                      wrap="nowrap"
+                      {...elementProps}
+                      onClick={() => {
+                        tree.clearSelected();
+                        tree.select(value);
+                      }}
+                      style={{
+                        ...elementProps.style,
+                        height: ROW_HEIGHT,
+                        // The start is Mantine's: each level's offset.
+                        paddingInlineEnd: ROW_INSET,
+                        borderRadius: "var(--mantine-radius-sm)",
+                        // A neutral gray, a step darker than the frame.
+                        backgroundColor: isSelected ? "var(--milo-menu-hover)" : undefined,
                       }}
                     >
-                      <IconChevronRight
-                        size={14}
-                        style={{
-                          transform: expanded ? "rotate(90deg)" : undefined,
-                          transition: "transform 150ms",
+                      <Box
+                        {...dragHandleProps}
+                        c="dimmed"
+                        style={{ display: "flex", cursor: "grab", flexShrink: 0 }}
+                        aria-label={`Déplacer ${String(node.label) || words.the}`}
+                      >
+                        <IconGripVertical size={14} />
+                      </Box>
+                      {hasChildren ? (
+                        <ActionIcon
+                          // Mantine's gray leans blue: a neutral one, and a
+                          // neutral hover (EditableTree.module.css).
+                          variant="transparent"
+                          c={NEUTRAL_TEXT}
+                          className={classes.chevron}
+                          size={CHEVRON_SIZE}
+                          aria-label={expanded ? "Replier" : "Déplier"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            tree.toggleExpanded(value);
+                          }}
+                        >
+                          <IconChevronRight
+                            size={14}
+                            style={{
+                              transform: expanded ? "rotate(90deg)" : undefined,
+                              transition: "transform 150ms",
+                            }}
+                          />
+                        </ActionIcon>
+                      ) : null}
+                      <Checkbox.Indicator
+                        size="xs"
+                        checked={isChecked}
+                        indeterminate={isPartly}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isChecked) tree.uncheckNode(value);
+                          else tree.checkNode(value);
                         }}
+                        style={{ cursor: "pointer", flexShrink: 0 }}
                       />
-                    </ActionIcon>
-                  ) : null}
-                  <Checkbox.Indicator
-                    size="xs"
-                    checked={isChecked}
-                    indeterminate={isPartly}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (isChecked) tree.uncheckNode(value);
-                      else tree.checkNode(value);
-                    }}
-                    style={{ cursor: "pointer", flexShrink: 0 }}
-                  />
-                  {editing === value ? (
-                    <TextInput
-                      size="xs"
-                      placeholder="Nom"
-                      aria-label="Nom"
-                      defaultValue={String(node.label ?? "")}
-                      maxLength={NAME_MAX}
-                      autoFocus
-                      onClick={(e) => e.stopPropagation()}
-                      onBlur={(e) => {
-                        // Escape gives up the typing: the name stays as it was.
-                        const typed = cancelled.current
-                          ? String(node.label ?? "")
-                          : e.currentTarget.value;
-                        cancelled.current = false;
-                        rename(value, typed);
-                      }}
-                      onKeyDown={(e) => {
-                        // The keys are the field's: the Tree would take Space
-                        // to fold or check, the arrows to move.
-                        e.stopPropagation();
-                        // Consumed: the window that holds this field does not also save.
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          e.currentTarget.blur();
-                        }
-                        if (e.key === "Escape") {
-                          e.preventDefault();
-                          cancelled.current = true;
-                          e.currentTarget.blur();
-                        }
-                      }}
-                      // Escape cancels the typing alone: the window stays open
-                      // (Mantine closes it from a window listener this
-                      // attribute holds back).
-                      data-mantine-stop-propagation
-                      style={{ flex: 1, minWidth: 0 }}
-                    />
-                  ) : (
-                    <Text
-                      size="sm"
-                      truncate
-                      onDoubleClick={() => setEditing(value)}
-                      title="Double-cliquer pour renommer"
-                      style={{ flex: 1, minWidth: 0, userSelect: "none" }}
-                    >
-                      {node.label}
-                    </Text>
-                  )}
-                </Group>
-              );
-            }}
-          />
+                      {editing === value ? (
+                        <TextInput
+                          size="xs"
+                          placeholder="Nom"
+                          aria-label="Nom"
+                          defaultValue={String(node.label ?? "")}
+                          maxLength={NAME_MAX}
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                          onBlur={(e) => {
+                            // Escape gives up the typing: the name stays as it was.
+                            const typed = cancelled.current
+                              ? String(node.label ?? "")
+                              : e.currentTarget.value;
+                            cancelled.current = false;
+                            rename(value, typed);
+                          }}
+                          onKeyDown={(e) => {
+                            // The keys are the field's: the Tree would take Space
+                            // to fold or check, the arrows to move.
+                            e.stopPropagation();
+                            // Consumed: the window that holds this field does not also save.
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              e.currentTarget.blur();
+                            }
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelled.current = true;
+                              e.currentTarget.blur();
+                            }
+                          }}
+                          // Escape cancels the typing alone: the window stays open
+                          // (Mantine closes it from a window listener this
+                          // attribute holds back).
+                          data-mantine-stop-propagation
+                          style={{ flex: 1, minWidth: 0 }}
+                        />
+                      ) : (
+                        <Text
+                          size="sm"
+                          truncate
+                          onDoubleClick={() => setEditing(value)}
+                          title="Double-cliquer pour renommer"
+                          style={{ flex: 1, minWidth: 0, userSelect: "none" }}
+                        >
+                          {node.label}
+                        </Text>
+                      )}
+                    </Group>
+                  );
+                }}
+              />
+            </Box>
+          </ScrollArea.Autosize>
         </Box>
       )}
 
@@ -333,13 +414,13 @@ export default function EditableTree({ title, description, nodes, onChange }: Ed
           onChange(nodes.filter((n) => !gone.has(n.id)));
         }}
         title={
-          checked.length > 1 ? `Supprimer ${checked.length} emplacements` : "Supprimer l'emplacement"
+          checked.length > 1 ? `Supprimer ${checked.length} ${words.plural}` : `Supprimer ${words.the}`
         }
         message={
           <>
             Voulez-vous vraiment supprimer{" "}
             {checked.length > 1
-              ? `ces ${checked.length} emplacements`
+              ? `ces ${checked.length} ${words.plural}`
               : `« ${checked[0]?.name ?? ""} »`}{" "}
             et tout ce qui s'y trouve ? Cette action est irréversible.
           </>

@@ -24,6 +24,7 @@ export * from "./notification-settings.js";
 export * from "./notifications.js";
 export * from "./password-rules.js";
 export * from "./printers.js";
+export * from "./products.js";
 export * from "./proxies.js";
 export * from "./roles.js";
 export * from "./search.js";

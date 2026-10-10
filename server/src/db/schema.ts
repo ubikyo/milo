@@ -35,7 +35,9 @@ export const SCHEMA = `
 
 
   -- Les catégories sont propres à un tableau : deux tableaux peuvent nommer
-  -- une catégorie de la même façon.
+  -- une catégorie de la même façon. Elles forment un arbre — « Interne >
+  -- Informatique > Réseau » — : deux catégories d'un même parent ne portent
+  -- pas le même nom, ce que vérifie le serveur (routes/project-boards.ts).
   CREATE TABLE IF NOT EXISTS categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
@@ -43,9 +45,11 @@ export const SCHEMA = `
     -- Ancien emplacement des jalons, avant les types de jalons
     -- (milestone_types) : plus lu, gardé pour les bases qui le portent.
     milestones TEXT NOT NULL DEFAULT '[]',
-    -- Leur ordre dans le tableau, glissé dans le tiroir du widget « Projets ».
+    -- Leur ordre dans le tableau, glissé dans le tiroir du widget « Projets » :
+    -- un parent avant ses enfants.
     position INTEGER NOT NULL DEFAULT 0,
-    UNIQUE (board_id, name)
+    -- Sa catégorie parente, aucune à la racine.
+    parent_id INTEGER REFERENCES categories(id)
   );
 
   -- Les accès d'un utilisateur ou d'un groupe Entra à un workspace : une
@@ -602,12 +606,103 @@ ${DECLARED_ASSET_SCHEMA}
     PRIMARY KEY (company_id, member_id)
   );
 
+  -- A contact's thread, as a card's: Milo notes its creation and its edits
+  -- there (lib/history.ts).
+  CREATE TABLE IF NOT EXISTS contact_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    text TEXT NOT NULL,
+    system INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   -- A board's contact lists, as JSON: its defaults until it records its own.
   CREATE TABLE IF NOT EXISTS board_contact_settings (
     board_id INTEGER PRIMARY KEY REFERENCES boards(id) ON DELETE CASCADE,
     payment_terms TEXT NOT NULL DEFAULT ${jsonDefault(CONTACT_SETTINGS_DEFAULTS.payment_terms)},
     currencies TEXT NOT NULL DEFAULT ${jsonDefault(CONTACT_SETTINGS_DEFAULTS.currencies)},
     countries TEXT NOT NULL DEFAULT ${jsonDefault(CONTACT_SETTINGS_DEFAULTS.countries)}
+  );
+  -- The products of a board's "Produits" widgets (shared, products.ts): their
+  -- variants — its own attributes and their colored values — as a JSON list,
+  -- in their order; their photos, documents and comments as a declared
+  -- asset's and a card's.
+  CREATE TABLE IF NOT EXISTS product_label_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS product_labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    group_id INTEGER REFERENCES product_label_groups(id),
+    name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT 'blue.6',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS products (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL,
+    favorite INTEGER NOT NULL DEFAULT 0,
+    notes TEXT NOT NULL DEFAULT '',
+    tracking TEXT NOT NULL DEFAULT 'none',
+    category TEXT NOT NULL DEFAULT '',
+    variants TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS product_label_links (
+    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    label_id INTEGER NOT NULL REFERENCES product_labels(id) ON DELETE CASCADE,
+    PRIMARY KEY (product_id, label_id)
+  );
+
+  -- A board's product lists, as JSON: its categories tree, stored flat.
+  CREATE TABLE IF NOT EXISTS board_product_settings (
+    board_id INTEGER PRIMARY KEY REFERENCES boards(id) ON DELETE CASCADE,
+    categories TEXT NOT NULL DEFAULT '[]'
+  );
+
+  CREATE TABLE IF NOT EXISTS product_photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    file TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    size INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS product_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    file TEXT NOT NULL,
+    name TEXT NOT NULL,
+    mime TEXT NOT NULL DEFAULT '',
+    size INTEGER NOT NULL DEFAULT 0,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS product_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    text TEXT NOT NULL,
+    system INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
   );
   -- The tables of a board's managed device asset widgets
   -- (lib/managed-device-asset-models.ts, lib/managed-device-asset-vlans.ts), as JSON. models NULL: the starting table of Apple
@@ -1019,6 +1114,7 @@ ${DECLARED_ASSET_SCHEMA}
 export const INDEXES = `
   CREATE INDEX IF NOT EXISTS idx_views_workspace ON views(workspace_id);
   CREATE INDEX IF NOT EXISTS idx_categories_board ON categories(board_id);
+  CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id);
 
 
   -- Les projets se lisent filtrés, et toujours rangés du plus récent au plus
@@ -1055,6 +1151,14 @@ ${DECLARED_ASSET_INDEXES}
   CREATE INDEX IF NOT EXISTS idx_contacts_board ON contacts(board_id, list_key);
   CREATE INDEX IF NOT EXISTS idx_contact_label_links_label ON contact_label_links(label_id);
   CREATE INDEX IF NOT EXISTS idx_contact_members_member ON contact_members(member_id);
+  CREATE INDEX IF NOT EXISTS idx_contact_comments_contact ON contact_comments(contact_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_product_labels_board ON product_labels(board_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_product_labels_group ON product_labels(group_id);
+  CREATE INDEX IF NOT EXISTS idx_products_board ON products(board_id, list_key);
+  CREATE INDEX IF NOT EXISTS idx_product_label_links_label ON product_label_links(label_id);
+  CREATE INDEX IF NOT EXISTS idx_product_photos_product ON product_photos(product_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_product_attachments_product ON product_attachments(product_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_product_comments_product ON product_comments(product_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_labels_group ON labels(group_id);
   CREATE INDEX IF NOT EXISTS idx_label_groups_board ON label_groups(board_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_card_labels_label ON card_labels(label_id);

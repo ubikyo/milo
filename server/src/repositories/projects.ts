@@ -7,10 +7,27 @@ import type { IdRow, NextRow, ProjectJoinedRow, ProjectRow } from "../db/rows.js
 import { projectLabelGroups } from "./label-groups.js";
 import { actorOf } from "./users.js";
 
+/**
+ * Each category with its path from the root: "Interne > Informatique >
+ * Réseau". Walked down from the roots, it never loops.
+ */
+export const CATEGORY_PATHS = `
+  category_paths (id, path) AS (
+    SELECT id, name FROM categories WHERE parent_id IS NULL
+    UNION ALL
+    SELECT categories.id, category_paths.path || ' > ' || categories.name
+    FROM categories JOIN category_paths ON categories.parent_id = category_paths.id
+  )
+`;
+
+// A project reads with its category's path; one the tree would no longer
+// reach keeps its name.
 export const PROJECT_SELECT = `
-  SELECT projects.*, categories.name AS category_name
+  WITH RECURSIVE ${CATEGORY_PATHS}
+  SELECT projects.*, COALESCE(category_paths.path, categories.name) AS category_name
   FROM projects
   JOIN categories ON categories.id = projects.category_id
+  LEFT JOIN category_paths ON category_paths.id = projects.category_id
 `;
 
 export const projects = {

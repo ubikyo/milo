@@ -29,7 +29,7 @@ import {
   type ReactNode,
 } from "react";
 import { OsLogo, ProtectionLogo } from "./ManagedDeviceAssetLogos";
-import { keptColumns, defaultWidths } from "../ui/ColumnFields";
+import { keptColumns, defaultWidths, useColumnWidthEditing, DATE_FORMATS, formatMoment } from "../ui/ColumnFields";
 import type { ListColumn } from "../ui/ColumnFields";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
@@ -301,7 +301,7 @@ export const MANAGED_DEVICE_ASSET_COLUMNS: (ListColumn & { key: ColumnKey })[] =
   { key: "protection", label: "Antivirus" },
   { key: "encrypted", label: "Chiffré" },
   { key: "disk", label: "Disque" },
-  { key: "inventory", label: "Dernière actualisation" },
+  { key: "inventory", label: "Dernière actualisation", formats: DATE_FORMATS },
 ];
 
 /** What the page gives the list. */
@@ -378,10 +378,14 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
   // The columns shown, in the order the configuration sets.
   // A column can come back: "id" distinguishes each occurrence.
   const columns = keptColumns(MANAGED_DEVICE_ASSET_COLUMNS, config);
+  // In edit mode, the widths set above the columns go to the widget.
+  const widthEditing = useColumnWidthEditing(MANAGED_DEVICE_ASSET_COLUMNS, config, columns.map((c) => c.id));
   const resize = useResizableColumns(
     "managed-device-assets",
     columns.map((c) => c.id),
     defaultWidths(MANAGED_DEVICE_ASSET_COLUMNS, config),
+    undefined,
+    widthEditing,
   );
 
   const th = (
@@ -419,7 +423,10 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
   };
 
   /** Each column's cell, for a workstation. */
-  const cells: Record<ColumnKey, (workstation: ManagedDeviceAsset, group?: Id) => ReactNode> = {
+  const cells: Record<
+    ColumnKey,
+    (workstation: ManagedDeviceAsset, group?: Id, format?: string) => ReactNode
+  > = {
     name: (workstation) => (
       <Table.Td key="name" style={{ whiteSpace: "nowrap" }}>
         <Badge color="green" variant="filled" radius="sm" h={TAG_HEIGHT} tt="uppercase">
@@ -460,9 +467,9 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
         <DiskCell disk={workstation.system_disk} />
       </Table.Td>
     ),
-    inventory: (workstation) => (
+    inventory: (workstation, _group, format) => (
       <Table.Td key="inventory">
-        <Text size="sm">{dayjs(workstation.last_inventory).format("DD/MM/YYYY HH:mm")}</Text>
+        <Text size="sm">{formatMoment(workstation.last_inventory, format)}</Text>
       </Table.Td>
     ),
   };
@@ -490,6 +497,7 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
     >
       {resize.colgroup}
       <Table.Thead>
+        {resize.widthRow}
         <Table.Tr>{columns.map((c) => headers[c.key](c.id, c.group))}</Table.Tr>
       </Table.Thead>
       <Table.Tbody>
@@ -510,7 +518,7 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
             }}
           >
             {columns.map((c) => (
-              <Fragment key={c.id}>{cells[c.key](workstation, c.group)}</Fragment>
+              <Fragment key={c.id}>{cells[c.key](workstation, c.group, c.format)}</Fragment>
             ))}
           </Table.Tr>
         ))}

@@ -328,10 +328,16 @@ export interface MilestoneType {
   milestones: Milestone[];
 }
 
+/**
+ * A category of a board's tree — "Interne > Informatique > Réseau" —: its
+ * parent's id, none at the root. The board's are read in their order, a
+ * parent before its children.
+ */
 export interface Category {
   id: Id;
   board_id: Id;
   name: string;
+  parent_id: Id | null;
   /** The milestones of the projects of this category, stored by value; empty if none. */
   milestones: Milestone[];
   /** Present on the list. */
@@ -368,6 +374,7 @@ export interface Project {
   status: number;
   created_at: string;
   updated_at: string;
+  /** Its category's path: "Interne > Informatique > Réseau". */
   category_name: string;
   actors: Actor[];
   labels: ProjectLabel[];

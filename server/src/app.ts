@@ -4,7 +4,7 @@
 
 import cors from "cors";
 import express from "express";
-import { CONTACT_ROUTES, DECLARED_ASSET_KINDS, DECLARED_ASSET_ROUTES, DECLARED_ASSET_WORDS } from "@milo/shared";
+import { CONTACT_ROUTES, DECLARED_ASSET_KINDS, PRODUCT_ROUTES, DECLARED_ASSET_ROUTES, DECLARED_ASSET_WORDS } from "@milo/shared";
 import { env } from "./env.js";
 import { countWrites, feed, payload } from "./middleware/events.js";
 import { errorHandler, notFoundHandler } from "./middleware/errors.js";
@@ -47,12 +47,14 @@ import { managedDeviceAssetSettingsRoutes } from "./routes/managed-device-asset-
 import { declaredAssetSettingsRoutes } from "./routes/declared-asset-settings.js";
 import { declaredAssetRoutes } from "./routes/declared-assets.js";
 import { contactRoutes, contactSettingsRoutes } from "./routes/contacts.js";
+import { productRoutes, productSettingsRoutes } from "./routes/products.js";
 import { milestoneTypeRoutes } from "./routes/milestone-types.js";
 import { followRoutes } from "./routes/follows.js";
 import {
   managedDeviceAssetLabelRoutes,
   declaredAssetLabelRoutes,
   contactLabelRoutes,
+  productLabelRoutes,
   labelRoutes,
   projectLabelRoutes,
   supportLabelRoutes,
@@ -234,6 +236,15 @@ export const createApp = (): express.Express => {
     `/api${CONTACT_ROUTES.settings}`,
     settingsNotice("les réglages des contacts"),
     contactSettingsRoutes,
+  );
+  // The products of the "Produits" widgets (Logistique), their labels, their
+  // board's lists.
+  app.use(`/api${PRODUCT_ROUTES.products}`, productRoutes);
+  app.use(`/api${PRODUCT_ROUTES.labels}`, productLabelRoutes);
+  app.use(
+    `/api${PRODUCT_ROUTES.settings}`,
+    settingsNotice("les réglages des produits"),
+    productSettingsRoutes,
   );
 
 

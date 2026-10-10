@@ -30,6 +30,8 @@ export const RESOURCES = [
   "application-assets",
   /** The contacts, and their labels (contacts.ts). */
   "contacts",
+  /** The products, their labels and their comments (products.ts). */
+  "products",
   /** The styles the titles share. */
   "title-styles",
   /** The proxies, and whether each is connected (shared/proxies.ts). */
