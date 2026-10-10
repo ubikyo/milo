@@ -41,10 +41,11 @@ const EMPTY_DRAFT: Draft = { name: "", printer_id: null, width: null, height: nu
 
 const SIZE_WIDTH = 96;
 /**
- * The printers' columns (PrintersTab: type 100 + IP address 150 + model 120)
- * less the two sizes, so the names are as wide as the printers' above.
+ * The printers' columns (PrintersTab: type 100 + IP address 150 + connection
+ * 140 + model 120, and the gap the connection adds, "sm") less the two sizes,
+ * so the names are as wide as the printers' above.
  */
-const PRINTER_WIDTH = 100 + 150 + 120 - 2 * SIZE_WIDTH;
+const PRINTER_WIDTH = 100 + 150 + 140 + 120 + 12 - 2 * SIZE_WIDTH;
 
 const onError = (e: unknown) => notifyError(errorMessage(e));
 

@@ -20,6 +20,8 @@ import type {
   TaskList,
 } from "@milo/shared";
 import { MANAGED_DEVICE_ASSET_INDICATORS } from "./managed-device-asset";
+import { contactListWidget } from "./contact";
+import { contactCountIndicator } from "./contact/count";
 import { declaredAssetWidgets } from "./declared-asset";
 import { INDICATORS } from "./support";
 import type { IndicatorConfigProps } from "./support/types";
@@ -352,6 +354,10 @@ export const BOARD_WIDGETS: BoardWidgetDefinition[] = [
     )),
   ),
   ...MANAGED_DEVICE_ASSET_INDICATOR_WIDGETS,
+  // The logistics: the contacts.
+  ...prefixed("contact", [contactListWidget, contactCountIndicator], (d) => d, (w, _d, config, render) => (
+    <w.Display config={config} {...render} />
+  )),
 ];
 
 const BY_TYPE = new Map(BOARD_WIDGETS.map((w) => [w.type, w]));

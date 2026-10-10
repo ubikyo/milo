@@ -19,6 +19,7 @@ import {
   IconPrinter,
   IconShieldLock,
   IconStack2,
+  IconTopologyStar3,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -42,6 +43,7 @@ import type { EntraCheckControls, EntraCheckPhase } from "./EntraTab";
 import TemplatesTab from "./TemplatesTab";
 import DisplayTab from "./DisplayTab";
 import PrintersTab from "./PrintersTab";
+import ProxiesTab from "./ProxiesTab";
 import WorkspacesTab from "./WorkspacesTab";
 import SettingsIntro from "./SettingsIntro";
 import AdministrationTab from "./AdministrationTab";
@@ -74,7 +76,14 @@ const TABS: {
     label: "Impression",
     icon: IconPrinter,
     description:
-      "La liste ci-dessous définit les imprimantes Zebra connectées au réseau Ethernet et les formats d’étiquettes associés.",
+      "La liste ci-dessous définit les imprimantes Zebra connectées au réseau Ethernet et les formats d’étiquettes associés. Chacune est jointe directement par Milo, ou au travers d’un proxy.",
+  },
+  {
+    value: "proxy",
+    label: "Proxy",
+    icon: IconTopologyStar3,
+    description:
+      "Les proxys Milo s’installent sur le réseau d’un site pour permettre à Milo, hébergé sur Internet, d’en joindre les périphériques — les imprimantes pour commencer. Chaque proxy se connecte à Milo en HTTPS avec son token, à coller dans /etc/milo.proxy.conf.",
   },
   {
     value: "display",
@@ -107,6 +116,7 @@ const TAB_RIGHTS: Record<string, (a: AdminPermissions) => boolean> = {
   administration: (a) => a.administration.includes("view"),
   templates: (a) => a.templates.includes("access"),
   printing: () => true,
+  proxy: () => true,
   display: () => true,
   api: () => true,
 };
@@ -264,6 +274,8 @@ export default function SettingsModal({
   const [checkPhase, setCheckPhase] = useState<EntraCheckPhase>("form");
   // "Se connecter" waits for a valid redirect address (Entra tab).
   const [redirectReady, setRedirectReady] = useState(false);
+  // Nothing is saved, nor connected, while an Entra field is empty.
+  const [entraComplete, setEntraComplete] = useState(true);
   const connecting = standalone && entraConnected === false;
   // Connected, nothing is saved without a sending address (Entra tab).
   const [sender, setSender] = useState<string | null>(null);
@@ -469,6 +481,7 @@ export default function SettingsModal({
               checkRef={entraCheck}
               onPhase={setCheckPhase}
               onRedirectReady={setRedirectReady}
+              onComplete={setEntraComplete}
             />,
             setEntraActions,
           )}
@@ -480,6 +493,8 @@ export default function SettingsModal({
           {panel("templates", <TemplatesTab canEdit={canEdit} />)}
 
           {panel("printing", <PrintersTab canEdit={canEdit} />)}
+
+          {panel("proxy", <ProxiesTab canEdit={canEdit} />)}
 
           {panel(
             "display",
@@ -525,6 +540,7 @@ export default function SettingsModal({
                     color="teal"
                     onClick={() => entraCheck.current?.connect()}
                     loading={checkPhase === "checking"}
+                    disabled={!entraComplete}
                   >
                     Se connecter
                   </Button>
@@ -540,7 +556,7 @@ export default function SettingsModal({
                     color="teal"
                     onClick={save}
                     loading={registration}
-                    disabled={senderMissing}
+                    disabled={senderMissing || !entraComplete}
                   >
                     Enregistrer
                   </Button>

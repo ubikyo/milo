@@ -28,8 +28,12 @@ export const RESOURCES = [
   /** The declared assets, by kind: what is entered by hand (declared-assets.ts). */
   "unmanaged-device-assets",
   "application-assets",
+  /** The contacts, and their labels (contacts.ts). */
+  "contacts",
   /** The styles the titles share. */
   "title-styles",
+  /** The proxies, and whether each is connected (shared/proxies.ts). */
+  "proxies",
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];

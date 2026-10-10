@@ -103,6 +103,9 @@ import type {
   ApiToken,
   ApiTokenInput,
   CreatedApiToken,
+  CreatedMiloProxy,
+  MiloProxy,
+  MiloProxyInput,
   Printer,
   PrinterInput,
   PrinterInfos,
@@ -131,13 +134,16 @@ import type {
   DeclaredAssetKind,
   DeclaredAssetPhoto,
   DeclaredAssetSettings,
+  Contact,
+  ContactInput,
+  ContactSettings,
   UpdateMeInput,
   OpeningView,
   VersionPayload,
   SearchResult,
   Notification,
 } from "@milo/shared";
-import { DECLARED_ASSET_ROUTES } from "@milo/shared";
+import { CONTACT_ROUTES, DECLARED_ASSET_ROUTES } from "@milo/shared";
 import { getToken, setToken } from "../lib/auth";
 
 /** An uploaded reply attachment: what the reply then cites. */
@@ -616,6 +622,15 @@ export const api = {
   deleteDeclaredAssetLabel: (kind: DeclaredAssetKind, id: Id) =>
     del(`${DECLARED_ASSET_ROUTES[kind].labels}/${id}`),
 
+  // A board's contact labels (shared, contacts.ts).
+  getContactLabels: (boardId: string | Id) =>
+    get<Label[]>(`${CONTACT_ROUTES.labels}${queryString({ board: boardId })}`),
+  createContactLabel: (board_id: Id | string, name: string, color: string, group_id?: Id) =>
+    post<Label>(CONTACT_ROUTES.labels, { board_id, name, color, group_id }),
+  updateContactLabel: (id: Id, data: LabelInput) =>
+    put<Label>(`${CONTACT_ROUTES.labels}/${id}`, data),
+  deleteContactLabel: (id: Id) => del(`${CONTACT_ROUTES.labels}/${id}`),
+
   // The groups of a kind of labels: those of a board ("board_id"), or of
   // Support, which belong to none.
   getLabelGroups: (base: LabelsBase, board?: Id | string) =>
@@ -894,6 +909,18 @@ export const api = {
     ),
   deleteDeclaredAssetAttachment: (kind: DeclaredAssetKind, id: Id) =>
     del(`${DECLARED_ASSET_ROUTES[kind].assets}/attachments/${id}`),
+  // A board's contacts, and its contact lists: payment terms, currencies.
+  getContacts: (boardId: Id) =>
+    get<Contact[]>(`${CONTACT_ROUTES.contacts}${queryString({ board: boardId })}`),
+  createContact: (data: ContactInput & { board_id: Id; list_key: string }) =>
+    post<Contact>(CONTACT_ROUTES.contacts, data),
+  updateContact: (id: Id, data: ContactInput) =>
+    put<Contact>(`${CONTACT_ROUTES.contacts}/${id}`, data),
+  deleteContact: (id: Id) => del(`${CONTACT_ROUTES.contacts}/${id}`),
+  getContactSettings: (boardId: Id) =>
+    get<ContactSettings>(`${CONTACT_ROUTES.settings}${queryString({ board: boardId })}`),
+  updateContactSettings: (boardId: Id, data: Partial<ContactSettings>) =>
+    put<ContactSettings>(`${CONTACT_ROUTES.settings}${queryString({ board: boardId })}`, data),
   getMiloSettings: () => get<MiloSettings>("/milo-settings"),
   updateMiloSettings: (data: Partial<MiloSettings>) => put<MiloSettings>("/milo-settings", data),
   getMailTemplates: () => get<MailTemplate[]>("/mail-templates"),
@@ -915,6 +942,13 @@ export const api = {
   createApiToken: (data: ApiTokenInput) => post<CreatedApiToken>("/api-tokens", data),
   updateApiToken: (id: Id, data: ApiTokenInput) => put<ApiToken>(`/api-tokens/${id}`, data),
   deleteApiToken: (id: Id) => del(`/api-tokens/${id}`),
+
+  // "Paramétrage" > "Proxy": the token only comes back on generation.
+  getProxies: () => get<MiloProxy[]>("/proxies"),
+  createProxy: (data: MiloProxyInput) => post<CreatedMiloProxy>("/proxies", data),
+  updateProxy: (id: Id, data: MiloProxyInput) => put<MiloProxy>(`/proxies/${id}`, data),
+  regenerateProxyToken: (id: Id) => post<CreatedMiloProxy>(`/proxies/${id}/token`, {}),
+  deleteProxy: (id: Id) => del(`/proxies/${id}`),
 
   getPrinters: () => get<Printer[]>("/printers"),
   // Each printer asked for its model: a few seconds at most.

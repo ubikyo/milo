@@ -35,6 +35,11 @@ const KINDS = {
     scope:
       "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type application, du tableau actuel et uniquement pour ce tableau.",
   },
+  "contact-labels": {
+    base: "/contact-labels",
+    scope:
+      "Les étiquettes configurées ci-dessous sont communes à l'ensemble des widgets, de type contact, du tableau actuel et uniquement pour ce tableau.",
+  },
   "support-labels": {
     base: "/support-labels",
     scope:

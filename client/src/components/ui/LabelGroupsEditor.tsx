@@ -114,6 +114,12 @@ const ROUTES: Record<LabelsBase, LabelRoutes> = {
     remove: (id) => api.deleteManagedDeviceAssetLabel(id),
     read: (boardId) => api.getManagedDeviceAssetLabels(boardId!),
   },
+  "/contact-labels": {
+    create: (boardId, l, groupId) => api.createContactLabel(boardId!, l.name, l.color, groupId),
+    update: (id, data) => api.updateContactLabel(id, data),
+    remove: (id) => api.deleteContactLabel(id),
+    read: (boardId) => api.getContactLabels(boardId!),
+  },
   ...(Object.fromEntries(
     DECLARED_ASSET_KINDS.map((kind) => [DECLARED_ASSET_ROUTES[kind].labels, declaredAssetRoutes(kind)]),
   ) as Record<(typeof DECLARED_ASSET_ROUTES)[DeclaredAssetKind]["labels"], LabelRoutes>),

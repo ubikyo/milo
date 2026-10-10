@@ -22,6 +22,11 @@ export interface Printer {
    * reached on its raw port, 9100 (lib/zebra.ts).
    */
   host: string;
+  /**
+   * The proxy it is reached through (shared/proxies.ts); "null" when Milo
+   * reaches it directly, on its own network.
+   */
+  proxy_id: Id | null;
 }
 
 export type PrinterInput = Partial<Omit<Printer, "id">>;

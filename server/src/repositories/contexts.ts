@@ -5,7 +5,15 @@
 // person chooses, board by board, the one they look at — by its name —, and
 // with no choice looks at all of them.
 
-import { ALL_CONTEXT_GROUPS, contextKey, isContextList, listKey } from "@milo/shared";
+import {
+  ALL_CONTEXT_GROUPS,
+  CONTACT_LIST_TYPE,
+  CONTACT_TYPE_CONTEXTS,
+  CONTACT_TYPE_GROUP,
+  contextKey,
+  isContextList,
+  listKey,
+} from "@milo/shared";
 import type { ContextList, Id } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import type { Selection } from "../db/query.js";
@@ -58,6 +66,10 @@ const contextListsOf = (boardId: Id): { type: ContextList; list: string }[] =>
     return [{ type: w.type, list: listKey(config) }];
   });
 
+/** Does the board carry a Contact widget? It then offers the contact types as contexts. */
+const withContacts = (boardId: Id): boolean =>
+  listsOf.all(boardId).some((w) => w.type === CONTACT_LIST_TYPE);
+
 /** The kinds of labels the board's lists use, each once. */
 const kindsOf = (boardId: Id): Set<ContextList> =>
   new Set(contextListsOf(boardId).map((l) => l.type));
@@ -87,6 +99,8 @@ export const contextGroupOptions = (boardId: Id): string[] => {
       if (key && !names.has(key)) names.set(key, name.trim());
     }
   }
+  const contactKey = contextKey(CONTACT_TYPE_GROUP);
+  if (withContacts(boardId) && !names.has(contactKey)) names.set(contactKey, CONTACT_TYPE_GROUP);
   return [...names.values()];
 };
 
@@ -124,6 +138,20 @@ export const boardContextSections = (boardId: Id): { group: string; contexts: st
         seen.add(key);
         section.contexts.push(label.name.trim());
       }
+    }
+  }
+  // The contact types, after the labels: a group of their own, not labels.
+  if (
+    withContacts(boardId) &&
+    (name === ALL_CONTEXT_GROUPS || contextKey(name) === contextKey(CONTACT_TYPE_GROUP))
+  ) {
+    const groupKey = contextKey(CONTACT_TYPE_GROUP);
+    const section = sections.get(groupKey) ?? { group: CONTACT_TYPE_GROUP, contexts: [] };
+    sections.set(groupKey, section);
+    for (const context of CONTACT_TYPE_CONTEXTS) {
+      if (seen.has(contextKey(context))) continue;
+      seen.add(contextKey(context));
+      section.contexts.push(context);
     }
   }
   return [...sections.values()].filter((s) => s.contexts.length > 0);

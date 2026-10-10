@@ -128,6 +128,10 @@ const orphans = {
        "managed_device_assets.list_key",
      )}`,
   ),
+  contacts: mutation(
+    `DELETE FROM contacts
+     WHERE list_key != '' AND NOT ${holdsKey("contact.list", "contacts.board_id", "contacts.list_key")}`,
+  ),
   ...declaredOrphans,
 } as const;
 

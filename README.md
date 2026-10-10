@@ -104,6 +104,14 @@ Le mode Support ne reçoit pas de notifications de Graph tant que
    15 derniers messages (`PREMIERE_RELEVE`, `server/src/lib/support-mail.ts`),
    réglage de mise au point à revoir avant la mise en service.
 
+### Milo Proxy
+
+Hébergé sur Internet, Milo ne joint pas les imprimantes d'un site : un
+service Milo Proxy, installé sur ce site (dépôt `milo-proxy`), s'y connecte
+en WebSocket sur HTTPS et relaie l'impression. Le protocole est décrit dans
+`ressources/proxy/PROTOCOL.md`. Côté nginx, le bloc
+`ressources/deploy/nginx-proxy-socket.conf` est à ajouter au serveur HTTPS.
+
 ## API
 
 Toutes les routes sont sous `/api` et exigent un jeton
@@ -118,6 +126,7 @@ Toutes les routes sont sous `/api` et exigent un jeton
 | Rôles | `GET/POST /roles`, `PUT/DELETE /roles/:id` |
 | Suivi | `GET /follows`, `PUT/DELETE /follows/:kind/:id` |
 | Sauvegarde | `GET /backup`, `GET /backup/archive`, `POST /backup/restore` |
+| Proxys | `GET/POST /proxies`, `PUT/DELETE /proxies/:id`, `POST /proxies/:id/token` ; WebSocket des proxys sur `/api/proxy/socket` (token de proxy, pas de session) |
 | Entra | `GET/PUT /entra`, `POST /entra/test`, `GET /entra/mailboxes` |
 | Tableaux de projets | `GET/POST /project-boards`, `PUT/DELETE /project-boards/:id` |
 | Catégories | `GET/POST /categories`, `PUT/DELETE /categories/:id` |

@@ -7,6 +7,7 @@
 
 import type { Database } from "better-sqlite3";
 import {
+  CONTACT_SETTINGS_DEFAULTS,
   DECLARED_ASSET_EXTRAS,
   DECLARED_ASSET_EXTRA_LISTS,
   DECLARED_ASSET_KINDS,
@@ -281,10 +282,23 @@ export const migrate = (db: Database): void => {
   declaredDeviceColumns(db);
   assetsNamedByKind(db);
   applicationAssets(db);
+  logisticsWidgets(db);
   declaredAssetListKeys(db);
   declaredAssetExtras(db);
   sortedCategories(db);
   // Cards created before the period, the recurrence and the due-date reminder.
+  // Contacts from before a person's job title and first name, and their
+  // boards' lists from before the countries.
+  const contactColumns = columns(db, "contacts");
+  for (const column of ["job_title", "first_name"]) {
+    if (!contactColumns.includes(column)) {
+      db.exec(`ALTER TABLE contacts ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
+    }
+  }
+  if (!columns(db, "board_contact_settings").includes("countries")) {
+    const countries = JSON.stringify(CONTACT_SETTINGS_DEFAULTS.countries).replace(/'/g, "''");
+    db.exec(`ALTER TABLE board_contact_settings ADD COLUMN countries TEXT NOT NULL DEFAULT '${countries}'`);
+  }
   const cardColumns = columns(db, "task_cards");
   for (const column of ["start_date", "recurrence", "reminder", "reminded_for"]) {
     if (!cardColumns.includes(column)) {
@@ -342,6 +356,10 @@ export const migrate = (db: Database): void => {
   // Printers are all reached on their raw port, 9100: theirs goes away.
   if (columns(db, "printers").includes("port")) {
     db.exec("ALTER TABLE printers DROP COLUMN port");
+  }
+  // Printers from before the proxies: reached directly.
+  if (!columns(db, "printers").includes("proxy_id")) {
+    db.exec("ALTER TABLE printers ADD COLUMN proxy_id INTEGER REFERENCES proxies(id) ON DELETE SET NULL");
   }
   // Last: values stored in French, translated once the earlier catch-ups,
   // which read them, have run.
@@ -1413,6 +1431,27 @@ const applicationAssets = (db: Database): void => {
       write.run(JSON.stringify({ ...parsedObject(widgets), application_asset: "delete" }), rowid);
     }
     writeSetting(db, APPLICATION_ASSETS, true);
+  })();
+};
+
+/** Set once the "Logistique" type has been granted to the groups. */
+const LOGISTICS_WIDGETS = "logistics_widgets_added";
+
+/**
+ * The "Logistique" type arrives — the contacts —: as for the applications,
+ * the groups that already have access receive every permission on it.
+ */
+const logisticsWidgets = (db: Database): void => {
+  if (readSetting(db, LOGISTICS_WIDGETS)) return;
+  db.transaction(() => {
+    const rows = db
+      .prepare("SELECT rowid, widgets FROM principal_permissions WHERE principal_type = 'group'")
+      .all() as { rowid: number; widgets: string }[];
+    const write = db.prepare("UPDATE principal_permissions SET widgets = ? WHERE rowid = ?");
+    for (const { rowid, widgets } of rows) {
+      write.run(JSON.stringify({ ...parsedObject(widgets), logistics: "delete" }), rowid);
+    }
+    writeSetting(db, LOGISTICS_WIDGETS, true);
   })();
 };
 

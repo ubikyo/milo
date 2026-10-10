@@ -51,8 +51,11 @@ export interface Copy {
 export type Clipboard = Partial<Record<`${Scope}.${CopiedItem}`, Copy>>;
 
 export interface CopyPasteValue {
-  /** The open board: the one being copied, or the one being pasted into. */
-  board: { id: Id; name: string } | null;
+  /**
+   * The open board: the one being copied, or the one being pasted into —
+   * and the context looked at, which the Contact widgets filter by.
+   */
+  board: { id: Id; name: string; context?: string | null } | null;
   clipboard: Clipboard;
   onCopy: (key: keyof Clipboard, copy: Copy) => void;
   /**

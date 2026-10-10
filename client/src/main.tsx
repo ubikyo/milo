@@ -92,6 +92,10 @@ const singleShade = (color: string): MantineColorsTuple =>
   Array.from({ length: 10 }, () => color) as unknown as MantineColorsTuple;
 
 const theme = createTheme({
+  // TEMPORARY TEST: Google Sans everywhere — remove these two lines to go
+  // back to Mantine's system fonts.
+  fontFamily: '"Google Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+  headings: { fontFamily: '"Google Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' },
   primaryColor: "blue",
   // A single red, a single orange, a single green, a single blue
   // (themes/colors.ts). Teal, which is the green of actions and links,
@@ -127,6 +131,9 @@ const theme = createTheme({
       classNames: { content: windowClasses.window },
       defaultProps: { attributes: { content: { [THEME_SCOPE_ATTRIBUTE]: "settings" } } },
     },
+    // No asterisk on required fields: the buttons that need them stay
+    // greyed out until they are filled.
+    InputWrapper: { defaultProps: { withAsterisk: false } },
     // All links in green.
     Anchor: { defaultProps: { c: "teal" } },
     // The lines between the rows of all grids, two tones darker

@@ -1,7 +1,11 @@
 // The schema. It is created empty and is never modified here: an existing
 // database goes through the migrations (migrations.ts).
 
+import { CONTACT_SETTINGS_DEFAULTS } from "@milo/shared";
 import { DECLARED_ASSET_INDEXES, DECLARED_ASSET_SCHEMA } from "./declared-asset-tables.js";
+
+/** A default list, as a column's SQL default. */
+const jsonDefault = (value: unknown): string => `'${JSON.stringify(value).replace(/'/g, "''")}'`;
 
 export const SCHEMA = `
   -- Les workspaces : une équipe chacun. Ses vues, et tout ce qu'elles
@@ -177,13 +181,30 @@ export const SCHEMA = `
     value TEXT NOT NULL DEFAULT ''
   );
 
+  -- The proxies of "Paramétrage" > "Proxy" (shared/proxies.ts): only their
+  -- token's SHA-256 is kept, shown once at its generation. What a connected
+  -- proxy says of itself is kept for when it is not.
+  CREATE TABLE IF NOT EXISTS proxies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    token_hash TEXT NOT NULL UNIQUE,
+    hint TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL DEFAULT '',
+    version TEXT NOT NULL DEFAULT '',
+    hostname TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT ''
+  );
+
   -- The printers of "Paramétrage" > "Impression": their kind (Zebra only, for
-  -- now), their name, their address — reached on port 9100 (lib/zebra.ts).
+  -- now), their name, their address — reached on port 9100 (lib/zebra.ts),
+  -- directly or through a proxy. A proxy deleted leaves them reached directly.
   CREATE TABLE IF NOT EXISTS printers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     type TEXT NOT NULL DEFAULT 'zebra',
     name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    host TEXT NOT NULL DEFAULT ''
+    host TEXT NOT NULL DEFAULT '',
+    proxy_id INTEGER REFERENCES proxies(id) ON DELETE SET NULL
   );
 
   -- The paper formats printed on (shared/printers.ts): their size in
@@ -528,6 +549,66 @@ export const SCHEMA = `
   -- The declared assets — equipment, applications —, kind by kind
   -- (declared-asset-tables.ts).
 ${DECLARED_ASSET_SCHEMA}
+  -- The contacts of a board's "Contact" widgets (shared, contacts.ts): their
+  -- e-mails, phones, addresses and websites as JSON lists, in their order; a
+  -- company's payment terms and currency, names from its board's lists.
+  CREATE TABLE IF NOT EXISTS contact_label_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS contact_labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    group_id INTEGER REFERENCES contact_label_groups(id),
+    name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT 'blue.6',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS contacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    list_key TEXT NOT NULL DEFAULT '',
+    first_name TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'person',
+    job_title TEXT NOT NULL DEFAULT '',
+    emails TEXT NOT NULL DEFAULT '[]',
+    phones TEXT NOT NULL DEFAULT '[]',
+    addresses TEXT NOT NULL DEFAULT '[]',
+    websites TEXT NOT NULL DEFAULT '[]',
+    payment_term TEXT NOT NULL DEFAULT '',
+    currency TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS contact_label_links (
+    contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    label_id INTEGER NOT NULL REFERENCES contact_labels(id) ON DELETE CASCADE,
+    PRIMARY KEY (contact_id, label_id)
+  );
+
+  -- A company's people: contacts of its board, in their order.
+  CREATE TABLE IF NOT EXISTS contact_members (
+    company_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    member_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (company_id, member_id)
+  );
+
+  -- A board's contact lists, as JSON: its defaults until it records its own.
+  CREATE TABLE IF NOT EXISTS board_contact_settings (
+    board_id INTEGER PRIMARY KEY REFERENCES boards(id) ON DELETE CASCADE,
+    payment_terms TEXT NOT NULL DEFAULT ${jsonDefault(CONTACT_SETTINGS_DEFAULTS.payment_terms)},
+    currencies TEXT NOT NULL DEFAULT ${jsonDefault(CONTACT_SETTINGS_DEFAULTS.currencies)},
+    countries TEXT NOT NULL DEFAULT ${jsonDefault(CONTACT_SETTINGS_DEFAULTS.countries)}
+  );
   -- The tables of a board's managed device asset widgets
   -- (lib/managed-device-asset-models.ts, lib/managed-device-asset-vlans.ts), as JSON. models NULL: the starting table of Apple
   -- models; vlans: none until the board records some.
@@ -969,6 +1050,11 @@ export const INDEXES = `
   CREATE INDEX IF NOT EXISTS idx_managed_device_asset_labels_board ON managed_device_asset_labels(board_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_managed_device_asset_labels_group ON managed_device_asset_labels(group_id);
 ${DECLARED_ASSET_INDEXES}
+  CREATE INDEX IF NOT EXISTS idx_contact_labels_board ON contact_labels(board_id, position, id);
+  CREATE INDEX IF NOT EXISTS idx_contact_labels_group ON contact_labels(group_id);
+  CREATE INDEX IF NOT EXISTS idx_contacts_board ON contacts(board_id, list_key);
+  CREATE INDEX IF NOT EXISTS idx_contact_label_links_label ON contact_label_links(label_id);
+  CREATE INDEX IF NOT EXISTS idx_contact_members_member ON contact_members(member_id);
   CREATE INDEX IF NOT EXISTS idx_labels_group ON labels(group_id);
   CREATE INDEX IF NOT EXISTS idx_label_groups_board ON label_groups(board_id, position, id);
   CREATE INDEX IF NOT EXISTS idx_card_labels_label ON card_labels(label_id);

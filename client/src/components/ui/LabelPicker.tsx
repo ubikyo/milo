@@ -10,7 +10,7 @@ import DeleteConfirmModal from "./DeleteConfirmModal";
 import { DragHandle, InsertLine, useDraggableStack } from "./DraggableStack";
 import EmptyPanel from "./EmptyPanel";
 import LabelChip from "./LabelChip";
-import { DECLARED_ASSET_ROUTES, DEFAULT_LABEL_COLOR } from "@milo/shared";
+import { CONTACT_ROUTES, DECLARED_ASSET_ROUTES, DEFAULT_LABEL_COLOR } from "@milo/shared";
 import type {
   DeclaredAssetKind,
   Id,
@@ -136,6 +136,15 @@ export const declaredAssetLabelsApi = (kind: DeclaredAssetKind): LabelsApi => ({
   carriers: "des assets qui la portent",
   base: DECLARED_ASSET_ROUTES[kind].labels,
 });
+
+/** A board's contact labels (shared, contacts.ts). */
+export const CONTACT_LABELS_API: LabelsApi = {
+  create: api.createContactLabel,
+  update: api.updateContactLabel,
+  remove: api.deleteContactLabel,
+  carriers: "des contacts qui la portent",
+  base: CONTACT_ROUTES.labels,
+};
 
 /**
  * A card's labels, gathered in their groups: a click checks them to apply them,

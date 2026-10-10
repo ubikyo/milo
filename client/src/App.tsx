@@ -50,6 +50,8 @@ import { requestOpening } from "./lib/searchSources";
 import type { Target } from "./lib/follow";
 import ManagedDeviceAssetDrawer from "./components/managed-device-assets/ManagedDeviceAssetDrawer";
 import { announceDeclaredAssets } from "./lib/declaredAssets";
+import { announceContacts } from "./lib/contacts";
+import { announceProxies } from "./lib/proxies";
 import SupportRequestDrawer from "./components/support/SupportRequestDrawer";
 import PreferencesModal from "./components/settings/PreferencesModal";
 import { CopyPasteContext } from "./components/ui/CopyPasteActions";
@@ -895,7 +897,10 @@ export default function App() {
       // The declared asset lists read their own: they re-read on this.
       "unmanaged-device-assets": () => announceDeclaredAssets("unmanaged_device_asset"),
       "application-assets": () => announceDeclaredAssets("application_asset"),
+      contacts: announceContacts,
       "title-styles": loadTitleStyles,
+      // Read by the Settings only, which re-read on this.
+      proxies: announceProxies,
     };
 
     const apply = async (message: FeedMessage) => {
@@ -1447,7 +1452,7 @@ export default function App() {
             menu of a widget drawer fills and empties in another. */}
           <CopyPasteContext.Provider
             value={{
-              board: board && { id: board.id, name: board.name },
+              board: board && { id: board.id, name: board.name, context: selectedContext },
               clipboard,
               onCopy: (key, copy) => setClipboard((before) => ({ ...before, [key]: copy })),
               pastes,

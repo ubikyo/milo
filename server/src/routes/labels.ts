@@ -42,6 +42,7 @@ import {
   projectLabelGroups,
   supportLabelGroups,
   declaredAssetLabelGroups,
+  contactLabelGroups,
 } from "../repositories/label-groups.js";
 import type { LabelGroupStore } from "../repositories/label-groups.js";
 import { mountLabelGroups } from "./label-groups.js";
@@ -56,6 +57,7 @@ const GROUP_TABLES: Record<LabelTable["table"], string> = {
   project_labels: "project_label_groups",
   managed_device_asset_labels: "managed_device_asset_label_groups",
   support_labels: "support_label_groups",
+  contact_labels: "contact_label_groups",
   ...(Object.fromEntries(
     DECLARED_ASSET_KINDS.map((kind) => [`${kind}_labels`, `${kind}_label_groups`]),
   ) as Record<DeclaredAssetLabels, string>),
@@ -68,6 +70,7 @@ interface LabelTable {
     | "project_labels"
     | "managed_device_asset_labels"
     | "support_labels"
+    | "contact_labels"
     | DeclaredAssetLabels;
   /** What the event stream must signal when these labels change. */
   touched: Resource[];
@@ -378,3 +381,23 @@ export const declaredAssetLabelRoutes = (kind: DeclaredAssetKind) =>
     groups: declaredAssetLabelGroups[kind],
     concernedBy: () => [],
   });
+
+/**
+ * Labels of a board's contacts: the board's own. Like the declared assets',
+ * they follow the permission on their widget type ("Logistique").
+ */
+export const contactLabelRoutes = createRoutes({
+  table: "contact_labels",
+  // The contacts carry their labels: they are re-read with them.
+  touched: ["contacts"],
+  verifyBoard: (boardId, req, right) => {
+    if (!accessIncludes(widgetRights(req.user).logistics, MANAGED_DEVICE_ASSET_LABEL_ACCESS[right])) {
+      throw right === "view"
+        ? new HttpError(404, "Introuvable")
+        : new HttpError(403, "Vous n'avez pas le droit de modifier ici");
+    }
+    return openBoard(boardId, req.user).id;
+  },
+  groups: contactLabelGroups,
+  concernedBy: () => [],
+});

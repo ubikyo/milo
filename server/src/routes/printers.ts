@@ -1,16 +1,20 @@
 // The printers of "Paramétrage" > "Impression". Set from the Settings — adding,
 // editing, deleting them require its "Modifier" right —,
 // read by everyone: whoever prints a label picks one of them. Their paper
-// formats are routes/paper-formats.ts.
+// formats are routes/paper-formats.ts. Each is reached directly, or through
+// a proxy: every change is given at once to the connected proxies, whose
+// devices the printers are (lib/proxy-hub.ts).
 
 import { Router } from "express";
 import net from "node:net";
 import { PRINTER_TYPES } from "@milo/shared";
-import type { Printer, PrinterInfos, PrinterType } from "@milo/shared";
+import type { Id, Printer, PrinterInfos, PrinterType } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import type { PrinterRow } from "../db/rows.js";
 import { badRequest, conflict, orNotFound, requireText } from "../lib/http.js";
 import { MAX_ZPL_LENGTH, printZpl, printerInfo } from "../lib/zebra.js";
+import { refreshProxyDevices } from "../lib/proxy-hub.js";
+import { proxies } from "../repositories/proxies.js";
 import { requireSettings } from "../middleware/require-auth.js";
 
 const PRINTER_NOT_FOUND = "Imprimante introuvable";
@@ -21,15 +25,18 @@ const byId = selection<PrinterRow>("SELECT * FROM printers WHERE id = ?");
 const byName = selection<PrinterRow>(
   "SELECT * FROM printers WHERE name = ? COLLATE NOCASE AND id != ?",
 );
-const create = mutation("INSERT INTO printers (type, name, host) VALUES (?, ?, ?)");
-const update = mutation("UPDATE printers SET type = ?, name = ?, host = ? WHERE id = ?");
+const create = mutation("INSERT INTO printers (type, name, host, proxy_id) VALUES (?, ?, ?, ?)");
+const update = mutation(
+  "UPDATE printers SET type = ?, name = ?, host = ?, proxy_id = ? WHERE id = ?",
+);
 const remove = mutation("DELETE FROM printers WHERE id = ?");
 
-const toPrinter = (row: PrinterRow): Printer => ({
+export const toPrinter = (row: PrinterRow): Printer => ({
   id: row.id,
   type: (PRINTER_TYPES as readonly string[]).includes(row.type) ? (row.type as PrinterType) : "zebra",
   name: row.name,
   host: row.host,
+  proxy_id: row.proxy_id ?? null,
 });
 
 /** A host name: letters, digits, dashes, separated by dots. */
@@ -45,6 +52,12 @@ const validHost = (value: unknown): string => {
   const host = requireText(value, "L'adresse IP est requise");
   if (!net.isIP(host) && !HOST_NAME.test(host)) badRequest("Adresse IP invalide");
   return host;
+};
+
+/** Its proxy: one of the proxies, or "null" to reach it directly. */
+const validProxy = (value: unknown): Id | null => {
+  if (value === null) return null;
+  return proxies.byId.get(Number(value))?.id ?? badRequest("Proxy introuvable");
 };
 
 export const printerRoutes = Router();
@@ -72,7 +85,9 @@ printerRoutes.post("/", requireSettings, (req, res) => {
   if (byName.get(name, 0)) conflict(PRINTER_EXISTS);
   const type = req.body.type === undefined ? "zebra" : validType(req.body.type);
   const host = validHost(req.body.host);
-  const { lastInsertRowid } = create.run(type, name, host);
+  const proxy = req.body.proxy_id === undefined ? null : validProxy(req.body.proxy_id);
+  const { lastInsertRowid } = create.run(type, name, host, proxy);
+  refreshProxyDevices();
   res.status(201).json(toPrinter(byId.get(lastInsertRowid)!));
 });
 
@@ -86,14 +101,17 @@ printerRoutes.put("/:id", requireSettings, (req, res) => {
     body.type === undefined ? existing.type : validType(body.type),
     name,
     body.host === undefined ? existing.host : validHost(body.host),
+    body.proxy_id === undefined ? existing.proxy_id : validProxy(body.proxy_id),
     existing.id,
   );
+  refreshProxyDevices();
   res.json(toPrinter(byId.get(existing.id)!));
 });
 
 printerRoutes.delete("/:id", requireSettings, (req, res) => {
   const existing = orNotFound(byId.get(req.params.id), PRINTER_NOT_FOUND);
   remove.run(existing.id);
+  refreshProxyDevices();
   res.status(204).end();
 });
 

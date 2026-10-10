@@ -1,8 +1,7 @@
 /*
  * The clock's dial (widgets/common/clock.tsx): its hands turn by CSS
  * animations, set on the time by a negative delay — the hour and minute hands
- * continuously, the second hand by jumps, each second easing in and out and
- * leaving a short trail behind it.
+ * continuously, the second hand by jumps, each second easing in and out.
  *
  * The SVG is drawn on a grid 100 on a side: each hand turns around its
  * center.
@@ -26,44 +25,6 @@
 .seconds {
   animation: seconds 60s cubic-bezier(0.8, 0, 0.2, 1) infinite;
   filter: drop-shadow(0 0 3px rgb(0 0 0 / 40%));
-}
-
-/* The trail: copies of the second hand, which it leaves behind each second. */
-.trail {
-  animation: 1s cubic-bezier(0.8, 0, 0.2, 1) infinite;
-  opacity: 0;
-}
-
-.trail:nth-child(1) {
-  animation-name: trail1;
-}
-
-.trail:nth-child(2) {
-  animation-name: trail2;
-}
-
-.trail:nth-child(3) {
-  animation-name: trail3;
-}
-
-.trail:nth-child(4) {
-  animation-name: trail4;
-}
-
-.trail:nth-child(5) {
-  animation-name: trail5;
-}
-
-.trail:nth-child(6) {
-  animation-name: trail6;
-}
-
-.trail:nth-child(7) {
-  animation-name: trail7;
-}
-
-.trail:nth-child(8) {
-  animation-name: trail8;
 }
 
 
@@ -272,138 +233,11 @@
   }
 }
 
-@keyframes trail1 {
-  0% {
-    opacity: 1;
-    transform: rotate(0);
-  }
-  100% {
-    opacity: 0;
-    transform: rotate(-6deg);
-  }
-}
-
-@keyframes trail2 {
-  0%,
-  12.49% {
-    opacity: 0;
-    transform: rotate(0);
-  }
-  12.5% {
-    opacity: 1;
-    transform: rotate(0);
-  }
-  100% {
-    opacity: 0;
-    transform: rotate(-5.25deg);
-  }
-}
-
-@keyframes trail3 {
-  0%,
-  24.99% {
-    opacity: 0;
-    transform: rotate(0);
-  }
-  25% {
-    opacity: 1;
-    transform: rotate(0);
-  }
-  100% {
-    opacity: 0;
-    transform: rotate(-4.5deg);
-  }
-}
-
-@keyframes trail4 {
-  0%,
-  37.49% {
-    opacity: 0;
-    transform: rotate(0);
-  }
-  37.5% {
-    opacity: 1;
-    transform: rotate(0);
-  }
-  100% {
-    opacity: 0;
-    transform: rotate(-3.75deg);
-  }
-}
-
-@keyframes trail5 {
-  0%,
-  49.99% {
-    opacity: 0;
-    transform: rotate(0);
-  }
-  50% {
-    opacity: 1;
-    transform: rotate(0);
-  }
-  100% {
-    opacity: 0;
-    transform: rotate(-3deg);
-  }
-}
-
-@keyframes trail6 {
-  0%,
-  62.49% {
-    opacity: 0;
-    transform: rotate(0);
-  }
-  62.5% {
-    opacity: 1;
-    transform: rotate(0);
-  }
-  100% {
-    opacity: 0;
-    transform: rotate(-2.25deg);
-  }
-}
-
-@keyframes trail7 {
-  0%,
-  74.99% {
-    opacity: 0;
-    transform: rotate(0);
-  }
-  75% {
-    opacity: 1;
-    transform: rotate(0);
-  }
-  100% {
-    opacity: 0;
-    transform: rotate(-1.5deg);
-  }
-}
-
-@keyframes trail8 {
-  0%,
-  87.49% {
-    opacity: 0;
-    transform: rotate(0);
-  }
-  87.5% {
-    opacity: 1;
-    transform: rotate(0);
-  }
-  100% {
-    opacity: 0;
-    transform: rotate(-0.75deg);
-  }
-}
-
 /* Without motion, the hands stay on the time shown when the page was drawn. */
 @media (prefers-reduced-motion: reduce) {
   .hours,
   .minutes,
   .seconds {
     animation-play-state: paused;
-  }
-
-  .trail {
-    display: none;
   }
 }

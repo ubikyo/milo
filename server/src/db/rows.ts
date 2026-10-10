@@ -93,6 +93,19 @@ export interface PrinterRow {
   type: string;
   name: string;
   host: string;
+  proxy_id: Id | null;
+}
+
+export interface ProxyRow {
+  id: Id;
+  name: string;
+  token_hash: string;
+  hint: string;
+  created_at: string;
+  last_seen_at: string;
+  version: string;
+  hostname: string;
+  address: string;
 }
 
 export interface PaperFormatRow {

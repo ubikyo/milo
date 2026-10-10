@@ -286,7 +286,13 @@ export default function AccountControls({
                     Paramétrage
                   </Menu.Item>
                 )}
-                <Menu.Divider />
+                {/* A shade lighter than Mantine's (gray-2 / dark-4). */}
+                <Menu.Divider
+                  style={{
+                    borderColor:
+                      "light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-3))",
+                  }}
+                />
                 <Menu.Item leftSection={<IconLogout size={16} />} onClick={onLogout}>
                   Déconnexion
                 </Menu.Item>

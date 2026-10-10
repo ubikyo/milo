@@ -15,7 +15,6 @@ import type { Request } from "express";
 import {
   ASSET_NUMBER_VARIABLE,
   LABEL_TEMPLATE_NAME_MAX,
-  PRINTER_TYPES,
   accessIncludes,
   isLabelTemplateKind,
   labelGroupVariable,
@@ -28,12 +27,12 @@ import type {
   LabelTemplates,
   LabelTestPrint,
   Printer,
-  PrinterType,
 } from "@milo/shared";
 import { mutation, selection } from "../db/query.js";
 import type { PrinterRow } from "../db/rows.js";
 import { HttpError, badRequest, fail } from "../lib/http.js";
 import { MAX_ZPL_LENGTH, printZpl, renderZpl } from "../lib/zebra.js";
+import { toPrinter } from "./printers.js";
 import { declaredAssetTables } from "../db/declared-asset-tables.js";
 import { openBoard, requireBoardControl } from "../repositories/boards.js";
 import { widgetRights } from "../repositories/users.js";
@@ -195,12 +194,7 @@ const printerFor = (formatId: unknown): Printer => {
   if (formatId == null) badRequest("Choisissez d'abord le format d'étiquette du modèle");
   const row = printerOfFormat.get(Number(formatId)) ?? badRequest("Format d'étiquette introuvable");
   if (row.id == null) badRequest(`Le format « ${row.format} » n'a pas d'imprimante`);
-  return {
-    id: row.id,
-    type: (PRINTER_TYPES as readonly string[]).includes(row.type) ? (row.type as PrinterType) : "zebra",
-    name: row.name,
-    host: row.host,
-  };
+  return toPrinter({ ...row, id: row.id });
 };
 
 /**

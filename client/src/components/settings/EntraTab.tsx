@@ -1,4 +1,5 @@
 import {
+  ActionIcon,
   Badge,
   Button,
   CopyButton,
@@ -44,7 +45,7 @@ const STATES: Record<
 > = {
   connected: { label: "Connecté", color: "green" },
   error: { label: "Refusé", color: "red" },
-  disconnected: { label: "Déconnecté", color: "gray" },
+  disconnected: { label: "Déconnecté", color: "red" },
   unconfigured: { label: "Non configuré", color: "gray" },
 };
 
@@ -150,6 +151,11 @@ interface EntraTabProps {
    * hides its "Se connecter" button, as the tab hides the other fields.
    */
   onRedirectReady?: (ready: boolean) => void;
+  /**
+   * Whether every field is filled (all are required): until then, the
+   * window greys out its "Enregistrer" and "Se connecter" buttons.
+   */
+  onComplete?: (complete: boolean) => void;
 }
 
 /**
@@ -169,6 +175,7 @@ export default function EntraTab({
   checkRef,
   onPhase,
   onRedirectReady,
+  onComplete,
 }: EntraTabProps) {
   const [settings, setSettings] = useState<EntraSettings>(emptyEntraSettings());
   const [secret, setSecret] = useState("");
@@ -290,6 +297,12 @@ export default function EntraTab({
    * nothing else can be checked.
    */
   const runCheck = async () => {
+    // All the fields are required: the secret, saved or typed.
+    const missing =
+      !settings.client_id.trim() ||
+      !settings.tenant.trim() ||
+      (secretTouched ? !secret : !settings.has_secret);
+    if (missing) return notifyError("Tous les champs sont obligatoires.");
     if (!(await save())) return;
     const steps: Record<string, StepState> = Object.fromEntries(
       ENTRA_CHECKS.map((c) => [c.value, "pending" as StepState]),
@@ -358,7 +371,8 @@ export default function EntraTab({
 
   const saveUrl = async () => {
     const url = typedUrl.trim();
-    if (url === savedUrl) return setTypedUrl(url);
+    // Required: an emptied field goes back to the saved address.
+    if (!url || url === savedUrl) return setTypedUrl(savedUrl);
     setSavingUrl(true);
     try {
       const s = await api.updateMiloSettings({ url });
@@ -389,6 +403,16 @@ export default function EntraTab({
   useEffect(() => {
     onRedirectReady?.(redirectReady);
   }, [redirectReady, onRedirectReady]);
+
+  // All the fields are required: the secret, saved or typed.
+  const complete =
+    validUrl &&
+    Boolean(settings.client_id.trim()) &&
+    Boolean(settings.tenant.trim()) &&
+    (secretTouched ? Boolean(secret) : settings.has_secret);
+  useEffect(() => {
+    if (loaded) onComplete?.(complete);
+  }, [loaded, complete, onComplete]);
 
   // The redirect path's place, measured after each keystroke and when the
   // field scrolls or changes width.
@@ -450,8 +474,8 @@ export default function EntraTab({
   );
 
   /**
-   * The connection status, to the left of the "Actions" menu: Microsoft's
-   * refusal can be read on hover.
+   * The connection status, inside the "ID d'application" field on the
+   * right: Microsoft's refusal can be read on hover.
    */
   const statusBadge = state ? (
     <Tooltip
@@ -487,6 +511,7 @@ export default function EntraTab({
   const secretField = (
     <PasswordInput
       label="Secret"
+      required
       value={masked ? MASK : secret}
       visibilityToggleButtonProps={
         masked ? { style: { display: "none" } } : undefined
@@ -566,6 +591,7 @@ export default function EntraTab({
                 register in Azure is copied with a click. */}
             <TextInput
               label="Adresse de redirection"
+              required
               ref={urlInput}
               onScroll={placeSuffix}
               type="url"
@@ -607,10 +633,11 @@ export default function EntraTab({
               rightSection={
                 <CopyButton value={redirection}>
                   {({ copied, copy }) => (
-                    <Button
+                    <ActionIcon
                       variant="subtle"
                       color="gray"
-                      size="compact-sm"
+                      radius={3}
+                      size={26}
                       onClick={copy}
                       disabled={!validUrl}
                       aria-label="Copier l'adresse de redirection"
@@ -623,7 +650,7 @@ export default function EntraTab({
                       ) : (
                         <IconCopy size={14} />
                       )}
-                    </Button>
+                    </ActionIcon>
                   )}
                 </CopyButton>
               }
@@ -633,13 +660,23 @@ export default function EntraTab({
                 {/* The IDs and the secret, one per line, across the whole width. */}
                 <TextInput
                   label="ID d'application"
+                  required
                   value={settings.client_id}
                   onChange={(e) =>
                     updateStatement({ client_id: e.currentTarget.value })
                   }
+                  rightSection={statusBadge}
+                  rightSectionPointerEvents="all"
+                  // Wide enough for "Non configuré"; the status against
+                  // the field's right edge.
+                  rightSectionWidth={110}
+                  rightSectionProps={{
+                    style: { justifyContent: "flex-end", paddingRight: 6 },
+                  }}
                 />
                 <TextInput
                   label="ID de l'annuaire"
+                  required
                   value={settings.tenant}
                   onChange={(e) =>
                     updateStatement({ tenant: e.currentTarget.value })
@@ -655,15 +692,10 @@ export default function EntraTab({
       </Stack>
       )}
 
+      {/* Not connected, the window's "Se connecter" is the only way. */}
       {actionsTarget &&
-        createPortal(
-          <Group gap="sm" wrap="nowrap">
-            {statusBadge}
-            {/* Not connected, the window's "Se connecter" is the only way. */}
-            {state?.state === "connected" && menuActions}
-          </Group>,
-          actionsTarget,
-        )}
+        state?.state === "connected" &&
+        createPortal(menuActions, actionsTarget)}
     </>
   );
 }

@@ -46,12 +46,12 @@ const STRUCTURE_LABELS: Record<StructureSection, string> = {
  * Supprimer —, then under "Application" the notifications — À l'écran, Par
  * e-mail —, the layout of the views — Modifier la disposition, Import /
  * export —, and the views and boards — Créer, Supprimer. Each label says what
- * it is about: "Widget Commun", "Gestion des vues".
+ * it is about: "Widgets Commun", "Gestion des vues".
  */
 const SECTIONS: RightsSection[] = [
   ...WIDGET_KINDS.map((k) => ({
     value: k.value,
-    label: `Widget ${k.label}`,
+    label: `Widgets ${k.label}`,
     group: "Widgets",
     rights: LEVELS,
   })),

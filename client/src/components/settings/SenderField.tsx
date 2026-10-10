@@ -8,7 +8,7 @@ import MailTestModal from "./MailTestModal";
 
 // The sending address of Milo's e-mails, in the Entra tab, under the secret:
 // it belongs to the Entra settings. Saved when its field is left; the button
-// inside it sends a test message. It is required: emptied, it goes back to
+// inside it, on the right, sends a test message. It is required: emptied, it goes back to
 // the saved address.
 
 interface SenderFieldProps {
@@ -78,10 +78,10 @@ export default function SenderField({ onSaved }: SenderFieldProps) {
         }}
         disabled={frozen}
         w={290}
-        // The test, inside the field on the left, like a row's reset
+        // The test, inside the field on the right, like a row's reset
         // button (SettingRows): green when it can go, faded otherwise. It
         // leaves from the saved address — leaving the field saves it.
-        leftSection={
+        rightSection={
           <ActionIcon
             variant="filled"
             radius={3}
@@ -98,10 +98,10 @@ export default function SenderField({ onSaved }: SenderFieldProps) {
             <IconSend size={16} />
           </ActionIcon>
         }
-        leftSectionPointerEvents="all"
-        // 5 px between the button and the address.
-        leftSectionWidth={41}
-        leftSectionProps={{ style: { paddingRight: 5 } }}
+        rightSectionPointerEvents="all"
+        // 5 px between the address and the button.
+        rightSectionWidth={41}
+        rightSectionProps={{ style: { paddingLeft: 5 } }}
       />
       <MailTestModal opened={testOpen} onClose={() => setTestOpen(false)} sender={sender} />
     </>

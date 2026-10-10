@@ -171,7 +171,7 @@ const showsSeconds = (config: unknown): boolean =>
 /**
  * The dial: sixty marks — longer every five minutes —, optional digits, the
  * hour and minute hands, and the second hand if requested, which jumps from
- * second to second leaving a short trail. Drawn on a grid 100 on a side, it
+ * second to second. Drawn on a grid 100 on a side, it
  * takes the set diameter. Its face is a plain fill, a dark gray unless given a
  * color, as its outline; the marks and digits share one color, the hour and
  * minute hands another, the second hand a third — each with its default.
@@ -213,7 +213,6 @@ function Dial({
       fill={color}
     />
   );
-  const secondHand = bar(40, 1.6, 10, secondsColor);
   return (
     <svg
       width={diameter}
@@ -265,15 +264,7 @@ function Dial({
       </g>
       {seconds ? (
         <g className={`${classes.hand} ${classes.seconds}`} style={delay(60)}>
-          {/* The trail, copies of the hand that fade behind it each second. */}
-          <g>
-            {Array.from({ length: 8 }, (_, i) => (
-              <g key={i} className={`${classes.hand} ${classes.trail}`} style={delay(1)}>
-                {secondHand}
-              </g>
-            ))}
-          </g>
-          {secondHand}
+          {bar(40, 1.6, 10, secondsColor)}
           <circle cx={50} cy={50} r={2.5} fill={secondsColor} />
         </g>
       ) : (

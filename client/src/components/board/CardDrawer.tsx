@@ -580,41 +580,18 @@ export default function CardDrawer({
                     adds a block to it. The menu does not
                     close, so the checkmark can be seen changing. */}
                 {!creation && (
-                  <>
-                    <Menu.Item
-                      leftSection={<IconEye size={16} />}
-                      rightSection={followed ? <IconCheck size={14} /> : null}
-                      onClick={() => onToggleFollow()}
-                      closeMenuOnClick={false}
-                    >
-                      Suivre
-                    </Menu.Item>
-
-                    {!readOnly && (
-                      <>
-                        <Menu.Divider />
-
-                        <Menu.Item
-                          leftSection={<IconChecklist size={16} />}
-                          onClick={addChecklist}
-                        >
-                          Ajouter checklist
-                        </Menu.Item>
-                        {/* The row opens empty: it is saved once
-                            the other card is chosen. */}
-                        <Menu.Item
-                          leftSection={<IconLink size={16} />}
-                          onClick={() => {
-                            setDrafts((already) => [...already, newDraft()]);
-                            setToShow("[data-dependency]");
-                          }}
-                        >
-                          Ajouter une dépendance
-                        </Menu.Item>
-                      </>
-                    )}
-                  </>
+                  <Menu.Item
+                    leftSection={<IconEye size={16} />}
+                    rightSection={followed ? <IconCheck size={14} /> : null}
+                    onClick={() => onToggleFollow()}
+                    closeMenuOnClick={false}
+                  >
+                    Suivre
+                  </Menu.Item>
                 )}
+                {!creation && !readOnly && <Menu.Divider />}
+                {/* The blocks follow one another as on the card: due date,
+                    dependencies, checklists, covers, attachments. */}
                 {/* The due date is placed like a checklist: through the same menu,
                     since it is one more block on the card. The selector
                     opens above the title, where the date will be read. */}
@@ -629,23 +606,40 @@ export default function CardDrawer({
                     Ajouter échéance
                   </Menu.Item>
                 )}
-                {/* Files are dragged onto the drawer; this is the other
-                    path, for those who prefer to choose them. */}
                 {!creation && !readOnly && (
-                  <Menu.Item
-                    leftSection={<IconPaperclip size={16} />}
-                    onClick={() => fileField.current?.click()}
-                  >
-                    Ajouter pièce jointe
-                  </Menu.Item>
-                )}
-                {!creation && !readOnly && (
-                  <Menu.Item
-                    leftSection={<IconPhoto size={16} />}
-                    onClick={() => coverField.current?.click()}
-                  >
-                    Ajouter image de couverture
-                  </Menu.Item>
+                  <>
+                    {/* The row opens empty: it is saved once
+                        the other card is chosen. */}
+                    <Menu.Item
+                      leftSection={<IconLink size={16} />}
+                      onClick={() => {
+                        setDrafts((already) => [...already, newDraft()]);
+                        setToShow("[data-dependency]");
+                      }}
+                    >
+                      Ajouter une dépendance
+                    </Menu.Item>
+                    <Menu.Item
+                      leftSection={<IconChecklist size={16} />}
+                      onClick={addChecklist}
+                    >
+                      Ajouter checklist
+                    </Menu.Item>
+                    <Menu.Item
+                      leftSection={<IconPhoto size={16} />}
+                      onClick={() => coverField.current?.click()}
+                    >
+                      Ajouter image de couverture
+                    </Menu.Item>
+                    {/* Files are dragged onto the drawer; this is the other
+                        path, for those who prefer to choose them. */}
+                    <Menu.Item
+                      leftSection={<IconPaperclip size={16} />}
+                      onClick={() => fileField.current?.click()}
+                    >
+                      Ajouter pièce jointe
+                    </Menu.Item>
+                  </>
                 )}
               </Menu.Dropdown>
             </Menu>
@@ -770,7 +764,10 @@ export default function CardDrawer({
                     required
                   />
 
-                  {/* The due date follows what names the card. As long as there is none,
+                  {/* The description, right under the title it details. */}
+                  <RichTextField editor={editor} label="Description" />
+
+                  {/* The due date follows what describes the card. As long as there is none,
                       nothing is shown — the form does not carry one more empty
                       field. */}
                   {withDue && (
@@ -787,35 +784,23 @@ export default function CardDrawer({
                     </div>
                   )}
 
-                  {/* The covers follow the due date. */}
+                  {/* The dependencies follow the due date: they are added
+                      from the "Actions" menu and save themselves. */}
                   {card && (
-                    <CardCovers
-                      covers={covers}
-                      interval={rotation}
-                      onInterval={setRotation}
-                      onPick={() => coverField.current?.click()}
-                      onReorder={arrangeCovers}
-                      onDelete={deleteCover}
+                    <CardDependencies
+                      cardId={card.id}
+                      links={links}
+                      onLinks={setLinks}
+                      drafts={drafts}
+                      onDrafts={setDrafts}
+                      boardId={boardId}
+                      onError={notifyError}
                       readOnly={readOnly}
-                      drop={
-                        readOnly
-                          ? undefined
-                          : {
-                              icon: IconPhoto,
-                              message: "Déposez des images de couverture ici",
-                              onDrop: (files) => void dropCovers(files),
-                              accept: IMAGE_MIME_TYPE,
-                              rejected: "Seules les images peuvent servir de couverture",
-                              shown: dragging,
-                            }
-                      }
                     />
                   )}
 
-                  <RichTextField editor={editor} label="Description" />
-
-                  {/* The checklists close the form: they are added from the "Actions"
-                      menu and save themselves. */}
+                  {/* The checklists follow the dependencies: they too are added from
+                      the "Actions" menu and save themselves. */}
                   {card && (
                     <CardChecklists
                       cardId={card.id}
@@ -838,19 +823,28 @@ export default function CardDrawer({
                     />
                   )}
 
-                  {/* The dependencies follow the checklists: they too
-                      are added from the "Actions" menu and save
-                      themselves. */}
+                  {/* The covers follow the checklists. */}
                   {card && (
-                    <CardDependencies
-                      cardId={card.id}
-                      links={links}
-                      onLinks={setLinks}
-                      drafts={drafts}
-                      onDrafts={setDrafts}
-                      boardId={boardId}
-                      onError={notifyError}
+                    <CardCovers
+                      covers={covers}
+                      interval={rotation}
+                      onInterval={setRotation}
+                      onPick={() => coverField.current?.click()}
+                      onReorder={arrangeCovers}
+                      onDelete={deleteCover}
                       readOnly={readOnly}
+                      drop={
+                        readOnly
+                          ? undefined
+                          : {
+                              icon: IconPhoto,
+                              message: "Déposez des images de couverture ici",
+                              onDrop: (files) => void dropCovers(files),
+                              accept: IMAGE_MIME_TYPE,
+                              rejected: "Seules les images peuvent servir de couverture",
+                              shown: dragging,
+                            }
+                      }
                     />
                   )}
 

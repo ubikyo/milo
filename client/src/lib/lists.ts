@@ -12,6 +12,7 @@ export const LIST_ITEMS: Record<string, string> = {
   "managed_device_asset.list": "Les assets qu'il montre",
   "unmanaged_device_asset.list": "Les équipements qu'il montre, leurs photos et leurs documents",
   "application_asset.list": "Les applications qu'il montre, leurs photos et leurs documents",
+  "contact.list": "Les contacts qu'il montre",
 };
 
 /** The filter of a widget's items, from its configuration. */

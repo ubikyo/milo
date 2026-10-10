@@ -11,8 +11,9 @@ import { IconPrinter } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { PRINTER_TYPES, PRINTER_TYPE_LABELS } from "@milo/shared";
-import type { Printer, PrinterInfo, PrinterInfos, PrinterInput, PrinterType } from "@milo/shared";
+import type { Id, MiloProxy, Printer, PrinterInfo, PrinterInfos, PrinterInput, PrinterType } from "@milo/shared";
 import { api } from "../../api";
+import { useProxies } from "../../lib/proxies";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { GREEN, RED } from "../../themes/colors";
 import DeleteConfirmModal from "../ui/DeleteConfirmModal";
@@ -38,6 +39,8 @@ import listClasses from "../../assets/styles/SettingsList.module.css";
 // whole application, drawn like the other editable lists (DrawerRows). A row
 // per printer: its name, its type, its IP address, edited in place, then the
 // model it gives — in red "Hors ligne" when its port 9100 does not answer.
+// Each is reached directly by Milo, or through one of the proxies ("Proxy"
+// tab): its "Connexion".
 // "Ajouter une imprimante" adds a row, created only once it has its name and
 // its IP address; an address cannot be emptied afterwards. Under them,
 // the paper formats (PaperFormats). Like the other tabs, each change is sent
@@ -50,6 +53,7 @@ const INFO_INTERVAL = 30_000;
 // names of both lists have the same width.
 const TYPE_WIDTH = 100;
 const HOST_WIDTH = 150;
+const CONNECTION_WIDTH = 140;
 /** Wide enough for "ZD421 203dpi", so the rows' ends stay aligned. */
 const MODEL_WIDTH = 120;
 
@@ -60,7 +64,10 @@ const onError = (e: unknown) => notifyError(errorMessage(e));
 /** The added row, while it waits for its name and address. */
 type Draft = Omit<Printer, "id">;
 
-const EMPTY_DRAFT: Draft = { type: "zebra", name: "", host: "" };
+const EMPTY_DRAFT: Draft = { type: "zebra", name: "", host: "", proxy_id: null };
+
+/** The "Connexion" picker's value for a printer Milo reaches itself. */
+const DIRECT = "direct";
 
 /** A row's field: transparent over its gray, the window's background once entered. */
 const fieldStyles = (entered: boolean) => ({
@@ -138,6 +145,37 @@ function TypeField({ value, onChange, of }: FieldProps<PrinterType>) {
   );
 }
 
+/** How Milo reaches it: "Directe", or one of the proxies. */
+function ConnectionField({ value, onChange, of, proxies }: FieldProps<Id | null> & { proxies: MiloProxy[] }) {
+  const [entered, setEntered] = useState(false);
+  const data = [
+    { value: DIRECT, label: "Directe" },
+    ...proxies.map((p) => ({ value: String(p.id), label: p.name })),
+  ];
+  return (
+    <Select
+      size="xs"
+      radius={ROUNDING}
+      w={CONNECTION_WIDTH}
+      style={{ flexShrink: 0 }}
+      data={data}
+      value={value === null ? DIRECT : String(value)}
+      onChange={(v) => {
+        const next = !v || v === DIRECT ? null : Number(v);
+        if (next !== value) onChange(next);
+      }}
+      allowDeselect={false}
+      {...pickKeys}
+      comboboxProps={{ withinPortal: true }}
+      classNames={{ dropdown: listClasses.dropdown, option: listClasses.option }}
+      onFocus={() => setEntered(true)}
+      onBlur={() => setEntered(false)}
+      styles={fieldStyles(entered)}
+      aria-label={`Connexion ${of}`}
+    />
+  );
+}
+
 /** "ZD421-203dpi", as the printer gives it, read "ZD421 203dpi". */
 const modelLabel = (model: string) => model.replace(/-(\d{3}dpi)$/i, " $1");
 
@@ -176,6 +214,7 @@ export default function PrintersTab({ canEdit }: { canEdit: boolean }) {
   // The added row, waiting for its name and address.
   const [draft, setDraft] = useState<Draft | null>(null);
   const selection = useRowSelection(printers.map((p) => p.id));
+  const { proxies } = useProxies();
   const [toDelete, setToDelete] = useState<Printer[]>([]);
 
   const reload = useCallback(async () => {
@@ -213,7 +252,7 @@ export default function PrintersTab({ canEdit }: { canEdit: boolean }) {
 
   /** A change of where to reach it: it is asked again. */
   const change = (printer: Printer, data: PrinterInput) => {
-    if (data.host !== undefined) {
+    if (data.host !== undefined || data.proxy_id !== undefined) {
       setInfos(({ [printer.id]: _, ...others }) => others);
     }
     void write(() => api.updatePrinter(printer.id, data)).then(askInfos);
@@ -287,6 +326,12 @@ export default function PrintersTab({ canEdit }: { canEdit: boolean }) {
                   )}
                   <TypeField value={printer.type} of={`de ${printer.name}`} onChange={(type) => change(printer, { type })} />
                   <HostField value={printer.host} of={`de ${printer.name}`} onChange={(host) => change(printer, { host })} />
+                  <ConnectionField
+                    value={printer.proxy_id}
+                    proxies={proxies}
+                    of={`de ${printer.name}`}
+                    onChange={(proxy_id) => change(printer, { proxy_id })}
+                  />
                   <ModelTag info={infos[printer.id]} />
                 </Group>
               ))}
@@ -311,6 +356,12 @@ export default function PrintersTab({ canEdit }: { canEdit: boolean }) {
                     of="de l'imprimante à ajouter"
                     onChange={(host) => void changeDraft({ host })}
                     missing={Boolean(draft.name) && !draft.host}
+                  />
+                  <ConnectionField
+                    value={draft.proxy_id}
+                    proxies={proxies}
+                    of="de l'imprimante à ajouter"
+                    onChange={(proxy_id) => void changeDraft({ proxy_id })}
                   />
                   {/* Not asked yet: an empty space keeps the rows' ends aligned. */}
                   <Box w={MODEL_WIDTH} style={{ flexShrink: 0 }} />

@@ -1,7 +1,7 @@
 import { Box, Group, Input, ScrollArea, Select, Stack, TextInput } from "@mantine/core";
 import { IconFileImport } from "@tabler/icons-react";
 import { useRef, useState } from "react";
-import type { ClipboardEvent, ComponentType, ReactNode } from "react";
+import type { ClipboardEvent, ComponentType, DragEvent, ReactNode } from "react";
 import scroll from "../../assets/styles/ListScroll.module.css";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { PLUS_SIZE } from "../../themes/plus";
@@ -10,10 +10,12 @@ import DeleteConfirmModal from "./DeleteConfirmModal";
 import {
   ROUNDING,
   EmptyList,
+  Handle,
   NAME_INSET,
   ListFooter,
   RowCheckbox,
   RowCheckboxSpace,
+  move,
   nameFieldStyle,
   rowStyle,
   useRowSelection,
@@ -49,7 +51,8 @@ export type Row = string[];
 /**
  * A column: its label, its length, and its width — fixed, or the rest
  * of the row. An "optional" column may stay empty. With "options", the
- * field is a choice among them rather than typed.
+ * field is a choice among them rather than typed. With "pattern", a value
+ * that does not match it is refused, and "invalid" says why.
  */
 export interface Column {
   label: string;
@@ -58,6 +61,9 @@ export interface Column {
   digital?: boolean;
   optional?: boolean;
   options?: string[];
+  pattern?: RegExp;
+  invalid?: (value: string) => string;
+  placeholder?: string;
 }
 
 const empty = (columns: Column[]): Row => columns.map(() => "");
@@ -85,6 +91,10 @@ interface EditableRowProps {
   leading?: ReactNode;
   /** At the end of the row, after its fields: a button of its own. */
   trailing?: ReactNode;
+  /** True while the row is dragged (reorderable lists). */
+  held?: boolean;
+  /** A dragged row hovers this one. */
+  onDragOver?: (e: DragEvent<HTMLElement>) => void;
 }
 
 /** A row: its fields right on the row, and its draft while typing. */
@@ -100,6 +110,8 @@ function EditableRow({
   onPaste,
   leading,
   trailing,
+  held = false,
+  onDragOver,
 }: EditableRowProps) {
   const [draft, setDraft] = useState<Row>(value);
   const [focus, setFocus] = useState<number | null>(null);
@@ -108,6 +120,15 @@ function EditableRow({
   const cancelled = useRef(false);
 
   const full = (l: Row) => columns.every((c, i) => c.optional || Boolean(l[i]));
+
+  /** The first value its column's pattern refuses: said, and true. */
+  const refused = (l: Row): boolean => {
+    const i = columns.findIndex((c, j) => c.pattern && l[j] && !c.pattern.test(l[j]!));
+    if (i < 0) return false;
+    const value = l[i] ?? "";
+    notifyError(columns[i]!.invalid?.(value) ?? `« ${value} » n'est pas valide`);
+    return true;
+  };
 
   // Leaving a field for another on the same row does not save.
   const leave = async () => {
@@ -119,12 +140,13 @@ function EditableRow({
     }
     if (newRow) {
       if (after.every((v) => !v)) return onAbandon?.();
-      // Incomplete, the added row waits for the rest.
-      if (full(after)) await onValidate(after);
+      // Incomplete, the added row waits for the rest; refused, its correction.
+      if (full(after) && !refused(after)) await onValidate(after);
       return;
     }
-    // Emptied or unchanged: it returns to what it was.
+    // Emptied or unchanged: it returns to what it was; refused too.
     if (!full(after) || after.every((v, i) => v === value[i])) return setDraft(value);
+    if (refused(after)) return setDraft(value);
     if (!(await onValidate(after))) setDraft(value);
   };
 
@@ -137,7 +159,9 @@ function EditableRow({
         if (row.current?.contains(e.relatedTarget as Node | null)) return;
         void leave();
       }}
-      style={rowStyle(rank, total, false)}
+      onDragOver={onDragOver}
+      onDrop={onDragOver && ((e) => e.preventDefault())}
+      style={rowStyle(rank, total, held)}
     >
       {lead}
       {/* The first field tucks against the checkbox (NAME_INSET): the
@@ -176,7 +200,7 @@ function EditableRow({
             key={column.label}
             size="sm"
             radius={ROUNDING}
-            placeholder={column.label}
+            placeholder={column.placeholder ?? column.label}
             aria-label={column.label}
             value={draft[i] ?? ""}
             onChange={(e) => {
@@ -241,6 +265,7 @@ export function ListRows({
   nameOf = (row) => row[0] ?? "",
   leading,
   trailing,
+  reorderable = false,
 }: {
   title: string;
   /** Under the title: whom the list is shared by, when it is a board's. */
@@ -270,6 +295,11 @@ export function ListRows({
   leading?: (row: Row | null, rank: number) => ReactNode;
   /** At the end of each saved row: a button of its own (the label templates' "Modèle"). */
   trailing?: (row: Row, rank: number) => ReactNode;
+  /**
+   * A handle at the start of each row: the rows are dragged into their
+   * order, sent once the row is dropped.
+   */
+  reorderable?: boolean;
 }) {
   // The added row, waiting for its fields.
   const [adding, setAdding] = useState(false);
@@ -328,6 +358,31 @@ export function ListRows({
     }
   };
 
+  // While a row is dragged: the order under the pointer, and the rank of
+  // the row held. The list is sent once, when the row is dropped.
+  const [dragged, setDragged] = useState<Row[] | null>(null);
+  const [held, setHeld] = useState<number | null>(null);
+  const shown = dragged ?? rows;
+
+  const dragHover = (e: DragEvent<HTMLElement>, rank: number) => {
+    if (held === null) return;
+    e.preventDefault();
+    const next = move(shown, held, rank);
+    if (!next) return;
+    setHeld(rank);
+    setDragged(next);
+  };
+
+  const drop = () => {
+    const order = dragged;
+    setHeld(null);
+    setDragged(null);
+    if (order && order.some((row, i) => row !== rows[i])) {
+      selection.reset();
+      void send(order);
+    }
+  };
+
   const total = rows.length + (adding ? 1 : 0);
 
   return (
@@ -350,7 +405,7 @@ export function ListRows({
           classNames={{ scrollbar: scroll.scrollbar, thumb: scroll.thumb }}
         >
           <Stack gap={1}>
-            {rows.map((row, rank) => (
+            {shown.map((row, rank) => (
               <EditableRow
                 // A row reread from the server restarts from its new value.
                 key={`${rank}-${row.join("|")}`}
@@ -361,12 +416,26 @@ export function ListRows({
                 onValidate={(after) => send(rows.map((l, i) => (i === rank ? after : l)))}
                 leading={leading?.(row, rank)}
                 trailing={trailing?.(row, rank)}
+                held={held === rank}
+                onDragOver={reorderable ? (e) => dragHover(e, rank) : undefined}
                 lead={
-                  <RowCheckbox
-                    label={`Sélectionner ${nameOf(row)}`}
-                    checked={selection.isChecked(rank)}
-                    onChange={(on) => selection.toggle(rank, on)}
-                  />
+                  <>
+                    {reorderable && (
+                      <Handle
+                        label={`Déplacer ${nameOf(row)}`}
+                        // Not while a row is being added: its place is the last.
+                        active={!adding}
+                        onDragStart={() => setHeld(rank)}
+                        onDragEnd={drop}
+                      />
+                    )}
+                    <RowCheckbox
+                      label={`Sélectionner ${nameOf(row)}`}
+                      checked={selection.isChecked(rank)}
+                      onChange={(on) => selection.toggle(rank, on)}
+                      afterHandle={reorderable}
+                    />
+                  </>
                 }
               />
             ))}
@@ -383,8 +452,15 @@ export function ListRows({
                   return ok;
                 }}
                 onAbandon={() => setAdding(false)}
-                // Not saved yet: nothing to delete.
-                lead={<RowCheckboxSpace />}
+                // Not saved yet: nothing to delete, nor to move.
+                lead={
+                  <>
+                    {reorderable && (
+                      <Handle label="Déplacer" active={false} onDragStart={() => {}} onDragEnd={() => {}} />
+                    )}
+                    <RowCheckboxSpace afterHandle={reorderable} />
+                  </>
+                }
                 leading={leading?.(null, total - 1)}
                 onPaste={split ? paste : undefined}
               />

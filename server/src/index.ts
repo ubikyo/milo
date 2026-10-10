@@ -9,6 +9,7 @@ import { REMINDERS_INTERVAL, sendReminders } from "./lib/reminders.js";
 import { POLL_INTERVAL, pollMailboxes } from "./lib/support-mail.js";
 import { MAINTENANCE_INTERVAL, maintainSubscriptions } from "./lib/support-webhooks.js";
 import { M365_MAINTENANCE_INTERVAL, maintainM365Subscriptions } from "./lib/m365-webhooks.js";
+import { attachProxyHub, closeProxyHub } from "./lib/proxy-hub.js";
 import { mediaCleanup } from "./repositories/attachments.js";
 import { sessions } from "./repositories/users.js";
 
@@ -65,6 +66,9 @@ const server = app.listen(env.port, () => {
   maintain();
 });
 
+// The proxies' sockets: upgrades of the same server, on the same port.
+attachProxyHub(server);
+
 const maintain = () => {
   maintainSubscriptions().catch((error) =>
     console.error("Support mailbox subscriptions:", error),
@@ -83,6 +87,8 @@ setInterval(() => {
 // abruptly: this is what systemd asks for before killing the process.
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => {
+    // Upgraded, the proxies' sockets are no longer the server's: closed apart.
+    closeProxyHub();
     server.close(() => process.exit(0));
     // Event streams never end on their own: without this, "close" would wait
     // for them forever, and the process would not stop (nor would the restart

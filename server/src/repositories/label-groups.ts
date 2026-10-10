@@ -22,12 +22,14 @@ interface Tables {
     | "project_labels"
     | "support_labels"
     | "managed_device_asset_labels"
+    | "contact_labels"
     | `${DeclaredAssetKind}_labels`;
   groups:
     | "label_groups"
     | "project_label_groups"
     | "support_label_groups"
     | "managed_device_asset_label_groups"
+    | "contact_label_groups"
     | `${DeclaredAssetKind}_label_groups`;
   /** True when the set is bounded by a board ("board_id"). */
   scoped: boolean;
@@ -182,6 +184,13 @@ export const declaredAssetLabelGroups = Object.fromEntries(
     store({ labels: `${kind}_labels`, groups: `${kind}_label_groups`, scoped: true }),
   ]),
 ) as Record<DeclaredAssetKind, ReturnType<typeof store>>;
+
+/** The groups of a board's contact labels. */
+export const contactLabelGroups = store({
+  labels: "contact_labels",
+  groups: "contact_label_groups",
+  scoped: true,
+});
 
 /** The groups of a board's Support labels. */
 export const supportLabelGroups = store({

@@ -42,7 +42,7 @@ const ALL = "all";
  * The list key whose items a widget reads; empty for all of them, or for a
  * list not yet saved: everything the board reads then.
  */
-const useListSourceKey = (prefix: string, config: unknown): string => {
+export const useListSourceKey = (prefix: string, config: unknown): string => {
   const source = useListSource(prefix, config);
   return source ? listKey(source.config) : "";
 };

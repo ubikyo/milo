@@ -4,7 +4,7 @@
 
 import cors from "cors";
 import express from "express";
-import { DECLARED_ASSET_KINDS, DECLARED_ASSET_ROUTES, DECLARED_ASSET_WORDS } from "@milo/shared";
+import { CONTACT_ROUTES, DECLARED_ASSET_KINDS, DECLARED_ASSET_ROUTES, DECLARED_ASSET_WORDS } from "@milo/shared";
 import { env } from "./env.js";
 import { countWrites, feed, payload } from "./middleware/events.js";
 import { errorHandler, notFoundHandler } from "./middleware/errors.js";
@@ -46,11 +46,13 @@ import { supportReplyRoutes } from "./routes/support-replies.js";
 import { managedDeviceAssetSettingsRoutes } from "./routes/managed-device-asset-settings.js";
 import { declaredAssetSettingsRoutes } from "./routes/declared-asset-settings.js";
 import { declaredAssetRoutes } from "./routes/declared-assets.js";
+import { contactRoutes, contactSettingsRoutes } from "./routes/contacts.js";
 import { milestoneTypeRoutes } from "./routes/milestone-types.js";
 import { followRoutes } from "./routes/follows.js";
 import {
   managedDeviceAssetLabelRoutes,
   declaredAssetLabelRoutes,
+  contactLabelRoutes,
   labelRoutes,
   projectLabelRoutes,
   supportLabelRoutes,
@@ -84,6 +86,7 @@ import { paperFormatRoutes } from "./routes/paper-formats.js";
 import { labelTemplateRoutes } from "./routes/label-templates.js";
 import { assetNumberTemplateRoutes } from "./routes/asset-number-templates.js";
 import { apiTokenRoutes } from "./routes/api-tokens.js";
+import { proxyRoutes } from "./routes/proxies.js";
 
 export const createApp = (): express.Express => {
   const app = express();
@@ -223,6 +226,15 @@ export const createApp = (): express.Express => {
       declaredAssetSettingsRoutes(kind),
     );
   }
+  // The contacts of the "Contact" widgets (Logistique): the contacts, their
+  // labels, their board's lists.
+  app.use(`/api${CONTACT_ROUTES.contacts}`, contactRoutes);
+  app.use(`/api${CONTACT_ROUTES.labels}`, contactLabelRoutes);
+  app.use(
+    `/api${CONTACT_ROUTES.settings}`,
+    settingsNotice("les réglages des contacts"),
+    contactSettingsRoutes,
+  );
 
 
   app.use("/api/support-requests", supportRequestRoutes);
@@ -246,6 +258,9 @@ export const createApp = (): express.Express => {
   // Read by everyone — whoever prints picks one —, set from Settings
   // (routes/printers.ts). Printing changes nothing.
   app.use("/api/printers", settingsNotice("les imprimantes", /\/print$/), printerRoutes);
+  // The proxies the printers may be reached through; their own socket is not
+  // a route, but an upgrade of the HTTP server (lib/proxy-hub.ts).
+  app.use("/api/proxies", requireSettings, settingsNotice("les proxys"), proxyRoutes);
   app.use("/api/paper-formats", requireSettingsToWrite, settingsNotice("les formats de papier"), paperFormatRoutes);
   app.use("/api/theme-colors", requireThemesToWrite, settingsNotice("les couleurs des thèmes"), themeColorRoutes);
   app.use("/api/title-styles", settingsNotice("les styles de titres"), titleStyleRoutes);
