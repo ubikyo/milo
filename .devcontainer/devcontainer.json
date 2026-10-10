@@ -32,5 +32,8 @@
       ]
     }
   },
-  "remoteUser": "node"
+  "remoteUser": "node",
+  "mounts": [
+    "source=${localWorkspaceFolder}/../milo-proxy,target=/workspaces/milo-proxy,type=bind"
+  ]
 }
