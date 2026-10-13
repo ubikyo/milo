@@ -8,6 +8,6 @@ azagent ALL=(root) NOPASSWD: /usr/bin/rsync, \
   /usr/bin/npm, \
   /usr/bin/systemctl restart milo-api, \
   /usr/bin/systemctl reload nginx, \
-  /usr/bin/systemctl is-active milo-api, \
+  /usr/bin/systemctl is-active --quiet milo-api, \
   /usr/sbin/nginx -t, \
   /usr/bin/journalctl -u milo-api *

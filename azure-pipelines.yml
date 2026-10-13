@@ -1,8 +1,9 @@
 # CI/CD Milo — build on a hosted agent, deployment to the Ubuntu VM via a
 # self-hosted agent.
 #
-# Deployment is triggered only on a version tag (v1.0.0, v1.1.0…),
-# in line with the "on every new release" workflow.
+# Deployment is triggered on every push to dev and on a version tag
+# (v1.0.0, v1.1.0…). Each deployment waits for a manual approval, set on the
+# "milo-production" environment in Azure DevOps (Approvals and checks).
 
 trigger:
   branches:
@@ -93,8 +94,16 @@ stages:
   - stage: Deploy
     displayName: Déploiement sur la VM
     dependsOn: Build
-    # Only on a version tag
-    condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))
+    # On a push to dev or on a version tag, never on a pull request
+    condition: |
+      and(
+        succeeded(),
+        ne(variables['Build.Reason'], 'PullRequest'),
+        or(
+          eq(variables['Build.SourceBranch'], 'refs/heads/dev'),
+          startsWith(variables['Build.SourceBranch'], 'refs/tags/v')
+        )
+      )
     jobs:
       - deployment: vm
         displayName: VM Ubuntu
