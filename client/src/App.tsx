@@ -35,6 +35,7 @@ import { RED } from "./themes/colors";
 import {
   DEFAULT_SUPPORT_STATUS,
   INDICATOR_DATA,
+  DEFAULT_SEARCH_THRESHOLD,
   RESOURCES,
   canUse,
   emptyFollows,
@@ -51,6 +52,7 @@ import { addressTarget, noteInAddress } from "./lib/follow";
 import { requestOpening } from "./lib/searchSources";
 import { FollowsContext } from "./lib/follows-context";
 import { ReplyEditorContext } from "./lib/reply-editor";
+import { SearchPreferencesContext } from "./lib/search-preferences";
 import type { Target } from "./lib/follow";
 import ManagedDeviceAssetDrawer from "./components/managed-device-assets/ManagedDeviceAssetDrawer";
 import { announceDeclaredAssets } from "./lib/declaredAssets";
@@ -766,6 +768,15 @@ export default function App() {
     [follows, toggleFollow],
   );
 
+  const searchPreferences = useMemo(
+    () => ({
+      fuzzy: user?.fuzzy_search ?? true,
+      threshold: user?.search_threshold ?? DEFAULT_SEARCH_THRESHOLD,
+      excluded: user?.search_excluded ?? [],
+    }),
+    [user?.fuzzy_search, user?.search_threshold, user?.search_excluded],
+  );
+
   /**
    * Show a view and a board, in place of the opening ones if they are not
    * applied yet.
@@ -1213,6 +1224,12 @@ export default function App() {
   // board's contexts, I enters or leaves interface
   // editing.
   useEffect(() => {
+    // Only a shown one: a keepMounted drawer (WidgetDrawer) stays in the
+    // page, closed, under display: none.
+    const modalOpen = () =>
+      Array.from(document.querySelectorAll<HTMLElement>('[aria-modal="true"]')).some(
+        (el) => el.getClientRects().length > 0,
+      );
     const onKeyDown = (event: KeyboardEvent) => {
       // Never during text entry. Mantine's dropdowns
       // are <input readonly>: shortcuts always work there.
@@ -1227,7 +1244,7 @@ export default function App() {
       if (event.code === "Tab" && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
         // A modal or drawer is open (Mantine marks both aria-modal): leave
         // Tab to the browser's focus navigation.
-        if (document.querySelector('[aria-modal="true"]')) return;
+        if (modalOpen()) return;
         event.preventDefault();
         const list = event.altKey
           ? (shownBoards ?? []).map((b) => String(b.id))
@@ -1245,7 +1262,7 @@ export default function App() {
       if (event.code === "KeyN") {
         // Declared by the list widgets shown (lib/newShortcut): not while a
         // drawer or a window is open.
-        if (document.querySelector('[aria-modal="true"]')) return;
+        if (modalOpen()) return;
         if (runNewShortcut()) event.preventDefault();
         return;
       }
@@ -1497,6 +1514,8 @@ export default function App() {
       <EditingContext.Provider value={isEditing}>
         {/* How an e-mail being written first shows, as the profile says. */}
         <ReplyEditorContext.Provider value={user.reply_editor}>
+        {/* The search's tolerance, as the profile says. */}
+        <SearchPreferencesContext.Provider value={searchPreferences}>
         {/* What the person follows, for the widgets that read it: an order's list. */}
         <FollowsContext.Provider value={followsValue}>
           {/* The clipboard of labels and categories, which the "Actions"
@@ -1984,6 +2003,7 @@ export default function App() {
             {themeEditor && <ThemeEditor canEdit />}
           </CopyPasteContext.Provider>
         </FollowsContext.Provider>
+        </SearchPreferencesContext.Provider>
         </ReplyEditorContext.Provider>
       </EditingContext.Provider>
     </RightsProvider>

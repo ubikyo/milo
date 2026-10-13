@@ -13,6 +13,7 @@ import type { AdminPermissions, CompanyRights, WorkspaceRights } from "./roles.j
 import type { WidgetRights } from "./widget-kinds.js";
 import type { EntraPrincipal, PrincipalPermissions } from "./entra.js";
 import type { NotificationSettings } from "./notification-settings.js";
+import type { SearchKind } from "./search.js";
 import type {
   ApplicationRights,
   NotificationRights,
@@ -88,6 +89,16 @@ export interface PublicUser {
   notification_settings: NotificationSettings;
   /** How an e-mail being written first shows: its text alone, or in its template. */
   reply_editor: ReplyEditorView;
+  /** Forgives typing mistakes in the search; without it, only the text as
+   *  typed is found, whatever "search_threshold" says. */
+  fuzzy_search: boolean;
+  /**
+   * How far the search (Spotlight) strays from what is typed: Fuse.js's
+   * threshold, from 0 (the text as typed, nothing else) to 1 (anything).
+   */
+  search_threshold: number;
+  /** The kinds of content the search leaves out: the others are searched. */
+  search_excluded: SearchKind[];
   /**
    * The workspace they work in: its views, boards and rights are
    * those of this workspace. "null" if they have none.
@@ -1529,3 +1540,6 @@ export type ReplyEditorView = (typeof REPLY_EDITOR_VIEWS)[number];
 
 export const isReplyEditorView = (value: unknown): value is ReplyEditorView =>
   (REPLY_EDITOR_VIEWS as readonly unknown[]).includes(value);
+
+/** The search's tolerance by default: a letter or two off in a short word. */
+export const DEFAULT_SEARCH_THRESHOLD = 0.45;

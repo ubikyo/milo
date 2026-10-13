@@ -1,29 +1,15 @@
 import { Text, UnstyledButton } from "@mantine/core";
 import { Spotlight, spotlight } from "@mantine/spotlight";
-import {
-  IconBrandGoogle,
-  IconCalendarEvent,
-  IconDeviceDesktop,
-  IconApps,
-  IconDevices,
-  IconExternalLink,
-  IconFolder,
-  IconHeadset,
-  IconKey,
-  IconLayoutKanban,
-  IconMail,
-  IconRss,
-  IconSearch,
-} from "@tabler/icons-react";
+import { IconBrandGoogle, IconExternalLink, IconSearch } from "@tabler/icons-react";
 import Fuse from "fuse.js";
 import { useMemo, useState } from "react";
-import type { ComponentType } from "react";
-import type { SearchKind, SearchResult } from "@milo/shared";
+import type { SearchResult } from "@milo/shared";
 import { api } from "../../api";
 import classes from "../../assets/styles/SearchBox.module.css";
 import { ROW_CONTROL_HEIGHT } from "../../themes/menus";
-import { useDisplaySettings } from "../../lib/displaySettings";
+import { useSearchPreferences } from "../../lib/search-preferences";
 import { knownResults } from "../../lib/searchSources";
+import { KINDS } from "../../lib/searchKinds";
 
 // The search, in the tab row: from the end of the tabs to the menus and the
 // account, in all modes (ModeBar). The field there is only a lure: a click
@@ -32,20 +18,6 @@ import { knownResults } from "../../lib/searchSources";
 // sees on opening, the widgets add the e-mails and appointments they have
 // loaded (lib/searchSources.ts); Fuse.js searches it, fuzzily — a typo still
 // finds.
-
-/** The kinds, in the order the list presents them — that of the modes. */
-const KINDS: { kind: SearchKind; label: string; icon: ComponentType<{ size?: number }> }[] = [
-  { kind: "access", label: "Accès", icon: IconKey },
-  { kind: "project", label: "Projets", icon: IconFolder },
-  { kind: "card", label: "Tâches", icon: IconLayoutKanban },
-  { kind: "support", label: "Support", icon: IconHeadset },
-  { kind: "managed_device_asset", label: "Assets", icon: IconDeviceDesktop },
-  { kind: "unmanaged_device_asset", label: "Équipements déclarés", icon: IconDevices },
-  { kind: "application_asset", label: "Applications", icon: IconApps },
-  { kind: "mail", label: "E-mails", icon: IconMail },
-  { kind: "appointment", label: "Rendez-vous", icon: IconCalendarEvent },
-  { kind: "article", label: "Flux RSS", icon: IconRss },
-];
 
 /** The most each kind shows: the list stays readable at a glance. */
 const PER_KIND = 8;
@@ -67,8 +39,8 @@ export interface SearchBoxProps {
 
 export default function SearchBox({ onOpen }: SearchBoxProps) {
   const [query, setQuery] = useState("");
-  // The tolerance set in Paramétrage > Affichage.
-  const { settings: display } = useDisplaySettings();
+  // The tolerance set in the profile (Préférences).
+  const searching = useSearchPreferences();
   // Everything searchable, loaded at each opening: null while it comes.
   const [index, setIndex] = useState<SearchResult[] | null>(null);
 
@@ -88,19 +60,20 @@ export default function SearchBox({ onOpen }: SearchBoxProps) {
   // fall in the text.
   const fuse = useMemo(
     () =>
-      new Fuse(index ?? [], {
+      // The kinds left out in the profile are not searched.
+      new Fuse((index ?? []).filter((r) => !searching.excluded.includes(r.kind)), {
         keys: [
           { name: "title", weight: 3 },
           { name: "context", weight: 1 },
           { name: "keywords", weight: 0.5 },
         ],
-        // From 0, the text as typed, to 1, anything (Paramétrage > Affichage).
-        threshold: display.fuzzySearch ? display.searchThreshold : 0,
+        // From 0, the text as typed, to 1, anything (Profil > Préférences).
+        threshold: searching.fuzzy ? searching.threshold : 0,
         ignoreLocation: true,
         ignoreDiacritics: true,
         minMatchCharLength: 2,
       }),
-    [index, display.fuzzySearch, display.searchThreshold],
+    [index, searching.fuzzy, searching.threshold, searching.excluded],
   );
 
   const search = query.trim();

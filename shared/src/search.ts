@@ -6,17 +6,23 @@
 
 import type { Id } from "./domain.js";
 
-export type SearchKind =
-  | "project"
-  | "card"
-  | "support"
-  | "managed_device_asset"
-  | "unmanaged_device_asset"
-  | "application_asset"
-  | "access"
-  | "mail"
-  | "appointment"
-  | "article";
+export const SEARCH_KINDS = [
+  "project",
+  "card",
+  "support",
+  "managed_device_asset",
+  "unmanaged_device_asset",
+  "application_asset",
+  "access",
+  "mail",
+  "appointment",
+  "article",
+] as const;
+
+export type SearchKind = (typeof SEARCH_KINDS)[number];
+
+export const isSearchKind = (value: unknown): value is SearchKind =>
+  (SEARCH_KINDS as readonly unknown[]).includes(value);
 
 export interface SearchResult {
   kind: SearchKind;

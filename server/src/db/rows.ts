@@ -45,6 +45,12 @@ export interface UserRow {
   notification_settings: string;
   /** How an e-mail being written first shows: "content" or "layout". */
   reply_editor: string;
+  /** Whether the search forgives typing mistakes. */
+  fuzzy_search: SqliteBool;
+  /** The search's tolerance, from 0 to 1. */
+  search_threshold: number;
+  /** JSON: the kinds of content the search leaves out; empty for none. */
+  search_excluded: string;
 }
 
 export interface ApiTokenRow {

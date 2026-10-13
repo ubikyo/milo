@@ -1,12 +1,12 @@
 import {
   Box,
   getContrastColor,
-  getPrimaryShade,
   useComputedColorScheme,
   useMantineTheme,
 } from "@mantine/core";
 import { useCallback } from "react";
 import type { Label, ProjectLabel } from "@milo/shared";
+import { labelHex } from "../../themes/colors";
 
 /** Labels of both modes are drawn the same way: only the name and the color matter here. */
 type ChipLabel = Pick<Label | ProjectLabel, "name" | "color">;
@@ -52,14 +52,7 @@ export function useLabelColors() {
 
   return useCallback(
     (color: string | null | undefined): LabelColors => {
-      // "hue.shade", or just the hue for labels from before the matrix: they
-      // then take the theme's current shade.
-      const [name, shade] = String(color || "").split(".");
-      const hue = name && theme.colors[name] ? name : "blue";
-      const rank =
-        shade === undefined ? getPrimaryShade(theme, colorScheme) : Number(shade);
-      const palette = theme.colors[hue] ?? theme.colors["blue"]!;
-      const background = palette[rank] ?? palette[6]!;
+      const background = labelHex(color);
       return {
         backgroundColor: background,
         color: getContrastColor({ color: background, theme, autoContrast: true, colorScheme }),

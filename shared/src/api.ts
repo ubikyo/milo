@@ -4,6 +4,7 @@
 import type { DueShape, Reminder, Recurrence } from "./due.js";
 import type { EntraPrincipal } from "./entra.js";
 import type { NotificationSettings } from "./notification-settings.js";
+import type { SearchKind } from "./search.js";
 import type {
   CardKind,
   Id,
@@ -67,6 +68,12 @@ export interface UpdateMeInput {
   notification_settings?: Partial<NotificationSettings>;
   /** How an e-mail being written first shows. */
   reply_editor?: ReplyEditorView;
+  /** Whether the search forgives typing mistakes. */
+  fuzzy_search?: boolean;
+  /** The search's tolerance, from 0 to 1. */
+  search_threshold?: number;
+  /** The kinds of content the search leaves out. */
+  search_excluded?: SearchKind[];
 }
 
 /**

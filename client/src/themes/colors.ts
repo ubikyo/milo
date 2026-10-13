@@ -1,3 +1,4 @@
+import { DEFAULT_THEME } from "@mantine/core";
 import { PALETTE } from "@milo/shared";
 
 // The only red, orange, green and blue of the application. The theme (main.tsx)
@@ -29,9 +30,22 @@ export const statusColor = (status: number): string => {
  * gives to its value, as a label color.
  */
 export const defaultMilestoneColor = (value: number): string => {
-  if (value < 30) return "red.6";
-  if (value <= 70) return "orange.6";
-  return "teal.6";
+  if (value < 30) return "red.8";
+  if (value <= 70) return "orange.8";
+  return "green.8";
+};
+
+/**
+ * A label color ("hue.shade") as a hex value, read from Mantine's own
+ * palettes: the theme (main.tsx) flattens red, orange, green, teal and blue
+ * to a single shade, which would make the matrix's rows identical. Their
+ * shade 8 is the application's color (PALETTE). Without a shade (labels from
+ * before the matrix), shade 6.
+ */
+export const labelHex = (color: string | null | undefined): string => {
+  const [name, shade] = String(color || "").split(".");
+  const palette = DEFAULT_THEME.colors[name as keyof typeof DEFAULT_THEME.colors] ?? DEFAULT_THEME.colors.blue;
+  return palette[shade === undefined ? 6 : Number(shade)] ?? palette[6];
 };
 
 /**
@@ -48,7 +62,7 @@ export const progressColor = (
     .sort((a, b) => a.value - b.value)
     .find((m) => status <= m.value);
   if (!band) return statusColor(status);
-  return band.color ?? defaultMilestoneColor(band.value);
+  return labelHex(band.color ?? defaultMilestoneColor(band.value));
 };
 
 // Green of success messages: the counterpart of the red above, in the same

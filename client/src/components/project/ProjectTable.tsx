@@ -678,6 +678,9 @@ export default function ProjectTable({
 }: ProjectTableProps) {
   // By default: the most advanced projects first.
   const [sort, setSort] = useState<Sort>({ key: "status", direction: "desc" });
+  // The labels filter: a label's name, or "all". Unlike the others, it is
+  // applied here, on the projects read — as in Support.
+  const [labelFilter, setLabelFilter] = useState("all");
   // The columns the widget shows, in the set order; without a setting,
   // all of them.
   // A column can come back: "id" distinguishes each occurrence.
@@ -730,6 +733,15 @@ export default function ProjectTable({
     ...categoryNodesList.map((c) => ({ value: c.id, label: categoryPaths.get(c.id) ?? c.name })),
   ];
 
+  // The labels the projects carry, by name: a label gone from every project
+  // is no longer offered, unless it is the one selected.
+  const labelNames = new Set(projects.flatMap((p) => (p.labels ?? []).map((l) => l.name)));
+  if (labelFilter !== "all") labelNames.add(labelFilter);
+  const labelOptions: FilterOption[] = [
+    { value: "all", label: "Toutes" },
+    ...[...labelNames].sort((a, b) => a.localeCompare(b, "fr")).map((n) => ({ value: n, label: n })),
+  ];
+
   // Chaque colonne filtrable porte son entonnoir.
   const filterFor = (key: ColumnKey): ReactNode => {
     if (key === "category_name") {
@@ -762,6 +774,17 @@ export default function ProjectTable({
         />
       );
     }
+    // Every labels column, whatever its group, carries the same filter.
+    if (key === "labels") {
+      return (
+        <ColumnFilter
+          label="étiquette"
+          options={labelOptions}
+          value={labelFilter}
+          onChange={setLabelFilter}
+        />
+      );
+    }
     return null;
   };
 
@@ -777,10 +800,14 @@ export default function ProjectTable({
     const column =
       columns.find((c) => sameSort(sort, c.key, c.group)) ??
       COLUMNS.find((c) => c.key === sort.key);
-    if (!column) return projects;
+    const filtered =
+      labelFilter === "all"
+        ? projects
+        : projects.filter((p) => (p.labels ?? []).some((l) => l.name === labelFilter));
+    if (!column) return filtered;
     const factor = sort.direction === "asc" ? 1 : -1;
 
-    return [...projects].sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       const left = column.value(a);
       const right = column.value(b);
       // Missing values (no company, no actor, no label)
@@ -798,7 +825,7 @@ export default function ProjectTable({
     // "columns" is rebuilt on each render: the configuration it comes from is
     // what changes it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, sort, config]);
+  }, [projects, sort, config, labelFilter]);
 
   // With no project to show, the table has no reason to exist: only the empty
   // state is displayed. It then carries what is needed to undo the filters. During

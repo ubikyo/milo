@@ -4,12 +4,15 @@ import {
   Group,
   Modal,
   Select,
+  SimpleGrid,
+  Slider,
   Stack,
+  Switch,
   Tabs,
   Text,
   useMantineColorScheme,
 } from "@mantine/core";
-import { IconBell, IconDeviceDesktop, IconMoon, IconSun, IconUser } from "@tabler/icons-react";
+import { IconBell, IconDeviceDesktop, IconMoon, IconSearch, IconSun, IconUser } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api";
 import { modalHeaderStyles } from "../../themes/modals";
@@ -18,18 +21,21 @@ import { initialsOf } from "../ui/ActorAvatars";
 import { useDisplaySettings } from "../../lib/displaySettings";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { setThemeChoice, themeChoice, useThemes, type ThemeChoice } from "../../lib/themeColors";
+import { DEFAULT_SEARCH_THRESHOLD } from "@milo/shared";
 import type {
   Id,
   NotificationSettings,
   OpeningView,
   PublicUser,
   ReplyEditorView,
+  SearchKind,
   Theme,
 } from "@milo/shared";
 import type { ComponentType } from "react";
 import CloseButton from "../ui/CloseButton";
 import Footer from "../ui/Footer";
 import NotificationPreferences from "./NotificationPreferences";
+import { KINDS } from "../../lib/searchKinds";
 import { themeWindow } from "../../lib/themeWindow";
 
 /** The profile's theme as the Select holds it: "system", or a theme's id. */
@@ -65,10 +71,22 @@ const PADDING = 40;
 const GAP = 16;
 
 /**
- * The modal is sized to its widest tab, Notifications: the e-mail switch,
- * its sending mode and its delay on one line, and the padding.
+ * The modal is sized to its widest tab, Recherche: the switch and the
+ * tolerance's slider beside it, and the padding.
  */
-const MODAL_WIDTH = 520 + 2 * PADDING;
+const MODAL_WIDTH = 570 + 2 * PADDING;
+
+/**
+ * The search's tolerance, from exact to anything: the marks name the steps
+ * that change what is found (SearchBox, Fuse.js).
+ */
+const SEARCH_MARKS = [
+  { value: 0, label: "Exact" },
+  { value: 0.25, label: "Strict" },
+  { value: 0.45, label: "Défaut" },
+  { value: 0.7, label: "Large" },
+  { value: 1, label: "Tout" },
+];
 
 
 interface PreferencesModalProps {
@@ -82,7 +100,8 @@ interface PreferencesModalProps {
  * The preferences. Identity comes from Entra and is edited there: it is read
  * here, and re-read at each sign-in. The password is the Microsoft one. What
  * remains is what each person sets for themselves — in the Préférences tab, the
- * opening workspace, view and board, the e-mail editor's view, the theme; in the Notifications tab, how
+ * opening workspace, view and board, the e-mail editor's view, the theme; in
+ * the Recherche tab, the search's tolerance; in the Notifications tab, how
  * they are notified —, which only apply on save: "Fermer" leaves them as they
  * were. The theme shows as soon as it is chosen, and "Fermer" puts back the
  * one in place at opening.
@@ -106,6 +125,9 @@ export default function PreferencesModal({
   const [theme, setTheme] = useState<string>(SYSTEM);
   const [notifying, setNotifying] = useState<NotificationSettings | null>(null);
   const [replyEditor, setReplyEditor] = useState<ReplyEditorView>("layout");
+  const [fuzzySearch, setFuzzySearch] = useState(true);
+  const [searchThreshold, setSearchThreshold] = useState(DEFAULT_SEARCH_THRESHOLD);
+  const [searchExcluded, setSearchExcluded] = useState<SearchKind[]>([]);
   const [tab, setTab] = useState<string | null>("profile");
   const [busy, setBusy] = useState(false);
   // The theme and Mantine's scheme in place at opening, put back unless saved.
@@ -124,6 +146,9 @@ export default function PreferencesModal({
     setTheme(themes.some((t) => t.id === chosen) ? String(chosen) : SYSTEM);
     setNotifying(user?.notification_settings ?? null);
     setReplyEditor(user?.reply_editor ?? "layout");
+    setFuzzySearch(user?.fuzzy_search ?? true);
+    setSearchThreshold(user?.search_threshold ?? DEFAULT_SEARCH_THRESHOLD);
+    setSearchExcluded(user?.search_excluded ?? []);
     setTab("profile");
     // The theme is only re-read on opening: re-reading it while choosing
     // would wipe the choice in progress.
@@ -194,12 +219,21 @@ export default function PreferencesModal({
         notifying &&
         JSON.stringify(notifying) !== JSON.stringify(user?.notification_settings);
       const replyEditorChanged = user && replyEditor !== user.reply_editor;
-      if (openingChanged || notifyingChanged || replyEditorChanged)
+      const searchChanged =
+        user && (fuzzySearch !== user.fuzzy_search || searchThreshold !== user.search_threshold);
+      const excludedChanged =
+        user &&
+        JSON.stringify([...searchExcluded].sort()) !== JSON.stringify([...user.search_excluded].sort());
+      if (openingChanged || notifyingChanged || replyEditorChanged || searchChanged || excludedChanged)
         onUpdated(
           await api.updateMe({
             ...(openingChanged ? opening : {}),
             ...(notifyingChanged ? { notification_settings: notifying } : {}),
             ...(replyEditorChanged ? { reply_editor: replyEditor } : {}),
+            ...(searchChanged
+              ? { fuzzy_search: fuzzySearch, search_threshold: searchThreshold }
+              : {}),
+            ...(excludedChanged ? { search_excluded: searchExcluded } : {}),
           }),
         );
       applyTheme(theme);
@@ -291,6 +325,9 @@ export default function PreferencesModal({
               Notifications
             </Tabs.Tab>
           )}
+          <Tabs.Tab value="search" leftSection={<IconSearch size={16} />} style={tabStyle(tab === "search")}>
+            Recherche
+          </Tabs.Tab>
         </Tabs.List>
 
         {/* Its height is its content's: the window's is the themes'
@@ -414,6 +451,66 @@ export default function PreferencesModal({
                 w={FIELD_WIDTH + 50}
               />
             </Group>
+          </Stack>
+        </Tabs.Panel>
+
+        {/* As it was in Paramétrage > Affichage: the tolerance only matters
+            once typing mistakes are forgiven: it sits beside the switch,
+            and only shows with it. */}
+        <Tabs.Panel value="search" pt={40}>
+          <Stack gap="sm" data-controls>
+            <Group gap="xl" align="flex-start" wrap="nowrap" pb="lg">
+              <Switch
+                label="Recherche approximative"
+                checked={fuzzySearch}
+                onChange={(e) => setFuzzySearch(e.currentTarget.checked)}
+                color="teal"
+              />
+              {/* The marks' labels are centered on their step: the inset
+                  leaves room for half of "Exact" and "Tout" at both ends. */}
+              {fuzzySearch && (
+                <Slider
+                  flex={1}
+                  mx="md"
+                  maw={420}
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  marks={SEARCH_MARKS}
+                  value={searchThreshold}
+                  onChange={setSearchThreshold}
+                  label={(value) => value.toFixed(2)}
+                  color="teal"
+                />
+              )}
+            </Group>
+
+            {/* The kinds of content searched, in the order the results
+                show them: a kind switched off is left out. */}
+            <Text size="sm" fw={500} data-field-label>
+              Contenus inclus
+            </Text>
+            <SimpleGrid cols={2} spacing="md" verticalSpacing="sm">
+              {KINDS.map(({ kind, label, icon: Icon }) => (
+                <Switch
+                  key={kind}
+                  label={
+                    <Group gap={6} wrap="nowrap">
+                      <Icon size={16} />
+                      <span>{label}</span>
+                    </Group>
+                  }
+                  checked={!searchExcluded.includes(kind)}
+                  onChange={(e) => {
+                    const included = e.currentTarget.checked;
+                    setSearchExcluded((current) =>
+                      included ? current.filter((k) => k !== kind) : [...current, kind],
+                    );
+                  }}
+                  color="teal"
+                />
+              ))}
+            </SimpleGrid>
           </Stack>
         </Tabs.Panel>
 

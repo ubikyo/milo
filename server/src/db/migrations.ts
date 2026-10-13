@@ -7,6 +7,7 @@
 
 import type { Database } from "better-sqlite3";
 import {
+  DEFAULT_SEARCH_THRESHOLD,
   CONTACT_SETTINGS_DEFAULTS,
   PRODUCT_TAX_DEFAULTS,
   DECLARED_ASSET_EXTRAS,
@@ -441,6 +442,23 @@ export const migrate = (db: Database): void => {
   // How an e-mail being written first shows, chosen in the profile.
   if (!userColumns.includes("reply_editor")) {
     db.exec("ALTER TABLE users ADD COLUMN reply_editor TEXT NOT NULL DEFAULT 'layout'");
+  }
+  // The search's tolerance, once set for the whole application ("Paramétrage"
+  // > "Affichage"), is each person's: everyone starts from what was set.
+  if (!userColumns.includes("fuzzy_search")) {
+    const fuzzy = readSetting(db, "display_fuzzy_search");
+    const threshold = Number(readSetting(db, "display_search_threshold"));
+    db.exec("ALTER TABLE users ADD COLUMN fuzzy_search INTEGER NOT NULL DEFAULT 1");
+    db.exec("ALTER TABLE users ADD COLUMN search_threshold REAL NOT NULL DEFAULT 0.45");
+    db.prepare("UPDATE users SET fuzzy_search = ?, search_threshold = ?").run(
+      fuzzy === false ? 0 : 1,
+      Number.isFinite(threshold) ? Math.min(1, Math.max(0, threshold)) : DEFAULT_SEARCH_THRESHOLD,
+    );
+    db.prepare("DELETE FROM settings WHERE key IN ('display_fuzzy_search', 'display_search_threshold')").run();
+  }
+  // The kinds of content each person leaves out of the search.
+  if (!userColumns.includes("search_excluded")) {
+    db.exec("ALTER TABLE users ADD COLUMN search_excluded TEXT NOT NULL DEFAULT ''");
   }
   // Each list widget owns its labels, categories, milestone types and tables
   // (db/settings-per-list.ts): last, once everything else is in place.

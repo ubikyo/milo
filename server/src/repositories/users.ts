@@ -6,6 +6,7 @@
 // and appears in no list.
 
 import type {
+  SearchKind,
   AdminPermissions,
   AdministrationRights,
   CompanyRights,
@@ -22,6 +23,8 @@ import type {
   StructureRights,
 } from "@milo/shared";
 import {
+  DEFAULT_SEARCH_THRESHOLD,
+  isSearchKind,
   isReplyEditorView,
   ALL_COMPANIES,
   grantsAnything,
@@ -79,8 +82,22 @@ export const users = {
   setNotificationSettings: mutation("UPDATE users SET notification_settings = ? WHERE id = ?"),
   /** How an e-mail being written first shows, chosen in the preferences. */
   setReplyEditor: mutation("UPDATE users SET reply_editor = ? WHERE id = ?"),
+  /** The search's tolerance, chosen in the preferences. */
+  setSearch: mutation("UPDATE users SET fuzzy_search = ?, search_threshold = ? WHERE id = ?"),
+  /** The kinds of content the search leaves out, as JSON, chosen in the preferences. */
+  setSearchExcluded: mutation("UPDATE users SET search_excluded = ? WHERE id = ?"),
   /** True if this id designates a person. Used to filter the attachments. */
   exists: selection<{ id: number }>("SELECT id FROM users WHERE id = ? AND system = 0"),
+};
+
+/** The kinds of content a person leaves out of the search: unreadable, none. */
+export const searchExcluded = (user: Pick<UserRow, "search_excluded">): SearchKind[] => {
+  try {
+    const read: unknown = JSON.parse(user.search_excluded || "[]");
+    return Array.isArray(read) ? read.filter(isSearchKind) : [];
+  } catch {
+    return [];
+  }
 };
 
 export const sessions = {
@@ -375,6 +392,9 @@ export const publicUser = (account: UserRow): PublicUser => {
     default_board: user.default_board ?? "",
     notification_settings: notificationSettings(user),
     reply_editor: isReplyEditorView(user.reply_editor) ? user.reply_editor : "layout",
+    fuzzy_search: Boolean(user.fuzzy_search ?? 1),
+    search_threshold: user.search_threshold ?? DEFAULT_SEARCH_THRESHOLD,
+    search_excluded: searchExcluded(user),
     workspace: user.workspace_id,
     workspaces: workspacesOf(user),
     workspace_rights: workspaceRights(user),

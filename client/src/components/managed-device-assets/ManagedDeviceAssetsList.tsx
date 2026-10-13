@@ -39,6 +39,7 @@ import { useResizableColumns } from "../ui/useResizableColumns";
 import { useIsEditing } from "../../lib/editing";
 import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
 import { inList } from "../../lib/lists";
+import { ALL_OPTION, ChoiceFilter } from "../support/SupportRequestsList";
 import { DISK_FULL, diskUsage, osLabel } from "../../lib/workstation";
 import { RED, STRONG_TEXT } from "../../themes/colors";
 import type { ManagedDeviceAsset, Id } from "@milo/shared";
@@ -132,6 +133,7 @@ function SortableTh({
   group,
   sort,
   onSort,
+  filter,
   style,
   handle,
 }: {
@@ -141,6 +143,8 @@ function SortableTh({
   group?: Id;
   sort: Sort;
   onSort: (key: ColumnKey, group?: Id) => void;
+  /** Its funnel, beside the sort: only the labels have one. */
+  filter?: ReactNode;
   style?: CSSProperties;
   handle: ReactNode;
 }) {
@@ -148,16 +152,19 @@ function SortableTh({
   const Icon = !active ? IconSelector : sort.direction === "asc" ? IconChevronUp : IconChevronDown;
   return (
     <Table.Th style={style}>
-      <UnstyledButton onClick={() => onSort(column, group)} w="100%">
-        <Group gap={4} wrap="nowrap" justify="space-between">
-          <Text size="sm" fw={600} c={STRONG_TEXT}>
-            {label}
-          </Text>
-          <Center c={active ? undefined : "dimmed"}>
-            <Icon size={14} />
-          </Center>
-        </Group>
-      </UnstyledButton>
+      <Group gap={4} wrap="nowrap">
+        <UnstyledButton onClick={() => onSort(column, group)} style={{ flex: 1, minWidth: 0 }}>
+          <Group gap={4} wrap="nowrap" justify="space-between">
+            <Text size="sm" fw={600} c={STRONG_TEXT}>
+              {label}
+            </Text>
+            <Center c={active ? undefined : "dimmed"}>
+              <Icon size={14} />
+            </Center>
+          </Group>
+        </UnstyledButton>
+        {filter}
+      </Group>
       {handle}
     </Table.Th>
   );
@@ -325,6 +332,8 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
   const all = list?.managedDeviceAssets ?? null;
   const assets = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
   const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
+  // The labels filter: a label's name, or ALL_OPTION.
+  const [labelFilter, setLabelFilter] = useState(ALL_OPTION);
   // A labels column limited to a group takes its name.
   const labelGroups = useLabelGroups("/managed-device-asset-labels");
   const isEditing = useIsEditing();
@@ -340,17 +349,30 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
         ? (a: ManagedDeviceAsset) => labelRank(a.labels, sort.group)
         : VALUES[sort.key];
     const factor = sort.direction === "asc" ? 1 : -1;
-    return [...(assets ?? [])].sort((a, b) => {
-      const left = value(a);
-      const rightHand = value(b);
-      if (left == null && rightHand == null) return 0;
-      if (left == null) return 1;
-      if (rightHand == null) return -1;
-      if (typeof left === "number" && typeof rightHand === "number")
-        return (left - rightHand) * factor;
-      return String(left).localeCompare(String(rightHand), "fr", { numeric: true }) * factor;
-    });
-  }, [assets, sort]);
+    return (assets ?? [])
+      .filter((a) => labelFilter === ALL_OPTION || a.labels.some((l) => l.name === labelFilter))
+      .sort((a, b) => {
+        const left = value(a);
+        const rightHand = value(b);
+        if (left == null && rightHand == null) return 0;
+        if (left == null) return 1;
+        if (rightHand == null) return -1;
+        if (typeof left === "number" && typeof rightHand === "number")
+          return (left - rightHand) * factor;
+        return String(left).localeCompare(String(rightHand), "fr", { numeric: true }) * factor;
+      });
+  }, [assets, sort, labelFilter]);
+
+  // The labels the workstations carry, by name; the one selected stays
+  // offered even if no workstation carries it any more.
+  const labelOptions = useMemo(() => {
+    const names = new Set((assets ?? []).flatMap((a) => a.labels.map((l) => l.name)));
+    if (labelFilter !== ALL_OPTION) names.add(labelFilter);
+    return [
+      { value: ALL_OPTION, label: "Toutes" },
+      ...[...names].sort((a, b) => a.localeCompare(b, "fr")).map((n) => ({ value: n, label: n })),
+    ];
+  }, [assets, labelFilter]);
 
   // Texts go up first; the disk and the date start with the fullest and
   // the most recent.
@@ -394,6 +416,7 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
     column: ColumnKey,
     style?: CSSProperties,
     group?: Id,
+    filter?: ReactNode,
   ) => (
     <SortableTh
       key={id}
@@ -402,6 +425,7 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
       group={group}
       sort={sort}
       onSort={sortBy}
+      filter={filter}
       style={style}
       handle={resize.handle(id)}
     />
@@ -411,7 +435,20 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
   const headers: Record<ColumnKey, (id: string, group?: Id) => ReactNode> = {
     name: (id) => th(id, "Asset", "name"),
     labels: (id, group) =>
-      th(id, labelsColumnTitle(labelGroups, group), "labels", { whiteSpace: "nowrap" }, group),
+      // Every labels column, whatever its group, carries the same filter.
+      th(
+        id,
+        labelsColumnTitle(labelGroups, group),
+        "labels",
+        { whiteSpace: "nowrap" },
+        group,
+        <ChoiceFilter
+          label="étiquette"
+          options={labelOptions}
+          value={labelFilter}
+          onChange={setLabelFilter}
+        />,
+      ),
     os: (id) => th(id, "Système", "os"),
     user: (id) => th(id, "Dernier utilisateur connecté", "user"),
     protection: (id) => th(id, "Antivirus", "protection"),

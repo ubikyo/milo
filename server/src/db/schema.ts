@@ -171,7 +171,13 @@ export const SCHEMA = `
     notification_settings TEXT NOT NULL DEFAULT '',
     -- How an e-mail being written first shows: "content", its text alone;
     -- "layout", in its template.
-    reply_editor TEXT NOT NULL DEFAULT 'layout'
+    reply_editor TEXT NOT NULL DEFAULT 'layout',
+    -- The search (Spotlight): whether it forgives typing mistakes, and how
+    -- far it strays from what is typed (Fuse.js's threshold, 0 to 1).
+    fuzzy_search INTEGER NOT NULL DEFAULT 1,
+    search_threshold REAL NOT NULL DEFAULT 0.45,
+    -- The kinds of content the search leaves out (JSON list); empty, none.
+    search_excluded TEXT NOT NULL DEFAULT ''
   );
 
   -- Les acteurs favoris de chaque personne : ils passent en tête des listes

@@ -9,7 +9,7 @@
 import { Router } from "express";
 import type { Request } from "express";
 import { randomBytes } from "node:crypto";
-import { isReplyEditorView, normalizeUsername, passwordIssues, usernameIssues } from "@milo/shared";
+import { isReplyEditorView, isSearchKind, normalizeUsername, passwordIssues, usernameIssues } from "@milo/shared";
 import { env } from "../env.js";
 import { createToken, fullName, hashPassword, verifyPassword } from "../lib/auth.js";
 import {
@@ -280,6 +280,24 @@ authRoutes.put("/me", (req, res) => {
   if (body.reply_editor !== undefined) {
     if (!isReplyEditorView(body.reply_editor)) badRequest("Éditeur inconnu");
     users.setReplyEditor.run(body.reply_editor, req.user.id);
+  }
+  // The kinds of content left out of the search: known ones only, each once.
+  if (body.search_excluded !== undefined) {
+    if (!Array.isArray(body.search_excluded)) badRequest("Types de contenu invalides");
+    users.setSearchExcluded.run(
+      JSON.stringify([...new Set(body.search_excluded.filter(isSearchKind))]),
+      req.user.id,
+    );
+  }
+  // The search's tolerance: between 0 and 1, to the hundredth.
+  if (body.fuzzy_search !== undefined || body.search_threshold !== undefined) {
+    const threshold = Number(body.search_threshold ?? req.user.search_threshold);
+    if (!Number.isFinite(threshold)) badRequest("Tolérance invalide");
+    users.setSearch.run(
+      (body.fuzzy_search ?? Boolean(req.user.fuzzy_search)) ? 1 : 0,
+      Math.round(Math.min(1, Math.max(0, threshold)) * 100) / 100,
+      req.user.id,
+    );
   }
   res.json(publicUser(users.byId.get(req.user.id)!));
 });
