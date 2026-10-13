@@ -21,7 +21,6 @@ import {
   useRowSelection,
   EmptyList,
   ROW_INSET,
-  NAME_INSET,
   HEADER_BACKGROUND,
   nameFieldStyle,
   rowStyle,
@@ -173,6 +172,8 @@ export default function PrincipalsPermissions<T>({
   const [pendingDelete, setPendingDelete] = useState<EntraPrincipal[]>([]);
   // The added row, where the directory is searched.
   const [adding, setAdding] = useState(false);
+  // The add row, measured: its list takes its width (addRowDropdown).
+  const [addRow, setAddRow] = useState<HTMLDivElement | null>(null);
   // The row whose user or group is being changed, by clicking its name.
   const [toReplace, setToReplace] = useState<string | null>(null);
   // The rows unfolded, by key.
@@ -316,6 +317,19 @@ export default function PrincipalsPermissions<T>({
         {...(resetOnSelect ? { value: null } : null)}
       />
     );
+  };
+
+  /** The add row's inset above and below, the themes' ("Liste" > "Padding"). */
+  const addRowInset = addRow ? getComputedStyle(addRow).paddingTop : ROW_INSET + 5;
+
+  /**
+   * The add row's list: centered under the field, centered in the row, it
+   * takes the row's width, and leaves it ROW_INSET below its bottom.
+   */
+  const addRowDropdown = () => {
+    if (!addRow) return null;
+    const below = parseFloat(getComputedStyle(addRow).paddingBottom) || 0;
+    return { width: addRow.offsetWidth, offset: below + ROW_INSET };
   };
 
   return (
@@ -478,11 +492,16 @@ export default function PrincipalsPermissions<T>({
             })}
             {adding && (
               <Group
+                ref={setAddRow}
                 gap="sm"
                 wrap="nowrap"
                 style={{
                   ...rowStyle(total - 1, total, false, "accordion"),
                   ...(afterUnfolded(access.length) ? ROUNDED_TOP : null),
+                  // The field alone in the row, framed evenly: on the sides,
+                  // the row's inset above and below it.
+                  paddingLeft: addRowInset,
+                  paddingRight: addRowInset,
                 }}
               >
                 {picker({
@@ -503,10 +522,11 @@ export default function PrincipalsPermissions<T>({
                   autoFocus: true,
                   size: "sm",
                   radius: ROUNDING,
-                  // A field has its own inset: it moves back toward the edge.
-                  style: { flex: 1, minWidth: 0, marginLeft: ROW_INSET - NAME_INSET },
+                  style: { flex: 1, minWidth: 0 },
                   styles: { input: nameFieldStyle(true) },
-                  comboboxProps: { withinPortal: true },
+                  // The list as wide as the row, a few pixels under it — as
+                  // the others' under their row.
+                  comboboxProps: { withinPortal: true, ...addRowDropdown() },
                 })}
               </Group>
             )}

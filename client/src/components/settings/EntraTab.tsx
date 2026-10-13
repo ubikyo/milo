@@ -206,6 +206,14 @@ export default function EntraTab({
     onStatus?.(state);
   }, [onStatus, state]);
 
+  // Connected, the application's address, IDs and secret are frozen: "Actions" >
+  // "Déconnecter" frees them. Kept while the state is being read again,
+  // so that the fields do not flash in between.
+  const [locked, setLocked] = useState(false);
+  useEffect(() => {
+    if (state) setLocked(state.state === "connected");
+  }, [state]);
+
   const reload = useCallback(async () => {
     try {
       const readItems = await api.getEntraSettings();
@@ -512,6 +520,7 @@ export default function EntraTab({
     <PasswordInput
       label="Secret"
       required
+      disabled={locked}
       value={masked ? MASK : secret}
       visibilityToggleButtonProps={
         masked ? { style: { display: "none" } } : undefined
@@ -603,7 +612,9 @@ export default function EntraTab({
                 if (e.key === "Enter") e.currentTarget.blur();
                 if (e.key === "Escape") setTypedUrl(savedUrl);
               }}
-              disabled={savingUrl}
+              disabled={savingUrl || locked}
+              // The copy stays at hand, the field frozen.
+              rightSectionPointerEvents="all"
               inputContainer={(children) => (
                 <div style={{ position: "relative" }}>
                   {children}
@@ -665,6 +676,7 @@ export default function EntraTab({
                   onChange={(e) =>
                     updateStatement({ client_id: e.currentTarget.value })
                   }
+                  disabled={locked}
                   rightSection={statusBadge}
                   rightSectionPointerEvents="all"
                   // Wide enough for "Non configuré"; the status against
@@ -681,6 +693,7 @@ export default function EntraTab({
                   onChange={(e) =>
                     updateStatement({ tenant: e.currentTarget.value })
                   }
+                  disabled={locked}
                 />
                 {secretField}
               </>

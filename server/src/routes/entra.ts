@@ -26,7 +26,9 @@ entraRoutes.get("/", (_req, res) => {
 });
 
 entraRoutes.put("/", (req, res) => {
-  updateEntra(req.body ?? {});
+  // The sending address only changes through its code (/sender/confirm).
+  const { mail_sender: _sender, ...entry } = req.body ?? {};
+  updateEntra(entry);
   res.json(publicEntraSettings());
 });
 
@@ -68,8 +70,9 @@ entraRoutes.post("/test", (req, res, next) => {
     .catch(next);
 });
 
-// The sending address of the first setup (FirstSetup): a code sent from the
-// mailbox to itself, then entered to make it the sending address.
+// The sending address, on the first setup (FirstSetup) as in the Settings
+// (SenderField): a code sent from the mailbox to itself, then entered to make
+// it the sending address.
 entraRoutes.post("/sender/code", (req, res, next) => {
   const email = requireText(req.body?.email, "L'adresse d'envoi est requise");
   sendSenderCode(email)

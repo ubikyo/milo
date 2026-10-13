@@ -1,9 +1,10 @@
-// The sending address, confirmed on the first setup (FirstSetup): Milo sends
-// a four-digit code from the mailbox to itself, which proves at once that
-// Mail.Send reaches it and that whoever sets it reads it. Once the code is
-// entered, the address becomes the sending address.
+// The sending address, confirmed on the first setup (FirstSetup) and on each
+// change in the Settings (SenderField): Milo sends a four-digit code from the
+// mailbox to itself, which proves at once that Mail.Send reaches it and that
+// whoever sets it reads it. Once the code is entered, the address becomes the
+// sending address.
 //
-// The pending code lives in memory: it only lasts the time of the setup, and
+// The pending code lives in memory: it only lasts the time of the confirmation, and
 // a restart merely asks for a new one.
 
 import { newCode } from "./optin.js";

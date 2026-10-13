@@ -5,9 +5,11 @@ import { api } from "../../api";
 import { errorMessage, notifyError } from "../../lib/errors";
 import { GREEN } from "../../themes/colors";
 import MailTestModal from "./MailTestModal";
+import SenderCodeModal from "./SenderCodeModal";
 
 // The sending address of Milo's e-mails, in the Entra tab, under the secret:
-// it belongs to the Entra settings. Saved when its field is left; the button
+// it belongs to the Entra settings. Changed when its field is left, once the
+// code Milo sends to the new address is entered (SenderCodeModal); the button
 // inside it, on the right, sends a test message. It is required: emptied, it goes back to
 // the saved address.
 
@@ -22,6 +24,8 @@ export default function SenderField({ onSaved }: SenderFieldProps) {
   const [sender, setSender] = useState("");
   const [typedSender, setTypedSender] = useState("");
   const [testOpen, setTestOpen] = useState(false);
+  // The new address a code was sent to, awaiting it.
+  const [codeFor, setCodeFor] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -42,10 +46,8 @@ export default function SenderField({ onSaved }: SenderFieldProps) {
     if (!address || address === sender) return setTypedSender(sender);
     setInProgress(true);
     try {
-      const saved = await api.updateEntraSettings({ mail_sender: address });
-      setSender(saved.mail_sender);
-      setTypedSender(saved.mail_sender);
-      onSaved?.(saved.mail_sender);
+      await api.sendSenderCode(address);
+      setCodeFor(address);
     } catch (e) {
       // Refused, the field goes back to the saved address.
       notifyError(errorMessage(e));
@@ -55,7 +57,7 @@ export default function SenderField({ onSaved }: SenderFieldProps) {
     }
   };
 
-  const frozen = ongoing;
+  const frozen = ongoing || codeFor !== null;
   const canTest = Boolean(sender) && typedSender.trim() === sender && !ongoing;
 
   return (
@@ -102,6 +104,20 @@ export default function SenderField({ onSaved }: SenderFieldProps) {
         // 5 px between the address and the button.
         rightSectionWidth={41}
         rightSectionProps={{ style: { paddingLeft: 5 } }}
+      />
+      <SenderCodeModal
+        email={codeFor}
+        // Abandoned, the field goes back to the saved address.
+        onClose={() => {
+          setCodeFor(null);
+          setTypedSender(sender);
+        }}
+        onConfirmed={(saved) => {
+          setCodeFor(null);
+          setSender(saved.mail_sender);
+          setTypedSender(saved.mail_sender);
+          onSaved?.(saved.mail_sender);
+        }}
       />
       <MailTestModal opened={testOpen} onClose={() => setTestOpen(false)} sender={sender} />
     </>

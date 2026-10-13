@@ -480,6 +480,9 @@ export default function App() {
     setToken(null);
     setUser(null);
     setProjectsRead(null);
+    // Signed in again, the Settings open on Entra, not on the
+    // Administration the first setup leads to.
+    setSetupDone(false);
   };
 
   // --- Reads -------------------------------------------------------------------
@@ -1380,7 +1383,7 @@ export default function App() {
         canEdit
         user={user}
         onUserChange={setUser}
-        initialTab={setupDone ? "administration" : undefined}
+        initialTab={setupDone ? "administration" : "entra"}
         entraConnected={setupDone}
       />
     );
