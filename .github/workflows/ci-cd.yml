@@ -1,0 +1,154 @@
+# CI/CD Milo — build on a GitHub-hosted runner, deployment to the Ubuntu VM
+# via a self-hosted runner installed on it (label "milo-vm").
+#
+# Deployment is triggered on every push to dev and on a version tag
+# (v1.0.0, v1.1.0…). Each deployment waits for a manual approval: the
+# "production" environment has required reviewers (Settings → Environments).
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main, dev]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: "20"
+  # Paths on the VM
+  API_DIR: /opt/milo/server
+  WEB_DIR: /var/www/milo
+  DB_DIR: /var/lib/milo
+
+jobs:
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build & contrôles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # A single install: the repository is an npm workspace
+      # (shared + server + client).
+      - name: install
+        run: npm ci
+
+      # --- Checks ---
+      # Types are checked across the three packages at once; an
+      # inconsistency between what the server returns and what the client
+      # expects is a compile error, not a surprise at runtime.
+      - name: typage (tsc)
+        run: npm run typecheck
+      - name: lint (eslint)
+        run: npm run lint
+
+      # --- Build ---
+      - name: build
+        run: npm run build
+
+      # --- Server: dry-run startup on the deployed package ---
+      - name: empaquetage api
+        run: node scripts/package-api.mjs "$RUNNER_TEMP/api"
+      - name: serveur — démarrage à blanc
+        run: |
+          set -e
+          cd "$RUNNER_TEMP/api"
+          npm install --omit=dev --no-audit --no-fund
+          MILO_DB_PATH="/tmp/milo-smoke/smoke.db" PORT=3999 node server.mjs &
+          pid=$!
+          code=""
+          for i in {1..20}; do
+            sleep 0.5
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3999/api/auth/setup || true)
+            [ "$code" = "200" ] && break
+          done
+          kill $pid
+          rm -rf node_modules package-lock.json
+          [ "$code" = "200" ] || { echo "L'API ne répond pas (code=$code)"; exit 1; }
+          echo "Démarrage à blanc OK"
+
+      # --- Artifacts ---
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: client/dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api
+          path: ${{ runner.temp }}/api
+
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Déploiement sur la VM
+    needs: build
+    # On a push to dev or on a version tag, never on a pull request
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/dev' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: [self-hosted, milo-vm]
+    # The required reviewers of this environment give the manual approval.
+    environment: production
+    # One deployment at a time; a pending one is not cancelled.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: web
+          path: ${{ runner.temp }}/web
+      - uses: actions/download-artifact@v4
+        with:
+          name: api
+          path: ${{ runner.temp }}/api
+
+      - name: copie des fichiers
+        run: |
+          set -euo pipefail
+          sudo mkdir -p "$WEB_DIR" "$API_DIR" "$DB_DIR"
+
+          # Frontend: replace the contents (--delete) since these are
+          # files versioned by hash.
+          sudo rsync -a --delete "$RUNNER_TEMP/web/" "$WEB_DIR/"
+
+          # API: replace the code, never the database (it is in $DB_DIR,
+          # outside the deployed folder).
+          sudo rsync -a --delete \
+            --exclude node_modules \
+            "$RUNNER_TEMP/api/" "$API_DIR/"
+
+      - name: dépendances de production
+        run: |
+          set -euo pipefail
+          # better-sqlite3 is compiled here, on the target VM.
+          # The artifact manifest pins the exact versions resolved at build
+          # time: "install" is as reproducible here as "ci".
+          cd "$API_DIR"
+          sudo npm install --omit=dev --no-audit --no-fund
+          sudo chown -R milo:milo "$API_DIR" "$DB_DIR"
+
+      - name: redémarrage des services
+        run: |
+          set -euo pipefail
+          sudo systemctl restart milo-api
+          sudo systemctl is-active --quiet milo-api
+          sudo nginx -t
+          sudo systemctl reload nginx
+
+      - name: contrôle de santé
+        run: |
+          set -euo pipefail
+          code=""
+          for i in {1..20}; do
+            sleep 1
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost/api/auth/setup || true)
+            [ "$code" = "200" ] && break
+          done
+          [ "$code" = "200" ] || { sudo journalctl -u milo-api -n 50 --no-pager; exit 1; }
+          echo "Milo répond (code=$code)"

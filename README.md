@@ -67,8 +67,10 @@ Les deux premiers tournent en CI et bloquent la livraison.
 `npm run package-api <dossier>` regroupe le serveur en un seul fichier
 (`server.mjs`) accompagné d'un manifeste aux versions exactes. `better-sqlite3`
 est un module natif : il reste hors du fichier et se compile sur la machine
-cible. Le pipeline Azure (`azure-pipelines.yml`) fait cela, puis dépose le
-client statique et l'API sur la VM.
+cible. Le workflow GitHub Actions (`.github/workflows/ci-cd.yml`) fait cela,
+puis dépose le client statique et l'API sur la VM par un runner auto-hébergé.
+Chaque push sur `dev` et chaque tag `v*` déploient, après approbation manuelle
+(environnement `production`).
 
 ### Variables d'environnement du serveur
 

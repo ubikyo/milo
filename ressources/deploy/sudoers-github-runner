@@ -1,0 +1,13 @@
+# /etc/sudoers.d/github-runner  (install with: sudo visudo -f /etc/sudoers.d/github-runner)
+# The GitHub Actions self-hosted runner gets only the rights needed for
+# deployment. Replace "github-runner" with the user that runs the runner.
+
+github-runner ALL=(root) NOPASSWD: /usr/bin/rsync, \
+  /usr/bin/mkdir, \
+  /usr/bin/chown, \
+  /usr/bin/npm, \
+  /usr/bin/systemctl restart milo-api, \
+  /usr/bin/systemctl reload nginx, \
+  /usr/bin/systemctl is-active --quiet milo-api, \
+  /usr/sbin/nginx -t, \
+  /usr/bin/journalctl -u milo-api *
