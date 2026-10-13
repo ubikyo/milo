@@ -35,11 +35,12 @@ import {
   ALL_OPTION,
   ChoiceFilter,
   TextFilter,
-} from "../support/SupportRequestsList";
-import type { FilterOption } from "../support/SupportRequestsList";
+} from "../ui/ColumnFilters";
+import type { FilterOption } from "../ui/ColumnFilters";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
+import { useLabelFilter } from "../ui/LabelFilter";
 import { useResizableColumns } from "../ui/useResizableColumns";
 import { useIsEditing } from "../../lib/editing";
 import {
@@ -117,13 +118,12 @@ const VALUES: Record<ColumnKey, (p: Row) => string | number | null> = {
 
 // --- Filters -------------------------------------------------------------
 
-type FilterKey = "name" | "labels" | "category" | "tracking";
+type FilterKey = "name" | "category" | "tracking";
 
 type Filters = Record<FilterKey, string>;
 
 const NO_FILTER: Filters = {
   name: "",
-  labels: ALL_OPTION,
   category: ALL_OPTION,
   tracking: ALL_OPTION,
 };
@@ -133,7 +133,6 @@ const CHOICES: Record<
   Exclude<FilterKey, "name">,
   (p: Row) => FilterOption[]
 > = {
-  labels: (p) => p.labels.map((l) => ({ value: l.name, label: l.name })),
   category: (p) =>
     p.category_path ? [{ value: p.category_path, label: p.category_path }] : [],
   tracking: (p) => [
@@ -245,6 +244,9 @@ function LabelsCell({ labels }: { labels: Product["labels"] }) {
   );
 }
 
+/** A product's labels, for the labels filters (useLabelFilter). */
+const labelsOf = (p: Row) => p.labels;
+
 export default function ProductsList({
   config,
   blockId,
@@ -282,9 +284,11 @@ export default function ProductsList({
   }, [all, config, categories]);
   const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
   const [filters, setFilters] = useState<Filters>(NO_FILTER);
-  const isFiltered = (Object.keys(NO_FILTER) as FilterKey[]).some(
-    (key) => filters[key] !== NO_FILTER[key],
-  );
+  // The labels filters, one per labels column, limited to its group.
+  const labelFilter = useLabelFilter(products, labelsOf);
+  const isFiltered =
+    labelFilter.active ||
+    (Object.keys(NO_FILTER) as FilterKey[]).some((key) => filters[key] !== NO_FILTER[key]);
   const labelGroups = useLabelGroups(PRODUCT_ROUTES.labels);
   const isEditing = useIsEditing();
   const access = useWidgetAccess()("logistics");
@@ -313,6 +317,7 @@ export default function ProductsList({
     const factor = sort.direction === "asc" ? 1 : -1;
     return (products ?? [])
       .filter((p) => chosen(filters, p))
+      .filter(labelFilter.keep)
       .sort((a, b) => {
         const left = value(a);
         const rightHand = value(b);
@@ -327,7 +332,7 @@ export default function ProductsList({
           }) * factor
         );
       });
-  }, [products, sort, filters]);
+  }, [products, sort, filters, labelFilter.keep]);
 
   /** A choice filter's options: "Tous", then the values the products carry. */
   const optionsOf = (
@@ -419,7 +424,7 @@ export default function ProductsList({
         id,
         labelsColumnTitle(labelGroups, group),
         "labels",
-        choiceFilter("labels", "étiquette", "Toutes"),
+        labelFilter.filter(group),
         { whiteSpace: "nowrap" },
         group,
       ),
@@ -566,7 +571,12 @@ export default function ProductsList({
                 <Text size="sm" c="dimmed">
                   Aucun produit ne correspond aux filtres.
                 </Text>
-                <UnstyledButton onClick={() => setFilters(NO_FILTER)}>
+                <UnstyledButton
+                  onClick={() => {
+                    setFilters(NO_FILTER);
+                    labelFilter.reset();
+                  }}
+                >
                   <Text size="sm" c="teal">
                     Retirer les filtres
                   </Text>

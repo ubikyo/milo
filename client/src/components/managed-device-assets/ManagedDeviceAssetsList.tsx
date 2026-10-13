@@ -39,7 +39,7 @@ import { useResizableColumns } from "../ui/useResizableColumns";
 import { useIsEditing } from "../../lib/editing";
 import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
 import { inList } from "../../lib/lists";
-import { ALL_OPTION, ChoiceFilter } from "../support/SupportRequestsList";
+import { useLabelFilter } from "../ui/LabelFilter";
 import { DISK_FULL, diskUsage, osLabel } from "../../lib/workstation";
 import { RED, STRONG_TEXT } from "../../themes/colors";
 import type { ManagedDeviceAsset, Id } from "@milo/shared";
@@ -325,6 +325,9 @@ export interface ManagedDeviceAssetsListHandle {
 
 export const ManagedDeviceAssetsListContext = createContext<ManagedDeviceAssetsListHandle | null>(null);
 
+/** A workstation's labels, for the labels filters (useLabelFilter). */
+const labelsOf = (a: ManagedDeviceAsset) => a.labels;
+
 export default function ManagedDeviceAssetsList({ config }: { config: unknown }) {
   const list = useContext(ManagedDeviceAssetsListContext);
   // The board's workstations, of the chosen context, that the page read — those of
@@ -332,8 +335,8 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
   const all = list?.managedDeviceAssets ?? null;
   const assets = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
   const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
-  // The labels filter: a label's name, or ALL_OPTION.
-  const [labelFilter, setLabelFilter] = useState(ALL_OPTION);
+  // The labels filters, one per labels column, limited to its group.
+  const labelFilter = useLabelFilter(assets, labelsOf);
   // A labels column limited to a group takes its name.
   const labelGroups = useLabelGroups("/managed-device-asset-labels");
   const isEditing = useIsEditing();
@@ -350,7 +353,7 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
         : VALUES[sort.key];
     const factor = sort.direction === "asc" ? 1 : -1;
     return (assets ?? [])
-      .filter((a) => labelFilter === ALL_OPTION || a.labels.some((l) => l.name === labelFilter))
+      .filter(labelFilter.keep)
       .sort((a, b) => {
         const left = value(a);
         const rightHand = value(b);
@@ -361,18 +364,7 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
           return (left - rightHand) * factor;
         return String(left).localeCompare(String(rightHand), "fr", { numeric: true }) * factor;
       });
-  }, [assets, sort, labelFilter]);
-
-  // The labels the workstations carry, by name; the one selected stays
-  // offered even if no workstation carries it any more.
-  const labelOptions = useMemo(() => {
-    const names = new Set((assets ?? []).flatMap((a) => a.labels.map((l) => l.name)));
-    if (labelFilter !== ALL_OPTION) names.add(labelFilter);
-    return [
-      { value: ALL_OPTION, label: "Toutes" },
-      ...[...names].sort((a, b) => a.localeCompare(b, "fr")).map((n) => ({ value: n, label: n })),
-    ];
-  }, [assets, labelFilter]);
+  }, [assets, sort, labelFilter.keep]);
 
   // Texts go up first; the disk and the date start with the fullest and
   // the most recent.
@@ -435,19 +427,13 @@ export default function ManagedDeviceAssetsList({ config }: { config: unknown })
   const headers: Record<ColumnKey, (id: string, group?: Id) => ReactNode> = {
     name: (id) => th(id, "Asset", "name"),
     labels: (id, group) =>
-      // Every labels column, whatever its group, carries the same filter.
       th(
         id,
         labelsColumnTitle(labelGroups, group),
         "labels",
         { whiteSpace: "nowrap" },
         group,
-        <ChoiceFilter
-          label="étiquette"
-          options={labelOptions}
-          value={labelFilter}
-          onChange={setLabelFilter}
-        />,
+        labelFilter.filter(group),
       ),
     os: (id) => th(id, "Système", "os"),
     user: (id) => th(id, "Dernier utilisateur connecté", "user"),

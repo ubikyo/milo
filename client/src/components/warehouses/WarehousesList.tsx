@@ -21,11 +21,12 @@ import AddButton from "../ui/AddButton";
 import { keptColumns, defaultWidths, useColumnWidthEditing } from "../ui/ColumnFields";
 import type { ListColumn } from "../ui/ColumnFields";
 import { CopyPasteContext } from "../ui/CopyPasteActions";
-import { ALL_OPTION, ChoiceFilter, TextFilter } from "../support/SupportRequestsList";
-import type { FilterOption } from "../support/SupportRequestsList";
+import { ALL_OPTION, ChoiceFilter, TextFilter } from "../ui/ColumnFilters";
+import type { FilterOption } from "../ui/ColumnFilters";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
+import { useLabelFilter } from "../ui/LabelFilter";
 import { useResizableColumns } from "../ui/useResizableColumns";
 import { useIsEditing } from "../../lib/editing";
 import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
@@ -82,15 +83,14 @@ const VALUES: Record<ColumnKey, (w: Warehouse) => string | number | null> = {
 
 // --- Filters -------------------------------------------------------------
 
-type FilterKey = "name" | "labels" | "city" | "country";
+type FilterKey = "name" | "city" | "country";
 
 type Filters = Record<FilterKey, string>;
 
-const NO_FILTER: Filters = { name: "", labels: ALL_OPTION, city: ALL_OPTION, country: ALL_OPTION };
+const NO_FILTER: Filters = { name: "", city: ALL_OPTION, country: ALL_OPTION };
 
 /** The values a warehouse offers to a choice filter. */
 const CHOICES: Record<Exclude<FilterKey, "name">, (w: Warehouse) => FilterOption[]> = {
-  labels: (w) => w.labels.map((l) => ({ value: l.name, label: l.name })),
   city: (w) => (w.city ? [{ value: w.city, label: w.city }] : []),
   country: (w) => (w.country ? [{ value: w.country, label: w.country }] : []),
 };
@@ -182,6 +182,9 @@ function LabelsCell({ labels }: { labels: Warehouse["labels"] }) {
   );
 }
 
+/** A warehouse's labels, for the labels filters (useLabelFilter). */
+const labelsOf = (w: Warehouse) => w.labels;
+
 export default function WarehousesList({ config, blockId }: { config: unknown; blockId: Id }) {
   const boardId = useContext(CopyPasteContext)?.board?.id;
   const { warehouses: all, reload } = useWarehouses(boardId);
@@ -189,9 +192,11 @@ export default function WarehousesList({ config, blockId }: { config: unknown; b
   const warehouses = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
   const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
   const [filters, setFilters] = useState<Filters>(NO_FILTER);
-  const isFiltered = (Object.keys(NO_FILTER) as FilterKey[]).some(
-    (key) => filters[key] !== NO_FILTER[key],
-  );
+  // The labels filters, one per labels column, limited to its group.
+  const labelFilter = useLabelFilter(warehouses, labelsOf);
+  const isFiltered =
+    labelFilter.active ||
+    (Object.keys(NO_FILTER) as FilterKey[]).some((key) => filters[key] !== NO_FILTER[key]);
   const labelGroups = useLabelGroups(WAREHOUSE_ROUTES.labels);
   const isEditing = useIsEditing();
   const access = useWidgetAccess()("logistics");
@@ -215,6 +220,7 @@ export default function WarehousesList({ config, blockId }: { config: unknown; b
     const factor = sort.direction === "asc" ? 1 : -1;
     return (warehouses ?? [])
       .filter((w) => chosen(filters, w))
+      .filter(labelFilter.keep)
       .sort((a, b) => {
         const left = value(a);
         const rightHand = value(b);
@@ -225,7 +231,7 @@ export default function WarehousesList({ config, blockId }: { config: unknown; b
           return (left - rightHand) * factor;
         return String(left).localeCompare(String(rightHand), "fr", { numeric: true }) * factor;
       });
-  }, [warehouses, sort, filters]);
+  }, [warehouses, sort, filters, labelFilter.keep]);
 
   /** A choice filter's options: "Tous", then the values the warehouses carry. */
   const optionsOf = (key: keyof typeof CHOICES, everything: string): FilterOption[] => {
@@ -298,7 +304,7 @@ export default function WarehousesList({ config, blockId }: { config: unknown; b
         id,
         labelsColumnTitle(labelGroups, group),
         "labels",
-        choiceFilter("labels", "étiquette", "Toutes"),
+        labelFilter.filter(group),
         { whiteSpace: "nowrap" },
         group,
       ),
@@ -388,7 +394,12 @@ export default function WarehousesList({ config, blockId }: { config: unknown; b
                 <Text size="sm" c="dimmed">
                   Aucun entrepôt ne correspond aux filtres.
                 </Text>
-                <UnstyledButton onClick={() => setFilters(NO_FILTER)}>
+                <UnstyledButton
+                  onClick={() => {
+                    setFilters(NO_FILTER);
+                    labelFilter.reset();
+                  }}
+                >
                   <Text size="sm" c="teal">
                     Retirer les filtres
                   </Text>

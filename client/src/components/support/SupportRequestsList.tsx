@@ -1,26 +1,22 @@
 import {
-  ActionIcon,
   Badge,
   Center,
   Checkbox,
   Group,
-  Menu,
-  Popover,
   Table,
   Text,
-  TextInput,
   UnstyledButton,
 } from "@mantine/core";
 import {
-  IconCheck,
   IconChevronDown,
   IconChevronUp,
-  IconFilter,
   IconLifebuoy,
   IconSelector,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { Fragment, createContext, useContext, useMemo, useState } from "react";
+import { ALL_OPTION, ChoiceFilter, TextFilter, type FilterOption } from "../ui/ColumnFilters";
+import { useLabelFilter } from "../ui/LabelFilter";
 import ActorAvatars, { ACTOR_AVATAR_SIZE, ACTOR_GAP, SenderAvatar } from "../ui/ActorAvatars";
 import AddButton from "../ui/AddButton";
 import { keptColumns, defaultWidths, useColumnWidthEditing, DATE_FORMATS, formatMoment } from "../ui/ColumnFields";
@@ -224,13 +220,6 @@ interface Sort {
 const sameSort = (sort: Sort, key: ColumnKey, group: Id | undefined): boolean =>
   sort.key === key && (key !== "labels" || sort.group === group);
 
-/** A funnel option: "all" means "no filter". */
-export interface FilterOption {
-  value: string;
-  label: string;
-}
-
-export const ALL_OPTION = "all";
 
 const STATUS_ORDER = Object.fromEntries(SUPPORT_STATUSES.map((s, i) => [s.value, i])) as Record<
   SupportStatus,
@@ -272,7 +261,6 @@ interface Filters {
   ticket: string;
   subject: string;
   actor: string;
-  label: string;
   due: string;
   status: string;
   received: string;
@@ -282,7 +270,6 @@ const NO_FILTER: Filters = {
   ticket: "",
   subject: "",
   actor: ALL_OPTION,
-  label: ALL_OPTION,
   due: ALL_OPTION,
   status: ALL_OPTION,
   received: ALL_OPTION,
@@ -293,7 +280,6 @@ const chosen = (f: Filters, d: SupportRequest): boolean => {
     return false;
   if (f.subject && !d.subject.toLowerCase().includes(f.subject.trim().toLowerCase())) return false;
   if (f.actor !== ALL_OPTION && !shownActors(d).some((a) => actorKey(a) === f.actor)) return false;
-  if (f.label !== ALL_OPTION && !d.labels.some((l) => l.name === f.label)) return false;
   if (f.due !== ALL_OPTION) {
     if (f.due === "without" ? d.due_date : !d.due_date) return false;
     if ((f.due === "late" || f.due === "soon") && dueState(d.due_date) !== f.due)
@@ -309,87 +295,7 @@ const chosen = (f: Filters, d: SupportRequest): boolean => {
   return true;
 };
 
-/**
- * The funnel of a choice list. It is colored as long as it retains something.
- * The declared asset lists take it too (DeclaredAssetsList).
- */
-export function ChoiceFilter({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string;
-  options: FilterOption[];
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const active = value !== ALL_OPTION;
-  return (
-    <Menu position="bottom-end" withinPortal shadow="md">
-      <Menu.Target>
-        <ActionIcon
-          variant={active ? "light" : "subtle"}
-          color={active ? "teal" : "gray"}
-          size="sm"
-          aria-label={`Filtrer par ${label}`}
-        >
-          <IconFilter size={14} />
-        </ActionIcon>
-      </Menu.Target>
-      <Menu.Dropdown mah={360} style={{ overflowY: "auto" }}>
-        {options.map((option) => (
-          <Menu.Item
-            key={option.value}
-            onClick={() => onChange(option.value)}
-            leftSection={
-              option.value === value ? <IconCheck size={14} /> : <span style={{ width: 14 }} />
-            }
-          >
-            {option.label}
-          </Menu.Item>
-        ))}
-      </Menu.Dropdown>
-    </Menu>
-  );
-}
 
-/** The funnel of a text column: you type what you are looking for. */
-export function TextFilter({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const active = value.trim() !== "";
-  return (
-    <Popover position="bottom-end" withinPortal shadow="md" trapFocus>
-      <Popover.Target>
-        <ActionIcon
-          variant={active ? "light" : "subtle"}
-          color={active ? "teal" : "gray"}
-          size="sm"
-          aria-label={`Filtrer par ${label}`}
-        >
-          <IconFilter size={14} />
-        </ActionIcon>
-      </Popover.Target>
-      <Popover.Dropdown>
-        <TextInput
-          size="xs"
-          placeholder={`Rechercher un ${label}`}
-          value={value}
-          onChange={(e) => onChange(e.currentTarget.value)}
-          data-autofocus
-          w={220}
-        />
-      </Popover.Dropdown>
-    </Popover>
-  );
-}
 
 function SortableTh({
   label,
@@ -452,6 +358,9 @@ export const SUPPORT_COLUMNS: ListColumn[] = [
  * The list's state, held by the page: what is seen in the open tab,
  * sorted and filtered, and what has been checked in it.
  */
+/** A request's labels, for the labels filters (useLabelFilter). */
+const labelsOf = (d: SupportRequest) => d.labels;
+
 export const useSupportList = (requests: SupportRequest[] | null, tab: string) => {
   // By default, the most recent first: it is the server's order.
   const [sort, setSort] = useState<Sort>({ key: "received", direction: "desc" });
@@ -480,13 +389,8 @@ export const useSupportList = (requests: SupportRequest[] | null, tab: string) =
         .map(([value, label]) => ({ value, label })),
     ];
   }, [inTab]);
-  const labelOptions = useMemo<FilterOption[]>(() => {
-    const names = new Set(inTab.flatMap((d) => d.labels.map((l) => l.name)));
-    return [
-      { value: ALL_OPTION, label: "Toutes" },
-      ...[...names].sort((a, b) => a.localeCompare(b, "fr")).map((n) => ({ value: n, label: n })),
-    ];
-  }, [inTab]);
+  // The labels filters, one per labels column, limited to its group.
+  const labelFilter = useLabelFilter(inTab, labelsOf);
 
   const shown = useMemo(() => {
     const value =
@@ -496,6 +400,7 @@ export const useSupportList = (requests: SupportRequest[] | null, tab: string) =
     const factor = sort.direction === "asc" ? 1 : -1;
     return inTab
       .filter((d) => chosen(filters, d))
+      .filter(labelFilter.keep)
       .sort((a, b) => {
         const left = value(a);
         const rightHand = value(b);
@@ -506,7 +411,7 @@ export const useSupportList = (requests: SupportRequest[] | null, tab: string) =
           return (left - rightHand) * factor;
         return String(left).localeCompare(String(rightHand), "fr", { numeric: true }) * factor;
       });
-  }, [inTab, filters, sort]);
+  }, [inTab, filters, sort, labelFilter.keep]);
 
   // Checked boxes only apply to what is seen: a request that is filtered out
   // or moved to another tab does not blindly undergo an action.
@@ -526,7 +431,7 @@ export const useSupportList = (requests: SupportRequest[] | null, tab: string) =
     shown,
     selection,
     actorOptions,
-    labelOptions,
+    labelFilter,
   };
 };
 
@@ -574,7 +479,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
     shown: allShown,
     inTab: allInTab,
     actorOptions,
-    labelOptions,
+    labelFilter,
     loading,
     onOpenRequest,
     onAddRequest: addRequest,
@@ -606,9 +511,9 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
     widthEditing,
   );
 
-  const isFiltered = Object.entries(filters).some(
-    ([key, v]) => v !== NO_FILTER[key as keyof Filters],
-  );
+  const isFiltered =
+    labelFilter.active ||
+    Object.entries(filters).some(([key, v]) => v !== NO_FILTER[key as keyof Filters]);
   const filter = (key: keyof Filters) => (value: string) =>
     setFilters((f) => ({ ...f, [key]: value }));
 
@@ -689,12 +594,7 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
         id,
         labelsColumnTitle(labelGroups, group),
         "labels",
-        <ChoiceFilter
-          label="étiquette"
-          options={labelOptions}
-          value={filters.label}
-          onChange={filter("label")}
-        />,
+        labelFilter.filter(group),
         { minWidth: LABELS_MIN_WIDTH },
         group,
       ),
@@ -890,7 +790,12 @@ function RequestsList({ config, list }: { config: unknown; list: SupportList }) 
                   <Text size="sm" c="dimmed">
                     Aucune demande ne correspond aux filtres.
                   </Text>
-                  <UnstyledButton onClick={() => setFilters(NO_FILTER)}>
+                  <UnstyledButton
+                    onClick={() => {
+                      setFilters(NO_FILTER);
+                      labelFilter.reset();
+                    }}
+                  >
                     <Text size="sm" c="teal">
                       Retirer les filtres
                     </Text>

@@ -21,11 +21,12 @@ import AddButton from "../ui/AddButton";
 import { keptColumns, defaultWidths, useColumnWidthEditing } from "../ui/ColumnFields";
 import type { ListColumn } from "../ui/ColumnFields";
 import { CopyPasteContext } from "../ui/CopyPasteActions";
-import { ALL_OPTION, ChoiceFilter, TextFilter } from "../support/SupportRequestsList";
-import type { FilterOption } from "../support/SupportRequestsList";
+import { ALL_OPTION, ChoiceFilter, TextFilter } from "../ui/ColumnFilters";
+import type { FilterOption } from "../ui/ColumnFilters";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
+import { useLabelFilter } from "../ui/LabelFilter";
 import { ReferenceTag } from "../ui/ReferenceTag";
 import { useResizableColumns } from "../ui/useResizableColumns";
 import { useIsEditing } from "../../lib/editing";
@@ -134,15 +135,14 @@ const lastLevels = (location: Location): PlaceRow[] => {
 
 // --- Filters -------------------------------------------------------------
 
-type FilterKey = "place" | "labels" | "warehouse";
+type FilterKey = "place" | "warehouse";
 
 type Filters = Record<FilterKey, string>;
 
-const NO_FILTER: Filters = { place: "", labels: ALL_OPTION, warehouse: ALL_OPTION };
+const NO_FILTER: Filters = { place: "", warehouse: ALL_OPTION };
 
 /** The values a record offers to a choice filter. */
 const CHOICES: Record<Exclude<FilterKey, "place">, (l: Location) => FilterOption[]> = {
-  labels: (l) => l.labels.map((x) => ({ value: x.name, label: x.name })),
   warehouse: (l) => (l.warehouse_name ? [{ value: l.warehouse_name, label: l.warehouse_name }] : []),
 };
 
@@ -237,6 +237,9 @@ function LabelsCell({ labels }: { labels: Location["labels"] }) {
   );
 }
 
+/** A record's labels, for the labels filters (useLabelFilter). */
+const labelsOf = (l: Location) => l.labels;
+
 export default function LocationsList({ config, blockId }: { config: unknown; blockId: Id }) {
   const boardId = useContext(CopyPasteContext)?.board?.id;
   const { locations: all, reload } = useLocations(boardId);
@@ -244,9 +247,11 @@ export default function LocationsList({ config, blockId }: { config: unknown; bl
   const locations = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
   const [sort, setSort] = useState<Sort>({ key: "warehouse", direction: "asc" });
   const [filters, setFilters] = useState<Filters>(NO_FILTER);
-  const isFiltered = (Object.keys(NO_FILTER) as FilterKey[]).some(
-    (key) => filters[key] !== NO_FILTER[key],
-  );
+  // The labels filters, one per labels column, limited to its group.
+  const labelFilter = useLabelFilter(locations, labelsOf);
+  const isFiltered =
+    labelFilter.active ||
+    (Object.keys(NO_FILTER) as FilterKey[]).some((key) => filters[key] !== NO_FILTER[key]);
   const labelGroups = useLabelGroups(LOCATION_ROUTES.labels);
   const isEditing = useIsEditing();
   const access = useWidgetAccess()("logistics");
@@ -281,6 +286,7 @@ export default function LocationsList({ config, blockId }: { config: unknown; bl
     const factor = sort.direction === "asc" ? 1 : -1;
     return (locations ?? [])
       .filter((l) => chosen(filters, l))
+      .filter(labelFilter.keep)
       .sort((a, b) => {
         const left = value(a);
         const rightHand = value(b);
@@ -291,7 +297,7 @@ export default function LocationsList({ config, blockId }: { config: unknown; bl
           return (left - rightHand) * factor;
         return String(left).localeCompare(String(rightHand), "fr", { numeric: true }) * factor;
       });
-  }, [locations, sort, filters]);
+  }, [locations, sort, filters, labelFilter.keep]);
 
   /** A choice filter's options: "Tous", then the values the records carry. */
   const optionsOf = (key: keyof typeof CHOICES, everything: string): FilterOption[] => {
@@ -364,7 +370,7 @@ export default function LocationsList({ config, blockId }: { config: unknown; bl
         id,
         labelsColumnTitle(labelGroups, group),
         "labels",
-        choiceFilter("labels", "étiquette", "Toutes"),
+        labelFilter.filter(group),
         { whiteSpace: "nowrap" },
         group,
       ),
@@ -482,7 +488,12 @@ export default function LocationsList({ config, blockId }: { config: unknown; bl
                 <Text size="sm" c="dimmed">
                   Aucune fiche ne correspond aux filtres.
                 </Text>
-                <UnstyledButton onClick={() => setFilters(NO_FILTER)}>
+                <UnstyledButton
+                  onClick={() => {
+                    setFilters(NO_FILTER);
+                    labelFilter.reset();
+                  }}
+                >
                   <Text size="sm" c="teal">
                     Retirer les filtres
                   </Text>
@@ -502,13 +513,14 @@ export default function LocationsList({ config, blockId }: { config: unknown; bl
     const searched = filters.place.trim().toLowerCase();
     return (locations ?? [])
       .filter((l) => chosen({ ...filters, place: "" }, l))
+      .filter(labelFilter.keep)
       .flatMap(lastLevels)
       .filter(
         (r) =>
           !searched || r.code.toLowerCase().includes(searched) || r.place.name.toLowerCase().includes(searched),
       )
       .sort((a, b) => a.code.localeCompare(b.code, "fr", { numeric: true }));
-  }, [locations, filters]);
+  }, [locations, filters, labelFilter.keep]);
 
   const plainTh = (label: string, filter?: ReactNode) => (
     <Table.Th>

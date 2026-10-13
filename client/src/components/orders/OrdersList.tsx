@@ -34,11 +34,12 @@ import {
 } from "../ui/ColumnFields";
 import type { ListColumn } from "../ui/ColumnFields";
 import { CopyPasteContext } from "../ui/CopyPasteActions";
-import { ALL_OPTION, ChoiceFilter, TextFilter } from "../support/SupportRequestsList";
-import type { FilterOption } from "../support/SupportRequestsList";
+import { ALL_OPTION, ChoiceFilter, TextFilter } from "../ui/ColumnFilters";
+import type { FilterOption } from "../ui/ColumnFilters";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
+import { useLabelFilter } from "../ui/LabelFilter";
 import { useResizableColumns } from "../ui/useResizableColumns";
 import { useIsEditing } from "../../lib/editing";
 import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
@@ -105,19 +106,17 @@ const VALUES: Record<ColumnKey, (o: Order) => string | number | null> = {
 
 // --- Filters -------------------------------------------------------------
 
-type FilterKey = "number" | "labels" | "status" | "supplier";
+type FilterKey = "number" | "status" | "supplier";
 
 type Filters = Record<FilterKey, string>;
 
 const NO_FILTER: Filters = {
   number: "",
-  labels: ALL_OPTION,
   status: ALL_OPTION,
   supplier: ALL_OPTION,
 };
 
 const CHOICES: Record<Exclude<FilterKey, "number">, (o: Order) => FilterOption[]> = {
-  labels: (o) => o.labels.map((l) => ({ value: l.name, label: l.name })),
   status: (o) => [{ value: o.status, label: orderStatusLabel(o.status) }],
   supplier: (o) => (o.supplier_name ? [{ value: o.supplier_name, label: o.supplier_name }] : []),
 };
@@ -250,6 +249,9 @@ export function StatusBadge({
   );
 }
 
+/** An order's labels, for the labels filters (useLabelFilter). */
+const labelsOf = (o: Order) => o.labels;
+
 export default function OrdersList({
   config,
   blockId,
@@ -266,7 +268,11 @@ export default function OrdersList({
   const orders = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
   const [sort, setSort] = useState<Sort>({ key: "created_at", direction: "desc" });
   const [filters, setFilters] = useState<Filters>(NO_FILTER);
-  const isFiltered = (Object.keys(NO_FILTER) as FilterKey[]).some((k) => filters[k] !== NO_FILTER[k]);
+  // The labels filters, one per labels column, limited to its group.
+  const labelFilter = useLabelFilter(orders, labelsOf);
+  const isFiltered =
+    labelFilter.active ||
+    (Object.keys(NO_FILTER) as FilterKey[]).some((k) => filters[k] !== NO_FILTER[k]);
   const labelGroups = useLabelGroups(ORDER_ROUTES.labels);
   const isEditing = useIsEditing();
   const access = useWidgetAccess()("logistics");
@@ -295,6 +301,7 @@ export default function OrdersList({
     const factor = sort.direction === "asc" ? 1 : -1;
     return (orders ?? [])
       .filter((o) => chosen(filters, o))
+      .filter(labelFilter.keep)
       .sort((a, b) => {
         const left = value(a);
         const right = value(b);
@@ -304,7 +311,7 @@ export default function OrdersList({
         if (typeof left === "number" && typeof right === "number") return (left - right) * factor;
         return String(left).localeCompare(String(right), "fr", { numeric: true }) * factor;
       });
-  }, [orders, sort, filters]);
+  }, [orders, sort, filters, labelFilter.keep]);
 
   const optionsOf = (key: keyof typeof CHOICES, everything: string): FilterOption[] => {
     const found = new Map<string, string>();
@@ -376,7 +383,7 @@ export default function OrdersList({
         id,
         labelsColumnTitle(labelGroups, group),
         "labels",
-        choiceFilter("labels", "étiquette", "Toutes"),
+        labelFilter.filter(group),
         { whiteSpace: "nowrap" },
         group,
       ),
@@ -488,7 +495,12 @@ export default function OrdersList({
                 <Text size="sm" c="dimmed">
                   Aucune commande ne correspond aux filtres.
                 </Text>
-                <UnstyledButton onClick={() => setFilters(NO_FILTER)}>
+                <UnstyledButton
+                  onClick={() => {
+                    setFilters(NO_FILTER);
+                    labelFilter.reset();
+                  }}
+                >
                   <Text size="sm" c="teal">
                     Retirer les filtres
                   </Text>

@@ -29,11 +29,12 @@ import AddButton from "../ui/AddButton";
 import { keptColumns, defaultWidths, useColumnWidthEditing } from "../ui/ColumnFields";
 import type { ListColumn } from "../ui/ColumnFields";
 import { CopyPasteContext } from "../ui/CopyPasteActions";
-import { ALL_OPTION, ChoiceFilter, TextFilter } from "../support/SupportRequestsList";
-import type { FilterOption } from "../support/SupportRequestsList";
+import { ALL_OPTION, ChoiceFilter, TextFilter } from "../ui/ColumnFilters";
+import type { FilterOption } from "../ui/ColumnFilters";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
+import { useLabelFilter } from "../ui/LabelFilter";
 import { useResizableColumns } from "../ui/useResizableColumns";
 import { useIsEditing } from "../../lib/editing";
 import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
@@ -94,15 +95,14 @@ const VALUES: Record<ColumnKey, (c: Contact) => string | number | null> = {
 
 // --- Filters -------------------------------------------------------------
 
-type FilterKey = "name" | "labels" | "type";
+type FilterKey = "name" | "type";
 
 type Filters = Record<FilterKey, string>;
 
-const NO_FILTER: Filters = { name: "", labels: ALL_OPTION, type: ALL_OPTION };
+const NO_FILTER: Filters = { name: "", type: ALL_OPTION };
 
 /** The values a contact offers to a choice filter. */
 const CHOICES: Record<Exclude<FilterKey, "name">, (c: Contact) => FilterOption[]> = {
-  labels: (c) => c.labels.map((l) => ({ value: l.name, label: l.name })),
   type: (c) => [{ value: c.type, label: contactTypeLabel(c.type) }],
 };
 
@@ -217,6 +217,9 @@ function LinkCell({ href, text }: { href: string; text: string }) {
 const typeOfContext = (context: string | null | undefined): ContactType | null =>
   CONTACT_TYPES.find((t) => context && contextKey(t.label) === contextKey(context))?.value ?? null;
 
+/** A contact's labels, for the labels filters (useLabelFilter). */
+const labelsOf = (c: Contact) => c.labels;
+
 export default function ContactsList({ config, blockId }: { config: unknown; blockId: Id }) {
   const board = useContext(CopyPasteContext)?.board;
   const boardId = board?.id;
@@ -228,9 +231,11 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
   const contacts = useMemo(() => all?.filter(inList(config)) ?? null, [all, config]);
   const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
   const [filters, setFilters] = useState<Filters>(NO_FILTER);
-  const isFiltered = (Object.keys(NO_FILTER) as FilterKey[]).some(
-    (key) => filters[key] !== NO_FILTER[key],
-  );
+  // The labels filters, one per labels column, limited to its group.
+  const labelFilter = useLabelFilter(contacts, labelsOf);
+  const isFiltered =
+    labelFilter.active ||
+    (Object.keys(NO_FILTER) as FilterKey[]).some((key) => filters[key] !== NO_FILTER[key]);
   const labelGroups = useLabelGroups(CONTACT_ROUTES.labels);
   const isEditing = useIsEditing();
   const access = useWidgetAccess()("logistics");
@@ -254,6 +259,7 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
     const factor = sort.direction === "asc" ? 1 : -1;
     return (contacts ?? [])
       .filter((c) => (contextType === null || c.type === contextType) && chosen(filters, c))
+      .filter(labelFilter.keep)
       .sort((a, b) => {
         const left = value(a);
         const rightHand = value(b);
@@ -264,7 +270,7 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
           return (left - rightHand) * factor;
         return String(left).localeCompare(String(rightHand), "fr", { numeric: true }) * factor;
       });
-  }, [contacts, sort, filters, contextType]);
+  }, [contacts, sort, filters, contextType, labelFilter.keep]);
 
   /** A choice filter's options: "Tous", then the values the contacts carry. */
   const optionsOf = (key: keyof typeof CHOICES, everything: string): FilterOption[] => {
@@ -337,7 +343,7 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
         id,
         labelsColumnTitle(labelGroups, group),
         "labels",
-        choiceFilter("labels", "étiquette", "Toutes"),
+        labelFilter.filter(group),
         { whiteSpace: "nowrap" },
         group,
       ),
@@ -435,7 +441,12 @@ export default function ContactsList({ config, blockId }: { config: unknown; blo
                 <Text size="sm" c="dimmed">
                   Aucun contact ne correspond aux filtres.
                 </Text>
-                <UnstyledButton onClick={() => setFilters(NO_FILTER)}>
+                <UnstyledButton
+                  onClick={() => {
+                    setFilters(NO_FILTER);
+                    labelFilter.reset();
+                  }}
+                >
                   <Text size="sm" c="teal">
                     Retirer les filtres
                   </Text>

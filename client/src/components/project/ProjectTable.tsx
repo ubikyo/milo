@@ -1,10 +1,8 @@
 import {
-  ActionIcon,
   Center,
   Group,
   Menu,
   Progress,
-  ScrollArea,
   Table,
   Text,
   UnstyledButton,
@@ -16,7 +14,6 @@ import {
   IconChevronUp,
   IconCopy,
   IconCopyPlus,
-  IconFilter,
   IconFolderOpen,
   IconFolderSymlink,
   IconPencil,
@@ -33,6 +30,8 @@ import type { ListColumn } from "../ui/ColumnFields";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
+import { ChoiceFilter, type FilterOption } from "../ui/ColumnFilters";
+import { useLabelFilter } from "../ui/LabelFilter";
 import { menuPosition } from "../ui/PointMenu";
 import { ReferenceTag } from "../ui/ReferenceTag";
 import { useResizableColumns } from "../ui/useResizableColumns";
@@ -47,12 +46,6 @@ import type { ProjectAction } from "./MoveOrCopyProjectModal";
 import { useRights } from "../../lib/rights";
 import { useIsEditing } from "../../lib/editing";
 import { NewShortcut } from "../../lib/newShortcut";
-
-/** A funnel option: "all" means "no filter". */
-interface FilterOption {
-  value: string;
-  label: string;
-}
 
 /** What the table asks for its column funnels. */
 export interface ProjectFiltersProps {
@@ -259,63 +252,8 @@ export const PROJECT_COLUMNS: ListColumn[] = COLUMNS.map(({ key, label }) => ({
   ...(key === "category_name" ? { formats: PATH_FORMATS } : {}),
 }));
 
-// Beyond ten options — actors, quickly numerous —, the list scrolls.
-// A menu row: its line of text, and its inset above and below.
-const FILTER_VISIBLE_ROWS = 10;
-const FILTER_ROW_HEIGHT =
-  "(var(--mantine-font-size-sm) * var(--mantine-line-height) + var(--mantine-spacing-xs) / 1.5 * 2)";
-
-// A column's filter. The funnel is colored while a value is selected,
-// so a filtered table does not pass for an empty table.
-interface ColumnFilterProps {
-  label: string;
-  options: FilterOption[];
-  value: string;
-  onChange: (value: string) => void;
-}
-
-function ColumnFilter({ label, options, value, onChange }: ColumnFilterProps) {
-  const active = value !== "all";
-
-  return (
-    <Menu position="bottom-end" withinPortal shadow="md">
-      <Menu.Target>
-        <ActionIcon
-          variant={active ? "light" : "subtle"}
-          color={active ? "teal" : "gray"}
-          size="sm"
-          aria-label={`Filtrer par ${label}`}
-        >
-          <IconFilter size={14} />
-        </ActionIcon>
-      </Menu.Target>
-      <Menu.Dropdown>
-        <ScrollArea.Autosize
-          mah={`calc(${FILTER_VISIBLE_ROWS} * ${FILTER_ROW_HEIGHT})`}
-          type="auto"
-          scrollbars="y"
-          scrollbarSize={2}
-        >
-          {options.map((option) => (
-            <Menu.Item
-              key={option.value}
-              onClick={() => onChange(option.value)}
-              leftSection={
-                option.value === value ? (
-                  <IconCheck size={14} />
-                ) : (
-                  <span style={{ width: 14 }} />
-                )
-              }
-            >
-              {option.label}
-            </Menu.Item>
-          ))}
-        </ScrollArea.Autosize>
-      </Menu.Dropdown>
-    </Menu>
-  );
-}
+/** A project's labels, for the labels filters (useLabelFilter). */
+const labelsOf = (p: Project) => p.labels ?? [];
 
 /** True when the sort is that of this column — and of this group, for the labels. */
 const sameSort = (sort: Sort, key: ColumnKey, group: Id | undefined): boolean =>
@@ -678,9 +616,9 @@ export default function ProjectTable({
 }: ProjectTableProps) {
   // By default: the most advanced projects first.
   const [sort, setSort] = useState<Sort>({ key: "status", direction: "desc" });
-  // The labels filter: a label's name, or "all". Unlike the others, it is
-  // applied here, on the projects read — as in Support.
-  const [labelFilter, setLabelFilter] = useState("all");
+  // The labels filters, one per labels column, limited to its group. Unlike
+  // the others, they are applied here, on the projects read — as in Support.
+  const labelFilter = useLabelFilter(projects, labelsOf);
   // The columns the widget shows, in the set order; without a setting,
   // all of them.
   // A column can come back: "id" distinguishes each occurrence.
@@ -733,20 +671,11 @@ export default function ProjectTable({
     ...categoryNodesList.map((c) => ({ value: c.id, label: categoryPaths.get(c.id) ?? c.name })),
   ];
 
-  // The labels the projects carry, by name: a label gone from every project
-  // is no longer offered, unless it is the one selected.
-  const labelNames = new Set(projects.flatMap((p) => (p.labels ?? []).map((l) => l.name)));
-  if (labelFilter !== "all") labelNames.add(labelFilter);
-  const labelOptions: FilterOption[] = [
-    { value: "all", label: "Toutes" },
-    ...[...labelNames].sort((a, b) => a.localeCompare(b, "fr")).map((n) => ({ value: n, label: n })),
-  ];
-
   // Chaque colonne filtrable porte son entonnoir.
-  const filterFor = (key: ColumnKey): ReactNode => {
+  const filterFor = ({ key, group }: ShownColumn): ReactNode => {
     if (key === "category_name") {
       return (
-        <ColumnFilter
+        <ChoiceFilter
           label="catégorie"
           options={categoryOptions}
           value={categoryFilter}
@@ -756,7 +685,7 @@ export default function ProjectTable({
     }
     if (key === "actors") {
       return (
-        <ColumnFilter
+        <ChoiceFilter
           label="acteur"
           options={actorOptions}
           value={actorFilter}
@@ -766,7 +695,7 @@ export default function ProjectTable({
     }
     if (key === "status") {
       return (
-        <ColumnFilter
+        <ChoiceFilter
           label="progression"
           options={STATUS_OPTIONS}
           value={statusFilter}
@@ -774,17 +703,7 @@ export default function ProjectTable({
         />
       );
     }
-    // Every labels column, whatever its group, carries the same filter.
-    if (key === "labels") {
-      return (
-        <ColumnFilter
-          label="étiquette"
-          options={labelOptions}
-          value={labelFilter}
-          onChange={setLabelFilter}
-        />
-      );
-    }
+    if (key === "labels") return labelFilter.filter(group);
     return null;
   };
 
@@ -800,10 +719,7 @@ export default function ProjectTable({
     const column =
       columns.find((c) => sameSort(sort, c.key, c.group)) ??
       COLUMNS.find((c) => c.key === sort.key);
-    const filtered =
-      labelFilter === "all"
-        ? projects
-        : projects.filter((p) => (p.labels ?? []).some((l) => l.name === labelFilter));
+    const filtered = projects.filter(labelFilter.keep);
     if (!column) return filtered;
     const factor = sort.direction === "asc" ? 1 : -1;
 
@@ -825,7 +741,7 @@ export default function ProjectTable({
     // "columns" is rebuilt on each render: the configuration it comes from is
     // what changes it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, sort, config, labelFilter]);
+  }, [projects, sort, config, labelFilter.keep]);
 
   // With no project to show, the table has no reason to exist: only the empty
   // state is displayed. It then carries what is needed to undo the filters. During
@@ -863,7 +779,7 @@ export default function ProjectTable({
                   column={column}
                   sort={sort}
                   onSort={handleSort}
-                  filter={filterFor(column.key)}
+                  filter={filterFor(column)}
                   handle={resize.handle(column.id)}
                   frozen={resize.colgroup !== null}
                 />

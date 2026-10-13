@@ -30,11 +30,12 @@ import AddButton from "../ui/AddButton";
 import { keptColumns, defaultWidths, useColumnWidthEditing, PATH_FORMATS, formatPath } from "../ui/ColumnFields";
 import type { ListColumn } from "../ui/ColumnFields";
 import { CopyPasteContext } from "../ui/CopyPasteActions";
-import { ALL_OPTION, ChoiceFilter, TextFilter } from "../support/SupportRequestsList";
-import type { FilterOption } from "../support/SupportRequestsList";
+import { ALL_OPTION, ChoiceFilter, TextFilter } from "../ui/ColumnFilters";
+import type { FilterOption } from "../ui/ColumnFilters";
 import EmptyPanel from "../ui/EmptyPanel";
 import GridScroll from "../ui/GridScroll";
 import LabelChip from "../ui/LabelChip";
+import { useLabelFilter } from "../ui/LabelFilter";
 import { useResizableColumns } from "../ui/useResizableColumns";
 import { useIsEditing } from "../../lib/editing";
 import { labelRank, labelsColumnTitle, ofGroup, useLabelGroups } from "../../lib/label-groups";
@@ -133,7 +134,6 @@ const VALUES: Record<ColumnKey, (a: Row) => string | number | null> = {
 /** The columns that filter: the name by text, the others by a value. */
 type FilterKey =
   | "name"
-  | "labels"
   | "actor"
   | "category"
   | "supplier"
@@ -145,7 +145,6 @@ type Filters = Record<FilterKey, string>;
 
 const NO_FILTER: Filters = {
   name: "",
-  labels: ALL_OPTION,
   actor: ALL_OPTION,
   category: ALL_OPTION,
   supplier: ALL_OPTION,
@@ -154,9 +153,8 @@ const NO_FILTER: Filters = {
   location: ALL_OPTION,
 };
 
-/** The values an asset offers to a choice filter: a label's name, an actor's id… */
+/** The values an asset offers to a choice filter: an actor's id, a category's path… */
 const CHOICES: Record<Exclude<FilterKey, "name">, (a: Row) => FilterOption[]> = {
-  labels: (a) => a.labels.map((l) => ({ value: l.name, label: l.name })),
   actor: (a) => a.actors.map((u) => ({ value: String(u.id), label: u.name })),
   category: (a) => (a.category_path ? [{ value: a.category_path, label: a.category_path }] : []),
   supplier: (a) => (a.supplier ? [{ value: a.supplier, label: a.supplier }] : []),
@@ -270,6 +268,9 @@ function LabelsCell({ labels }: { labels: DeclaredAsset["labels"] }) {
   );
 }
 
+/** An asset's labels, for the labels filters (useLabelFilter). */
+const labelsOf = (a: Row) => a.labels;
+
 export default function DeclaredAssetsList({
   kind,
   config,
@@ -322,9 +323,11 @@ export default function DeclaredAssetsList({
   }, [all, config, categories, locations]);
   const [sort, setSort] = useState<Sort>({ key: "name", direction: "asc" });
   const [filters, setFilters] = useState<Filters>(NO_FILTER);
-  const isFiltered = (Object.keys(NO_FILTER) as FilterKey[]).some(
-    (key) => filters[key] !== NO_FILTER[key],
-  );
+  // The labels filters, one per labels column, limited to its group.
+  const labelFilter = useLabelFilter(assets, labelsOf);
+  const isFiltered =
+    labelFilter.active ||
+    (Object.keys(NO_FILTER) as FilterKey[]).some((key) => filters[key] !== NO_FILTER[key]);
   // A labels column limited to a group takes its name.
   const labelGroups = useLabelGroups(DECLARED_ASSET_ROUTES[kind].labels);
   const isEditing = useIsEditing();
@@ -349,7 +352,8 @@ export default function DeclaredAssetsList({
         ? (a: Row) => labelRank(a.labels, sort.group)
         : VALUES[sort.key];
     const factor = sort.direction === "asc" ? 1 : -1;
-    return (assets ?? []).filter((a) => chosen(filters, a)).sort((a, b) => {
+    const kept = (assets ?? []).filter((a) => chosen(filters, a)).filter(labelFilter.keep);
+    return kept.sort((a, b) => {
       const left = value(a);
       const rightHand = value(b);
       if (left == null && rightHand == null) return 0;
@@ -359,7 +363,7 @@ export default function DeclaredAssetsList({
         return (left - rightHand) * factor;
       return String(left).localeCompare(String(rightHand), "fr", { numeric: true }) * factor;
     });
-  }, [assets, sort, filters]);
+  }, [assets, sort, filters, labelFilter.keep]);
 
   /** A choice filter's options: "Tous", then the values the assets carry. */
   const optionsOf = (key: keyof typeof CHOICES, all: string): FilterOption[] => {
@@ -449,7 +453,7 @@ export default function DeclaredAssetsList({
         id,
         labelsColumnTitle(labelGroups, group),
         "labels",
-        choiceFilter("labels", "étiquette", "Toutes"),
+        labelFilter.filter(group),
         { whiteSpace: "nowrap" },
         group,
       ),
@@ -563,7 +567,12 @@ export default function DeclaredAssetsList({
                 <Text size="sm" c="dimmed">
                   Aucun asset ne correspond aux filtres.
                 </Text>
-                <UnstyledButton onClick={() => setFilters(NO_FILTER)}>
+                <UnstyledButton
+                  onClick={() => {
+                    setFilters(NO_FILTER);
+                    labelFilter.reset();
+                  }}
+                >
                   <Text size="sm" c="teal">
                     Retirer les filtres
                   </Text>
