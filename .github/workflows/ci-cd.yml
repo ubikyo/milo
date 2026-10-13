@@ -20,7 +20,10 @@ env:
   NODE_VERSION: "20"
   # Paths on the VM
   API_DIR: /opt/milo/server
-  WEB_DIR: /var/www/milo
+  # The folder nginx serves the client from: kept out of the repository and
+  # masked in the logs, in the "MILO_WEB_DIR" secret (Settings → Secrets and
+  # variables → Actions).
+  WEB_DIR: ${{ secrets.MILO_WEB_DIR }}
   DB_DIR: /var/lib/milo
   DB_FILE: data.db
   # The API's own port (milo-api.service): the health check asks it directly,
@@ -149,11 +152,13 @@ jobs:
       - name: copie des fichiers
         run: |
           set -euo pipefail
+          [ -n "$WEB_DIR" ] || { echo "Le secret MILO_WEB_DIR n'est pas défini"; exit 1; }
           sudo mkdir -p "$WEB_DIR" "$API_DIR" "$DB_DIR"
 
           # Frontend: replace the contents (--delete) since these are
-          # files versioned by hash.
-          sudo rsync -a --delete "$RUNNER_TEMP/web/" "$WEB_DIR/"
+          # files versioned by hash; the certificate challenges of
+          # .well-known stay.
+          sudo rsync -a --delete --exclude .well-known "$RUNNER_TEMP/web/" "$WEB_DIR/"
 
           # API: replace the code and its dependencies, never the database
           # (it is in $DB_DIR, outside the deployed folder).
