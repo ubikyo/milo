@@ -13,12 +13,17 @@ import {
 import { IconBrandWindows } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { api, entraLoginUrl } from "../api";
-import { passwordIssues } from "@milo/shared";
+import {
+  normalizeUsername,
+  passwordIssues,
+  usernameIssues,
+} from "@milo/shared";
 import scene from "../assets/styles/LoginScene.module.css";
 import logoClasses from "../assets/styles/Logo.module.css";
 import classes from "../assets/styles/LoginStars.module.css";
 import Logo from "../components/ui/Logo";
 import PasswordRules from "../components/ui/PasswordRules";
+import UsernameRules from "../components/ui/UsernameRules";
 import { errorMessage, notifyError } from "../lib/errors";
 import type { AuthResult } from "@milo/shared";
 import type { CSSProperties, FormEvent } from "react";
@@ -28,8 +33,6 @@ import type { CSSProperties, FormEvent } from "react";
  * of the "admin" account, which is only used for settings.
  */
 type LoginMode = "setup" | "microsoft" | "admin";
-
-const ADMIN = "admin";
 
 /** The height of the Milo logo at 40px wide (435×330). */
 const MILO_LOGO_HEIGHT = (40 * 330) / 435;
@@ -63,6 +66,18 @@ const SLIDE_SHIFT = 20;
 const SLIDE_FADE = 600;
 /** The next text comes in when the leaving one has done 95% of its fade. */
 const SLIDE_DELAY = SLIDE_FADE * 0.95;
+/** The "Créer le compte" button's entrance once everything is valid, in ms. */
+const BUTTON_REVEAL = 300;
+
+/** Shown or hidden with the "Créer le compte" button's animation. */
+function reveal(shown: boolean): CSSProperties {
+  return {
+    opacity: shown ? 1 : 0,
+    transform: shown ? "none" : "translateY(8px) scale(0.96)",
+    visibility: shown ? "visible" : "hidden",
+    transition: `opacity ${BUTTON_REVEAL}ms ease, transform ${BUTTON_REVEAL}ms ease, visibility ${BUTTON_REVEAL}ms`,
+  };
+}
 
 /**
  * A text's position and transition. The leaving one fades out where it is;
@@ -104,9 +119,14 @@ export default function LoginPage({
   const [mode, setMode] = useState<LoginMode>(
     needsSetup ? "setup" : entra ? "microsoft" : "admin",
   );
-  const [username, setUsername] = useState(ADMIN);
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  // The field whose rules are shown at the creation: the last one entered,
+  // kept on blur so that the rules do not flicker from one field to the next.
+  const [ruleField, setRuleField] = useState<"username" | "password" | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [slide, setSlide] = useState(0);
 
@@ -126,7 +146,9 @@ export default function LoginPage({
 
   const incomplete =
     mode === "setup"
-      ? passwordIssues(password).length > 0 || password !== confirmation
+      ? usernameIssues(username).length > 0 ||
+        passwordIssues(password).length > 0 ||
+        password !== confirmation
       : !username.trim() || !password;
 
   const submit = async (event: FormEvent) => {
@@ -136,7 +158,7 @@ export default function LoginPage({
     try {
       onAuthenticated(
         mode === "setup"
-          ? await api.setup({ password })
+          ? await api.setup({ username: normalizeUsername(username), password })
           : await api.login(username.trim(), password),
       );
     } catch (e) {
@@ -269,9 +291,7 @@ export default function LoginPage({
                 <Logo variant={1} h={176} />
                 {mode === "setup" && (
                   <Text size="sm" c="dimmed" ta="center" pt={30}>
-                    Saisissez un mot de passe spécifique
-                    <br />
-                    au compte d'administration de Milo
+                    Création du compte administration de Milo
                   </Text>
                 )}
                 {mode === "admin" && entra && (
@@ -295,12 +315,15 @@ export default function LoginPage({
                 </Button>
               )}
 
-              {mode === "admin" && (
+              {mode !== "microsoft" && (
                 <TextInput
                   label="Identifiant"
+                  placeholder="admin"
                   value={username}
                   onChange={(e) => setUsername(e.currentTarget.value)}
+                  onFocus={() => setRuleField("username")}
                   required
+                  data-autofocus
                 />
               )}
 
@@ -309,27 +332,22 @@ export default function LoginPage({
                   label="Mot de passe"
                   value={password}
                   onChange={(e) => setPassword(e.currentTarget.value)}
+                  onFocus={() => setRuleField("password")}
                   required
-                  data-autofocus
                 />
               )}
 
               {mode === "setup" && (
-                <>
-                  <PasswordInput
-                    label="Vérification du mot de passe"
-                    value={confirmation}
-                    onChange={(e) => setConfirmation(e.currentTarget.value)}
-                    required
-                  />
-                  <PasswordRules
-                    password={password}
-                    confirmation={confirmation}
-                  />
-                </>
+                <PasswordInput
+                  label="Vérification du mot de passe"
+                  value={confirmation}
+                  onChange={(e) => setConfirmation(e.currentTarget.value)}
+                  onFocus={() => setRuleField("password")}
+                  required
+                />
               )}
 
-              {mode !== "microsoft" && (
+              {mode === "admin" && (
                 <Button
                   type="submit"
                   color="teal"
@@ -338,8 +356,46 @@ export default function LoginPage({
                   fullWidth
                   mt="md"
                 >
-                  {mode === "setup" ? "Créer le compte" : "Se connecter"}
+                  Se connecter
                 </Button>
+              )}
+
+              {/* 30px under the last field, the Stack's 16px included. The
+                  button keeps its place while hidden, and the rules sit there
+                  out of the flow: nothing in the form moves. Once everything
+                  is valid, the rules fade out as the button comes in. */}
+              {mode === "setup" && (
+                <Box pos="relative" mt={14}>
+                  <Button
+                    type="submit"
+                    color="teal"
+                    loading={busy}
+                    disabled={incomplete}
+                    fullWidth
+                    aria-hidden={incomplete}
+                    tabIndex={incomplete ? -1 : undefined}
+                    style={reveal(!incomplete)}
+                  >
+                    Créer le compte
+                  </Button>
+                  <Box
+                    pos="absolute"
+                    top={0}
+                    left={0}
+                    right={0}
+                    style={{ ...reveal(incomplete), pointerEvents: "none" }}
+                  >
+                    {ruleField === "username" && (
+                      <UsernameRules username={username} />
+                    )}
+                    {ruleField === "password" && (
+                      <PasswordRules
+                        password={password}
+                        confirmation={confirmation}
+                      />
+                    )}
+                  </Box>
+                </Box>
               )}
 
               {mode === "microsoft" && (

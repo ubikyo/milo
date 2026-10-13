@@ -31,13 +31,13 @@
   display: block;
 }
 
-/* 36px wide in the 1000px image, the pole on the ridge at (644, 577); its
-   bottom is lost fifteen pixels further down, behind the mask. */
+/* 18px wide in the 1000px image, the pole on the ridge at (644, 577); its
+   bottom is lost seven pixels further down, behind the mask. */
 .flag {
   position: absolute;
-  left: 64.09%;
-  top: 35.92%;
-  width: 3.6%;
+  left: 64.24%;
+  top: 37.19%;
+  width: 1.8%;
   height: auto;
   display: block;
   overflow: visible;

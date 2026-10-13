@@ -23,3 +23,26 @@ export const passwordChecks = (password: string): { rule: PasswordRule; ok: bool
 /** The labels of the unsatisfied rules. Empty = password accepted. */
 export const passwordIssues = (password: unknown): string[] =>
   PASSWORD_RULES.filter((rule) => !rule.test(String(password ?? ""))).map((rule) => rule.label);
+
+/**
+ * The identifier of the "admin" account, chosen at its creation, checked like
+ * the password. No "@": it can never be mistaken for a person's e-mail. It is
+ * stored in lowercase, so the rules apply to the lowercased value.
+ */
+export const USERNAME_RULES: readonly PasswordRule[] = [
+  { id: "length", label: "3 à 32 caractères", test: (u) => u.length >= 3 && u.length <= 32 },
+  { id: "first", label: "commence par une lettre", test: (u) => /^[a-z]/.test(u) },
+  {
+    id: "chars",
+    label: "lettres, chiffres, « . », « _ » ou « - » uniquement",
+    test: (u) => /^[a-z0-9._-]*$/.test(u),
+  },
+];
+
+/** The identifier as it is stored: trimmed, in lowercase. */
+export const normalizeUsername = (username: unknown): string =>
+  String(username ?? "").trim().toLowerCase();
+
+/** The labels of the unsatisfied rules. Empty = identifier accepted. */
+export const usernameIssues = (username: unknown): string[] =>
+  USERNAME_RULES.filter((rule) => !rule.test(normalizeUsername(username))).map((rule) => rule.label);

@@ -17,6 +17,7 @@ server/*.db.*
 server/*.db-*
 server/data-*.db
 server/data-*.db-*
+server/backup/*
 
 # Env files
 .env

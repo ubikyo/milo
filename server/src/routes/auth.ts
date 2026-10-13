@@ -9,7 +9,7 @@
 import { Router } from "express";
 import type { Request } from "express";
 import { randomBytes } from "node:crypto";
-import { isReplyEditorView, passwordIssues } from "@milo/shared";
+import { isReplyEditorView, normalizeUsername, passwordIssues, usernameIssues } from "@milo/shared";
 import { env } from "../env.js";
 import { createToken, fullName, hashPassword, verifyPassword } from "../lib/auth.js";
 import {
@@ -27,7 +27,6 @@ import { touch } from "../middleware/events.js";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import {
-  ADMIN_USERNAME,
   hasAccess,
   publicUser,
   sessions,
@@ -95,10 +94,13 @@ publicAuthRoutes.get("/setup", (_req, res) => {
 publicAuthRoutes.post("/setup", attemptLimit, (req, res) => {
   if (users.admin.get()) conflict("Le compte admin existe déjà");
 
+  const issues = usernameIssues(req.body.username);
+  if (issues.length > 0) badRequest(`L'identifiant doit respecter : ${issues.join(", ")}`);
+  const username = normalizeUsername(req.body.username);
   const password = String(req.body.password ?? "");
   verifyPasswordRules(password);
 
-  const { lastInsertRowid } = users.createAdmin.run(ADMIN_USERNAME, hashPassword(password), now());
+  const { lastInsertRowid } = users.createAdmin.run(username, hashPassword(password), now());
   res.status(201).json({
     token: openSession(lastInsertRowid),
     user: publicUser(users.byId.get(lastInsertRowid)!),
@@ -108,7 +110,9 @@ publicAuthRoutes.post("/setup", attemptLimit, (req, res) => {
 publicAuthRoutes.post("/login", attemptLimit, (req, res) => {
   const username = String(req.body.username ?? "").trim().toLowerCase();
   const password = String(req.body.password ?? "");
-  const admin = username === ADMIN_USERNAME ? users.admin.get() : undefined;
+  // The identifier chosen at the creation, kept in the account's e-mail.
+  const candidate = users.admin.get();
+  const admin = candidate && username === candidate.email.toLowerCase() ? candidate : undefined;
 
   // Same message in both cases: we don't say which one is wrong.
   if (!admin?.password_hash || !password || !verifyPassword(password, admin.password_hash)) {

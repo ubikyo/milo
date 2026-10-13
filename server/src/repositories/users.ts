@@ -48,9 +48,6 @@ import { notificationSettings } from "../lib/notification-settings.js";
 import { workspaces } from "./workspaces.js";
 import { apiAccountWorkspaces, apiAccountWrites, isApiAccount } from "./api-tokens.js";
 
-/** The id of the "admin" account. */
-export const ADMIN_USERNAME = "admin";
-
 export const users = {
   byId: selection<UserRow>("SELECT * FROM users WHERE id = ?"),
   byEmail: selection<UserRow>("SELECT * FROM users WHERE email = ? COLLATE NOCASE AND system = 0"),

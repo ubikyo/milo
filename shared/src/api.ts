@@ -38,10 +38,11 @@ export interface SetupState {
 }
 
 /**
- * The very first opening: the password of the "admin" account, and the
- * name of the first workspace.
+ * The very first opening: the identifier and the password of the "admin"
+ * account.
  */
 export interface SetupInput {
+  username: string;
   password: string;
 }
 
